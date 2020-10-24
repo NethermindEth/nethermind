@@ -25,6 +25,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Specs;
+using Nethermind.State;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
@@ -34,62 +35,47 @@ using BlockTree = Nethermind.Blockchain.BlockTree;
 
 namespace Nethermind.Synchronization.Test
 {
-    [Parallelizable(ParallelScope.Self)]
+    [Parallelizable(ParallelScope.All)]
     [TestFixture]
     public class SyncServerTests
     {
-        private IBlockTree _blockTree;
-        private ISyncPeerPool _peerPool;
-        private ISynchronizer _synchronizer;
-        private SyncServer _syncServer;
-        private ISyncPeer _nodeWhoSentTheBlock;
-
-        [SetUp]
-        public void Setup()
-        {
-            _nodeWhoSentTheBlock = Substitute.For<ISyncPeer>();
-            _nodeWhoSentTheBlock.Node.Returns(new Node(TestItem.PublicKeyA, "127.0.0.1", 30303));
-            _peerPool = Substitute.For<ISyncPeerPool>();
-
-            _blockTree = Substitute.For<IBlockTree>();
-            _synchronizer = Substitute.For<ISynchronizer>();
-            var selector = StaticSelector.Full;
-            _syncServer = new SyncServer(new StateDb(), new StateDb(), _blockTree, NullReceiptStorage.Instance, Always.Valid, Always.Valid, _peerPool,  selector, new SyncConfig(), LimboLogs.Instance);
-        }
-
         [Test]
         public void _When_finding_hash_it_does_not_load_headers()
         {
-            _blockTree.FindHash(123).Returns(TestItem.KeccakA);
-            Keccak result = _syncServer.FindHash(123);
+            Context ctx = new Context();
+            ctx.BlockTree.FindHash(123).Returns(TestItem.KeccakA);
+            Keccak result = ctx.SyncServer.FindHash(123);
 
-            _blockTree.DidNotReceive().FindHeader(Arg.Any<long>(), Arg.Any<BlockTreeLookupOptions>());
-            _blockTree.DidNotReceive().FindHeader(Arg.Any<Keccak>(), Arg.Any<BlockTreeLookupOptions>());
-            _blockTree.DidNotReceive().FindBlock(Arg.Any<Keccak>(), Arg.Any<BlockTreeLookupOptions>());
+            ctx.BlockTree.DidNotReceive().FindHeader(Arg.Any<long>(), Arg.Any<BlockTreeLookupOptions>());
+            ctx.BlockTree.DidNotReceive().FindHeader(Arg.Any<Keccak>(), Arg.Any<BlockTreeLookupOptions>());
+            ctx.BlockTree.DidNotReceive().FindBlock(Arg.Any<Keccak>(), Arg.Any<BlockTreeLookupOptions>());
             Assert.AreEqual(TestItem.KeccakA, result);
         }
 
         [Test]
         public void Does_not_request_peer_refresh_on_known_hints()
         {
-            _blockTree.IsKnownBlock(1, TestItem.KeccakA).ReturnsForAnyArgs(true);
-            _syncServer.HintBlock(TestItem.KeccakA, 1, _nodeWhoSentTheBlock);
-            _peerPool.DidNotReceiveWithAnyArgs().RefreshTotalDifficulty(null, null);
+            Context ctx = new Context();
+            ctx.BlockTree.IsKnownBlock(1, TestItem.KeccakA).ReturnsForAnyArgs(true);
+            ctx.SyncServer.HintBlock(TestItem.KeccakA, 1, ctx.NodeWhoSentTheBlock);
+            ctx.PeerPool.DidNotReceiveWithAnyArgs().RefreshTotalDifficulty(null!, null!);
         }
 
         [Test]
         public void Requests_peer_refresh_on_unknown_hints()
         {
-            _blockTree.IsKnownBlock(1, TestItem.KeccakA).ReturnsForAnyArgs(false);
-            _syncServer.HintBlock(TestItem.KeccakA, 1, _nodeWhoSentTheBlock);
-            _peerPool.Received().ReceivedWithAnyArgs();
+            Context ctx = new Context();
+            ctx.BlockTree.IsKnownBlock(1, TestItem.KeccakA).ReturnsForAnyArgs(false);
+            ctx.SyncServer.HintBlock(TestItem.KeccakA, 1, ctx.NodeWhoSentTheBlock);
+            ctx.PeerPool.Received().ReceivedWithAnyArgs();
         }
 
         [Test]
         public void When_finding_by_hash_block_info_is_not_loaded()
         {
-            _syncServer.Find(TestItem.KeccakA);
-            _blockTree.Received().FindBlock(Arg.Any<Keccak>(), BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+            Context ctx = new Context();
+            ctx.SyncServer.Find(TestItem.KeccakA);
+            ctx.BlockTree.Received().FindBlock(Arg.Any<Keccak>(), BlockTreeLookupOptions.TotalDifficultyNotNeeded);
         }
 
         [TestCase(true, true, true)]
@@ -97,22 +83,34 @@ namespace Nethermind.Synchronization.Test
         [TestCase(true, false, false)]
         public void Can_accept_new_valid_blocks(bool sealOk, bool validationOk, bool accepted)
         {
+            Context ctx = new Context();
             BlockTree remoteBlockTree = Build.A.BlockTree().OfChainLength(10).TestObject;
             BlockTree localBlockTree = Build.A.BlockTree().OfChainLength(9).TestObject;
 
             ISealValidator sealValidator = sealOk ? Always.Valid : Always.Invalid;
             IBlockValidator blockValidator = validationOk ? Always.Valid : Always.Invalid;
-            _syncServer = new SyncServer(new StateDb(), new StateDb(), localBlockTree, NullReceiptStorage.Instance, blockValidator, sealValidator, _peerPool, StaticSelector.Full, new SyncConfig(), LimboLogs.Instance);
+            ctx.SyncServer = new SyncServer(
+                new StateDb(),
+                new StateDb(),
+                localBlockTree,
+                NullReceiptStorage.Instance,
+                blockValidator,
+                sealValidator,
+                ctx.PeerPool,
+                StaticSelector.Full,
+                new SyncConfig(),
+                NullWitnessCollector.Instance,
+                LimboLogs.Instance);
 
             Block block = remoteBlockTree.FindBlock(9, BlockTreeLookupOptions.None);
 
             if (!accepted)
             {
-                Assert.Throws<EthSyncException>(() => _syncServer.AddNewBlock(block, _nodeWhoSentTheBlock));
+                Assert.Throws<EthSyncException>(() => ctx.SyncServer.AddNewBlock(block, ctx.NodeWhoSentTheBlock));
             }
             else
             {
-                _syncServer.AddNewBlock(block, _nodeWhoSentTheBlock);    
+                ctx.SyncServer.AddNewBlock(block, ctx.NodeWhoSentTheBlock);
             }
 
             if (accepted)
@@ -128,14 +126,26 @@ namespace Nethermind.Synchronization.Test
         [Test]
         public void Can_accept_blocks_that_are_fine()
         {
+            Context ctx = new Context();
             BlockTree remoteBlockTree = Build.A.BlockTree().OfChainLength(10).TestObject;
             BlockTree localBlockTree = Build.A.BlockTree().OfChainLength(9).TestObject;
 
-            _syncServer = new SyncServer(new StateDb(), new StateDb(), localBlockTree, NullReceiptStorage.Instance, Always.Valid, Always.Valid, _peerPool, StaticSelector.Full, new SyncConfig(), LimboLogs.Instance);
+            ctx.SyncServer = new SyncServer(
+                new StateDb(),
+                new StateDb(),
+                localBlockTree,
+                NullReceiptStorage.Instance,
+                Always.Valid,
+                Always.Valid,
+                ctx.PeerPool,
+                StaticSelector.Full,
+                new SyncConfig(),
+                NullWitnessCollector.Instance,
+                LimboLogs.Instance);
 
             Block block = remoteBlockTree.FindBlock(9, BlockTreeLookupOptions.None);
-            
-            _syncServer.AddNewBlock(block, _nodeWhoSentTheBlock);
+
+            ctx.SyncServer.AddNewBlock(block, ctx.NodeWhoSentTheBlock);
 
             Assert.AreEqual(localBlockTree.BestSuggestedHeader, block.Header);
         }
@@ -143,17 +153,42 @@ namespace Nethermind.Synchronization.Test
         [Test]
         public void Will_not_reject_block_with_bad_total_diff_but_will_reset_diff_to_null()
         {
+            Context ctx = new Context();
             BlockTree remoteBlockTree = Build.A.BlockTree().OfChainLength(10).TestObject;
             BlockTree localBlockTree = Build.A.BlockTree().OfChainLength(9).TestObject;
 
-            _syncServer = new SyncServer(new StateDb(), new StateDb(), localBlockTree, NullReceiptStorage.Instance, new BlockValidator(Always.Valid, new HeaderValidator(localBlockTree, Always.Valid, MainnetSpecProvider.Instance, LimboLogs.Instance), Always.Valid, MainnetSpecProvider.Instance, LimboLogs.Instance), Always.Valid, _peerPool, StaticSelector.Full, new SyncConfig(), LimboLogs.Instance);
+            HeaderValidator headerValidator = new HeaderValidator(
+                localBlockTree,
+                Always.Valid,
+                MainnetSpecProvider.Instance,
+                LimboLogs.Instance);
+
+            BlockValidator blockValidator = new BlockValidator(
+                Always.Valid,
+                headerValidator,
+                Always.Valid,
+                MainnetSpecProvider.Instance,
+                LimboLogs.Instance);
+
+            ctx.SyncServer = new SyncServer(
+                new StateDb(),
+                new StateDb(),
+                localBlockTree,
+                NullReceiptStorage.Instance,
+                blockValidator,
+                Always.Valid,
+                ctx.PeerPool,
+                StaticSelector.Full,
+                new SyncConfig(),
+                NullWitnessCollector.Instance,
+                LimboLogs.Instance);
 
             Block block = remoteBlockTree.FindBlock(9, BlockTreeLookupOptions.None);
             block.Header.TotalDifficulty *= 2;
 
-            _syncServer.AddNewBlock(block, _nodeWhoSentTheBlock);
+            ctx.SyncServer.AddNewBlock(block, ctx.NodeWhoSentTheBlock);
             Assert.AreEqual(localBlockTree.BestSuggestedHeader.Hash, block.Header.Hash);
-            
+
             Block parentBlock = remoteBlockTree.FindBlock(8, BlockTreeLookupOptions.None);
             Assert.AreEqual(parentBlock.TotalDifficulty + block.Difficulty, localBlockTree.BestSuggestedHeader.TotalDifficulty);
         }
@@ -161,17 +196,59 @@ namespace Nethermind.Synchronization.Test
         [Test]
         public void Rejects_new_old_blocks()
         {
+            Context ctx = new Context();
             BlockTree remoteBlockTree = Build.A.BlockTree().OfChainLength(10).TestObject;
             BlockTree localBlockTree = Build.A.BlockTree().OfChainLength(600).TestObject;
 
             ISealValidator sealValidator = Substitute.For<ISealValidator>();
-            _syncServer = new SyncServer(new StateDb(), new StateDb(), localBlockTree, NullReceiptStorage.Instance, Always.Valid, sealValidator, _peerPool, StaticSelector.Full, new SyncConfig(), LimboLogs.Instance);
+            ctx.SyncServer = new SyncServer(
+                new StateDb(),
+                new StateDb(),
+                localBlockTree,
+                NullReceiptStorage.Instance,
+                Always.Valid,
+                sealValidator,
+                ctx.PeerPool,
+                StaticSelector.Full,
+                new SyncConfig(),
+                NullWitnessCollector.Instance,
+                LimboLogs.Instance);
 
             Block block = remoteBlockTree.FindBlock(9, BlockTreeLookupOptions.None);
-            
-            _syncServer.AddNewBlock(block, _nodeWhoSentTheBlock);
+
+            ctx.SyncServer.AddNewBlock(block, ctx.NodeWhoSentTheBlock);
 
             sealValidator.DidNotReceive().ValidateSeal(Arg.Any<BlockHeader>(), Arg.Any<bool>());
+        }
+
+        private class Context
+        {
+            public Context()
+            {
+                NodeWhoSentTheBlock = Substitute.For<ISyncPeer>();
+                NodeWhoSentTheBlock.Node.Returns(new Node(TestItem.PublicKeyA, "127.0.0.1", 30303));
+                PeerPool = Substitute.For<ISyncPeerPool>();
+
+                BlockTree = Substitute.For<IBlockTree>();
+                StaticSelector selector = StaticSelector.Full;
+                SyncServer = new SyncServer(
+                    new StateDb(),
+                    new StateDb(),
+                    BlockTree,
+                    NullReceiptStorage.Instance,
+                    Always.Valid,
+                    Always.Valid,
+                    PeerPool,
+                    selector,
+                    new SyncConfig(),
+                    NullWitnessCollector.Instance,
+                    LimboLogs.Instance);
+            }
+
+            public IBlockTree BlockTree { get; }
+            public ISyncPeerPool PeerPool { get; }
+            public SyncServer SyncServer { get; set; }
+            public ISyncPeer NodeWhoSentTheBlock { get; }
         }
     }
 }
