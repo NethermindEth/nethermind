@@ -59,7 +59,9 @@ namespace Nethermind.State
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
             _stateDb = stateDb ?? throw new ArgumentNullException(nameof(stateDb));
-            _stateDb = new WitnessingStore(_stateDb, witnessCollector);
+            _stateDb = witnessCollector == NullWitnessCollector.Instance
+                ? _stateDb
+                : new WitnessingStore(_stateDb, witnessCollector);
         }
 
         public byte[] GetOriginal(StorageCell storageCell)
