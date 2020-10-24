@@ -107,8 +107,8 @@ namespace Nethermind.Blockchain.Producers
             }
 
             IDictionary<Address, Transaction[]> pendingTransactions = _transactionPool.GetPendingTransactionsBySender();
-            IComparer<Transaction> comparer = DistinctCompareTx.Instance // in order to sort properly and not loose transactions we need to differentiate on their identity which provided comparer might not be doing
-                .ThenBy(GetComparer(parent));
+            IComparer<Transaction> comparer = GetComparer(parent)
+                .ThenBy(DistinctCompareTx.Instance); // in order to sort properly and not loose transactions we need to differentiate on their identity which provided comparer might not be doing
             
             IEnumerable<Transaction> transactions = Order(pendingTransactions, comparer);
             IDictionary<Address, UInt256> remainingBalance = new Dictionary<Address, UInt256>();

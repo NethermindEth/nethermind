@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -69,13 +69,15 @@ namespace Nethermind.KeyStore
         private readonly ICryptoRandom _cryptoRandom;
         private readonly ILogger _logger;
         private readonly Encoding _keyStoreEncoding;
+        private readonly IKeyStoreIOSettingsProvider _keyStoreIOSettingsProvider;
 
         public FileKeyStore(
             IKeyStoreConfig keyStoreConfig,
             IJsonSerializer jsonSerializer,
             ISymmetricEncrypter symmetricEncrypter,
             ICryptoRandom cryptoRandom,
-            ILogManager logManager)
+            ILogManager logManager,
+            IKeyStoreIOSettingsProvider keyStoreIOSettingsProvider)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _config = keyStoreConfig ?? throw new ArgumentNullException(nameof(keyStoreConfig));
@@ -86,6 +88,7 @@ namespace Nethermind.KeyStore
                 ? new UTF8Encoding(false)
                 : Encoding.GetEncoding(_config.KeyStoreEncoding);
             _privateKeyGenerator = new PrivateKeyGenerator(_cryptoRandom);
+            _keyStoreIOSettingsProvider = keyStoreIOSettingsProvider ?? throw new ArgumentNullException(nameof(keyStoreIOSettingsProvider));
         }
 
         public int Version => 3;
@@ -104,13 +107,13 @@ namespace Nethermind.KeyStore
             }
         }
 
-        public (PrivateKey PrivateKey, Result Result) GetKey(Address address, SecureString password)
+        public (byte[] Key, Result Result) GetKeyBytes(Address address, SecureString password)
         {
             if (!password.IsReadOnly())
             {
                 throw new InvalidOperationException("Cannot work with password that is not readonly");
             }
-            
+
             var serializedKey = ReadKey(address);
             if (serializedKey == null)
             {
@@ -153,7 +156,7 @@ namespace Nethermind.KeyStore
                     break;
                 default:
                     return (null, Result.Fail($"Unsupported algoritm: {kdf}"));
-            }         
+            }
 
             var restoredMac = Keccak.Compute(derivedKey.Slice(kdfParams.DkLen - 16, 16).Concat(cipher).ToArray()).Bytes;
             if (!Bytes.AreEqual(mac, restoredMac))
@@ -171,15 +174,25 @@ namespace Nethermind.KeyStore
             {
                 decryptKey = derivedKey.Slice(0, 16);
             }
-            
+
             byte[] key = _symmetricEncrypter.Decrypt(cipher, decryptKey, iv, cipherType);
             if (key == null)
             {
                 return (null, Result.Fail("Error during decryption"));
             }
-            
+
             // TODO: maybe only allow to sign here so the key never leaves the area?
-            return (new PrivateKey(key), Result.Success);
+            return (key, Result.Success);
+        }
+
+        public (PrivateKey PrivateKey, Result Result) GetKey(Address address, SecureString password)
+        {
+            var geyKeyResult = GetKeyBytes(address, password);
+            if (geyKeyResult.Result.ResultType == ResultType.Failure)
+            {
+                return (null, geyKeyResult.Result);
+            }
+            return (new PrivateKey(geyKeyResult.Key), geyKeyResult.Result);
         }
 
         public (ProtectedPrivateKey PrivateKey, Result Result) GetProtectedKey(Address address, SecureString password)
@@ -219,13 +232,13 @@ namespace Nethermind.KeyStore
             return PersistKey(address, keyStoreItem);
         }
 
-        public Result StoreKey(PrivateKey key, SecureString password)
+        public Result StoreKey(Address address, byte[] keyContent, SecureString password)
         {
             if (!password.IsReadOnly())
             {
                 throw new InvalidOperationException("Cannot work with password that is not readonly");
             }
-            
+
             var salt = _cryptoRandom.GenerateRandomBytes(32);
             var passBytes = password.ToByteArray(_keyStoreEncoding);
 
@@ -243,7 +256,7 @@ namespace Nethermind.KeyStore
                 encryptKey = derivedKey.Take(16).ToArray();
             }
 
-            var encryptContent = key.KeyBytes;
+            var encryptContent = keyContent;
             var iv = _cryptoRandom.GenerateRandomBytes(_config.IVSize);
 
             var cipher = _symmetricEncrypter.Encrypt(encryptContent, encryptKey, iv, _config.Cipher);
@@ -254,7 +267,7 @@ namespace Nethermind.KeyStore
 
             var mac = Keccak.Compute(derivedKey.Skip(_config.KdfparamsDklen - 16).Take(16).Concat(cipher).ToArray()).Bytes;
 
-            string addressString = key.Address.ToString(false, false); 
+            string addressString = address.ToString(false, false);
             var keyStoreItem = new KeyStoreItem
             {
                 Address = addressString,
@@ -269,26 +282,31 @@ namespace Nethermind.KeyStore
                     KDF = _config.Kdf,
                     KDFParams = new KdfParams
                     {
-                       DkLen = _config.KdfparamsDklen,
-                       N = _config.KdfparamsN,
-                       P = _config.KdfparamsP,
-                       R = _config.KdfparamsR,
-                       Salt = salt.ToHexString(false)
+                        DkLen = _config.KdfparamsDklen,
+                        N = _config.KdfparamsN,
+                        P = _config.KdfparamsP,
+                        R = _config.KdfparamsR,
+                        Salt = salt.ToHexString(false)
                     },
                     MAC = mac.ToHexString(false),
                 },
                 Id = Guid.NewGuid().ToString(),
                 Version = Version
             };
-            
-            return StoreKey(key.Address, keyStoreItem);
+
+            return StoreKey(address, keyStoreItem);
+        }
+
+        public Result StoreKey(PrivateKey key, SecureString password)
+        {
+            return StoreKey(key.Address, key.KeyBytes, password);
         }
 
         public (IReadOnlyCollection<Address> Addresses, Result Result) GetKeyAddresses()
         {
             try
             {
-                var files = Directory.GetFiles(GetStoreDirectory(), "UTC--*--*");
+                var files = Directory.GetFiles(_keyStoreIOSettingsProvider.StoreDirectory, "UTC--*--*");
                 var addresses = files.Select(Path.GetFileName).Select(fn => fn.Split("--").LastOrDefault()).Where(x => Address.IsValidAddress(x, false)).Select(x => new Address(x)).ToArray();
                 return (addresses, new Result { ResultType = ResultType.Success });
             }
@@ -315,27 +333,15 @@ namespace Nethermind.KeyStore
             return Result.Success;
         }
 
-        private string GetStoreDirectory()
-        {
-            var directory = _config.KeyStoreDirectory.GetApplicationResourcePath();
-            if (!Directory.Exists(directory))
-            {
-                Directory.CreateDirectory(directory);
-            }
-            
-            return directory;
-        }
-
         private Result PersistKey(Address address, KeyStoreItem keyData)
         {
             var serializedKey = _jsonSerializer.Serialize(keyData);
             
             try
             {
-                // "UTC--2018-12-30T14-04-11.699600594Z--1a959a04db22b9f4360db07125f690449fa97a83"
-                DateTime utcNow = DateTime.UtcNow;
-                string keyFileName = $"UTC--{utcNow:yyyy-MM-dd}T{utcNow:HH-mm-ss.ffffff}000Z--{address.ToString(false, false)}";
-                var path = Path.Combine(GetStoreDirectory(), keyFileName);
+                var keyFileName = _keyStoreIOSettingsProvider.GetFileName(address);
+                var storeDirectory = _keyStoreIOSettingsProvider.StoreDirectory;
+                var path = Path.Combine(storeDirectory, keyFileName);
                 File.WriteAllText(path, serializedKey, _keyStoreEncoding);
                 return new Result {ResultType = ResultType.Success};
             }
@@ -385,7 +391,7 @@ namespace Nethermind.KeyStore
                 var files = FindKeyFiles(address);
                 if (files.Length == 0)
                 {
-                    if(_logger.IsError) _logger.Error($"A private key for address: {address} does not exists in directory {Path.GetFullPath(GetStoreDirectory())}.");
+                    if(_logger.IsError) _logger.Error($"A {_keyStoreIOSettingsProvider.KeyName} for address: {address} does not exists in directory {Path.GetFullPath(_keyStoreIOSettingsProvider.StoreDirectory)}.");
                     return null;
                 }
                 
@@ -401,7 +407,7 @@ namespace Nethermind.KeyStore
         internal string[] FindKeyFiles(Address address)
         {
             string addressString = address.ToString(false, false);
-            string[] files = Directory.GetFiles(GetStoreDirectory(), $"*{addressString}*");
+            string[] files = Directory.GetFiles(_keyStoreIOSettingsProvider.StoreDirectory, $"*{addressString}*");
             return files;
         }
     }
