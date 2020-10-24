@@ -24,6 +24,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.State.Witnesses;
 using Nethermind.Trie;
 using Metrics = Nethermind.Db.Metrics;
 
@@ -64,6 +65,23 @@ namespace Nethermind.State
         
         public StateProvider(ISnapshotableDb stateDb, IDb codeDb, ILogManager logManager)
             : this(new StateTree(stateDb), codeDb, logManager)
+        {
+        }
+        
+        public StateProvider(
+            ISnapshotableDb stateDb,
+            IDb codeDb,
+            IWitnessCollector? witnessCollector,
+            ILogManager logManager)
+            : this(
+                new StateTree(
+                    new WitnessingStore(
+                        new CachingStore(
+                            stateDb,
+                            PatriciaTree.RlpCacheSize),
+                        witnessCollector)),
+                codeDb,
+                logManager)
         {
         }
 

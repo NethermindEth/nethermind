@@ -30,10 +30,9 @@ namespace Nethermind.Trie
     [DebuggerDisplay("{RootHash}")]
     public class PatriciaTree
     {
-        private const int OneNodeAvgMemoryEstimate = 384;
-        public static readonly ICache<Keccak, byte[]> NodeCache =
-            new LruCache<Keccak, byte[]>(
-                (int)(MemoryAllowance.TrieNodeCacheMemory / OneNodeAvgMemoryEstimate), "trie nodes");
+        public const int OneNodeAvgMemoryEstimate = 384;
+
+        public static int RlpCacheSize => (int) (MemoryAllowance.TrieNodeCacheMemory / OneNodeAvgMemoryEstimate);
 
         /// <summary>
         ///     0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421
@@ -46,7 +45,7 @@ namespace Nethermind.Trie
         private readonly Stack<StackedNode> _nodeStack = new Stack<StackedNode>();
 
         private readonly ConcurrentQueue<Exception> _commitExceptions;
-        
+
         private readonly ConcurrentQueue<TrieNode> _currentCommit;
 
         protected readonly IKeyValueStore _keyValueStore;
@@ -61,7 +60,7 @@ namespace Nethermind.Trie
             : this(NullKeyValueStore.Instance, EmptyTreeHash, false, true)
         {
         }
-        
+
         public PatriciaTree(IKeyValueStore keyValueStore)
             : this(keyValueStore, EmptyTreeHash, false, true)
         {
@@ -105,7 +104,7 @@ namespace Nethermind.Trie
             {
                 throw new TrieException("Commits are not allowed on this trie.");
             }
-            
+
             if (RootRef == null)
             {
                 return;
@@ -198,7 +197,6 @@ namespace Nethermind.Trie
 
             if (node.FullRlp != null && node.FullRlp.Length >= 32)
             {
-                NodeCache.Set(node.Keccak, node.FullRlp);
                 _currentCommit.Enqueue(node);
             }
         }
@@ -263,20 +261,13 @@ namespace Nethermind.Trie
                 return _keyValueStore[keccak.Bytes];
             }
 
-            byte[] cachedRlp = NodeCache.Get(keccak);
-            if (cachedRlp == null)
+            byte[] dbValue = _keyValueStore[keccak.Bytes];
+            if (dbValue == null)
             {
-                byte[] dbValue = _keyValueStore[keccak.Bytes];
-                if (dbValue == null)
-                {
-                    throw new TrieException($"Node {keccak} is missing from the DB");
-                }
-                
-                NodeCache.Set(keccak, dbValue);
-                return dbValue;
+                throw new TrieException($"Node {keccak} is missing from the DB");
             }
 
-            return cachedRlp;
+            return dbValue;
         }
 
         // TODO: witness collector here
@@ -745,22 +736,21 @@ namespace Nethermind.Trie
         {
             if (visitor == null) throw new ArgumentNullException(nameof(visitor));
             if (rootHash == null) throw new ArgumentNullException(nameof(rootHash));
-            
+
             TrieVisitContext trieVisitContext = new TrieVisitContext();
-            
+
             // hacky but other solutions are not much better, something nicer would require a bit of thinking
             // we introduced a notion of an account on the visit context level which should have no knowledge of account really
             // but we know that we have multiple optimizations and assumptions on trees
             trieVisitContext.ExpectAccounts = expectAccounts;
-            
+
             TrieNode rootRef = null;
             if (!rootHash.Equals(Keccak.EmptyTreeHash))
             {
                 rootRef = RootHash == rootHash ? RootRef : new TrieNode(NodeType.Unknown, rootHash);
                 try
                 {
-                    // not allowing caching just for test scenarios when we use multiple trees
-                    rootRef.ResolveNode(this, false);
+                    rootRef.ResolveNode(this);
                 }
                 catch (TrieException)
                 {
@@ -768,7 +758,7 @@ namespace Nethermind.Trie
                     return;
                 }
             }
-            
+
             visitor.VisitTree(rootHash, trieVisitContext);
             rootRef?.Accept(visitor, this, trieVisitContext);
         }

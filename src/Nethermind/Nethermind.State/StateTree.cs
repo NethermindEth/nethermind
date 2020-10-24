@@ -33,7 +33,7 @@ namespace Nethermind.State
         }
         
         [DebuggerStepThrough]
-        public StateTree(IDb db) : base(db, Keccak.EmptyTreeHash, true, true)
+        public StateTree(IKeyValueStore db) : base(db, Keccak.EmptyTreeHash, true, true)
         {
         }
 

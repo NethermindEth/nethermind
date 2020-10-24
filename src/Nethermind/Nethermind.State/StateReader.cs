@@ -37,7 +37,7 @@ namespace Nethermind.State
         {
         }
         
-        public StateReader(ISnapshotableDb stateDb, IDb codeDb, ILogManager logManager)
+        public StateReader(ISnapshotableDb stateDb, IDb codeDb, ILogManager? logManager)
         {
             if (stateDb == null) throw new ArgumentNullException(nameof(stateDb));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
