@@ -111,7 +111,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Wit
 
         private static long _requestId;
         
-        async Task<Keccak[]> GetBlockWitnessHashes(Keccak blockHash, CancellationToken token)
+        private async Task<Keccak[]> GetBlockWitnessHashes(Keccak blockHash, CancellationToken token)
         {
             long requestId = Interlocked.Increment(ref _requestId);
             GetBlockWitnessHashesMessage msg = new GetBlockWitnessHashesMessage(requestId, blockHash);
