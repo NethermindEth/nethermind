@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2020 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -15,27 +15,29 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using Nethermind.Core.Crypto;
-using Nethermind.Network.P2P.Subprotocols.Eth.V62;
+using Nethermind.Network.P2P.Subprotocols.Wit;
+using Nethermind.Network.Test.P2P.Subprotocols.Eth.V62;
 using NUnit.Framework;
 
-namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
+namespace Nethermind.Network.Test.P2P.Subprotocols.Wit
 {
     [TestFixture, Parallelizable(ParallelScope.All)]
-    public class NewBlockHashesMessageSerializerTests
+    public class GetBlockWitnessHashesMessageSerializerTests
     {
         [Test]
-        public void Roundtrip()
+        public void Roundtrip_init()
         {
-            NewBlockHashesMessage message = new NewBlockHashesMessage((Keccak.Compute("1"), 1), (Keccak.Compute("2"), 2));
-            var serializer = new NewBlockHashesMessageSerializer();
+            GetBlockWitnessHashesMessageSerializer serializer = new GetBlockWitnessHashesMessageSerializer();
+            GetBlockWitnessHashesMessage message = new GetBlockWitnessHashesMessage(1, Keccak.Zero);
             SerializerTester.TestZero(serializer, message);
         }
-        
+
         [Test]
-        public void To_string()
+        public void Can_handle_null()
         {
-            NewBlockHashesMessage statusMessage = new NewBlockHashesMessage();
-            _ = statusMessage.ToString();
+            GetBlockWitnessHashesMessageSerializer serializer = new GetBlockWitnessHashesMessageSerializer();
+            GetBlockWitnessHashesMessage message = new GetBlockWitnessHashesMessage(1, null);
+            SerializerTester.TestZero(serializer, message);
         }
     }
 }

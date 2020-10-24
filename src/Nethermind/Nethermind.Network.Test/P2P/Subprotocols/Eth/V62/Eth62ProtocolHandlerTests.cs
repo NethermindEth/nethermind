@@ -41,8 +41,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
 {
-    [Parallelizable(ParallelScope.Self)]
-    [TestFixture]
+    [TestFixture, Parallelizable(ParallelScope.Self)]
     public class Eth62ProtocolHandlerTests
     {
         private ISession _session;

@@ -24,6 +24,6 @@ namespace Nethermind.State
     {
         void Persist(Keccak blockHash);
         
-        IReadOnlyCollection<Keccak> Load(Keccak blockHash);
+        IReadOnlyCollection<Keccak>? Load(Keccak blockHash);
     }
 }

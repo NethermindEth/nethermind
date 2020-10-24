@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.Collections.Generic;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Network.P2P.Subprotocols.Wit
@@ -21,15 +22,17 @@ namespace Nethermind.Network.P2P.Subprotocols.Wit
     public class BlockWitnessHashesMessage : P2PMessage
     {
         public override int PacketType { get; } = WitMessageCode.BlockWitnessHashes;
+        
         public override string Protocol { get; } = "wit";
         
         public long RequestId { get; }
-        public Keccak[] BlockWitnessHashes { get; set; }
+        
+        public IReadOnlyCollection<Keccak> Hashes { get; }
 
-        public BlockWitnessHashesMessage(long requestId, Keccak[] blockWitnessHashes)
+        public BlockWitnessHashesMessage(long requestId, IReadOnlyCollection<Keccak> hashes)
         {
             RequestId = requestId;
-            BlockWitnessHashes = blockWitnessHashes;
+            Hashes = hashes;
         }
     }
 }
