@@ -24,7 +24,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Store.Test
 {
-    [TestFixture]
+    [TestFixture, Parallelizable(ParallelScope.All)]
     public class PatriciaTreeTests
     {
         [Test]

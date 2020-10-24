@@ -22,16 +22,16 @@ using NUnit.Framework;
 
 namespace Nethermind.Store.Test
 {
-    [TestFixture]
+    [TestFixture, Parallelizable(ParallelScope.Children)]
     public class NodeTest
     {
-        [SetUp]
+        [OneTimeSetUp]
         public void Setup()
         {
             TrieNode.AllowBranchValues = true;
         }
 
-        [TearDown]
+        [OneTimeTearDown]
         public void TearDown()
         {
             TrieNode.AllowBranchValues = false;
