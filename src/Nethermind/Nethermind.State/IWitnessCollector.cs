@@ -20,16 +20,12 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.State
 {
-    public interface IWitnessCollector
+    public interface IWitnessCollector : IWitnessRepository
     {
-        IEnumerable<Keccak> Collected { get; }
+        IReadOnlyCollection<Keccak> Collected { get; }
         
         void Add(Keccak hash);
 
         void Reset();
-        
-        void Persist(Keccak blockHash);
-        
-        Keccak[] Load(Keccak blockHash);
     }
 }

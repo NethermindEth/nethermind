@@ -248,7 +248,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             if (_api.DbProvider == null) throw new StepDependencyException(nameof(_api.DbProvider));
             if (_api.RewardCalculatorSource == null) throw new StepDependencyException(nameof(_api.RewardCalculatorSource));
 
-            _api.WitnessCollector = new WitnessCollector(_api.DbProvider.WitnessDb);
+            _api.WitnessCollector = new WitnessCollector(_api.DbProvider.WitnessDb, _api.LogManager);
             
             return new BlockProcessor(
                 _api.SpecProvider,
