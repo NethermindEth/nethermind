@@ -66,6 +66,11 @@ namespace Nethermind.Cli
 
             _currentClient = _clients[uri];
         }
+        
+        public void SwitchClient(IJsonRpcClient client)
+        {
+            _currentClient = client;
+        }
 
         public async Task<JsValue> PostJint(string method, params object[] parameters)
         {
