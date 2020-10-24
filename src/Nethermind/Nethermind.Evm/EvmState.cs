@@ -33,6 +33,29 @@ namespace Nethermind.Evm
             {
                 return (RentDataStack(), RentReturnStack());
             }
+
+            /// <summary>
+            /// The word 'return' acts here once as a verb 'to return stack to the pool' and once as a part of the
+            /// compound noun 'return stack' which is a stack of subroutine return values.  
+            /// </summary>
+            /// <param name="dataStack"></param>
+            /// <param name="returnStack"></param>
+            public void ReturnStacks(byte[] dataStack, int[] returnStack)
+            {
+                _dataStackPool.Push(dataStack);
+                _returnStackPool.Push(returnStack);
+            }
+
+            // TODO: we have wrong call depth calculation somewhere
+            private const int MaxCallStackDepth = VirtualMachine.MaxCallDepth * 2;
+            
+            private readonly Stack<byte[]> _dataStackPool = new Stack<byte[]>();
+            
+            private readonly Stack<int[]> _returnStackPool = new Stack<int[]>();
+            
+            private int _dataStackPoolDepth;
+            
+            private int _returnStackPoolDepth;
             
             private byte[] RentDataStack()
             {
@@ -41,6 +64,7 @@ namespace Nethermind.Evm
                     _dataStackPoolDepth++;
                     if (_dataStackPoolDepth > MaxCallStackDepth)
                     {
+                        // TODO: block processor is not returning data stacks properly
                         throw new InvalidAsynchronousStateException(
                             $"Trying to rent a data stack at depth {_dataStackPoolDepth}/{MaxCallStackDepth} at thread {Thread.CurrentThread.ManagedThreadId}");
                     }
@@ -69,25 +93,6 @@ namespace Nethermind.Evm
                 _returnStackPool.TryPop(out int[] result);
                 return result;
             }
-            
-            /// <summary>
-            /// The word 'return' acts here once as a verb 'to return stack to the pool' and once as a part of the
-            /// compound noun 'return stack' which is a stack of subroutine return values.  
-            /// </summary>
-            /// <param name="dataStack"></param>
-            /// <param name="returnStack"></param>
-            public void ReturnStacks(byte[] dataStack, int[] returnStack)
-            {
-                _dataStackPool.Push(dataStack);
-                _returnStackPool.Push(returnStack);
-            }
-
-            // TODO: we have wrong call depth calculation somewhere
-            private const int MaxCallStackDepth = VirtualMachine.MaxCallDepth * 2;
-            private readonly Stack<byte[]> _dataStackPool = new Stack<byte[]>();
-            private readonly Stack<int[]> _returnStackPool = new Stack<int[]>();
-            private int _dataStackPoolDepth;
-            private int _returnStackPoolDepth;
         }
 
         private static readonly ThreadLocal<StackPool> _stackPool = new ThreadLocal<StackPool>(() => new StackPool());
