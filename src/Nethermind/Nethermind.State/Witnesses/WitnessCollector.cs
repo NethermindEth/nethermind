@@ -53,7 +53,7 @@ namespace Nethermind.State.Witnesses
 
         public void Persist(Keccak blockHash)
         {
-            if(_logger.IsDebug) _logger.Debug($"Persisting witness for {blockHash}");
+            if(_logger.IsDebug) _logger.Debug($"Persisting {blockHash} witness ({_collected.Count})");
 
             if (_collected.Count > 0)
             {
@@ -81,8 +81,8 @@ namespace Nethermind.State.Witnesses
             IReadOnlyList<Keccak> witness;
             if (_witnessCache.Contains(blockHash))
             {
-                if(_logger.IsTrace) _logger.Trace($"Loading cached witness for {blockHash}");
                 witness = _witnessCache.Get(blockHash);
+                if(_logger.IsTrace) _logger.Trace($"Loading cached witness for {blockHash} ({witness.Count})");
             }
             else // not cached
             {
@@ -94,9 +94,10 @@ namespace Nethermind.State.Witnesses
                 }
                 else // missing from the DB
                 {
-                    if(_logger.IsTrace) _logger.Trace($"Loading non-cached witness for {blockHash}");
                     Span<byte> witnessDataSpan = witnessData.AsSpan();
                     int itemCount = witnessData.Length / Keccak.Size;
+                    if(_logger.IsTrace) _logger.Trace($"Loading non-cached witness for {blockHash} ({itemCount})");
+                    
                     Keccak[] writableWitness = new Keccak[itemCount];
                     for (int i = 0; i < itemCount; i++)
                     {
