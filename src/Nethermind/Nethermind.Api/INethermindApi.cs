@@ -105,7 +105,6 @@ namespace Nethermind.Api
         IProtocolsManager? ProtocolsManager { get; set; }
         IProtocolValidator? ProtocolValidator { get; set; }
         IReceiptStorage? ReceiptStorage { get; set; }
-        IWitnessCollector? WitnessCollector { get; set; }
         IReceiptFinder? ReceiptFinder { get; set; }
         IRewardCalculatorSource? RewardCalculatorSource { get; set; }
         IRlpxPeer? RlpxPeer { get; set; }
@@ -131,6 +130,7 @@ namespace Nethermind.Api
         ITxPoolInfoProvider? TxPoolInfoProvider { get; set; }
         IWallet? Wallet { get; set; }
         IWebSocketsManager? WebSocketsManager { get; set; }
+        IWitnessCollector? WitnessCollector { get; set; }
 
         ProtectedPrivateKey? NodeKey { get; set; }
         ProtectedPrivateKey? OriginalSignerKey { get; set; }

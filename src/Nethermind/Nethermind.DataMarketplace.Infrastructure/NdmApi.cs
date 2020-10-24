@@ -62,6 +62,7 @@ using Nethermind.Stats;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
+using Nethermind.Trie;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
 using Nethermind.WebSockets;
@@ -249,7 +250,12 @@ namespace Nethermind.DataMarketplace.Infrastructure
 
 
         public ILogManager LogManager => _nethermindApi.LogManager;
-
+        public IKeyValueStore? MainStateDbWithCache
+        {
+            get => _nethermindApi.MainStateDbWithCache;
+            set => _nethermindApi.MainStateDbWithCache = value;
+        }
+        
         public IMessageSerializationService MessageSerializationService => _nethermindApi.MessageSerializationService;
 
         public IMonitoringService MonitoringService
@@ -262,6 +268,12 @@ namespace Nethermind.DataMarketplace.Infrastructure
         {
             get => _nethermindApi.NodeStatsManager;
             set => _nethermindApi.NodeStatsManager = value;
+        }
+
+        public IPasswordProvider? PasswordProvider
+        {
+            get => _nethermindApi.PasswordProvider;
+            set => _nethermindApi.PasswordProvider = value;
         }
 
         public IPeerManager? PeerManager
@@ -432,6 +444,12 @@ namespace Nethermind.DataMarketplace.Infrastructure
         {
             get => _nethermindApi.WebSocketsManager;
             set => _nethermindApi.WebSocketsManager = value;
+        }
+        
+        public IWitnessCollector? WitnessCollector
+        {
+            get => _nethermindApi.WitnessCollector;
+            set => _nethermindApi.WitnessCollector = value;
         }
 
         public ProtectedPrivateKey? NodeKey
