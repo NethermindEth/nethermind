@@ -35,7 +35,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Store.Test
 {
-    [TestFixture]
+    [TestFixture, Parallelizable(ParallelScope.All)]
     public class StateProviderTests
     {
         private static readonly Keccak Hash1 = Keccak.Compute("1");

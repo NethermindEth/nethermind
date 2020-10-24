@@ -31,7 +31,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Store.Test
 {
-    [TestFixture]
+    [TestFixture, Parallelizable(ParallelScope.All)]
     public class StateReaderTests
     {
         private static readonly Keccak Hash1 = Keccak.Compute("1");
@@ -174,7 +174,7 @@ namespace Nethermind.Store.Test
             return Task.Run(
                 () =>
                 {
-                    for (int i = 0; i < 100000; i++)
+                    for (int i = 0; i < 10000; i++)
                     {
                         UInt256 balance = reader.GetBalance(stateRoot, _address1);
                         Assert.AreEqual(value, balance);
@@ -187,7 +187,7 @@ namespace Nethermind.Store.Test
             return Task.Run(
                 () =>
                 {
-                    for (int i = 0; i < 10000; i++)
+                    for (int i = 0; i < 1000; i++)
                     {
                         Keccak storageRoot = reader.GetStorageRoot(stateRoot, storageCell.Address);
                         byte[] result = reader.GetStorage(storageRoot, storageCell.Index);

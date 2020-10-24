@@ -24,30 +24,9 @@ using NUnit.Framework;
 
 namespace Nethermind.Store.Test
 {
-    [TestFixture]
+    [TestFixture, Parallelizable(ParallelScope.All)]
     public class TrieNodeTests
     {
-        private TrieNode _tiniestLeaf;
-        private TrieNode _heavyLeaf;
-        private TrieNode _accountLeaf;
-
-        [SetUp]
-        public void Setup()
-        {
-            _tiniestLeaf = new TrieNode(NodeType.Leaf);
-            _tiniestLeaf.Key = new HexPrefix(true, 5);
-            _tiniestLeaf.Value = new byte[] {10};
-
-            _heavyLeaf = new TrieNode(NodeType.Leaf);
-            _heavyLeaf.Key = new HexPrefix(true, new byte[20]);
-            _heavyLeaf.Value = Keccak.EmptyTreeHash.Bytes.Concat(Keccak.EmptyTreeHash.Bytes).ToArray();
-
-            Account account = new Account(100);
-            AccountDecoder decoder = new AccountDecoder();
-            _accountLeaf = new TrieNode(NodeType.Leaf);
-            _accountLeaf.Value = decoder.Encode(account).Bytes;
-        }
-
         [Test]
         public void Throws_trie_exception_when_setting_value_on_branch()
         {
@@ -109,12 +88,13 @@ namespace Nethermind.Store.Test
         [Test]
         public void Can_check_if_branch_is_valid_with_one_child_less()
         {
+            Context ctx = new Context();
             for (int i = 0; i < 16; i++)
             {
                 TrieNode trieNode = new TrieNode(NodeType.Branch);
                 for (int j = 0; j < i; j++)
                 {
-                    trieNode.SetChild(j, _tiniestLeaf);
+                    trieNode.SetChild(j, ctx.TiniestLeaf);
                 }
 
                 if (i > 2)
@@ -131,12 +111,13 @@ namespace Nethermind.Store.Test
         [Test]
         public void Can_check_if_child_is_null_on_a_branch()
         {
+            Context ctx = new Context();
             for (int nonNullChildrenCount = 0; nonNullChildrenCount < 16; nonNullChildrenCount++)
             {
                 TrieNode trieNode = new TrieNode(NodeType.Branch);
                 for (int j = 0; j < nonNullChildrenCount; j++)
                 {
-                    trieNode.SetChild(j, _tiniestLeaf);
+                    trieNode.SetChild(j, ctx.TiniestLeaf);
                 }
 
                 byte[] rlp = trieNode.RlpEncode();
@@ -161,8 +142,9 @@ namespace Nethermind.Store.Test
         [Test]
         public void Can_encode_decode_tiny_branch()
         {
+            Context ctx = new Context();
             TrieNode trieNode = new TrieNode(NodeType.Branch);
-            trieNode.SetChild(11, _tiniestLeaf);
+            trieNode.SetChild(11, ctx.TiniestLeaf);
 
             byte[] rlp = trieNode.RlpEncode();
 
@@ -171,15 +153,16 @@ namespace Nethermind.Store.Test
             TrieNode decodedTiniest = decoded.GetChild(11);
             decodedTiniest.ResolveNode(null);
 
-            Assert.AreEqual(_tiniestLeaf.Value, decodedTiniest.Value, "value");
-            Assert.AreEqual(_tiniestLeaf.Key.ToBytes(), decodedTiniest.Key.ToBytes(), "key");
+            Assert.AreEqual(ctx.TiniestLeaf.Value, decodedTiniest.Value, "value");
+            Assert.AreEqual(ctx.TiniestLeaf.Key!.ToBytes(), decodedTiniest.Key!.ToBytes(), "key");
         }
 
         [Test]
         public void Can_encode_decode_heavy_branch()
         {
+            Context ctx = new Context();
             TrieNode trieNode = new TrieNode(NodeType.Branch);
-            trieNode.SetChild(11, _heavyLeaf);
+            trieNode.SetChild(11, ctx.HeavyLeaf);
 
             byte[] rlp = trieNode.RlpEncode();
 
@@ -193,9 +176,10 @@ namespace Nethermind.Store.Test
         [Test]
         public void Can_encode_decode_tiny_extension()
         {
+            Context ctx = new Context();
             TrieNode trieNode = new TrieNode(NodeType.Extension);
             trieNode.Key = new HexPrefix(false, 5);
-            trieNode.SetChild(0, _tiniestLeaf);
+            trieNode.SetChild(0, ctx.TiniestLeaf);
 
             byte[] rlp = trieNode.RlpEncode();
 
@@ -204,16 +188,17 @@ namespace Nethermind.Store.Test
             TrieNode decodedTiniest = decoded.GetChild(0);
             decodedTiniest.ResolveNode(null);
 
-            Assert.AreEqual(_tiniestLeaf.Value, decodedTiniest.Value, "value");
-            Assert.AreEqual(_tiniestLeaf.Key.ToBytes(), decodedTiniest.Key.ToBytes(), "key");
+            Assert.AreEqual(ctx.TiniestLeaf.Value, decodedTiniest.Value, "value");
+            Assert.AreEqual(ctx.TiniestLeaf.Key!.ToBytes(), decodedTiniest.Key!.ToBytes(), "key");
         }
 
         [Test]
         public void Can_encode_decode_heavy_extension()
         {
+            Context ctx = new Context();
             TrieNode trieNode = new TrieNode(NodeType.Extension);
             trieNode.Key = new HexPrefix(false, 5);
-            trieNode.SetChild(0, _heavyLeaf);
+            trieNode.SetChild(0, ctx.HeavyLeaf);
 
             byte[] rlp = trieNode.RlpEncode();
 
@@ -240,8 +225,9 @@ namespace Nethermind.Store.Test
         [Test]
         public void Get_child_hash_works_on_hashed_child_of_a_branch()
         {
+            Context ctx = new Context();
             TrieNode trieNode = new TrieNode(NodeType.Branch);
-            trieNode[11] = _heavyLeaf;
+            trieNode[11] = ctx.HeavyLeaf;
             byte[] rlp = trieNode.RlpEncode();
             TrieNode decoded = new TrieNode(NodeType.Branch, rlp);
 
@@ -252,8 +238,9 @@ namespace Nethermind.Store.Test
         [Test]
         public void Get_child_hash_works_on_inlined_child_of_a_branch()
         {
+            Context ctx = new Context();
             TrieNode trieNode = new TrieNode(NodeType.Branch);
-            trieNode[11] = _tiniestLeaf;
+            trieNode[11] = ctx.TiniestLeaf;
             byte[] rlp = trieNode.RlpEncode();
             TrieNode decoded = new TrieNode(NodeType.Branch, rlp);
 
@@ -264,8 +251,9 @@ namespace Nethermind.Store.Test
         [Test]
         public void Get_child_hash_works_on_hashed_child_of_an_extension()
         {
+            Context ctx = new Context();
             TrieNode trieNode = new TrieNode(NodeType.Extension);
-            trieNode[0] = _heavyLeaf;
+            trieNode[0] = ctx.HeavyLeaf;
             trieNode.Key = new HexPrefix(false, 5);
             byte[] rlp = trieNode.RlpEncode();
             TrieNode decoded = new TrieNode(NodeType.Extension, rlp);
@@ -277,8 +265,9 @@ namespace Nethermind.Store.Test
         [Test]
         public void Get_child_hash_works_on_inlined_child_of_an_extension()
         {
+            Context ctx = new Context();
             TrieNode trieNode = new TrieNode(NodeType.Extension);
-            trieNode[0] = _tiniestLeaf;
+            trieNode[0] = ctx.TiniestLeaf;
             trieNode.Key = new HexPrefix(false, 5);
             byte[] rlp = trieNode.RlpEncode();
             TrieNode decoded = new TrieNode(NodeType.Extension, rlp);
@@ -386,23 +375,25 @@ namespace Nethermind.Store.Test
         [Test]
         public void Extension_with_leaf_can_be_visited()
         {
+            Context ctx = new Context();
             ITreeVisitor visitor = Substitute.For<ITreeVisitor>();
             visitor.ShouldVisit(Arg.Any<Keccak>()).Returns(true);
 
             TrieVisitContext context = new TrieVisitContext();
             PatriciaTree tree = new PatriciaTree();
             TrieNode node = new TrieNode(NodeType.Extension);
-            node.SetChild(0, _accountLeaf);
+            node.SetChild(0, ctx.AccountLeaf);
 
             node.Accept(visitor, tree, context);
 
             visitor.Received().VisitExtension(node, context);
-            visitor.Received().VisitLeaf(_accountLeaf, context, _accountLeaf.Value);
+            visitor.Received().VisitLeaf(ctx.AccountLeaf, context, ctx.AccountLeaf.Value);
         }
 
         [Test]
         public void Branch_with_children_can_be_visited()
         {
+            Context ctx = new Context();
             ITreeVisitor visitor = Substitute.For<ITreeVisitor>();
             visitor.ShouldVisit(Arg.Any<Keccak>()).Returns(true);
 
@@ -411,13 +402,13 @@ namespace Nethermind.Store.Test
             TrieNode node = new TrieNode(NodeType.Branch);
             for (int i = 0; i < 16; i++)
             {
-                node.SetChild(i, _accountLeaf);
+                node.SetChild(i, ctx.AccountLeaf);
             }
 
             node.Accept(visitor, tree, context);
 
             visitor.Received().VisitBranch(node, context);
-            visitor.Received(16).VisitLeaf(_accountLeaf, context, _accountLeaf.Value);
+            visitor.Received(16).VisitLeaf(ctx.AccountLeaf, context, ctx.AccountLeaf.Value);
         }
 
         [Test]
@@ -515,23 +506,26 @@ namespace Nethermind.Store.Test
         [Test]
         public void Size_of_a_heavy_leaf_is_correct()
         {
-            Assert.AreEqual(168, _heavyLeaf.MemorySize);
+            Context ctx = new Context();
+            Assert.AreEqual(168, ctx.HeavyLeaf.MemorySize);
         }
         
         [Test]
         public void Size_of_a_tiny_leaf_is_correct()
         {
-            Assert.AreEqual(152, _tiniestLeaf.MemorySize);
+            Context ctx = new Context();
+            Assert.AreEqual(152, ctx.TiniestLeaf.MemorySize);
         }
 
         [Test]
         public void Size_of_a_branch_is_correct()
         {
+            Context ctx = new Context();
             TrieNode node = new TrieNode(NodeType.Branch);
             node.Key = new HexPrefix(false, 1);
             for (int i = 0; i < 16; i++)
             {
-                node.SetChild(i, _accountLeaf);
+                node.SetChild(i, ctx.AccountLeaf);
             }
             
             Assert.AreEqual(216, node.MemorySize);
@@ -540,9 +534,10 @@ namespace Nethermind.Store.Test
         [Test]
         public void Size_of_an_extension_is_correct()
         {
+            Context ctx = new Context();
             TrieNode trieNode = new TrieNode(NodeType.Extension);
             trieNode.Key = new HexPrefix(false, 1);
-            trieNode.SetChild(0, _tiniestLeaf);
+            trieNode.SetChild(0, ctx.TiniestLeaf);
             
             Assert.AreEqual(152, trieNode.MemorySize);
         }
@@ -550,11 +545,35 @@ namespace Nethermind.Store.Test
         [Test]
         public void Size_of_unknown_node_is_correct()
         {
+            Context ctx = new Context();
             TrieNode trieNode = new TrieNode(NodeType.Extension);
             trieNode.Key = new HexPrefix(false, 1);
-            trieNode.SetChild(0, _tiniestLeaf);
+            trieNode.SetChild(0, ctx.TiniestLeaf);
             
             Assert.AreEqual(152, trieNode.MemorySize);
+        }
+
+        private class Context
+        {
+            public TrieNode TiniestLeaf { get; }
+            public TrieNode HeavyLeaf { get; }
+            public TrieNode AccountLeaf { get; }
+
+            public Context()
+            {
+                TiniestLeaf = new TrieNode(NodeType.Leaf);
+                TiniestLeaf.Key = new HexPrefix(true, 5);
+                TiniestLeaf.Value = new byte[] {10};
+
+                HeavyLeaf = new TrieNode(NodeType.Leaf);
+                HeavyLeaf.Key = new HexPrefix(true, new byte[20]);
+                HeavyLeaf.Value = Keccak.EmptyTreeHash.Bytes.Concat(Keccak.EmptyTreeHash.Bytes).ToArray();
+
+                Account account = new Account(100);
+                AccountDecoder decoder = new AccountDecoder();
+                AccountLeaf = new TrieNode(NodeType.Leaf);
+                AccountLeaf.Value = decoder.Encode(account).Bytes;
+            }
         }
     }
 }
