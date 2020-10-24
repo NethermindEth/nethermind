@@ -18,7 +18,9 @@
 using FluentAssertions;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Db;
 using Nethermind.State.Witnesses;
+using Nethermind.Trie;
 using NUnit.Framework;
 
 namespace Nethermind.Store.Test.Witnesses
@@ -29,7 +31,7 @@ namespace Nethermind.Store.Test.Witnesses
         [Test]
         public void Collects_each_cache_once()
         {
-            WitnessCollector witnessCollector = new WitnessCollector();
+            WitnessCollector witnessCollector = new WitnessCollector(new MemDb());
             witnessCollector.Add(Keccak.Zero);
             witnessCollector.Add(Keccak.Zero);
             witnessCollector.Collected.Should().HaveCount(1);
@@ -38,7 +40,7 @@ namespace Nethermind.Store.Test.Witnesses
         [Test]
         public void Can_collect_many()
         {
-            WitnessCollector witnessCollector = new WitnessCollector();
+            WitnessCollector witnessCollector = new WitnessCollector(new MemDb());
             witnessCollector.Add(TestItem.KeccakA);
             witnessCollector.Add(TestItem.KeccakB);
             witnessCollector.Collected.Should().HaveCount(2);
@@ -47,7 +49,7 @@ namespace Nethermind.Store.Test.Witnesses
         [Test]
         public void Can_reset()
         {
-            WitnessCollector witnessCollector = new WitnessCollector();
+            WitnessCollector witnessCollector = new WitnessCollector(new MemDb());
             witnessCollector.Add(TestItem.KeccakA);
             witnessCollector.Add(TestItem.KeccakB);
             witnessCollector.Reset();
@@ -57,7 +59,7 @@ namespace Nethermind.Store.Test.Witnesses
         [Test]
         public void Can_collect_after_reset()
         {
-            WitnessCollector witnessCollector = new WitnessCollector();
+            WitnessCollector witnessCollector = new WitnessCollector(new MemDb());
             witnessCollector.Add(TestItem.KeccakA);
             witnessCollector.Add(TestItem.KeccakB);
             witnessCollector.Reset();
@@ -68,7 +70,7 @@ namespace Nethermind.Store.Test.Witnesses
         [Test]
         public void Collects_what_it_should_collect()
         {
-            WitnessCollector witnessCollector = new WitnessCollector();
+            WitnessCollector witnessCollector = new WitnessCollector(new MemDb());
             witnessCollector.Add(TestItem.KeccakA);
             witnessCollector.Add(TestItem.KeccakB);
             witnessCollector.Collected.Should().Contain(TestItem.KeccakA);
@@ -78,7 +80,7 @@ namespace Nethermind.Store.Test.Witnesses
         [Test]
         public void Can_reset_empty()
         {
-            WitnessCollector witnessCollector = new WitnessCollector();
+            WitnessCollector witnessCollector = new WitnessCollector(new MemDb());
             witnessCollector.Reset();
             witnessCollector.Collected.Should().HaveCount(0);
         }
@@ -86,7 +88,7 @@ namespace Nethermind.Store.Test.Witnesses
         [Test]
         public void Can_reset_empty_many_times()
         {
-            WitnessCollector witnessCollector = new WitnessCollector();
+            WitnessCollector witnessCollector = new WitnessCollector(new MemDb());
             witnessCollector.Reset();
             witnessCollector.Reset();
             witnessCollector.Reset();
@@ -96,7 +98,7 @@ namespace Nethermind.Store.Test.Witnesses
         [Test]
         public void Can_reset_non_empty_many_times()
         {
-            WitnessCollector witnessCollector = new WitnessCollector();
+            WitnessCollector witnessCollector = new WitnessCollector(new MemDb());
             witnessCollector.Add(TestItem.KeccakA);
             witnessCollector.Reset();
             witnessCollector.Add(TestItem.KeccakA);
@@ -104,6 +106,28 @@ namespace Nethermind.Store.Test.Witnesses
             witnessCollector.Add(TestItem.KeccakA);
             witnessCollector.Reset();
             witnessCollector.Collected.Should().HaveCount(0);
+        }
+        
+        [Test]
+        public void Can_persist_empty()
+        {
+            IKeyValueStore keyValueStore = new MemDb();
+            WitnessCollector witnessCollector = new WitnessCollector(keyValueStore);
+            witnessCollector.Persist(Keccak.Zero);
+            var witness = keyValueStore[Keccak.Zero.Bytes];
+            witness.Length.Should().Be(0);
+        }
+        
+        [Test]
+        public void Can_persist_more()
+        {
+            IKeyValueStore keyValueStore = new MemDb();
+            WitnessCollector witnessCollector = new WitnessCollector(keyValueStore);
+            witnessCollector.Add(TestItem.KeccakA);
+            witnessCollector.Add(TestItem.KeccakB);
+            witnessCollector.Persist(Keccak.Zero);
+            var witness = keyValueStore[Keccak.Zero.Bytes];
+            witness.Length.Should().Be(64);
         }
     }
 }

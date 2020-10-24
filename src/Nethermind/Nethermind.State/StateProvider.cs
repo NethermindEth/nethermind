@@ -46,7 +46,7 @@ namespace Nethermind.State
         private readonly ILogManager _logManager;
 
         private int _capacity = StartCapacity;
-        private Change[] _changes = new Change[StartCapacity];
+        private Change?[] _changes = new Change?[StartCapacity];
         private int _currentPosition = -1;
 
         public StateProvider(StateTree stateTree, IDb codeDb, ILogManager logManager)
@@ -407,7 +407,7 @@ namespace Nethermind.State
             public Account After { get; }
         }
 
-        public void Commit(IReleaseSpec releaseSpec, IStateTracer stateTracer)
+        public void Commit(IReleaseSpec releaseSpec, IStateTracer? stateTracer)
         {
             if (_currentPosition == -1)
             {
@@ -575,17 +575,17 @@ namespace Nethermind.State
                 UInt256? beforeNonce = before?.Nonce;
                 UInt256? afterNonce = after?.Nonce;
 
-                Keccak beforeCodeHash = before?.CodeHash;
-                Keccak afterCodeHash = after?.CodeHash;
+                Keccak? beforeCodeHash = before?.CodeHash;
+                Keccak? afterCodeHash = after?.CodeHash;
 
                 if (beforeCodeHash != afterCodeHash)
                 {
-                    byte[] beforeCode = beforeCodeHash == null
+                    byte[]? beforeCode = beforeCodeHash == null
                         ? null
                         : beforeCodeHash == Keccak.OfAnEmptyString
                             ? Array.Empty<byte>()
                             : _codeDb.Get(beforeCodeHash);
-                    byte[] afterCode = afterCodeHash == null
+                    byte[]? afterCode = afterCodeHash == null
                         ? null
                         : afterCodeHash == Keccak.OfAnEmptyString
                             ? Array.Empty<byte>()
@@ -618,10 +618,10 @@ namespace Nethermind.State
             }
         }
         
-        private Account GetState(Address address)
+        private Account? GetState(Address address)
         {
             Metrics.StateTreeReads++;
-            Account account = _tree.Get(address);
+            Account? account = _tree.Get(address);
             return account;
         }
 
@@ -634,9 +634,9 @@ namespace Nethermind.State
 
         private HashSet<Address> _readsForTracing = new HashSet<Address>();
 
-        private Account GetAndAddToCache(Address address)
+        private Account? GetAndAddToCache(Address address)
         {
-            Account account = GetState(address);
+            Account? account = GetState(address);
             if (account != null)
             {
                 PushJustCache(address, account);

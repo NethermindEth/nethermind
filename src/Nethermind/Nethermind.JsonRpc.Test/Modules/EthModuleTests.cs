@@ -177,7 +177,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public async Task Eth_get_filter_changes_with_block()
         {
-            string serialized1 = _test.TestEthRpc("eth_newBlockFilter");
+            _ = _test.TestEthRpc("eth_newBlockFilter");
             await _test.AddBlock();
             string serialized2 = _test.TestEthRpc("eth_getFilterChanges", "0");
             Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":[\"0xc4728c15ef17306669abacf533ccae65736927fd8d845687a9332e8ff1fa5a68\"],\"id\":67}", serialized2, serialized2.Replace("\"", "\\\""));
@@ -186,7 +186,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public void Eth_get_filter_changes_with_tx()
         {
-            string serialized1 = _test.TestEthRpc("eth_newPendingTransactionFilter");
+            _ = _test.TestEthRpc("eth_newPendingTransactionFilter");
             _test.AddTransaction(Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyD).TestObject);
             string serialized2 = _test.TestEthRpc("eth_getFilterChanges", "0");
             Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":[\"0x190d9a78dbc61b1856162ab909976a1b28ba4a41ee041341576ea69686cd3b29\"],\"id\":67}", serialized2, serialized2.Replace("\"", "\\\""));
@@ -621,7 +621,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             string serialized = _test.TestEthRpc("eth_sendRawTransaction", Rlp.Encode(tx, RlpBehaviors.None).Bytes.ToHexString());
             
             // TODO: actual test missing now
-            txSender.Received().SendTransaction(Arg.Any<Transaction>(), TxHandlingOptions.PersistentBroadcast);
+            await txSender.Received().SendTransaction(Arg.Any<Transaction>(), TxHandlingOptions.PersistentBroadcast);
             Assert.AreEqual($"{{\"jsonrpc\":\"2.0\",\"result\":\"{TestItem.KeccakA.Bytes.ToHexString(true)}\",\"id\":67}}", serialized);
         }
     }

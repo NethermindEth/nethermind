@@ -86,15 +86,15 @@ namespace Nethermind.Api
         IEnode? Enode { get; set; }
         IEthereumEcdsa? EthereumEcdsa { get; set; }
         IFileSystem FileSystem { get; set; }
-        IFilterStore FilterStore { get; set; }
-        IFilterManager FilterManager { get; set; }
+        IFilterStore? FilterStore { get; set; }
+        IFilterManager? FilterManager { get; set; }
         IGrpcServer? GrpcServer { get; set; }
         IHeaderValidator? HeaderValidator { get; set; }
         IIPResolver? IpResolver { get; set; }
         IJsonSerializer EthereumJsonSerializer { get; }
         IKeyStore? KeyStore { get; set; }
         IPasswordProvider? PasswordProvider { get; set; }
-        ILogFinder LogFinder { get; set; }
+        ILogFinder? LogFinder { get; set; }
         ILogManager LogManager { get; }
         IMessageSerializationService MessageSerializationService { get; }
         IMonitoringService MonitoringService { get; set; }
@@ -103,7 +103,7 @@ namespace Nethermind.Api
         IProtocolsManager? ProtocolsManager { get; set; }
         IProtocolValidator? ProtocolValidator { get; set; }
         IReceiptStorage? ReceiptStorage { get; set; }
-        IWitnessCollector WitnessCollector { get; }
+        IWitnessCollector? WitnessCollector { get; set; }
         IReceiptFinder? ReceiptFinder { get; set; }
         IRewardCalculatorSource? RewardCalculatorSource { get; set; }
         IRlpxPeer? RlpxPeer { get; set; }

@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2020 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -18,11 +18,6 @@ using System;
 
 namespace Nethermind.Db
 {
-    public interface IReadOnlyDbProvider : IDbProvider
-    {
-        void ClearTempChanges();
-    }
-    
     public interface IDbProvider : IDisposable
     {
         ISnapshotableDb StateDb { get; }
@@ -43,6 +38,7 @@ namespace Nethermind.Db
         
         // Beam Sync (StateDB like)
         IDb BeamStateDb { get; }
+        IDb WitnessDb { get; }
         
         // NDM
         IDb ConfigsDb { get; }

@@ -47,6 +47,7 @@ namespace Nethermind.Db.Rocks
             allInitializers.Add(Task.Run(() => ChtDb = new CanonicalHashRocksDb(basePath, dbConfig, _logManager)));
             allInitializers.Add(Task.Run(() => ConfigsDb = _addNdmDbs ? new ConfigsRocksDb(basePath, dbConfig, _logManager) : (IDb) new MemDb()));
             allInitializers.Add(Task.Run(() => EthRequestsDb = _addNdmDbs ? new EthRequestsRocksDb(basePath, dbConfig, _logManager) : (IDb) new MemDb()));
+            allInitializers.Add(Task.Run(() => WitnessDb = new WitnessDb(basePath, dbConfig, _logManager)));
 
             allInitializers.Add(Task.Run(() =>
             {
@@ -75,6 +76,7 @@ namespace Nethermind.Db.Rocks
         public IDb BloomDb { get; private set; }
         public IDb ChtDb { get; private set; }
         public IDb BeamStateDb { get; } = new MemDb();
+        public IDb WitnessDb { get; private set; }
 
         public void Dispose()
         {
@@ -89,6 +91,7 @@ namespace Nethermind.Db.Rocks
             EthRequestsDb?.Dispose();
             BloomDb?.Dispose();
             ChtDb?.Dispose();
+            WitnessDb?.Dispose();
         }
     }
 }

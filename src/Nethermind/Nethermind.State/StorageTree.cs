@@ -66,7 +66,7 @@ namespace Nethermind.State
             return ValueKeccak.Compute(span).BytesAsSpan.ToArray();
         }
 
-        public byte[] Get(UInt256 index, Keccak storageRoot = null)
+        public byte[] Get(UInt256 index, Keccak? storageRoot = null)
         {
             Span<byte> key = GetKey(index);
             byte[] value = Get(key, storageRoot);
