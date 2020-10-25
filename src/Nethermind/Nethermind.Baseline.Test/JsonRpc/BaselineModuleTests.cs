@@ -227,8 +227,6 @@ namespace Nethermind.Baseline.Test.JsonRpc
             await testRpc.AddBlock();
 
 
-            new BaselineTreeTracker(TestItem.Addresses[0], baselineTree, testRpc.LogFinder, testRpc.BlockFinder, testRpc.BlockProcessor);
-
             ReceiptForRpc receipt = (await testRpc.EthModule.eth_getTransactionReceipt(txHash)).Data;
 
             Keccak insertLeafTxHash = (
