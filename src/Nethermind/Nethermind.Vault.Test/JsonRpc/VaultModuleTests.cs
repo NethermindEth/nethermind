@@ -25,7 +25,6 @@ using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Vault.Config;
 using Nethermind.Vault.JsonRpc;
-using NSubstitute;
 using NUnit.Framework;
 using provide.Model.Vault;
 
@@ -47,6 +46,9 @@ namespace Nethermind.Vault.Test.JsonRpc
             _config.Scheme = "http";
             _config.Path = "api/v1";
             _config.Token = $"bearer  {TestContext.Parameters["token"]}";
+
+            var vaultSealingForTestsHelper = new VaultSealingForTestsHelper(_config);
+            await vaultSealingForTestsHelper.Unseal();
             _vaultService = new VaultService(_config, new TestLogManager(LogLevel.Trace));
             _vaultModule = new VaultModule(_vaultService, new TestLogManager(LogLevel.Trace));
 
@@ -62,9 +64,15 @@ namespace Nethermind.Vault.Test.JsonRpc
             _vaultId = res.Data.Id.Value;
         }
 
-
         [TearDown]
         public async Task TearDown()
+        {
+            await CleanUpVault();
+            var vaultSealingForTestsHelper = new VaultSealingForTestsHelper(_config);
+            await vaultSealingForTestsHelper.Seal();
+        }
+
+        private async Task CleanUpVault()
         {
             await _vaultModule.vault_deleteVault(_vaultId.ToString());
         }

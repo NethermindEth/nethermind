@@ -22,5 +22,6 @@ namespace Nethermind.DataMarketplace.Initializers
     public interface INdmInitializer
     {
         Task<INdmCapabilityConnector> InitAsync(INdmApi nethermindApi);
+        void InitRpcModules();
     }
 }

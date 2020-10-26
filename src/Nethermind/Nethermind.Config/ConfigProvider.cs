@@ -20,6 +20,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Config
 {
@@ -100,13 +101,17 @@ namespace Nethermind.Config
         {
             Type type = typeof(IConfig);
             IEnumerable<Type> interfaces = _typeDiscovery.FindNethermindTypes(type).Where(x => x.IsInterface);
+
             foreach (Type @interface in interfaces)
             {
-                Type implementation = _typeDiscovery.FindNethermindTypes(@interface).SingleOrDefault();
-                if (implementation != null)
+                Type directImplementation; 
+
+                directImplementation = @interface.GetDirectInterfaceImplementation();
+
+                if (directImplementation != null)
                 {
-                    Categories.Add(@interface.Name.Substring(1), Activator.CreateInstance(implementation));
-                    _implementations[@interface] = implementation;
+                    Categories.Add(@interface.Name.Substring(1), Activator.CreateInstance(directImplementation));
+                    _implementations[@interface] = directImplementation;
                 }
             }
         }

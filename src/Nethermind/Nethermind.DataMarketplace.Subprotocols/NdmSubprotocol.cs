@@ -210,6 +210,7 @@ namespace Nethermind.DataMarketplace.Subprotocols
             }
             
             Logger.Warn($"GETTING MESSAGE: ndm.{NdmMessageCode.GetDescription(message.PacketType)}");
+
             MessageHandlers[message.PacketType](message);
         }
 

@@ -239,13 +239,12 @@ namespace Nethermind.DataMarketplace.Infrastructure
             set => _nethermindApi.KeyStore = value;
         }
 
-        public IPasswordProvider? PasswordProvider
+        public ILogFinder LogFinder
         {
-            get => _nethermindApi.PasswordProvider;
-            set => _nethermindApi.PasswordProvider = value;
+            get => _nethermindApi.LogFinder; 
+            set => _nethermindApi.LogFinder = value;
         }
 
-        public ILogFinder LogFinder { get; set; }
 
         public ILogManager LogManager => _nethermindApi.LogManager;
 

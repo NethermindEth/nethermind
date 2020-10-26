@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -17,17 +17,24 @@
 using System;
 using System.Security;
 
-namespace Nethermind.Crypto
+namespace Nethermind.KeyStore.ConsoleHelpers
 {
-    public class ConsoleUtils
+    public class ConsoleUtils : IConsoleUtils
     {
-        public static SecureString ReadSecret(string secretDisplayName)
+        private readonly IConsoleWrapper _consoleWrapper;
+
+        public ConsoleUtils(IConsoleWrapper consoleWrapper)
         {
-            Console.WriteLine($"{secretDisplayName}:");
+            _consoleWrapper = consoleWrapper;
+        }
+
+        public SecureString ReadSecret(string secretDisplayName)
+        {
+            _consoleWrapper.WriteLine($"{secretDisplayName}:");
             SecureString secureString = new SecureString();
             do
             {
-                ConsoleKeyInfo key = Console.ReadKey(true);
+                ConsoleKeyInfo key = _consoleWrapper.ReadKey(true);
                 if (key.Key == ConsoleKey.Enter)
                 {
                     break;
@@ -38,17 +45,17 @@ namespace Nethermind.Crypto
                     if (secureString.Length > 0)
                     {
                         secureString.RemoveAt(secureString.Length - 1);
-                        Console.Write("\b \b");
+                        _consoleWrapper.Write("\b \b");
                     }
 
                     continue;
                 }
 
                 secureString.AppendChar(key.KeyChar);
-                Console.Write("*");
+                _consoleWrapper.Write("*");
             } while (true);
 
-            Console.WriteLine();
+            _consoleWrapper.WriteLine();
 
             secureString.MakeReadOnly();
             return secureString;

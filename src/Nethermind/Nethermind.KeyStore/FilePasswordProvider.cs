@@ -13,62 +13,31 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
 
-using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Security;
-using Nethermind.Crypto;
-using Nethermind.KeyStore.Config;
-using Nethermind.Logging;
 
 namespace Nethermind.KeyStore
 {
-    public class PasswordProvider : IPasswordProvider
+    public class FilePasswordProvider : BasePasswordProvider, IPasswordProvider
     {
-        private readonly IKeyStoreConfig _keyStoreConfig;
-        public PasswordProvider(IKeyStoreConfig keyStoreConfig)
+        public string FileName { get; set; }
+        public override SecureString GetPassword()
         {
-            _keyStoreConfig = keyStoreConfig ?? throw new ArgumentNullException(nameof(keyStoreConfig));
-        }
-        public SecureString GetBlockAuthorPassword()
-        {
-            SecureString passwordFromFile = null;
-            var index = Array.IndexOf(_keyStoreConfig.UnlockAccounts, _keyStoreConfig.BlockAuthorAccount);
-            if (index >= 0)
-            {
-                passwordFromFile = GetPassword(index);
-            }
-
-            return passwordFromFile != null ? passwordFromFile : GetPasswordFromConsole();
-        }
-
-        public SecureString GetPassword(int keyStoreConfigPasswordIndex)
-        {
-            string GetPasswordN(int n, string[] passwordsCollection) => passwordsCollection?.Length > 0 ? passwordsCollection[Math.Min(n, passwordsCollection.Length - 1)] : null;
-
             SecureString password = null;
-            var passwordFile = GetPasswordN(keyStoreConfigPasswordIndex, _keyStoreConfig.PasswordFiles);
-            if (passwordFile != null)
+            if (!string.IsNullOrWhiteSpace(FileName) && File.Exists(FileName))
             {
-                string blockAuthorPasswordFilePath = passwordFile.GetApplicationResourcePath();
-                password = File.Exists(blockAuthorPasswordFilePath)
-                    ? ReadFromFileToSecureString(blockAuthorPasswordFilePath)
-                    : null;
+                password = GetPasswordFromFile(FileName);
             }
 
-            password?.MakeReadOnly();
-            password ??= GetPasswordN(keyStoreConfigPasswordIndex, _keyStoreConfig.Passwords)?.Secure();
+            if (password == null && AlternativeProvider != null)
+                password = AlternativeProvider.GetPassword();
+
             return password;
         }
 
-        public SecureString GetPasswordFromConsole()
-        {
-            return ConsoleUtils.ReadSecret($"Provide password for validator account {_keyStoreConfig.BlockAuthorAccount}");
-        }
-
-        private SecureString ReadFromFileToSecureString(string filePath)
+        public SecureString GetPasswordFromFile(string filePath)
         {
             var whitespaces = new List<char>();
             var secureString = new SecureString();
@@ -99,6 +68,7 @@ namespace Nethermind.KeyStore
                 }
             }
 
+            secureString.MakeReadOnly();
             return secureString;
         }
 
