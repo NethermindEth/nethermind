@@ -139,7 +139,7 @@ namespace Nethermind.Core.Test.Blockchain
                 _resetEvent.Release(1);
             };
 
-            var genesis = GetGenesisBlockBuilder().TestObject;
+            var genesis = GetGenesisBlock();
             BlockTree.SuggestBlock(genesis);
             await _resetEvent.WaitAsync();
             //if (!await _resetEvent.WaitAsync(1000))
@@ -158,7 +158,7 @@ namespace Nethermind.Core.Test.Blockchain
 
         public BlockBuilder GenesisBlockBuilder { get; set; }
 
-        protected virtual BlockBuilder GetGenesisBlockBuilder()
+        protected virtual Block GetGenesisBlock()
         {
             BlockBuilder genesisBlockBuilder = Core.Test.Builders.Build.A.Block.Genesis;
             if (GenesisBlockBuilder != null)
@@ -172,7 +172,7 @@ namespace Nethermind.Core.Test.Blockchain
                 genesisBlockBuilder.WithAura(0, new byte[65]);
             }
 
-            return genesisBlockBuilder;
+            return genesisBlockBuilder.TestObject;
         }
 
         protected virtual async Task AddBlocksOnStart()
