@@ -21,6 +21,7 @@ using System.Linq;
 using System.Security;
 using System.Threading;
 using System.Threading.Tasks;
+using FluentAssertions;
 using Nethermind.Abi;
 using Nethermind.Baseline.Test.Contracts;
 using Nethermind.Baseline.Tree;
@@ -32,6 +33,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Evm;
+using Nethermind.Int256;
 using Nethermind.JsonRpc.Test.Modules;
 using Nethermind.Logging;
 using Nethermind.Specs;
@@ -62,18 +64,28 @@ namespace Nethermind.Baseline.Test
         public async Task Tree_tracker_insert_leaf([ValueSource(nameof(InsertLeafTestCases))]InsertLeafTest test)
         {
             var address = TestItem.Addresses[0];
-            var testRpc = await InitializeTestRpc(address);
+            var result = await InitializeTestRpc(address);
+            var testRpc = result.TestRpc;
+            var baselineModule = result.BaselineModule;
             BaselineTree baselineTree = BuildATree();
-            var fromContractAdress = ContractAddress.From(address, 0);
-            new BaselineTreeTracker(fromContractAdress, baselineTree, testRpc.LogFinder, testRpc.BlockFinder, testRpc.BlockProcessor);
+            var fromContractAdress = ContractAddress.From(address, 0L);
+            var baselineTreeHelper = new BaselineTreeHelper(testRpc.LogFinder);
+            new BaselineTreeTracker(fromContractAdress, baselineTree, testRpc.BlockProcessor, baselineTreeHelper);
 
             var contract = new MerkleTreeSHAContract(_abiEncoder, fromContractAdress);
+            UInt256 nonce = 2L;
             for (int i = 0; i < test.ExpectedTreeCounts.Length; i++)
             {
                 for (int j = 0; j < test.LeavesInTransactionsAndBlocks[i].Length; j++)
                 {
-                    var transaction = contract.InsertLeaf(address, test.LeavesInTransactionsAndBlocks[i][j]);
+                    var txHash = test.LeavesInTransactionsAndBlocks[i][j];
+                    var transaction = contract.InsertLeaf(address, txHash);
+                    //transaction.Nonce = nonce;
+                    //++nonce;
                     await testRpc.TxSender.SendTransaction(transaction, TxPool.TxHandlingOptions.ManagedNonce);
+                    //await baselineModule.baseline_insertLeaf(address, fromContractAdress, txHash);
+                    //var insertLeafReceipt = (await testRpc.EthModule.eth_getTransactionReceipt(txHash)).Data;
+                    //insertLeafReceipt.Logs.Should().HaveCount(1);
                 }
 
                 await testRpc.AddBlock();
@@ -85,10 +97,13 @@ namespace Nethermind.Baseline.Test
         public async Task Tree_tracker_insert_leaves()
         {
             var address = TestItem.Addresses[0];
-            var testRpc = await InitializeTestRpc(address);
+            var result = await InitializeTestRpc(address);
+            var testRpc = result.TestRpc;
+            var baselineModule = result.BaselineModule;
             BaselineTree baselineTree = BuildATree();
             var fromContractAdress = ContractAddress.From(address, 0);
-            new BaselineTreeTracker(fromContractAdress, baselineTree, testRpc.LogFinder, testRpc.BlockFinder, testRpc.BlockProcessor);
+            var baselineTreeHelper = new BaselineTreeHelper(testRpc.LogFinder);
+            new BaselineTreeTracker(fromContractAdress, baselineTree, testRpc.BlockProcessor, baselineTreeHelper);
 
             var contract = new MerkleTreeSHAContract(_abiEncoder, fromContractAdress);
             var hashes = new Keccak[]
@@ -103,7 +118,7 @@ namespace Nethermind.Baseline.Test
             Assert.AreEqual(3, baselineTree.Count);
         }
 
-        private async Task<TestRpcBlockchain> InitializeTestRpc(Address address)
+        private async Task<(TestRpcBlockchain TestRpc, BaselineModule BaselineModule)> InitializeTestRpc(Address address)
         {
             var spec = new SingleReleaseSpecProvider(ConstantinopleFix.Instance, 1);
             TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(spec);
@@ -122,7 +137,7 @@ namespace Nethermind.Baseline.Test
                 testRpc.BlockProcessor);
             Keccak txHash = (await baselineModule.baseline_deploy(address, "MerkleTreeSHA")).Data;
             await testRpc.AddBlock();
-            return testRpc;
+            return (testRpc, baselineModule);
         }
 
         private BaselineTree BuildATree(IKeyValueStore keyValueStore = null)
@@ -184,7 +199,8 @@ namespace Nethermind.Baseline.Test
                         {
                             TestItem.KeccakA, // first transaction
                             TestItem.KeccakC, // second transaction 
-                            TestItem.KeccakD // third transaction 
+                            TestItem.KeccakD, // third transaction 
+                            TestItem.KeccakF
                         },
                         new Keccak[] // second block
                         {

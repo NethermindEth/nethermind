@@ -31,13 +31,11 @@ namespace Nethermind.Baseline.Tree
     public class BaselineTreeTracker
     {
         private readonly Address _address;
-        private readonly BaselineTree _baselineTree;
-        private readonly ILogFinder _logFinder;
-        private readonly IBlockFinder _blockFinder;
+        private readonly IBaselineTreeHelper _baselineTreeHelper;
         private readonly IBlockProcessor _blockProcessor;
         private const int MaxLeavesInStack = 1000;
+        private BaselineTree _baselineTree;
         private Block _currentBlock;
-        // ToDo concurrent stack?
         private Stack<Keccak> _leavesStack = new Stack<Keccak>();
 
         /// <summary>
@@ -46,16 +44,13 @@ namespace Nethermind.Baseline.Tree
         /// </summary>
         /// <param name="address"></param>
         /// <param name="baselineTree"></param>
-        /// <param name="logFinder"></param>
-        /// <param name="blockFinder"></param>
         /// <param name="blockProcessor"></param>
-        public BaselineTreeTracker(Address address, BaselineTree baselineTree, ILogFinder logFinder, IBlockFinder blockFinder, IBlockProcessor blockProcessor)
+        public BaselineTreeTracker(Address address, BaselineTree baselineTree, IBlockProcessor blockProcessor, IBaselineTreeHelper baselineTreeHelper)
         {
             _address = address ?? throw new ArgumentNullException(nameof(address));
             _baselineTree = baselineTree ?? throw new ArgumentNullException(nameof(baselineTree));
-            _logFinder = logFinder ?? throw new ArgumentNullException(nameof(logFinder));
-            _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
             _blockProcessor = blockProcessor ?? throw new ArgumentNullException(nameof(blockProcessor));
+            _baselineTreeHelper = baselineTreeHelper ?? throw new ArgumentNullException(nameof(baselineTreeHelper));
             _blockProcessor.BlockProcessed += OnBlockProcessed;
         }
 
@@ -71,7 +66,7 @@ namespace Nethermind.Baseline.Tree
                 }
                 else
                 {
-                    // RebuildEntireTree
+                    _baselineTree = _baselineTreeHelper.RebuildEntireTree(_address, e.Block.Hash);
                     return;
                 }
             }
