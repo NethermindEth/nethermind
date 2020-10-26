@@ -85,6 +85,12 @@ namespace Nethermind.JsonRpc.Test.Modules
                 _blockchain.TxSender = txSender;
                 return this;
             }
+
+            public Builder WithGenesisBlockBuilder(BlockBuilder blockBuilder)
+            {
+                _blockchain.GenesisBlockBuilder = blockBuilder;
+                return this;
+            }
             
             public async Task<TestRpcBlockchain> Build(ISpecProvider specProvider = null, UInt256? initialValues = null)
             {

@@ -73,19 +73,16 @@ namespace Nethermind.Baseline.Test
             new BaselineTreeTracker(fromContractAdress, baselineTree, testRpc.BlockProcessor, baselineTreeHelper);
 
             var contract = new MerkleTreeSHAContract(_abiEncoder, fromContractAdress);
-            UInt256 nonce = 2L;
+            UInt256 nonce = 1L;
             for (int i = 0; i < test.ExpectedTreeCounts.Length; i++)
             {
                 for (int j = 0; j < test.LeavesInTransactionsAndBlocks[i].Length; j++)
                 {
-                    var txHash = test.LeavesInTransactionsAndBlocks[i][j];
-                    var transaction = contract.InsertLeaf(address, txHash);
-                    //transaction.Nonce = nonce;
-                    //++nonce;
-                    await testRpc.TxSender.SendTransaction(transaction, TxPool.TxHandlingOptions.ManagedNonce);
-                    //await baselineModule.baseline_insertLeaf(address, fromContractAdress, txHash);
-                    //var insertLeafReceipt = (await testRpc.EthModule.eth_getTransactionReceipt(txHash)).Data;
-                    //insertLeafReceipt.Logs.Should().HaveCount(1);
+                    var leafHash = test.LeavesInTransactionsAndBlocks[i][j];
+                    var transaction = contract.InsertLeaf(address, leafHash);
+                    transaction.Nonce = nonce;
+                    ++nonce;
+                    await testRpc.TxSender.SendTransaction(transaction, TxPool.TxHandlingOptions.None);
                 }
 
                 await testRpc.AddBlock();
@@ -94,34 +91,42 @@ namespace Nethermind.Baseline.Test
         }
 
         [Test]
-        public async Task Tree_tracker_insert_leaves()
+        public async Task Tree_tracker_insert_leaves([ValueSource(nameof(InsertLeavesTestCases))]InsertLeavesTest test)
         {
             var address = TestItem.Addresses[0];
             var result = await InitializeTestRpc(address);
             var testRpc = result.TestRpc;
-            var baselineModule = result.BaselineModule;
             BaselineTree baselineTree = BuildATree();
             var fromContractAdress = ContractAddress.From(address, 0);
             var baselineTreeHelper = new BaselineTreeHelper(testRpc.LogFinder);
             new BaselineTreeTracker(fromContractAdress, baselineTree, testRpc.BlockProcessor, baselineTreeHelper);
 
             var contract = new MerkleTreeSHAContract(_abiEncoder, fromContractAdress);
-            var hashes = new Keccak[]
+
+            UInt256 nonce = 1L;
+            for (int i = 0; i < test.ExpectedTreeCounts.Length; i++)
             {
-                TestItem.KeccakA, TestItem.KeccakB,  TestItem.KeccakC
-            };
+                for (int j = 0; j < test.LeavesInTransactionsAndBlocks[i].Length; j++)
+                {
+                    var hashes = test.LeavesInTransactionsAndBlocks[i][j];
+                    var transaction = contract.InsertLeaves(address, hashes);
+                    transaction.Nonce = nonce;
+                    ++nonce;
+                    await testRpc.TxSender.SendTransaction(transaction, TxPool.TxHandlingOptions.None);
+                }
 
-            var transaction = contract.InsertLeaves(address, hashes);
-            await testRpc.TxSender.SendTransaction(transaction, TxPool.TxHandlingOptions.ManagedNonce);
-
-            await testRpc.AddBlock(transaction);
-            Assert.AreEqual(3, baselineTree.Count);
+                await testRpc.AddBlock();
+                Assert.AreEqual(test.ExpectedTreeCounts[i], baselineTree.Count);
+            }
         }
 
         private async Task<(TestRpcBlockchain TestRpc, BaselineModule BaselineModule)> InitializeTestRpc(Address address)
         {
             var spec = new SingleReleaseSpecProvider(ConstantinopleFix.Instance, 1);
-            TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(spec);
+            var blockBuilder = Core.Test.Builders.Build.A.Block.Genesis.WithGasLimit(10000000000);
+            var testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+                .WithGenesisBlockBuilder(blockBuilder)
+                .Build(spec);
             testRpc.TestWallet.UnlockAccount(address, new SecureString());
             await testRpc.AddFunds(address, 10.Ether());
 
@@ -150,6 +155,15 @@ namespace Nethermind.Baseline.Test
         {
             // first dimensions - blocks, second dimensions - transactions
             public Keccak[][] LeavesInTransactionsAndBlocks { get; set; }
+            public int[] ExpectedTreeCounts { get; set; }
+
+            public override string ToString() => "Tree counts: " + string.Join("; ", ExpectedTreeCounts.Select(x => x.ToString()));
+        }
+
+        public class InsertLeavesTest
+        {
+            // first dimensions - blocks, second dimensions - transactions, third - leaves in one transaction
+            public Keccak[][][] LeavesInTransactionsAndBlocks { get; set; }
             public int[] ExpectedTreeCounts { get; set; }
 
             public override string ToString() => "Tree counts: " + string.Join("; ", ExpectedTreeCounts.Select(x => x.ToString()));
@@ -199,19 +213,151 @@ namespace Nethermind.Baseline.Test
                         {
                             TestItem.KeccakA, // first transaction
                             TestItem.KeccakC, // second transaction 
-                            TestItem.KeccakD, // third transaction 
-                            TestItem.KeccakF
+                            TestItem.KeccakD, // third transaction
                         },
                         new Keccak[] // second block
                         {
                             TestItem.KeccakB, // first transaction
-                            TestItem.KeccakC // second transaction,
+                            TestItem.KeccakF // second transaction,
                         }
                     },
                     ExpectedTreeCounts = new int[]
                     {
                         3, // tree count after first block
                         5 // tree count after second block
+                    }
+                };
+            }
+        }
+
+        public static IEnumerable<InsertLeavesTest> InsertLeavesTestCases
+        {
+            get
+            {
+                yield return new InsertLeavesTest()
+                {
+                    LeavesInTransactionsAndBlocks = new Keccak[][][]
+                    {
+                        new Keccak[][] // first block
+                        {
+                            new Keccak[] // first transaction
+                            {
+                                TestItem.KeccakB
+                            }
+                        }
+                    },
+                    ExpectedTreeCounts = new int[]
+                    {
+                        1 // tree count after first block
+                    }
+                };
+
+                yield return new InsertLeavesTest()
+                {
+                    LeavesInTransactionsAndBlocks = new Keccak[][][]
+                    {
+                        new Keccak[][] // first block
+                        {
+                            new Keccak[] // first transaction
+                            {
+                                TestItem.KeccakB, TestItem.KeccakA, TestItem.KeccakC
+                            }
+                        }
+                    },
+                    ExpectedTreeCounts = new int[]
+                    {
+                        3 // tree count after first block
+                    }
+                };
+
+                yield return new InsertLeavesTest()
+                {
+                    LeavesInTransactionsAndBlocks = new Keccak[][][]
+                    {
+                        new Keccak[][] // first block
+                        {
+                            new Keccak[] // first transaction
+                            {
+                                TestItem.KeccakB, TestItem.KeccakA, TestItem.KeccakC
+                            },
+                            new Keccak[] // second transaction
+                            {
+                                TestItem.KeccakF, TestItem.KeccakD
+                            }
+                        }
+                    },
+                    ExpectedTreeCounts = new int[]
+                    {
+                        5 // tree count after first block
+                    }
+                };
+
+                yield return new InsertLeavesTest()
+                {
+                    LeavesInTransactionsAndBlocks = new Keccak[][][]
+                    {
+                        new Keccak[][] // first block
+                        {
+                            new Keccak[] // first transaction
+                            {
+                                TestItem.KeccakB, TestItem.KeccakA, TestItem.KeccakC
+                            },
+                            new Keccak[] // second transaction
+                            {
+                                TestItem.KeccakF, TestItem.KeccakD
+                            }
+                        },
+                        new Keccak[][] // second block
+                        {
+                            new Keccak[] // first transaction
+                            {
+                                TestItem.KeccakG
+                            },
+                        }
+                    },
+                    ExpectedTreeCounts = new int[]
+                    {
+                        5, 6 // tree count after first block
+                    }
+                };
+
+                yield return new InsertLeavesTest()
+                {
+                    LeavesInTransactionsAndBlocks = new Keccak[][][]
+                    {
+                        new Keccak[][] // first block
+                        {
+                            new Keccak[] // first transaction
+                            {
+                                TestItem.KeccakC
+                            },
+                            new Keccak[] // second transaction
+                            {
+                                TestItem.KeccakF, TestItem.KeccakD
+                            }
+                        },
+                        new Keccak[][] // second block
+                        {
+                            new Keccak[] // first transaction
+                            {
+                                TestItem.KeccakG
+                            },
+                        },
+                        new Keccak[][] // third block
+                        {
+                            new Keccak[] // first transaction
+                            {
+                                TestItem.KeccakH
+                            },
+                            new Keccak[] // first transaction
+                            {
+                                TestItem.KeccakA, TestItem.KeccakB
+                            },
+                        }
+                    },
+                    ExpectedTreeCounts = new int[]
+                    {
+                        3, 4, 7 // tree count after first block
                     }
                 };
             }

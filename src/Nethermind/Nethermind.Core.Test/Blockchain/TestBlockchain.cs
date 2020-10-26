@@ -43,6 +43,7 @@ using Nethermind.Db.Blooms;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Storages;
 using BlockTree = Nethermind.Blockchain.BlockTree;
+using System.IO;
 
 namespace Nethermind.Core.Test.Blockchain
 {
@@ -138,7 +139,7 @@ namespace Nethermind.Core.Test.Blockchain
                 _resetEvent.Release(1);
             };
 
-            var genesis = GetGenesisBlock();
+            var genesis = GetGenesisBlockBuilder().TestObject;
             BlockTree.SuggestBlock(genesis);
             await _resetEvent.WaitAsync();
             //if (!await _resetEvent.WaitAsync(1000))
@@ -155,16 +156,23 @@ namespace Nethermind.Core.Test.Blockchain
             return new TxPoolTxSource(TxPool, StateReader, LimboLogs.Instance);
         }
 
-        protected virtual Block GetGenesisBlock()
+        public BlockBuilder GenesisBlockBuilder { get; set; }
+
+        protected virtual BlockBuilder GetGenesisBlockBuilder()
         {
-            var genesisBlockBuilder = Core.Test.Builders.Build.A.Block.Genesis.WithStateRoot(State.StateRoot);
+            BlockBuilder genesisBlockBuilder = Core.Test.Builders.Build.A.Block.Genesis;
+            if (GenesisBlockBuilder != null)
+            {
+                genesisBlockBuilder = GenesisBlockBuilder;
+            }
+            
+            genesisBlockBuilder.WithStateRoot(State.StateRoot);
             if (_sealEngineType == SealEngineType.AuRa)
             {
                 genesisBlockBuilder.WithAura(0, new byte[65]);
             }
 
-            Block genesis = genesisBlockBuilder.TestObject;
-            return genesis;
+            return genesisBlockBuilder;
         }
 
         protected virtual async Task AddBlocksOnStart()
