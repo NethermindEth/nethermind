@@ -238,6 +238,28 @@ namespace Nethermind.Baseline.Test
             baselineTree.Count.Should().Be(1);
         }
 
+        [Test]
+        public void On_inserting_one_leaf_and_deleting_last_element()
+        {
+            BaselineTree baselineTree = BuildATree();
+            baselineTree.Insert(_testLeaves[0]);
+            baselineTree.Count.Should().Be(1);
+            baselineTree.DeleteLast();
+            baselineTree.Count.Should().Be(0);
+        }
+
+        [Test]
+        public void On_deleting_last_element()
+        {
+            BaselineTree baselineTree = BuildATree();
+            baselineTree.Insert(_testLeaves[0]);
+            baselineTree.Insert(_testLeaves[1]);
+            baselineTree.Insert(_testLeaves[2]);
+            baselineTree.Count.Should().Be(3);
+            baselineTree.DeleteLast();
+            baselineTree.Count.Should().Be(2);
+        }
+
         [TestCase(0u)]
         [TestCase(1u)]
         [TestCase(123u)]

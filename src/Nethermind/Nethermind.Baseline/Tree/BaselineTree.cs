@@ -93,12 +93,24 @@ namespace Nethermind.Baseline.Tree
         public void Insert(Keccak leaf)
         {
             Index index = new Index(LeafRow, Count);
+            Modify(index, leaf);
+            Count++;
+        }
+        
+        [MethodImpl(MethodImplOptions.Synchronized)]
+        public void DeleteLast()
+        {
+            Index index = new Index(LeafRow, Count - 1);
+            Modify(index, ZeroHash);
+            Count--;
+        }
+
+        private void Modify(Index index, Keccak leaf)
+        {
             Index siblingIndex = index.Sibling();
-            byte[] hash = leaf.Bytes;
             Keccak siblingHash = LoadValue(siblingIndex);
-
+            byte[] hash = leaf.Bytes;
             SaveValue(index, hash);
-
             for (int row = LeafRow; row > 0; row--)
             {
                 byte[] parentHash = new byte[32];
@@ -112,16 +124,13 @@ namespace Nethermind.Baseline.Tree
                     Hash(siblingHash.Bytes.AsSpan(), hash.AsSpan(), parentHash);
                     // Console.WriteLine($"{siblingHash}+{hash.ToHexString()} at level {row - 1} => {parentHash.ToHexString()}");
                 }
-
                 Index parentIndex = index.Parent();
                 SaveValue(parentIndex, parentHash);
-
                 index = parentIndex;
                 if (row != 1)
                 {
                     siblingIndex = index.Sibling();
                     hash = parentHash;
-
                     // we can quickly / efficiently find out that it will be a zero hash
                     siblingHash = LoadValue(siblingIndex);
                 }
@@ -130,8 +139,6 @@ namespace Nethermind.Baseline.Tree
                     Root = new Keccak(parentHash);
                 }
             }
-
-            Count++;
         }
 
         public bool Verify(Keccak root, Keccak leaf, BaselineTreeNode[] siblingPath)
