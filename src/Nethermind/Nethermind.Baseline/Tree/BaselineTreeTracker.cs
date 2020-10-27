@@ -27,14 +27,16 @@ using Nethermind.Core.Extensions;
 
 namespace Nethermind.Baseline.Tree
 {
-    public class BaselineTreeTracker
+    public sealed class BaselineTreeTracker : IDisposable
     {
+        public static Keccak LeafTopic = new Keccak("0x6a82ba2aa1d2c039c41e6e2b5a5a1090d09906f060d32af9c1ac0beff7af75c0");
+        public static Keccak LeavesTopic = new Keccak("0x8ec50f97970775682a68d3c6f9caedf60fd82448ea40706b8b65d6c03648b922");
         private readonly Address _address;
         private readonly IBaselineTreeHelper _baselineTreeHelper;
         private readonly IBlockProcessor _blockProcessor;
         private const int MaxLeavesInStack = 1000;
         private BaselineTree _baselineTree;
-        private Block _currentBlock;
+        private Block? _currentBlock = null;
         private Stack<Keccak> _leavesStack = new Stack<Keccak>();
 
         /// <summary>
@@ -69,16 +71,12 @@ namespace Nethermind.Baseline.Tree
                     return;
                 }
             }
-
-
-            Keccak leavesTopic = new Keccak("0x8ec50f97970775682a68d3c6f9caedf60fd82448ea40706b8b65d6c03648b922");
-            Keccak leafTopic = new Keccak("0x6a82ba2aa1d2c039c41e6e2b5a5a1090d09906f060d32af9c1ac0beff7af75c0");
             LogFilter insertLeavesFilter = new LogFilter(
                 0,
                 new BlockParameter(0L),
                 new BlockParameter(0L),
                 new AddressFilter(_address),
-                new AnyTopicsFilter(new SpecificTopic(leavesTopic), new SpecificTopic(leafTopic)));
+                new AnyTopicsFilter(new SpecificTopic(LeavesTopic), new SpecificTopic(LeafTopic)));
 
             _currentBlock = e.Block;
             var logs = _currentBlock.Header.FindLogs(e.TxReceipts, insertLeavesFilter, FindOrder.Ascending, FindOrder.Ascending);
@@ -101,6 +99,11 @@ namespace Nethermind.Baseline.Tree
                     }
                 }
             }
+        }
+
+        public void Dispose()
+        {
+            _blockProcessor.BlockProcessed -= OnBlockProcessed;
         }
     }
 }

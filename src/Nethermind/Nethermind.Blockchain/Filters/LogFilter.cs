@@ -23,12 +23,12 @@ namespace Nethermind.Blockchain.Filters
     public class LogFilter : FilterBase
     {
         public AddressFilter AddressFilter { get; }
-        public TopicsFilterBase TopicsFilter { get; }
+        public TopicsFilter TopicsFilter { get; }
         public BlockParameter FromBlock { get; }
         public BlockParameter ToBlock { get; }
         
         public LogFilter(int id, BlockParameter fromBlock, BlockParameter toBlock,
-            AddressFilter addressFilter, TopicsFilterBase topicsFilter) : base(id)
+            AddressFilter addressFilter, TopicsFilter topicsFilter) : base(id)
         {
             FromBlock = fromBlock;
             ToBlock = toBlock;

@@ -48,7 +48,7 @@ namespace Nethermind.Baseline.Tree
                 new BlockParameter(0L),
                 new BlockParameter(blockHash),
                 new AddressFilter(treeAddress),
-                new TopicsFilter(new SpecificTopic(leavesTopic)));
+                new SequenceTopicsFilter(new SpecificTopic(leavesTopic)));
 
             Keccak leafTopic = new Keccak("0x6a82ba2aa1d2c039c41e6e2b5a5a1090d09906f060d32af9c1ac0beff7af75c0");
             LogFilter insertLeafFilter = new LogFilter(
@@ -56,7 +56,7 @@ namespace Nethermind.Baseline.Tree
                 new BlockParameter(0L),
                 new BlockParameter(blockHash),
                 new AddressFilter(treeAddress),
-                new TopicsFilter(new SpecificTopic(leafTopic))); // find tree topics
+                new SequenceTopicsFilter(new SpecificTopic(leafTopic))); // find tree topics
 
             var insertLeavesLogs = _logFinder.FindLogs(insertLeavesFilter);
             var insertLeafLogs = _logFinder.FindLogs(insertLeafFilter);

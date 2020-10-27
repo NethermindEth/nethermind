@@ -79,24 +79,24 @@ namespace Nethermind.Blockchain.Find
         {
             comparer ??= LogEntryAddressAndTopicsMatchTemplateEqualityComparer.Instance;
 
-            //if (blockHeader.Bloom.Matches(matchEntry))
-            //{
-            for (int i = 0; i < receipts.Length; i++)
+            if (blockHeader.Bloom.Matches(matchEntry))
             {
-                TxReceipt receipt = GetItemAt(receipts, i, receiptFindOrder);
-                //if (receipt.Bloom.Matches(matchEntry))
-                //{
-                for (int j = 0; j < receipt.Logs.Length; j++)
+                for (int i = 0; i < receipts.Length; i++)
                 {
-                    var receiptLog = GetItemAt(receipt.Logs, j, logsFindOrder);
-                    if (comparer.Equals(receiptLog, matchEntry))
+                    TxReceipt receipt = GetItemAt(receipts, i, receiptFindOrder);
+                    if (receipt.Bloom.Matches(matchEntry))
                     {
-                        yield return receiptLog;
+                        for (int j = 0; j < receipt.Logs.Length; j++)
+                        {
+                            var receiptLog = GetItemAt(receipt.Logs, j, logsFindOrder);
+                            if (comparer.Equals(receiptLog, matchEntry))
+                            {
+                                yield return receiptLog;
+                            }
+                        }
                     }
-                    // }
                 }
             }
-            //}
         }
 
         public static IEnumerable<LogEntry> FindLogs(
