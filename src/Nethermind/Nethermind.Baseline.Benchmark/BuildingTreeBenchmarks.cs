@@ -66,5 +66,50 @@ namespace Nethermind.Baseline.Benchmark
 
             baselineTree.RecalculateHashes();
         }
+
+        [Benchmark]
+        public void InsertingValuesWithoutCalculatingHashes()
+        {
+            BaselineTree baselineTree = new ShaBaselineTree(new MemDb(), Array.Empty<byte>(), 0);
+            for (uint i = 0; i < _testLeaves.Length; ++i)
+            {
+                baselineTree.Insert(_testLeaves[i], false);
+            }
+        }
+    }
+
+    [MemoryDiagnoser]
+    [SimpleJob(RuntimeMoniker.NetCoreApp31, warmupCount: 1, targetCount: 1)]
+    public class BigTreeBuildingBenchmarks
+    {
+        private Keccak[] _testLeaves;
+
+        [Params(1000000)]
+        public int NumberOfLeaves { get; set; }
+
+        [GlobalSetup]
+        public void Setup()
+        {
+            _testLeaves = new Keccak[NumberOfLeaves];
+            var _truncationLength = 0;
+            for (int i = 0; i < _testLeaves.Length; i++)
+            {
+                byte[] bytes = new byte[32];
+                bytes[i % (32 - _truncationLength) + _truncationLength] = (byte)(i + 1);
+                _testLeaves[i] = new Keccak(bytes);
+            }
+        }
+
+        [Benchmark]
+        public void BuildTreeWithHashingInTheEnd()
+        {
+            BaselineTree baselineTree = new ShaBaselineTree(new MemDb(), Array.Empty<byte>(), 0);
+            for (uint i = 0; i < _testLeaves.Length; ++i)
+            {
+                baselineTree.Insert(_testLeaves[i], false);
+            }
+
+            baselineTree.RecalculateHashes();
+        }
     }
 }
