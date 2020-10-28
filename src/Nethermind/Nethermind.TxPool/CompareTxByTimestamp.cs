@@ -17,20 +17,25 @@
 
 using System.Collections.Generic;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 
-namespace Nethermind.TxPool.Collections
+namespace Nethermind.TxPool
 {
-    public class TxDistinctSortedPool : DistinctValueSortedPool<Keccak, Transaction, Address>
+    /// <summary>
+    /// Default ordering by <see cref="Transaction.Timestamp"/> asc
+    /// </summary>
+    public class CompareTxByTimestamp : IComparer<Transaction>
     {
-        public TxDistinctSortedPool(int capacity, IComparer<Transaction> comparer = null) 
-            : base(capacity, comparer ?? TxPool.DefaultComparer, CompetingTransactionEqualityComparer.Instance)
+        public static readonly CompareTxByTimestamp Instance = new CompareTxByTimestamp();
+        
+        private CompareTxByTimestamp() { }
+
+        public int Compare(Transaction x, Transaction y)
         {
+            if (ReferenceEquals(x, y)) return 0;
+            if (ReferenceEquals(null, y)) return 1;
+            if (ReferenceEquals(null, x)) return -1;
+            
+            return x.Timestamp.CompareTo(y.Timestamp);
         }
-
-        protected override IComparer<Transaction> GetUniqueComparer(IComparer<Transaction> comparer) =>
-            TxSortedPool.GetPoolUniqueTxComparerByNonce(comparer);
-
-        protected override Address MapToGroup(Transaction value) => TxSortedPool.MapTxToGroup(value);
     }
 }

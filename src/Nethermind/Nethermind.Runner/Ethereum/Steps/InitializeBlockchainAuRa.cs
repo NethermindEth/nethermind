@@ -254,7 +254,7 @@ namespace Nethermind.Runner.Ethereum.Steps
 
                 _txPoolComparer
                     .ThenBy(new CompareTxByPermissionOnHead(whitelistContractDataStore, prioritiesContractDataStore, _api.BlockTree))
-                    .ThenBy(CompareTxByGas.Instance);
+                    .ThenBy(TxPool.TxPool.DefaultComparer);
             }
 
             return task;

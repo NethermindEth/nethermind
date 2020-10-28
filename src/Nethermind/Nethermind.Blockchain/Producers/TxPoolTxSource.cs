@@ -109,8 +109,8 @@ namespace Nethermind.Blockchain.Producers
             IDictionary<Address, Transaction[]> pendingTransactions = _transactionPool.GetPendingTransactionsBySender();
             IComparer<Transaction> comparer = GetComparer(parent)
                 .ThenBy(DistinctCompareTx.Instance); // in order to sort properly and not loose transactions we need to differentiate on their identity which provided comparer might not be doing
-            
-            IEnumerable<Transaction> transactions = Order(pendingTransactions, comparer);
+
+            var transactions = Order(pendingTransactions, comparer);
             IDictionary<Address, UInt256> remainingBalance = new Dictionary<Address, UInt256>();
             Dictionary<Address, UInt256> nonces = new Dictionary<Address, UInt256>();
             List<Transaction> selected = new List<Transaction>();
@@ -122,7 +122,7 @@ namespace Nethermind.Blockchain.Producers
             {
                 if (gasRemaining < Transaction.BaseTxGasCost)
                 {
-                    continue;
+                    break;
                 }
 
                 if (tx.GasLimit > gasRemaining)
@@ -168,6 +168,7 @@ namespace Nethermind.Blockchain.Producers
                 }
 
                 selected.Add(tx);
+                if (_logger.IsTrace) _logger.Trace($"Selected {tx.ToShortString()} to be included in block.");
                 nonces[tx.SenderAddress] = tx.Nonce + 1;
                 gasRemaining -= tx.GasLimit;
             }
@@ -177,7 +178,7 @@ namespace Nethermind.Blockchain.Producers
             return selected;
         }
 
-        protected virtual IComparer<Transaction> GetComparer(BlockHeader parent) => CompareTxByGas.Instance;
+        protected virtual IComparer<Transaction> GetComparer(BlockHeader parent) => TxPool.TxPool.DefaultComparer;
 
         internal static IEnumerable<Transaction> Order(IDictionary<Address,Transaction[]> pendingTransactions, IComparer<Transaction> comparerWithIdentity)
         {

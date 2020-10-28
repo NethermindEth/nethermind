@@ -44,7 +44,7 @@ namespace Nethermind.TxPool.Collections
             IEqualityComparer<TValue> distinctComparer) 
             : base(capacity, comparer)
         {
-            _comparer = comparer;
+            _comparer = comparer ?? throw new ArgumentNullException(nameof(comparer));
             _distinctDictionary = new Dictionary<TValue, KeyValuePair<TKey, TValue>>(distinctComparer);
         }
         

@@ -50,7 +50,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
         }
 
         protected override IComparer<Transaction> GetComparer(BlockHeader parent) => 
-            new CompareTxByPermissionOnSpecifiedBlock(_sendersWhitelist, _priorities, parent).ThenBy(CompareTxByGas.Instance);
+            new CompareTxByPermissionOnSpecifiedBlock(_sendersWhitelist, _priorities, parent).ThenBy(base.GetComparer(parent));
         
         public override string ToString() => $"{nameof(TxPriorityTxSource)}";
     }

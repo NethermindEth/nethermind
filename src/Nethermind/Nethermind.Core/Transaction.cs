@@ -52,6 +52,7 @@ namespace Nethermind.Core
         public string ToString(string indent)
         {
             StringBuilder builder = new StringBuilder();
+            builder.AppendLine($"{indent}Hash: {Hash}");
             builder.AppendLine($"{indent}Gas Price: {GasPrice}");
             builder.AppendLine($"{indent}Gas Limit: {GasLimit}");
             builder.AppendLine($"{indent}To: {To}");
@@ -61,7 +62,6 @@ namespace Nethermind.Core
             builder.AppendLine($"{indent}Init: {(Init ?? new byte[0]).ToHexString()}");
             builder.AppendLine($"{indent}Signature: {(Signature?.Bytes ?? new byte[0]).ToHexString()}");
             builder.AppendLine($"{indent}Signature.V: {Signature?.V ?? -1}");
-            builder.AppendLine($"{indent}Hash: {Hash}");
             return builder.ToString();
         }
 
