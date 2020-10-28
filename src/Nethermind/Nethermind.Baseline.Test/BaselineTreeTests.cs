@@ -399,5 +399,36 @@ namespace Nethermind.Baseline.Test
             baselineTree.Verify(root2, TestItem.KeccakA, proof1_0).Should().BeTrue();
             baselineTree.Verify(root2, TestItem.KeccakB, proof1_1).Should().BeTrue();
         }
+
+        [TestCase(0u)]
+        [TestCase(1u)]
+        [TestCase(2u)]
+        [TestCase(3u)]
+        [TestCase(4u)]
+        [TestCase(5u)]
+        [TestCase(6u)]
+        [TestCase(8u)]
+        [TestCase(13u)]
+        [TestCase(23u)]
+        [TestCase(25u)]
+        [TestCase(32u)]
+        public void Insert_without_recalculating_hashes(uint nodesCount)
+        {
+            BaselineTree withHashesTree = BuildATree();
+            BaselineTree withoutHashesTree = BuildATree();
+            for (int i = 0; i < nodesCount; i++)
+            {
+                withHashesTree.Insert(_testLeaves[i]);
+                withoutHashesTree.Insert(_testLeaves[i], false);
+
+                Assert.AreNotEqual(withHashesTree.Root, withoutHashesTree.Root);
+                Assert.AreEqual(withHashesTree.Count, withoutHashesTree.Count);
+            }
+
+
+            withoutHashesTree.RecalculateHashes();
+            Assert.AreEqual(withHashesTree.Root, withoutHashesTree.Root);
+            Assert.AreEqual(withHashesTree.Count, withoutHashesTree.Count);
+        }
     }
 }
