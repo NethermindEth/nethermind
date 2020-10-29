@@ -64,7 +64,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
             if (_logger.IsTrace)
             {
                 var transactions = base.GetOrderedTransactions(pendingTransactions, comparer).ToArray();
-                string txString = string.Join(Environment.NewLine, transactions.Select(t => $"{t.ToShortString()} Whitelisted: {_comparer.IsWhiteListed(t)} Priority: {_comparer.GetPriority(t)}"));
+                string txString = string.Join(Environment.NewLine, transactions.Select(t => $"{t.ToShortString()}, PoolIndex {t.PoolIndex}, Whitelisted: {_comparer.IsWhiteListed(t)}, Priority: {_comparer.GetPriority(t)}"));
                 _logger.Trace($"Ordered transactions with comparer {comparer} : {Environment.NewLine}{txString}");
                 return transactions;
             }

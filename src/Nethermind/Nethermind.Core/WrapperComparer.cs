@@ -23,5 +23,6 @@ namespace Nethermind.Core
     {
         public IComparer<T> Comparer { get; set; }
         public int Compare(T x, T y) => Comparer?.Compare(x, y) ?? 0;
+        public override string ToString() => $"{base.ToString()} [{Comparer}]";
     }
 }
