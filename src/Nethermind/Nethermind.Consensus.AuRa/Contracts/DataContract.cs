@@ -23,22 +23,40 @@ namespace Nethermind.Consensus.AuRa.Contracts
 {
     internal class DataContract<T> : IDataContract<T>
     {
+        public delegate bool TryGetChangesFromBlockDelegate(BlockHeader blockHeader, TxReceipt[] receipts, out IEnumerable<T> items);
+        
         private readonly Func<BlockHeader, IEnumerable<T>> _getAll;
-        private readonly Func<BlockHeader, TxReceipt[], IEnumerable<T>> _getChangesFromBlock;
+        private readonly TryGetChangesFromBlockDelegate _tryGetChangesFromBlock;
 
         public DataContract(
             Func<BlockHeader, IEnumerable<T>> getAll, 
-            Func<BlockHeader, TxReceipt[], IEnumerable<T>> getChangesFromBlock,
-            bool incrementalChanges)
+            TryGetChangesFromBlockDelegate tryGetChangesFromBlock)
         {
-            IncrementalChanges = incrementalChanges;
+            IncrementalChanges = false;
             _getAll = getAll ?? throw new ArgumentNullException(nameof(getAll));
-            _getChangesFromBlock = getChangesFromBlock ?? throw new ArgumentNullException(nameof(getChangesFromBlock));;
+            _tryGetChangesFromBlock = tryGetChangesFromBlock ?? throw new ArgumentNullException(nameof(tryGetChangesFromBlock));;
         }
-        
+
+        public DataContract(
+            Func<BlockHeader, IEnumerable<T>> getAll,
+            Func<BlockHeader, TxReceipt[], IEnumerable<T>> getChangesFromBlock) 
+            : this(getAll, GetTryGetChangesFromBlock(getChangesFromBlock))
+        {
+            IncrementalChanges = true;
+        }
+
+        private static TryGetChangesFromBlockDelegate GetTryGetChangesFromBlock(Func<BlockHeader,TxReceipt[],IEnumerable<T>> getChangesFromBlock)
+        {
+            return (BlockHeader blockHeader, TxReceipt[] receipts, out IEnumerable<T> items) =>
+            {
+                items = getChangesFromBlock(blockHeader, receipts);
+                return true;
+            };
+        }
+
         public IEnumerable<T> GetAllItemsFromBlock(BlockHeader blockHeader) => _getAll(blockHeader);
 
-        public IEnumerable<T> GetItemsChangedFromBlock(BlockHeader header, TxReceipt[] receipts) => _getChangesFromBlock(header, receipts);
+        public bool TryGetItemsChangedFromBlock(BlockHeader header, TxReceipt[] receipts, out IEnumerable<T> items) => _tryGetChangesFromBlock(header, receipts, out items);
 
         public bool IncrementalChanges { get; }
     }

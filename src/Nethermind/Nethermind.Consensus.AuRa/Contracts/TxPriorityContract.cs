@@ -46,9 +46,9 @@ namespace Nethermind.Consensus.AuRa.Contracts
             : base(abiEncoder, contractAddress)
         {
             Constant = GetConstant(readOnlyTransactionProcessorSource);
-            SendersWhitelist = new DataContract<Address>(GetSendersWhitelist, SendersWhitelistSet, false);
-            MinGasPrices = new DataContract<Destination>(GetMinGasPrices, MinGasPriceSet, true);
-            Priorities = new DataContract<Destination>(GetPriorities, PrioritySet, true);
+            SendersWhitelist = new DataContract<Address>(GetSendersWhitelist, SendersWhitelistSet);
+            MinGasPrices = new DataContract<Destination>(GetMinGasPrices, MinGasPriceSet);
+            Priorities = new DataContract<Destination>(GetPriorities, PrioritySet);
         }
 
         public Address[] GetSendersWhitelist(BlockHeader parentHeader) => Constant.Call<Address[]>(parentHeader, nameof(GetSendersWhitelist), ContractAddress);
@@ -79,13 +79,18 @@ namespace Nethermind.Consensus.AuRa.Contracts
             }
         }
         
-        public IEnumerable<Address> SendersWhitelistSet(BlockHeader blockHeader, TxReceipt[] receipts)
+        public bool SendersWhitelistSet(BlockHeader blockHeader, TxReceipt[] receipts, out IEnumerable<Address> items)
         {
             var logEntry = GetSearchLogEntry(nameof(SendersWhitelistSet));
 
-            return blockHeader.TryFindLog(receipts, logEntry, out LogEntry foundEntry) 
-                ? DecodeAddresses(foundEntry.Data) 
-                : Array.Empty<Address>();
+            if (blockHeader.TryFindLog(receipts, logEntry, out LogEntry foundEntry))
+            {
+                items = DecodeAddresses(foundEntry.Data);
+                return true;
+            }
+
+            items = Array.Empty<Address>();
+            return false;
         }
         
         public Address[] DecodeAddresses(byte[] data)
