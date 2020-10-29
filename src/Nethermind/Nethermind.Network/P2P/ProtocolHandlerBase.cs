@@ -108,7 +108,7 @@ namespace Nethermind.Network.P2P
 
         public abstract void Dispose();
 
-        public abstract byte ProtocolVersion { get; protected set; }
+        public abstract byte ProtocolVersion { get;}
         
         public abstract string ProtocolCode { get; }
         

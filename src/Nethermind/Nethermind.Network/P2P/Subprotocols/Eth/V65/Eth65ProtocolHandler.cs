@@ -46,7 +46,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
 
         public override string Name => "eth65";
 
-        public override byte ProtocolVersion { get; protected set; } = 65;
+        public override byte ProtocolVersion => 65;
 
         public override void HandleMessage(ZeroPacket message)
         {

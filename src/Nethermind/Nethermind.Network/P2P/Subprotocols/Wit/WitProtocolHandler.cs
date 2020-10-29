@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2020 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -43,7 +43,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Wit
             _witnessRequests = new MessageQueue<GetBlockWitnessHashesMessage, IReadOnlyCollection<Keccak>>(Send);
         }
 
-        public override byte ProtocolVersion { get; protected set; } = 0;
+        public override byte ProtocolVersion => 0;
         
         public override string ProtocolCode => Protocol.Wit;
         
@@ -112,7 +112,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Wit
 
         private static long _requestId;
         
-        private async Task<IReadOnlyCollection<Keccak>> GetBlockWitnessHashes(Keccak blockHash, CancellationToken token)
+        public async Task<IReadOnlyCollection<Keccak>> GetBlockWitnessHashes(Keccak blockHash, CancellationToken token)
         {
             long requestId = Interlocked.Increment(ref _requestId);
             GetBlockWitnessHashesMessage msg = new GetBlockWitnessHashesMessage(requestId, blockHash);

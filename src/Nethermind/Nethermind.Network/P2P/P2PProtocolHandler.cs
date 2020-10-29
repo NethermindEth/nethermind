@@ -86,7 +86,9 @@ namespace Nethermind.Network.P2P
             });
         }
 
-        public override byte ProtocolVersion { get; protected set; } = 5;
+        private byte _protocolVersion = 5;
+        
+        public override byte ProtocolVersion => _protocolVersion;
 
         public override string ProtocolCode => Protocol.P2P;
 
@@ -189,7 +191,7 @@ namespace Nethermind.Network.P2P
             // * If the packet is received by a node with higher version,
             //   it can enable backwards-compatibility logic or drop the connection.
 
-            ProtocolVersion = hello.P2PVersion;
+            _protocolVersion = hello.P2PVersion;
 
             List<Capability> capabilities = hello.Capabilities;
             AvailableCapabilities = new List<Capability>(capabilities);
