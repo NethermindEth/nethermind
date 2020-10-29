@@ -79,7 +79,7 @@ namespace Nethermind.Baseline.Benchmark
     }
 
     [MemoryDiagnoser]
-    [SimpleJob(RuntimeMoniker.NetCoreApp31, warmupCount: 1, targetCount: 1)]
+    [DryJob(RuntimeMoniker.NetCoreApp31)]
     public class BigTreeBuildingBenchmarks
     {
         private Keccak[] _testLeaves;
