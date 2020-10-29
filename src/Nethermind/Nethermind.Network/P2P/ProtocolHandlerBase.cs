@@ -95,13 +95,16 @@ namespace Nethermind.Network.P2P
             _initCompletionSource?.SetResult(msg);
         }
         
-        protected void ReportIn(MessageBase messageBase)
+        protected void ReportIn(MessageBase msg)
         {
-            ReportIn(messageBase.ToString());
+            ReportIn(msg.ToString());
         }
         
         protected void ReportIn(string messageInfo)
         {
+            if(Logger.IsTrace)
+                Logger.Trace($"OUT {Counter:D5} {messageInfo}");
+            
             if (NetworkDiagTracer.IsEnabled)
                 NetworkDiagTracer.ReportIncomingMessage(Session.Node.Address, Name, messageInfo);
         }

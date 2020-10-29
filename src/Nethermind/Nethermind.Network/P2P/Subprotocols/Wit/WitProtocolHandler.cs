@@ -118,6 +118,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Wit
             GetBlockWitnessHashesMessage msg = new GetBlockWitnessHashesMessage(requestId, blockHash);
             msg.BlockHash = blockHash;
             
+            if (Logger.IsTrace) Logger.Trace(
+                $"{Counter:D5} {nameof(WitMessageCode.GetBlockWitnessHashes)} to {Session}");
             IReadOnlyCollection<Keccak> witnessHashes = await SendRequest(msg, token);
             return witnessHashes;
         }

@@ -20,5 +20,15 @@ namespace Nethermind.Network.P2P.Subprotocols.Wit
     {
         public const int GetBlockWitnessHashes = 0x00;
         public const int BlockWitnessHashes = 0x01;
+        
+        public static string GetDescription(int code)
+        {
+            return code switch
+            {
+                GetBlockWitnessHashes => nameof(GetBlockWitnessHashes),
+                BlockWitnessHashes => nameof(BlockWitnessHashes),
+                _ => $"Unknown({code.ToString()})"
+            };
+        }
     }
 }
