@@ -161,6 +161,26 @@ namespace Nethermind.AuRa.Test.Contract
         }
         
         [Test]
+        public void returns_unmodified_data_from_empty_receipts_on_consecutive_with_incremental_changes()
+        {
+            TestCase<Address> testCase = BuildTestCase<Address>();
+            BlockHeader blockHeader = Build.A.BlockHeader.WithNumber(1).WithHash(TestItem.KeccakA).TestObject;
+            testCase.DataContract.GetAllItemsFromBlock(blockHeader).Returns(new[] {TestItem.AddressA, TestItem.AddressC});
+            Block secondBlock = Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(2).WithHash(TestItem.KeccakB).WithParentHash(TestItem.KeccakA).TestObject).TestObject;
+            testCase.DataContract.TryGetItemsChangedFromBlock(secondBlock.Header, Array.Empty<TxReceipt>(), out Arg.Any<IEnumerable<Address>>())
+                .Returns(x =>
+                {
+                    x[2] = Array.Empty<Address>();
+                    return false;
+                });
+
+            testCase.ContractDataStore.GetItemsFromContractAtBlock(blockHeader);
+            testCase.BlockProcessor.BlockProcessed += Raise.EventWith(new BlockProcessedEventArgs(secondBlock, Array.Empty<TxReceipt>()));
+            
+            testCase.ContractDataStore.GetItemsFromContractAtBlock(secondBlock.Header).Should().BeEquivalentTo(TestItem.AddressA, TestItem.AddressC);
+        }
+        
+        [Test]
         public void returns_data_from_receipts_on_consecutive_with_incremental_changes_with_identity()
         {
             TestCase<TxPriorityContract.Destination> testCase = BuildTestCase(
