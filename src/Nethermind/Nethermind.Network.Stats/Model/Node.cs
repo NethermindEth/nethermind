@@ -213,6 +213,10 @@ namespace Nethermind.Stats.Model
             {
                 ClientType = NodeClientType.OpenEthereum;
             }
+            else if (_clientId.Contains("Trinity", StringComparison.InvariantCultureIgnoreCase))
+            {
+                ClientType = NodeClientType.Trinity;
+            }
             else
             {
                 ClientType = NodeClientType.Unknown;

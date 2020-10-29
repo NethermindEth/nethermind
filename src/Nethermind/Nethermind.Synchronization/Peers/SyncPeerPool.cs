@@ -442,7 +442,8 @@ namespace Nethermind.Synchronization.Peers
                 if (peerInfo.HeadNumber == 0
                     && peerInfo.IsInitialized
                     && ourNumber != 0
-                    && peerInfo.PeerClientType != NodeClientType.Nethermind)
+                    && peerInfo.PeerClientType != NodeClientType.Nethermind
+                    && peerInfo.PeerClientType != NodeClientType.Trinity)
                     // we know that Nethermind reports 0 HeadNumber when it is in sync (and it can still serve a lot of data to other nodes)
                 {
                     if (!CanBeUsefulForFastBlocks(peerInfo.HeadNumber))
