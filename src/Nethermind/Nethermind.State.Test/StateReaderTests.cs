@@ -85,7 +85,7 @@ namespace Nethermind.Store.Test
             IReleaseSpec spec = MuirGlacier.Instance;
             StateDb stateDb = new StateDb(new MemDb());
             StateProvider provider = new StateProvider(stateDb, new MemDb(), Logger);
-            StorageProvider storageProvider = new StorageProvider(stateDb, provider, NullWitnessCollector.Instance, Logger);
+            StorageProvider storageProvider = new StorageProvider(stateDb, provider, Logger);
 
             void UpdateStorageValue(byte[] newValue)
             {
@@ -147,7 +147,7 @@ namespace Nethermind.Store.Test
             IReleaseSpec spec = MuirGlacier.Instance;
             StateDb stateDb = new StateDb(new MemDb());
             StateProvider provider = new StateProvider(stateDb, new MemDb(), Logger);
-            StorageProvider storageProvider = new StorageProvider(stateDb, provider, NullWitnessCollector.Instance, Logger);
+            StorageProvider storageProvider = new StorageProvider(stateDb, provider, Logger);
 
             void CommitEverything()
             {
@@ -204,7 +204,7 @@ namespace Nethermind.Store.Test
             /* all testing will be touching just a single storage cell */
             StorageCell storageCell = new StorageCell(_address1, UInt256.One);
             StateProvider state = new StateProvider(dbProvider, Logger);
-            StorageProvider storage = new StorageProvider(dbProvider.StateDb, state, NullWitnessCollector.Instance, Logger);
+            StorageProvider storage = new StorageProvider(dbProvider.StateDb, state, Logger);
 
             /* to start with we need to create an account that we will be setting storage at */
             state.CreateAccount(storageCell.Address, UInt256.One);
@@ -239,7 +239,7 @@ namespace Nethermind.Store.Test
             processorStateProvider.StateRoot = state.StateRoot;
             
             StorageProvider processorStorageProvider =
-                new StorageProvider(dbProvider.StateDb, processorStateProvider, NullWitnessCollector.Instance, LimboLogs.Instance);
+                new StorageProvider(dbProvider.StateDb, processorStateProvider, LimboLogs.Instance);
             
             processorStorageProvider.Set(storageCell, newValue);
             processorStorageProvider.Commit();

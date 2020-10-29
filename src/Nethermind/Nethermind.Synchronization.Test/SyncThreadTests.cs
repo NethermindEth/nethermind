@@ -260,7 +260,7 @@ namespace Nethermind.Synchronization.Test
             stateProvider.RecalculateStateRoot();
             stateDb.Commit();
 
-            var storageProvider = new StorageProvider(stateDb, stateProvider, NullWitnessCollector.Instance, logManager);
+            var storageProvider = new StorageProvider(stateDb, stateProvider, logManager);
             var receiptStorage = new InMemoryReceiptStorage();
 
             var ecdsa = new EthereumEcdsa(specProvider.ChainId, logManager);
@@ -300,7 +300,7 @@ namespace Nethermind.Synchronization.Test
             var syncPeerPool = new SyncPeerPool(tree, nodeStatsManager, 25, logManager);
 
             StateProvider devState = new StateProvider(stateDb, codeDb, logManager);
-            StorageProvider devStorage = new StorageProvider(stateDb, devState, NullWitnessCollector.Instance, logManager);
+            StorageProvider devStorage = new StorageProvider(stateDb, devState, logManager);
             var devEvm = new VirtualMachine(devState, devStorage, blockhashProvider, specProvider, logManager);
             var devTxProcessor = new TransactionProcessor(specProvider, devState, devStorage, devEvm, logManager);
             var devBlockProcessor = new BlockProcessor(

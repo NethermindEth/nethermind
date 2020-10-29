@@ -64,7 +64,7 @@ namespace Nethermind.Evm.Test
             _stateProvider.Commit(_specProvider.GenesisSpec);
             _stateProvider.CommitTree();
 
-            StorageProvider storageProvider = new StorageProvider(stateDb, _stateProvider, NullWitnessCollector.Instance, LimboLogs.Instance);
+            StorageProvider storageProvider = new StorageProvider(stateDb, _stateProvider, LimboLogs.Instance);
             VirtualMachine virtualMachine = new VirtualMachine(_stateProvider, storageProvider, Substitute.For<IBlockhashProvider>(), _specProvider, LimboLogs.Instance);
             _transactionProcessor = new TransactionProcessor(_specProvider, _stateProvider, storageProvider, virtualMachine, LimboLogs.Instance);
             _ethereumEcdsa = new EthereumEcdsa(_specProvider.ChainId, LimboLogs.Instance);

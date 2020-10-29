@@ -61,7 +61,7 @@ namespace Nethermind.Store.Test
 
         private StorageProvider BuildStorageProvider(Context ctx)
         {
-            StorageProvider provider = new StorageProvider(new StateDb(), ctx.StateProvider, NullWitnessCollector.Instance, LogManager);
+            StorageProvider provider = new StorageProvider(new StateDb(), ctx.StateProvider, LogManager);
             return provider;
         }
 

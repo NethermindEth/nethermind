@@ -20,7 +20,7 @@ using System.Collections.Generic;
 
 namespace Nethermind.Core.Resettables
 {
-    public class ResettableHashSet<T> : ICollection<T>
+    public class ResettableHashSet<T> : ICollection<T>, IReadOnlyCollection<T>
     {
         private int _currentCapacity;
         private int _startCapacity;

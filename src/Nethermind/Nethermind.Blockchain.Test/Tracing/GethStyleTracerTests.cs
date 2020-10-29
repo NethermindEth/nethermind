@@ -55,7 +55,7 @@ namespace Nethermind.Blockchain.Test.Tracing
             _blockTree = new BlockTree(blocksDb, headersDb, blocksInfoDb, repository, specProvider, NullTxPool.Instance, NullBloomStorage.Instance, new SyncConfig(), LimboLogs.Instance);
             
             StateProvider stateProvider = new StateProvider(stateDb, codeDb, LimboLogs.Instance);
-            StorageProvider storageProvider = new StorageProvider(stateDb, stateProvider, NullWitnessCollector.Instance, LimboLogs.Instance);
+            StorageProvider storageProvider = new StorageProvider(stateDb, stateProvider, LimboLogs.Instance);
             
             BlockhashProvider blockhashProvider = new BlockhashProvider(_blockTree, LimboLogs.Instance);
             
