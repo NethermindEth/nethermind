@@ -62,27 +62,26 @@ namespace Nethermind.Baseline.Tree
             var insertLeafLogs = _logFinder.FindLogs(insertLeafFilter);
             BaselineTree baselineTree = new ShaBaselineTree(new MemDb(), Array.Empty<byte>(), 5);
 
-            // Keccak leafTopic = new Keccak("0x8ec50f97970775682a68d3c6f9caedf60fd82448ea40706b8b65d6c03648b922");
             foreach (FilterLog filterLog in insertLeavesLogs
                 .Union(insertLeafLogs)
                 .OrderBy(fl => fl.BlockNumber).ThenBy(fl => fl.LogIndex))
             {
-                // okomentować
                 if (filterLog.Data.Length == 96)
                 {
                     Keccak leafHash = new Keccak(filterLog.Data.Slice(32, 32).ToArray());
-                    baselineTree.Insert(leafHash);
+                    baselineTree.Insert(leafHash, false);
                 }
                 else
                 {
                     for (int i = 0; i < (filterLog.Data.Length - 128) / 32; i++)
                     {
                         Keccak leafHash = new Keccak(filterLog.Data.Slice(128 + 32 * i, 32).ToArray());
-                        baselineTree.Insert(leafHash);
+                        baselineTree.Insert(leafHash, false);
                     }
                 }
             }
 
+            baselineTree.CalculateHashes();
             return baselineTree;
         }
     }

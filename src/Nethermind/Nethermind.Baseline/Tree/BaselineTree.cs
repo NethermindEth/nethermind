@@ -100,13 +100,20 @@ namespace Nethermind.Baseline.Tree
         }
 
         [MethodImpl(MethodImplOptions.Synchronized)]
-        public void Insert(Keccak leaf)
+        public void Insert(Keccak leaf, bool recalculateHashes = true)
         {
             Index index = new Index(LeafRow, Count);
-            Modify(index, leaf);
+            byte[] hash = leaf.Bytes;
+            SaveValue(index, hash);
+
+            if (recalculateHashes)
+            {
+                Modify(index, leaf);
+            }
+
             Count++;
         }
-        
+
         [MethodImpl(MethodImplOptions.Synchronized)]
         public void DeleteLast()
         {
@@ -127,12 +134,10 @@ namespace Nethermind.Baseline.Tree
                 if (index.IsLeftSibling())
                 {
                     Hash(hash.AsSpan(), siblingHash.Bytes.AsSpan(), parentHash);
-                    // Console.WriteLine($"{hash.ToHexString()}+{siblingHash} at level {row - 1} => {parentHash.ToHexString()}");
                 }
                 else
                 {
                     Hash(siblingHash.Bytes.AsSpan(), hash.AsSpan(), parentHash);
-                    // Console.WriteLine($"{siblingHash}+{hash.ToHexString()} at level {row - 1} => {parentHash.ToHexString()}");
                 }
                 Index parentIndex = index.Parent();
                 SaveValue(parentIndex, parentHash);
@@ -208,6 +213,32 @@ namespace Nethermind.Baseline.Tree
             }
 
             return leaves;
+        }
+
+        public void CalculateHashes(uint startIndex = 0)
+        {
+            var nodesToIterate = Count;
+            uint startingRowIndex = startIndex - startIndex % 2;
+            for (uint row = LeafRow; row > 0; row--)
+            {
+                for (uint indexAtRow = startingRowIndex; indexAtRow < nodesToIterate; indexAtRow += 2)
+                {
+                    Index index = new Index(row, indexAtRow);
+                    var hash = LoadValue(index);
+                    var siblingIndex = index.Sibling();
+                    var siblingHash = LoadValue(siblingIndex);
+                    byte[] parentHash = new byte[32];
+                    Hash(hash.Bytes.AsSpan(), siblingHash.Bytes.AsSpan(), parentHash);
+                    Index parentIndex = index.Parent();
+                    SaveValue(parentIndex, parentHash);
+                }
+
+                nodesToIterate = nodesToIterate / 2 + nodesToIterate % 2;
+                var newStartingNode = startingRowIndex / 2;
+                startingRowIndex = newStartingNode - newStartingNode % 2;
+            }
+            
+            Root = new Keccak(LoadValue(new Index(0,0)).Bytes);
         }
 
         public static ulong GetParentIndex(in ulong nodeIndex)
