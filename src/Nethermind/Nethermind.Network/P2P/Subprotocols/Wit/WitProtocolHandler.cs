@@ -70,6 +70,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Wit
         public override void Init()
         {
             ProtocolInitialized?.Invoke(this, new ProtocolInitializedEventArgs(this));
+            // GetBlockWitnessHashes(Keccak.Zero, CancellationToken.None);
         }
 
         public override void HandleMessage(Packet message)
@@ -116,8 +117,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Wit
         {
             long requestId = Interlocked.Increment(ref _requestId);
             GetBlockWitnessHashesMessage msg = new GetBlockWitnessHashesMessage(requestId, blockHash);
-            msg.BlockHash = blockHash;
-            
+
             if (Logger.IsTrace) Logger.Trace(
                 $"{Counter:D5} {nameof(WitMessageCode.GetBlockWitnessHashes)} to {Session}");
             IReadOnlyCollection<Keccak> witnessHashes = await SendRequest(msg, token);
