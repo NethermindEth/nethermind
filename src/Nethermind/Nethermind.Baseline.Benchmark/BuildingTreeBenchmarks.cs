@@ -64,7 +64,7 @@ namespace Nethermind.Baseline.Benchmark
                 baselineTree.Insert(_testLeaves[i], false);
             }
 
-            baselineTree.RecalculateHashes();
+            baselineTree.CalculateHashes();
         }
 
         [Benchmark]
@@ -109,7 +109,7 @@ namespace Nethermind.Baseline.Benchmark
                 baselineTree.Insert(_testLeaves[i], false);
             }
 
-            baselineTree.RecalculateHashes();
+            baselineTree.CalculateHashes();
         }
     }
 }

@@ -426,7 +426,51 @@ namespace Nethermind.Baseline.Test
             }
 
 
-            withoutHashesTree.RecalculateHashes();
+            withoutHashesTree.CalculateHashes();
+            Assert.AreEqual(withHashesTree.Root, withoutHashesTree.Root);
+            Assert.AreEqual(withHashesTree.Count, withoutHashesTree.Count);
+        }
+
+        [TestCase(1u, 0u)]
+        [TestCase(1u, 1u)]
+        [TestCase(2u, 1u)]
+        [TestCase(3u, 1u)]
+        [TestCase(3u, 2u)]
+        [TestCase(8u, 3u)]
+        [TestCase(8u, 4u)]
+        [TestCase(8u, 2u)]
+        [TestCase(22u, 21u)]
+        [TestCase(22u, 2u)]
+        [TestCase(21u, 1u)]
+        [TestCase(32u, 6u)]
+        [TestCase(23u, 4u)]
+        [TestCase(32u, 3u)]
+        [TestCase(32u, 4u)]
+        [TestCase(32u, 1u)]
+        [TestCase(32u, 31u)]
+        public void Insert_without_recalculating_hashes_with_starting_index(uint nodesCount, uint startCalculatingHashes)
+        {
+            BaselineTree withHashesTree = BuildATree();
+            BaselineTree withoutHashesTree = BuildATree();
+            for (int i = 0; i < nodesCount; i++)
+            {
+                withHashesTree.Insert(_testLeaves[i]);
+                if (i < startCalculatingHashes)
+                {
+                    withoutHashesTree.Insert(_testLeaves[i]);
+                    Assert.AreEqual(withHashesTree.Root, withoutHashesTree.Root);
+                }
+                else
+                {
+                    withoutHashesTree.Insert(_testLeaves[i], false);
+                    Assert.AreNotEqual(withHashesTree.Root, withoutHashesTree.Root);
+                }
+
+                Assert.AreEqual(withHashesTree.Count, withoutHashesTree.Count);
+            }
+
+
+            withoutHashesTree.CalculateHashes(startCalculatingHashes);
             Assert.AreEqual(withHashesTree.Root, withoutHashesTree.Root);
             Assert.AreEqual(withHashesTree.Count, withoutHashesTree.Count);
         }

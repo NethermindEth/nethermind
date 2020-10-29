@@ -195,12 +195,13 @@ namespace Nethermind.Baseline.Tree
             return leaves;
         }
 
-        public void RecalculateHashes()
+        public void CalculateHashes(uint startIndex = 0)
         {
             var nodesToIterate = Count;
+            uint startingRowIndex = startIndex - startIndex % 2;
             for (uint row = LeafRow; row > 0; row--)
             {
-                for (uint indexAtRow = 0; indexAtRow < nodesToIterate; indexAtRow += 2)
+                for (uint indexAtRow = startingRowIndex; indexAtRow < nodesToIterate; indexAtRow += 2)
                 {
                     Index index = new Index(row, indexAtRow);
                     var hash = LoadValue(index);
@@ -213,6 +214,8 @@ namespace Nethermind.Baseline.Tree
                 }
 
                 nodesToIterate = nodesToIterate / 2 + nodesToIterate % 2;
+                var newStartingNode = startingRowIndex / 2;
+                startingRowIndex = newStartingNode - newStartingNode % 2;
             }
             
             Root = new Keccak(LoadValue(new Index(0,0)).Bytes);

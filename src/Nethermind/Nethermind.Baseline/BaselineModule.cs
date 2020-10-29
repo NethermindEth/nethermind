@@ -499,7 +499,7 @@ namespace Nethermind.Baseline
                 }
             }
 
-            baselineTree.RecalculateHashes();
+            baselineTree.CalculateHashes();
             return baselineTree;
         }
     
