@@ -34,6 +34,7 @@ namespace Nethermind.Baseline.Tree
         private readonly Address _address;
         private readonly IBaselineTreeHelper _baselineTreeHelper;
         private readonly IBlockProcessor _blockProcessor;
+        private readonly ILogFinder _logFinder;
         private const int MaxLeavesInStack = 1000;
         private BaselineTree _baselineTree;
         private Block? _currentBlock = null;
@@ -59,16 +60,23 @@ namespace Nethermind.Baseline.Tree
         {
             if (_currentBlock != null && _currentBlock.Hash != e.Block.ParentHash)
             {
-                if (_leavesStack.Count <= MaxLeavesInStack)
+                if (_currentBlock.Number > e.Block.Number)
                 {
-                    // ToDo reorganize tree
-                    // delete leaves from the stack
-                    // add leaves again
+                    AddNewLeavesFromDb(_currentBlock.Hash, e.Block.Hash);
                 }
                 else
                 {
-                    _baselineTree = _baselineTreeHelper.RebuildEntireTree(_address, e.Block.Hash);
-                    return;
+                    if (_leavesStack.Count <= MaxLeavesInStack)
+                    {
+                        // ToDo reorganize tree
+                        // delete leaves from the stack
+                        // add leaves again
+                    }
+                    else
+                    {
+                        _baselineTree = _baselineTreeHelper.RebuildEntireTree(_address, e.Block.Hash);
+                        return;
+                    }
                 }
             }
             LogFilter insertLeavesFilter = new LogFilter(
@@ -82,7 +90,6 @@ namespace Nethermind.Baseline.Tree
             var logs = _currentBlock.Header.FindLogs(e.TxReceipts, insertLeavesFilter, FindOrder.Ascending, FindOrder.Ascending);
             foreach (var filterLog in logs)
             {
-                // ToDo write a comment here?
                 if (filterLog.Data.Length == 96)
                 {
                     Keccak leafHash = new Keccak(filterLog.Data.Slice(32, 32).ToArray());
@@ -99,6 +106,48 @@ namespace Nethermind.Baseline.Tree
                     }
                 }
             }
+        }
+
+        private void AddNewLeavesFromDb(Keccak from, Keccak to)
+        {
+            var initCount = _baselineTree.Count;
+            LogFilter insertLeavesFilter = new LogFilter(
+                0,
+                new BlockParameter(from),
+                new BlockParameter(to),
+                new AddressFilter(_address),
+                new SequenceTopicsFilter(new SpecificTopic(LeafTopic)));
+
+            LogFilter insertLeafFilter = new LogFilter(
+                0,
+                new BlockParameter(from),
+                new BlockParameter(to),
+                new AddressFilter(_address),
+                new SequenceTopicsFilter(new SpecificTopic(LeavesTopic)));
+
+            var insertLeavesLogs = _logFinder.FindLogs(insertLeavesFilter);
+            var insertLeafLogs = _logFinder.FindLogs(insertLeafFilter);
+
+            foreach (FilterLog filterLog in insertLeavesLogs
+                .Union(insertLeafLogs)
+                .OrderBy(fl => fl.BlockNumber).ThenBy(fl => fl.LogIndex))
+            {
+                if (filterLog.Data.Length == 96)
+                {
+                    Keccak leafHash = new Keccak(filterLog.Data.Slice(32, 32).ToArray());
+                    _baselineTree.Insert(leafHash);
+                }
+                else
+                {
+                    for (int i = 0; i < (filterLog.Data.Length - 128) / 32; i++)
+                    {
+                        Keccak leafHash = new Keccak(filterLog.Data.Slice(128 + 32 * i, 32).ToArray());
+                        _baselineTree.Insert(leafHash);
+                    }
+                }
+            }
+
+            // recalculate hashes
         }
 
         public void Dispose()

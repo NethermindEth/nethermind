@@ -79,6 +79,16 @@ namespace Nethermind.Baseline.Tree
             return new Keccak(nodeHashBytes);
         }
 
+        private int LoadBlockNumberCount(long blockNumber)
+        {
+            return 0; // ToDo
+        }
+
+        private void SaveBlockNumberCount(long blockNumber, int count)
+        {
+
+        }
+
         private static ulong GetMinNodeIndex(in uint row)
         {
             return (1ul << (int) row) - 1;
