@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using FluentAssertions;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Network.P2P.Subprotocols.Wit;
@@ -56,6 +57,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Wit
             BlockWitnessHashesMessageSerializer serializer = new BlockWitnessHashesMessageSerializer();
             BlockWitnessHashesMessage message = new BlockWitnessHashesMessage(1, null);
             byte[] serialized = serializer.Serialize(message);
+            serialized[0].Should().Be(194);
             serializer.Deserialize(serialized);
         }
     }
