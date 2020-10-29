@@ -47,6 +47,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
         public override string Name => "eth65";
 
         public override byte ProtocolVersion => 65;
+        
+        public override int MessageIdSpaceSize => 20;
 
         public override void HandleMessage(ZeroPacket message)
         {
