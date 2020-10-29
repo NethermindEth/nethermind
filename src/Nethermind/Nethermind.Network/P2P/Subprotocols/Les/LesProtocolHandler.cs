@@ -98,7 +98,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Les
         }
 
 
-        public override byte ProtocolVersion { get; protected set; } = 3;
+        public override byte ProtocolVersion => 3;
 
         public override string ProtocolCode => Protocol.Les;
 
