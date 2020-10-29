@@ -65,7 +65,6 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
             StorageProvider storageProvider = new StorageProvider(
                 stateDb,
                 stateProvider,
-                NullWitnessCollector.Instance,
                 LimboLogs.Instance);
 
             BlockhashProvider blockhashProvider = new BlockhashProvider(_blockTree, LimboLogs.Instance);

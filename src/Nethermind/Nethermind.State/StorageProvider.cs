@@ -50,18 +50,13 @@ namespace Nethermind.State
         private Change?[] _changes = new Change[StartCapacity];
         private int _currentPosition = -1;
 
-        public StorageProvider(
-            IKeyValueStore? stateDb,
+        public StorageProvider(IKeyValueStore? stateDb,
             IStateProvider? stateProvider,
-            IWitnessCollector? witnessCollector,
             ILogManager? logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
             _stateDb = stateDb ?? throw new ArgumentNullException(nameof(stateDb));
-            _stateDb = witnessCollector == NullWitnessCollector.Instance
-                ? _stateDb
-                : new WitnessingStore(_stateDb, witnessCollector);
         }
 
         public byte[] GetOriginal(StorageCell storageCell)

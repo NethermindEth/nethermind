@@ -48,7 +48,6 @@ namespace Nethermind.Blockchain.Processing
             StorageProvider = new StorageProvider(
                 stateDb,
                 StateProvider,
-                NullWitnessCollector.Instance,
                 logManager);
 
             BlockTree = readOnlyBlockTree;

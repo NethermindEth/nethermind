@@ -20,6 +20,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Resettables;
 using Nethermind.Logging;
 using Nethermind.Trie;
 
@@ -48,7 +49,7 @@ namespace Nethermind.State.Witnesses
 
         public void Reset()
         {
-            _collected = new HashSet<Keccak>();
+            _collected.Reset();
         }
 
         public void Persist(Keccak blockHash)
@@ -78,11 +79,9 @@ namespace Nethermind.State.Witnesses
 
         public IReadOnlyCollection<Keccak>? Load(Keccak blockHash)
         {
-            IReadOnlyList<Keccak> witness;
-            if (_witnessCache.Contains(blockHash))
+            if (_witnessCache.TryGet(blockHash, out IReadOnlyList<Keccak>? witness))
             {
-                witness = _witnessCache.Get(blockHash);
-                if(_logger.IsTrace) _logger.Trace($"Loading cached witness for {blockHash} ({witness.Count})");
+                if(_logger.IsTrace) _logger.Trace($"Loading cached witness for {blockHash} ({witness!.Count})");
             }
             else // not cached
             {
@@ -113,7 +112,7 @@ namespace Nethermind.State.Witnesses
             return witness;
         }
 
-        private HashSet<Keccak> _collected = new HashSet<Keccak>();
+        private ResettableHashSet<Keccak> _collected = new ResettableHashSet<Keccak>();
 
         private readonly IKeyValueStore _keyValueStore;
         

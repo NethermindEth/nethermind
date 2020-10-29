@@ -74,7 +74,7 @@ namespace Nethermind.Evm.Test
             IDb codeDb = UseBeamSync ? beamSyncCodeDb : new StateDb();
             _stateDb = UseBeamSync ? beamSyncDb : new StateDb();
             TestState = new StateProvider(_stateDb, codeDb, logger);
-            Storage = new StorageProvider(_stateDb, TestState, NullWitnessCollector.Instance, logger);
+            Storage = new StorageProvider(_stateDb, TestState, logger);
             _ethereumEcdsa = new EthereumEcdsa(SpecProvider.ChainId, logger);
             IBlockhashProvider blockhashProvider = TestBlockhashProvider.Instance;
             Machine = new VirtualMachine(TestState, Storage, blockhashProvider, SpecProvider, logger);

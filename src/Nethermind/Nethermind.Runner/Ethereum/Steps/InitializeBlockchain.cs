@@ -91,10 +91,14 @@ namespace Nethermind.Runner.Ethereum.Steps
 
             Account.AccountStartNonce = _api.ChainSpec.Parameters.AccountStartNonce;
 
+            // TODO: if wit protocol enabled, otherwise NullWitnessCollector
             _api.WitnessCollector = new WitnessCollector(_api.DbProvider.WitnessDb, _api.LogManager);
+            var stateDb = _api.MainStateDbWithCache.WitnessedBy(_api.WitnessCollector);
+            var codeDb = _api.DbProvider.CodeDb.WitnessedBy(_api.WitnessCollector);
+
             _api.StateProvider = new StateProvider(
-                _api.MainStateDbWithCache,
-                _api.DbProvider.CodeDb,
+                stateDb,
+                codeDb,
                 _api.WitnessCollector,
                 _api.LogManager);
 
@@ -142,11 +146,9 @@ namespace Nethermind.Runner.Ethereum.Steps
             _api.ReceiptFinder = new FullInfoReceiptFinder(_api.ReceiptStorage, receiptsRecovery, _api.BlockTree);
 
             _api.RecoveryStep = new TxSignaturesRecoveryStep(_api.EthereumEcdsa, _api.TxPool, _api.SpecProvider, _api.LogManager);
-
             _api.StorageProvider = new StorageProvider(
-                _api.MainStateDbWithCache,
+                stateDb,
                 _api.StateProvider,
-                _api.WitnessCollector,
                 _api.LogManager);
 
             // blockchain processing

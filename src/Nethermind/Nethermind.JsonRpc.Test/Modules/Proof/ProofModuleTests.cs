@@ -740,7 +740,6 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
             StorageProvider storageProvider = new StorageProvider(
                 _dbProvider.StateDb,
                 stateProvider,
-                NullWitnessCollector.Instance,
                 LimboLogs.Instance);
             for (int i = 0; i < 10000; i++)
             {
