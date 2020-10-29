@@ -197,9 +197,6 @@ namespace Nethermind.Network
                         0 => new WitProtocolHandler(session, _serializer, _stats, _syncServer, _logManager),
                         _ => throw new NotSupportedException($"{Protocol.Wit}.{version} is not supported.")
                     };
-                    
-                    witHandler.ProtocolInitialized += (sender, args) =>
-                        witHandler.GetBlockWitnessHashes(Keccak.Zero, CancellationToken.None);
 
                     return witHandler;
                 },
