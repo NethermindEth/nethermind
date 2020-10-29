@@ -42,7 +42,11 @@ namespace Nethermind.TxPool
     /// </summary>
     public class TxPool : ITxPool, IDisposable
     {
-        public static IComparer<Transaction> DefaultComparer => CompareTxByGas.Instance.ThenBy(CompareTxByTimestamp.Instance).ThenBy(CompareTxByPoolIndex.Instance);
+        public static IComparer<Transaction> DefaultComparer { get; } = 
+            CompareTxByGasPrice.Instance
+                .ThenBy(CompareTxByTimestamp.Instance)
+                .ThenBy(CompareTxByPoolIndex.Instance)
+                .ThenBy(CompareTxByGasLimit.Instance);
         
         private readonly object _locker = new object();
 
