@@ -14,8 +14,10 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using DotNetty.Buffers;
 using FluentAssertions;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Network.P2P.Subprotocols.Wit;
 using Nethermind.Network.Test.P2P.Subprotocols.Eth.V62;
 using NUnit.Framework;
@@ -55,6 +57,17 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Wit
             GetBlockWitnessHashesMessageSerializer serializer = new GetBlockWitnessHashesMessageSerializer();
             GetBlockWitnessHashesMessage message = new GetBlockWitnessHashesMessage(1, null);
             SerializerTester.TestZero(serializer, message);
+        }
+        
+        [Test]
+        public void Can_deserialize_trinity()
+        {
+            GetBlockWitnessHashesMessageSerializer serializer = new GetBlockWitnessHashesMessageSerializer();
+            var trinityBytes = Bytes.FromHexString("0xea880ea29ca8028d7edea04bf6040124107de018c753ff2a9e464ca13e9d099c45df6a48ddbf436ce30c83");
+            var buffer = ByteBufferUtil.DefaultAllocator.Buffer(trinityBytes.Length);
+            buffer.WriteBytes(trinityBytes);
+            GetBlockWitnessHashesMessage msg =
+                ((IZeroMessageSerializer<GetBlockWitnessHashesMessage>) serializer).Deserialize(buffer);
         }
     }
 }
