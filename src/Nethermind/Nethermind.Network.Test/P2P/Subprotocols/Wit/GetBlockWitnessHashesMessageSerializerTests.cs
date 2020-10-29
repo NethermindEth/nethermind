@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using FluentAssertions;
 using Nethermind.Core.Crypto;
 using Nethermind.Network.P2P.Subprotocols.Wit;
 using Nethermind.Network.Test.P2P.Subprotocols.Eth.V62;
@@ -21,6 +22,22 @@ using NUnit.Framework;
 
 namespace Nethermind.Network.Test.P2P.Subprotocols.Wit
 {
+    [TestFixture, Parallelizable(ParallelScope.All)]
+    public class MessageTests
+    {
+        [Test]
+        public void Message_code_is_correct_in_request()
+        {
+            new GetBlockWitnessHashesMessage(1, Keccak.Zero).PacketType.Should().Be(0);
+        }
+        
+        [Test]
+        public void Message_code_is_correct_in_response()
+        {
+            new BlockWitnessHashesMessage(1, null).PacketType.Should().Be(1);
+        }
+    }
+    
     [TestFixture, Parallelizable(ParallelScope.All)]
     public class GetBlockWitnessHashesMessageSerializerTests
     {

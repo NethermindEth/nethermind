@@ -20,7 +20,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Wit
 {
     public class GetBlockWitnessHashesMessage : P2PMessage
     {
-        public override int PacketType { get; } = WitMessageCode.BlockWitnessHashes;
+        public override int PacketType { get; } = WitMessageCode.GetBlockWitnessHashes;
         public override string Protocol { get; } = "wit";
 
         public long RequestId { get; set; }
