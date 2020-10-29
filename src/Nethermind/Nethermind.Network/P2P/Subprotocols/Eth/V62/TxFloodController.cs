@@ -73,6 +73,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             return true;
         }
 
-        public bool IsEnabled { get; set; } = true;
+        public bool IsEnabled { get; set; } = false;
     }
 }
