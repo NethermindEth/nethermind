@@ -43,25 +43,25 @@ namespace Nethermind.Core
         public Keccak Hash { get; set; }
         public PublicKey DeliveredBy { get; set; } // tks: this is added so we do not send the pending tx back to original sources, not used yet
         public UInt256 Timestamp { get; set; }
+        public ulong PoolIndex { get; set; }
 
-        public string ToShortString()
-        {
-            return $"[TX: from {SenderAddress} to {To} with data {Data?.ToHexString() ?? Init?.ToHexString()}, gas price {GasPrice} and limit {GasLimit}, nonce {Nonce}]";
-        }
-        
+        public string ToShortString() => 
+            $"[TX: hash {Hash} from {SenderAddress} to {To} with data {Data?.ToHexString() ?? Init?.ToHexString()}, gas price {GasPrice} and limit {GasLimit}, nonce {Nonce}]";
+
         public string ToString(string indent)
         {
             StringBuilder builder = new StringBuilder();
             builder.AppendLine($"{indent}Hash: {Hash}");
+            builder.AppendLine($"{indent}To: {To}");
             builder.AppendLine($"{indent}Gas Price: {GasPrice}");
             builder.AppendLine($"{indent}Gas Limit: {GasLimit}");
-            builder.AppendLine($"{indent}To: {To}");
             builder.AppendLine($"{indent}Nonce: {Nonce}");
             builder.AppendLine($"{indent}Value: {Value}");
             builder.AppendLine($"{indent}Data: {(Data ?? new byte[0]).ToHexString()}");
             builder.AppendLine($"{indent}Init: {(Init ?? new byte[0]).ToHexString()}");
             builder.AppendLine($"{indent}Signature: {(Signature?.Bytes ?? new byte[0]).ToHexString()}");
             builder.AppendLine($"{indent}Signature.V: {Signature?.V ?? -1}");
+            builder.AppendLine($"{indent}Timestamp: {Timestamp}");
             return builder.ToString();
         }
 

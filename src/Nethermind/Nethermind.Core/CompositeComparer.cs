@@ -52,6 +52,8 @@ namespace Nethermind.Core
 
             return result;
         }
+
+        public override string ToString() => $"{base.ToString()} [{string.Join(", ", _comparers)}]";
     }
 
     public static class CompositeComparerExtensions

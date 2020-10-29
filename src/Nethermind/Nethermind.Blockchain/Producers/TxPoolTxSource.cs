@@ -40,7 +40,7 @@ namespace Nethermind.Blockchain.Producers
         private readonly ITxPool _transactionPool;
         private readonly IStateReader _stateReader;
         private readonly ITxFilter _minGasPriceFilter;
-        private readonly ILogger _logger;
+        protected readonly ILogger _logger;
 
         public TxPoolTxSource(ITxPool transactionPool, IStateReader stateReader, ILogManager logManager, ITxFilter minGasPriceFilter = null)
         {
@@ -109,8 +109,8 @@ namespace Nethermind.Blockchain.Producers
             IDictionary<Address, Transaction[]> pendingTransactions = _transactionPool.GetPendingTransactionsBySender();
             IComparer<Transaction> comparer = GetComparer(parent)
                 .ThenBy(DistinctCompareTx.Instance); // in order to sort properly and not loose transactions we need to differentiate on their identity which provided comparer might not be doing
-
-            var transactions = Order(pendingTransactions, comparer);
+            
+            var transactions = GetOrderedTransactions(pendingTransactions, comparer);
             IDictionary<Address, UInt256> remainingBalance = new Dictionary<Address, UInt256>();
             Dictionary<Address, UInt256> nonces = new Dictionary<Address, UInt256>();
             List<Transaction> selected = new List<Transaction>();
@@ -177,6 +177,9 @@ namespace Nethermind.Blockchain.Producers
 
             return selected;
         }
+
+        protected virtual IEnumerable<Transaction> GetOrderedTransactions(IDictionary<Address,Transaction[]> pendingTransactions, IComparer<Transaction> comparer) => 
+            Order(pendingTransactions, comparer);
 
         protected virtual IComparer<Transaction> GetComparer(BlockHeader parent) => TxPool.TxPool.DefaultComparer;
 
