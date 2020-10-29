@@ -27,7 +27,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Wit
             NettyRlpStream nettyRlpStream = new NettyRlpStream(byteBuffer);
             int contentLength =
                 Rlp.LengthOf(message.RequestId)
-                + Rlp.LengthOfKeccakRlp;
+                + (message.BlockHash == null ? 1 : Rlp.LengthOfKeccakRlp);
             nettyRlpStream.StartSequence(contentLength);
             nettyRlpStream.Encode(message.RequestId);
             nettyRlpStream.Encode(message.BlockHash);
