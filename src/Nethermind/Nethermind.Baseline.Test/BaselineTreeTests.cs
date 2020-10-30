@@ -244,7 +244,7 @@ namespace Nethermind.Baseline.Test
             BaselineTree baselineTree = BuildATree();
             baselineTree.Insert(_testLeaves[0]);
             baselineTree.Count.Should().Be(1);
-            baselineTree.DeleteLast();
+            baselineTree.Pop();
             baselineTree.Count.Should().Be(0);
         }
 
@@ -256,7 +256,7 @@ namespace Nethermind.Baseline.Test
             baselineTree.Insert(_testLeaves[1]);
             baselineTree.Insert(_testLeaves[2]);
             baselineTree.Count.Should().Be(3);
-            baselineTree.DeleteLast();
+            baselineTree.Pop();
             baselineTree.Count.Should().Be(2);
         }
 

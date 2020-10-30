@@ -37,7 +37,7 @@ namespace Nethermind.Baseline.Tree
         private readonly ILogFinder _logFinder;
         private const int MaxLeavesInStack = 1000;
         private BaselineTree _baselineTree;
-        private Block? _currentBlock = null;
+        private Block? _currentBlock = null; // BlockHeader lub number/hash
         private Stack<Keccak> _leavesStack = new Stack<Keccak>();
 
         /// <summary>
@@ -60,17 +60,16 @@ namespace Nethermind.Baseline.Tree
         {
             if (_currentBlock != null && _currentBlock.Hash != e.Block.ParentHash)
             {
-                if (_currentBlock.Number > e.Block.Number)
+                if (_currentBlock.Number < e.Block.Number) // ToDo MM nie ma inicjowania bloku current
                 {
                     AddNewLeavesFromDb(_currentBlock.Hash, e.Block.Hash);
                 }
                 else
                 {
-                    if (_leavesStack.Count <= MaxLeavesInStack)
+                    var leavesToReorganize = _baselineTree.GetLeavesCountFromNextBlocks(e.Block.Number);
+                    if (leavesToReorganize < MaxLeavesInStack) // toDo MM think about
                     {
-                        // ToDo reorganize tree
-                        // delete leaves from the stack
-                        // add leaves again
+                        Reorganize(leavesToReorganize);
                     }
                     else
                     {
@@ -78,15 +77,19 @@ namespace Nethermind.Baseline.Tree
                         return;
                     }
                 }
+
+                return;
             }
-            LogFilter insertLeavesFilter = new LogFilter(
-                0,
-                new BlockParameter(0L),
-                new BlockParameter(0L),
-                new AddressFilter(_address),
-                new AnyTopicsFilter(new SpecificTopic(LeavesTopic), new SpecificTopic(LeafTopic)));
+
+
 
             _currentBlock = e.Block;
+            LogFilter insertLeavesFilter = new LogFilter(
+    0,
+    new BlockParameter(0L),
+    new BlockParameter(0L),
+    new AddressFilter(_address),
+    new AnyTopicsFilter(new SpecificTopic(LeavesTopic), new SpecificTopic(LeafTopic)));
             var logs = _currentBlock.Header.FindLogs(e.TxReceipts, insertLeavesFilter, FindOrder.Ascending, FindOrder.Ascending);
             foreach (var filterLog in logs)
             {
@@ -106,6 +109,25 @@ namespace Nethermind.Baseline.Tree
                     }
                 }
             }
+        }
+
+        private void Reorganize(uint numberOfElements)
+        {
+            var calculatingHashesStart = _baselineTree.Count - numberOfElements;
+            var itemsToMove = new Keccak[numberOfElements];
+            for (uint i = 0; i < numberOfElements; ++i)
+            {
+                itemsToMove[i] = _baselineTree.Pop(false);
+            }
+
+            // ToDo MM add receipts from block "copy after refactoring
+
+            for (uint j = 0; j < numberOfElements; ++j)
+            {
+                _baselineTree.Insert(itemsToMove[j], false);
+            }
+
+            _baselineTree.CalculateHashes(calculatingHashesStart);
         }
 
         private void AddNewLeavesFromDb(Keccak from, Keccak to)
@@ -135,19 +157,19 @@ namespace Nethermind.Baseline.Tree
                 if (filterLog.Data.Length == 96)
                 {
                     Keccak leafHash = new Keccak(filterLog.Data.Slice(32, 32).ToArray());
-                    _baselineTree.Insert(leafHash);
+                    _baselineTree.Insert(leafHash, false);
                 }
                 else
                 {
                     for (int i = 0; i < (filterLog.Data.Length - 128) / 32; i++)
                     {
                         Keccak leafHash = new Keccak(filterLog.Data.Slice(128 + 32 * i, 32).ToArray());
-                        _baselineTree.Insert(leafHash);
+                        _baselineTree.Insert(leafHash, false);
                     }
                 }
             }
 
-            // recalculate hashes
+            _baselineTree.CalculateHashes(initCount);
         }
 
         public void Dispose()

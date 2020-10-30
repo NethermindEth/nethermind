@@ -28,6 +28,8 @@ namespace Nethermind.Baseline.Tree
 
         public uint Count { get; set; }
 
+        public long CurrentBlockNumber { get; set; } // ToDo save it to DB and Load from DB
+
         /* baseline does not use a sparse merkle tree - instead they use a single zero hash value
            does it expose any attack vectors? */
         internal static Keccak ZeroHash = Keccak.Zero;
@@ -79,79 +81,100 @@ namespace Nethermind.Baseline.Tree
             return new Keccak(nodeHashBytes);
         }
 
-        private int LoadBlockNumberCount(long blockNumber)
+
+        public uint GetLeavesCountFromNextBlocks(long blockNumber)
+        {
+            uint? foundCount = null;
+            for (long i = blockNumber + 1; i < CurrentBlockNumber; i++)
+            {
+                foundCount = LoadBlockNumberCount(CurrentBlockNumber);
+                if (foundCount != null)
+                {
+                    break;
+                }
+            }
+
+            if (foundCount == null)
+            {
+                return LoadBlockNumberCount(CurrentBlockNumber)!.Value;
+            }
+            else
+            {
+                return Count - foundCount.Value;
+            }
+        }
+
+        private uint? LoadBlockNumberCount(long blockNumber)
         {
             return 0; // ToDo
         }
 
         private void SaveBlockNumberCount(long blockNumber, int count)
         {
-
+            // ToDo
         }
 
         private static ulong GetMinNodeIndex(in uint row)
         {
-            return (1ul << (int) row) - 1;
+            return (1ul << (int)row) - 1;
         }
 
         private static ulong GetMaxNodeIndex(in uint row)
         {
-            return (1ul << (int) (row + 1u)) - 2;
+            return (1ul << (int)(row + 1u)) - 2;
         }
 
         [MethodImpl(MethodImplOptions.Synchronized)]
         public void Insert(Keccak leaf, bool recalculateHashes = true)
         {
             Index index = new Index(LeafRow, Count);
-            byte[] hash = leaf.Bytes;
-            SaveValue(index, hash);
-
-            if (recalculateHashes)
-            {
-                Modify(index, leaf);
-            }
-
+            Modify(index, leaf, recalculateHashes);
             Count++;
         }
 
         [MethodImpl(MethodImplOptions.Synchronized)]
-        public void DeleteLast()
+        public Keccak Pop(bool recalculateHashes = true)
         {
             Index index = new Index(LeafRow, Count - 1);
-            Modify(index, ZeroHash);
+            var removedItem = LoadValue(index);
+            Modify(index, ZeroHash, recalculateHashes);
             Count--;
+            return removedItem;
         }
 
-        private void Modify(Index index, Keccak leaf)
+        private void Modify(Index index, Keccak leaf, bool recalculateHashes = true)
         {
-            Index siblingIndex = index.Sibling();
-            Keccak siblingHash = LoadValue(siblingIndex);
             byte[] hash = leaf.Bytes;
             SaveValue(index, hash);
-            for (int row = LeafRow; row > 0; row--)
+            if (recalculateHashes)
             {
-                byte[] parentHash = new byte[32];
-                if (index.IsLeftSibling())
+                Index siblingIndex = index.Sibling();
+                Keccak siblingHash = LoadValue(siblingIndex);
+                for (int row = LeafRow; row > 0; row--)
                 {
-                    Hash(hash.AsSpan(), siblingHash.Bytes.AsSpan(), parentHash);
-                }
-                else
-                {
-                    Hash(siblingHash.Bytes.AsSpan(), hash.AsSpan(), parentHash);
-                }
-                Index parentIndex = index.Parent();
-                SaveValue(parentIndex, parentHash);
-                index = parentIndex;
-                if (row != 1)
-                {
-                    siblingIndex = index.Sibling();
-                    hash = parentHash;
-                    // we can quickly / efficiently find out that it will be a zero hash
-                    siblingHash = LoadValue(siblingIndex);
-                }
-                else
-                {
-                    Root = new Keccak(parentHash);
+                    byte[] parentHash = new byte[32];
+                    if (index.IsLeftSibling())
+                    {
+                        Hash(hash.AsSpan(), siblingHash.Bytes.AsSpan(), parentHash);
+                    }
+                    else
+                    {
+                        Hash(siblingHash.Bytes.AsSpan(), hash.AsSpan(), parentHash);
+                    }
+                    Index parentIndex = index.Parent();
+                    SaveValue(parentIndex, parentHash);
+                    index = parentIndex;
+                    if (row != 1)
+                    {
+                        siblingIndex = index.Sibling();
+                        hash = parentHash;
+                        // we can quickly / efficiently find out that it will be a zero hash
+                        siblingHash = LoadValue(siblingIndex);
+                    }
+                    else
+                    {
+                        Root = new Keccak(parentHash);
+                    }
                 }
             }
         }
@@ -237,8 +260,8 @@ namespace Nethermind.Baseline.Tree
                 var newStartingNode = startingRowIndex / 2;
                 startingRowIndex = newStartingNode - newStartingNode % 2;
             }
-            
-            Root = new Keccak(LoadValue(new Index(0,0)).Bytes);
+
+            Root = new Keccak(LoadValue(new Index(0, 0)).Bytes);
         }
 
         public static ulong GetParentIndex(in ulong nodeIndex)
@@ -312,12 +335,12 @@ namespace Nethermind.Baseline.Tree
 
             private static uint CalculateIndexAtRow(in uint row, in ulong nodeIndex)
             {
-                return (uint) (nodeIndex - ((1ul << (int) row) - 1));
+                return (uint)(nodeIndex - ((1ul << (int)row) - 1));
             }
 
             private static ulong CalculateNodeIndex(in uint row, in uint indexAtRow)
             {
-                return (1ul << (int) row) - 1u + indexAtRow;
+                return (1ul << (int)row) - 1u + indexAtRow;
             }
 
             private static uint CalculateRow(in ulong nodeIndex)
@@ -325,7 +348,7 @@ namespace Nethermind.Baseline.Tree
                 ValidateNodeIndex(nodeIndex);
                 for (uint row = 0; row < LeafRow; row++)
                 {
-                    if (2ul << (int) row >= nodeIndex + 2)
+                    if (2ul << (int)row >= nodeIndex + 2)
                     {
                         return row;
                     }
@@ -344,7 +367,7 @@ namespace Nethermind.Baseline.Tree
 
             private static void ValidateIndexAtRow(uint row, uint indexAtRow)
             {
-                uint maxIndexAtRow = (uint) ((1ul << (int) row) - 1u);
+                uint maxIndexAtRow = (uint)((1ul << (int)row) - 1u);
                 if (indexAtRow > maxIndexAtRow)
                 {
                     throw new ArgumentOutOfRangeException($"Tree level {row} should only have indices between 0 and {maxIndexAtRow}");
