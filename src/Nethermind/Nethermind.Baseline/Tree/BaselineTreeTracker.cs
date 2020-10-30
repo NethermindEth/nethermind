@@ -114,18 +114,13 @@ namespace Nethermind.Baseline.Tree
         private void Reorganize(uint numberOfElements)
         {
             var calculatingHashesStart = _baselineTree.Count - numberOfElements;
-            var itemsToMove = new Keccak[numberOfElements];
+            // ToDo zmiany countów  bazie po reorganizacji bloku!!
             for (uint i = 0; i < numberOfElements; ++i)
             {
-                itemsToMove[i] = _baselineTree.Pop(false);
+                _baselineTree.DeleteLast(false);
             }
 
             // ToDo MM add receipts from block "copy after refactoring
-
-            for (uint j = 0; j < numberOfElements; ++j)
-            {
-                _baselineTree.Insert(itemsToMove[j], false);
-            }
 
             _baselineTree.CalculateHashes(calculatingHashesStart);
         }

@@ -34,10 +34,23 @@ namespace Nethermind.Baseline.Tree
     public class BaselineTreeHelper : IBaselineTreeHelper
     {
         private readonly ILogFinder _logFinder;
+        private readonly IDb _mainDb;
         
-        public BaselineTreeHelper(ILogFinder logFinder)
+        public BaselineTreeHelper(ILogFinder logFinder, IDb mainDb)
         {
             _logFinder = logFinder;
+            _mainDb = mainDb;
+        }
+
+        public BaselineTree CreateHistoricalTree(Address address, long blockNumber, int truncationLength)
+        {
+            // ToDo MM think about condition when to rebuild tree
+            var historicalTree = new ShaBaselineTree(new ReadOnlyDb(_mainDb, true), address.Bytes, truncationLength);
+            var amountOfBlocks = historicalTree.GetLeavesCountFromNextBlocks(blockNumber);
+            // delete from tree
+            // recalculate hashes
+
+            return historicalTree;
         }
 
         public BaselineTree RebuildEntireTree(Address treeAddress, Keccak blockHash)
@@ -60,7 +73,7 @@ namespace Nethermind.Baseline.Tree
 
             var insertLeavesLogs = _logFinder.FindLogs(insertLeavesFilter);
             var insertLeafLogs = _logFinder.FindLogs(insertLeafFilter);
-            BaselineTree baselineTree = new ShaBaselineTree(new MemDb(), Array.Empty<byte>(), 5);
+            BaselineTree baselineTree = new ShaBaselineTree(new MemDb(), Array.Empty<byte>(), 5); // toDo MM empty address tree?
 
             foreach (FilterLog filterLog in insertLeavesLogs
                 .Union(insertLeafLogs)

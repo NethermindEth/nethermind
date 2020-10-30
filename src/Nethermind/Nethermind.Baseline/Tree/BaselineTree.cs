@@ -28,7 +28,7 @@ namespace Nethermind.Baseline.Tree
 
         public uint Count { get; set; }
 
-        public long CurrentBlockNumber { get; set; } // ToDo save it to DB and Load from DB
+        public long LastBlockWithLeaves { get; set; } // ToDo save it to DB and Load from DB
 
         /* baseline does not use a sparse merkle tree - instead they use a single zero hash value
            does it expose any attack vectors? */
@@ -81,32 +81,20 @@ namespace Nethermind.Baseline.Tree
             return new Keccak(nodeHashBytes);
         }
 
-
         public uint GetLeavesCountFromNextBlocks(long blockNumber)
         {
-            uint? foundCount = null;
-            for (long i = blockNumber + 1; i < CurrentBlockNumber; i++)
+            var foundCount = LoadBlockNumberCount(LastBlockWithLeaves);
+            while (foundCount.PreviousBlockWithLeaves >= blockNumber)
             {
-                foundCount = LoadBlockNumberCount(CurrentBlockNumber);
-                if (foundCount != null)
-                {
-                    break;
-                }
+                foundCount = LoadBlockNumberCount(foundCount.PreviousBlockWithLeaves);
             }
 
-            if (foundCount == null)
-            {
-                return LoadBlockNumberCount(CurrentBlockNumber)!.Value;
-            }
-            else
-            {
-                return Count - foundCount.Value;
-            }
+            return Count - foundCount.Count;
         }
 
-        private uint? LoadBlockNumberCount(long blockNumber)
+        private (uint Count, long PreviousBlockWithLeaves) LoadBlockNumberCount(long blockNumber)
         {
-            return 0; // ToDo
+            return (0, 0); // ToDo
         }
 
         private void SaveBlockNumberCount(long blockNumber, int count)
@@ -133,13 +121,11 @@ namespace Nethermind.Baseline.Tree
         }
 
         [MethodImpl(MethodImplOptions.Synchronized)]
-        public Keccak Pop(bool recalculateHashes = true)
+        public void DeleteLast(bool recalculateHashes = true)
         {
             Index index = new Index(LeafRow, Count - 1);
-            var removedItem = LoadValue(index);
             Modify(index, ZeroHash, recalculateHashes);
             Count--;
-            return removedItem;
         }
 
         private void Modify(Index index, Keccak leaf, bool recalculateHashes = true)

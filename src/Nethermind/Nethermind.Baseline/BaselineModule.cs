@@ -139,15 +139,22 @@ namespace Nethermind.Baseline
             }
             else
             {
-                // ToDo MM: ask about blockParameter!
-                SearchResult<BlockHeader> searchResult = _blockFinder.SearchForHeader(blockParameter);
-                if (searchResult.IsError)
+                if (blockParameter == null)
                 {
-                    result = ResultWrapper<Keccak>.Fail(searchResult);
+                    result = ResultWrapper<Keccak>.Success(tree.Root);
                 }
                 else
                 {
-                    result = ResultWrapper<Keccak>.Success(tree.Root);
+                    // ToDo MM
+                    SearchResult<BlockHeader> searchResult = _blockFinder.SearchForHeader(blockParameter);
+                    if (searchResult.IsError)
+                    {
+                        result = ResultWrapper<Keccak>.Fail(searchResult);
+                    }
+                    else
+                    {
+                        result = ResultWrapper<Keccak>.Success(tree.Root);
+                    }
                 }
             }
 
@@ -307,6 +314,7 @@ namespace Nethermind.Baseline
             BaselineTreeNode[] path,
             BlockParameter? blockParameter = null)
         {
+            // ToDo MM incorrect for not null blockParameter?
             bool isTracked = _baselineTrees.TryGetValue(contractAddress, out BaselineTree? tree);
             ResultWrapper<bool> result;
             if (!isTracked)
