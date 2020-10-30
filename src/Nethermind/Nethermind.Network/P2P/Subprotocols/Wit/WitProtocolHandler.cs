@@ -47,7 +47,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Wit
         
         public override string ProtocolCode => Protocol.Wit;
         
-        public override int MessageIdSpaceSize => 2;
+        public override int MessageIdSpaceSize => 3;
         
         public override string Name => "wit0";
         
