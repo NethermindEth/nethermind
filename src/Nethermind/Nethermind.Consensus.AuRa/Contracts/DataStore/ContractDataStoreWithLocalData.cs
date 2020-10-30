@@ -64,7 +64,7 @@ namespace Nethermind.Consensus.AuRa.Contracts.DataStore
 
         protected override void RemoveOldContractItemsFromCollection()
         {
-            Collection.Clear();
+            base.RemoveOldContractItemsFromCollection();
             Collection.Insert(_localData);
         }
 

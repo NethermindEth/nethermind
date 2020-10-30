@@ -45,7 +45,7 @@ namespace Nethermind.Runner.Ethereum.Steps
         
         private ReadOnlyTxProcessorSource? _readOnlyTransactionProcessorSource;
         private AuRaSealValidator? _sealValidator;
-        private CompositeComparer<Transaction>? _txPoolComparer = null;
+        private WrapperComparer<Transaction>? _txPoolComparer = null;
         private Address? _txPriorityContractAddress = null;
 
         public InitializeBlockchainAuRa(AuRaNethermindApi api) : base(api)
@@ -226,7 +226,13 @@ namespace Nethermind.Runner.Ethereum.Steps
         protected override IComparer<Transaction> CreateTxPoolTxComparer()
         {
             Address.TryParse(_api.ConfigProvider.GetConfig<IAuraConfig>()?.TxPriorityContractAddress, out _txPriorityContractAddress);
-            return _txPriorityContractAddress != null ? _txPoolComparer = new CompositeComparer<Transaction>() : base.CreateTxPoolTxComparer();
+            if (_txPriorityContractAddress != null)
+            {
+                _txPoolComparer = new WrapperComparer<Transaction>();
+                return _txPoolComparer.ThenBy(base.CreateTxPoolTxComparer());
+            }
+            
+            return base.CreateTxPoolTxComparer();
         }
 
         protected override Task InitBlockchain()
@@ -251,10 +257,7 @@ namespace Nethermind.Runner.Ethereum.Steps
 
                 _api.DisposeStack.Push(whitelistContractDataStore);
                 _api.DisposeStack.Push(prioritiesContractDataStore);
-
-                _txPoolComparer
-                    .ThenBy(new CompareTxByPermissionOnHead(whitelistContractDataStore, prioritiesContractDataStore, _api.BlockTree))
-                    .ThenBy(CompareTxByGas.Instance);
+                _txPoolComparer.Comparer = new CompareTxByPermissionOnHead(whitelistContractDataStore, prioritiesContractDataStore, _api.BlockTree);
             }
 
             return task;

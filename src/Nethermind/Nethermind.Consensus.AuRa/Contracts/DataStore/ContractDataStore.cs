@@ -69,16 +69,27 @@ namespace Nethermind.Consensus.AuRa.Contracts.DataStore
 
                 try
                 {
-                    IEnumerable<T> items = canGetFullStateFromReceipts
-                        ? _dataContract.GetItemsChangedFromBlock(blockHeader, receipts)
-                        : _dataContract.GetAllItemsFromBlock(blockHeader);
-
-                    if (!fromReceipts || !isConsecutiveBlock || !incrementalChanges)
+                    bool dataChanged = true;
+                    IEnumerable<T> items;
+                    
+                    if (canGetFullStateFromReceipts)
                     {
-	                    RemoveOldContractItemsFromCollection();
+                        dataChanged = _dataContract.TryGetItemsChangedFromBlock(blockHeader, receipts, out items);
+                    }
+                    else
+                    {
+                        items = _dataContract.GetAllItemsFromBlock(blockHeader);
                     }
 
-    	            Collection.Insert(items);
+                    if (dataChanged)
+                    {
+                        if (!fromReceipts || !isConsecutiveBlock || !incrementalChanges)
+                        {
+                            RemoveOldContractItemsFromCollection();
+                        }
+
+                        Collection.Insert(items);
+                    }
 
                     _lastHash = blockHeader.Hash;
                 }

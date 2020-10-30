@@ -20,7 +20,7 @@ using Nethermind.Core;
 
 namespace Nethermind.Consensus.AuRa.Contracts
 {
-    public interface IDataContract<out T>
+    public interface IDataContract<T>
     {
         /// <summary>
         /// Gets all items in contract from block.
@@ -28,14 +28,15 @@ namespace Nethermind.Consensus.AuRa.Contracts
         /// <param name="blockHeader"></param>
         /// <returns></returns>
         IEnumerable<T> GetAllItemsFromBlock(BlockHeader blockHeader);
-        
+
         /// <summary>
         /// Gets item changed in contract in that block.
         /// </summary>
         /// <param name="header"></param>
         /// <param name="receipts"></param>
+        /// <param name="items"></param>
         /// <returns></returns>
-        IEnumerable<T> GetItemsChangedFromBlock(BlockHeader header, TxReceipt[] receipts);
+        bool TryGetItemsChangedFromBlock(BlockHeader header, TxReceipt[] receipts, out IEnumerable<T> items);
         
         /// <summary>
         /// If changes in blocks are incremental.

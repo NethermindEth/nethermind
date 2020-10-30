@@ -31,7 +31,7 @@ namespace Nethermind.Consensus.AuRa.Contracts.DataStore
             Items.Clear();
         }
 
-        public IEnumerable<T> GetSnapshot() => Items.ToArray();
+        public IEnumerable<T> GetSnapshot() => Items.ToHashSet();
 
         public void Insert(IEnumerable<T> items)
         {
