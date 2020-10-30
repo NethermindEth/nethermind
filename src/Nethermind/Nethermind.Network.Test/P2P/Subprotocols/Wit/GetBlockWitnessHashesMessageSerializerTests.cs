@@ -30,13 +30,13 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Wit
         [Test]
         public void Message_code_is_correct_in_request()
         {
-            new GetBlockWitnessHashesMessage(1, Keccak.Zero).PacketType.Should().Be(0);
+            new GetBlockWitnessHashesMessage(1, Keccak.Zero).PacketType.Should().Be(1);
         }
         
         [Test]
         public void Message_code_is_correct_in_response()
         {
-            new BlockWitnessHashesMessage(1, null).PacketType.Should().Be(1);
+            new BlockWitnessHashesMessage(1, null).PacketType.Should().Be(2);
         }
     }
     

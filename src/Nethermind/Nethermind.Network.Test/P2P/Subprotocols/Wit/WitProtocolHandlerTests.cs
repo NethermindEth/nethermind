@@ -99,7 +99,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Wit
             GetBlockWitnessHashesMessageSerializer serializer = new GetBlockWitnessHashesMessageSerializer();
             var serialized = serializer.Serialize(msg);
 
-            context.WitProtocolHandler.HandleMessage(new Packet("wit", 0, serialized));
+            context.WitProtocolHandler.HandleMessage(new Packet("wit", WitMessageCode.GetBlockWitnessHashes, serialized));
             context.SyncServer.Received().GetBlockWitnessHashes(Keccak.Zero);
         }
 
@@ -116,7 +116,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Wit
             GetBlockWitnessHashesMessageSerializer serializer = new GetBlockWitnessHashesMessageSerializer();
             var serialized = serializer.Serialize(msg);
 
-            context.WitProtocolHandler.HandleMessage(new Packet("wit", 0, serialized));
+            context.WitProtocolHandler.HandleMessage(new Packet("wit", WitMessageCode.GetBlockWitnessHashes, serialized));
             context.Session.Received().DeliverMessage(
                 Arg.Is<BlockWitnessHashesMessage>(msg => msg.Hashes.Count == 2));
         }
@@ -134,7 +134,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Wit
             context.Session
                 .When(s => s.DeliverMessage(
                     Arg.Is<GetBlockWitnessHashesMessage>(msg => msg.BlockHash == TestItem.KeccakA)))
-                .Do(_ => context.WitProtocolHandler.HandleMessage(new Packet("wit", 1, serialized)));
+                .Do(_ => context.WitProtocolHandler.HandleMessage(new Packet("wit", WitMessageCode.BlockWitnessHashes, serialized)));
             Task result = context.WitProtocolHandler.GetBlockWitnessHashes(TestItem.KeccakA, CancellationToken.None);
             await result;
             result.Status.Should().Be(TaskStatus.RanToCompletion);
