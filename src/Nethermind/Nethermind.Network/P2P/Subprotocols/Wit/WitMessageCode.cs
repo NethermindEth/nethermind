@@ -18,6 +18,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Wit
 {
     public static class WitMessageCode
     {
+        /// <summary>
+        /// Not used, reserved.
+        /// </summary>
+        public const int Status = 0x00;
         public const int GetBlockWitnessHashes = 0x01;
         public const int BlockWitnessHashes = 0x02;
         
