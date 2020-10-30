@@ -15,6 +15,9 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System.Collections.Generic;
+using System.Linq;
+using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
@@ -48,12 +51,17 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Wit
             Context context = new Context();
             context.WitProtocolHandler.ProtocolVersion.Should().Be(0);
         }
-
+        
         [Test]
-        public void Message_space_should_be_three()
+        public void Message_space_should_be_correct()
         {
+            int maxCode = typeof(WitMessageCode)
+                .GetFields(BindingFlags.Static | BindingFlags.Public)
+                .Where(f => f.FieldType == typeof(int))
+                .Select(f => (int)f.GetValue(null)!).Max();
+            
             Context context = new Context();
-            context.WitProtocolHandler.MessageIdSpaceSize.Should().Be(3);
+            context.WitProtocolHandler.MessageIdSpaceSize.Should().Be(maxCode + 1);
         }
 
         [Test]
