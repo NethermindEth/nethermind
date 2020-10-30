@@ -25,12 +25,12 @@ namespace Nethermind.Crypto
         {
             public byte[] Protect(byte[] userData, byte[] optionalEntropy, DataProtectionScope scope)
             {
-                return  System.Security.Cryptography.ProtectedData.Protect(userData, optionalEntropy, scope);
+                return System.Security.Cryptography.ProtectedData.Protect(userData, optionalEntropy, scope);
             }
 
             public byte[] Unprotect(byte[] encryptedData, byte[] optionalEntropy, DataProtectionScope scope)
             {
-                return  System.Security.Cryptography.ProtectedData.Unprotect(encryptedData, optionalEntropy, scope);
+                return System.Security.Cryptography.ProtectedData.Unprotect(encryptedData, optionalEntropy, scope);
             }
         }
     }

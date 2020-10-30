@@ -18,16 +18,20 @@
 using System;
 using System.IO;
 using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
 using Microsoft.AspNetCore.DataProtection;
+using Org.BouncyCastle.Crypto;
 
 namespace Nethermind.Crypto
 {
     public partial class ProtectedData
     {
-        private class AspNetWrapper : IProtector
+        private partial class AspNetWrapper : IProtector
         {
             private const string AppName = "Nethermind";
             private const string BaseName = AppName + "_";
+            private IDataProtector _userProtector;
+            private IDataProtector _machineProtector;
 
             public byte[] Protect(byte[] userData, byte[] optionalEntropy, DataProtectionScope scope)
             {
@@ -45,11 +49,11 @@ namespace Nethermind.Crypto
             {
                 if (scope == DataProtectionScope.CurrentUser)
                 {
-                    return GetUserProtector(optionalEntropy);
+                    return _userProtector ??= GetUserProtector(optionalEntropy);
                 }
                 else
                 {
-                    return GetMachineProtector(optionalEntropy);
+                    return _machineProtector ??= GetMachineProtector(optionalEntropy);
                 }
             }
 
@@ -58,7 +62,7 @@ namespace Nethermind.Crypto
                 var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
                 var path = Path.Combine(appData, AppName);
                 var info = new DirectoryInfo(path);
-                var provider = DataProtectionProvider.Create(info);
+                var provider = DataProtectionProvider.Create(info, GenerateCertificate("CN=Nethermind"));
                 var purpose = CreatePurpose(optionalEntropy);
                 return provider.CreateProtector(purpose);
             }
