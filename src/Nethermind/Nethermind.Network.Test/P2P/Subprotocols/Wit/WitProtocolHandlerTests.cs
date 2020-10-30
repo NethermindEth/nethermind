@@ -50,10 +50,10 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Wit
         }
 
         [Test]
-        public void Message_space_should_be_two()
+        public void Message_space_should_be_three()
         {
             Context context = new Context();
-            context.WitProtocolHandler.MessageIdSpaceSize.Should().Be(2);
+            context.WitProtocolHandler.MessageIdSpaceSize.Should().Be(3);
         }
 
         [Test]
@@ -131,7 +131,9 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Wit
             
             context.WitProtocolHandler.Init();
             
+            
             context.Session
+                // check if you did not enable the Init -> send message diag
                 .When(s => s.DeliverMessage(
                     Arg.Is<GetBlockWitnessHashesMessage>(msg => msg.BlockHash == TestItem.KeccakA)))
                 .Do(_ => context.WitProtocolHandler.HandleMessage(new Packet("wit", WitMessageCode.BlockWitnessHashes, serialized)));
