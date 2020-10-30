@@ -15,16 +15,19 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Analytics;
 using Nethermind.Api;
 using Nethermind.Baseline.Config;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
+using Nethermind.Core;
 using Nethermind.EthStats;
 using Nethermind.Grpc;
 using Nethermind.JsonRpc;
@@ -42,9 +45,25 @@ namespace Nethermind.Runner.Test
     [TestFixture]
     public class ConfigFilesTests
     {
-        [SetUp]
+        private readonly IDictionary<string, ConfigProvider> _cachedProviders = new ConcurrentDictionary<string, ConfigProvider>();
+
+        [OneTimeSetUp]
         public void Setup()
         {
+            // by pre-caching configs we make the tests do lot less work
+            
+            IEnumerable<Type> configTypes = new TypeDiscovery().FindNethermindTypes(typeof(IConfig)).Where(t => t.IsInterface).ToArray();
+            
+            Parallel.ForEach(Resolve("*"), configFile =>
+            {
+                ConfigProvider configProvider = GetConfigProviderFromFile(configFile);
+                foreach (Type configType in configTypes)
+                {
+                    configProvider.GetConfig(configType);
+                }
+
+                _cachedProviders.Add(configFile, configProvider);
+            });
         }
 
         [TestCase("*")]
@@ -515,7 +534,11 @@ namespace Nethermind.Runner.Test
             foreach (string configFile in Resolve(configWildcard))
             {
                 Console.WriteLine("Testing " + configFile);
-                ConfigProvider configProvider = GetConfigProviderFromFile(configFile);
+                if (!_cachedProviders.TryGetValue(configFile, out ConfigProvider configProvider))
+                {
+                    configProvider = GetConfigProviderFromFile(configFile);
+                }
+                
                 T config = configProvider.GetConfig<T>();
                 expectedValue(configFile, getter(config));
             }
