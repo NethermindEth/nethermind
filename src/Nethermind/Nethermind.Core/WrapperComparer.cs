@@ -19,6 +19,10 @@ using System.Collections.Generic;
 
 namespace Nethermind.Core
 {
+    /// <summary>
+    /// Comparer that enables to replace inner comparision on demand.
+    /// </summary>
+    /// <remarks>Used to decouple circular dependencies with TxPriority contract.</remarks>
     public class WrapperComparer<T> : IComparer<T>
     {
         public IComparer<T> Comparer { get; set; }

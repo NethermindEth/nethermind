@@ -69,19 +69,19 @@ namespace Nethermind.Consensus.AuRa.Contracts.DataStore
 
                 try
                 {
-                    bool foundItems = true;
+                    bool dataChanged = true;
                     IEnumerable<T> items;
                     
                     if (canGetFullStateFromReceipts)
                     {
-                        foundItems = _dataContract.TryGetItemsChangedFromBlock(blockHeader, receipts, out items);
+                        dataChanged = _dataContract.TryGetItemsChangedFromBlock(blockHeader, receipts, out items);
                     }
                     else
                     {
                         items = _dataContract.GetAllItemsFromBlock(blockHeader);
                     }
 
-                    if (foundItems)
+                    if (dataChanged)
                     {
                         if (!fromReceipts || !isConsecutiveBlock || !incrementalChanges)
                         {

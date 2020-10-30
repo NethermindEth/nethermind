@@ -43,6 +43,11 @@ namespace Nethermind.Core
         public Keccak Hash { get; set; }
         public PublicKey DeliveredBy { get; set; } // tks: this is added so we do not send the pending tx back to original sources, not used yet
         public UInt256 Timestamp { get; set; }
+        
+        /// <summary>
+        /// In-memory only property, representing order of transactions going to TxPool.
+        /// </summary>
+        /// <remarks>Used for sorting in edge cases.</remarks>
         public ulong PoolIndex { get; set; }
 
         public string ToShortString() => 
