@@ -1,10 +1,8 @@
 name: GMP Build
 
-on: push
-
-# on:
-#   repository_dispatch:
-#     types: gmp_build
+on:
+  repository_dispatch:
+    types: gmp_build
 
 jobs:
   gmp-build:
