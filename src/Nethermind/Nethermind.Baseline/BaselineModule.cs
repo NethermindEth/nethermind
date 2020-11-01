@@ -480,6 +480,7 @@ namespace Nethermind.Baseline
             var insertLeafLogs = _logFinder.FindLogs(insertLeafFilter);
             BaselineTree baselineTree = new ShaBaselineTree(new MemDb(), Array.Empty<byte>(), 5);
 
+            using var batch = baselineTree.StartBatch();
             foreach (FilterLog filterLog in insertLeavesLogs
                 .Union(insertLeafLogs)
                 .OrderBy(fl => fl.BlockNumber).ThenBy(fl => fl.LogIndex))

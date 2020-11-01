@@ -2,6 +2,7 @@ using System;
 using System.Runtime.CompilerServices;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
+using Nethermind.State.Repositories;
 using Nethermind.Trie;
 
 [assembly: InternalsVisibleTo("Nethermind.Baseline.Test")]
@@ -21,6 +22,7 @@ namespace Nethermind.Baseline.Tree
 
         private readonly IKeyValueStore _keyValueStore;
         private readonly byte[] _dbPrefix;
+        private readonly object _synchroObject = new object();
 
         static BaselineTree()
         {
@@ -159,6 +161,11 @@ namespace Nethermind.Baseline.Tree
             }
 
             return value.SequenceEqual(root.Bytes.AsSpan());
+        }
+
+        public BatchWrite StartBatch()
+        {
+            return new BatchWrite(_synchroObject);
         }
 
         public BaselineTreeNode[] GetProof(in uint leafIndex)
