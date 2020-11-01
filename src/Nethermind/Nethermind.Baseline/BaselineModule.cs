@@ -62,7 +62,7 @@ namespace Nethermind.Baseline
             _logFinder = logFinder ?? throw new ArgumentNullException(nameof(logFinder));
             _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
             _blockProcessor = blockProcessor ?? throw new ArgumentNullException(nameof(blockProcessor));
-            _baselineTreeHelper = new BaselineTreeHelper(_logFinder);
+            _baselineTreeHelper = new BaselineTreeHelper(_logFinder, baselineDb);
 
             _metadata = LoadMetadata();
             InitTrees();

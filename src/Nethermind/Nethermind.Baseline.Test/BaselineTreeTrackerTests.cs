@@ -19,14 +19,10 @@ using System.IO;
 using System.IO.Abstractions;
 using System.Linq;
 using System.Security;
-using System.Threading;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Abi;
 using Nethermind.Baseline.Test.Contracts;
 using Nethermind.Baseline.Tree;
-using Nethermind.Blockchain.Processing;
-using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -44,10 +40,11 @@ using NUnit.Framework;
 
 namespace Nethermind.Baseline.Test
 {
-    public class BaselineTreeTrackerTests
+    public partial class BaselineTreeTrackerTests
     {
         private IFileSystem _fileSystem;
         private AbiEncoder _abiEncoder;
+        private IDb _baselineDb;
 
         [SetUp]
         public void SetUp()
@@ -56,6 +53,7 @@ namespace Nethermind.Baseline.Test
             const string expectedFilePath = "contracts/MerkleTreeSHA.bin";
             _fileSystem.File.ReadAllLinesAsync(expectedFilePath).Returns(File.ReadAllLines(expectedFilePath));
             _abiEncoder = new AbiEncoder();
+            _baselineDb = new MemDb();
         }
 
 
@@ -66,10 +64,9 @@ namespace Nethermind.Baseline.Test
             var address = TestItem.Addresses[0];
             var result = await InitializeTestRpc(address);
             var testRpc = result.TestRpc;
-            var baselineModule = result.BaselineModule;
             BaselineTree baselineTree = BuildATree();
             var fromContractAdress = ContractAddress.From(address, 0L);
-            var baselineTreeHelper = new BaselineTreeHelper(testRpc.LogFinder);
+            var baselineTreeHelper = new BaselineTreeHelper(testRpc.LogFinder, _baselineDb);
             new BaselineTreeTracker(fromContractAdress, baselineTree, testRpc.BlockProcessor, baselineTreeHelper);
 
             var contract = new MerkleTreeSHAContract(_abiEncoder, fromContractAdress);
@@ -98,7 +95,7 @@ namespace Nethermind.Baseline.Test
             var testRpc = result.TestRpc;
             BaselineTree baselineTree = BuildATree();
             var fromContractAdress = ContractAddress.From(address, 0);
-            var baselineTreeHelper = new BaselineTreeHelper(testRpc.LogFinder);
+            var baselineTreeHelper = new BaselineTreeHelper(testRpc.LogFinder, _baselineDb);
             new BaselineTreeTracker(fromContractAdress, baselineTree, testRpc.BlockProcessor, baselineTreeHelper);
 
             var contract = new MerkleTreeSHAContract(_abiEncoder, fromContractAdress);
@@ -128,7 +125,7 @@ namespace Nethermind.Baseline.Test
                 .WithGenesisBlockBuilder(blockBuilder)
                 .Build(spec);
             testRpc.TestWallet.UnlockAccount(address, new SecureString());
-            await testRpc.AddFunds(address, 10.Ether());
+            await testRpc.AddFunds(address, 1.Ether());
 
             BaselineModule baselineModule = new BaselineModule(
                 testRpc.TxSender,
@@ -137,7 +134,7 @@ namespace Nethermind.Baseline.Test
                 testRpc.BlockTree,
                 new AbiEncoder(),
                 _fileSystem,
-                new MemDb(),
+                _baselineDb,
                 LimboLogs.Instance,
                 testRpc.BlockProcessor);
             Keccak txHash = (await baselineModule.baseline_deploy(address, "MerkleTreeSHA")).Data;
@@ -147,7 +144,7 @@ namespace Nethermind.Baseline.Test
 
         private BaselineTree BuildATree(IKeyValueStore keyValueStore = null)
         {
-            return new ShaBaselineTree(keyValueStore ?? new MemDb(), new byte[] { }, 0);
+            return new ShaBaselineTree(_baselineDb, new byte[] { }, 0);
         }
 
 
