@@ -32,16 +32,22 @@ namespace Nethermind.Config
 
         public T GetConfig<T>() where T : IConfig
         {
-            Type configType = typeof(T);
+            return (T)GetConfig(typeof(T));
+        }
+
+        public object GetConfig(Type configType)
+        {
+            if (!typeof(IConfig).IsAssignableFrom(configType)) throw new ArgumentException($"Type {configType} is not {typeof(IConfig)}");
+                
             if (!_instances.ContainsKey(configType))
             {
                 if (!_implementations.ContainsKey(configType))
                 {
                     Initialize();
                 }
-                
-                T config = (T)Activator.CreateInstance(_implementations[configType]);
-                _instances[typeof(T)] = config!;
+
+                object config = Activator.CreateInstance(_implementations[configType]);
+                _instances[configType] = config!;
                 foreach (PropertyInfo propertyInfo in config.GetType().GetProperties(BindingFlags.Public | BindingFlags.Instance))
                 {
                     for (int i = 0; i < _configSource.Count; i++)
@@ -59,14 +65,14 @@ namespace Nethermind.Config
                             {
                                 throw new InvalidOperationException($"Cannot set value of {category}.{name}", e);
                             }
-                            
+
                             break;
                         }
                     }
                 }
             }
-
-            return (T)_instances[configType];
+            
+            return _instances[configType];
         }
 
         public object GetRawValue(string category, string name)
@@ -93,9 +99,9 @@ namespace Nethermind.Config
         
         private Dictionary<string, object> Categories { get; set; } = new Dictionary<string, object>(StringComparer.InvariantCultureIgnoreCase);
         
-        private Dictionary<Type, Type> _implementations = new Dictionary<Type, Type>();
+        private readonly Dictionary<Type, Type> _implementations = new Dictionary<Type, Type>();
         
-        private TypeDiscovery _typeDiscovery = new TypeDiscovery();
+        private readonly TypeDiscovery _typeDiscovery = new TypeDiscovery();
         
         public void Initialize()
         {
@@ -104,9 +110,7 @@ namespace Nethermind.Config
 
             foreach (Type @interface in interfaces)
             {
-                Type directImplementation; 
-
-                directImplementation = @interface.GetDirectInterfaceImplementation();
+                Type directImplementation = @interface.GetDirectInterfaceImplementation();
 
                 if (directImplementation != null)
                 {

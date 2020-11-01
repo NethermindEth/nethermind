@@ -46,6 +46,7 @@ namespace Nethermind.Network.P2P
         public string ClientId => Node?.ClientId;
         public UInt256 TotalDifficulty { get; set; }
         public PublicKey Id => Node.Id;
+        string ITxPoolPeer.Enode => Node?.ToString();
 
         public virtual bool IncludeInTxPool => true;
         protected ISyncServer SyncServer { get; }

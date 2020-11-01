@@ -48,7 +48,7 @@ namespace Nethermind.TxPool
         }
         
         public UInt256 ReserveOwnTransactionNonce(Address address) => UInt256.Zero;
-        
+
         public event EventHandler<TxEventArgs> NewDiscovered
         {
             add { }

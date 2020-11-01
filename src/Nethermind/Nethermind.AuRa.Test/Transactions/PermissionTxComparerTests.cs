@@ -269,7 +269,7 @@ namespace Nethermind.AuRa.Test.Transactions
             expectation = transactionSelect?.Invoke(expectation) ?? expectation;
 
             IComparer<Transaction> comparer = new CompareTxByPermissionOnSpecifiedBlock(sendersWhitelist, priorities, blockHeader)
-                .ThenBy(CompareTxByGas.Instance); 
+                .ThenBy(TxPool.TxPool.DefaultComparer); 
             
 
             var txBySender = transactions.GroupBy(t => t.SenderAddress)

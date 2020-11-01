@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -15,16 +15,28 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System;
+using System.Collections.Generic;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 
 namespace Nethermind.TxPool
 {
-    public interface ITxPoolPeer
+    /// <summary>
+    /// Default ordering by <see cref="Transaction.GasLimit"/> asc
+    /// </summary>
+    public class CompareTxByGasLimit : IComparer<Transaction>
     {
-        public PublicKey Id { get; }
-        public string Enode => string.Empty;
-        void SendNewTransaction(Transaction tx, bool isPriority);
+        public static readonly CompareTxByGasLimit Instance = new CompareTxByGasLimit();
+        
+        private CompareTxByGasLimit() { }
+
+        public int Compare(Transaction x, Transaction y)
+        {
+            if (ReferenceEquals(x, y)) return 0;
+            if (ReferenceEquals(null, y)) return 1;
+            if (ReferenceEquals(null, x)) return -1;
+
+            // then by gas limit ascending
+            return x.GasLimit.CompareTo(y.GasLimit);
+        }
     }
 }

@@ -14,7 +14,9 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using FluentAssertions;
+using Nethermind.Core;
 using Nethermind.Logging;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62;
@@ -33,6 +35,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         private TxFloodController _controller;
         private Eth62ProtocolHandler _handler;
         private ISession _session;
+        private ITimestamper _timestamper;
 
         [SetUp]
         public void Setup()
@@ -46,19 +49,18 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
                 Substitute.For<ITxPool>(),
                 LimboLogs.Instance);
 
-            _controller = new TxFloodController(_handler, LimboNoErrorLogger.Instance);
+            _timestamper = Substitute.For<ITimestamper>();
+            _timestamper.UtcNow.Returns(c => DateTime.UtcNow);
+            _controller = new TxFloodController(_handler, _timestamper, LimboNoErrorLogger.Instance);
         }
 
         [Test]
         public void Is_allowed_will_be_true_unless_misbehaving()
         {
-            int allowedCount = 0;
             for (int i = 0; i < 10000; i++)
             {
-                if (_controller.IsAllowed()) allowedCount++;
+                _controller.IsAllowed().Should().BeTrue();
             }
-
-            allowedCount.Should().BeGreaterThan(500).And.BeLessThan(1500);
         }
         
         [Test]
@@ -66,13 +68,16 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         {
             for (int i = 0; i < 601; i++)
             {
-                _controller.ReportNotAccepted();
+                _controller.Report(false);
             }
             
+            int allowedCount = 0;
             for (int i = 0; i < 10000; i++)
             {
-                _controller.IsAllowed().Should().BeFalse();
+                if (_controller.IsAllowed()) allowedCount++;
             }
+            
+            allowedCount.Should().BeInRange(500, 1500);
         }
         
         [Test]
@@ -80,22 +85,22 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         {
             for (int i = 0; i < 600; i++)
             {
-                _controller.ReportNotAccepted();
+                _controller.Report(false);
             }
             
             // for easier debugging
-            _controller.ReportNotAccepted();
+            _controller.Report(false);
             
             _session.DidNotReceiveWithAnyArgs()
                 .InitiateDisconnect(DisconnectReason.UselessPeer, null);
             
             for (int i = 0; i < 6000 - 601; i++)
             {
-                _controller.ReportNotAccepted();
+                _controller.Report(false);
             }
             
             // for easier debugging
-            _controller.ReportNotAccepted();
+            _controller.Report(false);
             
             _session.Received()
                 .InitiateDisconnect(DisconnectReason.UselessPeer, Arg.Any<string>());
@@ -106,7 +111,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         {
             for (int i = 0; i < 1000; i++)
             {
-                _controller.ReportNotAccepted();
+                _controller.Report(false);
             }
 
             _controller.IsDowngraded.Should().BeTrue();
@@ -129,6 +134,20 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             _controller.IsEnabled.Should().BeTrue();
             _controller.IsEnabled = true;
             _controller.IsEnabled.Should().BeTrue();
+        }
+        
+        [Test]
+        public void Misbehaving_expires()
+        {
+            for (int i = 0; i < 1000; i++)
+            {
+                _controller.Report(false);
+            }
+
+            _controller.IsDowngraded.Should().BeTrue();
+            _timestamper.UtcNow.Returns(DateTime.UtcNow.AddSeconds(61));
+            _controller.Report(false);
+            _controller.IsDowngraded.Should().BeFalse();
         }
     }
 }
