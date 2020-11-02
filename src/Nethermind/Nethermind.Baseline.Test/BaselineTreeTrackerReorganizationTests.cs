@@ -54,15 +54,11 @@ namespace Nethermind.Baseline.Test
                 Assert.AreEqual(test.ExpectedTreeCounts[i], baselineTree.Count);
             }
 
-            testRpc.BlockProducer.BlockParent = new BlockHeader(Keccak.Compute("parent"),
-                Keccak.OfAnEmptySequenceRlp,
-                Address.Zero,
-                1_000_000, 6,
-                4_000_000,
-                1_000_000,
-                new byte[] { 1, 2, 3 });
-            testRpc.BlockProducer.BlockParent.Hash = Keccak.Compute("parent2");
+            testRpc.BlockProducer.BlockParent = testRpc.BlockTree.FindHeader(5);
 
+            await testRpc.AddBlock(false);
+            await Task.Delay(1000);
+            testRpc.BlockProducer.BlockParent = testRpc.BlockProducer.LastProducedBlock.Header;
             await testRpc.AddBlock();
         }
     }

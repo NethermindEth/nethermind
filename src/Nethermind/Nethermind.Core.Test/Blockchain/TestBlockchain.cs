@@ -200,6 +200,26 @@ namespace Nethermind.Core.Test.Blockchain
             _oneAtATime.Set();
         }
 
+        public async Task AddBlock(bool shouldWaitForHead = true, params Transaction[] transactions)
+        {
+            await _oneAtATime.WaitOneAsync(CancellationToken.None);
+            foreach (Transaction transaction in transactions)
+            {
+                TxPool.AddTransaction(transaction, TxHandlingOptions.None);
+            }
+
+            Timestamper.Add(TimeSpan.FromSeconds(1));
+            BlockProducer.BuildNewBlock();
+
+            if (shouldWaitForHead)
+            {
+                await _resetEvent.WaitAsync(CancellationToken.None);
+            }
+
+
+            _oneAtATime.Set();
+        }
+
         public void AddTransaction(Transaction testObject)
         {
             TxPool.AddTransaction(testObject, TxHandlingOptions.None);

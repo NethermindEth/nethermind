@@ -3,6 +3,7 @@ using System.Linq;
 using System.Runtime.CompilerServices;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
+using Nethermind.State.Repositories;
 using Nethermind.Trie;
 
 [assembly: InternalsVisibleTo("Nethermind.Baseline.Test")]
@@ -23,6 +24,7 @@ namespace Nethermind.Baseline.Tree
         private readonly IKeyValueStore _keyValueStore;
         private readonly IKeyValueStore _metadataKeyValueStore;
         private readonly byte[] _dbPrefix;
+        private readonly object _synchroObject = new object();
 
         static BaselineTree()
         {
@@ -88,6 +90,11 @@ namespace Nethermind.Baseline.Tree
             return new Keccak(nodeHashBytes);
         }
 
+        public BatchWrite StartBatch()
+        {
+            return new BatchWrite(_synchroObject);
+        }
+
         public uint GetLeavesCountFromNextBlocks(long blockNumber)
         {
             var foundCount = LoadBlockNumberCount(LastBlockWithLeaves);
@@ -107,6 +114,8 @@ namespace Nethermind.Baseline.Tree
 
         public void SaveBlockNumberCount(long blockNumber, uint count, long previousBlockWithLeaves)
         {
+            var rlp = Rlp.Encode(blockNumber).Bytes;
+
             var countBytes = BitConverter.GetBytes(count);
             var previousBlockBytes = BitConverter.GetBytes(previousBlockWithLeaves);
             _metadataKeyValueStore[MetadataBuildDbKey(blockNumber)] = countBytes.Concat(previousBlockBytes).ToArray();

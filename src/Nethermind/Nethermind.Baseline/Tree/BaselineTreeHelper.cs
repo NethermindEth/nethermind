@@ -77,6 +77,7 @@ namespace Nethermind.Baseline.Tree
 
             long? currentBlockNumber = null;
             uint count = 0;
+            using var batch = baselineTree.StartBatch();
             foreach (FilterLog filterLog in insertLeavesLogs
                 .Union(insertLeafLogs)
                 .OrderBy(fl => fl.BlockNumber).ThenBy(fl => fl.LogIndex))
