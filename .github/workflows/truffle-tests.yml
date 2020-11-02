@@ -11,6 +11,10 @@ jobs:
     name: Nethermind truffle tests on Spaceneth
     runs-on: ubuntu-latest
     steps:
+    - name: Checkout repository
+      uses: actions/checkout@v2
+    - name: Unshallow fetching
+      run: git fetch --unshallow
     - name: Cloning truffle tests
       run: |
         git clone https://github.com/NethermindEth/truffleTest.git
