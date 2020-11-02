@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Runtime.CompilerServices;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
@@ -20,6 +21,7 @@ namespace Nethermind.Baseline.Tree
         public const uint MaxLeafIndex = uint.MaxValue;
 
         private readonly IKeyValueStore _keyValueStore;
+        private readonly IKeyValueStore _metadataKeyValueStore;
         private readonly byte[] _dbPrefix;
 
         static BaselineTree()
@@ -65,6 +67,11 @@ namespace Nethermind.Baseline.Tree
             return Rlp.Encode(Rlp.Encode(_dbPrefix), Rlp.Encode(nodeIndex)).Bytes;
         }
 
+        private byte[] MetadataBuildDbKey(long blockNumber)
+        {
+            return Rlp.Encode(Rlp.Encode(_dbPrefix), Rlp.Encode(blockNumber)).Bytes;
+        }
+
         private void SaveValue(in Index index, byte[] hashBytes)
         {
             _keyValueStore[BuildDbKey(index.NodeIndex)] = hashBytes;
@@ -94,12 +101,16 @@ namespace Nethermind.Baseline.Tree
 
         private (uint Count, long PreviousBlockWithLeaves) LoadBlockNumberCount(long blockNumber)
         {
-            return (0, 0); // ToDo
+           // _metadataKeyValueStore[MetadataBuildDbKey(index.NodeIndex)] = 
+            return (0, 0); // ToDo MM
         }
 
-        private void SaveBlockNumberCount(long blockNumber, int count)
+        public void SaveBlockNumberCount(long blockNumber, uint count, long previousBlockWithLeaves)
         {
-            // ToDo
+            var countBytes = BitConverter.GetBytes(count);
+            var previousBlockBytes = BitConverter.GetBytes(previousBlockWithLeaves);
+            _metadataKeyValueStore[MetadataBuildDbKey(blockNumber)] = countBytes.Concat(previousBlockBytes).ToArray();
+            // ToDo MM
         }
 
         private static ulong GetMinNodeIndex(in uint row)

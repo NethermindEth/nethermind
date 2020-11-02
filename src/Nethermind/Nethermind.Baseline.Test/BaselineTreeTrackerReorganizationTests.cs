@@ -29,8 +29,6 @@ namespace Nethermind.Baseline.Test
         [Test]
         public async Task Tree_tracker_insert_leaf2([ValueSource(nameof(InsertLeafTestCases))]InsertLeafTest test)
         {
-
-
             var address = TestItem.Addresses[0];
             var result = await InitializeTestRpc(address);
             var testRpc = result.TestRpc;
@@ -39,9 +37,6 @@ namespace Nethermind.Baseline.Test
             var baselineTreeHelper = new BaselineTreeHelper(testRpc.LogFinder, _baselineDb);
             new BaselineTreeTracker(fromContractAdress, baselineTree, testRpc.BlockProcessor, baselineTreeHelper);
 
-
-
-            
             var contract = new MerkleTreeSHAContract(_abiEncoder, fromContractAdress);
             UInt256 nonce = 1L;
             for (int i = 0; i < test.ExpectedTreeCounts.Length; i++)
@@ -62,10 +57,11 @@ namespace Nethermind.Baseline.Test
             testRpc.BlockProducer.BlockParent = new BlockHeader(Keccak.Compute("parent"),
                 Keccak.OfAnEmptySequenceRlp,
                 Address.Zero,
-                1_000_000, 0,
+                1_000_000, 6,
                 4_000_000,
                 1_000_000,
                 new byte[] { 1, 2, 3 });
+            testRpc.BlockProducer.BlockParent.Hash = Keccak.Compute("parent2");
 
             await testRpc.AddBlock();
         }

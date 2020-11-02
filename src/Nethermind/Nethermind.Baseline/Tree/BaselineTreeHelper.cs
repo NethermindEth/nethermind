@@ -75,10 +75,30 @@ namespace Nethermind.Baseline.Tree
             var insertLeafLogs = _logFinder.FindLogs(insertLeafFilter);
             BaselineTree baselineTree = new ShaBaselineTree(new MemDb(), Array.Empty<byte>(), 5); // toDo MM empty address tree?
 
+            long? currentBlockNumber = null;
+            uint count = 0;
             foreach (FilterLog filterLog in insertLeavesLogs
                 .Union(insertLeafLogs)
                 .OrderBy(fl => fl.BlockNumber).ThenBy(fl => fl.LogIndex))
             {
+                if (currentBlockNumber == null)
+                {
+                    currentBlockNumber = filterLog.BlockNumber;
+                }
+
+                if (currentBlockNumber != filterLog.BlockNumber)
+                {
+                    var previousBlockWithLeaves = baselineTree.LastBlockWithLeaves;
+                    baselineTree.SaveBlockNumberCount(currentBlockNumber.Value, count, previousBlockWithLeaves);
+                    baselineTree.LastBlockWithLeaves = currentBlockNumber.Value;
+                    currentBlockNumber = filterLog.BlockNumber;
+                    count = 1;
+                }
+                else
+                {
+                    ++count;
+                }
+
                 if (filterLog.Data.Length == 96)
                 {
                     Keccak leafHash = new Keccak(filterLog.Data.Slice(32, 32).ToArray());
@@ -92,6 +112,13 @@ namespace Nethermind.Baseline.Tree
                         baselineTree.Insert(leafHash, false);
                     }
                 }
+            }
+
+            if (currentBlockNumber != null && count !=0)
+            {
+                var previousBlockWithLeaves = baselineTree.LastBlockWithLeaves;
+                baselineTree.SaveBlockNumberCount(currentBlockNumber.Value, count, previousBlockWithLeaves);
+                baselineTree.LastBlockWithLeaves = currentBlockNumber.Value;
             }
 
             baselineTree.CalculateHashes();
