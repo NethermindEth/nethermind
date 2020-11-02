@@ -11,18 +11,23 @@ jobs:
     name: Nethermind truffle tests on Spaceneth
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v2.3.3
-    - name: Installing Linux packages
-      run: |
-        sudo apt-get update
-        sudo apt-get install libsnappy-dev libc6-dev libc6
-    - name: Updating submodules
-      run: git submodule update --init src/rocksdb-sharp src/int256 src/Dirichlet
     - name: Cloning truffle tests
       run: |
         git clone https://github.com/NethermindEth/truffleTest.git
-    - name: Building nethermind docker
-      run: docker build -t neth .
+    - name: Set up docker buildx
+      id: buildx
+      uses: crazy-max/ghaction-docker-buildx@v3.1.0
+      with:
+        version: latest
+    - name: Docker Login
+      if: success()
+      env:
+        DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
+      run: |
+        echo "${DOCKER_PASSWORD}" | docker login --username "${{ steps.settings.outputs.docker_username }}" --password-stdin
+    - name: Build docker image
+      run: |
+        docker buildx build --platform=linux/amd64 -t neth .
     - name: Setup the Node.js
       uses: actions/setup-node@v1.4.4
       with:
