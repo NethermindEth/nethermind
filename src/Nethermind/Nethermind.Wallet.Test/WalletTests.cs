@@ -33,9 +33,59 @@ using NUnit.Framework;
 
 namespace Nethermind.Wallet.Test
 {
-    [TestFixture]
+    [TestFixture, Parallelizable(ParallelScope.All)]
     public class WalletTests
     {
+        private class Context : IDisposable
+        {
+            private readonly TempPath _keyStorePath = TempPath.GetTempDirectory();
+
+            public IWallet Wallet { get; }
+
+            public Context(WalletType walletType)
+            {
+                switch (walletType)
+                {
+                    case WalletType.KeyStore:
+                    {
+                        IKeyStoreConfig config = new KeyStoreConfig();
+                        config.KeyStoreDirectory = _keyStorePath.Path;
+                        ISymmetricEncrypter encrypter = new AesEncrypter(config, LimboLogs.Instance);
+                        Wallet = new DevKeyStoreWallet(
+                            new FileKeyStore(config, new EthereumJsonSerializer(), encrypter, new CryptoRandom(), LimboLogs.Instance, new PrivateKeyStoreIOSettingsProvider(config)),
+                            LimboLogs.Instance);
+                        break;
+                    }
+                    case WalletType.Memory:
+                    {
+                        Wallet = new DevWallet(new WalletConfig(), LimboLogs.Instance);
+                        break;
+                    }
+                    case WalletType.ProtectedKeyStore:
+                    {
+                        IKeyStoreConfig config = new KeyStoreConfig();
+                        config.KeyStoreDirectory = _keyStorePath.Path;
+                        ISymmetricEncrypter encrypter = new AesEncrypter(config, LimboLogs.Instance);
+                        var wallet = new ProtectedKeyStoreWallet(
+                            new FileKeyStore(config, new EthereumJsonSerializer(), encrypter, new CryptoRandom(), LimboLogs.Instance, new PrivateKeyStoreIOSettingsProvider(config)),
+                            new ProtectedPrivateKeyFactory(new CryptoRandom(), Timestamper.Default),
+                            Timestamper.Default,
+                            LimboLogs.Instance);
+                        wallet.SetupTestAccounts(3);
+                        Wallet = wallet;
+                        break;
+                    }
+                    default:
+                        throw new ArgumentOutOfRangeException(nameof(walletType), walletType, null);
+                }
+            }
+
+            public void Dispose()
+            {
+                _keyStorePath?.Dispose();
+            }
+        }
+
         public enum WalletType
         {
             KeyStore,
@@ -43,77 +93,29 @@ namespace Nethermind.Wallet.Test
             ProtectedKeyStore
         }
 
-        [SetUp]
-        public void SetUp()
-        {
-            _keyStorePath.Dispose();
-        }
-
-        [TearDown]
-        public void TearDown()
-        {
-            _keyStorePath.Dispose();
-        }
-
-        private readonly TempPath _keyStorePath = TempPath.GetTempDirectory("TestWalletTests_keystore");
-
-        private IWallet SetupWallet(WalletType walletType)
-        {
-            switch (walletType)
-            {
-                case WalletType.KeyStore:
-                {
-                    IKeyStoreConfig config = new KeyStoreConfig();
-                    config.KeyStoreDirectory = _keyStorePath.Path;
-                    ISymmetricEncrypter encrypter = new AesEncrypter(config, LimboLogs.Instance);
-                    return new DevKeyStoreWallet(
-                        new FileKeyStore(config, new EthereumJsonSerializer(), encrypter, new CryptoRandom(), LimboLogs.Instance, new PrivateKeyStoreIOSettingsProvider(config)),
-                        LimboLogs.Instance);
-                }
-                case WalletType.Memory:
-                    return new DevWallet(new WalletConfig(), LimboLogs.Instance);
-                case WalletType.ProtectedKeyStore:
-                {
-                    IKeyStoreConfig config = new KeyStoreConfig();
-                    config.KeyStoreDirectory = _keyStorePath.Path;
-                    ISymmetricEncrypter encrypter = new AesEncrypter(config, LimboLogs.Instance);
-                    var wallet = new ProtectedKeyStoreWallet(
-                        new FileKeyStore(config, new EthereumJsonSerializer(), encrypter, new CryptoRandom(), LimboLogs.Instance, new PrivateKeyStoreIOSettingsProvider(config)),
-                        new ProtectedPrivateKeyFactory(new CryptoRandom(), Timestamper.Default),
-                        Timestamper.Default,
-                        LimboLogs.Instance);
-                    wallet.SetupTestAccounts(3);
-                    return wallet;
-                }
-                default:
-                    throw new ArgumentOutOfRangeException(nameof(walletType), walletType, null);
-            }
-        }
-
         public static IEnumerable<WalletType> WalletTypes
         {
             get => Enum.GetValues(typeof(WalletType)).OfType<WalletType>();
         }
-        
+
         [Test]
         public void Can_setup_wallet_twice([ValueSource(nameof(WalletTypes))] WalletType walletType)
         {
-            IWallet wallet1 = SetupWallet(walletType);
-            IWallet wallet2 = SetupWallet(walletType);
+            using var wallet1 = new Context(walletType);
+            using var wallet2 = new Context(walletType);
         }
-        
+
         [Test]
         public void Has_10_dev_accounts([ValueSource(nameof(WalletTypes))] WalletType walletType)
         {
-            IWallet wallet = SetupWallet(walletType);
-            Assert.AreEqual((walletType == WalletType.Memory ? 10 : 3), wallet.GetAccounts().Length);
+            using Context ctx = new Context(walletType);
+            Assert.AreEqual((walletType == WalletType.Memory ? 10 : 3), ctx.Wallet.GetAccounts().Length);
         }
-        
+
         [Test]
         public void Each_account_can_sign_with_simple_key([ValueSource(nameof(WalletTypes))] WalletType walletType)
         {
-            IWallet wallet = SetupWallet(walletType);
-
+            using Context ctx = new Context(walletType);
             int count = walletType == WalletType.Memory ? 10 : 3;
             for (int i = 1; i <= count; i++)
             {
@@ -121,25 +123,24 @@ namespace Nethermind.Wallet.Test
                 keyBytes[31] = (byte) i;
                 PrivateKey key = new PrivateKey(keyBytes);
                 TestContext.Write(key.Address.Bytes.ToHexString() + Environment.NewLine);
-                Assert.True(wallet.GetAccounts().Any(a => a == key.Address), $"{i}");
+                Assert.True(ctx.Wallet.GetAccounts().Any(a => a == key.Address), $"{i}");
             }
-            
-            Assert.AreEqual(count, wallet.GetAccounts().Length);
+
+            Assert.AreEqual(count, ctx.Wallet.GetAccounts().Length);
         }
 
         [Test]
         public void Can_sign_on_networks_with_chain_id([ValueSource(nameof(WalletTypes))] WalletType walletType, [Values(0, 1, 40000)] int chainId)
         {
             EthereumEcdsa ecdsa = new EthereumEcdsa(chainId, LimboLogs.Instance);
-            IWallet wallet = SetupWallet(walletType);
-
+            using Context ctx = new Context(walletType);
             for (int i = 1; i <= (walletType == WalletType.Memory ? 10 : 3); i++)
             {
-                Address signerAddress = wallet.GetAccounts()[0];
+                Address signerAddress = ctx.Wallet.GetAccounts()[0];
                 Transaction tx = new Transaction();
                 tx.SenderAddress = signerAddress;
-                
-                wallet.Sign(tx, chainId);
+
+                ctx.Wallet.Sign(tx, chainId);
                 Address recovered = ecdsa.RecoverAddress(tx);
                 Assert.AreEqual(signerAddress, recovered, $"{i}");
                 Console.WriteLine(tx.Signature);
