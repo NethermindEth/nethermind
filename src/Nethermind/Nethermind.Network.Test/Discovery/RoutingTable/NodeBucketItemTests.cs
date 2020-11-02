@@ -26,7 +26,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Network.Test.Discovery.RoutingTable
 {
-    [TestFixture]
+    [TestFixture, Parallelizable(ParallelScope.All)]
     public class NodeBucketItemTests
     {
         [Test]
