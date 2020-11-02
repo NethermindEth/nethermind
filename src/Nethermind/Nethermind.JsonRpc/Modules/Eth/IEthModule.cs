@@ -88,7 +88,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         ResultWrapper<byte[]> eth_sign(Address addressData, byte[] message);
         
         [JsonRpcMethod(IsImplemented = true, Description = "Send a transaction to the tx pool and broadcasting", IsSharable = true)]
-        Task<ResultWrapper<Keccak>> eth_sendTransaction(TransactionForRpc transactionForRpc);
+        Task<ResultWrapper<Keccak>> eth_sendTransaction(TransactionForRpc rpcTx);
         
         [JsonRpcMethod(IsImplemented = true, Description = "Send a raw transaction to the tx pool and broadcasting", IsSharable = true)]
         Task<ResultWrapper<Keccak>> eth_sendRawTransaction(byte[] transaction);

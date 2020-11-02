@@ -60,7 +60,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         {
             using Context ctx = await Context.Create();
             string serialized = ctx._test.TestEthRpc("eth_getBalance", TestItem.AddressA.Bytes.ToHexString(true));
-            Assert.AreEqual("{{\"jsonrpc\":\"2.0\",\"result\":\"0x3635c9adc5de9f09e5\",\"id\":67}}", serialized);
+            Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":\"0x3635c9adc5de9f09e5\",\"id\":67}", serialized);
         }
 
         [Test]
@@ -152,7 +152,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         {
             using Context ctx = await Context.Create();
             string serialized = ctx._test.TestEthRpc("eth_getTransactionCount", TestItem.AddressA.Bytes.ToHexString(true));
-            Assert.AreEqual("{{\"jsonrpc\":\"2.0\",\"result\":\"0x3\",\"id\":67}}", serialized);
+            Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":\"0x3\",\"id\":67}", serialized);
         }
         
         [Test]
@@ -161,7 +161,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             using Context ctx = await Context.Create();
             _ = ctx._test.TestEthRpc("eth_newBlockFilter");
             string serialized2 = ctx._test.TestEthRpc("eth_getFilterChanges", "0");
-            Assert.AreEqual("{{\"jsonrpc\":\"2.0\",\"result\":[],\"id\":67}}", serialized2);
+            Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":[],\"id\":67}", serialized2);
         }
         
         [Test]
@@ -170,7 +170,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             using Context ctx = await Context.Create();
             _ = ctx._test.TestEthRpc("eth_newBlockFilter");
             string serialized2 = ctx._test.TestEthRpc("eth_uninstallFilter", "0");
-            Assert.AreEqual("{{\"jsonrpc\":\"2.0\",\"result\":true,\"id\":67}}", serialized2);
+            Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":true,\"id\":67}", serialized2);
         }
         
         [Test]
@@ -209,7 +209,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         {
             using Context ctx = await Context.Create();
             string serialized = ctx._test.TestEthRpc("eth_getStorageAt", TestItem.AddressA.Bytes.ToHexString(true), "0x1");
-            Assert.AreEqual("{{\"jsonrpc\":\"2.0\",\"result\":\"0x0000000000000000000000000000000000000000000000000000000000abcdef\",\"id\":67}}", serialized);
+            Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":\"0x0000000000000000000000000000000000000000000000000000000000abcdef\",\"id\":67}", serialized);
         }
 
         [Test]
@@ -217,7 +217,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         {
             using Context ctx = await Context.Create();
             string serialized = ctx._test.TestEthRpc("eth_blockNumber");
-            Assert.AreEqual("{{\"jsonrpc\":\"2.0\",\"result\":\"0x3\",\"id\":67}}", serialized);
+            Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":\"0x3\",\"id\":67}", serialized);
         }
 
         [Test]
@@ -670,7 +670,27 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
         
         [Test]
-        public async Task Send_transaction_without_signature_will_try_to_set_correct_nonce()
+        public async Task Send_transaction_without_signature_will_not_set_nonce_when_zero_and_not_null()
+        {
+            using Context ctx = await Context.Create();
+            ITxSender txSender = Substitute.For<ITxSender>();
+            IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
+            txSender.SendTransaction(Arg.Any<Transaction>(), TxHandlingOptions.PersistentBroadcast)
+                .Returns(TestItem.KeccakA);
+
+            ctx._test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+                .WithBlockchainBridge(bridge).WithTxSender(txSender).Build();
+            Transaction tx = Build.A.Transaction.TestObject;
+            TransactionForRpc rpcTx = new TransactionForRpc(tx);
+            rpcTx.Nonce = 0;
+            string serialized = ctx._test.TestEthRpc("eth_sendTransaction", new EthereumJsonSerializer().Serialize(rpcTx));
+            
+            await txSender.Received().SendTransaction(Arg.Any<Transaction>(), TxHandlingOptions.PersistentBroadcast);
+            Assert.AreEqual($"{{\"jsonrpc\":\"2.0\",\"result\":\"{TestItem.KeccakA.Bytes.ToHexString(true)}\",\"id\":67}}", serialized);
+        }
+        
+        [Test]
+        public async Task Send_transaction_without_signature_will_manage_nonce_when_null()
         {
             using Context ctx = await Context.Create();
             ITxSender txSender = Substitute.For<ITxSender>();
@@ -680,8 +700,10 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             ctx._test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
                 .WithBlockchainBridge(bridge).WithTxSender(txSender).Build();
-            Transaction tx = Build.A.Transaction.Signed(new EthereumEcdsa(ChainId.Mainnet, LimboLogs.Instance), TestItem.PrivateKeyA).TestObject;
-            string serialized = ctx._test.TestEthRpc("eth_sendTransaction", new EthereumJsonSerializer().Serialize(new TransactionForRpc(tx)));
+            Transaction tx = Build.A.Transaction.TestObject;
+            TransactionForRpc rpcTx = new TransactionForRpc(tx);
+            rpcTx.Nonce = null;
+            string serialized = ctx._test.TestEthRpc("eth_sendTransaction", new EthereumJsonSerializer().Serialize(rpcTx));
             
             await txSender.Received().SendTransaction(Arg.Any<Transaction>(), TxHandlingOptions.PersistentBroadcast | TxHandlingOptions.ManagedNonce);
             Assert.AreEqual($"{{\"jsonrpc\":\"2.0\",\"result\":\"{TestItem.KeccakA.Bytes.ToHexString(true)}\",\"id\":67}}", serialized);

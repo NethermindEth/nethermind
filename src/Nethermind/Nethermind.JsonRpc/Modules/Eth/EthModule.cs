@@ -97,7 +97,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             SyncingResult result;
             long bestSuggestedNumber = _blockFinder.FindBestSuggestedHeader().Number;
             bool isSyncing = bestSuggestedNumber > _blockFinder.Head.Number + 1;
-            
+
             if (isSyncing)
             {
                 result = new SyncingResult
@@ -215,8 +215,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
             Account account = _stateReader.GetAccount(header.StateRoot, address);
             UInt256 nonce = account?.Nonce ?? 0;
-            _logger.Warn($"{address} nonce is {nonce}");
-            
+
             return Task.FromResult(ResultWrapper<UInt256?>.Success(nonce));
         }
 
@@ -313,10 +312,11 @@ namespace Nethermind.JsonRpc.Modules.Eth
             return ResultWrapper<byte[]>.Success(sig.Bytes);
         }
 
-        public Task<ResultWrapper<Keccak>> eth_sendTransaction(TransactionForRpc transactionForRpc)
+        public Task<ResultWrapper<Keccak>> eth_sendTransaction(TransactionForRpc rpcTx)
         {
-            Transaction tx = transactionForRpc.ToTransactionWithDefaults();
-            return SendTx(tx, TxHandlingOptions.ManagedNonce);
+            Transaction tx = rpcTx.ToTransactionWithDefaults();
+            TxHandlingOptions options = rpcTx.Nonce == null ? TxHandlingOptions.ManagedNonce : TxHandlingOptions.None;
+            return SendTx(tx, options);
         }
 
         public async Task<ResultWrapper<Keccak>> eth_sendRawTransaction(byte[] transaction)
@@ -396,7 +396,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             }
 
             BlockHeader header = searchResult.Object;
-            
+
             if (!HasStateForBlock(header))
             {
                 return ResultWrapper<UInt256?>.Fail($"No state available for block {header.Hash}", ErrorCodes.ResourceUnavailable);
@@ -651,7 +651,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                     }
                 }
             }
-            
+
             BlockParameter fromBlock = filter.FromBlock;
             BlockParameter toBlock = filter.ToBlock;
 
