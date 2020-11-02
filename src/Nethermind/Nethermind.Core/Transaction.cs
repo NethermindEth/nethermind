@@ -56,16 +56,18 @@ namespace Nethermind.Core
         public string ToString(string indent)
         {
             StringBuilder builder = new StringBuilder();
-            builder.AppendLine($"{indent}Hash: {Hash}");
-            builder.AppendLine($"{indent}To: {To}");
+            builder.AppendLine($"{indent}Hash:      {Hash}");
+            builder.AppendLine($"{indent}From:      {SenderAddress}");
+            builder.AppendLine($"{indent}To:        {To}");
             builder.AppendLine($"{indent}Gas Price: {GasPrice}");
             builder.AppendLine($"{indent}Gas Limit: {GasLimit}");
-            builder.AppendLine($"{indent}Nonce: {Nonce}");
-            builder.AppendLine($"{indent}Value: {Value}");
-            builder.AppendLine($"{indent}Data: {(Data ?? new byte[0]).ToHexString()}");
-            builder.AppendLine($"{indent}Init: {(Init ?? new byte[0]).ToHexString()}");
+            builder.AppendLine($"{indent}Nonce:     {Nonce}");
+            builder.AppendLine($"{indent}Value:     {Value}");
+            builder.AppendLine($"{indent}Data:      {(Data ?? new byte[0]).ToHexString()}");
+            builder.AppendLine($"{indent}Init:      {(Init ?? new byte[0]).ToHexString()}");
             builder.AppendLine($"{indent}Signature: {(Signature?.Bytes ?? new byte[0]).ToHexString()}");
-            builder.AppendLine($"{indent}Signature.V: {Signature?.V ?? -1}");
+            builder.AppendLine($"{indent}V:         {Signature?.V ?? -1}");
+            builder.AppendLine($"{indent}ChainId:   {Signature?.ChainId ?? -1}");
             builder.AppendLine($"{indent}Timestamp: {Timestamp}");
             return builder.ToString();
         }

@@ -214,7 +214,10 @@ namespace Nethermind.JsonRpc.Modules.Eth
             }
 
             Account account = _stateReader.GetAccount(header.StateRoot, address);
-            return Task.FromResult(ResultWrapper<UInt256?>.Success(account?.Nonce ?? 0));
+            UInt256 nonce = account?.Nonce ?? 0;
+            _logger.Warn($"{address} nonce is {nonce}");
+            
+            return Task.FromResult(ResultWrapper<UInt256?>.Success(nonce));
         }
 
         public ResultWrapper<UInt256?> eth_getBlockTransactionCountByHash(Keccak blockHash)
@@ -313,7 +316,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         public Task<ResultWrapper<Keccak>> eth_sendTransaction(TransactionForRpc transactionForRpc)
         {
             Transaction tx = transactionForRpc.ToTransactionWithDefaults();
-            return SendTx(tx);
+            return SendTx(tx, TxHandlingOptions.ManagedNonce);
         }
 
         public async Task<ResultWrapper<Keccak>> eth_sendRawTransaction(byte[] transaction)
@@ -329,11 +332,11 @@ namespace Nethermind.JsonRpc.Modules.Eth
             }
         }
 
-        private async Task<ResultWrapper<Keccak>> SendTx(Transaction tx)
+        private async Task<ResultWrapper<Keccak>> SendTx(Transaction tx, TxHandlingOptions txHandlingOptions = TxHandlingOptions.None)
         {
             try
             {
-                Keccak txHash = await _txSender.SendTransaction(tx, TxHandlingOptions.PersistentBroadcast);
+                Keccak txHash = await _txSender.SendTransaction(tx, txHandlingOptions | TxHandlingOptions.PersistentBroadcast);
                 return ResultWrapper<Keccak>.Success(txHash);
             }
             catch (SecurityException e)
