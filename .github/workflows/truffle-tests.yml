@@ -31,7 +31,7 @@ jobs:
         echo "${DOCKER_PASSWORD}" | docker login --username "${{ secrets.DOCKER_USERNAME }}" --password-stdin
     - name: Build docker image
       run: |
-        docker buildx build --platform=linux/amd64 -t neth .
+        docker buildx build --platform=linux/amd64 -t nethermind/truffle . --push
     - name: Setup the Node.js
       uses: actions/setup-node@v1.4.4
       with:
@@ -39,10 +39,11 @@ jobs:
     - run: npm install -g truffle
     - name: Running truffle deploy
       run: |
-        docker run --name nethermind --network host -itd neth --config spaceneth_persistent
+        docker run --name nethermind --network host -itd nethermind/truffle --config spaceneth_persistent
         cd truffleTest/
         npm i sha3 --save
         npm i
         echo "silly funny task remove diamond maximum rack awesome sting chalk recycle also social banner verify" > .secret
         sleep 20
         truffle deploy --network development
+        truffle test
