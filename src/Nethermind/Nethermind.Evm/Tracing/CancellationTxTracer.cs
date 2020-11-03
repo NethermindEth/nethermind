@@ -372,7 +372,10 @@ namespace Nethermind.Evm.Tracing
         public void ReportGasUpdateForVmTrace(long refund, long gasAvailable)
         {
             _token.ThrowIfCancellationRequested();
-            _innerTracer.ReportGasUpdateForVmTrace(refund, gasAvailable);
+            if (_innerTracer.IsTracingInstructions)
+            {
+                _innerTracer.ReportGasUpdateForVmTrace(refund, gasAvailable);
+            }
         }
 
         public void ReportRefund(long refund)
