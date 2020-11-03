@@ -34,22 +34,16 @@ namespace Nethermind.Blockchain.Contracts.Json
             _serializer = JsonSerializer.CreateDefault(GetJsonSerializerSettings());
         }
 
-        public AbiDefinition Parse(string json)
+        public AbiDefinition Parse(string json, string name = null)
         {
             using var reader = new StringReader(json);
-            return Parse(reader);
-        }
-
-        public AbiDefinition Parse<T>()
-        {
-            using var reader = LoadResource(typeof(T));
-            return Parse(reader);
+            return Parse(reader, name);
         }
 
         public AbiDefinition Parse(Type type)
         {
             using var reader = LoadResource(type);
-            return Parse(reader);
+            return Parse(reader, type.Name);
         }
 
         public string LoadContract(Type type)
@@ -66,10 +60,12 @@ namespace Nethermind.Blockchain.Contracts.Json
             return builder.ToString();
         }
 
-        private AbiDefinition Parse(TextReader textReader)
+        private AbiDefinition Parse(TextReader textReader, string name)
         {
             using var reader = new JsonTextReader(textReader);
-            return _serializer.Deserialize<AbiDefinition>(reader);
+            var definition = _serializer.Deserialize<AbiDefinition>(reader);
+            definition.Name = name;
+            return definition;
         }
 
         private static StreamReader LoadResource(Type type)

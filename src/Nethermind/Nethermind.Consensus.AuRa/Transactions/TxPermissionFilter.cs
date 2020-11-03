@@ -16,6 +16,7 @@
 // 
 
 using System;
+using Nethermind.Abi;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
@@ -91,7 +92,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
                 {
                     (txPermissions, shouldCache) = versionedContract.AllowedTxTypes(parentHeader, tx);
                 }
-                catch (AuRaException e)
+                catch (AbiException e)
                 {
                     if (_logger.IsError) _logger.Error("Error calling tx permissions contract.", e);
                 }

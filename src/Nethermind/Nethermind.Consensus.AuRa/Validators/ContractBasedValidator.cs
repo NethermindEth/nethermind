@@ -240,14 +240,21 @@ namespace Nethermind.Consensus.AuRa.Validators
 
         private Address[] LoadValidatorsFromContract(BlockHeader parentHeader)
         {
-            var validators = ValidatorContract.GetValidators(parentHeader);
-
-            if (validators.Length == 0)
+            try
             {
-                throw new AuRaException("Failed to initialize validators list.");
-            }
+                var validators = ValidatorContract.GetValidators(parentHeader);
+                
+                if (validators.Length == 0)
+                {
+                    throw new AuRaException("Failed to initialize validators list.");
+                }
 
-            return validators;
+                return validators;
+            }
+            catch (AbiException e)
+            {
+                throw new AuRaException("Failed to initialize validators list.", e);
+            }
         }
 
         private void OnBlocksFinalized(object sender, FinalizeEventArgs e)

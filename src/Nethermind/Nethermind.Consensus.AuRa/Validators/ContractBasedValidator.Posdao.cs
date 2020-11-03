@@ -16,6 +16,7 @@
 // 
 
 using System.Collections.Generic;
+using Nethermind.Abi;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 
@@ -42,7 +43,7 @@ namespace Nethermind.Consensus.AuRa.Validators
                     {
                         emitInitChangeCallable = ValidatorContract.EmitInitiateChangeCallable(parent);
                     }
-                    catch (AuRaException e)
+                    catch (AbiException e)
                     {
                         if (_logger.IsError) _logger.Error($"Call to {nameof(ValidatorContract.EmitInitiateChangeCallable)} failed.", e);
                     }
