@@ -35,6 +35,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs.ChainSpecStyle;
 using NSubstitute;
+using NSubstitute.ExceptionExtensions;
 using NUnit.Framework;
 
 namespace Nethermind.AuRa.Test.Transactions
@@ -74,6 +75,14 @@ namespace Nethermind.AuRa.Test.Transactions
         public void should_not_allow_addresses_from_outside_contract()
         {
             ShouldAllowAddress(TestItem.AddressA, expected: false);
+        }
+        
+        [Test]
+        public void should_not_allow_addresses_on_contract_error()
+        {
+            Address address = TestItem.Addresses.First();
+            _certifierContract.Certified(Arg.Any<BlockHeader>(), address).Throws(new AbiException(string.Empty));
+            ShouldAllowAddress(address, expected: false);
         }
         
         [TestCase(false)]
