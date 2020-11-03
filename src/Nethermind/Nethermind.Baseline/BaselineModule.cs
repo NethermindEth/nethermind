@@ -184,15 +184,22 @@ namespace Nethermind.Baseline
             }
             else
             {
-                SearchResult<BlockHeader> searchResult = _blockFinder.SearchForHeader(blockParameter);
-                if (searchResult.IsError)
+                if (blockParameter == null)
                 {
-                    result = ResultWrapper<BaselineTreeNode>.Fail(searchResult);
+                    result = ResultWrapper<BaselineTreeNode>.Success(tree.GetLeaf((uint)leafIndex));
                 }
                 else
                 {
-                    // ToDo MM: ask about blockParameter
-                    result = ResultWrapper<BaselineTreeNode>.Success(tree.GetLeaf((uint) leafIndex));
+                    SearchResult<BlockHeader> searchResult = _blockFinder.SearchForHeader(blockParameter);
+                    if (searchResult.IsError)
+                    {
+                        result = ResultWrapper<BaselineTreeNode>.Fail(searchResult);
+                    }
+                    else
+                    {
+                        var leaf = _baselineTreeHelper.GetHistoricalLeaf(tree, (uint)leafIndex, searchResult.Object.Number);
+                        result = ResultWrapper<BaselineTreeNode>.Success(leaf);
+                    }
                 }
             }
 
@@ -230,16 +237,24 @@ namespace Nethermind.Baseline
             }
             else
             {
-                SearchResult<BlockHeader> searchResult = _blockFinder.SearchForHeader(blockParameter);
-                if (searchResult.IsError)
+                var indexes = leafIndexes.Select(i => (uint)i).ToArray();
+                if (blockParameter == null)
                 {
-                    result = ResultWrapper<BaselineTreeNode[]>.Fail(searchResult);
+                    result = ResultWrapper<BaselineTreeNode[]>.Success(
+                        tree.GetLeaves(indexes));
                 }
                 else
                 {
-                    // ToDo MM: ask about blockParameter
-                    result = ResultWrapper<BaselineTreeNode[]>.Success(
-                        tree.GetLeaves(leafIndexes.Select(i => (uint) i).ToArray()));
+                    SearchResult<BlockHeader> searchResult = _blockFinder.SearchForHeader(blockParameter);
+                    if (searchResult.IsError)
+                    {
+                        result = ResultWrapper<BaselineTreeNode[]>.Fail(searchResult);
+                    }
+                    else
+                    {
+                        var leaves = _baselineTreeHelper.GetHistoricalLeaves(tree, indexes, searchResult.Object.Number);
+                        result = ResultWrapper<BaselineTreeNode[]>.Success(leaves);
+                    }
                 }
             }
 
@@ -325,16 +340,24 @@ namespace Nethermind.Baseline
             }
             else
             {
-                SearchResult<BlockHeader> searchResult = _blockFinder.SearchForHeader(blockParameter);
-                if (searchResult.IsError)
+                if (blockParameter == null)
                 {
-                    result = ResultWrapper<bool>.Fail(searchResult);
+                    bool verificationResult = tree!.Verify(root, leaf, path);
+                    result = ResultWrapper<bool>.Success(verificationResult);
                 }
                 else
                 {
-
-                    bool verificationResult = tree!.Verify(root, leaf, path);
-                    result = ResultWrapper<bool>.Success(verificationResult);
+                    SearchResult<BlockHeader> searchResult = _blockFinder.SearchForHeader(blockParameter);
+                    if (searchResult.IsError)
+                    {
+                        result = ResultWrapper<bool>.Fail(searchResult);
+                    }
+                    else
+                    {
+                        var historicalTree = _baselineTreeHelper.CreateHistoricalTree(contractAddress, searchResult.Object.Number, TruncationLength);
+                        bool verificationResult = historicalTree!.Verify(root, leaf, path);
+                        result = ResultWrapper<bool>.Success(verificationResult);
+                    }
                 }
             }
 
@@ -364,15 +387,22 @@ namespace Nethermind.Baseline
             }
             else
             {
-                SearchResult<BlockHeader> searchResult = _blockFinder.SearchForHeader(blockParameter);
-                if (searchResult.IsError)
+                if (blockParameter == null)
                 {
-                    result = ResultWrapper<BaselineTreeNode[]>.Fail(searchResult);
+                    result = ResultWrapper<BaselineTreeNode[]>.Success(tree!.GetProof((uint)leafIndex));
                 }
                 else
                 {
-                    // ToDo MM: ask about blockParameter
-                    result = ResultWrapper<BaselineTreeNode[]>.Success(tree!.GetProof((uint) leafIndex));
+                    SearchResult<BlockHeader> searchResult = _blockFinder.SearchForHeader(blockParameter);
+                    if (searchResult.IsError)
+                    {
+                        result = ResultWrapper<BaselineTreeNode[]>.Fail(searchResult);
+                    }
+                    else
+                    {
+                        var historicalTree = _baselineTreeHelper.CreateHistoricalTree(contractAddress, searchResult.Object.Number, TruncationLength);
+                        result = ResultWrapper<BaselineTreeNode[]>.Success(historicalTree!.GetProof((uint)leafIndex));
+                    }
                 }
             }
 

@@ -31,6 +31,10 @@ namespace Nethermind.Baseline.Tree
         BaselineTree RebuildEntireTree(Address treeAddress, Keccak blockHash);
 
         BaselineTree CreateHistoricalTree(Address address, long blockNumber, int truncationLength);
+
+        BaselineTreeNode GetHistoricalLeaf(BaselineTree tree, uint leafIndex, long blockNumber);
+
+        BaselineTreeNode[] GetHistoricalLeaves(BaselineTree tree, uint[] leafIndexes, long blockNumber);
     }
 
     public class BaselineTreeHelper : IBaselineTreeHelper
@@ -44,8 +48,34 @@ namespace Nethermind.Baseline.Tree
             _mainDb = mainDb;
         }
 
+        public BaselineTreeNode[] GetHistoricalLeaves(BaselineTree tree, uint[] leafIndexes, long blockNumber)
+        {
+            var historicalCount = tree.GetLeavesCountFromNextBlocks(blockNumber);
+            BaselineTreeNode[] leaves = new BaselineTreeNode[leafIndexes.Length];
+
+            for (int i = 0; i < leafIndexes.Length; i++)
+            {
+                var leafIndex = leafIndexes[i];
+                if (historicalCount < leafIndex)
+                {
+                    leaves[i] = tree.GetLeaf(leafIndex);
+                }
+                else
+                {
+                    leaves[i] = new BaselineTreeNode(Keccak.Zero, leafIndex);
+                }
+            }
+
+            return leaves;
+        }
+
         public BaselineTreeNode GetHistoricalLeaf(BaselineTree tree, uint leafIndex, long blockNumber)
         {
+            var historicalCount = tree.GetLeavesCountFromNextBlocks(blockNumber);
+            if (historicalCount < leafIndex)
+            {
+                return new BaselineTreeNode(Keccak.Zero, leafIndex);
+            }
 
             return tree.GetLeaf(leafIndex);
         }
