@@ -108,18 +108,14 @@ namespace Nethermind.Baseline.Tree
 
         private (uint Count, long PreviousBlockWithLeaves) LoadBlockNumberCount(long blockNumber)
         {
-           // _metadataKeyValueStore[MetadataBuildDbKey(index.NodeIndex)] = 
-            return (0, 0); // ToDo MM
+            var rlp = _metadataKeyValueStore[MetadataBuildDbKey(blockNumber)];
+            return Rlp.Decode<(uint, long)>(rlp);
         }
 
         public void SaveBlockNumberCount(long blockNumber, uint count, long previousBlockWithLeaves)
         {
-            var rlp = Rlp.Encode(blockNumber).Bytes;
-
-            var countBytes = BitConverter.GetBytes(count);
-            var previousBlockBytes = BitConverter.GetBytes(previousBlockWithLeaves);
-            _metadataKeyValueStore[MetadataBuildDbKey(blockNumber)] = countBytes.Concat(previousBlockBytes).ToArray();
-            // ToDo MM
+            var rlp = Rlp.Encode<(uint, long)>((count, previousBlockWithLeaves)).Bytes;
+            _metadataKeyValueStore[MetadataBuildDbKey(blockNumber)] = rlp;
         }
 
         private static ulong GetMinNodeIndex(in uint row)
@@ -140,12 +136,22 @@ namespace Nethermind.Baseline.Tree
             Count++;
         }
 
-        [MethodImpl(MethodImplOptions.Synchronized)]
         public void DeleteLast(bool recalculateHashes = true)
         {
             Index index = new Index(LeafRow, Count - 1);
             Modify(index, ZeroHash, recalculateHashes);
             Count--;
+        }
+
+        public void Delete(uint leavesToRemove, bool recalculateHashes = true)
+        {
+            for (uint i = 1; i < leavesToRemove; ++i)
+            { 
+                Index index = new Index(LeafRow, Count - i);
+                Modify(index, ZeroHash, recalculateHashes);
+            }
+
+            Count = Count - leavesToRemove;
         }
 
         private void Modify(Index index, Keccak leaf, bool recalculateHashes = true)
@@ -244,9 +250,9 @@ namespace Nethermind.Baseline.Tree
             return leaves;
         }
 
-        public void CalculateHashes(uint startIndex = 0)
+        public void CalculateHashes(uint startIndex = 0, uint? endIndex = null)
         {
-            var nodesToIterate = Count;
+            var nodesToIterate = endIndex == null ? Count : endIndex.Value;
             uint startingRowIndex = startIndex - startIndex % 2;
             for (uint row = LeafRow; row > 0; row--)
             {

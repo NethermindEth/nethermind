@@ -29,6 +29,8 @@ namespace Nethermind.Baseline.Tree
     public interface IBaselineTreeHelper
     {
         BaselineTree RebuildEntireTree(Address treeAddress, Keccak blockHash);
+
+        BaselineTree CreateHistoricalTree(Address address, long blockNumber, int truncationLength);
     }
 
     public class BaselineTreeHelper : IBaselineTreeHelper
@@ -42,13 +44,20 @@ namespace Nethermind.Baseline.Tree
             _mainDb = mainDb;
         }
 
+        public BaselineTreeNode GetHistoricalLeaf(BaselineTree tree, uint leafIndex, long blockNumber)
+        {
+
+            return tree.GetLeaf(leafIndex);
+        }
+
         public BaselineTree CreateHistoricalTree(Address address, long blockNumber, int truncationLength)
         {
-            // ToDo MM think about condition when to rebuild tree
+            // ToDo MM locking
             var historicalTree = new ShaBaselineTree(new ReadOnlyDb(_mainDb, true), address.Bytes, truncationLength);
-            var amountOfBlocks = historicalTree.GetLeavesCountFromNextBlocks(blockNumber);
-            // delete from tree
-            // recalculate hashes
+            var endIndex = historicalTree.Count;
+            var historicalCount = historicalTree.GetLeavesCountFromNextBlocks(blockNumber);
+            historicalTree.Delete(historicalCount, false);
+            historicalTree.CalculateHashes(endIndex - historicalCount, endIndex);
 
             return historicalTree;
         }
