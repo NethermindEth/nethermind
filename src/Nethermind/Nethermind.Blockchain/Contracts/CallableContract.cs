@@ -42,7 +42,7 @@ namespace Nethermind.Blockchain.Contracts
             _transactionProcessor = transactionProcessor ?? throw new ArgumentNullException(nameof(transactionProcessor));
         }
 
-        private byte[] Call(BlockHeader header, Transaction transaction) => CallCore(_transactionProcessor, header, transaction);
+        private byte[] Call(BlockHeader header, string functionName, Transaction transaction) => CallCore(_transactionProcessor, header, functionName, transaction);
 
         /// <summary>
         /// Calls the function in contract, state modification is allowed.
@@ -68,7 +68,7 @@ namespace Nethermind.Blockchain.Contracts
         {
             var function = AbiDefinition.GetFunction(functionName);
             var transaction = GenerateTransaction<SystemTransaction>(functionName, sender, gasLimit, header, arguments);
-            var result = Call(header, transaction);
+            var result = Call(header, functionName, transaction);
             var objects = DecodeData(function.GetReturnInfo(), result);
             return objects;
         }

@@ -118,7 +118,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
 
             var phase = isCommitPhase
                 ? revealed
-                    ? throw new InvalidOperationException("Revealed random number during commit phase.")
+                    ? throw new AuRaException("Revealed random number during commit phase.")
                     : !isCommitted
                         ? IRandomContract.Phase.BeforeCommit
                         : IRandomContract.Phase.Committed
@@ -159,7 +159,8 @@ namespace Nethermind.Consensus.AuRa.Contracts
         /// </summary>
         /// <param name="parentHeader">Block header on which this is to be executed on.</param>
         /// <returns>Serial number of the current collection round.</returns>
-        private UInt256 CurrentCollectRound(BlockHeader parentHeader) => Constant.Call<UInt256>(parentHeader, nameof(CurrentCollectRound), SignerAddress);
+        private UInt256 CurrentCollectRound(BlockHeader parentHeader) => 
+            Constant.Call<UInt256>(parentHeader, nameof(CurrentCollectRound), SignerAddress);
         
 
         /// <summary>

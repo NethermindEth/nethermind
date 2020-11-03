@@ -19,6 +19,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using FluentAssertions;
+using Nethermind.Abi;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.AuRa.Contracts.DataStore;
@@ -27,6 +28,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using NSubstitute;
+using NSubstitute.ExceptionExtensions;
 using NUnit.Framework;
 
 namespace Nethermind.AuRa.Test.Contract
@@ -64,6 +66,20 @@ namespace Nethermind.AuRa.Test.Contract
             BlockHeader secondBlockHeader = Build.A.BlockHeader.WithNumber(3).WithHash(TestItem.KeccakB).WithParentHash(TestItem.KeccakC).TestObject;
             Address[] expected = {TestItem.AddressB};
             testCase.DataContract.GetAllItemsFromBlock(secondBlockHeader).Returns(expected);
+
+            testCase.ContractDataStore.GetItemsFromContractAtBlock(blockHeader);
+            testCase.ContractDataStore.GetItemsFromContractAtBlock(secondBlockHeader).Should().BeEquivalentTo(expected.Cast<object>());
+        }
+        
+        [Test]
+        public void returns_data_from_previous_block_on_error()
+        {
+            TestCase<Address> testCase = BuildTestCase<Address>();
+            BlockHeader blockHeader = Build.A.BlockHeader.WithNumber(1).WithHash(TestItem.KeccakA).TestObject;
+            Address[] expected = {TestItem.AddressA};
+            testCase.DataContract.GetAllItemsFromBlock(blockHeader).Returns(expected);
+            BlockHeader secondBlockHeader = Build.A.BlockHeader.WithNumber(3).WithHash(TestItem.KeccakB).WithParentHash(TestItem.KeccakC).TestObject;
+            testCase.DataContract.GetAllItemsFromBlock(secondBlockHeader).Throws(new AbiException(string.Empty));
 
             testCase.ContractDataStore.GetItemsFromContractAtBlock(blockHeader);
             testCase.ContractDataStore.GetItemsFromContractAtBlock(secondBlockHeader).Should().BeEquivalentTo(expected.Cast<object>());
