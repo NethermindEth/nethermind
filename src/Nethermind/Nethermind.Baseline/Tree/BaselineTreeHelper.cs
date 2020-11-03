@@ -56,6 +56,7 @@ namespace Nethermind.Baseline.Tree
             var historicalTree = new ShaBaselineTree(new ReadOnlyDb(_mainDb, true), address.Bytes, truncationLength);
             var endIndex = historicalTree.Count;
             var historicalCount = historicalTree.GetLeavesCountFromNextBlocks(blockNumber);
+            // ToDo mm amount of leaves to remove
             historicalTree.Delete(historicalCount, false);
             historicalTree.CalculateHashes(endIndex - historicalCount, endIndex);
 

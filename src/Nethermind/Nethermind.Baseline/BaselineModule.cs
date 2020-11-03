@@ -145,7 +145,6 @@ namespace Nethermind.Baseline
                 }
                 else
                 {
-                    // ToDo MM
                     SearchResult<BlockHeader> searchResult = _blockFinder.SearchForHeader(blockParameter);
                     if (searchResult.IsError)
                     {
@@ -153,7 +152,8 @@ namespace Nethermind.Baseline
                     }
                     else
                     {
-                        result = ResultWrapper<Keccak>.Success(tree.Root);
+                        var historicalTree = _baselineTreeHelper.CreateHistoricalTree(contractAddress, searchResult.Object.Number, TruncationLength);
+                        result = ResultWrapper<Keccak>.Success(historicalTree.Root);
                     }
                 }
             }
