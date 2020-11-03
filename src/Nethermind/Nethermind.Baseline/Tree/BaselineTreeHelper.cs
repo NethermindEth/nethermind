@@ -30,7 +30,7 @@ namespace Nethermind.Baseline.Tree
     {
         BaselineTree RebuildEntireTree(Address treeAddress, Keccak blockHash);
 
-        BaselineTree CreateHistoricalTree(Address address, long blockNumber, int truncationLength);
+        BaselineTree CreateHistoricalTree(Address address, long blockNumber);
 
         BaselineTreeNode GetHistoricalLeaf(BaselineTree tree, uint leafIndex, long blockNumber);
 
@@ -41,7 +41,7 @@ namespace Nethermind.Baseline.Tree
     {
         private readonly ILogFinder _logFinder;
         private readonly IDb _mainDb;
-        
+
         public BaselineTreeHelper(ILogFinder logFinder, IDb mainDb)
         {
             _logFinder = logFinder;
@@ -80,26 +80,31 @@ namespace Nethermind.Baseline.Tree
             return tree.GetLeaf(leafIndex);
         }
 
-        public BaselineTree CreateHistoricalTree(Address address, long blockNumber, int truncationLength)
+        public BaselineTree CreateHistoricalTree(Address address, long blockNumber)
         {
             // ToDo MM locking
-            var historicalTree = new ShaBaselineTree(new ReadOnlyDb(_mainDb, true), address.Bytes, truncationLength);
+            var historicalTree = new ShaBaselineTree(new ReadOnlyDb(_mainDb, true), address.Bytes, BaselineModule.TruncationLength);
             var endIndex = historicalTree.Count;
             var historicalCount = historicalTree.GetLeavesCountFromNextBlocks(blockNumber);
-            // ToDo mm amount of leaves to remove
-            historicalTree.Delete(historicalCount, false);
-            historicalTree.CalculateHashes(endIndex - historicalCount, endIndex);
+            historicalTree.Delete(endIndex - historicalCount, false);
+            historicalTree.CalculateHashes(historicalCount, endIndex);
 
             return historicalTree;
         }
 
         public BaselineTree RebuildEntireTree(Address treeAddress, Keccak blockHash)
         {
+            BaselineTree baselineTree = new ShaBaselineTree(_mainDb, treeAddress.Bytes, 5); // toDo MM empty address tree?
+            return BuildTree(baselineTree, treeAddress, Keccak.Zero, blockHash);
+        }
+
+        public BaselineTree BuildTree(BaselineTree baselineTree, Address treeAddress, Keccak from, Keccak to)
+        {
             Keccak leavesTopic = new Keccak("0x8ec50f97970775682a68d3c6f9caedf60fd82448ea40706b8b65d6c03648b922");
             LogFilter insertLeavesFilter = new LogFilter(
                 0,
                 new BlockParameter(0L),
-                new BlockParameter(blockHash),
+                new BlockParameter(to),
                 new AddressFilter(treeAddress),
                 new SequenceTopicsFilter(new SpecificTopic(leavesTopic)));
 
@@ -107,13 +112,12 @@ namespace Nethermind.Baseline.Tree
             LogFilter insertLeafFilter = new LogFilter(
                 0,
                 new BlockParameter(0L),
-                new BlockParameter(blockHash),
+                new BlockParameter(to),
                 new AddressFilter(treeAddress),
                 new SequenceTopicsFilter(new SpecificTopic(leafTopic))); // find tree topics
 
             var insertLeavesLogs = _logFinder.FindLogs(insertLeavesFilter);
             var insertLeafLogs = _logFinder.FindLogs(insertLeafFilter);
-            BaselineTree baselineTree = new ShaBaselineTree(new MemDb(), Array.Empty<byte>(), 5); // toDo MM empty address tree?
 
             long? currentBlockNumber = null;
             uint count = 0;
@@ -155,7 +159,7 @@ namespace Nethermind.Baseline.Tree
                 }
             }
 
-            if (currentBlockNumber != null && count !=0)
+            if (currentBlockNumber != null && count != 0)
             {
                 var previousBlockWithLeaves = baselineTree.LastBlockWithLeaves;
                 baselineTree.SaveBlockNumberCount(currentBlockNumber.Value, count, previousBlockWithLeaves);

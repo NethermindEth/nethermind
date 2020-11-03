@@ -29,8 +29,6 @@ namespace Nethermind.Baseline.Tree
 {
     public sealed class BaselineTreeTracker : IDisposable
     {
-        public static Keccak LeafTopic = new Keccak("0x6a82ba2aa1d2c039c41e6e2b5a5a1090d09906f060d32af9c1ac0beff7af75c0");
-        public static Keccak LeavesTopic = new Keccak("0x8ec50f97970775682a68d3c6f9caedf60fd82448ea40706b8b65d6c03648b922");
         private readonly Address _address;
         private readonly IBaselineTreeHelper _baselineTreeHelper;
         private readonly IBlockProcessor _blockProcessor;
@@ -89,7 +87,7 @@ namespace Nethermind.Baseline.Tree
     new BlockParameter(0L),
     new BlockParameter(0L),
     new AddressFilter(_address),
-    new AnyTopicsFilter(new SpecificTopic(LeavesTopic), new SpecificTopic(LeafTopic)));
+    new AnyTopicsFilter(new SpecificTopic(BaselineModule.LeavesTopic), new SpecificTopic(BaselineModule.LeafTopic)));
             var logs = _currentBlock.Header.FindLogs(e.TxReceipts, insertLeavesFilter, FindOrder.Ascending, FindOrder.Ascending);
             foreach (var filterLog in logs)
             {
@@ -133,14 +131,14 @@ namespace Nethermind.Baseline.Tree
                 new BlockParameter(from),
                 new BlockParameter(to),
                 new AddressFilter(_address),
-                new SequenceTopicsFilter(new SpecificTopic(LeafTopic)));
+                new SequenceTopicsFilter(new SpecificTopic(BaselineModule.LeafTopic)));
 
             LogFilter insertLeafFilter = new LogFilter(
                 0,
                 new BlockParameter(from),
                 new BlockParameter(to),
                 new AddressFilter(_address),
-                new SequenceTopicsFilter(new SpecificTopic(LeavesTopic)));
+                new SequenceTopicsFilter(new SpecificTopic(BaselineModule.LeavesTopic)));
 
             var insertLeavesLogs = _logFinder.FindLogs(insertLeavesFilter);
             var insertLeafLogs = _logFinder.FindLogs(insertLeafFilter);

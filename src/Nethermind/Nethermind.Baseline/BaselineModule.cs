@@ -42,6 +42,10 @@ namespace Nethermind.Baseline
 {
     public class BaselineModule : IBaselineModule
     {
+        public const int TruncationLength = 5;
+        public static Keccak LeafTopic = new Keccak("0x6a82ba2aa1d2c039c41e6e2b5a5a1090d09906f060d32af9c1ac0beff7af75c0");
+        public static Keccak LeavesTopic = new Keccak("0x8ec50f97970775682a68d3c6f9caedf60fd82448ea40706b8b65d6c03648b922");
+
         public BaselineModule(
             ITxSender txSender,
             IStateReader stateReader,
@@ -152,7 +156,7 @@ namespace Nethermind.Baseline
                     }
                     else
                     {
-                        var historicalTree = _baselineTreeHelper.CreateHistoricalTree(contractAddress, searchResult.Object.Number, TruncationLength);
+                        var historicalTree = _baselineTreeHelper.CreateHistoricalTree(contractAddress, searchResult.Object.Number);
                         result = ResultWrapper<Keccak>.Success(historicalTree.Root);
                     }
                 }
@@ -354,7 +358,7 @@ namespace Nethermind.Baseline
                     }
                     else
                     {
-                        var historicalTree = _baselineTreeHelper.CreateHistoricalTree(contractAddress, searchResult.Object.Number, TruncationLength);
+                        var historicalTree = _baselineTreeHelper.CreateHistoricalTree(contractAddress, searchResult.Object.Number);
                         bool verificationResult = historicalTree!.Verify(root, leaf, path);
                         result = ResultWrapper<bool>.Success(verificationResult);
                     }
@@ -400,7 +404,7 @@ namespace Nethermind.Baseline
                     }
                     else
                     {
-                        var historicalTree = _baselineTreeHelper.CreateHistoricalTree(contractAddress, searchResult.Object.Number, TruncationLength);
+                        var historicalTree = _baselineTreeHelper.CreateHistoricalTree(contractAddress, searchResult.Object.Number);
                         result = ResultWrapper<BaselineTreeNode[]>.Success(historicalTree!.GetProof((uint)leafIndex));
                     }
                 }
@@ -442,8 +446,6 @@ namespace Nethermind.Baseline
         }
 
         #region private
-        
-        private const int TruncationLength = 5;
 
         private readonly IAbiEncoder _abiEncoder;
         private readonly IFileSystem _fileSystem;
