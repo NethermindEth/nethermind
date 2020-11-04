@@ -19,6 +19,7 @@ namespace Nethermind.Baseline.Tree
         private const ulong FirstLeafIndexAsNodeIndex = MaxNodes / 2;
         private const ulong MaxNodes = (1ul << (TreeHeight + 1)) - 1ul;
         private const ulong MaxNodeIndex = MaxNodes - 1;
+        private const long DbCurrentBlockNumber = -1;
         public const uint MaxLeafIndex = uint.MaxValue;
 
         private readonly IKeyValueStore _keyValueStore;
@@ -32,7 +33,9 @@ namespace Nethermind.Baseline.Tree
 
         public uint Count { get; set; }
 
-        public long LastBlockWithLeaves { get; set; } // ToDo save it to DB and Load from DB
+        public long LastBlockWithLeaves { get; set; } // ToDo MM save it to DB and Load from DB
+
+        public Keccak LastBlockDbHash { get; set; }
 
         /* baseline does not use a sparse merkle tree - instead they use a single zero hash value
            does it expose any attack vectors? */
@@ -95,12 +98,17 @@ namespace Nethermind.Baseline.Tree
             return new BatchWrite(_synchroObject);
         }
 
-        public uint GetLeavesCountFromNextBlocks(long blockNumber)
+        public uint GetLeavesCountFromNextBlocks(long blockNumber, bool clearPreviousCounts = false)
         {
             var foundCount = LoadBlockNumberCount(LastBlockWithLeaves);
             while (foundCount.PreviousBlockWithLeaves >= blockNumber)
             {
                 foundCount = LoadBlockNumberCount(foundCount.PreviousBlockWithLeaves);
+
+                if (clearPreviousCounts)
+                {
+                    ClearBlockNumberCount(foundCount.PreviousBlockWithLeaves);
+                }
             }
 
             return Count - foundCount.Count;
@@ -116,6 +124,21 @@ namespace Nethermind.Baseline.Tree
         {
             var rlp = Rlp.Encode<(uint, long)>((count, previousBlockWithLeaves)).Bytes;
             _metadataKeyValueStore[MetadataBuildDbKey(blockNumber)] = rlp;
+        }
+
+        public long GetDbCurrentBlockNumber()
+        {
+            return LoadBlockNumberCount(DbCurrentBlockNumber).PreviousBlockWithLeaves;
+        }
+
+        public void SaveDbCurrentBlockNumber(long blockNumber)
+        {
+
+        }
+
+        private void ClearBlockNumberCount(long blockNumber)
+        {
+            _metadataKeyValueStore[MetadataBuildDbKey(blockNumber)] = null;
         }
 
         private static ulong GetMinNodeIndex(in uint row)

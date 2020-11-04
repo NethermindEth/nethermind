@@ -15,7 +15,6 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Filters.Topics;
@@ -24,6 +23,7 @@ using Nethermind.Blockchain.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.JsonRpc.Modules;
 
 namespace Nethermind.Baseline.Tree
 {
@@ -32,11 +32,9 @@ namespace Nethermind.Baseline.Tree
         private readonly Address _address;
         private readonly IBaselineTreeHelper _baselineTreeHelper;
         private readonly IBlockProcessor _blockProcessor;
-        private readonly ILogFinder _logFinder;
-        private const int MaxLeavesInStack = 1000;
+        private readonly IBlockFinder _blockFinder;
         private BaselineTree _baselineTree;
-        private Block? _currentBlock = null; // BlockHeader lub number/hash
-        private Stack<Keccak> _leavesStack = new Stack<Keccak>();
+        private BlockHeader? _currentBlockHeader;
 
         /// <summary>
         /// This class should smoothly react to new blocks and logs
@@ -51,122 +49,100 @@ namespace Nethermind.Baseline.Tree
             _baselineTree = baselineTree ?? throw new ArgumentNullException(nameof(baselineTree));
             _blockProcessor = blockProcessor ?? throw new ArgumentNullException(nameof(blockProcessor));
             _baselineTreeHelper = baselineTreeHelper ?? throw new ArgumentNullException(nameof(baselineTreeHelper));
+
+            StartTracking();
+        }
+
+        private void StartTracking()
+        {
+            BlockParameter fromBlockParameter = new BlockParameter(0L);
+            if (_baselineTree.LastBlockDbHash != Keccak.Zero)
+            {
+                var lastBaselineTreeParameter = new BlockParameter(_baselineTree.LastBlockDbHash);
+                var searchResult = _blockFinder.SearchForHeader(lastBaselineTreeParameter);
+                if (!searchResult.IsError)
+                {
+                    fromBlockParameter = lastBaselineTreeParameter;
+                }
+            }
+
+            var toBlockParameter = BlockParameter.Latest;
+            _currentBlockHeader = _blockFinder.SearchForHeader(null).Object;
+            _baselineTreeHelper.BuildTree(_baselineTree, _address, fromBlockParameter, toBlockParameter);
             _blockProcessor.BlockProcessed += OnBlockProcessed;
         }
 
         private void OnBlockProcessed(object? sender, BlockProcessedEventArgs e)
         {
-            if (_currentBlock != null && _currentBlock.Hash != e.Block.ParentHash)
+            if (_currentBlockHeader != null && _currentBlockHeader.Hash != e.Block.ParentHash)
             {
-                if (_currentBlock.Number < e.Block.Number) // ToDo MM nie ma inicjowania bloku current
+                if (_currentBlockHeader.Number < e.Block.Number) // ToDo MM nie ma inicjowania bloku current
                 {
-                    AddNewLeavesFromDb(_currentBlock.Hash, e.Block.Hash);
+                    _baselineTreeHelper.BuildTree(_baselineTree, _address, new BlockParameter(_currentBlockHeader.Hash), new BlockParameter(e.Block.Hash));
                 }
                 else
                 {
-                    var leavesToReorganize = _baselineTree.GetLeavesCountFromNextBlocks(e.Block.Number);
-                    if (leavesToReorganize < MaxLeavesInStack) // toDo MM think about
-                    {
-                        Reorganize(leavesToReorganize);
-                    }
-                    else
-                    {
-                        _baselineTree = _baselineTreeHelper.RebuildEntireTree(_address, e.Block.Hash);
-                        return;
-                    }
+                    Reorganize(e.TxReceipts, e.Block.Number);
                 }
 
+                _currentBlockHeader = e.Block.Header;
                 return;
             }
 
+            _currentBlockHeader = e.Block.Header;
+            AddFromCurrentBlock(e.TxReceipts, e.Block.Number);
+        }
 
-
-            _currentBlock = e.Block;
+        private void AddFromCurrentBlock(TxReceipt[] txReceipts, long newBlockNumber)
+        {
+            uint count = 0;
             LogFilter insertLeavesFilter = new LogFilter(
-    0,
-    new BlockParameter(0L),
-    new BlockParameter(0L),
-    new AddressFilter(_address),
-    new AnyTopicsFilter(new SpecificTopic(BaselineModule.LeavesTopic), new SpecificTopic(BaselineModule.LeafTopic)));
-            var logs = _currentBlock.Header.FindLogs(e.TxReceipts, insertLeavesFilter, FindOrder.Ascending, FindOrder.Ascending);
+                    0,
+                    new BlockParameter(0L),
+                    new BlockParameter(0L),
+                    new AddressFilter(_address),
+                    new AnyTopicsFilter(new SpecificTopic(BaselineModule.LeavesTopic), new SpecificTopic(BaselineModule.LeafTopic)));
+            var logs = _currentBlockHeader.FindLogs(txReceipts, insertLeavesFilter, FindOrder.Ascending, FindOrder.Ascending);
             foreach (var filterLog in logs)
             {
                 if (filterLog.Data.Length == 96)
                 {
                     Keccak leafHash = new Keccak(filterLog.Data.Slice(32, 32).ToArray());
-                    _leavesStack.Push(leafHash);
                     _baselineTree.Insert(leafHash);
+                    ++count;
                 }
                 else
                 {
                     for (int i = 0; i < (filterLog.Data.Length - 128) / 32; i++)
                     {
                         Keccak leafHash = new Keccak(filterLog.Data.Slice(128 + 32 * i, 32).ToArray());
-                        _leavesStack.Push(leafHash);
                         _baselineTree.Insert(leafHash);
+                        ++count;
                     }
                 }
             }
+
+            if (count != 0)
+            {
+                var previousBlockWithLeaves = _baselineTree.LastBlockWithLeaves;
+                _baselineTree.SaveBlockNumberCount(newBlockNumber, count, previousBlockWithLeaves);
+                _baselineTree.LastBlockWithLeaves = newBlockNumber;
+            }
         }
 
-        private void Reorganize(uint numberOfElements)
+        private void Reorganize(TxReceipt[] txReceipts, long newBlockNumber)
         {
-            var calculatingHashesStart = _baselineTree.Count - numberOfElements;
-            // ToDo zmiany countów  bazie po reorganizacji bloku!!
-            for (uint i = 0; i < numberOfElements; ++i)
-            {
-                _baselineTree.DeleteLast(false);
-            }
+            var leavesToReorganize = _baselineTree.GetLeavesCountFromNextBlocks(newBlockNumber, true);
+            var calculatingHashesStart = _baselineTree.Count - leavesToReorganize;
+            _baselineTree.Delete(leavesToReorganize, false);
 
-            // ToDo MM add receipts from block "copy after refactoring
-
+            AddFromCurrentBlock(txReceipts, newBlockNumber);
             _baselineTree.CalculateHashes(calculatingHashesStart);
-        }
-
-        private void AddNewLeavesFromDb(Keccak from, Keccak to)
-        {
-            var initCount = _baselineTree.Count;
-            LogFilter insertLeavesFilter = new LogFilter(
-                0,
-                new BlockParameter(from),
-                new BlockParameter(to),
-                new AddressFilter(_address),
-                new SequenceTopicsFilter(new SpecificTopic(BaselineModule.LeafTopic)));
-
-            LogFilter insertLeafFilter = new LogFilter(
-                0,
-                new BlockParameter(from),
-                new BlockParameter(to),
-                new AddressFilter(_address),
-                new SequenceTopicsFilter(new SpecificTopic(BaselineModule.LeavesTopic)));
-
-            var insertLeavesLogs = _logFinder.FindLogs(insertLeavesFilter);
-            var insertLeafLogs = _logFinder.FindLogs(insertLeafFilter);
-
-            foreach (FilterLog filterLog in insertLeavesLogs
-                .Union(insertLeafLogs)
-                .OrderBy(fl => fl.BlockNumber).ThenBy(fl => fl.LogIndex))
-            {
-                if (filterLog.Data.Length == 96)
-                {
-                    Keccak leafHash = new Keccak(filterLog.Data.Slice(32, 32).ToArray());
-                    _baselineTree.Insert(leafHash, false);
-                }
-                else
-                {
-                    for (int i = 0; i < (filterLog.Data.Length - 128) / 32; i++)
-                    {
-                        Keccak leafHash = new Keccak(filterLog.Data.Slice(128 + 32 * i, 32).ToArray());
-                        _baselineTree.Insert(leafHash, false);
-                    }
-                }
-            }
-
-            _baselineTree.CalculateHashes(initCount);
         }
 
         public void Dispose()
         {
+            _baselineTree.SaveDbCurrentBlockNumber(_currentBlockHeader!.Number);
             _blockProcessor.BlockProcessed -= OnBlockProcessed;
         }
     }
