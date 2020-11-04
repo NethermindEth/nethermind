@@ -55,9 +55,9 @@ namespace Nethermind.Baseline.Test
             }
         }
 
-        private BaselineTree BuildATree(IKeyValueStore keyValueStore = null)
+        private BaselineTree BuildATree(IDb db = null)
         {
-            return new ShaBaselineTree(keyValueStore ?? new MemDb(), new byte[] { }, _truncationLength);
+            return new ShaBaselineTree(db ?? new MemDb(), new MemDb(), new byte[] { }, _truncationLength);
         }
 
         [Test]
@@ -266,14 +266,15 @@ namespace Nethermind.Baseline.Test
         public void Can_restore_count_from_the_database(uint leafCount)
         {
             MemDb memDb = new MemDb();
-            BaselineTree baselineTree = BuildATree(memDb);
+            var metadataMemDb = new MemDb();
+            BaselineTree baselineTree = new ShaBaselineTree(memDb, metadataMemDb, new byte[] { }, _truncationLength);
 
             for (int i = 0; i < leafCount; i++)
             {
                 baselineTree.Insert(_testLeaves[0]);
             }
 
-            BaselineTree baselineTreeRestored = BuildATree(memDb);
+            BaselineTree baselineTreeRestored = new ShaBaselineTree(memDb, metadataMemDb, new byte[] { }, _truncationLength);
             baselineTreeRestored.Count.Should().Be(leafCount);
         }
 

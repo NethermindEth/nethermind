@@ -36,6 +36,7 @@ using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
+using Nethermind.Trie;
 using Nethermind.TxPool;
 
 namespace Nethermind.Baseline
@@ -54,19 +55,21 @@ namespace Nethermind.Baseline
             IAbiEncoder abiEncoder,
             IFileSystem fileSystem,
             IDb baselineDb,
+            IKeyValueStore metadataBaselineDb,
             ILogManager logManager,
             IBlockProcessor blockProcessor)
         {
             _abiEncoder = abiEncoder ?? throw new ArgumentNullException(nameof(abiEncoder));
             _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
             _baselineDb = baselineDb ?? throw new ArgumentNullException(nameof(baselineDb));
+            _metadataBaselineDb = metadataBaselineDb ?? throw new ArgumentNullException(nameof(metadataBaselineDb));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _txSender = txSender ?? throw new ArgumentNullException(nameof(txSender));
             _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
             _logFinder = logFinder ?? throw new ArgumentNullException(nameof(logFinder));
             _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
             _blockProcessor = blockProcessor ?? throw new ArgumentNullException(nameof(blockProcessor));
-            _baselineTreeHelper = new BaselineTreeHelper(_logFinder, baselineDb);
+            _baselineTreeHelper = new BaselineTreeHelper(_logFinder, baselineDb, metadataBaselineDb);
 
             _metadata = LoadMetadata();
             InitTrees();
@@ -450,6 +453,7 @@ namespace Nethermind.Baseline
         private readonly IAbiEncoder _abiEncoder;
         private readonly IFileSystem _fileSystem;
         private readonly IDb _baselineDb;
+        private readonly IKeyValueStore _metadataBaselineDb;
         private readonly ILogger _logger;
         private readonly ITxSender _txSender;
         private readonly IStateReader _stateReader;
@@ -586,9 +590,9 @@ namespace Nethermind.Baseline
                 return false;
             }
 
-            ShaBaselineTree tree = new ShaBaselineTree(_baselineDb, trackedTree.Bytes, TruncationLength);
+            ShaBaselineTree tree = new ShaBaselineTree(_baselineDb, _metadataBaselineDb, trackedTree.Bytes, TruncationLength);
             tree = (ShaBaselineTree)_baselineTreeHelper.RebuildEntireTree(trackedTree, _blockFinder.Head.Hash);
-            new BaselineTreeTracker(trackedTree, tree, _blockProcessor, _baselineTreeHelper);
+            new BaselineTreeTracker(trackedTree, tree, _blockProcessor, _baselineTreeHelper, _blockFinder);
             return _baselineTrees.TryAdd(trackedTree, tree);
         }
 

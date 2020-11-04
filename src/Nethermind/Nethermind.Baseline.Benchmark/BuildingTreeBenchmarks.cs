@@ -48,7 +48,7 @@ namespace Nethermind.Baseline.Benchmark
         [Benchmark]
         public void BuildTreeWithInstantHashing()
         {
-            BaselineTree baselineTree = new ShaBaselineTree(new MemDb(), Array.Empty<byte>(), 0);
+            BaselineTree baselineTree = new ShaBaselineTree(new MemDb(), new MemDb(), Array.Empty<byte>(), 0);
             for (uint i = 0; i < _testLeaves.Length; ++i)
             {
                 baselineTree.Insert(_testLeaves[i]);
@@ -58,7 +58,7 @@ namespace Nethermind.Baseline.Benchmark
         [Benchmark]
         public void BuildTreeWithHashingInTheEnd()
         {
-            BaselineTree baselineTree = new ShaBaselineTree(new MemDb(), Array.Empty<byte>(), 0);
+            BaselineTree baselineTree = new ShaBaselineTree(new MemDb(), new MemDb(), Array.Empty<byte>(), 0);
             for (uint i = 0; i < _testLeaves.Length; ++i)
             {
                 baselineTree.Insert(_testLeaves[i], false);
@@ -70,7 +70,7 @@ namespace Nethermind.Baseline.Benchmark
         [Benchmark]
         public void InsertingValuesWithoutCalculatingHashes()
         {
-            BaselineTree baselineTree = new ShaBaselineTree(new MemDb(), Array.Empty<byte>(), 0);
+            BaselineTree baselineTree = new ShaBaselineTree(new MemDb(), new MemDb(), Array.Empty<byte>(), 0);
             for (uint i = 0; i < _testLeaves.Length; ++i)
             {
                 baselineTree.Insert(_testLeaves[i], false);
@@ -103,7 +103,7 @@ namespace Nethermind.Baseline.Benchmark
         [Benchmark]
         public void BuildTreeWithHashingInTheEnd()
         {
-            BaselineTree baselineTree = new ShaBaselineTree(new MemDb(), Array.Empty<byte>(), 0);
+            BaselineTree baselineTree = new ShaBaselineTree(new MemDb(), new MemDb(), Array.Empty<byte>(), 0);
             for (uint i = 0; i < _testLeaves.Length; ++i)
             {
                 baselineTree.Insert(_testLeaves[i], false);

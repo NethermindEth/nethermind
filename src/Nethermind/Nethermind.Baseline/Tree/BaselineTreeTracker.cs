@@ -36,19 +36,18 @@ namespace Nethermind.Baseline.Tree
         private BaselineTree _baselineTree;
         private BlockHeader? _currentBlockHeader;
 
-        /// <summary>
-        /// This class should smoothly react to new blocks and logs
-        /// For now it will be very non-optimized just to deliver the basic functionality
-        /// </summary>
-        /// <param name="address"></param>
-        /// <param name="baselineTree"></param>
-        /// <param name="blockProcessor"></param>
-        public BaselineTreeTracker(Address address, BaselineTree baselineTree, IBlockProcessor blockProcessor, IBaselineTreeHelper baselineTreeHelper)
+        public BaselineTreeTracker(
+            Address address,
+            BaselineTree baselineTree, 
+            IBlockProcessor blockProcessor,
+            IBaselineTreeHelper baselineTreeHelper,
+            IBlockFinder blockFinder)
         {
             _address = address ?? throw new ArgumentNullException(nameof(address));
             _baselineTree = baselineTree ?? throw new ArgumentNullException(nameof(baselineTree));
             _blockProcessor = blockProcessor ?? throw new ArgumentNullException(nameof(blockProcessor));
             _baselineTreeHelper = baselineTreeHelper ?? throw new ArgumentNullException(nameof(baselineTreeHelper));
+            _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
 
             StartTracking();
         }

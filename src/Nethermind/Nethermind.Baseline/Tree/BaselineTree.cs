@@ -2,6 +2,7 @@ using System;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using Nethermind.Core.Crypto;
+using Nethermind.Db;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Repositories;
 using Nethermind.Trie;
@@ -21,7 +22,7 @@ namespace Nethermind.Baseline.Tree
         private const ulong MaxNodeIndex = MaxNodes - 1;
         public const uint MaxLeafIndex = uint.MaxValue;
 
-        private readonly IKeyValueStore _keyValueStore;
+        private readonly IDb _db;
         private readonly IKeyValueStore _metadataKeyValueStore;
         private readonly byte[] _dbPrefix;
         private readonly object _synchroObject = new object();
@@ -34,16 +35,18 @@ namespace Nethermind.Baseline.Tree
 
         public long LastBlockWithLeaves { get; set; }
 
-        public Keccak LastBlockDbHash { get; set; }
+        public Keccak? LastBlockDbHash { get; set; }
 
         /* baseline does not use a sparse merkle tree - instead they use a single zero hash value
            does it expose any attack vectors? */
         internal static Keccak ZeroHash = Keccak.Zero;
 
-        public BaselineTree(IKeyValueStore keyValueStore, byte[] _dbPrefix, int truncationLength)
+        public BaselineTree(IDb db, IKeyValueStore metadataKeyValueStore, byte[] _dbPrefix, int truncationLength)
         {
             TruncationLength = truncationLength;
-            _keyValueStore = keyValueStore ?? throw new ArgumentNullException(nameof(keyValueStore));
+            _db = db ?? throw new ArgumentNullException(nameof(db));
+            _metadataKeyValueStore = metadataKeyValueStore ?? throw new ArgumentNullException(nameof(metadataKeyValueStore));
+
             this._dbPrefix = _dbPrefix;
             InitializeMetadata();
             Root = Count == 0 ? Keccak.Zero : LoadValue(new Index(0, 0));
@@ -78,12 +81,12 @@ namespace Nethermind.Baseline.Tree
 
         private void SaveValue(in Index index, byte[] hashBytes)
         {
-            _keyValueStore[BuildDbKey(index.NodeIndex)] = hashBytes;
+            _db[BuildDbKey(index.NodeIndex)] = hashBytes;
         }
 
         private Keccak LoadValue(in Index index)
         {
-            byte[]? nodeHashBytes = _keyValueStore[BuildDbKey(index.NodeIndex)];
+            byte[]? nodeHashBytes = _db[BuildDbKey(index.NodeIndex)];
             if (nodeHashBytes == null)
             {
                 return ZeroHash;
@@ -104,9 +107,10 @@ namespace Nethermind.Baseline.Tree
         private void InitializeMetadata()
         {
             var currentBlock = LoadCurrentBlockFromDb();
-
-            LastBlockDbHash = currentBlock.LastBlockDbHash;
-            LastBlockWithLeaves = currentBlock.LastBlockWithLeaves;
+            if (currentBlock == null)
+                return;
+            LastBlockDbHash = currentBlock.Value.LastBlockDbHash;
+            LastBlockWithLeaves = currentBlock.Value.LastBlockWithLeaves;
 
             if (LastBlockWithLeaves != 0)
             {
@@ -141,9 +145,12 @@ namespace Nethermind.Baseline.Tree
             _metadataKeyValueStore[MetadataBuildDbKey(blockNumber)] = rlp;
         }
 
-        private (Keccak LastBlockDbHash, long LastBlockWithLeaves) LoadCurrentBlockFromDb()
+        private (Keccak LastBlockDbHash, long LastBlockWithLeaves)? LoadCurrentBlockFromDb()
         {
             var rlpEncoded = _metadataKeyValueStore[MetadataBuildDbKey(CurrentBlockDbIndex)];
+            if (rlpEncoded == null)
+                return null;
+
             return Rlp.Decode<(Keccak LastBlockDbHash, long LastBlockWithLeaves)>(rlpEncoded);
         }
 

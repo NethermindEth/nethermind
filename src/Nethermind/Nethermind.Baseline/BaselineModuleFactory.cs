@@ -68,6 +68,7 @@ namespace Nethermind.Baseline
                 _abiEncoder,
                 _fileSystem,
                 new MemDb(),
+                new MemDb(),
                 _logManager,
                 _blockProcessor);
         }

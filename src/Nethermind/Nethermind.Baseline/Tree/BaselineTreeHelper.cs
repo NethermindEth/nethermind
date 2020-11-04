@@ -23,31 +23,21 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
+using Nethermind.Trie;
 
 namespace Nethermind.Baseline.Tree
 {
-    public interface IBaselineTreeHelper
-    {
-        BaselineTree RebuildEntireTree(Address treeAddress, Keccak blockHash);
-
-        BaselineTree BuildTree(BaselineTree baselineTree, Address treeAddress, BlockParameter blockFrom, BlockParameter blockTo);
-
-        BaselineTree CreateHistoricalTree(Address address, long blockNumber);
-
-        BaselineTreeNode GetHistoricalLeaf(BaselineTree tree, uint leafIndex, long blockNumber);
-
-        BaselineTreeNode[] GetHistoricalLeaves(BaselineTree tree, uint[] leafIndexes, long blockNumber);
-    }
-
     public class BaselineTreeHelper : IBaselineTreeHelper
     {
         private readonly ILogFinder _logFinder;
         private readonly IDb _mainDb;
+        private readonly IKeyValueStore _metadataBaselineDb;
 
-        public BaselineTreeHelper(ILogFinder logFinder, IDb mainDb)
+        public BaselineTreeHelper(ILogFinder logFinder, IDb mainDb, IKeyValueStore metadataBaselineDb)
         {
-            _logFinder = logFinder;
-            _mainDb = mainDb;
+            _logFinder = logFinder ?? throw new ArgumentNullException(nameof(logFinder));
+            _mainDb = mainDb ?? throw new ArgumentNullException(nameof(mainDb));
+            _metadataBaselineDb = metadataBaselineDb ?? throw new ArgumentNullException(nameof(metadataBaselineDb));
         }
 
         public BaselineTreeNode[] GetHistoricalLeaves(BaselineTree tree, uint[] leafIndexes, long blockNumber)
@@ -85,7 +75,7 @@ namespace Nethermind.Baseline.Tree
         public BaselineTree CreateHistoricalTree(Address address, long blockNumber)
         {
             // ToDo MM locking
-            var historicalTree = new ShaBaselineTree(new ReadOnlyDb(_mainDb, true), address.Bytes, BaselineModule.TruncationLength);
+            var historicalTree = new ShaBaselineTree(new ReadOnlyDb(_mainDb, true), _metadataBaselineDb, address.Bytes, BaselineModule.TruncationLength);
             var endIndex = historicalTree.Count;
             var historicalCount = historicalTree.GetLeavesCountFromNextBlocks(blockNumber);
             historicalTree.Delete(endIndex - historicalCount, false);
@@ -96,7 +86,7 @@ namespace Nethermind.Baseline.Tree
 
         public BaselineTree RebuildEntireTree(Address treeAddress, Keccak blockHash)
         {
-            BaselineTree baselineTree = new ShaBaselineTree(_mainDb, treeAddress.Bytes, BaselineModule.TruncationLength);
+            BaselineTree baselineTree = new ShaBaselineTree(_mainDb, _metadataBaselineDb, treeAddress.Bytes, BaselineModule.TruncationLength);
             return BuildTree(baselineTree, treeAddress, new BlockParameter(0L), new BlockParameter(blockHash));
         }
 
