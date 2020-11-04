@@ -19,7 +19,6 @@ namespace Nethermind.Baseline.Tree
         private const ulong FirstLeafIndexAsNodeIndex = MaxNodes / 2;
         private const ulong MaxNodes = (1ul << (TreeHeight + 1)) - 1ul;
         private const ulong MaxNodeIndex = MaxNodes - 1;
-        private const long DbCurrentBlockNumber = -1;
         public const uint MaxLeafIndex = uint.MaxValue;
 
         private readonly IKeyValueStore _keyValueStore;
@@ -31,9 +30,9 @@ namespace Nethermind.Baseline.Tree
         {
         }
 
-        public uint Count { get; set; }
+        public uint Count { get; private set; }
 
-        public long LastBlockWithLeaves { get; set; } // ToDo MM save it to DB and Load from DB
+        public long LastBlockWithLeaves { get; set; }
 
         public Keccak LastBlockDbHash { get; set; }
 
@@ -46,8 +45,8 @@ namespace Nethermind.Baseline.Tree
             TruncationLength = truncationLength;
             _keyValueStore = keyValueStore ?? throw new ArgumentNullException(nameof(keyValueStore));
             this._dbPrefix = _dbPrefix;
-            Count = LoadCount();
-            Root = Keccak.Zero; // TODO: need to check what should be the initial root of an empty tree
+            InitializeMetadata();
+            Root = Count == 0 ? Keccak.Zero : LoadValue(new Index(0, 0));
         }
 
         private uint LoadCount()
@@ -98,6 +97,22 @@ namespace Nethermind.Baseline.Tree
             return new BatchWrite(_synchroObject);
         }
 
+        #region Metadata operation
+
+        private const long CurrentBlockDbIndex = -1;
+
+        private void InitializeMetadata()
+        {
+            var currentBlock = LoadCurrentBlockFromDb();
+
+            LastBlockDbHash = currentBlock.LastBlockDbHash;
+            LastBlockWithLeaves = currentBlock.LastBlockWithLeaves;
+
+            if (LastBlockWithLeaves != 0)
+            {
+                Count = LoadBlockNumberCount(LastBlockWithLeaves).Count;
+            }
+        }
         public uint GetLeavesCountFromNextBlocks(long blockNumber, bool clearPreviousCounts = false)
         {
             var foundCount = LoadBlockNumberCount(LastBlockWithLeaves);
@@ -126,20 +141,24 @@ namespace Nethermind.Baseline.Tree
             _metadataKeyValueStore[MetadataBuildDbKey(blockNumber)] = rlp;
         }
 
-        public long GetDbCurrentBlockNumber()
+        private (Keccak LastBlockDbHash, long LastBlockWithLeaves) LoadCurrentBlockFromDb()
         {
-            return LoadBlockNumberCount(DbCurrentBlockNumber).PreviousBlockWithLeaves;
+            var rlpEncoded = _metadataKeyValueStore[MetadataBuildDbKey(CurrentBlockDbIndex)];
+            return Rlp.Decode<(Keccak LastBlockDbHash, long LastBlockWithLeaves)>(rlpEncoded);
         }
 
-        public void SaveDbCurrentBlockNumber(long blockNumber)
+        public void SaveCurrentBlockInDb()
         {
-
+            var rlp = Rlp.Encode<(Keccak, long)>((LastBlockDbHash, LastBlockWithLeaves)).Bytes;
+            _metadataKeyValueStore[MetadataBuildDbKey(CurrentBlockDbIndex)] = rlp;
         }
 
         private void ClearBlockNumberCount(long blockNumber)
         {
             _metadataKeyValueStore[MetadataBuildDbKey(blockNumber)] = null;
         }
+
+        #endregion
 
         private static ulong GetMinNodeIndex(in uint row)
         {
@@ -296,7 +315,7 @@ namespace Nethermind.Baseline.Tree
                 startingRowIndex = newStartingNode - newStartingNode % 2;
             }
 
-            Root = new Keccak(LoadValue(new Index(0, 0)).Bytes);
+            Root = LoadValue(new Index(0, 0));
         }
 
         public static ulong GetParentIndex(in ulong nodeIndex)

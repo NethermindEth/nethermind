@@ -142,7 +142,8 @@ namespace Nethermind.Baseline.Tree
 
         public void Dispose()
         {
-            _baselineTree.SaveDbCurrentBlockNumber(_currentBlockHeader!.Number);
+            _baselineTree.LastBlockDbHash = _currentBlockHeader!.Hash;
+            _baselineTree.SaveCurrentBlockInDb();
             _blockProcessor.BlockProcessed -= OnBlockProcessed;
         }
     }
