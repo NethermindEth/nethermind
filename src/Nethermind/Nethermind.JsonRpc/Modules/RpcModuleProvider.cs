@@ -93,34 +93,30 @@ namespace Nethermind.JsonRpc.Modules
 
         public ModuleResolution Check(string methodName)
         {
-            if (!_methods.ContainsKey(methodName)) return ModuleResolution.Unknown;
+            if (!_methods.TryGetValue(methodName, out ResolvedMethodInfo result)) return ModuleResolution.Unknown;
 
-            ResolvedMethodInfo result = _methods[methodName];
             return _enabledModules.Contains(result.ModuleType) ? ModuleResolution.Enabled : ModuleResolution.Disabled;
         }
 
         public (MethodInfo, bool) Resolve(string methodName)
         {
-            if (!_methods.ContainsKey(methodName)) return (null, false);
+            if (!_methods.TryGetValue(methodName, out ResolvedMethodInfo result)) return (null, false);
 
-            ResolvedMethodInfo result = _methods[methodName];
             return (result.MethodInfo, result.ReadOnly);
         }
 
         public Task<IModule> Rent(string methodName, bool canBeShared)
         {
-            if (!_methods.ContainsKey(methodName)) return null;
+            if (!_methods.TryGetValue(methodName, out ResolvedMethodInfo result)) return null;
 
-            ResolvedMethodInfo result = _methods[methodName];
             return _pools[result.ModuleType].RentModule(canBeShared);
         }
 
         public void Return(string methodName, IModule module)
         {
-            if (!_methods.ContainsKey(methodName))
+            if (!_methods.TryGetValue(methodName, out ResolvedMethodInfo result))
                 throw new InvalidOperationException("Not possible to return an unresolved module");
 
-            ResolvedMethodInfo result = _methods[methodName];
             _pools[result.ModuleType].ReturnModule(module);
         }
 
