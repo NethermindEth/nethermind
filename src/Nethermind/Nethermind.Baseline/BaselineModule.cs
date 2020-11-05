@@ -591,7 +591,6 @@ namespace Nethermind.Baseline
             }
 
             ShaBaselineTree tree = new ShaBaselineTree(_baselineDb, _metadataBaselineDb, trackedTree.Bytes, TruncationLength);
-            tree = (ShaBaselineTree)_baselineTreeHelper.RebuildEntireTree(trackedTree, _blockFinder.Head.Hash);
             new BaselineTreeTracker(trackedTree, tree, _blockProcessor, _baselineTreeHelper, _blockFinder);
             return _baselineTrees.TryAdd(trackedTree, tree);
         }
