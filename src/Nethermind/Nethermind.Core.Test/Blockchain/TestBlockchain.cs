@@ -76,7 +76,7 @@ namespace Nethermind.Core.Test.Blockchain
         public static Address AccountB = TestItem.AddressB;
         public static Address AccountC = TestItem.AddressC;
         private SemaphoreSlim _resetEvent;
-        private SemaphoreSlim _suggestedBlockResetEvent;
+  //      private SemaphoreSlim _suggestedBlockResetEvent;
         private AutoResetEvent _oneAtATime = new AutoResetEvent(true);
 
         public ManualTimestamper Timestamper { get; private set; }
@@ -135,14 +135,14 @@ namespace Nethermind.Core.Test.Blockchain
             BlockProducer.Start();
 
             _resetEvent = new SemaphoreSlim(0);
-            _suggestedBlockResetEvent = new SemaphoreSlim(0);
+     //       _suggestedBlockResetEvent = new SemaphoreSlim(0);
             BlockTree.NewHeadBlock += (s, e) =>
             {
                 _resetEvent.Release(1);
             };
             BlockProducer.LastProducedBlockChanged += (s, e) =>
             {
-                _suggestedBlockResetEvent.Release(1);
+                //_suggestedBlockResetEvent.Release(1);
             };
 
             var genesis = GetGenesisBlock();
@@ -194,7 +194,7 @@ namespace Nethermind.Core.Test.Blockchain
         public async Task AddBlock(params Transaction[] transactions)
         {
             await AddBlockInternal(transactions);
-            await _suggestedBlockResetEvent.WaitAsync(CancellationToken.None);
+        //    await _suggestedBlockResetEvent.WaitAsync(CancellationToken.None);
             await _resetEvent.WaitAsync(CancellationToken.None);
             _oneAtATime.Set();
         }
@@ -209,7 +209,7 @@ namespace Nethermind.Core.Test.Blockchain
             }
             else
             {
-               await _suggestedBlockResetEvent.WaitAsync(CancellationToken.None);
+              // await _suggestedBlockResetEvent.WaitAsync(CancellationToken.None);
             }
 
             _oneAtATime.Set();

@@ -45,7 +45,7 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Core.Test", "Net
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Consensus.AuRa", "Nethermind.Consensus.AuRa\Nethermind.Consensus.AuRa.csproj", "{E8B3DD70-7BB2-4CF2-A26D-F375D831DE45}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Baseline.Benchmark", "Nethermind.Baseline.Benchmark\Nethermind.Baseline.Benchmark.csproj", "{13746112-5DEC-42CC-93D4-B9B01F67DF9E}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Baseline.Benchmark", "Nethermind.Baseline.Benchmark\Nethermind.Baseline.Benchmark.csproj", "{13746112-5DEC-42CC-93D4-B9B01F67DF9E}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -158,6 +158,6 @@ Global
 		{E8B3DD70-7BB2-4CF2-A26D-F375D831DE45} = {E4D07050-1288-4344-B79D-470C2DC86146}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
-		SolutionGuid = {BB040145-2131-4805-8800-C9A0A9820F87}
+		SolutionGuid = {F5822673-96EF-4C5C-AEC1-74D165BF8D0C}
 	EndGlobalSection
 EndGlobal
