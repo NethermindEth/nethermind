@@ -97,7 +97,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             SyncingResult result;
             long bestSuggestedNumber = _blockFinder.FindBestSuggestedHeader().Number;
             bool isSyncing = bestSuggestedNumber > _blockFinder.Head.Number + 1;
-            
+
             if (isSyncing)
             {
                 result = new SyncingResult
@@ -214,7 +214,9 @@ namespace Nethermind.JsonRpc.Modules.Eth
             }
 
             Account account = _stateReader.GetAccount(header.StateRoot, address);
-            return Task.FromResult(ResultWrapper<UInt256?>.Success(account?.Nonce ?? 0));
+            UInt256 nonce = account?.Nonce ?? 0;
+
+            return Task.FromResult(ResultWrapper<UInt256?>.Success(nonce));
         }
 
         public ResultWrapper<UInt256?> eth_getBlockTransactionCountByHash(Keccak blockHash)
@@ -310,10 +312,11 @@ namespace Nethermind.JsonRpc.Modules.Eth
             return ResultWrapper<byte[]>.Success(sig.Bytes);
         }
 
-        public Task<ResultWrapper<Keccak>> eth_sendTransaction(TransactionForRpc transactionForRpc)
+        public Task<ResultWrapper<Keccak>> eth_sendTransaction(TransactionForRpc rpcTx)
         {
-            Transaction tx = transactionForRpc.ToTransactionWithDefaults();
-            return SendTx(tx);
+            Transaction tx = rpcTx.ToTransactionWithDefaults();
+            TxHandlingOptions options = rpcTx.Nonce == null ? TxHandlingOptions.ManagedNonce : TxHandlingOptions.None;
+            return SendTx(tx, options);
         }
 
         public async Task<ResultWrapper<Keccak>> eth_sendRawTransaction(byte[] transaction)
@@ -329,11 +332,11 @@ namespace Nethermind.JsonRpc.Modules.Eth
             }
         }
 
-        private async Task<ResultWrapper<Keccak>> SendTx(Transaction tx)
+        private async Task<ResultWrapper<Keccak>> SendTx(Transaction tx, TxHandlingOptions txHandlingOptions = TxHandlingOptions.None)
         {
             try
             {
-                Keccak txHash = await _txSender.SendTransaction(tx, TxHandlingOptions.PersistentBroadcast);
+                Keccak txHash = await _txSender.SendTransaction(tx, txHandlingOptions | TxHandlingOptions.PersistentBroadcast);
                 return ResultWrapper<Keccak>.Success(txHash);
             }
             catch (SecurityException e)
@@ -362,8 +365,10 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
             FixCallTx(transactionCall, header);
 
+            using CancellationTokenSource cancellationTokenSource = new CancellationTokenSource(_cancellationTokenTimeout);
+            CancellationToken cancellationToken = cancellationTokenSource.Token;
             Transaction tx = transactionCall.ToTransaction();
-            BlockchainBridge.CallOutput result = _blockchainBridge.Call(header, tx);
+            BlockchainBridge.CallOutput result = _blockchainBridge.Call(header, tx, cancellationToken);
 
             return result.Error != null ? ResultWrapper<string>.Fail("VM execution error.", ErrorCodes.ExecutionError, result.Error) : ResultWrapper<string>.Success(result.OutputData.ToHexString(true));
         }
@@ -372,7 +377,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         {
             if (transactionCall.Gas == null || transactionCall.Gas == 0)
             {
-                transactionCall.Gas = Math.Min(_rpcConfig.GasCap ?? long.MaxValue, header.GasLimit);
+                transactionCall.Gas = _rpcConfig.GasCap ?? long.MaxValue;
             }
             else
             {
@@ -391,7 +396,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             }
 
             BlockHeader header = searchResult.Object;
-            
+
             if (!HasStateForBlock(header))
             {
                 return ResultWrapper<UInt256?>.Fail($"No state available for block {header.Hash}", ErrorCodes.ResourceUnavailable);
@@ -646,7 +651,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                     }
                 }
             }
-            
+
             BlockParameter fromBlock = filter.FromBlock;
             BlockParameter toBlock = filter.ToBlock;
 

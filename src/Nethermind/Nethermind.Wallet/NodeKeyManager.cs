@@ -34,17 +34,20 @@ namespace Nethermind.Wallet
         private readonly IKeyStore _keyStore;
         private readonly IKeyStoreConfig _config;
         private readonly ILogger _logger;
+        private readonly IPasswordProvider _passwordProvider;
 
         public NodeKeyManager(
             ICryptoRandom cryptoRandom, 
             IKeyStore keyStore, 
             IKeyStoreConfig config, 
-            ILogManager logManager)
+            ILogManager logManager,
+            IPasswordProvider passwordProvider)
         {
             _cryptoRandom = cryptoRandom ?? throw new ArgumentNullException(nameof(cryptoRandom));
             _keyStore = keyStore ?? throw new ArgumentNullException(nameof(keyStore));
             _config = config ?? throw new ArgumentNullException(nameof(config));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _passwordProvider = passwordProvider ?? throw new ArgumentNullException(nameof(passwordProvider));
         }
 
         /// <summary>
@@ -102,7 +105,7 @@ namespace Nethermind.Wallet
         {
             if(_config.BlockAuthorAccount != null)
             {
-                SecureString password = GetBlockAuthorPassword();
+                SecureString password = _passwordProvider.GetPassword();
 
                 try
                 {
@@ -124,31 +127,6 @@ namespace Nethermind.Wallet
             }
 
             return LoadNodeKey();
-        }
-
-        private SecureString GetBlockAuthorPassword()
-        {
-            string GetPasswordN(int n, string[] passwords) => passwords?.Length > 0 ? passwords[Math.Min(n, passwords.Length - 1)] : null;
-
-            string password = null;
-            var index = Array.IndexOf(_config.UnlockAccounts, _config.BlockAuthorAccount);
-            if (index >= 0)
-            {
-                password = GetPasswordN(index, _config.PasswordFiles);
-                if (password != null)
-                {
-                    string blockAuthorPasswordFilePath = password.GetApplicationResourcePath();
-                    password = File.Exists(blockAuthorPasswordFilePath)
-                        ? File.ReadAllText(blockAuthorPasswordFilePath).Trim()
-                        : null;
-                }
-                
-                password ??= GetPasswordN(index, _config.Passwords);
-            }
-            
-            return password != null
-                ? password.Secure() 
-                : ConsoleUtils.ReadSecret($"Provide password for validator account {_config.BlockAuthorAccount}");
         }
     }
 }

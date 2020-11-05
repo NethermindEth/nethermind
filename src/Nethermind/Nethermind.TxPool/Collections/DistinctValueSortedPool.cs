@@ -16,47 +16,63 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 
 namespace Nethermind.TxPool.Collections
 {
-    public class DistinctValueSortedPool<TKey, TValue> : SortedPool<TKey, TValue>
+    /// <summary>
+    /// Keeps a distinct pool of <see cref="TValue"/> with <see cref="TKey"/> in groups based on <see cref="TGroupKey"/>.
+    /// Uses separate comparator to distinct between elements. If there is duplicate element added it uses ordering comparator and keeps the one that is larger. 
+    /// </summary>
+    /// <typeparam name="TKey">Type of keys of items, unique in pool.</typeparam>
+    /// <typeparam name="TValue">Type of items that are kept.</typeparam>
+    /// <typeparam name="TGroupKey">Type of groups in which the items are organized</typeparam>
+    public abstract class DistinctValueSortedPool<TKey, TValue, TGroupKey> : SortedPool<TKey, TValue, TGroupKey>
     {
-        private readonly IDictionary<TValue, LinkedListNode<KeyValuePair<TKey, TValue>>> _distinctDictionary;
+        private readonly IComparer<TValue> _comparer;
+        private readonly IDictionary<TValue, KeyValuePair<TKey, TValue>> _distinctDictionary;
 
-        public DistinctValueSortedPool(int capacity, Comparison<TValue> comparison, IEqualityComparer<TValue> distinctComparer) : base(capacity, comparison)
+        /// <summary>
+        /// Constructor
+        /// </summary>
+        /// <param name="capacity">Max capacity</param>
+        /// <param name="comparer">Comparer to sort items.</param>
+        /// <param name="distinctComparer">Comparer to distinct items. Based on this duplicates will be removed.</param>
+        protected DistinctValueSortedPool(
+            int capacity,
+            IComparer<TValue> comparer,
+            IEqualityComparer<TValue> distinctComparer) 
+            : base(capacity, comparer)
         {
-            _distinctDictionary = new Dictionary<TValue, LinkedListNode<KeyValuePair<TKey, TValue>>>(distinctComparer);
+            _comparer = comparer ?? throw new ArgumentNullException(nameof(comparer));
+            _distinctDictionary = new Dictionary<TValue, KeyValuePair<TKey, TValue>>(distinctComparer);
         }
-
-        protected override void InsertCore(TKey key, LinkedListNode<KeyValuePair<TKey, TValue>> newNode)
+        
+        protected override void InsertCore(TKey key, TValue value, ICollection<TValue> bucketCollection)
         {
-            base.InsertCore(key, newNode);
-            var value = newNode.Value.Value;
-            
-            // if there was a node already with same distinct value we need to remove it
-            if (_distinctDictionary.TryGetValue(value, out var oldNode))
+            base.InsertCore(key, value, bucketCollection);
+
+            if (_distinctDictionary.TryGetValue(value, out var oldKvp))
             {
-                LruList.Remove(oldNode);
-                Remove(oldNode.Value.Key);
+                TryRemove(oldKvp.Key, out _);
             }
 
-            _distinctDictionary[value] = newNode;
+
+            _distinctDictionary[value] = new KeyValuePair<TKey, TValue>(key, value);
         }
 
-        protected override bool Remove(TKey key)
+        protected override bool Remove(TKey key, TValue value)
         {
-            if (CacheMap.TryGetValue(key, out var node))
-            {
-                _distinctDictionary.Remove(node.Value.Value);
-            }
-            
-            return base.Remove(key);
+            _distinctDictionary.Remove(value);
+            return base.Remove(key, value);
         }
 
-        protected override bool CanInsert(TKey key, TValue value) =>
+        protected override bool CanInsert(TKey key, TValue value)
+        {
             // either there is no distinct value or it would go before (or at same place) as old value
             // if it would go after old value in order, we ignore it and wont add it
-            base.CanInsert(key, value) && (!_distinctDictionary.TryGetValue(value, out var oldNode) || Comparison(value, oldNode.Value.Value) >= 0);
-        
+            return base.CanInsert(key, value)
+                   && (!_distinctDictionary.TryGetValue(value, out var oldKvp) || _comparer.Compare(value, oldKvp.Value) <= 0);
+        }
     }
 }

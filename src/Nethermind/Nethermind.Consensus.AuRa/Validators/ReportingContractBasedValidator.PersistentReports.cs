@@ -18,6 +18,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Nethermind.Abi;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Int256;
@@ -91,7 +92,7 @@ namespace Nethermind.Consensus.AuRa.Validators
                         {
                             SendTransaction(ReportType.Malicious, _posdaoTxSender, CreateReportMaliciousTransactionCore(persistentReport));
                         }
-                        catch (AuRaException e)
+                        catch (AbiException e)
                         {
                             if (_logger.IsWarn) _logger.Warn($"Cannot report validator {persistentReport.ValidatorAddress} for misbehavior on block {persistentReport.BlockNumber}: {e.Message}.");
                         }
@@ -118,7 +119,7 @@ namespace Nethermind.Consensus.AuRa.Validators
                         if (_logger.IsTrace) _logger.Trace("Successfully removed report from report cache.");
                     }
                 }
-                catch (AuRaException e)
+                catch (AbiException e)
                 {
                     if (_logger.IsError) _logger.Error("Failed to query report status, dropping pending report.", e);
                     _persistentReports.Remove(node);

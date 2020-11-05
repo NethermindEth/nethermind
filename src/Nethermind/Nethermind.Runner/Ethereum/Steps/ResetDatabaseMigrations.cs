@@ -60,7 +60,7 @@ namespace Nethermind.Runner.Ethereum.Steps
         
         private void ResetMigrationIndexIfNeeded()
         {
-            ReceiptsRecovery recovery = new ReceiptsRecovery();
+            ReceiptsRecovery recovery = new ReceiptsRecovery(_api.EthereumEcdsa, _api.SpecProvider);
             
             if (_receiptStorage.MigratedBlockNumber != long.MaxValue)
             {

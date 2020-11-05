@@ -5,6 +5,8 @@ using System.Reflection;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
+using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.DataMarketplace.Channels;
 using Nethermind.DataMarketplace.Channels.Grpc;
 using Nethermind.DataMarketplace.Consumers.Infrastructure;
@@ -49,7 +51,15 @@ namespace Nethermind.DataMarketplace.Initializers
                     _ndmApi.LogManager);
                 _ndmApi.EthJsonRpcClientProxy = new EthJsonRpcClientProxy(_ndmApi.JsonRpcClientProxy);
             }
-            
+
+            _ndmApi.LogFinder = new LogFinder(
+                                _ndmApi.BlockTree,
+                                _ndmApi.ReceiptFinder,
+                                _ndmApi.BloomStorage,
+                                _ndmApi.LogManager,
+                                new ReceiptsRecovery(_ndmApi.EthereumEcdsa, _ndmApi.SpecProvider),
+                                1024);
+
             INdmCapabilityConnector capabilityConnector = await _ndmInitializer.InitAsync(_ndmApi);
 
             capabilityConnector.Init();
@@ -70,6 +80,13 @@ namespace Nethermind.DataMarketplace.Initializers
                 if (logger.IsInfo) logger.Info("Enabled JSON RPC Proxy for NDM.");
             }
 
+            if(_ndmInitializer == null)
+            {
+                throw new InvalidOperationException("Ndm initializer is not created yet, can't start the rpc modules");
+            }
+
+            _ndmInitializer.InitRpcModules();
+
             return Task.CompletedTask;
         }
 
@@ -86,24 +103,26 @@ namespace Nethermind.DataMarketplace.Initializers
             ILogger logger = api.LogManager.GetClassLogger();
             INdmConfig ndmConfig = api.ConfigProvider.GetConfig<INdmConfig>();
             bool ndmEnabled = ndmConfig.Enabled;
+
             if (ndmEnabled)
             {
-                INdmDataPublisher? ndmDataPublisher = new NdmDataPublisher();
-                INdmConsumerChannelManager? ndmConsumerChannelManager = new NdmConsumerChannelManager();
+                _ndmApi.NdmDataPublisher = new NdmDataPublisher();
+                _ndmApi.NdmConsumerChannelManager = new NdmConsumerChannelManager();
                 string initializerName = ndmConfig.InitializerName;
                 if (logger.IsInfo) logger.Info($"NDM initializer: {initializerName}");
                 Type? ndmInitializerType = AppDomain.CurrentDomain.GetAssemblies()
                     .SelectMany(a => a.GetTypes())
                     .FirstOrDefault(t =>
                         t.GetCustomAttribute<NdmInitializerAttribute>()?.Name == initializerName);
+
                 if (ndmInitializerType == null)
                 {
                     if(logger.IsError) logger.Error(
                         $"NDM enabled but the initializer {initializerName} has not been found. Ensure that a plugin exists with the properly set {nameof(NdmInitializerAttribute)}");
                 }
 
-                NdmModule ndmModule = new NdmModule();
-                NdmConsumersModule ndmConsumersModule = new NdmConsumersModule();
+                NdmModule ndmModule = new NdmModule(_ndmApi);
+                NdmConsumersModule ndmConsumersModule = new NdmConsumersModule(_ndmApi);
                 _ndmInitializer =
                     new NdmInitializerFactory(ndmInitializerType, ndmModule, ndmConsumersModule, api.LogManager)
                         .CreateOrFail();
@@ -111,13 +130,13 @@ namespace Nethermind.DataMarketplace.Initializers
                 if (api.GrpcServer != null)
                 {
                     var grpcChannel = new GrpcNdmConsumerChannel(api.GrpcServer);
-                    ndmConsumerChannelManager.Add(grpcChannel);
+                    _ndmApi.NdmConsumerChannelManager.Add(grpcChannel);
                 }
 
                 NdmWebSocketsModule ndmWebSocketsModule =
                     new NdmWebSocketsModule(
-                        ndmConsumerChannelManager,
-                        ndmDataPublisher,
+                        _ndmApi.NdmConsumerChannelManager,
+                        _ndmApi.NdmDataPublisher,
                         api.EthereumJsonSerializer); 
                 api.WebSocketsManager.AddModule(ndmWebSocketsModule);
             }

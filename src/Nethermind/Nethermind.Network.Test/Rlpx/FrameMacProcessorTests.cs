@@ -21,7 +21,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Network.Test.Rlpx
 {
-    [TestFixture]
+    [TestFixture, Parallelizable(ParallelScope.All)]
     public class FrameMacProcessorTests
     {
         [Test]

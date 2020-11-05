@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
@@ -23,6 +24,7 @@ namespace Nethermind.TxPool
     public interface ITxPoolPeer
     {
         public PublicKey Id { get; }
+        public string Enode => string.Empty;
         void SendNewTransaction(Transaction tx, bool isPriority);
     }
 }

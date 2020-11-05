@@ -35,6 +35,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs.ChainSpecStyle;
 using NSubstitute;
+using NSubstitute.ExceptionExtensions;
 using NUnit.Framework;
 
 namespace Nethermind.AuRa.Test.Transactions
@@ -76,6 +77,14 @@ namespace Nethermind.AuRa.Test.Transactions
             ShouldAllowAddress(TestItem.AddressA, expected: false);
         }
         
+        [Test]
+        public void should_not_allow_addresses_on_contract_error()
+        {
+            Address address = TestItem.Addresses.First();
+            _certifierContract.Certified(Arg.Any<BlockHeader>(), address).Throws(new AbiException(string.Empty));
+            ShouldAllowAddress(address, expected: false);
+        }
+        
         [TestCase(false)]
         [TestCase(true)]
         public void should_default_to_inner_contract_on_non_zero_transactions(bool expected)
@@ -96,7 +105,7 @@ namespace Nethermind.AuRa.Test.Transactions
         [Test]
         public async Task should_only_allow_addresses_from_contract_on_chain()
         {
-            var chain = await TestContractBlockchain.ForTest<TestTxPermissionsBlockchain, TxCertifierFilterTests>();
+            using var chain = await TestContractBlockchain.ForTest<TestTxPermissionsBlockchain, TxCertifierFilterTests>();
             chain.CertifierContract.Certified(chain.BlockTree.Head.Header, TestItem.AddressA).Should().BeFalse();
             chain.CertifierContract.Certified(chain.BlockTree.Head.Header, new Address("0xbbcaa8d48289bb1ffcf9808d9aa4b1d215054c78")).Should().BeTrue();
         }

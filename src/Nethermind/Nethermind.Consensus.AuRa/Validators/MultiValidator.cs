@@ -138,8 +138,8 @@ namespace Nethermind.Consensus.AuRa.Validators
                             if (!canSetValidatorAsCurrent)
                             {
                                 SetCurrentValidator(previousValidatorInfo, parentHeader);
-                                finalizedAtBlockNumber = _blockFinalizationManager.GetLastLevelFinalizedBy(block.ParentHash);
-                                canSetValidatorAsCurrent = finalizedAtBlockNumber >= validatorInfo.Key;
+                                finalizedAtBlockNumber = _blockFinalizationManager.GetFinalizationLevel(validatorInfo.Key);
+                                canSetValidatorAsCurrent = finalizedAtBlockNumber != null;
                             }
 
                             if (canSetValidatorAsCurrent)

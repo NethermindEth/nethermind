@@ -23,30 +23,21 @@ namespace Nethermind.Evm.Tracing.GethStyle
     public class GethLikeBlockTracer : BlockTracerBase<GethLikeTxTrace, GethLikeTxTracer>
     {
         private readonly GethTraceOptions _options;
-        private readonly CancellationToken _cancellationToken; 
 
-        public GethLikeBlockTracer(GethTraceOptions options, CancellationToken cancellationToken = default(CancellationToken))
+        public GethLikeBlockTracer(GethTraceOptions options)
         {
-            _cancellationToken = cancellationToken;
             _options = options;
         }
         
-        public GethLikeBlockTracer(Keccak txHash, GethTraceOptions options, CancellationToken cancellationToken = default(CancellationToken))
+        public GethLikeBlockTracer(Keccak txHash, GethTraceOptions options)
             : base(txHash)
         {
-            _cancellationToken = cancellationToken;
             _options = options;
         }
 
-        protected override GethLikeTxTracer OnStart(Keccak txHash)
-        {
-            return new GethLikeTxTracer(_options, _cancellationToken);
-        }
+        protected override GethLikeTxTracer OnStart(Keccak txHash) => new GethLikeTxTracer(_options);
 
-        protected override GethLikeTxTrace OnEnd(GethLikeTxTracer txTracer)
-        {
-            return txTracer.BuildResult();
-        }
+        protected override GethLikeTxTrace OnEnd(GethLikeTxTracer txTracer) => txTracer.BuildResult();
 
         public override void StartNewBlockTrace(Block block)
         {

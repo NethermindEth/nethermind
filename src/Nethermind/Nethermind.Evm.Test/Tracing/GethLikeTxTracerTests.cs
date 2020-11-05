@@ -30,6 +30,7 @@ using NUnit.Framework;
 namespace Nethermind.Evm.Test.Tracing
 {
     [TestFixture]
+    [Parallelizable(ParallelScope.Self)]
     public class GethLikeTxTracerTests : VirtualMachineTestsBase
     {
         [Test]
@@ -393,62 +394,6 @@ namespace Nethermind.Evm.Test.Tracing
             Assert.AreEqual(2, trace.Entries[6].Memory.Count, "entry[2] length");
             Assert.AreEqual(SampleHexData1.PadLeft(64, '0'), trace.Entries[6].Memory[0], "entry[6][0]");
             Assert.AreEqual(SampleHexData2.PadLeft(64, '0'), trace.Entries[6].Memory[1], "entry[6][1]");
-        }
-
-        [Test]
-        public void Throw_operation_canceled_after_given_timeout()
-        {
-            var timeout = TimeSpan.FromSeconds(1);
-            using CancellationTokenSource cancellationTokenSource = new CancellationTokenSource(timeout);
-            CancellationToken cancellationToken = cancellationTokenSource.Token;
-            GethTraceOptions optionsMock = Substitute.For<GethTraceOptions>();
-            var tracer = new GethLikeTxTracer(optionsMock, cancellationToken);
-
-            Thread.Sleep(TimeSpan.FromSeconds(2));
-
-            Assert.Throws<OperationCanceledException>(() => tracer.ReportOperationRemainingGas(0));
-
-            Assert.Throws<OperationCanceledException>(() => tracer.SetOperationMemorySize(0));
-
-            Assert.Throws<OperationCanceledException>(() => tracer.StartOperation(0, 0, Instruction.ADD, 0));
-        }
-
-        [Test]
-        public void Tracers_cancellation_tokens_does_not_affect_each_other()
-        {
-            GethTraceOptions optionsMock = Substitute.For<GethTraceOptions>();
-            using CancellationTokenSource cancellationTokenSource = new CancellationTokenSource(TimeSpan.FromMilliseconds(1));
-            CancellationToken cancellationToken = cancellationTokenSource.Token;
-            var tracer = new GethLikeTxTracer(optionsMock, cancellationToken);
-
-            CancellationToken cancellationToken2 = new CancellationTokenSource().Token;
-            var tracer2 = new GethLikeTxTracer(optionsMock, cancellationToken2);;
-
-            Thread.Sleep(5);
-
-            Assert.AreNotEqual(cancellationToken, cancellationToken2); 
-        }
-
-        [Test]
-        public void Does_not_throw_operation_canceled_if_cancellation_token_is_default()
-        {
-            GethTraceOptions optionsMock = Substitute.For<GethTraceOptions>();
-            CancellationToken cancellationToken = default(CancellationToken);
-            var tracer = new GethLikeTxTracer(optionsMock, cancellationToken);
-
-            Thread.Sleep(TimeSpan.FromSeconds(2));
-
-            try 
-            {
-               tracer.StartOperation(0, 0, Instruction.ADD, 0); 
-            }
-            catch(Exception ex)
-            {
-                if(ex is OperationCanceledException)
-                    Assert.Fail("Tracer throw OperationCanceledException even when cancellation token is set to default.");
-                else
-                    Assert.Pass();
-            }
         }
     }
 }

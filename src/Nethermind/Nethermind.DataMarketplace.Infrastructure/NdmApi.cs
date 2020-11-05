@@ -239,7 +239,12 @@ namespace Nethermind.DataMarketplace.Infrastructure
             set => _nethermindApi.KeyStore = value;
         }
 
-        public ILogFinder LogFinder { get; set; }
+        public ILogFinder LogFinder
+        {
+            get => _nethermindApi.LogFinder; 
+            set => _nethermindApi.LogFinder = value;
+        }
+
 
         public ILogManager LogManager => _nethermindApi.LogManager;
 

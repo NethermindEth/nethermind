@@ -27,7 +27,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Mining.Test
 {
-    [Parallelizable(ParallelScope.Self)]
+    [Parallelizable(ParallelScope.All)]
     [TestFixture]
     public class EthashTests
     {

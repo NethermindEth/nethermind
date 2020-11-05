@@ -28,6 +28,7 @@ namespace Nethermind.Evm.Test
 {
     [TestFixture(true)]
     [TestFixture(false)]
+    [Parallelizable(ParallelScope.Self)]
     public class VirtualMachineTests : VirtualMachineTestsBase
     {
         public VirtualMachineTests(bool useBeamSync)

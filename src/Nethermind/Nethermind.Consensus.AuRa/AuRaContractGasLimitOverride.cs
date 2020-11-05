@@ -17,6 +17,7 @@
 
 using System;
 using System.Collections.Generic;
+using Nethermind.Abi;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
@@ -99,7 +100,7 @@ namespace Nethermind.Consensus.AuRa
                     ? MinimalContractGasLimit 
                     : contractGasLimit;
             }
-            catch (AuRaException e)
+            catch (AbiException e)
             {
                 if (_logger.IsError) _logger.Error("Contract call failed. Not changing the block gas limit.", e);
                 return null;

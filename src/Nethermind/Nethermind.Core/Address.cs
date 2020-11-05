@@ -70,6 +70,22 @@ namespace Nethermind.Core
 
         public Address(string hexString) : this(Extensions.Bytes.FromHexString(hexString)) { }
 
+        public static bool TryParse(string value, out Address address)
+        {
+            if (value != null)
+            {
+                byte[] bytes = Extensions.Bytes.FromHexString(value);
+                if (bytes?.Length == ByteLength)
+                {
+                    address = new Address(bytes);
+                    return true;
+                }
+            }
+
+            address = default;
+            return false;
+        }
+
         public Address(byte[] bytes)
         {
             if (bytes == null)

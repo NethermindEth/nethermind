@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.Collections.Generic;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
@@ -59,7 +60,7 @@ namespace Nethermind.Runner.Ethereum.Steps
         }
 
         [Todo(Improve.Refactor, "Use chain spec for all chain configuration")]
-        private Task InitBlockchain()
+        protected virtual Task InitBlockchain()
         {
             if (_api.ChainSpec == null) throw new StepDependencyException(nameof(_api.ChainSpec));
             if (_api.DbProvider == null) throw new StepDependencyException(nameof(_api.DbProvider));
@@ -97,12 +98,12 @@ namespace Nethermind.Runner.Ethereum.Steps
             _api.EthereumEcdsa = new EthereumEcdsa(_api.SpecProvider.ChainId, _api.LogManager);
             _api.TxPool = new TxPool.TxPool(
                 new PersistentTxStorage(_api.DbProvider.PendingTxsDb),
-                Timestamper.Default,
                 _api.EthereumEcdsa,
                 _api.SpecProvider,
                 _api.Config<ITxPoolConfig>(),
                 _api.StateProvider,
-                _api.LogManager);
+                _api.LogManager,
+                CreateTxPoolTxComparer());
 
             IBloomConfig bloomConfig = _api.Config<IBloomConfig>();
 
@@ -133,8 +134,9 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.StateProvider.StateRoot = _api.BlockTree.Head.StateRoot;
             }
 
-            _api.ReceiptStorage = initConfig.StoreReceipts ? (IReceiptStorage?) new PersistentReceiptStorage(_api.DbProvider.ReceiptsDb, _api.SpecProvider, new ReceiptsRecovery()) : NullReceiptStorage.Instance;
-            _api.ReceiptFinder = new FullInfoReceiptFinder(_api.ReceiptStorage, new ReceiptsRecovery(), _api.BlockTree);
+            ReceiptsRecovery receiptsRecovery = new ReceiptsRecovery(_api.EthereumEcdsa, _api.SpecProvider);
+            _api.ReceiptStorage = initConfig.StoreReceipts ? (IReceiptStorage?) new PersistentReceiptStorage(_api.DbProvider.ReceiptsDb, _api.SpecProvider, receiptsRecovery) : NullReceiptStorage.Instance;
+            _api.ReceiptFinder = new FullInfoReceiptFinder(_api.ReceiptStorage, receiptsRecovery, _api.BlockTree);
 
             _api.RecoveryStep = new TxSignaturesRecoveryStep(_api.EthereumEcdsa, _api.TxPool, _api.SpecProvider, _api.LogManager);
 
@@ -230,6 +232,8 @@ namespace Nethermind.Runner.Ethereum.Steps
             
             return Task.CompletedTask;
         }
+
+        protected virtual IComparer<Transaction> CreateTxPoolTxComparer() => TxPool.TxPool.DefaultComparer;
 
         protected virtual HeaderValidator CreateHeaderValidator() =>
             new HeaderValidator(

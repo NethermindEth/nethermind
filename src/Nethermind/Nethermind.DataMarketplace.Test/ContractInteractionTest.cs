@@ -127,7 +127,7 @@ namespace Nethermind.DataMarketplace.Test
             TxReceipt receipt = await DeployContract(Bytes.FromHexString(ContractData.GetInitCode(_feeAccount)));
             ((NdmConfig) _ndmConfig).ContractAddress = receipt.ContractAddress.ToString();
             _contractAddress = receipt.ContractAddress;
-            _txPool = new TxPool.TxPool(new InMemoryTxStorage(), Timestamper.Default,
+            _txPool = new TxPool.TxPool(new InMemoryTxStorage(),
                 new EthereumEcdsa(specProvider.ChainId, _logManager), specProvider, new TxPoolConfig(), _state, _logManager);
             _ndmBridge = new NdmBlockchainBridge(_bridge, _bridge, _bridge, _bridge);
         }
@@ -242,7 +242,7 @@ namespace Nethermind.DataMarketplace.Test
 
             public TxReceipt GetReceipt(Keccak txHash) => _receiptsTracer.TxReceipts.Single(r => r?.TxHash == txHash);
 
-            public Facade.BlockchainBridge.CallOutput Call(BlockHeader blockHeader, Transaction transaction)
+            public Facade.BlockchainBridge.CallOutput Call(BlockHeader blockHeader, Transaction transaction, CancellationToken cancellationToken)
             {
                 CallOutputTracer tracer = new CallOutputTracer();
                 _processor.Execute(transaction, Head?.Header, tracer);

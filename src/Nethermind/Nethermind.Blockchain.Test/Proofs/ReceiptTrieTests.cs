@@ -58,7 +58,7 @@ namespace Nethermind.Blockchain.Test.Proofs
             VerifyProof(proof, trie.RootHash);
         }
         
-        private void VerifyProof(byte[][] proof, Keccak receiptRoot)
+        private static void VerifyProof(byte[][] proof, Keccak receiptRoot)
         {
             TrieNode node = new TrieNode(NodeType.Unknown, proof.Last());
             node.ResolveNode(null);
@@ -75,12 +75,9 @@ namespace Nethermind.Blockchain.Test.Proofs
                         throw new InvalidDataException();
                     }
                 }
-                else
+                else if (proofHash != receiptRoot)
                 {
-                    if (proofHash != receiptRoot)
-                    {
-                        throw new InvalidDataException();
-                    }
+                    throw new InvalidDataException();
                 }
             }
         }

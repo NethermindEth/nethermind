@@ -109,7 +109,7 @@ namespace Nethermind.Clique.Test
                 stateProvider.Commit(GoerliSpecProvider.Instance.GenesisSpec);
                 stateProvider.CommitTree();
 
-                TxPool.TxPool txPool = new TxPool.TxPool(new InMemoryTxStorage(), _timestamper, _ethereumEcdsa, GoerliSpecProvider.Instance, new TxPoolConfig(), stateProvider, _logManager);
+                TxPool.TxPool txPool = new TxPool.TxPool(new InMemoryTxStorage(), _ethereumEcdsa, GoerliSpecProvider.Instance, new TxPoolConfig(), stateProvider, _logManager);
                 _pools[privateKey] = txPool;
 
                 BlockTree blockTree = new BlockTree(blocksDb, headersDb, blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), GoerliSpecProvider.Instance, txPool, NullBloomStorage.Instance,  nodeLogManager);

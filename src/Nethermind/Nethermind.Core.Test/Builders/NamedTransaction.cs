@@ -15,8 +15,11 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System.Diagnostics;
+
 namespace Nethermind.Core.Test.Builders
 {
+    [DebuggerDisplay(nameof(Name))]
     public class NamedTransaction : Transaction
     {
         public string Name { get; set; }

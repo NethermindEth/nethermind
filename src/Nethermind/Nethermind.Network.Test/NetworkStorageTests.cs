@@ -18,6 +18,7 @@ using System;
 using System.IO;
 using System.Linq;
 using Nethermind.Config;
+using Nethermind.Core.Test.IO;
 using Nethermind.Logging;
 using Nethermind.Network.Discovery.Lifecycle;
 using Nethermind.Stats;
@@ -39,23 +40,20 @@ namespace Nethermind.Network.Test
             NetworkNodeDecoder.Init();
             ILogManager logManager = LimboLogs.Instance;
             ConfigProvider configSource = new ConfigProvider();
-            _tempDir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString());
+            _tempDir = TempPath.GetTempDirectory();
             _statsConfig = configSource.GetConfig<IStatsConfig>();
 
-            var db = new SimpleFilePublicKeyDb("Test",_tempDir, logManager);
+            var db = new SimpleFilePublicKeyDb("Test",_tempDir.Path, logManager);
             _storage = new NetworkStorage(db, logManager);
         }
         
         [TearDown]
         public void TearDown()
         {
-            if (Directory.Exists(_tempDir))
-            {
-                Directory.Delete(_tempDir, true);
-            }
+            _tempDir.Dispose();
         }
 
-        private string _tempDir;
+        private TempPath _tempDir;
         private INetworkStorage _storage;
 
         private INodeLifecycleManager CreateLifecycleManager(Node node)

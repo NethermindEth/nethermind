@@ -15,17 +15,19 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Analytics;
 using Nethermind.Api;
 using Nethermind.Baseline.Config;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
-using Nethermind.DataMarketplace.Core.Configs;
+using Nethermind.Core;
 using Nethermind.EthStats;
 using Nethermind.Grpc;
 using Nethermind.JsonRpc;
@@ -43,9 +45,25 @@ namespace Nethermind.Runner.Test
     [TestFixture]
     public class ConfigFilesTests
     {
-        [SetUp]
+        private readonly IDictionary<string, ConfigProvider> _cachedProviders = new ConcurrentDictionary<string, ConfigProvider>();
+
+        [OneTimeSetUp]
         public void Setup()
         {
+            // by pre-caching configs we make the tests do lot less work
+            
+            IEnumerable<Type> configTypes = new TypeDiscovery().FindNethermindTypes(typeof(IConfig)).Where(t => t.IsInterface).ToArray();
+            
+            Parallel.ForEach(Resolve("*"), configFile =>
+            {
+                ConfigProvider configProvider = GetConfigProviderFromFile(configFile);
+                foreach (Type configType in configTypes)
+                {
+                    configProvider.GetConfig(configType);
+                }
+
+                _cachedProviders.Add(configFile, configProvider);
+            });
         }
 
         [TestCase("*")]
@@ -234,12 +252,12 @@ namespace Nethermind.Runner.Test
             Test<IBaselineConfig, bool>(configWildcard, c => c.Enabled, enabled);
         }
 
-        [TestCase("ndm", true)]
-        [TestCase("^ndm", false)]
-        public void Ndm_enabled_only_for_ndm_configs(string configWildcard, bool ndmEnabled)
-        {
-            Test<INdmConfig, bool>(configWildcard, c => c.Enabled, ndmEnabled);
-        }
+        // [TestCase("ndm", true)]
+        // [TestCase("^ndm", false)]
+        // public void Ndm_enabled_only_for_ndm_configs(string configWildcard, bool ndmEnabled)
+        // {
+        //     Test<INdmConfig, bool>(configWildcard, c => c.Enabled, ndmEnabled);
+        // }
 
         [TestCase("*")]
         public void Analytics_defaults(string configWildcard)
@@ -515,7 +533,12 @@ namespace Nethermind.Runner.Test
         {
             foreach (string configFile in Resolve(configWildcard))
             {
-                ConfigProvider configProvider = GetConfigProviderFromFile(configFile);
+                Console.WriteLine("Testing " + configFile);
+                if (!_cachedProviders.TryGetValue(configFile, out ConfigProvider configProvider))
+                {
+                    configProvider = GetConfigProviderFromFile(configFile);
+                }
+                
                 T config = configProvider.GetConfig<T>();
                 expectedValue(configFile, getter(config));
             }

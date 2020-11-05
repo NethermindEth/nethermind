@@ -16,6 +16,7 @@
       <ProjectReference Include="..\Nethermind.DataMarketplace.WebSockets\Nethermind.DataMarketplace.WebSockets.csproj" />
       <ProjectReference Include="..\Nethermind.Monitoring\Nethermind.Monitoring.csproj" />
       <ProjectReference Include="..\Nethermind.Network\Nethermind.Network.csproj" />
+      <ProjectReference Include="..\Nethermind.Api\Nethermind.Api.csproj" />
     </ItemGroup>
 
 </Project>

@@ -21,8 +21,8 @@ namespace Nethermind.Blockchain.Contracts.Json
 {
     public interface IAbiDefinitionParser
     {
-        AbiDefinition Parse(string json);
-        AbiDefinition Parse<T>();
+        AbiDefinition Parse(string json, string name = null);
         AbiDefinition Parse(Type type);
+        public AbiDefinition Parse<T>() => Parse(typeof(T));
     }
 }
