@@ -22,6 +22,7 @@ using Nethermind.Baseline.Tree;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Trie;
 using NUnit.Framework;
 using Index = Nethermind.Baseline.Tree.BaselineTree.Index;
@@ -258,6 +259,18 @@ namespace Nethermind.Baseline.Test
             baselineTree.Count.Should().Be(3);
             baselineTree.DeleteLast();
             baselineTree.Count.Should().Be(2);
+        }
+
+        public class Test
+        {
+            public int PreviousBlockNumber { get; set; }
+            public long Count { get; set; }
+
+            public Test(int PreviousBlockNumber, long Count)
+            {
+                this.PreviousBlockNumber = PreviousBlockNumber;
+                this.Count = Count;
+            }
         }
 
         [TestCase(0u)]

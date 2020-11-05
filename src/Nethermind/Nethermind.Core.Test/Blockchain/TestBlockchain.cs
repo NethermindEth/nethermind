@@ -76,6 +76,7 @@ namespace Nethermind.Core.Test.Blockchain
         public static Address AccountB = TestItem.AddressB;
         public static Address AccountC = TestItem.AddressC;
         private SemaphoreSlim _resetEvent;
+        private SemaphoreSlim _suggestedBlockResetEvent;
         private AutoResetEvent _oneAtATime = new AutoResetEvent(true);
 
         public ManualTimestamper Timestamper { get; private set; }
@@ -134,9 +135,14 @@ namespace Nethermind.Core.Test.Blockchain
             BlockProducer.Start();
 
             _resetEvent = new SemaphoreSlim(0);
+            _suggestedBlockResetEvent = new SemaphoreSlim(0);
             BlockTree.NewHeadBlock += (s, e) =>
             {
                 _resetEvent.Release(1);
+            };
+            BlockProducer.LastProducedBlockChanged += (s, e) =>
+            {
+                _suggestedBlockResetEvent.Release(1);
             };
 
             var genesis = GetGenesisBlock();
@@ -187,20 +193,29 @@ namespace Nethermind.Core.Test.Blockchain
 
         public async Task AddBlock(params Transaction[] transactions)
         {
-            await _oneAtATime.WaitOneAsync(CancellationToken.None);
-            foreach (Transaction transaction in transactions)
-            {
-                TxPool.AddTransaction(transaction, TxHandlingOptions.None);
-            }
-
-            Timestamper.Add(TimeSpan.FromSeconds(1));
-            BlockProducer.BuildNewBlock();
-
+            await AddBlockInternal(transactions);
+            await _suggestedBlockResetEvent.WaitAsync(CancellationToken.None);
             await _resetEvent.WaitAsync(CancellationToken.None);
             _oneAtATime.Set();
         }
 
         public async Task AddBlock(bool shouldWaitForHead = true, params Transaction[] transactions)
+        {
+            await AddBlockInternal(transactions);
+
+            if (shouldWaitForHead)
+            {
+                await _resetEvent.WaitAsync(CancellationToken.None);
+            }
+            else
+            {
+               await _suggestedBlockResetEvent.WaitAsync(CancellationToken.None);
+            }
+
+            _oneAtATime.Set();
+        }
+
+        private async Task AddBlockInternal(params Transaction[] transactions)
         {
             await _oneAtATime.WaitOneAsync(CancellationToken.None);
             foreach (Transaction transaction in transactions)
@@ -210,14 +225,6 @@ namespace Nethermind.Core.Test.Blockchain
 
             Timestamper.Add(TimeSpan.FromSeconds(1));
             BlockProducer.BuildNewBlock();
-
-            if (shouldWaitForHead)
-            {
-                await _resetEvent.WaitAsync(CancellationToken.None);
-            }
-
-
-            _oneAtATime.Set();
         }
 
         public void AddTransaction(Transaction testObject)

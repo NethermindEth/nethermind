@@ -35,7 +35,7 @@ namespace Nethermind.Baseline.Tree
 
         public long LastBlockWithLeaves { get; set; }
 
-        public Keccak? LastBlockDbHash { get; set; }
+        public Keccak LastBlockDbHash { get; set; } = Keccak.Zero;
 
         /* baseline does not use a sparse merkle tree - instead they use a single zero hash value
            does it expose any attack vectors? */
@@ -50,23 +50,6 @@ namespace Nethermind.Baseline.Tree
             this._dbPrefix = _dbPrefix;
             InitializeMetadata();
             Root = Count == 0 ? Keccak.Zero : LoadValue(new Index(0, 0));
-        }
-
-        private uint LoadCount()
-        {
-            // this is an incorrect binary search approach
-            // that will fail if any of the leaves are zero hashes
-            // we should read count from the corresponding contract
-
-            ulong left = GetMinNodeIndex(LeafRow);
-            ulong right = GetMaxNodeIndex(LeafRow);
-            ulong? topIndex = Binary.Search(left, right, ni => !ZeroHash.Equals(LoadValue(new Index(ni))));
-            if (!topIndex.HasValue)
-            {
-                return 0;
-            }
-
-            return new Index(topIndex.Value).IndexAtRow + 1;
         }
 
         private byte[] BuildDbKey(ulong nodeIndex)
@@ -102,20 +85,16 @@ namespace Nethermind.Baseline.Tree
 
         #region Metadata operation
 
-        private const long CurrentBlockDbIndex = -1;
+        private const long CurrentBlockIndex = -1;
+        private const long CurrentCountndex = -2;
+        private static int RlpBlocksCountLength = Rlp.LengthOfSequence(sizeof(uint) + sizeof(long));
 
         private void InitializeMetadata()
         {
-            var currentBlock = LoadCurrentBlockFromDb();
-            if (currentBlock == null)
-                return;
-            LastBlockDbHash = currentBlock.Value.LastBlockDbHash;
-            LastBlockWithLeaves = currentBlock.Value.LastBlockWithLeaves;
-
-            if (LastBlockWithLeaves != 0)
-            {
-                Count = LoadBlockNumberCount(LastBlockWithLeaves).Count;
-            }
+            var currentBlock = LoadCurrentBlockInDb();
+            LastBlockDbHash = currentBlock.LastBlockDbHash;
+            LastBlockWithLeaves = currentBlock.LastBlockWithLeaves;
+            Count = LoadCount();
         }
         public uint GetLeavesCountFromNextBlocks(long blockNumber, bool clearPreviousCounts = false)
         {
@@ -135,34 +114,61 @@ namespace Nethermind.Baseline.Tree
 
         private (uint Count, long PreviousBlockWithLeaves) LoadBlockNumberCount(long blockNumber)
         {
-            var rlp = _metadataKeyValueStore[MetadataBuildDbKey(blockNumber)];
-            return Rlp.Decode<(uint, long)>(rlp);
+            var data = _metadataKeyValueStore[MetadataBuildDbKey(blockNumber)];
+            var rlpStream = new RlpStream(data);
+            rlpStream.SkipLength();
+            return (rlpStream.DecodeUInt(), rlpStream.DecodeLong());
         }
 
         public void SaveBlockNumberCount(long blockNumber, uint count, long previousBlockWithLeaves)
         {
-            var rlp = Rlp.Encode<(uint, long)>((count, previousBlockWithLeaves)).Bytes;
-            _metadataKeyValueStore[MetadataBuildDbKey(blockNumber)] = rlp;
+            RlpStream rlpStream = new RlpStream(RlpBlocksCountLength);
+            rlpStream.StartSequence(RlpBlocksCountLength);
+            rlpStream.Encode(count);
+            rlpStream.Encode(previousBlockWithLeaves);
+            _metadataKeyValueStore[MetadataBuildDbKey(blockNumber)] = rlpStream.Data;
         }
 
-        private (Keccak LastBlockDbHash, long LastBlockWithLeaves)? LoadCurrentBlockFromDb()
+        private (Keccak LastBlockDbHash, long LastBlockWithLeaves) LoadCurrentBlockInDb()
         {
-            var rlpEncoded = _metadataKeyValueStore[MetadataBuildDbKey(CurrentBlockDbIndex)];
+            var rlpEncoded = _metadataKeyValueStore[MetadataBuildDbKey(CurrentBlockIndex)];
             if (rlpEncoded == null)
-                return null;
-
-            return Rlp.Decode<(Keccak LastBlockDbHash, long LastBlockWithLeaves)>(rlpEncoded);
+                return (ZeroHash, 0);
+            var rlpStream = new RlpStream(rlpEncoded);
+            rlpStream.SkipLength();
+            return (rlpStream.DecodeKeccak(), rlpStream.DecodeLong());
         }
 
         public void SaveCurrentBlockInDb()
         {
-            var rlp = Rlp.Encode<(Keccak, long)>((LastBlockDbHash, LastBlockWithLeaves)).Bytes;
-            _metadataKeyValueStore[MetadataBuildDbKey(CurrentBlockDbIndex)] = rlp;
+            var length = Rlp.LengthOfSequence(Rlp.LengthOf(LastBlockDbHash) + Rlp.LengthOf(LastBlockWithLeaves));
+            RlpStream rlpStream = new RlpStream(length);
+            rlpStream.StartSequence(length);
+            rlpStream.Encode(LastBlockDbHash);
+            rlpStream.Encode(LastBlockWithLeaves);
+            _metadataKeyValueStore[MetadataBuildDbKey(CurrentBlockIndex)] = rlpStream.Data;
         }
 
         private void ClearBlockNumberCount(long blockNumber)
         {
             _metadataKeyValueStore[MetadataBuildDbKey(blockNumber)] = null;
+        }
+
+        private uint LoadCount()
+        {
+            // this is an incorrect binary search approach
+            // that will fail if any of the leaves are zero hashes
+            // we should read count from the corresponding contract
+
+            ulong left = GetMinNodeIndex(LeafRow);
+            ulong right = GetMaxNodeIndex(LeafRow);
+            ulong? topIndex = Binary.Search(left, right, ni => !ZeroHash.Equals(LoadValue(new Index(ni))));
+            if (!topIndex.HasValue)
+            {
+                return 0;
+            }
+
+            return new Index(topIndex.Value).IndexAtRow + 1;
         }
 
         #endregion
@@ -195,7 +201,7 @@ namespace Nethermind.Baseline.Tree
         public void Delete(uint leavesToRemove, bool recalculateHashes = true)
         {
             for (uint i = 1; i < leavesToRemove; ++i)
-            { 
+            {
                 Index index = new Index(LeafRow, Count - i);
                 Modify(index, ZeroHash, recalculateHashes);
             }

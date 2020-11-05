@@ -75,7 +75,7 @@ namespace Nethermind.Baseline.Tree
         {
             if (_currentBlockHeader != null && _currentBlockHeader.Hash != e.Block.ParentHash)
             {
-                if (_currentBlockHeader.Number < e.Block.Number) // ToDo MM nie ma inicjowania bloku current
+                if (_currentBlockHeader.Number < e.Block.Number)
                 {
                     _baselineTreeHelper.BuildTree(_baselineTree, _address, new BlockParameter(_currentBlockHeader.Hash), new BlockParameter(e.Block.Hash));
                 }

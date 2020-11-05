@@ -55,6 +55,7 @@ namespace Nethermind.Core.Test.Blockchain
         }
 
         public Block LastProducedBlock;
+        public event EventHandler<BlockEventArgs> LastProducedBlockChanged;
 
         private SemaphoreSlim _newBlockArrived = new SemaphoreSlim(0);
         private BlockHeader _blockParent = null;
@@ -101,6 +102,7 @@ namespace Nethermind.Core.Test.Blockchain
         {
             var result = await base.SealBlock(block, parent, token);
             LastProducedBlock = result;
+            LastProducedBlockChanged?.Invoke(this, new BlockEventArgs(block));
             return result;
         }
     }
