@@ -54,11 +54,11 @@ namespace Nethermind.Baseline.Test
                 Assert.AreEqual(test.ExpectedTreeCounts[i], baselineTree.Count);
             }
 
-            //testRpc.BlockProducer.BlockParent = testRpc.BlockTree.FindHeader(5);
+            testRpc.BlockProducer.BlockParent = testRpc.BlockTree.FindHeader(5);
 
-            //await testRpc.AddBlock(false);
-            //testRpc.BlockProducer.BlockParent = testRpc.BlockProducer.LastProducedBlock.Header;
-            //await testRpc.AddBlock();
+            await testRpc.AddBlock(false);
+            testRpc.BlockProducer.BlockParent = testRpc.BlockProducer.LastProducedBlock.Header;
+            await testRpc.AddBlock();
         }
     }
 }
