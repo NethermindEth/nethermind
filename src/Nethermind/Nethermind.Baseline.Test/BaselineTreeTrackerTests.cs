@@ -189,44 +189,44 @@ namespace Nethermind.Baseline.Test
                     }
                 };
 
-                //yield return new InsertLeafTest()
-                //{
-                //    LeavesInTransactionsAndBlocks = new Keccak[][]
-                //    {
-                //        new Keccak[] // first block
-                //        {
-                //            TestItem.KeccakB, // first transaction
-                //            TestItem.KeccakC // second transaction 
-                //        }
-                //    },
-                //    ExpectedTreeCounts = new int[]
-                //    {
-                //        2 // tree count after first block
-                //    }
-                //};
+                yield return new InsertLeafTest()
+                {
+                    LeavesInTransactionsAndBlocks = new Keccak[][]
+                    {
+                        new Keccak[] // first block
+                        {
+                            TestItem.KeccakB, // first transaction
+                            TestItem.KeccakC // second transaction 
+                        }
+                    },
+                    ExpectedTreeCounts = new int[]
+                    {
+                        2 // tree count after first block
+                    }
+                };
 
-                //yield return new InsertLeafTest()
-                //{
-                //    LeavesInTransactionsAndBlocks = new Keccak[][]
-                //    {
-                //        new Keccak[] // first block
-                //        {
-                //            TestItem.KeccakA, // first transaction
-                //            TestItem.KeccakC, // second transaction 
-                //            TestItem.KeccakD, // third transaction
-                //        },
-                //        new Keccak[] // second block
-                //        {
-                //            TestItem.KeccakB, // first transaction
-                //            TestItem.KeccakF // second transaction,
-                //        }
-                //    },
-                //    ExpectedTreeCounts = new int[]
-                //    {
-                //        3, // tree count after first block
-                //        5 // tree count after second block
-                //    }
-                //};
+                yield return new InsertLeafTest()
+                {
+                    LeavesInTransactionsAndBlocks = new Keccak[][]
+                    {
+                        new Keccak[] // first block
+                        {
+                            TestItem.KeccakA, // first transaction
+                            TestItem.KeccakC, // second transaction 
+                            TestItem.KeccakD, // third transaction
+                        },
+                        new Keccak[] // second block
+                        {
+                            TestItem.KeccakB, // first transaction
+                            TestItem.KeccakF // second transaction,
+                        }
+                    },
+                    ExpectedTreeCounts = new int[]
+                    {
+                        3, // tree count after first block
+                        5 // tree count after second block
+                    }
+                };
             }
         }
 
