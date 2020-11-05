@@ -107,7 +107,7 @@ namespace Nethermind.DataMarketplace.Initializers
             if (ndmEnabled)
             {
                 _ndmApi.NdmDataPublisher = new NdmDataPublisher();
-                INdmConsumerChannelManager? ndmConsumerChannelManager = new NdmConsumerChannelManager();
+                _ndmApi.NdmConsumerChannelManager = new NdmConsumerChannelManager();
                 string initializerName = ndmConfig.InitializerName;
                 if (logger.IsInfo) logger.Info($"NDM initializer: {initializerName}");
                 Type? ndmInitializerType = AppDomain.CurrentDomain.GetAssemblies()
@@ -130,12 +130,12 @@ namespace Nethermind.DataMarketplace.Initializers
                 if (api.GrpcServer != null)
                 {
                     var grpcChannel = new GrpcNdmConsumerChannel(api.GrpcServer);
-                    ndmConsumerChannelManager.Add(grpcChannel);
+                    _ndmApi.NdmConsumerChannelManager.Add(grpcChannel);
                 }
 
                 NdmWebSocketsModule ndmWebSocketsModule =
                     new NdmWebSocketsModule(
-                        ndmConsumerChannelManager,
+                        _ndmApi.NdmConsumerChannelManager,
                         _ndmApi.NdmDataPublisher,
                         api.EthereumJsonSerializer); 
                 api.WebSocketsManager.AddModule(ndmWebSocketsModule);
