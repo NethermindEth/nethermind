@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -20,6 +20,7 @@ using System.IO;
 using System.IO.Abstractions;
 using System.Linq;
 using System.Reflection;
+using System.Threading.Tasks;
 using Nethermind.Logging;
 using Newtonsoft.Json;
 
@@ -36,8 +37,8 @@ namespace Nethermind.JsonRpc.Modules
         private Dictionary<string, ResolvedMethodInfo> _methods
             = new Dictionary<string, ResolvedMethodInfo>(StringComparer.InvariantCulture);
         
-        private Dictionary<ModuleType, (Func<bool, IModule> RentModule, Action<IModule> ReturnModule)> _pools
-            = new Dictionary<ModuleType, (Func<bool, IModule> RentModule, Action<IModule> ReturnModule)>();
+        private Dictionary<ModuleType, (Func<bool, Task<IModule>> RentModule, Action<IModule> ReturnModule)> _pools
+            = new Dictionary<ModuleType, (Func<bool, Task<IModule>> RentModule, Action<IModule> ReturnModule)>();
         
         private IRpcMethodFilter _filter = NullRpcMethodFilter.Instance;
 
@@ -70,7 +71,7 @@ namespace Nethermind.JsonRpc.Modules
             
             ModuleType moduleType = attribute.ModuleType;
 
-            _pools[moduleType] = (canBeShared => pool.GetModule(canBeShared), m => pool.ReturnModule((T) m));
+            _pools[moduleType] = (async canBeShared => await pool.GetModule(canBeShared), m => pool.ReturnModule((T) m));
             _modules.Add(moduleType);
 
             ((List<JsonConverter>) Converters).AddRange(pool.Factory.GetConverters());
@@ -106,7 +107,7 @@ namespace Nethermind.JsonRpc.Modules
             return (result.MethodInfo, result.ReadOnly);
         }
 
-        public IModule Rent(string methodName, bool canBeShared)
+        public Task<IModule> Rent(string methodName, bool canBeShared)
         {
             if (!_methods.ContainsKey(methodName)) return null;
 
