@@ -194,8 +194,9 @@ namespace Nethermind.Core.Test.Blockchain
         public async Task AddBlock(params Transaction[] transactions)
         {
             await AddBlockInternal(transactions);
-            await _resetEvent.WaitAsync(CancellationToken.None);
 
+            await _resetEvent.WaitAsync(CancellationToken.None);
+            _suggestedBlockResetEvent.Reset();
             _oneAtATime.Set();
         }
 

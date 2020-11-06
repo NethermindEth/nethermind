@@ -63,6 +63,7 @@ namespace Nethermind.Baseline.Test
             var allBlocksCount = initBlockCount + test.ExpectedTreeCounts.Length;
             testRpc.BlockProducer.BlockParent = testRpc.BlockTree.FindHeader(allBlocksCount);
 
+            nonce = 1L;
             for (int j = 0; j < test.LeavesBeforeReorganization.Length; j++)
             {
                 var leafHash = test.LeavesBeforeReorganization[j];
