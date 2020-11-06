@@ -150,7 +150,6 @@ namespace Nethermind.Baseline.Test
             return new ShaBaselineTree(_baselineDb, _metadataBaselineDb, new byte[] { }, 0);
         }
 
-
         public class InsertLeafTest
         {
             // first dimensions - blocks, second dimensions - transactions

@@ -27,6 +27,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Baseline.Test
 {
+    [Parallelizable(ParallelScope.None)]
     public partial class BaselineTreeTrackerTests
     {
         [Test]
