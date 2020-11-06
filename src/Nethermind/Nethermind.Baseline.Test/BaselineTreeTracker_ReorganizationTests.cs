@@ -19,15 +19,16 @@ using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Baseline.Test.Contracts;
 using Nethermind.Baseline.Tree;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm;
 using Nethermind.Int256;
+using Nethermind.JsonRpc.Test.Modules;
 using NUnit.Framework;
 
 namespace Nethermind.Baseline.Test
 {
-    [Parallelizable(ParallelScope.None)]
     public partial class BaselineTreeTrackerTests
     {
         [Test]
@@ -46,47 +47,41 @@ namespace Nethermind.Baseline.Test
             UInt256 nonce = 1L;
             for (int i = 0; i < test.ExpectedTreeCounts.Length; i++)
             {
-                for (int j = 0; j < test.LeavesInTransactionsAndBlocks[i].Length; j++)
-                {
-                    var leafHash = test.LeavesInTransactionsAndBlocks[i][j];
-                    var transaction = contract.InsertLeaf(address, leafHash);
-                    transaction.Nonce = nonce;
-                    ++nonce;
-                    await testRpc.TxSender.SendTransaction(transaction, TxPool.TxHandlingOptions.None);
-                }
+                nonce = await SendTransactions(test.LeavesInTransactionsAndBlocks[i], nonce, testRpc, contract, address);
 
                 await testRpc.AddBlock();
                 Assert.AreEqual(test.ExpectedTreeCounts[i], baselineTree.Count);
             }
 
-            var initBlockCount = 4;
-            var allBlocksCount = initBlockCount + test.ExpectedTreeCounts.Length;
+            var initBlocksCount = 4;
+            var allBlocksCount = initBlocksCount + test.ExpectedTreeCounts.Length;
             testRpc.BlockProducer.BlockParent = testRpc.BlockTree.FindHeader(allBlocksCount);
 
             nonce = 1L;
-            for (int j = 0; j < test.LeavesBeforeReorganization.Length; j++)
-            {
-                var leafHash = test.LeavesBeforeReorganization[j];
-                var transaction = contract.InsertLeaf(address, leafHash);
-                transaction.Nonce = nonce;
-                ++nonce;
-                await testRpc.TxSender.SendTransaction(transaction, TxPool.TxHandlingOptions.None);
-            }
+            nonce = await SendTransactions(test.LeavesInMiddleOfReorganization, nonce, testRpc, contract, address);
 
             await testRpc.AddBlock(false);
             testRpc.BlockProducer.BlockParent = testRpc.BlockProducer.LastProducedBlock.Header;
 
-            for (int j = 0; j < test.LeavesInMiddleOfReorganization.Length; j++)
+            await SendTransactions(test.LeavesInAfterReorganization, nonce, testRpc, contract, address);
+
+            await testRpc.AddBlock();
+            Assert.AreEqual(test.TreeCountAfterAll, baselineTree.Count);
+        }
+
+        private async Task<UInt256> SendTransactions(Keccak[] transactions, UInt256 startingNonce, TestRpcBlockchain testRpc, MerkleTreeSHAContract contract, Address address)
+        {
+            UInt256 nonce = startingNonce;
+            for (int j = 0; j < transactions.Length; j++)
             {
-                var leafHash = test.LeavesInMiddleOfReorganization[j];
+                var leafHash = transactions[j];
                 var transaction = contract.InsertLeaf(address, leafHash);
                 transaction.Nonce = nonce;
                 ++nonce;
                 await testRpc.TxSender.SendTransaction(transaction, TxPool.TxHandlingOptions.None);
             }
 
-            await testRpc.AddBlock();
-            Assert.AreEqual(test.TreeCountAfterReorganization, baselineTree.Count);
+            return nonce;
         }
 
         public class ReorganizedInsertLeafTest
@@ -95,13 +90,13 @@ namespace Nethermind.Baseline.Test
             public Keccak[][] LeavesInTransactionsAndBlocks { get; set; }
             public int[] ExpectedTreeCounts { get; set; }
 
-            public Keccak[] LeavesBeforeReorganization { get; set; }
-
             public Keccak[] LeavesInMiddleOfReorganization { get; set; }
 
-            public int TreeCountAfterReorganization { get; set; }
+            public Keccak[] LeavesInAfterReorganization { get; set; }
 
-            public override string ToString() => "Tree counts: " + string.Join("; ", ExpectedTreeCounts.Select(x => x.ToString())) + $", After reorganization: {TreeCountAfterReorganization}" ;
+            public int TreeCountAfterAll { get; set; }
+
+            public override string ToString() => "Tree counts: " + string.Join("; ", ExpectedTreeCounts.Select(x => x.ToString())) + $", After all count: {TreeCountAfterAll}" ;
         }
 
         public static IEnumerable<ReorganizedInsertLeafTest> ReorganizationTestCases
@@ -121,9 +116,9 @@ namespace Nethermind.Baseline.Test
                     {
                         1 // tree count after first block
                     },
-                    LeavesBeforeReorganization = new Keccak[] { },
                     LeavesInMiddleOfReorganization = new Keccak[] { },
-                    TreeCountAfterReorganization = 1
+                    LeavesInAfterReorganization = new Keccak[] { },
+                    TreeCountAfterAll = 1
                 };
 
                 yield return new ReorganizedInsertLeafTest()
@@ -139,9 +134,28 @@ namespace Nethermind.Baseline.Test
                     {
                         1 // tree count after first block
                     },
-                    LeavesBeforeReorganization = new Keccak[] { TestItem.KeccakD },
-                    LeavesInMiddleOfReorganization = new Keccak[] { TestItem.KeccakC },
-                    TreeCountAfterReorganization = 3
+                    LeavesInMiddleOfReorganization = new Keccak[] { TestItem.KeccakD },
+                    LeavesInAfterReorganization = new Keccak[] { TestItem.KeccakC },
+                    TreeCountAfterAll = 3
+                };
+
+
+                yield return new ReorganizedInsertLeafTest()
+                {
+                    LeavesInTransactionsAndBlocks = new Keccak[][]
+                    {
+                        new Keccak[] // first block
+                        {
+                            TestItem.KeccakB // first transaction
+                        }
+                    },
+                    ExpectedTreeCounts = new int[]
+                    {
+                        1 // tree count after first block
+                    },
+                    LeavesInMiddleOfReorganization = new Keccak[] { TestItem.KeccakD },
+                    LeavesInAfterReorganization = new Keccak[] { TestItem.KeccakC },
+                    TreeCountAfterAll = 3
                 };
             }
         }
