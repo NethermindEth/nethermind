@@ -26,7 +26,8 @@ namespace Nethermind.Baseline.Test
 {
     public partial class BaselineTreeTrackerTests
     {
-        [Test]
+        [Test] 
+        [NonParallelizable]
         public async Task Tree_tracker_reorganization([ValueSource(nameof(InsertLeafTestCases))]InsertLeafTest test)
         {
             var address = TestItem.Addresses[0];
