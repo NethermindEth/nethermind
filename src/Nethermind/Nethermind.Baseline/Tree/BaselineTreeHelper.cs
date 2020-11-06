@@ -125,7 +125,7 @@ namespace Nethermind.Baseline.Tree
                 if (currentBlockNumber != filterLog.BlockNumber)
                 {
                     var previousBlockWithLeaves = baselineTree.LastBlockWithLeaves;
-                    baselineTree.SaveBlockNumberCount(currentBlockNumber.Value, count, previousBlockWithLeaves);
+                    baselineTree.Metadata.SaveBlockNumberCount(currentBlockNumber.Value, count, previousBlockWithLeaves);
                     baselineTree.LastBlockWithLeaves = currentBlockNumber.Value;
                     currentBlockNumber = filterLog.BlockNumber;
                     count = 1; // ToDo wrong -> we do not know how many leaves we will have
@@ -153,7 +153,7 @@ namespace Nethermind.Baseline.Tree
             if (currentBlockNumber != null && count != 0)
             {
                 var previousBlockWithLeaves = baselineTree.LastBlockWithLeaves;
-                baselineTree.SaveBlockNumberCount(currentBlockNumber.Value, count, previousBlockWithLeaves);
+                baselineTree.Metadata.SaveBlockNumberCount(currentBlockNumber.Value, count, previousBlockWithLeaves);
                 baselineTree.LastBlockWithLeaves = currentBlockNumber.Value;
             }
 

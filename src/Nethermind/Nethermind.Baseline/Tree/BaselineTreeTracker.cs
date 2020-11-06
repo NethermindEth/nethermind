@@ -65,9 +65,14 @@ namespace Nethermind.Baseline.Tree
                 }
             }
 
-            var toBlockParameter = BlockParameter.Latest;
-            _currentBlockHeader = _blockFinder.SearchForHeader(null).Object;
+            var toBlockParameter = BlockParameter.Latest; // ToDo MM
+            _currentBlockHeader = _blockFinder.SearchForHeader(null).Object; // ToDo MM set current fix
             _baselineTreeHelper.BuildTree(_baselineTree, _address, fromBlockParameter, toBlockParameter);
+            if (toBlockParameter.BlockHash != BlockParameter.Latest.BlockHash)
+            {
+                _baselineTreeHelper.BuildTree(_baselineTree, _address, toBlockParameter, new BlockParameter(BlockParameter.Latest.BlockHash));
+            }    
+
             _blockProcessor.BlockProcessed += OnBlockProcessed;
         }
 
@@ -89,7 +94,9 @@ namespace Nethermind.Baseline.Tree
             }
 
             _currentBlockHeader = e.Block.Header;
+            var initCout = _baselineTree.Count;
             AddFromCurrentBlock(e.TxReceipts, e.Block.Number);
+            _baselineTree.CalculateHashes(initCout);
         }
 
         private void AddFromCurrentBlock(TxReceipt[] txReceipts, long newBlockNumber)
@@ -124,7 +131,7 @@ namespace Nethermind.Baseline.Tree
             if (count != 0)
             {
                 var previousBlockWithLeaves = _baselineTree.LastBlockWithLeaves;
-                _baselineTree.SaveBlockNumberCount(newBlockNumber, count, previousBlockWithLeaves);
+                _baselineTree.Metadata.SaveBlockNumberCount(newBlockNumber, count, previousBlockWithLeaves);
                 _baselineTree.LastBlockWithLeaves = newBlockNumber;
             }
         }
@@ -136,13 +143,13 @@ namespace Nethermind.Baseline.Tree
             _baselineTree.Delete(leavesToReorganize, false);
 
             AddFromCurrentBlock(txReceipts, newBlockNumber);
-            _baselineTree.CalculateHashes(calculatingHashesStart);
+            _baselineTree.CalculateHashes(calculatingHashesStart); // ToDo MM wrong -> refactor
         }
 
         public void Dispose()
         {
             _baselineTree.LastBlockDbHash = _currentBlockHeader!.Hash;
-            _baselineTree.SaveCurrentBlockInDb();
+            _baselineTree.Metadata.SaveCurrentBlockInDb(_baselineTree.LastBlockDbHash, _baselineTree.LastBlockWithLeaves);
             _blockProcessor.BlockProcessed -= OnBlockProcessed;
         }
     }

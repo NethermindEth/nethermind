@@ -34,7 +34,6 @@ namespace Nethermind.Baseline.Test
         [Test]
         public async Task Tree_tracker_reorganization([ValueSource(nameof(ReorganizationTestCases))]ReorganizedInsertLeafTest test)
         {
-            
             var address = TestItem.Addresses[0];
             var result = await InitializeTestRpc(address);
             var testRpc = result.TestRpc;
@@ -140,23 +139,28 @@ namespace Nethermind.Baseline.Test
                 };
 
 
-                yield return new ReorganizedInsertLeafTest()
-                {
-                    LeavesInTransactionsAndBlocks = new Keccak[][]
-                    {
-                        new Keccak[] // first block
-                        {
-                            TestItem.KeccakB // first transaction
-                        }
-                    },
-                    ExpectedTreeCounts = new int[]
-                    {
-                        1 // tree count after first block
-                    },
-                    LeavesInMiddleOfReorganization = new Keccak[] { TestItem.KeccakD },
-                    LeavesInAfterReorganization = new Keccak[] { TestItem.KeccakC },
-                    TreeCountAfterAll = 3
-                };
+                //yield return new ReorganizedInsertLeafTest()
+                //{
+                //    LeavesInTransactionsAndBlocks = new Keccak[][]
+                //    {
+                //        new Keccak[] // first block
+                //        {
+                //            TestItem.KeccakB // first transaction
+                //        },
+                //        new Keccak[] // second block
+                //        {
+                //            TestItem.KeccakH, // first transaction
+                //            TestItem.KeccakF // second transaction
+                //        }
+                //    },
+                //    ExpectedTreeCounts = new int[]
+                //    {
+                //        1, 3 // tree count after first block
+                //    },
+                //    LeavesInMiddleOfReorganization = new Keccak[] { TestItem.KeccakD, TestItem.KeccakE },
+                //    LeavesInAfterReorganization = new Keccak[] { TestItem.KeccakC },
+                //    TreeCountAfterAll = 6
+                //};
             }
         }
     }

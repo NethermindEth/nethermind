@@ -1,3 +1,19 @@
+//  Copyright (c) 2018 Demerzel Solutions Limited
+//  This file is part of the Nethermind library.
+// 
+//  The Nethermind library is free software: you can redistribute it and/or modify
+//  it under the terms of the GNU Lesser General Public License as published by
+//  the Free Software Foundation, either version 3 of the License, or
+//  (at your option) any later version.
+// 
+//  The Nethermind library is distributed in the hope that it will be useful,
+//  but WITHOUT ANY WARRANTY; without even the implied warranty of
+//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+//  GNU Lesser General Public License for more details.
+// 
+//  You should have received a copy of the GNU Lesser General Public License
+//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+
 using System;
 using System.Linq;
 using System.Runtime.CompilerServices;
@@ -35,6 +51,8 @@ namespace Nethermind.Baseline.Tree
 
         public long LastBlockWithLeaves { get; set; }
 
+        public BaselineTreeMetadata Metadata { get; private set; }
+
         public Keccak LastBlockDbHash { get; set; } = Keccak.Zero;
 
         /* baseline does not use a sparse merkle tree - instead they use a single zero hash value
@@ -46,8 +64,9 @@ namespace Nethermind.Baseline.Tree
             TruncationLength = truncationLength;
             _db = db ?? throw new ArgumentNullException(nameof(db));
             _metadataKeyValueStore = metadataKeyValueStore ?? throw new ArgumentNullException(nameof(metadataKeyValueStore));
-
             this._dbPrefix = _dbPrefix;
+            Metadata = new BaselineTreeMetadata(metadataKeyValueStore, _dbPrefix);
+
             InitializeMetadata();
             Root = Count == 0 ? Keccak.Zero : LoadValue(new Index(0, 0));
         }
@@ -55,11 +74,6 @@ namespace Nethermind.Baseline.Tree
         private byte[] BuildDbKey(ulong nodeIndex)
         {
             return Rlp.Encode(Rlp.Encode(_dbPrefix), Rlp.Encode(nodeIndex)).Bytes;
-        }
-
-        private byte[] MetadataBuildDbKey(long blockNumber)
-        {
-            return Rlp.Encode(Rlp.Encode(_dbPrefix), Rlp.Encode(blockNumber)).Bytes;
         }
 
         private void SaveValue(in Index index, byte[] hashBytes)
@@ -83,75 +97,17 @@ namespace Nethermind.Baseline.Tree
             return new BatchWrite(_synchroObject);
         }
 
-        #region Metadata operation
-
-        private const long CurrentBlockIndex = -1;
-        private const long CurrentCountndex = -2;
-        private static int RlpBlocksCountLength = Rlp.LengthOfSequence(sizeof(uint) + sizeof(long));
+        public uint GetLeavesCountFromNextBlocks(long blockNumber, bool clearPreviousCounts = false)
+        {
+            return Metadata.GetLeavesCountFromNextBlocks(LastBlockWithLeaves, Count, blockNumber, clearPreviousCounts);
+        }
 
         private void InitializeMetadata()
         {
-            var currentBlock = LoadCurrentBlockInDb();
+            var currentBlock = Metadata.LoadCurrentBlockInDb();
             LastBlockDbHash = currentBlock.LastBlockDbHash;
             LastBlockWithLeaves = currentBlock.LastBlockWithLeaves;
             Count = LoadCount();
-        }
-        public uint GetLeavesCountFromNextBlocks(long blockNumber, bool clearPreviousCounts = false)
-        {
-            var foundCount = LoadBlockNumberCount(LastBlockWithLeaves);
-            while (foundCount.PreviousBlockWithLeaves >= blockNumber)
-            {
-                foundCount = LoadBlockNumberCount(foundCount.PreviousBlockWithLeaves);
-
-                if (clearPreviousCounts)
-                {
-                    ClearBlockNumberCount(foundCount.PreviousBlockWithLeaves);
-                }
-            }
-
-            return Count - foundCount.Count;
-        }
-
-        private (uint Count, long PreviousBlockWithLeaves) LoadBlockNumberCount(long blockNumber)
-        {
-            var data = _metadataKeyValueStore[MetadataBuildDbKey(blockNumber)];
-            var rlpStream = new RlpStream(data);
-            rlpStream.SkipLength();
-            return (rlpStream.DecodeUInt(), rlpStream.DecodeLong());
-        }
-
-        public void SaveBlockNumberCount(long blockNumber, uint count, long previousBlockWithLeaves)
-        {
-            RlpStream rlpStream = new RlpStream(RlpBlocksCountLength);
-            rlpStream.StartSequence(RlpBlocksCountLength);
-            rlpStream.Encode(count);
-            rlpStream.Encode(previousBlockWithLeaves);
-            _metadataKeyValueStore[MetadataBuildDbKey(blockNumber)] = rlpStream.Data;
-        }
-
-        private (Keccak LastBlockDbHash, long LastBlockWithLeaves) LoadCurrentBlockInDb()
-        {
-            var rlpEncoded = _metadataKeyValueStore[MetadataBuildDbKey(CurrentBlockIndex)];
-            if (rlpEncoded == null)
-                return (ZeroHash, 0);
-            var rlpStream = new RlpStream(rlpEncoded);
-            rlpStream.SkipLength();
-            return (rlpStream.DecodeKeccak(), rlpStream.DecodeLong());
-        }
-
-        public void SaveCurrentBlockInDb()
-        {
-            var length = Rlp.LengthOfSequence(Rlp.LengthOf(LastBlockDbHash) + Rlp.LengthOf(LastBlockWithLeaves));
-            RlpStream rlpStream = new RlpStream(length);
-            rlpStream.StartSequence(length);
-            rlpStream.Encode(LastBlockDbHash);
-            rlpStream.Encode(LastBlockWithLeaves);
-            _metadataKeyValueStore[MetadataBuildDbKey(CurrentBlockIndex)] = rlpStream.Data;
-        }
-
-        private void ClearBlockNumberCount(long blockNumber)
-        {
-            _metadataKeyValueStore[MetadataBuildDbKey(blockNumber)] = null;
         }
 
         private uint LoadCount()
@@ -170,8 +126,6 @@ namespace Nethermind.Baseline.Tree
 
             return new Index(topIndex.Value).IndexAtRow + 1;
         }
-
-        #endregion
 
         private static ulong GetMinNodeIndex(in uint row)
         {
