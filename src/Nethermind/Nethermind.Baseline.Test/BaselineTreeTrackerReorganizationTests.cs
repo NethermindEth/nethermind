@@ -14,9 +14,11 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Baseline.Test.Contracts;
 using Nethermind.Baseline.Tree;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm;
 using Nethermind.Int256;
@@ -26,9 +28,9 @@ namespace Nethermind.Baseline.Test
 {
     public partial class BaselineTreeTrackerTests
     {
-        [Test] 
+        [Test]
         [NonParallelizable]
-        public async Task Tree_tracker_reorganization([ValueSource(nameof(InsertLeafTestCases))]InsertLeafTest test)
+        public async Task Tree_tracker_reorganization([ValueSource(nameof(ReorganizationTestCases))]InsertLeafTest test)
         {
             var address = TestItem.Addresses[0];
             var result = await InitializeTestRpc(address);
@@ -60,6 +62,27 @@ namespace Nethermind.Baseline.Test
             await testRpc.AddBlock(false);
             testRpc.BlockProducer.BlockParent = testRpc.BlockProducer.LastProducedBlock.Header;
             await testRpc.AddBlock();
+        }
+
+        public static IEnumerable<InsertLeafTest> ReorganizationTestCases
+        {
+            get
+            {
+                yield return new InsertLeafTest()
+                {
+                    LeavesInTransactionsAndBlocks = new Keccak[][]
+                    {
+                        new Keccak[] // first block
+                        {
+                            TestItem.KeccakB // first transaction
+                        }
+                    },
+                    ExpectedTreeCounts = new int[]
+                    {
+                        1 // tree count after first block
+                    }
+                };
+            }
         }
     }
 }
