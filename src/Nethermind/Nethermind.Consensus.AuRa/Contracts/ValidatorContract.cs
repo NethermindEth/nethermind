@@ -23,6 +23,7 @@ using Nethermind.Core;
 using Nethermind.Int256;
 using Nethermind.Evm;
 using Nethermind.State;
+using Nethermind.Blockchain.Find;
 
 namespace Nethermind.Consensus.AuRa.Contracts
 {

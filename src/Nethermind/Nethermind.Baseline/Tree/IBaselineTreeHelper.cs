@@ -14,27 +14,23 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+
+using Nethermind.Blockchain.Find;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Baseline.Tree
 {
-    public readonly struct BaselineTreeNode
+    public interface IBaselineTreeHelper
     {
-        public BaselineTreeNode(Keccak hash, ulong nodeIndex)
-        {
-            Hash = hash;
-            NodeIndex = nodeIndex;
-        }
-        
-        /// <summary>
-        /// Keccak here in order not to add a new converter at the moment
-        /// </summary>
-        public Keccak Hash { get; }
-        public ulong NodeIndex { get; } // 64bit index for a tree of height 32
+        BaselineTree RebuildEntireTree(Address treeAddress, Keccak blockHash);
 
-        public override string ToString()
-        {
-            return $"{NodeIndex}.{Hash}";
-        }
+        BaselineTree BuildTree(BaselineTree baselineTree, Address treeAddress, BlockParameter blockFrom, BlockParameter blockTo);
+
+        BaselineTree CreateHistoricalTree(Address address, long blockNumber);
+
+        BaselineTreeNode GetHistoricalLeaf(BaselineTree tree, uint leafIndex, long blockNumber);
+
+        BaselineTreeNode[] GetHistoricalLeaves(BaselineTree tree, uint[] leafIndexes, long blockNumber);
     }
 }

@@ -1,46 +1,51 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Baseline", "Nethermind.Baseline\Nethermind.Baseline.csproj", "{E3CA6610-B520-43EB-A12B-27A592C9CA68}"
+# Visual Studio Version 16
+VisualStudioVersion = 16.0.30011.22
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Baseline", "Nethermind.Baseline\Nethermind.Baseline.csproj", "{E3CA6610-B520-43EB-A12B-27A592C9CA68}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Baseline.Test", "Nethermind.Baseline.Test\Nethermind.Baseline.Test.csproj", "{A9D4939D-2FCF-49C0-B514-2F46795C784B}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Baseline.Test", "Nethermind.Baseline.Test\Nethermind.Baseline.Test.csproj", "{A9D4939D-2FCF-49C0-B514-2F46795C784B}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Vault.Test", "Nethermind.Vault.Test\Nethermind.Vault.Test.csproj", "{0EE4FB9B-D1EE-4869-8381-EBD94ED2FD5E}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Vault.Test", "Nethermind.Vault.Test\Nethermind.Vault.Test.csproj", "{0EE4FB9B-D1EE-4869-8381-EBD94ED2FD5E}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Provide.Vault", "Nethermind.Provide.Vault\Nethermind.Provide.Vault.csproj", "{E88AB748-F764-4B8F-9BC8-4EDC0968CDCA}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Provide.Vault", "Nethermind.Provide.Vault\Nethermind.Provide.Vault.csproj", "{E88AB748-F764-4B8F-9BC8-4EDC0968CDCA}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Nethermind", "Nethermind", "{E4D07050-1288-4344-B79D-470C2DC86146}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Abi", "Nethermind.Abi\Nethermind.Abi.csproj", "{3394242A-4B4A-4A05-B151-59830CC9B28E}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Abi", "Nethermind.Abi\Nethermind.Abi.csproj", "{3394242A-4B4A-4A05-B151-59830CC9B28E}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Blockchain", "Nethermind.Blockchain\Nethermind.Blockchain.csproj", "{674A7D81-426C-40BF-9501-DE9D13910D37}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Blockchain", "Nethermind.Blockchain\Nethermind.Blockchain.csproj", "{674A7D81-426C-40BF-9501-DE9D13910D37}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Config", "Nethermind.Config\Nethermind.Config.csproj", "{3CB046C0-5FF3-4AC0-AD8A-268739B35AE8}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Config", "Nethermind.Config\Nethermind.Config.csproj", "{3CB046C0-5FF3-4AC0-AD8A-268739B35AE8}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.TxPool", "Nethermind.TxPool\Nethermind.TxPool.csproj", "{0D591A18-CC59-4259-8D7B-3E84F13D55CB}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.TxPool", "Nethermind.TxPool\Nethermind.TxPool.csproj", "{0D591A18-CC59-4259-8D7B-3E84F13D55CB}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.JsonRpc.Test", "Nethermind.JsonRpc.Test\Nethermind.JsonRpc.Test.csproj", "{6327AFFF-11C7-49A8-AA18-923085FB9106}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.JsonRpc.Test", "Nethermind.JsonRpc.Test\Nethermind.JsonRpc.Test.csproj", "{6327AFFF-11C7-49A8-AA18-923085FB9106}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Core", "Nethermind.Core\Nethermind.Core.csproj", "{DA2E9025-963E-4300-A712-C8194B7983C6}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Core", "Nethermind.Core\Nethermind.Core.csproj", "{DA2E9025-963E-4300-A712-C8194B7983C6}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Facade", "Nethermind.Facade\Nethermind.Facade.csproj", "{53EDFB1F-5AC3-408F-B60B-3030CD76E283}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Facade", "Nethermind.Facade\Nethermind.Facade.csproj", "{53EDFB1F-5AC3-408F-B60B-3030CD76E283}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.JsonRpc", "Nethermind.JsonRpc\Nethermind.JsonRpc.csproj", "{7AD34419-DAB7-4277-BFF4-981D881E0B31}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.JsonRpc", "Nethermind.JsonRpc\Nethermind.JsonRpc.csproj", "{7AD34419-DAB7-4277-BFF4-981D881E0B31}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Wallet", "Nethermind.Wallet\Nethermind.Wallet.csproj", "{A2C71F4A-FC08-428C-8113-5D13490DF4DC}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Wallet", "Nethermind.Wallet\Nethermind.Wallet.csproj", "{A2C71F4A-FC08-428C-8113-5D13490DF4DC}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Cli", "Nethermind.Cli\Nethermind.Cli.csproj", "{5E62C0BD-2B38-4195-AB9B-FF2927B54A2C}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Cli", "Nethermind.Cli\Nethermind.Cli.csproj", "{5E62C0BD-2B38-4195-AB9B-FF2927B54A2C}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Baseline.Plugin", "Nethermind.Baseline.Plugin\Nethermind.Baseline.Plugin.csproj", "{C978A054-BB44-4F47-B8D7-29F6CF076CEE}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Baseline.Plugin", "Nethermind.Baseline.Plugin\Nethermind.Baseline.Plugin.csproj", "{C978A054-BB44-4F47-B8D7-29F6CF076CEE}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Api", "Nethermind.Api\Nethermind.Api.csproj", "{9DFE98E5-BC3D-44F0-9198-ABF1837ED989}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Api", "Nethermind.Api\Nethermind.Api.csproj", "{9DFE98E5-BC3D-44F0-9198-ABF1837ED989}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Runner", "Nethermind.Runner\Nethermind.Runner.csproj", "{30FEC93A-D590-4AA1-945D-5A44A3003199}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Runner", "Nethermind.Runner\Nethermind.Runner.csproj", "{30FEC93A-D590-4AA1-945D-5A44A3003199}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.KeyStore", "Nethermind.KeyStore\Nethermind.KeyStore.csproj", "{EA894A65-CE2E-4193-BEFD-CAF1B49D35F9}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.KeyStore", "Nethermind.KeyStore\Nethermind.KeyStore.csproj", "{EA894A65-CE2E-4193-BEFD-CAF1B49D35F9}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Core.Test", "Nethermind.Core.Test\Nethermind.Core.Test.csproj", "{E4DFFF98-2AB5-4BAF-A40C-EC32DFE13E2B}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Core.Test", "Nethermind.Core.Test\Nethermind.Core.Test.csproj", "{E4DFFF98-2AB5-4BAF-A40C-EC32DFE13E2B}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Consensus.AuRa", "Nethermind.Consensus.AuRa\Nethermind.Consensus.AuRa.csproj", "{E8B3DD70-7BB2-4CF2-A26D-F375D831DE45}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Consensus.AuRa", "Nethermind.Consensus.AuRa\Nethermind.Consensus.AuRa.csproj", "{E8B3DD70-7BB2-4CF2-A26D-F375D831DE45}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Baseline.Benchmark", "Nethermind.Baseline.Benchmark\Nethermind.Baseline.Benchmark.csproj", "{13746112-5DEC-42CC-93D4-B9B01F67DF9E}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -128,6 +133,13 @@ Global
 		{E8B3DD70-7BB2-4CF2-A26D-F375D831DE45}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{E8B3DD70-7BB2-4CF2-A26D-F375D831DE45}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{E8B3DD70-7BB2-4CF2-A26D-F375D831DE45}.Release|Any CPU.Build.0 = Release|Any CPU
+		{13746112-5DEC-42CC-93D4-B9B01F67DF9E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{13746112-5DEC-42CC-93D4-B9B01F67DF9E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{13746112-5DEC-42CC-93D4-B9B01F67DF9E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{13746112-5DEC-42CC-93D4-B9B01F67DF9E}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{3394242A-4B4A-4A05-B151-59830CC9B28E} = {E4D07050-1288-4344-B79D-470C2DC86146}
@@ -144,5 +156,8 @@ Global
 		{EA894A65-CE2E-4193-BEFD-CAF1B49D35F9} = {E4D07050-1288-4344-B79D-470C2DC86146}
 		{E4DFFF98-2AB5-4BAF-A40C-EC32DFE13E2B} = {E4D07050-1288-4344-B79D-470C2DC86146}
 		{E8B3DD70-7BB2-4CF2-A26D-F375D831DE45} = {E4D07050-1288-4344-B79D-470C2DC86146}
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {F5822673-96EF-4C5C-AEC1-74D165BF8D0C}
 	EndGlobalSection
 EndGlobal

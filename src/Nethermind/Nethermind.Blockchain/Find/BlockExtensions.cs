@@ -17,9 +17,10 @@
 using System;
 using System.Collections.Generic;
 using Nethermind.Blockchain.Contracts;
+using Nethermind.Blockchain.Filters;
 using Nethermind.Core;
 
-namespace Nethermind.Consensus.AuRa
+namespace Nethermind.Blockchain.Find
 {
     public static class BlockExtensions
     {
@@ -34,8 +35,8 @@ namespace Nethermind.Consensus.AuRa
             block.Header.TryFindLog(receipts, matchEntry, out foundEntry, receiptFindOrder, logsFindOrder, comparer);
 
         public static bool TryFindLog(
-            this BlockHeader blockHeader, 
-            TxReceipt[] receipts, 
+            this BlockHeader blockHeader,
+            TxReceipt[] receipts,
             LogEntry matchEntry,
             out LogEntry foundEntry,
             FindOrder receiptFindOrder = FindOrder.Descending, // iterating backwards, by default we are interested only in the last one
@@ -43,7 +44,7 @@ namespace Nethermind.Consensus.AuRa
             IEqualityComparer<LogEntry> comparer = null)
         {
             comparer ??= LogEntryAddressAndTopicsMatchTemplateEqualityComparer.Instance;
-            
+
             if (blockHeader.Bloom.Matches(matchEntry))
             {
                 for (int i = 0; i < receipts.Length; i++)
@@ -57,7 +58,7 @@ namespace Nethermind.Consensus.AuRa
                             if (comparer.Equals(receiptLog, matchEntry))
                             {
                                 foundEntry = receiptLog;
-                                return true;                                
+                                return true;
                             }
                         }
                     }
@@ -67,17 +68,17 @@ namespace Nethermind.Consensus.AuRa
             foundEntry = null;
             return false;
         }
-        
+
         public static IEnumerable<LogEntry> FindLogs(
-            this BlockHeader blockHeader, 
-            TxReceipt[] receipts, 
-            LogEntry matchEntry, 
+            this BlockHeader blockHeader,
+            TxReceipt[] receipts,
+            LogEntry matchEntry,
             FindOrder receiptFindOrder = FindOrder.Ascending, // iterating forwards, by default we are interested in all items in order of appearance 
             FindOrder logsFindOrder = FindOrder.Ascending, // iterating forwards, by default we are interested in all items in order of appearance
             IEqualityComparer<LogEntry> comparer = null)
         {
             comparer ??= LogEntryAddressAndTopicsMatchTemplateEqualityComparer.Instance;
-            
+
             if (blockHeader.Bloom.Matches(matchEntry))
             {
                 for (int i = 0; i < receipts.Length; i++)
@@ -98,10 +99,37 @@ namespace Nethermind.Consensus.AuRa
             }
         }
 
-        private static T GetItemAt<T>(T[] items, int index, FindOrder findOrder) => 
+        public static IEnumerable<LogEntry> FindLogs(
+            this BlockHeader blockHeader,
+            TxReceipt[] receipts,
+            LogFilter logFilter,
+            FindOrder receiptFindOrder = FindOrder.Ascending, // iterating forwards, by default we are interested in all items in order of appearance 
+            FindOrder logsFindOrder = FindOrder.Ascending) // iterating forwards, by default we are interested in all items in order of appearance
+        {
+            if (logFilter.Matches(blockHeader.Bloom))
+            {
+                for (int i = 0; i < receipts.Length; i++)
+                {
+                    TxReceipt receipt = GetItemAt(receipts, i, receiptFindOrder);
+                    if (logFilter.Matches(receipt.Bloom))
+                    {
+                        for (int j = 0; j < receipt.Logs.Length; j++)
+                        {
+                            var receiptLog = GetItemAt(receipt.Logs, j, logsFindOrder);
+                            if (logFilter.Accepts(receiptLog))
+                            {
+                                yield return receiptLog;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        private static T GetItemAt<T>(T[] items, int index, FindOrder findOrder) =>
             items[findOrder == FindOrder.Ascending ? index : items.Length - index - 1];
     }
-    
+
     public enum FindOrder
     {
         Ascending,

@@ -23,10 +23,15 @@
     </ItemGroup>
 
     <ItemGroup>
+      <None Remove="Contracts\MerkleTreeSHAContract.json" />
       <None Remove="testBytecode" />
       <Content Include="testBytecode">
         <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       </Content>
+    </ItemGroup>
+
+    <ItemGroup>
+      <EmbeddedResource Include="Contracts\MerkleTreeSHAContract.json" />
     </ItemGroup>
 
 </Project>

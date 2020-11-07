@@ -14,27 +14,15 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using Nethermind.Core.Crypto;
+using BenchmarkDotNet.Running;
 
-namespace Nethermind.Baseline.Tree
+namespace Nethermind.Baseline.Benchmark
 {
-    public readonly struct BaselineTreeNode
+    class Program
     {
-        public BaselineTreeNode(Keccak hash, ulong nodeIndex)
+        static void Main(string[] args)
         {
-            Hash = hash;
-            NodeIndex = nodeIndex;
-        }
-        
-        /// <summary>
-        /// Keccak here in order not to add a new converter at the moment
-        /// </summary>
-        public Keccak Hash { get; }
-        public ulong NodeIndex { get; } // 64bit index for a tree of height 32
-
-        public override string ToString()
-        {
-            return $"{NodeIndex}.{Hash}";
+            BenchmarkRunner.Run(typeof(Program).Assembly);
         }
     }
 }

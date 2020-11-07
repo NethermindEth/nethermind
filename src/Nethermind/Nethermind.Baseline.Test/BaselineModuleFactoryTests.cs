@@ -19,8 +19,8 @@ using System.IO.Abstractions;
 using FluentAssertions;
 using Nethermind.Abi;
 using Nethermind.Blockchain.Find;
-using Nethermind.Consensus;
-using Nethermind.Facade;
+using Nethermind.Blockchain.Processing;
+using Nethermind.Core;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.TxPool;
@@ -42,7 +42,9 @@ namespace Nethermind.Baseline.Test
                 Substitute.For<IBlockFinder>(),
                 new AbiEncoder(),
                 Substitute.For<IFileSystem>(),
-                LimboLogs.Instance);
+                LimboLogs.Instance,
+                Substitute.For<IBlockProcessor>(),
+                new DisposableStack());
 
             var a = factory.Create();
             var b = factory.Create();

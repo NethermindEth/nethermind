@@ -14,27 +14,29 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.Linq;
+using Nethermind.Abi;
+using Nethermind.Blockchain.Contracts;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
-namespace Nethermind.Baseline.Tree
+namespace Nethermind.Baseline.Test.Contracts
 {
-    public readonly struct BaselineTreeNode
+    internal class MerkleTreeSHAContract : Contract
     {
-        public BaselineTreeNode(Keccak hash, ulong nodeIndex)
+        public MerkleTreeSHAContract(
+            IAbiEncoder abiEncoder,
+            Address contractAddress)
+            : base(abiEncoder, contractAddress)
         {
-            Hash = hash;
-            NodeIndex = nodeIndex;
         }
-        
-        /// <summary>
-        /// Keccak here in order not to add a new converter at the moment
-        /// </summary>
-        public Keccak Hash { get; }
-        public ulong NodeIndex { get; } // 64bit index for a tree of height 32
 
-        public override string ToString()
+        public Transaction InsertLeaf(Address sender, Keccak hash) => GenerateTransaction<GeneratedTransaction>(nameof(InsertLeaf), sender, hash.Bytes);
+
+        public Transaction InsertLeaves(Address sender, Keccak[] hashes)
         {
-            return $"{NodeIndex}.{Hash}";
+            byte[][] bytes = hashes.Select(x => x.Bytes).ToArray();
+            return GenerateTransaction<GeneratedTransaction>(nameof(InsertLeaves), sender, (object)bytes);
         }
     }
 }
