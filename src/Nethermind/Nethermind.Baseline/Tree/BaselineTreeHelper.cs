@@ -128,17 +128,13 @@ namespace Nethermind.Baseline.Tree
                     baselineTree.Metadata.SaveBlockNumberCount(currentBlockNumber.Value, count, previousBlockWithLeaves);
                     baselineTree.LastBlockWithLeaves = currentBlockNumber.Value;
                     currentBlockNumber = filterLog.BlockNumber;
-                    count = 1; // ToDo wrong -> we do not know how many leaves we will have
-                }
-                else
-                {
-                    ++count;
                 }
 
                 if (filterLog.Data.Length == 96)
                 {
                     Keccak leafHash = new Keccak(filterLog.Data.Slice(32, 32).ToArray());
                     baselineTree.Insert(leafHash, false);
+                    ++count;
                 }
                 else
                 {
@@ -146,6 +142,7 @@ namespace Nethermind.Baseline.Tree
                     {
                         Keccak leafHash = new Keccak(filterLog.Data.Slice(128 + 32 * i, 32).ToArray());
                         baselineTree.Insert(leafHash, false);
+                        ++count;
                     }
                 }
             }
@@ -153,7 +150,7 @@ namespace Nethermind.Baseline.Tree
             if (currentBlockNumber != null && count != 0)
             {
                 var previousBlockWithLeaves = baselineTree.LastBlockWithLeaves;
-                baselineTree.Metadata.SaveBlockNumberCount(currentBlockNumber.Value, count, previousBlockWithLeaves);
+                baselineTree.Metadata.SaveBlockNumberCount(currentBlockNumber.Value, baselineTree.Count + count, previousBlockWithLeaves);
                 baselineTree.LastBlockWithLeaves = currentBlockNumber.Value;
             }
 

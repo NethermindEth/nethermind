@@ -38,7 +38,7 @@ namespace Nethermind.Baseline.Tree
 
         public BaselineTreeTracker(
             Address address,
-            BaselineTree baselineTree, 
+            BaselineTree baselineTree,
             IBlockProcessor blockProcessor,
             IBaselineTreeHelper baselineTreeHelper,
             IBlockFinder blockFinder)
@@ -65,36 +65,37 @@ namespace Nethermind.Baseline.Tree
                 }
             }
 
-            var toBlockParameter = BlockParameter.Latest; // ToDo MM
-            _currentBlockHeader = _blockFinder.SearchForHeader(null).Object; // ToDo MM set current fix
-            _baselineTreeHelper.BuildTree(_baselineTree, _address, fromBlockParameter, toBlockParameter);
-            if (toBlockParameter.BlockHash != BlockParameter.Latest.BlockHash)
+            Keccak hashBeforeBuildingTree = BlockParameter.Latest.BlockHash;
+            _baselineTreeHelper.BuildTree(_baselineTree, _address, fromBlockParameter, BlockParameter.Latest);
+            Keccak latestHash = BlockParameter.Latest.BlockHash;
+            if (latestHash != null && hashBeforeBuildingTree != latestHash)
             {
-                _baselineTreeHelper.BuildTree(_baselineTree, _address, toBlockParameter, new BlockParameter(BlockParameter.Latest.BlockHash));
-            }    
+                var startParameter = hashBeforeBuildingTree == null ? new BlockParameter(0L) : new BlockParameter(hashBeforeBuildingTree);
+                _baselineTreeHelper.BuildTree(_baselineTree, _address, startParameter, new BlockParameter(latestHash));
+            }
 
+            var headerSearch = latestHash == null ? null : new BlockParameter(latestHash);
+            _currentBlockHeader = _blockFinder.SearchForHeader(headerSearch).Object;
             _blockProcessor.BlockProcessed += OnBlockProcessed;
         }
 
         private void OnBlockProcessed(object? sender, BlockProcessedEventArgs e)
         {
-            if (_currentBlockHeader != null && _currentBlockHeader.Hash != e.Block.ParentHash)
+            if (_currentBlockHeader != null && _currentBlockHeader.Hash != e.Block.ParentHash && _currentBlockHeader.Number < e.Block.Number)
             {
-                if (_currentBlockHeader.Number < e.Block.Number)
-                {
-                    _baselineTreeHelper.BuildTree(_baselineTree, _address, new BlockParameter(_currentBlockHeader.Hash), new BlockParameter(e.Block.Hash));
-                }
-                else
-                {
-                    Reorganize(e.TxReceipts, e.Block.Number);
-                }
-
+                _baselineTreeHelper.BuildTree(_baselineTree, _address, new BlockParameter(_currentBlockHeader.Hash), new BlockParameter(e.Block.Hash));
                 _currentBlockHeader = e.Block.Header;
                 return;
             }
 
+            uint removedItemsCount = 0;
+            if (_currentBlockHeader != null && _currentBlockHeader.Hash != e.Block.ParentHash)
+            {
+                removedItemsCount = Reorganize(e.Block.Number);
+            }
+
             _currentBlockHeader = e.Block.Header;
-            AddFromCurrentBlock(e.TxReceipts, e.Block.Number);
+            AddFromCurrentBlock(e.TxReceipts, e.Block.Number, removedItemsCount);
         }
 
         private void AddFromCurrentBlock(TxReceipt[] txReceipts, long newBlockNumber, uint removedItemsCount = 0)
@@ -137,11 +138,11 @@ namespace Nethermind.Baseline.Tree
             }
         }
 
-        private void Reorganize(TxReceipt[] txReceipts, long newBlockNumber)
+        private uint Reorganize(long newBlockNumber)
         {
             var leavesToReorganize = _baselineTree.GetCountDiff(newBlockNumber, true);
             _baselineTree.Delete(leavesToReorganize, false);
-            AddFromCurrentBlock(txReceipts, newBlockNumber, leavesToReorganize);
+            return leavesToReorganize;
         }
 
         public void Dispose()
