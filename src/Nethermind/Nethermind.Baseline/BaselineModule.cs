@@ -447,6 +447,32 @@ namespace Nethermind.Baseline
             }
         }
 
+        public async Task<ResultWrapper<Keccak>> baseline_verifyAndPush(
+            Address address,
+            Address contractAddress,
+            UInt256[] proof,
+            UInt256[] publicInputs,
+            Keccak newCommitment)
+        {
+            var txData = _abiEncoder.Encode(
+                        AbiEncodingStyle.IncludeSignature,
+                        ContractShield.VerifyAndPushSig,
+                        proof,
+                        publicInputs,
+                        newCommitment);
+
+            Transaction tx = new Transaction();
+            tx.Value = 0;
+            tx.Data = txData;
+            tx.To = contractAddress;
+            tx.SenderAddress = address;
+            tx.GasLimit = 1000000;
+            tx.GasPrice = 20.GWei();
+
+            Keccak txHash = await _txSender.SendTransaction(tx, TxHandlingOptions.ManagedNonce);
+            return ResultWrapper<Keccak>.Success(txHash);
+        }
+
         #region private
 
         private readonly IAbiEncoder _abiEncoder;
