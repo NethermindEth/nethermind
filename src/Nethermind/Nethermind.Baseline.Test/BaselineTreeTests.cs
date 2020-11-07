@@ -22,8 +22,6 @@ using Nethermind.Baseline.Tree;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
-using Nethermind.Serialization.Rlp;
-using Nethermind.Trie;
 using NUnit.Framework;
 using Index = Nethermind.Baseline.Tree.BaselineTree.Index;
 

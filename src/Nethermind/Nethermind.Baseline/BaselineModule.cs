@@ -336,7 +336,6 @@ namespace Nethermind.Baseline
             BaselineTreeNode[] path,
             BlockParameter? blockParameter = null)
         {
-            // ToDo MM incorrect for not null blockParameter?
             bool isTracked = _baselineTrees.TryGetValue(contractAddress, out BaselineTree? tree);
             ResultWrapper<bool> result;
             if (!isTracked)

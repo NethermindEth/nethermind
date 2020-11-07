@@ -97,9 +97,14 @@ namespace Nethermind.Baseline.Tree
             return new BatchWrite(_synchroObject);
         }
 
-        public uint GetCountDiff(long blockNumber, bool clearPreviousCounts = false)
+        public uint GetBlockCount(long blockNumber)
         {
-            return Count - Metadata.GetLeavesCountFromPreviousBlock(LastBlockWithLeaves, blockNumber, clearPreviousCounts);
+            return Metadata.GetBlockCount(LastBlockWithLeaves, blockNumber);
+        }
+
+        public uint GetPreviousBlockCount(long blockNumber, bool clearPreviousCounts = false)
+        {
+            return Metadata.GetPreviousBlockCount(LastBlockWithLeaves, blockNumber, clearPreviousCounts);
         }
 
         private void InitializeMetadata()

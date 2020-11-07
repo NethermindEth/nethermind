@@ -42,19 +42,19 @@ namespace Nethermind.Baseline.Tree
 
         public BaselineTreeNode[] GetHistoricalLeaves(BaselineTree tree, uint[] leafIndexes, long blockNumber)
         {
-            var historicalCount = tree.GetCountDiff(blockNumber);
+            var historicalCount = tree.GetBlockCount(blockNumber);
             BaselineTreeNode[] leaves = new BaselineTreeNode[leafIndexes.Length];
 
             for (int i = 0; i < leafIndexes.Length; i++)
             {
                 var leafIndex = leafIndexes[i];
-                if (historicalCount < leafIndex)
+                if (historicalCount <= leafIndex)
                 {
-                    leaves[i] = tree.GetLeaf(leafIndex);
+                    leaves[i] = new BaselineTreeNode(Keccak.Zero, leafIndex);
                 }
                 else
                 {
-                    leaves[i] = new BaselineTreeNode(Keccak.Zero, leafIndex);
+                    leaves[i] = tree.GetLeaf(leafIndex);
                 }
             }
 
@@ -63,8 +63,8 @@ namespace Nethermind.Baseline.Tree
 
         public BaselineTreeNode GetHistoricalLeaf(BaselineTree tree, uint leafIndex, long blockNumber)
         {
-            var historicalCount = tree.GetCountDiff(blockNumber);
-            if (historicalCount < leafIndex)
+            var historicalCount = tree.GetBlockCount(blockNumber);
+            if (historicalCount <= leafIndex)
             {
                 return new BaselineTreeNode(Keccak.Zero, leafIndex);
             }
@@ -74,10 +74,9 @@ namespace Nethermind.Baseline.Tree
 
         public BaselineTree CreateHistoricalTree(Address address, long blockNumber)
         {
-            // ToDo MM locking
             var historicalTree = new ShaBaselineTree(new ReadOnlyDb(_mainDb, true), _metadataBaselineDb, address.Bytes, BaselineModule.TruncationLength);
             var endIndex = historicalTree.Count;
-            var historicalCount = historicalTree.GetCountDiff(blockNumber);
+            var historicalCount = historicalTree.GetPreviousBlockCount(blockNumber);
             historicalTree.Delete(endIndex - historicalCount, false);
             historicalTree.CalculateHashes(historicalCount, endIndex);
 

@@ -62,8 +62,8 @@ namespace Nethermind.Baseline.Test
                 baselineMetaData.SaveBlockNumberCount(test.DataToSave[i].BlockNumber, test.DataToSave[i].Count, test.DataToSave[i].PreviousBlockWithLeaves);
             }
 
-            var actual = baselineMetaData.GetLeavesCountFromPreviousBlock(test.LastBlockWithLeaves, test.BlockNumber);
-            Assert.AreEqual(actual, test.ExpectedResult);
+            var actual = baselineMetaData.GetPreviousBlockCount(test.LastBlockWithLeaves, test.BlockNumber);
+            Assert.AreEqual(test.ExpectedResult, actual);
         }
 
         public class GetLeavesCountTest
@@ -76,6 +76,7 @@ namespace Nethermind.Baseline.Test
 
             public uint ExpectedResult { get; set; }
 
+            public override string ToString() => $"Expected result: {ExpectedResult}";
         }
 
         public static IEnumerable<GetLeavesCountTest> GetLeavesCountTestCases
