@@ -42,7 +42,7 @@ namespace Nethermind.Baseline.Tree
 
         public BaselineTreeNode[] GetHistoricalLeaves(BaselineTree tree, uint[] leafIndexes, long blockNumber)
         {
-            var historicalCount = tree.GetLeavesCountFromNextBlocks(blockNumber);
+            var historicalCount = tree.GetCountDiff(blockNumber);
             BaselineTreeNode[] leaves = new BaselineTreeNode[leafIndexes.Length];
 
             for (int i = 0; i < leafIndexes.Length; i++)
@@ -63,7 +63,7 @@ namespace Nethermind.Baseline.Tree
 
         public BaselineTreeNode GetHistoricalLeaf(BaselineTree tree, uint leafIndex, long blockNumber)
         {
-            var historicalCount = tree.GetLeavesCountFromNextBlocks(blockNumber);
+            var historicalCount = tree.GetCountDiff(blockNumber);
             if (historicalCount < leafIndex)
             {
                 return new BaselineTreeNode(Keccak.Zero, leafIndex);
@@ -77,7 +77,7 @@ namespace Nethermind.Baseline.Tree
             // ToDo MM locking
             var historicalTree = new ShaBaselineTree(new ReadOnlyDb(_mainDb, true), _metadataBaselineDb, address.Bytes, BaselineModule.TruncationLength);
             var endIndex = historicalTree.Count;
-            var historicalCount = historicalTree.GetLeavesCountFromNextBlocks(blockNumber);
+            var historicalCount = historicalTree.GetCountDiff(blockNumber);
             historicalTree.Delete(endIndex - historicalCount, false);
             historicalTree.CalculateHashes(historicalCount, endIndex);
 

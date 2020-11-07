@@ -15,8 +15,8 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System.Collections.Generic;
 using Nethermind.Baseline.Tree;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using NUnit.Framework;
@@ -51,6 +51,72 @@ namespace Nethermind.Baseline.Test
             var actual = baselineMetaData.LoadBlockNumberCount(blockNumber);
             Assert.AreEqual(count, actual.Count);
             Assert.AreEqual(previousBlockWithLeaves, actual.PreviousBlockWithLeaves);
+        }
+
+        [Test]
+        public void GetLeavesCountFromPreviousBlocks([ValueSource(nameof(GetLeavesCountTestCases))]GetLeavesCountTest test)
+        {
+            var baselineMetaData = new BaselineTreeMetadata(new MemDb(), new byte[] { });
+            for (int i = 0; i < test.DataToSave.Length; ++i)
+            {
+                baselineMetaData.SaveBlockNumberCount(test.DataToSave[i].BlockNumber, test.DataToSave[i].Count, test.DataToSave[i].PreviousBlockWithLeaves);
+            }
+
+            var actual = baselineMetaData.GetLeavesCountFromPreviousBlock(test.LastBlockWithLeaves, test.BlockNumber);
+            Assert.AreEqual(actual, test.ExpectedResult);
+        }
+
+        public class GetLeavesCountTest
+        {
+            public (long BlockNumber, uint Count, long PreviousBlockWithLeaves)[] DataToSave { get; set; }
+
+            public long LastBlockWithLeaves { get; set; }
+
+            public long BlockNumber { get; set; }
+
+            public uint ExpectedResult { get; set; }
+
+        }
+
+        public static IEnumerable<GetLeavesCountTest> GetLeavesCountTestCases
+        {
+            get
+            {
+                yield return new GetLeavesCountTest()
+                {
+                    DataToSave = new (long BlockNumber, uint Count, long PreviousBlockWithLeaves)[]
+                    {
+                        (1, 2, 0),
+                        (2, 4, 1)
+                    },
+                    LastBlockWithLeaves = 2,
+                    BlockNumber = 2,
+                    ExpectedResult = 2
+                };
+
+                yield return new GetLeavesCountTest()
+                {
+                    DataToSave = new (long BlockNumber, uint Count, long PreviousBlockWithLeaves)[]
+                    {
+                        (6, 1, 0),
+                        (7, 3, 6)
+                    },
+                    LastBlockWithLeaves = 7,
+                    BlockNumber = 7,
+                    ExpectedResult = 1
+                };
+
+                yield return new GetLeavesCountTest()
+                {
+                    DataToSave = new (long BlockNumber, uint Count, long PreviousBlockWithLeaves)[]
+                    {
+                        (6, 1, 0),
+                    },
+                    LastBlockWithLeaves = 6,
+                    BlockNumber = 6,
+                    ExpectedResult = 0
+                };
+            }
         }
     }
 }

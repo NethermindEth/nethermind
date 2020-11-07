@@ -33,20 +33,26 @@ namespace Nethermind.Baseline.Tree
             this._dbPrefix = _dbPrefix;
         }
 
-        public uint GetLeavesCountFromNextBlocks(long lastBlockWithLeaves, uint actualCount, long blockNumber, bool clearPreviousCounts = false)
+        public uint GetLeavesCountFromPreviousBlock(long lastBlockWithLeaves, long blockNumber, bool clearPreviousCounts = false)
         {
+            var currentBlockNumber = blockNumber;
             var foundCount = LoadBlockNumberCount(lastBlockWithLeaves);
-            while (foundCount.PreviousBlockWithLeaves >= blockNumber)
+            while (lastBlockWithLeaves <= currentBlockNumber)
             {
-                foundCount = LoadBlockNumberCount(foundCount.PreviousBlockWithLeaves);
+                currentBlockNumber = foundCount.PreviousBlockWithLeaves;
+                if (currentBlockNumber == 0)
+                {
+                    return 0;
+                }
 
+                foundCount = LoadBlockNumberCount(foundCount.PreviousBlockWithLeaves);
                 if (clearPreviousCounts)
                 {
                     ClearBlockNumberCount(foundCount.PreviousBlockWithLeaves);
                 }
             }
 
-            return actualCount - foundCount.Count;
+            return foundCount.Count;
         }
 
         private byte[] MetadataBuildDbKey(long blockNumber)

@@ -117,7 +117,7 @@ namespace Nethermind.Baseline.Test
                     },
                     LeavesInMiddleOfReorganization = new Keccak[] { },
                     LeavesInAfterReorganization = new Keccak[] { },
-                    TreeCountAfterAll = 1
+                    TreeCountAfterAll = 0
                 };
 
                 yield return new ReorganizedInsertLeafTest()
@@ -135,32 +135,32 @@ namespace Nethermind.Baseline.Test
                     },
                     LeavesInMiddleOfReorganization = new Keccak[] { TestItem.KeccakD },
                     LeavesInAfterReorganization = new Keccak[] { TestItem.KeccakC },
-                    TreeCountAfterAll = 3
+                    TreeCountAfterAll = 2
                 };
 
 
-                //yield return new ReorganizedInsertLeafTest()
-                //{
-                //    LeavesInTransactionsAndBlocks = new Keccak[][]
-                //    {
-                //        new Keccak[] // first block
-                //        {
-                //            TestItem.KeccakB // first transaction
-                //        },
-                //        new Keccak[] // second block
-                //        {
-                //            TestItem.KeccakH, // first transaction
-                //            TestItem.KeccakF // second transaction
-                //        }
-                //    },
-                //    ExpectedTreeCounts = new int[]
-                //    {
-                //        1, 3 // tree count after first block
-                //    },
-                //    LeavesInMiddleOfReorganization = new Keccak[] { TestItem.KeccakD, TestItem.KeccakE },
-                //    LeavesInAfterReorganization = new Keccak[] { TestItem.KeccakC },
-                //    TreeCountAfterAll = 6
-                //};
+                yield return new ReorganizedInsertLeafTest()
+                {
+                    LeavesInTransactionsAndBlocks = new Keccak[][]
+                    {
+                        new Keccak[] // first block
+                        {
+                            TestItem.KeccakB // first transaction
+                        },
+                        new Keccak[] // second block
+                        {
+                            TestItem.KeccakH, // first transaction
+                            TestItem.KeccakF // second transaction
+                        }
+                    },
+                    ExpectedTreeCounts = new int[]
+                    {
+                        1, 3
+                    },
+                    LeavesInMiddleOfReorganization = new Keccak[] { TestItem.KeccakD, TestItem.KeccakA }, // one is rejected because of nonce
+                    LeavesInAfterReorganization = new Keccak[] { TestItem.KeccakC },
+                    TreeCountAfterAll = 3
+                };
             }
         }
     }

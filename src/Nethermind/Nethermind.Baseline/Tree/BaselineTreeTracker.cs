@@ -94,14 +94,13 @@ namespace Nethermind.Baseline.Tree
             }
 
             _currentBlockHeader = e.Block.Header;
-            var initCout = _baselineTree.Count;
             AddFromCurrentBlock(e.TxReceipts, e.Block.Number);
-            _baselineTree.CalculateHashes(initCout);
         }
 
-        private void AddFromCurrentBlock(TxReceipt[] txReceipts, long newBlockNumber)
+        private void AddFromCurrentBlock(TxReceipt[] txReceipts, long newBlockNumber, uint removedItemsCount = 0)
         {
-            uint count = 0;
+            uint treeStartingCount = _baselineTree.Count;
+            uint newLeavesCount = 0;
             LogFilter insertLeavesFilter = new LogFilter(
                     0,
                     new BlockParameter(0L),
@@ -114,36 +113,35 @@ namespace Nethermind.Baseline.Tree
                 if (filterLog.Data.Length == 96)
                 {
                     Keccak leafHash = new Keccak(filterLog.Data.Slice(32, 32).ToArray());
-                    _baselineTree.Insert(leafHash);
-                    ++count;
+                    _baselineTree.Insert(leafHash, false);
+                    ++newLeavesCount;
                 }
                 else
                 {
                     for (int i = 0; i < (filterLog.Data.Length - 128) / 32; i++)
                     {
                         Keccak leafHash = new Keccak(filterLog.Data.Slice(128 + 32 * i, 32).ToArray());
-                        _baselineTree.Insert(leafHash);
-                        ++count;
+                        _baselineTree.Insert(leafHash, false);
+                        ++newLeavesCount;
                     }
                 }
             }
 
-            if (count != 0)
+            _baselineTree.CalculateHashes(treeStartingCount - removedItemsCount);
+            if (newLeavesCount != 0)
             {
+                var currentTreeCount = treeStartingCount + newLeavesCount - removedItemsCount;
                 var previousBlockWithLeaves = _baselineTree.LastBlockWithLeaves;
-                _baselineTree.Metadata.SaveBlockNumberCount(newBlockNumber, count, previousBlockWithLeaves);
+                _baselineTree.Metadata.SaveBlockNumberCount(newBlockNumber, currentTreeCount, previousBlockWithLeaves);
                 _baselineTree.LastBlockWithLeaves = newBlockNumber;
             }
         }
 
         private void Reorganize(TxReceipt[] txReceipts, long newBlockNumber)
         {
-            var leavesToReorganize = _baselineTree.GetLeavesCountFromNextBlocks(newBlockNumber, true);
-            var calculatingHashesStart = _baselineTree.Count - leavesToReorganize;
+            var leavesToReorganize = _baselineTree.GetCountDiff(newBlockNumber, true);
             _baselineTree.Delete(leavesToReorganize, false);
-
-            AddFromCurrentBlock(txReceipts, newBlockNumber);
-            _baselineTree.CalculateHashes(calculatingHashesStart); // ToDo MM wrong -> refactor
+            AddFromCurrentBlock(txReceipts, newBlockNumber, leavesToReorganize);
         }
 
         public void Dispose()
