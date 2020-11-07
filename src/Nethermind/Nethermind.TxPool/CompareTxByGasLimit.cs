@@ -13,16 +13,30 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using System;
-using Nethermind.Abi;
+using System.Collections.Generic;
+using Nethermind.Core;
 
-namespace Nethermind.Blockchain.Contracts.Json
+namespace Nethermind.TxPool
 {
-    public interface IAbiDefinitionParser
+    /// <summary>
+    /// Default ordering by <see cref="Transaction.GasLimit"/> asc
+    /// </summary>
+    public class CompareTxByGasLimit : IComparer<Transaction>
     {
-        AbiDefinition Parse(string json, string name = null);
-        AbiDefinition Parse(Type type);
-        public AbiDefinition Parse<T>() => Parse(typeof(T));
+        public static readonly CompareTxByGasLimit Instance = new CompareTxByGasLimit();
+        
+        private CompareTxByGasLimit() { }
+
+        public int Compare(Transaction x, Transaction y)
+        {
+            if (ReferenceEquals(x, y)) return 0;
+            if (ReferenceEquals(null, y)) return 1;
+            if (ReferenceEquals(null, x)) return -1;
+
+            // then by gas limit ascending
+            return x.GasLimit.CompareTo(y.GasLimit);
+        }
     }
 }

@@ -31,6 +31,7 @@ namespace Nethermind.Abi
         public IReadOnlyDictionary<string, AbiFunctionDescription> Functions => _functions;
         public IReadOnlyDictionary<string, AbiEventDescription> Events => _events;
         public IReadOnlyList<AbiBaseDescription> Items => _items;
+        public string Name { get; set; } = string.Empty;
 
         public void SetBytecode(byte[] bytecode)
         {

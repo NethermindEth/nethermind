@@ -43,17 +43,20 @@ namespace Nethermind.Consensus.AuRa.Transactions
         private readonly ProtectedPrivateKey _cryptoKey;
         private readonly IList<IRandomContract> _contracts;
         private readonly ICryptoRandom _random;
+        private readonly ILogger _logger;
 
         public RandomContractTxSource(
             IList<IRandomContract> contracts,
             IEciesCipher eciesCipher,
             ProtectedPrivateKey cryptoKey, 
-            ICryptoRandom cryptoRandom)
+            ICryptoRandom cryptoRandom,
+            ILogManager logManager)
         {
             _contracts = contracts ?? throw new ArgumentNullException(nameof(contracts));
             _eciesCipher = eciesCipher ?? throw new ArgumentNullException(nameof(eciesCipher));
             _cryptoKey = cryptoKey ?? throw new ArgumentNullException(nameof(cryptoKey));
             _random = cryptoRandom ?? throw new ArgumentNullException(nameof(cryptoRandom));
+            _logger = logManager?.GetClassLogger<RandomContractTxSource>() ?? throw new ArgumentNullException(nameof(logManager));
         }
         
         public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit)
@@ -70,42 +73,53 @@ namespace Nethermind.Consensus.AuRa.Transactions
 
         private Transaction GetTransaction(in IRandomContract contract, in BlockHeader parent)
         {
-            var (phase, round) = contract.GetPhase(parent);
-            switch (phase)
+            try
             {
-                case IRandomContract.Phase.BeforeCommit:
+                var (phase, round) = contract.GetPhase(parent);
+                switch (phase)
                 {
-                    byte[] bytes = new byte[32];
-                    _random.GenerateRandomBytes(bytes);
-                    var hash = Keccak.Compute(bytes);
-                    var cipher = _eciesCipher.Encrypt(_cryptoKey.PublicKey, bytes);
-                    Metrics.CommitHashTransaction++;
-                    return contract.CommitHash(hash, cipher);
-                }
-                case IRandomContract.Phase.Reveal:
-                {
-                    var (hash, cipher) = contract.GetCommitAndCipher(parent, round);
-                    using PrivateKey privateKey = _cryptoKey.Unprotect();
-                    byte[] bytes = _eciesCipher.Decrypt(privateKey, cipher).Item2;
-                    if (bytes?.Length != 32)
+                    case IRandomContract.Phase.BeforeCommit:
                     {
-                        // This can only happen if there is a bug in the smart contract, or if the entire network goes awry.
-                        throw new AuRaException("Decrypted random number has the wrong length.");
+                        byte[] bytes = new byte[32];
+                        _random.GenerateRandomBytes(bytes);
+                        var hash = Keccak.Compute(bytes);
+                        var cipher = _eciesCipher.Encrypt(_cryptoKey.PublicKey, bytes);
+                        Metrics.CommitHashTransaction++;
+                        return contract.CommitHash(hash, cipher);
                     }
-                    
-                    var computedHash = ValueKeccak.Compute(bytes);
-                    if (!Bytes.AreEqual(hash.Bytes, computedHash.BytesAsSpan))
+                    case IRandomContract.Phase.Reveal:
                     {
-                        throw new AuRaException("Decrypted random number doesn't agree with the hash.");
-                    }
-                    
-                    UInt256 number = new UInt256(bytes, true);
+                        var (hash, cipher) = contract.GetCommitAndCipher(parent, round);
+                        using PrivateKey privateKey = _cryptoKey.Unprotect();
+                        byte[] bytes = _eciesCipher.Decrypt(privateKey, cipher).Item2;
+                        if (bytes?.Length != 32)
+                        {
+                            // This can only happen if there is a bug in the smart contract, or if the entire network goes awry.
+                            throw new AuRaException("Decrypted random number has the wrong length.");
+                        }
 
-                    Metrics.RevealNumber++;
-                    return contract.RevealNumber(number);
+                        var computedHash = ValueKeccak.Compute(bytes);
+                        if (!Bytes.AreEqual(hash.Bytes, computedHash.BytesAsSpan))
+                        {
+                            throw new AuRaException("Decrypted random number doesn't agree with the hash.");
+                        }
+
+                        UInt256 number = new UInt256(bytes, true);
+
+                        Metrics.RevealNumber++;
+                        return contract.RevealNumber(number);
+                    }
                 }
             }
-            
+            catch (AuRaException e)
+            {
+                if (_logger.IsError) _logger.Error("RANDAO Failed", e);
+            }
+            catch (AbiException e)
+            {
+                if (_logger.IsError) _logger.Error("RANDAO Failed", e);
+            }
+
             return null;
         }
 

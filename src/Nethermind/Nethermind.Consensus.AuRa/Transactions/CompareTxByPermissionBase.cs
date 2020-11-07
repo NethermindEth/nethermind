@@ -44,12 +44,12 @@ namespace Nethermind.Consensus.AuRa.Transactions
         
         protected abstract BlockHeader BlockHeader { get; }
 
-        protected UInt256 GetPriority(Transaction tx) =>
+        public UInt256 GetPriority(Transaction tx) =>
             _priorities.TryGetValue(BlockHeader, tx, out var destination)
                 ? destination.Value
                 : UInt256.Zero;
 
-        protected bool IsWhiteListed(Transaction tx)
+        public bool IsWhiteListed(Transaction tx)
         {
             CheckReloadSendersWhitelist();
             return _sendersWhiteListSet.Contains(tx.SenderAddress);

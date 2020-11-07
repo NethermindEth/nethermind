@@ -47,10 +47,10 @@ namespace Nethermind.Blockchain.Contracts
                 _readOnlyTransactionProcessorSource = readOnlyTransactionProcessorSource ?? throw new ArgumentNullException(nameof(readOnlyTransactionProcessorSource));
             }
 
-            private byte[] Call(BlockHeader parentHeader, Transaction transaction)
+            private byte[] Call(BlockHeader parentHeader, string functionName, Transaction transaction)
             {
                 using var readOnlyTransactionProcessor = _readOnlyTransactionProcessorSource.Get(GetState(parentHeader));
-                return CallCore(readOnlyTransactionProcessor, parentHeader, transaction, true);
+                return _contract.CallCore(readOnlyTransactionProcessor, parentHeader, functionName, transaction, true);
             }
 
             private object[] Call(BlockHeader parentHeader, string functionName, Address sender, params object[] arguments)
@@ -99,7 +99,7 @@ namespace Nethermind.Blockchain.Contracts
             public object[] CallRaw(BlockHeader parentHeader, string functionName, Address sender, params object[] arguments)
             {
                 var transaction = _contract.GenerateTransaction<SystemTransaction>(functionName, sender, DefaultConstantContractGasLimit, parentHeader, arguments);
-                var result = Call(parentHeader, transaction);
+                var result = Call(parentHeader, functionName, transaction);
                 var objects = _contract.DecodeReturnData(functionName, result);
                 return objects;
             }

@@ -13,16 +13,20 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using System;
-using Nethermind.Abi;
+using System.Collections.Generic;
 
-namespace Nethermind.Blockchain.Contracts.Json
+namespace Nethermind.Core
 {
-    public interface IAbiDefinitionParser
+    /// <summary>
+    /// Comparer that enables to replace inner comparision on demand.
+    /// </summary>
+    /// <remarks>Used to decouple circular dependencies with TxPriority contract.</remarks>
+    public class WrapperComparer<T> : IComparer<T>
     {
-        AbiDefinition Parse(string json, string name = null);
-        AbiDefinition Parse(Type type);
-        public AbiDefinition Parse<T>() => Parse(typeof(T));
+        public IComparer<T> Comparer { get; set; }
+        public int Compare(T x, T y) => Comparer?.Compare(x, y) ?? 0;
+        public override string ToString() => $"{base.ToString()} [{Comparer}]";
     }
 }

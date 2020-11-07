@@ -15,33 +15,27 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System;
 using System.Collections.Generic;
 using Nethermind.Core;
 
 namespace Nethermind.TxPool
 {
     /// <summary>
-    /// Default ordering by <see cref="Transaction.GasPrice"/> desc and then <see cref="Transaction.GasLimit"/> asc
+    /// Default ordering by <see cref="Transaction.Timestamp"/> asc
     /// </summary>
-    public class CompareTxByGas : IComparer<Transaction>
+    public class CompareTxByTimestamp : IComparer<Transaction>
     {
-        public static readonly CompareTxByGas Instance = new CompareTxByGas();
+        public static readonly CompareTxByTimestamp Instance = new CompareTxByTimestamp();
         
-        private CompareTxByGas() { }
+        private CompareTxByTimestamp() { }
 
         public int Compare(Transaction x, Transaction y)
         {
             if (ReferenceEquals(x, y)) return 0;
             if (ReferenceEquals(null, y)) return 1;
             if (ReferenceEquals(null, x)) return -1;
-                
-            // then by gas price descending
-            int gasPriceComparison = y.GasPrice.CompareTo(x.GasPrice);
-            if (gasPriceComparison != 0) return gasPriceComparison;
-                
-            // then by gas limit ascending
-            return x.GasLimit.CompareTo(y.GasLimit);
+            
+            return x.Timestamp.CompareTo(y.Timestamp);
         }
     }
 }

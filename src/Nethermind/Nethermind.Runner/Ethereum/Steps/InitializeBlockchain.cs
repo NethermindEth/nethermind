@@ -233,7 +233,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             return Task.CompletedTask;
         }
 
-        protected virtual IComparer<Transaction> CreateTxPoolTxComparer() => CompareTxByGas.Instance;
+        protected virtual IComparer<Transaction> CreateTxPoolTxComparer() => TxPool.TxPool.DefaultComparer;
 
         protected virtual HeaderValidator CreateHeaderValidator() =>
             new HeaderValidator(

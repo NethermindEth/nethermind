@@ -17,22 +17,46 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
+using System.Runtime.CompilerServices;
+
+[assembly:InternalsVisibleTo("Nethermind.Core.Tests")]
 
 namespace Nethermind.Core
 {
     public class CompositeComparer<T> : IComparer<T>
     {
-        private IList<IComparer<T>> _comparers;
+        internal readonly List<IComparer<T>> _comparers;
 
-        public CompositeComparer(params IComparer<T>[] comparers)
+        public CompositeComparer(params IComparer<T>[] comparers) : this((IEnumerable<IComparer<T>>)comparers)
+        {
+        }
+        
+        public CompositeComparer(IEnumerable<IComparer<T>> comparers)
         {
             _comparers = new List<IComparer<T>>(comparers);
+        }
+        
+        public CompositeComparer<T> FirstBy(IComparer<T> comparer)
+        {
+            switch (comparer)
+            {
+                case CompositeComparer<T> compositeComparer:
+                    return new CompositeComparer<T>(compositeComparer._comparers.Concat(_comparers));
+                default:
+                    return new CompositeComparer<T>(new[] {comparer}.Concat(_comparers));
+            }
         }
 
         public CompositeComparer<T> ThenBy(IComparer<T> comparer)
         {
-            _comparers.Add(comparer);
-            return this;
+            switch (comparer)
+            {
+                case CompositeComparer<T> compositeComparer:
+                    return new CompositeComparer<T>(_comparers.Concat(compositeComparer._comparers));
+                default:
+                    return new CompositeComparer<T>(_comparers.Concat(new[] {comparer}));
+            }
         }
         
         public int Compare(T x, T y)
@@ -46,11 +70,26 @@ namespace Nethermind.Core
 
             return result;
         }
+
+        public override string ToString() => $"{base.ToString()} [{string.Join(", ", _comparers)}]";
     }
 
     public static class CompositeComparerExtensions
     {
-        public static CompositeComparer<T> ThenBy<T>(this IComparer<T> comparer, IComparer<T> secondComparer) =>
-            new CompositeComparer<T>(comparer, secondComparer);
+        public static CompositeComparer<T> ThenBy<T>(this IComparer<T> comparer, IComparer<T> secondComparer)
+        {
+            if (comparer is CompositeComparer<T> compositeComparer)
+            {
+                return compositeComparer.ThenBy(secondComparer);
+            }
+            else if (secondComparer is CompositeComparer<T> secondCompositeComparer)
+            {
+                return secondCompositeComparer.FirstBy(comparer);
+            }
+            else
+            {
+                return new CompositeComparer<T>(comparer, secondComparer);
+            }
+        }
     }
 }
