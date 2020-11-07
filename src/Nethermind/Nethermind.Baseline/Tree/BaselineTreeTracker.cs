@@ -85,6 +85,7 @@ namespace Nethermind.Baseline.Tree
             {
                 _baselineTreeHelper.BuildTree(_baselineTree, _address, new BlockParameter(_currentBlockHeader.Hash), new BlockParameter(e.Block.Hash));
                 _currentBlockHeader = e.Block.Header;
+                _baselineTree.Metadata.SaveCurrentBlockInDb(_baselineTree.LastBlockDbHash, _baselineTree.LastBlockWithLeaves);
                 return;
             }
 
@@ -96,6 +97,7 @@ namespace Nethermind.Baseline.Tree
 
             _currentBlockHeader = e.Block.Header;
             AddFromCurrentBlock(e.TxReceipts, e.Block.Number, removedItemsCount);
+            _baselineTree.Metadata.SaveCurrentBlockInDb(_baselineTree.LastBlockDbHash, _baselineTree.LastBlockWithLeaves);
         }
 
         private void AddFromCurrentBlock(TxReceipt[] txReceipts, long newBlockNumber, uint removedItemsCount = 0)

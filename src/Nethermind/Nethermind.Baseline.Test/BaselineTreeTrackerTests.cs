@@ -139,7 +139,8 @@ namespace Nethermind.Baseline.Test
                 _baselineDb,
                 _metadataBaselineDb,
                 LimboLogs.Instance,
-                testRpc.BlockProcessor);
+                testRpc.BlockProcessor,
+                new DisposableStack());
             Keccak txHash = (await baselineModule.baseline_deploy(address, "MerkleTreeSHA")).Data;
             await testRpc.AddBlock();
             return (testRpc, baselineModule);

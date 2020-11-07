@@ -69,17 +69,7 @@ namespace Nethermind.Baseline.Test.JsonRpc
             testRpc.TestWallet.UnlockAccount(TestItem.Addresses[0], new SecureString());
             await testRpc.AddFunds(TestItem.Addresses[0], 1.Ether());
 
-            BaselineModule baselineModule = new BaselineModule(
-                testRpc.TxSender,
-                testRpc.StateReader,
-                testRpc.LogFinder,
-                testRpc.BlockTree,
-                _abiEncoder,
-                _fileSystem,
-                new MemDb(),
-                new MemDb(),
-                LimboLogs.Instance,
-                testRpc.BlockProcessor);
+            BaselineModule baselineModule = CreateBaselineModule(testRpc);
 
             var result = await baselineModule.baseline_deploy(TestItem.Addresses[0], "MerkleTreeSHA");
             result.Data.Should().NotBe(null);
@@ -140,17 +130,7 @@ namespace Nethermind.Baseline.Test.JsonRpc
             testRpc.TestWallet.UnlockAccount(TestItem.Addresses[0], new SecureString());
             await testRpc.AddFunds(TestItem.Addresses[0], 1.Ether());
 
-            BaselineModule baselineModule = new BaselineModule(
-                testRpc.TxSender,
-                testRpc.StateReader,
-                testRpc.LogFinder,
-                testRpc.BlockTree,
-                _abiEncoder,
-                _fileSystem,
-                new MemDb(),
-                new MemDb(),
-                LimboLogs.Instance,
-                testRpc.BlockProcessor);
+            BaselineModule baselineModule = CreateBaselineModule(testRpc);
 
             var result = await baselineModule.baseline_deployBytecode(
                 TestItem.Addresses[0],
@@ -179,17 +159,7 @@ namespace Nethermind.Baseline.Test.JsonRpc
             testRpc.TestWallet.UnlockAccount(TestItem.Addresses[0], new SecureString());
             await testRpc.AddFunds(TestItem.Addresses[0], 1.Ether());
 
-            BaselineModule baselineModule = new BaselineModule(
-                testRpc.TxSender,
-                testRpc.StateReader,
-                testRpc.LogFinder,
-                testRpc.BlockTree,
-                _abiEncoder,
-                _fileSystem,
-                new MemDb(),
-                new MemDb(),
-                LimboLogs.Instance,
-                testRpc.BlockProcessor);
+            BaselineModule baselineModule = CreateBaselineModule(testRpc);
 
             var result = await baselineModule.baseline_deploy(TestItem.Addresses[0], "MissingContract");
             result.Data.Should().Be(null);
@@ -203,17 +173,7 @@ namespace Nethermind.Baseline.Test.JsonRpc
         {
             SingleReleaseSpecProvider spec = new SingleReleaseSpecProvider(ConstantinopleFix.Instance, 1);
             TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(spec);
-            BaselineModule baselineModule = new BaselineModule(
-                testRpc.TxSender,
-                testRpc.StateReader,
-                testRpc.LogFinder,
-                testRpc.BlockTree,
-                _abiEncoder,
-                _fileSystem,
-                new MemDb(),
-                new MemDb(),
-                LimboLogs.Instance,
-                testRpc.BlockProcessor);
+            BaselineModule baselineModule = CreateBaselineModule(testRpc);
             BaselineTree baselineTree = new ShaBaselineTree(new MemDb(), new MemDb(), new byte[] { }, 0);
             await testRpc.AddFunds(TestItem.Addresses[0], 1.Ether());
             await testRpc.AddFunds(TestItem.Addresses[1], 1.Ether());
@@ -242,17 +202,7 @@ namespace Nethermind.Baseline.Test.JsonRpc
         {
             SingleReleaseSpecProvider spec = new SingleReleaseSpecProvider(ConstantinopleFix.Instance, 1);
             TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(spec);
-            BaselineModule baselineModule = new BaselineModule(
-                testRpc.TxSender,
-                testRpc.StateReader,
-                testRpc.LogFinder,
-                testRpc.BlockTree,
-                _abiEncoder,
-                _fileSystem,
-                new MemDb(),
-                new MemDb(),
-                LimboLogs.Instance,
-                testRpc.BlockProcessor);
+            BaselineModule baselineModule = CreateBaselineModule(testRpc);
 
             await testRpc.AddFunds(TestItem.Addresses[0], 1.Ether());
             await testRpc.AddFunds(TestItem.Addresses[1], 1.Ether());
@@ -279,17 +229,7 @@ namespace Nethermind.Baseline.Test.JsonRpc
         {
             SingleReleaseSpecProvider spec = new SingleReleaseSpecProvider(ConstantinopleFix.Instance, 1);
             TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(spec);
-            BaselineModule baselineModule = new BaselineModule(
-                testRpc.TxSender,
-                testRpc.StateReader,
-                testRpc.LogFinder,
-                testRpc.BlockTree,
-                _abiEncoder,
-                _fileSystem,
-                new MemDb(),
-                new MemDb(),
-                LimboLogs.Instance,
-                testRpc.BlockProcessor);
+            BaselineModule baselineModule = CreateBaselineModule(testRpc);
 
             await testRpc.AddFunds(TestItem.Addresses[0], 1.Ether());
             await testRpc.AddFunds(TestItem.Addresses[1], 1.Ether());
@@ -328,17 +268,7 @@ namespace Nethermind.Baseline.Test.JsonRpc
         {
             SingleReleaseSpecProvider spec = new SingleReleaseSpecProvider(ConstantinopleFix.Instance, 1);
             TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(spec);
-            BaselineModule baselineModule = new BaselineModule(
-                testRpc.TxSender,
-                testRpc.StateReader,
-                testRpc.LogFinder,
-                testRpc.BlockTree,
-                _abiEncoder,
-                _fileSystem,
-                new MemDb(),
-                new MemDb(),
-                LimboLogs.Instance,
-                testRpc.BlockProcessor);
+            BaselineModule baselineModule = CreateBaselineModule(testRpc);
 
             await testRpc.AddFunds(TestItem.Addresses[0], 1.Ether());
             Keccak txHash = (await baselineModule.baseline_deploy(TestItem.Addresses[0], "MerkleTreeSHA")).Data;
@@ -487,17 +417,7 @@ namespace Nethermind.Baseline.Test.JsonRpc
         {
             SingleReleaseSpecProvider spec = new SingleReleaseSpecProvider(ConstantinopleFix.Instance, 1);
             TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(spec);
-            BaselineModule baselineModule = new BaselineModule(
-                testRpc.TxSender,
-                testRpc.StateReader,
-                testRpc.LogFinder,
-                testRpc.BlockTree,
-                _abiEncoder,
-                _fileSystem,
-                new MemDb(),
-                new MemDb(),
-                LimboLogs.Instance,
-                testRpc.BlockProcessor);
+            BaselineModule baselineModule = CreateBaselineModule(testRpc);
 
             await testRpc.AddFunds(TestItem.Addresses[0], 1.Ether());
             await testRpc.AddFunds(TestItem.Addresses[1], 1.Ether());
@@ -568,17 +488,7 @@ namespace Nethermind.Baseline.Test.JsonRpc
             TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(spec);
 
             IStateReader stateReader = Substitute.For<IStateReader>();
-            BaselineModule baselineModule = new BaselineModule(
-                testRpc.TxSender,
-                stateReader,
-                testRpc.LogFinder,
-                testRpc.BlockTree,
-                _abiEncoder,
-                _fileSystem,
-                new MemDb(),
-                new MemDb(),
-                LimboLogs.Instance,
-                testRpc.BlockProcessor);
+            BaselineModule baselineModule = CreateBaselineModule(testRpc, stateReader);
 
             await testRpc.AddFunds(TestItem.Addresses[0], 1.Ether());
 
@@ -597,17 +507,7 @@ namespace Nethermind.Baseline.Test.JsonRpc
             TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(spec);
 
             IStateReader stateReader = Substitute.For<IStateReader>();
-            BaselineModule baselineModule = new BaselineModule(
-                testRpc.TxSender,
-                stateReader,
-                testRpc.LogFinder,
-                testRpc.BlockTree,
-                _abiEncoder,
-                _fileSystem,
-                new MemDb(),
-                new MemDb(),
-                LimboLogs.Instance,
-                testRpc.BlockProcessor);
+            BaselineModule baselineModule = CreateBaselineModule(testRpc, stateReader);
 
             int iterationsPerTask = 1000;
             Action trackAction = () =>
@@ -677,17 +577,7 @@ namespace Nethermind.Baseline.Test.JsonRpc
             TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(spec);
 
             IStateReader stateReader = Substitute.For<IStateReader>();
-            BaselineModule baselineModule = new BaselineModule(
-                testRpc.TxSender,
-                stateReader,
-                testRpc.LogFinder,
-                testRpc.BlockTree,
-                _abiEncoder,
-                _fileSystem,
-                new MemDb(),
-                new MemDb(),
-                LimboLogs.Instance,
-                testRpc.BlockProcessor); ;
+            BaselineModule baselineModule = CreateBaselineModule(testRpc, stateReader);
 
             for (int i = 0; i < trackedCount; i++)
             {
@@ -720,7 +610,8 @@ namespace Nethermind.Baseline.Test.JsonRpc
                 memDb,
                 baselineMetaDataDb,
                 LimboLogs.Instance,
-                testRpc.BlockProcessor); ;
+                testRpc.BlockProcessor,
+                new DisposableStack());
 
             for (int i = 0; i < trackedCount; i++)
             {
@@ -738,7 +629,8 @@ namespace Nethermind.Baseline.Test.JsonRpc
                 memDb,
                 baselineMetaDataDb,
                 LimboLogs.Instance,
-                testRpc.BlockProcessor);
+                testRpc.BlockProcessor,
+                new DisposableStack());
 
             var resultRestored = await restored.baseline_getTracked();
             resultRestored.Data.Length.Should().Be((int) trackedCount);
@@ -851,18 +743,8 @@ namespace Nethermind.Baseline.Test.JsonRpc
             SingleReleaseSpecProvider spec = new SingleReleaseSpecProvider(ConstantinopleFix.Instance, 1);
             TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(
                 SealEngineType.NethDev).Build(spec, 100000.Ether());
-            BaselineModule baselineModule = new BaselineModule(
-                testRpc.TxSender,
-                testRpc.StateReader,
-                testRpc.LogFinder,
-                testRpc.BlockTree,
-                _abiEncoder,
-                _fileSystem,
-                new MemDb(),
-                new MemDb(),
-                LimboLogs.Instance,
-                testRpc.BlockProcessor);
-            
+            BaselineModule baselineModule = CreateBaselineModule(testRpc);
+;            
             for (int i = 0; i < 255; i++)
             {
                 testRpc.TestWallet.UnlockAccount(TestItem.Addresses[i], new SecureString());
@@ -903,11 +785,11 @@ namespace Nethermind.Baseline.Test.JsonRpc
             });
         }
 
-        private BaselineModule CreateBaselineModule(TestRpcBlockchain testRpc)
+        private BaselineModule CreateBaselineModule(TestRpcBlockchain testRpc, IStateReader stateReader = null)
         {
             return new BaselineModule(
                 testRpc.TxSender,
-                testRpc.StateReader,
+                stateReader ?? testRpc.StateReader,
                 testRpc.LogFinder,
                 testRpc.BlockTree,
                 _abiEncoder,
@@ -915,7 +797,8 @@ namespace Nethermind.Baseline.Test.JsonRpc
                 new MemDb(),
                 new MemDb(),
                 LimboLogs.Instance,
-                testRpc.BlockProcessor);
+                testRpc.BlockProcessor,
+                new DisposableStack());
         }
     }
 }

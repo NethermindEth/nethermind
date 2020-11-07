@@ -22,8 +22,6 @@ using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Abi;
 using Nethermind.Baseline.Tree;
-using Nethermind.Blockchain.Filters;
-using Nethermind.Blockchain.Filters.Topics;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Core;
@@ -57,7 +55,8 @@ namespace Nethermind.Baseline
             IDb baselineDb,
             IKeyValueStore metadataBaselineDb,
             ILogManager logManager,
-            IBlockProcessor blockProcessor)
+            IBlockProcessor blockProcessor,
+            DisposableStack disposableStack)
         {
             _abiEncoder = abiEncoder ?? throw new ArgumentNullException(nameof(abiEncoder));
             _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
@@ -70,6 +69,7 @@ namespace Nethermind.Baseline
             _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
             _blockProcessor = blockProcessor ?? throw new ArgumentNullException(nameof(blockProcessor));
             _baselineTreeHelper = new BaselineTreeHelper(_logFinder, baselineDb, metadataBaselineDb);
+            _disposableStack = disposableStack ?? throw new ArgumentNullException(nameof(disposableStack));
 
             _metadata = LoadMetadata();
             InitTrees();
@@ -461,6 +461,7 @@ namespace Nethermind.Baseline
         private readonly IBlockFinder _blockFinder;
         private readonly IBlockProcessor _blockProcessor;
         private readonly IBaselineTreeHelper _baselineTreeHelper;
+        private readonly DisposableStack _disposableStack;
 
         private BaselineMetadata _metadata;
         private byte[] _metadataKey = {0};
@@ -591,7 +592,8 @@ namespace Nethermind.Baseline
             }
 
             ShaBaselineTree tree = new ShaBaselineTree(_baselineDb, _metadataBaselineDb, trackedTree.Bytes, TruncationLength);
-            new BaselineTreeTracker(trackedTree, tree, _blockProcessor, _baselineTreeHelper, _blockFinder);
+            var tracker = new BaselineTreeTracker(trackedTree, tree, _blockProcessor, _baselineTreeHelper, _blockFinder);
+            _disposableStack.Push(tracker);
             return _baselineTrees.TryAdd(trackedTree, tree);
         }
 
