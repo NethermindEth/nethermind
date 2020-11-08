@@ -38,6 +38,7 @@ using Nethermind.DataMarketplace.Core.Configs;
 using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.DataMarketplace.Core.Services;
 using Nethermind.DataMarketplace.Infrastructure.Persistence.Mongo;
+using Nethermind.DataMarketplace.Infrastructure.Updaters;
 using Nethermind.Db;
 using Nethermind.Db.Blooms;
 using Nethermind.Evm;
@@ -90,6 +91,7 @@ namespace Nethermind.DataMarketplace.Infrastructure
         public GasPriceService? GasPriceService { get; set;}
         public TransactionService? TransactionService { get; set;}
         public INdmNotifier? NdmNotifier { get; set;}
+        public INdmAccountUpdater NdmAccountUpdater { get; set; }
         public INdmDataPublisher? NdmDataPublisher { get; set;}
         public IJsonRpcNdmConsumerChannel? JsonRpcNdmConsumerChannel { get; set;}
         public INdmConsumerChannelManager? NdmConsumerChannelManager { get; set;}

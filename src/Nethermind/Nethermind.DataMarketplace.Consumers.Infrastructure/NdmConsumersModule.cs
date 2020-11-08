@@ -58,6 +58,8 @@ using Nethermind.Logging;
 using Nethermind.Monitoring;
 using Nethermind.Wallet;
 using Nethermind.DataMarketplace.Consumers.Shared;
+using Nethermind.DataMarketplace.Infrastructure.Updaters;
+using Nethermind.WebSockets;
 
 namespace Nethermind.DataMarketplace.Consumers.Infrastructure
 {
@@ -181,6 +183,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure
             IEthJsonRpcClientProxy? ethJsonRpcClientProxy = _api.EthJsonRpcClientProxy;
             TransactionService transactionService = _api.TransactionService;
             IMonitoringService monitoringService = _api.MonitoringService;
+            IWebSocketsModule ndmWebSocketsModule = _api.WebSocketsManager.GetModule("ndm");
             monitoringService?.RegisterMetrics(typeof(Metrics));
 
             DataRequestFactory dataRequestFactory = new DataRequestFactory(wallet, nodePublicKey);
@@ -228,6 +231,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure
                 transactionVerifier, gasPriceService, timestamper, logManager);
             _api.AccountService = new AccountService(configManager, dataStreamService, providerService,
                 sessionService, consumerNotifier, wallet, configId, consumerAddress, logManager);
+            _api.NdmAccountUpdater = new NdmAccountUpdater(ndmWebSocketsModule, consumerAddress, _api.MainBlockProcessor, _api.StateProvider);
             ProxyService proxyService = new ProxyService(jsonRpcClientProxy, configManager, configId, logManager);
             _api.ConsumerService = new ConsumerService(_api.AccountService, dataAssetService, dataRequestService,
                 dataConsumerService, dataStreamService, depositManager, depositApprovalService, providerService,
