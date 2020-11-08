@@ -90,7 +90,7 @@ namespace Nethermind.Baseline.Tree
 
         public void SaveBlockNumberCount(long blockNumber, uint count, long previousBlockWithLeaves)
         {
-            var length = Rlp.LengthOfSequence(Rlp.LengthOf(count) + Rlp.LengthOf(previousBlockWithLeaves));
+            var length = Rlp.LengthOfSequence(Rlp.LengthOf((long)count) + Rlp.LengthOf(previousBlockWithLeaves));
             RlpStream rlpStream = new RlpStream(length);
             rlpStream.StartSequence(length);
             rlpStream.Encode(count);

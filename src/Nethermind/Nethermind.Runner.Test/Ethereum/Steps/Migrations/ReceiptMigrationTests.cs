@@ -38,6 +38,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
 {
+    [TestFixture]
     public class ReceiptMigrationTests
     {
         [TestCase(null)]

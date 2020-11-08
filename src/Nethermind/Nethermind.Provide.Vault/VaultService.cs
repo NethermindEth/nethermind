@@ -174,16 +174,21 @@ namespace Nethermind.Vault
         public async Task<string> Sign(Guid vaultId, Guid keyId, string message)
         {
             if (_logger.IsDebug) _logger.Debug($"Signing a message with the key {keyId} from the vault {vaultId}");
+            SignMessageRequest request = new SignMessageRequest();
+            request.Message = message;
             SignMessageResponse response = await _vaultService.SignMessage(
-                vaultId.ToString(), keyId.ToString(), message);
+                vaultId.ToString(), keyId.ToString(), request);
             return response.Signature;
         }
 
         public async Task<bool> Verify(Guid vaultId, Guid keyId, string message, string signature)
         {
             if (_logger.IsDebug) _logger.Debug($"Verifying a message with the key {keyId} from the vault {vaultId}");
+            SignatureVerificationRequest request = new SignatureVerificationRequest();
+            request.Message = message;
+            request.Signature = signature;
             SignatureVerificationResponse response = await _vaultService.VerifySignature(
-                vaultId.ToString(), keyId.ToString(), message, signature);
+                vaultId.ToString(), keyId.ToString(), request);
             return response.Verified;
         }
 
