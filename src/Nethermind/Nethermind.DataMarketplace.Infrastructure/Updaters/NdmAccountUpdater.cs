@@ -21,23 +21,24 @@ namespace Nethermind.DataMarketplace.Infrastructure.Updaters
 
         public NdmAccountUpdater(IWebSocketsModule module, Address accountAddress, IBlockProcessor blockProcessor, IStateProvider stateProvider, Address? coldWalletAddress = null)
         {
-           _blockProcessor = blockProcessor ?? throw new ArgumentNullException(nameof(blockProcessor)); 
-           _webSocketsModule = module ?? throw new ArgumentNullException(nameof(module)); 
-           _accountAddress = accountAddress ?? throw new ArgumentNullException(nameof(accountAddress));
-           _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
-           _coldWalletAddress = coldWalletAddress;
+            _blockProcessor = blockProcessor ?? throw new ArgumentNullException(nameof(blockProcessor));
+            _webSocketsModule = module ?? throw new ArgumentNullException(nameof(module));
+            _accountAddress = accountAddress ?? throw new ArgumentNullException(nameof(accountAddress));
+            _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
+            _coldWalletAddress = coldWalletAddress;
 
-           _blockProcessor.BlockProcessed += UpdateAccountBalance;
-           _blockProcessor.BlockProcessed += UpdateAccountNonce;
 
-           if(_coldWalletAddress != null)
-           {
-               _blockProcessor.BlockProcessed += UpdateColdWalletBalance;
-               _blockProcessor.BlockProcessed += UpdateColdWalletNonce;
-           }
+            _blockProcessor.BlockProcessed += UpdateAccountBalance;
+            _blockProcessor.BlockProcessed += UpdateAccountNonce;
+
+            if (_coldWalletAddress != null)
+            {
+                _blockProcessor.BlockProcessed += UpdateColdWalletBalance;
+                _blockProcessor.BlockProcessed += UpdateColdWalletNonce;
+            }
         }
 
-        private async void UpdateAccountBalance(object? sender, BlockProcessedEventArgs args)
+        private async void UpdateAccountBalance(object? sender, BlockProcessedEventArgs? args)
         {
             UInt256 balanceOnNewBlock = _stateProvider.GetBalance(_accountAddress);
 
@@ -50,7 +51,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Updaters
             await _webSocketsModule.SendAsync(new WebSocketsMessage("update-balance", "", _balance));
         }
             
-        private async void UpdateColdWalletBalance(object? sender, BlockProcessedEventArgs args)
+        private async void UpdateColdWalletBalance(object? sender, BlockProcessedEventArgs? args)
         {
             UInt256 balanceOnNewBlock = _stateProvider.GetBalance(_coldWalletAddress);
 
@@ -63,7 +64,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Updaters
             await _webSocketsModule.SendAsync(new WebSocketsMessage("update-cold-balance", "", _coldBalance));
         }
 
-        private async void UpdateAccountNonce(object? sender, BlockProcessedEventArgs args)
+        private async void UpdateAccountNonce(object? sender, BlockProcessedEventArgs? args)
         {
             UInt256 nonceOnNewBlock = _stateProvider.GetNonce(_accountAddress); 
 
@@ -76,7 +77,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Updaters
             await _webSocketsModule.SendAsync(new WebSocketsMessage("update-nonce", "", _nonce));
         }
 
-        private async void UpdateColdWalletNonce(object? sender, BlockProcessedEventArgs args)
+        private async void UpdateColdWalletNonce(object? sender, BlockProcessedEventArgs? args)
         {
             UInt256 nonceOnNewBlock = _stateProvider.GetNonce(_coldWalletAddress); 
 
