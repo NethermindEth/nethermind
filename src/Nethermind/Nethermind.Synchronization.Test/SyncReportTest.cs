@@ -27,8 +27,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Synchronization.Test
 {
-    [Parallelizable(ParallelScope.Self)]
-    [TestFixture]
+    [TestFixture, Parallelizable(ParallelScope.All)]
     public class SyncReportTest
     {
         [TestCase(true, false)]
