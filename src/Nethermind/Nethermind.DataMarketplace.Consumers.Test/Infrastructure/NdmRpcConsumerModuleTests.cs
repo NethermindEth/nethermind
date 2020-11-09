@@ -57,6 +57,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
         private IJsonRpcNdmConsumerChannel _jsonRpcNdmConsumerChannel;
         private IEthRequestService _ethRequestService;
         private IEthPriceService _ethPriceService;
+        private IDaiPriceService _daiPriceService;
         private IGasPriceService _gasPriceService;
         private IConsumerTransactionsService _consumerTransactionsService;
         private IConsumerGasLimitsService _gasLimitsService;
@@ -80,7 +81,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
             _wallet = Substitute.For<IWallet>();
             _timestamper = new Timestamper(Date);
             _rpc = new NdmRpcConsumerModule(_consumerService, _depositReportService, _jsonRpcNdmConsumerChannel,
-                _ethRequestService, _ethPriceService, _gasPriceService, _consumerTransactionsService, _gasLimitsService,
+                _ethRequestService, _ethPriceService, _daiPriceService, _gasPriceService, _consumerTransactionsService, _gasLimitsService,
                 _wallet, _timestamper);
         }
 
@@ -112,6 +113,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
                 _jsonRpcNdmConsumerChannel,
                 _ethRequestService,
                 _ethPriceService,
+                _daiPriceService,
                 _gasPriceService,
                 _consumerTransactionsService,
                 _gasLimitsService,
