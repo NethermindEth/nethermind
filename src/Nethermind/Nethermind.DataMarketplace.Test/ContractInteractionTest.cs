@@ -113,7 +113,7 @@ namespace Nethermind.DataMarketplace.Test
             ISpecProvider specProvider = new SingleReleaseSpecProvider(spec, 99);
             StateDb stateDb = new StateDb();
             _state = new StateProvider(stateDb, new StateDb(), _logManager);
-            StorageProvider storageProvider = new StorageProvider(stateDb, _state, NullWitnessCollector.Instance, _logManager);
+            StorageProvider storageProvider = new StorageProvider(stateDb, _state, _logManager);
             _state.CreateAccount(_consumerAccount, 1000.Ether());
             _state.CreateAccount(_providerAccount, 1.Ether());
             _state.Commit(spec);

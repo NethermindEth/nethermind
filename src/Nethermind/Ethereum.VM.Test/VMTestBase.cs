@@ -57,7 +57,7 @@ namespace Ethereum.VM.Test
             _blockhashProvider = new TestBlockhashProvider();
             _specProvider = OlympicSpecProvider.Instance;;
             _stateProvider = new StateProvider(_stateDb, _codeDb, _logManager);
-            _storageProvider = new StorageProvider(_stateDb, _stateProvider, NullWitnessCollector.Instance, _logManager);
+            _storageProvider = new StorageProvider(_stateDb, _stateProvider, _logManager);
         }
 
         public static IEnumerable<VirtualMachineTest> LoadTests(string testSet)
