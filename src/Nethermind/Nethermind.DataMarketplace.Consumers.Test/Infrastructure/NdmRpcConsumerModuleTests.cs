@@ -75,6 +75,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
             _jsonRpcNdmConsumerChannel = Substitute.For<IJsonRpcNdmConsumerChannel>();
             _ethRequestService = Substitute.For<IEthRequestService>();
             _ethPriceService = Substitute.For<IEthPriceService>();
+            _daiPriceService = Substitute.For<IDaiPriceService>();
             _gasPriceService = Substitute.For<IGasPriceService>();
             _gasLimitsService = Substitute.For<IConsumerGasLimitsService>();
             _consumerTransactionsService = Substitute.For<IConsumerTransactionsService>();
