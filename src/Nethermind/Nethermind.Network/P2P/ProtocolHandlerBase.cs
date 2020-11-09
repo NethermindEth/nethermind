@@ -106,7 +106,7 @@ namespace Nethermind.Network.P2P
                 Logger.Trace($"OUT {Counter:D5} {messageInfo}");
             
             if (NetworkDiagTracer.IsEnabled)
-                NetworkDiagTracer.ReportIncomingMessage(Session.Node.Address, Name, messageInfo);
+                NetworkDiagTracer.ReportIncomingMessage(Session?.Node?.Address, Name, messageInfo);
         }
 
         public abstract void Dispose();

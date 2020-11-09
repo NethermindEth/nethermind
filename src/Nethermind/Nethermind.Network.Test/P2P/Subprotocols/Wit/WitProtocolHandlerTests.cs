@@ -15,7 +15,6 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using System.Threading;
