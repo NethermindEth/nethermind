@@ -146,7 +146,7 @@ namespace Nethermind.Baseline
             }
             else
             {
-                if (blockParameter == null)
+                if (blockParameter == null || blockParameter == BlockParameter.Latest)
                 {
                     result = ResultWrapper<Keccak>.Success(tree.Root);
                 }
