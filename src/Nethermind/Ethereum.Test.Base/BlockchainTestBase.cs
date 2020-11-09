@@ -146,7 +146,7 @@ namespace Ethereum.Test.Base
             IHeaderValidator headerValidator = new HeaderValidator(blockTree, Sealer, specProvider, _logManager);
             IOmmersValidator ommersValidator = new OmmersValidator(blockTree, headerValidator, _logManager);
             IBlockValidator blockValidator = new BlockValidator(txValidator, headerValidator, ommersValidator, specProvider, _logManager);
-            IStorageProvider storageProvider = new StorageProvider(stateDb, stateProvider, NullWitnessCollector.Instance, _logManager);
+            IStorageProvider storageProvider = new StorageProvider(stateDb, stateProvider, _logManager);
             IVirtualMachine virtualMachine = new VirtualMachine(
                 stateProvider,
                 storageProvider,

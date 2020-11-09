@@ -49,6 +49,8 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Baseline.Benchma
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.State", "Nethermind.State\Nethermind.State.csproj", "{7A0C83C4-B98A-41F2-B8BB-955CCED3AB4A}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Synchronization", "Nethermind.Synchronization\Nethermind.Synchronization.csproj", "{A604A23D-CD2E-4C7D-9A53-F6C8E648EF0E}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -143,6 +145,10 @@ Global
 		{7A0C83C4-B98A-41F2-B8BB-955CCED3AB4A}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{7A0C83C4-B98A-41F2-B8BB-955CCED3AB4A}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{7A0C83C4-B98A-41F2-B8BB-955CCED3AB4A}.Release|Any CPU.Build.0 = Release|Any CPU
+		{A604A23D-CD2E-4C7D-9A53-F6C8E648EF0E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A604A23D-CD2E-4C7D-9A53-F6C8E648EF0E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A604A23D-CD2E-4C7D-9A53-F6C8E648EF0E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A604A23D-CD2E-4C7D-9A53-F6C8E648EF0E}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -163,6 +169,7 @@ Global
 		{E4DFFF98-2AB5-4BAF-A40C-EC32DFE13E2B} = {E4D07050-1288-4344-B79D-470C2DC86146}
 		{E8B3DD70-7BB2-4CF2-A26D-F375D831DE45} = {E4D07050-1288-4344-B79D-470C2DC86146}
 		{7A0C83C4-B98A-41F2-B8BB-955CCED3AB4A} = {E4D07050-1288-4344-B79D-470C2DC86146}
+		{A604A23D-CD2E-4C7D-9A53-F6C8E648EF0E} = {E4D07050-1288-4344-B79D-470C2DC86146}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {F5822673-96EF-4C5C-AEC1-74D165BF8D0C}
