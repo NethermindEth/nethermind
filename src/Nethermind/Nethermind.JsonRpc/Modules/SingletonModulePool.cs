@@ -26,27 +26,23 @@ namespace Nethermind.JsonRpc.Modules
         private readonly bool _allowExclusive;
 
         public SingletonModulePool(T module, bool allowExclusive = true)
-        {
-            Factory = new SingletonFactory<T>(module);
-            _onlyInstance = module;
-            _onlyInstanceAsTask = Task.FromResult(_onlyInstance);
-            _allowExclusive = allowExclusive;
-        }
+            : this(new SingletonFactory<T>(module), allowExclusive) { }
 
         public SingletonModulePool(IRpcModuleFactory<T> factory, bool allowExclusive = true)
         {
             Factory = factory;
             _onlyInstance = factory.Create();
+            _onlyInstanceAsTask = Task.FromResult(_onlyInstance);
             _allowExclusive = allowExclusive;
         }
-        
+
         public Task<T> GetModule(bool canBeShared)
         {
             if (!canBeShared && !_allowExclusive)
             {
                 throw new InvalidOperationException($"{nameof(SingletonModulePool<T>)} can only return shareable modules");
             }
-            
+
             return _onlyInstanceAsTask;
         }
 
