@@ -33,8 +33,7 @@ jobs:
     - name: Setup the Node.js
       uses: actions/setup-node@v1.4.4
       with:
-        node-version: '13'
-    - run: npm install -g sha3
+        node-version: '12'
     - name: Running POSDAO tests
       run: |
         cd posdao-test-setup
