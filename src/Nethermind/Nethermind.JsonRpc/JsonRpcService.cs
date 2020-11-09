@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -153,7 +153,7 @@ namespace Nethermind.JsonRpc
 
             //execute method
             IResultWrapper resultWrapper = null;
-            IModule module = _rpcModuleProvider.Rent(methodName, method.ReadOnly);
+            IModule module = await _rpcModuleProvider.Rent(methodName, method.ReadOnly);
             bool returnImmediately = methodName != "eth_getLogs";
             Action returnAction = returnImmediately ? (Action) null : () => _rpcModuleProvider.Return(methodName, module);
             try
