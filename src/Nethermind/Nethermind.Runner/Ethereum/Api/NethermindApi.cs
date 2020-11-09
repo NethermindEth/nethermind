@@ -131,6 +131,7 @@ namespace Nethermind.Runner.Ethereum.Api
         public IIPResolver? IpResolver { get; set; }
         public IJsonSerializer EthereumJsonSerializer { get; set; }
         public IKeyStore? KeyStore { get; set; }
+        public IPasswordProvider? PasswordProvider { get; set; }
         public ILogFinder? LogFinder { get; set; }
         public ILogManager LogManager { get; }
         public IKeyValueStore? MainStateDbWithCache { get; set; }

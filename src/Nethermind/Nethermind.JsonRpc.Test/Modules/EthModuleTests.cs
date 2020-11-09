@@ -180,6 +180,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             _ = ctx._test.TestEthRpc("eth_newBlockFilter");
             await ctx._test.AddBlock();
             string serialized2 = ctx._test.TestEthRpc("eth_getFilterChanges", "0");
+
             Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":[\"0xc4728c15ef17306669abacf533ccae65736927fd8d845687a9332e8ff1fa5a68\"],\"id\":67}", serialized2, serialized2.Replace("\"", "\\\""));
         }
         
@@ -190,6 +191,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             _ = ctx._test.TestEthRpc("eth_newPendingTransactionFilter");
             ctx._test.AddTransaction(Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyD).TestObject);
             string serialized2 = ctx._test.TestEthRpc("eth_getFilterChanges", "0");
+
             Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":[\"0x190d9a78dbc61b1856162ab909976a1b28ba4a41ee041341576ea69686cd3b29\"],\"id\":67}", serialized2, serialized2.Replace("\"", "\\\""));
         }
 
@@ -684,7 +686,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             TransactionForRpc rpcTx = new TransactionForRpc(tx);
             rpcTx.Nonce = 0;
             string serialized = ctx._test.TestEthRpc("eth_sendTransaction", new EthereumJsonSerializer().Serialize(rpcTx));
-            
+
             await txSender.Received().SendTransaction(Arg.Any<Transaction>(), TxHandlingOptions.PersistentBroadcast);
             Assert.AreEqual($"{{\"jsonrpc\":\"2.0\",\"result\":\"{TestItem.KeccakA.Bytes.ToHexString(true)}\",\"id\":67}}", serialized);
         }
