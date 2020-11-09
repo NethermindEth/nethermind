@@ -32,7 +32,9 @@ using Nethermind.Consensus.AuRa.Transactions;
 using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Evm;
+using Nethermind.Evm.Tracing;
 using Nethermind.Runner.Ethereum.Api;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Storages;
@@ -51,6 +53,8 @@ namespace Nethermind.Runner.Ethereum.Steps
         private Address? _txPriorityContractAddress = null;
         private readonly IAuraConfig _auraConfig;
         private DictionaryContractDataStore<TxPriorityContract.Destination>? _minGasPricesContractDataStore;
+        private TxFilterAdapter? _txPoolFilterAdapter = null;
+        private BlockProcessorWrapper? _blockProcessorWrapper = null;
 
         public InitializeBlockchainAuRa(AuRaNethermindApi api) : base(api)
         {
@@ -94,7 +98,12 @@ namespace Nethermind.Runner.Ethereum.Steps
             {
                 _sealValidator.ReportingValidator = reportingValidator;
             }
-            
+
+            if (_blockProcessorWrapper != null)
+            {
+                _blockProcessorWrapper.Processor = processor;
+            }
+
             return processor;
         }
 
@@ -241,8 +250,9 @@ namespace Nethermind.Runner.Ethereum.Steps
 
         protected override TxPool.TxPool CreateTxPool(PersistentTxStorage txStorage)
         {
-            _minGasPricesContractDataStore = TxFilterBuilders.CreateMinGasPricesDataStore(_auraConfig, _api, _readOnlyTransactionProcessorSource!);
-            
+            _blockProcessorWrapper = new BlockProcessorWrapper();
+            _minGasPricesContractDataStore = TxFilterBuilders.CreateMinGasPricesDataStore(_auraConfig, _api, _readOnlyTransactionProcessorSource!, _blockProcessorWrapper);
+            _txPoolFilterAdapter = new TxFilterAdapter(CreateTxPoolFilter());
             return new FilteredTxPool(
                 txStorage,
                 _api.EthereumEcdsa,
@@ -251,7 +261,14 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.StateProvider,
                 _api.LogManager,
                 CreateTxPoolTxComparer(),
-                new TxFilterAdapter(_api.BlockTree, CreateTxPoolFilter()));
+                _txPoolFilterAdapter);
+        }
+
+        protected override BlockTree CreateBlockTree()
+        {
+            BlockTree blockTree = base.CreateBlockTree();
+            _txPoolFilterAdapter!.BlockTree = blockTree;
+            return blockTree;
         }
 
         protected override ITxFilter CreateTxPoolFilter() => 
@@ -261,5 +278,51 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _readOnlyTransactionProcessorSource!,
                 _api.StateProvider!,
                 _minGasPricesContractDataStore);
+        
+        
+        private class BlockProcessorWrapper : IBlockProcessor
+        {
+            private AuRaBlockProcessor? _processor;
+
+            public AuRaBlockProcessor? Processor
+            {
+                get => _processor;
+                set
+                {
+                    if (_processor != null)
+                    {
+                        _processor.BlockProcessed -= OnBlockProcessed;
+                        _processor.TransactionProcessed -= OnTransactionProcessed;
+                    }
+                    _processor = value;
+                    if (_processor != null)
+                    {
+                        _processor.BlockProcessed += OnBlockProcessed;
+                        _processor.TransactionProcessed += OnTransactionProcessed;
+                    }
+                }
+            }
+
+            public Block[] Process(
+                Keccak newBranchStateRoot,
+                List<Block> suggestedBlocks,
+                ProcessingOptions processingOptions,
+                IBlockTracer blockTracer) => 
+                Processor?.Process(newBranchStateRoot, suggestedBlocks, processingOptions, blockTracer) ?? Array.Empty<Block>();
+
+            public event EventHandler<BlockProcessedEventArgs>? BlockProcessed;
+
+            public event EventHandler<TxProcessedEventArgs>? TransactionProcessed;
+            
+            private void OnTransactionProcessed(object? sender, TxProcessedEventArgs e)
+            {
+                TransactionProcessed?.Invoke(sender, e);
+            }
+
+            private void OnBlockProcessed(object? sender, BlockProcessedEventArgs e)
+            {
+                BlockProcessed?.Invoke(sender, e);
+            }
+        }
     }
 }

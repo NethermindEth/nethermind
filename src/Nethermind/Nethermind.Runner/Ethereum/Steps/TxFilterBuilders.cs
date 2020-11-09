@@ -16,6 +16,7 @@
 // 
 
 using Nethermind.Api;
+using Nethermind.Blockchain.Processing;
 using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.AuRa.Contracts;
@@ -123,22 +124,24 @@ namespace Nethermind.Runner.Ethereum.Steps
 
         public static DictionaryContractDataStore<TxPriorityContract.Destination>? CreateMinGasPricesDataStore(IAuraConfig config, 
             AuRaNethermindApi api,
-            IReadOnlyTransactionProcessorSource readOnlyTxProcessorSource)
+            IReadOnlyTransactionProcessorSource readOnlyTxProcessorSource,
+            IBlockProcessor blockProcessor)
         {
             var (txPriorityContract, localDataSource) = CreateTxPrioritySources(config, api, readOnlyTxProcessorSource);
-            return CreateMinGasPricesDataStore(api, txPriorityContract, localDataSource);
+            return CreateMinGasPricesDataStore(api, txPriorityContract, localDataSource, blockProcessor);
         }
 
         public static DictionaryContractDataStore<TxPriorityContract.Destination>? CreateMinGasPricesDataStore(
             AuRaNethermindApi api, 
             TxPriorityContract? txPriorityContract, 
-            TxPriorityContract.LocalDataSource? localDataSource)
+            TxPriorityContract.LocalDataSource? localDataSource, 
+            IBlockProcessor blockProcessor)
         {
             return txPriorityContract != null || localDataSource != null
                 ? new DictionaryContractDataStore<TxPriorityContract.Destination>(
                     new TxPriorityContract.DestinationSortedListContractDataStoreCollection(),
                     txPriorityContract?.MinGasPrices,
-                    api.MainBlockProcessor,
+                    blockProcessor,
                     api.LogManager,
                     localDataSource?.GetMinGasPricesLocalDataSource())
                 : null;

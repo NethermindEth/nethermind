@@ -146,11 +146,13 @@ namespace Nethermind.Runner.Ethereum.Steps
 
         protected override TxPoolTxSource CreateTxPoolTxSource(ReadOnlyTxProcessingEnv processingEnv, ReadOnlyTxProcessorSource readOnlyTxProcessorSource)
         {
+            if (_api.MainBlockProcessor == null) throw new StepDependencyException(nameof(_api.MainBlockProcessor));
+            
             (_txPriorityContract, _localDataSource) = TxFilterBuilders.CreateTxPrioritySources(_auraConfig, _api, readOnlyTxProcessorSource);
 
             if (_txPriorityContract != null || _localDataSource != null)
             {
-                _minGasPricesContractDataStore = TxFilterBuilders.CreateMinGasPricesDataStore(_api, _txPriorityContract, _localDataSource)!;
+                _minGasPricesContractDataStore = TxFilterBuilders.CreateMinGasPricesDataStore(_api, _txPriorityContract, _localDataSource, _api.MainBlockProcessor)!;
                 _api.DisposeStack.Push(_minGasPricesContractDataStore);                
 
                 IBlockProcessor? blockProcessor = _api.MainBlockProcessor;

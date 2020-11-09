@@ -116,14 +116,7 @@ namespace Nethermind.Runner.Ethereum.Steps
 
             _api.ChainLevelInfoRepository = new ChainLevelInfoRepository(_api.DbProvider.BlockInfosDb);
 
-            _api.BlockTree = new BlockTree(
-                _api.DbProvider,
-                _api.ChainLevelInfoRepository,
-                _api.SpecProvider,
-                _api.TxPool,
-                _api.BloomStorage,
-                _api.Config<ISyncConfig>(),
-                _api.LogManager);
+            _api.BlockTree = CreateBlockTree();
 
             // Init state if we need system calls before actual processing starts
             if (_api.BlockTree.Head != null)
@@ -229,6 +222,16 @@ namespace Nethermind.Runner.Ethereum.Steps
             
             return Task.CompletedTask;
         }
+
+        protected virtual BlockTree CreateBlockTree() =>
+            new BlockTree(
+                _api.DbProvider,
+                _api.ChainLevelInfoRepository,
+                _api.SpecProvider,
+                _api.TxPool,
+                _api.BloomStorage,
+                _api.Config<ISyncConfig>(),
+                _api.LogManager);
 
         protected virtual ITxFilter CreateTxPoolFilter() => TxFilterBuilders.CreateStandardTxFilter(_api.Config<IMiningConfig>());
 
