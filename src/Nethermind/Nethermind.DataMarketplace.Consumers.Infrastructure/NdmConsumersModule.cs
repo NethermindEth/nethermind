@@ -217,7 +217,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure
                     requiredBlockConfirmations);
             }
 
-            depositReportService = new DepositReportService(depositRepository, receiptRepository, sessionRepository,
+            depositReportService = new DepositReportService(depositRepository, depositUnitsCalculator, receiptRepository, sessionRepository,
                 timestamper);
             ReceiptService receiptService = new ReceiptService(depositProvider, providerService, receiptRequestValidator,
                 sessionService, timestamper, receiptRepository, sessionRepository, abiEncoder, wallet, ecdsa,
