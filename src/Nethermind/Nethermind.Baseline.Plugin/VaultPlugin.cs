@@ -22,7 +22,7 @@ namespace Nethermind.Plugin.Baseline
         private VaultService _vaultService;
         private IVaultSealingHelper _vaultSealingHelper;
 
-        public void Dispose() 
+        public void Dispose()
         {
             if (_vaultConfig != null && _vaultConfig.Enabled)
             {
@@ -39,26 +39,26 @@ namespace Nethermind.Plugin.Baseline
         public async Task Init(INethermindApi api)
         {
             _vaultConfig = api.Config<IVaultConfig>();
-
             _api = api;
             _logger = api.LogManager.GetClassLogger();
-            _vaultService = new VaultService(_vaultConfig, _api.LogManager);
-
             if (_vaultConfig.Enabled)
             {
+                _vaultService = new VaultService(_vaultConfig, _api.LogManager);
+
                 var passwordProvider = new FilePasswordProvider() { FileName = _vaultConfig.VaultKeyFile.GetApplicationResourcePath() }
                                             .OrReadFromConsole("Provide passsphrase to unlock Vault");
                 var vaultKeyStoreFacade = new VaultKeyStoreFacade(passwordProvider);
                 _vaultSealingHelper = new VaultSealingHelper(vaultKeyStoreFacade, _vaultConfig, _logger);
                 await _vaultSealingHelper.Unseal();
-            }
 
-            IVaultWallet wallet = new VaultWallet(_vaultService, _vaultConfig.VaultId, _api.LogManager);
-            ITxSigner vaultSigner = new VaultTxSigner(wallet, _api.ChainSpec.ChainId);
-            
-            // TODO: change vault to provide, use sealer to set the gas price as well
-            // TODO: need to verify the timing of initializations so the TxSender replacement works fine
-            _api.TxSender = new VaultTxSender(vaultSigner, _vaultConfig, _api.ChainSpec.ChainId);
+
+                IVaultWallet wallet = new VaultWallet(_vaultService, _vaultConfig.VaultId, _api.LogManager);
+                ITxSigner vaultSigner = new VaultTxSigner(wallet, _api.ChainSpec.ChainId);
+
+                // TODO: change vault to provide, use sealer to set the gas price as well
+                // TODO: need to verify the timing of initializations so the TxSender replacement works fine
+                _api.TxSender = new VaultTxSender(vaultSigner, _vaultConfig, _api.ChainSpec.ChainId);
+            }
         }
 
         public Task InitNetworkProtocol()
@@ -74,7 +74,7 @@ namespace Nethermind.Plugin.Baseline
                 _api.RpcModuleProvider!.Register(new SingletonModulePool<IVaultModule>(vaultModule, true));
                 if (_logger.IsInfo) _logger.Info("Vault RPC Module has been enabled");
             }
-            
+
             return Task.CompletedTask;
         }
     }

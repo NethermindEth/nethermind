@@ -52,7 +52,7 @@ namespace Nethermind.Plugin.Baseline
                     _api.MainBlockProcessor,
                     _api.DisposeStack);
 
-                var modulePool = new BoundedModulePool<IBaselineModule>(baselineModuleFactory, 2, 1000);
+                var modulePool = new SingletonModulePool<IBaselineModule>(baselineModuleFactory);
                 _api.RpcModuleProvider!.Register(modulePool);
                 
                 if (_logger.IsInfo) _logger.Info("Baseline RPC Module has been enabled");

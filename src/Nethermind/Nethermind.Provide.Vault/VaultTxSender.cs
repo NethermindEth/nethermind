@@ -52,10 +52,10 @@ namespace Nethermind.Vault
             if (_networkIdMapping.ContainsKey(chainId)) _networkId = _networkIdMapping[chainId];
 
             _provide = new NChain(
-                vaultConfig.Host,
-                vaultConfig.Path,
-                vaultConfig.Scheme,
-                vaultConfig.Token);
+                vaultConfig.NChainHost,
+                vaultConfig.NchainPath,
+                vaultConfig.NchainScheme,
+                vaultConfig.NChainToken);
         }
 
         public async ValueTask<Keccak> SendTransaction(Transaction tx, TxHandlingOptions txHandlingOptions)
@@ -63,10 +63,10 @@ namespace Nethermind.Vault
             ProvideTx provideTx = new ProvideTx();
             provideTx.Data = (tx.Data ?? tx.Init).ToHexString();
             provideTx.Description = "From Nethermind with love";
-            provideTx.Hash = tx.Hash.ToString();
+            provideTx.Hash = tx.Hash?.ToString();
             provideTx.Signer = tx.SenderAddress.ToString();
             provideTx.NetworkId = _networkId;
-            provideTx.To = tx.To.ToString();
+            provideTx.To = tx.To?.ToString();
             provideTx.Value = (BigInteger) tx.Value;
             provideTx.Params = new Dictionary<string, object>
             {

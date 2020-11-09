@@ -308,7 +308,7 @@ namespace Nethermind.Network.Test
             ctx.PeerManager.ActivePeers.Count(p => p.Node.IsStatic).Should().Be(nodesCount);
         }
 
-        [Test, Retry(3)]
+        [Test, Retry(5)]
         public async Task Will_disconnect_on_remove_static_node()
         {
             await using Context ctx = new Context();

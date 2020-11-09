@@ -1,4 +1,4 @@
-//  Copyright (c) 2020 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -14,21 +14,24 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-namespace Nethermind.Vault.Config
+using Nethermind.Abi;
+
+namespace Nethermind.Baseline.Tree
 {
-    public class VaultConfig : IVaultConfig
+    public static class ContractMerkleTree
     {
-        public bool Enabled { get; set;}
-        public string Host { get; set; } = "vault.provide.services";
-        public string Token { get; set;}
-        public string Scheme { get; set; } = "https";
-        public string Path { get; set; } = "api/v1";
-        public string VaultId { get; set;}
-        public string VaultKeyFile { get; set; }
-        public string VaultSealUnsealKey { get; set; }
-        public string NChainHost { get; set; }
-        public string NChainToken { get; set; }
-        public string NchainScheme { get; set; }
-        public string NchainPath { get; set; }
+        public static readonly AbiSignature InsertLeafAbiSig = new AbiSignature("insertLeaf",
+            new AbiBytes(32)); // leafValue
+        
+        public static AbiSignature InsertLeavesAbiSig = new AbiSignature("insertLeaves",
+            new AbiArray(new AbiBytes(32))); // leafValues
+    }
+
+    public static class ContractShield
+    {
+        public static readonly AbiSignature VerifyAndPushSig = new AbiSignature("verifyAndPush",
+            new AbiArray(new AbiUInt(256)),
+            new AbiArray(new AbiUInt(256)),
+            new AbiArray(new AbiBytes(32))); // verifyAndPush
     }
 }

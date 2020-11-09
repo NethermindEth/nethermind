@@ -112,5 +112,16 @@ namespace Nethermind.Baseline
             IsSharable = false,
             IsImplemented = false)]
         Task<ResultWrapper<Address[]>> baseline_getTracked();
+
+        [JsonRpcMethod(
+            Description = "Verify data and push new input.",
+            IsSharable = false,
+            IsImplemented = true)]
+        Task<ResultWrapper<Keccak>> baseline_verifyAndPush(
+            Address address,
+            Address contractAddress,
+            UInt256[] proof,
+            UInt256[] publicInputs,
+            Keccak newCommitment);
     }
 }
