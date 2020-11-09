@@ -32,7 +32,7 @@ namespace Nethermind.Baseline.Test
     public class BaselineTreeHelperTests
     {
         [Test]
-        public void GetHistoricalLeaf([ValueSource(nameof(GetHistoricalLeafTestCases))]GetHistoricalLeavesTest test)
+        public void GetHistoricalLeaf_return_expected_results([ValueSource(nameof(GetHistoricalLeafTestCases))]GetHistoricalLeavesTest test)
         {
             var logFinder = Substitute.For<ILogFinder>();
             var mainDb = new MemDb();
@@ -59,6 +59,40 @@ namespace Nethermind.Baseline.Test
                 var leavesAndBlocks = test.LeavesAndBlocksQueries[i];
                 var leaf = baselineTreeHelper.GetHistoricalLeaf(baselineTree, leavesAndBlocks.LeavesIndexes[0], leavesAndBlocks.BlockNumber);
                 Assert.AreEqual(test.ExpectedHashes[i][0], leaf.Hash);
+            }
+        }
+
+        [Test]
+        public void GetHistoricalLeaves_return_expected_results([ValueSource(nameof(GetHistoricalLeafTestCases))]GetHistoricalLeavesTest test)
+        {
+            var logFinder = Substitute.For<ILogFinder>();
+            var mainDb = new MemDb();
+            var metadaDataDb = new MemDb();
+            var baselineTreeHelper = new BaselineTreeHelper(logFinder, new MemDb(), new MemDb());
+            var baselineTree = new ShaBaselineTree(mainDb, metadaDataDb, new byte[] { }, BaselineModule.TruncationLength);
+
+            long lastBlockWithLeaves = 0;
+            for (int i = 0; i < test.Blocks.Length; i++)
+            {
+                var block = test.Blocks[i];
+                for (int j = 0; j < block.Leaves.Length; j++)
+                {
+                    baselineTree.Insert(block.Leaves[j]);
+                }
+
+                baselineTree.Metadata.SaveBlockNumberCount(block.BlockNumber, (uint)block.Leaves.Length, lastBlockWithLeaves);
+                lastBlockWithLeaves = block.BlockNumber;
+                baselineTree.LastBlockWithLeaves = lastBlockWithLeaves;
+            }
+
+            for (int i = 0; i < test.ExpectedHashes.Length; i++)
+            {
+                var leavesAndBlocks = test.LeavesAndBlocksQueries[i];
+                var leaves = baselineTreeHelper.GetHistoricalLeaves(baselineTree, leavesAndBlocks.LeavesIndexes, leavesAndBlocks.BlockNumber);
+                for (int j = 0; j < leavesAndBlocks.LeavesIndexes.Length; j++)
+                {
+                    Assert.AreEqual(test.ExpectedHashes[i][j], leaves[j].Hash);
+                }
             }
         }
 

@@ -155,6 +155,83 @@ services:
     networks:
       - provide
     restart: always
+  nchain:
+    image: provide/nchain:bri-1
+    container_name: nchain
+    depends_on:
+      - ident
+      - nats-streaming
+      - postgres
+      - redis
+    environment:
+      - DATABASE_HOST=postgres
+      - DATABASE_NAME=nchain_dev
+      - DATABASE_USER=nchain
+      - DATABASE_PASSWORD=nchain
+      - IDENT_API_HOST=ident:8080
+      - IDENT_API_SCHEME=http
+      - LOG_LEVEL=DEBUG
+      - NATS_CLIENT_PREFIX=nchain
+      - NATS_URL=nats://nats:4222
+      - NATS_STREAMING_URL=nats://nats-streaming:4222
+      - PAYMENTS_REFRESH_TOKEN=eyJhbGciOiJSUzI1NiIsImtpZCI6IjEwOjJlOmQ5OmUxOmI4OmEyOjM0OjM3Ojk5OjNhOjI0OmZjOmFhOmQxOmM4OjU5IiwidHlwIjoiSldUIn0.eyJhdWQiOiJodHRwczovL3Byb3ZpZGUuc2VydmljZXMvYXBpL3YxIiwiZXhwIjoxNjA0OTI5NTk5LCJpYXQiOjE2MDQ4NDMxOTksImlzcyI6Imh0dHBzOi8vaWRlbnQucHJvdmlkZS5zZXJ2aWNlcyIsImp0aSI6ImQ3NzdkYzUxLTVjYjMtNGM1My1iZjZhLWVlYTI3NmIwZGM3MSIsIm5hdHMiOnsicGVybWlzc2lvbnMiOnsic3Vic2NyaWJlIjp7ImFsbG93IjpbInVzZXIuZmY1ZTlkNDMtYzMyMS00NzU4LWI1MDYtNWRjMzBjYTU3MGM5IiwibmV0d29yay4qLmNvbm5lY3Rvci4qIiwibmV0d29yay4qLnN0YXR1cyIsInBsYXRmb3JtLlx1MDAzZSJdfX19LCJwcnZkIjp7InBlcm1pc3Npb25zIjo3NTUzLCJ1c2VyX2lkIjoiZmY1ZTlkNDMtYzMyMS00NzU4LWI1MDYtNWRjMzBjYTU3MGM5In0sInN1YiI6InVzZXI6ZmY1ZTlkNDMtYzMyMS00NzU4LWI1MDYtNWRjMzBjYTU3MGM5In0.I16MmpyyrXglA1sPKAqXOmVU1IeI0Awt5DebbbCoa5AzIagQDAbA4d8yywcdkVSOm73RhxyrP60HhLxZpoA8nqq3F7HliHHtM8Tf97BZLJhUEoEDBa9Ylh-mNWbGF7gY9k9hILmY-GIeI3P5wa2QsuBtWbmo6Q4ljJDN3bHLNjPBQykP-TaQLO5oO5lRUPPcnhyxWL7d2wsMoQXwS3PcxSx9nHbDCqRAPqho6PF-b9HuRvCSXcik_4ht25fC_5T8eu59gk2R29Ghocm3_fzR_oNOzi4kZwEv1evIohR_Cc_heWI_5KPR5Ko9WX3uTRuG8RsUryflaiOMdIrPEyXWtFz1LAOt--A7PogP64-CDnR1WOrP4vS8RWW8uCu-VgzSL6InJu3X5T5X4c03cu3Ia2GMvVbmeh4CB4_8vz_jbmQHs8cvg-VpNuIhXw9waDUlKcAmyGb3cxVRNoV50fcp9gOSUnwctIhHbHNTp_OtUOTuUfeMVDbFrWzIItuya6np1tUSRROv6ie6UfdDwaCR7BSvVfLdgEjkCNIpZ4SBf0-aluCCb5X_By4zcPZi4HxLBMSz3KIR4c8JXrkMJ1SDwgtr68gqNmSDO_EYvD-nRIb3scAS5lsD2MMkZEVhjN2koMng8uE2pp70EYBPA9NjVdQ3pWVit7ComIjArYKI0ic
+      - PORT=8080
+      - REDIS_HOSTS=redis:6379
+      - VAULT_API_HOST=vault:8080
+      - VAULT_API_SCHEME=http
+      - VAULT_REFRESH_TOKEN=eyJhbGciOiJSUzI1NiIsImtpZCI6IjEwOjJlOmQ5OmUxOmI4OmEyOjM0OjM3Ojk5OjNhOjI0OmZjOmFhOmQxOmM4OjU5IiwidHlwIjoiSldUIn0.eyJhdWQiOiJodHRwczovL3Byb3ZpZGUuc2VydmljZXMvYXBpL3YxIiwiZXhwIjoxNjA0OTI5NTk5LCJpYXQiOjE2MDQ4NDMxOTksImlzcyI6Imh0dHBzOi8vaWRlbnQucHJvdmlkZS5zZXJ2aWNlcyIsImp0aSI6ImQ3NzdkYzUxLTVjYjMtNGM1My1iZjZhLWVlYTI3NmIwZGM3MSIsIm5hdHMiOnsicGVybWlzc2lvbnMiOnsic3Vic2NyaWJlIjp7ImFsbG93IjpbInVzZXIuZmY1ZTlkNDMtYzMyMS00NzU4LWI1MDYtNWRjMzBjYTU3MGM5IiwibmV0d29yay4qLmNvbm5lY3Rvci4qIiwibmV0d29yay4qLnN0YXR1cyIsInBsYXRmb3JtLlx1MDAzZSJdfX19LCJwcnZkIjp7InBlcm1pc3Npb25zIjo3NTUzLCJ1c2VyX2lkIjoiZmY1ZTlkNDMtYzMyMS00NzU4LWI1MDYtNWRjMzBjYTU3MGM5In0sInN1YiI6InVzZXI6ZmY1ZTlkNDMtYzMyMS00NzU4LWI1MDYtNWRjMzBjYTU3MGM5In0.I16MmpyyrXglA1sPKAqXOmVU1IeI0Awt5DebbbCoa5AzIagQDAbA4d8yywcdkVSOm73RhxyrP60HhLxZpoA8nqq3F7HliHHtM8Tf97BZLJhUEoEDBa9Ylh-mNWbGF7gY9k9hILmY-GIeI3P5wa2QsuBtWbmo6Q4ljJDN3bHLNjPBQykP-TaQLO5oO5lRUPPcnhyxWL7d2wsMoQXwS3PcxSx9nHbDCqRAPqho6PF-b9HuRvCSXcik_4ht25fC_5T8eu59gk2R29Ghocm3_fzR_oNOzi4kZwEv1evIohR_Cc_heWI_5KPR5Ko9WX3uTRuG8RsUryflaiOMdIrPEyXWtFz1LAOt--A7PogP64-CDnR1WOrP4vS8RWW8uCu-VgzSL6InJu3X5T5X4c03cu3Ia2GMvVbmeh4CB4_8vz_jbmQHs8cvg-VpNuIhXw9waDUlKcAmyGb3cxVRNoV50fcp9gOSUnwctIhHbHNTp_OtUOTuUfeMVDbFrWzIItuya6np1tUSRROv6ie6UfdDwaCR7BSvVfLdgEjkCNIpZ4SBf0-aluCCb5X_By4zcPZi4HxLBMSz3KIR4c8JXrkMJ1SDwgtr68gqNmSDO_EYvD-nRIb3scAS5lsD2MMkZEVhjN2koMng8uE2pp70EYBPA9NjVdQ3pWVit7ComIjArYKI0ic
+      - VAULT_SEAL_UNSEAL_KEY=fragile potato army dinner inch enrich decline under scrap soup audit worth trend point cheese sand online parrot faith catch olympic dignity mail crouch
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://nchain:8080/status"]
+      interval: 1m
+      timeout: 1s
+      retries: 2
+      start_period: 10s
+    hostname: nchain
+    networks:
+      - provide
+    ports:
+      - 8083:8080
+    restart: always
+ 
+  nchain-consumer:
+    image: provide/nchain:bri-1
+    entrypoint: ./ops/run_consumer.sh
+    container_name: nchain-consumer
+    depends_on:
+      - ident
+      - nats-streaming
+      - postgres
+      - redis
+    environment:
+      - CONSUME_NATS_STREAMING_SUBSCRIPTIONS=true
+      - DATABASE_HOST=postgres
+      - DATABASE_NAME=nchain_dev
+      - DATABASE_USER=nchain
+      - DATABASE_PASSWORD=nchain
+      - IDENT_API_HOST=ident:8080
+      - IDENT_API_SCHEME=http
+      - LOG_LEVEL=DEBUG
+      - NATS_CLIENT_PREFIX=nchain-consumer
+      - NATS_URL=nats://nats:4222
+      - NATS_STREAMING_URL=nats://nats-streaming:4222
+      - NATS_TOKEN=testtoken
+      - PAYMENTS_REFRESH_TOKEN=eyJhbGciOiJSUzI1NiIsImtpZCI6IjEwOjJlOmQ5OmUxOmI4OmEyOjM0OjM3Ojk5OjNhOjI0OmZjOmFhOmQxOmM4OjU5IiwidHlwIjoiSldUIn0.eyJhdWQiOiJodHRwczovL3Byb3ZpZGUuc2VydmljZXMvYXBpL3YxIiwiZXhwIjoxNjA0OTI5NTk5LCJpYXQiOjE2MDQ4NDMxOTksImlzcyI6Imh0dHBzOi8vaWRlbnQucHJvdmlkZS5zZXJ2aWNlcyIsImp0aSI6ImQ3NzdkYzUxLTVjYjMtNGM1My1iZjZhLWVlYTI3NmIwZGM3MSIsIm5hdHMiOnsicGVybWlzc2lvbnMiOnsic3Vic2NyaWJlIjp7ImFsbG93IjpbInVzZXIuZmY1ZTlkNDMtYzMyMS00NzU4LWI1MDYtNWRjMzBjYTU3MGM5IiwibmV0d29yay4qLmNvbm5lY3Rvci4qIiwibmV0d29yay4qLnN0YXR1cyIsInBsYXRmb3JtLlx1MDAzZSJdfX19LCJwcnZkIjp7InBlcm1pc3Npb25zIjo3NTUzLCJ1c2VyX2lkIjoiZmY1ZTlkNDMtYzMyMS00NzU4LWI1MDYtNWRjMzBjYTU3MGM5In0sInN1YiI6InVzZXI6ZmY1ZTlkNDMtYzMyMS00NzU4LWI1MDYtNWRjMzBjYTU3MGM5In0.I16MmpyyrXglA1sPKAqXOmVU1IeI0Awt5DebbbCoa5AzIagQDAbA4d8yywcdkVSOm73RhxyrP60HhLxZpoA8nqq3F7HliHHtM8Tf97BZLJhUEoEDBa9Ylh-mNWbGF7gY9k9hILmY-GIeI3P5wa2QsuBtWbmo6Q4ljJDN3bHLNjPBQykP-TaQLO5oO5lRUPPcnhyxWL7d2wsMoQXwS3PcxSx9nHbDCqRAPqho6PF-b9HuRvCSXcik_4ht25fC_5T8eu59gk2R29Ghocm3_fzR_oNOzi4kZwEv1evIohR_Cc_heWI_5KPR5Ko9WX3uTRuG8RsUryflaiOMdIrPEyXWtFz1LAOt--A7PogP64-CDnR1WOrP4vS8RWW8uCu-VgzSL6InJu3X5T5X4c03cu3Ia2GMvVbmeh4CB4_8vz_jbmQHs8cvg-VpNuIhXw9waDUlKcAmyGb3cxVRNoV50fcp9gOSUnwctIhHbHNTp_OtUOTuUfeMVDbFrWzIItuya6np1tUSRROv6ie6UfdDwaCR7BSvVfLdgEjkCNIpZ4SBf0-aluCCb5X_By4zcPZi4HxLBMSz3KIR4c8JXrkMJ1SDwgtr68gqNmSDO_EYvD-nRIb3scAS5lsD2MMkZEVhjN2koMng8uE2pp70EYBPA9NjVdQ3pWVit7ComIjArYKI0ic
+      - REDIS_HOSTS=redis:6379
+      - VAULT_API_HOST=vault:8080
+      - VAULT_API_SCHEME=http
+      - VAULT_REFRESH_TOKEN=eyJhbGciOiJSUzI1NiIsImtpZCI6IjEwOjJlOmQ5OmUxOmI4OmEyOjM0OjM3Ojk5OjNhOjI0OmZjOmFhOmQxOmM4OjU5IiwidHlwIjoiSldUIn0.eyJhdWQiOiJodHRwczovL3Byb3ZpZGUuc2VydmljZXMvYXBpL3YxIiwiZXhwIjoxNjA0OTI5NTk5LCJpYXQiOjE2MDQ4NDMxOTksImlzcyI6Imh0dHBzOi8vaWRlbnQucHJvdmlkZS5zZXJ2aWNlcyIsImp0aSI6ImQ3NzdkYzUxLTVjYjMtNGM1My1iZjZhLWVlYTI3NmIwZGM3MSIsIm5hdHMiOnsicGVybWlzc2lvbnMiOnsic3Vic2NyaWJlIjp7ImFsbG93IjpbInVzZXIuZmY1ZTlkNDMtYzMyMS00NzU4LWI1MDYtNWRjMzBjYTU3MGM5IiwibmV0d29yay4qLmNvbm5lY3Rvci4qIiwibmV0d29yay4qLnN0YXR1cyIsInBsYXRmb3JtLlx1MDAzZSJdfX19LCJwcnZkIjp7InBlcm1pc3Npb25zIjo3NTUzLCJ1c2VyX2lkIjoiZmY1ZTlkNDMtYzMyMS00NzU4LWI1MDYtNWRjMzBjYTU3MGM5In0sInN1YiI6InVzZXI6ZmY1ZTlkNDMtYzMyMS00NzU4LWI1MDYtNWRjMzBjYTU3MGM5In0.I16MmpyyrXglA1sPKAqXOmVU1IeI0Awt5DebbbCoa5AzIagQDAbA4d8yywcdkVSOm73RhxyrP60HhLxZpoA8nqq3F7HliHHtM8Tf97BZLJhUEoEDBa9Ylh-mNWbGF7gY9k9hILmY-GIeI3P5wa2QsuBtWbmo6Q4ljJDN3bHLNjPBQykP-TaQLO5oO5lRUPPcnhyxWL7d2wsMoQXwS3PcxSx9nHbDCqRAPqho6PF-b9HuRvCSXcik_4ht25fC_5T8eu59gk2R29Ghocm3_fzR_oNOzi4kZwEv1evIohR_Cc_heWI_5KPR5Ko9WX3uTRuG8RsUryflaiOMdIrPEyXWtFz1LAOt--A7PogP64-CDnR1WOrP4vS8RWW8uCu-VgzSL6InJu3X5T5X4c03cu3Ia2GMvVbmeh4CB4_8vz_jbmQHs8cvg-VpNuIhXw9waDUlKcAmyGb3cxVRNoV50fcp9gOSUnwctIhHbHNTp_OtUOTuUfeMVDbFrWzIItuya6np1tUSRROv6ie6UfdDwaCR7BSvVfLdgEjkCNIpZ4SBf0-aluCCb5X_By4zcPZi4HxLBMSz3KIR4c8JXrkMJ1SDwgtr68gqNmSDO_EYvD-nRIb3scAS5lsD2MMkZEVhjN2koMng8uE2pp70EYBPA9NjVdQ3pWVit7ComIjArYKI0ic
+      - VAULT_SEAL_UNSEAL_KEY=fragile potato army dinner inch enrich decline under scrap soup audit worth trend point cheese sand online parrot faith catch olympic dignity mail crouch
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://nchain:8080/status"]
+      interval: 1m
+      timeout: 1s
+      retries: 2
+      start_period: 10s
+    hostname: nchain-consumer
+    networks:
+      - provide
+    restart: always
 
   vault:
     image: provide/vault
