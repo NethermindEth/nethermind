@@ -40,5 +40,19 @@ namespace Nethermind.Vault.Config
 
         [ConfigItem(Description = "The file with Vault's passphrase for sealing and unsealing", DefaultValue = "null")]
         string VaultKeyFile { get; set; }
+
+        string VaultSealUnsealKey { get; set; }
+
+        [ConfigItem(Description = "Address of the Nchain service endpoint", DefaultValue = "vault.provide.services")]
+        string NChainHost { get; set; }
+
+        [ConfigItem(Description = "Authorization token required to access Provide Services Nchain", DefaultValue = "null")]
+        string NChainToken { get; set; }
+
+        [ConfigItem(Description = "The Nchain'd URI scheme", DefaultValue = "https")]
+        string NchainScheme { get; set; }
+
+        [ConfigItem(Description = "Path to the Nchain'd api", DefaultValue = "api/v1")]
+        string NchainPath { get; set; }
     }
 }
