@@ -38,12 +38,11 @@ namespace Nethermind.Plugin.Baseline
 
         public async Task Init(INethermindApi api)
         {
+            _vaultConfig = api.Config<IVaultConfig>();
+            _api = api;
+            _logger = api.LogManager.GetClassLogger();
             if (_vaultConfig.Enabled)
             {
-                _vaultConfig = api.Config<IVaultConfig>();
-
-                _api = api;
-                _logger = api.LogManager.GetClassLogger();
                 _vaultService = new VaultService(_vaultConfig, _api.LogManager);
 
                 var passwordProvider = new FilePasswordProvider() { FileName = _vaultConfig.VaultKeyFile.GetApplicationResourcePath() }

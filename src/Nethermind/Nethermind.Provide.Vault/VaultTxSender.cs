@@ -52,10 +52,10 @@ namespace Nethermind.Vault
             if (_networkIdMapping.ContainsKey(chainId)) _networkId = _networkIdMapping[chainId];
 
             _provide = new NChain(
-                vaultConfig.Host,
-                vaultConfig.Path,
-                vaultConfig.Scheme,
-                vaultConfig.Token);
+                vaultConfig.NChainHost,
+                vaultConfig.NchainPath,
+                vaultConfig.NchainScheme,
+                vaultConfig.NChainToken);
         }
 
         public async ValueTask<Keccak> SendTransaction(Transaction tx, TxHandlingOptions txHandlingOptions)
