@@ -33,4 +33,5 @@ jobs:
     - name: Running POSDAO tests
       run: |
         cd posdao-test-setup
+        npm i --save sha3
         npm run all-nethermind-no-watcher
