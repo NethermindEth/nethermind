@@ -16,7 +16,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -31,18 +30,18 @@ namespace Nethermind.DataMarketplace.Core.Services
     {
         // private const string Url = "https://api.coinmarketcap.com/v1/ticker/ethereum/?convert=USD";
         private const string Url = "https://poloniex.com/public?command=returnTicker";
-        private readonly IHttpClient _client;
+        private readonly IHttpClient _httpClient;
         private readonly ITimestamper _timestamper;
         private readonly ILogger _logger;
         
         public decimal UsdPrice { get; private set; }
         public ulong UpdatedAt { get; private set; }
 
-        public EthPriceService(IHttpClient client, ITimestamper timestamper, ILogManager logManager)
+        public EthPriceService(IHttpClient httpClient, ITimestamper timestamper, ILogManager logManager)
         {
-            _client = client ?? throw new ArgumentNullException(nameof(client));
+            _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
             _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
-            _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(client));
+            _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
         public async Task UpdateAsync()
@@ -54,7 +53,7 @@ namespace Nethermind.DataMarketplace.Core.Services
             }
 
             // var results = await _client.GetAsync<Result[]>(Url);
-            var results = await _client.GetAsync<Dictionary<string, Result>>(Url);
+            var results = await _httpClient.GetAsync<Dictionary<string, Result>>(Url);
             if (!results.ContainsKey("USDT_ETH"))
             {
                 if (_logger.IsWarn) _logger.Warn($"There was an error when updating ETH price. Latest know value is: {UsdPrice} USD");
