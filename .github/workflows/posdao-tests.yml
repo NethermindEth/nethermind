@@ -34,9 +34,8 @@ jobs:
       uses: actions/setup-node@v1.4.4
       with:
         node-version: '13'
+    - run: npm install -g sha3
     - name: Running POSDAO tests
       run: |
-        cd posdao-test-setup/posdao-contracts
-        npm i --save sha3
-        cd ..
+        cd posdao-test-setup
         npm run all-nethermind-no-watcher
