@@ -13,18 +13,30 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-namespace Nethermind.TxPool
+using System;
+using Nethermind.Consensus.Transactions;
+using Nethermind.Core;
+using Nethermind.TxPool;
+
+namespace Nethermind.Blockchain
 {
-    public enum AddTxResult
+    public class TxFilterAdapter : FilteredTxPool.ITxPoolFilter
     {
-        AlreadyKnown,
-        OldScheme,
-        InvalidChainId,
-        OldNonce,
-        PotentiallyUseless,
-        Added,
-        OwnNonceAlreadyUsed,
-        Filtered
+        private readonly IBlockTree _blockTree;
+        private readonly ITxFilter _txFilter;
+
+        public TxFilterAdapter(IBlockTree blockTree, ITxFilter txFilter)
+        {
+            _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
+            _txFilter = txFilter ?? throw new ArgumentNullException(nameof(txFilter));
+        }
+        
+        public bool Accept(Transaction tx)
+        {
+            var parentHeader = _blockTree.Head?.Header;
+            return parentHeader == null || _txFilter.IsAllowed(tx, parentHeader);
+        }
     }
 }

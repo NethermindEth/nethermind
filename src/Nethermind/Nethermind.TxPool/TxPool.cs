@@ -189,8 +189,51 @@ namespace Nethermind.TxPool
             
             bool managedNonce = (handlingOptions & TxHandlingOptions.ManagedNonce) == TxHandlingOptions.ManagedNonce;
             bool isPersistentBroadcast = (handlingOptions & TxHandlingOptions.PersistentBroadcast) == TxHandlingOptions.PersistentBroadcast;
-            if (_logger.IsTrace) _logger.Trace($"Adding transaction {tx.ToString("  ")} - managed nonce: {managedNonce} | persistent brodcast {isPersistentBroadcast}");
+            if (_logger.IsTrace) _logger.Trace($"Adding transaction {tx.ToString("  ")} - managed nonce: {managedNonce} | persistent broadcast {isPersistentBroadcast}");
 
+            return FilterTransaction(tx, managedNonce) ?? AddCore(tx, isPersistentBroadcast);
+        }
+
+        private AddTxResult AddCore(Transaction tx, bool isPersistentBroadcast)
+        {
+            // !!! do not change it to |=
+            bool isKnown = _hashCache.Get(tx.Hash);
+
+            /*
+             * we need to make sure that the sender is resolved before adding to the distinct tx pool
+             * as the address is used in the distinct value calculation
+             */
+            if (!isKnown)
+            {
+                isKnown |= !_transactions.TryInsert(tx.Hash, tx);
+            }
+
+            if (!isKnown)
+            {
+                isKnown |= _txStorage.Get(tx.Hash) != null;
+            }
+
+            if (isKnown)
+            {
+                // If transaction is a bit older and already known then it may be stored in the persistent storage.
+                Metrics.PendingTransactionsKnown++;
+                if (_logger.IsTrace) _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, already known.");
+                return AddTxResult.AlreadyKnown;
+            }
+
+            tx.PoolIndex = _txIndex++;
+            _hashCache.Set(tx.Hash);
+
+            HandleOwnTransaction(tx, isPersistentBroadcast);
+
+            NotifySelectedPeers(tx);
+            FilterAndStoreTx(tx);
+            NewPending?.Invoke(this, new TxEventArgs(tx));
+            return AddTxResult.Added;
+        }
+
+        protected virtual AddTxResult? FilterTransaction(Transaction tx, in bool managedNonce)
+        {
             if (_fadingOwnTransactions.ContainsKey(tx.Hash))
             {
                 _fadingOwnTransactions.TryRemove(tx.Hash, out (Transaction Tx, long _) fadingTxHolder);
@@ -228,9 +271,6 @@ namespace Nethermind.TxPool
                 return AddTxResult.OwnNonceAlreadyUsed;
             }
 
-            // !!! do not change it to |=
-            bool isKnown = _hashCache.Get(tx.Hash);
-
             /* We have encountered multiple transactions that do not resolve sender address properly.
              * We need to investigate what these txs are and why the sender address is resolved to null.
              * Then we need to decide whether we really want to broadcast them.
@@ -245,37 +285,7 @@ namespace Nethermind.TxPool
                 }
             }
 
-            /*
-             * we need to make sure that the sender is resolved before adding to the distinct tx pool
-             * as the address is used in the distinct value calculation
-             */
-            if (!isKnown)
-            {
-                isKnown |= !_transactions.TryInsert(tx.Hash, tx);
-            }
-
-            if (!isKnown)
-            {
-                isKnown |= _txStorage.Get(tx.Hash) != null;
-            }
-
-            if (isKnown)
-            {
-                // If transaction is a bit older and already known then it may be stored in the persistent storage.
-                Metrics.PendingTransactionsKnown++;
-                if (_logger.IsTrace) _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, already known.");
-                return AddTxResult.AlreadyKnown;
-            }
-
-            tx.PoolIndex = _txIndex++;
-            _hashCache.Set(tx.Hash);
-            
-            HandleOwnTransaction(tx, isPersistentBroadcast);
-
-            NotifySelectedPeers(tx);
-            FilterAndStoreTx(tx);
-            NewPending?.Invoke(this, new TxEventArgs(tx));
-            return AddTxResult.Added;
+            return null;
         }
 
         private void HandleOwnTransaction(Transaction tx, bool isOwn)

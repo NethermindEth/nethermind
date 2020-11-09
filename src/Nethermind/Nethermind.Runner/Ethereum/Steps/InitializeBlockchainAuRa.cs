@@ -45,7 +45,7 @@ namespace Nethermind.Runner.Ethereum.Steps
         
         private ReadOnlyTxProcessorSource? _readOnlyTransactionProcessorSource;
         private AuRaSealValidator? _sealValidator;
-        private WrapperComparer<Transaction>? _txPoolComparer = null;
+        private WrappingComparer<Transaction>? _txPoolComparer = null;
         private Address? _txPriorityContractAddress = null;
 
         public InitializeBlockchainAuRa(AuRaNethermindApi api) : base(api)
@@ -228,7 +228,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             Address.TryParse(_api.ConfigProvider.GetConfig<IAuraConfig>()?.TxPriorityContractAddress, out _txPriorityContractAddress);
             if (_txPriorityContractAddress != null)
             {
-                _txPoolComparer = new WrapperComparer<Transaction>();
+                _txPoolComparer = new WrappingComparer<Transaction>();
                 return _txPoolComparer.ThenBy(base.CreateTxPoolTxComparer());
             }
             

@@ -13,18 +13,24 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-namespace Nethermind.TxPool
+using System;
+using System.Linq;
+using Nethermind.Core;
+
+namespace Nethermind.Consensus.Transactions
 {
-    public enum AddTxResult
+    public class CompositeTxFilter : ITxFilter
     {
-        AlreadyKnown,
-        OldScheme,
-        InvalidChainId,
-        OldNonce,
-        PotentiallyUseless,
-        Added,
-        OwnNonceAlreadyUsed,
-        Filtered
+        private readonly ITxFilter[] _txFilters;
+
+        public CompositeTxFilter(params ITxFilter[] txFilters)
+        {
+            _txFilters = txFilters ?? Array.Empty<ITxFilter>();
+        }
+        
+        public bool IsAllowed(Transaction tx, BlockHeader parentHeader) => 
+            _txFilters.All(t => t.IsAllowed(tx, parentHeader));
     }
 }
