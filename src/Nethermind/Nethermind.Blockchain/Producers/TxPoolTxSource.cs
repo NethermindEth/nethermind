@@ -39,14 +39,14 @@ namespace Nethermind.Blockchain.Producers
     {
         private readonly ITxPool _transactionPool;
         private readonly IStateReader _stateReader;
-        private readonly ITxFilter _minGasPriceFilter;
+        private readonly ITxFilter _txFilter;
         protected readonly ILogger _logger;
 
-        public TxPoolTxSource(ITxPool transactionPool, IStateReader stateReader, ILogManager logManager, ITxFilter minGasPriceFilter = null)
+        public TxPoolTxSource(ITxPool transactionPool, IStateReader stateReader, ILogManager logManager, ITxFilter txFilter = null)
         {
             _transactionPool = transactionPool ?? throw new ArgumentNullException(nameof(transactionPool));
             _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
-            _minGasPriceFilter = minGasPriceFilter ?? new MinGasPriceTxFilter(UInt256.Zero);
+            _txFilter = txFilter ?? new MinGasPriceTxFilter(UInt256.Zero);
             _logger = logManager?.GetClassLogger<TxPoolTxSource>() ?? throw new ArgumentNullException(nameof(logManager));
         }
         
@@ -138,9 +138,9 @@ namespace Nethermind.Blockchain.Producers
                     continue;
                 }
                 
-                if (!_minGasPriceFilter.IsAllowed(tx, parent))
+                if (!_txFilter.IsAllowed(tx, parent))
                 {
-                    if (_logger.IsDebug) _logger.Debug($"Rejecting (gas price too low) {tx.ToShortString()}");
+                    if (_logger.IsDebug) _logger.Debug($"Rejecting (gas price too low or filtered) {tx.ToShortString()}");
                     continue;
                 }
 

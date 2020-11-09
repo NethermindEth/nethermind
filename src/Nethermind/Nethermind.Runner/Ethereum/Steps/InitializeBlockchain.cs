@@ -27,6 +27,7 @@ using Nethermind.Blockchain.Rewards;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Crypto;
@@ -36,6 +37,7 @@ using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.State.Repositories;
 using Nethermind.Db.Blooms;
+using Nethermind.Int256;
 using Nethermind.Synchronization.BeamSync;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Storages;
@@ -96,14 +98,9 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.LogManager);
 
             _api.EthereumEcdsa = new EthereumEcdsa(_api.SpecProvider.ChainId, _api.LogManager);
-            _api.TxPool = new TxPool.TxPool(
-                new PersistentTxStorage(_api.DbProvider.PendingTxsDb),
-                _api.EthereumEcdsa,
-                _api.SpecProvider,
-                _api.Config<ITxPoolConfig>(),
-                _api.StateProvider,
-                _api.LogManager,
-                CreateTxPoolTxComparer());
+            PersistentTxStorage txStorage = new PersistentTxStorage(_api.DbProvider.PendingTxsDb);
+
+            _api.TxPool = CreateTxPool(txStorage);
 
             IBloomConfig bloomConfig = _api.Config<IBloomConfig>();
 
@@ -232,6 +229,18 @@ namespace Nethermind.Runner.Ethereum.Steps
             
             return Task.CompletedTask;
         }
+
+        protected virtual ITxFilter CreateTxPoolFilter() => TxFilterBuilders.CreateStandardTxFilter(_api.Config<IMiningConfig>());
+
+        protected virtual TxPool.TxPool CreateTxPool(PersistentTxStorage txStorage) =>
+            new TxPool.TxPool(
+                txStorage,
+                _api.EthereumEcdsa,
+                _api.SpecProvider,
+                _api.Config<ITxPoolConfig>(),
+                _api.StateProvider,
+                _api.LogManager,
+                CreateTxPoolTxComparer());
 
         protected virtual IComparer<Transaction> CreateTxPoolTxComparer() => TxPool.TxPool.DefaultComparer;
 
