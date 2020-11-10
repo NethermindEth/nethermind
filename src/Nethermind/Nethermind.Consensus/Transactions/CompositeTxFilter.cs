@@ -15,33 +15,33 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System.Collections.Generic;
+using System;
+using System.Linq;
 using Nethermind.Core;
 
 namespace Nethermind.Consensus.Transactions
 {
-    public class FilteredTxSource<T> : ITxSource where T : Transaction
+    public class CompositeTxFilter : ITxFilter
     {
-        private readonly ITxSource _innerSource;
-        private readonly ITxFilter _txFilter;
+        private readonly ITxFilter[] _txFilters;
 
-        public FilteredTxSource(ITxSource innerSource, ITxFilter txFilter)
+        public CompositeTxFilter(params ITxFilter[] txFilters)
         {
-            _innerSource = innerSource;
-            _txFilter = txFilter;
+            _txFilters = txFilters?.Where(f => f != null).ToArray() ?? Array.Empty<ITxFilter>();
         }
-
-        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit)
+        
+        public (bool Allowed, string Reason) IsAllowed(Transaction tx, BlockHeader parentHeader)
         {
-            foreach (Transaction transaction in _innerSource.GetTransactions(parent, gasLimit))
+            for (int i = 0; i < _txFilters.Length; i++)
             {
-                if (!(transaction is T) || _txFilter.IsAllowed(transaction, parent).Allowed)
+                (bool, string) result = _txFilters[i].IsAllowed(tx, parentHeader);
+                if (!result.Item1)
                 {
-                    yield return transaction;
+                    return result;
                 }
             }
-        }
 
-        public override string ToString() => $"{nameof(FilteredTxSource<T>)} [ {_innerSource} ]";
+            return (true, string.Empty);
+        }
     }
 }

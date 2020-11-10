@@ -76,95 +76,90 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
 
         [Test]
-        public void Ensure_concurrency()
+        public async Task Ensure_concurrency()
         {
-            _modulePool.GetModule(false);
+            await _modulePool.GetModule(false);
         }
 
         [Test]
-        public void Ensure_limited_exclusive()
+        public async Task Ensure_limited_exclusive()
         {
-            _modulePool.GetModule(false);
-            Assert.Throws<TimeoutException>(() => _modulePool.GetModule(false));
+            await _modulePool.GetModule(false);
+            Assert.ThrowsAsync<TimeoutException>(() => _modulePool.GetModule(false));
         }
         
         [Test]
-        public void Ensure_returning_shared_does_not_change_concurrency()
+        public async Task Ensure_returning_shared_does_not_change_concurrency()
         {
-            IEthModule shared = _modulePool.GetModule(true);
+            IEthModule shared = await _modulePool.GetModule(true);
             _modulePool.ReturnModule(shared);
-            _modulePool.GetModule(false);
-            Assert.Throws<TimeoutException>(() => _modulePool.GetModule(false));
+            await _modulePool.GetModule(false);
+            Assert.ThrowsAsync<TimeoutException>(() => _modulePool.GetModule(false));
         }
 
         [Test]
-        public void Ensure_unlimited_shared()
+        public async Task Ensure_unlimited_shared()
         {
             for (int i = 0; i < 1000; i++)
             {
-                _modulePool.GetModule(true);
+                await _modulePool.GetModule(true);
             }
         }
 
         [Test]
         public async Task Ensure_that_shared_is_never_returned_as_exclusive()
         {
-            IEthModule sharedModule = _modulePool.GetModule(true);
+            IEthModule sharedModule = await _modulePool.GetModule(true);
             _modulePool.ReturnModule(sharedModule);
 
             const int iterations = 1000;
-            Action rentReturnShared = () =>
+            Func<Task> rentReturnShared = async () =>
             {
                 for (int i = 0; i < iterations; i++)
                 {
                     TestContext.Out.WriteLine($"Rent shared {i}");
-                    IEthModule ethModule = _modulePool.GetModule(true);
+                    IEthModule ethModule = await _modulePool.GetModule(true);
                     Assert.AreSame(sharedModule, ethModule);
                     _modulePool.ReturnModule(ethModule);
                     TestContext.Out.WriteLine($"Return shared {i}");
                 }
             };
 
-            Action rentReturnExclusive = () =>
+            Func<Task> rentReturnExclusive = async () =>
             {
                 for (int i = 0; i < iterations; i++)
                 {
                     TestContext.Out.WriteLine($"Rent exclusive {i}");
-                    IEthModule ethModule = _modulePool.GetModule(false);
+                    IEthModule ethModule = await _modulePool.GetModule(false);
                     Assert.AreNotSame(sharedModule, ethModule);
                     _modulePool.ReturnModule(ethModule);
                     TestContext.Out.WriteLine($"Return exclusive {i}");
                 }
             };
 
-            Task a = new Task(rentReturnExclusive);
-            Task b = new Task(rentReturnExclusive);
-            Task c = new Task(rentReturnShared);
-            Task d = new Task(rentReturnShared);
-
-            a.Start();
-            b.Start();
-            c.Start();
-            d.Start();
+            Task a = Task.Run(rentReturnExclusive);
+            Task b = Task.Run(rentReturnExclusive);
+            Task c = Task.Run(rentReturnShared);
+            Task d = Task.Run(rentReturnShared);
 
             await Task.WhenAll(a, b, c, d);
         }
 
         [TestCase(true)]
         [TestCase(false)]
-        public void Can_rent_and_return(bool canBeShared)
+        public async Task Can_rent_and_return(bool canBeShared)
         {
-            IEthModule ethModule = _modulePool.GetModule(canBeShared);
+            IEthModule ethModule = await _modulePool.GetModule(canBeShared);
             _modulePool.ReturnModule(ethModule);
         }
 
         [TestCase(true)]
         [TestCase(false)]
-        public void Can_rent_and_return_in_a_loop(bool canBeShared)
+        public async Task Can_rent_and_return_in_a_loop(bool canBeShared)
         {
             for (int i = 0; i < 1000; i++)
             {
-                IEthModule ethModule = _modulePool.GetModule(canBeShared);
+                IEthModule ethModule = await _modulePool.GetModule(canBeShared);
                 _modulePool.ReturnModule(ethModule);
             }
         }

@@ -19,6 +19,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Api;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Consensus;
@@ -31,9 +32,12 @@ using Nethermind.Consensus.AuRa.Transactions;
 using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Evm;
+using Nethermind.Evm.Tracing;
 using Nethermind.Runner.Ethereum.Api;
 using Nethermind.TxPool;
+using Nethermind.TxPool.Storages;
 using Nethermind.Wallet;
 
 namespace Nethermind.Runner.Ethereum.Steps
@@ -41,16 +45,21 @@ namespace Nethermind.Runner.Ethereum.Steps
     public class InitializeBlockchainAuRa : InitializeBlockchain
     {
         private readonly AuRaNethermindApi _api;
-        private INethermindApi _nethermindApi => _api;
+        private INethermindApi NethermindApi => _api;
         
         private ReadOnlyTxProcessorSource? _readOnlyTransactionProcessorSource;
         private AuRaSealValidator? _sealValidator;
-        private WrapperComparer<Transaction>? _txPoolComparer = null;
+        private WrappingComparer<Transaction>? _txPoolComparer = null;
         private Address? _txPriorityContractAddress = null;
+        private readonly IAuraConfig _auraConfig;
+        private DictionaryContractDataStore<TxPriorityContract.Destination>? _minGasPricesContractDataStore;
+        private TxFilterAdapter? _txPoolFilterAdapter = null;
+        private BlockProcessorWrapper? _blockProcessorWrapper = null;
 
         public InitializeBlockchainAuRa(AuRaNethermindApi api) : base(api)
         {
             _api = api;
+            _auraConfig = NethermindApi.Config<IAuraConfig>();
         }
 
         protected override BlockProcessor CreateBlockProcessor()
@@ -78,7 +87,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.ReceiptStorage,
                 _api.LogManager,
                 _api.BlockTree,
-                GetTxPermissionFilter(),
+                TxFilterBuilders.CreateTxPermissionFilter(_api, _readOnlyTransactionProcessorSource!, _api.StateProvider),
                 GetGasLimitCalculator());
             
             var auRaValidator = CreateAuRaValidator(processor);
@@ -89,7 +98,12 @@ namespace Nethermind.Runner.Ethereum.Steps
             {
                 _sealValidator.ReportingValidator = reportingValidator;
             }
-            
+
+            if (_blockProcessorWrapper != null)
+            {
+                _blockProcessorWrapper.Processor = processor;
+            }
+
             return processor;
         }
 
@@ -114,14 +128,14 @@ namespace Nethermind.Runner.Ethereum.Steps
                     _api.StateProvider, 
                     _api.AbiEncoder, 
                     _api.TransactionProcessor, 
-                    GetReadOnlyTransactionProcessorSource(), 
+                    _readOnlyTransactionProcessorSource, 
                     _api.BlockTree, 
                     _api.ReceiptStorage, 
                     _api.ValidatorStore,
                     _api.FinalizationManager,
                     new TxPoolSender(_api.TxPool, new NonceReservingTxSealer(_api.EngineSigner, _api.Timestamper, _api.TxPool)), 
                     _api.TxPool,
-                    _nethermindApi.Config<IMiningConfig>(),
+                    NethermindApi.Config<IMiningConfig>(),
                     _api.LogManager,
                     _api.EngineSigner,
                     _api.ReportingContractValidatorCache,
@@ -137,30 +151,6 @@ namespace Nethermind.Runner.Ethereum.Steps
             return validator;
         }
 
-        private ITxFilter? GetTxPermissionFilter()
-        {
-            if (_api.ChainSpec == null) throw new StepDependencyException(nameof(_api.ChainSpec));
-            
-            if (_api.ChainSpec.Parameters.TransactionPermissionContract != null)
-            {
-                _api.TxFilterCache = new PermissionBasedTxFilter.Cache();
-                
-                var txPermissionFilter = new PermissionBasedTxFilter(
-                    new VersionedTransactionPermissionContract(_api.AbiEncoder,
-                        _api.ChainSpec.Parameters.TransactionPermissionContract,
-                        _api.ChainSpec.Parameters.TransactionPermissionContractTransition ?? 0, 
-                        GetReadOnlyTransactionProcessorSource(), 
-                        _api.TransactionPermissionContractVersions),
-                    _api.TxFilterCache,
-                    _api.StateProvider,
-                    _api.LogManager);
-                
-                return txPermissionFilter;
-            }
-
-            return null;
-        }
-        
         private AuRaContractGasLimitOverride? GetGasLimitCalculator()
         {
             if (_api.ChainSpec == null) throw new StepDependencyException(nameof(_api.ChainSpec));
@@ -176,11 +166,11 @@ namespace Nethermind.Runner.Ethereum.Steps
                             _api.AbiEncoder,
                             blockGasLimitContractTransition.Value,
                             blockGasLimitContractTransition.Key,
-                            GetReadOnlyTransactionProcessorSource()))
+                            _readOnlyTransactionProcessorSource))
                         .ToArray<IBlockGasLimitContract>(),
                     _api.GasLimitCalculatorCache,
-                    ((INethermindApi)_api).Config<IAuraConfig>().Minimum2MlnGasPerBlockWhenUsingBlockGasLimitContract,
-                    new TargetAdjustedGasLimitCalculator(_api.SpecProvider, _nethermindApi.Config<IMiningConfig>()), 
+                    _auraConfig.Minimum2MlnGasPerBlockWhenUsingBlockGasLimitContract,
+                    new TargetAdjustedGasLimitCalculator(_api.SpecProvider, NethermindApi.Config<IMiningConfig>()), 
                     _api.LogManager);
                 
                 return gasLimitCalculator;
@@ -206,9 +196,6 @@ namespace Nethermind.Runner.Ethereum.Steps
             _api.Sealer = new AuRaSealer(_api.BlockTree, _api.ValidatorStore, auRaStepCalculator, _api.EngineSigner, validSealerStrategy, _api.LogManager);
         }
 
-        private IReadOnlyTransactionProcessorSource GetReadOnlyTransactionProcessorSource() => 
-            _readOnlyTransactionProcessorSource ??= new ReadOnlyTxProcessorSource(_api.DbProvider, _api.BlockTree, _api.SpecProvider, _api.LogManager);
-
         protected override HeaderValidator CreateHeaderValidator()
         {
             if (_api.ChainSpec == null) throw new StepDependencyException(nameof(_api.ChainSpec));
@@ -225,23 +212,23 @@ namespace Nethermind.Runner.Ethereum.Steps
 
         protected override IComparer<Transaction> CreateTxPoolTxComparer()
         {
-            Address.TryParse(_api.ConfigProvider.GetConfig<IAuraConfig>()?.TxPriorityContractAddress, out _txPriorityContractAddress);
+            Address.TryParse(_auraConfig.TxPriorityContractAddress, out _txPriorityContractAddress);
             if (_txPriorityContractAddress != null)
             {
-                _txPoolComparer = new WrapperComparer<Transaction>();
+                _txPoolComparer = new WrappingComparer<Transaction>();
                 return _txPoolComparer.ThenBy(base.CreateTxPoolTxComparer());
             }
             
             return base.CreateTxPoolTxComparer();
         }
 
-        protected override Task InitBlockchain()
+        protected override async Task InitBlockchain()
         {
-            var task = base.InitBlockchain();
+            _readOnlyTransactionProcessorSource = new ReadOnlyTxProcessorSource(_api.DbProvider, _api.BlockTree, _api.SpecProvider, _api.LogManager);
+            await base.InitBlockchain();
             if (_txPoolComparer != null)
             {
-                ReadOnlyTxProcessorSource readOnlyTransactionProcessorSource = new ReadOnlyTxProcessorSource(_api.DbProvider, _api.BlockTree, _api.SpecProvider, _api.LogManager);
-                var txPriorityContract = new TxPriorityContract(_api.AbiEncoder, _txPriorityContractAddress, readOnlyTransactionProcessorSource);
+                var txPriorityContract = new TxPriorityContract(_api.AbiEncoder, _txPriorityContractAddress, _readOnlyTransactionProcessorSource);
                 IBlockProcessor? blockProcessor = _api.MainBlockProcessor;
                 var whitelistContractDataStore = new ContractDataStore<Address>(
                     new HashSetContractDataStoreCollection<Address>(), 
@@ -259,8 +246,83 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.DisposeStack.Push(prioritiesContractDataStore);
                 _txPoolComparer.Comparer = new CompareTxByPermissionOnHead(whitelistContractDataStore, prioritiesContractDataStore, _api.BlockTree);
             }
+        }
 
-            return task;
+        protected override TxPool.TxPool CreateTxPool(PersistentTxStorage txStorage)
+        {
+            _blockProcessorWrapper = new BlockProcessorWrapper();
+            _minGasPricesContractDataStore = TxFilterBuilders.CreateMinGasPricesDataStore(_auraConfig, _api, _readOnlyTransactionProcessorSource!, _blockProcessorWrapper);
+            _txPoolFilterAdapter = new TxFilterAdapter(CreateTxPoolFilter());
+            return new FilteredTxPool(
+                txStorage,
+                _api.EthereumEcdsa,
+                _api.SpecProvider,
+                NethermindApi.Config<ITxPoolConfig>(),
+                _api.StateProvider,
+                _api.LogManager,
+                CreateTxPoolTxComparer(),
+                _txPoolFilterAdapter);
+        }
+
+        protected override BlockTree CreateBlockTree()
+        {
+            BlockTree blockTree = base.CreateBlockTree();
+            _txPoolFilterAdapter!.BlockTree = blockTree;
+            return blockTree;
+        }
+
+        protected override ITxFilter CreateTxPoolFilter() => 
+            TxFilterBuilders.CreateAuRaTxFilter(
+                NethermindApi.Config<IMiningConfig>(),
+                _api,
+                _readOnlyTransactionProcessorSource!,
+                _api.StateProvider!,
+                _minGasPricesContractDataStore);
+        
+        
+        private class BlockProcessorWrapper : IBlockProcessor
+        {
+            private AuRaBlockProcessor? _processor;
+
+            public AuRaBlockProcessor? Processor
+            {
+                get => _processor;
+                set
+                {
+                    if (_processor != null)
+                    {
+                        _processor.BlockProcessed -= OnBlockProcessed;
+                        _processor.TransactionProcessed -= OnTransactionProcessed;
+                    }
+                    _processor = value;
+                    if (_processor != null)
+                    {
+                        _processor.BlockProcessed += OnBlockProcessed;
+                        _processor.TransactionProcessed += OnTransactionProcessed;
+                    }
+                }
+            }
+
+            public Block[] Process(
+                Keccak newBranchStateRoot,
+                List<Block> suggestedBlocks,
+                ProcessingOptions processingOptions,
+                IBlockTracer blockTracer) => 
+                Processor?.Process(newBranchStateRoot, suggestedBlocks, processingOptions, blockTracer) ?? Array.Empty<Block>();
+
+            public event EventHandler<BlockProcessedEventArgs>? BlockProcessed;
+
+            public event EventHandler<TxProcessedEventArgs>? TransactionProcessed;
+            
+            private void OnTransactionProcessed(object? sender, TxProcessedEventArgs e)
+            {
+                TransactionProcessed?.Invoke(sender, e);
+            }
+
+            private void OnBlockProcessed(object? sender, BlockProcessedEventArgs e)
+            {
+                BlockProcessed?.Invoke(sender, e);
+            }
         }
     }
 }

@@ -48,6 +48,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc
         private readonly IJsonRpcNdmConsumerChannel _jsonRpcNdmConsumerChannel;
         private readonly IEthRequestService _ethRequestService;
         private readonly IEthPriceService _ethPriceService;
+        private readonly IDaiPriceService _daiPriceService;
         private readonly IGasPriceService _gasPriceService;
         private readonly IConsumerTransactionsService _transactionsService;
         private readonly IConsumerGasLimitsService _gasLimitsService;
@@ -60,6 +61,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc
             IJsonRpcNdmConsumerChannel jsonRpcNdmConsumerChannel,
             IEthRequestService ethRequestService,
             IEthPriceService ethPriceService,
+            IDaiPriceService daiPriceService,
             IGasPriceService gasPriceService,
             IConsumerTransactionsService transactionsService,
             IConsumerGasLimitsService gasLimitsService,
@@ -71,6 +73,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc
             _jsonRpcNdmConsumerChannel = jsonRpcNdmConsumerChannel ?? throw new ArgumentNullException(nameof(jsonRpcNdmConsumerChannel));
             _ethRequestService = ethRequestService ?? throw new ArgumentNullException(nameof(ethRequestService));
             _ethPriceService = ethPriceService ?? throw new ArgumentNullException(nameof(ethPriceService));
+            _daiPriceService = daiPriceService ?? throw new ArgumentNullException(nameof(daiPriceService));
             _gasPriceService = gasPriceService ?? throw new ArgumentNullException(nameof(gasPriceService));
             _transactionsService = transactionsService ?? throw new ArgumentNullException(nameof(transactionsService));
             _gasLimitsService = gasLimitsService ?? throw new ArgumentNullException(nameof(gasLimitsService));
@@ -259,10 +262,14 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc
             return ResultWrapper<bool>.Success(true);
         }
 
-        public ResultWrapper<EthUsdPriceForRpc> ndm_getEthUsdPrice()
-            => ResultWrapper<EthUsdPriceForRpc>.Success(new EthUsdPriceForRpc(_ethPriceService.UsdPrice,
+        public ResultWrapper<UsdPriceForRpc> ndm_getEthUsdPrice()
+            => ResultWrapper<UsdPriceForRpc>.Success(new UsdPriceForRpc(_ethPriceService.UsdPrice,
                 _ethPriceService.UpdatedAt));
-
+        
+        public ResultWrapper<UsdPriceForRpc> ndm_getDaiUsdPrice()
+            => ResultWrapper<UsdPriceForRpc>.Success(new UsdPriceForRpc(_daiPriceService.UsdPrice,
+                _daiPriceService.UpdatedAt));
+        
         public ResultWrapper<GasPriceTypesForRpc> ndm_getGasPrice()
             => _gasPriceService.Types is null
                 ? ResultWrapper<GasPriceTypesForRpc>.Fail("Gas price couldn't be requested.")

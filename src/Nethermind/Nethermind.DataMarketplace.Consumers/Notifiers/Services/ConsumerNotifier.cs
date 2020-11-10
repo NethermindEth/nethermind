@@ -217,6 +217,14 @@ namespace Nethermind.DataMarketplace.Consumers.Notifiers.Services
                     price,
                     updatedAt
                 }));
+        
+        public Task SendDaiUsdPriceAsync(decimal price, ulong updatedAt)
+            => _notifier.NotifyAsync(new Notification("dai_usd_price",
+                new
+                {
+                    price,
+                    updatedAt
+                }));
 
         public Task SendGasPriceAsync(GasPriceTypes types)
             => _notifier.NotifyAsync(new Notification("gas_price",

@@ -15,33 +15,29 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System.Collections.Generic;
+using System;
+using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
+using Nethermind.TxPool;
 
-namespace Nethermind.Consensus.Transactions
+namespace Nethermind.Blockchain
 {
-    public class FilteredTxSource<T> : ITxSource where T : Transaction
+    public class TxFilterAdapter : FilteredTxPool.ITxPoolFilter
     {
-        private readonly ITxSource _innerSource;
+        public IBlockTree BlockTree { get; set; }
         private readonly ITxFilter _txFilter;
 
-        public FilteredTxSource(ITxSource innerSource, ITxFilter txFilter)
+        public TxFilterAdapter(ITxFilter txFilter)
         {
-            _innerSource = innerSource;
-            _txFilter = txFilter;
+            _txFilter = txFilter ?? throw new ArgumentNullException(nameof(txFilter));
         }
-
-        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit)
+        
+        public (bool Accepted, string Reason) Accept(Transaction tx)
         {
-            foreach (Transaction transaction in _innerSource.GetTransactions(parent, gasLimit))
-            {
-                if (!(transaction is T) || _txFilter.IsAllowed(transaction, parent).Allowed)
-                {
-                    yield return transaction;
-                }
-            }
+            var parentHeader = BlockTree?.Head?.Header;
+            return parentHeader == null 
+                ? (true, string.Empty) 
+                : _txFilter.IsAllowed(tx, parentHeader);
         }
-
-        public override string ToString() => $"{nameof(FilteredTxSource<T>)} [ {_innerSource} ]";
     }
 }

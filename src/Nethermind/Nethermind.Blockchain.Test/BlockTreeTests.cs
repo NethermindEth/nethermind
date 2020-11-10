@@ -34,6 +34,7 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Repositories;
 using Nethermind.Db.Blooms;
+using Nethermind.Int256;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
@@ -1526,6 +1527,43 @@ namespace Nethermind.Blockchain.Test
             blockTree.CanAcceptNewBlocks.Should().BeFalse();
             blockTree.ReleaseAcceptingNewBlocks();
             blockTree.CanAcceptNewBlocks.Should().BeTrue();
+        }
+
+        [TestCase(10, 10000000ul)]
+        [TestCase(4, 4000000ul)]
+        [TestCase(10, null)]
+        public void Recovers_total_difficulty(int chainLength, ulong? expectedTotalDifficulty)
+        {
+            BlockTreeBuilder blockTreeBuilder = Build.A.BlockTree().OfChainLength(chainLength);
+            BlockTree blockTree = blockTreeBuilder.TestObject;
+            int chainLeft = expectedTotalDifficulty.HasValue ? 1 : 0;
+            for (int i = chainLength - 1; i >= chainLeft; i--)
+            {
+                var level = blockTreeBuilder.ChainLevelInfoRepository.LoadLevel(i);
+                for (int j = 0; j < level.BlockInfos.Length; j++)
+                {
+                    Keccak blockHash = level.BlockInfos[j].BlockHash;
+                    var header = blockTree.FindHeader(blockHash, BlockTreeLookupOptions.None);
+                    header.TotalDifficulty = null;
+                }
+                blockTreeBuilder.ChainLevelInfoRepository.Delete(i);
+            }
+
+            if (expectedTotalDifficulty.HasValue)
+            {
+                blockTree.FindBlock(blockTree.Head.Hash, BlockTreeLookupOptions.None).TotalDifficulty.Should().Be(new UInt256(expectedTotalDifficulty.Value));
+                for (int i = chainLength - 1; i >= chainLeft; i--)
+                {
+                    var level = blockTreeBuilder.ChainLevelInfoRepository.LoadLevel(i);
+                    level.Should().NotBeNull();
+                    level.BlockInfos.Should().HaveCount(1);
+                }
+            }
+            else
+            {
+                Action action = () => blockTree.FindBlock(blockTree.Head.Hash, BlockTreeLookupOptions.None);
+                action.Should().Throw<InvalidOperationException>();
+            }
         }
         
         [Test]

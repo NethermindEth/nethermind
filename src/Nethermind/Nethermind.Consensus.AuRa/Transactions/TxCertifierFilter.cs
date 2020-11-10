@@ -42,8 +42,8 @@ namespace Nethermind.Consensus.AuRa.Transactions
             _logger = logManager?.GetClassLogger<TxCertifierFilter>() ?? throw new ArgumentNullException(nameof(logManager));
         }
         
-        public bool IsAllowed(Transaction tx, BlockHeader parentHeader) => 
-            IsCertified(tx, parentHeader) || _notCertifiedFilter.IsAllowed(tx, parentHeader);
+        public (bool Allowed, string Reason) IsAllowed(Transaction tx, BlockHeader parentHeader) => 
+            IsCertified(tx, parentHeader) ? (true, string.Empty) : _notCertifiedFilter.IsAllowed(tx, parentHeader);
 
         private bool IsCertified(Transaction tx, BlockHeader parentHeader)
         {
