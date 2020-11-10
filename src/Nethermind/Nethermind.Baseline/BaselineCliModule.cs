@@ -50,41 +50,40 @@ namespace Nethermind.Baseline
             ).Result;
 
         [CliFunction("baseline", "getRoot")]
-        public string GetRoot(string contactAddress) => NodeManager.Post<string>(
-            "baseline_getRoot",
-            CliParseAddress(contactAddress)).Result;
-
-        [CliFunction("baseline", "getRoot")]
         public string GetRoot(string contactAddress, string? blockParameter) => NodeManager.Post<string>(
             "baseline_getRoot",
             CliParseAddress(contactAddress),
              blockParameter ?? "latest").Result;
         
         [CliFunction("baseline", "getLeaf")]
-        public object GetLeaf(string contactAddress, long leafIndex) => NodeManager.PostJint(
+        public object GetLeaf(string contactAddress, long leafIndex, string? blockParameter) => NodeManager.PostJint(
             "baseline_getLeaf",
             CliParseAddress(contactAddress),
-            leafIndex).Result;
+            leafIndex,
+            blockParameter ?? "latest").Result;
         
         [CliFunction("baseline", "getLeaves")]
-        public object GetLeaves(string contactAddress, long[] leafIndexes) => NodeManager.PostJint(
+        public object GetLeaves(string contactAddress, long[] leafIndexes, string? blockParameter) => NodeManager.PostJint(
             "baseline_getLeaves",
             CliParseAddress(contactAddress),
-            leafIndexes).Result;
+            leafIndexes,
+            blockParameter ?? "latest").Result;
         
         [CliFunction("baseline", "getSiblings")]
-        public object GetSiblings(string contactAddress, long leafIndex) => NodeManager.PostJint(
+        public object GetSiblings(string contactAddress, long leafIndex, string? blockParameter) => NodeManager.PostJint(
             "baseline_getSiblings",
             CliParseAddress(contactAddress),
-            leafIndex).Result;
+            leafIndex,
+            blockParameter ?? "latest").Result;
         
         [CliFunction("baseline", "verify")]
-        public bool Verify(string contactAddress, string root, string leaf, object path) => NodeManager.Post<bool>(
+        public bool Verify(string contactAddress, string root, string leaf, object path, string? blockParameter) => NodeManager.Post<bool>(
             "baseline_verify",
             CliParseAddress(contactAddress),
             CliParseHash(root),
             CliParseHash(leaf),
-            path).Result;
+            path,
+            blockParameter ?? "latest").Result;
         
         [CliFunction("baseline", "track")]
         public string Track(string contactAddress) => NodeManager.Post(

@@ -38,15 +38,17 @@ namespace Nethermind.Runner.Ethereum.Steps
         public async Task Execute(CancellationToken cancellationToken)
         {
             ILogger logger = _api.LogManager.GetClassLogger();
+            if(logger.IsInfo) logger.Info($"Initializing {_api.Plugins.Count} plugins");
             foreach (INethermindPlugin plugin in _api.Plugins)
             {
                 try
                 {
+                    if(logger.IsInfo) logger.Info($"  {plugin.Name} by {plugin.Author}");
                     Stopwatch stopwatch = Stopwatch.StartNew();
                     await plugin.Init(_api);
                     stopwatch.Stop();
                     if (logger.IsInfo)
-                        logger.Info($"Initialized plugin {plugin.Name} by {plugin.Author} in {stopwatch.ElapsedMilliseconds}ms");
+                        logger.Info($"  {plugin.Name} by {plugin.Author} initialized in {stopwatch.ElapsedMilliseconds}ms");
                 }
                 catch (Exception e)
                 {
