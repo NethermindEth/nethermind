@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -95,8 +95,7 @@ namespace Nethermind.Runner
                 {
                     Stopwatch stopwatch = Stopwatch.StartNew();
                     using StreamReader reader = new StreamReader(ctx.Request.Body, Encoding.UTF8);
-                    string request = await reader.ReadToEndAsync();
-                    using JsonRpcResult result = await jsonRpcProcessor.ProcessAsync(request);
+                    using JsonRpcResult result = await jsonRpcProcessor.ProcessAsync(reader);
 
                     ctx.Response.ContentType = "application/json";
 

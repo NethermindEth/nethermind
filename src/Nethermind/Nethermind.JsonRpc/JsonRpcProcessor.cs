@@ -81,9 +81,10 @@ namespace Nethermind.JsonRpc
 
         private JsonSerializer _obsoleteBasicJsonSerializer = new JsonSerializer();
 
-        private (JsonRpcRequest Model, List<JsonRpcRequest> Collection) DeserializeObjectOrArray(string json)
+        private (JsonRpcRequest Model, List<JsonRpcRequest> Collection) DeserializeObjectOrArray(TextReader json)
         {
-            JToken token = JToken.Parse(json);
+            using JsonTextReader reader = new JsonTextReader(json) { CloseInput = false };
+            JToken token = JToken.Load(reader);
             if (token is JArray array)
             {
                 foreach (var tokenElement in array)
@@ -115,7 +116,7 @@ namespace Nethermind.JsonRpc
                 return; // null
             }
 
-            JArray arrayToken = (JArray) paramsToken;
+            JArray arrayToken = (JArray)paramsToken;
             for (int i = 0; i < arrayToken.Count; i++)
             {
                 if (arrayToken[i].Type == JTokenType.Array || arrayToken[i].Type == JTokenType.Object)
@@ -125,11 +126,15 @@ namespace Nethermind.JsonRpc
             }
         }
 
-        public async Task<JsonRpcResult> ProcessAsync(string request)
+        public async Task<JsonRpcResult> ProcessAsync(StreamReader request)
         {
             if (_jsonRpcConfig.RpcRecorderEnabled)
             {
-                _recorder.RecordRequest(request);
+                _recorder.RecordRequest(request.ReadToEnd());
+
+                // reset
+                request.DiscardBufferedData();
+                request.BaseStream.Position = 0;
             }
 
             Stopwatch stopwatch = Stopwatch.StartNew();
@@ -141,7 +146,14 @@ namespace Nethermind.JsonRpc
             catch (Exception ex)
             {
                 Metrics.JsonRpcRequestDeserializationFailures++;
-                if (_logger.IsError) _logger.Error($"Error during parsing/validation, request: {request}", ex);
+                if (_logger.IsError)
+                {
+                    // reset
+                    request.DiscardBufferedData();
+                    request.BaseStream.Position = 0;
+
+                    _logger.Error($"Error during parsing/validation, request: {request.ReadToEnd()}", ex);
+                }
                 JsonRpcResponse response = _jsonRpcService.GetErrorResponse(ErrorCodes.ParseError, "Incorrect message");
                 TraceResult(response);
                 stopwatch.Stop();

@@ -15,8 +15,11 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Buffers;
 using System.Diagnostics;
+using System.IO;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading.Tasks;
 using Nethermind.Core.Extensions;
@@ -57,7 +60,16 @@ namespace Nethermind.JsonRpc.WebSockets
             }
 
             Stopwatch stopwatch = Stopwatch.StartNew();
-            using JsonRpcResult result = await _jsonRpcProcessor.ProcessAsync(Encoding.UTF8.GetString(data.Span));
+
+            // fetch array, fallback to copy
+            if (!MemoryMarshal.TryGetArray(data, out ArraySegment<byte> segment))
+            {
+                segment = data.ToArray();
+            }
+
+            using MemoryStream stream = new MemoryStream(segment.Array,segment.Offset,segment.Count);
+            using StreamReader reader = new StreamReader(stream, Encoding.UTF8);
+            using JsonRpcResult result = await _jsonRpcProcessor.ProcessAsync(reader);
 
             string resultData;
 

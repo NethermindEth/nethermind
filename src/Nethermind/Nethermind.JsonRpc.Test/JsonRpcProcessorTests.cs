@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -15,8 +15,10 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.IO;
 using System.IO.Abstractions;
 using System.Numerics;
+using System.Text;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Logging;
@@ -44,7 +46,7 @@ namespace Nethermind.JsonRpc.Test
         public void Initialize()
         {
             IJsonRpcService service = Substitute.For<IJsonRpcService>();
-            service.SendRequestAsync(Arg.Any<JsonRpcRequest>()).Returns(ci => _returnErrors ? (JsonRpcResponse) new JsonRpcErrorResponse {Id = ci.Arg<JsonRpcRequest>().Id} : new JsonRpcSuccessResponse {Id = ci.Arg<JsonRpcRequest>().Id});
+            service.SendRequestAsync(Arg.Any<JsonRpcRequest>()).Returns(ci => _returnErrors ? (JsonRpcResponse)new JsonRpcErrorResponse { Id = ci.Arg<JsonRpcRequest>().Id } : new JsonRpcSuccessResponse { Id = ci.Arg<JsonRpcRequest>().Id });
             service.GetErrorResponse(0, null).ReturnsForAnyArgs(_errorResponse);
             service.Converters.Returns(new JsonConverter[] { new AddressConverter() }); // just to test converter loader
 
@@ -104,7 +106,7 @@ namespace Nethermind.JsonRpc.Test
             }
         }
 
-        
+
         [Test]
         public async Task Can_process_long_ids()
         {
@@ -238,6 +240,15 @@ namespace Nethermind.JsonRpc.Test
                 Substitute.For<IJsonSerializer>(),
                 Substitute.For<IJsonRpcConfig>(),
                 null, LimboLogs.Instance));
+        }
+    }
+
+    public static class JsonRpcProcessorExtensions
+    {
+        public static Task<JsonRpcResult> ProcessAsync(this IJsonRpcProcessor processor, string request)
+        {
+            byte[] bytes = Encoding.UTF8.GetBytes(request);
+            return processor.ProcessAsync(new StreamReader(new MemoryStream(bytes), Encoding.UTF8));
         }
     }
 }
