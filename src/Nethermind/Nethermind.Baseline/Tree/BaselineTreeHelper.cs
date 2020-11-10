@@ -45,6 +45,9 @@ namespace Nethermind.Baseline.Tree
 
         public BaselineTreeNode[] GetHistoricalLeaves(BaselineTree tree, uint[] leafIndexes, long blockNumber)
         {
+            if(_logger.IsWarn) _logger.Warn(
+                $"Retrieving historical leaves of {tree} with index {string.Join(", ", leafIndexes)} for block {blockNumber}");
+            
             var historicalCount = tree.GetBlockCount(blockNumber);
             BaselineTreeNode[] leaves = new BaselineTreeNode[leafIndexes.Length];
 
@@ -66,6 +69,8 @@ namespace Nethermind.Baseline.Tree
 
         public BaselineTreeNode GetHistoricalLeaf(BaselineTree tree, uint leafIndex, long blockNumber)
         {
+            if(_logger.IsWarn) _logger.Warn($"Retrieving historical leaf of {tree} with index {leafIndex} for block {blockNumber}");
+            
             var historicalCount = tree.GetBlockCount(blockNumber);
             if (historicalCount <= leafIndex)
             {
@@ -77,6 +82,8 @@ namespace Nethermind.Baseline.Tree
 
         public BaselineTree CreateHistoricalTree(Address address, long blockNumber)
         {
+            if(_logger.IsWarn) _logger.Warn($"Building historical tree at {address} for block {blockNumber}");
+            
             var historicalTree = new ShaBaselineTree(new ReadOnlyDb(_mainDb, true), new ReadOnlyDb(_metadataBaselineDb, true), address.Bytes, BaselineModule.TruncationLength, _logger);
             var endIndex = historicalTree.Count;
             var historicalCount = historicalTree.GetBlockCount(blockNumber);
@@ -91,12 +98,16 @@ namespace Nethermind.Baseline.Tree
 
         public BaselineTree RebuildEntireTree(Address treeAddress, Keccak blockHash)
         {
+            if(_logger.IsWarn) _logger.Warn($"Rebuilding entire tree from {treeAddress} at {blockHash}");
+            
             BaselineTree baselineTree = new ShaBaselineTree(_mainDb, _metadataBaselineDb, treeAddress.Bytes, BaselineModule.TruncationLength, _logger);
             return BuildTree(baselineTree, treeAddress, new BlockParameter(0L), new BlockParameter(blockHash));
         }
 
         public BaselineTree BuildTree(BaselineTree baselineTree, Address treeAddress, BlockParameter blockFrom, BlockParameter blockTo)
         {
+            if(_logger.IsWarn) _logger.Warn($"Build {baselineTree} from {blockFrom} to {blockTo}");
+            
             var initCount = baselineTree.Count;
             LogFilter insertLeavesFilter = new LogFilter(
                 0,

@@ -86,6 +86,8 @@ namespace Nethermind.Baseline.Tree
 
         private void OnBlockProcessed(object? sender, BlockProcessedEventArgs e)
         {
+            if(_logger.IsWarn) _logger.Warn($"Tree tracker for {_baselineTree} processing block {e.Block.ToString(Block.Format.Short)}");
+            
             if (_currentBlockHeader != null && _currentBlockHeader.Hash != e.Block.ParentHash && _currentBlockHeader.Number < e.Block.Number)
             {
                 _baselineTreeHelper.BuildTree(_baselineTree, _address, new BlockParameter(_currentBlockHeader.Hash), new BlockParameter(e.Block.Hash));

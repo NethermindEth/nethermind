@@ -28,20 +28,20 @@ namespace Nethermind.Baseline.Tree
         private const long CurrentBlockIndex = -1;
 
         private readonly IKeyValueStore _metadataKeyValueStore;
-        private readonly byte[] _dbPrefix;
+        public byte[] DbPrefix { get; }
         private readonly ILogger _logger;
 
         public BaselineTreeMetadata(IKeyValueStore metadataKeyValueStore, byte[] _dbPrefix, ILogger logger)
         {
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             _metadataKeyValueStore = metadataKeyValueStore ?? throw new ArgumentNullException(nameof(metadataKeyValueStore));
-            this._dbPrefix = _dbPrefix;
+            this.DbPrefix = _dbPrefix;
         }
 
         public uint GetBlockCount(long lastBlockWithLeaves, long blockNumber)
         {
             if(_logger.IsWarn) _logger.Warn(
-                $"Getting block count for {_dbPrefix.ToHexString()}");
+                $"Getting block count for {DbPrefix.ToHexString()}");
             
             if (blockNumber == 0)
                 return 0;
@@ -53,7 +53,7 @@ namespace Nethermind.Baseline.Tree
                 if (foundCount.PreviousBlockWithLeaves == 0)
                 {
                     if(_logger.IsWarn) _logger.Warn(
-                        $"Reached zero and found count 0 for {_dbPrefix.ToHexString()}");
+                        $"Reached zero and found count 0 for {DbPrefix.ToHexString()}");
                     return 0;
                 }
                     
@@ -63,7 +63,7 @@ namespace Nethermind.Baseline.Tree
             }
 
             if(_logger.IsWarn) _logger.Warn(
-                $"Found count {foundCount.Count} for {_dbPrefix.ToHexString()}");
+                $"Found count {foundCount.Count} for {DbPrefix.ToHexString()}");
             
             return foundCount.Count;
         }
@@ -92,7 +92,7 @@ namespace Nethermind.Baseline.Tree
 
         private byte[] MetadataBuildDbKey(long blockNumber)
         {
-            return Rlp.Encode(Rlp.Encode(_dbPrefix), Rlp.Encode(blockNumber)).Bytes;
+            return Rlp.Encode(Rlp.Encode(DbPrefix), Rlp.Encode(blockNumber)).Bytes;
         }
 
         public (uint Count, long PreviousBlockWithLeaves) LoadBlockNumberCount(long blockNumber)

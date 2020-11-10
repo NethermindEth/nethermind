@@ -305,6 +305,11 @@ namespace Nethermind.Baseline.Tree
 
         public Keccak Root { get; set; }
 
+        public override string ToString()
+        {
+            return $"[BaselineTree|{Metadata.DbPrefix.ToHexString()}|{Count}]";
+        }
+
         protected abstract void Hash(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b, Span<byte> target);
 
         public readonly ref struct Index
