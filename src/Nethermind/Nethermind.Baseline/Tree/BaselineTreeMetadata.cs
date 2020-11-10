@@ -104,11 +104,16 @@ namespace Nethermind.Baseline.Tree
             byte[]? data = _metadataKeyValueStore[MetadataBuildDbKey(blockNumber)];
             RlpStream? rlpStream = new RlpStream(data);
             rlpStream.SkipLength();
-            return (rlpStream.DecodeUInt(), rlpStream.DecodeLong());
+
+            var result = (rlpStream.DecodeUInt(), rlpStream.DecodeLong());
+            if(_logger.IsWarn) _logger.Warn($"Loading count for block {blockNumber} in {DbPrefix.ToHexString()} - ({result.Item1},{result.Item2})");
+            return result;
         }
 
         public void SaveBlockNumberCount(long blockNumber, uint count, long previousBlockWithLeaves)
         {
+            if(_logger.IsWarn) _logger.Warn($"Saving count for block {blockNumber} in {DbPrefix.ToHexString()} - ({count},{previousBlockWithLeaves})");
+            
             int length = Rlp.LengthOfSequence(Rlp.LengthOf((long)count) + Rlp.LengthOf(previousBlockWithLeaves));
             RlpStream rlpStream = new RlpStream(length);
             rlpStream.StartSequence(length);
