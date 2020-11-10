@@ -46,6 +46,12 @@ namespace Nethermind.Vault
         {
             try
             {
+                if (string.IsNullOrWhiteSpace(_config.VaultKeyFile) && string.IsNullOrWhiteSpace(_config.VaultSealUnsealKey))
+                {
+                    if (_logger.IsInfo) _logger.Info($"Skipping the vault sealing");
+                    return;
+                }
+
                 var sealResult = await SendSealingRequest("seal");
                 if (sealResult.Success)
                 {
@@ -66,6 +72,12 @@ namespace Nethermind.Vault
         {
             try
             {
+                if (string.IsNullOrWhiteSpace(_config.VaultKeyFile) && string.IsNullOrWhiteSpace(_config.VaultSealUnsealKey))
+                {
+                    if (_logger.IsInfo) _logger.Info($"Skipping the vault unsealing");
+                    return;
+                }
+
                 var unsealResult = await SendSealingRequest("unseal");
                 if (unsealResult.Success)
                 {
@@ -90,7 +102,7 @@ namespace Nethermind.Vault
         {
             var request = new SealingUnsealingRequest()
             {
-                key = _vaultKeyStoreFacade.GetKey()
+                key = string.IsNullOrWhiteSpace(_config.VaultSealUnsealKey) ? _vaultKeyStoreFacade.GetKey() : _config.VaultSealUnsealKey
             };
 
             // with a new version of the Provide Nuget package we should remove httpClient call and use the provide.Unseal method

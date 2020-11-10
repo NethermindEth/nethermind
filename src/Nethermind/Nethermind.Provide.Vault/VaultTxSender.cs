@@ -43,6 +43,7 @@ namespace Nethermind.Vault
 
         private readonly Guid? _networkId;
         private readonly ITxSigner _txSigner;
+        private readonly int DefaultChainId = 5;
 
         private NChain _provide;
 
@@ -50,6 +51,9 @@ namespace Nethermind.Vault
         {
             _txSigner = txSigner;
             if (_networkIdMapping.ContainsKey(chainId)) _networkId = _networkIdMapping[chainId];
+
+            if (_networkId == null)
+                _networkId = _networkIdMapping[DefaultChainId];
 
             _provide = new NChain(
                 vaultConfig.NChainHost,

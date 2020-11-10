@@ -17,6 +17,7 @@
 using System;
 using Nethermind.Crypto;
 using Nethermind.KeyStore;
+using Nethermind.Vault.Config;
 
 namespace Nethermind.Vault.KeyStore
 {
