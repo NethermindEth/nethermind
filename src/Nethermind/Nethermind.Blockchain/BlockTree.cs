@@ -480,21 +480,13 @@ namespace Nethermind.Blockchain
             bool isKnown = IsKnownBlock(header.Number, header.Hash);
             if (isKnown && (BestSuggestedHeader?.Number ?? 0) >= header.Number)
             {
-                if (_logger.IsTrace)
-                {
-                    _logger.Trace($"Block {header.Hash} already known.");
-                }
-
+                if (_logger.IsTrace) _logger.Trace($"Block {header.Hash} already known.");
                 return AddBlockResult.AlreadyKnown;
             }
 
             if (!header.IsGenesis && !IsKnownBlock(header.Number - 1, header.ParentHash))
             {
-                if (_logger.IsTrace)
-                {
-                    _logger.Trace($"Could not find parent ({header.ParentHash}) of block {header.Hash}");
-                }
-
+                if (_logger.IsTrace) _logger.Trace($"Could not find parent ({header.ParentHash}) of block {header.Hash}");
                 return AddBlockResult.UnknownParent;
             }
 
@@ -1299,7 +1291,7 @@ namespace Nethermind.Blockchain
                     child.TotalDifficulty = current.TotalDifficulty + child.Difficulty;
                     BlockInfo blockInfo = new BlockInfo(child.Hash, child.TotalDifficulty.Value);
                     UpdateOrCreateLevel(child.Number, blockInfo);
-                    _logger.Trace($"Calculated total difficulty for {child} is {child.TotalDifficulty}");
+                    if(_logger.IsTrace) _logger.Trace($"Calculated total difficulty for {child} is {child.TotalDifficulty}");
                     current = child;
                 }
             }
@@ -1327,10 +1319,7 @@ namespace Nethermind.Blockchain
                 header.TotalDifficulty = parentHeader.TotalDifficulty + header.Difficulty;
             }
 
-            if (_logger.IsTrace)
-            {
-                _logger.Trace($"Calculated total difficulty for {header} is {header.TotalDifficulty}");
-            }
+            if (_logger.IsTrace) _logger.Trace($"Calculated total difficulty for {header} is {header.TotalDifficulty}");
         }
 
         public event EventHandler<BlockEventArgs> BlockAddedToMain;
