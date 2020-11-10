@@ -45,7 +45,7 @@ namespace Nethermind.Baseline.Test
         private IFileSystem _fileSystem;
         private AbiEncoder _abiEncoder;
         private IDb _baselineDb;
-        private IKeyValueStore _metadataBaselineDb;
+        private IDb _metadataBaselineDb;
 
         [SetUp]
         public void SetUp()

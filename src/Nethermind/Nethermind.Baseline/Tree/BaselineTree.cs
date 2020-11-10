@@ -159,7 +159,7 @@ namespace Nethermind.Baseline.Tree
 
         public void Delete(uint leavesToRemove, bool recalculateHashes = true)
         {
-            for (uint i = 1; i < leavesToRemove; ++i)
+            for (uint i = 0; i < leavesToRemove; ++i)
             {
                 Index index = new Index(LeafRow, Count - i);
                 Modify(index, ZeroHash, recalculateHashes);

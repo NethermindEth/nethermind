@@ -96,6 +96,37 @@ namespace Nethermind.Baseline.Test
             }
         }
 
+        [Test]
+        public void GetHistoricalTree_return_expected_results([ValueSource(nameof(HistoricalTreeTestCases))]GetHistoricalLeavesTest test)
+        {
+            var address = TestItem.AddressA;
+            var logFinder = Substitute.For<ILogFinder>();
+            var mainDb = new MemDb();
+            var metadataDataDb = new MemDb();
+            var baselineTreeHelper = new BaselineTreeHelper(logFinder, mainDb, metadataDataDb);
+            var baselineTree = new ShaBaselineTree(mainDb, metadataDataDb, address.Bytes, BaselineModule.TruncationLength);
+
+            long lastBlockWithLeaves = 0;
+            for (int i = 0; i < test.Blocks.Length; i++)
+            {
+                var block = test.Blocks[i];
+                for (int j = 0; j < block.Leaves.Length; j++)
+                {
+                    baselineTree.Insert(block.Leaves[j]);
+                }
+
+                baselineTree.Metadata.SaveBlockNumberCount(block.BlockNumber, (uint)block.Leaves.Length, lastBlockWithLeaves);
+                lastBlockWithLeaves = block.BlockNumber;
+                baselineTree.LastBlockWithLeaves = lastBlockWithLeaves;
+
+                baselineTree.Metadata.SaveCurrentBlockInDb(Keccak.Zero, lastBlockWithLeaves);
+            }
+
+            var historicalTree = baselineTreeHelper.CreateHistoricalTree(address, 1);
+            Assert.AreNotEqual(historicalTree.Count, baselineTree.Count);
+            Assert.AreNotEqual(historicalTree.Root, baselineTree.Root);
+        }
+
         public class GetHistoricalLeavesTest
         {
             public TestBlock[] Blocks { get; set; }
@@ -151,6 +182,30 @@ namespace Nethermind.Baseline.Test
                     {
                        new Keccak[] { Keccak.Zero }, new Keccak[] { Keccak.Zero }, new Keccak[] { TestItem.KeccakA }, new Keccak[] { TestItem.KeccakB }, new Keccak[] { Keccak.Zero }
                     }
+                };
+            }
+        }
+
+        public static IEnumerable<GetHistoricalLeavesTest> HistoricalTreeTestCases
+        {
+            get
+            {
+
+                yield return new GetHistoricalLeavesTest()
+                {
+                    Blocks = new TestBlock[]
+                    {
+                        new TestBlock()
+                        {
+                            BlockNumber = 1,
+                            Leaves = new Keccak[] { TestItem.KeccakA, TestItem.KeccakB }
+                        },
+                        new TestBlock()
+                        {
+                            BlockNumber = 2,
+                            Leaves = new Keccak[] { TestItem.KeccakC, TestItem.KeccakD }
+                        }
+                    },
                 };
             }
         }
