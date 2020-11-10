@@ -227,7 +227,7 @@ namespace Nethermind.TxPool
             HandleOwnTransaction(tx, isPersistentBroadcast);
 
             NotifySelectedPeers(tx);
-            FilterAndStoreTx(tx);
+            StoreTx(tx);
             NewPending?.Invoke(this, new TxEventArgs(tx));
             return AddTxResult.Added;
         }
@@ -470,7 +470,7 @@ namespace Nethermind.TxPool
             }
         }
 
-        private void FilterAndStoreTx(Transaction tx)
+        private void StoreTx(Transaction tx)
         {
             _txStorage.Add(tx);
             if (_logger.IsTrace) _logger.Trace($"Added a transaction: {tx.Hash}");
