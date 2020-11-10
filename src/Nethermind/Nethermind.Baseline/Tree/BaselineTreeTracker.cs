@@ -24,6 +24,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.JsonRpc.Modules;
+using Nethermind.Logging;
 
 namespace Nethermind.Baseline.Tree
 {
@@ -33,6 +34,7 @@ namespace Nethermind.Baseline.Tree
         private readonly IBaselineTreeHelper _baselineTreeHelper;
         private readonly IBlockProcessor _blockProcessor;
         private readonly IBlockFinder _blockFinder;
+        private readonly ILogger _logger;
         private BaselineTree _baselineTree;
         private BlockHeader? _currentBlockHeader;
 
@@ -41,13 +43,15 @@ namespace Nethermind.Baseline.Tree
             BaselineTree baselineTree,
             IBlockProcessor blockProcessor,
             IBaselineTreeHelper baselineTreeHelper,
-            IBlockFinder blockFinder)
+            IBlockFinder blockFinder,
+            ILogger logger)
         {
             _address = address ?? throw new ArgumentNullException(nameof(address));
             _baselineTree = baselineTree ?? throw new ArgumentNullException(nameof(baselineTree));
             _blockProcessor = blockProcessor ?? throw new ArgumentNullException(nameof(blockProcessor));
             _baselineTreeHelper = baselineTreeHelper ?? throw new ArgumentNullException(nameof(baselineTreeHelper));
             _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
+            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
             StartTracking();
         }
