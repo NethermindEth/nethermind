@@ -1269,6 +1269,10 @@ namespace Nethermind.Blockchain
         private void SetTotalDifficulty(BlockHeader header)
         {
             BlockHeader GetParentHeader(BlockHeader current) => 
+                // TotalDifficultyNotNeeded is by design here,
+                // if it was absent this would result in recursion, as if parent doesn't already have total difficulty 
+                // then it would call back to SetTotalDifficulty for it
+                // This was original code but it could result in stack overflow
                 this.FindParentHeader(current, BlockTreeLookupOptions.TotalDifficultyNotNeeded) 
                 ?? throw new InvalidOperationException($"An orphaned block on the chain {current}");
 
