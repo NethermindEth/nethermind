@@ -172,7 +172,7 @@ namespace Nethermind.Baseline.Tree
 
                 uint newCount = baselineTree.Count;
                 if(_logger.IsWarn) _logger.Warn($"Saving block number count ({newCount}, {previousBlockWithLeaves}) of {baselineTree} in block {currentBlockNumber}");
-                baselineTree.Metadata.SaveBlockNumberCount(currentBlockNumber.Value, baselineTree.Count + count, previousBlockWithLeaves);
+                baselineTree.Metadata.SaveBlockNumberCount(currentBlockNumber.Value, newCount, previousBlockWithLeaves);
                 baselineTree.LastBlockWithLeaves = currentBlockNumber.Value;
             }
 
