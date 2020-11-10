@@ -43,7 +43,7 @@ namespace Nethermind.Baseline.Tree
             if(_logger.IsWarn) _logger.Warn(
                 $"Getting block count for {DbPrefix.ToHexString()}");
             
-            if (blockNumber == 0)
+            if (blockNumber == 0 || lastBlockWithLeaves == 0)
                 return 0;
             
             (uint Count, long PreviousBlockWithLeaves) foundCount = LoadBlockNumberCount(lastBlockWithLeaves);
@@ -74,7 +74,7 @@ namespace Nethermind.Baseline.Tree
 
         public uint GetPreviousBlockCount(long lastBlockWithLeaves, long blockNumber, bool clearPreviousCounts = false)
         {
-            if (blockNumber <= 1)
+            if (blockNumber <= 1 || lastBlockWithLeaves <=1)
                 return 0;
             var searchForBlockNumber = blockNumber - 1;
             var foundCount = LoadBlockNumberCount(lastBlockWithLeaves);
