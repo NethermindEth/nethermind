@@ -19,6 +19,7 @@ using System.Linq;
 using System.Runtime.CompilerServices;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
+using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Repositories;
 using Nethermind.Trie;
@@ -59,13 +60,16 @@ namespace Nethermind.Baseline.Tree
            does it expose any attack vectors? */
         internal static Keccak ZeroHash = Keccak.Zero;
 
-        public BaselineTree(IDb db, IKeyValueStore metadataKeyValueStore, byte[] _dbPrefix, int truncationLength)
+        private ILogger _logger;
+        
+        public BaselineTree(IDb db, IKeyValueStore metadataKeyValueStore, byte[] _dbPrefix, int truncationLength, ILogger logger)
         {
+            _logger = logger;
             TruncationLength = truncationLength;
             _db = db ?? throw new ArgumentNullException(nameof(db));
             _metadataKeyValueStore = metadataKeyValueStore ?? throw new ArgumentNullException(nameof(metadataKeyValueStore));
             this._dbPrefix = _dbPrefix;
-            Metadata = new BaselineTreeMetadata(metadataKeyValueStore, _dbPrefix);
+            Metadata = new BaselineTreeMetadata(metadataKeyValueStore, _dbPrefix, _logger);
 
             InitializeMetadata();
             Root = Count == 0 ? Keccak.Zero : LoadValue(new Index(0, 0));
@@ -109,7 +113,7 @@ namespace Nethermind.Baseline.Tree
 
         private void InitializeMetadata()
         {
-            var currentBlock = Metadata.LoadCurrentBlockInDb();
+            (Keccak LastBlockDbHash, long LastBlockWithLeaves) currentBlock = Metadata.LoadCurrentBlockInDb();
             LastBlockDbHash = currentBlock.LastBlockDbHash;
             LastBlockWithLeaves = currentBlock.LastBlockWithLeaves;
             Count = LoadCount();

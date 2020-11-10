@@ -23,6 +23,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
+using Nethermind.Logging;
 using Nethermind.Trie;
 
 namespace Nethermind.Baseline.Tree
@@ -32,9 +33,11 @@ namespace Nethermind.Baseline.Tree
         private readonly ILogFinder _logFinder;
         private readonly IDb _mainDb;
         private readonly IDb _metadataBaselineDb;
+        private readonly ILogger _logger;
 
-        public BaselineTreeHelper(ILogFinder logFinder, IDb mainDb, IDb metadataBaselineDb)
+        public BaselineTreeHelper(ILogFinder logFinder, IDb mainDb, IDb metadataBaselineDb, ILogger logger)
         {
+            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             _logFinder = logFinder ?? throw new ArgumentNullException(nameof(logFinder));
             _mainDb = mainDb ?? throw new ArgumentNullException(nameof(mainDb));
             _metadataBaselineDb = metadataBaselineDb ?? throw new ArgumentNullException(nameof(metadataBaselineDb));
@@ -74,7 +77,7 @@ namespace Nethermind.Baseline.Tree
 
         public BaselineTree CreateHistoricalTree(Address address, long blockNumber)
         {
-            var historicalTree = new ShaBaselineTree(new ReadOnlyDb(_mainDb, true), new ReadOnlyDb(_metadataBaselineDb, true), address.Bytes, BaselineModule.TruncationLength);
+            var historicalTree = new ShaBaselineTree(new ReadOnlyDb(_mainDb, true), new ReadOnlyDb(_metadataBaselineDb, true), address.Bytes, BaselineModule.TruncationLength, _logger);
             var endIndex = historicalTree.Count;
             var historicalCount = historicalTree.GetBlockCount(blockNumber);
             if (endIndex - historicalCount > 0)
@@ -88,7 +91,7 @@ namespace Nethermind.Baseline.Tree
 
         public BaselineTree RebuildEntireTree(Address treeAddress, Keccak blockHash)
         {
-            BaselineTree baselineTree = new ShaBaselineTree(_mainDb, _metadataBaselineDb, treeAddress.Bytes, BaselineModule.TruncationLength);
+            BaselineTree baselineTree = new ShaBaselineTree(_mainDb, _metadataBaselineDb, treeAddress.Bytes, BaselineModule.TruncationLength, _logger);
             return BuildTree(baselineTree, treeAddress, new BlockParameter(0L), new BlockParameter(blockHash));
         }
 

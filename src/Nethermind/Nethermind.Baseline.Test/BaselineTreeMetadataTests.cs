@@ -19,6 +19,7 @@ using System.Collections.Generic;
 using Nethermind.Baseline.Tree;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
+using Nethermind.Logging;
 using NUnit.Framework;
 
 namespace Nethermind.Baseline.Test
@@ -33,7 +34,7 @@ namespace Nethermind.Baseline.Test
         public void Saving_loading_current_block(int keccakIndex, long lastBlockWithLeaves)
         {
             var lastBlockDbHash = TestItem.Keccaks[keccakIndex];
-            var baselineMetaData = new BaselineTreeMetadata(new MemDb(), new byte[] { });
+            var baselineMetaData = new BaselineTreeMetadata(new MemDb(), new byte[] { }, LimboNoErrorLogger.Instance);
             baselineMetaData.SaveCurrentBlockInDb(lastBlockDbHash, lastBlockWithLeaves);
             var actual = baselineMetaData.LoadCurrentBlockInDb();
             Assert.AreEqual(lastBlockDbHash, actual.LastBlockDbHash);
@@ -46,7 +47,7 @@ namespace Nethermind.Baseline.Test
         [TestCase(3, (uint)100, 6)]
         public void Saving_loading_block_number_count(long blockNumber, uint count, long previousBlockWithLeaves)
         {
-            var baselineMetaData = new BaselineTreeMetadata(new MemDb(), new byte[] { });
+            var baselineMetaData = new BaselineTreeMetadata(new MemDb(), new byte[] { }, LimboNoErrorLogger.Instance);
             baselineMetaData.SaveBlockNumberCount(blockNumber, count, previousBlockWithLeaves);
             var actual = baselineMetaData.LoadBlockNumberCount(blockNumber);
             Assert.AreEqual(count, actual.Count);
@@ -56,7 +57,7 @@ namespace Nethermind.Baseline.Test
         [Test]
         public void GetLeavesCountFromPreviousBlocks([ValueSource(nameof(GetLeavesCountFromPreviousBlockTestCases))]GetLeavesCountTest test)
         {
-            var baselineMetaData = new BaselineTreeMetadata(new MemDb(), new byte[] { });
+            var baselineMetaData = new BaselineTreeMetadata(new MemDb(), new byte[] { }, LimboNoErrorLogger.Instance);
             for (int i = 0; i < test.DataToSave.Length; ++i)
             {
                 baselineMetaData.SaveBlockNumberCount(test.DataToSave[i].BlockNumber, test.DataToSave[i].Count, test.DataToSave[i].PreviousBlockWithLeaves);

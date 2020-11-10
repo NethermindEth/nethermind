@@ -68,7 +68,7 @@ namespace Nethermind.Baseline.Test
             var testRpc = result.TestRpc;
             BaselineTree baselineTree = BuildATree();
             var fromContractAdress = ContractAddress.From(address, 0L);
-            var baselineTreeHelper = new BaselineTreeHelper(testRpc.LogFinder, _baselineDb, _metadataBaselineDb);
+            var baselineTreeHelper = new BaselineTreeHelper(testRpc.LogFinder, _baselineDb, _metadataBaselineDb, LimboNoErrorLogger.Instance);
             new BaselineTreeTracker(fromContractAdress, baselineTree, testRpc.BlockProcessor, baselineTreeHelper, testRpc.BlockFinder);
 
             var contract = new MerkleTreeSHAContract(_abiEncoder, fromContractAdress);
@@ -97,7 +97,7 @@ namespace Nethermind.Baseline.Test
             var testRpc = result.TestRpc;
             BaselineTree baselineTree = BuildATree();
             var fromContractAdress = ContractAddress.From(address, 0);
-            var baselineTreeHelper = new BaselineTreeHelper(testRpc.LogFinder, _baselineDb, _metadataBaselineDb);
+            var baselineTreeHelper = new BaselineTreeHelper(testRpc.LogFinder, _baselineDb, _metadataBaselineDb, LimboNoErrorLogger.Instance);
             new BaselineTreeTracker(fromContractAdress, baselineTree, testRpc.BlockProcessor, baselineTreeHelper, testRpc.BlockFinder);
 
             var contract = new MerkleTreeSHAContract(_abiEncoder, fromContractAdress);
@@ -148,7 +148,7 @@ namespace Nethermind.Baseline.Test
 
         private BaselineTree BuildATree(IKeyValueStore keyValueStore = null)
         {
-            return new ShaBaselineTree(_baselineDb, _metadataBaselineDb, new byte[] { }, 0);
+            return new ShaBaselineTree(_baselineDb, _metadataBaselineDb, new byte[] { }, 0, LimboNoErrorLogger.Instance);
         }
 
         public class InsertLeafTest

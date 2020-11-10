@@ -23,6 +23,7 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
+using Nethermind.Logging;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -37,8 +38,8 @@ namespace Nethermind.Baseline.Test
             var logFinder = Substitute.For<ILogFinder>();
             var mainDb = new MemDb();
             var metadaDataDb = new MemDb();
-            var baselineTreeHelper = new BaselineTreeHelper(logFinder, new MemDb(), new MemDb());
-            var baselineTree = new ShaBaselineTree(mainDb, metadaDataDb, new byte[] { }, BaselineModule.TruncationLength);
+            var baselineTreeHelper = new BaselineTreeHelper(logFinder, new MemDb(), new MemDb(), LimboNoErrorLogger.Instance);
+            var baselineTree = new ShaBaselineTree(mainDb, metadaDataDb, new byte[] { }, BaselineModule.TruncationLength, LimboNoErrorLogger.Instance);
 
             long lastBlockWithLeaves = 0;
             for (int i = 0; i < test.Blocks.Length; i++)
@@ -68,8 +69,8 @@ namespace Nethermind.Baseline.Test
             var logFinder = Substitute.For<ILogFinder>();
             var mainDb = new MemDb();
             var metadaDataDb = new MemDb();
-            var baselineTreeHelper = new BaselineTreeHelper(logFinder, new MemDb(), new MemDb());
-            var baselineTree = new ShaBaselineTree(mainDb, metadaDataDb, new byte[] { }, BaselineModule.TruncationLength);
+            var baselineTreeHelper = new BaselineTreeHelper(logFinder, new MemDb(), new MemDb(), LimboNoErrorLogger.Instance);
+            var baselineTree = new ShaBaselineTree(mainDb, metadaDataDb, new byte[] { }, BaselineModule.TruncationLength, LimboNoErrorLogger.Instance);
 
             long lastBlockWithLeaves = 0;
             for (int i = 0; i < test.Blocks.Length; i++)
@@ -103,8 +104,8 @@ namespace Nethermind.Baseline.Test
             var logFinder = Substitute.For<ILogFinder>();
             var mainDb = new MemDb();
             var metadataDataDb = new MemDb();
-            var baselineTreeHelper = new BaselineTreeHelper(logFinder, mainDb, metadataDataDb);
-            var baselineTree = new ShaBaselineTree(mainDb, metadataDataDb, address.Bytes, BaselineModule.TruncationLength);
+            var baselineTreeHelper = new BaselineTreeHelper(logFinder, mainDb, metadataDataDb, LimboNoErrorLogger.Instance);
+            var baselineTree = new ShaBaselineTree(mainDb, metadataDataDb, address.Bytes, BaselineModule.TruncationLength, LimboNoErrorLogger.Instance);
 
             long lastBlockWithLeaves = 0;
             for (int i = 0; i < test.Blocks.Length; i++)

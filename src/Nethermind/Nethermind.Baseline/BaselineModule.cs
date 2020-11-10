@@ -68,7 +68,7 @@ namespace Nethermind.Baseline
             _logFinder = logFinder ?? throw new ArgumentNullException(nameof(logFinder));
             _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
             _blockProcessor = blockProcessor ?? throw new ArgumentNullException(nameof(blockProcessor));
-            _baselineTreeHelper = new BaselineTreeHelper(_logFinder, baselineDb, metadataBaselineDb);
+            _baselineTreeHelper = new BaselineTreeHelper(_logFinder, baselineDb, metadataBaselineDb, _logger);
             _disposableStack = disposableStack ?? throw new ArgumentNullException(nameof(disposableStack));
 
             _metadata = LoadMetadata();
@@ -652,7 +652,7 @@ namespace Nethermind.Baseline
                 return false;
             }
 
-            ShaBaselineTree tree = new ShaBaselineTree(_baselineDb, _metadataBaselineDb, trackedTree.Bytes, TruncationLength);
+            ShaBaselineTree tree = new ShaBaselineTree(_baselineDb, _metadataBaselineDb, trackedTree.Bytes, TruncationLength, _logger);
             var tracker = new BaselineTreeTracker(trackedTree, tree, _blockProcessor, _baselineTreeHelper, _blockFinder);
             _disposableStack.Push(tracker);
             return _baselineTrees.TryAdd(trackedTree, tree);

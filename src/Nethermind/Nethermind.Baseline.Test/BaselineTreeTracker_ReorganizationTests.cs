@@ -25,6 +25,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Evm;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Test.Modules;
+using Nethermind.Logging;
 using NUnit.Framework;
 
 namespace Nethermind.Baseline.Test
@@ -39,7 +40,7 @@ namespace Nethermind.Baseline.Test
             var testRpc = result.TestRpc;
             BaselineTree baselineTree = BuildATree();
             var fromContractAdress = ContractAddress.From(address, 0L);
-            var baselineTreeHelper = new BaselineTreeHelper(testRpc.LogFinder, _baselineDb, _metadataBaselineDb);
+            var baselineTreeHelper = new BaselineTreeHelper(testRpc.LogFinder, _baselineDb, _metadataBaselineDb, LimboNoErrorLogger.Instance);
             new BaselineTreeTracker(fromContractAdress, baselineTree, testRpc.BlockProcessor, baselineTreeHelper, testRpc.BlockFinder);
 
             var contract = new MerkleTreeSHAContract(_abiEncoder, fromContractAdress);

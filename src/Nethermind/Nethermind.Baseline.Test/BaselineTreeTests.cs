@@ -22,6 +22,7 @@ using Nethermind.Baseline.Tree;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
+using Nethermind.Logging;
 using NUnit.Framework;
 using Index = Nethermind.Baseline.Tree.BaselineTree.Index;
 
@@ -56,7 +57,7 @@ namespace Nethermind.Baseline.Test
 
         private BaselineTree BuildATree(IDb db = null)
         {
-            return new ShaBaselineTree(db ?? new MemDb(), new MemDb(), new byte[] { }, _truncationLength);
+            return new ShaBaselineTree(db ?? new MemDb(), new MemDb(), new byte[] { }, _truncationLength, LimboNoErrorLogger.Instance);
         }
 
         [Test]
@@ -278,14 +279,14 @@ namespace Nethermind.Baseline.Test
         {
             MemDb memDb = new MemDb();
             var metadataMemDb = new MemDb();
-            BaselineTree baselineTree = new ShaBaselineTree(memDb, metadataMemDb, new byte[] { }, _truncationLength);
+            BaselineTree baselineTree = new ShaBaselineTree(memDb, metadataMemDb, new byte[] { }, _truncationLength, LimboNoErrorLogger.Instance);
 
             for (int i = 0; i < leafCount; i++)
             {
                 baselineTree.Insert(_testLeaves[0]);
             }
 
-            BaselineTree baselineTreeRestored = new ShaBaselineTree(memDb, metadataMemDb, new byte[] { }, _truncationLength);
+            BaselineTree baselineTreeRestored = new ShaBaselineTree(memDb, metadataMemDb, new byte[] { }, _truncationLength, LimboNoErrorLogger.Instance);
             baselineTreeRestored.Count.Should().Be(leafCount);
         }
 

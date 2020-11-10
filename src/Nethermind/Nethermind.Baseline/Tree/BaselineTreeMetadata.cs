@@ -16,6 +16,7 @@
 
 using System;
 using Nethermind.Core.Crypto;
+using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie;
 
@@ -27,8 +28,11 @@ namespace Nethermind.Baseline.Tree
 
         private readonly IKeyValueStore _metadataKeyValueStore;
         private readonly byte[] _dbPrefix;
-        public BaselineTreeMetadata(IKeyValueStore metadataKeyValueStore, byte[] _dbPrefix)
+        private readonly ILogger _logger;
+
+        public BaselineTreeMetadata(IKeyValueStore metadataKeyValueStore, byte[] _dbPrefix, ILogger logger)
         {
+            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             _metadataKeyValueStore = metadataKeyValueStore ?? throw new ArgumentNullException(nameof(metadataKeyValueStore));
             this._dbPrefix = _dbPrefix;
         }
@@ -37,7 +41,7 @@ namespace Nethermind.Baseline.Tree
         {
             if (blockNumber == 0)
                 return 0;
-
+            
             var foundCount = LoadBlockNumberCount(lastBlockWithLeaves);
             var currentBlockNumber = lastBlockWithLeaves;
             while (blockNumber < currentBlockNumber)
@@ -80,15 +84,15 @@ namespace Nethermind.Baseline.Tree
 
         public (uint Count, long PreviousBlockWithLeaves) LoadBlockNumberCount(long blockNumber)
         {
-            var data = _metadataKeyValueStore[MetadataBuildDbKey(blockNumber)];
-            var rlpStream = new RlpStream(data);
+            byte[]? data = _metadataKeyValueStore[MetadataBuildDbKey(blockNumber)];
+            RlpStream? rlpStream = new RlpStream(data);
             rlpStream.SkipLength();
             return (rlpStream.DecodeUInt(), rlpStream.DecodeLong());
         }
 
         public void SaveBlockNumberCount(long blockNumber, uint count, long previousBlockWithLeaves)
         {
-            var length = Rlp.LengthOfSequence(Rlp.LengthOf((long)count) + Rlp.LengthOf(previousBlockWithLeaves));
+            int length = Rlp.LengthOfSequence(Rlp.LengthOf((long)count) + Rlp.LengthOf(previousBlockWithLeaves));
             RlpStream rlpStream = new RlpStream(length);
             rlpStream.StartSequence(length);
             rlpStream.Encode(count);
@@ -98,17 +102,17 @@ namespace Nethermind.Baseline.Tree
 
         public (Keccak LastBlockDbHash, long LastBlockWithLeaves) LoadCurrentBlockInDb()
         {
-            var rlpEncoded = _metadataKeyValueStore[MetadataBuildDbKey(CurrentBlockIndex)];
+            byte[]? rlpEncoded = _metadataKeyValueStore[MetadataBuildDbKey(CurrentBlockIndex)];
             if (rlpEncoded == null)
                 return (Keccak.Zero, 0);
-            var rlpStream = new RlpStream(rlpEncoded);
+            RlpStream? rlpStream = new RlpStream(rlpEncoded);
             rlpStream.SkipLength();
             return (rlpStream.DecodeKeccak(), rlpStream.DecodeLong());
         }
 
         public void SaveCurrentBlockInDb(Keccak lastBlockDbHash, long lastBlockWithLeaves)
         {
-            var length = Rlp.LengthOfSequence(Rlp.LengthOf(lastBlockDbHash) + Rlp.LengthOf(lastBlockWithLeaves));
+            int length = Rlp.LengthOfSequence(Rlp.LengthOf(lastBlockDbHash) + Rlp.LengthOf(lastBlockWithLeaves));
             RlpStream rlpStream = new RlpStream(length);
             rlpStream.StartSequence(length);
             rlpStream.Encode(lastBlockDbHash);
