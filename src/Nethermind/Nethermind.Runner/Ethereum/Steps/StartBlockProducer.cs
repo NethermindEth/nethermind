@@ -66,8 +66,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             {
                 ReadOnlyDbProvider dbProvider = new ReadOnlyDbProvider(_api.DbProvider, false);
                 ReadOnlyBlockTree blockTree = new ReadOnlyBlockTree(_api.BlockTree);
-                ReadOnlyTxProcessingEnv txProcessingEnv =
-                    new ReadOnlyTxProcessingEnv(dbProvider, blockTree, _api.SpecProvider, _api.LogManager);
+                ReadOnlyTxProcessingEnv txProcessingEnv = new ReadOnlyTxProcessingEnv(dbProvider, blockTree, _api.SpecProvider, _api.LogManager);
                 
                 ReadOnlyTxProcessorSource txProcessorSource =
                     new ReadOnlyTxProcessorSource(txProcessingEnv);
@@ -105,14 +104,14 @@ namespace Nethermind.Runner.Ethereum.Steps
             ReadOnlyTxProcessorSource readOnlyTxProcessorSource) =>
             CreateTxPoolTxSource(processingEnv, readOnlyTxProcessorSource);
 
-        protected virtual TxPoolTxSource CreateTxPoolTxSource(ReadOnlyTxProcessingEnv processingEnv, ReadOnlyTxProcessorSource readOnlyTxProcessorSource) => 
-            new TxPoolTxSource(_api.TxPool, processingEnv.StateReader, _api.LogManager, CreateGasPriceTxFilter(readOnlyTxProcessorSource));
-
-        protected virtual ITxFilter CreateGasPriceTxFilter(ReadOnlyTxProcessorSource readOnlyTxProcessorSource)
+        protected virtual TxPoolTxSource CreateTxPoolTxSource(ReadOnlyTxProcessingEnv processingEnv, ReadOnlyTxProcessorSource readOnlyTxProcessorSource)
         {
-            UInt256 minGasPrice = _api.Config<IMiningConfig>().MinGasPrice;
-            return new MinGasPriceTxFilter(minGasPrice);
+            ITxFilter txSourceFilter = CreateTxSourceFilter(processingEnv, readOnlyTxProcessorSource);
+            return new TxPoolTxSource(_api.TxPool, processingEnv.StateReader, _api.LogManager, txSourceFilter);
         }
+
+        protected virtual ITxFilter CreateTxSourceFilter(ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv, ReadOnlyTxProcessorSource readOnlyTxProcessorSource) => 
+            TxFilterBuilders.CreateStandardTxFilter(_api.Config<IMiningConfig>());
 
         protected virtual BlockProcessor CreateBlockProcessor(
             ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv, 

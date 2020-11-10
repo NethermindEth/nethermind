@@ -23,7 +23,7 @@ namespace Nethermind.Core
     /// Comparer that enables to replace inner comparision on demand.
     /// </summary>
     /// <remarks>Used to decouple circular dependencies with TxPriority contract.</remarks>
-    public class WrapperComparer<T> : IComparer<T>
+    public class WrappingComparer<T> : IComparer<T>
     {
         public IComparer<T> Comparer { get; set; }
         public int Compare(T x, T y) => Comparer?.Compare(x, y) ?? 0;

@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 
@@ -22,7 +23,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
 {
     public class NullTxFilter : ITxFilter
     {
-        public bool IsAllowed(Transaction tx, BlockHeader parentHeader) => true;
+        public (bool Allowed, string Reason) IsAllowed(Transaction tx, BlockHeader parentHeader) => (true, string.Empty);
         
         public static readonly NullTxFilter Instance = new NullTxFilter(); 
     }

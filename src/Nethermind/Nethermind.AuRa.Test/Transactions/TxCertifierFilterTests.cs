@@ -53,7 +53,7 @@ namespace Nethermind.AuRa.Test.Transactions
             _notCertifiedFilter = Substitute.For<ITxFilter>();
             
             _notCertifiedFilter.IsAllowed(Arg.Any<Transaction>(), Arg.Any<BlockHeader>())
-                .Returns(false);
+                .Returns((false, string.Empty));
             
             _certifierContract.Certified(Arg.Any<BlockHeader>(), 
                 Arg.Is<Address>(a => TestItem.Addresses.Take(3).Contains(a)))
@@ -90,7 +90,7 @@ namespace Nethermind.AuRa.Test.Transactions
         public void should_default_to_inner_contract_on_non_zero_transactions(bool expected)
         {
             _notCertifiedFilter.IsAllowed(Arg.Any<Transaction>(), Arg.Any<BlockHeader>())
-                .Returns(expected);
+                .Returns((expected, string.Empty));
             
             ShouldAllowAddress(TestItem.Addresses.First(), 1ul, expected);
         }
@@ -99,7 +99,7 @@ namespace Nethermind.AuRa.Test.Transactions
         {
             _filter.IsAllowed(
                 Build.A.Transaction.WithGasPrice(gasPrice).WithSenderAddress(address).TestObject,
-                Build.A.BlockHeader.TestObject).Should().Be(expected);
+                Build.A.BlockHeader.TestObject).Allowed.Should().Be(expected);
         }
 
         [Test]
