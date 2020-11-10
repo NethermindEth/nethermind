@@ -44,6 +44,7 @@ namespace Nethermind.Vault
         private readonly Guid? _networkId;
         private readonly ITxSigner _txSigner;
         private readonly int DefaultChainId = 5;
+        private bool _accountCreated = false;
 
         private NChain _provide;
 
@@ -64,6 +65,7 @@ namespace Nethermind.Vault
 
         public async ValueTask<Keccak> SendTransaction(Transaction tx, TxHandlingOptions txHandlingOptions)
         {
+            await EnsureAccount();
             ProvideTx provideTx = new ProvideTx();
             provideTx.Data = (tx.Data ?? tx.Init).ToHexString();
             provideTx.Description = "From Nethermind with love";
@@ -81,6 +83,18 @@ namespace Nethermind.Vault
             _txSigner.Seal(tx);
             ProvideTx createdTx = await _provide.CreateTransaction(provideTx);
             return new Keccak(createdTx.Hash);
+        }
+
+        private async Task EnsureAccount()
+        {
+            if (_accountCreated == false)
+            {
+                await _provide.CreateAccount(new provide.Model.NChain.Account()
+                {
+                    NetworkId = _networkId.Value
+                });
+                _accountCreated = true;
+            }
         }
     }
 }

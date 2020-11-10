@@ -35,12 +35,12 @@ namespace Nethermind.Baseline.Tree
 
         public uint GetBlockCount(long lastBlockWithLeaves, long blockNumber)
         {
-            var currentBlockNumber = blockNumber;
-            if (currentBlockNumber == 0)
+            if (blockNumber == 0)
                 return 0;
 
             var foundCount = LoadBlockNumberCount(lastBlockWithLeaves);
-            while (lastBlockWithLeaves < currentBlockNumber)
+            var currentBlockNumber = foundCount.PreviousBlockWithLeaves;
+            while (blockNumber <= currentBlockNumber)
             {
                 currentBlockNumber = foundCount.PreviousBlockWithLeaves;
                 if (currentBlockNumber == 0)
@@ -55,11 +55,11 @@ namespace Nethermind.Baseline.Tree
         public uint GetPreviousBlockCount(long lastBlockWithLeaves, long blockNumber, bool clearPreviousCounts = false)
         {
             var currentBlockNumber = blockNumber;
-            if (currentBlockNumber == 0)
+            if (blockNumber == 0)
                 return 0;
 
             var foundCount = LoadBlockNumberCount(lastBlockWithLeaves);
-            while (lastBlockWithLeaves <= currentBlockNumber)
+            while (blockNumber <= currentBlockNumber)
             {
                 currentBlockNumber = foundCount.PreviousBlockWithLeaves;
                 if (currentBlockNumber == 0)

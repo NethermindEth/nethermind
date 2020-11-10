@@ -49,7 +49,7 @@ namespace Nethermind.Baseline.Test
                     baselineTree.Insert(block.Leaves[j]);
                 }
 
-                baselineTree.Metadata.SaveBlockNumberCount(block.BlockNumber, (uint)block.Leaves.Length, lastBlockWithLeaves);
+                baselineTree.Metadata.SaveBlockNumberCount(block.BlockNumber, baselineTree.Count, lastBlockWithLeaves);
                 lastBlockWithLeaves = block.BlockNumber;
                 baselineTree.LastBlockWithLeaves = lastBlockWithLeaves;
             }
@@ -137,7 +137,7 @@ namespace Nethermind.Baseline.Test
 
             public Keccak[][] ExpectedHashes { get; set; }
 
-            public override string ToString() => "Blocks: " + string.Join("; ", Blocks.Select(x => x.BlockNumber.ToString()));
+            public override string ToString() => "Blocks: " + string.Join("; ", Blocks.Select(x => x.BlockNumber.ToString())) + $" Number of queries:{LeavesAndBlocksQueries?.Length}";
         }
 
         public class TestBlock
@@ -182,6 +182,56 @@ namespace Nethermind.Baseline.Test
                     {
                        new Keccak[] { Keccak.Zero }, new Keccak[] { Keccak.Zero }, new Keccak[] { TestItem.KeccakA }, new Keccak[] { TestItem.KeccakB }, new Keccak[] { Keccak.Zero }
                     }
+                };
+
+                yield return new GetHistoricalLeavesTest()
+                {
+                    Blocks = new TestBlock[]
+                   {
+                        new TestBlock()
+                        {
+                            BlockNumber = 1,
+                            Leaves = new Keccak[] { TestItem.KeccakA }
+                        },
+                        new TestBlock()
+                        {
+                            BlockNumber = 3,
+                            Leaves = new Keccak[] { TestItem.KeccakB, TestItem.KeccakC }
+                        }
+                   },
+                    LeavesAndBlocksQueries = new (uint[] LeafIndex, long BlockNumber)[]
+                   {
+                       (new uint[] { 0 }, 0), (new uint[] { 1 }, 0), (new uint[] { 0 }, 1), (new uint[] { 1 }, 1), (new uint[] { 2 }, 1), (new uint[] { 0 }, 2)
+                   },
+                    ExpectedHashes = new Keccak[][]
+                   {
+                       new Keccak[] { Keccak.Zero }, new Keccak[] { Keccak.Zero }, new Keccak[] { TestItem.KeccakA }, new Keccak[] { Keccak.Zero }, new Keccak[] { Keccak.Zero },  new Keccak[] { TestItem.KeccakA },
+                   }
+                };
+
+                yield return new GetHistoricalLeavesTest()
+                {
+                    Blocks = new TestBlock[]
+                   {
+                        new TestBlock()
+                        {
+                            BlockNumber = 1,
+                            Leaves = new Keccak[] { TestItem.KeccakA }
+                        },
+                        new TestBlock()
+                        {
+                            BlockNumber = 3,
+                            Leaves = new Keccak[] { TestItem.KeccakB, TestItem.KeccakC }
+                        }
+                   },
+                    LeavesAndBlocksQueries = new (uint[] LeafIndex, long BlockNumber)[]
+                   {
+                       (new uint[] { 1 }, 1)
+                   },
+                    ExpectedHashes = new Keccak[][]
+                   {
+                       new Keccak[] { Keccak.Zero }
+                   }
                 };
             }
         }
