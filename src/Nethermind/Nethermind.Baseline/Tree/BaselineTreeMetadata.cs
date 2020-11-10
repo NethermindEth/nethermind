@@ -39,14 +39,14 @@ namespace Nethermind.Baseline.Tree
                 return 0;
 
             var foundCount = LoadBlockNumberCount(lastBlockWithLeaves);
-            var currentBlockNumber = foundCount.PreviousBlockWithLeaves;
-            while (blockNumber <= currentBlockNumber)
+            var currentBlockNumber = lastBlockWithLeaves;
+            while (blockNumber < currentBlockNumber)
             {
-                currentBlockNumber = foundCount.PreviousBlockWithLeaves;
+                foundCount = LoadBlockNumberCount(foundCount.PreviousBlockWithLeaves);
                 if (currentBlockNumber == 0)
                     return foundCount.Count;
 
-                foundCount = LoadBlockNumberCount(foundCount.PreviousBlockWithLeaves);
+                currentBlockNumber = foundCount.PreviousBlockWithLeaves;
             }
 
             return foundCount.Count;
@@ -54,22 +54,19 @@ namespace Nethermind.Baseline.Tree
 
         public uint GetPreviousBlockCount(long lastBlockWithLeaves, long blockNumber, bool clearPreviousCounts = false)
         {
-            var currentBlockNumber = blockNumber;
-            if (blockNumber == 0)
+            if (blockNumber <= 1)
                 return 0;
 
             var foundCount = LoadBlockNumberCount(lastBlockWithLeaves);
-            while (blockNumber <= currentBlockNumber)
+            var currentBlockNumber = lastBlockWithLeaves;
+            while (blockNumber < currentBlockNumber)
             {
-                currentBlockNumber = foundCount.PreviousBlockWithLeaves;
-                if (currentBlockNumber == 0)
-                    return 0;
-
                 foundCount = LoadBlockNumberCount(foundCount.PreviousBlockWithLeaves);
-                if (clearPreviousCounts)
-                {
-                    ClearBlockNumberCount(foundCount.PreviousBlockWithLeaves);
-                }
+                if (currentBlockNumber == 0)
+                    return foundCount.Count;
+
+                currentBlockNumber = foundCount.PreviousBlockWithLeaves;
+
             }
 
             return foundCount.Count;
