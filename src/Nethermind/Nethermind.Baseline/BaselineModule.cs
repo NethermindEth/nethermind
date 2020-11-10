@@ -662,9 +662,14 @@ namespace Nethermind.Baseline
             }
 
             ShaBaselineTree tree = new ShaBaselineTree(_baselineDb, _metadataBaselineDb, trackedTree.Bytes, TruncationLength, _logger);
-            var tracker = new BaselineTreeTracker(trackedTree, tree, _blockProcessor, _baselineTreeHelper, _blockFinder, _logger);
-            _disposableStack.Push(tracker);
-            return _baselineTrees.TryAdd(trackedTree, tree);
+            bool result =  _baselineTrees.TryAdd(trackedTree, tree);
+            if (result)
+            {
+                var tracker = new BaselineTreeTracker(trackedTree, tree, _blockProcessor, _baselineTreeHelper, _blockFinder, _logger);
+                _disposableStack.Push(tracker);
+            }
+
+            return result;
         }
 
         #endregion
