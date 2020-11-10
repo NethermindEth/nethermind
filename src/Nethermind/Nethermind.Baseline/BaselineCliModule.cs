@@ -55,6 +55,12 @@ namespace Nethermind.Baseline
             CliParseAddress(contactAddress),
              blockParameter ?? "latest").Result;
         
+        [CliFunction("baseline", "getCount")]
+        public string GetCount(string contactAddress, string? blockParameter) => NodeManager.Post<string>(
+            "baseline_getCount",
+            CliParseAddress(contactAddress),
+            blockParameter ?? "latest").Result;
+        
         [CliFunction("baseline", "getLeaf")]
         public object GetLeaf(string contactAddress, long leafIndex, string? blockParameter) => NodeManager.PostJint(
             "baseline_getLeaf",

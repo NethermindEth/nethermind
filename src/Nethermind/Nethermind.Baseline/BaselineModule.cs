@@ -213,6 +213,42 @@ namespace Nethermind.Baseline
             return Task.FromResult(result);
         }
 
+        public Task<ResultWrapper<long>> baseline_getCount(
+            Address contractAddress,
+            BlockParameter? blockParameter = null)
+        {
+            bool isTracked = _baselineTrees.TryGetValue(contractAddress, out BaselineTree? tree);
+
+            ResultWrapper<long> result;
+            if (!isTracked || tree == null)
+            {
+                result = ResultWrapper<long>.Fail(
+                    $"{contractAddress} tree is not tracked",
+                    ErrorCodes.InvalidInput);
+            }
+            else
+            {
+                if (blockParameter == null)
+                {
+                    result = ResultWrapper<long>.Success(tree.Count);
+                }
+                else
+                {
+                    SearchResult<BlockHeader> searchResult = _blockFinder.SearchForHeader(blockParameter);
+                    if (searchResult.IsError)
+                    {
+                        result = ResultWrapper<long>.Fail(searchResult);
+                    }
+                    else
+                    {
+                        result = ResultWrapper<long>.Success(tree.GetBlockCount(searchResult.Object.Number));
+                    }
+                }
+            }
+
+            return Task.FromResult(result);
+        }
+        
         public Task<ResultWrapper<BaselineTreeNode[]>> baseline_getLeaves(
             Address contractAddress,
             UInt256[] leafIndexes,
