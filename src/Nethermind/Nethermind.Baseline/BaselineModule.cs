@@ -572,7 +572,7 @@ namespace Nethermind.Baseline
         /// <returns></returns>
         private async Task<byte[]> GetContractBytecode(string contract)
         {
-            string[] contractBytecode = await _fileSystem.File.ReadAllLinesAsync($"contracts/{contract}.bin");
+            string[] contractBytecode = await _fileSystem.File.ReadAllLinesAsync($"plugins/contracts/{contract}.bin".GetApplicationResourcePath());
             if (contractBytecode.Length < 4)
             {
                 throw new IOException("Bytecode not found");
