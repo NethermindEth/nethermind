@@ -92,7 +92,7 @@ namespace Nethermind.Baseline.Tree
             {
                 if(_logger.IsWarn) _logger.Warn($"Deleting {endIndex - historicalCount} from {historicalTree}");
                 historicalTree.Delete(endIndex - historicalCount, false);
-                historicalTree.CalculateHashes(historicalCount + 1, endIndex);
+                historicalTree.CalculateHashes(historicalCount, endIndex);
                 if(_logger.IsWarn) _logger.Warn($"After deleting from {historicalTree} root is {historicalTree.Root}");
             }
 

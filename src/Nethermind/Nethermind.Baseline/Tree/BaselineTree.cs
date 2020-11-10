@@ -281,9 +281,10 @@ namespace Nethermind.Baseline.Tree
                 for (uint indexAtRow = startingRowIndex; indexAtRow < nodesToIterate; indexAtRow += 2)
                 {
                     Index index = new Index(row, indexAtRow);
-                    var hash = LoadValue(index);
-                    var siblingIndex = index.Sibling();
-                    var siblingHash = LoadValue(siblingIndex);
+                    Keccak? hash = LoadValue(index);
+                    Index siblingIndex = index.Sibling();
+                    Keccak? siblingHash = siblingIndex.IndexAtRow >= nodesToIterate ? ZeroHash : LoadValue(siblingIndex);
+                    // _logger.Warn($"{siblingIndex.NodeIndex}=>{siblingHash} {index.NodeIndex}=>{hash}");
                     byte[] parentHash = new byte[32];
                     if (hash == Keccak.Zero && siblingHash == Keccak.Zero)
                     {
