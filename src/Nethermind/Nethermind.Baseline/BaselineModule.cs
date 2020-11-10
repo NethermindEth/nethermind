@@ -193,7 +193,7 @@ namespace Nethermind.Baseline
             {
                 if (blockParameter == null)
                 {
-                    result = ResultWrapper<BaselineTreeNode>.Success(tree.GetLeaf((uint)leafIndex));
+                    result = ResultWrapper<BaselineTreeNode>.Success(tree.GetLeaf((uint) leafIndex));
                 }
                 else
                 {
@@ -204,7 +204,7 @@ namespace Nethermind.Baseline
                     }
                     else
                     {
-                        var leaf = _baselineTreeHelper.GetHistoricalLeaf(tree, (uint)leafIndex, searchResult.Object.Number);
+                        var leaf = _baselineTreeHelper.GetHistoricalLeaf(tree, (uint) leafIndex, searchResult.Object.Number);
                         result = ResultWrapper<BaselineTreeNode>.Success(leaf);
                     }
                 }
@@ -248,7 +248,7 @@ namespace Nethermind.Baseline
 
             return Task.FromResult(result);
         }
-        
+
         public Task<ResultWrapper<BaselineTreeNode[]>> baseline_getLeaves(
             Address contractAddress,
             UInt256[] leafIndexes,
@@ -280,7 +280,7 @@ namespace Nethermind.Baseline
             }
             else
             {
-                var indexes = leafIndexes.Select(i => (uint)i).ToArray();
+                var indexes = leafIndexes.Select(i => (uint) i).ToArray();
                 if (blockParameter == null)
                 {
                     result = ResultWrapper<BaselineTreeNode[]>.Success(
@@ -364,7 +364,7 @@ namespace Nethermind.Baseline
 
             return result;
         }
-        
+
         public Task<ResultWrapper<bool>> baseline_verify(
             Address contractAddress,
             Keccak root,
@@ -431,7 +431,7 @@ namespace Nethermind.Baseline
             {
                 if (blockParameter == null)
                 {
-                    result = ResultWrapper<BaselineTreeNode[]>.Success(tree!.GetProof((uint)leafIndex));
+                    result = ResultWrapper<BaselineTreeNode[]>.Success(tree!.GetProof((uint) leafIndex));
                 }
                 else
                 {
@@ -443,7 +443,7 @@ namespace Nethermind.Baseline
                     else
                     {
                         var historicalTree = _baselineTreeHelper.CreateHistoricalTree(contractAddress, searchResult.Object.Number);
-                        result = ResultWrapper<BaselineTreeNode[]>.Success(historicalTree!.GetProof((uint)leafIndex));
+                        result = ResultWrapper<BaselineTreeNode[]>.Success(historicalTree!.GetProof((uint) leafIndex));
                     }
                 }
             }
@@ -491,11 +491,11 @@ namespace Nethermind.Baseline
             Keccak newCommitment)
         {
             var txData = _abiEncoder.Encode(
-                        AbiEncodingStyle.IncludeSignature,
-                        ContractShield.VerifyAndPushSig,
-                        proof,
-                        publicInputs,
-                        newCommitment);
+                AbiEncodingStyle.IncludeSignature,
+                ContractShield.VerifyAndPushSig,
+                proof,
+                publicInputs,
+                newCommitment);
 
             Transaction tx = new Transaction();
             tx.Value = 0;
@@ -526,7 +526,7 @@ namespace Nethermind.Baseline
 
         private BaselineMetadata _metadata;
         private byte[] _metadataKey = {0};
-        
+
         private ConcurrentDictionary<Address, BaselineTree> _baselineTrees
             = new ConcurrentDictionary<Address, BaselineTree>();
 
@@ -545,7 +545,7 @@ namespace Nethermind.Baseline
                      (c >= 'a' && c <= 'f') ||
                      (c >= 'A' && c <= 'F'));
         }
-        
+
         private async Task<Keccak> DeployBytecode(Address address, string contractType, byte[] bytecode)
         {
             Transaction tx = new Transaction();
@@ -561,7 +561,7 @@ namespace Nethermind.Baseline
             _logger.Info($"Contract {contractType} has been deployed");
             return txHash;
         }
-    
+
         private void UpdateMetadata(Address contractAddress)
         {
             lock (_metadata)
@@ -608,10 +608,19 @@ namespace Nethermind.Baseline
         /// <returns></returns>
         private async Task<byte[]> GetContractBytecode(string contract)
         {
+            // TODO: remove the hack and write code nicely
             string[] contractBytecode = await _fileSystem.File.ReadAllLinesAsync($"plugins/contracts/{contract}.bin".GetApplicationResourcePath());
             if (contractBytecode.Length < 4)
             {
-                throw new IOException("Bytecode not found");
+                contractBytecode = await _fileSystem.File.ReadAllLinesAsync($"contracts/{contract}.bin".GetApplicationResourcePath());
+                if (contractBytecode.Length < 4)
+                {
+                    contractBytecode = await _fileSystem.File.ReadAllLinesAsync($"contracts/{contract}.bin");
+                    if (contractBytecode.Length < 4)
+                    {
+                        throw new IOException("Bytecode not found");
+                    }
+                }
             }
 
             if (_logger.IsInfo) _logger.Info($"Loading bytecode of {contractBytecode[1]}");
