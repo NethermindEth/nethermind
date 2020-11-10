@@ -31,9 +31,9 @@ namespace Nethermind.Baseline.Tree
     {
         private readonly ILogFinder _logFinder;
         private readonly IDb _mainDb;
-        private readonly IKeyValueStore _metadataBaselineDb;
+        private readonly IDb _metadataBaselineDb;
 
-        public BaselineTreeHelper(ILogFinder logFinder, IDb mainDb, IKeyValueStore metadataBaselineDb)
+        public BaselineTreeHelper(ILogFinder logFinder, IDb mainDb, IDb metadataBaselineDb)
         {
             _logFinder = logFinder ?? throw new ArgumentNullException(nameof(logFinder));
             _mainDb = mainDb ?? throw new ArgumentNullException(nameof(mainDb));
@@ -74,11 +74,14 @@ namespace Nethermind.Baseline.Tree
 
         public BaselineTree CreateHistoricalTree(Address address, long blockNumber)
         {
-            var historicalTree = new ShaBaselineTree(new ReadOnlyDb(_mainDb, true), _metadataBaselineDb, address.Bytes, BaselineModule.TruncationLength);
+            var historicalTree = new ShaBaselineTree(new ReadOnlyDb(_mainDb, true), new ReadOnlyDb(_metadataBaselineDb, true), address.Bytes, BaselineModule.TruncationLength);
             var endIndex = historicalTree.Count;
-            var historicalCount = historicalTree.GetPreviousBlockCount(blockNumber);
-            historicalTree.Delete(endIndex - historicalCount, false);
-            historicalTree.CalculateHashes(historicalCount, endIndex);
+            var historicalCount = historicalTree.GetBlockCount(blockNumber);
+            if (endIndex - historicalCount > 0)
+            {
+                historicalTree.Delete(endIndex - historicalCount, false);
+                historicalTree.CalculateHashes(historicalCount, endIndex);
+            }
 
             return historicalTree;
         }

@@ -1,4 +1,4 @@
-//  Copyright (c) 2020 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -13,26 +13,23 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using System;
-using Nethermind.Crypto;
-using Nethermind.KeyStore;
-using Nethermind.Vault.Config;
+using Nethermind.Cli;
+using Nethermind.Cli.Modules;
 
-namespace Nethermind.Vault.KeyStore
+namespace Nethermind.Vault.JsonRpc
 {
-    public class VaultKeyStoreFacade : IVaultKeyStoreFacade
+    [CliModule("vault")]
+    public class VaultCliModule : CliModuleBase
     {
-        private readonly IPasswordProvider _passwordProvider;
-        public VaultKeyStoreFacade(IPasswordProvider passwordProvider)
+        public VaultCliModule(ICliEngine engine, INodeManager nodeManager) 
+            : base(engine, nodeManager)
         {
-            _passwordProvider = passwordProvider ?? throw new ArgumentNullException(nameof(passwordProvider));
         }
 
-        public string GetKey()
-        {
-            var password = _passwordProvider.GetPassword();
-            return password.Unsecure();
-        }
+        [CliFunction("vault", "listVaults")]
+        public object listVaults() => NodeManager.PostJint(
+            "vault_listVaults").Result;
     }
 }

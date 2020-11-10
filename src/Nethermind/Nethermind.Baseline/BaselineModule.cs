@@ -53,7 +53,7 @@ namespace Nethermind.Baseline
             IAbiEncoder abiEncoder,
             IFileSystem fileSystem,
             IDb baselineDb,
-            IKeyValueStore metadataBaselineDb,
+            IDb metadataBaselineDb,
             ILogManager logManager,
             IBlockProcessor blockProcessor,
             DisposableStack disposableStack)
@@ -146,7 +146,7 @@ namespace Nethermind.Baseline
             }
             else
             {
-                if (blockParameter == null)
+                if (blockParameter == null || blockParameter == BlockParameter.Latest)
                 {
                     result = ResultWrapper<Keccak>.Success(tree.Root);
                 }
