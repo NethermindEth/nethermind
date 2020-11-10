@@ -75,7 +75,7 @@ namespace Nethermind.TxPool
         private readonly ISpecProvider _specProvider;
         private readonly IStateProvider _stateProvider;
         private readonly IEthereumEcdsa _ecdsa;
-        private readonly ILogger _logger;
+        protected readonly ILogger _logger;
 
         /// <summary>
         /// Transactions published locally (initiated by this node users).

@@ -35,7 +35,7 @@ namespace Nethermind.Consensus.Transactions
         {
             foreach (Transaction transaction in _innerSource.GetTransactions(parent, gasLimit))
             {
-                if (!(transaction is T) || _txFilter.IsAllowed(transaction, parent))
+                if (!(transaction is T) || _txFilter.IsAllowed(transaction, parent).Allowed)
                 {
                     yield return transaction;
                 }

@@ -21,6 +21,6 @@ namespace Nethermind.Consensus.Transactions
 {
     public interface ITxFilter
     {
-        bool IsAllowed(Transaction tx, BlockHeader parentHeader);
+        (bool Allowed, string Reason) IsAllowed(Transaction tx, BlockHeader parentHeader);
     }
 }

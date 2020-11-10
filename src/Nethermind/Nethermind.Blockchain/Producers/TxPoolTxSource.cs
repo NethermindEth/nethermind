@@ -137,10 +137,11 @@ namespace Nethermind.Blockchain.Producers
                     if (_logger.IsDebug) _logger.Debug($"Rejecting (null sender) {tx.ToShortString()}");
                     continue;
                 }
-                
-                if (!_txFilter.IsAllowed(tx, parent))
+
+                var (allowed, reason) = _txFilter.IsAllowed(tx, parent);
+                if (!allowed)
                 {
-                    if (_logger.IsDebug) _logger.Debug($"Rejecting (gas price too low or filtered) {tx.ToShortString()}");
+                    if (_logger.IsDebug) _logger.Debug($"Rejecting ({reason}) {tx.ToShortString()}");
                     continue;
                 }
 

@@ -32,10 +32,12 @@ namespace Nethermind.Blockchain
             _txFilter = txFilter ?? throw new ArgumentNullException(nameof(txFilter));
         }
         
-        public bool Accept(Transaction tx)
+        public (bool Accepted, string Reason) Accept(Transaction tx)
         {
             var parentHeader = BlockTree?.Head?.Header;
-            return parentHeader == null || _txFilter.IsAllowed(tx, parentHeader);
+            return parentHeader == null 
+                ? (true, string.Empty) 
+                : _txFilter.IsAllowed(tx, parentHeader);
         }
     }
 }

@@ -61,7 +61,7 @@ namespace Nethermind.AuRa.Test.Transactions
             var txFilter = new MinGasPriceContractTxFilter(minGasPriceFilter, dictionaryContractDataStore);
             var tx = Build.A.Transaction.WithTo(address).WithGasPrice(gasLimit).WithData(null).TestObject;
 
-            return txFilter.IsAllowed(tx, Build.A.BlockHeader.TestObject);
+            return txFilter.IsAllowed(tx, Build.A.BlockHeader.TestObject).Allowed;
         }
     }
 }
