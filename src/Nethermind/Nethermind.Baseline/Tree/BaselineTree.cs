@@ -285,7 +285,15 @@ namespace Nethermind.Baseline.Tree
                     var siblingIndex = index.Sibling();
                     var siblingHash = LoadValue(siblingIndex);
                     byte[] parentHash = new byte[32];
-                    Hash(hash.Bytes.AsSpan(), siblingHash.Bytes.AsSpan(), parentHash);
+                    if (hash == Keccak.Zero && siblingHash == Keccak.Zero)
+                    {
+                        parentHash = Keccak.Zero.Bytes;
+                    }
+                    else
+                    {
+                        Hash(hash.Bytes.AsSpan(), siblingHash.Bytes.AsSpan(), parentHash);    
+                    }
+                    
                     Index parentIndex = index.Parent();
                     SaveValue(parentIndex, parentHash);
                 }

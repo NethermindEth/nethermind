@@ -83,14 +83,17 @@ namespace Nethermind.Baseline.Tree
         public BaselineTree CreateHistoricalTree(Address address, long blockNumber)
         {
             if(_logger.IsWarn) _logger.Warn($"Building historical tree at {address} for block {blockNumber}");
-            
             var historicalTree = new ShaBaselineTree(new ReadOnlyDb(_mainDb, true), new ReadOnlyDb(_metadataBaselineDb, true), address.Bytes, BaselineModule.TruncationLength, _logger);
             var endIndex = historicalTree.Count;
             var historicalCount = historicalTree.GetBlockCount(blockNumber);
+            if(_logger.IsWarn) _logger.Warn($"Historical count of {historicalTree} for block {blockNumber} is {historicalCount}");
+
             if (endIndex - historicalCount > 0)
             {
+                if(_logger.IsWarn) _logger.Warn($"Deleting {endIndex - historicalCount} from {historicalTree}");
                 historicalTree.Delete(endIndex - historicalCount, false);
-                historicalTree.CalculateHashes(historicalCount, endIndex);
+                historicalTree.CalculateHashes(historicalCount + 1, endIndex);
+                if(_logger.IsWarn) _logger.Warn($"After deleting from {historicalTree} root is {historicalTree.Root}");
             }
 
             return historicalTree;
