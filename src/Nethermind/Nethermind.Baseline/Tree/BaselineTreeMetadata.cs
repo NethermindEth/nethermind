@@ -16,6 +16,7 @@
 
 using System;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie;
@@ -39,6 +40,9 @@ namespace Nethermind.Baseline.Tree
 
         public uint GetBlockCount(long lastBlockWithLeaves, long blockNumber)
         {
+            if(_logger.IsWarn) _logger.Warn(
+                $"Getting block count for {_dbPrefix.ToHexString()}");
+            
             if (blockNumber == 0)
                 return 0;
             
@@ -47,11 +51,20 @@ namespace Nethermind.Baseline.Tree
             while (blockNumber < currentBlockNumber)
             {
                 if (foundCount.PreviousBlockWithLeaves == 0)
+                {
+                    if(_logger.IsWarn) _logger.Warn(
+                        $"Reached zero and found count 0 for {_dbPrefix.ToHexString()}");
                     return 0;
+                }
+                    
                 currentBlockNumber = foundCount.PreviousBlockWithLeaves;
+
                 foundCount = LoadBlockNumberCount(foundCount.PreviousBlockWithLeaves);
             }
 
+            if(_logger.IsWarn) _logger.Warn(
+                $"Found count {foundCount.Count} for {_dbPrefix.ToHexString()}");
+            
             return foundCount.Count;
         }
 

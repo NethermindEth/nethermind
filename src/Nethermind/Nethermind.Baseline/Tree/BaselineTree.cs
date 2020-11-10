@@ -18,6 +18,7 @@ using System;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
@@ -117,6 +118,9 @@ namespace Nethermind.Baseline.Tree
             LastBlockDbHash = currentBlock.LastBlockDbHash;
             LastBlockWithLeaves = currentBlock.LastBlockWithLeaves;
             Count = LoadCount();
+            
+            if(_logger.IsInfo) _logger.Info(
+                $"Initialized tree {_dbPrefix.ToHexString()} with count {Count}, last block hash {LastBlockDbHash} and last block with leaves {LastBlockWithLeaves}.");
         }
 
         private uint LoadCount()

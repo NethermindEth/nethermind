@@ -70,7 +70,7 @@ namespace Nethermind.Baseline.Test
         [Test]
         public void GetLeavesCountByBlockNumber([ValueSource(nameof(GetLeavesCountByBlockNumberTestCases))]GetLeavesCountTest test)
         {
-            var baselineMetaData = new BaselineTreeMetadata(new MemDb(), new byte[] { });
+            var baselineMetaData = new BaselineTreeMetadata(new MemDb(), new byte[] { }, LimboNoErrorLogger.Instance);
             for (int i = 0; i < test.DataToSave.Length; ++i)
             {
                 baselineMetaData.SaveBlockNumberCount(test.DataToSave[i].BlockNumber, test.DataToSave[i].Count, test.DataToSave[i].PreviousBlockWithLeaves);
