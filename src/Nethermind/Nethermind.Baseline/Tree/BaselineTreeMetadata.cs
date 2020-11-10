@@ -42,9 +42,9 @@ namespace Nethermind.Baseline.Tree
             var currentBlockNumber = lastBlockWithLeaves;
             while (blockNumber < currentBlockNumber)
             {
+                if (foundCount.PreviousBlockWithLeaves == 0)
+                    return 0;
                 foundCount = LoadBlockNumberCount(foundCount.PreviousBlockWithLeaves);
-                if (currentBlockNumber == 0)
-                    return foundCount.Count;
 
                 currentBlockNumber = foundCount.PreviousBlockWithLeaves;
             }
@@ -56,17 +56,20 @@ namespace Nethermind.Baseline.Tree
         {
             if (blockNumber <= 1)
                 return 0;
-
+            var searchForBlockNumber = blockNumber - 1;
             var foundCount = LoadBlockNumberCount(lastBlockWithLeaves);
+            if (clearPreviousCounts)
+                ClearBlockNumberCount(lastBlockWithLeaves);
             var currentBlockNumber = lastBlockWithLeaves;
-            while (blockNumber < currentBlockNumber)
+            while (searchForBlockNumber < currentBlockNumber)
             {
+                if (foundCount.PreviousBlockWithLeaves == 0)
+                    return 0;
                 foundCount = LoadBlockNumberCount(foundCount.PreviousBlockWithLeaves);
-                if (currentBlockNumber == 0)
-                    return foundCount.Count;
+                if (clearPreviousCounts)
+                    ClearBlockNumberCount(foundCount.PreviousBlockWithLeaves);
 
                 currentBlockNumber = foundCount.PreviousBlockWithLeaves;
-
             }
 
             return foundCount.Count;
