@@ -53,7 +53,8 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Deposits
         {
             DepositDetailsInMemoryRepository repository = new DepositDetailsInMemoryRepository(new DepositsInMemoryDb());
             repository.AddAsync(_details);
-            DepositReportService reportService = new DepositReportService(repository, new ReceiptInMemoryRepository(), new ConsumerSessionInMemoryRepository(), Timestamper.Default);
+            ConsumerSessionInMemoryRepository sessionInMemoryRepository = new ConsumerSessionInMemoryRepository();
+            DepositReportService reportService = new DepositReportService(repository, new DepositUnitsCalculator(sessionInMemoryRepository, Timestamper.Default), new ReceiptInMemoryRepository(), new ConsumerSessionInMemoryRepository(), Timestamper.Default);
             var report = reportService.GetAsync(new GetDepositsReport());
             report.Result.Deposits.Items.Should().HaveCount(1);
         }
