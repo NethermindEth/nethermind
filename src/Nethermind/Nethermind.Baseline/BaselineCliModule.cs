@@ -48,9 +48,14 @@ namespace Nethermind.Baseline
             CliParseAddress(contractAddress),
             hashes.Select(CliParseHash).ToArray()
             ).Result;
-        
+
         [CliFunction("baseline", "getRoot")]
-        public string GetRoot(string contactAddress, string? blockParameter = null) => NodeManager.Post<string>(
+        public string GetRoot(string contactAddress) => NodeManager.Post<string>(
+            "baseline_getRoot",
+            CliParseAddress(contactAddress)).Result;
+
+        [CliFunction("baseline", "getRoot")]
+        public string GetRoot(string contactAddress, string? blockParameter) => NodeManager.Post<string>(
             "baseline_getRoot",
             CliParseAddress(contactAddress),
              blockParameter ?? "latest").Result;

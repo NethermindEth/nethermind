@@ -161,7 +161,7 @@ namespace Nethermind.Baseline.Tree
         {
             for (uint i = 0; i < leavesToRemove; ++i)
             {
-                Index index = new Index(LeafRow, Count - i);
+                Index index = new Index(LeafRow, Count - i - 1);
                 Modify(index, ZeroHash, recalculateHashes);
             }
 

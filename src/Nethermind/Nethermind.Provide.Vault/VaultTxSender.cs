@@ -82,7 +82,7 @@ namespace Nethermind.Vault
             // this should happen after we set the GasPrice
             _txSigner.Seal(tx);
             ProvideTx createdTx = await _provide.CreateTransaction(provideTx);
-            return new Keccak(createdTx.Hash);
+            return createdTx?.Hash == null ? Keccak.Zero : new Keccak(createdTx.Hash);
         }
 
         private async Task EnsureAccount()
