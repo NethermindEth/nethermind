@@ -480,21 +480,13 @@ namespace Nethermind.Blockchain
             bool isKnown = IsKnownBlock(header.Number, header.Hash);
             if (isKnown && (BestSuggestedHeader?.Number ?? 0) >= header.Number)
             {
-                if (_logger.IsTrace)
-                {
-                    _logger.Trace($"Block {header.Hash} already known.");
-                }
-
+                if (_logger.IsTrace) _logger.Trace($"Block {header.Hash} already known.");
                 return AddBlockResult.AlreadyKnown;
             }
 
             if (!header.IsGenesis && !IsKnownBlock(header.Number - 1, header.ParentHash))
             {
-                if (_logger.IsTrace)
-                {
-                    _logger.Trace($"Could not find parent ({header.ParentHash}) of block {header.Hash}");
-                }
-
+                if (_logger.IsTrace) _logger.Trace($"Could not find parent ({header.ParentHash}) of block {header.Hash}");
                 return AddBlockResult.UnknownParent;
             }
 
@@ -1268,41 +1260,66 @@ namespace Nethermind.Blockchain
 
         private void SetTotalDifficulty(BlockHeader header)
         {
+            BlockHeader GetParentHeader(BlockHeader current) => 
+                // TotalDifficultyNotNeeded is by design here,
+                // if it was absent this would result in recursion, as if parent doesn't already have total difficulty 
+                // then it would call back to SetTotalDifficulty for it
+                // This was original code but it could result in stack overflow
+                this.FindParentHeader(current, BlockTreeLookupOptions.TotalDifficultyNotNeeded) 
+                ?? throw new InvalidOperationException($"An orphaned block on the chain {current}");
+
+            void SetTotalDifficultyDeep(BlockHeader current)
+            {
+                Stack<BlockHeader> stack = new Stack<BlockHeader>();
+                while (current.TotalDifficulty == null)
+                {
+                    (BlockInfo blockInfo, ChainLevelInfo level) = LoadInfo(current.Number, current.Hash, true);
+                    if (level == null || blockInfo == null)
+                    {
+                        stack.Push(current);
+                        if (_logger.IsTrace) _logger.Trace($"Calculating total difficulty for {current.ToString(BlockHeader.Format.Short)}");
+                        current = GetParentHeader(current);
+                    }
+                    else
+                    {
+                        current.TotalDifficulty = blockInfo.TotalDifficulty;
+                    }
+                }
+
+                while (stack.TryPop(out BlockHeader child))
+                {
+                    child.TotalDifficulty = current.TotalDifficulty + child.Difficulty;
+                    BlockInfo blockInfo = new BlockInfo(child.Hash, child.TotalDifficulty.Value);
+                    UpdateOrCreateLevel(child.Number, blockInfo);
+                    if(_logger.IsTrace) _logger.Trace($"Calculated total difficulty for {child} is {child.TotalDifficulty}");
+                    current = child;
+                }
+            }
+            
             if (header.TotalDifficulty != null)
             {
                 return;
             }
 
-            if (_logger.IsTrace)
-            {
-                _logger.Trace($"Calculating total difficulty for {header.ToString(BlockHeader.Format.Short)}");
-            }
-
+            if (_logger.IsTrace) _logger.Trace($"Calculating total difficulty for {header.ToString(BlockHeader.Format.Short)}");
+            
             if (header.IsGenesis)
             {
                 header.TotalDifficulty = header.Difficulty;
             }
             else
             {
-                BlockHeader parentHeader = this.FindParentHeader(header, BlockTreeLookupOptions.None);
-                if (parentHeader == null)
-                {
-                    throw new InvalidOperationException($"An orphaned block on the chain {header}");
-                }
+                BlockHeader parentHeader = GetParentHeader(header);
 
                 if (parentHeader.TotalDifficulty == null)
                 {
-                    throw new InvalidOperationException(
-                        $"Parent's {nameof(parentHeader.TotalDifficulty)} unknown when calculating for {header}");
+                    SetTotalDifficultyDeep(parentHeader);
                 }
 
                 header.TotalDifficulty = parentHeader.TotalDifficulty + header.Difficulty;
             }
 
-            if (_logger.IsTrace)
-            {
-                _logger.Trace($"Calculated total difficulty for {header} is {header.TotalDifficulty}");
-            }
+            if (_logger.IsTrace) _logger.Trace($"Calculated total difficulty for {header} is {header.TotalDifficulty}");
         }
 
         public event EventHandler<BlockEventArgs> BlockAddedToMain;
