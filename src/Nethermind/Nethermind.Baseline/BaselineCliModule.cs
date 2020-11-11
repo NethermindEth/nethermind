@@ -30,8 +30,16 @@ namespace Nethermind.Baseline
         }
 
         [CliFunction("baseline", "deploy")]
-        public string Deploy(string address, string contractType)
-            => NodeManager.Post<string>("baseline_deploy", CliParseAddress(address), contractType).Result;
+        public string Deploy(string address, string contractType, string? argumentsAbi)
+        {
+            if (argumentsAbi == null)
+            {
+                return NodeManager.Post<string>("baseline_deploy", CliParseAddress(address), contractType).Result;    
+            }
+
+            return NodeManager.Post<string>("baseline_deploy", CliParseAddress(address), contractType, argumentsAbi).Result;
+        }
+            
 
         [CliFunction("baseline", "insertLeaf")]
         public string InsertLeaf(string address, string contractAddress, string hash) =>
