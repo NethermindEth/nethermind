@@ -100,7 +100,7 @@ namespace Nethermind.Baseline.Tree
             if (_currentBlockHeader != null && _currentBlockHeader.Hash != e.Block.ParentHash)
             {
                 if(_logger.IsWarn) _logger.Warn(
-                    $"Tree tracker for {_baselineTree} reorgnizes from branching point at {e.Block.ToString(Block.Format.Short)}");
+                    $"Tree tracker for {_baselineTree} reorganizes from branching point at {e.Block.ToString(Block.Format.Short)}");
                 removedItemsCount = Reorganize(e.Block.Number);
             }
 

@@ -82,9 +82,10 @@ namespace Nethermind.Baseline.Tree
 
         public (uint Count, long NewLastBlockWithLeaves) GoBackTo(long blockNumber, long lastBlockWithLeaves)
         {
-            (uint Count, long NewLastBlockWithLeaves) result = (0, 0);
+            (uint Count, long NewLastBlockWithLeaves) result;
             while (lastBlockWithLeaves > blockNumber)
             {
+                _logger.Warn($"Loading and clearing {lastBlockWithLeaves} when reorganizing to block:{blockNumber} and last non-empty:{lastBlockWithLeaves}.");
                 result = LoadBlockNumberCount(lastBlockWithLeaves);
                 ClearBlockNumberCount(lastBlockWithLeaves);
                 lastBlockWithLeaves = result.NewLastBlockWithLeaves;
