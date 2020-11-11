@@ -48,14 +48,12 @@ namespace Nethermind.Vault
         private bool _accountCreated = false;
 
         private NChain _provide;
-        private 
 
         public VaultTxSender(ITxSigner txSigner, IVaultConfig vaultConfig, int chainId)
         {
             _txSigner = txSigner;
             _vaultConfig = vaultConfig;
 
-            _networkId = new Guid("9a2dd9ce-d283-4766-9ce5-c84a30474121");
             _provide = new NChain(
                 vaultConfig.NChainHost,
                 vaultConfig.NchainPath,
@@ -72,7 +70,10 @@ namespace Nethermind.Vault
                     var network = new provide.Model.NChain.Network()
                     {
                         Name = "baseline_test",
-
+                        Config = new Dictionary<string, object>()
+                        {
+                            { "chain", "test" }
+                        }
                     };
                     var result = await _provide.CreateNetwork(network);
                     _networkId = result.Id;
@@ -99,7 +100,7 @@ namespace Nethermind.Vault
                 }
                 else
                 {
-                    _networkId = new Guid(_vaultConfig.NChainAccountId);
+                    _accountId = new Guid(_vaultConfig.NChainAccountId);
                 }
             }
         }
@@ -112,7 +113,7 @@ namespace Nethermind.Vault
             provideTx.Data = "0x" + (tx.Data ?? tx.Init).ToHexString();
             provideTx.Description = "From Nethermind with love";
             provideTx.Hash = tx.Hash?.ToString();
-            provideTx.AccountId = new Guid("d60507f5-5104-4abe-b101-199e65eedd33");
+            provideTx.AccountId = _accountId;
             provideTx.NetworkId = _networkId;
             provideTx.To = tx.To?.ToString();
             provideTx.Value = (BigInteger)tx.Value;
