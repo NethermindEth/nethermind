@@ -107,9 +107,18 @@ namespace Nethermind.Baseline.Tree
             return Metadata.GetBlockCount(LastBlockWithLeaves, blockNumber);
         }
 
-        public uint GetPreviousBlockCount(long blockNumber, bool clearPreviousCounts = false)
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <param name="blockNumber"></param>
+        /// <returns>Deleted leaves count</returns>
+        public uint GoBackTo(long blockNumber)
         {
-            return Metadata.GetPreviousBlockCount(LastBlockWithLeaves, blockNumber, clearPreviousCounts);
+            (uint count, long newLastBlockWithLeaves) = Metadata.GoBackTo(blockNumber, LastBlockWithLeaves);
+            var leavesToDelete = Count - count;
+            LastBlockWithLeaves = newLastBlockWithLeaves;
+            Delete(leavesToDelete, false);
+            return leavesToDelete;
         }
 
         private void InitializeMetadata()

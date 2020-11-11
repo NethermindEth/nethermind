@@ -63,8 +63,8 @@ namespace Nethermind.Baseline.Test
                 baselineMetaData.SaveBlockNumberCount(test.DataToSave[i].BlockNumber, test.DataToSave[i].Count, test.DataToSave[i].PreviousBlockWithLeaves);
             }
 
-            var actual = baselineMetaData.GetPreviousBlockCount(test.LastBlockWithLeaves, test.BlockNumber);
-            Assert.AreEqual(test.ExpectedResult, actual);
+            var actual = baselineMetaData.GoBackTo(test.BlockNumber - 1, test.LastBlockWithLeaves);
+            Assert.AreEqual(test.ExpectedResult, actual.Count);
         }
 
         [Test]
