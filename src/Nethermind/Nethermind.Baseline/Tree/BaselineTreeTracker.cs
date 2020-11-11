@@ -149,9 +149,9 @@ namespace Nethermind.Baseline.Tree
 
         private uint Reorganize(long newBlockNumber)
         {
-            var leavesToReorganize = _baselineTree.Count - _baselineTree.GetPreviousBlockCount(newBlockNumber, true);
-            _baselineTree.Delete(leavesToReorganize, false);
-            return leavesToReorganize;
+            var leavesToDelete = _baselineTree.Count - _baselineTree.GetPreviousBlockCount(newBlockNumber, true);
+            _baselineTree.Delete(leavesToDelete, false);
+            return leavesToDelete;
         }
 
         public void Dispose()

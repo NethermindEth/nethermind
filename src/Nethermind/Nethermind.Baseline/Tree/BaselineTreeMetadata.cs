@@ -42,14 +42,16 @@ namespace Nethermind.Baseline.Tree
         {
             if(_logger.IsWarn) _logger.Warn(
                 $"Getting block count for {DbPrefix.ToHexString()}");
-            
+
             if (blockNumber == 0 || lastBlockWithLeaves == 0)
+            {
                 return 0;
-            
+            }
+
             (uint Count, long PreviousBlockWithLeaves) foundCount = LoadBlockNumberCount(lastBlockWithLeaves);
             if(_logger.IsWarn) _logger.Warn(
                 $"Starting with ({foundCount.Count},{foundCount.PreviousBlockWithLeaves}) for {DbPrefix.ToHexString()}");
-            var currentBlockNumber = lastBlockWithLeaves;
+            long currentBlockNumber = lastBlockWithLeaves;
             while (blockNumber < currentBlockNumber)
             {
                 if (foundCount.PreviousBlockWithLeaves == 0)
@@ -74,21 +76,32 @@ namespace Nethermind.Baseline.Tree
 
         public uint GetPreviousBlockCount(long lastBlockWithLeaves, long blockNumber, bool clearPreviousCounts = false)
         {
-            if (blockNumber <= 1 || lastBlockWithLeaves <=1)
+            if (blockNumber <= 1 || lastBlockWithLeaves <= 1)
+            {
                 return 0;
-            var searchForBlockNumber = blockNumber - 1;
-            var foundCount = LoadBlockNumberCount(lastBlockWithLeaves);
+            }
+
+            long searchForBlockNumber = blockNumber - 1;
+            (uint Count, long PreviousBlockWithLeaves) foundCount = LoadBlockNumberCount(lastBlockWithLeaves);
             if (clearPreviousCounts)
+            {
                 ClearBlockNumberCount(lastBlockWithLeaves);
-            var currentBlockNumber = lastBlockWithLeaves;
+            }
+
+            long currentBlockNumber = lastBlockWithLeaves;
             while (searchForBlockNumber < currentBlockNumber)
             {
                 if (foundCount.PreviousBlockWithLeaves == 0)
+                {
                     return 0;
+                }
+
                 currentBlockNumber = foundCount.PreviousBlockWithLeaves;
                 foundCount = LoadBlockNumberCount(foundCount.PreviousBlockWithLeaves);
                 if (clearPreviousCounts)
-                    ClearBlockNumberCount(foundCount.PreviousBlockWithLeaves);
+                {
+                    ClearBlockNumberCount(currentBlockNumber);
+                }
             }
 
             return foundCount.Count;
@@ -110,7 +123,7 @@ namespace Nethermind.Baseline.Tree
             RlpStream? rlpStream = new RlpStream(data);
             rlpStream.SkipLength();
 
-            var result = (rlpStream.DecodeUInt(), rlpStream.DecodeLong());
+            (uint, long) result = (rlpStream.DecodeUInt(), rlpStream.DecodeLong());
             if(_logger.IsWarn) _logger.Warn($"Loading count for block {blockNumber} in {DbPrefix.ToHexString()} - ({result.Item1},{result.Item2})");
             return result;
         }
