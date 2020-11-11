@@ -38,6 +38,5 @@ namespace Nethermind.Vault.Test
             ITxSigner vaultSigner = new VaultTxSigner(wallet, 1);
             Assert.DoesNotThrow(() => { new VaultTxSender(vaultSigner, vaultConfig, 1); });
         }
-
     }
 }
