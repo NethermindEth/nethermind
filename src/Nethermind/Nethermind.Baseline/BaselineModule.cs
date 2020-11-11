@@ -308,7 +308,7 @@ namespace Nethermind.Baseline
         public async Task<ResultWrapper<Keccak>> baseline_deploy(Address address, string contractType, string? argumentsAbi = null)
         {
             // sample shield arguments:
-            // 000000000000000000000000de09e74d4888bc4e65f589e8c13bce9f71ddf4c70000000000000000000000000000000000000000000000000000000000000020
+            // Goerli: 000000000000000000000000b881525d318d6bb54058116af45dd83e7c34fc4e0000000000000000000000000000000000000000000000000000000000000020
             
             ResultWrapper<Keccak> result;
             try
