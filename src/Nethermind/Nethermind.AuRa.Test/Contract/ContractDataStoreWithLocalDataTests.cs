@@ -127,7 +127,7 @@ namespace Nethermind.AuRa.Test.Contract
                 BlockProcessor = blockProcessor,
                 ContractDataStore = keyComparer == null
                     ? (IContractDataStore<T>)new ContractDataStoreWithLocalData<T>(new HashSetContractDataStoreCollection<T>(), dataContract, blockProcessor, LimboLogs.Instance, localDataSource)
-                    : new DictionaryContractDataStore<T>(new SortedListContractDataStoreCollection<T>(keyComparer, valueComparer), dataContract, blockProcessor, LimboLogs.Instance, localDataSource)
+                    : new DictionaryContractDataStore<T, SortedListContractDataStoreCollection<T>>(new SortedListContractDataStoreCollection<T>(keyComparer, valueComparer), dataContract, blockProcessor, LimboLogs.Instance, localDataSource)
             };
         }
         

@@ -52,7 +52,7 @@ namespace Nethermind.Runner.Ethereum.Steps
         private AuRaSealValidator? _sealValidator;
         private WrappingComparer<Transaction>? _txPoolComparer = null;
         private readonly IAuraConfig _auraConfig;
-        private DictionaryContractDataStore<TxPriorityContract.Destination>? _minGasPricesContractDataStore;
+        private DictionaryContractDataStore<TxPriorityContract.Destination, TxPriorityContract.DestinationSortedListContractDataStoreCollection>? _minGasPricesContractDataStore;
         private BlockProcessorWrapper? _blockProcessorWrapper = null;
         private TxPriorityContract? _txPriorityContract;
         private TxPriorityContract.LocalDataSource? _localDataSource;
@@ -213,7 +213,6 @@ namespace Nethermind.Runner.Ethereum.Steps
 
         protected override IComparer<Transaction> CreateTxPoolTxComparer()
         {
-            (_txPriorityContract, _localDataSource) = TxFilterBuilders.CreateTxPrioritySources(_auraConfig, _api, _readOnlyTransactionProcessorSource!);
             if (_txPriorityContract != null || _localDataSource != null)
             {
                 _txPoolComparer = new WrappingComparer<Transaction>();
@@ -235,13 +234,14 @@ namespace Nethermind.Runner.Ethereum.Steps
                     blockProcessor,
                     _api.LogManager,
                     _localDataSource?.GetWhitelistLocalDataSource() ?? new EmptyLocalDataSource<IEnumerable<Address>>());
-                
-                DictionaryContractDataStore<TxPriorityContract.Destination> prioritiesContractDataStore = new DictionaryContractDataStore<TxPriorityContract.Destination>(
-                    new TxPriorityContract.DestinationSortedListContractDataStoreCollection(),
-                    _txPriorityContract?.Priorities,
-                    blockProcessor,
-                    _api.LogManager,
-                    _localDataSource?.GetPrioritiesLocalDataSource());
+
+                DictionaryContractDataStore<TxPriorityContract.Destination, TxPriorityContract.DestinationSortedListContractDataStoreCollection> prioritiesContractDataStore =
+                    new DictionaryContractDataStore<TxPriorityContract.Destination, TxPriorityContract.DestinationSortedListContractDataStoreCollection>(
+                        new TxPriorityContract.DestinationSortedListContractDataStoreCollection(),
+                        _txPriorityContract?.Priorities,
+                        blockProcessor,
+                        _api.LogManager,
+                        _localDataSource?.GetPrioritiesLocalDataSource());
 
                 _api.DisposeStack.Push(whitelistContractDataStore);
                 _api.DisposeStack.Push(prioritiesContractDataStore);
@@ -252,7 +252,8 @@ namespace Nethermind.Runner.Ethereum.Steps
         protected override TxPool.TxPool CreateTxPool(PersistentTxStorage txStorage)
         {
             _blockProcessorWrapper = new BlockProcessorWrapper();
-            _minGasPricesContractDataStore = TxFilterBuilders.CreateMinGasPricesDataStore(_auraConfig, _api, _readOnlyTransactionProcessorSource!, _blockProcessorWrapper);
+            (_txPriorityContract, _localDataSource) = TxFilterBuilders.CreateTxPrioritySources(_auraConfig, _api, _readOnlyTransactionProcessorSource!);
+            _minGasPricesContractDataStore = TxFilterBuilders.CreateMinGasPricesDataStore(_api, _txPriorityContract, _localDataSource, _blockProcessorWrapper);
             return new FilteredTxPool(
                 txStorage,
                 _api.EthereumEcdsa,

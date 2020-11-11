@@ -50,7 +50,7 @@ namespace Nethermind.Runner.Ethereum.Steps
         
         private readonly IAuraConfig _auraConfig;
         private IAuRaValidator? _validator;
-        private DictionaryContractDataStore<TxPriorityContract.Destination>? _minGasPricesContractDataStore;
+        private DictionaryContractDataStore<TxPriorityContract.Destination, TxPriorityContract.DestinationSortedListContractDataStoreCollection>? _minGasPricesContractDataStore;
         private TxPriorityContract? _txPriorityContract;
         private TxPriorityContract.LocalDataSource? _localDataSource;
         private ITxFilter? _txPermissionFilter;
@@ -162,13 +162,14 @@ namespace Nethermind.Runner.Ethereum.Steps
                     blockProcessor,
                     _api.LogManager,
                     _localDataSource?.GetWhitelistLocalDataSource() ?? new EmptyLocalDataSource<IEnumerable<Address>>());
-                
-                DictionaryContractDataStore<TxPriorityContract.Destination> prioritiesContractDataStore = new DictionaryContractDataStore<TxPriorityContract.Destination>(
-                    new TxPriorityContract.DestinationSortedListContractDataStoreCollection(),
-                    _txPriorityContract?.Priorities,
-                    blockProcessor,
-                    _api.LogManager,
-                    _localDataSource?.GetPrioritiesLocalDataSource());
+
+                DictionaryContractDataStore<TxPriorityContract.Destination, TxPriorityContract.DestinationSortedListContractDataStoreCollection> prioritiesContractDataStore =
+                    new DictionaryContractDataStore<TxPriorityContract.Destination, TxPriorityContract.DestinationSortedListContractDataStoreCollection>(
+                        new TxPriorityContract.DestinationSortedListContractDataStoreCollection(),
+                        _txPriorityContract?.Priorities,
+                        blockProcessor,
+                        _api.LogManager,
+                        _localDataSource?.GetPrioritiesLocalDataSource());
                 
                 _api.DisposeStack.Push(whitelistContractDataStore);
                 _api.DisposeStack.Push(prioritiesContractDataStore);

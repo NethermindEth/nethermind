@@ -60,6 +60,7 @@ namespace Nethermind.Consensus.AuRa.Contracts.DataStore
             _localData = _localDataSource.Data?.ToArray() ?? Array.Empty<T>();
             Collection.Remove(oldData.Except(_localData));
             Collection.Insert(_localData.Except(oldData));
+            TraceDataChanged();
         }
 
         protected override void RemoveOldContractItemsFromCollection()
