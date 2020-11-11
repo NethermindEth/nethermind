@@ -117,7 +117,7 @@ namespace Nethermind.Baseline
             var txData = _abiEncoder.Encode(
                 AbiEncodingStyle.IncludeSignature,
                 ContractMerkleTree.InsertLeavesAbiSig,
-                new object[] { hashes });
+                new object[] {hashes});
 
             Transaction tx = new Transaction();
             tx.Value = 0;
@@ -305,15 +305,14 @@ namespace Nethermind.Baseline
             return Task.FromResult(result);
         }
 
-        public async Task<ResultWrapper<Keccak>> baseline_deploy(Address address, string contractType)
+        public async Task<ResultWrapper<Keccak>> baseline_deploy(Address address, string contractType, string? argumentsAbi = null)
         {
             ResultWrapper<Keccak> result;
             try
             {
-                var bytecode = await GetContractBytecode(contractType);
+                var bytecode = await GetContractBytecode(contractType, argumentsAbi);
                 try
                 {
-
                     Keccak txHash = await DeployBytecode(address, contractType, bytecode);
                     result = ResultWrapper<Keccak>.Success(txHash);
                 }
@@ -528,7 +527,7 @@ namespace Nethermind.Baseline
 
         private BaselineMetadata _metadata;
 
-        private byte[] _metadataKey = { 0 };
+        private byte[] _metadataKey = {0};
 
         private ConcurrentDictionary<Address, BaselineTree> _baselineTrees
             = new ConcurrentDictionary<Address, BaselineTree>();
@@ -553,10 +552,7 @@ namespace Nethermind.Baseline
         {
             Transaction tx = new Transaction();
             tx.Value = 0;
-            contractType == "Shield" ? tx.Init = _abiEncoder.Encode(
-                        AbiEncodingStyle.IncludeSignature,
-                        address,
-                        BaselineTree.TreeHeight) : tx.Init = bytecode;
+            tx.Init = bytecode;
             tx.GasLimit = 1000000;
             tx.GasPrice = 20.GWei();
             tx.SenderAddress = address;
@@ -611,8 +607,9 @@ namespace Nethermind.Baseline
         /// 608060405234801561001057600080fd5b5061080980610(...)
         /// </summary>
         /// <param name="contract"></param>
+        /// <param name="argumentsAbi"></param>
         /// <returns></returns>
-        private async Task<byte[]> GetContractBytecode(string contract)
+        private async Task<byte[]> GetContractBytecode(string contract, string? argumentsAbi)
         {
             // TODO: remove the hack and write code nicely
             string[] contractBytecode = await _fileSystem.File.ReadAllLinesAsync($"plugins/contracts/{contract}.bin".GetApplicationResourcePath());
@@ -630,7 +627,9 @@ namespace Nethermind.Baseline
             }
 
             if (_logger.IsInfo) _logger.Info($"Loading bytecode of {contractBytecode[1]}");
-            return Bytes.FromHexString(contractBytecode[3]);
+            string bytecodeHex = contractBytecode[3];
+            bytecodeHex = bytecodeHex.Replace("#argumentsAbi#", argumentsAbi ?? string.Empty);
+            return Bytes.FromHexString(bytecodeHex);
         }
 
         private void InitTrees()
@@ -668,7 +667,7 @@ namespace Nethermind.Baseline
             }
 
             ShaBaselineTree tree = new ShaBaselineTree(_baselineDb, _metadataBaselineDb, trackedTree.Bytes, TruncationLength, _logger);
-            bool result =  _baselineTrees.TryAdd(trackedTree, tree);
+            bool result = _baselineTrees.TryAdd(trackedTree, tree);
             if (result)
             {
                 var tracker = new BaselineTreeTracker(trackedTree, tree, _blockProcessor, _baselineTreeHelper, _blockFinder, _logger);
