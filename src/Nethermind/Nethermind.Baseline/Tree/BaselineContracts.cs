@@ -32,6 +32,6 @@ namespace Nethermind.Baseline.Tree
         public static readonly AbiSignature VerifyAndPushSig = new AbiSignature("verifyAndPush",
             new AbiArray(new AbiUInt(256)),
             new AbiArray(new AbiUInt(256)),
-            new AbiArray(new AbiBytes(32))); // verifyAndPush
+            new AbiBytes(32)); // verifyAndPush
     }
 }
