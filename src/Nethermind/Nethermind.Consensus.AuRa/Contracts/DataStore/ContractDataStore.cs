@@ -89,6 +89,8 @@ namespace Nethermind.Consensus.AuRa.Contracts.DataStore
                         }
 
                         Collection.Insert(items);
+                        
+                        if (_logger.IsTrace) _logger.Trace($"{GetType()} changed to {string.Join(", ", Collection.GetSnapshot())}");
                     }
 
                     _lastHash = blockHeader.Hash;

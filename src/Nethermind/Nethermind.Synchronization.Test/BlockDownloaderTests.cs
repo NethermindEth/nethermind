@@ -759,7 +759,7 @@ namespace Nethermind.Synchronization.Test
             {
                 Block genesis = Build.A.Block.Genesis.TestObject;
                 MemDb blockInfoDb = new MemDb();
-                BlockTree = new BlockTree(new MemDb(), new MemDb(), blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), MainnetSpecProvider.Instance, NullTxPool.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
+                BlockTree = new BlockTree(new MemDb(), new MemDb(), blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), MainnetSpecProvider.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
                 BlockTree.SuggestBlock(genesis);
 
                 TestHeaderMapping = new Dictionary<long, Keccak>();
