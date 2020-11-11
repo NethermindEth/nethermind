@@ -81,7 +81,7 @@ namespace Nethermind.Baseline
             Description = "Deploys a contract with the given 'contract type'. Requires the account to be unlocked.",
             IsSharable = false,
             IsImplemented = true)]
-        Task<ResultWrapper<Keccak>> baseline_deploy(Address address, string contractType);
+        Task<ResultWrapper<Keccak>> baseline_deploy(Address address, string contractType, string? argumentsAbi = null);
         
         [JsonRpcMethod(
             Description = "Deploys a contract with the given bytecode. Requires the account to be unlocked.",
