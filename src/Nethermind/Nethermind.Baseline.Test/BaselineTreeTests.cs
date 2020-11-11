@@ -19,6 +19,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Baseline.Tree;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
@@ -507,6 +508,42 @@ namespace Nethermind.Baseline.Test
             withoutHashesTree.CalculateHashes(startCalculatingHashes);
             Assert.AreEqual(withHashesTree.Root, withoutHashesTree.Root);
             Assert.AreEqual(withHashesTree.Count, withoutHashesTree.Count);
+        }
+
+        private static Random _random = new Random();
+
+        [TestCase(2, 10, 50, true)]
+        public void No_reorg_counting_test(int leavesPerBlock, int blocksCount, int emptyBlocksRatio, bool recalculateOnInsert)
+        {
+            BaselineTree baselineTree = new ShaBaselineTree(
+                new MemDb(), new MemDb(), Address.Zero.Bytes, 0, LimboNoErrorLogger.Instance);
+
+            int randomSeed = _random.Next();
+            Console.WriteLine($"random seed was {randomSeed}");
+            Random random = new Random(randomSeed);
+            int currentBlockNumber = 0;
+            int totalCountCheck = 0;
+            int lastBlockWithLeavesCheck = 0;
+            for (int i = 0; i < blocksCount; i++)
+            {
+                currentBlockNumber++;
+                int numberOfLeaves = random.Next(leavesPerBlock) + 1; // not zero
+                bool hasLeaves = random.Next(100) < emptyBlocksRatio;
+
+                if (hasLeaves)
+                {
+                    lastBlockWithLeavesCheck = currentBlockNumber;
+                    for (int j = 0; j < numberOfLeaves; j++)
+                    {
+                        byte[] leafBytes = new byte[32];
+                        random.NextBytes(leafBytes);
+                        baselineTree.Insert(new Keccak(leafBytes), recalculateOnInsert);
+                    }
+
+                    baselineTree.MemorizeCount(currentBlockNumber, baselineTree.Count);
+                    baselineTree.LastBlockWithLeaves.Should().Be(lastBlockWithLeavesCheck);
+                }
+            }
         }
     }
 }

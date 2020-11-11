@@ -143,9 +143,7 @@ namespace Nethermind.Baseline.Tree
 
                 if (currentBlockNumber != filterLog.BlockNumber)
                 {
-                    var previousBlockWithLeaves = baselineTree.LastBlockWithLeaves;
-                    baselineTree.Metadata.SaveBlockNumberCount(currentBlockNumber.Value, count, previousBlockWithLeaves);
-                    baselineTree.LastBlockWithLeaves = currentBlockNumber.Value;
+                    baselineTree.MemorizeCount(currentBlockNumber.Value, count);
                     currentBlockNumber = filterLog.BlockNumber;
                 }
 
@@ -171,12 +169,7 @@ namespace Nethermind.Baseline.Tree
 
             if (currentBlockNumber != null && count != 0)
             {
-                var previousBlockWithLeaves = baselineTree.LastBlockWithLeaves;
-
-                uint newCount = baselineTree.Count;
-                if(_logger.IsWarn) _logger.Warn($"Saving block number count ({newCount}, {previousBlockWithLeaves}) of {baselineTree} in block {currentBlockNumber}");
-                baselineTree.Metadata.SaveBlockNumberCount(currentBlockNumber.Value, newCount, previousBlockWithLeaves);
-                baselineTree.LastBlockWithLeaves = currentBlockNumber.Value;
+                baselineTree.MemorizeCount(currentBlockNumber.Value, baselineTree.Count);
             }
 
             baselineTree.CalculateHashes(initCount);

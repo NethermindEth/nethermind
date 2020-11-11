@@ -51,7 +51,14 @@ namespace Nethermind.Baseline.Tree
 
         public uint Count { get; private set; }
 
-        public long LastBlockWithLeaves { get; set; }
+        public long LastBlockWithLeaves { get; private set; }
+
+        public void MemorizeCount(long blockNumber, uint count)
+        { 
+            if(_logger.IsWarn) _logger.Warn($"Saving block number count ({count}, {LastBlockWithLeaves}) of {this} in block {blockNumber}");
+            Metadata.SaveBlockNumberCount(blockNumber, count, LastBlockWithLeaves);
+            LastBlockWithLeaves = blockNumber;
+        }
 
         public BaselineTreeMetadata Metadata { get; private set; }
 

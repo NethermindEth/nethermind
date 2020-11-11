@@ -143,9 +143,7 @@ namespace Nethermind.Baseline.Tree
             if (newLeavesCount != 0 || removedItemsCount != 0)
             {
                 var currentTreeCount = treeStartingCount + newLeavesCount - removedItemsCount;
-                var previousBlockWithLeaves = _baselineTree.LastBlockWithLeaves;
-                _baselineTree.Metadata.SaveBlockNumberCount(newBlockNumber, currentTreeCount, previousBlockWithLeaves);
-                _baselineTree.LastBlockWithLeaves = newBlockNumber;
+                _baselineTree.MemorizeCount(newBlockNumber, currentTreeCount);
             }
         }
 

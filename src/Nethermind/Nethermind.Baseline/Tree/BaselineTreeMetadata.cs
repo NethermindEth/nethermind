@@ -133,7 +133,7 @@ namespace Nethermind.Baseline.Tree
             return result;
         }
 
-        public void SaveBlockNumberCount(long blockNumber, uint count, long previousBlockWithLeaves)
+        internal void SaveBlockNumberCount(long blockNumber, uint count, long previousBlockWithLeaves)
         {
             if (_logger.IsWarn)
                 _logger.Warn(
