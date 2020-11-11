@@ -522,6 +522,7 @@ namespace Nethermind.Baseline.Test
         [TestCase(10, 25, 90, false, true, null)]
         [TestCase(10, 100, 90, false, true, 496297040)]
         [TestCase(10, 100, 90, false, true, null)]
+        [TestCase(10, 10000, 50, false, true, null)]
         [TestCase(1, 100, 20, false, true, 484284241)]
         [TestCase(1, 100, 20, false, true, null)]
         // TODO: fuzzer with concurrent inserts
