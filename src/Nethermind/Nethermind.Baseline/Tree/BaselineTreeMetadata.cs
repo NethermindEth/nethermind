@@ -102,6 +102,11 @@ namespace Nethermind.Baseline.Tree
         public (uint Count, long PreviousBlockWithLeaves) LoadBlockNumberCount(long blockNumber)
         {
             byte[]? data = _metadataKeyValueStore[MetadataBuildDbKey(blockNumber)];
+            if (data == null)
+            {
+                return (0, 0);
+            }
+            
             RlpStream? rlpStream = new RlpStream(data);
             rlpStream.SkipLength();
 
