@@ -17,13 +17,17 @@
 
 using System;
 using System.Collections.Generic;
+using System.Net.Http;
+using System.Net.Http.Headers;
 using System.Numerics;
+using System.Text;
 using System.Threading.Tasks;
 using Ipfs;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.TxPool;
 using Nethermind.Vault.Config;
+using Newtonsoft.Json;
 using provide;
 using ProvideTx = provide.Model.NChain.Transaction;
 
@@ -31,6 +35,11 @@ namespace Nethermind.Vault
 {
     public class VaultTxSender : ITxSender
     {
+        public class CreateAccountRequest
+        {
+            public string network_id { get; set; }
+        }
+
         private static Dictionary<int, Guid> _networkIdMapping = new Dictionary<int, Guid>
         {
             // Bitcoin mainnet: 248fa53c-3df4-41af-ab6b-b78f94d6c25c 	 mainnet 
@@ -45,7 +54,6 @@ namespace Nethermind.Vault
         private Guid? _accountId;
         private readonly ITxSigner _txSigner;
         private readonly IVaultConfig _vaultConfig;
-        private bool _accountCreated = false;
 
         private NChain _provide;
 
@@ -56,8 +64,8 @@ namespace Nethermind.Vault
 
             _provide = new NChain(
                 vaultConfig.NChainHost,
-                vaultConfig.NchainPath,
-                vaultConfig.NchainScheme,
+                vaultConfig.NChainPath,
+                vaultConfig.NChainScheme,
                 vaultConfig.NChainToken);
         }
 
@@ -72,8 +80,8 @@ namespace Nethermind.Vault
                         Name = "baseline_test",
                         Config = new Dictionary<string, object>()
                         {
-                            { "chain", "test" }
-                        }
+                            { "chain", "test" },
+                        },                        
                     };
                     var result = await _provide.CreateNetwork(network);
                     _networkId = result.Id;
@@ -125,6 +133,31 @@ namespace Nethermind.Vault
             _txSigner.Seal(tx);
             ProvideTx createdTx = await _provide.CreateTransaction(provideTx);
             return createdTx?.Hash == null ? Keccak.Zero : new Keccak(createdTx.Hash);
+        }
+
+        public async Task<HttpResponseMessage> SendPostNChainRequest(string methodName, CreateAccountRequest request)
+        {
+            // with a new version of the Provide Nuget package we should remove httpClient call
+            using (var httpClient = new HttpClient())
+            {
+                httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("bearer", _vaultConfig.NChainToken);
+                StringContent content = new StringContent(JsonConvert.SerializeObject(request), Encoding.UTF8, "application/json");
+                var url = BuildUrl(methodName);
+                return await httpClient.PostAsync(url.ToString(), content);
+            }
+        }
+
+        private UriBuilder BuildUrl(string methodName)
+        {
+            int port = -1;
+            var host = _vaultConfig.NChainHost;
+            if (host.IndexOf(":") != -1)
+            {
+                var splittedHost = host.Split(":");
+                host = splittedHost[0];
+                port = Convert.ToInt32(splittedHost[1]);
+            }
+            return new UriBuilder(_vaultConfig.NChainScheme, host, port, _vaultConfig.NChainPath + $"/{methodName}");
         }
     }
 }
