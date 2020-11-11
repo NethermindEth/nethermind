@@ -76,35 +76,41 @@ namespace Nethermind.Baseline.Tree
 
         public uint GetPreviousBlockCount(long lastBlockWithLeaves, long blockNumber, bool clearPreviousCounts = false)
         {
+            uint result;
             if (blockNumber <= 1 || lastBlockWithLeaves <= 1)
             {
-                return 0;
+                result = 0;
             }
-
-            long searchForBlockNumber = blockNumber - 1;
-            (uint Count, long PreviousBlockWithLeaves) foundCount = LoadBlockNumberCount(lastBlockWithLeaves);
-            if (clearPreviousCounts)
+            else
             {
-                ClearBlockNumberCount(lastBlockWithLeaves);
-            }
-
-            long currentBlockNumber = lastBlockWithLeaves;
-            while (searchForBlockNumber < currentBlockNumber)
-            {
-                if (foundCount.PreviousBlockWithLeaves == 0)
-                {
-                    return 0;
-                }
-
-                currentBlockNumber = foundCount.PreviousBlockWithLeaves;
-                foundCount = LoadBlockNumberCount(foundCount.PreviousBlockWithLeaves);
+                long searchForBlockNumber = blockNumber - 1;
+                (uint Count, long PreviousBlockWithLeaves) foundCount = LoadBlockNumberCount(lastBlockWithLeaves);
                 if (clearPreviousCounts)
                 {
-                    ClearBlockNumberCount(currentBlockNumber);
+                    ClearBlockNumberCount(lastBlockWithLeaves);
                 }
+
+                long currentBlockNumber = lastBlockWithLeaves;
+                while (searchForBlockNumber < currentBlockNumber)
+                {
+                    if (foundCount.PreviousBlockWithLeaves == 0)
+                    {
+                        foundCount = NoCount;
+                        break;
+                    }
+
+                    currentBlockNumber = foundCount.PreviousBlockWithLeaves;
+                    foundCount = LoadBlockNumberCount(foundCount.PreviousBlockWithLeaves);
+                    if (clearPreviousCounts)
+                    {
+                        ClearBlockNumberCount(currentBlockNumber);
+                    }
+                }
+
+                result = foundCount.Count;
             }
 
-            return foundCount.Count;
+            return result;
         }
 
         private byte[] MetadataBuildDbKey(long blockNumber)
@@ -112,13 +118,15 @@ namespace Nethermind.Baseline.Tree
             return Rlp.Encode(Rlp.Encode(DbPrefix), Rlp.Encode(blockNumber)).Bytes;
         }
 
+        private readonly (uint, long) NoCount = (0u, 0L);
+        
         public (uint Count, long PreviousBlockWithLeaves) LoadBlockNumberCount(long blockNumber)
         {
             byte[]? data = _metadataKeyValueStore[MetadataBuildDbKey(blockNumber)];
             (uint, long) result;
             if (data == null)
             {
-                result = (0, 0);
+                result = NoCount;
             }
             else
             {
