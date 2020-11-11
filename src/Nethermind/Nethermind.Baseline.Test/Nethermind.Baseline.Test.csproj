@@ -4,6 +4,8 @@
         <TargetFramework>netcoreapp3.1</TargetFramework>
 
         <IsPackable>false</IsPackable>
+
+        <OutputType>Library</OutputType>
     </PropertyGroup>
 
     <ItemGroup>

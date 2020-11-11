@@ -83,7 +83,9 @@ namespace Nethermind.Baseline.Tree
         public BaselineTree CreateHistoricalTree(Address address, long blockNumber)
         {
             if(_logger.IsWarn) _logger.Warn($"Building historical tree at {address} for block {blockNumber}");
-            var historicalTree = new ShaBaselineTree(new ReadOnlyDb(_mainDb, true), new ReadOnlyDb(_metadataBaselineDb, true), address.Bytes, BaselineModule.TruncationLength, _logger);
+            var readOnlyMain = new ReadOnlyDb(_mainDb, true);
+            var readOnlyMetadata = new ReadOnlyDb(_metadataBaselineDb, true);
+            var historicalTree = new ShaBaselineTree(readOnlyMain, readOnlyMetadata, address.Bytes, BaselineModule.TruncationLength, _logger);
             var endIndex = historicalTree.Count;
             var historicalCount = historicalTree.GetBlockCount(blockNumber);
             if(_logger.IsWarn) _logger.Warn($"Historical count of {historicalTree} for block {blockNumber} is {historicalCount}");
@@ -104,7 +106,8 @@ namespace Nethermind.Baseline.Tree
             if(_logger.IsWarn) _logger.Warn($"Rebuilding entire tree from {treeAddress} at {blockHash}");
             
             BaselineTree baselineTree = new ShaBaselineTree(_mainDb, _metadataBaselineDb, treeAddress.Bytes, BaselineModule.TruncationLength, _logger);
-            return BuildTree(baselineTree, treeAddress, new BlockParameter(0L), new BlockParameter(blockHash));
+            var trie = BuildTree(baselineTree, treeAddress, new BlockParameter(0L), new BlockParameter(blockHash));
+            return trie;
         }
 
         public BaselineTree BuildTree(BaselineTree baselineTree, Address treeAddress, BlockParameter blockFrom, BlockParameter blockTo)
@@ -143,7 +146,7 @@ namespace Nethermind.Baseline.Tree
 
                 if (currentBlockNumber != filterLog.BlockNumber)
                 {
-                    baselineTree.MemorizeCount(currentBlockNumber.Value, count);
+                    baselineTree.MemorizePastCount(currentBlockNumber.Value, count);
                     currentBlockNumber = filterLog.BlockNumber;
                 }
 
@@ -169,7 +172,7 @@ namespace Nethermind.Baseline.Tree
 
             if (currentBlockNumber != null && count != 0)
             {
-                baselineTree.MemorizeCount(currentBlockNumber.Value, baselineTree.Count);
+                baselineTree.MemorizePastCount(currentBlockNumber.Value, baselineTree.Count);
             }
 
             baselineTree.CalculateHashes(initCount);

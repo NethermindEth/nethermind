@@ -51,7 +51,7 @@ namespace Nethermind.Baseline.Test
                     baselineTree.Insert(block.Leaves[j]);
                 }
 
-                baselineTree.MemorizeCount(block.BlockNumber, baselineTree.Count);
+                baselineTree.MemorizeCurrentCount(TestItem.Keccaks[block.BlockNumber], block.BlockNumber, baselineTree.Count);
                 lastBlockWithLeavesCheck.Push(block.BlockNumber);
                 baselineTree.LastBlockWithLeaves.Should().Be(lastBlockWithLeavesCheck.Peek());
             }
@@ -82,7 +82,7 @@ namespace Nethermind.Baseline.Test
                     baselineTree.Insert(block.Leaves[j]);
                 }
                 
-                baselineTree.MemorizeCount(block.BlockNumber, (uint)block.Leaves.Length);
+                baselineTree.MemorizeCurrentCount(TestItem.Keccaks[block.BlockNumber], block.BlockNumber, (uint)block.Leaves.Length);
             }
 
             for (int i = 0; i < test.ExpectedHashes.Length; i++)
@@ -114,8 +114,7 @@ namespace Nethermind.Baseline.Test
                     baselineTree.Insert(block.Leaves[j]);
                 }
                 
-                baselineTree.MemorizeCount(block.BlockNumber, (uint)block.Leaves.Length);
-                baselineTree.Metadata.SaveCurrentBlockInDb(Keccak.Zero, baselineTree.LastBlockWithLeaves);
+                baselineTree.MemorizeCurrentCount(TestItem.Keccaks[block.BlockNumber], block.BlockNumber, (uint)block.Leaves.Length);
             }
 
             var historicalTree = baselineTreeHelper.CreateHistoricalTree(address, 1);

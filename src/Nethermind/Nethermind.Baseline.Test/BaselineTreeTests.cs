@@ -515,9 +515,17 @@ namespace Nethermind.Baseline.Test
 
         private static Random _random = new Random();
 
-        [TestCase(2, 10, 50, true)]
-        [TestCase(2, 10, 50, false)]
-        public void No_reorg_counting_test(int leavesPerBlock, int blocksCount, int emptyBlocksRatio, bool recalculateOnInsert)
+        // [TestCase(2, 10, 50, true, false)]
+        // [TestCase(2, 10, 50, false, false)]
+        [TestCase(10, 100, 90, false, true, 1524199427)]
+        // TODO: fuzzer with concurrent inserts
+        public void Baseline_tree_fuzzer(
+            int leavesPerBlock,
+            int blocksCount,
+            int emptyBlocksRatio,
+            bool recalculateOnInsert,
+            bool withReorgs,
+            int? randomSeed)
         {
             MemDb mainDb = new MemDb();
             MemDb metadataDb = new MemDb();
@@ -527,10 +535,10 @@ namespace Nethermind.Baseline.Test
             BaselineTree baselineTree = new ShaBaselineTree(
                 mainDb, metadataDb, address.Bytes, 0, LimboNoErrorLogger.Instance);
 
-            int randomSeed = _random.Next();
+            randomSeed ??= _random.Next();
             Console.WriteLine($"random seed was {randomSeed} - hardcode it to recreate the failign test");
-            // Random random = new Random(329012495); <- examplke
-            Random random = new Random(randomSeed);
+            // Random random = new Random(1524199427); <- example
+            Random random = new Random(randomSeed.Value);
             int currentBlockNumber = 0;
             uint totalCountCheck = 0;
             Stack<long> lastBlockWithLeavesCheck = new Stack<long>();
@@ -544,6 +552,8 @@ namespace Nethermind.Baseline.Test
                 if (hasLeaves)
                 {
                     totalCountCheck += numberOfLeaves;
+                    
+                    TestContext.WriteLine($"Adding {numberOfLeaves} at block {currentBlockNumber}");
                     for (int j = 0; j < numberOfLeaves; j++)
                     {
                         byte[] leafBytes = new byte[32];
@@ -552,21 +562,60 @@ namespace Nethermind.Baseline.Test
                     }
 
                     lastBlockWithLeavesCheck.TryPeek(out long previous);
+                    TestContext.WriteLine($"Previous is {previous}");
                     baselineTree.LastBlockWithLeaves.Should().Be(previous);
-                    baselineTree.MemorizeCount(currentBlockNumber, baselineTree.Count);
-                    baselineTree.Metadata.SaveCurrentBlockInDb(Keccak.Compute(currentBlockNumber.ToString()), currentBlockNumber);
+                    baselineTree.MemorizeCurrentCount(TestItem.Keccaks[currentBlockNumber], currentBlockNumber, baselineTree.Count);
                     lastBlockWithLeavesCheck.Push(currentBlockNumber);
 
                     baselineTree.Count.Should().Be(totalCountCheck);
                     baselineTree.LastBlockWithLeaves.Should().Be(lastBlockWithLeavesCheck.Peek());
                 }
+                else
+                {
+                    TestContext.WriteLine($"Block {currentBlockNumber} has no leaves");
+                }
                 
                 historicalCountChecks[currentBlockNumber] = totalCountCheck;
 
-                for (int j = 1; j < currentBlockNumber; j++)
+                foreach (KeyValuePair<long,uint> check in historicalCountChecks)
                 {
+                    TestContext.WriteLine($"  History is {check.Key}=>{check.Value}");
+                }
+                
+                TestContext.WriteLine($"  Last with leaves {baselineTree.LastBlockWithLeaves}");
+                TestContext.WriteLine($"  Count {baselineTree.Count}");
+                
+                for (int j = 1; j <= currentBlockNumber; j++)
+                {
+                    TestContext.WriteLine($"Creating historical at {j}");
                     var historicalTrie = helper.CreateHistoricalTree(address, j);
+                    TestContext.WriteLine($"Checking if trie count ({historicalTrie.Count}) is {historicalCountChecks[j]} as expected");
                     historicalTrie.Count.Should().Be(historicalCountChecks[j], $"Block is {currentBlockNumber}, checking count at block {j}.");
+                }
+
+                if (withReorgs)
+                {
+                    bool shouldReorg = random.Next(100) < 50;
+                    if (shouldReorg && currentBlockNumber >= 1)
+                    {
+                        int reorgDepth = random.Next(currentBlockNumber) + 1;
+                        TestContext.WriteLine($"Reorganizing {reorgDepth} from {currentBlockNumber}");
+                        uint expectedDeleteCount = historicalCountChecks[currentBlockNumber] - historicalCountChecks[currentBlockNumber - reorgDepth]; 
+                        baselineTree.GoBackTo(currentBlockNumber - reorgDepth).Should().Be(expectedDeleteCount);
+                        for (int j = 0; j < reorgDepth; j++)
+                        {
+                            historicalCountChecks.Remove(currentBlockNumber - j);
+                        }
+                        
+                        currentBlockNumber -= reorgDepth;
+                        totalCountCheck = historicalCountChecks[currentBlockNumber];
+                        TestContext.WriteLine($"Total count after reorg is {totalCountCheck} at block {currentBlockNumber}");
+
+                        while (lastBlockWithLeavesCheck.Peek() > currentBlockNumber)
+                        {
+                            lastBlockWithLeavesCheck.Pop();
+                        }
+                    }
                 }
             }
         }

@@ -53,10 +53,17 @@ namespace Nethermind.Baseline.Tree
 
         public long LastBlockWithLeaves { get; private set; }
 
-        public void MemorizeCount(long blockNumber, uint count)
+        public void MemorizePastCount(long blockNumber, uint count)
         { 
             if(_logger.IsWarn) _logger.Warn($"Saving block number count ({count}, {LastBlockWithLeaves}) of {this} in block {blockNumber}");
             Metadata.SaveBlockNumberCount(blockNumber, count, LastBlockWithLeaves);
+        }
+        
+        public void MemorizeCurrentCount(Keccak blockHash, long blockNumber, uint count)
+        { 
+            if(_logger.IsWarn) _logger.Warn($"Saving block number count ({count}, {LastBlockWithLeaves}) of {this} in block {blockNumber}");
+            Metadata.SaveBlockNumberCount(blockNumber, count, LastBlockWithLeaves);
+            Metadata.SaveCurrentBlockInDb(blockHash, blockNumber);
             LastBlockWithLeaves = blockNumber;
         }
 

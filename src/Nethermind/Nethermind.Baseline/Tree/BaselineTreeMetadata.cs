@@ -166,7 +166,7 @@ namespace Nethermind.Baseline.Tree
             return result;
         }
 
-        public void SaveCurrentBlockInDb(Keccak lastBlockDbHash, long lastBlockWithLeaves)
+        internal void SaveCurrentBlockInDb(Keccak lastBlockDbHash, long lastBlockWithLeaves)
         {
             if (_logger.IsWarn)
                 _logger.Warn(

@@ -61,6 +61,7 @@ namespace Nethermind.Baseline.Tree
             BlockParameter fromBlockParameter = new BlockParameter(0L);
             if (_baselineTree.LastBlockDbHash != Keccak.Zero)
             {
+                // TODO: this is not covered by any test
                 var lastBaselineTreeParameter = new BlockParameter(_baselineTree.LastBlockDbHash);
                 var searchResult = _blockFinder.SearchForHeader(lastBaselineTreeParameter);
                 if (!searchResult.IsError)
@@ -74,13 +75,14 @@ namespace Nethermind.Baseline.Tree
             Keccak latestHash = BlockParameter.Latest.BlockHash;
             if (latestHash != null && hashBeforeBuildingTree != latestHash)
             {
+                // TODO: this is not covered by any test
                 var startParameter = hashBeforeBuildingTree == null ? new BlockParameter(0L) : new BlockParameter(hashBeforeBuildingTree);
                 _baselineTreeHelper.BuildTree(_baselineTree, _address, startParameter, new BlockParameter(latestHash));
             }
 
             var headerSearch = latestHash == null ? null : new BlockParameter(latestHash);
             _currentBlockHeader = _blockFinder.SearchForHeader(headerSearch).Object;
-            _baselineTree.Metadata.SaveCurrentBlockInDb(_baselineTree.LastBlockDbHash, _baselineTree.LastBlockWithLeaves);
+            _baselineTree.MemorizeCurrentCount(_baselineTree.LastBlockDbHash, _baselineTree.LastBlockWithLeaves, _baselineTree.Count);
             _blockProcessor.BlockProcessed += OnBlockProcessed;
         }
 
@@ -90,9 +92,13 @@ namespace Nethermind.Baseline.Tree
             
             if (_currentBlockHeader != null && _currentBlockHeader.Hash != e.Block.ParentHash && _currentBlockHeader.Number < e.Block.Number)
             {
+                // what is this - not covered by any test?
+                // why do we build tree here?
                 _baselineTreeHelper.BuildTree(_baselineTree, _address, new BlockParameter(_currentBlockHeader.Hash), new BlockParameter(e.Block.Hash));
                 _currentBlockHeader = e.Block.Header;
-                _baselineTree.Metadata.SaveCurrentBlockInDb(_baselineTree.LastBlockDbHash, _baselineTree.LastBlockWithLeaves);
+                
+                // TODO: why this is here
+                _baselineTree.MemorizeCurrentCount(_baselineTree.LastBlockDbHash, _baselineTree.LastBlockWithLeaves, _baselineTree.Count);
                 return;
             }
 
@@ -105,13 +111,18 @@ namespace Nethermind.Baseline.Tree
             }
 
             _currentBlockHeader = e.Block.Header;
-            AddFromCurrentBlock(e.TxReceipts, e.Block.Number, removedItemsCount);
-            _baselineTree.Metadata.SaveCurrentBlockInDb(_baselineTree.LastBlockDbHash, _baselineTree.LastBlockWithLeaves);
+            uint treeStartingCount = _baselineTree.Count;
+            uint newLeavesCount = AddFromCurrentBlock(e.TxReceipts);
+            _baselineTree.CalculateHashes(treeStartingCount - removedItemsCount);
+            if (newLeavesCount != 0 || removedItemsCount != 0)
+            {
+                uint currentTreeCount = treeStartingCount + newLeavesCount - removedItemsCount;
+                _baselineTree.MemorizeCurrentCount(e.Block.Hash, e.Block.Number, currentTreeCount);
+            }
         }
 
-        private void AddFromCurrentBlock(TxReceipt[] txReceipts, long newBlockNumber, uint removedItemsCount = 0)
+        private uint AddFromCurrentBlock(TxReceipt[] txReceipts)
         {
-            uint treeStartingCount = _baselineTree.Count;
             uint newLeavesCount = 0;
             LogFilter insertLeavesFilter = new LogFilter(
                     0,
@@ -139,12 +150,7 @@ namespace Nethermind.Baseline.Tree
                 }
             }
 
-            _baselineTree.CalculateHashes(treeStartingCount - removedItemsCount);
-            if (newLeavesCount != 0 || removedItemsCount != 0)
-            {
-                var currentTreeCount = treeStartingCount + newLeavesCount - removedItemsCount;
-                _baselineTree.MemorizeCount(newBlockNumber, currentTreeCount);
-            }
+            return newLeavesCount;
         }
 
         private uint Reorganize(long newBlockNumber)
@@ -155,8 +161,8 @@ namespace Nethermind.Baseline.Tree
 
         public void Dispose()
         {
-            _baselineTree.LastBlockDbHash = _currentBlockHeader!.Hash;
-            _baselineTree.Metadata.SaveCurrentBlockInDb(_baselineTree.LastBlockDbHash, _baselineTree.LastBlockWithLeaves);
+            // TODO: is it a hack because someone was not sure if it would work?
+            _baselineTree.MemorizeCurrentCount(_currentBlockHeader!.Hash, _currentBlockHeader!.Number, _baselineTree.Count);
             _blockProcessor.BlockProcessed -= OnBlockProcessed;
         }
     }
