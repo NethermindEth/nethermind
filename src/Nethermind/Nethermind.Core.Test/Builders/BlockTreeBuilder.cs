@@ -58,7 +58,7 @@ namespace Nethermind.Core.Test.Builders
             BlocksDb.Set(Keccak.Zero, Rlp.Encode(Build.A.BlockHeader.TestObject).Bytes);
             _genesisBlock = genesisBlock;
             ChainLevelInfoRepository = new ChainLevelInfoRepository(BlockInfoDb);
-            TestObjectInternal = new BlockTree(BlocksDb, HeadersDb, BlockInfoDb, ChainLevelInfoRepository, RopstenSpecProvider.Instance, Substitute.For<ITxPool>(), Substitute.For<IBloomStorage>(), LimboLogs.Instance);
+            TestObjectInternal = new BlockTree(BlocksDb, HeadersDb, BlockInfoDb, ChainLevelInfoRepository, RopstenSpecProvider.Instance, Substitute.For<IBloomStorage>(), LimboLogs.Instance);
         }
 
         public MemDb BlocksDb { get; set; }

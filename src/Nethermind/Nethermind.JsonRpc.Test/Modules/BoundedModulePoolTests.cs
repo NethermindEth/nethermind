@@ -59,7 +59,6 @@ namespace Nethermind.JsonRpc.Test.Modules
                 dbProvider.BlockInfosDb,
                 new ChainLevelInfoRepository(dbProvider.BlockInfosDb),
                 specProvider,
-                txPool,
                 new BloomStorage(new BloomConfig(), dbProvider.HeadersDb, new InMemoryDictionaryFileStoreFactory()),
                 new SyncConfig(),
                 LimboLogs.Instance);

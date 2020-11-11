@@ -75,6 +75,8 @@ namespace Nethermind.Consensus.AuRa.Contracts
             public bool Equals(Destination x, Destination y) => Equals(x.Target, y.Target) && Equals(x.FnSignature, y.FnSignature);
 
             public int GetHashCode(Destination obj) => HashCode.Combine(obj.Target, obj.FnSignature);
+
+            public override string ToString() => $"{Target}.{FnSignature.ToHexString()}={Value}@{Source}.{BlockNumber}";
         }
 
         public class ValueDestinationMethodComparer : IComparer<Destination>

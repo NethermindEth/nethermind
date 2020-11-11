@@ -88,7 +88,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             ITxPool txPool = new TxPool.TxPool(txStorage, ethereumEcdsa, specProvider, new TxPoolConfig(), _stateProvider, LimboLogs.Instance);
             IChainLevelInfoRepository chainLevels = new ChainLevelInfoRepository(dbProvider);
-            IBlockTree blockTree = new BlockTree(dbProvider, chainLevels, specProvider, txPool, NullBloomStorage.Instance, LimboLogs.Instance);
+            IBlockTree blockTree = new BlockTree(dbProvider, chainLevels, specProvider, NullBloomStorage.Instance, LimboLogs.Instance);
 
             IReceiptStorage receiptStorage = new InMemoryReceiptStorage();
             VirtualMachine virtualMachine = new VirtualMachine(_stateProvider, storageProvider, new BlockhashProvider(blockTree, LimboLogs.Instance), specProvider, LimboLogs.Instance);
