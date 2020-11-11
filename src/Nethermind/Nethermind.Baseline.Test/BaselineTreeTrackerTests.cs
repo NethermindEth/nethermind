@@ -58,8 +58,6 @@ namespace Nethermind.Baseline.Test
             _metadataBaselineDb = new MemDb();
         }
 
-
-
         [Test]
         public async Task Tree_tracker_insert_leaf([ValueSource(nameof(InsertLeafTestCases))]InsertLeafTest test)
         {

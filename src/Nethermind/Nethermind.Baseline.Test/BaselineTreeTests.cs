@@ -15,15 +15,18 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Baseline.Tree;
+using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Logging;
+using NSubstitute;
 using NUnit.Framework;
 using Index = Nethermind.Baseline.Tree.BaselineTree.Index;
 
@@ -513,26 +516,34 @@ namespace Nethermind.Baseline.Test
         private static Random _random = new Random();
 
         [TestCase(2, 10, 50, true)]
+        [TestCase(2, 10, 50, false)]
         public void No_reorg_counting_test(int leavesPerBlock, int blocksCount, int emptyBlocksRatio, bool recalculateOnInsert)
         {
+            MemDb mainDb = new MemDb();
+            MemDb metadataDb = new MemDb();
+            Address address = Address.Zero;
+            BaselineTreeHelper helper = new BaselineTreeHelper(
+                Substitute.For<ILogFinder>(), mainDb, metadataDb, LimboNoErrorLogger.Instance);
             BaselineTree baselineTree = new ShaBaselineTree(
-                new MemDb(), new MemDb(), Address.Zero.Bytes, 0, LimboNoErrorLogger.Instance);
+                mainDb, metadataDb, address.Bytes, 0, LimboNoErrorLogger.Instance);
 
             int randomSeed = _random.Next();
-            Console.WriteLine($"random seed was {randomSeed}");
+            Console.WriteLine($"random seed was {randomSeed} - hardcode it to recreate the failign test");
+            // Random random = new Random(329012495); <- examplke
             Random random = new Random(randomSeed);
             int currentBlockNumber = 0;
-            int totalCountCheck = 0;
-            int lastBlockWithLeavesCheck = 0;
+            uint totalCountCheck = 0;
+            Stack<long> lastBlockWithLeavesCheck = new Stack<long>();
+            Dictionary<long, uint> historicalCountChecks = new Dictionary<long, uint>();
             for (int i = 0; i < blocksCount; i++)
             {
                 currentBlockNumber++;
-                int numberOfLeaves = random.Next(leavesPerBlock) + 1; // not zero
+                uint numberOfLeaves = (uint) random.Next(leavesPerBlock) + 1; // not zero
                 bool hasLeaves = random.Next(100) < emptyBlocksRatio;
 
                 if (hasLeaves)
                 {
-                    lastBlockWithLeavesCheck = currentBlockNumber;
+                    totalCountCheck += numberOfLeaves;
                     for (int j = 0; j < numberOfLeaves; j++)
                     {
                         byte[] leafBytes = new byte[32];
@@ -540,8 +551,22 @@ namespace Nethermind.Baseline.Test
                         baselineTree.Insert(new Keccak(leafBytes), recalculateOnInsert);
                     }
 
+                    lastBlockWithLeavesCheck.TryPeek(out long previous);
+                    baselineTree.LastBlockWithLeaves.Should().Be(previous);
                     baselineTree.MemorizeCount(currentBlockNumber, baselineTree.Count);
-                    baselineTree.LastBlockWithLeaves.Should().Be(lastBlockWithLeavesCheck);
+                    baselineTree.Metadata.SaveCurrentBlockInDb(Keccak.Compute(currentBlockNumber.ToString()), currentBlockNumber);
+                    lastBlockWithLeavesCheck.Push(currentBlockNumber);
+
+                    baselineTree.Count.Should().Be(totalCountCheck);
+                    baselineTree.LastBlockWithLeaves.Should().Be(lastBlockWithLeavesCheck.Peek());
+                }
+                
+                historicalCountChecks[currentBlockNumber] = totalCountCheck;
+
+                for (int j = 1; j < currentBlockNumber; j++)
+                {
+                    var historicalTrie = helper.CreateHistoricalTree(address, j);
+                    historicalTrie.Count.Should().Be(historicalCountChecks[j], $"Block is {currentBlockNumber}, checking count at block {j}.");
                 }
             }
         }
