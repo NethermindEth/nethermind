@@ -44,6 +44,7 @@ namespace Nethermind.Baseline
         public const int TruncationLength = 5;
         public static Keccak LeafTopic = new Keccak("0x6a82ba2aa1d2c039c41e6e2b5a5a1090d09906f060d32af9c1ac0beff7af75c0");
         public static Keccak LeavesTopic = new Keccak("0x8ec50f97970775682a68d3c6f9caedf60fd82448ea40706b8b65d6c03648b922");
+        private const TxHandlingOptions TxHandlingOptions = TxPool.TxHandlingOptions.ManagedNonce | TxPool.TxHandlingOptions.PersistentBroadcast;
 
         public BaselineModule(
             ITxSender txSender,
@@ -95,7 +96,7 @@ namespace Nethermind.Baseline
             tx.GasLimit = 1000000;
             tx.GasPrice = 20.GWei();
 
-            Keccak txHash = await _txSender.SendTransaction(tx, TxHandlingOptions.ManagedNonce);
+            Keccak txHash = await _txSender.SendTransaction(tx, TxHandlingOptions);
             return ResultWrapper<Keccak>.Success(txHash);
         }
 
@@ -126,7 +127,7 @@ namespace Nethermind.Baseline
             tx.GasLimit = 1000000;
             tx.GasPrice = 20.GWei();
 
-            Keccak txHash = await _txSender.SendTransaction(tx, TxHandlingOptions.ManagedNonce);
+            Keccak txHash = await _txSender.SendTransaction(tx, TxHandlingOptions);
 
             return ResultWrapper<Keccak>.Success(txHash);
         }
@@ -505,7 +506,7 @@ namespace Nethermind.Baseline
             tx.GasLimit = 1000000;
             tx.GasPrice = 20.GWei();
 
-            Keccak txHash = await _txSender.SendTransaction(tx, TxHandlingOptions.ManagedNonce);
+            Keccak txHash = await _txSender.SendTransaction(tx, TxHandlingOptions);
             return ResultWrapper<Keccak>.Success(txHash);
         }
 
@@ -555,7 +556,7 @@ namespace Nethermind.Baseline
             tx.GasPrice = 20.GWei();
             tx.SenderAddress = address;
 
-            Keccak txHash = await _txSender.SendTransaction(tx, TxHandlingOptions.ManagedNonce);
+            Keccak txHash = await _txSender.SendTransaction(tx, TxHandlingOptions);
 
             _logger.Info($"Sent transaction at price {tx.GasPrice} to {tx.SenderAddress}");
             _logger.Info($"Contract {contractType} has been deployed");
