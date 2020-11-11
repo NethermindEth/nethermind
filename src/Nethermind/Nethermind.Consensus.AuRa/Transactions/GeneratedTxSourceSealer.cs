@@ -21,12 +21,10 @@ using System.Linq;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.TxPool;
-using Nethermind.Wallet;
 
 namespace Nethermind.Consensus.AuRa.Transactions
 {
@@ -57,7 +55,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
                     if (tx is GeneratedTransaction)
                     {
                         tx.Nonce = CalculateNonce(tx.SenderAddress, parent.StateRoot, _nonces);
-                        _txSealer.Seal(tx);
+                        _txSealer.Seal(tx, TxHandlingOptions.None);
                         Metrics.SealedTransactions++;
                         if (_logger.IsDebug) _logger.Debug($"Sealed node generated transaction {tx.Hash} from {tx.SenderAddress} to {tx.To} with nonce {tx.Nonce}.");
                     }

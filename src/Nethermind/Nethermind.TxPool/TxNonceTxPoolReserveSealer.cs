@@ -31,10 +31,14 @@ namespace Nethermind.TxPool
             _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
         }
 
-        public override void Seal(Transaction tx)
+        public override void Seal(Transaction tx, TxHandlingOptions txHandlingOptions)
         {
-            tx.Nonce = _txPool.ReserveOwnTransactionNonce(tx.SenderAddress);
-            base.Seal(tx);
+            if ((txHandlingOptions & TxHandlingOptions.ManagedNonce) == TxHandlingOptions.ManagedNonce)
+            {
+                tx.Nonce = _txPool.ReserveOwnTransactionNonce(tx.SenderAddress);
+            }
+
+            base.Seal(tx, txHandlingOptions);
         }
     }
 }

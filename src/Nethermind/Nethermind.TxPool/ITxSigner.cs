@@ -24,7 +24,7 @@ namespace Nethermind.TxPool
     {
         ValueTask Sign(Transaction tx);
 
-        void ITxSealer.Seal(Transaction tx)
+        void ITxSealer.Seal(Transaction tx, TxHandlingOptions txHandlingOptions)
         {
             Sign(tx);
         }

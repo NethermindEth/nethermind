@@ -174,7 +174,7 @@ namespace Nethermind.Baseline.Test.JsonRpc
             SingleReleaseSpecProvider spec = new SingleReleaseSpecProvider(ConstantinopleFix.Instance, 1);
             TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(spec);
             BaselineModule baselineModule = CreateBaselineModule(testRpc);
-            BaselineTree baselineTree = new ShaBaselineTree(new MemDb(), new MemDb(), new byte[] { }, 0);
+            BaselineTree baselineTree = new ShaBaselineTree(new MemDb(), new MemDb(), new byte[] { }, 0, LimboNoErrorLogger.Instance);
             await testRpc.AddFunds(TestItem.Addresses[0], 1.Ether());
             await testRpc.AddFunds(TestItem.Addresses[1], 1.Ether());
             Keccak txHash = (await baselineModule.baseline_deploy(TestItem.Addresses[0], "MerkleTreeSHA")).Data;

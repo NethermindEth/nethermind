@@ -34,7 +34,7 @@ namespace Nethermind.TxPool
             _allowExistingSignature = allowExistingSignature;
         }
 
-        public virtual void Seal(Transaction tx)
+        public virtual void Seal(Transaction tx, TxHandlingOptions txHandlingOptions)
         {
             if (tx.Signature == null || !_allowExistingSignature)
             {
