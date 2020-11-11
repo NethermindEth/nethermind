@@ -47,6 +47,7 @@ namespace Nethermind.Vault
         private bool _accountCreated = false;
 
         private NChain _provide;
+        private provide.Model.NChain.Account _account;
 
         public VaultTxSender(ITxSigner txSigner, IVaultConfig vaultConfig, int chainId)
         {
@@ -55,7 +56,7 @@ namespace Nethermind.Vault
 
             if (_networkId == null)
                 _networkId = _networkIdMapping[DefaultChainId];
-
+            _networkId = new Guid("9a2dd9ce-d283-4766-9ce5-c84a30474121");
             _provide = new NChain(
                 vaultConfig.NChainHost,
                 vaultConfig.NchainPath,
@@ -63,38 +64,34 @@ namespace Nethermind.Vault
                 vaultConfig.NChainToken);
         }
 
+        private async Task EnsureAccount()
+        {
+            var accountToCreate = new provide.Model.NChain.Account()
+            {
+                NetworkId = _networkId!.Value
+            };
+            _account ??= await _provide.CreateAccount(accountToCreate);
+        }
+
         public async ValueTask<Keccak> SendTransaction(Transaction tx, TxHandlingOptions txHandlingOptions)
         {
-            await EnsureAccount();
+          //  await EnsureAccount();
             ProvideTx provideTx = new ProvideTx();
-            provideTx.Data = (tx.Data ?? tx.Init).ToHexString();
+            provideTx.Data = "0x" + (tx.Data ?? tx.Init).ToHexString();
             provideTx.Description = "From Nethermind with love";
             provideTx.Hash = tx.Hash?.ToString();
-            provideTx.Signer = tx.SenderAddress.ToString();
+            provideTx.AccountId = new Guid("d60507f5-5104-4abe-b101-199e65eedd33");
             provideTx.NetworkId = _networkId;
             provideTx.To = tx.To?.ToString();
-            provideTx.Value = (BigInteger) tx.Value;
+            provideTx.Value = (BigInteger)tx.Value;
             provideTx.Params = new Dictionary<string, object>
             {
-                {"subsidize", true}
+                {"subsidize", true},
             };
-
             // this should happen after we set the GasPrice
             _txSigner.Seal(tx);
             ProvideTx createdTx = await _provide.CreateTransaction(provideTx);
             return createdTx?.Hash == null ? Keccak.Zero : new Keccak(createdTx.Hash);
-        }
-
-        private async Task EnsureAccount()
-        {
-            if (_accountCreated == false)
-            {
-                await _provide.CreateAccount(new provide.Model.NChain.Account()
-                {
-                    NetworkId = _networkId.Value
-                });
-                _accountCreated = true;
-            }
         }
     }
 }
