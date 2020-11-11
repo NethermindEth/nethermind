@@ -577,14 +577,8 @@ namespace Nethermind.Baseline.Test
                 
                 historicalCountChecks[currentBlockNumber] = totalCountCheck;
 
-                foreach (KeyValuePair<long,uint> check in historicalCountChecks)
-                {
-                    TestContext.WriteLine($"  History is {check.Key}=>{check.Value}");
-                }
-                
-                TestContext.WriteLine($"  Last with leaves {baselineTree.LastBlockWithLeaves}");
-                TestContext.WriteLine($"  Count {baselineTree.Count}");
-                
+                WriteHistory(historicalCountChecks, baselineTree);
+
                 for (int j = 1; j <= currentBlockNumber; j++)
                 {
                     TestContext.WriteLine($"Creating historical at {j}");
@@ -609,6 +603,8 @@ namespace Nethermind.Baseline.Test
                         
                         currentBlockNumber -= reorgDepth;
                         totalCountCheck = historicalCountChecks[currentBlockNumber];
+                        baselineTree.MemorizeCurrentCount(TestItem.Keccaks[currentBlockNumber], currentBlockNumber, totalCountCheck);
+                        
                         TestContext.WriteLine($"Total count after reorg is {totalCountCheck} at block {currentBlockNumber}");
 
                         while (lastBlockWithLeavesCheck.Peek() > currentBlockNumber)
@@ -616,8 +612,22 @@ namespace Nethermind.Baseline.Test
                             lastBlockWithLeavesCheck.Pop();
                         }
                     }
+                    
+                    WriteHistory(historicalCountChecks, baselineTree);
                 }
             }
+        }
+
+        private static void WriteHistory(Dictionary<long, uint> historicalCountChecks, BaselineTree baselineTree)
+        {
+            foreach (KeyValuePair<long, uint> check in historicalCountChecks)
+            {
+                TestContext.WriteLine($"  History is {check.Key}=>{check.Value}");
+            }
+
+            TestContext.WriteLine($"  Last with leaves {baselineTree.LastBlockWithLeaves}");
+            TestContext.WriteLine($"  Last with leaves in DB {baselineTree.Metadata.LoadCurrentBlockInDb().LastBlockWithLeaves}");
+            TestContext.WriteLine($"  Count {baselineTree.Count}");
         }
     }
 }

@@ -103,18 +103,19 @@ namespace Nethermind.Baseline.Tree
             }
 
             uint removedItemsCount = 0;
-            if (_currentBlockHeader != null && _currentBlockHeader.Hash != e.Block.ParentHash)
+            bool reorganized = _currentBlockHeader != null && _currentBlockHeader.Hash != e.Block.ParentHash; 
+            if (reorganized)
             {
                 if(_logger.IsWarn) _logger.Warn(
                     $"Tree tracker for {_baselineTree} reorganizes from branching point at {e.Block.ToString(Block.Format.Short)}");
-                removedItemsCount = Reorganize(e.Block.Number);
+                removedItemsCount = Revert(e.Block.Number);
             }
 
             _currentBlockHeader = e.Block.Header;
             uint treeStartingCount = _baselineTree.Count;
             uint newLeavesCount = AddFromCurrentBlock(e.TxReceipts);
             _baselineTree.CalculateHashes(treeStartingCount - removedItemsCount);
-            if (newLeavesCount != 0 || removedItemsCount != 0)
+            if (newLeavesCount != 0 || removedItemsCount != 0 || reorganized)
             {
                 uint currentTreeCount = treeStartingCount + newLeavesCount - removedItemsCount;
                 _baselineTree.MemorizeCurrentCount(e.Block.Hash, e.Block.Number, currentTreeCount);
@@ -153,9 +154,10 @@ namespace Nethermind.Baseline.Tree
             return newLeavesCount;
         }
 
-        private uint Reorganize(long newBlockNumber)
+        private uint Revert(long number)
         {
-            var deletedLeavesCount = _baselineTree.GoBackTo(newBlockNumber - 1);
+            // we go to the position 1 before the earliest of the blocks that we want to revert
+            var deletedLeavesCount = _baselineTree.GoBackTo(Math.Max(0, number - 1));
             return deletedLeavesCount;
         }
 
