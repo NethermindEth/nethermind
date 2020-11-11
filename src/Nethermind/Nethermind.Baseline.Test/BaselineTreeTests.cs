@@ -515,9 +515,10 @@ namespace Nethermind.Baseline.Test
 
         private static Random _random = new Random();
 
-        // [TestCase(2, 10, 50, true, false)]
-        // [TestCase(2, 10, 50, false, false)]
-        [TestCase(10, 100, 90, false, true, 1524199427)]
+        [TestCase(2, 10, 50, true, false)]
+        [TestCase(2, 10, 50, false, false)]
+        [TestCase(10, 25, 90, false, true, 1524199427)]
+        [TestCase(10, 25, 90, false, true)]
         // TODO: fuzzer with concurrent inserts
         public void Baseline_tree_fuzzer(
             int leavesPerBlock,
