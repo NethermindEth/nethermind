@@ -518,6 +518,7 @@ namespace Nethermind.Baseline.Test
         [TestCase(2, 10, 50, true, false, null)]
         [TestCase(2, 10, 50, false, false, null)]
         [TestCase(10, 25, 90, false, true, 1524199427)]
+        [TestCase(10, 25, 90, false, true, 943302129)]
         [TestCase(10, 25, 90, false, true, null)]
         // TODO: fuzzer with concurrent inserts
         public void Baseline_tree_fuzzer(
@@ -547,6 +548,11 @@ namespace Nethermind.Baseline.Test
             historicalCountChecks[0] = 0;
             for (int i = 0; i < blocksCount; i++)
             {
+
+                if (i == 18)
+                {
+                    
+                }
                 currentBlockNumber++;
                 uint numberOfLeaves = (uint) random.Next(leavesPerBlock) + 1; // not zero
                 bool hasLeaves = random.Next(100) < emptyBlocksRatio;
@@ -614,6 +620,12 @@ namespace Nethermind.Baseline.Test
                         {
                             lastBlockWithLeavesCheck.Pop();
                         }
+
+                        if (lastBlockWithLeavesCheck.Any() && lastBlockWithLeavesCheck.Peek() != currentBlockNumber)
+                        {
+                            // after reorg we always push a memorized count
+                            lastBlockWithLeavesCheck.Push(currentBlockNumber);
+                        }
                     }
                     
                     WriteHistory(historicalCountChecks, baselineTree);
@@ -625,7 +637,7 @@ namespace Nethermind.Baseline.Test
         {
             foreach (KeyValuePair<long, uint> check in historicalCountChecks)
             {
-                TestContext.WriteLine($"  History is {check.Key}=>{check.Value}");
+                TestContext.WriteLine($"  History is {check.Key}=>{check.Value} {baselineTree.Metadata.LoadBlockNumberCount(check.Key)})");
             }
 
             TestContext.WriteLine($"  Last with leaves {baselineTree.LastBlockWithLeaves}");

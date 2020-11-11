@@ -99,6 +99,7 @@ namespace Nethermind.Baseline.Tree
             else
             {
                 result = LoadBlockNumberCount(lastBlockWithLeaves);
+                result.NewLastBlockWithLeaves = lastBlockWithLeaves;
             }
             
             return result;
