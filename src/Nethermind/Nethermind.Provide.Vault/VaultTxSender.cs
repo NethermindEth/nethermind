@@ -17,13 +17,17 @@
 
 using System;
 using System.Collections.Generic;
+using System.Net.Http;
+using System.Net.Http.Headers;
 using System.Numerics;
+using System.Text;
 using System.Threading.Tasks;
 using Ipfs;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.TxPool;
 using Nethermind.Vault.Config;
+using Newtonsoft.Json;
 using provide;
 using ProvideTx = provide.Model.NChain.Transaction;
 
@@ -31,6 +35,11 @@ namespace Nethermind.Vault
 {
     public class VaultTxSender : ITxSender
     {
+        public class CreateAccountRequest
+        {
+            public string network_id { get; set; }
+        }
+
         private static Dictionary<int, Guid> _networkIdMapping = new Dictionary<int, Guid>
         {
             // Bitcoin mainnet: 248fa53c-3df4-41af-ab6b-b78f94d6c25c 	 mainnet 
@@ -41,57 +50,108 @@ namespace Nethermind.Vault
             {42, new Guid("8d31bf48-df6b-4a71-9d7c-3cb291111e27")} // Ethereum Kovan testnet 
         };
 
-        private readonly Guid? _networkId;
+        private Guid? _networkId;
+        private Guid? _accountId;
         private readonly ITxSigner _txSigner;
-        private readonly int DefaultChainId = 5;
-        private provide.Model.NChain.Account _account;
+        private readonly IVaultConfig _vaultConfig;
 
         private NChain _provide;
 
         public VaultTxSender(ITxSigner txSigner, IVaultConfig vaultConfig, int chainId)
         {
             _txSigner = txSigner;
-            if (_networkIdMapping.ContainsKey(chainId)) _networkId = _networkIdMapping[chainId];
-
-            if (_networkId == null)
-                _networkId = _networkIdMapping[DefaultChainId];
+            _vaultConfig = vaultConfig;
 
             _provide = new NChain(
                 vaultConfig.NChainHost,
-                vaultConfig.NchainPath,
-                vaultConfig.NchainScheme,
+                vaultConfig.NChainPath,
+                vaultConfig.NChainScheme,
                 vaultConfig.NChainToken);
+
+            EnsureNetwork(chainId);
+        }
+
+        private void EnsureNetwork(int chainId)
+        {
+            if (_networkId == null)
+            {
+                if (string.IsNullOrWhiteSpace(_vaultConfig.NChainNetworkId))
+                {
+                    _networkId = _networkIdMapping[chainId];
+                }
+                else
+                {
+                    _networkId = new Guid(_vaultConfig.NChainNetworkId);
+                }
+            }
         }
 
         private async Task EnsureAccount()
         {
-            _account ??= await _provide.CreateAccount(new provide.Model.NChain.Account()
+            if (_accountId == null)
             {
-                NetworkId = _networkId!.Value
-            });
+                if (string.IsNullOrWhiteSpace(_vaultConfig.NChainAccountId))
+                {
+                    var createRequest = new CreateAccountRequest()
+                    {
+                        network_id = _networkId!.Value.ToString()
+                    };
+                    var result = await SendPostNChainRequest("accounts", createRequest);
+                    var json = await result.Content.ReadAsStringAsync();
+                    var account = JsonConvert.DeserializeObject<provide.Model.NChain.Account>(json);
+                    _accountId = account.Id;
+                }
+                else
+                {
+                    _accountId = new Guid(_vaultConfig.NChainAccountId);
+                }
+            }
         }
-        
+
         public async ValueTask<Keccak> SendTransaction(Transaction tx, TxHandlingOptions txHandlingOptions)
         {
             await EnsureAccount();
             ProvideTx provideTx = new ProvideTx();
-            provideTx.Data = (tx.Data ?? tx.Init).ToHexString();
+            provideTx.Data = "0x" + (tx.Data ?? tx.Init).ToHexString();
             provideTx.Description = "From Nethermind with love";
             provideTx.Hash = tx.Hash?.ToString();
-            provideTx.Signer = tx.SenderAddress.ToString();
+            provideTx.AccountId = _accountId;
             provideTx.NetworkId = _networkId;
             provideTx.To = tx.To?.ToString();
-            provideTx.Value = (BigInteger) tx.Value;
+            provideTx.Value = (BigInteger)tx.Value;
             provideTx.Params = new Dictionary<string, object>
             {
                 {"subsidize", true},
-                {"account_id", _account.Id},
             };
-
             // this should happen after we set the GasPrice
             _txSigner.Seal(tx, TxHandlingOptions.None);
             ProvideTx createdTx = await _provide.CreateTransaction(provideTx);
             return createdTx?.Hash == null ? Keccak.Zero : new Keccak(createdTx.Hash);
+        }
+
+        public async Task<HttpResponseMessage> SendPostNChainRequest(string methodName, CreateAccountRequest request)
+        {
+            // with a new version of the Provide Nuget package we should remove httpClient call
+            using (var httpClient = new HttpClient())
+            {
+                httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("bearer", _vaultConfig.NChainToken);
+                StringContent content = new StringContent(JsonConvert.SerializeObject(request), Encoding.UTF8, "application/json");
+                var url = BuildUrl(methodName);
+                return await httpClient.PostAsync(url.ToString(), content);
+            }
+        }
+
+        private UriBuilder BuildUrl(string methodName)
+        {
+            int port = -1;
+            var host = _vaultConfig.NChainHost;
+            if (host.IndexOf(":") != -1)
+            {
+                var splittedHost = host.Split(":");
+                host = splittedHost[0];
+                port = Convert.ToInt32(splittedHost[1]);
+            }
+            return new UriBuilder(_vaultConfig.NChainScheme, host, port, _vaultConfig.NChainPath + $"/{methodName}");
         }
     }
 }
