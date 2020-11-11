@@ -544,6 +544,7 @@ namespace Nethermind.Baseline.Test
             uint totalCountCheck = 0;
             Stack<long> lastBlockWithLeavesCheck = new Stack<long>();
             Dictionary<long, uint> historicalCountChecks = new Dictionary<long, uint>();
+            historicalCountChecks[0] = 0;
             for (int i = 0; i < blocksCount; i++)
             {
                 currentBlockNumber++;
@@ -608,7 +609,8 @@ namespace Nethermind.Baseline.Test
                         
                         TestContext.WriteLine($"Total count after reorg is {totalCountCheck} at block {currentBlockNumber}");
 
-                        while (lastBlockWithLeavesCheck.Peek() > currentBlockNumber)
+                        
+                        while (lastBlockWithLeavesCheck.Any() && lastBlockWithLeavesCheck.Peek() > currentBlockNumber)
                         {
                             lastBlockWithLeavesCheck.Pop();
                         }

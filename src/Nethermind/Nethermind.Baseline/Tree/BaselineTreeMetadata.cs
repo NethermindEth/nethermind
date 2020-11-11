@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.IO;
 using System.Threading;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -94,7 +95,6 @@ namespace Nethermind.Baseline.Tree
             if (lastBlockWithLeaves == blockNumber)
             {
                 result = LoadBlockNumberCount(lastBlockWithLeaves);
-                result.NewLastBlockWithLeaves = blockNumber;
             }
             else
             {
@@ -135,6 +135,16 @@ namespace Nethermind.Baseline.Tree
 
         internal void SaveBlockNumberCount(long blockNumber, uint count, long previousBlockWithLeaves)
         {
+            if (blockNumber == 0)
+            {
+                return;
+            }
+            
+            if (blockNumber <= previousBlockWithLeaves)
+            {
+                throw new InvalidDataException($"Trying to save {blockNumber}->{previousBlockWithLeaves} (current->previous)");
+            }
+            
             if (_logger.IsWarn)
                 _logger.Warn(
                     $"Saving count for block {blockNumber} in {DbPrefix.ToHexString()} - ({count},{previousBlockWithLeaves})");

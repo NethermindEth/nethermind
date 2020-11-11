@@ -16,6 +16,7 @@
 // 
 
 using System.Collections.Generic;
+using FluentAssertions;
 using Nethermind.Baseline.Tree;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
@@ -41,17 +42,17 @@ namespace Nethermind.Baseline.Test
             Assert.AreEqual(lastBlockWithLeaves, actual.LastBlockWithLeaves);
         }
 
-        [TestCase(0, (uint)13, 4)]
-        [TestCase(1, (uint)0, 5)]
-        [TestCase(2, (uint)3, 6)]
-        [TestCase(3, (uint)100, 6)]
+        [TestCase(5, (uint)13, 4)]
+        [TestCase(6, (uint)0, 5)]
+        [TestCase(7, (uint)3, 6)]
+        [TestCase(8, (uint)100, 6)]
         public void Saving_loading_block_number_count(long blockNumber, uint count, long previousBlockWithLeaves)
         {
             var baselineMetaData = new BaselineTreeMetadata(new MemDb(), new byte[] { }, LimboNoErrorLogger.Instance);
             baselineMetaData.SaveBlockNumberCount(blockNumber, count, previousBlockWithLeaves);
             var actual = baselineMetaData.LoadBlockNumberCount(blockNumber);
-            Assert.AreEqual(count, actual.Count);
-            Assert.AreEqual(previousBlockWithLeaves, actual.PreviousBlockWithLeaves);
+            actual.Count.Should().Be(count);
+            actual.PreviousBlockWithLeaves.Should().Be(previousBlockWithLeaves);
         }
 
         [Test]
