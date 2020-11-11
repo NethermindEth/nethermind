@@ -30,5 +30,7 @@ namespace Nethermind.Vault.Config
         public string NChainToken { get; set; }
         public string NchainScheme { get; set; }
         public string NchainPath { get; set; }
+        public string NChainNetworkId { get; set; }
+        public string NChainAccountId { get; set; }
     }
 }

@@ -54,5 +54,9 @@ namespace Nethermind.Vault.Config
 
         [ConfigItem(Description = "Path to the Nchain'd api", DefaultValue = "api/v1")]
         string NchainPath { get; set; }
+
+        string NChainNetworkId { get; set; }
+
+        string NChainAccountId { get; set; }
     }
 }

@@ -41,21 +41,20 @@ namespace Nethermind.Vault
             {42, new Guid("8d31bf48-df6b-4a71-9d7c-3cb291111e27")} // Ethereum Kovan testnet 
         };
 
-        private readonly Guid? _networkId;
+        private Guid? _networkId;
+        private Guid? _accountId;
         private readonly ITxSigner _txSigner;
-        private readonly int DefaultChainId = 5;
+        private readonly IVaultConfig _vaultConfig;
         private bool _accountCreated = false;
 
         private NChain _provide;
-        private provide.Model.NChain.Account _account;
+        private 
 
         public VaultTxSender(ITxSigner txSigner, IVaultConfig vaultConfig, int chainId)
         {
             _txSigner = txSigner;
-            if (_networkIdMapping.ContainsKey(chainId)) _networkId = _networkIdMapping[chainId];
+            _vaultConfig = vaultConfig;
 
-            if (_networkId == null)
-                _networkId = _networkIdMapping[DefaultChainId];
             _networkId = new Guid("9a2dd9ce-d283-4766-9ce5-c84a30474121");
             _provide = new NChain(
                 vaultConfig.NChainHost,
@@ -64,18 +63,51 @@ namespace Nethermind.Vault
                 vaultConfig.NChainToken);
         }
 
+        private async Task EnsureNetwork()
+        {
+            if (_networkId == null)
+            {
+                if (string.IsNullOrWhiteSpace(_vaultConfig.NChainNetworkId))
+                {
+                    var network = new provide.Model.NChain.Network()
+                    {
+                        Name = "baseline_test",
+
+                    };
+                    var result = await _provide.CreateNetwork(network);
+                    _networkId = result.Id;
+                }
+                else
+                {
+                    _networkId = new Guid(_vaultConfig.NChainNetworkId);
+                }
+            }
+        }
+
         private async Task EnsureAccount()
         {
-            var accountToCreate = new provide.Model.NChain.Account()
+            if (_accountId == null)
             {
-                NetworkId = _networkId!.Value
-            };
-            _account ??= await _provide.CreateAccount(accountToCreate);
+                if (string.IsNullOrWhiteSpace(_vaultConfig.NChainAccountId))
+                {
+                    var accountToCreate = new provide.Model.NChain.Account()
+                    {
+                        NetworkId = _networkId!.Value
+                    };
+                    var result = await _provide.CreateAccount(accountToCreate);
+                    _accountId = result.Id;
+                }
+                else
+                {
+                    _networkId = new Guid(_vaultConfig.NChainAccountId);
+                }
+            }
         }
 
         public async ValueTask<Keccak> SendTransaction(Transaction tx, TxHandlingOptions txHandlingOptions)
         {
-          //  await EnsureAccount();
+            await EnsureNetwork();
+            await EnsureAccount();
             ProvideTx provideTx = new ProvideTx();
             provideTx.Data = "0x" + (tx.Data ?? tx.Init).ToHexString();
             provideTx.Description = "From Nethermind with love";
