@@ -39,7 +39,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Network.Test
 {
-    [Parallelizable(ParallelScope.All)]
+    [Parallelizable(ParallelScope.None)]
     [TestFixture]
     public class PeerManagerTests
     {
