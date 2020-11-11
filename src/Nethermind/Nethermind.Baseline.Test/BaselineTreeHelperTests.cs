@@ -18,11 +18,13 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using FluentAssertions;
 using Nethermind.Baseline.Tree;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
+using Nethermind.Logging;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -37,10 +39,10 @@ namespace Nethermind.Baseline.Test
             var logFinder = Substitute.For<ILogFinder>();
             var mainDb = new MemDb();
             var metadaDataDb = new MemDb();
-            var baselineTreeHelper = new BaselineTreeHelper(logFinder, new MemDb(), new MemDb());
-            var baselineTree = new ShaBaselineTree(mainDb, metadaDataDb, new byte[] { }, BaselineModule.TruncationLength);
+            var baselineTreeHelper = new BaselineTreeHelper(logFinder, new MemDb(), new MemDb(), LimboNoErrorLogger.Instance);
+            var baselineTree = new ShaBaselineTree(mainDb, metadaDataDb, new byte[] { }, BaselineModule.TruncationLength, LimboNoErrorLogger.Instance);
 
-            long lastBlockWithLeaves = 0;
+            Stack<long> lastBlockWithLeavesCheck = new Stack<long>();
             for (int i = 0; i < test.Blocks.Length; i++)
             {
                 var block = test.Blocks[i];
@@ -49,9 +51,9 @@ namespace Nethermind.Baseline.Test
                     baselineTree.Insert(block.Leaves[j]);
                 }
 
-                baselineTree.Metadata.SaveBlockNumberCount(block.BlockNumber, baselineTree.Count, lastBlockWithLeaves);
-                lastBlockWithLeaves = block.BlockNumber;
-                baselineTree.LastBlockWithLeaves = lastBlockWithLeaves;
+                baselineTree.MemorizeCurrentCount(TestItem.Keccaks[block.BlockNumber], block.BlockNumber, baselineTree.Count);
+                lastBlockWithLeavesCheck.Push(block.BlockNumber);
+                baselineTree.LastBlockWithLeaves.Should().Be(lastBlockWithLeavesCheck.Peek());
             }
 
             for (int i = 0; i < test.ExpectedHashes.Length; i++)
@@ -68,8 +70,8 @@ namespace Nethermind.Baseline.Test
             var logFinder = Substitute.For<ILogFinder>();
             var mainDb = new MemDb();
             var metadaDataDb = new MemDb();
-            var baselineTreeHelper = new BaselineTreeHelper(logFinder, new MemDb(), new MemDb());
-            var baselineTree = new ShaBaselineTree(mainDb, metadaDataDb, new byte[] { }, BaselineModule.TruncationLength);
+            var baselineTreeHelper = new BaselineTreeHelper(logFinder, new MemDb(), new MemDb(), LimboNoErrorLogger.Instance);
+            var baselineTree = new ShaBaselineTree(mainDb, metadaDataDb, new byte[] { }, BaselineModule.TruncationLength, LimboNoErrorLogger.Instance);
 
             long lastBlockWithLeaves = 0;
             for (int i = 0; i < test.Blocks.Length; i++)
@@ -79,10 +81,8 @@ namespace Nethermind.Baseline.Test
                 {
                     baselineTree.Insert(block.Leaves[j]);
                 }
-
-                baselineTree.Metadata.SaveBlockNumberCount(block.BlockNumber, (uint)block.Leaves.Length, lastBlockWithLeaves);
-                lastBlockWithLeaves = block.BlockNumber;
-                baselineTree.LastBlockWithLeaves = lastBlockWithLeaves;
+                
+                baselineTree.MemorizeCurrentCount(TestItem.Keccaks[block.BlockNumber], block.BlockNumber, (uint)block.Leaves.Length);
             }
 
             for (int i = 0; i < test.ExpectedHashes.Length; i++)
@@ -103,10 +103,9 @@ namespace Nethermind.Baseline.Test
             var logFinder = Substitute.For<ILogFinder>();
             var mainDb = new MemDb();
             var metadataDataDb = new MemDb();
-            var baselineTreeHelper = new BaselineTreeHelper(logFinder, mainDb, metadataDataDb);
-            var baselineTree = new ShaBaselineTree(mainDb, metadataDataDb, address.Bytes, BaselineModule.TruncationLength);
-
-            long lastBlockWithLeaves = 0;
+            var baselineTreeHelper = new BaselineTreeHelper(logFinder, mainDb, metadataDataDb, LimboNoErrorLogger.Instance);
+            var baselineTree = new ShaBaselineTree(mainDb, metadataDataDb, address.Bytes, BaselineModule.TruncationLength, LimboNoErrorLogger.Instance);
+            
             for (int i = 0; i < test.Blocks.Length; i++)
             {
                 var block = test.Blocks[i];
@@ -114,12 +113,8 @@ namespace Nethermind.Baseline.Test
                 {
                     baselineTree.Insert(block.Leaves[j]);
                 }
-
-                baselineTree.Metadata.SaveBlockNumberCount(block.BlockNumber, (uint)block.Leaves.Length, lastBlockWithLeaves);
-                lastBlockWithLeaves = block.BlockNumber;
-                baselineTree.LastBlockWithLeaves = lastBlockWithLeaves;
-
-                baselineTree.Metadata.SaveCurrentBlockInDb(Keccak.Zero, lastBlockWithLeaves);
+                
+                baselineTree.MemorizeCurrentCount(TestItem.Keccaks[block.BlockNumber], block.BlockNumber, (uint)block.Leaves.Length);
             }
 
             var historicalTree = baselineTreeHelper.CreateHistoricalTree(address, 1);
