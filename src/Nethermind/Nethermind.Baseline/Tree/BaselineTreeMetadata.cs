@@ -115,22 +115,28 @@ namespace Nethermind.Baseline.Tree
         public (uint Count, long PreviousBlockWithLeaves) LoadBlockNumberCount(long blockNumber)
         {
             byte[]? data = _metadataKeyValueStore[MetadataBuildDbKey(blockNumber)];
+            (uint, long) result;
             if (data == null)
             {
-                return (0, 0);
+                result = (0, 0);
+            }
+            else
+            {
+                RlpStream? rlpStream = new RlpStream(data);
+                rlpStream.SkipLength();
+
+                result = (rlpStream.DecodeUInt(), rlpStream.DecodeLong());
             }
             
-            RlpStream? rlpStream = new RlpStream(data);
-            rlpStream.SkipLength();
-
-            (uint, long) result = (rlpStream.DecodeUInt(), rlpStream.DecodeLong());
-            if(_logger.IsWarn) _logger.Warn($"Loading count for block {blockNumber} in {DbPrefix.ToHexString()} - ({result.Item1},{result.Item2})");
+            if (_logger.IsWarn) _logger.Warn(
+                $"Loading count for block {blockNumber} in {DbPrefix.ToHexString()} - ({result.Item1},{result.Item2})");
             return result;
         }
 
         public void SaveBlockNumberCount(long blockNumber, uint count, long previousBlockWithLeaves)
         {
-            if(_logger.IsWarn) _logger.Warn($"Saving count for block {blockNumber} in {DbPrefix.ToHexString()} - ({count},{previousBlockWithLeaves})");
+            if(_logger.IsWarn) _logger.Warn(
+                $"Saving count for block {blockNumber} in {DbPrefix.ToHexString()} - ({count},{previousBlockWithLeaves})");
             
             int length = Rlp.LengthOfSequence(Rlp.LengthOf((long)count) + Rlp.LengthOf(previousBlockWithLeaves));
             RlpStream rlpStream = new RlpStream(length);
@@ -161,7 +167,8 @@ namespace Nethermind.Baseline.Tree
 
         public void SaveCurrentBlockInDb(Keccak lastBlockDbHash, long lastBlockWithLeaves)
         {
-            if(_logger.IsWarn) _logger.Warn($"Saving count of {DbPrefix.ToHexString()} at block {lastBlockWithLeaves}");
+            if(_logger.IsWarn) _logger.Warn(
+                $"Saving current block {lastBlockWithLeaves}|{lastBlockDbHash} of tree {DbPrefix.ToHexString()}");
             int length = Rlp.LengthOfSequence(Rlp.LengthOf(lastBlockDbHash) + Rlp.LengthOf(lastBlockWithLeaves));
             RlpStream rlpStream = new RlpStream(length);
             rlpStream.StartSequence(length);
@@ -172,7 +179,8 @@ namespace Nethermind.Baseline.Tree
 
         private void ClearBlockNumberCount(long blockNumber)
         {
-            if(_logger.IsWarn) _logger.Warn($"Clearing count at block {blockNumber} at {DbPrefix.ToHexString()}");
+            if(_logger.IsWarn) _logger.Warn(
+                $"Clearing count at block {blockNumber} at {DbPrefix.ToHexString()}");
             _metadataKeyValueStore[MetadataBuildDbKey(blockNumber)] = null;
         }
     }
