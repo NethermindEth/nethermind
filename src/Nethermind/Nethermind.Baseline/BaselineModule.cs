@@ -116,7 +116,7 @@ namespace Nethermind.Baseline
             var txData = _abiEncoder.Encode(
                 AbiEncodingStyle.IncludeSignature,
                 ContractMerkleTree.InsertLeavesAbiSig,
-                new object[] {hashes});
+                new object[] { hashes });
 
             Transaction tx = new Transaction();
             tx.Value = 0;
@@ -276,6 +276,7 @@ namespace Nethermind.Baseline
                 var bytecode = await GetContractBytecode(contractType);
                 try
                 {
+
                     Keccak txHash = await DeployBytecode(address, contractType, bytecode);
                     result = ResultWrapper<Keccak>.Success(txHash);
                 }
@@ -328,7 +329,7 @@ namespace Nethermind.Baseline
 
             return result;
         }
-        
+
         public Task<ResultWrapper<bool>> baseline_verify(
             Address contractAddress,
             Keccak root,
@@ -489,8 +490,8 @@ namespace Nethermind.Baseline
         private readonly DisposableStack _disposableStack;
 
         private BaselineMetadata _metadata;
-        private byte[] _metadataKey = {0};
-        
+        private byte[] _metadataKey = { 0 };
+
         private ConcurrentDictionary<Address, BaselineTree> _baselineTrees
             = new ConcurrentDictionary<Address, BaselineTree>();
 
@@ -509,23 +510,26 @@ namespace Nethermind.Baseline
                      (c >= 'a' && c <= 'f') ||
                      (c >= 'A' && c <= 'F'));
         }
-        
+
         private async Task<Keccak> DeployBytecode(Address address, string contractType, byte[] bytecode)
         {
             Transaction tx = new Transaction();
             tx.Value = 0;
-            tx.Init = bytecode;
+            contractType == "Shield" ? tx.Init = _abiEncoder.Encode(
+                        AbiEncodingStyle.IncludeSignature,
+                        address,
+                        BaselineTree.TreeHeight) : tx.Init = bytecode;
             tx.GasLimit = 1000000;
             tx.GasPrice = 20.GWei();
             tx.SenderAddress = address;
 
             Keccak txHash = await _txSender.SendTransaction(tx, TxHandlingOptions.ManagedNonce);
-
+            
             _logger.Info($"Sent transaction at price {tx.GasPrice} to {tx.SenderAddress}");
             _logger.Info($"Contract {contractType} has been deployed");
             return txHash;
         }
-    
+
         private void UpdateMetadata(Address contractAddress)
         {
             lock (_metadata)
