@@ -44,7 +44,7 @@ namespace Nethermind.Vault
         private readonly Guid? _networkId;
         private readonly ITxSigner _txSigner;
         private readonly int DefaultChainId = 5;
-        private bool _accountCreated = false;
+        private provide.Model.NChain.Account _account;
 
         private NChain _provide;
 
@@ -63,6 +63,14 @@ namespace Nethermind.Vault
                 vaultConfig.NChainToken);
         }
 
+        private async Task EnsureAccount()
+        {
+            _account ??= await _provide.CreateAccount(new provide.Model.NChain.Account()
+            {
+                NetworkId = _networkId!.Value
+            });
+        }
+        
         public async ValueTask<Keccak> SendTransaction(Transaction tx, TxHandlingOptions txHandlingOptions)
         {
             await EnsureAccount();
@@ -76,25 +84,14 @@ namespace Nethermind.Vault
             provideTx.Value = (BigInteger) tx.Value;
             provideTx.Params = new Dictionary<string, object>
             {
-                {"subsidize", true}
+                {"subsidize", true},
+                {"account_id", _account.Id},
             };
 
             // this should happen after we set the GasPrice
             _txSigner.Seal(tx, TxHandlingOptions.None);
             ProvideTx createdTx = await _provide.CreateTransaction(provideTx);
             return createdTx?.Hash == null ? Keccak.Zero : new Keccak(createdTx.Hash);
-        }
-
-        private async Task EnsureAccount()
-        {
-            if (_accountCreated == false)
-            {
-                await _provide.CreateAccount(new provide.Model.NChain.Account()
-                {
-                    NetworkId = _networkId.Value
-                });
-                _accountCreated = true;
-            }
         }
     }
 }
