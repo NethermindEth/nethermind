@@ -34,7 +34,6 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Repositories;
 using Nethermind.Db.Blooms;
-using Nethermind.TxPool;
 
 namespace Nethermind.Blockchain
 {
@@ -59,7 +58,6 @@ namespace Nethermind.Blockchain
         private readonly HeaderDecoder _headerDecoder = new HeaderDecoder();
         private readonly ILogger _logger;
         private readonly ISpecProvider _specProvider;
-        private readonly ITxPool _txPool;
         private readonly IBloomStorage _bloomStorage;
         private readonly ISyncConfig _syncConfig;
         private readonly IChainLevelInfoRepository _chainLevelInfoRepository;
@@ -97,10 +95,9 @@ namespace Nethermind.Blockchain
             IDbProvider dbProvider,
             IChainLevelInfoRepository chainLevelInfoRepository,
             ISpecProvider specProvider,
-            ITxPool txPool,
             IBloomStorage bloomStorage,
             ILogManager logManager)
-            : this(dbProvider.BlocksDb, dbProvider.HeadersDb, dbProvider.BlockInfosDb, chainLevelInfoRepository, specProvider, txPool, bloomStorage, new SyncConfig(), logManager)
+            : this(dbProvider.BlocksDb, dbProvider.HeadersDb, dbProvider.BlockInfosDb, chainLevelInfoRepository, specProvider, bloomStorage, new SyncConfig(), logManager)
         {
         }
         
@@ -108,11 +105,10 @@ namespace Nethermind.Blockchain
             IDbProvider dbProvider,
             IChainLevelInfoRepository chainLevelInfoRepository,
             ISpecProvider specProvider,
-            ITxPool txPool,
             IBloomStorage bloomStorage,
             ISyncConfig syncConfig,
             ILogManager logManager)
-            : this(dbProvider.BlocksDb, dbProvider.HeadersDb, dbProvider.BlockInfosDb, chainLevelInfoRepository, specProvider, txPool, bloomStorage, syncConfig, logManager)
+            : this(dbProvider.BlocksDb, dbProvider.HeadersDb, dbProvider.BlockInfosDb, chainLevelInfoRepository, specProvider, bloomStorage, syncConfig, logManager)
         {
         }
         
@@ -122,10 +118,9 @@ namespace Nethermind.Blockchain
             IDb blockInfoDb,
             IChainLevelInfoRepository chainLevelInfoRepository,
             ISpecProvider specProvider,
-            ITxPool txPool,
             IBloomStorage bloomStorage,
             ILogManager logManager)
-            : this(blockDb, headerDb, blockInfoDb, chainLevelInfoRepository, specProvider, txPool, bloomStorage, new SyncConfig(), logManager)
+            : this(blockDb, headerDb, blockInfoDb, chainLevelInfoRepository, specProvider, bloomStorage, new SyncConfig(), logManager)
         {
         }
 
@@ -135,7 +130,6 @@ namespace Nethermind.Blockchain
             IDb blockInfoDb,
             IChainLevelInfoRepository chainLevelInfoRepository,
             ISpecProvider specProvider,
-            ITxPool txPool,
             IBloomStorage bloomStorage,
             ISyncConfig syncConfig,
             ILogManager logManager)
@@ -145,8 +139,7 @@ namespace Nethermind.Blockchain
             _headerDb = headerDb ?? throw new ArgumentNullException(nameof(headerDb));
             _blockInfoDb = blockInfoDb ?? throw new ArgumentNullException(nameof(blockInfoDb));
             _specProvider = specProvider;
-            _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
-            _bloomStorage = bloomStorage ?? throw new ArgumentNullException(nameof(txPool));
+            _bloomStorage = bloomStorage ?? throw new ArgumentNullException(nameof(bloomStorage));
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
             _chainLevelInfoRepository = chainLevelInfoRepository ?? throw new ArgumentNullException(nameof(chainLevelInfoRepository));
 
@@ -1000,7 +993,11 @@ namespace Nethermind.Blockchain
             _chainLevelInfoRepository.PersistLevel(block.Number, level, batch);
             _bloomStorage.Store(block.Number, block.Bloom);
 
-            BlockAddedToMain?.Invoke(this, new BlockEventArgs(block));
+            Block previous = hashOfThePreviousMainBlock != null && hashOfThePreviousMainBlock != block.Hash
+                ? FindBlock(hashOfThePreviousMainBlock, BlockTreeLookupOptions.TotalDifficultyNotNeeded)
+                : null;
+            
+            BlockAddedToMain?.Invoke(this, new BlockReplacementEventArgs(block, previous));
 
             if (block.IsGenesis || block.TotalDifficulty > (Head?.TotalDifficulty ?? 0))
             {
@@ -1017,23 +1014,6 @@ namespace Nethermind.Blockchain
                 if (wasProcessed)
                 {
                     UpdateHeadBlock(block);
-                }
-            }
-
-            for (int i = 0; i < block.Transactions.Length; i++)
-            {
-                _txPool.RemoveTransaction(block.Transactions[i].Hash, block.Number);
-            }
-
-            // the hash will only be the same during perf test runs / modified DB states
-            if (hashOfThePreviousMainBlock != null && hashOfThePreviousMainBlock != block.Hash)
-            {
-                Block previous = FindBlock(hashOfThePreviousMainBlock, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-                bool isEip155Enabled = _specProvider.GetSpec(previous.Number).IsEip155Enabled;
-                for (int i = 0; i < previous?.Transactions.Length; i++)
-                {
-                    Transaction tx = previous.Transactions[i];
-                    _txPool.AddTransaction(tx, isEip155Enabled ? TxHandlingOptions.None : TxHandlingOptions.PreEip155Signing);
                 }
             }
 
@@ -1322,7 +1302,7 @@ namespace Nethermind.Blockchain
             if (_logger.IsTrace) _logger.Trace($"Calculated total difficulty for {header} is {header.TotalDifficulty}");
         }
 
-        public event EventHandler<BlockEventArgs> BlockAddedToMain;
+        public event EventHandler<BlockReplacementEventArgs> BlockAddedToMain;
 
         public event EventHandler<BlockEventArgs> NewBestSuggestedBlock;
 
