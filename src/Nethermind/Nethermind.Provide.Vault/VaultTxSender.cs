@@ -92,12 +92,14 @@ namespace Nethermind.Vault
             {
                 if (string.IsNullOrWhiteSpace(_vaultConfig.NChainAccountId))
                 {
-                    var accountToCreate = new provide.Model.NChain.Account()
+                    var createRequest = new CreateAccountRequest()
                     {
-                        NetworkId = _networkId!.Value
+                        network_id = _networkId!.Value.ToString()
                     };
-                    var result = await _provide.CreateAccount(accountToCreate);
-                    _accountId = result.Id;
+                    var result = await SendPostNChainRequest("accounts", createRequest);
+                    var json = await result.Content.ReadAsStringAsync();
+                    var account = JsonConvert.DeserializeObject<provide.Model.NChain.Account>(json);
+                    _accountId = account.Id;
                 }
                 else
                 {
