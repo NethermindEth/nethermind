@@ -82,7 +82,12 @@ namespace Nethermind.Baseline.Tree
 
             var headerSearch = latestHash == null ? null : new BlockParameter(latestHash);
             _currentBlockHeader = _blockFinder.SearchForHeader(headerSearch).Object;
-            _baselineTree.MemorizeCurrentCount(_currentBlockHeader.Hash, _currentBlockHeader.Number, _baselineTree.Count);
+
+            if (_baselineTree.LastBlockWithLeaves != _currentBlockHeader.Number)
+            {
+                _baselineTree.MemorizeCurrentCount(_currentBlockHeader.Hash, _currentBlockHeader.Number, _baselineTree.Count);
+            }
+
             _blockProcessor.BlockProcessed += OnBlockProcessed;
         }
 
