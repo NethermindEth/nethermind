@@ -67,24 +67,17 @@ namespace Nethermind.Vault
                 vaultConfig.NChainPath,
                 vaultConfig.NChainScheme,
                 vaultConfig.NChainToken);
+
+            EnsureNetwork(chainId);
         }
 
-        private async Task EnsureNetwork()
+        private void EnsureNetwork(int chainId)
         {
             if (_networkId == null)
             {
                 if (string.IsNullOrWhiteSpace(_vaultConfig.NChainNetworkId))
                 {
-                    var network = new provide.Model.NChain.Network()
-                    {
-                        Name = "baseline_test",
-                        Config = new Dictionary<string, object>()
-                        {
-                            { "chain", "test" },
-                        },                        
-                    };
-                    var result = await _provide.CreateNetwork(network);
-                    _networkId = result.Id;
+                    _networkId = _networkIdMapping[chainId];
                 }
                 else
                 {
@@ -115,7 +108,6 @@ namespace Nethermind.Vault
 
         public async ValueTask<Keccak> SendTransaction(Transaction tx, TxHandlingOptions txHandlingOptions)
         {
-            await EnsureNetwork();
             await EnsureAccount();
             ProvideTx provideTx = new ProvideTx();
             provideTx.Data = "0x" + (tx.Data ?? tx.Init).ToHexString();
