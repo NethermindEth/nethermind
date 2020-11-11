@@ -520,6 +520,10 @@ namespace Nethermind.Baseline.Test
         [TestCase(10, 25, 90, false, true, 1524199427)]
         [TestCase(10, 25, 90, false, true, 943302129)]
         [TestCase(10, 25, 90, false, true, null)]
+        [TestCase(10, 100, 90, false, true, 496297040)]
+        [TestCase(10, 100, 90, false, true, null)]
+        [TestCase(1, 100, 20, false, true, 484284241)]
+        [TestCase(1, 100, 20, false, true, null)]
         // TODO: fuzzer with concurrent inserts
         public void Baseline_tree_fuzzer(
             int leavesPerBlock,
@@ -621,8 +625,10 @@ namespace Nethermind.Baseline.Test
                             lastBlockWithLeavesCheck.Pop();
                         }
 
-                        if (lastBlockWithLeavesCheck.Any() && lastBlockWithLeavesCheck.Peek() != currentBlockNumber)
+                        lastBlockWithLeavesCheck.TryPeek(out long last);
+                        if (last != currentBlockNumber)
                         {
+                            TestContext.WriteLine($"Pushing {currentBlockNumber} on test stack after reorg.");
                             // after reorg we always push a memorized count
                             lastBlockWithLeavesCheck.Push(currentBlockNumber);
                         }
