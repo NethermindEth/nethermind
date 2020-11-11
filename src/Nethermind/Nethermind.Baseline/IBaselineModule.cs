@@ -61,6 +61,14 @@ namespace Nethermind.Baseline
             BlockParameter? blockParameter = null);
 
         [JsonRpcMethod(
+            Description = "Gets count of a tree at the given 'address'",
+            IsSharable = true,
+            IsImplemented = true)]
+        public Task<ResultWrapper<long>> baseline_getCount(
+            Address contractAddress,
+            BlockParameter? blockParameter = null);
+
+        [JsonRpcMethod(
             Description = "Gets multiple leaves from a tree at the given 'address'",
             IsSharable = true,
             IsImplemented = true)]
