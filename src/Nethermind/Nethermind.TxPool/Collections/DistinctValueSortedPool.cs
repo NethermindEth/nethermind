@@ -54,7 +54,7 @@ namespace Nethermind.TxPool.Collections
 
             if (_distinctDictionary.TryGetValue(value, out var oldKvp))
             {
-                TryRemove(oldKvp.Key, out _);
+                TryRemove(oldKvp.Key, out _, out _);
             }
 
 

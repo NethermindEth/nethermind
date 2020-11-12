@@ -137,7 +137,7 @@ namespace Nethermind.Blockchain.Test.TxPools
         {
             _txPool = CreatePool(_noTxStorage);
             var transactions = AddOwnTransactionToPool();
-            _txPool.RemoveTransaction(transactions[0].Hash, 1);
+            _txPool.RemoveTransaction(transactions[0].Hash, 1, false);
             _txPool.AddTransaction(transactions[0], TxHandlingOptions.PersistentBroadcast);
             Assert.AreEqual(1, _txPool.GetOwnPendingTransactions().Length);
         }
@@ -155,8 +155,8 @@ namespace Nethermind.Blockchain.Test.TxPools
         {
             _txPool = CreatePool(_noTxStorage);
             var transactions = AddOwnTransactionToPool();
-            _txPool.RemoveTransaction(transactions[0].Hash, 1);
-            _txPool.RemoveTransaction(TestItem.KeccakA, 100);
+            _txPool.RemoveTransaction(transactions[0].Hash, 1, false);
+            _txPool.RemoveTransaction(TestItem.KeccakA, 100, false);
             _txPool.AddTransaction(transactions[0], TxHandlingOptions.None);
             Assert.AreEqual(0, _txPool.GetOwnPendingTransactions().Length);
         }
@@ -177,8 +177,21 @@ namespace Nethermind.Blockchain.Test.TxPools
         {
             _txPool = CreatePool(_noTxStorage);
             var transactions = AddTransactionsToPool();
-            DeleteTransactionsFromPool(transactions);
+            DeleteTransactionsFromPool(false, transactions);
             _txPool.GetPendingTransactions().Should().BeEmpty();
+        }
+        
+        [Test]
+        public void should_delete_pending_transactions_and_smaller_nonces()
+        {
+            _txPool = CreatePool(_noTxStorage);
+            int transactionsPerPeer = 5;
+            var transactions = AddTransactionsToPool(true, false, transactionsPerPeer);
+            Transaction[] transactionsToDelete = transactions.Where(t => t.Nonce == 8).ToArray();
+            transactions.Should().HaveCount(transactionsPerPeer * 10);
+            transactionsToDelete.Should().HaveCount(transactionsPerPeer);
+            DeleteTransactionsFromPool(true, transactionsToDelete);
+            _txPool.GetPendingTransactions().Should().HaveCount(transactionsPerPeer);
         }
 
         [Test]
@@ -331,11 +344,11 @@ namespace Nethermind.Blockchain.Test.TxPools
             return new[] {transaction};
         }
 
-        private void DeleteTransactionsFromPool(IEnumerable<Transaction> transactions)
+        private void DeleteTransactionsFromPool(bool removeSmallerNonces, params Transaction[] transactions)
         {
             foreach (var transaction in transactions)
             {
-                _txPool.RemoveTransaction(transaction.Hash, 0);
+                _txPool.RemoveTransaction(transaction.Hash, 0, removeSmallerNonces);
             }
         }
 

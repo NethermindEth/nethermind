@@ -133,7 +133,7 @@ namespace Nethermind.Blockchain.Producers
                 
                 if (tx.SenderAddress == null)
                 {
-                    _transactionPool.RemoveTransaction(tx.Hash, 0);
+                    _transactionPool.RemoveTransaction(tx.Hash, 0, false);
                     if (_logger.IsDebug) _logger.Debug($"Rejecting (null sender) {tx.ToShortString()}");
                     continue;
                 }
@@ -150,12 +150,12 @@ namespace Nethermind.Blockchain.Producers
                 {
                     if (tx.Nonce < expectedNonce)
                     {
-                        _transactionPool.RemoveTransaction(tx.Hash, 0);    
+                        _transactionPool.RemoveTransaction(tx.Hash, 0, true);    
                     }
                     
                     if (tx.Nonce > expectedNonce + 16)
                     {
-                        _transactionPool.RemoveTransaction(tx.Hash, 0);    
+                        _transactionPool.RemoveTransaction(tx.Hash, 0, false);
                     }
                     
                     if (_logger.IsDebug) _logger.Debug($"Rejecting (invalid nonce - expected {expectedNonce}) {tx.ToShortString()}");

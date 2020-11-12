@@ -41,7 +41,7 @@ namespace Nethermind.Blockchain
         {
             for (int i = 0; i < e.Block.Transactions.Length; i++)
             {
-                _txPool.RemoveTransaction(e.Block.Transactions[i].Hash, e.Block.Number);
+                _txPool.RemoveTransaction(e.Block.Transactions[i].Hash, e.Block.Number, true);
             }
             
             // the hash will only be the same during perf test runs / modified DB states

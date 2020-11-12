@@ -89,7 +89,7 @@ namespace Nethermind.TxPool.Collections
         /// Gets first element in supplied comparer order.
         /// </summary>
         [MethodImpl(MethodImplOptions.Synchronized)]
-        public bool TryTakeFirst(out TValue first) => TryRemove(_sortedValues.Min.Value, out first);
+        public bool TryTakeFirst(out TValue first) => TryRemove(_sortedValues.Min.Value, out first, out _);
 
         /// <summary>
         /// Tries to remove element.
@@ -98,7 +98,7 @@ namespace Nethermind.TxPool.Collections
         /// <param name="value">Removed element or null.</param>
         /// <returns>If element was removed. False if element was not present in pool.</returns>
         [MethodImpl(MethodImplOptions.Synchronized)]
-        public bool TryRemove(TKey key, out TValue value)
+        public bool TryRemove(TKey key, out TValue value, out ICollection<TValue> bucket)
         {
             if (_cacheMap.TryGetValue(key, out value))
             {
@@ -108,6 +108,7 @@ namespace Nethermind.TxPool.Collections
                     if (_buckets.TryGetValue(groupMapping, out var collection))
                     {
                         collection.Remove(value);
+                        bucket = collection;
                         return true;
                     }
                 }
@@ -115,6 +116,7 @@ namespace Nethermind.TxPool.Collections
             }
 
             value = default;
+            bucket = null;
             return false;
         }
 
@@ -164,7 +166,7 @@ namespace Nethermind.TxPool.Collections
 
         private void RemoveLast()
         {
-            TryRemove(_sortedValues.Max.Value, out _);
+            TryRemove(_sortedValues.Max.Value, out _, out _);
         }
         
         /// <summary>

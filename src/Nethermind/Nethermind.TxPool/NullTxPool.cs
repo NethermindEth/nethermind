@@ -45,7 +45,7 @@ namespace Nethermind.TxPool
 
         public AddTxResult AddTransaction(Transaction tx, TxHandlingOptions txHandlingOptions) => AddTxResult.Added;
 
-        public void RemoveTransaction(Keccak hash, long blockNumber)
+        public void RemoveTransaction(Keccak hash, long blockNumber, bool removeSmallerNonces)
         {
         }
 

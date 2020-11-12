@@ -249,7 +249,7 @@ namespace Nethermind.Blockchain.Test.TxPools.Collections
                 {
                     if (i % 3 == 2)
                     {
-                        pool.TryRemove(i - 1, out _);
+                        pool.TryRemove(i - 1, out _, out _);
                     }
 
                     pool.TryInsert(i, new WithFinalizer(i));
