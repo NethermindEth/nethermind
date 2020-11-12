@@ -6,13 +6,13 @@ on:
     - '*'
     inputs:
       branch:
-        description: 'Test branch'
+        description: 'Branch to get tests from'
         required: false
         default: 'tx-priority-tests'
   workflow_dispatch:
     inputs:
       branch:
-        description: 'Test branch'
+        description: 'Branch to get tests from'
         required: true
         default: 'tx-priority-tests'
 
