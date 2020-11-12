@@ -245,7 +245,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.LogManager,
                 CreateTxPoolTxComparer());
 
-        protected virtual IComparer<Transaction> CreateTxPoolTxComparer() => TxPool.TxPool.DefaultComparer;
+        protected IComparer<Transaction> CreateTxPoolTxComparer() => TxPool.TxPool.DefaultComparer;
 
         protected virtual HeaderValidator CreateHeaderValidator() =>
             new HeaderValidator(
