@@ -32,8 +32,9 @@ namespace Nethermind.TxPool
             _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
         }
 
-        public virtual void Seal(Transaction tx, TxHandlingOptions txHandlingOptions, bool allowChangeExistingSignature = false)
+        public virtual void Seal(Transaction tx, TxHandlingOptions txHandlingOptions)
         {
+            bool allowChangeExistingSignature = (txHandlingOptions & TxHandlingOptions.AllowResigning) == TxHandlingOptions.AllowResigning;
             if (tx.Signature == null || allowChangeExistingSignature)
             {
                 _txSigner.Sign(tx);

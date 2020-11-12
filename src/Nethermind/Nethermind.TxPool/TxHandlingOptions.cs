@@ -37,6 +37,12 @@ namespace Nethermind.TxPool
         /// old style signature without replay attack protection (before the ETC and ETH split)
         /// </summary>
         PreEip155Signing = 4,
-        All = 7
+        
+        /// <summary>
+        /// Allows transaction to be signed by node even if its already signed
+        /// </summary>
+        AllowResigning = 8,
+        
+        All = ManagedNonce | PersistentBroadcast | PreEip155Signing | AllowResigning
     }
 }

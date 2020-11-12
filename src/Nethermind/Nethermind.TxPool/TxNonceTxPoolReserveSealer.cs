@@ -31,15 +31,16 @@ namespace Nethermind.TxPool
             _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
         }
 
-        public override void Seal(Transaction tx, TxHandlingOptions txHandlingOptions, bool allowChangeExistingSignature = false)
+        public override void Seal(Transaction tx, TxHandlingOptions txHandlingOptions)
         {
             bool manageNonce = (txHandlingOptions & TxHandlingOptions.ManagedNonce) == TxHandlingOptions.ManagedNonce;
             if (manageNonce)
             {
                 tx.Nonce = _txPool.ReserveOwnTransactionNonce(tx.SenderAddress);
+                txHandlingOptions |= TxHandlingOptions.AllowResigning;
             }
 
-            base.Seal(tx, txHandlingOptions, allowChangeExistingSignature || manageNonce);
+            base.Seal(tx, txHandlingOptions);
         }
     }
 }
