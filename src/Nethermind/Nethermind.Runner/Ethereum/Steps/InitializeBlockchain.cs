@@ -235,8 +235,6 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.Config<ISyncConfig>(),
                 _api.LogManager);
 
-        protected virtual ITxFilter CreateTxPoolFilter() => TxFilterBuilders.CreateStandardTxFilter(_api.Config<IMiningConfig>());
-
         protected virtual TxPool.TxPool CreateTxPool(PersistentTxStorage txStorage) =>
             new TxPool.TxPool(
                 txStorage,
@@ -247,7 +245,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.LogManager,
                 CreateTxPoolTxComparer());
 
-        protected virtual IComparer<Transaction> CreateTxPoolTxComparer() => TxPool.TxPool.DefaultComparer;
+        protected IComparer<Transaction> CreateTxPoolTxComparer() => TxPool.TxPool.DefaultComparer;
 
         protected virtual HeaderValidator CreateHeaderValidator() =>
             new HeaderValidator(

@@ -345,6 +345,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             }
             catch (Exception e)
             {
+                if (_logger.IsError) _logger.Error("Failed to send transaction.", e);
                 return ResultWrapper<Keccak>.Fail(e.Message, ErrorCodes.TransactionRejected);
             }
         }
