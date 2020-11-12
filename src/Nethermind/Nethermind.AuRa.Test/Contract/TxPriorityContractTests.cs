@@ -244,9 +244,9 @@ namespace Nethermind.AuRa.Test.Contract
         public class TxPermissionContractBlockchain : TestContractBlockchain
         {
             public TxPriorityContract TxPriorityContract { get; private set; }
-            public DictionaryContractDataStore<TxPriorityContract.Destination> Priorities { get; private set; }
+            public DictionaryContractDataStore<TxPriorityContract.Destination, TxPriorityContract.DestinationSortedListContractDataStoreCollection> Priorities { get; private set; }
             
-            public DictionaryContractDataStore<TxPriorityContract.Destination> MinGasPrices { get; private set; }
+            public DictionaryContractDataStore<TxPriorityContract.Destination, TxPriorityContract.DestinationSortedListContractDataStoreCollection> MinGasPrices { get; private set; }
             
             public ContractDataStoreWithLocalData<Address> SendersWhitelist { get; private set; }
             
@@ -257,14 +257,14 @@ namespace Nethermind.AuRa.Test.Contract
                 TxPriorityContract = new TxPriorityContract(new AbiEncoder(), TestItem.AddressA, 
                     new ReadOnlyTxProcessorSource(DbProvider, BlockTree, SpecProvider, LimboLogs.Instance));
 
-                Priorities = new DictionaryContractDataStore<TxPriorityContract.Destination>(
+                Priorities = new DictionaryContractDataStore<TxPriorityContract.Destination, TxPriorityContract.DestinationSortedListContractDataStoreCollection>(
                     new TxPriorityContract.DestinationSortedListContractDataStoreCollection(),  
                     TxPriorityContract.Priorities, 
                     BlockProcessor,
                     LimboLogs.Instance,
                     GetPrioritiesLocalDataStore());
                 
-                MinGasPrices = new DictionaryContractDataStore<TxPriorityContract.Destination>(
+                MinGasPrices = new DictionaryContractDataStore<TxPriorityContract.Destination, TxPriorityContract.DestinationSortedListContractDataStoreCollection>(
                     new TxPriorityContract.DestinationSortedListContractDataStoreCollection(),
                     TxPriorityContract.MinGasPrices,
                     BlockProcessor,
@@ -407,8 +407,8 @@ namespace Nethermind.AuRa.Test.Contract
                 {
                     EventHandler realeseHandler = (sender, args) => Semaphore.Release();
                     SendersWhitelist.Loaded += realeseHandler;
-                    ((ContractDataStoreWithLocalData<TxPriorityContract.Destination, DictionaryBasedContractDataStoreCollection<TxPriorityContract.Destination>>)MinGasPrices.ContractDataStore).Loaded += realeseHandler;
-                    ((ContractDataStoreWithLocalData<TxPriorityContract.Destination, DictionaryBasedContractDataStoreCollection<TxPriorityContract.Destination>>)Priorities.ContractDataStore).Loaded += realeseHandler;
+                    ((ContractDataStoreWithLocalData<TxPriorityContract.Destination, TxPriorityContract.DestinationSortedListContractDataStoreCollection>)MinGasPrices.ContractDataStore).Loaded += realeseHandler;
+                    ((ContractDataStoreWithLocalData<TxPriorityContract.Destination, TxPriorityContract.DestinationSortedListContractDataStoreCollection>)Priorities.ContractDataStore).Loaded += realeseHandler;
                     
                     WriteFile(LocalData);
                     await Semaphore.WaitAsync(1000);

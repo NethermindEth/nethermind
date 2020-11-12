@@ -17,6 +17,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Core;
 
 namespace Nethermind.Consensus.AuRa.Contracts
@@ -50,7 +51,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
             return (BlockHeader blockHeader, TxReceipt[] receipts, out IEnumerable<T> items) =>
             {
                 items = getChangesFromBlock(blockHeader, receipts);
-                return true;
+                return getChangesFromBlock(blockHeader, receipts).Any();
             };
         }
 
