@@ -25,18 +25,16 @@ namespace Nethermind.TxPool
     {
         private readonly ITxSigner _txSigner;
         private readonly ITimestamper _timestamper;
-        private readonly bool _allowExistingSignature;
 
-        public TxSealer(ITxSigner txSigner, ITimestamper timestamper, bool allowExistingSignature = true)
+        public TxSealer(ITxSigner txSigner, ITimestamper timestamper)
         {
             _txSigner = txSigner ?? throw new ArgumentNullException(nameof(txSigner));
             _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
-            _allowExistingSignature = allowExistingSignature;
         }
 
-        public virtual void Seal(Transaction tx, TxHandlingOptions txHandlingOptions)
+        public virtual void Seal(Transaction tx, TxHandlingOptions txHandlingOptions, bool allowChangeExistingSignature = false)
         {
-            if (tx.Signature == null || !_allowExistingSignature)
+            if (tx.Signature == null || allowChangeExistingSignature)
             {
                 _txSigner.Sign(tx);
             }
