@@ -137,7 +137,7 @@ namespace Nethermind.Blockchain.Test.TxPools
         {
             _txPool = CreatePool(_noTxStorage);
             var transactions = AddOwnTransactionToPool();
-            _txPool.RemoveTransaction(transactions[0].Hash, 1, false);
+            _txPool.RemoveTransaction(transactions[0].Hash, 1);
             _txPool.AddTransaction(transactions[0], TxHandlingOptions.PersistentBroadcast);
             Assert.AreEqual(1, _txPool.GetOwnPendingTransactions().Length);
         }
@@ -155,8 +155,8 @@ namespace Nethermind.Blockchain.Test.TxPools
         {
             _txPool = CreatePool(_noTxStorage);
             var transactions = AddOwnTransactionToPool();
-            _txPool.RemoveTransaction(transactions[0].Hash, 1, false);
-            _txPool.RemoveTransaction(TestItem.KeccakA, 100, false);
+            _txPool.RemoveTransaction(transactions[0].Hash, 1);
+            _txPool.RemoveTransaction(TestItem.KeccakA, 100);
             _txPool.AddTransaction(transactions[0], TxHandlingOptions.None);
             Assert.AreEqual(0, _txPool.GetOwnPendingTransactions().Length);
         }

@@ -52,9 +52,9 @@ namespace Nethermind.TxPool.Collections
         {
             base.InsertCore(key, value, bucketCollection);
 
-            if (_distinctDictionary.TryGetValue(value, out var oldKvp))
+            if (_distinctDictionary.TryGetValue(value, out KeyValuePair<TKey, TValue> oldKvp))
             {
-                TryRemove(oldKvp.Key, out _, out _);
+                TryRemove(oldKvp.Key);
             }
 
 
