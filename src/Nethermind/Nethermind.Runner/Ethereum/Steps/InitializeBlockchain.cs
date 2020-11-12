@@ -217,7 +217,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             TxSealer standardSealer = new TxSealer(txSigner, _api.Timestamper);
             NonceReservingTxSealer nonceReservingTxSealer =
                 new NonceReservingTxSealer(txSigner, _api.Timestamper, _api.TxPool);
-            _api.TxSender = new TxPoolSender(_api.TxPool, standardSealer, nonceReservingTxSealer);
+            _api.TxSender = new TxPoolSender(_api.TxPool, nonceReservingTxSealer, standardSealer);
 
             // TODO: possibly hide it (but need to confirm that NDM does not really need it)
             _api.FilterStore = new FilterStore();

@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Data;
 using Nethermind.Config;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.AuRa.Contracts;
@@ -51,5 +52,6 @@ namespace Nethermind.Runner.Ethereum.Api
         public IReportingValidator? ReportingValidator { get; set; }
 
         public ReportingContractBasedValidator.Cache ReportingContractValidatorCache { get; } = new ReportingContractBasedValidator.Cache();
+        public TxPriorityContract.LocalDataSource? TxPriorityContractLocalDataSource { get; set; }
     }
 }

@@ -50,9 +50,13 @@ namespace Nethermind.Vault.Config
         string NChainToken { get; set; }
 
         [ConfigItem(Description = "The Nchain'd URI scheme", DefaultValue = "https")]
-        string NchainScheme { get; set; }
+        string NChainScheme { get; set; }
 
         [ConfigItem(Description = "Path to the Nchain'd api", DefaultValue = "api/v1")]
-        string NchainPath { get; set; }
+        string NChainPath { get; set; }
+
+        string NChainNetworkId { get; set; }
+
+        string NChainAccountId { get; set; }
     }
 }

@@ -57,6 +57,10 @@ namespace Nethermind.Plugin.Baseline
                 
                 if (_logger.IsInfo) _logger.Info("Baseline RPC Module has been enabled");
             }
+            else
+            {
+                if (_logger.IsWarn) _logger.Info("Skipping Baseline RPC due to baseline being disabled in config.");
+            }
 
             return Task.CompletedTask;
         }

@@ -41,7 +41,7 @@ namespace Nethermind.Vault
         {
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _vaultService = vaultService;
-            _vaultId = Guid.Parse(vaultId ?? throw new ArgumentNullException(nameof(vaultId)));
+            _vaultId = vaultId == null ? Guid.Empty : Guid.Parse(vaultId);
             _accounts = new ConcurrentDictionary<Address, Guid>();
         }
 
