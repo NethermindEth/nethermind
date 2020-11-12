@@ -387,9 +387,16 @@ namespace Nethermind.TxPool
 
             if (bucket != null && removeSmallerNonces)
             {
-                foreach (var tx in bucket.ToArray().TakeWhile(t => t.Nonce <= transaction.Nonce))
+                foreach (Transaction tx in bucket.ToArray())
                 {
-                    RemoveTransaction(tx.Hash, blockNumber, false);
+                    if (tx.Nonce <= transaction.Nonce)
+                    {
+                        RemoveTransaction(tx.Hash, blockNumber, false);
+                    }
+                    else
+                    {
+                        break;
+                    }
                 }
             }
         }
