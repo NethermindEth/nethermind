@@ -44,10 +44,12 @@ namespace Nethermind.Vault.JsonRpc
                  Description = description
              }).Result;
 
+
         [CliFunction("vault", "deleteVault")]
         public object DeleteVault(string vaultId) => NodeManager.Post<string>(
              "vault_deleteVault",
               vaultId).Result;
+
 
         [CliFunction("vault", "listKeys")]
         public object ListKeys(string vaultId) => NodeManager.Post<string>(
@@ -61,17 +63,21 @@ namespace Nethermind.Vault.JsonRpc
               vaultId,
               args).Result;
 
+
         [CliFunction("vault", "deleteKey")]
         public object DeleteKey(string vaultId, string keyId) => NodeManager.Post<string>(
              "vault_deleteKey",
               vaultId,
               keyId).Result;
 
+
         [CliFunction("vault", "listSecrets")]
         public object ListSecrets(string vaultId) => NodeManager.Post<string>(
              "vault_listSecrets",
               vaultId).Result;
 
+
+        // ToDo parse args secret
         [CliFunction("vault", "createSecret")]
         public object CreateSecret(string vaultId, Secret args) => NodeManager.Post<string>(
              "vault_createSecret",
