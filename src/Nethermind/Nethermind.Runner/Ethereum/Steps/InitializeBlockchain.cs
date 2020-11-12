@@ -235,8 +235,6 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.Config<ISyncConfig>(),
                 _api.LogManager);
 
-        protected virtual ITxFilter CreateTxPoolFilter() => TxFilterBuilders.CreateStandardTxFilter(_api.Config<IMiningConfig>());
-
         protected virtual TxPool.TxPool CreateTxPool(PersistentTxStorage txStorage) =>
             new TxPool.TxPool(
                 txStorage,
