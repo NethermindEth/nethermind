@@ -217,7 +217,12 @@ namespace Nethermind.Runner.Ethereum.Steps
             if (_txPriorityContract != null || _localDataSource != null)
             {
                 _txPoolComparer = new WrappingComparer<Transaction>();
-                return _txPoolComparer.ThenBy(base.CreateTxPoolTxComparer());
+                
+                return CompareTxByGasPrice.Instance
+                    .ThenBy(_txPoolComparer)
+                    .ThenBy(CompareTxByTimestamp.Instance)
+                    .ThenBy(CompareTxByPoolIndex.Instance)
+                    .ThenBy(CompareTxByGasLimit.Instance);
             }
             
             return base.CreateTxPoolTxComparer();
