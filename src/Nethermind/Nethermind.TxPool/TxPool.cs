@@ -391,6 +391,7 @@ namespace Nethermind.TxPool
                 while (txWithSmallestNonce != null && txWithSmallestNonce.Nonce <= transaction.Nonce)
                 {
                     RemoveTransaction(txWithSmallestNonce.Hash, blockNumber);
+                    txWithSmallestNonce = bucket.FirstOrDefault();
                 }
             }
         }
