@@ -34,7 +34,7 @@ namespace Nethermind.TxPool
 
         public virtual void Seal(Transaction tx, TxHandlingOptions txHandlingOptions)
         {
-            bool allowChangeExistingSignature = (txHandlingOptions & TxHandlingOptions.AllowResigning) == TxHandlingOptions.AllowResigning;
+            bool allowChangeExistingSignature = (txHandlingOptions & TxHandlingOptions.AllowReplacingSignature) == TxHandlingOptions.AllowReplacingSignature;
             if (tx.Signature == null || allowChangeExistingSignature)
             {
                 _txSigner.Sign(tx);

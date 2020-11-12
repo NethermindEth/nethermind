@@ -41,8 +41,8 @@ namespace Nethermind.TxPool
         /// <summary>
         /// Allows transaction to be signed by node even if its already signed
         /// </summary>
-        AllowResigning = 8,
+        AllowReplacingSignature = 8,
         
-        All = ManagedNonce | PersistentBroadcast | PreEip155Signing | AllowResigning
+        All = ManagedNonce | PersistentBroadcast | PreEip155Signing | AllowReplacingSignature
     }
 }
