@@ -17,6 +17,7 @@
 
 using Nethermind.Cli;
 using Nethermind.Cli.Modules;
+using provide.Model.Vault;
 
 namespace Nethermind.Vault.JsonRpc
 {
@@ -29,7 +30,91 @@ namespace Nethermind.Vault.JsonRpc
         }
 
         [CliFunction("vault", "listVaults")]
-        public object listVaults() => NodeManager.PostJint(
+        public object ListVaults() => NodeManager.PostJint(
             "vault_listVaults").Result;
+
+
+        // ToDo allow to pass more arguments
+        [CliFunction("vault", "createVault")]
+         public object CreateVault(string name, string description) => NodeManager.Post<string>(
+             "vault_createVault",
+             new provide.Model.Vault.Vault()
+             {
+                 Name = name,
+                 Description = description
+             }).Result;
+
+        [CliFunction("vault", "deleteVault")]
+        public object DeleteVault(string vaultId) => NodeManager.Post<string>(
+             "vault_deleteVault",
+              vaultId).Result;
+
+        [CliFunction("vault", "listKeys")]
+        public object ListKeys(string vaultId) => NodeManager.Post<string>(
+             "vault_listKeys",
+              vaultId).Result;
+
+        // ToDo parse Key args
+        [CliFunction("vault", "createKey")]
+        public object CreateKey(string vaultId, Key args) => NodeManager.Post<string>(
+             "vault_createKey",
+              vaultId,
+              args).Result;
+
+        [CliFunction("vault", "deleteKey")]
+        public object DeleteKey(string vaultId, string keyId) => NodeManager.Post<string>(
+             "vault_deleteKey",
+              vaultId,
+              keyId).Result;
+
+        [CliFunction("vault", "listSecrets")]
+        public object ListSecrets(string vaultId) => NodeManager.Post<string>(
+             "vault_listSecrets",
+              vaultId).Result;
+
+        [CliFunction("vault", "createSecret")]
+        public object CreateSecret(string vaultId, Secret args) => NodeManager.Post<string>(
+             "vault_createSecret",
+              vaultId,
+              args).Result;
+
+
+        [CliFunction("vault", "deleteSecret")]
+        public object DeleteSecret(string vaultId, string secretId) => NodeManager.Post<string>(
+             "vault_deleteSecret",
+              vaultId,
+              secretId).Result;
+
+
+        [CliFunction("vault", "signMessage")]
+        public object SignMessage(string vaultId, string keyId, string message) => NodeManager.Post<string>(
+             "vault_signMessage",
+              vaultId,
+              keyId,
+              message).Result;
+
+
+        [CliFunction("vault", "verifySignature")]
+        public object VerifySignature(string vaultId, string keyId, string message, string signature) => NodeManager.Post<string>(
+             "vault_verifySignature",
+              vaultId,
+              keyId,
+              message,
+              signature).Result;
+
+
+        [CliFunction("vault", "setToken")]
+        public object SetToken(string token) => NodeManager.Post<string>(
+             "vault_setToken",
+              token).Result;
+
+
+        [CliFunction("vault", "configure")]
+        public object Configure(string scheme, string host, string path, string token) => NodeManager.Post<string>(
+             "vault_configure",
+              scheme,
+              host,
+              path,
+              token).Result;
     }
 }
