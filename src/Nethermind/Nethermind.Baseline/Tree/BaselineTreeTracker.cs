@@ -168,8 +168,6 @@ namespace Nethermind.Baseline.Tree
 
         public void Dispose()
         {
-            // TODO: is it a hack because someone was not sure if it would work?
-            _baselineTree.MemorizeCurrentCount(_currentBlockHeader!.Hash, _currentBlockHeader!.Number, _baselineTree.Count);
             _blockProcessor.BlockProcessed -= OnBlockProcessed;
         }
     }

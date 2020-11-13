@@ -87,6 +87,37 @@ namespace Nethermind.Baseline.Test
             }
         }
 
+
+        [Test]
+        public async Task Tree_tracker_start_tracking([ValueSource(nameof(InsertLeafTestCases))]InsertLeafTest test)
+        {
+            var address = TestItem.Addresses[0];
+            var result = await InitializeTestRpc(address);
+            var testRpc = result.TestRpc;
+            BaselineTree baselineTree = BuildATree();
+            var fromContractAdress = ContractAddress.From(address, 0L);
+            var baselineTreeHelper = new BaselineTreeHelper(testRpc.LogFinder, _baselineDb, _metadataBaselineDb, LimboNoErrorLogger.Instance);
+
+            var contract = new MerkleTreeSHAContract(_abiEncoder, fromContractAdress);
+            UInt256 nonce = 1L;
+            for (int i = 0; i < test.ExpectedTreeCounts.Length; i++)
+            {
+                for (int j = 0; j < test.LeavesInTransactionsAndBlocks[i].Length; j++)
+                {
+                    var leafHash = test.LeavesInTransactionsAndBlocks[i][j];
+                    var transaction = contract.InsertLeaf(address, leafHash);
+                    transaction.Nonce = nonce;
+                    ++nonce;
+                    await testRpc.TxSender.SendTransaction(transaction, TxPool.TxHandlingOptions.None);
+                }
+
+                await testRpc.AddBlock();
+            }
+
+            new BaselineTreeTracker(fromContractAdress, baselineTree, testRpc.BlockProcessor, baselineTreeHelper, testRpc.BlockFinder, LimboNoErrorLogger.Instance);
+            Assert.AreEqual(test.ExpectedTreeCounts[test.ExpectedTreeCounts.Length - 1], baselineTree.Count);
+        }
+
         [Test]
         public async Task Tree_tracker_insert_leaves([ValueSource(nameof(InsertLeavesTestCases))]InsertLeavesTest test)
         {
