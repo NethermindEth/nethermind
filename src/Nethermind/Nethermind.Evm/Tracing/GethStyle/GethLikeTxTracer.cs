@@ -152,7 +152,7 @@ namespace Nethermind.Evm.Tracing.GethStyle
         {
             byte[] bigEndian = new byte[32];
             storageIndex.ToBigEndian(bigEndian);
-            _traceEntry.Storage[bigEndian.ToHexString(false)] = new ZeroPaddedSpan(newValue, 32, PadDirection.Left).ToArray().ToHexString(false);
+            _traceEntry.Storage[bigEndian.ToHexString(false)] = new ZeroPaddedSpan(newValue, 32 - newValue.Length, PadDirection.Left).ToArray().ToHexString(false);
         }
 
         public void ReportSelfDestruct(Address address, UInt256 balance, Address refundAddress)
