@@ -430,7 +430,7 @@ namespace Nethermind.Evm
         {
             if (spec.IsEip2929Enabled)
             {
-                if (vmState.IsCold(address))
+                if (vmState.IsCold(address) && !address.IsPrecompile(spec))
                     return UpdateGas(GasCostOf.ColdAccountAccess, ref gasAvailable);
                 else
                     return UpdateGas(GasCostOf.WarmStateRead, ref gasAvailable);
@@ -1249,6 +1249,12 @@ namespace Nethermind.Evm
                         }
 
                         Address address = stack.PopAddress();
+                        if (!ChargeAccountAccessGas(ref gasAvailable, vmState, address, spec))
+                        {
+                            EndInstructionTraceError(EvmExceptionType.OutOfGas);
+                            return CallResult.OutOfGasException;
+                        }
+                        
                         UInt256 balance = _state.GetBalance(address);
                         stack.PushUInt256(in balance);
                         break;
@@ -1375,6 +1381,7 @@ namespace Nethermind.Evm
                     }
                     case Instruction.EXTCODESIZE:
                     {
+                        // TODO: create VmSpec
                         if (!spec.IsEip2929Enabled && !UpdateGas(spec.IsEip150Enabled ? GasCostOf.ExtCodeSizeEip150 : GasCostOf.ExtCodeSize, ref gasAvailable))
                         {
                             EndInstructionTraceError(EvmExceptionType.OutOfGas);
@@ -1399,8 +1406,16 @@ namespace Nethermind.Evm
                         stack.PopUInt256(out UInt256 dest);
                         stack.PopUInt256(out UInt256 src);
                         stack.PopUInt256(out UInt256 length);
+                        
+                        // VM spec
                         if (!UpdateGas((spec.IsEip150Enabled ? GasCostOf.ExtCodeEip150 : GasCostOf.ExtCode) + GasCostOf.Memory * EvmPooledMemory.Div32Ceiling(length),
                             ref gasAvailable))
+                        {
+                            EndInstructionTraceError(EvmExceptionType.OutOfGas);
+                            return CallResult.OutOfGasException;
+                        }
+                        
+                        if (!ChargeAccountAccessGas(ref gasAvailable, vmState, address, spec))
                         {
                             EndInstructionTraceError(EvmExceptionType.OutOfGas);
                             return CallResult.OutOfGasException;
@@ -2127,6 +2142,11 @@ namespace Nethermind.Evm
                         Address contractAddress = instruction == Instruction.CREATE
                             ? ContractAddress.From(env.ExecutingAccount, _state.GetNonce(env.ExecutingAccount))
                             : ContractAddress.From(env.ExecutingAccount, salt, initCode);
+                        if (!ChargeAccountAccessGas(ref gasAvailable, vmState, contractAddress, spec))
+                        {
+                            EndInstructionTraceError(EvmExceptionType.OutOfGas);
+                            return CallResult.OutOfGasException;
+                        }
 
                         _state.IncrementNonce(env.ExecutingAccount);
 
@@ -2209,6 +2229,12 @@ namespace Nethermind.Evm
 
                         stack.PopUInt256(out UInt256 gasLimit);
                         Address codeSource = stack.PopAddress();
+                        if (!ChargeAccountAccessGas(ref gasAvailable, vmState, codeSource, spec))
+                        {
+                            EndInstructionTraceError(EvmExceptionType.OutOfGas);
+                            return CallResult.OutOfGasException;
+                        }
+                        
                         UInt256 callValue;
                         switch (instruction)
                         {
@@ -2556,6 +2582,12 @@ namespace Nethermind.Evm
                         }
 
                         Address address = stack.PopAddress();
+                        if (!ChargeAccountAccessGas(ref gasAvailable, vmState, address, spec))
+                        {
+                            EndInstructionTraceError(EvmExceptionType.OutOfGas);
+                            return CallResult.OutOfGasException;
+                        }
+                        
                         if (!_state.AccountExists(address) || _state.IsDeadAccount(address))
                         {
                             stack.PushZero();
