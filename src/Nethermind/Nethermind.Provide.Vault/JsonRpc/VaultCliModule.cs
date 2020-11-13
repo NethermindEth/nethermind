@@ -33,7 +33,6 @@ namespace Nethermind.Vault.JsonRpc
         public object ListVaults() => NodeManager.PostJint(
             "vault_listVaults").Result;
 
-        // ToDo allow to pass more arguments
         [CliFunction("vault", "createVault")]
          public object CreateVault(string name, string description) => NodeManager.PostJint(
              "vault_createVault",
