@@ -364,11 +364,10 @@ namespace Nethermind.Vault.Test.JsonRpc
             string path = "api/v1";
             string token = $"bearer  {TestContext.Parameters["token"]}";
 
-            var vaultModule = new VaultModule(_vaultService, new TestLogManager(LogLevel.Trace));
-            var setTokenResponse = await vaultModule.vault_setToken(token);
+            var setTokenResponse = await _vaultModule.vault_setToken(token);
             setTokenResponse.Result.ResultType.Should().Be(ResultType.Success);
             
-            var configureResponse = await vaultModule.vault_configure(scheme, host, path, token);
+            var configureResponse = await _vaultModule.vault_configure(scheme, host, path, token);
             configureResponse.Result.ResultType.Should().Be(ResultType.Success);
         }
     }

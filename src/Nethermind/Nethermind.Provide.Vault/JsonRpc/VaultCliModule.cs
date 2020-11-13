@@ -108,5 +108,18 @@ namespace Nethermind.Vault.JsonRpc
               keyId,
               message,
               signature).Result;
+
+        [CliFunction("vault", "setToken")]
+        public bool SetToken(string token) => NodeManager.Post<bool>(
+             "vault_setToken",
+              token).Result;
+
+        [CliFunction("vault", "configure")]
+        public bool Configure(string scheme, string host, string path, string token) => NodeManager.Post<bool>(
+             "vault_configure",
+              scheme,
+              host,
+              path,
+              token).Result;
     }
 }
