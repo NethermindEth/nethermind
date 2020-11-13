@@ -25,8 +25,6 @@ namespace Nethermind.Evm
         public const long High = 10;
         public const long ExtCode = 20;
         public const long ExtCodeEip150 = 700;
-        public const long ExtCodeSize = 20;
-        public const long ExtCodeSizeEip150 = 700;
         public const long Balance = 20;
         public const long BalanceEip150 = 400;
         public const long BalanceEip1884 = 700;

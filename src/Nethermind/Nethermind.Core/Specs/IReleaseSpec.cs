@@ -224,5 +224,59 @@ namespace Nethermind.Core.Specs
         /// </summary>
         /// <remarks>Backward compatibility for early Kovan blocks.</remarks>
         bool ValidateReceipts => true;
+        
+        // STATE related 
+        public bool ClearEmptyAccountWhenTouched => IsEip158Enabled;
+        
+        // VM
+        public bool LimitCodeSize => IsEip170Enabled;
+
+        public bool UseHotAndColdStorage => IsEip2929Enabled;
+
+        public bool ModExpEnabled => IsEip198Enabled;
+
+        public bool Bn128Enabled => IsEip196Enabled && IsEip197Enabled;
+
+        public bool BlakeEnabled => IsEip152Enabled;
+
+        public bool Bls381Enabled => IsEip2537Enabled;
+
+        public bool ChargeForTopLevelCreate => IsEip2Enabled;
+        
+        public bool FailOnOutOfGasCodeDeposit => IsEip2Enabled;
+
+        public bool UseShanghaiDDosProtection => IsEip150Enabled;
+        
+        public bool UseExpDDosProtection => IsEip160Enabled;
+        
+        public bool UseLargeStateDDosProtection => IsEip1884Enabled;
+        
+        public bool ReturnDataOpcodesEnabled => IsEip211Enabled;
+        
+        public bool ChainIdOpcodeEnabled => IsEip1344Enabled;
+        
+        public bool Create2OpcodeEnabled => IsEip1014Enabled;
+        
+        public bool DelegateCallEnabled => IsEip7Enabled;
+        
+        public bool StaticCallEnabled => IsEip214Enabled;
+        
+        public bool ShiftOpcodesEnabled => IsEip145Enabled;
+        
+        public bool SubroutinesEnabled => IsEip2315Enabled;
+        
+        public bool RevertOpcodeEnabled => IsEip140Enabled;
+        
+        public bool ExtCodeHashOpcodeEnabled => IsEip1052Enabled;
+        
+        public bool SelfBalanceOpcodeEnabled => IsEip1884Enabled;
+        
+        public bool UseConstantinopleNetGasMetering => IsEip1283Enabled;
+        
+        public bool UseIstanbulNetGasMetering => IsEip2200Enabled;
+        
+        public bool UseNetGasMetering => UseConstantinopleNetGasMetering | UseIstanbulNetGasMetering;
+        
+        public bool Use63Over64Rule => UseShanghaiDDosProtection;
     }
 }

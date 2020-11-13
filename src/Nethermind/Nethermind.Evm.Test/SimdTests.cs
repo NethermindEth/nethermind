@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -141,7 +142,7 @@ namespace Nethermind.Evm.Test
             AssertSimd(receipt, Bytes.FromHexString(result));
         }
         
-        private void AssertSimd(TestAllTracerWithOutput receipt, byte[] result)
+        private void AssertSimd(TestAllTracerWithOutput receipt, ReadOnlySpan<byte> result)
         {
             AssertStorage(0, result);
             AssertGas(receipt, result.IsZero() ? ZeroResultGas : NonZeroResultGas);

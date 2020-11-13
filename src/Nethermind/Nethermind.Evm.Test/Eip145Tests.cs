@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Specs;
@@ -39,7 +40,7 @@ namespace Nethermind.Evm.Test
             AssertEip145(receipt, Bytes.FromHexString(result));
         }
         
-        private void AssertEip145(TestAllTracerWithOutput receipt, byte[] result)
+        private void AssertEip145(TestAllTracerWithOutput receipt, ReadOnlySpan<byte> result)
         {
             AssertStorage(0, result);
             AssertGas(receipt, result.IsZero() ? ZeroResultGas : NonZeroResultGas);

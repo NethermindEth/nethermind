@@ -338,7 +338,7 @@ namespace Nethermind.Evm.Tracing.ParityStyle
             _currentOperation.Store = new ParityStorageChangeTrace{Key = key.ToArray(), Value = value.ToArray()};
         }
 
-        public void SetOperationStorage(Address address, UInt256 storageIndex, byte[] newValue, byte[] currentValue) => throw new NotSupportedException();
+        public void SetOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> newValue, ReadOnlySpan<byte> currentValue) => throw new NotSupportedException();
 
         public void ReportBalanceChange(Address address, UInt256? before, UInt256? after)
         {

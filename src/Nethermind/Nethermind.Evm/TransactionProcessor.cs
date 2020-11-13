@@ -237,7 +237,7 @@ namespace Nethermind.Evm
                     if (transaction.IsContractCreation)
                     {
                         long codeDepositGasCost = CodeDepositHandler.CalculateCost(substate.Output.Length, spec);
-                        if (unspentGas < codeDepositGasCost && spec.IsEip2Enabled)
+                        if (unspentGas < codeDepositGasCost && spec.ChargeForTopLevelCreate)
                         {
                             throw new OutOfGasException();
                         }

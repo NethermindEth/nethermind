@@ -124,9 +124,19 @@ namespace Nethermind.Core.Extensions
 
         public static bool IsZero(this byte[] bytes)
         {
+            return IsZero((ReadOnlySpan<byte>)bytes);
+        }
+        
+        public static bool IsZero(this Span<byte> bytes)
+        {
+            return IsZero((ReadOnlySpan<byte>)bytes);
+        }
+        
+        public static bool IsZero(this ReadOnlySpan<byte> bytes)
+        {
             if (bytes.Length == 32)
             {
-                return bytes[31] == 0 && bytes.AsSpan().SequenceEqual(Zero32);
+                return bytes[31] == 0 && bytes.SequenceEqual(Zero32);
             }
 
             for (int i = 0; i < bytes.Length / 2; i++)

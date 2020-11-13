@@ -214,9 +214,9 @@ namespace Nethermind.Evm.Test
             Assert.AreEqual(value.Bytes, Storage.Get(new StorageCell(Recipient, address)).PadLeft(32), "storage");
         }
 
-        protected void AssertStorage(UInt256 address, byte[] value)
+        protected void AssertStorage(UInt256 address, ReadOnlySpan<byte> value)
         {
-            Assert.AreEqual(value.PadLeft(32), Storage.Get(new StorageCell(Recipient, address)).PadLeft(32), "storage");
+            Assert.AreEqual(new ZeroPaddedSpan(value, 32, PadDirection.Left).ToArray(), Storage.Get(new StorageCell(Recipient, address)).PadLeft(32), "storage");
         }
 
         protected void AssertStorage(UInt256 address, BigInteger expectedValue)
