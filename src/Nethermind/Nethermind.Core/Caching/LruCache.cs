@@ -60,7 +60,10 @@ namespace Nethermind.Core.Caching
                 return value;
             }
 
+#pragma warning disable 8603
+            // fixed C# 9
             return default;
+#pragma warning restore 8603
         }
 
         [MethodImpl(MethodImplOptions.Synchronized)]
@@ -74,7 +77,10 @@ namespace Nethermind.Core.Caching
                 return true;
             }
 
+#pragma warning disable 8601
+            // fixed C# 9
             value = default;
+#pragma warning restore 8601
             return false;
         }
 
@@ -87,7 +93,7 @@ namespace Nethermind.Core.Caching
                 return;
             }
 
-            if (_cacheMap.TryGetValue(key, out LinkedListNode<LruCacheItem> node))
+            if (_cacheMap.TryGetValue(key, out LinkedListNode<LruCacheItem>? node))
             {
                 node.Value.Value = val;
                 _lruList.Remove(node);
@@ -112,7 +118,7 @@ namespace Nethermind.Core.Caching
         [MethodImpl(MethodImplOptions.Synchronized)]
         public void Delete(TKey key)
         {
-            if (_cacheMap.TryGetValue(key, out LinkedListNode<LruCacheItem> node))
+            if (_cacheMap.TryGetValue(key, out LinkedListNode<LruCacheItem>? node))
             {
                 _lruList.Remove(node);
                 _cacheMap.Remove(key);

@@ -79,7 +79,7 @@ namespace Nethermind.Core
             return Bytes.ToHexString();
         }
 
-        public static bool operator !=(Bloom a, Bloom b)
+        public static bool operator !=(Bloom? a, Bloom? b)
         {
             return !(a == b);
         }

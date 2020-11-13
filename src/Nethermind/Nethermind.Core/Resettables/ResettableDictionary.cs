@@ -98,7 +98,10 @@ namespace Nethermind.Core.Resettables
 
         public bool TryGetValue(TKey key, out TValue value)
         {
+#pragma warning disable 8601
+            // fixed C# 9
             return _wrapped.TryGetValue(key, out value);
+#pragma warning restore 8601
         }
 
         public TValue this[TKey key]
