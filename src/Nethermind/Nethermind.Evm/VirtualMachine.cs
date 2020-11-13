@@ -290,18 +290,7 @@ namespace Nethermind.Evm
 
                         if (previousStateSucceeded)
                         {
-                            currentState.Refund += previousState.Refund;
-
-                            foreach (Address address in previousState.DestroyList)
-                            {
-                                currentState.DestroyList.Add(address);
-                            }
-
-                            for (int i = 0; i < previousState.Logs.Count; i++)
-                            {
-                                LogEntry logEntry = previousState.Logs[i];
-                                currentState.Logs.Add(logEntry);
-                            }
+                            previousState.CommitToParent(currentState);
                         }
                     }
                     else
@@ -421,7 +410,7 @@ namespace Nethermind.Evm
             };
         }
 
-        private bool UpdateGas(long gasCost, ref long gasAvailable)
+        private static bool UpdateGas(long gasCost, ref long gasAvailable)
         {
             if (gasAvailable < gasCost)
             {
@@ -432,9 +421,22 @@ namespace Nethermind.Evm
             return true;
         }
 
-        private void UpdateGasUp(long refund, ref long gasAvailable)
+        private static void UpdateGasUp(long refund, ref long gasAvailable)
         {
             gasAvailable += refund;
+        }
+        
+        private static bool ChargeAccountAccessGas(ref long gasAvailable, EvmState vmState, Address address, IReleaseSpec spec)
+        {
+            if (spec.IsEip2929Enabled)
+            {
+                if (vmState.IsCold(address))
+                    return UpdateGas(GasCostOf.ColdAccountAccess, ref gasAvailable);
+                else
+                    return UpdateGas(GasCostOf.WarmStateRead, ref gasAvailable);
+            }
+
+            return true;
         }
 
         private CallResult ExecutePrecompile(EvmState state, IReleaseSpec spec)
@@ -1325,7 +1327,9 @@ namespace Nethermind.Evm
 
                         ZeroPaddedSpan callDataSlice = env.InputData.SliceWithZeroPadding(src, (int) length);
                         vmState.Memory.Save(in dest, callDataSlice);
-                        if (_txTracer.IsTracingInstructions) if(length > UInt256.Zero) _txTracer.ReportMemoryChange((long) dest, callDataSlice);
+                        if (_txTracer.IsTracingInstructions)
+                            if (length > UInt256.Zero)
+                                _txTracer.ReportMemoryChange((long) dest, callDataSlice);
                         break;
                     }
                     case Instruction.CODESIZE:
@@ -1371,13 +1375,19 @@ namespace Nethermind.Evm
                     }
                     case Instruction.EXTCODESIZE:
                     {
-                        if (!UpdateGas(spec.IsEip150Enabled ? GasCostOf.ExtCodeSizeEip150 : GasCostOf.ExtCodeSize, ref gasAvailable))
+                        if (!spec.IsEip2929Enabled && !UpdateGas(spec.IsEip150Enabled ? GasCostOf.ExtCodeSizeEip150 : GasCostOf.ExtCodeSize, ref gasAvailable))
                         {
                             EndInstructionTraceError(EvmExceptionType.OutOfGas);
                             return CallResult.OutOfGasException;
                         }
 
                         Address address = stack.PopAddress();
+                        if (!ChargeAccountAccessGas(ref gasAvailable, vmState, address, spec))
+                        {
+                            EndInstructionTraceError(EvmExceptionType.OutOfGas);
+                            return CallResult.OutOfGasException;
+                        }
+
                         byte[] accountCode = GetCachedCodeInfo(address, spec).MachineCode;
                         UInt256 codeSize = (UInt256) accountCode.Length;
                         stack.PushUInt256(in codeSize);
@@ -1400,7 +1410,9 @@ namespace Nethermind.Evm
                         byte[] externalCode = GetCachedCodeInfo(address, spec).MachineCode;
                         ZeroPaddedSpan callDataSlice = externalCode.SliceWithZeroPadding(src, (int) length);
                         vmState.Memory.Save(in dest, callDataSlice);
-                        if (_txTracer.IsTracingInstructions) if(length > 0) _txTracer.ReportMemoryChange((long) dest, callDataSlice);
+                        if (_txTracer.IsTracingInstructions)
+                            if (length > 0)
+                                _txTracer.ReportMemoryChange((long) dest, callDataSlice);
                         break;
                     }
                     case Instruction.RETURNDATASIZE:
@@ -1605,7 +1617,7 @@ namespace Nethermind.Evm
                         }
 
                         stack.PopUInt256(out UInt256 memPosition);
-                        
+
                         Span<byte> data = stack.PopBytes();
                         UpdateMemoryCost(in memPosition, 32);
                         vmState.Memory.SaveWord(in memPosition, data);

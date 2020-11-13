@@ -20,6 +20,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
 using Nethermind.Core;
+using Nethermind.State;
 
 namespace Nethermind.Evm
 {
@@ -99,6 +100,8 @@ namespace Nethermind.Evm
         public byte[] DataStack;
         public int[] ReturnStack;
 
+        private HashSet<Address> _accessedAddresses;
+        private HashSet<StorageCell> _accessedStorageKeys;
         private HashSet<Address> _destroyList;
         private List<LogEntry> _logs;
         
@@ -125,6 +128,11 @@ namespace Nethermind.Evm
             bool isContinuation,
             bool isCreateOnPreExistingAccount)
         {
+            if (isTopLevel && isContinuation)
+            {
+                throw new InvalidOperationException("Top level continuations are not valid");
+            }
+            
             GasAvailable = gasAvailable;
             ExecutionType = executionType;
             IsTopLevel = isTopLevel;
@@ -203,6 +211,80 @@ namespace Nethermind.Evm
                 Memory = new EvmPooledMemory();
                 (DataStack, ReturnStack) = _stackPool.Value.RentStacks();
             }
+        }
+
+        public bool IsCold(Address address)
+        {
+            return _accessedAddresses == null || AccessedAddresses.Contains(address);
+        }
+        
+        public bool IsCold(StorageCell storageCell)
+        {
+            return _accessedStorageKeys == null || AccessedStorageCells.Contains(storageCell);
+        }
+        
+        public bool WarmUp(Address address)
+        {
+            return AccessedAddresses.Add(address);
+        }
+        
+        public bool WarmUp(StorageCell storageCell)
+        {
+            return AccessedStorageCells.Add(storageCell);
+        }
+
+        public void CommitToParent(EvmState parentState)
+        {
+            parentState.Refund += Refund;
+            
+            if (_destroyList != null)
+            {
+                foreach (Address address in DestroyList)
+                {
+                    parentState.DestroyList.Add(address);
+                }
+            }
+
+            if (_logs != null)
+            {
+                for (int i = 0; i < Logs.Count; i++)
+                {
+                    LogEntry logEntry = Logs[i];
+                    parentState.Logs.Add(logEntry);
+                }
+            }
+
+            if (_accessedAddresses != null)
+            {
+                foreach (Address address in AccessedAddresses)
+                {
+                    parentState.AccessedAddresses.Add(address);
+                }
+            }
+
+            if (_accessedStorageKeys != null)
+            {
+                foreach (StorageCell storageCell in AccessedStorageCells)
+                {
+                    parentState.AccessedStorageCells.Add(storageCell);
+                }
+            }
+        }
+        
+        /// <summary>
+        /// EIP-2929 accessed addresses
+        /// </summary>
+        private HashSet<Address> AccessedAddresses
+        {
+            get { return LazyInitializer.EnsureInitialized(ref _accessedAddresses, () => new HashSet<Address>()); }
+        }
+        
+        /// <summary>
+        /// EIP-2929 accessed storage keys
+        /// </summary>
+        private HashSet<StorageCell> AccessedStorageCells
+        {
+            get { return LazyInitializer.EnsureInitialized(ref _accessedStorageKeys, () => new HashSet<StorageCell>()); }
         }
     }
 }

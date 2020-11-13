@@ -25,9 +25,7 @@ namespace Nethermind.Specs.Forks
     {
         private static IReleaseSpec _instance;
 
-        private MuirGlacier()
-        {
-        }
+        private MuirGlacier() { }
 
         public static IReleaseSpec Instance => LazyInitializer.EnsureInitialized(ref _instance, () => new MuirGlacier());
 
@@ -69,6 +67,7 @@ namespace Nethermind.Specs.Forks
         public bool IsEip2200Enabled => true;
         public bool IsEip2315Enabled => false;
         public bool IsEip2537Enabled => false;
+        public bool IsEip2929Enabled => false;
         public bool IsEip158IgnoredAccount(Address address) => false;
     }
 }

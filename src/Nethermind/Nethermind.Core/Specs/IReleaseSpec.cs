@@ -201,6 +201,11 @@ namespace Nethermind.Core.Specs
         bool IsEip2537Enabled { get; }
         
         /// <summary>
+        /// Berlin gas cost increases for state reading opcodes
+        /// </summary>
+        bool IsEip2929Enabled { get; }
+        
+        /// <summary>
         /// Should EIP158 be ignored for this account.
         /// </summary>
         /// <remarks>THis is needed for SystemUser account compatibility with Parity.</remarks>

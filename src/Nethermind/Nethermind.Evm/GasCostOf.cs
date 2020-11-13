@@ -65,5 +65,9 @@ namespace Nethermind.Evm
         public const long ExtCodeHash = 400;
         public const long ExtCodeHashEip1884 = 700;
         public const long SelfBalance = 5;
+        
+        public const long ColdSLoad = 2100; // eip-2929
+        public const long ColdAccountAccess = 2600; // eip-2929
+        public const long WarmStateRead = 100; // eip-2929
     }
 }
