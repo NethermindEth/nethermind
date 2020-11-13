@@ -33,6 +33,16 @@ namespace Nethermind.Vault
             {"spec", "secp256k1"}
         };
 
+        private static List<string> AllowedKeyTypes = new List<string>()
+        { 
+            "asymmetric", "symmetric", "hdwallet"
+        };
+
+        private static List<string> AllowedKeySpecs = new List<string>()
+        {
+            "secp256k1"
+        };
+
         private readonly ILogger _logger;
 
         private readonly IVaultConfig _vaultConfig;
@@ -129,6 +139,18 @@ namespace Nethermind.Vault
                     $"{nameof(Key)} has to have a non-NULL {nameof(key.Description)}");
             }
 
+            if (!AllowedKeySpecs.Contains(key.Spec))
+            {
+                throw new ArgumentException(
+                    $"Allowed key specs are: {string.Join(",", AllowedKeySpecs)}.");
+            }
+
+            if (!AllowedKeyTypes.Contains(key.Type))
+            {
+                throw new ArgumentException(
+                    $"Allowed key types are: {string.Join(",", AllowedKeyTypes)}.");
+            }
+
             if (_logger.IsDebug) _logger.Debug($"Creating a key named {nameof(key.Name)} in the vault {vaultId}");
             Key vaultKey = await _vaultService.CreateVaultKey(vaultId.ToString(), key);
             return vaultKey;
@@ -158,6 +180,18 @@ namespace Nethermind.Vault
             {
                 throw new ArgumentException(
                     $"{nameof(Secret)} has to have a non-NULL {nameof(secret.Description)}");
+            }
+
+            if (secret.Type == null)
+            {
+                throw new ArgumentException(
+                    $"{nameof(Secret)} has to have a non-NULL {nameof(secret.Type)}");
+            }
+
+            if (secret.Value == null)
+            {
+                throw new ArgumentException(
+                    $"{nameof(Secret)} has to have a non-NULL {nameof(secret.Value)}");
             }
 
             if (_logger.IsDebug) _logger.Debug($"Creating a secret in the vault {vaultId}");

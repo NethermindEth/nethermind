@@ -311,11 +311,11 @@ namespace Nethermind.Vault.Test.JsonRpc
             listVaultsResponse = await _vaultModule.vault_listVaults();
             listVaultsResponse.Data.Should().HaveCount(3);
 
-            ResultWrapper<provide.Model.Vault.Vault> deleteVaultResponse
+            ResultWrapper<bool> deleteVaultResponse
                 = await _vaultModule.vault_deleteVault(vaultId.ToString());
             deleteVaultResponse.Result.Error.Should().BeNull();
             deleteVaultResponse.ErrorCode.Should().Be(0);
-            deleteVaultResponse.Data.Should().BeNull();
+            deleteVaultResponse.Data.Should().Be(true);
             deleteVaultResponse.Result.ResultType.Should().Be(ResultType.Success);
 
             listVaultsResponse = await _vaultModule.vault_listVaults();
