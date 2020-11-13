@@ -90,7 +90,7 @@ namespace Nethermind.Core.Crypto
         }
 
         public byte[] Bytes { get; } = new byte[64];
-        public int V { get; set; }
+        public long V { get; set; }
 
         public int? ChainId => V < 35 ? null : (int?) (V + (V % 2) - 36) / 2;
 

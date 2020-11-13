@@ -224,7 +224,7 @@ namespace Nethermind.Serialization.Rlp
             Transaction transaction,
             bool forSigning,
             bool isEip155Enabled = false,
-            int chainId = 0)
+            long chainId = 0)
         {
             Rlp[] sequence = new Rlp[forSigning && !(isEip155Enabled && chainId != 0) ? 6 : 9];
             sequence[0] = Encode(transaction.Nonce);

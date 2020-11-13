@@ -45,7 +45,7 @@ namespace Nethermind.Wallet
             }
         }
         
-        public static void Sign(this IWallet @this, Transaction tx, int chainId)
+        public static void Sign(this IWallet @this, Transaction tx, long chainId)
         {
             Keccak hash = Keccak.Compute(Rlp.Encode(tx, true, true, chainId).Bytes);
             tx.Signature = @this.Sign(hash, tx.SenderAddress);
