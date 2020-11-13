@@ -23,6 +23,7 @@
     <ProjectReference Include="..\Nethermind.TxPool\Nethermind.TxPool.csproj" />
   </ItemGroup>
   <ItemGroup>
+    <PackageReference Include="Polly" Version="7.2.1" />
     <PackageReference Include="System.IO.Abstractions" Version="12.1.10" />
   </ItemGroup>
 </Project>

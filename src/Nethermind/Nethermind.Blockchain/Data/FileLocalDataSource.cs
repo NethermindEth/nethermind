@@ -20,6 +20,7 @@ using System.IO;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Newtonsoft.Json;
+using Polly;
 
 namespace Nethermind.Blockchain.Data
 {
@@ -74,17 +75,29 @@ namespace Nethermind.Blockchain.Data
         {
             if (File.Exists(_filePath))
             {
+                var start = DateTime.Now;
                 try
                 {
-                    _data = _jsonSerializer.Deserialize<T>(File.ReadAllText(_filePath));
+                    Policy.Handle<JsonSerializationException>()
+                        .Or<IOException>()
+                        .WaitAndRetry(4, i => TimeSpan.FromMilliseconds(Math.Pow(10, i - 1)), (exception, i) =>
+                        {
+                            if (_logger.IsError) _logger.Error($"Couldn't load and deserialize {typeof(T)} from {_filePath} on {start:hh:mm:ss.ffff}. Retrying...", exception);
+                        })
+                        .Execute(() =>
+                        {
+                            using var file = File.OpenRead(_filePath);
+                            _data = _jsonSerializer.Deserialize<T>(file);
+                            if (_logger.IsDebug) _logger.Debug($"Loaded and deserialized {typeof(T)} from {_filePath} on {start:hh:mm:ss.ffff}.");
+                        });
                 }
                 catch (JsonSerializationException e)
                 {
-                    if (_logger.IsError) _logger.Error($"Couldn't deserialize {typeof(T)} from {_filePath}.", e);
+                    if (_logger.IsError) _logger.Error($"Couldn't deserialize {typeof(T)} from {_filePath} on {start:hh:mm:ss.ffff}. Will not retry any more.", e);
                 }
                 catch (IOException e)
                 {
-                    if (_logger.IsError) _logger.Error($"Couldn't load {typeof(T)} from {_filePath}.", e);
+                    if (_logger.IsError) _logger.Error($"Couldn't load {typeof(T)} from {_filePath} on {start:hh:mm:ss.ffff}. Will not retry any more.", e);
                 }
             }
             else

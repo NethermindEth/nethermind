@@ -84,7 +84,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.ReceiptStorage,
                 _api.LogManager,
                 _api.BlockTree,
-                TxFilterBuilders.CreateTxPermissionFilter(_api, _processingReadOnlyTransactionProcessorSource!, _api.StateProvider),
+                TxFilterBuilders.CreateTxPermissionFilter(_api, GetReadOnlyTransactionProcessorSource(), _api.StateProvider),
                 GetGasLimitCalculator());
             
             var auRaValidator = CreateAuRaValidator(processor);
@@ -125,7 +125,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                     _api.StateProvider, 
                     _api.AbiEncoder, 
                     _api.TransactionProcessor, 
-                    _processingReadOnlyTransactionProcessorSource, 
+                    GetReadOnlyTransactionProcessorSource(), 
                     _api.BlockTree, 
                     _api.ReceiptStorage, 
                     _api.ValidatorStore,
@@ -163,7 +163,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                             _api.AbiEncoder,
                             blockGasLimitContractTransition.Value,
                             blockGasLimitContractTransition.Key,
-                            _processingReadOnlyTransactionProcessorSource))
+                            GetReadOnlyTransactionProcessorSource()))
                         .ToArray<IBlockGasLimitContract>(),
                     _api.GasLimitCalculatorCache,
                     _auraConfig.Minimum2MlnGasPerBlockWhenUsingBlockGasLimitContract,
@@ -252,7 +252,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             ITxFilter txPoolFilter = TxFilterBuilders.CreateAuRaTxFilter(
                 NethermindApi.Config<IMiningConfig>(),
                 _api,
-                txPoolReadOnlyTransactionProcessorSource!,
+                txPoolReadOnlyTransactionProcessorSource,
                 _api.StateProvider!,
                 minGasPricesContractDataStore);
             
@@ -273,6 +273,9 @@ namespace Nethermind.Runner.Ethereum.Steps
             _processingReadOnlyTransactionProcessorSource = new ReadOnlyTxProcessorSource(_api.DbProvider, _api.BlockTree, _api.SpecProvider, _api.LogManager);
             return blockTree;
         }
+        
+        private IReadOnlyTransactionProcessorSource GetReadOnlyTransactionProcessorSource() => 
+            _processingReadOnlyTransactionProcessorSource ??= new ReadOnlyTxProcessorSource(_api.DbProvider, _api.BlockTree, _api.SpecProvider, _api.LogManager);
 
         private class BlockProcessorWrapper : IBlockProcessor
         {

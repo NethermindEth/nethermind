@@ -21,6 +21,7 @@ namespace Nethermind.Serialization.Json
 {
     public interface IJsonSerializer
     {
+        T Deserialize<T>(Stream stream);
         T Deserialize<T>(string json);
         string Serialize<T>(T value, bool indented = false);
         void Serialize<T>(Stream stream, T value, bool indented = false);
