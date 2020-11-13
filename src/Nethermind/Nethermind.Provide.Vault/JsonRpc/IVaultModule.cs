@@ -40,7 +40,7 @@ namespace Nethermind.Vault.JsonRpc
             Description = "Deletes a Vault",
             IsSharable = false,
             IsImplemented = true)]
-        Task<ResultWrapper<provide.Model.Vault.Vault>> vault_deleteVault(string vaultId);
+        Task<ResultWrapper<bool>> vault_deleteVault(string vaultId);
 
         [JsonRpcMethod(
             Description = "Displays a list of keys in a single Vault",
@@ -89,17 +89,5 @@ namespace Nethermind.Vault.JsonRpc
             IsSharable = false,
             IsImplemented = true)]
         Task<ResultWrapper<bool>> vault_verifySignature(string vaultId, string keyId, string message, string signature);
-        
-        [JsonRpcMethod(
-            Description = "Sets the API token used when talking to the Vault Service",
-            IsSharable = false,
-            IsImplemented = true)]
-        Task<ResultWrapper<bool>> vault_setToken(string token);
-
-        [JsonRpcMethod(
-            Description = "Sets the API token and Vault Service configuration to use",
-            IsSharable = false,
-            IsImplemented = true)]
-        Task<ResultWrapper<bool>> vault_configure(string scheme, string host, string path, string token);
     }
 }

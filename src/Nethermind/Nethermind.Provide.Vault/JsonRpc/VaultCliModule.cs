@@ -44,7 +44,7 @@ namespace Nethermind.Vault.JsonRpc
              }).Result;
 
         [CliFunction("vault", "deleteVault")]
-        public object DeleteVault(string vaultId) => NodeManager.PostJint(
+        public bool DeleteVault(string vaultId) => NodeManager.Post<bool>(
              "vault_deleteVault",
               vaultId).Result;
 
@@ -53,12 +53,17 @@ namespace Nethermind.Vault.JsonRpc
              "vault_listKeys",
               vaultId).Result;
 
-        // ToDo parse Key args
         [CliFunction("vault", "createKey")]
-        public object CreateKey(string vaultId, Key args) => NodeManager.PostJint(
+        public object CreateKey(string vaultId, string keyName, string keyDescription, string keyType) => NodeManager.PostJint(
              "vault_createKey",
               vaultId,
-              args).Result;
+              new provide.Model.Vault.Key()
+              {
+                  Name = keyName,
+                  Description = keyDescription,
+                  Spec = "secp256k1",
+                  Type = keyType
+              }).Result;
 
         [CliFunction("vault", "deleteKey")]
         public bool DeleteKey(string vaultId, string keyId) => NodeManager.Post<bool>(
@@ -71,12 +76,17 @@ namespace Nethermind.Vault.JsonRpc
              "vault_listSecrets",
               vaultId).Result;
 
-        // ToDo parse args secret
         [CliFunction("vault", "createSecret")]
-        public object CreateSecret(string vaultId, Secret args) => NodeManager.PostJint(
+        public object CreateSecret(string vaultId, string secretName, string secretDescription, string secretType, string secretValue) => NodeManager.PostJint(
              "vault_createSecret",
               vaultId,
-              args).Result;
+              new Secret()
+              {
+                  Name = secretName,
+                  Description = secretDescription,
+                  Type = secretType,
+                  Value = secretValue
+              }).Result;
 
         [CliFunction("vault", "deleteSecret")]
         public bool DeleteSecret(string vaultId, string secretId) => NodeManager.Post<bool>(
@@ -98,18 +108,5 @@ namespace Nethermind.Vault.JsonRpc
               keyId,
               message,
               signature).Result;
-
-        [CliFunction("vault", "setToken")]
-        public bool SetToken(string token) => NodeManager.Post<bool>(
-             "vault_setToken",
-              token).Result;
-
-        [CliFunction("vault", "configure")]
-        public bool Configure(string scheme, string host, string path, string token) => NodeManager.Post<bool>(
-             "vault_configure",
-              scheme,
-              host,
-              path,
-              token).Result;
     }
 }
