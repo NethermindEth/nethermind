@@ -140,7 +140,7 @@ namespace Ethereum.Test.Base
             ITxPool transactionPool = new TxPool(NullTxStorage.Instance, ecdsa, specProvider, new TxPoolConfig(), stateProvider, _logManager);
             IReceiptStorage receiptStorage = NullReceiptStorage.Instance;
             var blockInfoDb = new MemDb();
-            IBlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), specProvider, transactionPool, NullBloomStorage.Instance,  _logManager);
+            IBlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), specProvider, NullBloomStorage.Instance,  _logManager);
             IBlockhashProvider blockhashProvider = new BlockhashProvider(blockTree, _logManager);
             ITxValidator txValidator = new TxValidator(ChainId.Mainnet);
             IHeaderValidator headerValidator = new HeaderValidator(blockTree, Sealer, specProvider, _logManager);

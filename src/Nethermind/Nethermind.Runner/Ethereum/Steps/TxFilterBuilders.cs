@@ -113,32 +113,22 @@ namespace Nethermind.Runner.Ethereum.Steps
             
             string? auraConfigTxPriorityConfigFilePath = config.TxPriorityConfigFilePath;
             bool usesTxPriorityLocalData = auraConfigTxPriorityConfigFilePath != null;
-            TxPriorityContract.LocalDataSource? localDataSource = null;
             if (usesTxPriorityLocalData)
             {
-                localDataSource = new TxPriorityContract.LocalDataSource(auraConfigTxPriorityConfigFilePath, api.EthereumJsonSerializer, api.LogManager);
+                api.TxPriorityContractLocalDataSource ??= new TxPriorityContract.LocalDataSource(auraConfigTxPriorityConfigFilePath, api.EthereumJsonSerializer, api.LogManager);
             }
 
-            return (txPriorityContract, localDataSource);
+            return (txPriorityContract, api.TxPriorityContractLocalDataSource);
         }
 
-        public static DictionaryContractDataStore<TxPriorityContract.Destination>? CreateMinGasPricesDataStore(IAuraConfig config, 
-            AuRaNethermindApi api,
-            IReadOnlyTransactionProcessorSource readOnlyTxProcessorSource,
-            IBlockProcessor blockProcessor)
-        {
-            var (txPriorityContract, localDataSource) = CreateTxPrioritySources(config, api, readOnlyTxProcessorSource);
-            return CreateMinGasPricesDataStore(api, txPriorityContract, localDataSource, blockProcessor);
-        }
-
-        public static DictionaryContractDataStore<TxPriorityContract.Destination>? CreateMinGasPricesDataStore(
+        public static DictionaryContractDataStore<TxPriorityContract.Destination, TxPriorityContract.DestinationSortedListContractDataStoreCollection>? CreateMinGasPricesDataStore(
             AuRaNethermindApi api, 
             TxPriorityContract? txPriorityContract, 
             TxPriorityContract.LocalDataSource? localDataSource, 
             IBlockProcessor blockProcessor)
         {
             return txPriorityContract != null || localDataSource != null
-                ? new DictionaryContractDataStore<TxPriorityContract.Destination>(
+                ? new DictionaryContractDataStore<TxPriorityContract.Destination, TxPriorityContract.DestinationSortedListContractDataStoreCollection>(
                     new TxPriorityContract.DestinationSortedListContractDataStoreCollection(),
                     txPriorityContract?.MinGasPrices,
                     blockProcessor,

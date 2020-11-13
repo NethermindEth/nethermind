@@ -41,7 +41,7 @@ namespace Nethermind.TxPool
             // sealers should behave like composite and not like chain of commands
             foreach (var sealer in _sealers)
             {
-                sealer.Seal(tx);
+                sealer.Seal(tx, txHandlingOptions);
                 
                 AddTxResult result = _txPool.AddTransaction(tx, txHandlingOptions);
 

@@ -100,8 +100,6 @@ namespace Nethermind.Runner.Ethereum.Steps
             _api.EthereumEcdsa = new EthereumEcdsa(_api.SpecProvider.ChainId, _api.LogManager);
             PersistentTxStorage txStorage = new PersistentTxStorage(_api.DbProvider.PendingTxsDb);
 
-            _api.TxPool = CreateTxPool(txStorage);
-
             IBloomConfig bloomConfig = _api.Config<IBloomConfig>();
 
             IFileStoreFactory fileStoreFactory = initConfig.DiagnosticMode == DiagnosticMode.MemDb
@@ -123,7 +121,12 @@ namespace Nethermind.Runner.Ethereum.Steps
             {
                 _api.StateProvider.StateRoot = _api.BlockTree.Head.StateRoot;
             }
+            
+            _api.TxPool = CreateTxPool(txStorage);
 
+            var onChainTxWatcher = new OnChainTxWatcher(_api.BlockTree, _api.TxPool, _api.SpecProvider);
+            _api.DisposeStack.Push(onChainTxWatcher);
+            
             ReceiptsRecovery receiptsRecovery = new ReceiptsRecovery(_api.EthereumEcdsa, _api.SpecProvider);
             _api.ReceiptStorage = initConfig.StoreReceipts ? (IReceiptStorage?) new PersistentReceiptStorage(_api.DbProvider.ReceiptsDb, _api.SpecProvider, receiptsRecovery) : NullReceiptStorage.Instance;
             _api.ReceiptFinder = new FullInfoReceiptFinder(_api.ReceiptStorage, receiptsRecovery, _api.BlockTree);
@@ -214,7 +217,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             TxSealer standardSealer = new TxSealer(txSigner, _api.Timestamper);
             NonceReservingTxSealer nonceReservingTxSealer =
                 new NonceReservingTxSealer(txSigner, _api.Timestamper, _api.TxPool);
-            _api.TxSender = new TxPoolSender(_api.TxPool, standardSealer, nonceReservingTxSealer);
+            _api.TxSender = new TxPoolSender(_api.TxPool, nonceReservingTxSealer, standardSealer);
 
             // TODO: possibly hide it (but need to confirm that NDM does not really need it)
             _api.FilterStore = new FilterStore();
@@ -228,12 +231,9 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.DbProvider,
                 _api.ChainLevelInfoRepository,
                 _api.SpecProvider,
-                _api.TxPool,
                 _api.BloomStorage,
                 _api.Config<ISyncConfig>(),
                 _api.LogManager);
-
-        protected virtual ITxFilter CreateTxPoolFilter() => TxFilterBuilders.CreateStandardTxFilter(_api.Config<IMiningConfig>());
 
         protected virtual TxPool.TxPool CreateTxPool(PersistentTxStorage txStorage) =>
             new TxPool.TxPool(
@@ -245,7 +245,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.LogManager,
                 CreateTxPoolTxComparer());
 
-        protected virtual IComparer<Transaction> CreateTxPoolTxComparer() => TxPool.TxPool.DefaultComparer;
+        protected IComparer<Transaction> CreateTxPoolTxComparer() => TxPool.TxPool.DefaultComparer;
 
         protected virtual HeaderValidator CreateHeaderValidator() =>
             new HeaderValidator(

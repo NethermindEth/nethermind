@@ -26,15 +26,21 @@ namespace Nethermind.TxPool
         private readonly ITxPool _txPool;
 
         public NonceReservingTxSealer(ITxSigner txSigner, ITimestamper timestamper, ITxPool txPool)
-            : base(txSigner, timestamper, false)
+            : base(txSigner, timestamper)
         {
             _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
         }
 
-        public override void Seal(Transaction tx)
+        public override void Seal(Transaction tx, TxHandlingOptions txHandlingOptions)
         {
-            tx.Nonce = _txPool.ReserveOwnTransactionNonce(tx.SenderAddress);
-            base.Seal(tx);
+            bool manageNonce = (txHandlingOptions & TxHandlingOptions.ManagedNonce) == TxHandlingOptions.ManagedNonce;
+            if (manageNonce)
+            {
+                tx.Nonce = _txPool.ReserveOwnTransactionNonce(tx.SenderAddress);
+                txHandlingOptions |= TxHandlingOptions.AllowReplacingSignature;
+            }
+
+            base.Seal(tx, txHandlingOptions);
         }
     }
 }

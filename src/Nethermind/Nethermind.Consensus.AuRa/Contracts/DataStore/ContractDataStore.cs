@@ -32,7 +32,7 @@ namespace Nethermind.Consensus.AuRa.Contracts.DataStore
         private readonly IDataContract<T> _dataContract;
         private readonly IBlockProcessor _blockProcessor;
         private Keccak _lastHash;
-        private readonly ILogger _logger;
+        protected readonly ILogger _logger;
 
         protected internal ContractDataStore(TCollection collection, IDataContract<T> dataContract, IBlockProcessor blockProcessor, ILogManager logManager)
         {
@@ -89,6 +89,7 @@ namespace Nethermind.Consensus.AuRa.Contracts.DataStore
                         }
 
                         Collection.Insert(items);
+                        TraceDataChanged();
                     }
 
                     _lastHash = blockHeader.Hash;
@@ -98,6 +99,11 @@ namespace Nethermind.Consensus.AuRa.Contracts.DataStore
                     if (_logger.IsError) _logger.Error("Failed to update data from contract.", e);
                 }
             }
+        }
+
+        protected void TraceDataChanged()
+        {
+            if (_logger.IsTrace) _logger.Trace($"{GetType()} changed to {string.Join(", ", Collection.GetSnapshot())}");
         }
 
         protected virtual void RemoveOldContractItemsFromCollection()

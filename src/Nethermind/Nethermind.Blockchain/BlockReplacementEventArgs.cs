@@ -15,18 +15,17 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System.Collections.Generic;
+using Nethermind.Core;
 
-namespace Nethermind.Core
+namespace Nethermind.Blockchain
 {
-    /// <summary>
-    /// Comparer that enables to replace inner comparision on demand.
-    /// </summary>
-    /// <remarks>Used to decouple circular dependencies with TxPriority contract.</remarks>
-    public class WrappingComparer<T> : IComparer<T>
+    public class BlockReplacementEventArgs : BlockEventArgs
     {
-        public IComparer<T> Comparer { get; set; }
-        public int Compare(T x, T y) => Comparer?.Compare(x, y) ?? 0;
-        public override string ToString() => $"{base.ToString()} [{Comparer}]";
+        public Block? PreviousBlock { get; }
+
+        public BlockReplacementEventArgs(Block block, Block? previousBlock) : base(block)
+        {
+            PreviousBlock = previousBlock;
+        }
     }
 }

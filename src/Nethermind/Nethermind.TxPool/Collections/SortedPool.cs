@@ -39,7 +39,7 @@ namespace Nethermind.TxPool.Collections
         /// <summary>
         /// Constructor
         /// </summary>
-        /// <param name="capacity">Max capacity, after surpassing it elements will be removed based on last by <see cref="comparerWithIdentity"/>.</param>
+        /// <param name="capacity">Max capacity, after surpassing it elements will be removed based on last by <see cref="comparer"/>.</param>
         /// <param name="comparer">Comparer to sort items.</param>
         protected SortedPool(int capacity, IComparer<TValue> comparer)
         {
@@ -96,18 +96,19 @@ namespace Nethermind.TxPool.Collections
         /// </summary>
         /// <param name="key">Key to be removed.</param>
         /// <param name="value">Removed element or null.</param>
+        /// <param name="bucket">Bucket for same sender transactions.</param>
         /// <returns>If element was removed. False if element was not present in pool.</returns>
         [MethodImpl(MethodImplOptions.Synchronized)]
-        public bool TryRemove(TKey key, out TValue value)
+        public bool TryRemove(TKey key, out TValue value, out ICollection<TValue> bucket)
         {
             if (_cacheMap.TryGetValue(key, out value))
             {
                 if (Remove(key, value))
                 {
                     TGroupKey groupMapping = MapToGroup(value);
-                    if (_buckets.TryGetValue(groupMapping, out var collection))
+                    if (_buckets.TryGetValue(groupMapping, out bucket))
                     {
-                        collection.Remove(value);
+                        bucket.Remove(value);
                         return true;
                     }
                 }
@@ -115,8 +116,12 @@ namespace Nethermind.TxPool.Collections
             }
 
             value = default;
+            bucket = null;
             return false;
         }
+
+        public bool TryRemove(TKey key, out TValue value) => TryRemove(key, out value, out _);
+        public bool TryRemove(TKey key) => TryRemove(key, out _, out _);
 
         /// <summary>
         /// Tries to get element.
@@ -164,7 +169,7 @@ namespace Nethermind.TxPool.Collections
 
         private void RemoveLast()
         {
-            TryRemove(_sortedValues.Max.Value, out _);
+            TryRemove(_sortedValues.Max.Value);
         }
         
         /// <summary>

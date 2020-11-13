@@ -105,6 +105,11 @@ namespace Nethermind.Blockchain.Processing
             {
                 for (int i = 0; i < suggestedBlocks.Count; i++)
                 {
+                    if (suggestedBlocks.Count > 64 && i % 8 == 0)
+                    {
+                        if(_logger.IsInfo) _logger.Info($"Processing part of a long blocks branch {i}/{suggestedBlocks.Count}");
+                    }
+                    
                     var (processedBlock, receipts) = ProcessOne(suggestedBlocks[i], options, blockTracer);
                     processedBlocks[i] = processedBlock;
 
@@ -255,7 +260,7 @@ namespace Nethermind.Blockchain.Processing
             _receiptStorage.Insert(block, txReceipts);
             for (int i = 0; i < block.Transactions.Length; i++)
             {
-                _txPool.RemoveTransaction(txReceipts[i].TxHash, block.Number);
+                _txPool.RemoveTransaction(txReceipts[i].TxHash, block.Number, true);
             }
         }
 

@@ -331,7 +331,7 @@ namespace Nethermind.TxPool
             return false;
         }
 
-        public void RemoveTransaction(Keccak hash, long blockNumber)
+        public void RemoveTransaction(Keccak hash, long blockNumber, bool removeBelowThisTxNonce = false)
         {
             if (_fadingOwnTransactions.Count > 0)
             {
@@ -353,7 +353,7 @@ namespace Nethermind.TxPool
                     lock (_locker)
                     {
                         var address = fadingHolder.Tx.SenderAddress;
-                        if (!_nonces.TryGetValue(address, out var addressNonces))
+                        if (!_nonces.TryGetValue(address, out AddressNonces addressNonces))
                         {
                             continue;
                         }
@@ -366,8 +366,8 @@ namespace Nethermind.TxPool
                     }
                 }
             }
-
-            if (_transactions.TryRemove(hash, out var transaction))
+            
+            if (_transactions.TryRemove(hash, out var transaction, out ICollection<Transaction> bucket))
             {
                 RemovedPending?.Invoke(this, new TxEventArgs(transaction));
             }
@@ -384,6 +384,16 @@ namespace Nethermind.TxPool
 
             _txStorage.Delete(hash);
             if (_logger.IsTrace) _logger.Trace($"Deleted a transaction: {hash}");
+
+            if (bucket != null && removeBelowThisTxNonce)
+            {
+                Transaction txWithSmallestNonce = bucket.FirstOrDefault();
+                while (txWithSmallestNonce != null && txWithSmallestNonce.Nonce <= transaction.Nonce)
+                {
+                    RemoveTransaction(txWithSmallestNonce.Hash, blockNumber);
+                    txWithSmallestNonce = bucket.FirstOrDefault();
+                }
+            }
         }
 
         public bool TryGetPendingTransaction(Keccak hash, out Transaction transaction)
