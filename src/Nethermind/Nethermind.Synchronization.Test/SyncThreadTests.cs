@@ -301,6 +301,7 @@ namespace Nethermind.Synchronization.Test
                 processor,
                 txPool,
                 Timestamper.Default, 
+                specProvider,
                 logManager);
             
             SyncProgressResolver resolver = new SyncProgressResolver(tree, receiptStorage, stateDb, new MemDb(), syncConfig, logManager);

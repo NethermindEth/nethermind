@@ -31,6 +31,7 @@ using Nethermind.Db;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.Specs;
+using Nethermind.Specs.Forks;
 using Nethermind.Synchronization.BeamSync;
 using Nethermind.Synchronization.ParallelSync;
 using NSubstitute;
@@ -81,7 +82,7 @@ namespace Nethermind.Synchronization.Test.BeamSync
         {
             SetupBeamProcessor();
             EthereumEcdsa ethereumEcdsa = new EthereumEcdsa(ChainId.Mainnet, LimboLogs.Instance);
-            Block newBlock = Build.A.Block.WithParent(_blockTree.Head).WithReceiptsRoot(new Keccak("0xeb82c315eaf2c2a5dfc1766b075263d80e8b3ab9cb690d5304cdf114fff26939")).WithTransactions(Build.A.Transaction.SignedAndResolved(ethereumEcdsa, TestItem.PrivateKeyA).TestObject, Build.A.Transaction.SignedAndResolved(ethereumEcdsa, TestItem.PrivateKeyB).TestObject).WithGasUsed(42000).WithTotalDifficulty(_blockTree.Head.TotalDifficulty + 1).TestObject;
+            Block newBlock = Build.A.Block.WithParent(_blockTree.Head).WithReceiptsRoot(new Keccak("0xeb82c315eaf2c2a5dfc1766b075263d80e8b3ab9cb690d5304cdf114fff26939")).WithTransactions(MuirGlacier.Instance, Build.A.Transaction.SignedAndResolved(ethereumEcdsa, TestItem.PrivateKeyA).TestObject, Build.A.Transaction.SignedAndResolved(ethereumEcdsa, TestItem.PrivateKeyB).TestObject).WithGasUsed(42000).WithTotalDifficulty(_blockTree.Head.TotalDifficulty + 1).TestObject;
             _blockTree.SuggestBlock(newBlock);
             Thread.Sleep(1000);
             // _blockchainProcessor.Received().Process(newBlock, ProcessingOptions.Beam, NullBlockTracer.Instance);
@@ -97,7 +98,7 @@ namespace Nethermind.Synchronization.Test.BeamSync
             syncModeSelector.Changed += Raise.EventWith(new SyncModeChangedEventArgs(SyncMode.Beam, SyncMode.Full));
             
             EthereumEcdsa ethereumEcdsa = new EthereumEcdsa(ChainId.Mainnet, LimboLogs.Instance);
-            Block newBlock = Build.A.Block.WithParent(_blockTree.Head).WithReceiptsRoot(new Keccak("0xeb82c315eaf2c2a5dfc1766b075263d80e8b3ab9cb690d5304cdf114fff26939")).WithTransactions(Build.A.Transaction.SignedAndResolved(ethereumEcdsa, TestItem.PrivateKeyA).TestObject, Build.A.Transaction.SignedAndResolved(ethereumEcdsa, TestItem.PrivateKeyB).TestObject).WithGasUsed(42000).WithTotalDifficulty(_blockTree.Head.TotalDifficulty + 1).TestObject;
+            Block newBlock = Build.A.Block.WithParent(_blockTree.Head).WithReceiptsRoot(new Keccak("0xeb82c315eaf2c2a5dfc1766b075263d80e8b3ab9cb690d5304cdf114fff26939")).WithTransactions(MuirGlacier.Instance, Build.A.Transaction.SignedAndResolved(ethereumEcdsa, TestItem.PrivateKeyA).TestObject, Build.A.Transaction.SignedAndResolved(ethereumEcdsa, TestItem.PrivateKeyB).TestObject).WithGasUsed(42000).WithTotalDifficulty(_blockTree.Head.TotalDifficulty + 1).TestObject;
             _blockTree.SuggestBlock(newBlock);
             Thread.Sleep(1000);
             _blockchainProcessor.DidNotReceiveWithAnyArgs().Process(newBlock, ProcessingOptions.Beam, NullBlockTracer.Instance);
@@ -111,11 +112,28 @@ namespace Nethermind.Synchronization.Test.BeamSync
             SetupBeamProcessor(syncModeSelector);
 
             EthereumEcdsa ethereumEcdsa = new EthereumEcdsa(ChainId.Mainnet, LimboLogs.Instance);
-            Block newBlock0 = Build.A.Block.WithParent(_blockTree.Head).WithReceiptsRoot(new Keccak("0xeb82c315eaf2c2a5dfc1766b075263d80e8b3ab9cb690d5304cdf114fff26939")).WithTransactions(Build.A.Transaction.SignedAndResolved(ethereumEcdsa, TestItem.PrivateKeyA).TestObject, Build.A.Transaction.SignedAndResolved(ethereumEcdsa, TestItem.PrivateKeyB).TestObject).WithGasUsed(42000).WithTotalDifficulty(_blockTree.Head.TotalDifficulty + 1).TestObject;
-            Block newBlock1 = Build.A.Block.WithParent(newBlock0.Header).WithReceiptsRoot(new Keccak("0xeb82c315eaf2c2a5dfc1766b075263d80e8b3ab9cb690d5304cdf114fff26939")).WithTransactions(Build.A.Transaction.SignedAndResolved(ethereumEcdsa, TestItem.PrivateKeyA).TestObject, Build.A.Transaction.SignedAndResolved(ethereumEcdsa, TestItem.PrivateKeyB).TestObject).WithGasUsed(42000).WithTotalDifficulty(_blockTree.Head.TotalDifficulty + 2).TestObject;
-            Block newBlock2 = Build.A.Block.WithParent(newBlock1.Header).WithReceiptsRoot(new Keccak("0xeb82c315eaf2c2a5dfc1766b075263d80e8b3ab9cb690d5304cdf114fff26939")).WithTransactions(Build.A.Transaction.SignedAndResolved(ethereumEcdsa, TestItem.PrivateKeyA).TestObject, Build.A.Transaction.SignedAndResolved(ethereumEcdsa, TestItem.PrivateKeyB).TestObject).WithGasUsed(42000).WithTotalDifficulty(_blockTree.Head.TotalDifficulty + 3).TestObject;
-            Block newBlock3 = Build.A.Block.WithParent(newBlock2.Header).WithReceiptsRoot(new Keccak("0xeb82c315eaf2c2a5dfc1766b075263d80e8b3ab9cb690d5304cdf114fff26939")).WithTransactions(Build.A.Transaction.SignedAndResolved(ethereumEcdsa, TestItem.PrivateKeyA).TestObject, Build.A.Transaction.SignedAndResolved(ethereumEcdsa, TestItem.PrivateKeyB).TestObject).WithGasUsed(42000).WithTotalDifficulty(_blockTree.Head.TotalDifficulty + 4).TestObject;
-            Block newBlock4 = Build.A.Block.WithParent(newBlock3.Header).WithReceiptsRoot(new Keccak("0xeb82c315eaf2c2a5dfc1766b075263d80e8b3ab9cb690d5304cdf114fff26939")).WithTransactions(Build.A.Transaction.SignedAndResolved(ethereumEcdsa, TestItem.PrivateKeyA).TestObject, Build.A.Transaction.SignedAndResolved(ethereumEcdsa, TestItem.PrivateKeyB).TestObject).WithGasUsed(42000).WithTotalDifficulty(_blockTree.Head.TotalDifficulty + 5).TestObject;
+            Block newBlock0 = Build.A.Block.WithParent(_blockTree.Head)
+                .WithReceiptsRoot(new Keccak("0xeb82c315eaf2c2a5dfc1766b075263d80e8b3ab9cb690d5304cdf114fff26939"))
+                .WithTransactions(
+                    MuirGlacier.Instance,
+                    Build.A.Transaction.SignedAndResolved(ethereumEcdsa, TestItem.PrivateKeyA).TestObject,
+                    Build.A.Transaction.SignedAndResolved(ethereumEcdsa, TestItem.PrivateKeyB).TestObject)
+                .WithGasUsed(42000)
+                .WithTotalDifficulty(_blockTree.Head.TotalDifficulty + 1).TestObject;
+            Block newBlock1 = Build.A.Block.WithParent(newBlock0.Header)
+                .WithReceiptsRoot(new Keccak("0xeb82c315eaf2c2a5dfc1766b075263d80e8b3ab9cb690d5304cdf114fff26939"))
+                .WithTransactions(
+                    MuirGlacier.Instance, 
+                    Build.A.Transaction.SignedAndResolved(ethereumEcdsa, TestItem.PrivateKeyA).TestObject,
+                    Build.A.Transaction.SignedAndResolved(ethereumEcdsa, TestItem.PrivateKeyB).TestObject)
+                .WithGasUsed(42000)
+                .WithTotalDifficulty(_blockTree.Head.TotalDifficulty + 2).TestObject;
+            Block newBlock2 = Build.A.Block.WithParent(newBlock1.Header).WithReceiptsRoot(new Keccak("0xeb82c315eaf2c2a5dfc1766b075263d80e8b3ab9cb690d5304cdf114fff26939"))
+                .WithTransactions(MuirGlacier.Instance, Build.A.Transaction.SignedAndResolved(ethereumEcdsa, TestItem.PrivateKeyA).TestObject, Build.A.Transaction.SignedAndResolved(ethereumEcdsa, TestItem.PrivateKeyB).TestObject).WithGasUsed(42000).WithTotalDifficulty(_blockTree.Head.TotalDifficulty + 3).TestObject;
+            Block newBlock3 = Build.A.Block.WithParent(newBlock2.Header).WithReceiptsRoot(new Keccak("0xeb82c315eaf2c2a5dfc1766b075263d80e8b3ab9cb690d5304cdf114fff26939"))
+                .WithTransactions(MuirGlacier.Instance, Build.A.Transaction.SignedAndResolved(ethereumEcdsa, TestItem.PrivateKeyA).TestObject, Build.A.Transaction.SignedAndResolved(ethereumEcdsa, TestItem.PrivateKeyB).TestObject).WithGasUsed(42000).WithTotalDifficulty(_blockTree.Head.TotalDifficulty + 4).TestObject;
+            Block newBlock4 = Build.A.Block.WithParent(newBlock3.Header).WithReceiptsRoot(new Keccak("0xeb82c315eaf2c2a5dfc1766b075263d80e8b3ab9cb690d5304cdf114fff26939"))
+                .WithTransactions(MuirGlacier.Instance, Build.A.Transaction.SignedAndResolved(ethereumEcdsa, TestItem.PrivateKeyA).TestObject, Build.A.Transaction.SignedAndResolved(ethereumEcdsa, TestItem.PrivateKeyB).TestObject).WithGasUsed(42000).WithTotalDifficulty(_blockTree.Head.TotalDifficulty + 5).TestObject;
             
             var args = new SyncModeChangedEventArgs(SyncMode.Beam, SyncMode.Full);
             _blockTree.SuggestBlock(newBlock0);
@@ -143,10 +161,10 @@ namespace Nethermind.Synchronization.Test.BeamSync
             SetupBeamProcessor(syncModeSelector);
 
             EthereumEcdsa ethereumEcdsa = new EthereumEcdsa(ChainId.Mainnet, LimboLogs.Instance);
-            Block newBlock0 = Build.A.Block.WithParent(_blockTree.Head).WithReceiptsRoot(new Keccak("0xeb82c315eaf2c2a5dfc1766b075263d80e8b3ab9cb690d5304cdf114fff26939")).WithTransactions(Build.A.Transaction.SignedAndResolved(ethereumEcdsa, TestItem.PrivateKeyA).TestObject, Build.A.Transaction.SignedAndResolved(ethereumEcdsa, TestItem.PrivateKeyB).TestObject).WithGasUsed(42000).WithTotalDifficulty(_blockTree.Head.TotalDifficulty + 1).TestObject;
-            Block newBlock1 = Build.A.Block.WithParent(newBlock0.Header).WithReceiptsRoot(new Keccak("0xeb82c315eaf2c2a5dfc1766b075263d80e8b3ab9cb690d5304cdf114fff26939")).WithTransactions(Build.A.Transaction.SignedAndResolved(ethereumEcdsa, TestItem.PrivateKeyA).TestObject, Build.A.Transaction.SignedAndResolved(ethereumEcdsa, TestItem.PrivateKeyB).TestObject).WithGasUsed(42000).WithTotalDifficulty(_blockTree.Head.TotalDifficulty + 2).TestObject;
-            Block newBlock2 = Build.A.Block.WithParent(newBlock1.Header).WithReceiptsRoot(new Keccak("0xeb82c315eaf2c2a5dfc1766b075263d80e8b3ab9cb690d5304cdf114fff26939")).WithTransactions(Build.A.Transaction.SignedAndResolved(ethereumEcdsa, TestItem.PrivateKeyA).TestObject, Build.A.Transaction.SignedAndResolved(ethereumEcdsa, TestItem.PrivateKeyB).TestObject).WithGasUsed(42000).WithTotalDifficulty(_blockTree.Head.TotalDifficulty + 3).TestObject;
-            Block newBlock3 = Build.A.Block.WithParent(newBlock2.Header).WithReceiptsRoot(new Keccak("0xeb82c315eaf2c2a5dfc1766b075263d80e8b3ab9cb690d5304cdf114fff26939")).WithTransactions(Build.A.Transaction.SignedAndResolved(ethereumEcdsa, TestItem.PrivateKeyA).TestObject, Build.A.Transaction.SignedAndResolved(ethereumEcdsa, TestItem.PrivateKeyB).TestObject).WithGasUsed(42000).WithTotalDifficulty(_blockTree.Head.TotalDifficulty + 4).TestObject;
+            Block newBlock0 = Build.A.Block.WithParent(_blockTree.Head).WithReceiptsRoot(new Keccak("0xeb82c315eaf2c2a5dfc1766b075263d80e8b3ab9cb690d5304cdf114fff26939")).WithTransactions(MuirGlacier.Instance, Build.A.Transaction.SignedAndResolved(ethereumEcdsa, TestItem.PrivateKeyA).TestObject, Build.A.Transaction.SignedAndResolved(ethereumEcdsa, TestItem.PrivateKeyB).TestObject).WithGasUsed(42000).WithTotalDifficulty(_blockTree.Head.TotalDifficulty + 1).TestObject;
+            Block newBlock1 = Build.A.Block.WithParent(newBlock0.Header).WithReceiptsRoot(new Keccak("0xeb82c315eaf2c2a5dfc1766b075263d80e8b3ab9cb690d5304cdf114fff26939")).WithTransactions(MuirGlacier.Instance, Build.A.Transaction.SignedAndResolved(ethereumEcdsa, TestItem.PrivateKeyA).TestObject, Build.A.Transaction.SignedAndResolved(ethereumEcdsa, TestItem.PrivateKeyB).TestObject).WithGasUsed(42000).WithTotalDifficulty(_blockTree.Head.TotalDifficulty + 2).TestObject;
+            Block newBlock2 = Build.A.Block.WithParent(newBlock1.Header).WithReceiptsRoot(new Keccak("0xeb82c315eaf2c2a5dfc1766b075263d80e8b3ab9cb690d5304cdf114fff26939")).WithTransactions(MuirGlacier.Instance, Build.A.Transaction.SignedAndResolved(ethereumEcdsa, TestItem.PrivateKeyA).TestObject, Build.A.Transaction.SignedAndResolved(ethereumEcdsa, TestItem.PrivateKeyB).TestObject).WithGasUsed(42000).WithTotalDifficulty(_blockTree.Head.TotalDifficulty + 3).TestObject;
+            Block newBlock3 = Build.A.Block.WithParent(newBlock2.Header).WithReceiptsRoot(new Keccak("0xeb82c315eaf2c2a5dfc1766b075263d80e8b3ab9cb690d5304cdf114fff26939")).WithTransactions(MuirGlacier.Instance, Build.A.Transaction.SignedAndResolved(ethereumEcdsa, TestItem.PrivateKeyA).TestObject, Build.A.Transaction.SignedAndResolved(ethereumEcdsa, TestItem.PrivateKeyB).TestObject).WithGasUsed(42000).WithTotalDifficulty(_blockTree.Head.TotalDifficulty + 4).TestObject;
 
             var args = new SyncModeChangedEventArgs(SyncMode.Beam, SyncMode.None);
             _blockTree.SuggestBlock(newBlock0);

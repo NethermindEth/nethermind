@@ -133,7 +133,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
 
             TransactionWithProof txWithProof = new TransactionWithProof();
             txWithProof.Transaction = new TransactionForRpc(block.Hash, block.Number, receipt.Index, transaction);
-            txWithProof.TxProof = BuildTxProofs(txs, receipt.Index);
+            txWithProof.TxProof = BuildTxProofs(txs, _specProvider.GetSpec(block.Number), receipt.Index);
             if (includeHeader)
             {
                 txWithProof.BlockHeader = _headerDecoder.Encode(block.Header).Bytes;
@@ -169,7 +169,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
             ReceiptWithProof receiptWithProof = new ReceiptWithProof();
             receiptWithProof.Receipt = new ReceiptForRpc(txHash, receipt);
             receiptWithProof.ReceiptProof = BuildReceiptProofs(block.Number, receipts, receipt.Index);
-            receiptWithProof.TxProof = BuildTxProofs(txs, receipt.Index);
+            receiptWithProof.TxProof = BuildTxProofs(txs, _specProvider.GetSpec(block.Number), receipt.Index);
             if (includeHeader)
             {
                 receiptWithProof.BlockHeader = _headerDecoder.Encode(block.Header).Bytes;
@@ -206,9 +206,9 @@ namespace Nethermind.JsonRpc.Modules.Proof
                 .Select(h => _headerDecoder.Encode(h).Bytes).ToArray();
         }
 
-        private byte[][] BuildTxProofs(Transaction[] txs, int index)
+        private byte[][] BuildTxProofs(Transaction[] txs, IReleaseSpec releaseSpec, int index)
         {
-            return new TxTrie(txs, true).BuildProof(index);
+            return new TxTrie(txs, releaseSpec, true).BuildProof(index);
         }
 
         private byte[][] BuildReceiptProofs(long blockNumber, TxReceipt[] receipts, int index)

@@ -201,9 +201,19 @@ namespace Nethermind.Core.Specs
         bool IsEip2537Enabled { get; }
         
         /// <summary>
+        /// Berlin transaction type
+        /// </summary>
+        bool IsEip2718Enabled { get; }
+        
+        /// <summary>
         /// Berlin gas cost increases for state reading opcodes
         /// </summary>
         bool IsEip2929Enabled { get; }
+        
+        /// <summary>
+        /// Berlin access lists
+        /// </summary>
+        bool IsEip2930Enabled { get; }
         
         /// <summary>
         /// Should EIP158 be ignored for this account.
@@ -278,5 +288,7 @@ namespace Nethermind.Core.Specs
         public bool UseNetGasMetering => UseConstantinopleNetGasMetering | UseIstanbulNetGasMetering;
         
         public bool Use63Over64Rule => UseShanghaiDDosProtection;
+        
+        public bool UseTransactionTypes => IsEip2718Enabled;
     }
 }

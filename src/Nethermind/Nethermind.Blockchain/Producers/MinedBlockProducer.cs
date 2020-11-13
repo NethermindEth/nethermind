@@ -43,6 +43,7 @@ namespace Nethermind.Blockchain.Producers
             IStateProvider stateProvider,
             IGasLimitCalculator gasLimitCalculator,
             ITimestamper timestamper,
+            ISpecProvider specProvider,
             ILogManager logManager,
             IDifficultyCalculator difficultyCalculator) 
             : base(
@@ -54,6 +55,7 @@ namespace Nethermind.Blockchain.Producers
                 stateProvider,
                 gasLimitCalculator,
                 timestamper,
+                specProvider,
                 logManager)
         {
             _difficultyCalculator = difficultyCalculator ?? throw new ArgumentNullException(nameof(difficultyCalculator));

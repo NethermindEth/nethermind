@@ -22,6 +22,7 @@ using Nethermind.Network.P2P.Subprotocols.Eth;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Test.Rlpx.TestWrappers;
+using Nethermind.Specs.Forks;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Test.Rlpx
@@ -85,7 +86,7 @@ namespace Nethermind.Network.Test.Rlpx
         {
             Transaction a = Build.A.Transaction.TestObject;
             Transaction b = Build.A.Transaction.TestObject;
-            Block block = Build.A.Block.WithTransactions(a, b).TestObject;
+            Block block = Build.A.Block.WithTransactions(MuirGlacier.Instance, a, b).TestObject;
             NewBlockMessage newBlockMessage = new NewBlockMessage();
             newBlockMessage.Block = block;
 
@@ -108,7 +109,7 @@ namespace Nethermind.Network.Test.Rlpx
         public void Big_block_is_handled_when_framing_enabled()
         {
             Transaction[] a = Build.A.Transaction.TestObjectNTimes(64);
-            Block block = Build.A.Block.WithTransactions(a).TestObject;
+            Block block = Build.A.Block.WithTransactions(MuirGlacier.Instance, a).TestObject;
             NewBlockMessage newBlockMessage = new NewBlockMessage();
             newBlockMessage.Block = block;
 
@@ -132,7 +133,7 @@ namespace Nethermind.Network.Test.Rlpx
         public void Big_block_is_handled_when_framing_disabled()
         {
             Transaction[] a = Build.A.Transaction.TestObjectNTimes(64);
-            Block block = Build.A.Block.WithTransactions(a).TestObject;
+            Block block = Build.A.Block.WithTransactions(MuirGlacier.Instance, a).TestObject;
             NewBlockMessage newBlockMessage = new NewBlockMessage();
             newBlockMessage.Block = block;
 

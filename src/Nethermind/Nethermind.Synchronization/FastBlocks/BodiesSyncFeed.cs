@@ -19,6 +19,7 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.State.Proofs;
 using Nethermind.Synchronization.ParallelSync;
@@ -36,6 +37,7 @@ namespace Nethermind.Synchronization.FastBlocks
         private readonly IBlockTree _blockTree;
         private readonly ISyncConfig _syncConfig;
         private readonly ISyncReport _syncReport;
+        private readonly ISpecProvider _specProvider;
         private readonly ISyncPeerPool _syncPeerPool;
 
         private readonly long _pivotNumber;
@@ -48,6 +50,7 @@ namespace Nethermind.Synchronization.FastBlocks
             ISyncPeerPool syncPeerPool,
             ISyncConfig syncConfig,
             ISyncReport syncReport,
+            ISpecProvider specProvider,
             ILogManager logManager) : base(syncModeSelector)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
@@ -55,6 +58,7 @@ namespace Nethermind.Synchronization.FastBlocks
             _syncPeerPool = syncPeerPool ?? throw new ArgumentNullException(nameof(syncPeerPool));
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
             _syncReport = syncReport ?? throw new ArgumentNullException(nameof(syncReport));
+            _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
 
             if (!_syncConfig.FastBlocks)
             {
@@ -144,7 +148,7 @@ namespace Nethermind.Synchronization.FastBlocks
         private bool TryPrepareBlock(BlockInfo blockInfo, BlockBody blockBody, out Block? block)
         {
             BlockHeader header = _blockTree.FindHeader(blockInfo.BlockHash);
-            bool txRootIsValid = new TxTrie(blockBody.Transactions).RootHash == header.TxRoot;
+            bool txRootIsValid = new TxTrie(blockBody.Transactions, _specProvider.GetSpec(header.Number)).RootHash == header.TxRoot;
             bool ommersHashIsValid = OmmersHash.Calculate(blockBody.Ommers) == header.OmmersHash;
             if (txRootIsValid && ommersHashIsValid)
             {

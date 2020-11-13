@@ -158,6 +158,7 @@ namespace Nethermind.Clique.Test
                     cliqueSealer,
                     new TargetAdjustedGasLimitCalculator(GoerliSpecProvider.Instance, new MiningConfig()), 
                     _cliqueConfig,
+                    MainnetSpecProvider.Instance, 
                     nodeLogManager);
                 blockProducer.Start();
 

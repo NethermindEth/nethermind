@@ -44,7 +44,8 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.BlockTree,
                 _api.BlockProcessingQueue,
                 _api.TxPool,
-                _api.Timestamper, 
+                _api.Timestamper,
+                _api.SpecProvider,
                 _api.LogManager);
         }
 

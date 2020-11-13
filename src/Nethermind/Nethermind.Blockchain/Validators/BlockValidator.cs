@@ -63,20 +63,20 @@ namespace Nethermind.Blockchain.Validators
         public bool ValidateSuggestedBlock(Block block)
         {
             Transaction[] txs = block.Transactions;
-            IReleaseSpec releaseSpec = _specProvider.GetSpec(block.Number);
+            IReleaseSpec spec = _specProvider.GetSpec(block.Number);
             
             for (int i = 0; i < txs.Length; i++)
             {
-                if (!_txValidator.IsWellFormed(txs[i], releaseSpec))
+                if (!_txValidator.IsWellFormed(txs[i], spec))
                 {
                     if (_logger.IsDebug) _logger.Debug($"Invalid block ({block.ToString(Block.Format.FullHashAndNumber)}) - invalid transaction ({txs[i].Hash})");
                     return false;
                 }
             }
 
-            if (releaseSpec.MaximumUncleCount < block.Ommers.Length)
+            if (spec.MaximumUncleCount < block.Ommers.Length)
             {
-                _logger.Debug($"Invalid block ({block.ToString(Block.Format.FullHashAndNumber)}) - uncle count is {block.Ommers.Length} (MAX: {releaseSpec.MaximumUncleCount})");
+                _logger.Debug($"Invalid block ({block.ToString(Block.Format.FullHashAndNumber)}) - uncle count is {block.Ommers.Length} (MAX: {spec.MaximumUncleCount})");
                 return false;
             }
 
@@ -99,7 +99,7 @@ namespace Nethermind.Blockchain.Validators
                 return false;
             }
 
-            Keccak txRoot = new TxTrie(block.Transactions).RootHash;
+            Keccak txRoot = new TxTrie(block.Transactions, spec).RootHash;
             if (txRoot != block.Header.TxRoot)
             {
                 if (_logger.IsDebug) _logger.Debug($"Invalid block ({block.ToString(Block.Format.FullHashAndNumber)}) tx root {txRoot} != stated tx root {block.Header.TxRoot}");

@@ -28,6 +28,7 @@ using Nethermind.Blockchain.Processing;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Evm.Tracing;
@@ -52,6 +53,7 @@ namespace Nethermind.Consensus.Clique
         private readonly IGasLimitCalculator _gasLimitCalculator;
         private readonly ISnapshotManager _snapshotManager;
         private readonly ICliqueConfig _config;
+        private readonly ISpecProvider _spec;
         private readonly ConcurrentDictionary<Address, bool> _proposals = new ConcurrentDictionary<Address, bool>();
 
         private readonly CancellationTokenSource _cancellationTokenSource = new CancellationTokenSource();
@@ -68,6 +70,7 @@ namespace Nethermind.Consensus.Clique
             ISealer cliqueSealer,
             IGasLimitCalculator gasLimitCalculator,
             ICliqueConfig config,
+            ISpecProvider? spec,
             ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
@@ -81,6 +84,7 @@ namespace Nethermind.Consensus.Clique
             _gasLimitCalculator = gasLimitCalculator ?? throw new ArgumentNullException(nameof(gasLimitCalculator));
             _snapshotManager = snapshotManager ?? throw new ArgumentNullException(nameof(snapshotManager));
             _config = config ?? throw new ArgumentNullException(nameof(config));
+            _spec = spec ?? throw new ArgumentNullException(nameof(spec));
             _wiggle = new WiggleRandomizer(_cryptoRandom, _snapshotManager);
 
             _timer.AutoReset = false;
@@ -393,7 +397,7 @@ namespace Nethermind.Consensus.Clique
 
             var selectedTxs = _txSource.GetTransactions(parentBlock.Header, header.GasLimit);
             Block block = new Block(header, selectedTxs, Array.Empty<BlockHeader>());
-            header.TxRoot = new TxTrie(block.Transactions).RootHash;
+            header.TxRoot = new TxTrie(block.Transactions, _spec.GetSpec(block.Number)).RootHash;
             block.Header.Author = _sealer.Address;
             return block;
         }

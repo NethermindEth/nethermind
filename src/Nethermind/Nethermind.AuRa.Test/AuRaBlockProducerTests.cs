@@ -102,7 +102,8 @@ namespace Nethermind.AuRa.Test
                             AuRaStepCalculator,
                             NullReportingValidator.Instance,
                             auraConfig,
-                            FollowOtherMiners.Instance, 
+                            FollowOtherMiners.Instance,
+                            MainnetSpecProvider.Instance, 
                             LimboLogs.Instance);
                     }
         }

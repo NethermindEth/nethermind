@@ -23,6 +23,7 @@ using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Specs.Forks;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test.Encoding
@@ -43,7 +44,7 @@ namespace Nethermind.Core.Test.Encoding
             _scenarios = new[]
             {
                 Build.A.Block.WithNumber(1).TestObject,
-                Build.A.Block.WithNumber(1).WithTransactions(transactions).WithOmmers(Build.A.BlockHeader.TestObject).WithMixHash(Keccak.EmptyTreeHash).TestObject
+                Build.A.Block.WithNumber(1).WithTransactions(MuirGlacier.Instance, transactions).WithOmmers(Build.A.BlockHeader.TestObject).WithMixHash(Keccak.EmptyTreeHash).TestObject
             };
         }
 

@@ -23,6 +23,11 @@ namespace Nethermind.Core
     public class TxReceipt
     {
         /// <summary>
+        /// EIP-2718 transaction type
+        /// </summary>
+        public byte TransactionType { get; set; }
+        
+        /// <summary>
         ///     EIP-658
         /// </summary>
         public byte StatusCode { get; set; }
@@ -56,6 +61,11 @@ namespace Nethermind.Core
 
     public ref struct TxReceiptStructRef
     {
+        /// <summary>
+        /// EIP-2718 transaction type
+        /// </summary>
+        public byte TransactionType { get; set; }
+        
         /// <summary>
         ///     EIP-658
         /// </summary>
@@ -91,6 +101,7 @@ namespace Nethermind.Core
 
         public TxReceiptStructRef(TxReceipt receipt)
         {
+            TransactionType = receipt.TransactionType;
             StatusCode = receipt.StatusCode;
             BlockNumber = receipt.BlockNumber;
             BlockHash = (receipt.BlockHash ?? Keccak.Zero).ToStructRef();

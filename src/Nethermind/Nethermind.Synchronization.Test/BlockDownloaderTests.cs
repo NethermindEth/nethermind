@@ -40,6 +40,7 @@ using Nethermind.State.Proofs;
 using Nethermind.State.Repositories;
 using Nethermind.Stats.Model;
 using Nethermind.Db.Blooms;
+using Nethermind.Specs.Forks;
 using Nethermind.Synchronization.Blocks;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
@@ -1021,7 +1022,9 @@ namespace Nethermind.Synchronization.Test
 
                         if (withTransactions && header.ReceiptsRoot != Keccak.EmptyTreeHash)
                         {
-                            blockBuilder.WithTransactions(Build.A.Transaction.WithValue(i * 2).SignedAndResolved().TestObject,
+                            blockBuilder.WithTransactions(
+                                MuirGlacier.Instance,
+                                Build.A.Transaction.WithValue(i * 2).SignedAndResolved().TestObject,
                                 Build.A.Transaction.WithValue(i * 2 + 1).SignedAndResolved().TestObject);
                         }
 

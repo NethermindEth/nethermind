@@ -32,6 +32,7 @@ using Nethermind.Network.P2P.Subprotocols.Eth;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63;
 using Nethermind.Network.Rlpx;
+using Nethermind.Specs.Forks;
 using NUnit.Framework;
 using LogLevel = Microsoft.Extensions.Logging.LogLevel;
 
@@ -88,7 +89,7 @@ namespace Nethermind.Network.Test.Rlpx
         {
             Transaction a = Build.A.Transaction.TestObject;
             Transaction b = Build.A.Transaction.TestObject;
-            Block block = Build.A.Block.WithTransactions(a, b).TestObject;
+            Block block = Build.A.Block.WithTransactions(MuirGlacier.Instance, a, b).TestObject;
             NewBlockMessage newBlockMessage = new NewBlockMessage();
             newBlockMessage.Block = block;
 
@@ -103,7 +104,7 @@ namespace Nethermind.Network.Test.Rlpx
         public void Two_frame_block_there_and_back(StackType inbound, StackType outbound, bool framingEnabled)
         {
             Transaction[] txs = Build.A.Transaction.SignedAndResolved().TestObjectNTimes(10);
-            Block block = Build.A.Block.WithTransactions(txs).TestObject;
+            Block block = Build.A.Block.WithTransactions(MuirGlacier.Instance, txs).TestObject;
             NewBlockMessage newBlockMessage = new NewBlockMessage();
             newBlockMessage.Block = block;
 

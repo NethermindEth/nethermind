@@ -62,7 +62,7 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
-        public BlockBuilder WithTransactions(int txCount)
+        public BlockBuilder WithTransactions(int txCount, IReleaseSpec releaseSpec)
         {
             Transaction[] txs = new Transaction[txCount];
             for (int i = 0; i < txCount; i++)
@@ -70,7 +70,7 @@ namespace Nethermind.Core.Test.Builders
                 txs[i] = new Transaction();
             }
 
-            return WithTransactions(txs);
+            return WithTransactions(releaseSpec, txs);
         }
         
         public BlockBuilder WithTransactions(int txCount, ISpecProvider specProvider)
@@ -91,15 +91,15 @@ namespace Nethermind.Core.Test.Builders
             ReceiptTrie receiptTrie = new ReceiptTrie(specProvider.GetSpec(number), receipts);
             receiptTrie.UpdateRootHash();
 
-            BlockBuilder result = WithTransactions(txs);
+            BlockBuilder result = WithTransactions(specProvider.GetSpec(number), txs);
             TestObjectInternal.Header.ReceiptsRoot = receiptTrie.RootHash;
             return result;
         }
         
-        public BlockBuilder WithTransactions(params Transaction[] transactions)
+        public BlockBuilder WithTransactions(IReleaseSpec releaseSpec, params Transaction[] transactions)
         {
             TestObjectInternal.Body = TestObjectInternal.Body.WithChangedTransactions(transactions);
-            TxTrie trie = new TxTrie(transactions, false);
+            TxTrie trie = new TxTrie(transactions, releaseSpec, false);
             trie.UpdateRootHash();
 
             TestObjectInternal.Header.TxRoot = trie.RootHash;
