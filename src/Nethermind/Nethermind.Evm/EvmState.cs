@@ -17,11 +17,10 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Collections.Immutable;
 using System.Diagnostics;
+using System.Linq;
 using System.Threading;
 using Nethermind.Core;
-using Nethermind.State;
 
 namespace Nethermind.Evm
 {
@@ -226,12 +225,12 @@ namespace Nethermind.Evm
 
         public void WarmUp(ISet<Address> addresses, ISet<StorageCell> storageCells)
         {
-            foreach (Address address in addresses)
+            foreach (Address address in addresses ?? Enumerable.Empty<Address>())
             {
                 WarmUp(address);
             }
                     
-            foreach (StorageCell storageCell in storageCells)
+            foreach (StorageCell storageCell in storageCells ?? Enumerable.Empty<StorageCell>())
             {
                 WarmUp(storageCell);
             }
