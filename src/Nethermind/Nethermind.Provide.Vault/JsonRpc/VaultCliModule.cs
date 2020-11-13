@@ -33,10 +33,9 @@ namespace Nethermind.Vault.JsonRpc
         public object ListVaults() => NodeManager.PostJint(
             "vault_listVaults").Result;
 
-
         // ToDo allow to pass more arguments
         [CliFunction("vault", "createVault")]
-         public object CreateVault(string name, string description) => NodeManager.Post<string>(
+         public object CreateVault(string name, string description) => NodeManager.PostJint(
              "vault_createVault",
              new provide.Model.Vault.Vault()
              {
@@ -44,79 +43,69 @@ namespace Nethermind.Vault.JsonRpc
                  Description = description
              }).Result;
 
-
         [CliFunction("vault", "deleteVault")]
-        public object DeleteVault(string vaultId) => NodeManager.Post<string>(
+        public object DeleteVault(string vaultId) => NodeManager.PostJint(
              "vault_deleteVault",
               vaultId).Result;
 
-
         [CliFunction("vault", "listKeys")]
-        public object ListKeys(string vaultId) => NodeManager.Post<string>(
+        public object ListKeys(string vaultId) => NodeManager.PostJint(
              "vault_listKeys",
               vaultId).Result;
 
         // ToDo parse Key args
         [CliFunction("vault", "createKey")]
-        public object CreateKey(string vaultId, Key args) => NodeManager.Post<string>(
+        public object CreateKey(string vaultId, Key args) => NodeManager.PostJint(
              "vault_createKey",
               vaultId,
               args).Result;
 
-
         [CliFunction("vault", "deleteKey")]
-        public object DeleteKey(string vaultId, string keyId) => NodeManager.Post<string>(
+        public bool DeleteKey(string vaultId, string keyId) => NodeManager.Post<bool>(
              "vault_deleteKey",
               vaultId,
               keyId).Result;
 
-
         [CliFunction("vault", "listSecrets")]
-        public object ListSecrets(string vaultId) => NodeManager.Post<string>(
+        public object ListSecrets(string vaultId) => NodeManager.PostJint(
              "vault_listSecrets",
               vaultId).Result;
 
-
         // ToDo parse args secret
         [CliFunction("vault", "createSecret")]
-        public object CreateSecret(string vaultId, Secret args) => NodeManager.Post<string>(
+        public object CreateSecret(string vaultId, Secret args) => NodeManager.PostJint(
              "vault_createSecret",
               vaultId,
               args).Result;
 
-
         [CliFunction("vault", "deleteSecret")]
-        public object DeleteSecret(string vaultId, string secretId) => NodeManager.Post<string>(
+        public bool DeleteSecret(string vaultId, string secretId) => NodeManager.Post<bool>(
              "vault_deleteSecret",
               vaultId,
               secretId).Result;
 
-
         [CliFunction("vault", "signMessage")]
-        public object SignMessage(string vaultId, string keyId, string message) => NodeManager.Post<string>(
+        public string SignMessage(string vaultId, string keyId, string message) => NodeManager.Post<string>(
              "vault_signMessage",
               vaultId,
               keyId,
               message).Result;
 
-
         [CliFunction("vault", "verifySignature")]
-        public object VerifySignature(string vaultId, string keyId, string message, string signature) => NodeManager.Post<string>(
+        public bool VerifySignature(string vaultId, string keyId, string message, string signature) => NodeManager.Post<bool>(
              "vault_verifySignature",
               vaultId,
               keyId,
               message,
               signature).Result;
 
-
         [CliFunction("vault", "setToken")]
-        public object SetToken(string token) => NodeManager.Post<string>(
+        public bool SetToken(string token) => NodeManager.Post<bool>(
              "vault_setToken",
               token).Result;
 
-
         [CliFunction("vault", "configure")]
-        public object Configure(string scheme, string host, string path, string token) => NodeManager.Post<string>(
+        public bool Configure(string scheme, string host, string path, string token) => NodeManager.Post<bool>(
              "vault_configure",
               scheme,
               host,
