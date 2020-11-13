@@ -16,7 +16,6 @@
 
 using System.Diagnostics;
 using System.Text;
-using System.Threading;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
@@ -31,17 +30,17 @@ namespace Nethermind.Core
         public UInt256 Nonce { get; set; }
         public UInt256 GasPrice { get; set; }
         public long GasLimit { get; set; }
-        public Address To { get; set; }
+        public Address? To { get; set; }
         public UInt256 Value { get; set; }
-        public byte[] Data { get; set; }
-        public byte[] Init { get; set; }
-        public Address SenderAddress { get; set; }
-        public Signature Signature { get; set; }
+        public byte[]? Data { get; set; }
+        public byte[]? Init { get; set; }
+        public Address? SenderAddress { get; set; }
+        public Signature? Signature { get; set; }
         public bool IsSigned => Signature != null;
         public bool IsContractCreation => Init != null;
         public bool IsMessageCall => Data != null;
-        public Keccak Hash { get; set; }
-        public PublicKey DeliveredBy { get; set; } // tks: this is added so we do not send the pending tx back to original sources, not used yet
+        public Keccak? Hash { get; set; }
+        public PublicKey? DeliveredBy { get; set; } // tks: this is added so we do not send the pending tx back to original sources, not used yet
         public UInt256 Timestamp { get; set; }
         
         /// <summary>

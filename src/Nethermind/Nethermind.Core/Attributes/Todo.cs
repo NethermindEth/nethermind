@@ -21,7 +21,7 @@ namespace Nethermind.Core.Attributes
     [AttributeUsage(AttributeTargets.All, AllowMultiple = true)]
     public class TodoAttribute : Attribute
     {
-        private readonly string _issueLink;
+        private readonly string? _issueLink;
         private readonly string _comment;
         private readonly Improve _improve;
 

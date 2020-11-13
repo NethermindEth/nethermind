@@ -42,7 +42,7 @@ namespace Nethermind.Core.Extensions
         {
             int leadingZeros = skipLeadingZeros ? CountLeadingZeros(span) : 0;
             char[] result = new char[span.Length * 2 + (withZeroX ? 2 : 0) - leadingZeros];
-            string hashHex = null;
+            string? hashHex = null;
             if (withEip55Checksum)
             {
                 hashHex = Keccak.Compute(span.ToHexString(false)).ToString(false);
@@ -63,7 +63,7 @@ namespace Nethermind.Core.Extensions
                 if (leadingZeros <= i * 2)
                 {
                     result[2 * i + (withZeroX ? 2 : 0) - leadingZeros] =
-                        withEip55Checksum && char.IsLetter(char1) && hashHex[2 * i] > '7'
+                        withEip55Checksum && char.IsLetter(char1) && hashHex![2 * i] > '7'
                             ? char.ToUpper(char1)
                             : char1;
                 }
@@ -71,7 +71,7 @@ namespace Nethermind.Core.Extensions
                 if (leadingZeros <= i * 2 + 1)
                 {
                     result[2 * i + 1 + (withZeroX ? 2 : 0) - leadingZeros] =
-                        withEip55Checksum && char.IsLetter(char2) && hashHex[2 * i + 1] > '7'
+                        withEip55Checksum && char.IsLetter(char2) && hashHex![2 * i + 1] > '7'
                             ? char.ToUpper(char2)
                             : char2;
                 }

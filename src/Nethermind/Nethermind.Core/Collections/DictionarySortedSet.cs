@@ -33,7 +33,7 @@ namespace Nethermind.Core.Collections
 
         protected DictionarySortedSet(SerializationInfo info, StreamingContext context) : base(info, context) { }
         
-        private static IComparer<KeyValuePair<TKey, TValue>> GetComparer(IComparer<TKey> comparer = null) => 
+        private static IComparer<KeyValuePair<TKey, TValue>> GetComparer(IComparer<TKey>? comparer = null) => 
             new KeyValuePairKeyOnlyComparer(comparer ?? Comparer<TKey>.Default);
         
         public bool Add(TKey key, TValue value) => Add(new KeyValuePair<TKey, TValue>(key, value));
@@ -58,7 +58,7 @@ namespace Nethermind.Core.Collections
         {
             private readonly IComparer<TKey> _keyComparer;
 
-            public KeyValuePairKeyOnlyComparer(IComparer<TKey> keyComparer = null)
+            public KeyValuePairKeyOnlyComparer(IComparer<TKey>? keyComparer = null)
             {
                 _keyComparer = keyComparer ?? Comparer<TKey>.Default;
             }
