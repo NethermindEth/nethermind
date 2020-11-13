@@ -20,7 +20,7 @@ namespace Nethermind.Core
     {
         public ResultType ResultType { get; set; }
         
-        public string Error { get; set; }
+        public string? Error { get; set; }
 
         public static Result Fail(string error)
         {
