@@ -215,24 +215,25 @@ namespace Nethermind.Evm
 
         public bool IsCold(Address address)
         {
-            return _accessedAddresses == null || AccessedAddresses.Contains(address);
+            return _accessedAddresses == null || !AccessedAddresses.Contains(address);
         }
         
         public bool IsCold(StorageCell storageCell)
         {
-            return _accessedStorageKeys == null || AccessedStorageCells.Contains(storageCell);
+            return _accessedStorageKeys == null || !AccessedStorageCells.Contains(storageCell);
         }
         
-        public bool WarmUp(Address address)
+        public void WarmUp(Address address)
         {
-            return AccessedAddresses.Add(address);
+            AccessedAddresses.Add(address);
         }
         
-        public bool WarmUp(StorageCell storageCell)
+        public void WarmUp(StorageCell storageCell)
         {
-            return AccessedStorageCells.Add(storageCell);
+            AccessedStorageCells.Add(storageCell);
         }
 
+        // TODO: all of this should be done via checkpoints the same way as storage and state changes in general
         public void CommitToParent(EvmState parentState)
         {
             parentState.Refund += Refund;
