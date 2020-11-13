@@ -217,9 +217,9 @@ namespace Nethermind.Evm
                 ExecutionType executionType = transaction.IsContractCreation ? ExecutionType.Create : ExecutionType.Call;
                 using (EvmState state = new EvmState(unspentGas, env, executionType, true, false))
                 {
+                    state.WarmUp(transaction.AccountAccessList, transaction.StorageAccessList); // eip-2930
                     state.WarmUp(sender); // eip-2929
                     state.WarmUp(recipient); // eip-2929
-                    
                     substate = _virtualMachine.Run(state, txTracer);
                     unspentGas = state.GasAvailable;
                 }

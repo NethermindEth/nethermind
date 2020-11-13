@@ -17,6 +17,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Collections.Immutable;
 using System.Diagnostics;
 using System.Threading;
 using Nethermind.Core;
@@ -222,7 +223,20 @@ namespace Nethermind.Evm
         {
             return _accessedStorageKeys == null || !AccessedStorageCells.Contains(storageCell);
         }
-        
+
+        public void WarmUp(ISet<Address> addresses, ISet<StorageCell> storageCells)
+        {
+            foreach (Address address in addresses)
+            {
+                WarmUp(address);
+            }
+                    
+            foreach (StorageCell storageCell in storageCells)
+            {
+                WarmUp(storageCell);
+            }
+        }
+
         public void WarmUp(Address address)
         {
             AccessedAddresses.Add(address);
