@@ -22,7 +22,7 @@ namespace Nethermind.JsonRpc.Modules.Net
     {
         Address LocalAddress { get; }
         string LocalEnode { get; }
-        int NetworkId { get; }
+        long NetworkId { get; }
         int PeerCount { get; }
     }
 }

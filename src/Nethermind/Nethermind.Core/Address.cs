@@ -70,7 +70,7 @@ namespace Nethermind.Core
 
         public Address(string hexString) : this(Extensions.Bytes.FromHexString(hexString)) { }
 
-        public static bool TryParse(string value, out Address address)
+        public static bool TryParse(string? value, out Address? address)
         {
             if (value != null)
             {
@@ -103,7 +103,7 @@ namespace Nethermind.Core
             Bytes = bytes;
         }
 
-        public bool Equals(Address other)
+        public bool Equals(Address? other)
         {
             if (ReferenceEquals(null, other))
             {
@@ -139,7 +139,7 @@ namespace Nethermind.Core
         /// <returns></returns>
         public string ToString(bool withZeroX, bool withEip55Checksum) => Bytes.ToHexString(withZeroX, false, withEip55Checksum);
 
-        public override bool Equals(object obj)
+        public override bool Equals(object? obj)
         {
             if (ReferenceEquals(null, obj))
             {
@@ -156,7 +156,7 @@ namespace Nethermind.Core
         
         public override int GetHashCode() => MemoryMarshal.Read<int>(Bytes);
 
-        public static bool operator ==(Address a, Address b)
+        public static bool operator ==(Address? a, Address? b)
         {
             if (ReferenceEquals(a, b))
             {
@@ -166,11 +166,11 @@ namespace Nethermind.Core
             return a?.Equals(b) ?? false;
         }
 
-        public static bool operator !=(Address a, Address b) => !(a == b);
+        public static bool operator !=(Address? a, Address? b) => !(a == b);
 
         public AddressStructRef ToStructRef() => new AddressStructRef(Bytes);
         
-        public int CompareTo(Address other) => Bytes.AsSpan().SequenceCompareTo(other?.Bytes);
+        public int CompareTo(Address? other) => Bytes.AsSpan().SequenceCompareTo(other?.Bytes);
     }
     
     public ref struct AddressStructRef
@@ -256,11 +256,11 @@ namespace Nethermind.Core
         /// <returns></returns>
         public string ToString(bool withZeroX, bool withEip55Checksum) => Bytes.ToHexString(withZeroX, false, withEip55Checksum);
 
-        public bool Equals(Address other) => !ReferenceEquals(null, other) && Nethermind.Core.Extensions.Bytes.AreEqual(Bytes, other.Bytes);
+        public bool Equals(Address? other) => !ReferenceEquals(null, other) && Nethermind.Core.Extensions.Bytes.AreEqual(Bytes, other.Bytes);
 
         public bool Equals(AddressStructRef other) => Nethermind.Core.Extensions.Bytes.AreEqual(Bytes, other.Bytes);
 
-        public override bool Equals(object obj)
+        public override bool Equals(object? obj)
         {
             if (ReferenceEquals(null, obj))
             {
@@ -272,13 +272,13 @@ namespace Nethermind.Core
         
         public override int GetHashCode() => MemoryMarshal.Read<int>(Bytes);
 
-        public static bool operator ==(AddressStructRef a, Address b) => a.Equals(b);
+        public static bool operator ==(AddressStructRef a, Address? b) => a.Equals(b);
 
-        public static bool operator !=(AddressStructRef a, Address b) => !(a == b);
+        public static bool operator !=(AddressStructRef a, Address? b) => !(a == b);
         
-        public static bool operator ==(Address a, AddressStructRef b) => b.Equals(a);
+        public static bool operator ==(Address? a, AddressStructRef b) => b.Equals(a);
 
-        public static bool operator !=(Address a, AddressStructRef b) => !(a == b);
+        public static bool operator !=(Address? a, AddressStructRef b) => !(a == b);
         
         public static bool operator ==(AddressStructRef a, AddressStructRef b) => a.Equals(b);
 

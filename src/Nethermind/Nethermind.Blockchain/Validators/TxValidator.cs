@@ -28,8 +28,9 @@ namespace Nethermind.Blockchain.Validators
     public class TxValidator : ITxValidator
     {
         private readonly IntrinsicGasCalculator _intrinsicGasCalculator;
+        private readonly long _chainIdValue;
 
-        public TxValidator(int chainId)
+        public TxValidator(long chainId)
         {
             _intrinsicGasCalculator = new IntrinsicGasCalculator();
             
@@ -41,7 +42,6 @@ namespace Nethermind.Blockchain.Validators
             _chainIdValue = chainId;
         }
         
-        private readonly int _chainIdValue;
 
         /* Full and correct validation is only possible in the context of a specific block
            as we cannot generalize correctness of the transaction without knowing the EIPs implemented

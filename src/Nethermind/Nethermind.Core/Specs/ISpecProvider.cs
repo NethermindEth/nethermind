@@ -24,7 +24,7 @@ namespace Nethermind.Core.Specs
 
         long? DaoBlockNumber { get; }
 
-        int ChainId { get; }
+        long ChainId { get; }
 
         long[] TransitionBlocks { get; }
     }
