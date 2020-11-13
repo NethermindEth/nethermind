@@ -39,10 +39,15 @@ namespace Nethermind.Evm
                     : spec.UseConstantinopleNetGasMetering
                         ? RefundOf.SSetReversedEip1283
                         : throw new InvalidOperationException("Asking about the net metered cost when net metering not enabled");
+
+        public static long GetSStoreResetCost(this IReleaseSpec spec) =>
+            spec.UseHotAndColdStorage
+                ? GasCostOf.SReset - GasCostOf.ColdSLoad
+                : GasCostOf.SReset;
         
         public static long GetNetMeteredSStoreCost(this IReleaseSpec spec) =>
             spec.UseHotAndColdStorage
-                ? 0L
+                ? GasCostOf.ColdSLoad
                 : spec.UseIstanbulNetGasMetering
                     ? GasCostOf.SStoreNetMeteredEip2200
                     : spec.UseConstantinopleNetGasMetering

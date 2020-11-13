@@ -426,30 +426,42 @@ namespace Nethermind.Evm
             gasAvailable += refund;
         }
         
-        private static bool ChargeAccountAccessGas(ref long gasAvailable, EvmState vmState, Address address, IReleaseSpec spec)
+        private static bool ChargeAccountAccessGas(ref long gasAvailable, EvmState vmState, Address address, IReleaseSpec spec, bool chargeForWarm = true)
         {
+            bool result = true;
             if (spec.UseHotAndColdStorage)
             {
                 if (vmState.IsCold(address) && !address.IsPrecompile(spec))
-                    return UpdateGas(GasCostOf.ColdAccountAccess, ref gasAvailable);
-                else
-                    return UpdateGas(GasCostOf.WarmStateRead, ref gasAvailable);
+                {
+                    result = UpdateGas(GasCostOf.ColdAccountAccess, ref gasAvailable);
+                    vmState.WarmUp(address);
+                }
+                else if (chargeForWarm)
+                {
+                    result = UpdateGas(GasCostOf.WarmStateRead, ref gasAvailable);
+                }
             }
 
-            return true;
+            return result;
         }
         
         private static bool ChargeStorageAccessGas(ref long gasAvailable, EvmState vmState, StorageCell storageCell, IReleaseSpec spec)
         {
+            bool result = true;
             if (spec.UseHotAndColdStorage)
             {
                 if (vmState.IsCold(storageCell))
-                    return UpdateGas(GasCostOf.ColdSLoad, ref gasAvailable);
+                {
+                    result = UpdateGas(GasCostOf.ColdSLoad, ref gasAvailable);
+                    vmState.WarmUp(storageCell);
+                }
                 else
-                    return UpdateGas(GasCostOf.WarmStateRead, ref gasAvailable);
+                {
+                    result = UpdateGas(GasCostOf.WarmStateRead, ref gasAvailable);
+                }
             }
 
-            return true;
+            return result;
         }
 
         private CallResult ExecutePrecompile(EvmState state, IReleaseSpec spec)
@@ -1694,13 +1706,12 @@ namespace Nethermind.Evm
                         }
                         
                         // fail fast before the first storage read if gas is not enough even for reset
-                        if (!spec.UseNetGasMetering && !UpdateGas(GasCostOf.SReset, ref gasAvailable))
+                        if (!spec.UseNetGasMetering && !UpdateGas(spec.GetSStoreResetCost(), ref gasAvailable))
                         {
                             EndInstructionTraceError(EvmExceptionType.OutOfGas);
                             return CallResult.OutOfGasException;
                         }
-
-                        if (spec.UseNetGasMetering)
+                        else if (spec.UseNetGasMetering)
                         {
                             if (_txTracer.IsTracingRefunds) _txTracer.ReportExtraGasPressure(GasCostOf.CallStipend - spec.GetNetMeteredSStoreCost() + 1);
                             if (gasAvailable <= GasCostOf.CallStipend)
@@ -2442,6 +2453,8 @@ namespace Nethermind.Evm
                         Metrics.SelfDestructs++;
 
                         Address inheritor = stack.PopAddress();
+                        ChargeAccountAccessGas(ref gasAvailable, vmState, inheritor, spec, false);
+                        
                         vmState.DestroyList.Add(env.ExecutingAccount);
 
                         UInt256 ownerBalance = _state.GetBalance(env.ExecutingAccount);
