@@ -673,6 +673,7 @@ namespace Nethermind.Synchronization.Test
         }
 
         [Test]
+        [Parallelizable(ParallelScope.None)]
         public void Will_inform_connecting_peer_about_the_alternative_branch_with_same_difficulty()
         {
             if (_synchronizerType == SynchronizerType.Fast)

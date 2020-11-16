@@ -77,6 +77,29 @@ namespace Nethermind.Overseer.Test.Framework
                 return this;
             }, TaskContinuationOptions.OnlyOnRanToCompletion);
         }
+        
+        /// <summary>
+        /// Queues up asynchronous work.
+        /// </summary>
+        /// <param name="work">The work to be queued.</param>
+        public void QueueWork(Func<Task> work)
+        {
+            // queue up the work
+            ScenarioCompletion = ScenarioCompletion.ContinueWith(async task =>
+            {
+                try
+                {
+                    await work();
+                }
+                catch (Exception e)
+                {
+                    TestContext.WriteLine(e.ToString());
+                    throw;
+                }
+
+                return this;
+            }, TaskContinuationOptions.OnlyOnRanToCompletion);
+        }
 
         public void QueueWork(TestStepBase step)
         {
@@ -159,7 +182,7 @@ namespace Nethermind.Overseer.Test.Framework
 
         public TestBuilder Wait(int delay = 5000, string name = "Wait")
         {
-            QueueWork(() => Thread.Sleep(delay));
+            QueueWork(async () => await Task.Delay(delay));
             return this;
         }
 

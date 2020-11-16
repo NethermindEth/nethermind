@@ -28,17 +28,9 @@ using NUnit.Framework;
 namespace Nethermind.Config.Test
 {
     [TestFixture]
+    [Parallelizable(ParallelScope.All)]
     public class DefaultConfigProviderTests
     {
-        [SetUp]
-        public void Initialize()
-        {
-            var keystoreConfig = new KeyStoreConfig();
-            var networkConfig = new NetworkConfig();
-            var jsonRpcConfig = new JsonRpcConfig();
-            var statsConfig = new StatsConfig();
-        }
-
         [Test]
         public void Can_read_without_sources()
         {
