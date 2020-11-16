@@ -73,14 +73,7 @@ namespace Nethermind.Baseline.Test
             UInt256 nonce = 1L;
             for (int i = 0; i < test.ExpectedTreeCounts.Length; i++)
             {
-                for (int j = 0; j < test.LeavesInTransactionsAndBlocks[i].Length; j++)
-                {
-                    var leafHash = test.LeavesInTransactionsAndBlocks[i][j];
-                    var transaction = contract.InsertLeaf(address, leafHash);
-                    transaction.Nonce = nonce;
-                    ++nonce;
-                    await testRpc.TxSender.SendTransaction(transaction, TxPool.TxHandlingOptions.None);
-                }
+                nonce = await InsertLeafFromArray(test.LeavesInTransactionsAndBlocks[i], nonce, testRpc, contract, address);
 
                 await testRpc.AddBlock();
                 Assert.AreEqual(test.ExpectedTreeCounts[i], baselineTree.Count);
@@ -89,7 +82,7 @@ namespace Nethermind.Baseline.Test
 
 
         [Test]
-        public async Task Tree_tracker_start_tracking([ValueSource(nameof(InsertLeafTestCases))]InsertLeafTest test)
+        public async Task Tree_tracker_start_stop_tracking([ValueSource(nameof(InsertLeafTestCases))]InsertLeafTest test)
         {
             var address = TestItem.Addresses[0];
             var result = await InitializeTestRpc(address);
@@ -102,20 +95,23 @@ namespace Nethermind.Baseline.Test
             UInt256 nonce = 1L;
             for (int i = 0; i < test.ExpectedTreeCounts.Length; i++)
             {
-                for (int j = 0; j < test.LeavesInTransactionsAndBlocks[i].Length; j++)
-                {
-                    var leafHash = test.LeavesInTransactionsAndBlocks[i][j];
-                    var transaction = contract.InsertLeaf(address, leafHash);
-                    transaction.Nonce = nonce;
-                    ++nonce;
-                    await testRpc.TxSender.SendTransaction(transaction, TxPool.TxHandlingOptions.None);
-                }
+                nonce = await InsertLeafFromArray(test.LeavesInTransactionsAndBlocks[i], nonce, testRpc, contract, address);
 
                 await testRpc.AddBlock();
             }
 
-            new BaselineTreeTracker(fromContractAdress, baselineTree, testRpc.BlockProcessor, baselineTreeHelper, testRpc.BlockFinder, LimboNoErrorLogger.Instance);
+            var tracker = new BaselineTreeTracker(fromContractAdress, baselineTree, testRpc.BlockProcessor, baselineTreeHelper, testRpc.BlockFinder, LimboNoErrorLogger.Instance);
             Assert.AreEqual(test.ExpectedTreeCounts[test.ExpectedTreeCounts.Length - 1], baselineTree.Count);
+            var afterStartTrackingCount = baselineTree.Count;
+            for (int i = 0; i < test.ExpectedTreeCounts.Length; i++)
+            {
+                tracker.StopTracking();
+                nonce = await InsertLeafFromArray(test.LeavesInTransactionsAndBlocks[i], nonce, testRpc, contract, address);
+
+                await testRpc.AddBlock();
+                tracker.StartTracking();
+                Assert.AreEqual(test.ExpectedTreeCounts[i] + afterStartTrackingCount, baselineTree.Count);
+            }
         }
 
         [Test]
@@ -134,15 +130,7 @@ namespace Nethermind.Baseline.Test
             UInt256 nonce = 1L;
             for (int i = 0; i < test.ExpectedTreeCounts.Length; i++)
             {
-                for (int j = 0; j < test.LeavesInTransactionsAndBlocks[i].Length; j++)
-                {
-                    var hashes = test.LeavesInTransactionsAndBlocks[i][j];
-                    var transaction = contract.InsertLeaves(address, hashes);
-                    transaction.Nonce = nonce;
-                    ++nonce;
-                    await testRpc.TxSender.SendTransaction(transaction, TxPool.TxHandlingOptions.None);
-                }
-
+                nonce = await InsertLeavesFromArray(test.LeavesInTransactionsAndBlocks[i], nonce, testRpc, contract, address);
                 await testRpc.AddBlock();
                 Assert.AreEqual(test.ExpectedTreeCounts[i], baselineTree.Count);
             }

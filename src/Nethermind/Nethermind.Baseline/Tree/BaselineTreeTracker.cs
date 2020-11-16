@@ -56,7 +56,7 @@ namespace Nethermind.Baseline.Tree
             StartTracking();
         }
 
-        private void StartTracking()
+        public void StartTracking()
         {
             BlockParameter fromBlockParameter = new BlockParameter(0L);
             if (_baselineTree.LastBlockDbHash != Keccak.Zero)
@@ -166,9 +166,14 @@ namespace Nethermind.Baseline.Tree
             return deletedLeavesCount;
         }
 
-        public void Dispose()
+        public void StopTracking()
         {
             _blockProcessor.BlockProcessed -= OnBlockProcessed;
+        }
+
+        public void Dispose()
+        {
+            StopTracking();
         }
     }
 }
