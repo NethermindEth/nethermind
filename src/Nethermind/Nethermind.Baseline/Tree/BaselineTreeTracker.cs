@@ -61,7 +61,6 @@ namespace Nethermind.Baseline.Tree
             BlockParameter fromBlockParameter = new BlockParameter(0L);
             if (_baselineTree.LastBlockDbHash != Keccak.Zero)
             {
-                // TODO: this is not covered by any test
                 var lastBaselineTreeParameter = new BlockParameter(_baselineTree.LastBlockDbHash);
                 var searchResult = _blockFinder.SearchForHeader(lastBaselineTreeParameter);
                 if (!searchResult.IsError)
