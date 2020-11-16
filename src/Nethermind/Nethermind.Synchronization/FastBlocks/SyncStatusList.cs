@@ -35,8 +35,7 @@ namespace Nethermind.Synchronization.FastBlocks
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _statuses = new FastBlockStatus[pivotNumber + 1];
-            
-            LowestInsertWithoutGaps = lowestInserted ?? pivotNumber;
+            LowestInsertWithoutGaps = lowestInserted == null || lowestInserted == long.MaxValue ? pivotNumber : lowestInserted.Value;
         }
 
         public void GetInfosForBatch(BlockInfo[] blockInfos)
