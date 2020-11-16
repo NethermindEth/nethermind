@@ -36,6 +36,9 @@ namespace Nethermind.Baseline.Test
         [Test]
         public void Can_create_many()
         {
+            var dbProvider = Substitute.For<IDbProvider>();
+            dbProvider.BaselineTreeDb.Returns(new MemDb());
+            dbProvider.BaselineTreeMetadataDb.Returns(new MemDb());
             BaselineModuleFactory factory = new BaselineModuleFactory(
                 Substitute.For<ITxSender>(),
                 Substitute.For<IStateReader>(),
@@ -46,7 +49,7 @@ namespace Nethermind.Baseline.Test
                 LimboLogs.Instance,
                 Substitute.For<IBlockProcessor>(),
                 new DisposableStack(),
-                Substitute.For<IDbProvider>());
+                dbProvider);
 
             var a = factory.Create();
             var b = factory.Create();
