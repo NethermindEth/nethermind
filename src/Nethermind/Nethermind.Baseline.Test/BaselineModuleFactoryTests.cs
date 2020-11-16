@@ -21,6 +21,7 @@ using Nethermind.Abi;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Core;
+using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.TxPool;
@@ -44,7 +45,8 @@ namespace Nethermind.Baseline.Test
                 Substitute.For<IFileSystem>(),
                 LimboLogs.Instance,
                 Substitute.For<IBlockProcessor>(),
-                new DisposableStack());
+                new DisposableStack(),
+                Substitute.For<IDbProvider>());
 
             var a = factory.Create();
             var b = factory.Create();
