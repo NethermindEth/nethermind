@@ -65,7 +65,7 @@ namespace Nethermind.Network.Test
         }
 
         [Test]
-        public void DisconnectDelayTest()
+        public async Task DisconnectDelayTest()
         {
             _nodeStats = new NodeStatsLight(_node, _config);
             
@@ -76,14 +76,13 @@ namespace Nethermind.Network.Test
             isConnDelayed = _nodeStats.IsConnectionDelayed();
             Assert.IsTrue(isConnDelayed.Result, "just after disconnect");
             Assert.AreEqual(NodeStatsEventType.Disconnect, isConnDelayed.DelayReason);
-            var task = Task.Delay(125);
-            task.Wait();
+            await Task.Delay(125);
             isConnDelayed = _nodeStats.IsConnectionDelayed();
             Assert.IsFalse(isConnDelayed.Result, "125ms after disconnect");
         }
         
         [Test]
-        public void FailedConnectionDelayTest()
+        public async Task FailedConnectionDelayTest()
         {
             _nodeStats = new NodeStatsLight(_node, _config);
             
@@ -94,8 +93,7 @@ namespace Nethermind.Network.Test
             isConnDelayed = _nodeStats.IsConnectionDelayed();
             Assert.IsTrue(isConnDelayed.Result, "just after failure");
             Assert.AreEqual(NodeStatsEventType.ConnectionFailed, isConnDelayed.DelayReason);
-            var task = Task.Delay(125);
-            task.Wait();
+            await Task.Delay(125);
             isConnDelayed = _nodeStats.IsConnectionDelayed();
             Assert.IsFalse(isConnDelayed.Result, "125ms after failure");
         }

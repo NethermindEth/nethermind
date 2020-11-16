@@ -158,7 +158,7 @@ namespace Nethermind.Network.Test.Discovery
             var manager = _discoveryManager.GetNodeLifecycleManager(node);
             Assert.AreEqual(NodeLifecycleState.New, manager.State);
 
-            //Thread.Sleep(500);
+            //await Task.Delay(500);
 
             Assert.That(() => manager.State, Is.EqualTo(NodeLifecycleState.Unreachable).After(500, 50));
             //Assert.AreEqual(NodeLifecycleState.Unreachable, manager.State);
@@ -200,7 +200,7 @@ namespace Nethermind.Network.Test.Discovery
             //receiving pong for eviction candidate - should survive
             _discoveryManager.OnIncomingMessage(new PongMessage { FarAddress = new IPEndPoint(IPAddress.Parse(evictionCandidate.ManagedNode.Host), _port), FarPublicKey = evictionCandidate.ManagedNode.Id });
 
-            //Thread.Sleep(100);
+            //await Task.Delay(100);
 
             //3th node should survive, 4th node should be active but not in the table
             Assert.That(() => candidateManager.State, Is.EqualTo(NodeLifecycleState.ActiveExcluded).After(100, 50));
@@ -257,12 +257,12 @@ namespace Nethermind.Network.Test.Discovery
                 FarPublicKey = _nodeIds[3]
             });
 
-            //Thread.Sleep(10);
+            //await Task.Delay(10);
             Assert.That(() => candidateManager.State, Is.EqualTo(NodeLifecycleState.Active).After(10, 5));
             //Assert.AreEqual(NodeLifecycleState.Active, candidateManager.State);
 
             var evictionCandidate = managers.First(x => x.State == NodeLifecycleState.EvictCandidate);
-            //Thread.Sleep(300);
+            //await Task.Delay(300);
 
             //3th node should be evicted, 4th node should be added to the table
             //Assert.AreEqual(NodeLifecycleState.Active, candidateManager.State);
