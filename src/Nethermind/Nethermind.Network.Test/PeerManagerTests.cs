@@ -196,7 +196,7 @@ namespace Nethermind.Network.Test
             }
         }
 
-        private int _travisDelay = 1;
+        private int _travisDelay = 100;
 
         private int _travisDelayLong = 1000;
 
