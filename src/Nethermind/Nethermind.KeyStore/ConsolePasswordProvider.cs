@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Security;
+using Nethermind.Core;
 using Nethermind.KeyStore.ConsoleHelpers;
 
 namespace Nethermind.KeyStore
@@ -29,11 +30,11 @@ namespace Nethermind.KeyStore
         }
 
         public string Message { get; set; }
-        public override SecureString GetPassword()
+        public override SecureString GetPassword(Address address)
         {
             var password = _consoleUtils.ReadSecret(Message);
             if (password == null && AlternativeProvider != null)
-                password = AlternativeProvider.GetPassword();
+                password = AlternativeProvider.GetPassword(address);
 
             return password;
         }

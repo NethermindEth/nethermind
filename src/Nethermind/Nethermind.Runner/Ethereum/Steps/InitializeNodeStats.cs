@@ -35,8 +35,7 @@ namespace Nethermind.Runner.Ethereum.Steps
         public Task Execute(CancellationToken _)
         {
             // create shared objects between discovery and peer manager
-            IStatsConfig statsConfig = _api.Config<IStatsConfig>();
-            _api.NodeStatsManager = new NodeStatsManager(statsConfig, _api.LogManager);
+            _api.NodeStatsManager = new NodeStatsManager(_api.LogManager);
 
             return Task.CompletedTask;
         }
