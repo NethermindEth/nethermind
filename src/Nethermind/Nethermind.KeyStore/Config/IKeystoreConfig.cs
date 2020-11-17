@@ -69,13 +69,13 @@ namespace Nethermind.KeyStore.Config
         [ConfigItem(Description = "Account to be used by the block author / coinbase")]
         string BlockAuthorAccount { get; set; }
 
-        [ConfigItem(Description = "Passwords to use to unlock accounts from the UnlockAccounts configuration item. Only used when no PasswordFiles provided.")]
+        [ConfigItem(Description = "Passwords to use to unlock accounts from the UnlockAccounts configuration item. Only used when no PasswordFiles provided.", DefaultValue = "System.String[]")]
         string[] Passwords { get; set; }
 
-        [ConfigItem(Description = "Password files storing passwords to unlock the accounts from the UnlockAccounts configuration item")]
+        [ConfigItem(Description = "Password files storing passwords to unlock the accounts from the UnlockAccounts configuration item", DefaultValue = "System.String[]")]
         string[] PasswordFiles { get; set; }
 
-        [ConfigItem(Description = "Accounts to unlock on startup using provided PasswordFiles and Passwords")]
+        [ConfigItem(Description = "Accounts to unlock on startup using provided PasswordFiles and Passwords", DefaultValue = "System.String[]")]
         string[] UnlockAccounts { get; set; }
     }
 
