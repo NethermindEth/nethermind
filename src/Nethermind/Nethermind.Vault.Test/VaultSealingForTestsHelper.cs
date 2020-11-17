@@ -34,7 +34,7 @@ namespace Nethermind.Vault.Test
         {
             _vaultConfig = vaultConfig ?? throw new ArgumentNullException(nameof(vaultConfig));
             _vaultConfig.VaultKeyFile = VaultConfigFileName;
-            var passwordProvider = new FilePasswordProvider() { FileName = _vaultConfig.VaultKeyFile.GetApplicationResourcePath() };
+            var passwordProvider = new FilePasswordProvider(a => _vaultConfig.VaultKeyFile.GetApplicationResourcePath());
             var vaultKeyStoreFacade = new VaultKeyStoreFacade(passwordProvider);
             _vaultSealingHelper = new VaultSealingHelper(vaultKeyStoreFacade, _vaultConfig, LimboLogs.Instance.GetClassLogger<VaultSealingHelper>());
         }

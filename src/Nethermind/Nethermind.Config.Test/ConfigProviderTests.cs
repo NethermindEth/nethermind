@@ -70,10 +70,10 @@ namespace Nethermind.Config.Test
                     args.Add("JsonRpc.Enabled", bitArray.Get(5).ToString());
                 }
 
-                Environment.SetEnvironmentVariable("NETHERMIND_JSONRPC_ENABLED", null, EnvironmentVariableTarget.Process);
+                Environment.SetEnvironmentVariable("NETHERMIND_JSONRPCCONFIG_ENABLED", null, EnvironmentVariableTarget.Process);
                 if (bitArray.Get(2))
                 {
-                    Environment.SetEnvironmentVariable("NETHERMIND_JSONRPC_ENABLED", bitArray.Get(3).ToString(), EnvironmentVariableTarget.Process);
+                    Environment.SetEnvironmentVariable("NETHERMIND_JSONRPCCONFIG_ENABLED", bitArray.Get(3).ToString(), EnvironmentVariableTarget.Process);
                 }
 
                 Dictionary<string, string> fakeJson = new Dictionary<string, string>();

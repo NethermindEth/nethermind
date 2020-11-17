@@ -15,12 +15,10 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using System.Linq;
 using System.Security;
 using Nethermind.Core;
 using Nethermind.Crypto;
 using Nethermind.KeyStore.Config;
-using Nethermind.Logging;
 
 namespace Nethermind.KeyStore
 {

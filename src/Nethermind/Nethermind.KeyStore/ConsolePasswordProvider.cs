@@ -20,7 +20,7 @@ using Nethermind.KeyStore.ConsoleHelpers;
 
 namespace Nethermind.KeyStore
 {
-    public class ConsolePasswordProvider : BasePasswordProvider, IPasswordProvider
+    public class ConsolePasswordProvider : BasePasswordProvider
     {
         private readonly IConsoleUtils _consoleUtils;
         
