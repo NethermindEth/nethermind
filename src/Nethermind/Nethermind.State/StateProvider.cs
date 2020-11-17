@@ -580,6 +580,8 @@ namespace Nethermind.State
             {
                 ReportChanges(stateTracer, trace);
             }
+            
+            _logger.Warn($"After committing state provider: current position:{_currentPosition}, changes count:{_changes.Length}, capacity {_capacity}");
         }
 
         private void ReportChanges(IStateTracer stateTracer, Dictionary<Address, ChangeTrace> trace)
