@@ -31,6 +31,7 @@ using Nethermind.Evm.Precompiles.Snarks.Shamatar;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.State;
+using Nethermind.Trie;
 
 [assembly: InternalsVisibleTo("Nethermind.Evm.Test")]
 
@@ -78,8 +79,12 @@ namespace Nethermind.Evm
         private byte[] _returnDataBuffer = new byte[0];
         private ITxTracer _txTracer;
 
-        public VirtualMachine(IStateProvider stateProvider, IStorageProvider storageProvider,
-            IBlockhashProvider blockhashProvider, ISpecProvider specProvider, ILogManager logManager)
+        public VirtualMachine(
+            IStateProvider stateProvider,
+            IStorageProvider storageProvider,
+            IBlockhashProvider blockhashProvider,
+            ISpecProvider specProvider,
+            ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _state = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
@@ -373,9 +378,9 @@ namespace Nethermind.Evm
 
             Keccak codeHash = _state.GetCodeHash(codeSource);
             CodeInfo cachedCodeInfo = _codeCache.Get(codeHash);
+            byte[] code = _state.GetCode(codeHash); // TODO: change for quick wit
             if (cachedCodeInfo == null)
             {
-                byte[] code = _state.GetCode(codeHash);
                 if (code == null)
                 {
                     throw new NullReferenceException($"Code {codeHash} missing in the state for address {codeSource}");
