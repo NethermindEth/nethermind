@@ -44,7 +44,7 @@ namespace Nethermind.Blockchain.Receipts
 
         public long? LowestInsertedReceiptBlockNumber
         {
-            get => long.MaxValue;
+            get => 1;
             set { }
         }
 
