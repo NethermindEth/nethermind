@@ -133,7 +133,7 @@ namespace Nethermind.Runner
                     ConfigItemAttribute? configItemAttribute = propertyInfo.GetCustomAttribute<ConfigItemAttribute>();
                     if (!(configItemAttribute?.HiddenFromDocs ?? false))
                     {
-                        app.Option($"--{configType.Name.Substring(1).Replace("Config", String.Empty)}.{propertyInfo.Name}", $"{(configItemAttribute == null ? "<missing documentation>" : configItemAttribute.Description ?? "<missing documentation>")}", CommandOptionType.SingleValue);
+                        app.Option($"--{configType.Name.Substring(1).Replace("Config", String.Empty)}.{propertyInfo.Name}", $"{(configItemAttribute == null ? "<missing documentation>" : configItemAttribute.Description + $" (DEFAULT: {configItemAttribute.DefaultValue})" ?? "<missing documentation>")}", CommandOptionType.SingleValue);
                     }
                 }
             }

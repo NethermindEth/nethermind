@@ -22,7 +22,7 @@ namespace Nethermind.PubSub.Kafka
     {
         [ConfigItem(Description = "If 'true' then it enables the Kafka producer which can be configured to stream the transactions data.", DefaultValue = "false")]
         bool Enabled { get; set; }
-        [ConfigItem(HiddenFromDocs = true)]
+        [ConfigItem(HiddenFromDocs = true, DefaultValue = "localhost:19092,localhost:29092,localhost:39092")]
         string Servers { get; }
         [ConfigItem(Description = "Security protocol used", DefaultValue = "SASL_Plaintext")]
         string SecurityProtocol { get; }

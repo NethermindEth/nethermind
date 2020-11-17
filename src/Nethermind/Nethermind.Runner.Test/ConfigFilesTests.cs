@@ -108,7 +108,14 @@ namespace Nethermind.Runner.Test
 
                     foreach (PropertyInfo property in properties)
                     {
-                        verifier(property, instance);
+                        try
+                        {
+                            verifier(property, instance);
+                        }
+                        catch (Exception e)
+                        {
+                            throw new Exception(property.Name, e);
+                        }
                     }
                 }
             }
