@@ -61,16 +61,19 @@ namespace Nethermind.Blockchain.Synchronization
         [ConfigItem(Description = "Hash of the pivot block for the Fast Blocks sync.", DefaultValue = "null")]
         string PivotHash { get; set; }
 
+        [ConfigItem(HiddenFromDocs = true, DefaultValue = "0")]
         long PivotNumberParsed => LongConverter.FromString(PivotNumber ?? "0");
 
-        UInt256 PivotTotalDifficultyParsed => UInt256.Parse(PivotTotalDifficulty ?? "0x0");
+        [ConfigItem(HiddenFromDocs = true, DefaultValue = "0")]
+        UInt256 PivotTotalDifficultyParsed => UInt256.Parse(PivotTotalDifficulty ?? "0");
 
+        [ConfigItem(HiddenFromDocs = true)]
         Keccak PivotHashParsed => PivotHash == null ? null : new Keccak(Bytes.FromHexString(PivotHash));
         
-        [ConfigItem(Description = "Context timeout.", DefaultValue = "4")]
+        [ConfigItem(Description = "Number of seconds before a single beam sync request expires and throw an exception. If you want your JSON RPC requests to keep trying then set this value to a higher number.", DefaultValue = "4")]
         public int BeamSyncContextTimeout { get; set; }
         
-        [ConfigItem(Description = "Beam sync pre processor timeout.", DefaultValue = "15")]
+        [ConfigItem(Description = "Number of seconds to pass without progress before beam sync stops trying to process a single block.", DefaultValue = "15")]
         public int BeamSyncPreProcessorTimeout { get; set; }
         
         [ConfigItem(Description = "Should use beam sync to fix corrupted state DB (dev use).", DefaultValue = "false")]

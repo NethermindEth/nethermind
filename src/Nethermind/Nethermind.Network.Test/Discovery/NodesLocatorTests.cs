@@ -57,7 +57,7 @@ namespace Nethermind.Network.Test.Discovery
                 LimboLogs.Instance);
             DiscoveryMessageFactory messageFactory = new DiscoveryMessageFactory(Timestamper.Default);
             EvictionManager evictionManager = new EvictionManager(_nodeTable, LimboLogs.Instance);
-            NodeStatsManager nodeStatsManager = new NodeStatsManager(new StatsConfig(), LimboLogs.Instance);
+            NodeStatsManager nodeStatsManager = new NodeStatsManager(LimboLogs.Instance);
             NodeLifecycleManagerFactory managerFactory =
                 new NodeLifecycleManagerFactory(
                     _nodeTable,

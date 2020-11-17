@@ -83,8 +83,6 @@ namespace Nethermind.Network.Test.Discovery
 
             _ipResolverMock = Substitute.For<IIPResolver>();
 
-            IStatsConfig statsConfig = _configurationProvider.GetConfig<IStatsConfig>();
-
             var calculator = new NodeDistanceCalculator(discoveryConfig);
 
             _nodeTable = new NodeTable(calculator, discoveryConfig, _networkConfig, logManager);
@@ -95,7 +93,7 @@ namespace Nethermind.Network.Test.Discovery
 
             var evictionManager = new EvictionManager(_nodeTable, logManager);
             _evictionManagerMock = Substitute.For<IEvictionManager>();
-            var lifecycleFactory = new NodeLifecycleManagerFactory(_nodeTable, new DiscoveryMessageFactory(_timestamper), evictionManager, new NodeStatsManager(statsConfig, logManager), discoveryConfig, logManager);
+            var lifecycleFactory = new NodeLifecycleManagerFactory(_nodeTable, new DiscoveryMessageFactory(_timestamper), evictionManager, new NodeStatsManager(logManager), discoveryConfig, logManager);
 
             _udpClient = Substitute.For<IMessageSender>();
 

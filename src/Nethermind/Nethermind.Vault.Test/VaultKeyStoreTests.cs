@@ -20,6 +20,7 @@ using System.Text;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
+using Nethermind.KeyStore;
 using Nethermind.KeyStore.Config;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
@@ -27,7 +28,7 @@ using Nethermind.Vault.Config;
 using Nethermind.Vault.KeyStore;
 using NUnit.Framework;
 
-namespace Nethermind.KeyStore.Test
+namespace Nethermind.Vault.Test
 {
     [Parallelizable(ParallelScope.Self)]
     [TestFixture]
