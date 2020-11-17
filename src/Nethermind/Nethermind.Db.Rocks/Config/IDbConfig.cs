@@ -18,7 +18,7 @@ using Nethermind.Config;
 
 namespace Nethermind.Db.Rocks.Config
 {
-    [ConfigItem(HiddenFromDocs = true)]
+    [ConfigCategory(HiddenFromDocs = true)]
     public interface IDbConfig : IConfig
     {
         ulong WriteBufferSize { get; set; }

@@ -120,7 +120,7 @@ namespace Nethermind.Runner
                     continue;
                 }
 
-                ConfigItemAttribute? typeLevel = configType.GetCustomAttribute<ConfigItemAttribute>();
+                ConfigCategoryAttribute? typeLevel = configType.GetCustomAttribute<ConfigCategoryAttribute>();
                 if (typeLevel?.HiddenFromDocs ?? false)
                 {
                     continue;
