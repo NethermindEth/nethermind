@@ -95,7 +95,7 @@ namespace Nethermind.Runner.Ethereum.Steps
         {
             // bool addNdmDbs = _api.Config<INdmConfig>().Enabled;
             IInitConfig initConfig = _api.Config<IInitConfig>();
-            RocksDbProvider debugRecorder = new RocksDbProvider(_api.LogManager, false);
+            RocksDbProvider debugRecorder = new RocksDbProvider(_api.LogManager, false, false);
             ThisNodeInfo.AddInfo("DB location  :", $"{basePath}");
             await debugRecorder.Init(basePath, dbConfig, useReceiptsDb);
             return debugRecorder;

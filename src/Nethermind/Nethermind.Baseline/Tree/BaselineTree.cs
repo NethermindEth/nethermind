@@ -65,6 +65,7 @@ namespace Nethermind.Baseline.Tree
             Metadata.SaveBlockNumberCount(blockNumber, count, LastBlockWithLeaves);
             Metadata.SaveCurrentBlockInDb(blockHash, blockNumber);
             LastBlockWithLeaves = blockNumber;
+            LastBlockDbHash = blockHash;
         }
 
         public BaselineTreeMetadata Metadata { get; private set; }
