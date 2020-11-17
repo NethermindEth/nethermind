@@ -18,7 +18,7 @@ using Nethermind.Config;
 
 namespace Nethermind.Network.Config
 {
-    [ConfigItem(HiddenFromDocs = true)]
+    [ConfigCategory(HiddenFromDocs = true)]
     public interface IDiscoveryConfig : IConfig
     {
         /// <summary>

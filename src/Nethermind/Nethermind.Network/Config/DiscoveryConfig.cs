@@ -14,45 +14,42 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using Nethermind.Config;
-
 namespace Nethermind.Network.Config
 {
     public class DiscoveryConfig : IDiscoveryConfig
     {
-        [ConfigItem(HiddenFromDocs = true)]
         public int BucketSize { get; set; } = 16;
-        [ConfigItem(HiddenFromDocs = true)]
+
         public int BucketsCount { get; set; } = 256;
-        [ConfigItem(HiddenFromDocs = true)]
+
         public int Concurrency { get; set; } = 3;
-        [ConfigItem(HiddenFromDocs = true)]
+
         public int BitsPerHop { get; set; } = 8;
-        [ConfigItem(HiddenFromDocs = true)]
+
         public int MaxDiscoveryRounds { get; set; } = 8;
-        [ConfigItem(HiddenFromDocs = true)]
+
         public int EvictionCheckInterval { get; set; } = 75;
-        [ConfigItem(HiddenFromDocs = true)]
+
         public int SendNodeTimeout { get; set; } = 500;
-        [ConfigItem(HiddenFromDocs = true)]
+
         public int PongTimeout { get; set; } = 1000 * 15;
-        [ConfigItem(HiddenFromDocs = true)]
+
         public int BootnodePongTimeout { get; set; } = 1000 * 100;
-        [ConfigItem(HiddenFromDocs = true)]
+
         public int PingRetryCount { get; set; } = 3;
-        [ConfigItem(HiddenFromDocs = true)]
+
         public int DiscoveryInterval { get; set; } = 1000 * 30;
-        [ConfigItem(HiddenFromDocs = true)]
+
         public int DiscoveryPersistenceInterval { get; set; } = 1000 * 180;
-        [ConfigItem(HiddenFromDocs = true)]
+
         public int DiscoveryNewCycleWaitTime { get; set; } = 50;
-        [ConfigItem(HiddenFromDocs = true)]
+
         public int UdpChannelCloseTimeout { get; set; } = 1000 * 5;
-        [ConfigItem(HiddenFromDocs = true)]
+
         public int MaxNodeLifecycleManagersCount { get; set; } = 8000;
-        [ConfigItem(HiddenFromDocs = true)]
+
         public int NodeLifecycleManagersCleanupCount { get; set; } = 4000;
-        [ConfigItem(HiddenFromDocs = true)]
+
         public string Bootnodes { get; set; } = string.Empty;
     }
 }
