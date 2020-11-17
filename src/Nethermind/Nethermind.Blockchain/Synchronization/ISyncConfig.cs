@@ -61,10 +61,13 @@ namespace Nethermind.Blockchain.Synchronization
         [ConfigItem(Description = "Hash of the pivot block for the Fast Blocks sync.", DefaultValue = "null")]
         string PivotHash { get; set; }
 
+        [ConfigItem(HiddenFromDocs = true)]
         long PivotNumberParsed => LongConverter.FromString(PivotNumber ?? "0");
 
+        [ConfigItem(HiddenFromDocs = true)]
         UInt256 PivotTotalDifficultyParsed => UInt256.Parse(PivotTotalDifficulty ?? "0x0");
 
+        [ConfigItem(HiddenFromDocs = true)]
         Keccak PivotHashParsed => PivotHash == null ? null : new Keccak(Bytes.FromHexString(PivotHash));
         
         [ConfigItem(Description = "Number of seconds before a single beam sync request expires and throw an exception. If you want your JSON RPC requests to keep trying then set this value to a higher number.", DefaultValue = "4")]

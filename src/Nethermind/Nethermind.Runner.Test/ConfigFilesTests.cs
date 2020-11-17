@@ -117,13 +117,7 @@ namespace Nethermind.Runner.Test
         private static void CheckDescribedOrHidden(PropertyInfo property, object instance)
         {
             ConfigItemAttribute attribute = property.GetCustomAttribute<ConfigItemAttribute>();
-            if (attribute == null)
-            {
-                //there are properties without attribute - we don't pay attention to them 
-                return;
-            }
-
-            if (string.IsNullOrWhiteSpace(attribute.Description) && !attribute.HiddenFromDocs)
+            if (string.IsNullOrWhiteSpace(attribute?.Description) && !(attribute?.HiddenFromDocs ?? false))
             {
                 ConfigCategoryAttribute? categoryLevel = property.DeclaringType?.GetCustomAttribute<ConfigCategoryAttribute>();
                 if (!(categoryLevel?.HiddenFromDocs ?? false))

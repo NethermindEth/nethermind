@@ -22,18 +22,31 @@ namespace Nethermind.PubSub.Kafka
     {
         [ConfigItem(Description = "If 'true' then it enables the Kafka producer which can be configured to stream the transactions data.", DefaultValue = "false")]
         bool Enabled { get; set; }
+        [ConfigItem(HiddenFromDocs = true)]
         string Servers { get; }
+        [ConfigItem(Description = "Security protocol used", DefaultValue = "SASL_Plaintext")]
         string SecurityProtocol { get; }
+        [ConfigItem(Description = "SASL enabled", DefaultValue = "true")]
         bool SaslEnabled { get; }
+        [ConfigItem(Description = "SASL username", DefaultValue = "nethermind")]
         string SaslUsername { get; }
+        [ConfigItem(Description = "SASL password", DefaultValue = "secret")]
         string SaslPassword { get; }
+        [ConfigItem(Description = "SSL key location", DefaultValue = "certs/nethermind.pem")]
         string SslKeyLocation { get; }
+        [ConfigItem(Description = "Topic to publish block messages on", DefaultValue = "Nethermind.Blocks")]
         string TopicBlocks { get; }
+        [ConfigItem(Description = "Topic to publish receipt messages on", DefaultValue = "Nethermind.Receipts")]
         string TopicReceipts { get; }
+        [ConfigItem(Description = "Topic to publish transaction messages on", DefaultValue = "Nethermind.Transactions")]
         string TopicTransactions { get; }
+        [ConfigItem(Description = "Schema registry URL", DefaultValue = "http://localhost:8081")]
         string SchemaRegistryUrl { get; }
+        [ConfigItem(Description = "Whether to produce Avro formatted output", DefaultValue = "true")]
         bool ProduceAvro { get; }
+        [ConfigItem(Description = "Whether to produce JSON formatted output", DefaultValue = "true")]
         bool ProduceJson { get; }
+        [ConfigItem(Description = "Whether to produce UTF8 formatted output", DefaultValue = "true")]
         bool ProduceUtf8Json { get; }
     }
 }
