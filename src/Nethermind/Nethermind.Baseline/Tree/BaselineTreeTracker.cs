@@ -56,12 +56,11 @@ namespace Nethermind.Baseline.Tree
             StartTracking();
         }
 
-        private void StartTracking()
+        public void StartTracking()
         {
             BlockParameter fromBlockParameter = new BlockParameter(0L);
             if (_baselineTree.LastBlockDbHash != Keccak.Zero)
             {
-                // TODO: this is not covered by any test
                 var lastBaselineTreeParameter = new BlockParameter(_baselineTree.LastBlockDbHash);
                 var searchResult = _blockFinder.SearchForHeader(lastBaselineTreeParameter);
                 if (!searchResult.IsError)
@@ -166,11 +165,14 @@ namespace Nethermind.Baseline.Tree
             return deletedLeavesCount;
         }
 
+        public void StopTracking()
+        {
+            _blockProcessor.BlockProcessed -= OnBlockProcessed;
+        }
+
         public void Dispose()
         {
-            // TODO: is it a hack because someone was not sure if it would work?
-            _baselineTree.MemorizeCurrentCount(_currentBlockHeader!.Hash, _currentBlockHeader!.Number, _baselineTree.Count);
-            _blockProcessor.BlockProcessed -= OnBlockProcessed;
+            StopTracking();
         }
     }
 }
