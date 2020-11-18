@@ -70,6 +70,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             if (_api.StorageProvider == null) throw new StepDependencyException(nameof(_api.StorageProvider));
             if (_api.TxPool == null) throw new StepDependencyException(nameof(_api.TxPool));
             if (_api.ReceiptStorage == null) throw new StepDependencyException(nameof(_api.ReceiptStorage));
+            if (_processingReadOnlyTransactionProcessorSource == null) throw new StepDependencyException(nameof(_processingReadOnlyTransactionProcessorSource));
 
             var processor = new AuRaBlockProcessor(
                 _api.SpecProvider,
@@ -84,10 +85,10 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.ReceiptStorage,
                 _api.LogManager,
                 _api.BlockTree,
-                TxFilterBuilders.CreateTxPermissionFilter(_api, GetReadOnlyTransactionProcessorSource(), _api.StateProvider),
-                GetGasLimitCalculator());
+                TxFilterBuilders.CreateTxPermissionFilter(_api, _processingReadOnlyTransactionProcessorSource, _api.StateProvider),
+                GetGasLimitCalculator(_processingReadOnlyTransactionProcessorSource));
             
-            var auRaValidator = CreateAuRaValidator(processor);
+            var auRaValidator = CreateAuRaValidator(processor, _processingReadOnlyTransactionProcessorSource);
             processor.AuRaValidator = auRaValidator;
             var reportingValidator = auRaValidator.GetReportingValidator();
             _api.ReportingValidator = reportingValidator;
@@ -104,7 +105,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             return processor;
         }
 
-        private IAuRaValidator CreateAuRaValidator(IBlockProcessor processor)
+        private IAuRaValidator CreateAuRaValidator(IBlockProcessor processor, ReadOnlyTxProcessorSource readOnlyTxProcessorSource)
         {
             if (_api.ChainSpec == null) throw new StepDependencyException(nameof(_api.ChainSpec));
             if (_api.BlockTree == null) throw new StepDependencyException(nameof(_api.BlockTree));
@@ -125,7 +126,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                     _api.StateProvider, 
                     _api.AbiEncoder, 
                     _api.TransactionProcessor, 
-                    GetReadOnlyTransactionProcessorSource(), 
+                    readOnlyTxProcessorSource, 
                     _api.BlockTree, 
                     _api.ReceiptStorage, 
                     _api.ValidatorStore,
@@ -148,7 +149,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             return validator;
         }
 
-        private AuRaContractGasLimitOverride? GetGasLimitCalculator()
+        private AuRaContractGasLimitOverride? GetGasLimitCalculator(ReadOnlyTxProcessorSource readOnlyTxProcessorSource)
         {
             if (_api.ChainSpec == null) throw new StepDependencyException(nameof(_api.ChainSpec));
             var blockGasLimitContractTransitions = _api.ChainSpec.AuRa.BlockGasLimitContractTransitions;
@@ -163,7 +164,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                             _api.AbiEncoder,
                             blockGasLimitContractTransition.Value,
                             blockGasLimitContractTransition.Key,
-                            GetReadOnlyTransactionProcessorSource()))
+                            readOnlyTxProcessorSource))
                         .ToArray<IBlockGasLimitContract>(),
                     _api.GasLimitCalculatorCache,
                     _auraConfig.Minimum2MlnGasPerBlockWhenUsingBlockGasLimitContract,
@@ -273,9 +274,6 @@ namespace Nethermind.Runner.Ethereum.Steps
             _processingReadOnlyTransactionProcessorSource = new ReadOnlyTxProcessorSource(_api.DbProvider, _api.BlockTree, _api.SpecProvider, _api.LogManager);
             return blockTree;
         }
-        
-        private IReadOnlyTransactionProcessorSource GetReadOnlyTransactionProcessorSource() => 
-            _processingReadOnlyTransactionProcessorSource ??= new ReadOnlyTxProcessorSource(_api.DbProvider, _api.BlockTree, _api.SpecProvider, _api.LogManager);
 
         private class BlockProcessorWrapper : IBlockProcessor
         {
