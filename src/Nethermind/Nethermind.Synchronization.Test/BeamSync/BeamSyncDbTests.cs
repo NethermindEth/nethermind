@@ -163,7 +163,7 @@ namespace Nethermind.Synchronization.Test.BeamSync
             StateSyncBatch request = null;
             for (int i = 0; i < 1000; i++)
             {
-                Thread.Sleep(1);
+                await Task.Delay(1);
                 request = await _stateBeamLocal.PrepareRequest();
                 if (request!.RequestedNodes.Length > 0)
                 {

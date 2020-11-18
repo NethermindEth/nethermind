@@ -14,7 +14,9 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Threading;
+using System.Threading.Tasks;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test
@@ -71,10 +73,11 @@ namespace Nethermind.Core.Test
         [Retry(3)]
         public void Update_twice_total_per_second()
         {
-            MeasuredProgress measuredProgress = new MeasuredProgress();
+            ManualTimestamper manualTimestamper = new ManualTimestamper();
+            MeasuredProgress measuredProgress = new MeasuredProgress(manualTimestamper);
             measuredProgress.Update(0L);
             measuredProgress.SetMeasuringPoint();
-            Thread.Sleep(100);
+            manualTimestamper.Add(TimeSpan.FromMilliseconds(100));
             measuredProgress.Update(1L);
             Assert.GreaterOrEqual(measuredProgress.TotalPerSecond, 4M);
             Assert.LessOrEqual(measuredProgress.TotalPerSecond, 10M);
@@ -82,39 +85,41 @@ namespace Nethermind.Core.Test
 
         [Test]
         [Retry(3)]
-        public void Update_twice_current_per_second()
+        public async Task Update_twice_current_per_second()
         {
-            MeasuredProgress measuredProgress = new MeasuredProgress();
+            ManualTimestamper manualTimestamper = new ManualTimestamper();
+            MeasuredProgress measuredProgress = new MeasuredProgress(manualTimestamper);
             measuredProgress.Update(0L);
             measuredProgress.SetMeasuringPoint();
-            Thread.Sleep(100);
+            manualTimestamper.Add(TimeSpan.FromMilliseconds(100));
             measuredProgress.Update(1L);
             Assert.LessOrEqual(measuredProgress.CurrentPerSecond, 10M);
             Assert.GreaterOrEqual(measuredProgress.CurrentPerSecond, 4M);
         }
 
         [Test]
-        public void Current_starting_from_non_zero()
+        public async Task Current_starting_from_non_zero()
         {
-            MeasuredProgress measuredProgress = new MeasuredProgress();
+            ManualTimestamper manualTimestamper = new ManualTimestamper();
+            MeasuredProgress measuredProgress = new MeasuredProgress(manualTimestamper);
             measuredProgress.Update(10L);
             measuredProgress.SetMeasuringPoint();
-            Thread.Sleep(100);
+            manualTimestamper.Add(TimeSpan.FromMilliseconds(100));
             measuredProgress.Update(20L);
             Assert.LessOrEqual(measuredProgress.CurrentPerSecond, 105M);
         }
 
         [Test]
-        [Retry(3)]
-        public void Update_thrice_result_per_second()
+        public async Task Update_thrice_result_per_second()
         {
-            MeasuredProgress measuredProgress = new MeasuredProgress();
+            ManualTimestamper manualTimestamper = new ManualTimestamper();
+            MeasuredProgress measuredProgress = new MeasuredProgress(manualTimestamper);
             measuredProgress.Update(0L);
             measuredProgress.SetMeasuringPoint();
-            Thread.Sleep(100);
+            manualTimestamper.Add(TimeSpan.FromMilliseconds(100));
             measuredProgress.Update(1L);
             measuredProgress.SetMeasuringPoint();
-            Thread.Sleep(100);
+            manualTimestamper.Add(TimeSpan.FromMilliseconds(100));
             measuredProgress.Update(3L);
             Assert.GreaterOrEqual(measuredProgress.TotalPerSecond, 6M);
             Assert.LessOrEqual(measuredProgress.TotalPerSecond, 15M);
@@ -123,23 +128,23 @@ namespace Nethermind.Core.Test
         }
 
         [Test]
-        [Retry(3)]
-        public void After_ending_does_not_update_total_or_current()
+        public async Task After_ending_does_not_update_total_or_current()
         {
-            MeasuredProgress measuredProgress = new MeasuredProgress();
+            ManualTimestamper manualTimestamper = new ManualTimestamper();
+            MeasuredProgress measuredProgress = new MeasuredProgress(manualTimestamper);
             measuredProgress.Update(0L);
             measuredProgress.SetMeasuringPoint();
-            Thread.Sleep(100);
+            manualTimestamper.Add(TimeSpan.FromMilliseconds(100));
             measuredProgress.Update(1L);
             measuredProgress.SetMeasuringPoint();
-            Thread.Sleep(100);
+            manualTimestamper.Add(TimeSpan.FromMilliseconds(100));
             measuredProgress.Update(3L);
             measuredProgress.MarkEnd();
-            Thread.Sleep(100);
+            manualTimestamper.Add(TimeSpan.FromMilliseconds(100));
             measuredProgress.SetMeasuringPoint();
-            Thread.Sleep(100);
+            manualTimestamper.Add(TimeSpan.FromMilliseconds(100));
             measuredProgress.SetMeasuringPoint();
-            Thread.Sleep(100);
+            manualTimestamper.Add(TimeSpan.FromMilliseconds(100));
             measuredProgress.SetMeasuringPoint();
             Assert.GreaterOrEqual(measuredProgress.TotalPerSecond, 6M);
             Assert.LessOrEqual(measuredProgress.TotalPerSecond, 15M);

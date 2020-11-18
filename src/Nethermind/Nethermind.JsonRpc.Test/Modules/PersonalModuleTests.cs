@@ -27,7 +27,7 @@ using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test.Modules
 {
-    [Parallelizable(ParallelScope.Self)]
+    [Parallelizable(ParallelScope.None)]
     [TestFixture]
     public class PersonalModuleTests
     {

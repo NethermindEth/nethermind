@@ -54,7 +54,7 @@ namespace Nethermind.Network.Test.P2P
             return new P2PProtocolHandler(
                 _session,
                 TestItem.PublicKeyA,
-                new NodeStatsManager(new StatsConfig(), LimboLogs.Instance), 
+                new NodeStatsManager(LimboLogs.Instance), 
                 _serializer,
                 LimboLogs.Instance);
         }

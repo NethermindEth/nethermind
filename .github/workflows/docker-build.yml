@@ -1,11 +1,11 @@
-name: Publish AMD64 image to docker registry
+name: Publish Docker images to Hub
 
 on:
   repository_dispatch:
     types: dockers
 
 jobs:
-  amd64-build:
+  dockers-build:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -17,7 +17,7 @@ jobs:
         run: |
           echo "Event '${{ github.event.action }}' with tag: '${{ github.event.client_payload.tag }}'"
           echo ::set-output name=TAG::${{ github.event.client_payload.tag }}
-          echo ::set-output name=TAG_FROM_REPO::$(git describe --tags $(git rev-list --tags --max-count=1))
+          echo ::set-output name=TAG_FROM_REPO::$(git describe --tags --always | cut -d- -f1)
           echo ::set-output name=docker_username::${{ secrets.DOCKER_USERNAME }}
           echo ::set-output name=docker_image::nethermind/nethermind
       - name: Set up docker buildx

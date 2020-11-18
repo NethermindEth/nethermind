@@ -31,7 +31,7 @@ namespace Nethermind.Core
             Bytes = new byte[ByteLength];
         }
         
-        public Bloom(LogEntry[] logEntries, Bloom blockBloom = null)
+        public Bloom(LogEntry[] logEntries, Bloom? blockBloom = null)
         {
             Bytes = new byte[ByteLength];
             Add(logEntries, blockBloom);
@@ -49,7 +49,7 @@ namespace Nethermind.Core
             Set(sequence, null);
         }
         
-        private void Set(byte[] sequence, Bloom masterBloom)
+        private void Set(byte[] sequence, Bloom? masterBloom)
         {
             if (ReferenceEquals(this, Empty))
             {
@@ -79,12 +79,12 @@ namespace Nethermind.Core
             return Bytes.ToHexString();
         }
 
-        public static bool operator !=(Bloom a, Bloom b)
+        public static bool operator !=(Bloom? a, Bloom? b)
         {
             return !(a == b);
         }
         
-        public static bool operator==(Bloom a, Bloom b)
+        public static bool operator==(Bloom? a, Bloom? b)
         {
             if(ReferenceEquals(a, b))
             {
@@ -94,7 +94,7 @@ namespace Nethermind.Core
             return a?.Equals(b) ?? false;
         }
         
-        public bool Equals(Bloom other)
+        public bool Equals(Bloom? other)
         {
             if (ReferenceEquals(null, other)) return false;
             if (ReferenceEquals(this, other)) return true;
@@ -102,7 +102,7 @@ namespace Nethermind.Core
             return Nethermind.Core.Extensions.Bytes.AreEqual(Bytes, other.Bytes);
         }
 
-        public override bool Equals(object obj)
+        public override bool Equals(object? obj)
         {
             if (ReferenceEquals(null, obj)) return false;
             if (ReferenceEquals(this, obj)) return true;
@@ -115,7 +115,7 @@ namespace Nethermind.Core
             return Bytes.GetSimplifiedHashCode();
         }
         
-        public void Add(LogEntry[] logEntries, Bloom blockBloom = null)
+        public void Add(LogEntry[] logEntries, Bloom? blockBloom = null)
         {
             for (int entryIndex = 0; entryIndex < logEntries.Length; entryIndex++)
             {
@@ -213,7 +213,7 @@ namespace Nethermind.Core
         public const int BitLength = 2048;
         public const int ByteLength = BitLength / 8;
 
-        public BloomStructRef(LogEntry[] logEntries, Bloom blockBloom = null)
+        public BloomStructRef(LogEntry[] logEntries, Bloom? blockBloom = null)
         {
             Bytes = new byte[ByteLength];
             Add(logEntries, blockBloom);
@@ -231,7 +231,7 @@ namespace Nethermind.Core
             Set(sequence, null);
         }
 
-        private void Set(Span<byte> sequence, Bloom masterBloom = null)
+        private void Set(Span<byte> sequence, Bloom? masterBloom = null)
         {
             Bloom.BloomExtract indexes = GetExtract(sequence);
             Set(indexes.Index1);
@@ -266,7 +266,7 @@ namespace Nethermind.Core
         public static bool operator ==(BloomStructRef a, BloomStructRef b) => a.Equals(b);
 
 
-        public bool Equals(Bloom other)
+        public bool Equals(Bloom? other)
         {
             if (ReferenceEquals(null, other)) return false;
             return Nethermind.Core.Extensions.Bytes.AreEqual(Bytes, other.Bytes);
@@ -278,7 +278,7 @@ namespace Nethermind.Core
         }
 
 
-        public override bool Equals(object obj)
+        public override bool Equals(object? obj)
         {
             if (ReferenceEquals(null, obj)) return false;
             if (obj.GetType() != typeof(BloomStructRef)) return false;
@@ -290,7 +290,7 @@ namespace Nethermind.Core
             return Bytes.GetSimplifiedHashCode();
         }
 
-        public void Add(LogEntry[] logEntries, Bloom blockBloom)
+        public void Add(LogEntry[] logEntries, Bloom? blockBloom)
         {
             for (int entryIndex = 0; entryIndex < logEntries.Length; entryIndex++)
             {

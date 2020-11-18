@@ -16,8 +16,10 @@
 
 using System;
 using System.Collections;
+using System.Collections.Generic;
 using System.IO;
 using System.IO.Abstractions;
+using System.Linq;
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
@@ -25,6 +27,7 @@ using FluentAssertions.Execution;
 using Nethermind.Api;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
+using Nethermind.Core;
 using Nethermind.Core.Test.IO;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.EthStats;
@@ -47,53 +50,61 @@ namespace Nethermind.Runner.Test
     [TestFixture, Parallelizable(ParallelScope.All)]
     public class EthereumRunnerTests
     {
+        private static readonly IList<ConfigProvider> _cachedProviders = new List<ConfigProvider>();
+
+        [OneTimeSetUp]
+        public void Setup()
+        {
+            // by pre-caching configs providers we make the tests do lot less work
+            
+            Parallel.ForEach(Directory.GetFiles("configs"), configFile =>
+            {
+                var configProvider = new ConfigProvider();
+                configProvider.AddSource(new JsonConfigSource(configFile));
+                _cachedProviders.Add(configProvider);
+            });
+        }
+
         public static IEnumerable ChainSpecRunnerTests
         {
             get
             {
-                string[] files = Directory.GetFiles("configs");
-                for (var index = 0; index < files.Length; index++)
+                for (var index = 0; index < _cachedProviders.Count; index++)
                 {
-                    var config = files[index];
-                    yield return new TestCaseData(config, index);
+                    yield return new TestCaseData(_cachedProviders[index], index);
                 }
             }
         }
 
         [TestCaseSource(nameof(ChainSpecRunnerTests))]
         [Timeout(300000)] // just to make sure we are not on infinite loop on steps because of incorrect dependencies
-        public async Task Smoke(string chainSpecPath, int testIndex)
+        public async Task Smoke(ConfigProvider configProvider, int testIndex)
         {
-            await SmokeTest(chainSpecPath, testIndex, 30330);
+            await SmokeTest(configProvider, testIndex, 30330);
         }
         
         [TestCaseSource(nameof(ChainSpecRunnerTests))]
         [Timeout(30000)] // just to make sure we are not on infinite loop on steps because of incorrect dependencies
-        public async Task Smoke_cancel(string chainSpecPath, int testIndex)
+        public async Task Smoke_cancel(ConfigProvider configProvider, int testIndex)
         {
-            await SmokeTest(chainSpecPath, testIndex, 30430, true);
+            await SmokeTest(configProvider, testIndex, 30430, true);
         }
 
-        private static async Task SmokeTest(string chainSpecPath, int testIndex, int basePort, bool cancel = false)
+        private static async Task SmokeTest(ConfigProvider configProvider, int testIndex, int basePort, bool cancel = false)
         {
             Type type1 = typeof(ITxPoolConfig);
             Type type2 = typeof(INetworkConfig);
             Type type3 = typeof(IKeyStoreConfig);
             Type type4 = typeof(IDbConfig);
-            Type type5 = typeof(IStatsConfig);
             Type type6 = typeof(IKafkaConfig);
             Type type7 = typeof(IEthStatsConfig);
             Type type8 = typeof(ISyncConfig);
             Type type9 = typeof(IBloomConfig);
 
-            var configProvider = new ConfigProvider();
-            configProvider.AddSource(new JsonConfigSource(chainSpecPath));
-
             Console.WriteLine(type1.Name);
             Console.WriteLine(type2.Name);
             Console.WriteLine(type3.Name);
             Console.WriteLine(type4.Name);
-            Console.WriteLine(type5.Name);
             Console.WriteLine(type6.Name);
             Console.WriteLine(type7.Name);
             Console.WriteLine(type8.Name);

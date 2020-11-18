@@ -14,10 +14,18 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-namespace Nethermind.KeyStore
+using Nethermind.Db.Rocks.Config;
+using Nethermind.Logging;
+
+namespace Nethermind.Db.Rocks
 {
-    public interface IKeyStorePasswordProvider : IPasswordProvider
+    public class BaselineTreeMetadataDb : DbOnTheRocks
     {
-        string Account { set; }
+        public override string Name { get; } = DbNames.BaselineTreeMetadata;
+
+        public BaselineTreeMetadataDb(string basePath, IDbConfig dbConfig, ILogManager logManager = null)
+            : base(basePath, DbNames.BaselineTreeMetadata, dbConfig, logManager)
+        {
+        }
     }
 }

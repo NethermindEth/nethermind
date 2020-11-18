@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using Nethermind.Core.Extensions;
@@ -23,21 +24,23 @@ namespace Nethermind.Core.Caching
     /// <summary>
     /// https://stackoverflow.com/questions/754233/is-it-there-any-lru-implementation-of-idictionary
     /// </summary>
-    public class LruKeyCache<TKey>
+    public class LruKeyCache<TKey> where TKey : notnull
     {
         private readonly int _maxCapacity;
+        private readonly string _name;
         private readonly Dictionary<TKey, LinkedListNode<TKey>> _cacheMap;
         private readonly LinkedList<TKey> _lruList;
 
         public void Clear()
         {
-            _cacheMap?.Clear();
-            _lruList?.Clear();
+            _cacheMap.Clear();
+            _lruList.Clear();
         }
 
         public LruKeyCache(int maxCapacity, int startCapacity, string name)
         {
             _maxCapacity = maxCapacity;
+            _name = name ?? throw new ArgumentNullException(nameof(name));
             _cacheMap = typeof(TKey) == typeof(byte[])
                 ? new Dictionary<TKey, LinkedListNode<TKey>>((IEqualityComparer<TKey>) Bytes.EqualityComparer)
                 : new Dictionary<TKey, LinkedListNode<TKey>>(startCapacity); // do not initialize it at the full capacity
@@ -52,7 +55,7 @@ namespace Nethermind.Core.Caching
         [MethodImpl(MethodImplOptions.Synchronized)]
         public bool Get(TKey key)
         {
-            if (_cacheMap.TryGetValue(key, out LinkedListNode<TKey> node))
+            if (_cacheMap.TryGetValue(key, out LinkedListNode<TKey>? node))
             {
                 _lruList.Remove(node);
                 _lruList.AddLast(node);
@@ -65,7 +68,7 @@ namespace Nethermind.Core.Caching
         [MethodImpl(MethodImplOptions.Synchronized)]
         public void Set(TKey key)
         {
-            if (_cacheMap.TryGetValue(key, out LinkedListNode<TKey> node))
+            if (_cacheMap.TryGetValue(key, out LinkedListNode<TKey>? node))
             {
                 _lruList.Remove(node);
                 _lruList.AddLast(node);
@@ -88,7 +91,7 @@ namespace Nethermind.Core.Caching
         [MethodImpl(MethodImplOptions.Synchronized)]
         public void Delete(TKey key)
         {
-            if (_cacheMap.TryGetValue(key, out LinkedListNode<TKey> node))
+            if (_cacheMap.TryGetValue(key, out LinkedListNode<TKey>? node))
             {
                 _lruList.Remove(node);
                 _cacheMap.Remove(key);
@@ -97,7 +100,9 @@ namespace Nethermind.Core.Caching
 
         private void Replace(TKey key)
         {
-            LinkedListNode<TKey> node = _lruList.First;
+            // TODO: some potential null ref issue here?
+            
+            LinkedListNode<TKey>? node = _lruList.First;
             _lruList.RemoveFirst();
             _cacheMap.Remove(node.Value);
 

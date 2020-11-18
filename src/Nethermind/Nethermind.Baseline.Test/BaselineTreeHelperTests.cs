@@ -73,7 +73,6 @@ namespace Nethermind.Baseline.Test
             var baselineTreeHelper = new BaselineTreeHelper(logFinder, new MemDb(), new MemDb(), LimboNoErrorLogger.Instance);
             var baselineTree = new ShaBaselineTree(mainDb, metadaDataDb, new byte[] { }, BaselineModule.TruncationLength, LimboNoErrorLogger.Instance);
 
-            long lastBlockWithLeaves = 0;
             for (int i = 0; i < test.Blocks.Length; i++)
             {
                 var block = test.Blocks[i];

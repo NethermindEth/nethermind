@@ -25,7 +25,7 @@ namespace Nethermind.Stats
     /// </summary>
     public class NodeStatsLight : INodeStats
     {
-        private readonly IStatsConfig _statsConfig;
+        private readonly StatsParameters _statsParameters;
 
         private long _headersTransferSpeedEventCount;
         private long _bodiesTransferSpeedEventCount;
@@ -51,10 +51,10 @@ namespace Nethermind.Stats
 
         private static int _statsLength = Enum.GetValues(typeof(NodeStatsEventType)).Length;
         
-        public NodeStatsLight(Node node, IStatsConfig statsConfig)
+        public NodeStatsLight(Node node)
         {
             _statCountersArray = new int[_statsLength];
-            _statsConfig = statsConfig;
+            _statsParameters = StatsParameters.Instance;
             Node = node;
         }
         
@@ -248,12 +248,12 @@ namespace Nethermind.Stats
                 return 100;
             }
 
-            if (failedConnectionFailed > _statsConfig.FailedConnectionDelays.Length)
+            if (failedConnectionFailed > _statsParameters.FailedConnectionDelays.Length)
             {
-                return _statsConfig.FailedConnectionDelays.Last();
+                return _statsParameters.FailedConnectionDelays.Last();
             }
 
-            return _statsConfig.FailedConnectionDelays[failedConnectionFailed - 1];
+            return _statsParameters.FailedConnectionDelays[failedConnectionFailed - 1];
         }
         
         private int GetDisconnectDelay()
@@ -269,13 +269,13 @@ namespace Nethermind.Stats
             {
                 disconnectDelay = 100;
             }
-            else if (disconnectCount > _statsConfig.DisconnectDelays.Length)
+            else if (disconnectCount > _statsParameters.DisconnectDelays.Length)
             {
-                disconnectDelay = _statsConfig.DisconnectDelays[^1];
+                disconnectDelay = _statsParameters.DisconnectDelays[^1];
             }
             else
             {
-                disconnectDelay = _statsConfig.DisconnectDelays[disconnectCount - 1];
+                disconnectDelay = _statsParameters.DisconnectDelays[disconnectCount - 1];
             }
 
             return disconnectDelay;
@@ -355,7 +355,7 @@ namespace Nethermind.Stats
 
             if (_lastLocalDisconnect.HasValue)
             {               
-                if (_statsConfig.PenalizedReputationLocalDisconnectReasons.Contains(_lastLocalDisconnect.Value))
+                if (_statsParameters.PenalizedReputationLocalDisconnectReasons.Contains(_lastLocalDisconnect.Value))
                 {
                     return true;
                 }
@@ -366,12 +366,12 @@ namespace Nethermind.Stats
                 return false;
             }
 
-            if (_statsConfig.PenalizedReputationRemoteDisconnectReasons.Contains(_lastRemoteDisconnect.Value))
+            if (_statsParameters.PenalizedReputationRemoteDisconnectReasons.Contains(_lastRemoteDisconnect.Value))
             {
                 if (_lastRemoteDisconnect == DisconnectReason.TooManyPeers || _lastRemoteDisconnect == DisconnectReason.AlreadyConnected)
                 {
                     double timeFromLastDisconnect = DateTime.UtcNow.Subtract(_lastDisconnectTime ?? DateTime.MinValue).TotalMilliseconds;
-                    return timeFromLastDisconnect < _statsConfig.PenalizedReputationTooManyPeersTimeout;
+                    return timeFromLastDisconnect < _statsParameters.PenalizedReputationTooManyPeersTimeout;
                 }
 
                 return true;

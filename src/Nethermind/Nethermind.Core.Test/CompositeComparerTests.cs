@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using NSubstitute;
@@ -25,26 +26,22 @@ namespace Nethermind.Core.Test
 {
     public class CompositeComparerTests
     {
-        public static IEnumerable<TestCaseData> ComparersTestCases
+        public static IEnumerable ComparersTestCases
         {
             get
             {
-                TestCaseData BuildTest(IComparer<int>[] comparers, IComparer<int>[] expectedResult)
-                {
-                    TestCaseData testCaseData = new TestCaseData(new object[] {comparers});
-                    testCaseData.ExpectedResult = expectedResult;
-                    return testCaseData;
-                }
+                TestCaseData BuildTest(IComparer<int>[] comparers, IComparer<int>[] expectedResult, string name) => 
+                    new TestCaseData(new object[] {comparers}) {ExpectedResult = expectedResult, TestName = name};
 
                 IComparer<int> a = Substitute.For<IComparer<int>>();
                 IComparer<int> b = Substitute.For<IComparer<int>>();
                 IComparer<int> c = Substitute.For<IComparer<int>>();
                 IComparer<int> d = Substitute.For<IComparer<int>>();
 
-                yield return BuildTest(new[] {a, b, c}, new[] {a, b, c});
-                yield return BuildTest(new[] {a.ThenBy(b), c}, new[] {a, b, c});
-                yield return BuildTest(new[] {a, b.ThenBy(c)}, new[] {a, b, c});
-                yield return BuildTest(new[] {a, b.ThenBy(c), d}, new[] {a, b, c, d});
+                yield return BuildTest(new[] {a, b, c}, new[] {a, b, c}, "normal");
+                yield return BuildTest(new[] {a.ThenBy(b), c}, new[] {a, b, c}, "ThenBy1->2/3");
+                yield return BuildTest(new[] {a, b.ThenBy(c)}, new[] {a, b, c}, "ThenBy2->3/3");
+                yield return BuildTest(new[] {a, b.ThenBy(c), d}, new[] {a, b, c, d}, "ThenBy2->3/4");
             }
         }
         

@@ -45,7 +45,7 @@ namespace Nethermind.Plugin.Baseline
             {
                 _vaultService = new VaultService(_vaultConfig, _api.LogManager);
 
-                var passwordProvider = new FilePasswordProvider() { FileName = _vaultConfig.VaultKeyFile.GetApplicationResourcePath() }
+                var passwordProvider = new FilePasswordProvider(a => _vaultConfig.VaultKeyFile.GetApplicationResourcePath())
                                             .OrReadFromConsole("Provide passsphrase to unlock Vault");
                 var vaultKeyStoreFacade = new VaultKeyStoreFacade(passwordProvider);
                 _vaultSealingHelper = new VaultSealingHelper(vaultKeyStoreFacade, _vaultConfig, _logger);

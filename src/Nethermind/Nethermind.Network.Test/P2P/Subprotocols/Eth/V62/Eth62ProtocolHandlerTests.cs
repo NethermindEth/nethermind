@@ -70,7 +70,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             _handler = new Eth62ProtocolHandler(
                 _session,
                 _svc,
-                new NodeStatsManager(new StatsConfig(), LimboLogs.Instance),
+                new NodeStatsManager(LimboLogs.Instance),
                 _syncManager,
                 _transactionPool,
                 LimboLogs.Instance);

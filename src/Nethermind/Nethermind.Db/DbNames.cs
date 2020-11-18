@@ -37,6 +37,6 @@ namespace Nethermind.Db
         public const string Bloom = "bloom";
         public const string CHT = "canonicalHashTrie";
         public const string BaselineTree = "baselineTree";
-        public const string MetadataBaselineTree = "metadataBaselineTree";
+        public const string BaselineTreeMetadata = "baselineTreeMetadata";
     }
 }

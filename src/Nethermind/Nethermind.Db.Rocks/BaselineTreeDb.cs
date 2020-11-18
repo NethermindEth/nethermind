@@ -14,26 +14,18 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System;
+using Nethermind.Db.Rocks.Config;
+using Nethermind.Logging;
 
-namespace Nethermind.Config
+namespace Nethermind.Db.Rocks
 {
-    public class ConfigPropertyAttribute : Attribute
+    public class BaselineTreeDb : DbOnTheRocks
     {
-        public string Category { get; }
-        public string Name { get; }
-        public string Description { get; }
+        public override string Name { get; } = DbNames.BaselineTree;
 
-        public ConfigPropertyAttribute(string category, string name)
-            : this(category, name, $"{category}.{name}")
+        public BaselineTreeDb(string basePath, IDbConfig dbConfig, ILogManager logManager = null)
+            : base(basePath, DbNames.BaselineTree, dbConfig, logManager)
         {
-        }
-
-        public ConfigPropertyAttribute(string category, string name, string description)
-        {
-            Category = category;
-            Name = name;
-            Description = description;
         }
     }
 }

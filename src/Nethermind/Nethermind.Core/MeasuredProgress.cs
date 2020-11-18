@@ -20,11 +20,18 @@ namespace Nethermind.Core
 {
     public class MeasuredProgress
     {
+        private readonly ITimestamper _timestamper;
+
+        public MeasuredProgress(ITimestamper? timestamper = null)
+        {
+            _timestamper = timestamper ?? Timestamper.Default;
+        }
+        
         public void Update(long value)
         {
             if (!UtcStartTime.HasValue)
             {
-                UtcStartTime = DateTime.UtcNow;
+                UtcStartTime = _timestamper.UtcNow;
                 StartValue = value;
             }
 
@@ -35,7 +42,7 @@ namespace Nethermind.Core
         {
             if (UtcStartTime != null)
             {
-                LastMeasurement = DateTime.UtcNow;
+                LastMeasurement = _timestamper.UtcNow;
                 LastValue = CurrentValue;
             }
         }
@@ -46,14 +53,14 @@ namespace Nethermind.Core
         {
             if (!UtcEndTime.HasValue)
             {
-                UtcEndTime = DateTime.UtcNow;
+                UtcEndTime = _timestamper.UtcNow;
             }
         }
         
         public void Reset(long startValue)
         {
             LastMeasurement = UtcEndTime = null;
-            UtcStartTime = DateTime.UtcNow;
+            UtcStartTime = _timestamper.UtcNow;
             StartValue = CurrentValue = startValue;
         }
 
@@ -69,7 +76,7 @@ namespace Nethermind.Core
 
         public long CurrentValue { get; private set; }
 
-        private TimeSpan Elapsed => (UtcEndTime ?? DateTime.UtcNow) - (UtcStartTime ?? DateTime.MinValue);
+        private TimeSpan Elapsed => (UtcEndTime ?? _timestamper.UtcNow) - (UtcStartTime ?? DateTime.MinValue);
 
         public decimal TotalPerSecond
         {
@@ -94,7 +101,7 @@ namespace Nethermind.Core
                     return 0;
                 }
                 
-                decimal timePassed = (decimal)(DateTime.UtcNow - (LastMeasurement ?? DateTime.MinValue)).TotalSeconds;
+                decimal timePassed = (decimal)(_timestamper.UtcNow - (LastMeasurement ?? DateTime.MinValue)).TotalSeconds;
                 if (timePassed == 0M)
                 {
                     return 0M;
