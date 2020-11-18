@@ -27,7 +27,7 @@ namespace Nethermind.Seq.Config
         [ConfigItem(Description = "Seq instance URL.", DefaultValue = "\"http://localhost:5341")]
         string ServerUrl {get; }
         
-        [ConfigItem(Description = "Api Key used for log events ingestion to Seq instance", DefaultValue = "")]
+        [ConfigItem(Description = "API key used for log events ingestion to Seq instance", DefaultValue = "")]
         string ApiKey {get; }
     }
 }

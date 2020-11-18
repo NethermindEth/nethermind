@@ -23,6 +23,7 @@ using NUnit.Framework;
 namespace Nethermind.Network.Test.Discovery
 {
     [TestFixture]
+    [Parallelizable(ParallelScope.All)]
     public class IPResolverTests
     {
         [Test]

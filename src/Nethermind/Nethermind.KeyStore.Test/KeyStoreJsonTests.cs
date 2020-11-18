@@ -42,6 +42,8 @@ namespace Nethermind.KeyStore.Test
         public void Initialize()
         {
             _config = new KeyStoreConfig();
+            _config.KeyStoreDirectory = TestContext.CurrentContext.WorkDirectory;
+            
             _keyStoreDir = _config.KeyStoreDirectory;
             if (!Directory.Exists(_keyStoreDir))
             {

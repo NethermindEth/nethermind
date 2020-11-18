@@ -40,7 +40,7 @@ namespace Nethermind.Vault.JsonRpc
             Description = "Deletes a Vault",
             IsSharable = false,
             IsImplemented = true)]
-        Task<ResultWrapper<provide.Model.Vault.Vault>> vault_deleteVault(string vaultId);
+        Task<ResultWrapper<bool>> vault_deleteVault(string vaultId);
 
         [JsonRpcMethod(
             Description = "Displays a list of keys in a single Vault",

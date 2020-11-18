@@ -49,7 +49,7 @@ namespace Nethermind.DataMarketplace.Subprotocols.Test
         private void BuildSubprotocol()
         {
             ISession session = Substitute.For<ISession>();
-            INodeStatsManager nodeStatsManager = new NodeStatsManager(new StatsConfig(), LimboLogs.Instance);
+            INodeStatsManager nodeStatsManager = new NodeStatsManager(LimboLogs.Instance);
             MessageSerializationService serializationService = new MessageSerializationService();
             serializationService.Register(typeof(HiMessage).Assembly);
             IConsumerService consumerService = Substitute.For<IConsumerService>();

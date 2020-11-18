@@ -50,7 +50,8 @@ namespace Nethermind.Plugin.Baseline
                     _api.FileSystem,
                     _api.LogManager,
                     _api.MainBlockProcessor,
-                    _api.DisposeStack);
+                    _api.DisposeStack,
+                    _api.DbProvider);
 
                 var modulePool = new SingletonModulePool<IBaselineModule>(baselineModuleFactory);
                 _api.RpcModuleProvider!.Register(modulePool);

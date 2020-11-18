@@ -67,7 +67,7 @@ namespace Nethermind.Runner.Ethereum.Steps
 
                 new AccountUnlocker(keyStoreConfig, _api.Wallet, _api.LogManager, new KeyStorePasswordProvider(keyStoreConfig)).UnlockAccounts();
 
-                var passwordProvider = new KeyStorePasswordProvider(keyStoreConfig) { Account = keyStoreConfig.BlockAuthorAccount }
+                var passwordProvider = new KeyStorePasswordProvider(keyStoreConfig)
                                         .OrReadFromConsole($"Provide password for validator account { keyStoreConfig.BlockAuthorAccount}");
 
                 INodeKeyManager nodeKeyManager = new NodeKeyManager(_api.CryptoRandom, _api.KeyStore, keyStoreConfig, _api.LogManager, passwordProvider);

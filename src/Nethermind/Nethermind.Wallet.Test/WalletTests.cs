@@ -15,9 +15,11 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -72,6 +74,7 @@ namespace Nethermind.Wallet.Test
                             Timestamper.Default,
                             LimboLogs.Instance);
                         wallet.SetupTestAccounts(3);
+
                         Wallet = wallet;
                         break;
                     }
@@ -84,6 +87,30 @@ namespace Nethermind.Wallet.Test
             {
                 _keyStorePath?.Dispose();
             }
+        }
+
+        private readonly ConcurrentDictionary<WalletType, Context> _cachedWallets = new ConcurrentDictionary<WalletType, Context>();
+        private readonly ConcurrentBag<Context> _wallets = new ConcurrentBag<Context>();
+
+        [OneTimeSetUp]
+        public void Setup()
+        {
+            // by pre-caching wallets we make the tests do lot less work
+            Parallel.ForEach(WalletTypes.Union(WalletTypes), walletType =>
+            {
+                Context cachedWallet = new Context(walletType);
+                _cachedWallets.TryAdd(walletType, cachedWallet);
+                _wallets.Add(cachedWallet);
+            });
+        }
+
+        [OneTimeTearDown]
+        public void TearDown()
+        {
+            Parallel.ForEach(_wallets, wallet =>
+            {
+                wallet.Dispose();
+            });
         }
 
         public enum WalletType
@@ -99,23 +126,16 @@ namespace Nethermind.Wallet.Test
         }
 
         [Test]
-        public void Can_setup_wallet_twice([ValueSource(nameof(WalletTypes))] WalletType walletType)
-        {
-            using var wallet1 = new Context(walletType);
-            using var wallet2 = new Context(walletType);
-        }
-
-        [Test]
         public void Has_10_dev_accounts([ValueSource(nameof(WalletTypes))] WalletType walletType)
         {
-            using Context ctx = new Context(walletType);
+            Context ctx = _cachedWallets[walletType];
             Assert.AreEqual((walletType == WalletType.Memory ? 10 : 3), ctx.Wallet.GetAccounts().Length);
         }
 
         [Test]
         public void Each_account_can_sign_with_simple_key([ValueSource(nameof(WalletTypes))] WalletType walletType)
         {
-            using Context ctx = new Context(walletType);
+            Context ctx = _cachedWallets[walletType];
             int count = walletType == WalletType.Memory ? 10 : 3;
             for (int i = 1; i <= count; i++)
             {
@@ -133,7 +153,7 @@ namespace Nethermind.Wallet.Test
         public void Can_sign_on_networks_with_chain_id([ValueSource(nameof(WalletTypes))] WalletType walletType, [Values(0, 1, 40000)] int chainId)
         {
             EthereumEcdsa ecdsa = new EthereumEcdsa(chainId, LimboLogs.Instance);
-            using Context ctx = new Context(walletType);
+            Context ctx = _cachedWallets[walletType];
             for (int i = 1; i <= (walletType == WalletType.Memory ? 10 : 3); i++)
             {
                 Address signerAddress = ctx.Wallet.GetAccounts()[0];

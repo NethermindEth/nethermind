@@ -26,7 +26,7 @@ namespace Nethermind.Core
             
         public static AddressComparer Instance { get; } = new AddressComparer();
 
-        public int Compare(Address x, Address y)
+        public int Compare(Address? x, Address? y)
         {
             if (x == null)
             {
