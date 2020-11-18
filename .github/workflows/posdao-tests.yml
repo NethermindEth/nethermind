@@ -8,13 +8,13 @@ on:
       branch:
         description: 'Branch to get tests from'
         required: false
-        default: 'tx-priority-tests'
+        default: 'master'
   workflow_dispatch:
     inputs:
       branch:
         description: 'Branch to get tests from'
         required: true
-        default: 'tx-priority-tests'
+        default: 'master'
 
 jobs:
   posdao-tests:
