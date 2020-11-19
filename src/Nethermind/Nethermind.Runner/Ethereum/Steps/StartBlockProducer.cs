@@ -26,6 +26,7 @@ using Nethermind.Blockchain.Producers;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Db;
+using Nethermind.Logging;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
@@ -48,6 +49,8 @@ namespace Nethermind.Runner.Ethereum.Steps
                 BuildProducer();
                 if (_api.BlockProducer == null) throw new StepDependencyException(nameof(_api.BlockProducer));
 
+                ILogger logger = _api.LogManager.GetClassLogger();
+                if (logger.IsWarn) logger.Warn($"Starting {_api.SealEngineType} block producer & sealer");
                 _api.BlockProducer.Start();
             }
 

@@ -83,8 +83,6 @@ namespace Nethermind.Consensus.Clique
             }
 
             var (getFromApi, setInApi) = _nethermindApi!.ForProducer;
-            ILogger logger = getFromApi.LogManager.GetClassLogger();
-            if (logger.IsWarn) logger.Warn("Starting Clique block producer & sealer");
 
             _miningConfig = getFromApi.Config<IMiningConfig>();
             if (!_miningConfig.Enabled)
