@@ -18,6 +18,8 @@
 using System;
 using System.IO;
 using System.IO.Abstractions;
+using System.IO.Enumeration;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
@@ -31,18 +33,18 @@ namespace Nethermind.Blockchain.Data
         private readonly IJsonSerializer _jsonSerializer;
         private readonly IFileSystem _fileSystem;
         private readonly ILogger _logger;
-        private FileSystemWatcher _fileSystemWatcher;
-        private readonly string _filePath;
         private T _data;
-        private FileSystemEventHandler _handler;
+        private Timer _timer;
+        private readonly TimeSpan _interval;
+        private IFileInfo _fileInfo;
 
         public FileLocalDataSource(string filePath, IJsonSerializer jsonSerializer, IFileSystem fileSystem, ILogManager logManager)
         {
             _jsonSerializer = jsonSerializer ?? throw new ArgumentNullException(nameof(jsonSerializer));
             _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
-            _filePath = filePath.GetApplicationResourcePath();
             _logger = logManager?.GetClassLogger<FileLocalDataSource<T>>() ?? throw new ArgumentNullException(nameof(logManager));
-            SetupWatcher(filePath);
+            _interval = TimeSpan.FromMilliseconds(500);
+            SetupWatcher(filePath.GetApplicationResourcePath());
             LoadFile();
         }
 
@@ -54,35 +56,43 @@ namespace Nethermind.Blockchain.Data
 
         public void Dispose()
         {
-            _fileSystemWatcher.Changed -= _handler;
-            _fileSystemWatcher?.Dispose();
+            _timer?.Dispose();
         }
 
         private void SetupWatcher(string filePath)
         {
-            string directoryName = Path.GetDirectoryName(_filePath) ?? Environment.CurrentDirectory;
-            string fileName = Path.GetFileName(_filePath);
-            if (fileName != null)
+            try
             {
-                if (_logger.IsDebug) _logger.Debug($"Watching file {fileName} in directory {directoryName} for changes.");
-                _fileSystemWatcher = new FileSystemWatcher(directoryName, fileName)
-                {
-                    EnableRaisingEvents = true,
-                    NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName
-                };
-                _handler = async (o, e) => await OnFileChanged(o, e);
-                _fileSystemWatcher.Changed += _handler;
+                _fileInfo = _fileSystem.FileInfo.FromFileName(filePath);
+            }
+            catch (ArgumentException) { }
+            catch (PathTooLongException) { }
+            catch (NotSupportedException) { }
+
+            if (_fileInfo == null)
+            {
+                // file name is not valid
+                if (_logger.IsError) _logger.Error($"Invalid file path to watch: {filePath}.");
             }
             else
             {
-                if (_logger.IsError) _logger.Error($"Cannot load data from file: {filePath}.");
+                // file name is valid
+                if (_logger.IsInfo) _logger.Info($"Watching file for changes: {filePath}.");
+                _timer = new Timer(OnTimerTick, null, _interval, _interval);
             }
+        }
+
+        private void OnTimerTick(object state)
+        {
+            DateTime? lastWriteTime = _fileInfo.Exists ? _fileInfo.LastWriteTime : (DateTime?) null;
+            
+
         }
 
         private async Task LoadFileAsync()
         {
-            if (_logger.IsTrace) _logger.Trace($"Trying to load local data from file: {_filePath}.");
-            if (_fileSystem.File.Exists(_filePath))
+            if (_logger.IsTrace) _logger.Trace($"Trying to load local data from file: {_fileInfo.FullName}.");
+            if (_fileInfo.Exists)
             {
                 var start = DateTime.Now;
                 try
@@ -115,8 +125,8 @@ namespace Nethermind.Blockchain.Data
 
         private void LoadFile()
         {
-            if (_logger.IsTrace) _logger.Trace($"Trying to load local data from file: {_filePath}.");
-            if (_fileSystem.File.Exists(_filePath))
+            if (_logger.IsTrace) _logger.Trace($"Trying to load local data from file: {_fileInfo.FullName}.");
+            if (_fileInfo.Exists)
             {
                 var start = DateTime.Now;
                 try
@@ -145,7 +155,7 @@ namespace Nethermind.Blockchain.Data
         
         private void LoadDefaults()
         {
-            if (_logger.IsWarn) _logger.Warn($"Cannot load data from file: {_filePath}, file does not exist.");
+            if (_logger.IsWarn) _logger.Warn($"Cannot load data from file: {_fileInfo.FullName}, file does not exist.");
             _data = GetDefaultValue();
         }
 
@@ -153,29 +163,29 @@ namespace Nethermind.Blockchain.Data
 
         private void LoadFileCore(DateTime start)
         {
-            using Stream file = _fileSystem.File.OpenRead(_filePath);
+            using Stream file = _fileInfo.OpenRead();
             _data = _jsonSerializer.Deserialize<T>(file);
-            if (_logger.IsDebug) _logger.Debug($"Loaded and deserialized {typeof(T)} from {_filePath} on {start:hh:mm:ss.ffff}.");
+            if (_logger.IsDebug) _logger.Debug($"Loaded and deserialized {typeof(T)} from {_fileInfo.Name} on {start:hh:mm:ss.ffff}.");
         }
         
         private void ReportJsonError(DateTime start, JsonSerializationException e)
         {
-            if (_logger.IsError) _logger.Error($"Couldn't deserialize {typeof(T)} from {_filePath} on {start:hh:mm:ss.ffff}. Will not retry any more.", e);
+            if (_logger.IsError) _logger.Error($"Couldn't deserialize {typeof(T)} from {_fileInfo.Name} on {start:hh:mm:ss.ffff}. Will not retry any more.", e);
         }
 
         private void ReportRetry(DateTime start, Exception exception)
         {
-            if (_logger.IsError) _logger.Error($"Couldn't load and deserialize {typeof(T)} from {_filePath} on {start:hh:mm:ss.ffff}. Retrying...", exception);
+            if (_logger.IsError) _logger.Error($"Couldn't load and deserialize {typeof(T)} from {_fileInfo.Name} on {start:hh:mm:ss.ffff}. Retrying...", exception);
         }
 
         private void ReportIOError(DateTime start, IOException e)
         {
-            if (_logger.IsError) _logger.Error($"Couldn't load {typeof(T)} from {_filePath} on {start:hh:mm:ss.ffff}. Will not retry any more.", e);
+            if (_logger.IsError) _logger.Error($"Couldn't load {typeof(T)} from {_fileInfo.Name} on {start:hh:mm:ss.ffff}. Will not retry any more.", e);
         }
 
         private async Task OnFileChanged()
         {
-            if (_logger.IsInfo) _logger.Info($"Data in file {_filePath} changed.");
+            if (_logger.IsInfo) _logger.Info($"Data in file {_fileInfo.Name} changed.");
             await LoadFileAsync();
             Changed?.Invoke(this, EventArgs.Empty);
         }
