@@ -31,7 +31,7 @@ using Nethermind.State.Repositories;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
-    [RunnerStepDependencies(typeof(InitRlp), typeof(InitDatabase))]
+    [RunnerStepDependencies(typeof(InitRlp), typeof(InitDatabase), typeof(MigrateConfigs))]
     public class InitializeBlockTree : IStep
     {
         private readonly IBasicApi _get;
