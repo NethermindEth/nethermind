@@ -17,27 +17,36 @@
 
 using System;
 using System.Buffers;
-using System.Threading;
+using System.Collections.Generic;
 
 namespace Nethermind.Core.Buffers
 {
     public sealed class LargerArrayPool : ArrayPool<byte>
     {
-        static readonly LargerArrayPool instance = new LargerArrayPool();
+        static readonly LargerArrayPool s_instance = new LargerArrayPool();
 
-        public static new ArrayPool<byte> Shared => instance;
+        public static new ArrayPool<byte> Shared => s_instance;
 
         public const int LargeBufferSize = 8 * 1024 * 1024;
         const int ArrayPoolLimit = 1024 * 1024;
 
-        private byte[]? s_buffer1;
-        private byte[]? s_buffer2;
-
+        // The count is estimated as a number of CPUs (similar to IEthModule) and 2 additional ones.
+        // The CPU based is aligned with the SKU-like cloud environments where one scales both CPU count and an amount of memory.
+        private static readonly int s_maxLargeBufferCount = Environment.ProcessorCount + 2;
+        
+        private readonly Stack<byte[]> _pool = new Stack<byte[]>(s_maxLargeBufferCount);
+        
         byte[] RentLarge()
         {
-            return Interlocked.Exchange(ref s_buffer1, null) ??
-                   Interlocked.Exchange(ref s_buffer2, null) ??
-                   new byte[LargeBufferSize];
+            lock (_pool)
+            {
+                if (_pool.TryPop(out byte[]? buffer))
+                {
+                    return buffer;
+                }
+            }
+
+            return new byte[LargeBufferSize];
         }
 
         void ReturnLarge(byte[] array, bool clearArray)
@@ -47,9 +56,12 @@ namespace Nethermind.Core.Buffers
                 Array.Clear(array, 0, array.Length);
             }
 
-            if (Interlocked.CompareExchange(ref s_buffer1, array, null) != null)
+            lock (_pool)
             {
-                Interlocked.CompareExchange(ref s_buffer2, array, null);
+                if (_pool.Count < s_maxLargeBufferCount)
+                {
+                    _pool.Push(array);
+                }
             }
         }
 
