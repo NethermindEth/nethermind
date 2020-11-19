@@ -75,7 +75,7 @@ namespace Nethermind.Blockchain.Data
                 _fileSystemWatcher.Deleted += (s, e) => _logger.Warn("FSW Deleted: " + e.FullPath);
                 _fileSystemWatcher.Changed += (s, e) => _logger.Warn("FSW Changed: " + e.FullPath);
                 _fileSystemWatcher.Renamed += (s, e) => _logger.Warn("FSW Renamed: " + e.OldFullPath + " to " + e.FullPath);
-                _handler = async (o, e) => await OnFileChanged(o, e);
+                _handler = (o, e) => OnFileChanged();
                 _fileSystemWatcher.Changed += _handler;
             }
             else
@@ -178,7 +178,7 @@ namespace Nethermind.Blockchain.Data
             if (_logger.IsError) _logger.Error($"Couldn't load {typeof(T)} from {_filePath} on {start:hh:mm:ss.ffff}. Will not retry any more.", e);
         }
 
-        private async Task OnFileChanged(object sender, FileSystemEventArgs e)
+        private async Task OnFileChanged()
         {
             if (_logger.IsInfo) _logger.Info($"Data in file {_filePath} changed.");
             await LoadFileAsync();
