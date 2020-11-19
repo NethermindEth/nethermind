@@ -48,7 +48,7 @@ namespace Nethermind.Consensus.Clique
             {
                 return Task.CompletedTask;
             }
-            
+
             var (getFromApi, setInApi) = _nethermindApi.ForInit;
 
             _cliqueConfig = new CliqueConfig
@@ -73,7 +73,6 @@ namespace Nethermind.Consensus.Clique
 
             return Task.CompletedTask;
         }
-        
 
         public Task InitBlockProducer()
         {
@@ -81,31 +80,24 @@ namespace Nethermind.Consensus.Clique
             {
                 return Task.CompletedTask;
             }
-            
+
             var (getFromApi, setInApi) = _nethermindApi!.ForProducer;
             ILogger logger = getFromApi.LogManager.GetClassLogger();
             if (logger.IsWarn) logger.Warn("Starting Clique block producer & sealer");
-            
+
             setInApi.BlockPreprocessor.AddLast(new AuthorRecoveryStep(_snapshotManager!));
 
-            if (getFromApi.Config<IInitConfig>().IsMining)
-            {
-                setInApi.Sealer = new CliqueSealer(
-                    getFromApi.EngineSigner!,
-                    _cliqueConfig!,
-                    _snapshotManager!,
-                    getFromApi.LogManager);
-            }
-            else
-            {
-                setInApi.Sealer = NullSealEngine.Instance;
-            }
-            
             _miningConfig = getFromApi.Config<IMiningConfig>();
             if (!_miningConfig.Enabled)
             {
                 throw new InvalidOperationException("Request to start block producer while mining disabled.");
             }
+
+            setInApi.Sealer = new CliqueSealer(
+                getFromApi.EngineSigner!,
+                _cliqueConfig!,
+                _snapshotManager!,
+                getFromApi.LogManager);
 
             ReadOnlyDbProvider readOnlyDbProvider = new ReadOnlyDbProvider(getFromApi.DbProvider, false);
             ReadOnlyBlockTree readOnlyBlockTree = new ReadOnlyBlockTree(getFromApi.BlockTree);
@@ -139,7 +131,7 @@ namespace Nethermind.Consensus.Clique
             OneTimeChainProcessor chainProcessor = new OneTimeChainProcessor(
                 readOnlyDbProvider,
                 producerChainProcessor);
-            
+
             ITxFilter txFilter = new MinGasPriceTxFilter(_miningConfig!.MinGasPrice);
             ITxSource txSource = new TxPoolTxSource(
                 getFromApi.TxPool,
@@ -175,7 +167,7 @@ namespace Nethermind.Consensus.Clique
             {
                 return Task.CompletedTask;
             }
-            
+
             var (getFromApi, _) = _nethermindApi!.ForRpc;
             CliqueRpcModule cliqueRpcModule = new CliqueRpcModule(
                 getFromApi!.BlockProducer as ICliqueBlockProducer,
@@ -187,10 +179,12 @@ namespace Nethermind.Consensus.Clique
 
             return Task.CompletedTask;
         }
-        
+
         public SealEngineType SealEngineType => SealEngineType.Clique;
 
-        public void Dispose() { }
+        public void Dispose()
+        {
+        }
 
         private INethermindApi? _nethermindApi;
 

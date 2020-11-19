@@ -42,8 +42,8 @@ namespace Nethermind.Runner.Ethereum.Steps
 
         public Task Execute(CancellationToken _)
         {
-            IInitConfig initConfig = _api.Config<IInitConfig>();
-            if (initConfig.IsMining)
+            IMiningConfig miningConfig = _api.Config<IMiningConfig>();
+            if (miningConfig.Enabled)
             {
                 BuildProducer();
                 if (_api.BlockProducer == null) throw new StepDependencyException(nameof(_api.BlockProducer));
