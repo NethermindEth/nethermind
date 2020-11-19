@@ -26,7 +26,7 @@ namespace Nethermind.Runner.Ethereum.Steps
     [RunnerStepDependencies(typeof(InitRlp))]
     public class InitCrypto : IStep
     {
-        private readonly INethermindApi _api;
+        private readonly IBasicApi _api;
 
         public InitCrypto(INethermindApi api)
         {

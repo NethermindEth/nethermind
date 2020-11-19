@@ -20,7 +20,6 @@ using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Core.Attributes;
 using Nethermind.Network;
-using Nethermind.Runner.Ethereum.Api;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Runner.Ethereum.Steps

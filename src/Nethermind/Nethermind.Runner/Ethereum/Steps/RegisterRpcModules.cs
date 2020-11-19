@@ -33,8 +33,6 @@ using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.JsonRpc.Modules.TxPool;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
-using Nethermind.Blockchain.Find;
-using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.JsonRpc.Modules.Web3;
 using Nethermind.Runner.Ethereum.Steps.Migrations;

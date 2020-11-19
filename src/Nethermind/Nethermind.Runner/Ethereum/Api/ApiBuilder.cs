@@ -19,8 +19,6 @@ using System.IO;
 using System.Threading;
 using Nethermind.Api;
 using Nethermind.Config;
-using Nethermind.Consensus.Clique;
-using Nethermind.Consensus.Ethash;
 using Nethermind.Core;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;

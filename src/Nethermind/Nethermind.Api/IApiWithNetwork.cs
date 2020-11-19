@@ -33,6 +33,8 @@ namespace Nethermind.Api
 {
     public interface IApiWithNetwork : IApiWithBlockchain
     {
+        (IApiWithNetwork GetFromApi, IApiWithNetwork SetInApi) ForNetwork => (this, this);
+        
         IDiscoveryApp? DiscoveryApp { get; set; }
         IGrpcServer? GrpcServer { get; set; }
         IIPResolver? IpResolver { get; set; }
@@ -48,7 +50,6 @@ namespace Nethermind.Api
         ISessionMonitor? SessionMonitor { get; set; }
         IStaticNodesManager? StaticNodesManager { get; set; }
         ISynchronizer? Synchronizer { get; set; }
-        ISyncModeSelector? SyncModeSelector { get; set; }
         ISyncPeerPool? SyncPeerPool { get; set; }
         ISyncServer? SyncServer { get; set; }
         IWebSocketsManager? WebSocketsManager { get; set; }

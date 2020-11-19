@@ -17,24 +17,24 @@
 
 #nullable enable
 using Nethermind.Blockchain.Filters;
-using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Rewards;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Config;
 using Nethermind.Consensus;
-using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Facade;
-using Nethermind.Network;
 using Nethermind.State;
 using Nethermind.TxPool;
-using Nethermind.Wallet;
 
 namespace Nethermind.Api
 {
     public interface IApiWithBlockchain : IApiWithStores, IBlockchainBridgeFactory
     {
+        (IApiWithStores GetFromApi, IApiWithBlockchain SetInApi) ForInit => (this, this);
+        (IApiWithStores GetFromApi, IApiWithBlockchain SetInApi) ForBlockchain => (this, this);
+        (IApiWithBlockchain GetFromApi, IApiWithBlockchain SetInApi) ForProducer => (this, this);
+        
         IBlockchainProcessor? BlockchainProcessor { get; set; }
         CompositeBlockPreprocessorStep BlockPreprocessor { get; }
         // IBlockPreprocessorStep RecoveryStep => BlockPreprocessor;
@@ -56,8 +56,5 @@ namespace Nethermind.Api
         ITxSender? TxSender { get; set; }
         ITxPool? TxPool { get; set; }
         ITxPoolInfoProvider? TxPoolInfoProvider { get; set; }
-        IWallet? Wallet { get; set; }
-
-        ProtectedPrivateKey? NodeKey { get; set; }
     }
 }

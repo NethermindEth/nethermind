@@ -29,6 +29,8 @@ using Nethermind.KeyStore;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.Synchronization.ParallelSync;
+using Nethermind.Wallet;
 
 namespace Nethermind.Api
 {
@@ -50,6 +52,7 @@ namespace Nethermind.Api
         IList<INethermindPlugin> Plugins { get; }
         SealEngineType SealEngineType { get; }
         ISpecProvider? SpecProvider { get; set; }
+        ISyncModeSelector? SyncModeSelector { get; set; } // here for beam sync DB setup
         ITimestamper Timestamper { get; }
     }
 }
