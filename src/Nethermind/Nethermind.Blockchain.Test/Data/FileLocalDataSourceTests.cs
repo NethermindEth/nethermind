@@ -52,7 +52,8 @@ namespace Nethermind.Blockchain.Test.Data
             using (var tempFile = TempPath.GetTempFile())
             {
                 await File.WriteAllTextAsync(tempFile.Path, GenerateStringJson("A"));
-                using (var fileLocalDataSource = new FileLocalDataSource<string[]>(tempFile.Path, new EthereumJsonSerializer(), new FileSystem(), LimboLogs.Instance))
+                int interval = 10;
+                using (var fileLocalDataSource = new FileLocalDataSource<string[]>(tempFile.Path, new EthereumJsonSerializer(), new FileSystem(), LimboLogs.Instance, interval))
                 {
                     bool changedRaised = false;
                     var handle = new SemaphoreSlim(0);
@@ -62,8 +63,7 @@ namespace Nethermind.Blockchain.Test.Data
                         handle.Release();
                     };
                     await File.WriteAllTextAsync(tempFile.Path, GenerateStringJson("C", "B"));
-                    await handle.WaitAsync(TimeSpan.FromMilliseconds(1000));
-                    await handle.WaitAsync(TimeSpan.FromMilliseconds(1000));
+                    await handle.WaitAsync(TimeSpan.FromMilliseconds(5 * interval));
                     changedRaised.Should().BeTrue();
                     fileLocalDataSource.Data.Should().BeEquivalentTo("C", "B");
                 }
@@ -73,8 +73,9 @@ namespace Nethermind.Blockchain.Test.Data
         [Test]
         public async Task correctly_updates_from_new_file()
         {
+            int interval = 10;
             using (var tempFile = TempPath.GetTempFile())
-            using (var fileLocalDataSource = new FileLocalDataSource<string[]>(tempFile.Path, new EthereumJsonSerializer(), new FileSystem(), LimboLogs.Instance))
+            using (var fileLocalDataSource = new FileLocalDataSource<string[]>(tempFile.Path, new EthereumJsonSerializer(), new FileSystem(), LimboLogs.Instance, 10))
             {
                 bool changedRaised = false;
                 var handle = new SemaphoreSlim(0);
@@ -84,8 +85,7 @@ namespace Nethermind.Blockchain.Test.Data
                     handle.Release();
                 };
                 await File.WriteAllTextAsync(tempFile.Path, GenerateStringJson("A", "B"));
-                await handle.WaitAsync(TimeSpan.FromMilliseconds(1000));
-                await handle.WaitAsync(TimeSpan.FromMilliseconds(1000));
+                await handle.WaitAsync(TimeSpan.FromMilliseconds(5 * interval));
                 fileLocalDataSource.Data.Should().BeEquivalentTo("A", "B");
                 changedRaised.Should().BeTrue();
             }
@@ -110,7 +110,8 @@ namespace Nethermind.Blockchain.Test.Data
             using (var tempFile = TempPath.GetTempFile())
             {
                 await File.WriteAllTextAsync(tempFile.Path, GenerateStringJson("A", "B", "C"));
-                using var fileLocalDataSource = new FileLocalDataSource<string[]>(tempFile.Path, new EthereumJsonSerializer(), new FileSystem(), LimboLogs.Instance);
+                int interval = 10;
+                using var fileLocalDataSource = new FileLocalDataSource<string[]>(tempFile.Path, new EthereumJsonSerializer(), new FileSystem(), LimboLogs.Instance, interval);
                 using (var file = File.Open(tempFile.Path, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None))
                 {
                     using (var writer = new StreamWriter(file, leaveOpen: true))
@@ -118,12 +119,12 @@ namespace Nethermind.Blockchain.Test.Data
                         await writer.WriteAsync(GenerateStringJson("A", "B", "C", "D"));
                     }
 
-                    await Task.Delay(10);
+                    await Task.Delay(2 * interval);
                     
                     fileLocalDataSource.Data.Should().BeEquivalentTo("A", "B", "C");
                 }
-                
-                await Task.Delay(10);
+
+                await Task.Delay(2 * interval);
 
                 fileLocalDataSource.Data.Should().BeEquivalentTo("A", "B", "C", "D");
             }
