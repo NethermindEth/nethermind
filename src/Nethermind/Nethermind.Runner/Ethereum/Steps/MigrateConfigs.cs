@@ -33,7 +33,11 @@ namespace Nethermind.Runner.Ethereum.Steps
         
         public Task Execute(CancellationToken cancellationToken)
         {
-            _api.Config<IMiningConfig>().Enabled = _api.Config<IInitConfig>().IsMining;
+            if (_api.Config<IInitConfig>().IsMining)
+            {
+                _api.Config<IMiningConfig>().Enabled = true;
+            }
+
             return Task.CompletedTask;
         }
     }
