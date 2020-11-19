@@ -25,7 +25,7 @@ namespace Nethermind.Runner.Ethereum.Steps
     public class InitializeBlockchainEthash : InitializeBlockchain
     {
         private readonly EthashNethermindApi _api;
-        private INethermindApi _nethermindApi => _api;
+        private INethermindApi NethermindApi => _api;
 
         public InitializeBlockchainEthash(EthashNethermindApi api) : base(api)
         {
@@ -36,7 +36,7 @@ namespace Nethermind.Runner.Ethereum.Steps
         {
             _api.RewardCalculatorSource = new RewardCalculator(_api.SpecProvider);
             DifficultyCalculator difficultyCalculator = new DifficultyCalculator(_api.SpecProvider);
-            _api.Sealer = _nethermindApi.Config<IInitConfig>().IsMining
+            _api.Sealer = NethermindApi.Config<IInitConfig>().IsMining
                 ? (ISealer) new EthashSealer(new Ethash(_api.LogManager), _api.EngineSigner, _api.LogManager)
                 : NullSealEngine.Instance;
             _api.SealValidator = new EthashSealValidator(_api.LogManager, difficultyCalculator, _api.CryptoRandom, new Ethash(_api.LogManager));

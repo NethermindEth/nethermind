@@ -118,11 +118,11 @@ namespace Nethermind.Runner.Ethereum.Steps
             _api.RpcModuleProvider.Register(new BoundedModulePool<IEthModule>(ethModuleFactory, _cpuCount, rpcConfig.Timeout));
             
             if (_api.DbProvider == null) throw new StepDependencyException(nameof(_api.DbProvider));
-            if (_api.RecoveryStep == null) throw new StepDependencyException(nameof(_api.RecoveryStep));
+            if (_api.BlockPreprocessor == null) throw new StepDependencyException(nameof(_api.BlockPreprocessor));
             if (_api.BlockValidator == null) throw new StepDependencyException(nameof(_api.BlockValidator));
             if (_api.RewardCalculatorSource == null) throw new StepDependencyException(nameof(_api.RewardCalculatorSource));
             
-            ProofModuleFactory proofModuleFactory = new ProofModuleFactory(_api.DbProvider, _api.BlockTree, _api.RecoveryStep, _api.ReceiptFinder, _api.SpecProvider, _api.LogManager);
+            ProofModuleFactory proofModuleFactory = new ProofModuleFactory(_api.DbProvider, _api.BlockTree, _api.BlockPreprocessor, _api.ReceiptFinder, _api.SpecProvider, _api.LogManager);
             _api.RpcModuleProvider.Register(new BoundedModulePool<IProofModule>(proofModuleFactory, 2, rpcConfig.Timeout));
 
             DebugModuleFactory debugModuleFactory = new DebugModuleFactory(
@@ -130,7 +130,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.BlockTree,
 				rpcConfig, 
                 _api.BlockValidator, 
-                _api.RecoveryStep, 
+                _api.BlockPreprocessor, 
                 _api.RewardCalculatorSource, 
                 _api.ReceiptStorage,
                 new ReceiptMigration(_api), 
@@ -143,7 +143,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.DbProvider,
                 _api.BlockTree,
                 rpcConfig,
-                _api.RecoveryStep,
+                _api.BlockPreprocessor,
                 _api.RewardCalculatorSource, 
                 _api.ReceiptStorage,
                 _api.SpecProvider,
@@ -199,7 +199,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             
             foreach (INethermindPlugin plugin in _api.Plugins)
             {
-                await plugin.InitRpcModules(_api);
+                await plugin.InitRpcModules();
             }
             
             if (logger.IsDebug) logger.Debug($"RPC modules  : {string.Join(", ", _api.RpcModuleProvider.Enabled.OrderBy(x => x))}");

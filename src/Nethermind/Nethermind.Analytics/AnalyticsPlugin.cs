@@ -29,7 +29,7 @@ namespace Nethermind.Analytics
     {
         private IAnalyticsConfig _analyticsConfig;
         private IList<IPublisher> _publishers;
-        private IBasicApi _basicApi;
+        private INethermindApi _api;
 
         private bool _isOn;
 
@@ -41,24 +41,30 @@ namespace Nethermind.Analytics
 
         public string Author => "Nethermind";
 
-        public Task Init(IBasicApi api)
+        public Task Init(INethermindApi api)
         {
+            _api = api;
             _analyticsConfig = api.Config<IAnalyticsConfig>();
-            _basicApi = api;
-            
-            IInitConfig initConfig = api.Config<IInitConfig>();
+
+            IInitConfig initConfig = _api.Config<IInitConfig>();
             _isOn = initConfig.WebSocketsEnabled &&
                     (_analyticsConfig.PluginsEnabled ||
                      _analyticsConfig.StreamBlocks ||
                      _analyticsConfig.StreamTransactions);
+            
             return Task.CompletedTask;
         }
 
-        public Task InitBlockchain(IBlockchainApi api)
+        public Task InitBlockchain()
+        {
+            return Task.CompletedTask;
+        }
+
+        public Task InitBlockProducer()
         {
             if (_isOn)
             {
-                api.TxPool!.NewDiscovered += TxPoolOnNewDiscovered;
+                _api.ForProducer.GetFromApi.TxPool!.NewDiscovered += TxPoolOnNewDiscovered;
             }
             
             return Task.CompletedTask;
@@ -76,24 +82,27 @@ namespace Nethermind.Analytics
             }
         }
 
-        public Task InitNetworkProtocol(INetworkApi api)
+        public Task InitNetworkProtocol()
         {
+            var (getFromAPi, _) = _api.ForNetwork;
             if (_isOn)
             {
-                AnalyticsWebSocketsModule webSocketsModule = new AnalyticsWebSocketsModule(_basicApi.EthereumJsonSerializer);
-                api.WebSocketsManager!.AddModule(webSocketsModule, true);
-                api.Publishers.Add(webSocketsModule);
+                AnalyticsWebSocketsModule webSocketsModule = new AnalyticsWebSocketsModule(getFromAPi.EthereumJsonSerializer);
+                getFromAPi.WebSocketsManager!.AddModule(webSocketsModule, true);
+                getFromAPi.Publishers.Add(webSocketsModule);
             }
 
-            _publishers = api.Publishers;
+            _publishers = getFromAPi.Publishers;
 
             return Task.CompletedTask;
         }
 
-        public Task InitRpcModules(INethermindApi api)
+        public Task InitRpcModules()
         {
-            AnalyticsModule analyticsModule = new AnalyticsModule(api.BlockTree, api.StateReader, api.LogManager);
-            api.RpcModuleProvider.Register(new SingletonModulePool<IAnalyticsModule>(analyticsModule));
+            var (getFromAPi, _) = _api.ForRpc;
+            AnalyticsModule analyticsModule = new AnalyticsModule(
+                getFromAPi.BlockTree, getFromAPi.StateReader, getFromAPi.LogManager);
+            getFromAPi.RpcModuleProvider.Register(new SingletonModulePool<IAnalyticsModule>(analyticsModule));
             return Task.CompletedTask;
         }
     }

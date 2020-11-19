@@ -19,9 +19,12 @@ using System.Collections.Generic;
 using Nethermind.Abi;
 using Nethermind.Api.Extensions;
 using Nethermind.Config;
+using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
+using Nethermind.Db;
+using Nethermind.KeyStore;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
@@ -36,9 +39,12 @@ namespace Nethermind.Api
         ChainSpec? ChainSpec { get; set; }
         IConfigProvider ConfigProvider { get; }
         ICryptoRandom CryptoRandom { get; }
+        IDbProvider? DbProvider { get; set; }
         IEthereumEcdsa? EthereumEcdsa { get; set; }
         IJsonSerializer EthereumJsonSerializer { get; }
+        IKeyStore? KeyStore { get; set; }
         ILogManager LogManager { get; }
+        ProtectedPrivateKey? OriginalSignerKey { get; set; }
         IList<INethermindPlugin> Plugins { get; }
         ISpecProvider? SpecProvider { get; set; }
         ITimestamper Timestamper { get; }

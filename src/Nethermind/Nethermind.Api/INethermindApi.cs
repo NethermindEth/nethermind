@@ -17,5 +17,12 @@
 
 namespace Nethermind.Api
 {
-    public interface INethermindApi : IBasicApi, INetworkApi, IBlockchainApi { }
+    public interface INethermindApi : IApiWithNetwork
+    {
+        (IApiWithStores GetFromApi, IApiWithBlockchain SetInApi) ForInit => (this, this);
+        (IApiWithStores GetFromApi, IApiWithBlockchain SetInApi) ForBlockchain => (this, this);
+        (IApiWithBlockchain GetFromApi, IApiWithBlockchain SetInApi) ForProducer => (this, this);
+        (IApiWithNetwork GetFromApi, IApiWithNetwork SetInApi) ForNetwork => (this, this);
+        (IApiWithNetwork GetFromApi, INethermindApi SetInApi) ForRpc => (this, this);
+    }
 }

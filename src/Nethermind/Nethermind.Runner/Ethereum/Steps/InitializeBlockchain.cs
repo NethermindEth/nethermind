@@ -15,7 +15,6 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Collections.Generic;
-using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
@@ -27,17 +26,12 @@ using Nethermind.Blockchain.Rewards;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Consensus;
-using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
-using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Logging;
 using Nethermind.State;
-using Nethermind.State.Repositories;
-using Nethermind.Db.Blooms;
-using Nethermind.Int256;
 using Nethermind.Synchronization.BeamSync;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Storages;
@@ -45,7 +39,7 @@ using Nethermind.Wallet;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
-    [RunnerStepDependencies(typeof(InitRlp), typeof(InitDatabase), typeof(SetupKeyStore))]
+    [RunnerStepDependencies(typeof(InitializeBlockTree), typeof(SetupKeyStore))]
     public class InitializeBlockchain : IStep
     {
         private readonly INethermindApi _api;
@@ -67,19 +61,6 @@ namespace Nethermind.Runner.Ethereum.Steps
             if (_api.ChainSpec == null) throw new StepDependencyException(nameof(_api.ChainSpec));
             if (_api.DbProvider == null) throw new StepDependencyException(nameof(_api.DbProvider));
             if (_api.SpecProvider == null) throw new StepDependencyException(nameof(_api.SpecProvider));
-            
-            // TODO: can engine signer be just initialized in some block producer related step?
-            ISigner signer = NullSigner.Instance;
-            ISignerStore signerStore = NullSigner.Instance;
-            if (_api.Config<IMiningConfig>().Enabled)
-            {
-                Signer signerAndStore = new Signer(_api.SpecProvider.ChainId, _api.OriginalSignerKey, _api.LogManager);
-                signer = signerAndStore;
-                signerStore = signerAndStore;
-            }
-
-            _api.EngineSigner = signer;
-            _api.EngineSignerStore = signerStore;
 
             ILogger logger = _api.LogManager.GetClassLogger();
             IInitConfig initConfig = _api.Config<IInitConfig>();
@@ -96,22 +77,8 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.DbProvider.StateDb,
                 _api.DbProvider.CodeDb,
                 _api.LogManager);
-            
+
             PersistentTxStorage txStorage = new PersistentTxStorage(_api.DbProvider.PendingTxsDb);
-
-            IBloomConfig bloomConfig = _api.Config<IBloomConfig>();
-
-            IFileStoreFactory fileStoreFactory = initConfig.DiagnosticMode == DiagnosticMode.MemDb
-                ? (IFileStoreFactory) new InMemoryDictionaryFileStoreFactory()
-                : new FixedSizeFileStoreFactory(Path.Combine(initConfig.BaseDbPath, DbNames.Bloom), DbNames.Bloom, Bloom.ByteLength);
-
-            _api.BloomStorage = bloomConfig.Index
-                ? new BloomStorage(bloomConfig, _api.DbProvider.BloomDb, fileStoreFactory)
-                : (IBloomStorage) NullBloomStorage.Instance;
-
-            _api.DisposeStack.Push(_api.BloomStorage);
-
-            _api.ChainLevelInfoRepository = new ChainLevelInfoRepository(_api.DbProvider.BlockInfosDb);
 
             _api.BlockTree = CreateBlockTree();
 
@@ -120,17 +87,18 @@ namespace Nethermind.Runner.Ethereum.Steps
             {
                 _api.StateProvider.StateRoot = _api.BlockTree.Head.StateRoot;
             }
-            
+
             _api.TxPool = CreateTxPool(txStorage);
 
             var onChainTxWatcher = new OnChainTxWatcher(_api.BlockTree, _api.TxPool, _api.SpecProvider);
             _api.DisposeStack.Push(onChainTxWatcher);
-            
+
             ReceiptsRecovery receiptsRecovery = new ReceiptsRecovery(_api.EthereumEcdsa, _api.SpecProvider);
             _api.ReceiptStorage = initConfig.StoreReceipts ? (IReceiptStorage?) new PersistentReceiptStorage(_api.DbProvider.ReceiptsDb, _api.SpecProvider, receiptsRecovery) : NullReceiptStorage.Instance;
             _api.ReceiptFinder = new FullInfoReceiptFinder(_api.ReceiptStorage, receiptsRecovery, _api.BlockTree);
 
-            _api.RecoveryStep = new TxSignaturesRecoveryStep(_api.EthereumEcdsa, _api.TxPool, _api.SpecProvider, _api.LogManager);
+            _api.BlockPreprocessor.AddFirst(
+                new RecoverSignatures(_api.EthereumEcdsa, _api.TxPool, _api.SpecProvider, _api.LogManager));
 
             _api.StorageProvider = new StorageProvider(
                 _api.DbProvider.StateDb,
@@ -184,7 +152,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             BlockchainProcessor blockchainProcessor = new BlockchainProcessor(
                 _api.BlockTree,
                 _api.MainBlockProcessor,
-                _api.RecoveryStep,
+                _api.BlockPreprocessor,
                 _api.LogManager,
                 new BlockchainProcessor.Options
                 {
@@ -203,7 +171,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                     _api.SpecProvider,
                     _api.LogManager,
                     _api.BlockValidator,
-                    _api.RecoveryStep,
+                    _api.BlockPreprocessor,
                     _api.RewardCalculatorSource!,
                     _api.BlockProcessingQueue,
                     _api.SyncModeSelector!);
@@ -224,9 +192,9 @@ namespace Nethermind.Runner.Ethereum.Steps
 
             foreach (var plugin in _api.Plugins)
             {
-                plugin.InitBlockchain(_api);
+                plugin.InitBlockchain();
             }
-            
+
             return Task.CompletedTask;
         }
 
@@ -258,6 +226,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.SpecProvider,
                 _api.LogManager);
 
+        // TODO: remove from here - move to consensus?
         protected virtual BlockProcessor CreateBlockProcessor()
         {
             if (_api.DbProvider == null) throw new StepDependencyException(nameof(_api.DbProvider));
@@ -277,6 +246,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.LogManager);
         }
 
+        // TODO: remove from here - move to consensus?
         protected virtual void InitSealEngine()
         {
             _api.Sealer = NullSealEngine.Instance;

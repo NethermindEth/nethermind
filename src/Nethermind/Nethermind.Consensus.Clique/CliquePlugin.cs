@@ -15,95 +15,176 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Processing;
+using Nethermind.Blockchain.Producers;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Rewards;
+using Nethermind.Consensus.Transactions;
+using Nethermind.Db;
 using Nethermind.JsonRpc.Modules;
+using Nethermind.Logging;
 
 namespace Nethermind.Consensus.Clique
 {
     public class CliquePlugin : INethermindPlugin
     {
-        public void Dispose()
-        {
-            throw new System.NotImplementedException();
-        }
-
         public string Name => "Clique";
+
         public string Description => "Clique COnsensus Engine";
+
         public string Author => "Nethermind";
 
-        private IBasicApi _basicApi;
-        
-        private IBlockchainApi _blockchainApi;
-
-        private ISnapshotManager _snapshotManager;
-        
-        public Task Init(IBasicApi basicApi)
+        public Task Init(INethermindApi nethermindApi)
         {
-            _basicApi = basicApi;
+            _nethermindApi = nethermindApi;
+            var (getFromApi, setInApi) = _nethermindApi.ForInit;
+
+            _cliqueConfig = new CliqueConfig
+            {
+                BlockPeriod = getFromApi!.ChainSpec!.Clique.Period,
+                Epoch = getFromApi.ChainSpec.Clique.Epoch
+            };
+
+            _snapshotManager = new SnapshotManager(
+                _cliqueConfig,
+                getFromApi.DbProvider!.BlocksDb,
+                getFromApi.BlockTree!,
+                getFromApi.EthereumEcdsa!,
+                getFromApi.LogManager);
+
+            setInApi.SealValidator = new CliqueSealValidator(
+                _cliqueConfig,
+                _snapshotManager,
+                getFromApi.LogManager);
+
+            setInApi.RewardCalculatorSource = NoBlockRewards.Instance;
+
             return Task.CompletedTask;
         }
-        
-        public Task InitBlockchain(IBlockchainApi api)
+
+        public Task InitBlockchain()
         {
-            _blockchainApi = api;
-            _blockchainApi.RewardCalculatorSource = NoBlockRewards.Instance;
-            CliqueConfig cliqueConfig = new CliqueConfig
+            var (getFromApi, setInApi) = _nethermindApi!.ForBlockchain;
+            setInApi.BlockPreprocessor.AddLast(new AuthorRecoveryStep(_snapshotManager!));
+
+            if (getFromApi.Config<IInitConfig>().IsMining)
             {
-                BlockPeriod = _basicApi.ChainSpec.Clique.Period,
-                Epoch = _basicApi.ChainSpec.Clique.Epoch
-            };
-            
-            _snapshotManager = new SnapshotManager(
-                cliqueConfig,
-                _blockchainApi.DbProvider.BlocksDb,
-                _blockchainApi.BlockTree,
-                _basicApi.EthereumEcdsa,
-                _basicApi.LogManager);
-            
-            api.SealValidator = new CliqueSealValidator(
-                cliqueConfig,
-                _snapshotManager,
-                _basicApi.LogManager);
-            
-            // TODO: add
-            api.RecoveryStep = new CompositeDataRecoveryStep(
-                api.RecoveryStep, new AuthorRecoveryStep(_snapshotManager));
-            
-            if (_basicApi.Config<IInitConfig>().IsMining)
-            {
-                _blockchainApi.Sealer = new CliqueSealer(
-                    _blockchainApi.EngineSigner,
-                    cliqueConfig,
-                    _snapshotManager,
-                    _basicApi.LogManager);
+                setInApi.Sealer = new CliqueSealer(
+                    setInApi.EngineSigner!, // TODO: breaking
+                    _cliqueConfig!,
+                    _snapshotManager!,
+                    getFromApi.LogManager);
             }
             else
             {
-                _blockchainApi.Sealer = NullSealEngine.Instance;
+                setInApi.Sealer = NullSealEngine.Instance;
             }
 
             return Task.CompletedTask;
         }
 
-        public Task InitNetworkProtocol(INetworkApi api)
+        public Task InitBlockProducer()
+        {
+            var (getFromApi, setInApi) = _nethermindApi!.ForProducer;
+            ILogger logger = getFromApi.LogManager.GetClassLogger();
+            if (logger.IsWarn) logger.Warn("Starting Clique block producer & sealer");
+            
+            _miningConfig = getFromApi.Config<IMiningConfig>();
+            if (!_miningConfig.Enabled)
+            {
+                throw new InvalidOperationException("Request to start block producer while mining disabled.");
+            }
+
+            ReadOnlyDbProvider readOnlyDbProvider = new ReadOnlyDbProvider(getFromApi.DbProvider, false);
+            ReadOnlyBlockTree readOnlyBlockTree = new ReadOnlyBlockTree(getFromApi.BlockTree);
+
+            ReadOnlyTxProcessingEnv producerEnv = new ReadOnlyTxProcessingEnv(
+                readOnlyDbProvider,
+                readOnlyBlockTree,
+                getFromApi.SpecProvider,
+                getFromApi.LogManager);
+
+            BlockProcessor producerProcessor = new BlockProcessor(
+                getFromApi!.SpecProvider,
+                getFromApi!.BlockValidator,
+                NoBlockRewards.Instance,
+                producerEnv.TransactionProcessor,
+                producerEnv.DbProvider.StateDb,
+                producerEnv.DbProvider.CodeDb,
+                producerEnv.StateProvider,
+                producerEnv.StorageProvider,
+                getFromApi.TxPool,
+                NullReceiptStorage.Instance,
+                getFromApi.LogManager);
+
+            IBlockchainProcessor producerChainProcessor = new BlockchainProcessor(
+                readOnlyBlockTree,
+                producerProcessor,
+                getFromApi.BlockPreprocessor,
+                getFromApi.LogManager,
+                BlockchainProcessor.Options.NoReceipts);
+
+            OneTimeChainProcessor chainProcessor = new OneTimeChainProcessor(
+                readOnlyDbProvider,
+                producerChainProcessor);
+            
+            ITxFilter txFilter = new MinGasPriceTxFilter(_miningConfig!.MinGasPrice);
+            ITxSource txSource = new TxPoolTxSource(
+                getFromApi.TxPool,
+                getFromApi.StateReader,
+                getFromApi.LogManager,
+                txFilter);
+
+            // TODO: make this gas calculator default
+            var gasLimitCalculator = new TargetAdjustedGasLimitCalculator(getFromApi.SpecProvider, _miningConfig);
+            setInApi.BlockProducer = new CliqueBlockProducer(
+                txSource,
+                chainProcessor,
+                producerEnv.StateProvider,
+                readOnlyBlockTree,
+                getFromApi.Timestamper,
+                getFromApi.CryptoRandom,
+                _snapshotManager!,
+                getFromApi.Sealer!,
+                gasLimitCalculator,
+                _cliqueConfig!,
+                getFromApi.LogManager);
+
+            return Task.CompletedTask;
+        }
+
+        public Task InitNetworkProtocol()
         {
             return Task.CompletedTask;
         }
 
-        public Task InitRpcModules(INethermindApi nethermindApi)
+        public Task InitRpcModules()
         {
-            CliqueBridge cliqueBridge = new CliqueBridge(
-                _blockchainApi.BlockProducer as ICliqueBlockProducer,
-                _snapshotManager,
-                nethermindApi.BlockTree);
-            CliqueModule cliqueModule = new CliqueModule(_basicApi.LogManager, cliqueBridge);
-            nethermindApi.RpcModuleProvider.Register(new SingletonModulePool<ICliqueModule>(cliqueModule, true));
-            
+            var (getFromApi, _) = _nethermindApi!.ForRpc;
+            CliqueRpcModule cliqueRpcModule = new CliqueRpcModule(
+                getFromApi!.BlockProducer as ICliqueBlockProducer,
+                _snapshotManager!,
+                getFromApi.BlockTree!);
+
+            var modulePool = new SingletonModulePool<ICliqueModule>(cliqueRpcModule);
+            getFromApi.RpcModuleProvider.Register(modulePool);
+
             return Task.CompletedTask;
         }
+
+        public void Dispose() { }
+
+        private INethermindApi? _nethermindApi;
+
+        private ISnapshotManager? _snapshotManager;
+
+        private ICliqueConfig? _cliqueConfig;
+
+        private IMiningConfig? _miningConfig;
     }
 }

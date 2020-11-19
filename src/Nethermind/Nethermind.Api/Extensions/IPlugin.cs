@@ -20,6 +20,7 @@ using System.Threading.Tasks;
 
 namespace Nethermind.Api.Extensions
 {
+    // TODO: split to consensus plugin, RPC plugin, etc?
     public interface INethermindPlugin : IDisposable
     {
         string Name { get; }
@@ -28,12 +29,14 @@ namespace Nethermind.Api.Extensions
         
         string Author { get; }
 
-        Task Init(IBasicApi api);
+        Task Init(INethermindApi nethermindApi);
         
-        Task InitBlockchain(IBlockchainApi api);
+        Task InitBlockchain();
         
-        Task InitNetworkProtocol(INetworkApi api);
+        Task InitBlockProducer();
         
-        Task InitRpcModules(INethermindApi nethermindApi);
+        Task InitNetworkProtocol();
+        
+        Task InitRpcModules();
     }
 }

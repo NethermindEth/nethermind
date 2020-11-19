@@ -16,7 +16,6 @@
 // 
 
 #nullable enable
-using System.Collections.Generic;
 using System.IO.Abstractions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
@@ -27,20 +26,13 @@ using Nethermind.Blockchain.Rewards;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Config;
 using Nethermind.Consensus;
-using Nethermind.Consensus.Transactions;
 using Nethermind.Crypto;
-using Nethermind.Db;
 using Nethermind.Db.Blooms;
 using Nethermind.Evm;
 using Nethermind.Facade;
-using Nethermind.Grpc;
 using Nethermind.JsonRpc.Modules;
-using Nethermind.KeyStore;
 using Nethermind.Monitoring;
 using Nethermind.Network;
-using Nethermind.Network.Discovery;
-using Nethermind.PubSub;
-using Nethermind.Serialization.Json;
 using Nethermind.State;
 using Nethermind.State.Repositories;
 using Nethermind.Synchronization;
@@ -48,28 +40,32 @@ using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
-using Nethermind.WebSockets;
 
 namespace Nethermind.Api
 {
-    public interface IBlockchainApi : IBlockchainBridgeFactory
+    public interface IApiWithStores : IBasicApi
+    {
+        IBlockTree? BlockTree { get; set; }
+        IBloomStorage? BloomStorage { get; set; }
+        IChainLevelInfoRepository? ChainLevelInfoRepository { get; set; }
+        ISigner? EngineSigner { get; set; }
+        ISignerStore? EngineSignerStore { get; set; }
+    }
+    
+    public interface IApiWithBlockchain : IApiWithStores, IBlockchainBridgeFactory
     {
         IBlockchainProcessor? BlockchainProcessor { get; set; }
-        IBlockDataRecoveryStep? RecoveryStep { get; set; }
+        CompositeBlockPreprocessorStep BlockPreprocessor { get; }
+        // IBlockPreprocessorStep RecoveryStep => BlockPreprocessor;
         IBlockProcessingQueue? BlockProcessingQueue { get; set; }
         IBlockProcessor? MainBlockProcessor { get; set; }
         IBlockProducer? BlockProducer { get; set; }
-        IBlockTree? BlockTree { get; set; }
         IBlockValidator? BlockValidator { get; set; }
-        IBloomStorage? BloomStorage { get; set; }
-        IChainLevelInfoRepository? ChainLevelInfoRepository { get; set; }
-        IDbProvider? DbProvider { get; set; }
         IEnode? Enode { get; set; }
         IFileSystem FileSystem { get; set; }
         IFilterStore FilterStore { get; set; }
         IFilterManager FilterManager { get; set; }
         IHeaderValidator? HeaderValidator { get; set; }
-        IKeyStore? KeyStore { get; set; }
         ILogFinder LogFinder { get; set; }
         IMessageSerializationService MessageSerializationService { get; }
         IMonitoringService MonitoringService { get; set; }
@@ -79,8 +75,6 @@ namespace Nethermind.Api
         IRpcModuleProvider RpcModuleProvider { get; set; }
         ISealer? Sealer { get; set; }
         ISealValidator? SealValidator { get; set; }
-        ISigner? EngineSigner { get; set; }
-        ISignerStore? EngineSignerStore { get; set; }
         ISyncModeSelector? SyncModeSelector { get; set; }
         ISyncPeerPool? SyncPeerPool { get; set; }
         ISynchronizer? Synchronizer { get; set; }
@@ -97,6 +91,5 @@ namespace Nethermind.Api
         IWallet? Wallet { get; set; }
 
         ProtectedPrivateKey? NodeKey { get; set; }
-        ProtectedPrivateKey? OriginalSignerKey { get; set; }
     }
 }

@@ -21,7 +21,7 @@ using Nethermind.Core.Attributes;
 
 namespace Nethermind.Consensus.Clique
 {
-    public class AuthorRecoveryStep : IBlockDataRecoveryStep
+    public class AuthorRecoveryStep : IBlockPreprocessorStep
     {
         private readonly ISnapshotManager _snapshotManager;
 

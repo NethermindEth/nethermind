@@ -24,8 +24,6 @@ using Nethermind.Blockchain.Producers;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Db;
-using Nethermind.Int256;
-using Nethermind.Runner.Ethereum.Api;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
@@ -78,7 +76,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                     new BlockchainProcessor(
                         blockTree,
                         blockProcessor,
-                        _api.RecoveryStep,
+                        _api.BlockPreprocessor,
                         _api.LogManager,
                         BlockchainProcessor.Options.NoReceipts);
                 

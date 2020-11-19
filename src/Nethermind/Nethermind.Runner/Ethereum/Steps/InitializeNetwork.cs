@@ -403,7 +403,7 @@ namespace Nethermind.Runner.Ethereum.Steps
 
             foreach (var plugin in _api.Plugins)
             {
-                await plugin.InitNetworkProtocol(_api);
+                await plugin.InitNetworkProtocol();
             }
 
             PeerLoader peerLoader = new PeerLoader(_networkConfig, discoveryConfig, _api.NodeStatsManager, peerStorage, _api.LogManager);

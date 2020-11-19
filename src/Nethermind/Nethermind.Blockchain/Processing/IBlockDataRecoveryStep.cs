@@ -18,7 +18,7 @@ using Nethermind.Core;
 
 namespace Nethermind.Blockchain.Processing
 {
-    public interface IBlockDataRecoveryStep
+    public interface IBlockPreprocessorStep
     {
         /// <summary>
         /// Called before the block is put into the processing queue. Example would be recovering transaction

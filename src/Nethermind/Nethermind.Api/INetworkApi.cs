@@ -26,7 +26,7 @@ using Nethermind.WebSockets;
 
 namespace Nethermind.Api
 {
-    public interface INetworkApi
+    public interface IApiWithNetwork : IApiWithBlockchain
     {
         IDiscoveryApp? DiscoveryApp { get; set; }
         IGrpcServer? GrpcServer { get; set; }
