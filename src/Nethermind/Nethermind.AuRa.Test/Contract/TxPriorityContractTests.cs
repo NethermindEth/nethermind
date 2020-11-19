@@ -18,6 +18,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.IO.Abstractions;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -352,7 +353,7 @@ namespace Nethermind.AuRa.Test.Contract
             protected override Task<TestBlockchain> Build(ISpecProvider specProvider = null, UInt256? initialValues = null)
             {
                 TempFile = TempPath.GetTempFile();
-                LocalDataSource = new TxPriorityContract.LocalDataSource(TempFile.Path, new EthereumJsonSerializer(), LimboLogs.Instance);
+                LocalDataSource = new TxPriorityContract.LocalDataSource(TempFile.Path, new EthereumJsonSerializer(), new FileSystem(), LimboLogs.Instance);
 
                 Semaphore = new SemaphoreSlim(0);
                 LocalDataSource.Changed += (o, e) => Semaphore.Release();
