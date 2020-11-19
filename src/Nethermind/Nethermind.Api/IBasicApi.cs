@@ -46,6 +46,7 @@ namespace Nethermind.Api
         ILogManager LogManager { get; }
         ProtectedPrivateKey? OriginalSignerKey { get; set; }
         IList<INethermindPlugin> Plugins { get; }
+        SealEngineType SealEngineType { get; }
         ISpecProvider? SpecProvider { get; set; }
         ITimestamper Timestamper { get; }
     }

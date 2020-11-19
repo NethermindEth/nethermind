@@ -15,9 +15,15 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System.Threading.Tasks;
+using Nethermind.Core;
+
 namespace Nethermind.Api.Extensions
 {
     public interface IConsensusPlugin : INethermindPlugin
     {
+        Task InitBlockProducer();
+        
+        SealEngineType SealEngineType { get; }
     }
 }

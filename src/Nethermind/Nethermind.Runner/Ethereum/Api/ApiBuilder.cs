@@ -56,14 +56,11 @@ namespace Nethermind.Runner.Ethereum.Api
             SealEngineType engine = chainSpec.SealEngineType;
             NethermindApi nethermindApi = engine switch
             {
-                SealEngineType.Ethash => new EthashNethermindApi(_configProvider, _jsonSerializer, _logManager),
                 SealEngineType.AuRa => new AuRaNethermindApi(_configProvider, _jsonSerializer, _logManager),
-                SealEngineType.Clique => new NethermindApi(_configProvider, _jsonSerializer, _logManager),
-                SealEngineType.NethDev => new NethDevNethermindApi(_configProvider, _jsonSerializer, _logManager),
-                SealEngineType.None => new NethermindApi(_configProvider, _jsonSerializer, _logManager),
-                _ => throw new ArgumentOutOfRangeException(nameof(engine), engine, "Unexpected engine.")
+                _ => new NethermindApi(_configProvider, _jsonSerializer, _logManager)
             };
 
+            nethermindApi.SealEngineType = engine;
             nethermindApi.SpecProvider = new ChainSpecBasedSpecProvider(chainSpec);
             nethermindApi.ChainSpec = chainSpec;
 

@@ -79,7 +79,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
         [Test]
         public async Task With_steps_from_here_NethDev()
         {
-            Runner.Ethereum.Api.NethermindApi runnerContext = new NethDevNethermindApi(
+            NethermindApi runnerContext = new NethermindApi(
                 new ConfigProvider(),
                 new EthereumJsonSerializer(),
                 LimboLogs.Instance);
@@ -217,7 +217,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
 
     public class StepCNethDev : StepC, IStep
     {
-        public StepCNethDev(NethDevNethermindApi runnerContext)
+        public StepCNethDev(NethermindApi runnerContext)
         {
         }
 

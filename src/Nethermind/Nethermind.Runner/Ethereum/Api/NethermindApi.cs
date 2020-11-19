@@ -117,6 +117,8 @@ namespace Nethermind.Runner.Ethereum.Api
         public ICryptoRandom CryptoRandom { get; }
         public IDbProvider? DbProvider { get; set; }
         public IDiscoveryApp? DiscoveryApp { get; set; }
+        public ISigner? EngineSigner { get; set; }
+        public ISignerStore? EngineSignerStore { get; set; }
         public IEnode? Enode { get; set; }
         public IEthereumEcdsa? EthereumEcdsa { get; set; }
         public IFileSystem FileSystem { get; set; } = new FileSystem();
@@ -141,9 +143,9 @@ namespace Nethermind.Runner.Ethereum.Api
         public IRlpxPeer? RlpxPeer { get; set; }
         public IRpcModuleProvider RpcModuleProvider { get; set; } = NullModuleProvider.Instance;
         public ISealer? Sealer { get; set; }
+        public SealEngineType SealEngineType { get; set; } = SealEngineType.None;
         public ISealValidator? SealValidator { get; set; }
-        public ISigner? EngineSigner { get; set; }
-        public ISignerStore? EngineSignerStore { get; set; }
+        public ISessionMonitor? SessionMonitor { get; set; }
         public ISpecProvider? SpecProvider { get; set; }
         public ISyncModeSelector? SyncModeSelector { get; set; }
         public ISyncPeerPool? SyncPeerPool { get; set; }
@@ -152,7 +154,6 @@ namespace Nethermind.Runner.Ethereum.Api
         public IStateProvider? StateProvider { get; set; }
         public IStateReader? StateReader { get; set; }
         public IStorageProvider? StorageProvider { get; set; }
-        public ISessionMonitor? SessionMonitor { get; set; }
         public IStaticNodesManager? StaticNodesManager { get; set; }
         public ITimestamper Timestamper { get; } = Core.Timestamper.Default;
         public ITransactionProcessor? TransactionProcessor { get; set; }

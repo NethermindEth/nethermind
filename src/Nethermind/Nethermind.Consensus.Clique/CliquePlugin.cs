@@ -25,13 +25,15 @@ using Nethermind.Blockchain.Producers;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Rewards;
 using Nethermind.Consensus.Transactions;
+using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
+using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.Clique
 {
-    public class CliquePlugin : INethermindPlugin
+    public class CliquePlugin : IConsensusPlugin
     {
         public string Name => "Clique";
 
@@ -75,7 +77,7 @@ namespace Nethermind.Consensus.Clique
             if (getFromApi.Config<IInitConfig>().IsMining)
             {
                 setInApi.Sealer = new CliqueSealer(
-                    setInApi.EngineSigner!, // TODO: breaking
+                    getFromApi.EngineSigner!,
                     _cliqueConfig!,
                     _snapshotManager!,
                     getFromApi.LogManager);
@@ -118,7 +120,7 @@ namespace Nethermind.Consensus.Clique
                 producerEnv.DbProvider.CodeDb,
                 producerEnv.StateProvider,
                 producerEnv.StorageProvider,
-                getFromApi.TxPool,
+                NullTxPool.Instance, // do not remove transactions from the pool when preprocessing
                 NullReceiptStorage.Instance,
                 getFromApi.LogManager);
 
@@ -140,7 +142,6 @@ namespace Nethermind.Consensus.Clique
                 getFromApi.LogManager,
                 txFilter);
 
-            // TODO: make this gas calculator default
             var gasLimitCalculator = new TargetAdjustedGasLimitCalculator(getFromApi.SpecProvider, _miningConfig);
             setInApi.BlockProducer = new CliqueBlockProducer(
                 txSource,
@@ -176,6 +177,8 @@ namespace Nethermind.Consensus.Clique
 
             return Task.CompletedTask;
         }
+        
+        public SealEngineType SealEngineType => SealEngineType.Clique;
 
         public void Dispose() { }
 
