@@ -141,7 +141,7 @@ namespace Nethermind.Blockchain.Data
                 var lastWriteTime = _fileSystem.File.GetLastWriteTime(_filePath);
                 if (lastWriteTime > _lastChange)
                 {
-                    if (_logger.IsTrace) _logger.Trace($"Trying to load local data from file: {_filePath}.");
+                    if (_logger.IsTrace) _logger.Trace($"Trying to load local data from file: {_filePath} updated on {lastWriteTime:hh:mm:ss:ffff} after last read {_lastChange:hh:mm:ss:ffff}.");
                     using Stream file = _fileSystem.File.OpenRead(_filePath);
                     _data = _jsonSerializer.Deserialize<T>(file);
                     if (_logger.IsDebug) _logger.Debug($"Loaded and deserialized {typeof(T)} from {_filePath}.");
