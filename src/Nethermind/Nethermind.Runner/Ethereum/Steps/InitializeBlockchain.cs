@@ -93,10 +93,6 @@ namespace Nethermind.Runner.Ethereum.Steps
             var onChainTxWatcher = new OnChainTxWatcher(_api.BlockTree, _api.TxPool, _api.SpecProvider);
             _api.DisposeStack.Push(onChainTxWatcher);
 
-            ReceiptsRecovery receiptsRecovery = new ReceiptsRecovery(_api.EthereumEcdsa, _api.SpecProvider);
-            _api.ReceiptStorage = initConfig.StoreReceipts ? (IReceiptStorage?) new PersistentReceiptStorage(_api.DbProvider.ReceiptsDb, _api.SpecProvider, receiptsRecovery) : NullReceiptStorage.Instance;
-            _api.ReceiptFinder = new FullInfoReceiptFinder(_api.ReceiptStorage, receiptsRecovery, _api.BlockTree);
-
             _api.BlockPreprocessor.AddFirst(
                 new RecoverSignatures(_api.EthereumEcdsa, _api.TxPool, _api.SpecProvider, _api.LogManager));
 

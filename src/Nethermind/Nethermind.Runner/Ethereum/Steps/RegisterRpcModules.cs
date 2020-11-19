@@ -59,18 +59,6 @@ namespace Nethermind.Runner.Ethereum.Steps
             if (_api.ReceiptFinder == null) throw new StepDependencyException(nameof(_api.ReceiptFinder));
             if (_api.BloomStorage == null) throw new StepDependencyException(nameof(_api.BloomStorage));
             if (_api.LogManager == null) throw new StepDependencyException(nameof(_api.LogManager));
-            
-            
-            
-            LogFinder logFinder = new LogFinder(
-                _api.BlockTree,
-                _api.ReceiptFinder,
-                _api.BloomStorage,
-                _api.LogManager,
-                new ReceiptsRecovery(_api.EthereumEcdsa, _api.SpecProvider), 
-                1024);
-
-            _api.LogFinder = logFinder;
 
             IJsonRpcConfig jsonRpcConfig = _api.Config<IJsonRpcConfig>();
             if (!jsonRpcConfig.Enabled)

@@ -17,11 +17,16 @@
 
 using System.Collections.Generic;
 using Nethermind.Grpc;
+using Nethermind.JsonRpc.Modules;
+using Nethermind.Monitoring;
 using Nethermind.Network;
 using Nethermind.Network.Discovery;
 using Nethermind.Network.Rlpx;
 using Nethermind.PubSub;
 using Nethermind.Stats;
+using Nethermind.Synchronization;
+using Nethermind.Synchronization.ParallelSync;
+using Nethermind.Synchronization.Peers;
 using Nethermind.WebSockets;
 
 namespace Nethermind.Api
@@ -31,12 +36,21 @@ namespace Nethermind.Api
         IDiscoveryApp? DiscoveryApp { get; set; }
         IGrpcServer? GrpcServer { get; set; }
         IIPResolver? IpResolver { get; set; }
+        IMessageSerializationService MessageSerializationService { get; }
+        IMonitoringService MonitoringService { get; set; }
         INodeStatsManager? NodeStatsManager { get; set; }
         IPeerManager? PeerManager { get; set; }
         IProtocolsManager? ProtocolsManager { get; set; }
         IProtocolValidator? ProtocolValidator { get; set; }
         IList<IPublisher> Publishers { get; }
         IRlpxPeer? RlpxPeer { get; set; }
+        IRpcModuleProvider RpcModuleProvider { get; set; }
+        ISessionMonitor? SessionMonitor { get; set; }
+        IStaticNodesManager? StaticNodesManager { get; set; }
+        ISynchronizer? Synchronizer { get; set; }
+        ISyncModeSelector? SyncModeSelector { get; set; }
+        ISyncPeerPool? SyncPeerPool { get; set; }
+        ISyncServer? SyncServer { get; set; }
         IWebSocketsManager? WebSocketsManager { get; set; }
     }
 }

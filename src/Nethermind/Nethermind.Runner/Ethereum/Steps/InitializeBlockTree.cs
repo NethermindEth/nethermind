@@ -20,6 +20,8 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Core;
@@ -50,24 +52,23 @@ namespace Nethermind.Runner.Ethereum.Steps
                 : new FixedSizeFileStoreFactory(Path.Combine(initConfig.BaseDbPath, DbNames.Bloom), DbNames.Bloom, Bloom.ByteLength);
 
             var bloomStorage =
-                _set.BloomStorage = bloomConfig.Index 
-                    ? new BloomStorage(bloomConfig, _get.DbProvider!.BloomDb, fileStoreFactory) 
+                _set.BloomStorage = bloomConfig.Index
+                    ? new BloomStorage(bloomConfig, _get.DbProvider!.BloomDb, fileStoreFactory)
                     : (IBloomStorage) NullBloomStorage.Instance;
-            
+
             _get.DisposeStack.Push(bloomStorage);
 
             var chainLevelInfoRepository =
                 _set.ChainLevelInfoRepository = new ChainLevelInfoRepository(_get.DbProvider!.BlockInfosDb);
-            
-            _set.BlockTree =
-                new BlockTree(
-                    _get.DbProvider,
-                    chainLevelInfoRepository,
-                    _get.SpecProvider,
-                    bloomStorage,
-                    _get.Config<ISyncConfig>(),
-                    _get.LogManager);
-            
+
+            var blockTree = _set.BlockTree = new BlockTree(
+                _get.DbProvider,
+                chainLevelInfoRepository,
+                _get.SpecProvider,
+                bloomStorage,
+                _get.Config<ISyncConfig>(),
+                _get.LogManager);
+
             ISigner signer = NullSigner.Instance;
             ISignerStore signerStore = NullSigner.Instance;
             if (_get.Config<IMiningConfig>().Enabled)
@@ -79,6 +80,21 @@ namespace Nethermind.Runner.Ethereum.Steps
 
             _set.EngineSigner = signer;
             _set.EngineSignerStore = signerStore;
+
+            ReceiptsRecovery receiptsRecovery = new ReceiptsRecovery(_get.EthereumEcdsa, _get.SpecProvider);
+            var receiptStorage = _set.ReceiptStorage
+                = initConfig.StoreReceipts ? (IReceiptStorage?) new PersistentReceiptStorage(_get.DbProvider.ReceiptsDb, _get.SpecProvider, receiptsRecovery) : NullReceiptStorage.Instance;
+            var receiptFinder = _set.ReceiptFinder = new FullInfoReceiptFinder(receiptStorage, receiptsRecovery, blockTree);
+            
+            LogFinder logFinder = new LogFinder(
+                blockTree,
+                receiptFinder,
+                bloomStorage,
+                _get.LogManager,
+                new ReceiptsRecovery(_get.EthereumEcdsa, _get.SpecProvider), 
+                1024);
+
+            _set.LogFinder = logFinder;
 
             return Task.CompletedTask;
         }

@@ -16,6 +16,7 @@
 // 
 
 using System.Collections.Generic;
+using System.IO.Abstractions;
 using Nethermind.Abi;
 using Nethermind.Api.Extensions;
 using Nethermind.Config;
@@ -42,6 +43,7 @@ namespace Nethermind.Api
         IDbProvider? DbProvider { get; set; }
         IEthereumEcdsa? EthereumEcdsa { get; set; }
         IJsonSerializer EthereumJsonSerializer { get; }
+        IFileSystem FileSystem { get; set; }
         IKeyStore? KeyStore { get; set; }
         ILogManager LogManager { get; }
         ProtectedPrivateKey? OriginalSignerKey { get; set; }
