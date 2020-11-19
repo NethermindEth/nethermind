@@ -61,7 +61,6 @@ namespace Nethermind.Blockchain.Data
         private void SetupWatcher(string filePath)
         {
             string directoryName = Path.GetDirectoryName(_filePath) ?? Environment.CurrentDirectory;
-            directoryName = Path.GetFullPath(directoryName);
             string fileName = Path.GetFileName(_filePath);
             if (fileName != null)
             {
