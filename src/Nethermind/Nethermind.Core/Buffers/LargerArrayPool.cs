@@ -55,26 +55,34 @@ namespace Nethermind.Core.Buffers
 
         public override byte[] Rent(int minimumLength)
         {
-            if (ArrayPoolLimit < minimumLength && minimumLength <= LargeBufferSize)
+            if (minimumLength <= ArrayPoolLimit)
+            {
+                return ArrayPool<byte>.Shared.Rent(minimumLength);
+            }
+
+            if (minimumLength <= LargeBufferSize)
             {
                 return RentLarge();
             }
 
             // any other case delegated to the shared
-            return ArrayPool<byte>.Shared.Rent(minimumLength);
+            return new byte[minimumLength];
         }
 
         public override void Return(byte[] array, bool clearArray = false)
         {
-            if (array.Length == LargeBufferSize)
+            int length = array.Length;
+            if (length <= ArrayPoolLimit)
+            {
+                ArrayPool<byte>.Shared.Return(array, clearArray);
+
+            }
+            else if (length <= LargeBufferSize)
             {
                 ReturnLarge(array, clearArray);
             }
-            else
-            {
-                // any other case delegated to the shared
-                ArrayPool<byte>.Shared.Return(array, clearArray);
-            }
+
+            // arrays bigger than LargeBufferSize are not pooled
         }
     }
 }
