@@ -56,36 +56,34 @@ namespace Nethermind.Evm
 
             private byte[] RentDataStack()
             {
-                if (_dataStackPool.Count == 0)
+                if (_dataStackPool.TryPop(out byte[] result))
                 {
-                    Interlocked.Increment(ref _dataStackPoolDepth);
-                    if (_dataStackPoolDepth > _maxCallStackDepth)
-                    {
-                        throw new Exception();
-                    }
-
-                    _dataStackPool.Push(new byte[(EvmStack.MaxStackSize + EvmStack.RegisterLength) * 32]);
+                    return result;
                 }
 
-                _dataStackPool.TryPop(out byte[] result);
-                return result;
+                Interlocked.Increment(ref _dataStackPoolDepth);
+                if (_dataStackPoolDepth > _maxCallStackDepth)
+                {
+                    throw new Exception();
+                }
+
+                return new byte[(EvmStack.MaxStackSize + EvmStack.RegisterLength) * 32];
             }
             
             private int[] RentReturnStack()
             {
-                if (_returnStackPool.Count == 0)
+                if (_returnStackPool.TryPop(out int[] result))
                 {
-                    Interlocked.Increment(ref _returnStackPoolDepth);
-                    if (_returnStackPoolDepth > _maxCallStackDepth)
-                    {
-                        throw new Exception();
-                    }
-
-                    _returnStackPool.Push(new int[EvmStack.ReturnStackSize]);
+                    return result;
                 }
 
-                _returnStackPool.TryPop(out int[] result);
-                return result;
+                Interlocked.Increment(ref _returnStackPoolDepth);
+                if (_returnStackPoolDepth > _maxCallStackDepth)
+                {
+                    throw new Exception();
+                }
+
+                return new int[EvmStack.ReturnStackSize];
             }
             
             public (byte[], int[]) RentStacks()
