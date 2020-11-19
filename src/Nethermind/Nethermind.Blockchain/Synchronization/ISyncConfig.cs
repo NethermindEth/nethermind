@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using Nethermind.Config;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -84,8 +85,14 @@ namespace Nethermind.Blockchain.Synchronization
         
         [ConfigItem(Description = "[EXPERIMENTAL] Defines the earliest body downloaded in fast sync when DownloadBodiesInFastSync is enabled. Actual values used will be Math.Min(Pivot, X)]", DefaultValue = "0")]
         public long AncientBodiesBarrier { get; set; }
+
+        [ConfigItem(HiddenFromDocs = true)]
+        public long AncientBodiesBarrierCalc => Math.Min(PivotNumberParsed, Math.Max(1, AncientBodiesBarrier));
         
         [ConfigItem(Description = "[EXPERIMENTAL] Defines the earliest receipts downloaded in fast sync when DownloadReceiptsInFastSync is enabled. Actual value used will be Math.Min(Pivot, Math.Max(AncientBodiesBarrier, X)]", DefaultValue = "0")]
         public long AncientReceiptsBarrier { get; set; }
+
+        [ConfigItem(HiddenFromDocs = true)]
+        public long AncientReceiptsBarrierCalc => Math.Min(PivotNumberParsed, Math.Max(AncientBodiesBarrier, Math.Max(1, AncientReceiptsBarrier)));
     }
 }
