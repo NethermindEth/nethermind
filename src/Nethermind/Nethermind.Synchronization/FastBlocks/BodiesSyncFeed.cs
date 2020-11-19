@@ -39,6 +39,7 @@ namespace Nethermind.Synchronization.FastBlocks
         private readonly ISyncPeerPool _syncPeerPool;
 
         private readonly long _pivotNumber;
+        private readonly long _barrier;
 
         private SyncStatusList _syncStatusList;
 
@@ -63,6 +64,9 @@ namespace Nethermind.Synchronization.FastBlocks
             }
 
             _pivotNumber = _syncConfig.PivotNumberParsed;
+            _barrier = Math.Min(_pivotNumber, Math.Max(1, _syncConfig.AncientBodiesBarrier));
+            if(_logger.IsInfo) _logger.Info($"Using pivot {_pivotNumber} and barrier {_barrier} in bodies sync");
+            
             _syncStatusList = new SyncStatusList(
                 _blockTree,
                 _pivotNumber,
@@ -78,7 +82,7 @@ namespace Nethermind.Synchronization.FastBlocks
         private bool ShouldBuildANewBatch()
         {
             bool shouldDownloadBodies = _syncConfig.DownloadBodiesInFastSync;
-            bool allBodiesDownloaded = _syncStatusList.LowestInsertWithoutGaps == 1;
+            bool allBodiesDownloaded = _syncStatusList.LowestInsertWithoutGaps <= _barrier;
             bool shouldFinish = !shouldDownloadBodies || allBodiesDownloaded;
             if (shouldFinish)
             {
