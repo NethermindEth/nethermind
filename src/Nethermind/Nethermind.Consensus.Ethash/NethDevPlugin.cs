@@ -56,6 +56,11 @@ namespace Nethermind.Consensus.Ethash
 
         public Task InitBlockProducer()
         {
+            if (_nethermindApi!.SealEngineType != SealEngineType.NethDev)
+            {
+                return Task.CompletedTask;
+            }
+            
             var (getFromApi, setInApi) = _nethermindApi!.ForProducer;
             ITxFilter txFilter = new NullTxFilter();
             ITxSource txSource = new TxPoolTxSource(
@@ -97,12 +102,12 @@ namespace Nethermind.Consensus.Ethash
                 txSource,
                 producerChainProcessor,
                 producerEnv.StateProvider,
-                producerEnv.BlockTree,
+                getFromApi.BlockTree,
                 getFromApi.BlockProcessingQueue,
                 getFromApi.TxPool,
                 getFromApi.Timestamper, 
                 getFromApi.LogManager);
-
+                
             return Task.CompletedTask;
         }
 

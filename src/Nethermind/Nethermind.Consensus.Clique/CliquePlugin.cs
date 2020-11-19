@@ -44,6 +44,11 @@ namespace Nethermind.Consensus.Clique
         public Task Init(INethermindApi nethermindApi)
         {
             _nethermindApi = nethermindApi;
+            if (_nethermindApi!.SealEngineType != SealEngineType.Clique)
+            {
+                return Task.CompletedTask;
+            }
+            
             var (getFromApi, setInApi) = _nethermindApi.ForInit;
 
             _cliqueConfig = new CliqueConfig
@@ -71,6 +76,11 @@ namespace Nethermind.Consensus.Clique
 
         public Task InitBlockchain()
         {
+            if (_nethermindApi!.SealEngineType != SealEngineType.Clique)
+            {
+                return Task.CompletedTask;
+            }
+            
             var (getFromApi, setInApi) = _nethermindApi!.ForBlockchain;
             setInApi.BlockPreprocessor.AddLast(new AuthorRecoveryStep(_snapshotManager!));
 
@@ -92,6 +102,11 @@ namespace Nethermind.Consensus.Clique
 
         public Task InitBlockProducer()
         {
+            if (_nethermindApi!.SealEngineType != SealEngineType.Clique)
+            {
+                return Task.CompletedTask;
+            }
+            
             var (getFromApi, setInApi) = _nethermindApi!.ForProducer;
             ILogger logger = getFromApi.LogManager.GetClassLogger();
             if (logger.IsWarn) logger.Warn("Starting Clique block producer & sealer");
@@ -147,7 +162,7 @@ namespace Nethermind.Consensus.Clique
                 txSource,
                 chainProcessor,
                 producerEnv.StateProvider,
-                readOnlyBlockTree,
+                getFromApi.BlockTree!,
                 getFromApi.Timestamper,
                 getFromApi.CryptoRandom,
                 _snapshotManager!,
@@ -166,6 +181,11 @@ namespace Nethermind.Consensus.Clique
 
         public Task InitRpcModules()
         {
+            if (_nethermindApi!.SealEngineType != SealEngineType.Clique)
+            {
+                return Task.CompletedTask;
+            }
+            
             var (getFromApi, _) = _nethermindApi!.ForRpc;
             CliqueRpcModule cliqueRpcModule = new CliqueRpcModule(
                 getFromApi!.BlockProducer as ICliqueBlockProducer,

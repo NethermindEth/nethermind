@@ -29,10 +29,26 @@ using Nethermind.Db;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
+    public class StartNonAuRaBlockProducer : StartBlockProducer
+    {
+        public StartNonAuRaBlockProducer(INethermindApi api)
+            : base(api)
+        {
+        }
+
+        protected override void BuildProducer()
+        {
+            IConsensusPlugin? consensusPlugin = _api.Plugins
+                .OfType<IConsensusPlugin>()
+                .SingleOrDefault(cp => cp.SealEngineType == _api.SealEngineType);
+            consensusPlugin?.InitBlockProducer();
+        }
+    }
+
     [RunnerStepDependencies(typeof(StartBlockProcessor), typeof(SetupKeyStore), typeof(ReviewBlockTree))]
     public abstract class StartBlockProducer : IStep
     {
-        private readonly INethermindApi _api;
+        protected readonly INethermindApi _api;
         private BlockProducerContext? _blockProducerContext;
 
         protected StartBlockProducer(INethermindApi api)
@@ -45,11 +61,6 @@ namespace Nethermind.Runner.Ethereum.Steps
             IInitConfig initConfig = _api.Config<IInitConfig>();
             if (initConfig.IsMining)
             {
-                IConsensusPlugin? consensusPlugin = _api.Plugins
-                    .OfType<IConsensusPlugin>()
-                    .SingleOrDefault(cp => cp.SealEngineType == _api.SealEngineType);
-                consensusPlugin?.InitBlockProducer();
-
                 BuildProducer();
                 if (_api.BlockProducer == null) throw new StepDependencyException(nameof(_api.BlockProducer));
 

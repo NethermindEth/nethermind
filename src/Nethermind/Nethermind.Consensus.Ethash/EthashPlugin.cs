@@ -29,7 +29,6 @@ namespace Nethermind.Consensus.Ethash
 
         public void Dispose()
         {
-            throw new System.NotImplementedException();
         }
 
         public string Name => "Ethash";
@@ -41,6 +40,11 @@ namespace Nethermind.Consensus.Ethash
         public Task Init(INethermindApi nethermindApi)
         {
             _nethermindApi = nethermindApi;
+            if (_nethermindApi!.SealEngineType != SealEngineType.Ethash)
+            {
+                return Task.CompletedTask;
+            }
+            
             var (getFromApi, setInApi) = _nethermindApi.ForInit;
             setInApi.RewardCalculatorSource = new RewardCalculator(getFromApi.SpecProvider);
             
