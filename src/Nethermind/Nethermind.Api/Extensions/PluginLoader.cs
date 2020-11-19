@@ -22,6 +22,7 @@ using System.IO.Abstractions;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.Loader;
+using Nethermind.Core;
 using Nethermind.Logging;
 
 namespace Nethermind.Api.Extensions
@@ -29,24 +30,34 @@ namespace Nethermind.Api.Extensions
     public class PluginLoader : IPluginLoader
     {
         private readonly IFileSystem _fileSystem;
+        private readonly Type[] _embedded;
         private readonly string _pluginsDirectory;
 
         public List<Type> PluginTypes = new List<Type>();
 
-        public PluginLoader(string pluginPath, IFileSystem fileSystem)
+        public PluginLoader(string pluginPath, IFileSystem fileSystem, params Type[] embedded)
         {
             _pluginsDirectory = pluginPath ?? throw new ArgumentNullException(nameof(pluginPath));
             _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
+            _embedded = embedded ?? Array.Empty<Type>();
         }
 
         public void Load(ILogManager logManager)
         {
             ILogger logger = logManager.GetClassLogger();
+            if (logger.IsInfo) logger.Info("Loading embedded plugins");
+            foreach (Type embeddedPlugin in _embedded)
+            {
+                if (logger.IsInfo) logger.Info($"  Found plugin type {embeddedPlugin}");
+                PluginTypes.Add(embeddedPlugin);    
+            }
+
             string baseDir = string.Empty.GetApplicationResourcePath();
             string pluginAssembliesDir = _pluginsDirectory.GetApplicationResourcePath();
             if (!_fileSystem.Directory.Exists(pluginAssembliesDir))
             {
                 if (logger.IsWarn) logger.Warn($"Plugin assemblies folder {pluginAssembliesDir} was not found. Skipping.");
+                return;
             }
 
             string[] assemblies = _fileSystem.Directory.GetFiles(pluginAssembliesDir, "*.dll");
@@ -81,6 +92,7 @@ namespace Nethermind.Api.Extensions
                     {
                         if (typeof(INethermindPlugin).IsAssignableFrom(type))
                         {
+                            if (logger.IsInfo) logger.Warn($"  Found plugin type {pluginAssembly}");
                             PluginTypes.Add(type);
                         }
                     }

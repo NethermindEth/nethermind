@@ -19,6 +19,8 @@ using System.IO;
 using System.Threading;
 using Nethermind.Api;
 using Nethermind.Config;
+using Nethermind.Consensus.Clique;
+using Nethermind.Consensus.Ethash;
 using Nethermind.Core;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
@@ -52,7 +54,7 @@ namespace Nethermind.Runner.Ethereum.Api
             {
                 throw new NotSupportedException("Creation of multiple APIs not supported.");
             }
-
+            
             SealEngineType engine = chainSpec.SealEngineType;
             NethermindApi nethermindApi = engine switch
             {

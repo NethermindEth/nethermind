@@ -27,6 +27,8 @@ using Microsoft.Extensions.CommandLineUtils;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Config;
+using Nethermind.Consensus.Clique;
+using Nethermind.Consensus.Ethash;
 using Nethermind.Core;
 using Nethermind.Logging;
 using Nethermind.Logging.NLog;
@@ -93,8 +95,10 @@ namespace Nethermind.Runner
             _logger.Info("Nethermind starting initialization.");
 
             AppDomain.CurrentDomain.ProcessExit += CurrentDomainOnProcessExit;
-            IFileSystem fileSystem = new FileSystem();
-            PluginLoader pluginLoader = new PluginLoader("plugins", fileSystem);
+            IFileSystem fileSystem = new FileSystem(); ;
+            
+            PluginLoader pluginLoader = new PluginLoader(
+                "plugins", fileSystem, typeof(CliquePlugin), typeof(EthashPlugin), typeof(NethDevPlugin));
             pluginLoader.Load(SimpleConsoleLogManager.Instance);
 
             Type configurationType = typeof(IConfig);

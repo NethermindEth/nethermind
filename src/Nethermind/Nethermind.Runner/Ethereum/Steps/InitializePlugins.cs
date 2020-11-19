@@ -25,7 +25,7 @@ using Nethermind.Logging;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
-    [RunnerStepDependencies(typeof(InitializeBlockchain))]
+    [RunnerStepDependencies(typeof(InitializeBlockTree))]
     public class InitializePlugins : IStep
     {
         private readonly INethermindApi _api;
@@ -45,7 +45,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 {
                     if(logger.IsInfo) logger.Info($"  {plugin.Name} by {plugin.Author}");
                     Stopwatch stopwatch = Stopwatch.StartNew();
-                    await plugin.InitBlockchain();
+                    await plugin.Init(_api);
                     stopwatch.Stop();
                     if (logger.IsInfo)
                         logger.Info($"  {plugin.Name} by {plugin.Author} initialized in {stopwatch.ElapsedMilliseconds}ms");
