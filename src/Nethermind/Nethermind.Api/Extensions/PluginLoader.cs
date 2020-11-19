@@ -92,8 +92,11 @@ namespace Nethermind.Api.Extensions
                     {
                         if (typeof(INethermindPlugin).IsAssignableFrom(type))
                         {
-                            if (logger.IsInfo) logger.Warn($"  Found plugin type {pluginAssembly}");
-                            PluginTypes.Add(type);
+                            if (!PluginTypes.Contains(type))
+                            {
+                                if (logger.IsInfo) logger.Warn($"  Found plugin type {pluginAssembly}");
+                                PluginTypes.Add(type);
+                            }
                         }
                     }
                 }
