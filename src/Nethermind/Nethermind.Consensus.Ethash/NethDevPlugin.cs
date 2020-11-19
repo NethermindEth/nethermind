@@ -49,11 +49,6 @@ namespace Nethermind.Consensus.Ethash
             return Task.CompletedTask;
         }
 
-        public Task InitBlockchain()
-        {
-            return Task.CompletedTask;
-        }
-
         public Task InitBlockProducer()
         {
             if (_nethermindApi!.SealEngineType != SealEngineType.NethDev)

@@ -37,7 +37,7 @@ namespace Nethermind.Consensus.Clique
     {
         public string Name => "Clique";
 
-        public string Description => "Clique COnsensus Engine";
+        public string Description => "Clique Consensus Engine";
 
         public string Author => "Nethermind";
 
@@ -73,15 +73,19 @@ namespace Nethermind.Consensus.Clique
 
             return Task.CompletedTask;
         }
+        
 
-        public Task InitBlockchain()
+        public Task InitBlockProducer()
         {
             if (_nethermindApi!.SealEngineType != SealEngineType.Clique)
             {
                 return Task.CompletedTask;
             }
             
-            var (getFromApi, setInApi) = _nethermindApi!.ForBlockchain;
+            var (getFromApi, setInApi) = _nethermindApi!.ForProducer;
+            ILogger logger = getFromApi.LogManager.GetClassLogger();
+            if (logger.IsWarn) logger.Warn("Starting Clique block producer & sealer");
+            
             setInApi.BlockPreprocessor.AddLast(new AuthorRecoveryStep(_snapshotManager!));
 
             if (getFromApi.Config<IInitConfig>().IsMining)
@@ -96,20 +100,6 @@ namespace Nethermind.Consensus.Clique
             {
                 setInApi.Sealer = NullSealEngine.Instance;
             }
-
-            return Task.CompletedTask;
-        }
-
-        public Task InitBlockProducer()
-        {
-            if (_nethermindApi!.SealEngineType != SealEngineType.Clique)
-            {
-                return Task.CompletedTask;
-            }
-            
-            var (getFromApi, setInApi) = _nethermindApi!.ForProducer;
-            ILogger logger = getFromApi.LogManager.GetClassLogger();
-            if (logger.IsWarn) logger.Warn("Starting Clique block producer & sealer");
             
             _miningConfig = getFromApi.Config<IMiningConfig>();
             if (!_miningConfig.Enabled)

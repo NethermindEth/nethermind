@@ -183,15 +183,8 @@ namespace Nethermind.Runner.Ethereum.Steps
             var filterStore = _set.FilterStore = new FilterStore();
             _set.FilterManager = new FilterManager(filterStore, mainBlockProcessor, txPool, _get.LogManager);
 
-            foreach (var plugin in _get.Plugins)
-            {
-                plugin.InitBlockchain();
-            }
-
             return Task.CompletedTask;
         }
-
-        protected virtual IBlockTree CreateBlockTree() => _api.BlockTree!;
 
         protected virtual TxPool.TxPool CreateTxPool(PersistentTxStorage txStorage) =>
             new TxPool.TxPool(

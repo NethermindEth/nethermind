@@ -59,12 +59,7 @@ namespace Nethermind.Consensus.Ethash
 
             return Task.CompletedTask;
         }
-
-        public Task InitBlockchain()
-        {
-            return Task.CompletedTask;
-        }
-
+        
         public Task InitBlockProducer()
         {
             return Task.CompletedTask;

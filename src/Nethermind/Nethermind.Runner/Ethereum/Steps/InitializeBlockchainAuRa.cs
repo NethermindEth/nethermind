@@ -54,6 +54,8 @@ namespace Nethermind.Runner.Ethereum.Steps
         {
             _api = api;
             _auraConfig = NethermindApi.Config<IAuraConfig>();
+            _processingReadOnlyTransactionProcessorSource = new ReadOnlyTxProcessorSource(
+                _api.DbProvider, _api.BlockTree, _api.SpecProvider, _api.LogManager);
         }
 
         protected override BlockProcessor CreateBlockProcessor()
@@ -262,12 +264,6 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.LogManager,
                 CreateTxPoolTxComparer(txPriorityContract, localDataSource),
                 new TxFilterAdapter(_api.BlockTree, txPoolFilter));
-        }
-        
-        protected override IBlockTree CreateBlockTree()
-        {
-            _processingReadOnlyTransactionProcessorSource = new ReadOnlyTxProcessorSource(_api.DbProvider, _api.BlockTree, _api.SpecProvider, _api.LogManager);
-            return _api.BlockTree;
         }
 
         private class BlockProcessorWrapper : IBlockProcessor

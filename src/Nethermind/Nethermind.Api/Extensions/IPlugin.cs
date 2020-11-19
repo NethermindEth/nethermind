@@ -29,8 +29,6 @@ namespace Nethermind.Api.Extensions
         string Author { get; }
 
         Task Init(INethermindApi nethermindApi);
-        
-        Task InitBlockchain();
 
         Task InitNetworkProtocol();
         
