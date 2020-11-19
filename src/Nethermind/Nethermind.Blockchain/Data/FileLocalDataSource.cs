@@ -68,8 +68,13 @@ namespace Nethermind.Blockchain.Data
                 _logger.Info($"Watching file {fileName} in directory {directoryName} for changes.");
                 _fileSystemWatcher = new FileSystemWatcher(directoryName, fileName)
                 {
-                    EnableRaisingEvents = true
+                    EnableRaisingEvents = true,
+                    NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName
                 };
+                _fileSystemWatcher.Created += (s, e) => _logger.Warn("FSW Created: " + e.FullPath);
+                _fileSystemWatcher.Deleted += (s, e) => _logger.Warn("FSW Deleted: " + e.FullPath);
+                _fileSystemWatcher.Changed += (s, e) => _logger.Warn("FSW Changed: " + e.FullPath);
+                _fileSystemWatcher.Renamed += (s, e) => _logger.Warn("FSW Renamed: " + e.OldFullPath + " to " + e.FullPath);
                 _handler = async (o, e) => await OnFileChanged(o, e);
                 _fileSystemWatcher.Changed += _handler;
             }
