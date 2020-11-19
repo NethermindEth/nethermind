@@ -70,6 +70,7 @@ namespace Nethermind.Consensus.Clique
                 getFromApi.LogManager);
 
             setInApi.RewardCalculatorSource = NoBlockRewards.Instance;
+            setInApi.BlockPreprocessor.AddLast(new AuthorRecoveryStep(_snapshotManager!));
 
             return Task.CompletedTask;
         }
@@ -84,8 +85,6 @@ namespace Nethermind.Consensus.Clique
             var (getFromApi, setInApi) = _nethermindApi!.ForProducer;
             ILogger logger = getFromApi.LogManager.GetClassLogger();
             if (logger.IsWarn) logger.Warn("Starting Clique block producer & sealer");
-
-            setInApi.BlockPreprocessor.AddLast(new AuthorRecoveryStep(_snapshotManager!));
 
             _miningConfig = getFromApi.Config<IMiningConfig>();
             if (!_miningConfig.Enabled)
