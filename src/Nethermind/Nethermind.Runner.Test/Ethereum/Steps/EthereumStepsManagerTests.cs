@@ -77,9 +77,9 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
         }
 
         [Test]
-        public async Task With_steps_from_here_NethDev()
+        public async Task With_steps_from_here_AuRa()
         {
-            NethermindApi runnerContext = new NethermindApi(
+            AuRaNethermindApi runnerContext = new AuRaNethermindApi(
                 new ConfigProvider(),
                 new EthereumJsonSerializer(),
                 LimboLogs.Instance);
@@ -213,20 +213,6 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
         {
             await Task.Run(() => throw new Exception());
         }
-    }
-
-    public class StepCNethDev : StepC, IStep
-    {
-        public StepCNethDev(NethermindApi runnerContext)
-        {
-        }
-
-        public override async Task Execute(CancellationToken cancellationToken)
-        {
-            await Task.Run(() => throw new Exception());
-        }
-
-        bool IStep.MustInitialize => false;
     }
 
     public class StepCStandard : StepC
