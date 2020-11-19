@@ -29,29 +29,13 @@ using Nethermind.Db;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
-    public class StartNonAuRaBlockProducer : StartBlockProducer
-    {
-        public StartNonAuRaBlockProducer(INethermindApi api)
-            : base(api)
-        {
-        }
-
-        protected override void BuildProducer()
-        {
-            IConsensusPlugin? consensusPlugin = _api.Plugins
-                .OfType<IConsensusPlugin>()
-                .SingleOrDefault(cp => cp.SealEngineType == _api.SealEngineType);
-            consensusPlugin?.InitBlockProducer();
-        }
-    }
-
     [RunnerStepDependencies(typeof(StartBlockProcessor), typeof(SetupKeyStore), typeof(ReviewBlockTree))]
-    public abstract class StartBlockProducer : IStep
+    public class StartBlockProducer : IStep
     {
         protected readonly INethermindApi _api;
         private BlockProducerContext? _blockProducerContext;
 
-        protected StartBlockProducer(INethermindApi api)
+        public StartBlockProducer(INethermindApi api)
         {
             _api = api;
         }
@@ -73,7 +57,19 @@ namespace Nethermind.Runner.Ethereum.Steps
         protected virtual void BuildProducer()
         {
             if (_api.ChainSpec == null) throw new StepDependencyException(nameof(_api.ChainSpec));
-            throw new NotSupportedException($"Mining in {_api.ChainSpec.SealEngineType} mode is not supported");
+            
+            IConsensusPlugin? consensusPlugin = _api.Plugins
+                .OfType<IConsensusPlugin>()
+                .SingleOrDefault(cp => cp.SealEngineType == _api.SealEngineType);
+
+            if (consensusPlugin != null)
+            {
+                consensusPlugin.InitBlockProducer();
+            }
+            else
+            {
+                throw new NotSupportedException($"Mining in {_api.ChainSpec.SealEngineType} mode is not supported");    
+            }
         }
 
         protected BlockProducerContext GetProducerChain()
