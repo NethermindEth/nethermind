@@ -133,7 +133,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 readOnlyDbProvider.CodeDb,
                 readOnlyTxProcessingEnv.StateProvider,
                 readOnlyTxProcessingEnv.StorageProvider,
-                NullTxPool.Instance,
+                _api.TxPool,
                 _api.ReceiptStorage,
                 _api.LogManager,
                 readOnlyTxProcessingEnv.BlockTree,
@@ -152,7 +152,6 @@ namespace Nethermind.Runner.Ethereum.Steps
 
             if (_txPriorityContract != null || _localDataSource != null)
             {
-                _api.LogManager.GetClassLogger().Warn("Filtered tx source");
                 _minGasPricesContractDataStore = TxFilterBuilders.CreateMinGasPricesDataStore(_api, _txPriorityContract, _localDataSource, _api.MainBlockProcessor)!;
                 _api.DisposeStack.Push(_minGasPricesContractDataStore);                
 
@@ -186,7 +185,6 @@ namespace Nethermind.Runner.Ethereum.Steps
             }
             else
             {
-                _api.LogManager.GetClassLogger().Warn("Un filtered tx source");
                 return base.CreateTxPoolTxSource(processingEnv, readOnlyTxProcessorSource);
             }
         }

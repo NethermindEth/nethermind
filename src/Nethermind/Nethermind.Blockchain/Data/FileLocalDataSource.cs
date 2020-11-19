@@ -64,18 +64,13 @@ namespace Nethermind.Blockchain.Data
             string fileName = Path.GetFileName(_filePath);
             if (fileName != null)
             {
-                _logger.Info($"Watching file {fileName} in directory {directoryName} for changes.");
+                if (_logger.IsDebug) _logger.Debug($"Watching file {fileName} in directory {directoryName} for changes.");
                 _fileSystemWatcher = new FileSystemWatcher(directoryName, fileName)
                 {
                     EnableRaisingEvents = true,
-                    NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName,
-                    IncludeSubdirectories = false
+                    NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName
                 };
-                _fileSystemWatcher.Created += (s, e) => _logger.Warn("FSW Created: " + e.FullPath);
-                _fileSystemWatcher.Deleted += (s, e) => _logger.Warn("FSW Deleted: " + e.FullPath);
-                _fileSystemWatcher.Changed += (s, e) => _logger.Warn("FSW Changed: " + e.FullPath);
-                _fileSystemWatcher.Renamed += (s, e) => _logger.Warn("FSW Renamed: " + e.OldFullPath + " to " + e.FullPath);
-                _handler = (o, e) => OnFileChanged();
+                _handler = async (o, e) => await OnFileChanged(o, e);
                 _fileSystemWatcher.Changed += _handler;
             }
             else
@@ -86,7 +81,7 @@ namespace Nethermind.Blockchain.Data
 
         private async Task LoadFileAsync()
         {
-            _logger.Info($"Trying to load local data from file: {_filePath}.");
+            if (_logger.IsTrace) _logger.Trace($"Trying to load local data from file: {_filePath}.");
             if (_fileSystem.File.Exists(_filePath))
             {
                 var start = DateTime.Now;
@@ -120,7 +115,7 @@ namespace Nethermind.Blockchain.Data
 
         private void LoadFile()
         {
-            _logger.Info($"Trying to load local data from file: {_filePath}.");
+            if (_logger.IsTrace) _logger.Trace($"Trying to load local data from file: {_filePath}.");
             if (_fileSystem.File.Exists(_filePath))
             {
                 var start = DateTime.Now;
@@ -160,7 +155,7 @@ namespace Nethermind.Blockchain.Data
         {
             using Stream file = _fileSystem.File.OpenRead(_filePath);
             _data = _jsonSerializer.Deserialize<T>(file);
-            _logger.Info($"Loaded and deserialized {typeof(T)} from {_filePath} on {start:hh:mm:ss.ffff}.");
+            if (_logger.IsDebug) _logger.Debug($"Loaded and deserialized {typeof(T)} from {_filePath} on {start:hh:mm:ss.ffff}.");
         }
         
         private void ReportJsonError(DateTime start, JsonSerializationException e)

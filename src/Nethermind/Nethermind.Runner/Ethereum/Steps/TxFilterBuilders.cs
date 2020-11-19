@@ -116,12 +116,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             bool usesTxPriorityLocalData = auraConfigTxPriorityConfigFilePath != null;
             if (usesTxPriorityLocalData)
             {
-                api.LogManager.GetClassLogger().Warn($"Config file path with {config.TxPriorityConfigFilePath}.");
                 api.TxPriorityContractLocalDataSource ??= new TxPriorityContract.LocalDataSource(auraConfigTxPriorityConfigFilePath, api.EthereumJsonSerializer, api.FileSystem, api.LogManager);
-            }
-            else
-            {
-                api.LogManager.GetClassLogger().Warn("No config file path.");
             }
 
             return (txPriorityContract, api.TxPriorityContractLocalDataSource);
