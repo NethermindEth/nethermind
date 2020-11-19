@@ -69,7 +69,8 @@ namespace Nethermind.Blockchain.Data
                 _fileSystemWatcher = new FileSystemWatcher(directoryName, fileName)
                 {
                     EnableRaisingEvents = true,
-                    NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName
+                    NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName,
+                    IncludeSubdirectories = false
                 };
                 _fileSystemWatcher.Created += (s, e) => _logger.Warn("FSW Created: " + e.FullPath);
                 _fileSystemWatcher.Deleted += (s, e) => _logger.Warn("FSW Deleted: " + e.FullPath);

@@ -133,7 +133,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 readOnlyDbProvider.CodeDb,
                 readOnlyTxProcessingEnv.StateProvider,
                 readOnlyTxProcessingEnv.StorageProvider,
-                _api.TxPool,
+                NullTxPool.Instance,
                 _api.ReceiptStorage,
                 _api.LogManager,
                 readOnlyTxProcessingEnv.BlockTree,
