@@ -48,7 +48,6 @@ namespace Nethermind.Runner.Ethereum.Steps
         private readonly AuRaNethermindApi _api;
         private INethermindApi NethermindApi => _api;
         
-        private ReadOnlyTxProcessorSource? _processingReadOnlyTransactionProcessorSource;
         private AuRaSealValidator? _sealValidator;
         private readonly IAuraConfig _auraConfig;
         private BlockProcessorWrapper? _blockProcessorWrapper = null;
@@ -70,8 +69,11 @@ namespace Nethermind.Runner.Ethereum.Steps
             if (_api.StorageProvider == null) throw new StepDependencyException(nameof(_api.StorageProvider));
             if (_api.TxPool == null) throw new StepDependencyException(nameof(_api.TxPool));
             if (_api.ReceiptStorage == null) throw new StepDependencyException(nameof(_api.ReceiptStorage));
-            if (_processingReadOnlyTransactionProcessorSource == null) throw new StepDependencyException(nameof(_processingReadOnlyTransactionProcessorSource));
-
+            
+            var processingReadOnlyTransactionProcessorSource = new ReadOnlyTxProcessorSource(_api.DbProvider, _api.BlockTree, _api.SpecProvider, _api.LogManager);
+            var txPermissionFilterOnlyTxProcessorSource = new ReadOnlyTxProcessorSource(_api.DbProvider, _api.BlockTree, _api.SpecProvider, _api.LogManager);
+            ITxFilter? txPermissionFilter = TxFilterBuilders.CreateTxPermissionFilter(_api, txPermissionFilterOnlyTxProcessorSource, _api.StateProvider);
+            
             var processor = new AuRaBlockProcessor(
                 _api.SpecProvider,
                 _api.BlockValidator,
@@ -85,10 +87,10 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.ReceiptStorage,
                 _api.LogManager,
                 _api.BlockTree,
-                TxFilterBuilders.CreateTxPermissionFilter(_api, _processingReadOnlyTransactionProcessorSource, _api.StateProvider),
-                GetGasLimitCalculator(_processingReadOnlyTransactionProcessorSource));
+                txPermissionFilter,
+                GetGasLimitCalculator());
             
-            var auRaValidator = CreateAuRaValidator(processor, _processingReadOnlyTransactionProcessorSource);
+            var auRaValidator = CreateAuRaValidator(processor, processingReadOnlyTransactionProcessorSource);
             processor.AuRaValidator = auRaValidator;
             var reportingValidator = auRaValidator.GetReportingValidator();
             _api.ReportingValidator = reportingValidator;
@@ -149,7 +151,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             return validator;
         }
 
-        private AuRaContractGasLimitOverride? GetGasLimitCalculator(ReadOnlyTxProcessorSource readOnlyTxProcessorSource)
+        private AuRaContractGasLimitOverride? GetGasLimitCalculator()
         {
             if (_api.ChainSpec == null) throw new StepDependencyException(nameof(_api.ChainSpec));
             var blockGasLimitContractTransitions = _api.ChainSpec.AuRa.BlockGasLimitContractTransitions;
@@ -164,7 +166,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                             _api.AbiEncoder,
                             blockGasLimitContractTransition.Value,
                             blockGasLimitContractTransition.Key,
-                            readOnlyTxProcessorSource))
+                            new ReadOnlyTxProcessorSource(_api.DbProvider, _api.BlockTree, _api.SpecProvider, _api.LogManager)))
                         .ToArray<IBlockGasLimitContract>(),
                     _api.GasLimitCalculatorCache,
                     _auraConfig.Minimum2MlnGasPerBlockWhenUsingBlockGasLimitContract,
@@ -266,13 +268,6 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.LogManager,
                 CreateTxPoolTxComparer(txPriorityContract, localDataSource),
                 new TxFilterAdapter(_api.BlockTree, txPoolFilter));
-        }
-        
-        protected override BlockTree CreateBlockTree()
-        {
-            BlockTree blockTree = base.CreateBlockTree();
-            _processingReadOnlyTransactionProcessorSource = new ReadOnlyTxProcessorSource(_api.DbProvider, _api.BlockTree, _api.SpecProvider, _api.LogManager);
-            return blockTree;
         }
 
         private class BlockProcessorWrapper : IBlockProcessor
