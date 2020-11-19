@@ -8,22 +8,31 @@
 		}
 	},
 	"params": {
-		"gasLimitBoundDivisor": "0x400",
+		"gasLimitBoundDivisor": "0x0400",
+		"accountStartNonce": "0x0",
 		"maximumExtraDataSize": "0x20",
 		"minGasLimit": "0x1388",
-		"networkID": "0x63",
+		"networkID" : "0x63",
 		"eip140Transition": "0x0",
+		"eip145Transition": "0x0",
+		"eip150Transition": "0x0",
+		"eip155Transition": "0x0",
+		"eip160Transition": "0x0",
+		"eip161abcTransition": "0x0",
+		"eip161dTransition": "0x0",
 		"eip211Transition": "0x0",
 		"eip214Transition": "0x0",
 		"eip658Transition": "0x0",
-		"eip145Transition": "0x0",
 		"eip1014Transition": "0x0",
 		"eip1052Transition": "0x0",
 		"eip1283Transition": "0x0",
+		"eip1283DisableTransition": "0x0",
+		"eip152Transition": "0x0",
+		"eip1108Transition": "0x0",
 		"eip1344Transition": "0x0",
-		"eip1706Transition": "0x0",
 		"eip1884Transition": "0x0",
-		"eip2028Transition": "0x0"
+		"eip2028Transition": "0x0",
+		"eip2200Transition": "0x0"
 	},
 	"genesis": {
 		"seal": {
@@ -62,8 +71,6 @@
 		"f1f6619b38a98d6de0800f1defc0a6399eb6d30c": { "balance": "1000000000000000000000000" },
 		"f7edc8fa1ecc32967f827c9043fcae6ba73afa5c": { "balance": "1000000000000000000000000" },
 		"4cceba2d7d2b4fdce4304d3e09a1fea9fbeb1528": { "balance": "1000000000000000000000000" },
-		"b77AEC9f59f9D6F39793289a09AEa871932619Ed": { "balance": "1000000000000000000000000" },
-		"0x5b34a61B7752245d8a4eF340de24eAf245aE7bE9": { "balance": "1000000000000000000000000" },
-		"0x90F8bf6A479f320ead074411a4B0e7944Ea8c9C1": { "balance": "1000000000000000000000000" }
+		"b77AEC9f59f9D6F39793289a09AEa871932619Ed": { "balance": "1000000000000000000000000" }
 	}
 }

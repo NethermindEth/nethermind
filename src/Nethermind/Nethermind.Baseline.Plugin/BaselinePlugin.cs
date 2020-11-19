@@ -32,6 +32,11 @@ namespace Nethermind.Plugin.Baseline
             return Task.CompletedTask;
         }
 
+        public Task InitBlockchain()
+        {
+            return Task.CompletedTask;
+        }
+
         public Task InitNetworkProtocol()
         {
             return Task.CompletedTask;
