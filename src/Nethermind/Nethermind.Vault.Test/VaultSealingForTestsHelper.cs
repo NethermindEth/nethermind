@@ -21,6 +21,7 @@ using Nethermind.KeyStore;
 using Nethermind.Logging;
 using Nethermind.Vault.Config;
 using Nethermind.Vault.KeyStore;
+using NUnit.Framework;
 
 namespace Nethermind.Vault.Test
 {
@@ -34,7 +35,7 @@ namespace Nethermind.Vault.Test
         {
             _vaultConfig = vaultConfig ?? throw new ArgumentNullException(nameof(vaultConfig));
             _vaultConfig.VaultKeyFile = VaultConfigFileName;
-            var passwordProvider = new FilePasswordProvider() { FileName = _vaultConfig.VaultKeyFile.GetApplicationResourcePath() };
+            var passwordProvider = new FilePasswordProvider(a => Path.Combine(TestContext.CurrentContext.WorkDirectory, _vaultConfig.VaultKeyFile));
             var vaultKeyStoreFacade = new VaultKeyStoreFacade(passwordProvider);
             _vaultSealingHelper = new VaultSealingHelper(vaultKeyStoreFacade, _vaultConfig, LimboLogs.Instance.GetClassLogger<VaultSealingHelper>());
         }
@@ -52,9 +53,11 @@ namespace Nethermind.Vault.Test
             TearDown();
         }
 
+        private string TestDir => TestContext.CurrentContext.WorkDirectory;
+
         private void SetUp()
         {
-            var vaultFilePath = _vaultConfig.VaultKeyFile.GetApplicationResourcePath();
+            var vaultFilePath =  Path.Combine(TestDir, _vaultConfig.VaultKeyFile);
             if (!File.Exists(vaultFilePath))
             {
                 File.Create(vaultFilePath).Close();
@@ -64,7 +67,7 @@ namespace Nethermind.Vault.Test
 
         private void TearDown()
         {
-            var vaultFilePath = _vaultConfig.VaultKeyFile.GetApplicationResourcePath();
+            string vaultFilePath = Path.Combine(TestDir, _vaultConfig.VaultKeyFile);
             if (File.Exists(vaultFilePath))
             {
                 File.Delete(vaultFilePath);

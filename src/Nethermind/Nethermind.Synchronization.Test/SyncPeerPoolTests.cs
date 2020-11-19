@@ -279,7 +279,7 @@ namespace Nethermind.Synchronization.Test
         {
             
             Node node = new Node(publicKey, "127.0.0.1", 30303);
-            NodeStatsLight stats = new NodeStatsLight(node, new StatsConfig());
+            NodeStatsLight stats = new NodeStatsLight(node);
             stats.AddTransferSpeedCaptureEvent(TransferSpeedType.Headers, transferSpeed);
 
             ctx.Stats.GetOrAdd(Arg.Is<Node>(n => n.Id == publicKey)).Returns(stats);

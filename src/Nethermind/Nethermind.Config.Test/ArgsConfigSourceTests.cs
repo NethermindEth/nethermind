@@ -22,6 +22,7 @@ using NUnit.Framework;
 namespace Nethermind.Config.Test
 {
     [TestFixture]
+    [Parallelizable(ParallelScope.All)]
     public class ArgsConfigSourceTests
     {
         [Test]

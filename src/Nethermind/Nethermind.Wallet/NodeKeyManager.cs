@@ -19,6 +19,7 @@ using System.IO;
 using System.Security;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
+using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
 using Nethermind.KeyStore;
 using Nethermind.KeyStore.Config;
@@ -105,7 +106,8 @@ namespace Nethermind.Wallet
         {
             if(_config.BlockAuthorAccount != null)
             {
-                SecureString password = _passwordProvider.GetPassword();
+                Address blockAuthor = new Address(Bytes.FromHexString(_config.BlockAuthorAccount));
+                SecureString password = _passwordProvider.GetPassword(blockAuthor);
 
                 try
                 {

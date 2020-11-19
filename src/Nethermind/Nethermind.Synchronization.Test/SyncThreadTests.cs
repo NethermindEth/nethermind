@@ -284,7 +284,7 @@ namespace Nethermind.Synchronization.Test
             var step = new TxSignaturesRecoveryStep(ecdsa, txPool, specProvider, logManager);
             var processor = new BlockchainProcessor(tree, blockProcessor, step, logManager, BlockchainProcessor.Options.Default);
 
-            var nodeStatsManager = new NodeStatsManager(new StatsConfig(), logManager);
+            var nodeStatsManager = new NodeStatsManager(logManager);
             var syncPeerPool = new SyncPeerPool(tree, nodeStatsManager, 25, logManager);
 
             StateProvider devState = new StateProvider(stateDb, codeDb, logManager);

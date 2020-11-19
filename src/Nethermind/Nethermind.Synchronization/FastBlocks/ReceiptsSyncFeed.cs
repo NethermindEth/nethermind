@@ -33,6 +33,7 @@ namespace Nethermind.Synchronization.FastBlocks
 {
     public class ReceiptsSyncFeed : ActivatedSyncFeed<ReceiptsSyncBatch?>
     {
+        private const int MinReceiptBlock = 1;
         private int _requestSize = GethSyncLimits.MaxReceiptFetch;
 
         private readonly ILogger _logger;
@@ -45,8 +46,9 @@ namespace Nethermind.Synchronization.FastBlocks
 
         private SyncStatusList _syncStatusList;
         private readonly long _pivotNumber;
-
-        private bool ShouldFinish => !_syncConfig.DownloadReceiptsInFastSync || _receiptStorage.LowestInsertedReceiptBlockNumber == 1;
+        
+        private bool ShouldFinish => !_syncConfig.DownloadReceiptsInFastSync || AllReceiptsDownloaded;
+        private bool AllReceiptsDownloaded => _receiptStorage.LowestInsertedReceiptBlockNumber <= MinReceiptBlock;
 
         public ReceiptsSyncFeed(
             ISyncModeSelector syncModeSelector,
@@ -89,8 +91,8 @@ namespace Nethermind.Synchronization.FastBlocks
         private bool ShouldBuildANewBatch()
         {
             bool shouldDownloadReceipts = _syncConfig.DownloadReceiptsInFastSync;
-            bool allReceiptsDownloaded = _receiptStorage.LowestInsertedReceiptBlockNumber == 1;
-            bool isGenesisDownloaded = _syncStatusList.LowestInsertWithoutGaps == 1;
+            bool allReceiptsDownloaded = AllReceiptsDownloaded;
+            bool isGenesisDownloaded = _syncStatusList.LowestInsertWithoutGaps <= MinReceiptBlock;
             bool noBatchesLeft = !shouldDownloadReceipts
                                  || allReceiptsDownloaded
                                  || isGenesisDownloaded;

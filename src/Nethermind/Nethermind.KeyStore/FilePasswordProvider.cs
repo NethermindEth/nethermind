@@ -14,30 +14,39 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Security;
+using Nethermind.Core;
 
 namespace Nethermind.KeyStore
 {
-    public class FilePasswordProvider : BasePasswordProvider, IPasswordProvider
+    public class FilePasswordProvider : BasePasswordProvider
     {
-        public string FileName { get; set; }
-        public override SecureString GetPassword()
+        private readonly Func<Address, string> _addressToFileMapper;
+
+        public FilePasswordProvider(Func<Address, string> addressToFileMapper)
         {
+            _addressToFileMapper = addressToFileMapper ?? throw new ArgumentNullException(nameof(addressToFileMapper));
+        }
+        
+        public override SecureString GetPassword(Address address)
+        {
+            string fileName = _addressToFileMapper(address);
             SecureString password = null;
-            if (!string.IsNullOrWhiteSpace(FileName) && File.Exists(FileName))
+            if (!string.IsNullOrWhiteSpace(fileName) && File.Exists(fileName))
             {
-                password = GetPasswordFromFile(FileName);
+                password = GetPasswordFromFile(fileName);
             }
 
             if (password == null && AlternativeProvider != null)
-                password = AlternativeProvider.GetPassword();
+                password = AlternativeProvider.GetPassword(address);
 
             return password;
         }
 
-        public SecureString GetPasswordFromFile(string filePath)
+        public static SecureString GetPasswordFromFile(string filePath)
         {
             var whitespaces = new List<char>();
             var secureString = new SecureString();
@@ -72,9 +81,9 @@ namespace Nethermind.KeyStore
             return secureString;
         }
 
-        private void FillWhitespaceList(SecureString secureString, List<char> whitespaces)
+        private static void FillWhitespaceList(SecureString secureString, List<char> whitespaces)
         {
-            foreach (var whitespace in whitespaces)
+            foreach (char whitespace in whitespaces)
             {
                 secureString.AppendChar(whitespace);
             }

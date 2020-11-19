@@ -25,9 +25,9 @@ namespace Nethermind.Core.Crypto
     {
         public const int PrefixedLengthInBytes = 65;
         public const int LengthInBytes = 64;
-        private Address _address;
+        private Address? _address;
 
-        private byte[] _prefixedBytes;
+        private byte[]? _prefixedBytes;
 
         public PublicKey(string hexString)
             : this(Core.Extensions.Bytes.FromHexString(hexString))
@@ -85,7 +85,7 @@ namespace Nethermind.Core.Crypto
             }
         }
 
-        public bool Equals(PublicKey other)
+        public bool Equals(PublicKey? other)
         {
             if (other == null)
             {
@@ -107,7 +107,7 @@ namespace Nethermind.Core.Crypto
             return new Address(hash.Slice(12).ToArray());
         }
 
-        public override bool Equals(object obj)
+        public override bool Equals(object? obj)
         {
             return Equals(obj as PublicKey);
         }
@@ -129,11 +129,11 @@ namespace Nethermind.Core.Crypto
 
         public string ToShortString()
         {
-            var value = Bytes.ToHexString(false);
-            return $"{value.Substring(0, 6)}...{value.Substring(value.Length - 6)}";;
+            string value = Bytes.ToHexString(false);
+            return $"{value.Substring(0, 6)}...{value.Substring(value.Length - 6)}";
         }
         
-        public static bool operator ==(PublicKey a, PublicKey b)
+        public static bool operator ==(PublicKey? a, PublicKey? b)
         {
             if (ReferenceEquals(a, null))
             {
@@ -148,7 +148,7 @@ namespace Nethermind.Core.Crypto
             return Core.Extensions.Bytes.AreEqual(a.Bytes, b.Bytes);
         }
 
-        public static bool operator !=(PublicKey a, PublicKey b)
+        public static bool operator !=(PublicKey? a, PublicKey? b)
         {
             return !(a == b);
         }

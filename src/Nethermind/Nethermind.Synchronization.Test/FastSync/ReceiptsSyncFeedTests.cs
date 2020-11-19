@@ -18,6 +18,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
@@ -151,6 +152,24 @@ namespace Nethermind.Synchronization.Test.FastSync
                     _syncConfig,
                     _syncReport,
                     LimboLogs.Instance));
+        }
+        
+        [Test]
+        public async Task Should_finish_on_start_when_receipts_not_stored()
+        {
+            _feed = new ReceiptsSyncFeed(
+                _selector,
+                _specProvider,
+                _blockTree,
+                NullReceiptStorage.Instance,
+                _syncPeerPool,
+                _syncConfig,
+                _syncReport,
+                LimboLogs.Instance);
+
+            var request = await _feed.PrepareRequest();
+            request.Should().BeNull();
+            _feed.CurrentState.Should().Be(SyncFeedState.Finished);
         }
 
         [Test]

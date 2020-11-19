@@ -27,47 +27,47 @@ namespace Nethermind.Network.Config
         
         [ConfigItem(Description = "Use only if your node cannot resolve local IP automatically.", DefaultValue = "null")]
         string LocalIp { get; set; }
-        
-        [ConfigItem(Description = "Currently ignored.", DefaultValue = "null")]
-        string TrustedPeers { get; set; }
-        
+
         [ConfigItem(Description = "List of nodes for which we will keep the connection on. Static nodes are not counted to the max number of nodes limit.", DefaultValue = "null")]
         string StaticPeers { get; set; }
         
         [ConfigItem(Description = "If set to 'true' then no connections will be made to non-static peers.", DefaultValue = "false")]
         bool OnlyStaticPeers { get; set; }
         
-        [ConfigItem(Description = "If 'false' then discovered node list will be cleared on each restart.", DefaultValue = "true")]
+        [ConfigItem(HiddenFromDocs = true, Description = "If 'false' then discovered node list will be cleared on each restart.", DefaultValue = "true")]
         bool IsPeersPersistenceOn { get; set; }
 
-        [ConfigItem(Description = "Max number of connected peers.", DefaultValue = "50")]
+        [ConfigItem(Description = "[OBSOLETE](Use MaxActivePeers instead) Max number of connected peers.", DefaultValue = "50")]
         int ActivePeersMaxCount { get; set; }
 
-        [ConfigItem(DefaultValue = "5000")]
+        [ConfigItem(Description = "Same as ActivePeersMaxCount.", DefaultValue = "50")]
+        int MaxActivePeers => ActivePeersMaxCount;
+
+        [ConfigItem(HiddenFromDocs = true, DefaultValue = "5000")]
         int PeersPersistenceInterval { get; set; }
         
-        [ConfigItem(DefaultValue = "250")]
+        [ConfigItem(HiddenFromDocs = true, DefaultValue = "250")]
         int PeersUpdateInterval { get; set; }
 
-        [ConfigItem(DefaultValue = "10000")]
+        [ConfigItem(HiddenFromDocs = true, DefaultValue = "10000")]
         int P2PPingInterval { get; }
 
-        [ConfigItem(Description = "UDP port number for incoming discovery connections.", DefaultValue = "30303")]
+        [ConfigItem(Description = "UDP port number for incoming discovery connections. Keep same as TCP/IP port because using different values has never been tested.", DefaultValue = "30303")]
         int DiscoveryPort { get; set; }
         
         [ConfigItem(Description = "TPC/IP port number for incoming P2P connections.", DefaultValue = "30303")]
         int P2PPort { get; set; }
         
-        [ConfigItem(DefaultValue = "2000")]
+        [ConfigItem(HiddenFromDocs = true, DefaultValue = "2000")]
         int MaxPersistedPeerCount { get; }
         
-        [ConfigItem(DefaultValue = "2200")]
+        [ConfigItem(HiddenFromDocs = true, DefaultValue = "2200")]
         int PersistedPeerCountCleanupThreshold { get; set; }
         
-        [ConfigItem(DefaultValue = "10000")]
+        [ConfigItem(HiddenFromDocs = true, DefaultValue = "10000")]
         int MaxCandidatePeerCount { get; set; }
         
-        [ConfigItem(DefaultValue = "11000")]
+        [ConfigItem(HiddenFromDocs = true, DefaultValue = "11000")]
         int CandidatePeerCountCleanupThreshold { get; set; }
 
         [ConfigItem(DefaultValue = "false", Description = "Enabled very verbose diag network tracing files for DEV purposes (Nethermind specific)")]

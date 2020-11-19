@@ -17,6 +17,7 @@
 using System.Linq;
 using System.Net;
 using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -63,8 +64,6 @@ namespace Nethermind.Network.Test.Discovery
             IDiscoveryConfig discoveryConfig = new DiscoveryConfig();
             discoveryConfig.PongTimeout = 100;
 
-            IStatsConfig statsConfig = new StatsConfig();
-
             _messageSender = Substitute.For<IMessageSender>();
             var calculator = new NodeDistanceCalculator(discoveryConfig);
 
@@ -79,7 +78,7 @@ namespace Nethermind.Network.Test.Discovery
             _ipResolver = new IPResolver(_networkConfig, logManager);
 
             var evictionManager = new EvictionManager(_nodeTable, logManager);
-            var lifecycleFactory = new NodeLifecycleManagerFactory(_nodeTable, new DiscoveryMessageFactory(_timestamper), evictionManager, new NodeStatsManager(statsConfig, logManager), discoveryConfig, logManager);
+            var lifecycleFactory = new NodeLifecycleManagerFactory(_nodeTable, new DiscoveryMessageFactory(_timestamper), evictionManager, new NodeStatsManager(logManager), discoveryConfig, logManager);
 
             _nodes = new[] {new Node("192.168.1.18", 1), new Node("192.168.1.19", 2)};
 
@@ -89,12 +88,12 @@ namespace Nethermind.Network.Test.Discovery
         }
 
         [Test, Retry(3)]
-        public void OnPingMessageTest()
+        public async Task OnPingMessageTest()
         {
             //receiving ping
             var address = new IPEndPoint(IPAddress.Parse(_host), _port);
             _discoveryManager.OnIncomingMessage(new PingMessage {FarAddress = address, FarPublicKey = _publicKey, DestinationAddress = _nodeTable.MasterNode.Address, SourceAddress = address});
-            Thread.Sleep(500);
+            await Task.Delay(500);
 
             // expecting to send pong
             _messageSender.Received(1).SendMessage(Arg.Is<PongMessage>(m => m.FarAddress.Address.ToString() == _host && m.FarAddress.Port == _port));
@@ -157,7 +156,7 @@ namespace Nethermind.Network.Test.Discovery
         }
 
         [Test, Ignore("Add bonding"), Retry(3)]
-        public void OnNeighborsMessageTest()
+        public async Task OnNeighborsMessageTest()
         {
             //receiving pong to have a node in the system
             _discoveryManager.OnIncomingMessage(new PongMessage {FarAddress = new IPEndPoint(IPAddress.Parse(_host), _port), FarPublicKey = _publicKey});
@@ -179,7 +178,7 @@ namespace Nethermind.Network.Test.Discovery
             _discoveryManager.OnIncomingMessage(new NeighborsMessage {FarAddress = new IPEndPoint(IPAddress.Parse(_host), _port), FarPublicKey = _publicKey, Nodes = _nodes});
 
             //expecting to send 3 pings to both nodes
-            Thread.Sleep(600);
+            await Task.Delay(600);
             _messageSender.Received(3).SendMessage(Arg.Is<PingMessage>(m => m.FarAddress.Address.ToString() == _nodes[0].Host && m.FarAddress.Port == _nodes[0].Port));
             _messageSender.Received(3).SendMessage(Arg.Is<PingMessage>(m => m.FarAddress.Address.ToString() == _nodes[1].Host && m.FarAddress.Port == _nodes[1].Port));
         }

@@ -29,6 +29,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Evm.Test.Tracing
 {
+    [Parallelizable(ParallelScope.All)]
     public class CancellationTracerTests
     {
         [Test]

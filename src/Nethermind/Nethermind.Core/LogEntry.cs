@@ -53,7 +53,7 @@ namespace Nethermind.Core
             TopicsRlp = Span<byte>.Empty;
         }
 
-        public Keccak[] Topics { get; }
+        public Keccak[]? Topics { get; }
 
         /// <summary>
         /// Rlp encoded array of Keccak

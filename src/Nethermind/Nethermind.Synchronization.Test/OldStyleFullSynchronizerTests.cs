@@ -58,7 +58,7 @@ namespace Nethermind.Synchronization.Test
             SyncConfig quickConfig = new SyncConfig();
             quickConfig.FastSync = false;
 
-            var stats = new NodeStatsManager(new StatsConfig(), LimboLogs.Instance);
+            var stats = new NodeStatsManager(LimboLogs.Instance);
             _pool = new SyncPeerPool(_blockTree, stats, 25, LimboLogs.Instance);
             SyncConfig syncConfig = new SyncConfig();
             SyncProgressResolver resolver = new SyncProgressResolver(_blockTree, _receiptStorage, _stateDb, dbProvider.BeamStateDb, syncConfig, LimboLogs.Instance);

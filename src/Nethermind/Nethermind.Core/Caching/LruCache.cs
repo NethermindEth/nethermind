@@ -23,7 +23,7 @@ namespace Nethermind.Core.Caching
     /// <summary>
     /// https://stackoverflow.com/questions/754233/is-it-there-any-lru-implementation-of-idictionary
     /// </summary>
-    public class LruCache<TKey, TValue> : ICache<TKey, TValue>
+    public class LruCache<TKey, TValue> : ICache<TKey, TValue> where TKey : notnull
     {
         private readonly int _maxCapacity;
         private readonly Dictionary<TKey, LinkedListNode<LruCacheItem>> _cacheMap;
@@ -52,7 +52,7 @@ namespace Nethermind.Core.Caching
         [MethodImpl(MethodImplOptions.Synchronized)]
         public TValue Get(TKey key)
         {
-            if (_cacheMap.TryGetValue(key, out LinkedListNode<LruCacheItem> node))
+            if (_cacheMap.TryGetValue(key, out LinkedListNode<LruCacheItem>? node))
             {
                 TValue value = node.Value.Value;
                 _lruList.Remove(node);
@@ -60,13 +60,16 @@ namespace Nethermind.Core.Caching
                 return value;
             }
 
+#pragma warning disable 8603
+            // fixed C# 9
             return default;
+#pragma warning restore 8603
         }
 
         [MethodImpl(MethodImplOptions.Synchronized)]
         public bool TryGet(TKey key, out TValue value)
         {
-            if (_cacheMap.TryGetValue(key, out LinkedListNode<LruCacheItem> node))
+            if (_cacheMap.TryGetValue(key, out LinkedListNode<LruCacheItem>? node))
             {
                 value = node.Value.Value;
                 _lruList.Remove(node);
@@ -74,7 +77,10 @@ namespace Nethermind.Core.Caching
                 return true;
             }
 
+#pragma warning disable 8601
+            // fixed C# 9
             value = default;
+#pragma warning restore 8601
             return false;
         }
 
@@ -87,7 +93,7 @@ namespace Nethermind.Core.Caching
                 return;
             }
 
-            if (_cacheMap.TryGetValue(key, out LinkedListNode<LruCacheItem> node))
+            if (_cacheMap.TryGetValue(key, out LinkedListNode<LruCacheItem>? node))
             {
                 node.Value.Value = val;
                 _lruList.Remove(node);
@@ -112,7 +118,7 @@ namespace Nethermind.Core.Caching
         [MethodImpl(MethodImplOptions.Synchronized)]
         public void Delete(TKey key)
         {
-            if (_cacheMap.TryGetValue(key, out LinkedListNode<LruCacheItem> node))
+            if (_cacheMap.TryGetValue(key, out LinkedListNode<LruCacheItem>? node))
             {
                 _lruList.Remove(node);
                 _cacheMap.Remove(key);
@@ -124,7 +130,7 @@ namespace Nethermind.Core.Caching
 
         private void Replace(TKey key, TValue value)
         {
-            LinkedListNode<LruCacheItem> node = _lruList.First;
+            LinkedListNode<LruCacheItem>? node = _lruList.First;
             _lruList.RemoveFirst();
             _cacheMap.Remove(node.Value.Key);
             

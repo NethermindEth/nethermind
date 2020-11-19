@@ -92,7 +92,7 @@ namespace Nethermind.Network.Test
                 _localPeer = Substitute.For<IRlpxPeer>();
                 _localPeer.LocalPort.Returns(_localPort);
                 _localPeer.LocalNodeId.Returns(TestItem.PublicKeyA);
-                _nodeStatsManager = new NodeStatsManager(new StatsConfig(), LimboLogs.Instance);
+                _nodeStatsManager = new NodeStatsManager(LimboLogs.Instance);
                 _blockTree = Substitute.For<IBlockTree>();
                 _blockTree.ChainId.Returns(1);
                 _blockTree.Genesis.Returns(Build.A.Block.Genesis.TestObject.Header);

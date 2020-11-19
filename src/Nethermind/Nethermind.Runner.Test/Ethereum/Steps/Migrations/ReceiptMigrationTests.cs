@@ -86,7 +86,8 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
                 migration.Run();
             }
 
-            guard.WaitOne(TimeSpan.FromSeconds(5));
+            
+            guard.WaitOne(TimeSpan.FromSeconds(1));
             var txCount = ((migratedBlockNumber ?? chainLength) - 1 - 1) * 2;
             context.DbProvider.ReceiptsDb.Received(Quantity.Exactly(txCount)).Remove(Arg.Any<byte[]>());
             outMemoryReceiptStorage.Count.Should().Be(txCount);

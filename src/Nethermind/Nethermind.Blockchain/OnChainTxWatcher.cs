@@ -48,7 +48,7 @@ namespace Nethermind.Blockchain
             if (e.PreviousBlock != null)
             {
                 bool isEip155Enabled = _specProvider.GetSpec(e.PreviousBlock.Number).IsEip155Enabled;
-                for (int i = 0; i < e.PreviousBlock.Transactions.Length; i++)
+                for (int i = 0; i < e.PreviousBlock.Transactions?.Length; i++)
                 {
                     Transaction tx = e.PreviousBlock.Transactions[i];
                     _txPool.AddTransaction(tx, isEip155Enabled ? TxHandlingOptions.None : TxHandlingOptions.PreEip155Signing);
