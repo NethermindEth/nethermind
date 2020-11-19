@@ -26,6 +26,7 @@ using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Evm;
 using Nethermind.Int256;
+using Nethermind.Logging;
 using Nethermind.Runner.Ethereum.Api;
 using Nethermind.State;
 
@@ -115,7 +116,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             bool usesTxPriorityLocalData = auraConfigTxPriorityConfigFilePath != null;
             if (usesTxPriorityLocalData)
             {
-                api.TxPriorityContractLocalDataSource ??= new TxPriorityContract.LocalDataSource(auraConfigTxPriorityConfigFilePath, api.EthereumJsonSerializer, api.FileSystem, api.LogManager);
+                api.TxPriorityContractLocalDataSource ??= new TxPriorityContract.LocalDataSource(auraConfigTxPriorityConfigFilePath.GetApplicationResourcePath(), api.EthereumJsonSerializer, api.FileSystem, api.LogManager);
             }
 
             return (txPriorityContract, api.TxPriorityContractLocalDataSource);

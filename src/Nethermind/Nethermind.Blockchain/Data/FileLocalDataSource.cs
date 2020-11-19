@@ -79,7 +79,7 @@ namespace Nethermind.Blockchain.Data
 
         private async Task LoadFileAsync()
         {
-            if (File.Exists(_filePath))
+            if (_fileSystem.File.Exists(_filePath))
             {
                 var start = DateTime.Now;
                 try
@@ -106,13 +106,13 @@ namespace Nethermind.Blockchain.Data
             }
             else
             {
-                _data = GetDefaultValue();
+                LoadDefaults();
             }
         }
 
         private void LoadFile()
         {
-            if (File.Exists(_filePath))
+            if (_fileSystem.File.Exists(_filePath))
             {
                 var start = DateTime.Now;
                 try
@@ -138,8 +138,14 @@ namespace Nethermind.Blockchain.Data
             }
             else
             {
-                _data = GetDefaultValue();
+                LoadDefaults();
             }
+        }
+        
+        private void LoadDefaults()
+        {
+            if (_logger.IsWarn) _logger.Error($"Cannot load data from file: {_filePath}, file does not exist.");
+            _data = GetDefaultValue();
         }
 
         private static TimeSpan CalcRetryIntervals(int i) => TimeSpan.FromMilliseconds(Math.Pow(10, i - 1));
