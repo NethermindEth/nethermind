@@ -31,8 +31,8 @@ namespace Nethermind.Consensus.AuRa.Contracts
     {
         public class LocalDataSource : FileLocalDataSource<LocalData>
         {
-            public LocalDataSource(string filePath, IJsonSerializer jsonSerializer, IFileSystem fileSystem, ILogManager logManager) 
-                : base(filePath, jsonSerializer, fileSystem, logManager)
+            public LocalDataSource(string filePath, IJsonSerializer jsonSerializer, IFileSystem fileSystem, ILogManager logManager, int interval = 500) 
+                : base(filePath, jsonSerializer, fileSystem, logManager, interval)
             {
             }
 

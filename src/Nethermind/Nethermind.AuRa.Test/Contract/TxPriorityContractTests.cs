@@ -340,6 +340,8 @@ namespace Nethermind.AuRa.Test.Contract
             private TempPath TempFile { get; set; }
 
             private SemaphoreSlim Semaphore { get; set; }
+            
+            public int Interval => 10;
 
             protected override ILocalDataSource<IEnumerable<TxPriorityContract.Destination>> GetPrioritiesLocalDataStore() => 
                 LocalDataSource.GetPrioritiesLocalDataSource();
@@ -353,7 +355,7 @@ namespace Nethermind.AuRa.Test.Contract
             protected override Task<TestBlockchain> Build(ISpecProvider specProvider = null, UInt256? initialValues = null)
             {
                 TempFile = TempPath.GetTempFile();
-                LocalDataSource = new TxPriorityContract.LocalDataSource(TempFile.Path, new EthereumJsonSerializer(), new FileSystem(), LimboLogs.Instance);
+                LocalDataSource = new TxPriorityContract.LocalDataSource(TempFile.Path, new EthereumJsonSerializer(), new FileSystem(), LimboLogs.Instance, Interval);
 
                 Semaphore = new SemaphoreSlim(0);
                 LocalDataSource.Changed += (o, e) => Semaphore.Release();
@@ -415,6 +417,10 @@ namespace Nethermind.AuRa.Test.Contract
                     await Semaphore.WaitAsync(1000);
                     await Semaphore.WaitAsync(1000);
                     await Semaphore.WaitAsync(1000);
+                }
+                else
+                {
+                    await Task.Delay(Interval);
                 }
                 
                 if (!await Semaphore.WaitAsync(1000))
