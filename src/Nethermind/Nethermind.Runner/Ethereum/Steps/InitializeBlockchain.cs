@@ -249,9 +249,6 @@ namespace Nethermind.Runner.Ethereum.Steps
         // TODO: remove from here - move to consensus?
         protected virtual void InitSealEngine()
         {
-            _api.Sealer = NullSealEngine.Instance;
-            _api.SealValidator = NullSealEngine.Instance;
-            _api.RewardCalculatorSource = NoBlockRewards.Instance;
         }
     }
 }

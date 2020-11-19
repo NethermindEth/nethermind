@@ -139,12 +139,12 @@ namespace Nethermind.Runner.Ethereum.Api
         public IProtocolValidator? ProtocolValidator { get; set; }
         public IReceiptStorage? ReceiptStorage { get; set; }
         public IReceiptFinder? ReceiptFinder { get; set; }
-        public IRewardCalculatorSource? RewardCalculatorSource { get; set; }
+        public IRewardCalculatorSource RewardCalculatorSource { get; set; } = NoBlockRewards.Instance;
         public IRlpxPeer? RlpxPeer { get; set; }
         public IRpcModuleProvider RpcModuleProvider { get; set; } = NullModuleProvider.Instance;
-        public ISealer? Sealer { get; set; }
+        public ISealer Sealer { get; set; } = NullSealEngine.Instance;
         public SealEngineType SealEngineType { get; set; } = SealEngineType.None;
-        public ISealValidator? SealValidator { get; set; }
+        public ISealValidator SealValidator { get; set; } = NullSealEngine.Instance;
         public ISessionMonitor? SessionMonitor { get; set; }
         public ISpecProvider? SpecProvider { get; set; }
         public ISyncModeSelector? SyncModeSelector { get; set; }
