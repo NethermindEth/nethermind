@@ -81,15 +81,17 @@ namespace Nethermind.Core.Buffers
         {
             if (minimumLength <= _arrayPoolLimit)
             {
+                // small cases delegates to a small pool
                 return _smallPool.Rent(minimumLength);
             }
 
             if (minimumLength <= _largeBufferSize)
             {
+                // large enough handled by this pool
                 return RentLarge();
             }
 
-            // any other case delegated to the shared
+            // too big to pool, just allocate
             return new byte[minimumLength];
         }
 
