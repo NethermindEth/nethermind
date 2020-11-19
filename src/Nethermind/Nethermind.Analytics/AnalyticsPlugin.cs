@@ -51,6 +51,18 @@ namespace Nethermind.Analytics
                     (_analyticsConfig.PluginsEnabled ||
                      _analyticsConfig.StreamBlocks ||
                      _analyticsConfig.StreamTransactions);
+
+            if (!_isOn)
+            {
+                if (!initConfig.WebSocketsEnabled)
+                {
+                    _api.LogManager.GetClassLogger().Warn($"{nameof(AnalyticsPlugin)} disabled due to {nameof(initConfig.WebSocketsEnabled)} set to false");
+                }
+                else
+                {
+                    _api.LogManager.GetClassLogger().Warn($"{nameof(AnalyticsPlugin)} plugin disabled due to {nameof(AnalyticsConfig)} settings set to false");
+                }
+            }
             
             return Task.CompletedTask;
         }
