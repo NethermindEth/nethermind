@@ -30,17 +30,17 @@ namespace Nethermind.Core.Buffers
         public const int LargeBufferSize = 8 * 1024 * 1024;
         const int ArrayPoolLimit = 1024 * 1024;
 
-        private static byte[]? s_buffer1;
-        private static byte[]? s_buffer2;
+        private byte[]? s_buffer1;
+        private byte[]? s_buffer2;
 
-        static byte[] RentLarge()
+        byte[] RentLarge()
         {
             return Interlocked.Exchange(ref s_buffer1, null) ??
                    Interlocked.Exchange(ref s_buffer2, null) ??
                    new byte[LargeBufferSize];
         }
 
-        static void ReturnLarge(byte[] array, bool clearArray)
+        void ReturnLarge(byte[] array, bool clearArray)
         {
             if (clearArray)
             {
