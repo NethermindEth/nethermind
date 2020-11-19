@@ -27,11 +27,13 @@ namespace Nethermind.Api.Extensions
         string Description { get; }
         
         string Author { get; }
+
+        Task Init(IBasicApi api);
         
-        Task Init(INethermindApi api);
+        Task InitBlockchain(IBlockchainApi api);
         
-        Task InitNetworkProtocol();
+        Task InitNetworkProtocol(INetworkApi api);
         
-        Task InitRpcModules();
+        Task InitRpcModules(INethermindApi nethermindApi);
     }
 }

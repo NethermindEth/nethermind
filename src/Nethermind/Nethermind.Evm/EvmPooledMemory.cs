@@ -25,7 +25,7 @@ namespace Nethermind.Evm
     public class EvmPooledMemory : IEvmMemory
     {
         public const int WordSize = 32;
-        private static readonly ArrayPool<byte> Pool = ArrayPool<byte>.Shared;
+        private static readonly ArrayPool<byte> Pool = ArrayPool<byte>.Create(16000000, 16);
 
         private int _lastZeroedSize;
 

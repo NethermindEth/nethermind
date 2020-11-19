@@ -13,24 +13,34 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
+using System.Collections.Generic;
+using Nethermind.Abi;
+using Nethermind.Api.Extensions;
+using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
+using Nethermind.Crypto;
+using Nethermind.Logging;
+using Nethermind.Serialization.Json;
+using Nethermind.Specs.ChainSpecStyle;
 
-namespace Nethermind.Consensus.Clique
+namespace Nethermind.Api
 {
-    internal static class BlockHeaderExtensions
+    public interface IBasicApi
     {
-        public static bool IsInTurn(this BlockHeader header)
-        {
-            return header.Difficulty == Clique.DifficultyInTurn;
-        }
-    }
-    
-    internal static class BlockExtensions
-    {
-        public static bool IsInTurn(this Block block)
-        {
-            return block.Difficulty == Clique.DifficultyInTurn;
-        }
+        DisposableStack DisposeStack { get; }
+
+        IAbiEncoder AbiEncoder { get; }
+        ChainSpec? ChainSpec { get; set; }
+        IConfigProvider ConfigProvider { get; }
+        ICryptoRandom CryptoRandom { get; }
+        IEthereumEcdsa? EthereumEcdsa { get; set; }
+        IJsonSerializer EthereumJsonSerializer { get; }
+        ILogManager LogManager { get; }
+        IList<INethermindPlugin> Plugins { get; }
+        ISpecProvider? SpecProvider { get; set; }
+        ITimestamper Timestamper { get; }
     }
 }

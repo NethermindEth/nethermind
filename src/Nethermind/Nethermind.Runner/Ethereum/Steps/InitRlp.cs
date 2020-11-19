@@ -28,9 +28,7 @@ namespace Nethermind.Runner.Ethereum.Steps
     [RunnerStepDependencies(typeof(ApplyMemoryHint))]
     public class InitRlp : IStep
     {
-        public InitRlp(INethermindApi _)
-        {
-        }
+        public InitRlp(INethermindApi _) { }
 
         [Todo(Improve.Refactor, "Automatically scan all the references solutions?")]
         public virtual Task Execute(CancellationToken _)

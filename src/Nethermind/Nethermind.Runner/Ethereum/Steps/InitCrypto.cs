@@ -13,24 +13,31 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using Nethermind.Core;
+using System.Threading;
+using System.Threading.Tasks;
+using Nethermind.Api;
+using Nethermind.Core.Attributes;
+using Nethermind.Crypto;
 
-namespace Nethermind.Consensus.Clique
+namespace Nethermind.Runner.Ethereum.Steps
 {
-    internal static class BlockHeaderExtensions
+    [RunnerStepDependencies(typeof(InitRlp))]
+    public class InitCrypto : IStep
     {
-        public static bool IsInTurn(this BlockHeader header)
+        private readonly INethermindApi _api;
+
+        public InitCrypto(INethermindApi api)
         {
-            return header.Difficulty == Clique.DifficultyInTurn;
+            _api = api;
         }
-    }
-    
-    internal static class BlockExtensions
-    {
-        public static bool IsInTurn(this Block block)
+
+        [Todo(Improve.Refactor, "Automatically scan all the references solutions?")]
+        public virtual Task Execute(CancellationToken _)
         {
-            return block.Difficulty == Clique.DifficultyInTurn;
+            _api.EthereumEcdsa = new EthereumEcdsa(_api.SpecProvider!.ChainId, _api.LogManager);
+            return Task.CompletedTask;
         }
     }
 }

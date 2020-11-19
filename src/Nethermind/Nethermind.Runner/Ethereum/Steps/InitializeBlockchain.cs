@@ -96,8 +96,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.DbProvider.StateDb,
                 _api.DbProvider.CodeDb,
                 _api.LogManager);
-
-            _api.EthereumEcdsa = new EthereumEcdsa(_api.SpecProvider.ChainId, _api.LogManager);
+            
             PersistentTxStorage txStorage = new PersistentTxStorage(_api.DbProvider.PendingTxsDb);
 
             IBloomConfig bloomConfig = _api.Config<IBloomConfig>();
@@ -222,6 +221,11 @@ namespace Nethermind.Runner.Ethereum.Steps
             // TODO: possibly hide it (but need to confirm that NDM does not really need it)
             _api.FilterStore = new FilterStore();
             _api.FilterManager = new FilterManager(_api.FilterStore, _api.MainBlockProcessor, _api.TxPool, _api.LogManager);
+
+            foreach (var plugin in _api.Plugins)
+            {
+                plugin.InitBlockchain(_api);
+            }
             
             return Task.CompletedTask;
         }

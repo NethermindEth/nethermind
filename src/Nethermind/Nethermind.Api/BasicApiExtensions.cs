@@ -13,24 +13,17 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using Nethermind.Core;
+using Nethermind.Config;
 
-namespace Nethermind.Consensus.Clique
+namespace Nethermind.Api
 {
-    internal static class BlockHeaderExtensions
+    public static class BasicApiExtensions
     {
-        public static bool IsInTurn(this BlockHeader header)
+        public static T Config<T>(this IBasicApi api) where T : IConfig
         {
-            return header.Difficulty == Clique.DifficultyInTurn;
-        }
-    }
-    
-    internal static class BlockExtensions
-    {
-        public static bool IsInTurn(this Block block)
-        {
-            return block.Difficulty == Clique.DifficultyInTurn;
+            return api.ConfigProvider.GetConfig<T>();
         }
     }
 }

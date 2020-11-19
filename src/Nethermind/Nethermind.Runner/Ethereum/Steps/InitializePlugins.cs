@@ -45,7 +45,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 {
                     if(logger.IsInfo) logger.Info($"  {plugin.Name} by {plugin.Author}");
                     Stopwatch stopwatch = Stopwatch.StartNew();
-                    await plugin.Init(_api);
+                    await plugin.InitBlockchain(_api);
                     stopwatch.Stop();
                     if (logger.IsInfo)
                         logger.Info($"  {plugin.Name} by {plugin.Author} initialized in {stopwatch.ElapsedMilliseconds}ms");

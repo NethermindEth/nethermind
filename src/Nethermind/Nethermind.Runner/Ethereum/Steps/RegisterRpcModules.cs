@@ -199,7 +199,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             
             foreach (INethermindPlugin plugin in _api.Plugins)
             {
-                await plugin.InitRpcModules();
+                await plugin.InitRpcModules(_api);
             }
             
             if (logger.IsDebug) logger.Debug($"RPC modules  : {string.Join(", ", _api.RpcModuleProvider.Enabled.OrderBy(x => x))}");
