@@ -42,7 +42,7 @@ namespace Nethermind.Blockchain.Data
             _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
             _filePath = filePath.GetApplicationResourcePath();
             _logger = logManager?.GetClassLogger<FileLocalDataSource<T>>() ?? throw new ArgumentNullException(nameof(logManager));
-            SetupWatcher(filePath);
+            SetupWatcher(_filePath);
             LoadFile();
         }
 
@@ -70,7 +70,7 @@ namespace Nethermind.Blockchain.Data
                     EnableRaisingEvents = true,
                     NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName
                 };
-                _handler = async (o, e) => await OnFileChanged(o, e);
+                _handler = async (o, e) => await OnFileChanged();
                 _fileSystemWatcher.Changed += _handler;
             }
             else
