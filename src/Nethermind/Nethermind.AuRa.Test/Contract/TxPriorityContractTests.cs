@@ -128,7 +128,6 @@ namespace Nethermind.AuRa.Test.Contract
         }
         
         [Test]
-        [Retry(5)] // still sometimes the order is wrong than expected by test and local storage is loaded after test assert
         public async Task whitelist_should_return_correctly_with_local_storage([Values(true, false)] bool fileFirst)
         {
             using var chain = fileFirst 
@@ -153,6 +152,8 @@ namespace Nethermind.AuRa.Test.Contract
                     Assert.Fail("Local file rule storage wasn't loaded.");
                 }
             }
+
+            await Task.Delay(10);
             
             object[] expected = {TestItem.AddressD, TestItem.AddressB, TestItem.AddressA, TestItem.AddressC};
 
