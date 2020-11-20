@@ -149,8 +149,7 @@ namespace Nethermind.Synchronization.ParallelSync
             CheckAddFlag(best.IsInFastSync, SyncMode.FastSync, ref newModes);
             CheckAddFlag(best.IsInFullSync, SyncMode.Full, ref newModes);
             CheckAddFlag(best.IsInStateSync, SyncMode.StateNodes, ref newModes);
-
-
+            
             if (IsTheModeSwitchWorthMentioning(newModes))
             {
                 string stateString = BuildStateString(best);
@@ -453,7 +452,7 @@ namespace Nethermind.Synchronization.ParallelSync
 
         public void Dispose()
         {
-            _timer?.Dispose();
+            _timer.Dispose();
         }
 
         private Snapshot TakeSnapshot(UInt256 peerDifficulty, long peerBlock)

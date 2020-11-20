@@ -76,7 +76,7 @@ namespace Nethermind.Synchronization.FastBlocks
             }
 
             _pivotNumber = _syncConfig.PivotNumberParsed;
-            _barrier = _syncConfig.AncientReceiptsBarrier;
+            _barrier = _syncConfig.AncientReceiptsBarrierCalc;
             
             if(_logger.IsInfo) _logger.Info($"Using pivot {_pivotNumber} and barrier {_barrier} in bodies sync");
             
