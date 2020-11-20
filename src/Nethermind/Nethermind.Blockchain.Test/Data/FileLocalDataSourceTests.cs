@@ -124,12 +124,12 @@ namespace Nethermind.Blockchain.Test.Data
                         await writer.WriteAsync(GenerateStringJson("A", "B", "C", "D"));
                     }
 
-                    await Task.Delay(5 * interval);
+                    await Task.Delay(10 * interval);
                     
                     fileLocalDataSource.Data.Should().BeEquivalentTo("A", "B", "C");
                 }
 
-                await Task.Delay(5 * interval);
+                await Task.Delay(10 * interval);
 
                 fileLocalDataSource.Data.Should().BeEquivalentTo("A", "B", "C", "D");
             }
