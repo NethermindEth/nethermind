@@ -63,12 +63,12 @@ namespace Nethermind.Blockchain.Test.Data
                         handle.Release();
                     };
                     await File.WriteAllTextAsync(tempFile.Path, GenerateStringJson("C", "B"));
-                    await handle.WaitAsync(TimeSpan.FromMilliseconds(5 * interval));
+                    await handle.WaitAsync(TimeSpan.FromMilliseconds(10 * interval));
                     changedRaised.Should().Be(1);
                     fileLocalDataSource.Data.Should().BeEquivalentTo("C", "B");
                     
                     await File.WriteAllTextAsync(tempFile.Path, GenerateStringJson("E", "F"));
-                    await handle.WaitAsync(TimeSpan.FromMilliseconds(5 * interval));
+                    await handle.WaitAsync(TimeSpan.FromMilliseconds(10 * interval));
                     changedRaised.Should().Be(2);
                     fileLocalDataSource.Data.Should().BeEquivalentTo("E", "F");
                 }
@@ -90,7 +90,7 @@ namespace Nethermind.Blockchain.Test.Data
                     handle.Release();
                 };
                 await File.WriteAllTextAsync(tempFile.Path, GenerateStringJson("A", "B"));
-                await handle.WaitAsync(TimeSpan.FromMilliseconds(5 * interval));
+                await handle.WaitAsync(TimeSpan.FromMilliseconds(10 * interval));
                 fileLocalDataSource.Data.Should().BeEquivalentTo("A", "B");
                 changedRaised.Should().BeTrue();
             }
@@ -124,12 +124,12 @@ namespace Nethermind.Blockchain.Test.Data
                         await writer.WriteAsync(GenerateStringJson("A", "B", "C", "D"));
                     }
 
-                    await Task.Delay(2 * interval);
+                    await Task.Delay(5 * interval);
                     
                     fileLocalDataSource.Data.Should().BeEquivalentTo("A", "B", "C");
                 }
 
-                await Task.Delay(2 * interval);
+                await Task.Delay(5 * interval);
 
                 fileLocalDataSource.Data.Should().BeEquivalentTo("A", "B", "C", "D");
             }
@@ -154,6 +154,7 @@ namespace Nethermind.Blockchain.Test.Data
                     await File.WriteAllTextAsync(tempFile.Path, GenerateStringJson("C", "B"));
                     await handle.WaitAsync(TimeSpan.FromMilliseconds(10 * interval));
                     changedRaised.Should().Be(1);
+                    
                     fileLocalDataSource.Data.Should().BeEquivalentTo("C", "B");
                     
                     File.Delete(tempFile.Path);
