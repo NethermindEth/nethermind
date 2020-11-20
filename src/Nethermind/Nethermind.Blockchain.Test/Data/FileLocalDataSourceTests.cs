@@ -152,12 +152,12 @@ namespace Nethermind.Blockchain.Test.Data
                         handle.Release();
                     };
                     await File.WriteAllTextAsync(tempFile.Path, GenerateStringJson("C", "B"));
-                    await handle.WaitAsync(TimeSpan.FromMilliseconds(5 * interval));
+                    await handle.WaitAsync(TimeSpan.FromMilliseconds(10 * interval));
                     changedRaised.Should().Be(1);
                     fileLocalDataSource.Data.Should().BeEquivalentTo("C", "B");
                     
                     File.Delete(tempFile.Path);
-                    await handle.WaitAsync(TimeSpan.FromMilliseconds(5 * interval));
+                    await handle.WaitAsync(TimeSpan.FromMilliseconds(10 * interval));
                     changedRaised.Should().Be(2);
                     fileLocalDataSource.Data.Should().BeNull();
                 }
