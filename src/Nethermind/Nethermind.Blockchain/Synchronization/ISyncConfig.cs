@@ -83,16 +83,16 @@ namespace Nethermind.Blockchain.Synchronization
         [ConfigItem(Description = "When beam syncing should verify each state item loaded from DB (dev use).", DefaultValue = "false")]
         public bool BeamSyncVerifiedMode { get; set; }
         
-        [ConfigItem(Description = "[EXPERIMENTAL] Defines the earliest body downloaded in fast sync when DownloadBodiesInFastSync is enabled. Actual values used will be Math.Min(Pivot, X)]", DefaultValue = "0")]
+        [ConfigItem(Description = "[EXPERIMENTAL] Defines the earliest body downloaded in fast sync when DownloadBodiesInFastSync is enabled. Actual values used will be Math.Max(1, Math.Min(PivotNumber, AncientBodiesBarrier))", DefaultValue = "0")]
         public long AncientBodiesBarrier { get; set; }
 
-        [ConfigItem(HiddenFromDocs = true)]
-        public long AncientBodiesBarrierCalc => Math.Min(PivotNumberParsed, Math.Max(1, AncientBodiesBarrier));
+        [ConfigItem(HiddenFromDocs = true, DefaultValue = "1")]
+        public long AncientBodiesBarrierCalc => Math.Max(1, Math.Min(PivotNumberParsed, AncientBodiesBarrier));
         
-        [ConfigItem(Description = "[EXPERIMENTAL] Defines the earliest receipts downloaded in fast sync when DownloadReceiptsInFastSync is enabled. Actual value used will be Math.Min(Pivot, Math.Max(AncientBodiesBarrier, X)]", DefaultValue = "0")]
+        [ConfigItem(Description = "[EXPERIMENTAL] Defines the earliest receipts downloaded in fast sync when DownloadReceiptsInFastSync is enabled. Actual value used will be Math.Max(1, Math.Min(PivotNumber, Math.Max(AncientBodiesBarrier, AncientReceiptsBarrier)))", DefaultValue = "0")]
         public long AncientReceiptsBarrier { get; set; }
 
-        [ConfigItem(HiddenFromDocs = true)]
-        public long AncientReceiptsBarrierCalc => Math.Min(PivotNumberParsed, Math.Max(AncientBodiesBarrier, Math.Max(1, AncientReceiptsBarrier)));
+        [ConfigItem(HiddenFromDocs = true, DefaultValue = "1")]
+        public long AncientReceiptsBarrierCalc => Math.Max(1, Math.Min(PivotNumberParsed, Math.Max(AncientBodiesBarrier, AncientReceiptsBarrier)));
     }
 }
