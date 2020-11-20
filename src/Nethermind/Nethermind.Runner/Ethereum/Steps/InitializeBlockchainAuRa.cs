@@ -53,8 +53,6 @@ namespace Nethermind.Runner.Ethereum.Steps
         {
             _api = api;
             _auraConfig = NethermindApi.Config<IAuraConfig>();
-            _processingReadOnlyTransactionProcessorSource = new ReadOnlyTxProcessorSource(
-                _api.DbProvider, _api.BlockTree, _api.SpecProvider, _api.LogManager);
         }
 
         protected override BlockProcessor CreateBlockProcessor()
