@@ -392,7 +392,7 @@ namespace Nethermind.Runner.Test
         }
 
         [TestCase("*")]
-        public void Tracer_tmeout_default_is_correct(string configWildcard)
+        public void Tracer_timeout_default_is_correct(string configWildcard)
         {
             Test<IJsonRpcConfig, int>(configWildcard, c => c.Timeout, 20000);
         }
@@ -433,6 +433,13 @@ namespace Nethermind.Runner.Test
             Test<IInitConfig, bool>(configWildcard, c => c.ReceiptsMigration, false);
             Test<IBloomConfig, bool>(configWildcard, c => c.Migration, false);
             Test<IBloomConfig, bool>(configWildcard, c => c.MigrationStatistics, false);
+        }
+        
+        [TestCase("*")]
+        public void Barriers_are_zero_by_default(string configWildcard)
+        {
+            Test<ISyncConfig, long>(configWildcard, c => c.AncientBodiesBarrier, 0L);
+            Test<ISyncConfig, long>(configWildcard, c => c.AncientReceiptsBarrier, 0L);
         }
 
         [TestCase("^spaceneth", "nethermind_db")]
