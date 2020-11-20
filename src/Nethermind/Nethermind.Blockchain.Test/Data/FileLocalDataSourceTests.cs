@@ -110,6 +110,7 @@ namespace Nethermind.Blockchain.Test.Data
         }
         
         [Test]
+        [Explicit]
         public async Task retries_loading_file()
         {
             using (var tempFile = TempPath.GetTempFile())
@@ -136,6 +137,7 @@ namespace Nethermind.Blockchain.Test.Data
         }
         
         [Test]
+        [Explicit]
         public async Task loads_default_when_deleted_file()
         {
             using (var tempFile = TempPath.GetTempFile())
