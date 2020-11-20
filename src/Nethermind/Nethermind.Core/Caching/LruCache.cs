@@ -49,6 +49,7 @@ namespace Nethermind.Core.Caching
         {
             _cacheMap?.Clear();
             _list = new Node[MinimumListCapacity];
+            _head = Node.Null;
         }
 
         public LruCache(int maxCapacity, int startCapacity, string name)
@@ -175,15 +176,15 @@ namespace Nethermind.Core.Caching
 
         private void Replace(TKey key, TValue value)
         {
-            int node = _head;
-            NodeRemove(node);
-            _cacheMap.Remove(_list[node].Key);
+            int i = _head;
+            ref Node node = ref NodeRemove(i);
+            _cacheMap.Remove(node.Key);
 
-            _list[node].Value = value;
-            _list[node].Key = key;
-            NodeAddLast(node);
+            node.Value = value;
+            node.Key = key;
+            NodeAddLast(i);
 
-            _cacheMap.Add(key, node);
+            _cacheMap.Add(key, i);
         }
 
         private int _head = Node.Null;

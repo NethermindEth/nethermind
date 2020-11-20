@@ -20,6 +20,7 @@ using Nethermind.Core.Caching;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using NUnit.Framework;
+using Org.BouncyCastle.Bcpg.OpenPgp;
 
 namespace Nethermind.Core.Test.Caching
 {
@@ -115,6 +116,32 @@ namespace Nethermind.Core.Test.Caching
             cache.Set(_addresses[0], _accounts[0]);
             cache.Delete(_addresses[0]);
             cache.Get(_addresses[0]).Should().Be(null);
+        }
+
+        [Test]
+        public void Clear_should_free_all_capacity()
+        {
+            ICache<Address, Account> cache = Create();
+            for (int i = 0; i < Capacity; i++)
+            {
+                cache.Set(_addresses[i], _accounts[i]);
+            }
+
+            cache.Clear();
+
+            static int MapForRefill (int index) => (index + 1) % Capacity;
+
+            // fill again
+            for (int i = 0; i < Capacity; i++)
+            {
+                cache.Set(_addresses[i], _accounts[MapForRefill(i)]);
+            }
+
+            // validate
+            for (int i = 0; i < Capacity; i++)
+            {
+                cache.Get(_addresses[i]).Should().Be(_accounts[MapForRefill(i)]);
+            }
         }
     }
 }
