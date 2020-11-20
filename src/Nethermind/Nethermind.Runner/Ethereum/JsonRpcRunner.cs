@@ -30,6 +30,7 @@ using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Runner.Logging;
 using Nethermind.WebSockets;
+using Nethermind.Services.Plugin;
 using ILogger = Nethermind.Logging.ILogger;
 using LogLevel = Microsoft.Extensions.Logging.LogLevel;
 
@@ -45,12 +46,14 @@ namespace Nethermind.Runner.Ethereum
         private readonly IJsonRpcConfig _jsonRpcConfig;
         private IWebHost? _webHost;
         private IInitConfig _initConfig;
+        private INethermindApi _api;
 
         public JsonRpcRunner(
             IJsonRpcProcessor jsonRpcProcessor,
             IWebSocketsManager webSocketsManager,
             IConfigProvider configurationProvider,
-            ILogManager logManager)
+            ILogManager logManager,
+            INethermindApi api)
         {
             _jsonRpcConfig = configurationProvider.GetConfig<IJsonRpcConfig>();
             _initConfig = configurationProvider.GetConfig<IInitConfig>();
@@ -59,6 +62,7 @@ namespace Nethermind.Runner.Ethereum
             _jsonRpcProcessor = jsonRpcProcessor;
             _webSocketsManager = webSocketsManager;
             _logger = logManager.GetClassLogger();
+            _api = api;
         }
 
         public Task Start(CancellationToken cancellationToken)
@@ -102,6 +106,11 @@ namespace Nethermind.Runner.Ethereum
                     s.AddSingleton(_configurationProvider);
                     s.AddSingleton(_jsonRpcProcessor);
                     s.AddSingleton(_webSocketsManager);
+                    foreach(var plugin in _api.Plugins.OfType<INethermindServicesPlugin>()) 
+                    {
+                        plugin.AddServices(s);
+                    };
+
                 })
                 .UseStartup<Startup>()
                 .UseUrls(urls)
