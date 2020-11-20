@@ -47,12 +47,13 @@ namespace Nethermind.Blockchain.Test.Data
         }
         
         [Test]
+        [Retry(3)]
         public async Task correctly_updates_from_existing_file()
         {
             using (var tempFile = TempPath.GetTempFile())
             {
                 await File.WriteAllTextAsync(tempFile.Path, GenerateStringJson("A"));
-                int interval = 10;
+                int interval = 30;
                 using (var fileLocalDataSource = new FileLocalDataSource<string[]>(tempFile.Path, new EthereumJsonSerializer(), new FileSystem(), LimboLogs.Instance, interval))
                 {
                     int changedRaised = 0;
@@ -76,9 +77,10 @@ namespace Nethermind.Blockchain.Test.Data
         }
 
         [Test]
+        [Retry(3)]
         public async Task correctly_updates_from_new_file()
         {
-            int interval = 10;
+            int interval = 30;
             using (var tempFile = TempPath.GetTempFile())
             using (var fileLocalDataSource = new FileLocalDataSource<string[]>(tempFile.Path, new EthereumJsonSerializer(), new FileSystem(), LimboLogs.Instance, 10))
             {
@@ -110,13 +112,13 @@ namespace Nethermind.Blockchain.Test.Data
         }
         
         [Test]
-        [Explicit]
+        [Retry(3)]
         public async Task retries_loading_file()
         {
             using (var tempFile = TempPath.GetTempFile())
             {
                 await File.WriteAllTextAsync(tempFile.Path, GenerateStringJson("A", "B", "C"));
-                int interval = 10;
+                int interval = 30;
                 using var fileLocalDataSource = new FileLocalDataSource<string[]>(tempFile.Path, new EthereumJsonSerializer(), new FileSystem(), LimboLogs.Instance, interval);
                 using (var file = File.Open(tempFile.Path, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None))
                 {
@@ -137,13 +139,13 @@ namespace Nethermind.Blockchain.Test.Data
         }
         
         [Test]
-        [Explicit]
+        [Retry(3)]
         public async Task loads_default_when_deleted_file()
         {
             using (var tempFile = TempPath.GetTempFile())
             {
                 await File.WriteAllTextAsync(tempFile.Path, GenerateStringJson("A"));
-                int interval = 10;
+                int interval = 30;
                 using (var fileLocalDataSource = new FileLocalDataSource<string[]>(tempFile.Path, new EthereumJsonSerializer(), new FileSystem(), LimboLogs.Instance, interval))
                 {
                     int changedRaised = 0;
