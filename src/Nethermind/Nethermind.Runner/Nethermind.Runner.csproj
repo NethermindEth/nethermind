@@ -26,21 +26,13 @@
     <ProjectReference Include="..\Nethermind.Api\Nethermind.Api.csproj" />
     <ProjectReference Include="..\Nethermind.Consensus.AuRa\Nethermind.Consensus.AuRa.csproj" />
     <ProjectReference Include="..\Nethermind.Consensus.Clique\Nethermind.Consensus.Clique.csproj" />
-    <ProjectReference Include="..\Nethermind.Core\Nethermind.Core.csproj">
-      <Project>{5751C57B-9F2D-45DE-BCC2-42645B85E39E}</Project>
-      <Name>Nethermind.Core</Name>
-    </ProjectReference>
+    <ProjectReference Include="..\Nethermind.Consensus.Ethash\Nethermind.Consensus.Ethash.csproj" />
+    <ProjectReference Include="..\Nethermind.Core\Nethermind.Core.csproj" />
     <ProjectReference Include="..\Nethermind.Db.Rocks\Nethermind.Db.Rocks.csproj" />
-    <ProjectReference Include="..\Nethermind.Db\Nethermind.Db.csproj">
-      <Project>{0B52D472-A7B0-4AB6-AFE3-A644B90F53FC}</Project>
-      <Name>Nethermind.Db</Name>
-    </ProjectReference>
+    <ProjectReference Include="..\Nethermind.Db\Nethermind.Db.csproj" />
     <ProjectReference Include="..\Nethermind.EthStats\Nethermind.EthStats.csproj" />
     <ProjectReference Include="..\Nethermind.Grpc\Nethermind.Grpc.csproj" />
-    <ProjectReference Include="..\Nethermind.JsonRpc\Nethermind.JsonRpc.csproj">
-      <Project>{53D62515-72D1-4DEA-BC60-71BCC9C928E3}</Project>
-      <Name>Nethermind.JsonRpc</Name>
-    </ProjectReference>
+    <ProjectReference Include="..\Nethermind.JsonRpc\Nethermind.JsonRpc.csproj" />
     <ProjectReference Include="..\Nethermind.Logging.NLog\Nethermind.Logging.NLog.csproj" />
     <ProjectReference Include="..\Nethermind.Monitoring\Nethermind.Monitoring.csproj" />
     <ProjectReference Include="..\Nethermind.Network\Nethermind.Network.csproj" />

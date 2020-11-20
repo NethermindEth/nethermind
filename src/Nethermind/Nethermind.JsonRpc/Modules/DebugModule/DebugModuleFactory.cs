@@ -42,7 +42,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
         private readonly IConfigProvider _configProvider;
         private readonly ISpecProvider _specProvider;
         private readonly ILogManager _logManager;
-        private readonly IBlockDataRecoveryStep _recoveryStep;
+        private readonly IBlockPreprocessorStep _recoveryStep;
         private ILogger _logger;
 
         public DebugModuleFactory(
@@ -50,7 +50,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
             IBlockTree blockTree,
             IJsonRpcConfig jsonRpcConfig,
             IBlockValidator blockValidator,
-            IBlockDataRecoveryStep recoveryStep,
+            IBlockPreprocessorStep recoveryStep,
             IRewardCalculatorSource rewardCalculator,
             IReceiptStorage receiptStorage,
             IReceiptsMigration receiptsMigration,

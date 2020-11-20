@@ -71,7 +71,6 @@ namespace Nethermind.DataMarketplace.Infrastructure
     public class NdmApi : INdmApi
     {
         private INethermindApi _nethermindApi;
-        private List<INethermindPlugin> _plugins;
 
         public NdmApi(INethermindApi nethermindApi)
         {
@@ -121,11 +120,7 @@ namespace Nethermind.DataMarketplace.Infrastructure
             set => _nethermindApi.BlockchainProcessor = value;
         }
 
-        public IBlockDataRecoveryStep? RecoveryStep
-        {
-            get => _nethermindApi.RecoveryStep;
-            set => _nethermindApi.RecoveryStep = value;
-        }
+        public CompositeBlockPreprocessorStep BlockPreprocessor => _nethermindApi.BlockPreprocessor;
 
         public IBlockProcessingQueue? BlockProcessingQueue
         {
@@ -336,6 +331,9 @@ namespace Nethermind.DataMarketplace.Infrastructure
             set => _nethermindApi.EngineSignerStore = value;
         }
 
+        public SealEngineType SealEngineType      {
+            get => _nethermindApi.SealEngineType;
+        }
         public ISpecProvider? SpecProvider
         {
             get => _nethermindApi.SpecProvider;

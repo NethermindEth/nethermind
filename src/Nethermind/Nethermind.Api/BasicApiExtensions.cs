@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -13,18 +13,17 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
 using Nethermind.Config;
-using Nethermind.Logging;
-using Nethermind.Serialization.Json;
 
-namespace Nethermind.Runner.Ethereum.Api
+namespace Nethermind.Api
 {
-    public class EthashNethermindApi : NethermindApi
+    public static class BasicApiExtensions
     {
-        public EthashNethermindApi(IConfigProvider configProvider, IJsonSerializer jsonSerializer, ILogManager logManager)
-            : base(configProvider, jsonSerializer, logManager)
+        public static T Config<T>(this IBasicApi api) where T : IConfig
         {
+            return api.ConfigProvider.GetConfig<T>();
         }
     }
 }

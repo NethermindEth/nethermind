@@ -38,7 +38,7 @@ namespace Nethermind.Blockchain.Processing
         public const int MaxProcessingQueueSize = 2000; // adjust based on tx or gas
 
         private readonly IBlockProcessor _blockProcessor;
-        private readonly IBlockDataRecoveryStep _recoveryStep;
+        private readonly IBlockPreprocessorStep _recoveryStep;
         private readonly Options _options;
         private readonly IBlockTree _blockTree;
         private readonly ILogger _logger;
@@ -64,7 +64,7 @@ namespace Nethermind.Blockchain.Processing
         public BlockchainProcessor(
             IBlockTree blockTree,
             IBlockProcessor blockProcessor,
-            IBlockDataRecoveryStep recoveryStep,
+            IBlockPreprocessorStep recoveryStep,
             ILogManager logManager,
             Options options)
         {

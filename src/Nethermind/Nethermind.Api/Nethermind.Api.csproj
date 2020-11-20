@@ -3,6 +3,7 @@
     <PropertyGroup>
         <TargetFramework>netcoreapp3.1</TargetFramework>
         <AssemblyOriginatorKeyFile>strong.snk</AssemblyOriginatorKeyFile>
+        <Nullable>enable</Nullable>
     </PropertyGroup>
 
     <ItemGroup>

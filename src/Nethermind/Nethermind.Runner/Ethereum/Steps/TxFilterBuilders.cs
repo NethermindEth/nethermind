@@ -15,7 +15,6 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using Nethermind.Api;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa.Config;
@@ -34,7 +33,8 @@ namespace Nethermind.Runner.Ethereum.Steps
 {
     public static class TxFilterBuilders
     {
-        public static ITxFilter CreateStandardTxFilter(IMiningConfig miningConfig) => new MinGasPriceTxFilter(miningConfig.MinGasPrice);
+        public static ITxFilter CreateStandardTxFilter(IMiningConfig miningConfig)
+            => new MinGasPriceTxFilter(miningConfig.MinGasPrice);
         
         private static ITxFilter CreateBaseAuRaTxFilter(
             IMiningConfig miningConfig,

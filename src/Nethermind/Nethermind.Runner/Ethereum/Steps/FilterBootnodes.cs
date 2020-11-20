@@ -19,14 +19,13 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Config;
-using Nethermind.Runner.Ethereum.Api;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
     [RunnerStepDependencies(typeof(SetupKeyStore))]
     public class FilterBootnodes : IStep
     {
-        private readonly INethermindApi _api;
+        private readonly IApiWithStores _api;
 
         public FilterBootnodes(INethermindApi api)
         {

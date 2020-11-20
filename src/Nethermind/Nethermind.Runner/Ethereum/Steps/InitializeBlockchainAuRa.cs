@@ -17,7 +17,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Data;
@@ -34,12 +33,10 @@ using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Runner.Ethereum.Api;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Storages;
-using Nethermind.Wallet;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
@@ -56,6 +53,8 @@ namespace Nethermind.Runner.Ethereum.Steps
         {
             _api = api;
             _auraConfig = NethermindApi.Config<IAuraConfig>();
+            _processingReadOnlyTransactionProcessorSource = new ReadOnlyTxProcessorSource(
+                _api.DbProvider, _api.BlockTree, _api.SpecProvider, _api.LogManager);
         }
 
         protected override BlockProcessor CreateBlockProcessor()

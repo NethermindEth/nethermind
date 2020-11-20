@@ -7,7 +7,7 @@ on:
     inputs:
       branch:
         description: 'Branch to get tests from'
-        required: false
+        required: true
         default: 'master'
   workflow_dispatch:
     inputs:

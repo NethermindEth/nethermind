@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
@@ -26,12 +27,13 @@ namespace Nethermind.Analytics
 {
     public class AnalyticsPlugin : INethermindPlugin
     {
-        private INethermindApi _api;
         private IAnalyticsConfig _analyticsConfig;
+        private IList<IPublisher> _publishers;
+        private INethermindApi _api;
 
-        public void Dispose()
-        {
-        }
+        private bool _isOn;
+
+        public void Dispose() { }
 
         public string Name => "Analytics";
 
@@ -42,20 +44,41 @@ namespace Nethermind.Analytics
         public Task Init(INethermindApi api)
         {
             _api = api;
-            _analyticsConfig = _api.Config<IAnalyticsConfig>();
+            _analyticsConfig = api.Config<IAnalyticsConfig>();
+
             IInitConfig initConfig = _api.Config<IInitConfig>();
-            if (initConfig.WebSocketsEnabled &&
-                (_analyticsConfig.PluginsEnabled ||
-                 _analyticsConfig.StreamBlocks ||
-                 _analyticsConfig.StreamTransactions))
+            _isOn = initConfig.WebSocketsEnabled &&
+                    (_analyticsConfig.PluginsEnabled ||
+                     _analyticsConfig.StreamBlocks ||
+                     _analyticsConfig.StreamTransactions);
+
+            if (!_isOn)
             {
-                AnalyticsWebSocketsModule webSocketsModule = new AnalyticsWebSocketsModule(_api.EthereumJsonSerializer);
-                _api.WebSocketsManager!.AddModule(webSocketsModule, true);
-                _api.Publishers.Add(webSocketsModule);
-
-                _api.TxPool.NewDiscovered += TxPoolOnNewDiscovered;
+                if (!initConfig.WebSocketsEnabled)
+                {
+                    _api.LogManager.GetClassLogger().Warn($"{nameof(AnalyticsPlugin)} disabled due to {nameof(initConfig.WebSocketsEnabled)} set to false");
+                }
+                else
+                {
+                    _api.LogManager.GetClassLogger().Warn($"{nameof(AnalyticsPlugin)} plugin disabled due to {nameof(AnalyticsConfig)} settings set to false");
+                }
             }
+            
+            return Task.CompletedTask;
+        }
 
+        public Task InitBlockchain()
+        {
+            return Task.CompletedTask;
+        }
+
+        public Task InitBlockProducer()
+        {
+            if (_isOn)
+            {
+                _api.ForProducer.GetFromApi.TxPool!.NewDiscovered += TxPoolOnNewDiscovered;
+            }
+            
             return Task.CompletedTask;
         }
 
@@ -63,7 +86,7 @@ namespace Nethermind.Analytics
         {
             if (_analyticsConfig.StreamTransactions)
             {
-                foreach (IPublisher publisher in _api.Publishers)
+                foreach (IPublisher publisher in _publishers)
                 {
                     // TODO: probably need to serialize first
                     publisher.PublishAsync(e.Transaction);
@@ -73,13 +96,25 @@ namespace Nethermind.Analytics
 
         public Task InitNetworkProtocol()
         {
+            var (getFromAPi, _) = _api.ForNetwork;
+            if (_isOn)
+            {
+                AnalyticsWebSocketsModule webSocketsModule = new AnalyticsWebSocketsModule(getFromAPi.EthereumJsonSerializer);
+                getFromAPi.WebSocketsManager!.AddModule(webSocketsModule, true);
+                getFromAPi.Publishers.Add(webSocketsModule);
+            }
+
+            _publishers = getFromAPi.Publishers;
+
             return Task.CompletedTask;
         }
 
         public Task InitRpcModules()
         {
-            AnalyticsModule analyticsModule = new AnalyticsModule(_api.BlockTree, _api.StateReader, _api.LogManager);
-            _api.RpcModuleProvider.Register(new SingletonModulePool<IAnalyticsModule>(analyticsModule));
+            var (getFromAPi, _) = _api.ForRpc;
+            AnalyticsModule analyticsModule = new AnalyticsModule(
+                getFromAPi.BlockTree, getFromAPi.StateReader, getFromAPi.LogManager);
+            getFromAPi.RpcModuleProvider.Register(new SingletonModulePool<IAnalyticsModule>(analyticsModule));
             return Task.CompletedTask;
         }
     }

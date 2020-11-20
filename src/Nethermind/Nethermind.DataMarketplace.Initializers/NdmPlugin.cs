@@ -10,7 +10,6 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.DataMarketplace.Channels;
 using Nethermind.DataMarketplace.Channels.Grpc;
 using Nethermind.DataMarketplace.Consumers.Infrastructure;
-using Nethermind.DataMarketplace.Core;
 using Nethermind.DataMarketplace.Core.Configs;
 using Nethermind.DataMarketplace.Core.Services;
 using Nethermind.DataMarketplace.Infrastructure;
@@ -29,6 +28,11 @@ namespace Nethermind.DataMarketplace.Initializers
         private INdmInitializer? _ndmInitializer;
 
         private INdmApi? _ndmApi;
+
+        public Task InitBlockchain()
+        {
+            return Task.CompletedTask;
+        }
 
         public async Task InitNetworkProtocol()
         {
