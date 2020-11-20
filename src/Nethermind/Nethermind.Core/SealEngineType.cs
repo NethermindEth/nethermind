@@ -22,6 +22,7 @@ namespace Nethermind.Core
         AuRa,
         Clique,
         NethDev,
-        Ethash
+        Ethash,
+        Custom // need to support parameterization of this in the plugins
     }
 }

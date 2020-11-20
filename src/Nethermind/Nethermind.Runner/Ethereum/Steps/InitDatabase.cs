@@ -35,7 +35,7 @@ namespace Nethermind.Runner.Ethereum.Steps
 {
     public class InitDatabase : IStep
     {
-        private readonly INethermindApi _api;
+        private readonly IBasicApi _api;
 
         public InitDatabase(INethermindApi api)
         {

@@ -32,7 +32,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
 {
     public class ProofModuleFactory : ModuleFactoryBase<IProofModule>
     {
-        private readonly IBlockDataRecoveryStep _recoveryStep;
+        private readonly IBlockPreprocessorStep _recoveryStep;
         private readonly IReceiptFinder _receiptFinder;
         private readonly ISpecProvider _specProvider;
         private readonly IDbProvider _dbProvider;
@@ -42,7 +42,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
         public ProofModuleFactory(
             IDbProvider dbProvider,
             IBlockTree blockTree,
-            IBlockDataRecoveryStep recoveryStep,
+            IBlockPreprocessorStep recoveryStep,
             IReceiptFinder receiptFinder,
             ISpecProvider specProvider,
             ILogManager logManager)

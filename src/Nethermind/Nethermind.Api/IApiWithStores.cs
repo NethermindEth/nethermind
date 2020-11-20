@@ -15,10 +15,28 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using Nethermind.Blockchain;
+using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.Receipts;
+using Nethermind.Consensus;
+using Nethermind.Crypto;
+using Nethermind.Db.Blooms;
+using Nethermind.State.Repositories;
+using Nethermind.Wallet;
+
 namespace Nethermind.Api
 {
-    public interface INethermindApi : IApiWithNetwork
+    public interface IApiWithStores : IBasicApi
     {
-        (IApiWithNetwork GetFromApi, INethermindApi SetInApi) ForRpc => (this, this);
+        IBlockTree? BlockTree { get; set; }
+        IBloomStorage? BloomStorage { get; set; }
+        IChainLevelInfoRepository? ChainLevelInfoRepository { get; set; }
+        ILogFinder? LogFinder { get; set; }
+        ISigner? EngineSigner { get; set; }
+        ISignerStore? EngineSignerStore { get; set; }
+        ProtectedPrivateKey? NodeKey { get; set; }
+        IReceiptStorage? ReceiptStorage { get; set; }
+        IReceiptFinder? ReceiptFinder { get; set; }
+        IWallet? Wallet { get; set; }
     }
 }

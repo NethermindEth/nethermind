@@ -22,7 +22,6 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
@@ -31,12 +30,8 @@ using Nethermind.Int256;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
-using Nethermind.State;
-using Nethermind.Db.Blooms;
 using Nethermind.Specs;
-using Nethermind.Specs.Forks;
 using Nethermind.TxPool;
-using Nethermind.Wallet;
 using NSubstitute;
 using NUnit.Framework;
 using System.Threading;
@@ -55,7 +50,6 @@ namespace Nethermind.Facade.Test
         private IFilterManager _filterManager;
         private ITransactionProcessor _transactionProcessor;
         private IEthereumEcdsa _ethereumEcdsa;
-        private IBloomStorage _bloomStorage;
         private ManualTimestamper _timestamper;
         private ISpecProvider _specProvider;
         private IDbProvider _dbProvider;
@@ -72,7 +66,6 @@ namespace Nethermind.Facade.Test
             _filterManager = Substitute.For<IFilterManager>();
             _transactionProcessor = Substitute.For<ITransactionProcessor>();
             _ethereumEcdsa = Substitute.For<IEthereumEcdsa>();
-            _bloomStorage = Substitute.For<IBloomStorage>();
             _specProvider = MainnetSpecProvider.Instance;
 
             ReadOnlyTxProcessingEnv processingEnv = new ReadOnlyTxProcessingEnv(
@@ -105,7 +98,6 @@ namespace Nethermind.Facade.Test
         [Test]
         public void get_transaction_returns_null_when_block_not_found()
         {
-            var receipt = Build.A.Receipt.WithBlockHash(TestItem.KeccakB).TestObject;
             _receiptStorage.FindBlockHash(TestItem.KeccakA).Returns(TestItem.KeccakB);
             _blockchainBridge.GetTransaction(TestItem.KeccakA).Should().Be((null, null));
         }

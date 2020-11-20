@@ -50,7 +50,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
             var blockTreeBuilder = Core.Test.Builders.Build.A.BlockTree().OfChainLength(chainLength);
             var inMemoryReceiptStorage = new InMemoryReceiptStorage() {MigratedBlockNumber = migratedBlockNumber != null ? 0 : long.MaxValue};
             var outMemoryReceiptStorage = new InMemoryReceiptStorage() {MigratedBlockNumber = migratedBlockNumber != null ? 0 : long.MaxValue};
-            var context = new NethermindApi(configProvider, LimboLogs.Instance)
+            var context = new Runner.Ethereum.Api.NethermindApi(configProvider, LimboLogs.Instance)
             {
                 ReceiptStorage = new TestReceiptStorage(inMemoryReceiptStorage, outMemoryReceiptStorage),
                 DbProvider = Substitute.For<IDbProvider>(),

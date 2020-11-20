@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -13,27 +13,17 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using Nethermind.Config;
-using Nethermind.Consensus.Clique;
-using Nethermind.Logging;
-using Nethermind.Serialization.Json;
+using System.Threading.Tasks;
+using Nethermind.Core;
 
-namespace Nethermind.Runner.Ethereum.Api
+namespace Nethermind.Api.Extensions
 {
-    public class CliqueNethermindApi : NethermindApi
+    public interface IConsensusPlugin : INethermindPlugin
     {
-        public CliqueNethermindApi(IConfigProvider configProvider, IJsonSerializer jsonSerializer, ILogManager logManager)
-            : base(configProvider, jsonSerializer, logManager)
-        {
-        }
-
-        public ISnapshotManager? SnapshotManager { get; set; }
-
-        public new CliqueSealer? Sealer
-        {
-            get => base.Sealer as CliqueSealer;
-            set => base.Sealer = value;
-        }
+        Task InitBlockProducer();
+        
+        SealEngineType SealEngineType { get; }
     }
 }
