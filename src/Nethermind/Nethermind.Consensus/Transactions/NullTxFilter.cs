@@ -15,11 +15,9 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System;
-using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 
-namespace Nethermind.Consensus.AuRa.Transactions
+namespace Nethermind.Consensus.Transactions
 {
     public class NullTxFilter : ITxFilter
     {

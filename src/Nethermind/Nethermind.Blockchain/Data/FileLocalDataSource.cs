@@ -17,30 +17,39 @@
 
 using System;
 using System.IO;
+using System.IO.Abstractions;
+using System.IO.Enumeration;
+using System.Threading.Tasks;
+using System.Timers;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Newtonsoft.Json;
+using Polly;
 
 namespace Nethermind.Blockchain.Data
 {
     public class FileLocalDataSource<T> : ILocalDataSource<T>, IDisposable
     {
         private readonly IJsonSerializer _jsonSerializer;
+        private readonly IFileSystem _fileSystem;
         private readonly ILogger _logger;
-        private FileSystemWatcher _fileSystemWatcher;
-        private readonly string _filePath;
         private T _data;
+        private Timer _timer;
+        private readonly int _interval;
+        private DateTime _lastChange = DateTime.MinValue;
+        private string _filePath;
 
-        public FileLocalDataSource(string filePath, IJsonSerializer jsonSerializer, ILogManager logManager)
+        public FileLocalDataSource(string filePath, IJsonSerializer jsonSerializer, IFileSystem fileSystem, ILogManager logManager, int interval = 500)
         {
             _jsonSerializer = jsonSerializer ?? throw new ArgumentNullException(nameof(jsonSerializer));
-            _filePath = filePath.GetApplicationResourcePath();
+            _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
             _logger = logManager?.GetClassLogger<FileLocalDataSource<T>>() ?? throw new ArgumentNullException(nameof(logManager));
-            SetupWatcher(filePath);
+            _interval = interval;
+            SetupWatcher(filePath.GetApplicationResourcePath());
             LoadFile();
         }
 
-        protected virtual T GetDefaultValue() => default;
+        protected virtual T DefaultValue => default;
 
         public T Data => _data;
         
@@ -48,56 +57,123 @@ namespace Nethermind.Blockchain.Data
 
         public void Dispose()
         {
-            _fileSystemWatcher.Changed -= OnFileChanged;
-            _fileSystemWatcher?.Dispose();
+            _timer?.Dispose();
         }
 
         private void SetupWatcher(string filePath)
         {
-            string directoryName = Path.GetDirectoryName(_filePath) ?? Environment.CurrentDirectory;
-            string fileName = Path.GetFileName(_filePath);
-            if (fileName != null)
+            _data = DefaultValue;
+            IFileInfo fileInfo = null;
+            try
             {
-                _fileSystemWatcher = new FileSystemWatcher(directoryName, fileName)
-                {
-                    EnableRaisingEvents = true
-                };
-                _fileSystemWatcher.Changed += OnFileChanged;
+                fileInfo = _fileSystem.FileInfo.FromFileName(filePath);
+            }
+            catch (ArgumentException) { }
+            catch (PathTooLongException) { }
+            catch (NotSupportedException) { }
+
+            if (fileInfo == null)
+            {
+                // file name is not valid
+                if (_logger.IsError) _logger.Error($"Invalid file path to watch: {filePath}.");
             }
             else
             {
-                if (_logger.IsError) _logger.Error($"Cannot load data from file: {filePath}.");
+                // file name is valid
+                _filePath = filePath;
+                if (_logger.IsInfo) _logger.Info($"Watching file for changes: {filePath}.");
+                _timer = new Timer(_interval) {Enabled = true};
+                _timer.Elapsed += async (o, e) => await LoadFileAsync();
+                // _timer = new Timer(async (state) => await LoadFileAsync(), null, _interval, _interval);
+            }
+        }
+
+        private async Task LoadFileAsync()
+        {
+            try
+            {
+                await Policy.Handle<JsonSerializationException>()
+                    .Or<IOException>()
+                    .WaitAndRetryAsync(3, CalcRetryIntervals, (exception, i) => ReportRetry(exception))
+                    .ExecuteAsync(() =>
+                    {
+                        LoadFileCore();
+                        return Task.CompletedTask;
+                    });
+            }
+            catch (JsonSerializationException e)
+            {
+                ReportJsonError(e);
+            }
+            catch (IOException e)
+            {
+                ReportIOError(e);
             }
         }
 
         private void LoadFile()
         {
-            if (File.Exists(_filePath))
+            try
             {
-                try
-                {
-                    _data = _jsonSerializer.Deserialize<T>(File.ReadAllText(_filePath));
-                }
-                catch (JsonSerializationException e)
-                {
-                    if (_logger.IsError) _logger.Error($"Couldn't deserialize {typeof(T)} from {_filePath}.", e);
-                }
-                catch (IOException e)
-                {
-                    if (_logger.IsError) _logger.Error($"Couldn't load {typeof(T)} from {_filePath}.", e);
-                }
+                Policy.Handle<JsonSerializationException>()
+                    .Or<IOException>()
+                    .WaitAndRetry(2, CalcRetryIntervals, (exception, i) => ReportRetry(exception))
+                    .Execute(() => LoadFileCore());
             }
-            else
+            catch (JsonSerializationException e)
             {
-                _data = GetDefaultValue();
+                ReportJsonError(e);
+            }
+            catch (IOException e)
+            {
+                ReportIOError(e);
             }
         }
 
-        private void OnFileChanged(object sender, FileSystemEventArgs e)
+        private static TimeSpan CalcRetryIntervals(int i) => TimeSpan.FromMilliseconds(Math.Pow(10, i - 1));
+
+        private void LoadFileCore()
         {
-            if (_logger.IsInfo) _logger.Info($"Data in file {_filePath} changed.");
-            LoadFile();
-            Changed?.Invoke(this, EventArgs.Empty);
+            DateTime? lastChange = null;
+            
+            if (_fileSystem.File.Exists(_filePath))
+            {
+                var lastWriteTime = _fileSystem.File.GetLastWriteTime(_filePath);
+                if (lastWriteTime > _lastChange)
+                {
+                    if (_logger.IsTrace) _logger.Trace($"Trying to load local data from file: {_filePath} updated on {lastWriteTime:hh:mm:ss:ffff} after last read {_lastChange:hh:mm:ss:ffff}.");
+                    using Stream file = _fileSystem.File.OpenRead(_filePath);
+                    _data = _jsonSerializer.Deserialize<T>(file);
+                    if (_logger.IsDebug) _logger.Debug($"Loaded and deserialized {typeof(T)} from {_filePath}.");
+                    lastChange = lastWriteTime;
+                }
+            }
+            else if (!Equals(_data, DefaultValue))
+            {
+                lastChange = DateTime.Now;
+                _data = DefaultValue;
+            }
+
+            if (lastChange.HasValue)
+            {
+                _lastChange = lastChange.Value;
+                Changed?.Invoke(this, EventArgs.Empty);
+            }
+        }
+        
+        private void ReportJsonError(JsonSerializationException e)
+        {
+            if (_logger.IsError) _logger.Error($"Couldn't deserialize {typeof(T)} from {_filePath}. Will not retry any more.", e);
+        }
+
+        private void ReportRetry(Exception exception)
+        {
+            if (_logger.IsError) _logger.Error($"Couldn't load and deserialize {typeof(T)} from {_filePath}. Retrying...", exception);
+        }
+
+        private void ReportIOError(IOException e)
+        {
+            if (_logger.IsError) _logger.Error($"Couldn't load {typeof(T)} from {_filePath}. Will not retry any more.", e);
         }
     }
 }

@@ -24,9 +24,9 @@ using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Analytics;
 using Nethermind.Api;
-using Nethermind.Baseline.Config;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
+using Nethermind.Config.Test;
 using Nethermind.Core;
 using Nethermind.EthStats;
 using Nethermind.Grpc;
@@ -43,29 +43,8 @@ namespace Nethermind.Runner.Test
 {
     [Parallelizable(ParallelScope.All)]
     [TestFixture]
-    public class ConfigFilesTests
+    public class ConfigFilesTests : ConfigFileTestsBase
     {
-        private readonly IDictionary<string, ConfigProvider> _cachedProviders = new ConcurrentDictionary<string, ConfigProvider>();
-
-        [OneTimeSetUp]
-        public void Setup()
-        {
-            // by pre-caching configs we make the tests do lot less work
-
-            IEnumerable<Type> configTypes = new TypeDiscovery().FindNethermindTypes(typeof(IConfig)).Where(t => t.IsInterface).ToArray();
-
-            Parallel.ForEach(Resolve("*"), configFile =>
-            {
-                ConfigProvider configProvider = GetConfigProviderFromFile(configFile);
-                foreach (Type configType in configTypes)
-                {
-                    configProvider.GetConfig(configType);
-                }
-
-                _cachedProviders.Add(configFile, configProvider);
-            });
-        }
-
         [TestCase("*")]
         public void Required_config_files_exist(string configWildcard)
         {
@@ -126,7 +105,7 @@ namespace Nethermind.Runner.Test
             ConfigItemAttribute attribute = property.GetCustomAttribute<ConfigItemAttribute>();
             if (string.IsNullOrWhiteSpace(attribute?.Description) && !(attribute?.HiddenFromDocs ?? false))
             {
-                ConfigCategoryAttribute? categoryLevel = property.DeclaringType?.GetCustomAttribute<ConfigCategoryAttribute>();
+                ConfigCategoryAttribute categoryLevel = property.DeclaringType?.GetCustomAttribute<ConfigCategoryAttribute>();
                 if (!(categoryLevel?.HiddenFromDocs ?? false))
                 {
                     throw new AssertionException(
@@ -274,14 +253,6 @@ namespace Nethermind.Runner.Test
         public void IsMining_enabled_for_ndm_consumer_local(string configWildcard)
         {
             Test<IInitConfig, bool>(configWildcard, c => c.IsMining, true);
-        }
-
-        [TestCase("baseline", true)]
-        [TestCase("spaceneth", true)]
-        [TestCase("^baseline ^spaceneth", false)]
-        public void Baseline_is_disabled_by_default(string configWildcard, bool enabled)
-        {
-            Test<IBaselineConfig, bool>(configWildcard, c => c.Enabled, enabled);
         }
 
         // [TestCase("ndm", true)]
@@ -563,28 +534,7 @@ namespace Nethermind.Runner.Test
             return configProvider;
         }
 
-        private void Test<T, TProperty>(string configWildcard, Func<T, TProperty> getter, TProperty expectedValue) where T : IConfig
-        {
-            Test(configWildcard, getter, (s, propertyValue) => propertyValue.Should().Be(expectedValue, s));
-        }
-
-        private void Test<T, TProperty>(string configWildcard, Func<T, TProperty> getter, Action<string, TProperty> expectedValue) where T : IConfig
-        {
-            foreach (string configFile in Resolve(configWildcard))
-            {
-                Console.WriteLine("Testing " + configFile);
-                if (!_cachedProviders.TryGetValue(configFile, out ConfigProvider configProvider))
-                {
-                    configProvider = GetConfigProviderFromFile(configFile);
-                }
-
-                T config = configProvider.GetConfig<T>();
-                expectedValue(configFile, getter(config));
-            }
-        }
-
-        [ConfigFileGroup("*")]
-        private IEnumerable<string> Configs { get; } = new HashSet<string>
+        protected override IEnumerable<string> Configs { get; } = new HashSet<string>
         {
             "ropsten_archive.cfg",
             "ropsten_beam.cfg",
@@ -619,95 +569,6 @@ namespace Nethermind.Runner.Test
             "energyweb.cfg",
             "energyweb_archive.cfg",
         };
-
-        [ConfigFileGroup("beam")]
-        private IEnumerable<string> BeamConfigs
-            => Configs.Where(config => config.Contains("_beam"));
-
-        [ConfigFileGroup("fast")]
-        private IEnumerable<string> FastSyncConfigs
-            => Configs.Where(config => !config.Contains("_") && !config.Contains("spaceneth"));
-
-        [ConfigFileGroup("archive")]
-        private IEnumerable<string> ArchiveConfigs
-            => Configs.Where(config => config.Contains("_archive"));
-
-        [ConfigFileGroup("ropsten")]
-        private IEnumerable<string> RopstenConfigs
-            => Configs.Where(config => config.Contains("ropsten"));
-
-        [ConfigFileGroup("poacore")]
-        private IEnumerable<string> PoaCoreConfigs
-            => Configs.Where(config => config.Contains("poacore"));
-
-        [ConfigFileGroup("sokol")]
-        private IEnumerable<string> SokolConfigs
-            => Configs.Where(config => config.Contains("sokol"));
-
-        [ConfigFileGroup("volta")]
-        private IEnumerable<string> VoltaConfigs
-            => Configs.Where(config => config.Contains("volta"));
-
-        [ConfigFileGroup("energy")]
-        private IEnumerable<string> EnergyConfigs
-            => Configs.Where(config => config.Contains("energy"));
-
-        [ConfigFileGroup("xdai")]
-        private IEnumerable<string> XDaiConfigs
-            => Configs.Where(config => config.Contains("xdai"));
-
-        [ConfigFileGroup("goerli")]
-        private IEnumerable<string> GoerliConfigs
-            => Configs.Where(config => config.Contains("goerli"));
-
-        [ConfigFileGroup("rinkeby")]
-        private IEnumerable<string> RinkebyConfigs
-            => Configs.Where(config => config.Contains("rinkeby"));
-
-        [ConfigFileGroup("kovan")]
-        private IEnumerable<string> KovanConfigs
-            => Configs.Where(config => config.Contains("kovan"));
-
-        [ConfigFileGroup("spaceneth")]
-        private IEnumerable<string> SpacenethConfigs
-            => Configs.Where(config => config.Contains("spaceneth"));
-
-        [ConfigFileGroup("baseline")]
-        private IEnumerable<string> BaselineConfigs
-            => Configs.Where(config => config.Contains("baseline"));
-
-        [ConfigFileGroup("mainnet")]
-        private IEnumerable<string> MainnetConfigs
-            => Configs.Where(config => config.Contains("mainnet"));
-
-        [ConfigFileGroup("validators")]
-        private IEnumerable<string> ValidatorConfigs
-            => Configs.Where(config => config.Contains("validator"));
-
-        [ConfigFileGroup("ndm")]
-        private IEnumerable<string> NdmConfigs
-            => Configs.Where(config => config.Contains("ndm"));
-
-        [ConfigFileGroup("aura")]
-        private IEnumerable<string> AuraConfigs
-            => PoaCoreConfigs
-                .Union(SokolConfigs)
-                .Union(XDaiConfigs)
-                .Union(VoltaConfigs)
-                .Union(EnergyConfigs)
-                .Union(KovanConfigs);
-
-        [ConfigFileGroup("aura_non_validating")]
-        private IEnumerable<string> AuraNonValidatingConfigs
-            => AuraConfigs.Where(c => !c.Contains("validator"));
-
-        [ConfigFileGroup("clique")]
-        private IEnumerable<string> CliqueConfigs
-            => RinkebyConfigs.Union(GoerliConfigs);
-
-        [ConfigFileGroup("ethhash")]
-        private IEnumerable<string> EthashConfigs
-            => MainnetConfigs.Union(RopstenConfigs);
 
         private IEnumerable<string> Resolve(string configWildcard)
         {
@@ -762,16 +623,6 @@ namespace Nethermind.Runner.Test
                 yield return minIndex;
                 minIndex = str.IndexOf(searchString, minIndex + searchString.Length);
             }
-        }
-
-        private class ConfigFileGroup : Attribute
-        {
-            public ConfigFileGroup(string name)
-            {
-                Name = name;
-            }
-
-            public string Name { get; private set; }
         }
     }
 }

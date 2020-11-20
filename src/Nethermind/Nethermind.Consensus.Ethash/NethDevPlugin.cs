@@ -23,7 +23,6 @@ using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Producers;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Rewards;
-using Nethermind.Consensus.AuRa.Transactions;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Db;

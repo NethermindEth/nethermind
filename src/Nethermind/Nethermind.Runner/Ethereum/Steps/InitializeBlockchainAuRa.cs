@@ -45,7 +45,6 @@ namespace Nethermind.Runner.Ethereum.Steps
         private readonly AuRaNethermindApi _api;
         private INethermindApi NethermindApi => _api;
         
-        private ReadOnlyTxProcessorSource? _processingReadOnlyTransactionProcessorSource;
         private AuRaSealValidator? _sealValidator;
         private readonly IAuraConfig _auraConfig;
         private BlockProcessorWrapper? _blockProcessorWrapper = null;
@@ -54,8 +53,6 @@ namespace Nethermind.Runner.Ethereum.Steps
         {
             _api = api;
             _auraConfig = NethermindApi.Config<IAuraConfig>();
-            _processingReadOnlyTransactionProcessorSource = new ReadOnlyTxProcessorSource(
-                _api.DbProvider, _api.BlockTree, _api.SpecProvider, _api.LogManager);
         }
 
         protected override BlockProcessor CreateBlockProcessor()
@@ -69,7 +66,11 @@ namespace Nethermind.Runner.Ethereum.Steps
             if (_api.StorageProvider == null) throw new StepDependencyException(nameof(_api.StorageProvider));
             if (_api.TxPool == null) throw new StepDependencyException(nameof(_api.TxPool));
             if (_api.ReceiptStorage == null) throw new StepDependencyException(nameof(_api.ReceiptStorage));
-
+            
+            var processingReadOnlyTransactionProcessorSource = new ReadOnlyTxProcessorSource(_api.DbProvider, _api.BlockTree, _api.SpecProvider, _api.LogManager);
+            var txPermissionFilterOnlyTxProcessorSource = new ReadOnlyTxProcessorSource(_api.DbProvider, _api.BlockTree, _api.SpecProvider, _api.LogManager);
+            ITxFilter? txPermissionFilter = TxFilterBuilders.CreateTxPermissionFilter(_api, txPermissionFilterOnlyTxProcessorSource, _api.StateProvider);
+            
             var processor = new AuRaBlockProcessor(
                 _api.SpecProvider,
                 _api.BlockValidator,
@@ -83,10 +84,10 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.ReceiptStorage,
                 _api.LogManager,
                 _api.BlockTree,
-                TxFilterBuilders.CreateTxPermissionFilter(_api, _processingReadOnlyTransactionProcessorSource!, _api.StateProvider),
+                txPermissionFilter,
                 GetGasLimitCalculator());
             
-            var auRaValidator = CreateAuRaValidator(processor);
+            var auRaValidator = CreateAuRaValidator(processor, processingReadOnlyTransactionProcessorSource);
             processor.AuRaValidator = auRaValidator;
             var reportingValidator = auRaValidator.GetReportingValidator();
             _api.ReportingValidator = reportingValidator;
@@ -103,7 +104,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             return processor;
         }
 
-        private IAuRaValidator CreateAuRaValidator(IBlockProcessor processor)
+        private IAuRaValidator CreateAuRaValidator(IBlockProcessor processor, ReadOnlyTxProcessorSource readOnlyTxProcessorSource)
         {
             if (_api.ChainSpec == null) throw new StepDependencyException(nameof(_api.ChainSpec));
             if (_api.BlockTree == null) throw new StepDependencyException(nameof(_api.BlockTree));
@@ -124,7 +125,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                     _api.StateProvider, 
                     _api.AbiEncoder, 
                     _api.TransactionProcessor, 
-                    _processingReadOnlyTransactionProcessorSource, 
+                    readOnlyTxProcessorSource, 
                     _api.BlockTree, 
                     _api.ReceiptStorage, 
                     _api.ValidatorStore,
@@ -162,7 +163,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                             _api.AbiEncoder,
                             blockGasLimitContractTransition.Value,
                             blockGasLimitContractTransition.Key,
-                            _processingReadOnlyTransactionProcessorSource))
+                            new ReadOnlyTxProcessorSource(_api.DbProvider, _api.BlockTree, _api.SpecProvider, _api.LogManager)))
                         .ToArray<IBlockGasLimitContract>(),
                     _api.GasLimitCalculatorCache,
                     _auraConfig.Minimum2MlnGasPerBlockWhenUsingBlockGasLimitContract,
@@ -251,7 +252,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             ITxFilter txPoolFilter = TxFilterBuilders.CreateAuRaTxFilter(
                 NethermindApi.Config<IMiningConfig>(),
                 _api,
-                txPoolReadOnlyTransactionProcessorSource!,
+                txPoolReadOnlyTransactionProcessorSource,
                 _api.StateProvider!,
                 minGasPricesContractDataStore);
             
