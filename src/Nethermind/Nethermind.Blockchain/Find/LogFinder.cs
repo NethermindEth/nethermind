@@ -60,12 +60,13 @@ namespace Nethermind.Blockchain.Find
 
         public IEnumerable<FilterLog> FindLogs(LogFilter filter, CancellationToken cancellationToken = default)
         {
-            BlockHeader FindHeader(BlockParameter blockParameter, string name) => _blockFinder.FindHeader(blockParameter) ?? throw new ArgumentException(ILogFinder.NotFoundError, name);
+            BlockHeader FindHeader(BlockParameter blockParameter, string name, bool limitToProcessed) => 
+                _blockFinder.FindHeader(blockParameter, limitToProcessed) ?? throw new ArgumentException(ILogFinder.NotFoundError, name);
 
             cancellationToken.ThrowIfCancellationRequested();
-            var toBlock = FindHeader(filter.ToBlock, nameof(filter.ToBlock));
+            var toBlock = FindHeader(filter.ToBlock, nameof(filter.ToBlock), true);
             cancellationToken.ThrowIfCancellationRequested();
-            var fromBlock = FindHeader(filter.FromBlock, nameof(filter.FromBlock));
+            var fromBlock = FindHeader(filter.FromBlock, nameof(filter.FromBlock), false);
 
             if (fromBlock.Number > toBlock.Number && toBlock.Number != 0)
             {
