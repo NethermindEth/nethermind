@@ -28,6 +28,7 @@ using Nethermind.Db.Rocks.Config;
 using Nethermind.Db.Rpc;
 using Nethermind.JsonRpc.Client;
 using Nethermind.Logging;
+using Nethermind.Runner.Ethereum.Steps.Db;
 using Nethermind.Synchronization.BeamSync;
 using Nethermind.Synchronization.ParallelSync;
 
@@ -50,6 +51,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             IDbConfig dbConfig = _api.Config<IDbConfig>();
             ISyncConfig syncConfig = _api.Config<ISyncConfig>();
             IInitConfig initConfig = _api.Config<IInitConfig>();
+            _api.DbFactory = new DbFactory(_api.EthereumJsonSerializer, new BasicJsonRpcClient(new Uri(initConfig.RpcDbUrl), _api.EthereumJsonSerializer, _api.LogManager), _api.LogManager, initConfig, dbConfig);
 
             foreach (PropertyInfo propertyInfo in typeof(IDbConfig).GetProperties())
             {
@@ -93,7 +95,6 @@ namespace Nethermind.Runner.Ethereum.Steps
 
         private async Task<RocksDbProvider> GetRocksDbProvider(IDbConfig dbConfig, string basePath, bool useReceiptsDb)
         {
-            IInitConfig initConfig = _api.Config<IInitConfig>();
             RocksDbProvider debugRecorder = new RocksDbProvider(_api.LogManager, false);
             ThisNodeInfo.AddInfo("DB location  :", $"{basePath}");
             await debugRecorder.Init(basePath, dbConfig, useReceiptsDb);
