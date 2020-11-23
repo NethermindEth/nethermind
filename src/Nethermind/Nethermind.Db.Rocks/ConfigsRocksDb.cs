@@ -21,7 +21,7 @@ namespace Nethermind.Db.Rocks
 {
     public class ConfigsRocksDb : DbOnTheRocks
     {
-        public override string Name { get; } = "Configs";
+        public override string Name { get; protected set; } = "Configs";
 
         public ConfigsRocksDb(string basePath, IDbConfig dbConfig, ILogManager logManager = null)
             : base(basePath, "configs", dbConfig, logManager)

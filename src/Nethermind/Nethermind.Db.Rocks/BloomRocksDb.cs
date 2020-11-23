@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -22,7 +22,7 @@ namespace Nethermind.Db.Rocks
 {
     public class BloomRocksDb : DbOnTheRocks
     {
-        public override string Name { get; } = CultureInfo.CurrentUICulture.TextInfo.ToTitleCase(DbNames.Bloom);
+        public override string Name { get; protected set; } = CultureInfo.CurrentUICulture.TextInfo.ToTitleCase(DbNames.Bloom);
         
         public BloomRocksDb(string basePath, IDbConfig dbConfig, ILogManager logManager = null)
             : base(basePath, DbNames.Bloom, dbConfig, logManager)

@@ -37,8 +37,6 @@ namespace Nethermind.Db.Rpc
             ConfigsDb = new ReadOnlyDb(new RpcDb(DbNames.Configs, serializer, client, logManager, recordDbProvider?.ConfigsDb), true);
             EthRequestsDb = new ReadOnlyDb(new RpcDb(DbNames.EthRequests, serializer, client, logManager, recordDbProvider?.EthRequestsDb), true);
             BloomDb = new ReadOnlyDb(new RpcDb(DbNames.EthRequests, serializer, client, logManager, recordDbProvider?.BloomDb), true);
-            BaselineTreeDb = new ReadOnlyDb(new RpcDb(DbNames.BaselineTree, serializer, client, logManager, recordDbProvider?.BaselineTreeDb), true);
-            BaselineTreeMetadataDb = new ReadOnlyDb(new RpcDb(DbNames.BaselineTreeMetadata, serializer, client, logManager, recordDbProvider?.BaselineTreeMetadataDb), true);
         }
         
         public ISnapshotableDb StateDb { get; }
@@ -72,8 +70,6 @@ namespace Nethermind.Db.Rpc
             _recordDbProvider?.Dispose();
             BloomDb?.Dispose();
             ChtDb?.Dispose();
-            BaselineTreeDb?.Dispose();
-            BaselineTreeMetadataDb?.Dispose();
         }
     }
 }

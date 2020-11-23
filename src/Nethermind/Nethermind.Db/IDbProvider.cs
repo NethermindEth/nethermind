@@ -47,9 +47,5 @@ namespace Nethermind.Db
         // NDM
         IDb ConfigsDb { get; }
         IDb EthRequestsDb { get; }
-
-        // Baseline
-        IDb BaselineTreeDb { get; }
-        IDb BaselineTreeMetadataDb { get; }
     }
 }

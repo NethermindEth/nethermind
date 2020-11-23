@@ -15,8 +15,12 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.IO;
 using Nethermind.Api;
+using Nethermind.Config;
 using Nethermind.Db;
+using Nethermind.Db.Rocks;
+using Nethermind.Db.Rocks.Config;
 using Nethermind.Db.Rpc;
 using Nethermind.JsonRpc.Client;
 using Nethermind.Logging;
@@ -30,35 +34,43 @@ namespace Nethermind.Runner.Ethereum.Steps.Db
         private readonly IJsonRpcClient _client;
         private readonly ILogManager _logManager;
         private readonly IInitConfig _initConfig;
+        private readonly IDbConfig _dbConfig;
         
         public DbFactory(
             IJsonSerializer serializer, 
             IJsonRpcClient client, 
             ILogManager logManager,
-            IInitConfig initConfig)
+            IInitConfig initConfig,
+            IDbConfig dbConfig)
         {
             _serializer = serializer ?? throw new ArgumentNullException(nameof(serializer));
             _client = client ?? throw new ArgumentNullException(nameof(client));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _initConfig = initConfig ?? throw new ArgumentNullException(nameof(initConfig));
+            _dbConfig = dbConfig ?? throw new ArgumentNullException(nameof(dbConfig));
         }
 
-        public IDb Create(Func<IDb> newRocksDb, bool createInMemoryWriteStore = true)
+        public IDb Create(Func<string, IConfig, IDb> newRocksDb, bool createInMemoryWriteStore = true)
         {
             IDb rocksDb;
             switch (_initConfig.DiagnosticMode)
             {
                 case DiagnosticMode.RpcDb:
-                    rocksDb = newRocksDb();
+                    rocksDb = newRocksDb(Path.Combine(_initConfig.BaseDbPath, "debug"), _dbConfig);
                     return new ReadOnlyDb(new RpcDb(rocksDb.Name, _serializer, _client, _logManager, rocksDb), createInMemoryWriteStore);
                 case DiagnosticMode.ReadOnlyDb:
-                    rocksDb = newRocksDb();
+                    rocksDb = newRocksDb(Path.Combine(_initConfig.BaseDbPath, "debug"), _dbConfig);
                     return new ReadOnlyDb(rocksDb, createInMemoryWriteStore); ;
                 case DiagnosticMode.MemDb:
                     return new MemDb();
                 default:
-                    return newRocksDb();
+                    return newRocksDb(_initConfig.BaseDbPath, _dbConfig);
             }
+        }
+
+        public IDb Create(string dbName, bool createInMemoryWriteStore = true)
+        {
+            return Create((string basePath, IConfig config) => new SimpleRocksDb(basePath, dbName, _dbConfig, _logManager), createInMemoryWriteStore);
         }
     }
 }

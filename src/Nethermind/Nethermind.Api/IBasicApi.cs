@@ -20,7 +20,6 @@ using System.IO.Abstractions;
 using Nethermind.Abi;
 using Nethermind.Api.Extensions;
 using Nethermind.Config;
-using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
@@ -30,7 +29,6 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Synchronization.ParallelSync;
-using Nethermind.Wallet;
 
 namespace Nethermind.Api
 {
@@ -43,6 +41,7 @@ namespace Nethermind.Api
         IConfigProvider ConfigProvider { get; }
         ICryptoRandom CryptoRandom { get; }
         IDbProvider? DbProvider { get; set; }
+        IDbFactory? DbFactory { get; set; }
         IEthereumEcdsa? EthereumEcdsa { get; set; }
         IJsonSerializer EthereumJsonSerializer { get; }
         IFileSystem FileSystem { get; set; }

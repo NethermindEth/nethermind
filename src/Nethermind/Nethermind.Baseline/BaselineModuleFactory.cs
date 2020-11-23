@@ -17,6 +17,7 @@
 using System;
 using System.IO.Abstractions;
 using Nethermind.Abi;
+using Nethermind.Baseline.Db;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Core;
@@ -39,7 +40,7 @@ namespace Nethermind.Baseline
         private readonly IAbiEncoder _abiEncoder;
         private readonly IBlockProcessor _blockProcessor;
         private readonly DisposableStack _disposableStack;
-        private readonly IDbProvider _dbProvider;
+        private readonly IBaselineDbProvider _dbProvider;
         
         public BaselineModuleFactory(
             ITxSender txSender,
@@ -51,7 +52,7 @@ namespace Nethermind.Baseline
             ILogManager logManager,
             IBlockProcessor blockProcessor,
             DisposableStack disposableStack,
-            IDbProvider dbProvider)
+            IBaselineDbProvider dbProvider)
         {
             _txSender = txSender ?? throw new ArgumentNullException(nameof(txSender));
             _logFinder = logFinder ?? throw new ArgumentNullException(nameof(logFinder));
@@ -74,8 +75,8 @@ namespace Nethermind.Baseline
                 _blockFinder,
                 _abiEncoder,
                 _fileSystem,
-                _dbProvider.BaselineTreeDb,
-                _dbProvider.BaselineTreeMetadataDb,
+                _dbProvider?.BaselineTreeDb ?? new MemDb(),
+                _dbProvider?.BaselineTreeMetadataDb ?? new MemDb(),
                 _logManager,
                 _blockProcessor,
                 _disposableStack);

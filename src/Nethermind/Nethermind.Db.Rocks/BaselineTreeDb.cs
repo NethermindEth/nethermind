@@ -21,7 +21,7 @@ namespace Nethermind.Db.Rocks
 {
     public class BaselineTreeDb : DbOnTheRocks
     {
-        public override string Name { get; } = DbNames.BaselineTree;
+        public override string Name { get; protected set; } = DbNames.BaselineTree;
 
         public BaselineTreeDb(string basePath, IDbConfig dbConfig, ILogManager logManager = null)
             : base(basePath, DbNames.BaselineTree, dbConfig, logManager)

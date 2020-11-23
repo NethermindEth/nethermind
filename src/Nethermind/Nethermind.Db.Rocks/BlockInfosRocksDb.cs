@@ -21,7 +21,7 @@ namespace Nethermind.Db.Rocks
 {
     public class BlockInfosRocksDb : DbOnTheRocks
     {
-        public override string Name { get; } = "BlockInfos";
+        public override string Name { get; protected set; } = "BlockInfos";
 
         public BlockInfosRocksDb(string basePath, IDbConfig dbConfig, ILogManager logManager = null)
             : base(basePath, "blockInfos", dbConfig, logManager)

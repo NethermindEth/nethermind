@@ -14,13 +14,19 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System;
-using Nethermind.Db;
+using Nethermind.Db.Rocks.Config;
+using Nethermind.Logging;
 
-namespace Nethermind.Runner.Ethereum.Steps.Db
+namespace Nethermind.Db.Rocks
 {
-    public interface IDbFactory
+    public class SimpleRocksDb : DbOnTheRocks
     {
-        IDb Create(Func<IDb> newRocksDb, bool createInMemoryWriteStore = true);
+        public override string Name { get; protected set; }
+
+        public SimpleRocksDb(string basePath, string dbName, IDbConfig dbConfig, ILogManager logManager = null)
+            : base(basePath, dbName, dbConfig, logManager)
+        {
+            Name = dbName;
+        }
     }
 }

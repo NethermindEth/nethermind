@@ -58,8 +58,6 @@ namespace Nethermind.Synchronization.BeamSync
         public IDb BloomDb => _otherProvider.BloomDb;
         public IDb BeamStateDb => _otherProvider.BeamStateDb;
         public IDb ChtDb => _otherProvider.ChtDb;
-        public IDb BaselineTreeDb => _otherProvider.BaselineTreeDb;
-        public IDb BaselineTreeMetadataDb => _otherProvider.BaselineTreeMetadataDb;
 
         public void Dispose()
         {

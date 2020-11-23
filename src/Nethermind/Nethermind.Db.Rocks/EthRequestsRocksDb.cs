@@ -21,7 +21,7 @@ namespace Nethermind.Db.Rocks
 {
     public class EthRequestsRocksDb : DbOnTheRocks
     {
-        public override string Name { get; } = "EthRequests";
+        public override string Name { get; protected set; } = "EthRequests";
 
         public EthRequestsRocksDb(string basePath, IDbConfig dbConfig, ILogManager logManager = null)
             : base(basePath, "ethRequests", dbConfig, logManager)

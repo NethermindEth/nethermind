@@ -45,8 +45,6 @@ namespace Nethermind.Db
             NestedEthRequestsDb = new ReadOnlyDb(wrappedProvider.EthRequestsDb, createInMemoryWriteStore);
             NestedBloomDb = new ReadOnlyDb(wrappedProvider.BloomDb, createInMemoryWriteStore);
             NestedChtDb = new ReadOnlyDb(wrappedProvider.ChtDb, createInMemoryWriteStore);
-            NestedBaselineTreeDb = new ReadOnlyDb(wrappedProvider.BaselineTreeDb, createInMemoryWriteStore);
-            NestedBaselineTreeMetadataDb = new ReadOnlyDb(wrappedProvider.BaselineTreeMetadataDb, createInMemoryWriteStore);
         }
 
         public void Dispose()

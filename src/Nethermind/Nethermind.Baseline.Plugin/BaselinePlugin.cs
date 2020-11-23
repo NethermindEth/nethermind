@@ -3,6 +3,7 @@ using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Baseline;
 using Nethermind.Baseline.Config;
+using Nethermind.Baseline.Db;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
 
@@ -42,10 +43,13 @@ namespace Nethermind.Plugin.Baseline
             return Task.CompletedTask;
         }
 
-        public Task InitRpcModules()
+        public async Task InitRpcModules()
         {
             if (_baselineConfig.Enabled)
             {
+                var baselineDbProvider = new BaselineDbProvider(_api.DbFactory);
+                await baselineDbProvider.Init();
+
                 BaselineModuleFactory baselineModuleFactory = new BaselineModuleFactory(
                     _api.TxSender!,
                     _api.StateReader!,
@@ -56,7 +60,7 @@ namespace Nethermind.Plugin.Baseline
                     _api.LogManager,
                     _api.MainBlockProcessor,
                     _api.DisposeStack,
-                    _api.DbProvider);
+                    baselineDbProvider);
 
                 var modulePool = new SingletonModulePool<IBaselineModule>(baselineModuleFactory);
                 _api.RpcModuleProvider!.Register(modulePool);
@@ -67,8 +71,6 @@ namespace Nethermind.Plugin.Baseline
             {
                 if (_logger.IsWarn) _logger.Info("Skipping Baseline RPC due to baseline being disabled in config.");
             }
-
-            return Task.CompletedTask;
         }
     }
 }

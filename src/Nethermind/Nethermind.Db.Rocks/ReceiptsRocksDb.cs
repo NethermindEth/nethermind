@@ -22,7 +22,7 @@ namespace Nethermind.Db.Rocks
     public class ReceiptsRocksDb : ColumnsDb<ReceiptsColumns>
     {
         private const string ReceiptsName = "Receipts";
-        public override string Name { get; } = ReceiptsName;
+        public override string Name { get; protected set; } = ReceiptsName;
 
         public ReceiptsRocksDb(string basePath, IDbConfig dbConfig, ILogManager logManager = null)
             : base(basePath, ReceiptsName.ToLower(), dbConfig, logManager, ReceiptsName)

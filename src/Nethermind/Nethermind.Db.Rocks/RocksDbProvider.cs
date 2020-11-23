@@ -25,13 +25,11 @@ namespace Nethermind.Db.Rocks
     {
         private readonly ILogManager _logManager;
         private readonly bool _addNdmDbs;
-        private readonly bool _addBaselineDbs;
 
-        public RocksDbProvider(ILogManager logManager, bool addNdmDbs = true, bool addBaselineDbs = true)
+        public RocksDbProvider(ILogManager logManager, bool addNdmDbs = true)
         {
             _logManager = logManager;
             _addNdmDbs = addNdmDbs;
-            _addBaselineDbs = addBaselineDbs;
         }
 
         public async Task Init(string basePath, IDbConfig dbConfig, bool useReceiptsDb)
@@ -47,8 +45,6 @@ namespace Nethermind.Db.Rocks
             allInitializers.Add(Task.Run(() => ChtDb = new CanonicalHashRocksDb(basePath, dbConfig, _logManager)));
             allInitializers.Add(Task.Run(() => ConfigsDb = _addNdmDbs ? new ConfigsRocksDb(basePath, dbConfig, _logManager) : (IDb)new MemDb()));
             allInitializers.Add(Task.Run(() => EthRequestsDb = _addNdmDbs ? new EthRequestsRocksDb(basePath, dbConfig, _logManager) : (IDb)new MemDb()));
-            allInitializers.Add(Task.Run(() => BaselineTreeDb = _addBaselineDbs ? new BaselineTreeDb(basePath, dbConfig, _logManager) : (IDb)new MemDb()));
-            allInitializers.Add(Task.Run(() => BaselineTreeMetadataDb = _addBaselineDbs ? new BaselineTreeMetadataDb(basePath, dbConfig, _logManager) : (IDb)new MemDb()));
 
             allInitializers.Add(Task.Run(() =>
             {

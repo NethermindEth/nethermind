@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -36,7 +36,7 @@ namespace Nethermind.Db.Rocks
         internal WriteBatch CurrentBatch { get; private set; }
         internal WriteOptions WriteOptions { get; private set; }
 
-        public abstract string Name { get; }
+        public abstract string Name { get; protected set; }
 
         private static long _maxRocksSize;
 
