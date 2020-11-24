@@ -260,11 +260,18 @@ namespace Nethermind.Core.Caching
         public void ForEach(Action<TValue> action)
         {
             int next = _head;
-            while (next != Node.Null)
+            int start = next;
+            while (next != Node.Null && next != start)
             {
                 Node node = _list[next];
                 action(node.Value);
+                int nextBefore = next;
                 next = node.Next;
+
+                if (next == nextBefore)
+                {
+                    throw new InvalidOperationException();
+                }
             }
         }
     }
