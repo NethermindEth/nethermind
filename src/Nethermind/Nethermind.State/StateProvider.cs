@@ -43,13 +43,13 @@ namespace Nethermind.State
 
         private readonly List<Change> _keptInCache = new List<Change>();
         private readonly ILogger _logger;
-        private readonly IDb _codeDb;
+        private readonly ISnapshotableDb _codeDb;
 
         private int _capacity = StartCapacity;
         private Change[] _changes = new Change[StartCapacity];
         private int _currentPosition = -1;
 
-        public StateProvider(ITrieStore trieStore, IDb codeDb, ILogManager logManager)
+        public StateProvider(ITrieStore trieStore, ISnapshotableDb codeDb, ILogManager logManager)
         {
             _logger = logManager.GetClassLogger<StateProvider>() ?? throw new ArgumentNullException(nameof(logManager));
             _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
@@ -66,12 +66,7 @@ namespace Nethermind.State
 
         public void CommitCode()
         {
-            _codeDb.CommitBatch();
-        }
-
-        public void StartCodeBatch()
-        {
-            _codeDb.StartBatch();
+            _codeDb.Commit();
         }
 
         private bool _needsStateRootUpdate;
@@ -266,6 +261,8 @@ namespace Nethermind.State
             }
 
             Keccak codeHash = Keccak.Compute(code);
+            
+            _codesToSave++;
             _codeDb[codeHash.Bytes] = code;
 
             return codeHash;

@@ -103,11 +103,6 @@ namespace Nethermind.Blockchain.Processing
                         if (_logger.IsInfo) _logger.Info($"Processing part of a long blocks branch {i}/{suggestedBlocks.Count}");
                     }
 
-                    if (!readOnly)
-                    {
-                        _stateProvider.StartCodeBatch(); // pruning hack
-                    }
-
                     var (processedBlock, receipts) = ProcessOne(suggestedBlocks[i], options, blockTracer);
                     processedBlocks[i] = processedBlock;
 

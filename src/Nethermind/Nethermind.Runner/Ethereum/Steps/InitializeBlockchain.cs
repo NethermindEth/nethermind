@@ -79,7 +79,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             if (syncConfig.Pruning)
             {
                 _api.TrieStore = new TrieStore(
-                    _api.DbProvider.StateDb.Innermost,
+                    _api.DbProvider.StateDb.Innermost, // TODO: PRUNING what a hack here just to pass the actual DB
                     new MemoryLimit(syncConfig.PruningCacheMb * 1.MB()), // TODO: memory hint should define this
                     new ConstantInterval(syncConfig.PruningPersistenceInterval), // TODO: this should be based on time
                     _api.LogManager);
@@ -87,7 +87,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             else
             {
                 _api.TrieStore = new TrieStore(
-                    _api.DbProvider.StateDb.Innermost,
+                    _api.DbProvider.StateDb.Innermost, // TODO: PRUNING what a hack here just to pass the actual DB
                     new MemoryLimit(512.MB()),
                     Full.Archive,
                     _api.LogManager);

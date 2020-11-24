@@ -44,7 +44,7 @@ namespace Nethermind.Blockchain.Processing
         {
             DbProvider = readOnlyDbProvider;
             ISnapshotableDb stateDb = readOnlyDbProvider.StateDb;
-            IDb codeDb = readOnlyDbProvider.CodeDb;
+            ISnapshotableDb codeDb = readOnlyDbProvider.CodeDb;
 
             ReadOnlyTrieStore readOnlyTrieStore = new ReadOnlyTrieStore(trieStore);
             StateReader = new StateReader(readOnlyTrieStore, codeDb, logManager);

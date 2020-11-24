@@ -84,10 +84,5 @@ namespace Nethermind.State
         /// pruning hack
         /// </summary>
         void CommitCode();
-        
-        /// <summary>
-        /// pruning hack
-        /// </summary>
-        void StartCodeBatch();
     }
 }

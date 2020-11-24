@@ -36,8 +36,8 @@ namespace Nethermind.Synchronization.BeamSync
             _codeDb = new BeamSyncDb(otherProvider.CodeDb.Innermost, otherProvider.BeamStateDb, syncModeSelector, logManager, syncConfig.BeamSyncContextTimeout, syncConfig.BeamSyncPreProcessorTimeout);
             _stateDb = new BeamSyncDb(otherProvider.StateDb.Innermost, otherProvider.BeamStateDb, syncModeSelector, logManager, syncConfig.BeamSyncContextTimeout, syncConfig.BeamSyncPreProcessorTimeout);
             BeamSyncFeed = new CompositeStateSyncFeed<StateSyncBatch?>(logManager, _codeDb, _stateDb);
-            StateDb = new StateDb(_stateDb);
-            CodeDb = new StateDb(_codeDb);
+            StateDb = new StateDb(_stateDb); // TODO: PRUNING - not state really
+            CodeDb = new StateDb(_codeDb); // TODO: PRUNING - not state really
         }
 
         public void EnableVerifiedMode()
