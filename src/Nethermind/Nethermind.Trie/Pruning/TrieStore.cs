@@ -360,10 +360,10 @@ namespace Nethermind.Trie.Pruning
                 $"Deep pruning nodes {MemoryUsedByDirtyCache / 1.MB()}MB, {Metrics.DeepPrunedPersistedNodesCount}.");
             
             Stopwatch stopwatch = Stopwatch.StartNew();
-            // foreach (BlockCommitSet blockCommitSet in _commitSetQueue)
-            // {
-            //     blockCommitSet.Root?.PrunePersistedRecursively(this);
-            // }
+            foreach (BlockCommitSet blockCommitSet in _commitSetQueue)
+            {
+                blockCommitSet.Root?.PrunePersistedRecursively(this);
+            }
 
             _persistedNodesCache.ForEach(_pruneNodeAction);
 
