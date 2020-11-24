@@ -261,16 +261,15 @@ namespace Nethermind.Core.Caching
         {
             int next = _head;
             int start = next;
-            while (next != Node.Null && next != start)
+            while (next != Node.Null)
             {
                 Node node = _list[next];
                 action(node.Value);
-                int nextBefore = next;
                 next = node.Next;
 
-                if (next == nextBefore)
+                if (next == start)
                 {
-                    throw new InvalidOperationException();
+                    break;
                 }
             }
         }
