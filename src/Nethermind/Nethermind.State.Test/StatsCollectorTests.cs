@@ -70,6 +70,7 @@ namespace Nethermind.Store.Test
             memDb.Delete(codeHash2); // missing code
             Keccak storageKey = new Keccak("0x345e54154080bfa9e8f20c99d7a0139773926479bc59e5b4f830ad94b6425332");
             memDb.Delete(storageKey); // deletes some storage
+            trieStore.ClearCache();
 
             TrieStatsCollector statsCollector = new TrieStatsCollector(stateDb, LimboLogs.Instance);
             stateProvider.Accept(statsCollector, stateProvider.StateRoot);
