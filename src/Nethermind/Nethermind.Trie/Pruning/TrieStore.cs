@@ -347,7 +347,7 @@ namespace Nethermind.Trie.Pruning
             }
             
             stopwatch.Stop();
-            Metrics.PruningTime = stopwatch.ElapsedMilliseconds;
+            Metrics.DeepPruningTime = stopwatch.ElapsedMilliseconds;
             if (_logger.IsWarn) _logger.Warn(
                 $"Finished deep pruning nodes in {stopwatch.ElapsedMilliseconds}ms, {Metrics.DeepPrunedPersistedNodesCount}");
         }

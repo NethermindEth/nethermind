@@ -43,6 +43,8 @@ namespace Nethermind.Trie.Pruning
         
         public static long PruningTime { get; set; }
         
+        public static long DeepPruningTime { get; set; }
+        
         public static long LastPersistedBlockNumber { get; set; }
         
         public static long MemoryUsedByCache { get; set; }
