@@ -262,7 +262,6 @@ namespace Nethermind.State
 
             Keccak codeHash = Keccak.Compute(code);
             
-            _codesToSave++;
             _codeDb[codeHash.Bytes] = code;
 
             return codeHash;
