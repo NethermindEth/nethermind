@@ -17,6 +17,7 @@
 
 using System;
 using System.Security.Cryptography;
+using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Trie;
