@@ -117,14 +117,27 @@ namespace Nethermind.Synchronization.Blocks
             Block block = Blocks[_indexMapping[index]];
             receipts ??= Array.Empty<TxReceipt>();
 
-            bool result = _receiptsRecovery.TryRecover(block, receipts); 
-            if (result)
+            try
             {
-                ValidateReceipts(block, receipts);
-                ReceiptsForBlocks![mappedIndex] = receipts;
+                bool result = _receiptsRecovery.TryRecover(block, receipts);
+                if (result)
+                {
+                    ValidateReceipts(block, receipts);
+                    ReceiptsForBlocks![mappedIndex] = receipts;
+                }
+                else
+                {
+                    throw new EthSyncException($"Receipt recovery failed for {block.ToString(Block.Format.Short)}.");
+                }
+                
+                return result;
+            }
+            catch (Exception e)
+            {
+                throw new EthSyncException($"Receipt recovery failed for {block.ToString(Block.Format.Short)}.", e);
             }
 
-            return result;
+            
         }
 
         private void ValidateReceipts(Block block, TxReceipt[] blockReceipts)

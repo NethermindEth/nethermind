@@ -329,7 +329,17 @@ namespace Nethermind.Synchronization.Blocks
                             var contextReceiptsForBlock = context.ReceiptsForBlocks![blockIndex];
                             if (contextReceiptsForBlock != null)
                             {
+                                if (contextReceiptsForBlock.Length != (currentBlock.Transactions?.Length ?? 0))
+                                {
+                                    _logger.Warn($"Invalid receipts for block {currentBlock.ToString(Block.Format.Short)}.");
+                                    // throw new EthSyncException($"Invalid receipts for block {currentBlock.ToString(Block.Format.Short)}.");
+                                }
                                 _receiptStorage.Insert(currentBlock, contextReceiptsForBlock);
+                            }
+                            else
+                            {
+                                _logger.Warn($"Empty receipts for block {currentBlock.ToString(Block.Format.Short)}.");
+                                // throw new EthSyncException($"Invalid receipts for block {currentBlock.ToString(Block.Format.Short)}.");
                             }
                         }
 
