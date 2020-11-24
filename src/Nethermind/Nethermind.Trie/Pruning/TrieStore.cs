@@ -416,8 +416,6 @@ namespace Nethermind.Trie.Pruning
             Metrics.PruningTime = stopwatch.ElapsedMilliseconds;
             if (_logger.IsWarn) _logger.Warn(
                 $"Finished pruning nodes in {stopwatch.ElapsedMilliseconds}ms {MemoryUsedByCache / 1.MB()}MB, last persisted block: {LastPersistedBlockNumber} current: {NewestKeptBlockNumber}.");
-            
-            PruneOldTrees();
         }
 
         public void ClearCache()
