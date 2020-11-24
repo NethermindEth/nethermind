@@ -24,9 +24,8 @@ namespace Nethermind.Db.Rocks
         public override string Name { get; protected set; }
 
         public SimpleRocksDb(string basePath, string dbName, IDbConfig dbConfig, ILogManager logManager = null)
-            : base(basePath, dbName, dbConfig, logManager)
+            : base(basePath, dbName, dbName, dbConfig, logManager)
         {
-            Name = dbName;
         }
     }
 }

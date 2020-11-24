@@ -14,10 +14,22 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using Nethermind.Core.Extensions;
+
 namespace Nethermind.Baseline.Config
 {
     public class BaselineConfig : IBaselineConfig
     {
         public bool Enabled { get; set; }
+
+        public bool BaselineTreeDbCacheIndexAndFilterBlocks { get; set; } = false;
+        public ulong BaselineTreeDbBlockCacheSize { get; set; } = 1.KiB();
+        public ulong BaselineTreeDbWriteBufferSize { get; set; } = 1.KiB();
+        public uint BaselineTreeDbWriteBufferNumber { get; set; } = 4;
+
+        public bool BaselineTreeMetadataDbCacheIndexAndFilterBlocks { get; set; } = false;
+        public ulong BaselineTreeMetadataDbBlockCacheSize { get; set; } = 1.KiB();
+        public ulong BaselineTreeMetadataDbWriteBufferSize { get; set; } = 1.KiB();
+        public uint BaselineTreeMetadataDbWriteBufferNumber { get; set; } = 4;
     }
 }

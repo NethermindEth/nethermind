@@ -20,6 +20,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
 using System.Threading;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Db.Rocks.Config;
@@ -46,7 +47,7 @@ namespace Nethermind.Db.Rocks
         
         protected static IntPtr _cache;
         
-        protected static void InitCache(IDbConfig dbConfig)
+        protected static void InitCache(IPlugableDbConfig dbConfig)
         {
             if (Interlocked.CompareExchange(ref _cacheInitialized, 1, 0) == 0)
             {
@@ -54,7 +55,52 @@ namespace Nethermind.Db.Rocks
                 Interlocked.Add(ref _maxRocksSize, (long)dbConfig.BlockCacheSize);
             }
         }
-        
+
+        public DbOnTheRocks(string basePath, string dbPath, string dbName, IPlugableDbConfig dbConfig, ILogManager logManager, ColumnFamilies columnFamilies = null, bool deleteOnStart = false)
+        {
+            Name = dbName;
+            static RocksDb Open(string path, (DbOptions Options, ColumnFamilies Families) db)
+            {
+                (DbOptions options, ColumnFamilies families) = db;
+                return families == null ? RocksDb.Open(options, path) : RocksDb.Open(options, path, families);
+            }
+
+            _fullPath = dbPath.GetApplicationResourcePath(basePath);
+            _logger = logManager?.GetClassLogger() ?? NullLogger.Instance;
+            if (!Directory.Exists(_fullPath))
+            {
+                Directory.CreateDirectory(_fullPath);
+            }
+            else if (deleteOnStart)
+            {
+                Clear();
+            }
+
+            try
+            {
+                // ReSharper disable once VirtualMemberCallInConstructor
+                if (_logger.IsDebug) _logger.Debug($"Building options for {Name} DB");
+                DbOptions options = BuildOptions(dbConfig);
+                InitCache(dbConfig);
+
+                // ReSharper disable once VirtualMemberCallInConstructor
+                if (_logger.IsDebug) _logger.Debug($"Loading DB {Name.PadRight(13)} from {_fullPath} with max memory footprint of {_maxThisDbSize / 1000 / 1000}MB");
+                Db = DbsByPath.GetOrAdd(_fullPath, Open, (options, columnFamilies));
+            }
+            catch (DllNotFoundException e) when (e.Message.Contains("libdl"))
+            {
+                throw new ApplicationException($"Unable to load 'libdl' necessary to init the RocksDB database. Please run{Environment.NewLine}" +
+                                               $"sudo apt-get update && sudo apt-get install libsnappy-dev libc6-dev libc6 unzip{Environment.NewLine}" +
+                                               "or similar depending on your distribution.");
+            }
+            catch (RocksDbException x) when (x.Message.Contains("LOCK"))
+            {
+                if (_logger.IsWarn) _logger.Warn("If your database did not close properly you need to call 'find -type f -name '*LOCK*' -delete' from the databse folder");
+                throw;
+            }
+        }
+
+
         public DbOnTheRocks(string basePath, string dbPath, IDbConfig dbConfig, ILogManager logManager, ColumnFamilies columnFamilies = null, bool deleteOnStart = false)
         {
             static RocksDb Open(string path, (DbOptions Options, ColumnFamilies Families) db)
@@ -101,12 +147,12 @@ namespace Nethermind.Db.Rocks
         protected internal virtual void UpdateReadMetrics() => Metrics.OtherDbReads++;
         protected internal virtual void UpdateWriteMetrics() => Metrics.OtherDbWrites++;
 
-        private T ReadConfig<T>(IDbConfig dbConfig, string propertyName)
+        private T ReadConfig<T>(IPlugableDbConfig dbConfig, string propertyName)
         {
             return ReadConfig<T>(dbConfig, propertyName, Name);
         }
 
-        protected static T ReadConfig<T>(IDbConfig dbConfig, string propertyName, string tableName)
+        protected static T ReadConfig<T>(IPlugableDbConfig dbConfig, string propertyName, string tableName)
         {
             string prefixed = string.Concat(tableName == "State" ? string.Empty : string.Concat(tableName, "Db"), propertyName);
             try
@@ -119,7 +165,7 @@ namespace Nethermind.Db.Rocks
             }
         }
 
-        protected virtual DbOptions BuildOptions(IDbConfig dbConfig)
+        protected virtual DbOptions BuildOptions(IPlugableDbConfig dbConfig)
         {
             _maxThisDbSize = 0;
             BlockBasedTableOptions tableOptions = new BlockBasedTableOptions();

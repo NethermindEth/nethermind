@@ -51,7 +51,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             IDbConfig dbConfig = _api.Config<IDbConfig>();
             ISyncConfig syncConfig = _api.Config<ISyncConfig>();
             IInitConfig initConfig = _api.Config<IInitConfig>();
-            _api.DbFactory = new DbFactory(_api.EthereumJsonSerializer, new BasicJsonRpcClient(new Uri(initConfig.RpcDbUrl), _api.EthereumJsonSerializer, _api.LogManager), _api.LogManager, initConfig, dbConfig);
+            _api.DbFactory = new DbFactory(_api.EthereumJsonSerializer, _api.LogManager, initConfig, dbConfig);
 
             foreach (PropertyInfo propertyInfo in typeof(IDbConfig).GetProperties())
             {

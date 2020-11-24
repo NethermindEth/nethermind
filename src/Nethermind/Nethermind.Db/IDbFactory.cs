@@ -23,6 +23,6 @@ namespace Nethermind.Db
     {
         IDb Create(Func<string, IConfig, IDb> newRocksDb, bool createInMemoryWriteStore = true);
 
-        IDb Create(string dbName, bool createInMemoryWriteStore = true);
+        IDb Create(string dbName, IConfig? dbConfig = null, bool createInMemoryWriteStore = true);
     }
 }

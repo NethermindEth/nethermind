@@ -69,7 +69,7 @@ namespace Nethermind.Db.Rocks
             return result;
         }
 
-        protected override DbOptions BuildOptions(IDbConfig dbConfig)
+        protected override DbOptions BuildOptions(IPlugableDbConfig dbConfig)
         {
             var options = base.BuildOptions(dbConfig);
             options.SetCreateMissingColumnFamilies();

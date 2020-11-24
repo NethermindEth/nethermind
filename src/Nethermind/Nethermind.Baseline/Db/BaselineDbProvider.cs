@@ -26,6 +26,8 @@ namespace Nethermind.Baseline.Db
         public IDb? BaselineTreeDb { get;  }
 
         public IDb? BaselineTreeMetadataDb { get; }
+
+        Task Init();
     }
 
     public class BaselineDbProvider : IBaselineDbProvider

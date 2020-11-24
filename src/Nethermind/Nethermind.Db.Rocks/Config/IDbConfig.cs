@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -19,13 +19,8 @@ using Nethermind.Config;
 namespace Nethermind.Db.Rocks.Config
 {
     [ConfigCategory(HiddenFromDocs = true)]
-    public interface IDbConfig : IConfig
+    public interface IDbConfig : IConfig, IPlugableDbConfig
     {
-        ulong WriteBufferSize { get; set; }
-        uint WriteBufferNumber { get; set; }
-        ulong BlockCacheSize { get; set; }
-        bool CacheIndexAndFilterBlocks { get; set; }
-
         ulong ReceiptsDbWriteBufferSize { get; set; }
         uint ReceiptsDbWriteBufferNumber { get; set; }
         ulong ReceiptsDbBlockCacheSize { get; set; }
@@ -125,10 +120,5 @@ namespace Nethermind.Db.Rocks.Config
         ulong ProviderReceiptsDbBlockCacheSize { get; set; }
         ulong ProviderReceiptsDbWriteBufferSize { get; set; }
         uint ProviderReceiptsDbWriteBufferNumber { get; set; }
-
-
-        uint RecycleLogFileNum { get; set; }
-        bool WriteAheadLogSync { get; set; }
-
     }
 }

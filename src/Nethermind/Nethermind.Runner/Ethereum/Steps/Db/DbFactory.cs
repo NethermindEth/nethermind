@@ -31,23 +31,24 @@ namespace Nethermind.Runner.Ethereum.Steps.Db
     public class DbFactory : IDbFactory
     {
         private readonly IJsonSerializer _serializer;
-        private readonly IJsonRpcClient _client;
         private readonly ILogManager _logManager;
         private readonly IInitConfig _initConfig;
-        private readonly IDbConfig _dbConfig;
-        
+        private readonly IDbConfig _defaultDbConfig;
+        private readonly IJsonRpcClient? _rpcClient;
+
         public DbFactory(
-            IJsonSerializer serializer, 
-            IJsonRpcClient client, 
+            IJsonSerializer serializer,
             ILogManager logManager,
             IInitConfig initConfig,
             IDbConfig dbConfig)
         {
             _serializer = serializer ?? throw new ArgumentNullException(nameof(serializer));
-            _client = client ?? throw new ArgumentNullException(nameof(client));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _initConfig = initConfig ?? throw new ArgumentNullException(nameof(initConfig));
-            _dbConfig = dbConfig ?? throw new ArgumentNullException(nameof(dbConfig));
+            _defaultDbConfig = dbConfig ?? throw new ArgumentNullException(nameof(dbConfig));
+
+            if (_initConfig.DiagnosticMode == DiagnosticMode.RpcDb)
+                _rpcClient = new BasicJsonRpcClient(new Uri(_initConfig.RpcDbUrl), _serializer, _logManager);
         }
 
         public IDb Create(Func<string, IConfig, IDb> newRocksDb, bool createInMemoryWriteStore = true)
@@ -56,21 +57,21 @@ namespace Nethermind.Runner.Ethereum.Steps.Db
             switch (_initConfig.DiagnosticMode)
             {
                 case DiagnosticMode.RpcDb:
-                    rocksDb = newRocksDb(Path.Combine(_initConfig.BaseDbPath, "debug"), _dbConfig);
-                    return new ReadOnlyDb(new RpcDb(rocksDb.Name, _serializer, _client, _logManager, rocksDb), createInMemoryWriteStore);
+                    rocksDb = newRocksDb(Path.Combine(_initConfig.BaseDbPath, "debug"), _defaultDbConfig);
+                    return new ReadOnlyDb(new RpcDb(rocksDb.Name, _serializer, _rpcClient, _logManager, rocksDb), createInMemoryWriteStore);
                 case DiagnosticMode.ReadOnlyDb:
-                    rocksDb = newRocksDb(Path.Combine(_initConfig.BaseDbPath, "debug"), _dbConfig);
+                    rocksDb = newRocksDb(Path.Combine(_initConfig.BaseDbPath, "debug"), _defaultDbConfig);
                     return new ReadOnlyDb(rocksDb, createInMemoryWriteStore); ;
                 case DiagnosticMode.MemDb:
                     return new MemDb();
                 default:
-                    return newRocksDb(_initConfig.BaseDbPath, _dbConfig);
+                    return newRocksDb(_initConfig.BaseDbPath, _defaultDbConfig);
             }
         }
 
-        public IDb Create(string dbName, bool createInMemoryWriteStore = true)
+        public IDb Create(string dbName, IConfig? dbConfig = null, bool createInMemoryWriteStore = true)
         {
-            return Create((string basePath, IConfig config) => new SimpleRocksDb(basePath, dbName, _dbConfig, _logManager), createInMemoryWriteStore);
+            return Create((string basePath, IConfig config) => new SimpleRocksDb(basePath, dbName, _defaultDbConfig, _logManager), createInMemoryWriteStore);
         }
     }
 }
