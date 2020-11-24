@@ -26,6 +26,28 @@ using Nethermind.Logging;
 
 namespace Nethermind.Trie.Pruning
 {
+    public static class Nodes
+    {
+        public static HashSet<Keccak> Tracked = new HashSet<Keccak>
+        {
+            new Keccak("0xe7ec9ecd3f7905ee1def22a24322a319f500c225bf56167b68c5848a47457eb4")
+        };
+    }
+
+    public static class TrackingExtensions
+    {
+        public static bool ShouldTrack(this NodeCommitInfo nodeCommitInfo)
+        {
+            return nodeCommitInfo.Node.ShouldTrack() ||
+                   nodeCommitInfo.NodeParent.ShouldTrack();
+        }
+        
+        public static bool ShouldTrack(this TrieNode? nodeCommitInfo)
+        {
+            return Nodes.Tracked.Contains(nodeCommitInfo?.Keccak ?? Keccak.Zero);
+        }
+    }
+
     /// <summary>
     /// Trie store helps to manage trie commits block by block.
     /// If persistence and pruning are needed they have a chance to execute their behaviour on commits.  
@@ -33,7 +55,7 @@ namespace Nethermind.Trie.Pruning
     public class TrieStore : ITrieStore
     {
         private int _isFirst;
-        
+
         public TrieStore(IKeyValueStore? keyValueStore, ILogManager? logManager)
             : this(keyValueStore, No.Pruning, Full.Archive, logManager)
         {
@@ -110,7 +132,7 @@ namespace Nethermind.Trie.Pruning
             if (blockNumber < 0) throw new ArgumentOutOfRangeException(nameof(blockNumber));
             EnsureCommitSetExistsForBlock(blockNumber);
 
-            if (_logger.IsTrace) _logger.Trace($"Committing {nodeCommitInfo} at {blockNumber}");
+            if (_logger.IsTrace || nodeCommitInfo.ShouldTrack()) _logger.Trace($"Committing {nodeCommitInfo} at {blockNumber}");
             if (!nodeCommitInfo.IsEmptyBlockMarker)
             {
                 TrieNode node = nodeCommitInfo.Node!;
@@ -134,7 +156,7 @@ namespace Nethermind.Trie.Pruning
                     TrieNode cachedNodeCopy = FindCachedOrUnknown(node.Keccak);
                     if (!ReferenceEquals(cachedNodeCopy, node))
                     {
-                        if (_logger.IsTrace) _logger.Trace($"Replacing {node} with its cached copy {cachedNodeCopy}.");
+                        if (_logger.IsTrace || nodeCommitInfo.ShouldTrack()) _logger.Trace($"Replacing {node} with its cached copy {cachedNodeCopy}.");
                         if (!nodeCommitInfo.IsRoot)
                         {
                             nodeCommitInfo.NodeParent!.ReplaceChildRef(nodeCommitInfo.ChildPositionAtParent, cachedNodeCopy);
@@ -229,7 +251,7 @@ namespace Nethermind.Trie.Pruning
             if (isMissing)
             {
                 trieNode = new TrieNode(NodeType.Unknown, hash);
-                if (_logger.IsTrace) _logger.Trace($"Creating new node {trieNode}");
+                if (_logger.IsTrace || trieNode.ShouldTrack()) _logger.Trace($"Creating new node {trieNode}");
                 _nodeCache.TryAdd(trieNode.Keccak!, trieNode);
                 if (trieNode.Keccak == null)
                 {
@@ -277,7 +299,7 @@ namespace Nethermind.Trie.Pruning
                 {
                     if (node.IsPersisted)
                     {
-                        if (_logger.IsTrace) _logger.Trace($"Removing persisted {node} from memory.");
+                        if (_logger.IsTrace || node.ShouldTrack()) _logger.Trace($"Removing persisted {node} from memory.");
                         toRemove.Add(node);
                         if (node.Keccak == null)
                         {
@@ -292,7 +314,7 @@ namespace Nethermind.Trie.Pruning
                     }
                     else if (IsNoLongerNeeded(node))
                     {
-                        if (_logger.IsTrace) _logger.Trace($"Removing {node} from memory (no longer referenced).");
+                        if (_logger.IsTrace || node.ShouldTrack()) _logger.Trace($"Removing {node} from memory (no longer referenced).");
                         toRemove.Add(node);
                         if (node.Keccak == null)
                         {
@@ -366,7 +388,7 @@ namespace Nethermind.Trie.Pruning
             _nodeCache.Clear();
             MemoryUsedByCache = 0;
         }
-        
+
         public void Dispose()
         {
             _logger.Warn("Disposing trie");
@@ -382,7 +404,7 @@ namespace Nethermind.Trie.Pruning
                 {
                     break;
                 }
-                
+
                 if (blockCommitSet.BlockNumber < NewestKeptBlockNumber - Reorganization.MaxDepth)
                 {
                     // if (_logger.IsWarn) _logger.Warn($"Removing historical ({_commitSetQueue.Count}) {blockCommitSet.BlockNumber} < {NewestKeptBlockNumber} - 512");    
@@ -461,8 +483,9 @@ namespace Nethermind.Trie.Pruning
             stopwatch.Stop();
             Metrics.SnapshotPersistenceTime = stopwatch.ElapsedMilliseconds;
 
-            if (_logger.IsWarn) _logger.Warn(
-                $"Persisted trie from {commitSet.Root} at {commitSet.BlockNumber} in {stopwatch.ElapsedMilliseconds}ms (cache memory {MemoryUsedByCache})");
+            if (_logger.IsWarn)
+                _logger.Warn(
+                    $"Persisted trie from {commitSet.Root} at {commitSet.BlockNumber} in {stopwatch.ElapsedMilliseconds}ms (cache memory {MemoryUsedByCache})");
 
             LastPersistedBlockNumber = commitSet.BlockNumber;
         }
@@ -482,7 +505,7 @@ namespace Nethermind.Trie.Pruning
                 // Here we reach it from the old root so it appears to be out of place but it is correct as we need
                 // to prevent it from being removed from cache and also want to have it persisted.
 
-                if (_logger.IsTrace) _logger.Trace($"Persisting {nameof(TrieNode)} {currentNode} in snapshot {blockNumber}.");
+                if (_logger.IsTrace || currentNode.ShouldTrack()) _logger.Trace($"Persisting {nameof(TrieNode)} {currentNode} in snapshot {blockNumber}.");
                 _keyValueStore[currentNode.Keccak.Bytes] = currentNode.FullRlp;
                 currentNode.IsPersisted = true;
                 currentNode.LastSeen = blockNumber;
@@ -517,7 +540,7 @@ namespace Nethermind.Trie.Pruning
             {
                 return;
             }
-            
+
             bool announceReorgBoundary = false;
             bool isFirstCommit = Interlocked.Exchange(ref _isFirst, 1) == 0;
             if (isFirstCommit)
@@ -552,13 +575,13 @@ namespace Nethermind.Trie.Pruning
         }
 
         private bool _lastPersistedReachedReorgBoundary;
-        
+
         private void PersistOnShutdown()
         {
             // here we try to shorten the number of blocks recalculated when restarting (so we force persist)
             // and we need to speed up the standard announcement procedure so we persists a block
             // from the past (by going max reorg back)
-            
+
             BlockCommitSet? persistenceCandidate = null;
             while (_commitSetQueue.TryDequeue(out BlockCommitSet? blockCommitSet))
             {

@@ -53,31 +53,20 @@ namespace Nethermind.Runner.Ethereum
             if (_logger.IsInfo) _logger.Info("Persisting trie...");
             _api.TrieStore?.HackPersistOnShutdown();
             
-            if (_logger.IsInfo) _logger.Info("Stopping session monitor...");
-            _api.SessionMonitor?.Stop();
-
-            if (_logger.IsInfo) _logger.Info("Stopping discovery app...");
-            Task discoveryStopTask = _api.DiscoveryApp?.StopAsync() ?? Task.CompletedTask;
-
-            if (_logger.IsInfo) _logger.Info("Stopping block producer...");
-            Task blockProducerTask = _api.BlockProducer?.StopAsync() ?? Task.CompletedTask;
-
-            if (_logger.IsInfo) _logger.Info("Stopping sync peer pool...");
-            Task peerPoolTask = _api.SyncPeerPool?.StopAsync() ?? Task.CompletedTask;
-
-            if (_logger.IsInfo) _logger.Info("Stopping peer manager...");
-            Task peerManagerTask = _api.PeerManager?.StopAsync() ?? Task.CompletedTask;
-
             if (_logger.IsInfo) _logger.Info("Stopping synchronizer...");
             Task synchronizerTask = _api.Synchronizer?.StopAsync() ?? Task.CompletedTask;
-
+            
             if (_logger.IsInfo) _logger.Info("Stopping blockchain processor...");
             Task blockchainProcessorTask = (_api.BlockchainProcessor?.StopAsync() ?? Task.CompletedTask);
+            
+            await Task.WhenAll(synchronizerTask, blockchainProcessorTask);
 
-            if (_logger.IsInfo) _logger.Info("Stopping rlpx peer...");
-            Task rlpxPeerTask = _api.RlpxPeer?.Shutdown() ?? Task.CompletedTask;
-
-            await Task.WhenAll(discoveryStopTask, rlpxPeerTask, peerManagerTask, synchronizerTask, peerPoolTask, blockchainProcessorTask, blockProducerTask);
+            if (_logger.IsInfo) _logger.Info("Closing DBs...");
+            _api.DbProvider?.Dispose();
+            if (_logger.IsInfo) _logger.Info("All DBs closed.");
+            
+            if (_logger.IsInfo) _logger.Info("Stopping block producer...");
+            Task blockProducerTask = _api.BlockProducer?.StopAsync() ?? Task.CompletedTask;
             
             while (_api.DisposeStack.Count != 0)
             {
@@ -85,11 +74,24 @@ namespace Nethermind.Runner.Ethereum
                 if (_logger.IsDebug) _logger.Debug($"Disposing {disposable}");
                 await disposable.DisposeAsync();
             }
-            
-            if (_logger.IsInfo) _logger.Info("Closing DBs...");
-            _api.DbProvider?.Dispose();
-            
-            if (_logger.IsInfo) _logger.Info("All DBs closed.");
+
+            if (_logger.IsInfo) _logger.Info("Stopping session monitor...");
+            _api.SessionMonitor?.Stop();
+
+            if (_logger.IsInfo) _logger.Info("Stopping discovery app...");
+            Task discoveryStopTask = _api.DiscoveryApp?.StopAsync() ?? Task.CompletedTask;
+
+            if (_logger.IsInfo) _logger.Info("Stopping sync peer pool...");
+            Task peerPoolTask = _api.SyncPeerPool?.StopAsync() ?? Task.CompletedTask;
+
+            if (_logger.IsInfo) _logger.Info("Stopping peer manager...");
+            Task peerManagerTask = _api.PeerManager?.StopAsync() ?? Task.CompletedTask;
+
+            if (_logger.IsInfo) _logger.Info("Stopping rlpx peer...");
+            Task rlpxPeerTask = _api.RlpxPeer?.Shutdown() ?? Task.CompletedTask;
+
+            await Task.WhenAll(discoveryStopTask, rlpxPeerTask, peerManagerTask, peerPoolTask, blockProducerTask);
+
             if (_logger.IsInfo) _logger.Info("Ethereum shutdown complete... please wait for all components to close");
         }
     }
