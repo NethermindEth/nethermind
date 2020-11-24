@@ -35,12 +35,12 @@ namespace Nethermind.Synchronization.LesSync
 
         private static readonly byte[] MaxSectionKey = Encoding.ASCII.GetBytes("MaxSection");
 
-        public CanonicalHashTrie(IKeyValueStore db)
+        public CanonicalHashTrie(IKeyValueStoreWithBatching db)
             : base(db, GetMaxRootHash(db), true, true, NullLogManager.Instance)
         {
         }
 
-        public CanonicalHashTrie(IKeyValueStore db, Keccak rootHash)
+        public CanonicalHashTrie(IKeyValueStoreWithBatching db, Keccak rootHash)
             : base(db, rootHash, true, true, NullLogManager.Instance)
         {
         }

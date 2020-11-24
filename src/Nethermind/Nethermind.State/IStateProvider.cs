@@ -79,5 +79,15 @@ namespace Nethermind.State
         /* visitors */
 
         void Accept(ITreeVisitor visitor, Keccak stateRoot);
+
+        /// <summary>
+        /// pruning hack
+        /// </summary>
+        void CommitCode();
+        
+        /// <summary>
+        /// pruning hack
+        /// </summary>
+        void StartCodeBatch();
     }
 }

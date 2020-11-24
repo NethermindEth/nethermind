@@ -41,7 +41,7 @@ namespace Nethermind.Trie.Pruning
             return nodeCommitInfo.Node.ShouldTrack() ||
                    nodeCommitInfo.NodeParent.ShouldTrack();
         }
-        
+
         public static bool ShouldTrack(this TrieNode? nodeCommitInfo)
         {
             return Nodes.Tracked.Contains(nodeCommitInfo?.Keccak ?? Keccak.Zero);
@@ -56,13 +56,13 @@ namespace Nethermind.Trie.Pruning
     {
         private int _isFirst;
 
-        public TrieStore(IKeyValueStore? keyValueStore, ILogManager? logManager)
+        public TrieStore(IKeyValueStoreWithBatching? keyValueStore, ILogManager? logManager)
             : this(keyValueStore, No.Pruning, Full.Archive, logManager)
         {
         }
 
         public TrieStore(
-            IKeyValueStore? keyValueStore,
+            IKeyValueStoreWithBatching? keyValueStore,
             IPruningStrategy? pruningStrategy,
             IPersistenceStrategy? persistenceStrategy,
             ILogManager? logManager)
@@ -419,7 +419,7 @@ namespace Nethermind.Trie.Pruning
 
         #region Private
 
-        private readonly IKeyValueStore _keyValueStore;
+        private readonly IKeyValueStoreWithBatching _keyValueStore;
 
         private Dictionary<Keccak, TrieNode> _nodeCache = new Dictionary<Keccak, TrieNode>();
 
@@ -476,18 +476,29 @@ namespace Nethermind.Trie.Pruning
 
         private void Persist(BlockCommitSet commitSet)
         {
-            if (_logger.IsDebug) _logger.Debug($"Persisting from root {commitSet.Root} in {commitSet.BlockNumber}");
+            try
+            {
+                _keyValueStore.StartBatch();
 
-            Stopwatch stopwatch = Stopwatch.StartNew();
-            commitSet.Root?.PersistRecursively(tn => Persist(tn, commitSet.BlockNumber), this, _logger);
-            stopwatch.Stop();
-            Metrics.SnapshotPersistenceTime = stopwatch.ElapsedMilliseconds;
+                if (_logger.IsDebug) _logger.Debug($"Persisting from root {commitSet.Root} in {commitSet.BlockNumber}");
 
-            if (_logger.IsWarn)
-                _logger.Warn(
-                    $"Persisted trie from {commitSet.Root} at {commitSet.BlockNumber} in {stopwatch.ElapsedMilliseconds}ms (cache memory {MemoryUsedByCache})");
+                Stopwatch stopwatch = Stopwatch.StartNew();
+                commitSet.Root?.PersistRecursively(tn => Persist(tn, commitSet.BlockNumber), this, _logger);
+                stopwatch.Stop();
+                Metrics.SnapshotPersistenceTime = stopwatch.ElapsedMilliseconds;
 
-            LastPersistedBlockNumber = commitSet.BlockNumber;
+                if (_logger.IsWarn)
+                    _logger.Warn(
+                        $"Persisted trie from {commitSet.Root} at {commitSet.BlockNumber} in {stopwatch.ElapsedMilliseconds}ms (cache memory {MemoryUsedByCache})");
+
+                LastPersistedBlockNumber = commitSet.BlockNumber;
+            }
+            finally
+            {
+                // generally we prefer to commit half of the batch rather than not commit at all because of some other issue
+                // it is a bit of a hack as we simply want to force Rocks to flush the changes
+                _keyValueStore.CommitBatch();
+            }
         }
 
         private void Persist(TrieNode currentNode, long blockNumber)

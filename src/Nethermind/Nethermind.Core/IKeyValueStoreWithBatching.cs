@@ -13,11 +13,16 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-namespace Nethermind.Trie
+namespace Nethermind.Core
 {
-    public interface IKeyValueStore
+    public interface IKeyValueStoreWithBatching : IKeyValueStore
     {
         byte[]? this[byte[] key] { get; set; }
+        
+        void StartBatch();
+        
+        void CommitBatch();
     }
 }

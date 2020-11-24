@@ -24,6 +24,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
+using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
@@ -102,6 +103,11 @@ namespace Nethermind.Blockchain.Processing
                         if (_logger.IsInfo) _logger.Info($"Processing part of a long blocks branch {i}/{suggestedBlocks.Count}");
                     }
 
+                    if (!readOnly)
+                    {
+                        _stateProvider.StartCodeBatch(); // pruning hack
+                    }
+
                     var (processedBlock, receipts) = ProcessOne(suggestedBlocks[i], options, blockTracer);
                     processedBlocks[i] = processedBlock;
 
@@ -167,7 +173,7 @@ namespace Nethermind.Blockchain.Processing
         // TODO: move to branch processor
         private void CommitBranch()
         {
-            // _stateProvider.CommitCode();
+            _stateProvider.CommitCode();
             // nowadays we could commit branch via TrieStore or similar (after this responsibility has been moved
         }
 

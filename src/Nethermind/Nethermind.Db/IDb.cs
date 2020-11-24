@@ -16,18 +16,16 @@
 
 using System;
 using System.Collections.Generic;
-using Nethermind.Trie;
+using Nethermind.Core;
 
 namespace Nethermind.Db
 {
-    public interface IDb : IKeyValueStore, IDisposable
+    public interface IDb : IKeyValueStoreWithBatching, IDisposable
     {
         string Name { get; }
         KeyValuePair<byte[],byte[]>[] this[byte[][] keys] { get; }
         IEnumerable<KeyValuePair<byte[], byte[]>> GetAll(bool ordered = false);
         IEnumerable<byte[]> GetAllValues(bool ordered = false);
-        void StartBatch();
-        void CommitBatch();
         void Remove(byte[] key);
         bool KeyExists(byte[] key);
 

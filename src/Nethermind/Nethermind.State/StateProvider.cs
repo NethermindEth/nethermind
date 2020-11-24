@@ -64,6 +64,16 @@ namespace Nethermind.State
             _tree.Accept(visitor, stateRoot, true);
         }
 
+        public void CommitCode()
+        {
+            _codeDb.CommitBatch();
+        }
+
+        public void StartCodeBatch()
+        {
+            _codeDb.StartBatch();
+        }
+
         private bool _needsStateRootUpdate;
 
         public void RecalculateStateRoot()
@@ -256,8 +266,6 @@ namespace Nethermind.State
             }
 
             Keccak codeHash = Keccak.Compute(code);
-            
-            _logger.Warn($"Saving code with length {code.Length} at hash {codeHash}");
             _codeDb[codeHash.Bytes] = code;
 
             return codeHash;

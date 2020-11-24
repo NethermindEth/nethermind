@@ -22,6 +22,7 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
 using System.Threading.Tasks;
+using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -74,7 +75,7 @@ namespace Nethermind.Trie
         {
         }
 
-        public PatriciaTree(IKeyValueStore keyValueStore)
+        public PatriciaTree(IKeyValueStoreWithBatching keyValueStore)
             : this(keyValueStore, EmptyTreeHash, false, true, NullLogManager.Instance)
         {
         }
@@ -85,7 +86,7 @@ namespace Nethermind.Trie
         }
 
         public PatriciaTree(
-            IKeyValueStore keyValueStore,
+            IKeyValueStoreWithBatching keyValueStore,
             Keccak rootHash,
             bool parallelBranches,
             bool allowCommits,
