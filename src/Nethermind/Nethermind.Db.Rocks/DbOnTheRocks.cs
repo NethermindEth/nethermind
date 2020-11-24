@@ -20,9 +20,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
 using System.Threading;
-using Nethermind.Config;
 using Nethermind.Core;
-using Nethermind.Core.Extensions;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Logging;
 using RocksDbSharp;
@@ -59,49 +57,16 @@ namespace Nethermind.Db.Rocks
         public DbOnTheRocks(string basePath, string dbPath, string dbName, IPlugableDbConfig dbConfig, ILogManager logManager, ColumnFamilies columnFamilies = null, bool deleteOnStart = false)
         {
             Name = dbName;
-            static RocksDb Open(string path, (DbOptions Options, ColumnFamilies Families) db)
-            {
-                (DbOptions options, ColumnFamilies families) = db;
-                return families == null ? RocksDb.Open(options, path) : RocksDb.Open(options, path, families);
-            }
-
-            _fullPath = dbPath.GetApplicationResourcePath(basePath);
-            _logger = logManager?.GetClassLogger() ?? NullLogger.Instance;
-            if (!Directory.Exists(_fullPath))
-            {
-                Directory.CreateDirectory(_fullPath);
-            }
-            else if (deleteOnStart)
-            {
-                Clear();
-            }
-
-            try
-            {
-                // ReSharper disable once VirtualMemberCallInConstructor
-                if (_logger.IsDebug) _logger.Debug($"Building options for {Name} DB");
-                DbOptions options = BuildOptions(dbConfig);
-                InitCache(dbConfig);
-
-                // ReSharper disable once VirtualMemberCallInConstructor
-                if (_logger.IsDebug) _logger.Debug($"Loading DB {Name.PadRight(13)} from {_fullPath} with max memory footprint of {_maxThisDbSize / 1000 / 1000}MB");
-                Db = DbsByPath.GetOrAdd(_fullPath, Open, (options, columnFamilies));
-            }
-            catch (DllNotFoundException e) when (e.Message.Contains("libdl"))
-            {
-                throw new ApplicationException($"Unable to load 'libdl' necessary to init the RocksDB database. Please run{Environment.NewLine}" +
-                                               $"sudo apt-get update && sudo apt-get install libsnappy-dev libc6-dev libc6 unzip{Environment.NewLine}" +
-                                               "or similar depending on your distribution.");
-            }
-            catch (RocksDbException x) when (x.Message.Contains("LOCK"))
-            {
-                if (_logger.IsWarn) _logger.Warn("If your database did not close properly you need to call 'find -type f -name '*LOCK*' -delete' from the databse folder");
-                throw;
-            }
+            Db = Init(basePath, dbPath, dbConfig, logManager, columnFamilies, deleteOnStart);
         }
 
 
         public DbOnTheRocks(string basePath, string dbPath, IDbConfig dbConfig, ILogManager logManager, ColumnFamilies columnFamilies = null, bool deleteOnStart = false)
+        {
+            Db = Init(basePath, dbPath, dbConfig, logManager, columnFamilies, deleteOnStart);
+        }
+
+        private RocksDb Init(string basePath, string dbPath, IPlugableDbConfig dbConfig, ILogManager logManager, ColumnFamilies columnFamilies = null, bool deleteOnStart = false)
         {
             static RocksDb Open(string path, (DbOptions Options, ColumnFamilies Families) db)
             {
@@ -129,7 +94,7 @@ namespace Nethermind.Db.Rocks
 
                 // ReSharper disable once VirtualMemberCallInConstructor
                 if (_logger.IsDebug) _logger.Debug($"Loading DB {Name.PadRight(13)} from {_fullPath} with max memory footprint of {_maxThisDbSize / 1000 / 1000}MB");
-                Db = DbsByPath.GetOrAdd(_fullPath, Open, (options, columnFamilies));
+                return DbsByPath.GetOrAdd(_fullPath, Open, (options, columnFamilies));
             }
             catch (DllNotFoundException e) when (e.Message.Contains("libdl"))
             {
@@ -139,7 +104,7 @@ namespace Nethermind.Db.Rocks
             }
             catch (RocksDbException x) when (x.Message.Contains("LOCK"))
             {
-                if(_logger.IsWarn) _logger.Warn("If your database did not close properly you need to call 'find -type f -name '*LOCK*' -delete' from the databse folder");
+                if (_logger.IsWarn) _logger.Warn("If your database did not close properly you need to call 'find -type f -name '*LOCK*' -delete' from the databse folder");
                 throw;
             }
         }
