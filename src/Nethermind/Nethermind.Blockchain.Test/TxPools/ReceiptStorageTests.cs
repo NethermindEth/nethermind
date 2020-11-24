@@ -41,7 +41,7 @@ namespace Nethermind.Blockchain.Test.TxPools
             _specProvider = RopstenSpecProvider.Instance;
             _ethereumEcdsa = new EthereumEcdsa(_specProvider.ChainId, LimboLogs.Instance);
             ReceiptsRecovery receiptsRecovery = new ReceiptsRecovery(_ethereumEcdsa, _specProvider);
-            _persistentStorage = new PersistentReceiptStorage(new MemColumnsDb<ReceiptsColumns>(), _specProvider, receiptsRecovery);
+            _persistentStorage = new PersistentReceiptStorage(new MemColumnsDb<ReceiptsColumns>(), _specProvider, receiptsRecovery, LimboLogs.Instance);
             _inMemoryStorage = new InMemoryReceiptStorage();
         }
 

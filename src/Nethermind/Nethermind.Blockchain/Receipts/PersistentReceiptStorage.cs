@@ -16,6 +16,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using Nethermind.Core;
@@ -24,6 +25,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
+using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 #pragma warning disable 618
 
@@ -44,7 +46,7 @@ namespace Nethermind.Blockchain.Receipts
         private const int CacheSize = 64;
         private readonly ICache<Keccak, TxReceipt[]> _receiptsCache = new LruCache<Keccak, TxReceipt[]>(CacheSize, CacheSize, "receipts");
 
-        public PersistentReceiptStorage(IColumnsDb<ReceiptsColumns> receiptsDb, ISpecProvider specProvider, IReceiptsRecovery receiptsRecovery)
+        public PersistentReceiptStorage(IColumnsDb<ReceiptsColumns> receiptsDb, ISpecProvider specProvider, IReceiptsRecovery receiptsRecovery, ILogManager logManager)
         {
             long Get(Keccak key, long defaultValue) => _database.Get(key)?.ToLongFromBigEndianByteArrayWithoutLeadingZeros() ?? defaultValue;
             
@@ -57,6 +59,7 @@ namespace Nethermind.Blockchain.Receipts
             byte[] lowestBytes = _database.Get(Keccak.Zero);
             _lowestInsertedReceiptBlock = lowestBytes == null ? (long?) null : new RlpStream(lowestBytes).DecodeLong();
             _migratedBlockNumber = Get(MigrationBlockNumberKey, long.MaxValue);
+            _logger = logManager?.GetClassLogger();
         }
 
         public Keccak FindBlockHash(Keccak txHash)
@@ -113,7 +116,7 @@ namespace Nethermind.Blockchain.Receipts
             {
                 return receipts;
             }
-            
+
             var receiptsData = _blocksDb.GetSpan(block.Hash);
             try
             {
@@ -214,10 +217,31 @@ namespace Nethermind.Blockchain.Receipts
             return result;
         }
 
+        private HashSet<Keccak> blocks = new HashSet<Keccak>();
+        private HashSet<long> blockNumbers = new HashSet<long>();
+        private ILogger _logger;
+
         public void Insert(Block block, params TxReceipt[] txReceipts)
         {
             txReceipts ??= Array.Empty<TxReceipt>();
+
+            if (blocks.Contains(block.Hash))
+            {
+                _logger.Error($"Block hash {block.Hash} receipts already added. {new StackFrame()}. Adding {txReceipts.Length} receipts for block {block.ToString(Block.Format.Short)}. {new StackTrace()}");
+            }
+            else if (blockNumbers.Contains(block.Number))
+            {
+                _logger.Error($"Block number {block.Number} receipts already added. Adding {txReceipts.Length} receipts for block {block.ToString(Block.Format.Short)}. {new StackTrace()}"); 
+            }
+            else
+            {
+                _logger.Warn($"Adding {txReceipts.Length} receipts for block {block.ToString(Block.Format.Short)}.");
+            }
             
+            blocks.Add(block.Hash);
+            blockNumbers.Add(block.Number);
+
+
             if (block.Transactions.Length != txReceipts.Length)
             {
                 throw new InvalidDataException(
@@ -226,7 +250,7 @@ namespace Nethermind.Blockchain.Receipts
             }
 
             _receiptsRecovery.TryRecover(block, txReceipts);
-            
+
             var blockNumber = block.Number;
             var spec = _specProvider.GetSpec(blockNumber);
             RlpBehaviors behaviors = spec.IsEip658Enabled ? RlpBehaviors.Eip658Receipts | RlpBehaviors.Storage : RlpBehaviors.Storage;
