@@ -3,9 +3,8 @@ using System.Collections.Generic;
 using System.Text;
 using Nethermind.Config;
 
-namespace Nethermind.Db.Rocks.Config
+namespace Nethermind.Db
 {
-    [ConfigCategory(HiddenFromDocs = true)]
     public interface IPlugableDbConfig
     {
         ulong WriteBufferSize { get; set; }

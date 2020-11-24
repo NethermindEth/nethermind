@@ -50,7 +50,7 @@ namespace Nethermind.Db.Rocks
             return keys;
         }
 
-        private static ColumnFamilies GetColumnFamilies(IDbConfig dbConfig, string name, T[] keys)
+        private static ColumnFamilies GetColumnFamilies(IPlugableDbConfig dbConfig, string name, T[] keys)
         {
             InitCache(dbConfig);
             
