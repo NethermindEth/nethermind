@@ -37,6 +37,7 @@ using Nethermind.DataMarketplace.Infrastructure.Notifiers;
 using Nethermind.DataMarketplace.Subprotocols.Factories;
 using Nethermind.Db;
 using Nethermind.WebSockets;
+using Nethermind.DataMarketplace.Infrastructure.Updaters;
 
 [assembly: InternalsVisibleTo("Nethermind.DataMarketplace.Test")]
 
@@ -122,9 +123,10 @@ namespace Nethermind.DataMarketplace.Initializers
 
             IWebSocketsModule webSocketsModule = ndmApi.WebSocketsManager!.GetModule("ndm");
             ndmApi.NdmNotifier = new NdmNotifier(webSocketsModule);
+
             ndmApi.EthRequestService = new EthRequestService(ndmApi.NdmConfig.FaucetHost, logManager);
+
             string baseDbPath = configProvider.GetConfig<IInitConfig>().BaseDbPath;
-            
             ndmApi.BaseDbPath = DbPath = Path.Combine(baseDbPath, ndmApi.NdmConfig.DatabasePath);
 
             _ndmModule.Init();

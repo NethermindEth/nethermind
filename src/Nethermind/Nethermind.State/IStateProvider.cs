@@ -79,7 +79,5 @@ namespace Nethermind.State
         /* visitors */
 
         void Accept(ITreeVisitor visitor, Keccak stateRoot);
-        
-        void CommitCode();
     }
 }

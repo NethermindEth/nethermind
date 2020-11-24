@@ -22,9 +22,8 @@ using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Abi;
 using Nethermind.Baseline.Tree;
-using Nethermind.Blockchain.Filters;
-using Nethermind.Blockchain.Filters.Topics;
 using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -35,12 +34,18 @@ using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
+using Nethermind.Trie;
 using Nethermind.TxPool;
 
 namespace Nethermind.Baseline
 {
     public class BaselineModule : IBaselineModule
     {
+        public const int TruncationLength = 5;
+        public static Keccak LeafTopic = new Keccak("0x6a82ba2aa1d2c039c41e6e2b5a5a1090d09906f060d32af9c1ac0beff7af75c0");
+        public static Keccak LeavesTopic = new Keccak("0x8ec50f97970775682a68d3c6f9caedf60fd82448ea40706b8b65d6c03648b922");
+        private const TxHandlingOptions TxHandlingOptions = TxPool.TxHandlingOptions.ManagedNonce | TxPool.TxHandlingOptions.PersistentBroadcast;
+
         public BaselineModule(
             ITxSender txSender,
             IStateReader stateReader,
@@ -49,16 +54,23 @@ namespace Nethermind.Baseline
             IAbiEncoder abiEncoder,
             IFileSystem fileSystem,
             IDb baselineDb,
-            ILogManager logManager)
+            IDb metadataBaselineDb,
+            ILogManager logManager,
+            IBlockProcessor blockProcessor,
+            DisposableStack disposableStack)
         {
             _abiEncoder = abiEncoder ?? throw new ArgumentNullException(nameof(abiEncoder));
             _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
             _baselineDb = baselineDb ?? throw new ArgumentNullException(nameof(baselineDb));
+            _metadataBaselineDb = metadataBaselineDb ?? throw new ArgumentNullException(nameof(metadataBaselineDb));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _txSender = txSender ?? throw new ArgumentNullException(nameof(txSender));
             _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
             _logFinder = logFinder ?? throw new ArgumentNullException(nameof(logFinder));
             _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
+            _blockProcessor = blockProcessor ?? throw new ArgumentNullException(nameof(blockProcessor));
+            _baselineTreeHelper = new BaselineTreeHelper(_logFinder, baselineDb, metadataBaselineDb, _logger);
+            _disposableStack = disposableStack ?? throw new ArgumentNullException(nameof(disposableStack));
 
             _metadata = LoadMetadata();
             InitTrees();
@@ -84,7 +96,7 @@ namespace Nethermind.Baseline
             tx.GasLimit = 1000000;
             tx.GasPrice = 20.GWei();
 
-            Keccak txHash = await _txSender.SendTransaction(tx, TxHandlingOptions.ManagedNonce);
+            Keccak txHash = await _txSender.SendTransaction(tx, TxHandlingOptions);
             return ResultWrapper<Keccak>.Success(txHash);
         }
 
@@ -115,7 +127,7 @@ namespace Nethermind.Baseline
             tx.GasLimit = 1000000;
             tx.GasPrice = 20.GWei();
 
-            Keccak txHash = await _txSender.SendTransaction(tx, TxHandlingOptions.ManagedNonce);
+            Keccak txHash = await _txSender.SendTransaction(tx, TxHandlingOptions);
 
             return ResultWrapper<Keccak>.Success(txHash);
         }
@@ -127,7 +139,7 @@ namespace Nethermind.Baseline
             bool isTracked = _baselineTrees.TryGetValue(contractAddress, out BaselineTree? tree);
 
             ResultWrapper<Keccak> result;
-            if (!isTracked)
+            if (!isTracked || tree == null)
             {
                 result = ResultWrapper<Keccak>.Fail(
                     $"{contractAddress} tree is not tracked",
@@ -135,16 +147,22 @@ namespace Nethermind.Baseline
             }
             else
             {
-                SearchResult<BlockHeader> searchResult = _blockFinder.SearchForHeader(blockParameter);
-                if (searchResult.IsError)
+                if (blockParameter == null || blockParameter == BlockParameter.Latest)
                 {
-                    result = ResultWrapper<Keccak>.Fail(searchResult);
+                    result = ResultWrapper<Keccak>.Success(tree.Root);
                 }
                 else
                 {
-                    // everything in memory
-                    tree = RebuildEntireTree(contractAddress, searchResult.Object.Hash);
-                    result = ResultWrapper<Keccak>.Success(tree.Root);
+                    SearchResult<BlockHeader> searchResult = _blockFinder.SearchForHeader(blockParameter);
+                    if (searchResult.IsError)
+                    {
+                        result = ResultWrapper<Keccak>.Fail(searchResult);
+                    }
+                    else
+                    {
+                        var historicalTree = _baselineTreeHelper.CreateHistoricalTree(contractAddress, searchResult.Object.Number);
+                        result = ResultWrapper<Keccak>.Success(historicalTree.Root);
+                    }
                 }
             }
 
@@ -166,7 +184,7 @@ namespace Nethermind.Baseline
                     $"{leafIndex} is not a valid leaf index",
                     ErrorCodes.InvalidInput);
             }
-            else if (!isTracked)
+            else if (!isTracked || tree == null)
             {
                 result = ResultWrapper<BaselineTreeNode>.Fail(
                     $"{contractAddress} tree is not tracked",
@@ -174,16 +192,58 @@ namespace Nethermind.Baseline
             }
             else
             {
-                SearchResult<BlockHeader> searchResult = _blockFinder.SearchForHeader(blockParameter);
-                if (searchResult.IsError)
+                if (blockParameter == null)
                 {
-                    result = ResultWrapper<BaselineTreeNode>.Fail(searchResult);
+                    result = ResultWrapper<BaselineTreeNode>.Success(tree.GetLeaf((uint) leafIndex));
                 }
                 else
                 {
-                    // everything in memory
-                    tree = RebuildEntireTree(contractAddress, searchResult.Object.Hash);
-                    result = ResultWrapper<BaselineTreeNode>.Success(tree.GetLeaf((uint) leafIndex));
+                    SearchResult<BlockHeader> searchResult = _blockFinder.SearchForHeader(blockParameter);
+                    if (searchResult.IsError)
+                    {
+                        result = ResultWrapper<BaselineTreeNode>.Fail(searchResult);
+                    }
+                    else
+                    {
+                        var leaf = _baselineTreeHelper.GetHistoricalLeaf(tree, (uint) leafIndex, searchResult.Object.Number);
+                        result = ResultWrapper<BaselineTreeNode>.Success(leaf);
+                    }
+                }
+            }
+
+            return Task.FromResult(result);
+        }
+
+        public Task<ResultWrapper<long>> baseline_getCount(
+            Address contractAddress,
+            BlockParameter? blockParameter = null)
+        {
+            bool isTracked = _baselineTrees.TryGetValue(contractAddress, out BaselineTree? tree);
+
+            ResultWrapper<long> result;
+            if (!isTracked || tree == null)
+            {
+                result = ResultWrapper<long>.Fail(
+                    $"{contractAddress} tree is not tracked",
+                    ErrorCodes.InvalidInput);
+            }
+            else
+            {
+                if (blockParameter == null)
+                {
+                    result = ResultWrapper<long>.Success(tree.Count);
+                }
+                else
+                {
+                    SearchResult<BlockHeader> searchResult = _blockFinder.SearchForHeader(blockParameter);
+                    if (searchResult.IsError)
+                    {
+                        result = ResultWrapper<long>.Fail(searchResult);
+                    }
+                    else
+                    {
+                        result = ResultWrapper<long>.Success(tree.GetBlockCount(searchResult.Object.Number));
+                    }
                 }
             }
 
@@ -207,7 +267,7 @@ namespace Nethermind.Baseline
             }
 
             ResultWrapper<BaselineTreeNode[]> result;
-            if (!isTracked)
+            if (!isTracked || tree == null)
             {
                 result = ResultWrapper<BaselineTreeNode[]>.Fail(
                     $"{contractAddress} tree is not tracked",
@@ -221,29 +281,40 @@ namespace Nethermind.Baseline
             }
             else
             {
-                SearchResult<BlockHeader> searchResult = _blockFinder.SearchForHeader(blockParameter);
-                if (searchResult.IsError)
+                var indexes = leafIndexes.Select(i => (uint) i).ToArray();
+                if (blockParameter == null)
                 {
-                    result = ResultWrapper<BaselineTreeNode[]>.Fail(searchResult);
+                    result = ResultWrapper<BaselineTreeNode[]>.Success(
+                        tree.GetLeaves(indexes));
                 }
                 else
                 {
-                    // everything in memory
-                    tree = RebuildEntireTree(contractAddress, searchResult.Object.Hash);
-                    result = ResultWrapper<BaselineTreeNode[]>.Success(
-                        tree.GetLeaves(leafIndexes.Select(i => (uint) i).ToArray()));
+                    SearchResult<BlockHeader> searchResult = _blockFinder.SearchForHeader(blockParameter);
+                    if (searchResult.IsError)
+                    {
+                        result = ResultWrapper<BaselineTreeNode[]>.Fail(searchResult);
+                    }
+                    else
+                    {
+                        var leaves = _baselineTreeHelper.GetHistoricalLeaves(tree, indexes, searchResult.Object.Number);
+                        result = ResultWrapper<BaselineTreeNode[]>.Success(leaves);
+                    }
                 }
             }
 
             return Task.FromResult(result);
         }
 
-        public async Task<ResultWrapper<Keccak>> baseline_deploy(Address address, string contractType)
+        public async Task<ResultWrapper<Keccak>> baseline_deploy(Address address, string contractType, string? argumentsAbi = null)
         {
+            // sample shield arguments:
+            // Goerli:  000000000000000000000000b881525d318d6bb54058116af45dd83e7c34fc4e0000000000000000000000000000000000000000000000000000000000000020
+            // Ropsten: 000000000000000000000000aba8d681f5391fcf27636416b02a2c748d7b0a9e0000000000000000000000000000000000000000000000000000000000000020
+            
             ResultWrapper<Keccak> result;
             try
             {
-                var bytecode = await GetContractBytecode(contractType);
+                var bytecode = await GetContractBytecode(contractType, argumentsAbi);
                 try
                 {
                     Keccak txHash = await DeployBytecode(address, contractType, bytecode);
@@ -299,53 +370,6 @@ namespace Nethermind.Baseline
             return result;
         }
 
-        private BaselineTree RebuildEntireTree(Address treeAddress)
-        {
-            // bad
-
-            Keccak leavesTopic = new Keccak("0x8ec50f97970775682a68d3c6f9caedf60fd82448ea40706b8b65d6c03648b922");
-            LogFilter insertLeavesFilter = new LogFilter(
-                0,
-                new BlockParameter(0L),
-                new BlockParameter(_blockFinder.Head.Number),
-                new AddressFilter(treeAddress),
-                new TopicsFilter(new SpecificTopic(leavesTopic)));
-
-            Keccak leafTopic = new Keccak("0x6a82ba2aa1d2c039c41e6e2b5a5a1090d09906f060d32af9c1ac0beff7af75c0");
-            LogFilter insertLeafFilter = new LogFilter(
-                0,
-                new BlockParameter(0L),
-                new BlockParameter(_blockFinder.Head.Number),
-                new AddressFilter(treeAddress),
-                new TopicsFilter(new SpecificTopic(leafTopic))); // find tree topics
-
-            var insertLeavesLogs = _logFinder.FindLogs(insertLeavesFilter);
-            var insertLeafLogs = _logFinder.FindLogs(insertLeafFilter);
-            BaselineTree baselineTree = new ShaBaselineTree(new MemDb(), Array.Empty<byte>(), 5);
-
-            // Keccak leafTopic = new Keccak("0x8ec50f97970775682a68d3c6f9caedf60fd82448ea40706b8b65d6c03648b922");
-            foreach (FilterLog filterLog in insertLeavesLogs
-                .Union(insertLeafLogs)
-                .OrderBy(fl => fl.BlockNumber).ThenBy(fl => fl.LogIndex))
-            {
-                if (filterLog.Data.Length == 96)
-                {
-                    Keccak leafHash = new Keccak(filterLog.Data.Slice(32, 32).ToArray());
-                    baselineTree.Insert(leafHash);
-                }
-                else
-                {
-                    for (int i = 0; i < (filterLog.Data.Length - 128) / 32; i++)
-                    {
-                        Keccak leafHash = new Keccak(filterLog.Data.Slice(128 + 32 * i, 32).ToArray());
-                        baselineTree.Insert(leafHash);
-                    }
-                }
-            }
-
-            return baselineTree;
-        }
-        
         public Task<ResultWrapper<bool>> baseline_verify(
             Address contractAddress,
             Keccak root,
@@ -363,17 +387,24 @@ namespace Nethermind.Baseline
             }
             else
             {
-                SearchResult<BlockHeader> searchResult = _blockFinder.SearchForHeader(blockParameter);
-                if (searchResult.IsError)
+                if (blockParameter == null)
                 {
-                    result = ResultWrapper<bool>.Fail(searchResult);
+                    bool verificationResult = tree!.Verify(root, leaf, path);
+                    result = ResultWrapper<bool>.Success(verificationResult);
                 }
                 else
                 {
-                    // everything in memory
-                    tree = RebuildEntireTree(contractAddress, searchResult.Object.Hash);
-                    bool verificationResult = tree!.Verify(root, leaf, path);
-                    result = ResultWrapper<bool>.Success(verificationResult);
+                    SearchResult<BlockHeader> searchResult = _blockFinder.SearchForHeader(blockParameter);
+                    if (searchResult.IsError)
+                    {
+                        result = ResultWrapper<bool>.Fail(searchResult);
+                    }
+                    else
+                    {
+                        var historicalTree = _baselineTreeHelper.CreateHistoricalTree(contractAddress, searchResult.Object.Number);
+                        bool verificationResult = historicalTree!.Verify(root, leaf, path);
+                        result = ResultWrapper<bool>.Success(verificationResult);
+                    }
                 }
             }
 
@@ -403,16 +434,22 @@ namespace Nethermind.Baseline
             }
             else
             {
-                SearchResult<BlockHeader> searchResult = _blockFinder.SearchForHeader(blockParameter);
-                if (searchResult.IsError)
+                if (blockParameter == null)
                 {
-                    result = ResultWrapper<BaselineTreeNode[]>.Fail(searchResult);
+                    result = ResultWrapper<BaselineTreeNode[]>.Success(tree!.GetProof((uint) leafIndex));
                 }
                 else
                 {
-                    // everything in memory
-                    tree = RebuildEntireTree(contractAddress, searchResult.Object.Hash);
-                    result = ResultWrapper<BaselineTreeNode[]>.Success(tree!.GetProof((uint) leafIndex));
+                    SearchResult<BlockHeader> searchResult = _blockFinder.SearchForHeader(blockParameter);
+                    if (searchResult.IsError)
+                    {
+                        result = ResultWrapper<BaselineTreeNode[]>.Fail(searchResult);
+                    }
+                    else
+                    {
+                        var historicalTree = _baselineTreeHelper.CreateHistoricalTree(contractAddress, searchResult.Object.Number);
+                        result = ResultWrapper<BaselineTreeNode[]>.Success(historicalTree!.GetProof((uint) leafIndex));
+                    }
                 }
             }
 
@@ -451,22 +488,51 @@ namespace Nethermind.Baseline
             }
         }
 
+        public async Task<ResultWrapper<Keccak>> baseline_verifyAndPush(
+            Address address,
+            Address contractAddress,
+            UInt256[] proof,
+            UInt256[] publicInputs,
+            Keccak newCommitment)
+        {
+            var txData = _abiEncoder.Encode(
+                AbiEncodingStyle.IncludeSignature,
+                ContractShield.VerifyAndPushSig,
+                proof,
+                publicInputs,
+                newCommitment);
+
+            Transaction tx = new Transaction();
+            tx.Value = 0;
+            tx.Data = txData;
+            tx.To = contractAddress;
+            tx.SenderAddress = address;
+            tx.GasLimit = 1000000;
+            tx.GasPrice = 20.GWei();
+
+            Keccak txHash = await _txSender.SendTransaction(tx, TxHandlingOptions);
+            return ResultWrapper<Keccak>.Success(txHash);
+        }
+
         #region private
-        
-        private const int TruncationLength = 5;
 
         private readonly IAbiEncoder _abiEncoder;
         private readonly IFileSystem _fileSystem;
         private readonly IDb _baselineDb;
+        private readonly IKeyValueStore _metadataBaselineDb;
         private readonly ILogger _logger;
         private readonly ITxSender _txSender;
         private readonly IStateReader _stateReader;
         private readonly ILogFinder _logFinder;
         private readonly IBlockFinder _blockFinder;
+        private readonly IBlockProcessor _blockProcessor;
+        private readonly IBaselineTreeHelper _baselineTreeHelper;
+        private readonly DisposableStack _disposableStack;
 
         private BaselineMetadata _metadata;
+
         private byte[] _metadataKey = {0};
-        
+
         private ConcurrentDictionary<Address, BaselineTree> _baselineTrees
             = new ConcurrentDictionary<Address, BaselineTree>();
 
@@ -485,7 +551,7 @@ namespace Nethermind.Baseline
                      (c >= 'a' && c <= 'f') ||
                      (c >= 'A' && c <= 'F'));
         }
-        
+
         private async Task<Keccak> DeployBytecode(Address address, string contractType, byte[] bytecode)
         {
             Transaction tx = new Transaction();
@@ -495,60 +561,13 @@ namespace Nethermind.Baseline
             tx.GasPrice = 20.GWei();
             tx.SenderAddress = address;
 
-            Keccak txHash = await _txSender.SendTransaction(tx, TxHandlingOptions.ManagedNonce);
+            Keccak txHash = await _txSender.SendTransaction(tx, TxHandlingOptions);
 
             _logger.Info($"Sent transaction at price {tx.GasPrice} to {tx.SenderAddress}");
             _logger.Info($"Contract {contractType} has been deployed");
             return txHash;
         }
 
-        private BaselineTree RebuildEntireTree(Address treeAddress, Keccak blockHash)
-        {
-            // bad
-
-            Keccak leavesTopic = new Keccak("0x8ec50f97970775682a68d3c6f9caedf60fd82448ea40706b8b65d6c03648b922");
-            LogFilter insertLeavesFilter = new LogFilter(
-                0,
-                new BlockParameter(0L),
-                new BlockParameter(blockHash),
-                new AddressFilter(treeAddress),
-                new TopicsFilter(new SpecificTopic(leavesTopic)));
-
-            Keccak leafTopic = new Keccak("0x6a82ba2aa1d2c039c41e6e2b5a5a1090d09906f060d32af9c1ac0beff7af75c0");
-            LogFilter insertLeafFilter = new LogFilter(
-                0,
-                new BlockParameter(0L),
-                new BlockParameter(blockHash),
-                new AddressFilter(treeAddress),
-                new TopicsFilter(new SpecificTopic(leafTopic))); // find tree topics
-
-            var insertLeavesLogs = _logFinder.FindLogs(insertLeavesFilter);
-            var insertLeafLogs = _logFinder.FindLogs(insertLeafFilter);
-            BaselineTree baselineTree = new ShaBaselineTree(new MemDb(), Array.Empty<byte>(), 5);
-
-            // Keccak leafTopic = new Keccak("0x8ec50f97970775682a68d3c6f9caedf60fd82448ea40706b8b65d6c03648b922");
-            foreach (FilterLog filterLog in insertLeavesLogs
-                .Union(insertLeafLogs)
-                .OrderBy(fl => fl.BlockNumber).ThenBy(fl => fl.LogIndex))
-            {
-                if (filterLog.Data.Length == 96)
-                {
-                    Keccak leafHash = new Keccak(filterLog.Data.Slice(32, 32).ToArray());
-                    baselineTree.Insert(leafHash);
-                }
-                else
-                {
-                    for (int i = 0; i < (filterLog.Data.Length - 128) / 32; i++)
-                    {
-                        Keccak leafHash = new Keccak(filterLog.Data.Slice(128 + 32 * i, 32).ToArray());
-                        baselineTree.Insert(leafHash);
-                    }
-                }
-            }
-
-            return baselineTree;
-        }
-    
         private void UpdateMetadata(Address contractAddress)
         {
             lock (_metadata)
@@ -592,17 +611,29 @@ namespace Nethermind.Baseline
         /// 608060405234801561001057600080fd5b5061080980610(...)
         /// </summary>
         /// <param name="contract"></param>
+        /// <param name="argumentsAbi"></param>
         /// <returns></returns>
-        private async Task<byte[]> GetContractBytecode(string contract)
+        private async Task<byte[]> GetContractBytecode(string contract, string? argumentsAbi)
         {
-            string[] contractBytecode = await _fileSystem.File.ReadAllLinesAsync($"contracts/{contract}.bin");
+            // TODO: remove the hack and write code nicely
+            string[] contractBytecode = await _fileSystem.File.ReadAllLinesAsync($"plugins/contracts/{contract}.bin".GetApplicationResourcePath());
             if (contractBytecode.Length < 4)
             {
-                throw new IOException("Bytecode not found");
+                contractBytecode = await _fileSystem.File.ReadAllLinesAsync($"contracts/{contract}.bin".GetApplicationResourcePath());
+                if (contractBytecode.Length < 4)
+                {
+                    contractBytecode = await _fileSystem.File.ReadAllLinesAsync($"contracts/{contract}.bin");
+                    if (contractBytecode.Length < 4)
+                    {
+                        throw new IOException("Bytecode not found");
+                    }
+                }
             }
 
             if (_logger.IsInfo) _logger.Info($"Loading bytecode of {contractBytecode[1]}");
-            return Bytes.FromHexString(contractBytecode[3]);
+            string bytecodeHex = contractBytecode[3];
+            bytecodeHex = bytecodeHex.Replace("#argumentsAbi#", argumentsAbi ?? string.Empty);
+            return Bytes.FromHexString(bytecodeHex);
         }
 
         private void InitTrees()
@@ -639,8 +670,15 @@ namespace Nethermind.Baseline
                 return false;
             }
 
-            ShaBaselineTree tree = new ShaBaselineTree(_baselineDb, trackedTree.Bytes, TruncationLength);
-            return _baselineTrees.TryAdd(trackedTree, tree);
+            ShaBaselineTree tree = new ShaBaselineTree(_baselineDb, _metadataBaselineDb, trackedTree.Bytes, TruncationLength, _logger);
+            bool result = _baselineTrees.TryAdd(trackedTree, tree);
+            if (result)
+            {
+                var tracker = new BaselineTreeTracker(trackedTree, tree, _blockProcessor, _baselineTreeHelper, _blockFinder, _logger);
+                _disposableStack.Push(tracker);
+            }
+
+            return result;
         }
 
         #endregion

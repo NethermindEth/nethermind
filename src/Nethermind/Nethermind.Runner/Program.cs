@@ -19,6 +19,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.IO.Abstractions;
+using System.Linq;
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
@@ -26,6 +27,8 @@ using Microsoft.Extensions.CommandLineUtils;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Config;
+using Nethermind.Consensus.Clique;
+using Nethermind.Consensus.Ethash;
 using Nethermind.Core;
 using Nethermind.Logging;
 using Nethermind.Logging.NLog;
@@ -92,12 +95,15 @@ namespace Nethermind.Runner
             _logger.Info("Nethermind starting initialization.");
 
             AppDomain.CurrentDomain.ProcessExit += CurrentDomainOnProcessExit;
-            IFileSystem fileSystem = new FileSystem();
-            PluginLoader pluginLoader = new PluginLoader("plugins", fileSystem);
+            IFileSystem fileSystem = new FileSystem(); ;
+            
+            PluginLoader pluginLoader = new PluginLoader(
+                "plugins", fileSystem, typeof(CliquePlugin), typeof(EthashPlugin), typeof(NethDevPlugin));
             pluginLoader.Load(SimpleConsoleLogManager.Instance);
 
             Type configurationType = typeof(IConfig);
-            IEnumerable<Type> configTypes = new TypeDiscovery().FindNethermindTypes(configurationType);
+            IEnumerable<Type> configTypes = new TypeDiscovery().FindNethermindTypes(configurationType)
+                .Where(ct => ct.IsInterface);
 
             CommandLineApplication app = new CommandLineApplication {Name = "Nethermind.Runner"};
             app.HelpOption("-?|-h|--help");
@@ -111,20 +117,28 @@ namespace Nethermind.Runner
             CommandOption configsDirectory = app.Option("-cd|--configsDirectory <configsDirectory>", "configs directory", CommandOptionType.SingleValue);
             CommandOption loggerConfigSource = app.Option("-lcs|--loggerConfigSource <loggerConfigSource>", "path to the NLog config file", CommandOptionType.SingleValue);
 
-            foreach (Type configType in configTypes)
+            foreach (Type configType in configTypes.OrderBy(c => c.Name))
             {
                 if (configType == null)
                 {
                     continue;
                 }
-                
-                foreach (PropertyInfo propertyInfo in configType.GetProperties(BindingFlags.Public | BindingFlags.Instance))
-                {
-                    Type? interfaceType = configType.GetInterface(configType.Name);
-                    PropertyInfo? interfaceProperty = interfaceType?.GetProperty(propertyInfo.Name);
 
-                    ConfigItemAttribute? configItemAttribute = interfaceProperty?.GetCustomAttribute<ConfigItemAttribute>();
-                    app.Option($"--{configType.Name.Replace("Config", String.Empty)}.{propertyInfo.Name}", $"{(configItemAttribute == null ? "<missing documentation>" : configItemAttribute.Description ?? "<missing documentation>")}", CommandOptionType.SingleValue);
+                ConfigCategoryAttribute? typeLevel = configType.GetCustomAttribute<ConfigCategoryAttribute>();
+                if (typeLevel?.HiddenFromDocs ?? false)
+                {
+                    continue;
+                }
+
+                foreach (PropertyInfo propertyInfo in configType
+                    .GetProperties(BindingFlags.Public | BindingFlags.Instance)
+                    .OrderBy(p => p.Name))
+                {
+                    ConfigItemAttribute? configItemAttribute = propertyInfo.GetCustomAttribute<ConfigItemAttribute>();
+                    if (!(configItemAttribute?.HiddenFromDocs ?? false))
+                    {
+                        app.Option($"--{configType.Name.Substring(1).Replace("Config", String.Empty)}.{propertyInfo.Name}", $"{(configItemAttribute == null ? "<missing documentation>" : configItemAttribute.Description + $" (DEFAULT: {configItemAttribute.DefaultValue})" ?? "<missing documentation>")}", CommandOptionType.SingleValue);
+                    }
                 }
             }
 

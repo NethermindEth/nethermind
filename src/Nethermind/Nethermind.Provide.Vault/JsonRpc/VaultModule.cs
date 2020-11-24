@@ -67,16 +67,16 @@ namespace Nethermind.Vault.JsonRpc
             }
         }
 
-        public async Task<ResultWrapper<provide.Model.Vault.Vault>> vault_deleteVault(string vaultId)
+        public async Task<ResultWrapper<bool>> vault_deleteVault(string vaultId)
         {
             try
             {
-                provide.Model.Vault.Vault result = await _vaultService.DeleteVault(Guid.Parse(vaultId));
-                return ResultWrapper<provide.Model.Vault.Vault>.Success(result);
+                await _vaultService.DeleteVault(Guid.Parse(vaultId));
+                return ResultWrapper<bool>.Success(true);
             }
             catch (Exception e)
             {
-                return ResultWrapper<provide.Model.Vault.Vault>.Fail(e);
+                return ResultWrapper<bool>.Fail(e);
             }
         }
 

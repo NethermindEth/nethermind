@@ -17,6 +17,8 @@
 
 using System;
 using System.Security.Cryptography;
+using Nethermind.Db;
+using Nethermind.Logging;
 using Nethermind.Trie;
 
 namespace Nethermind.Baseline.Tree
@@ -25,8 +27,8 @@ namespace Nethermind.Baseline.Tree
     {
         [ThreadStatic] private static HashAlgorithm? _hashAlgorithm;
 
-        public ShaBaselineTree(IKeyValueStore keyValueStore, byte[] dbPrefix, int truncationLength = 0)
-            : base(keyValueStore, dbPrefix, truncationLength)
+        public ShaBaselineTree(IDb db, IKeyValueStore metadataKeyValueStore, byte[] dbPrefix, int truncationLength, ILogger logger)
+            : base(db, metadataKeyValueStore, dbPrefix, truncationLength, logger)
         {
         }
 

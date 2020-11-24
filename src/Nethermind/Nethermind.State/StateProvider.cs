@@ -43,13 +43,13 @@ namespace Nethermind.State
 
         private readonly List<Change> _keptInCache = new List<Change>();
         private readonly ILogger _logger;
-        private readonly ISnapshotableDb _codeDb;
+        private readonly IDb _codeDb;
 
         private int _capacity = StartCapacity;
         private Change[] _changes = new Change[StartCapacity];
         private int _currentPosition = -1;
 
-        public StateProvider(ITrieStore trieStore, ISnapshotableDb codeDb, ILogManager logManager)
+        public StateProvider(ITrieStore trieStore, IDb codeDb, ILogManager logManager)
         {
             _logger = logManager.GetClassLogger<StateProvider>() ?? throw new ArgumentNullException(nameof(logManager));
             _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
@@ -62,11 +62,6 @@ namespace Nethermind.State
             if (stateRoot == null) throw new ArgumentNullException(nameof(stateRoot));
 
             _tree.Accept(visitor, stateRoot, true);
-        }
-
-        public void CommitCode()
-        {
-            _codeDb.Commit();
         }
 
         private bool _needsStateRootUpdate;

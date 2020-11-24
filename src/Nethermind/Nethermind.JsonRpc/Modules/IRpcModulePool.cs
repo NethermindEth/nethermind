@@ -14,11 +14,13 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.Threading.Tasks;
+
 namespace Nethermind.JsonRpc.Modules
 {
     public interface IRpcModulePool<T> where T : IModule
     {
-        T GetModule(bool canBeShared);
+        Task<T> GetModule(bool canBeShared);
         
         void ReturnModule(T module);
 

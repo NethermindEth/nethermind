@@ -15,39 +15,42 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
+using Nethermind.Api.Extensions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Producers;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Db;
-using Nethermind.Int256;
-using Nethermind.Runner.Ethereum.Api;
+using Nethermind.Logging;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
     [RunnerStepDependencies(typeof(StartBlockProcessor), typeof(SetupKeyStore), typeof(ReviewBlockTree))]
-    public abstract class StartBlockProducer : IStep
+    public class StartBlockProducer : IStep
     {
-        private readonly INethermindApi _api;
+        protected readonly IApiWithBlockchain _api;
         private BlockProducerContext? _blockProducerContext;
-        
-        protected StartBlockProducer(INethermindApi api)
+
+        public StartBlockProducer(INethermindApi api)
         {
             _api = api;
         }
 
         public Task Execute(CancellationToken _)
         {
-            IInitConfig initConfig = _api.Config<IInitConfig>();
-            if (initConfig.IsMining)
+            IMiningConfig miningConfig = _api.Config<IMiningConfig>();
+            if (miningConfig.Enabled)
             {
                 BuildProducer();
                 if (_api.BlockProducer == null) throw new StepDependencyException(nameof(_api.BlockProducer));
 
+                ILogger logger = _api.LogManager.GetClassLogger();
+                if (logger.IsWarn) logger.Warn($"Starting {_api.SealEngineType} block producer & sealer");
                 _api.BlockProducer.Start();
             }
 
@@ -57,7 +60,19 @@ namespace Nethermind.Runner.Ethereum.Steps
         protected virtual void BuildProducer()
         {
             if (_api.ChainSpec == null) throw new StepDependencyException(nameof(_api.ChainSpec));
-            throw new NotSupportedException($"Mining in {_api.ChainSpec.SealEngineType} mode is not supported");
+            
+            IConsensusPlugin? consensusPlugin = _api.Plugins
+                .OfType<IConsensusPlugin>()
+                .SingleOrDefault(cp => cp.SealEngineType == _api.SealEngineType);
+
+            if (consensusPlugin != null)
+            {
+                consensusPlugin.InitBlockProducer();
+            }
+            else
+            {
+                throw new NotSupportedException($"Mining in {_api.ChainSpec.SealEngineType} mode is not supported");    
+            }
         }
 
         protected BlockProducerContext GetProducerChain()
@@ -66,23 +81,24 @@ namespace Nethermind.Runner.Ethereum.Steps
             {
                 ReadOnlyDbProvider dbProvider = new ReadOnlyDbProvider(_api.DbProvider, false);
                 ReadOnlyBlockTree blockTree = new ReadOnlyBlockTree(_api.BlockTree);
+
                 ReadOnlyTxProcessingEnv txProcessingEnv =
                     new ReadOnlyTxProcessingEnv(dbProvider, _api.ReadOnlyTrieStore, blockTree, _api.SpecProvider, _api.LogManager);
                 
                 ReadOnlyTxProcessorSource txProcessorSource =
                     new ReadOnlyTxProcessorSource(txProcessingEnv);
-                
+
                 BlockProcessor blockProcessor =
                     CreateBlockProcessor(txProcessingEnv, txProcessorSource, dbProvider);
-                
+
                 IBlockchainProcessor blockchainProcessor =
                     new BlockchainProcessor(
                         blockTree,
                         blockProcessor,
-                        _api.RecoveryStep,
+                        _api.BlockPreprocessor,
                         _api.LogManager,
                         BlockchainProcessor.Options.NoReceipts);
-                
+
                 OneTimeChainProcessor chainProcessor = new OneTimeChainProcessor(
                     dbProvider,
                     blockchainProcessor);
@@ -105,18 +121,18 @@ namespace Nethermind.Runner.Ethereum.Steps
             ReadOnlyTxProcessorSource readOnlyTxProcessorSource) =>
             CreateTxPoolTxSource(processingEnv, readOnlyTxProcessorSource);
 
-        protected virtual TxPoolTxSource CreateTxPoolTxSource(ReadOnlyTxProcessingEnv processingEnv, ReadOnlyTxProcessorSource readOnlyTxProcessorSource) => 
-            new TxPoolTxSource(_api.TxPool, processingEnv.StateReader, _api.LogManager, CreateGasPriceTxFilter(readOnlyTxProcessorSource));
-
-        protected virtual ITxFilter CreateGasPriceTxFilter(ReadOnlyTxProcessorSource readOnlyTxProcessorSource)
+        protected virtual TxPoolTxSource CreateTxPoolTxSource(ReadOnlyTxProcessingEnv processingEnv, ReadOnlyTxProcessorSource readOnlyTxProcessorSource)
         {
-            UInt256 minGasPrice = _api.Config<IMiningConfig>().MinGasPrice;
-            return new MinGasPriceTxFilter(minGasPrice);
+            ITxFilter txSourceFilter = CreateTxSourceFilter(processingEnv, readOnlyTxProcessorSource);
+            return new TxPoolTxSource(_api.TxPool, processingEnv.StateReader, _api.LogManager, txSourceFilter);
         }
 
+        protected virtual ITxFilter CreateTxSourceFilter(ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv, ReadOnlyTxProcessorSource readOnlyTxProcessorSource) =>
+            TxFilterBuilders.CreateStandardTxFilter(_api.Config<IMiningConfig>());
+
         protected virtual BlockProcessor CreateBlockProcessor(
-            ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv, 
-            ReadOnlyTxProcessorSource readOnlyTxProcessorSource, 
+            ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv,
+            ReadOnlyTxProcessorSource readOnlyTxProcessorSource,
             IReadOnlyDbProvider readOnlyDbProvider)
         {
             if (_api.SpecProvider == null) throw new StepDependencyException(nameof(_api.SpecProvider));

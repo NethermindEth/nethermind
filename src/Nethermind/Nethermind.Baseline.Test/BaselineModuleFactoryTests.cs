@@ -19,8 +19,9 @@ using System.IO.Abstractions;
 using FluentAssertions;
 using Nethermind.Abi;
 using Nethermind.Blockchain.Find;
-using Nethermind.Consensus;
-using Nethermind.Facade;
+using Nethermind.Blockchain.Processing;
+using Nethermind.Core;
+using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.TxPool;
@@ -35,6 +36,9 @@ namespace Nethermind.Baseline.Test
         [Test]
         public void Can_create_many()
         {
+            var dbProvider = Substitute.For<IDbProvider>();
+            dbProvider.BaselineTreeDb.Returns(new MemDb());
+            dbProvider.BaselineTreeMetadataDb.Returns(new MemDb());
             BaselineModuleFactory factory = new BaselineModuleFactory(
                 Substitute.For<ITxSender>(),
                 Substitute.For<IStateReader>(),
@@ -42,7 +46,10 @@ namespace Nethermind.Baseline.Test
                 Substitute.For<IBlockFinder>(),
                 new AbiEncoder(),
                 Substitute.For<IFileSystem>(),
-                LimboLogs.Instance);
+                LimboLogs.Instance,
+                Substitute.For<IBlockProcessor>(),
+                new DisposableStack(),
+                dbProvider);
 
             var a = factory.Create();
             var b = factory.Create();

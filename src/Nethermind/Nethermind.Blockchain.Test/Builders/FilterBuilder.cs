@@ -28,7 +28,7 @@ namespace Nethermind.Blockchain.Test.Builders
         private BlockParameter _fromBlock = new BlockParameter(BlockParameterType.Latest);
         private BlockParameter _toBlock = new BlockParameter(BlockParameterType.Latest);
         private AddressFilter _address = new AddressFilter((Address)null);
-        private TopicsFilter _topicsFilter = new TopicsFilter();
+        private SequenceTopicsFilter _topicsFilter = new SequenceTopicsFilter();
 
         private FilterBuilder()
         {
@@ -138,7 +138,7 @@ namespace Nethermind.Blockchain.Test.Builders
 
         public FilterBuilder WithTopicExpressions(params TopicExpression[] expressions)
         {
-            _topicsFilter = new TopicsFilter(expressions.ToArray());
+            _topicsFilter = new SequenceTopicsFilter(expressions.ToArray());
 
             return this;
         }

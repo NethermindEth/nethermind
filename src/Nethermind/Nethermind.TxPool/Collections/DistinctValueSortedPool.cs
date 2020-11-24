@@ -44,7 +44,7 @@ namespace Nethermind.TxPool.Collections
             IEqualityComparer<TValue> distinctComparer) 
             : base(capacity, comparer)
         {
-            _comparer = comparer;
+            _comparer = comparer ?? throw new ArgumentNullException(nameof(comparer));
             _distinctDictionary = new Dictionary<TValue, KeyValuePair<TKey, TValue>>(distinctComparer);
         }
         
@@ -52,9 +52,9 @@ namespace Nethermind.TxPool.Collections
         {
             base.InsertCore(key, value, bucketCollection);
 
-            if (_distinctDictionary.TryGetValue(value, out var oldKvp))
+            if (_distinctDictionary.TryGetValue(value, out KeyValuePair<TKey, TValue> oldKvp))
             {
-                TryRemove(oldKvp.Key, out _);
+                TryRemove(oldKvp.Key);
             }
 
 

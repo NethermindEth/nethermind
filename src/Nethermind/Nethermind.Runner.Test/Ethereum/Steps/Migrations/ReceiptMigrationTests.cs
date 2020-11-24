@@ -38,6 +38,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
 {
+    [TestFixture]
     public class ReceiptMigrationTests
     {
         [TestCase(null)]
@@ -49,7 +50,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
             var blockTreeBuilder = Core.Test.Builders.Build.A.BlockTree().OfChainLength(chainLength);
             var inMemoryReceiptStorage = new InMemoryReceiptStorage() {MigratedBlockNumber = migratedBlockNumber != null ? 0 : long.MaxValue};
             var outMemoryReceiptStorage = new InMemoryReceiptStorage() {MigratedBlockNumber = migratedBlockNumber != null ? 0 : long.MaxValue};
-            var context = new NethermindApi(configProvider, LimboLogs.Instance)
+            var context = new Runner.Ethereum.Api.NethermindApi(configProvider, LimboLogs.Instance)
             {
                 ReceiptStorage = new TestReceiptStorage(inMemoryReceiptStorage, outMemoryReceiptStorage),
                 DbProvider = Substitute.For<IDbProvider>(),
@@ -85,7 +86,8 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
                 migration.Run();
             }
 
-            guard.WaitOne(TimeSpan.FromSeconds(5));
+            
+            guard.WaitOne(TimeSpan.FromSeconds(1));
             var txCount = ((migratedBlockNumber ?? chainLength) - 1 - 1) * 2;
             context.DbProvider.ReceiptsDb.Received(Quantity.Exactly(txCount)).Remove(Arg.Any<byte[]>());
             outMemoryReceiptStorage.Count.Should().Be(txCount);

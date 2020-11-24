@@ -57,7 +57,7 @@ namespace Nethermind.JsonRpc.WebSockets
             }
 
             Stopwatch stopwatch = Stopwatch.StartNew();
-            using JsonRpcResult result = await _jsonRpcProcessor.ProcessAsync(Encoding.UTF8.GetString(data.ToArray()));
+            using JsonRpcResult result = await _jsonRpcProcessor.ProcessAsync(Encoding.UTF8.GetString(data.Span));
 
             string resultData;
 

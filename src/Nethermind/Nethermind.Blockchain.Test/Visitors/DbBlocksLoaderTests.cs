@@ -71,14 +71,13 @@ namespace Nethermind.Blockchain.Test.Visitors
 
                 blockInfosDb.Set(Keccak.Zero, genesisBlock.Header.Hash.Bytes);
                 headersDb.Set(genesisBlock.Header.Hash, Rlp.Encode(genesisBlock.Header).Bytes);
-
+                
                 BlockTree blockTree = new BlockTree(
                     blocksDb,
                     headersDb,
                     blockInfosDb,
                     new ChainLevelInfoRepository(blockInfosDb),
                     OlympicSpecProvider.Instance,
-                    NullTxPool.Instance,
                     NullBloomStorage.Instance,
                     LimboLogs.Instance);
 
@@ -125,7 +124,6 @@ namespace Nethermind.Blockchain.Test.Visitors
                     blockInfosDb,
                     new ChainLevelInfoRepository(blockInfosDb),
                     OlympicSpecProvider.Instance,
-                    Substitute.For<ITxPool>(),
                     NullBloomStorage.Instance,
                     LimboLogs.Instance);
                 
@@ -142,13 +140,13 @@ namespace Nethermind.Blockchain.Test.Visitors
             MemDb blocksDb = new MemDb();
             MemDb blockInfosDb = new MemDb();
             MemDb headersDb = new MemDb();
+
             BlockTree tree1 = new BlockTree(
                 blocksDb,
                 headersDb,
                 blockInfosDb,
                 new ChainLevelInfoRepository(blockInfosDb),
                 MainnetSpecProvider.Instance,
-                NullTxPool.Instance,
                 NullBloomStorage.Instance,
                 LimboLogs.Instance);
 
@@ -171,14 +169,13 @@ namespace Nethermind.Blockchain.Test.Visitors
             tree1.SuggestBlock(block3B); // expected to be head
 
             tree1.UpdateMainChain(block0);
-
+            
             BlockTree tree2 = new BlockTree(
                 blocksDb,
                 headersDb,
                 blockInfosDb,
                 new ChainLevelInfoRepository(blockInfosDb),
                 MainnetSpecProvider.Instance,
-                NullTxPool.Instance,
                 NullBloomStorage.Instance,
                 LimboLogs.Instance);
 
@@ -221,13 +218,13 @@ namespace Nethermind.Blockchain.Test.Visitors
             MemDb blocksDb = new MemDb();
             MemDb blockInfosDb = new MemDb();
             MemDb headersDb = new MemDb();
+
             BlockTree tree1 = new BlockTree(
                 blocksDb,
                 headersDb,
                 blockInfosDb,
                 new ChainLevelInfoRepository(blockInfosDb),
                 MainnetSpecProvider.Instance,
-                NullTxPool.Instance,
                 NullBloomStorage.Instance,
                 LimboLogs.Instance);
 
@@ -249,7 +246,6 @@ namespace Nethermind.Blockchain.Test.Visitors
                 blockInfosDb,
                 new ChainLevelInfoRepository(blockInfosDb),
                 MainnetSpecProvider.Instance,
-                NullTxPool.Instance,
                 NullBloomStorage.Instance,
                 LimboLogs.Instance);
 

@@ -46,37 +46,37 @@ namespace Nethermind.Core
 
         public BlockHeader Header { get; set; }
 
-        public BlockBody Body { get; set; }
+        public BlockBody? Body { get; set; }
 
         public bool IsGenesis => Header.IsGenesis;
 
-        public Transaction[] Transactions => Body?.Transactions; // do not add setter here
+        public Transaction[]? Transactions => Body?.Transactions; // do not add setter here
 
-        public BlockHeader[] Ommers => Body?.Ommers; // do not add setter here
+        public BlockHeader[]? Ommers => Body?.Ommers; // do not add setter here
 
-        public Keccak Hash => Header.Hash; // do not add setter here
+        public Keccak? Hash => Header.Hash; // do not add setter here
 
-        public Keccak ParentHash => Header.ParentHash; // do not add setter here
+        public Keccak? ParentHash => Header.ParentHash; // do not add setter here
 
         public ulong Nonce => Header.Nonce; // do not add setter here
 
-        public Keccak MixHash => Header.MixHash; // do not add setter here
+        public Keccak? MixHash => Header.MixHash; // do not add setter here
 
-        public byte[] ExtraData => Header.ExtraData; // do not add setter here
+        public byte[]? ExtraData => Header.ExtraData; // do not add setter here
 
-        public Bloom Bloom => Header.Bloom; // do not add setter here
+        public Bloom? Bloom => Header.Bloom; // do not add setter here
 
-        public Keccak OmmersHash => Header.OmmersHash; // do not add setter here
+        public Keccak? OmmersHash => Header.OmmersHash; // do not add setter here
 
-        public Address Beneficiary => Header.Beneficiary; // do not add setter here
+        public Address? Beneficiary => Header.Beneficiary; // do not add setter here
 
-        public Address Author => Header.Author; // do not add setter here
+        public Address? Author => Header.Author; // do not add setter here
 
-        public Keccak StateRoot => Header.StateRoot; // do not add setter here
+        public Keccak? StateRoot => Header.StateRoot; // do not add setter here
 
-        public Keccak TxRoot => Header.TxRoot; // do not add setter here
+        public Keccak? TxRoot => Header.TxRoot; // do not add setter here
 
-        public Keccak ReceiptsRoot => Header.ReceiptsRoot; // do not add setter here
+        public Keccak? ReceiptsRoot => Header.ReceiptsRoot; // do not add setter here
 
         public long GasLimit => Header.GasLimit; // do not add setter here
 
@@ -104,11 +104,11 @@ namespace Nethermind.Core
                 Format.Full => ToFullString(),
                 Format.FullHashAndNumber => Hash == null ? $"{Number} null" : $"{Number} ({Hash})",
                 Format.HashNumberAndTx => Hash == null
-                    ? $"{Number} null, tx count: {Body.Transactions.Length}"
-                    : $"{Number} {TimestampDate:HH:mm:ss} ({Hash?.ToShortString()}), tx count: {Body.Transactions.Length}",
+                    ? $"{Number} null, tx count: {Body?.Transactions.Length}"
+                    : $"{Number} {TimestampDate:HH:mm:ss} ({Hash?.ToShortString()}), tx count: {Body?.Transactions.Length}",
                 Format.HashNumberDiffAndTx => Hash == null
-                    ? $"{Number} null, diff: {Difficulty}, tx count: {Body.Transactions.Length}"
-                    : $"{Number} ({Hash?.ToShortString()}), diff: {Difficulty}, tx count: {Body.Transactions.Length}",
+                    ? $"{Number} null, diff: {Difficulty}, tx count: {Body?.Transactions.Length}"
+                    : $"{Number} ({Hash?.ToShortString()}), diff: {Difficulty}, tx count: {Body?.Transactions.Length}",
                 _ => Hash == null ? $"{Number} null" : $"{Number} ({Hash?.ToShortString()})"
             };
         }
@@ -121,13 +121,13 @@ namespace Nethermind.Core
             builder.Append($"{Header.ToString("    ")}");
 
             builder.AppendLine("  Ommers:");
-            foreach (BlockHeader ommer in Body.Ommers)
+            foreach (BlockHeader ommer in Body?.Ommers ?? Array.Empty<BlockHeader>())
             {
                 builder.Append($"{ommer.ToString("    ")}");
             }
 
             builder.AppendLine("  Transactions:");
-            foreach (Transaction tx in Body.Transactions)
+            foreach (Transaction tx in Body?.Transactions ?? Array.Empty<Transaction>())
             {
                 builder.Append($"{tx.ToString("    ")}");
             }

@@ -304,8 +304,8 @@ namespace Nethermind.Synchronization.Test
                 ISnapshotableDb stateDb = dbProvider.StateDb;
                 IDb codeDb = dbProvider.CodeDb;
                 MemDb blockInfoDb = new MemDb();
-                BlockTree = new BlockTree(new MemDb(), new MemDb(), blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), new SingleReleaseSpecProvider(Constantinople.Instance, 1), NullTxPool.Instance, NullBloomStorage.Instance, _logManager);
-                NodeStatsManager stats = new NodeStatsManager(new StatsConfig(), _logManager);
+                BlockTree = new BlockTree(new MemDb(), new MemDb(), blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), new SingleReleaseSpecProvider(Constantinople.Instance, 1), NullBloomStorage.Instance, _logManager);
+                NodeStatsManager stats = new NodeStatsManager(_logManager);
                 SyncPeerPool = new SyncPeerPool(BlockTree, stats, 25, _logManager);
 
                 SyncProgressResolver syncProgressResolver = new SyncProgressResolver(BlockTree, NullReceiptStorage.Instance, stateDb, new MemDb(), syncConfig, _logManager);
@@ -673,6 +673,7 @@ namespace Nethermind.Synchronization.Test
         }
 
         [Test]
+        [Parallelizable(ParallelScope.None)]
         public void Will_inform_connecting_peer_about_the_alternative_branch_with_same_difficulty()
         {
             if (_synchronizerType == SynchronizerType.Fast)

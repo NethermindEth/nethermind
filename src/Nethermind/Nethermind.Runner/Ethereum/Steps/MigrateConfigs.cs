@@ -19,7 +19,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Consensus;
-using Nethermind.Runner.Ethereum.Api;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
@@ -34,7 +33,11 @@ namespace Nethermind.Runner.Ethereum.Steps
         
         public Task Execute(CancellationToken cancellationToken)
         {
-            _api.Config<IMiningConfig>().Enabled = _api.Config<IInitConfig>().IsMining;
+            if (_api.Config<IInitConfig>().IsMining)
+            {
+                _api.Config<IMiningConfig>().Enabled = true;
+            }
+
             return Task.CompletedTask;
         }
     }

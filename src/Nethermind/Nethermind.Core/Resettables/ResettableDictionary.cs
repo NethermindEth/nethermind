@@ -20,7 +20,7 @@ using System.Collections.Generic;
 
 namespace Nethermind.Core.Resettables
 {
-    public class ResettableDictionary<TKey, TValue> : IDictionary<TKey, TValue>
+    public class ResettableDictionary<TKey, TValue> : IDictionary<TKey, TValue> where TKey : notnull
     {
         private readonly IEqualityComparer<TKey> _comparer;
         private int _currentCapacity;
@@ -28,9 +28,9 @@ namespace Nethermind.Core.Resettables
         private int _resetRatio;
 
         private IDictionary<TKey, TValue> _wrapped;
-
+        
         public ResettableDictionary(
-            IEqualityComparer<TKey> comparer,
+            IEqualityComparer<TKey>? comparer,
             int startCapacity = Resettable.StartCapacity,
             int resetRatio = Resettable.ResetRatio)
         {
@@ -103,7 +103,10 @@ namespace Nethermind.Core.Resettables
 
         public bool TryGetValue(TKey key, out TValue value)
         {
+#pragma warning disable 8601
+            // fixed C# 9
             return _wrapped.TryGetValue(key, out value);
+#pragma warning restore 8601
         }
 
         public TValue this[TKey key]

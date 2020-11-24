@@ -14,99 +14,18 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 
 namespace Nethermind.Blockchain.Filters.Topics
 {
-    public class TopicsFilter
+    public abstract class TopicsFilter
     {
-        public static TopicsFilter AnyTopic { get; } = new TopicsFilter();
+        public abstract bool Accepts(LogEntry entry);
 
-        private readonly TopicExpression[] _expressions;
+        public abstract bool Accepts(ref LogEntryStructRef entry);
 
-        public TopicsFilter(params TopicExpression[] expressions)
-        {
-            _expressions = expressions;
-        }
+        public abstract bool Matches(Bloom bloom);
 
-        public bool Accepts(LogEntry entry) => Accepts(entry.Topics);
-
-        private bool Accepts(Keccak[] topics)
-        {
-            if (_expressions.Length > topics.Length)
-            {
-                return false;
-            }
-
-            for (int i = 0; i < _expressions.Length; i++)
-            {
-                if (!_expressions[i].Accepts(topics[i]))
-                {
-                    return false;
-                }
-            }
-
-            return true;
-        }
-
-        public bool Accepts(ref LogEntryStructRef entry)
-        {
-            if (entry.Topics != null)
-            {
-                return Accepts(entry.Topics);
-            }
-            
-            var iterator = new KeccaksIterator(entry.TopicsRlp);
-            for (int i = 0; i < _expressions.Length; i++)
-            {
-                if (iterator.TryGetNext(out var keccak))
-                {
-                    if (!_expressions[i].Accepts(ref keccak))
-                    {
-                        return false;
-                    }
-                }
-                else
-                {
-                    return false;
-                }
-            }
-
-            return true;
-        }
-
-        public bool Matches(Bloom bloom)
-        {
-            bool result = true;
-            
-            for (int i = 0; i < _expressions.Length; i++)
-            {
-                result = _expressions[i].Matches(bloom);
-                if (!result)
-                {
-                    break;
-                }
-            }
-
-            return result;
-        }
-        
-        public bool Matches(ref BloomStructRef bloom)
-        {
-            bool result = true;
-            
-            for (int i = 0; i < _expressions.Length; i++)
-            {
-                result = _expressions[i].Matches(ref bloom);
-                if (!result)
-                {
-                    break;
-                }
-            }
-
-            return result;
-        }
+        public abstract bool Matches(ref BloomStructRef bloom);
     }
 }

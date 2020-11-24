@@ -17,6 +17,7 @@
       <Project>{B1C9CF07-F89B-4F92-B8A5-F6949B9D3DA5}</Project>
       <Name>Nethermind.Blockchain</Name>
     </ProjectReference>
+    <ProjectReference Include="..\Nethermind.Consensus.Ethash\Nethermind.Consensus.Ethash.csproj" />
     <ProjectReference Include="..\Nethermind.Consensus\Nethermind.Consensus.csproj" />
     <ProjectReference Include="..\Nethermind.Core.Test\Nethermind.Core.Test.csproj" />
     <ProjectReference Include="..\Nethermind.Core\Nethermind.Core.csproj">

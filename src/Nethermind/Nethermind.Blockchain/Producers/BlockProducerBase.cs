@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -36,6 +36,8 @@ namespace Nethermind.Blockchain.Producers
         private IBlockchainProcessor Processor { get; }
         protected IBlockTree BlockTree { get; }
         protected IBlockProcessingQueue BlockProcessingQueue { get; }
+
+        protected virtual BlockHeader GetCurrentBlockParent() => BlockTree.Head?.Header;
 
         private readonly ISealer _sealer;
         private readonly IStateProvider _stateProvider;
@@ -76,7 +78,7 @@ namespace Nethermind.Blockchain.Producers
         {
             lock (_newBlockLock)
             {
-                BlockHeader parentHeader = BlockTree.Head?.Header;
+                BlockHeader parentHeader = GetCurrentBlockParent();
                 if (parentHeader == null)
                 {
                     if (Logger.IsWarn) Logger.Warn("Preparing new block - parent header is null");

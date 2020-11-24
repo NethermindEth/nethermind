@@ -17,6 +17,7 @@
 using System;
 using Nethermind.Crypto;
 using Nethermind.KeyStore;
+using Nethermind.Vault.Config;
 
 namespace Nethermind.Vault.KeyStore
 {
@@ -30,7 +31,7 @@ namespace Nethermind.Vault.KeyStore
 
         public string GetKey()
         {
-            var password = _passwordProvider.GetPassword();
+            var password = _passwordProvider.GetPassword(null);
             return password.Unsecure();
         }
     }

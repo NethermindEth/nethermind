@@ -37,7 +37,7 @@ namespace Nethermind.Config.Test
             var keystoreConfig = new KeyStoreConfig();
             var networkConfig = new NetworkConfig();
             var jsonRpcConfig = new JsonRpcConfig();
-            var statsConfig = new StatsConfig();
+            var statsConfig = StatsParameters.Instance;
 
             _configProvider = new JsonConfigProvider("SampleJsonConfig.cfg");
         }
@@ -54,7 +54,6 @@ namespace Nethermind.Config.Test
             var keystoreConfig = _configProvider.GetConfig<IKeyStoreConfig>();
             var networkConfig = _configProvider.GetConfig<IDiscoveryConfig>();
             var jsonRpcConfig = _configProvider.GetConfig<IJsonRpcConfig>();
-            var statsConfig = _configProvider.GetConfig<IStatsConfig>();
 
             Assert.AreEqual(100, keystoreConfig.KdfparamsDklen);
             Assert.AreEqual("test", keystoreConfig.Cipher);
@@ -66,12 +65,6 @@ namespace Nethermind.Config.Test
             });
 
             Assert.AreEqual(4, networkConfig.Concurrency);
-            Assert.AreEqual(3, statsConfig.PenalizedReputationLocalDisconnectReasons.Length);
-            new[] { DisconnectReason.UnexpectedIdentity, DisconnectReason.IncompatibleP2PVersion, DisconnectReason.BreachOfProtocol }
-                .ToList().ForEach(x =>
-            {
-                Assert.IsTrue(statsConfig.PenalizedReputationLocalDisconnectReasons.Contains(x));
-            });
         }
         
         [Test]

@@ -41,7 +41,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
         private readonly IReceiptStorage _receiptStorage;
         private readonly ISpecProvider _specProvider;
         private readonly ILogManager _logManager;
-        private readonly IBlockDataRecoveryStep _recoveryStep;
+        private readonly IBlockPreprocessorStep _recoveryStep;
         private readonly IRewardCalculatorSource _rewardCalculatorSource;
         private ILogger _logger;
 
@@ -50,7 +50,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
             IBlockTree blockTree,
             ITrieNodeResolver trieStore,
             IJsonRpcConfig jsonRpcConfig,
-            IBlockDataRecoveryStep recoveryStep,
+            IBlockPreprocessorStep recoveryStep,
             IRewardCalculatorSource rewardCalculatorSource,
             IReceiptStorage receiptFinder,
             ISpecProvider specProvider,

@@ -69,7 +69,7 @@ namespace Nethermind.Runner.Ethereum.Steps
         private const string PeersDbPath = "peers";
         private const string ChtDbPath = "canonicalHashTrie";
 
-        protected readonly INethermindApi _api;
+        protected readonly IApiWithNetwork _api;
         private readonly ILogger _logger;
         private readonly INetworkConfig _networkConfig;
         protected readonly ISyncConfig _syncConfig;

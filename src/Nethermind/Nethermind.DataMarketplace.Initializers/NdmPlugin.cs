@@ -10,7 +10,6 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.DataMarketplace.Channels;
 using Nethermind.DataMarketplace.Channels.Grpc;
 using Nethermind.DataMarketplace.Consumers.Infrastructure;
-using Nethermind.DataMarketplace.Core;
 using Nethermind.DataMarketplace.Core.Configs;
 using Nethermind.DataMarketplace.Core.Services;
 using Nethermind.DataMarketplace.Infrastructure;
@@ -29,6 +28,11 @@ namespace Nethermind.DataMarketplace.Initializers
         private INdmInitializer? _ndmInitializer;
 
         private INdmApi? _ndmApi;
+
+        public Task InitBlockchain()
+        {
+            return Task.CompletedTask;
+        }
 
         public async Task InitNetworkProtocol()
         {
@@ -107,7 +111,7 @@ namespace Nethermind.DataMarketplace.Initializers
             if (ndmEnabled)
             {
                 _ndmApi.NdmDataPublisher = new NdmDataPublisher();
-                INdmConsumerChannelManager? ndmConsumerChannelManager = new NdmConsumerChannelManager();
+                _ndmApi.NdmConsumerChannelManager = new NdmConsumerChannelManager();
                 string initializerName = ndmConfig.InitializerName;
                 if (logger.IsInfo) logger.Info($"NDM initializer: {initializerName}");
                 Type? ndmInitializerType = AppDomain.CurrentDomain.GetAssemblies()
@@ -130,12 +134,12 @@ namespace Nethermind.DataMarketplace.Initializers
                 if (api.GrpcServer != null)
                 {
                     var grpcChannel = new GrpcNdmConsumerChannel(api.GrpcServer);
-                    ndmConsumerChannelManager.Add(grpcChannel);
+                    _ndmApi.NdmConsumerChannelManager.Add(grpcChannel);
                 }
 
                 NdmWebSocketsModule ndmWebSocketsModule =
                     new NdmWebSocketsModule(
-                        ndmConsumerChannelManager,
+                        _ndmApi.NdmConsumerChannelManager,
                         _ndmApi.NdmDataPublisher,
                         api.EthereumJsonSerializer); 
                 api.WebSocketsManager.AddModule(ndmWebSocketsModule);

@@ -20,6 +20,7 @@ using Nethermind.Db.Rocks.Config;
 using Nethermind.Int256;
 using Nethermind.KeyStore;
 using Nethermind.KeyStore.Config;
+using Nethermind.KeyStore.ConsoleHelpers;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
@@ -75,8 +76,9 @@ namespace Nethermind.DataMarketplace.Tools.Refunder
             Console.Write($"Provide address to send the refund to: ");
             string hexAddress = Console.ReadLine();            
             Address refundTo = new Address(hexAddress);
+            ConsoleUtils consoleUtils= new ConsoleUtils(new ConsoleWrapper());
             
-            SecureString securedPassword = ConsoleUtils.ReadSecret("Provide password: ");
+            SecureString securedPassword = consoleUtils.ReadSecret("Provide password: ");
 
             Console.WriteLine();
 
@@ -144,7 +146,8 @@ namespace Nethermind.DataMarketplace.Tools.Refunder
                 new EthereumJsonSerializer(),
                 new AesEncrypter(keyStoreConfig, logManager),
                 new CryptoRandom(),
-                logManager);
+                logManager,
+                new PrivateKeyStoreIOSettingsProvider(keyStoreConfig));
         }
     }
 }

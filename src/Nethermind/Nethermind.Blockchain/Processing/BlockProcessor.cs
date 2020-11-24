@@ -30,9 +30,7 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
-using Nethermind.State.Proofs;
 using Nethermind.TxPool;
-using Org.BouncyCastle.Asn1;
 
 namespace Nethermind.Blockchain.Processing
 {
@@ -82,6 +80,7 @@ namespace Nethermind.Blockchain.Processing
 
         public event EventHandler<TxProcessedEventArgs> TransactionProcessed;
 
+        // TODO: move to branch processor
         public Block[] Process(Keccak newBranchStateRoot, List<Block> suggestedBlocks, ProcessingOptions options, IBlockTracer blockTracer)
         {
             if (suggestedBlocks.Count == 0) return Array.Empty<Block>();
@@ -98,6 +97,11 @@ namespace Nethermind.Blockchain.Processing
             {
                 for (int i = 0; i < suggestedBlocks.Count; i++)
                 {
+                    if (suggestedBlocks.Count > 64 && i % 8 == 0)
+                    {
+                        if (_logger.IsInfo) _logger.Info($"Processing part of a long blocks branch {i}/{suggestedBlocks.Count}");
+                    }
+
                     var (processedBlock, receipts) = ProcessOne(suggestedBlocks[i], options, blockTracer);
                     processedBlocks[i] = processedBlock;
 
@@ -115,6 +119,7 @@ namespace Nethermind.Blockchain.Processing
                 }
                 else
                 {
+                    // TODO: move to branch processor
                     CommitBranch();
                 }
 
@@ -128,6 +133,7 @@ namespace Nethermind.Blockchain.Processing
             }
         }
 
+        // TODO: move to branch processor
         private void InitBranch(Keccak branchStateRoot)
         {
             /* Please note that we do not reset the state if branch state root is null.
@@ -144,24 +150,28 @@ namespace Nethermind.Blockchain.Processing
             }
         }
 
+        // TODO: move to branch processor
         private Keccak CreateCheckpoint()
         {
             return _stateProvider.StateRoot;
         }
 
+        // TODO: move to block processing pipeline
         private void PreCommitBlock(Keccak newBranchStateRoot, long blockNumber)
         {
             if (_logger.IsTrace) _logger.Trace($"Committing the branch - {newBranchStateRoot} | {_stateProvider.StateRoot}");
             _storageProvider.CommitTrees(blockNumber);
             _stateProvider.CommitTree(blockNumber);
         }
-        
+
+        // TODO: move to branch processor
         private void CommitBranch()
         {
-            _stateProvider.CommitCode();
+            // _stateProvider.CommitCode();
             // nowadays we could commit branch via TrieStore or similar (after this responsibility has been moved
         }
 
+        // TODO: move to branch processor
         private void RestoreBranch(Keccak branchingPointStateRoot)
         {
             if (_logger.IsTrace) _logger.Trace($"Restoring the branch checkpoint - {branchingPointStateRoot}");
@@ -171,6 +181,7 @@ namespace Nethermind.Blockchain.Processing
             if (_logger.IsTrace) _logger.Trace($"Restored the branch checkpoint - {branchingPointStateRoot} | {_stateProvider.StateRoot}");
         }
 
+        // TODO: block processor pipeline
         private TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, IBlockTracer blockTracer)
         {
             _receiptsTracer.SetOtherTracer(blockTracer);
@@ -194,10 +205,11 @@ namespace Nethermind.Blockchain.Processing
             return _receiptsTracer.TxReceipts;
         }
 
+        // TODO: block processor pipeline
         private (Block Block, TxReceipt[] Receipts) ProcessOne(Block suggestedBlock, ProcessingOptions options, IBlockTracer blockTracer)
         {
-            if(_logger.IsTrace) _logger.Trace($"Processing block {suggestedBlock.ToString(Block.Format.Short)} ({options})");
-            
+            if (_logger.IsTrace) _logger.Trace($"Processing block {suggestedBlock.ToString(Block.Format.Short)} ({options})");
+
             ApplyDaoTransition(suggestedBlock);
             Block block = PrepareBlockForProcessing(suggestedBlock);
             TxReceipt[] receipts = ProcessBlock(block, blockTracer, options);
@@ -210,6 +222,7 @@ namespace Nethermind.Blockchain.Processing
             return (block, receipts);
         }
 
+        // TODO: block processor pipeline
         private void ValidateProcessedBlock(Block suggestedBlock, ProcessingOptions options, Block block, TxReceipt[] receipts)
         {
             if ((options & ProcessingOptions.NoValidation) == 0 && !_blockValidator.ValidateProcessedBlock(block, receipts, suggestedBlock))
@@ -219,32 +232,35 @@ namespace Nethermind.Blockchain.Processing
             }
         }
 
+        // TODO: block processor pipeline
         protected virtual TxReceipt[] ProcessBlock(Block block, IBlockTracer blockTracer, ProcessingOptions options)
         {
             IReleaseSpec releaseSpec = _specProvider.GetSpec(block.Number);
             TxReceipt[] receipts = ProcessTransactions(block, options, blockTracer);
-            
+
             block.Header.ReceiptsRoot = receipts.GetReceiptsRoot(releaseSpec, block.ReceiptsRoot);
             ApplyMinerRewards(block, blockTracer);
 
             _stateProvider.Commit(releaseSpec);
             _stateProvider.RecalculateStateRoot();
-            
+
             block.Header.StateRoot = _stateProvider.StateRoot;
             block.Header.Hash = block.Header.CalculateHash();
 
             return receipts;
         }
 
+        // TODO: block processor pipeline
         private void StoreTxReceipts(Block block, TxReceipt[] txReceipts)
         {
             _receiptStorage.Insert(block, txReceipts);
             for (int i = 0; i < block.Transactions.Length; i++)
             {
-                _txPool.RemoveTransaction(txReceipts[i].TxHash, block.Number);
+                _txPool.RemoveTransaction(txReceipts[i].TxHash, block.Number, true);
             }
         }
 
+        // TODO: block processor pipeline
         private Block PrepareBlockForProcessing(Block suggestedBlock)
         {
             if (_logger.IsTrace) _logger.Trace($"{suggestedBlock.Header.ToString(BlockHeader.Format.Full)}");
@@ -275,6 +291,7 @@ namespace Nethermind.Blockchain.Processing
             return new Block(header, suggestedBlock.Transactions, suggestedBlock.Ommers);
         }
 
+        // TODO: block processor pipeline
         private void ApplyMinerRewards(Block block, IBlockTracer tracer)
         {
             if (_logger.IsTrace) _logger.Trace("Applying miner rewards:");
@@ -304,6 +321,7 @@ namespace Nethermind.Blockchain.Processing
             }
         }
 
+        // TODO: block processor pipeline (only where rewards needed)
         private void ApplyMinerReward(Block block, BlockReward reward)
         {
             if (_logger.IsTrace) _logger.Trace($"  {(BigInteger) reward.Value / (BigInteger) Unit.Ether:N3}{Unit.EthSymbol} for account at {reward.Address}");
@@ -318,6 +336,7 @@ namespace Nethermind.Blockchain.Processing
             }
         }
 
+        // TODO: block processor pipeline
         private void ApplyDaoTransition(Block block)
         {
             if (_specProvider.DaoBlockNumber.HasValue && _specProvider.DaoBlockNumber.Value == block.Header.Number)

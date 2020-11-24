@@ -24,6 +24,6 @@ namespace Nethermind.TxPool
     /// </summary>
     public interface ITxSealer
     {
-        void Seal(Transaction tx);
+        void Seal(Transaction tx, TxHandlingOptions txHandlingOptions);
     }
 }

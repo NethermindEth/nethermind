@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -17,6 +17,7 @@
 using System;
 using System.Collections.Generic;
 using System.Reflection;
+using System.Threading.Tasks;
 using Newtonsoft.Json;
 
 namespace Nethermind.JsonRpc.Modules
@@ -24,6 +25,7 @@ namespace Nethermind.JsonRpc.Modules
     public class NullModuleProvider : IRpcModuleProvider
     {
         public static NullModuleProvider Instance = new NullModuleProvider();
+        private static Task<IModule> Null = Task.FromResult(default(IModule));
 
         private NullModuleProvider()
         {
@@ -49,9 +51,9 @@ namespace Nethermind.JsonRpc.Modules
             return (null, false);
         }
 
-        public IModule Rent(string methodName, bool canBeShared)
+        public Task<IModule> Rent(string methodName, bool canBeShared)
         {
-            return null;
+            return Null;
         }
 
         public void Return(string methodName, IModule module)

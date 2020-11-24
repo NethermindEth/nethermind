@@ -27,11 +27,17 @@ namespace Nethermind.Core
     [DebuggerDisplay("{Hash} ({Number})")]
     public class BlockHeader
     {
-        internal BlockHeader()
-        {
-        }
+        internal BlockHeader() { }
 
-        public BlockHeader(Keccak parentHash, Keccak ommersHash, Address beneficiary, UInt256 difficulty, long number, long gasLimit, UInt256 timestamp, byte[] extraData)
+        public BlockHeader(
+            Keccak parentHash,
+            Keccak ommersHash,
+            Address beneficiary,
+            UInt256 difficulty,
+            long number,
+            long gasLimit,
+            UInt256 timestamp,
+            byte[] extraData)
         {
             ParentHash = parentHash;
             OmmersHash = ommersHash;
@@ -43,30 +49,30 @@ namespace Nethermind.Core
             ExtraData = extraData;
         }
 
-        public WeakReference<BlockHeader> MaybeParent { get; set; }
+        public WeakReference<BlockHeader>? MaybeParent { get; set; }
 
         public bool IsGenesis => Number == 0L;
-        public Keccak ParentHash { get; set; }
-        public Keccak OmmersHash { get; set; }
-        public Address Author { get; set; }
-        public Address Beneficiary { get; set; }
-        public Address GasBeneficiary => Author ?? Beneficiary;
-        public Keccak StateRoot { get; set; }
-        public Keccak TxRoot { get; set; }
-        public Keccak ReceiptsRoot { get; set; }
-        public Bloom Bloom { get; set; }
+        public Keccak? ParentHash { get; set; }
+        public Keccak? OmmersHash { get; set; }
+        public Address? Author { get; set; }
+        public Address? Beneficiary { get; set; }
+        public Address? GasBeneficiary => Author ?? Beneficiary;
+        public Keccak? StateRoot { get; set; }
+        public Keccak? TxRoot { get; set; }
+        public Keccak? ReceiptsRoot { get; set; }
+        public Bloom? Bloom { get; set; }
         public UInt256 Difficulty { get; set; }
         public long Number { get; set; }
         public long GasUsed { get; set; }
         public long GasLimit { get; set; }
         public UInt256 Timestamp { get; set; }
         public DateTime TimestampDate => DateTimeOffset.FromUnixTimeSeconds((long) Timestamp).LocalDateTime;
-        public byte[] ExtraData { get; set; }
-        public Keccak MixHash { get; set; }
+        public byte[]? ExtraData { get; set; }
+        public Keccak? MixHash { get; set; }
         public ulong Nonce { get; set; }
-        public Keccak Hash { get; set; }
+        public Keccak? Hash { get; set; }
         public UInt256? TotalDifficulty { get; set; }
-        public byte[] AuRaSignature { get; set; }
+        public byte[]? AuRaSignature { get; set; }
         public long? AuRaStep { get; set; }
         
         public bool HasBody => OmmersHash != Keccak.OfAnEmptySequenceRlp || TxRoot != Keccak.EmptyTreeHash;

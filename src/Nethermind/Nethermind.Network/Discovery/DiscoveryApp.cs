@@ -257,11 +257,6 @@ namespace Nethermind.Network.Discovery
 
         private void AddPersistedNodes(CancellationToken cancellationToken)
         {
-            if (!_discoveryConfig.IsDiscoveryNodesPersistenceOn)
-            {
-                return;
-            }
-
             NetworkNode[] nodes = _discoveryStorage.GetPersistedNodes();
             foreach (NetworkNode networkNode in nodes)
             {

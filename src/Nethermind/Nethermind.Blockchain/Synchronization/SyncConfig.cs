@@ -38,6 +38,8 @@ namespace Nethermind.Blockchain.Synchronization
         public bool DownloadHeadersInFastSync { get; set; } = true;
         public bool DownloadBodiesInFastSync { get; set; } = true;
         public bool DownloadReceiptsInFastSync { get; set; } = true;
+        public long AncientBodiesBarrier { get; set; }
+        public long AncientReceiptsBarrier { get; set; }
         public string PivotTotalDifficulty { get; set; }
         public string PivotNumber { get; set; }
         public string PivotHash { get; set; }

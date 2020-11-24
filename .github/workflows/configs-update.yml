@@ -25,7 +25,7 @@ jobs:
         run: |
           python3 scripts/syncSettings.py ${{ secrets.ETHERSCAN }}
       - name: Create Pull Request
-        uses: peter-evans/create-pull-request@v2.4.4
+        uses: peter-evans/create-pull-request@v3.5.0
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           commit-message: Updating Fast Sync config files

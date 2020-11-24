@@ -55,13 +55,9 @@ namespace Nethermind.Serialization.Json
 
         public override long ReadJson(JsonReader reader, Type objectType, long existingValue, bool hasExistingValue, JsonSerializer serializer)
         {
-            if (reader.Value is long || reader.Value is int)
-            {
-                return (long)reader.Value;
-            }
-
-            string s = (string) reader.Value;
-            return FromString(s);
+            return reader.Value is long || reader.Value is int 
+                ? (long)reader.Value 
+                : FromString(reader.Value?.ToString());
         }
 
         public static long FromString(string s)

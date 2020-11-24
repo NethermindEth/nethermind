@@ -67,7 +67,7 @@ namespace Nethermind.Serialization.Json
                 return (long) reader.Value;
             }
 
-            string s = (string) reader.Value;
+            string s = reader.Value?.ToString();
             if (s == "0x0")
             {
                 return BigInteger.Zero;

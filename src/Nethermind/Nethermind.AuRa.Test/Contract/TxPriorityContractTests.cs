@@ -18,6 +18,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.IO.Abstractions;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -127,7 +128,8 @@ namespace Nethermind.AuRa.Test.Contract
         }
         
         [Test]
-        [Retry(3)] // still sometimes the order is wrong than expected by test and local storage is loaded after test assert
+        [Retry(3)]
+        [Explicit]
         public async Task whitelist_should_return_correctly_with_local_storage([Values(true, false)] bool fileFirst)
         {
             using var chain = fileFirst 
@@ -145,22 +147,28 @@ namespace Nethermind.AuRa.Test.Contract
                 }
             };
             
-            if (!await semaphoreSlim.WaitAsync(10000))
+            if (!await chain.FileSemaphore.WaitAsync(100))
+            {
+                Assert.Fail("File not written");
+            }
+            
+            if (!await semaphoreSlim.WaitAsync(100))
             {
                 if (chain.LocalDataSource.Data == null)
                 {
                     Assert.Fail("Local file rule storage wasn't loaded.");
                 }
             }
-            
-            object[] expected = {TestItem.AddressD, TestItem.AddressB, TestItem.AddressA, TestItem.AddressC};
 
+            object[] expected = {TestItem.AddressD, TestItem.AddressB, TestItem.AddressA, TestItem.AddressC};
+            
             var whiteList = chain.SendersWhitelist.GetItemsFromContractAtBlock(chain.BlockTree.Head.Header);
             whiteList.Should().BeEquivalentTo(expected);
         }
         
         [Test]
-        [Retry(3)] // still sometimes the order is wrong than expected by test and local storage is loaded after test assert
+        [Retry(3)]
+        [Explicit]
         public async Task priority_should_return_correctly_with_local_storage([Values(true, false)] bool fileFirst)
         {
             using var chain = fileFirst 
@@ -187,21 +195,27 @@ namespace Nethermind.AuRa.Test.Contract
                     semaphoreSlim.Release();
                 }
             };
+
+            if (!await chain.FileSemaphore.WaitAsync(100))
+            {
+                Assert.Fail("File not written");
+            }
             
-            if (!await semaphoreSlim.WaitAsync(10000))
+            if (!await semaphoreSlim.WaitAsync(100))
             {
                 if (chain.LocalDataSource.Data == null)
                 {
                     Assert.Fail("Local file rule storage wasn't loaded.");
                 }
             }
-
+            
             var priorities = chain.Priorities.GetItemsFromContractAtBlock(chain.BlockTree.Head.Header);
             priorities.Should().BeEquivalentTo(expected, o => o.ComparingByMembers<TxPriorityContract.Destination>());
         }
 
         [Test]
-        [Retry(3)] // still sometimes the order is wrong than expected by test and local storage is loaded after test assert
+        [Retry(3)]
+        [Explicit]
         public async Task mingas_should_return_correctly_with_local_storage([Values(true, false)] bool fileFirst)
         {
             using var chain = fileFirst 
@@ -228,7 +242,12 @@ namespace Nethermind.AuRa.Test.Contract
                 }
             };
             
-            if (!await semaphoreSlim.WaitAsync(10000))
+            if (!await chain.FileSemaphore.WaitAsync(100))
+            {
+                Assert.Fail("File not written");
+            }
+            
+            if (!await semaphoreSlim.WaitAsync(100))
             {
                 if (chain.LocalDataSource.Data == null)
                 {
@@ -243,9 +262,9 @@ namespace Nethermind.AuRa.Test.Contract
         public class TxPermissionContractBlockchain : TestContractBlockchain
         {
             public TxPriorityContract TxPriorityContract { get; private set; }
-            public DictionaryContractDataStore<TxPriorityContract.Destination> Priorities { get; private set; }
+            public DictionaryContractDataStore<TxPriorityContract.Destination, TxPriorityContract.DestinationSortedListContractDataStoreCollection> Priorities { get; private set; }
             
-            public DictionaryContractDataStore<TxPriorityContract.Destination> MinGasPrices { get; private set; }
+            public DictionaryContractDataStore<TxPriorityContract.Destination, TxPriorityContract.DestinationSortedListContractDataStoreCollection> MinGasPrices { get; private set; }
             
             public ContractDataStoreWithLocalData<Address> SendersWhitelist { get; private set; }
             
@@ -256,14 +275,14 @@ namespace Nethermind.AuRa.Test.Contract
                 TxPriorityContract = new TxPriorityContract(new AbiEncoder(), TestItem.AddressA, 
                     new ReadOnlyTxProcessorSource(DbProvider, TrieStore, BlockTree, SpecProvider, LimboLogs.Instance));
 
-                Priorities = new DictionaryContractDataStore<TxPriorityContract.Destination>(
+                Priorities = new DictionaryContractDataStore<TxPriorityContract.Destination, TxPriorityContract.DestinationSortedListContractDataStoreCollection>(
                     new TxPriorityContract.DestinationSortedListContractDataStoreCollection(),  
                     TxPriorityContract.Priorities, 
                     BlockProcessor,
                     LimboLogs.Instance,
                     GetPrioritiesLocalDataStore());
                 
-                MinGasPrices = new DictionaryContractDataStore<TxPriorityContract.Destination>(
+                MinGasPrices = new DictionaryContractDataStore<TxPriorityContract.Destination, TxPriorityContract.DestinationSortedListContractDataStoreCollection>(
                     new TxPriorityContract.DestinationSortedListContractDataStoreCollection(),
                     TxPriorityContract.MinGasPrices,
                     BlockProcessor,
@@ -335,9 +354,12 @@ namespace Nethermind.AuRa.Test.Contract
         {
             public TxPriorityContract.LocalDataSource LocalDataSource { get; private set; }
 
-            private TempPath TempFile { get; set; }
+            public TempPath TempFile { get; set; }
 
             private SemaphoreSlim Semaphore { get; set; }
+            public SemaphoreSlim FileSemaphore { get; set; }
+            
+            public int Interval => 10;
 
             protected override ILocalDataSource<IEnumerable<TxPriorityContract.Destination>> GetPrioritiesLocalDataStore() => 
                 LocalDataSource.GetPrioritiesLocalDataSource();
@@ -351,8 +373,9 @@ namespace Nethermind.AuRa.Test.Contract
             protected override Task<TestBlockchain> Build(ISpecProvider specProvider = null, UInt256? initialValues = null)
             {
                 TempFile = TempPath.GetTempFile();
-                LocalDataSource = new TxPriorityContract.LocalDataSource(TempFile.Path, new EthereumJsonSerializer(), LimboLogs.Instance);
+                LocalDataSource = new TxPriorityContract.LocalDataSource(TempFile.Path, new EthereumJsonSerializer(), new FileSystem(), LimboLogs.Instance, Interval);
 
+                FileSemaphore = new SemaphoreSlim(0);
                 Semaphore = new SemaphoreSlim(0);
                 LocalDataSource.Changed += (o, e) => Semaphore.Release();
 
@@ -365,6 +388,7 @@ namespace Nethermind.AuRa.Test.Contract
                 LocalDataSource?.Dispose();
                 TempFile?.Dispose();
                 Semaphore.Dispose();
+                FileSemaphore?.Dispose();
             }
 
             protected virtual bool FileFirst => false;
@@ -388,11 +412,6 @@ namespace Nethermind.AuRa.Test.Contract
                     Whitelist = new[] {TestItem.AddressD, TestItem.AddressB}
                 };
                 
-                if (FileFirst)
-                {
-                    WriteFile(LocalData);
-                }
-                
                 return base.CreateTxPoolTxSource();
             }
 
@@ -400,31 +419,39 @@ namespace Nethermind.AuRa.Test.Contract
 
             protected override async Task AddBlocksOnStart()
             {
+                if (FileFirst)
+                {
+                    await AddFile();
+                }
+                
                 await base.AddBlocksOnStart();
 
                 if (!FileFirst)
                 {
-                    EventHandler realeseHandler = (sender, args) => Semaphore.Release();
-                    SendersWhitelist.Loaded += realeseHandler;
-                    ((ContractDataStoreWithLocalData<TxPriorityContract.Destination, DictionaryBasedContractDataStoreCollection<TxPriorityContract.Destination>>)MinGasPrices.ContractDataStore).Loaded += realeseHandler;
-                    ((ContractDataStoreWithLocalData<TxPriorityContract.Destination, DictionaryBasedContractDataStoreCollection<TxPriorityContract.Destination>>)Priorities.ContractDataStore).Loaded += realeseHandler;
-                    
-                    WriteFile(LocalData);
-                    await Semaphore.WaitAsync(1000);
-                    await Semaphore.WaitAsync(1000);
-                    await Semaphore.WaitAsync(1000);
+                    await AddFile();
                 }
-                
-                if (!await Semaphore.WaitAsync(1000))
-                {
-                    Assert.Fail("Local file rule storage wasn't loaded.");
-                }
+
+                await Semaphore.WaitAsync(100);
             }
-            
+
+            private async Task AddFile()
+            {
+                var fileSemaphore = new SemaphoreSlim(0);
+                EventHandler releaseHandler = (sender, args) => fileSemaphore.Release();
+                SendersWhitelist.Loaded += releaseHandler;
+                ((ContractDataStoreWithLocalData<TxPriorityContract.Destination, TxPriorityContract.DestinationSortedListContractDataStoreCollection>) MinGasPrices.ContractDataStore).Loaded += releaseHandler;
+                ((ContractDataStoreWithLocalData<TxPriorityContract.Destination, TxPriorityContract.DestinationSortedListContractDataStoreCollection>) Priorities.ContractDataStore).Loaded += releaseHandler;
+
+                WriteFile(LocalData);
+                FileSemaphore.Release();
+                await fileSemaphore.WaitAsync(100);
+                await fileSemaphore.WaitAsync(100);
+                await fileSemaphore.WaitAsync(100);
+            }
+
             private void WriteFile(TxPriorityContract.LocalData localData)
             {
-                using FileStream fileStream = File.OpenWrite(TempFile.Path);
-                new EthereumJsonSerializer().Serialize(fileStream, localData);
+                File.WriteAllText(TempFile.Path, new EthereumJsonSerializer().Serialize(localData));
             }
         }
 

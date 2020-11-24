@@ -25,7 +25,11 @@ namespace Nethermind.Consensus.AuRa.Contracts
     {
         public IEnumerable<T> GetAllItemsFromBlock(BlockHeader blockHeader) => Enumerable.Empty<T>();
 
-        public IEnumerable<T> GetItemsChangedFromBlock(BlockHeader header, TxReceipt[] receipts) => Enumerable.Empty<T>();
+        public bool TryGetItemsChangedFromBlock(BlockHeader header, TxReceipt[] receipts, out IEnumerable<T> items)
+        {
+            items =  Enumerable.Empty<T>();
+            return false;
+        }
 
         public bool IncrementalChanges => true;
     }

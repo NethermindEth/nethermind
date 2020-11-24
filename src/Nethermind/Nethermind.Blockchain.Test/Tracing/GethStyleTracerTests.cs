@@ -49,12 +49,13 @@ namespace Nethermind.Blockchain.Test.Tracing
             
             ChainLevelInfoRepository repository = new ChainLevelInfoRepository(dbProvider);
             ISpecProvider specProvider = MainnetSpecProvider.Instance;
-            _blockTree = new BlockTree(dbProvider, repository, specProvider, NullTxPool.Instance, NullBloomStorage.Instance, new SyncConfig(), LimboLogs.Instance);
+
+            _blockTree = new BlockTree(dbProvider, repository, specProvider, NullBloomStorage.Instance, new SyncConfig(), LimboLogs.Instance);
 
             TrieStore trieStore = new TrieStore(dbProvider.StateDb, LimboLogs.Instance);
             StateProvider stateProvider = new StateProvider(trieStore, dbProvider.CodeDb, LimboLogs.Instance);
             StorageProvider storageProvider = new StorageProvider(trieStore, stateProvider, LimboLogs.Instance);
-            
+
             BlockhashProvider blockhashProvider = new BlockhashProvider(_blockTree, LimboLogs.Instance);
             
             VirtualMachine virtualMachine = new VirtualMachine(stateProvider, storageProvider, blockhashProvider, specProvider, LimboLogs.Instance);
@@ -62,7 +63,7 @@ namespace Nethermind.Blockchain.Test.Tracing
             TransactionProcessor transactionProcessor = new TransactionProcessor(specProvider, stateProvider, storageProvider, virtualMachine, LimboLogs.Instance);
             BlockProcessor blockProcessor = new BlockProcessor(specProvider, TestBlockValidator.AlwaysValid, NoBlockRewards.Instance, transactionProcessor, stateProvider, storageProvider, NullTxPool.Instance, NullReceiptStorage.Instance, LimboLogs.Instance);
             
-            _processor = new BlockchainProcessor(_blockTree, blockProcessor, new CompositeDataRecoveryStep(), LimboLogs.Instance, BlockchainProcessor.Options.NoReceipts);
+            _processor = new BlockchainProcessor(_blockTree, blockProcessor, new CompositeBlockPreprocessorStep(), LimboLogs.Instance, BlockchainProcessor.Options.NoReceipts);
             Block genesis = Build.A.Block.Genesis.TestObject;
             _blockTree.SuggestBlock(genesis);
             _processor.Process(genesis, ProcessingOptions.None, NullBlockTracer.Instance);

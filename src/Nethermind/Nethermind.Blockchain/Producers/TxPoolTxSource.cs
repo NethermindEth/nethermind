@@ -39,14 +39,14 @@ namespace Nethermind.Blockchain.Producers
     {
         private readonly ITxPool _transactionPool;
         private readonly IStateReader _stateReader;
-        private readonly ITxFilter _minGasPriceFilter;
-        private readonly ILogger _logger;
+        private readonly ITxFilter _txFilter;
+        protected readonly ILogger _logger;
 
-        public TxPoolTxSource(ITxPool transactionPool, IStateReader stateReader, ILogManager logManager, ITxFilter minGasPriceFilter = null)
+        public TxPoolTxSource(ITxPool transactionPool, IStateReader stateReader, ILogManager logManager, ITxFilter txFilter = null)
         {
             _transactionPool = transactionPool ?? throw new ArgumentNullException(nameof(transactionPool));
             _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
-            _minGasPriceFilter = minGasPriceFilter ?? new MinGasPriceTxFilter(UInt256.Zero);
+            _txFilter = txFilter ?? new MinGasPriceTxFilter(UInt256.Zero);
             _logger = logManager?.GetClassLogger<TxPoolTxSource>() ?? throw new ArgumentNullException(nameof(logManager));
         }
         
@@ -107,10 +107,10 @@ namespace Nethermind.Blockchain.Producers
             }
 
             IDictionary<Address, Transaction[]> pendingTransactions = _transactionPool.GetPendingTransactionsBySender();
-            IComparer<Transaction> comparer = DistinctCompareTx.Instance // in order to sort properly and not loose transactions we need to differentiate on their identity which provided comparer might not be doing
-                .ThenBy(GetComparer(parent));
+            IComparer<Transaction> comparer = GetComparer(parent)
+                .ThenBy(DistinctCompareTx.Instance); // in order to sort properly and not loose transactions we need to differentiate on their identity which provided comparer might not be doing
             
-            IEnumerable<Transaction> transactions = Order(pendingTransactions, comparer);
+            var transactions = GetOrderedTransactions(pendingTransactions, comparer);
             IDictionary<Address, UInt256> remainingBalance = new Dictionary<Address, UInt256>();
             Dictionary<Address, UInt256> nonces = new Dictionary<Address, UInt256>();
             List<Transaction> selected = new List<Transaction>();
@@ -122,7 +122,7 @@ namespace Nethermind.Blockchain.Producers
             {
                 if (gasRemaining < Transaction.BaseTxGasCost)
                 {
-                    continue;
+                    break;
                 }
 
                 if (tx.GasLimit > gasRemaining)
@@ -137,10 +137,11 @@ namespace Nethermind.Blockchain.Producers
                     if (_logger.IsDebug) _logger.Debug($"Rejecting (null sender) {tx.ToShortString()}");
                     continue;
                 }
-                
-                if (!_minGasPriceFilter.IsAllowed(tx, parent))
+
+                var (allowed, reason) = _txFilter.IsAllowed(tx, parent);
+                if (!allowed)
                 {
-                    if (_logger.IsDebug) _logger.Debug($"Rejecting (gas price too low) {tx.ToShortString()}");
+                    if (_logger.IsDebug) _logger.Debug($"Rejecting ({reason}) {tx.ToShortString()}");
                     continue;
                 }
 
@@ -149,12 +150,12 @@ namespace Nethermind.Blockchain.Producers
                 {
                     if (tx.Nonce < expectedNonce)
                     {
-                        _transactionPool.RemoveTransaction(tx.Hash, 0);    
+                        _transactionPool.RemoveTransaction(tx.Hash, 0, true);    
                     }
                     
                     if (tx.Nonce > expectedNonce + 16)
                     {
-                        _transactionPool.RemoveTransaction(tx.Hash, 0);    
+                        _transactionPool.RemoveTransaction(tx.Hash, 0);
                     }
                     
                     if (_logger.IsDebug) _logger.Debug($"Rejecting (invalid nonce - expected {expectedNonce}) {tx.ToShortString()}");
@@ -168,6 +169,7 @@ namespace Nethermind.Blockchain.Producers
                 }
 
                 selected.Add(tx);
+                if (_logger.IsTrace) _logger.Trace($"Selected {tx.ToShortString()} to be included in block.");
                 nonces[tx.SenderAddress] = tx.Nonce + 1;
                 gasRemaining -= tx.GasLimit;
             }
@@ -177,7 +179,10 @@ namespace Nethermind.Blockchain.Producers
             return selected;
         }
 
-        protected virtual IComparer<Transaction> GetComparer(BlockHeader parent) => CompareTxByGas.Instance;
+        protected virtual IEnumerable<Transaction> GetOrderedTransactions(IDictionary<Address,Transaction[]> pendingTransactions, IComparer<Transaction> comparer) => 
+            Order(pendingTransactions, comparer);
+
+        protected virtual IComparer<Transaction> GetComparer(BlockHeader parent) => TxPool.TxPool.DefaultComparer;
 
         internal static IEnumerable<Transaction> Order(IDictionary<Address,Transaction[]> pendingTransactions, IComparer<Transaction> comparerWithIdentity)
         {

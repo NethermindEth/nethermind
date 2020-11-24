@@ -180,7 +180,7 @@ namespace Nethermind.AuRa.Test.Transactions
             var head = chain.BlockTree.Head;
             var isAllowed = chain.PermissionBasedTxFilter.IsAllowed(tx, head.Header);
             chain.TransactionPermissionContractVersions.Get(head.Header.Hash).Should().Be(version);
-            return (isAllowed, chain.TxPermissionFilterCache.Permissions.Contains((head.Hash, tx.SenderAddress)));
+            return (isAllowed.Allowed, chain.TxPermissionFilterCache.Permissions.Contains((head.Hash, tx.SenderAddress)));
         }
 
         private static IEnumerable<TestCaseData> GetTestCases(IEnumerable<Test> tests, string testsName, Func<Test, ITransactionPermissionContract.TxPermissions, TransactionBuilder<Transaction>> transactionBuilder)
@@ -227,7 +227,7 @@ namespace Nethermind.AuRa.Test.Transactions
                 Substitute.For<IReadOnlyTransactionProcessorSource>(), new LruCache<Keccak, UInt256>(100, "TestCache"));
             
             var filter = new PermissionBasedTxFilter(transactionPermissionContract, new PermissionBasedTxFilter.Cache(), Substitute.For<IStateProvider>(), LimboLogs.Instance);
-            return filter.IsAllowed(Build.A.Transaction.WithSenderAddress(TestItem.AddressB).TestObject, Build.A.BlockHeader.WithNumber(blockNumber).TestObject);
+            return filter.IsAllowed(Build.A.Transaction.WithSenderAddress(TestItem.AddressB).TestObject, Build.A.BlockHeader.WithNumber(blockNumber).TestObject).Allowed;
         }
 
         public class TestTxPermissionsBlockchain : TestContractBlockchain

@@ -61,6 +61,14 @@ namespace Nethermind.Baseline
             BlockParameter? blockParameter = null);
 
         [JsonRpcMethod(
+            Description = "Gets count of a tree at the given 'address'",
+            IsSharable = true,
+            IsImplemented = true)]
+        public Task<ResultWrapper<long>> baseline_getCount(
+            Address contractAddress,
+            BlockParameter? blockParameter = null);
+
+        [JsonRpcMethod(
             Description = "Gets multiple leaves from a tree at the given 'address'",
             IsSharable = true,
             IsImplemented = true)]
@@ -73,7 +81,7 @@ namespace Nethermind.Baseline
             Description = "Deploys a contract with the given 'contract type'. Requires the account to be unlocked.",
             IsSharable = false,
             IsImplemented = true)]
-        Task<ResultWrapper<Keccak>> baseline_deploy(Address address, string contractType);
+        Task<ResultWrapper<Keccak>> baseline_deploy(Address address, string contractType, string? argumentsAbi = null);
         
         [JsonRpcMethod(
             Description = "Deploys a contract with the given bytecode. Requires the account to be unlocked.",
@@ -112,5 +120,16 @@ namespace Nethermind.Baseline
             IsSharable = false,
             IsImplemented = false)]
         Task<ResultWrapper<Address[]>> baseline_getTracked();
+
+        [JsonRpcMethod(
+            Description = "Verify data and push new input.",
+            IsSharable = false,
+            IsImplemented = true)]
+        Task<ResultWrapper<Keccak>> baseline_verifyAndPush(
+            Address address,
+            Address contractAddress,
+            UInt256[] proof,
+            UInt256[] publicInputs,
+            Keccak newCommitment);
     }
 }

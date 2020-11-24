@@ -43,6 +43,7 @@ using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Storages;
 using BlockTree = Nethermind.Blockchain.BlockTree;
+using System.IO;
 
 namespace Nethermind.Core.Test.Blockchain
 {
@@ -75,7 +76,8 @@ namespace Nethermind.Core.Test.Blockchain
         public static Address AccountA = TestItem.AddressA;
         public static Address AccountB = TestItem.AddressB;
         public static Address AccountC = TestItem.AddressC;
-        private SemaphoreSlim _resetEvent;
+        public SemaphoreSlim _resetEvent;
+        private ManualResetEvent _suggestedBlockResetEvent;
         private AutoResetEvent _oneAtATime = new AutoResetEvent(true);
 
         public ManualTimestamper Timestamper { get; private set; }
@@ -118,14 +120,15 @@ namespace Nethermind.Core.Test.Blockchain
             IDb blockDb = new MemDb();
             IDb headerDb = new MemDb();
             IDb blockInfoDb = new MemDb();
-            BlockTree = new BlockTree(blockDb, headerDb, blockInfoDb, new ChainLevelInfoRepository(blockDb), SpecProvider, TxPool, NullBloomStorage.Instance, LimboLogs.Instance);
+            BlockTree = new BlockTree(blockDb, headerDb, blockInfoDb, new ChainLevelInfoRepository(blockDb), SpecProvider, NullBloomStorage.Instance, LimboLogs.Instance);
+            new OnChainTxWatcher(BlockTree, TxPool, SpecProvider);
 
             ReceiptStorage = new InMemoryReceiptStorage();
             VirtualMachine virtualMachine = new VirtualMachine(State, Storage, new BlockhashProvider(BlockTree, LimboLogs.Instance), SpecProvider, LimboLogs.Instance);
             TxProcessor = new TransactionProcessor(SpecProvider, State, Storage, virtualMachine, LimboLogs.Instance);
             BlockProcessor = CreateBlockProcessor();
 
-            BlockchainProcessor chainProcessor = new BlockchainProcessor(BlockTree, BlockProcessor, new TxSignaturesRecoveryStep(EthereumEcdsa, TxPool, SpecProvider, LimboLogs.Instance), LimboLogs.Instance, BlockchainProcessor.Options.Default);
+            BlockchainProcessor chainProcessor = new BlockchainProcessor(BlockTree, BlockProcessor, new RecoverSignatures(EthereumEcdsa, TxPool, SpecProvider, LimboLogs.Instance), LimboLogs.Instance, BlockchainProcessor.Options.Default);
             chainProcessor.Start();
             
             StateReader = new StateReader(new ReadOnlyTrieStore(TrieStore), CodeDb, LimboLogs.Instance);
@@ -136,9 +139,14 @@ namespace Nethermind.Core.Test.Blockchain
             BlockProducer.Start();
 
             _resetEvent = new SemaphoreSlim(0);
+            _suggestedBlockResetEvent = new ManualResetEvent(true);
             BlockTree.NewHeadBlock += (s, e) =>
             {
                 _resetEvent.Release(1);
+            };
+            BlockProducer.LastProducedBlockChanged += (s, e) =>
+            {
+                _suggestedBlockResetEvent.Set();
             };
 
             var genesis = GetGenesisBlock();
@@ -158,16 +166,23 @@ namespace Nethermind.Core.Test.Blockchain
             return new TxPoolTxSource(TxPool, StateReader, LimboLogs.Instance);
         }
 
+        public BlockBuilder GenesisBlockBuilder { get; set; }
+
         protected virtual Block GetGenesisBlock()
         {
-            var genesisBlockBuilder = Builders.Build.A.Block.Genesis.WithStateRoot(State.StateRoot);
+            BlockBuilder genesisBlockBuilder = Core.Test.Builders.Build.A.Block.Genesis;
+            if (GenesisBlockBuilder != null)
+            {
+                genesisBlockBuilder = GenesisBlockBuilder;
+            }
+            
+            genesisBlockBuilder.WithStateRoot(State.StateRoot);
             if (_sealEngineType == SealEngineType.AuRa)
             {
                 genesisBlockBuilder.WithAura(0, new byte[65]);
             }
 
-            Block genesis = genesisBlockBuilder.TestObject;
-            return genesis;
+            return genesisBlockBuilder.TestObject;
         }
 
         protected virtual async Task AddBlocksOnStart()
@@ -182,6 +197,31 @@ namespace Nethermind.Core.Test.Blockchain
 
         public async Task AddBlock(params Transaction[] transactions)
         {
+            await AddBlockInternal(transactions);
+
+            await _resetEvent.WaitAsync(CancellationToken.None);
+            _suggestedBlockResetEvent.Reset();
+            _oneAtATime.Set();
+        }
+
+        public async Task AddBlock(bool shouldWaitForHead = true, params Transaction[] transactions)
+        {
+            await AddBlockInternal(transactions);
+
+            if (shouldWaitForHead)
+            {
+                await _resetEvent.WaitAsync(CancellationToken.None);
+            }
+            else
+            {
+                await _suggestedBlockResetEvent.WaitOneAsync(CancellationToken.None);
+            }
+
+            _oneAtATime.Set();
+        }
+
+        private async Task AddBlockInternal(params Transaction[] transactions)
+        {
             await _oneAtATime.WaitOneAsync(CancellationToken.None);
             foreach (Transaction transaction in transactions)
             {
@@ -190,9 +230,6 @@ namespace Nethermind.Core.Test.Blockchain
 
             Timestamper.Add(TimeSpan.FromSeconds(1));
             BlockProducer.BuildNewBlock();
-
-            await _resetEvent.WaitAsync(CancellationToken.None);
-            _oneAtATime.Set();
         }
 
         public void AddTransaction(Transaction testObject)

@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -1350,6 +1350,11 @@ namespace Nethermind.Serialization.Rlp
             item.ToBigEndian(bytes);
             int length = bytes.WithoutLeadingZeros().Length;
             return length + 1;
+        }
+
+        public static int LengthOf(uint _)
+        {
+            return 5;
         }
 
         public static int LengthOf(ulong _)

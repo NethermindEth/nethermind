@@ -55,8 +55,8 @@ namespace Nethermind.Runner.Test.Ethereum
 {
     public static class Build
     {
-        public static NethermindApi ContextWithMocks() =>
-            new NethermindApi(Substitute.For<IConfigProvider>(), new EthereumJsonSerializer(), LimboLogs.Instance)
+        public static Runner.Ethereum.Api.NethermindApi ContextWithMocks() =>
+            new Runner.Ethereum.Api.NethermindApi(Substitute.For<IConfigProvider>(), new EthereumJsonSerializer(), LimboLogs.Instance)
             {
                 Enode = Substitute.For<IEnode>(),
                 TxPool = Substitute.For<ITxPool>(),
@@ -72,7 +72,6 @@ namespace Nethermind.Runner.Test.Ethereum
                 ReceiptFinder = Substitute.For<IReceiptFinder>(),
                 BlockValidator = Substitute.For<IBlockValidator>(),
                 RewardCalculatorSource = Substitute.For<IRewardCalculatorSource>(),
-                RecoveryStep = Substitute.For<IBlockDataRecoveryStep>(),
                 TxPoolInfoProvider = Substitute.For<ITxPoolInfoProvider>(),
                 StaticNodesManager = Substitute.For<IStaticNodesManager>(),
                 BloomStorage = Substitute.For<IBloomStorage>(),

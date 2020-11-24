@@ -54,7 +54,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             ITxPool txPool = NullTxPool.Instance;
             MemDbProvider dbProvider = new MemDbProvider();
 
-            BlockTree blockTree = new BlockTree(dbProvider.BlocksDb, dbProvider.HeadersDb, dbProvider.BlockInfosDb, new ChainLevelInfoRepository(dbProvider.BlockInfosDb), specProvider, txPool, NullBloomStorage.Instance, new SyncConfig(), LimboLogs.Instance);
+            BlockTree blockTree = new BlockTree(dbProvider.BlocksDb, dbProvider.HeadersDb, dbProvider.BlockInfosDb, new ChainLevelInfoRepository(dbProvider.BlockInfosDb), specProvider, NullBloomStorage.Instance, new SyncConfig(), LimboLogs.Instance);
             _factory = new EthModuleFactory(
                 txPool,
                 Substitute.For<ITxSender>(),

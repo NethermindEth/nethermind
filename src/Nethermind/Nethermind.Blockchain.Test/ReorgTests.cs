@@ -69,7 +69,6 @@ namespace Nethermind.Blockchain.Test
                 memDbProvider,
                 chainLevelInfoRepository,
                 specProvider,
-                txPool,
                 bloomStorage,
                 new SyncConfig(),
                 LimboLogs.Instance);
@@ -99,7 +98,7 @@ namespace Nethermind.Blockchain.Test
             _blockchainProcessor = new BlockchainProcessor(
                 _blockTree,
                 blockProcessor,
-                new TxSignaturesRecoveryStep(
+                new RecoverSignatures(
                     ecdsa,
                     txPool,
                     specProvider,

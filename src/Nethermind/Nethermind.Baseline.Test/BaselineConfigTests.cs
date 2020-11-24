@@ -13,16 +13,17 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
 
+using System.Collections.Generic;
 using FluentAssertions;
 using Nethermind.Baseline.Config;
+using Nethermind.Config.Test;
 using NUnit.Framework;
 
 namespace Nethermind.Baseline.Test
 {
     [TestFixture]
-    public class BaselineConfigTests
+    public class BaselineConfigTests : ConfigFileTestsBase
     {
         [Test]
         public void Can_set()
@@ -34,5 +35,51 @@ namespace Nethermind.Baseline.Test
             config.Enabled = false;
             config.Enabled.Should().BeFalse();
         }
+        
+        [TestCase("baseline", true)]
+        [TestCase("spaceneth", true)]
+        [TestCase("^baseline ^spaceneth", false)]
+        public void Baseline_is_disabled_by_default(string configWildcard, bool enabled)
+        {
+            Test<IBaselineConfig, bool>(configWildcard, c => c.Enabled, enabled);
+        }
+        
+        protected override IEnumerable<string> Configs { get; } = new HashSet<string>
+        {
+            "ropsten_archive.cfg",
+            "ropsten_beam.cfg",
+            "ropsten.cfg",
+            "rinkeby_archive.cfg",
+            "rinkeby_beam.cfg",
+            "rinkeby.cfg",
+            "goerli_archive.cfg",
+            "goerli_beam.cfg",
+            "goerli.cfg",
+            "kovan.cfg",
+            "kovan_archive.cfg",
+            "mainnet_archive.cfg",
+            "mainnet_beam.cfg",
+            "mainnet.cfg",
+            "sokol.cfg",
+            "sokol_archive.cfg",
+            "sokol_validator.cfg",
+            "poacore.cfg",
+            "poacore_archive.cfg",
+            "poacore_beam.cfg",
+            "poacore_validator.cfg",
+            "xdai.cfg",
+            "xdai_archive.cfg",
+            "xdai_validator.cfg",
+            "spaceneth.cfg",
+            "spaceneth_persistent.cfg",
+            "volta.cfg",
+            "volta_archive.cfg",
+            "volta.cfg",
+            "volta_archive.cfg",
+            "energyweb.cfg",
+            "energyweb_archive.cfg",
+            "baseline.cfg",
+            "baseline_ropsten.cfg"
+        };
     }
 }

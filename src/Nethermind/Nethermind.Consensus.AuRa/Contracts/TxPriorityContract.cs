@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -20,12 +20,11 @@ using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Abi;
 using Nethermind.Blockchain.Contracts;
+using Nethermind.Blockchain.Find;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm;
 using Nethermind.Int256;
-using Nethermind.Serialization.Rlp;
 using Nethermind.TxPool;
 using DestinationTuple = System.ValueTuple<Nethermind.Core.Address, byte[], Nethermind.Int256.UInt256>;
 
@@ -46,9 +45,9 @@ namespace Nethermind.Consensus.AuRa.Contracts
             : base(abiEncoder, contractAddress)
         {
             Constant = GetConstant(readOnlyTransactionProcessorSource);
-            SendersWhitelist = new DataContract<Address>(GetSendersWhitelist, SendersWhitelistSet, false);
-            MinGasPrices = new DataContract<Destination>(GetMinGasPrices, MinGasPriceSet, true);
-            Priorities = new DataContract<Destination>(GetPriorities, PrioritySet, true);
+            SendersWhitelist = new DataContract<Address>(GetSendersWhitelist, SendersWhitelistSet);
+            MinGasPrices = new DataContract<Destination>(GetMinGasPrices, MinGasPriceSet);
+            Priorities = new DataContract<Destination>(GetPriorities, PrioritySet);
         }
 
         public Address[] GetSendersWhitelist(BlockHeader parentHeader) => Constant.Call<Address[]>(parentHeader, nameof(GetSendersWhitelist), ContractAddress);
@@ -79,13 +78,18 @@ namespace Nethermind.Consensus.AuRa.Contracts
             }
         }
         
-        public IEnumerable<Address> SendersWhitelistSet(BlockHeader blockHeader, TxReceipt[] receipts)
+        public bool SendersWhitelistSet(BlockHeader blockHeader, TxReceipt[] receipts, out IEnumerable<Address> items)
         {
             var logEntry = GetSearchLogEntry(nameof(SendersWhitelistSet));
 
-            return blockHeader.TryFindLog(receipts, logEntry, out LogEntry foundEntry) 
-                ? DecodeAddresses(foundEntry.Data) 
-                : Array.Empty<Address>();
+            if (blockHeader.TryFindLog(receipts, logEntry, out LogEntry foundEntry))
+            {
+                items = DecodeAddresses(foundEntry.Data);
+                return true;
+            }
+
+            items = Array.Empty<Address>();
+            return false;
         }
         
         public Address[] DecodeAddresses(byte[] data)

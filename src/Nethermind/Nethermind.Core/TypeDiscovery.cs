@@ -34,11 +34,11 @@ namespace Nethermind.Core
         {
             if (Interlocked.CompareExchange(ref _allLoaded, 1, 0) == 0)
             {
-                IEnumerable<Assembly> loadedAssemblies;
+                List<Assembly> loadedAssemblies;
                 do
                 {
-                    loadedAssemblies = AssemblyLoadContext.Default.Assemblies;
-                } while (LoadOnce(loadedAssemblies.ToList()) != 0);
+                    loadedAssemblies = AssemblyLoadContext.Default.Assemblies.ToList();
+                } while (LoadOnce(loadedAssemblies) != 0);
 
                 foreach (Assembly assembly in loadedAssemblies.Where(a => a.FullName?.Contains("Nethermind") ?? false))
                 {
@@ -56,7 +56,7 @@ namespace Nethermind.Core
             var missingRefs = loadedAssemblies
                 .SelectMany(x => x.GetReferencedAssemblies())
                 .Distinct()
-                .Where(a => a.Name.Contains("Nethermind"));
+                .Where(a => a.Name?.Contains("Nethermind") ?? false);
 
             foreach (AssemblyName missingRef in missingRefs)
             {

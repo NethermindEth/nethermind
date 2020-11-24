@@ -58,6 +58,8 @@ using Nethermind.Logging;
 using Nethermind.Monitoring;
 using Nethermind.Wallet;
 using Nethermind.DataMarketplace.Consumers.Shared;
+using Nethermind.DataMarketplace.Infrastructure.Updaters;
+using Nethermind.WebSockets;
 
 namespace Nethermind.DataMarketplace.Consumers.Infrastructure
 {
@@ -68,6 +70,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure
         private IJsonRpcNdmConsumerChannel jsonRpcNdmConsumerChannel;
         private IEthRequestService ethRequestService;
         private IEthPriceService ethPriceService;
+        private IDaiPriceService daiPriceService;
         private IGasPriceService gasPriceService;
         private IConsumerTransactionsService consumerTransactionsService;
         private IConsumerGasLimitsService gasLimitsService;
@@ -181,6 +184,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure
             IEthJsonRpcClientProxy? ethJsonRpcClientProxy = _api.EthJsonRpcClientProxy;
             TransactionService transactionService = _api.TransactionService;
             IMonitoringService monitoringService = _api.MonitoringService;
+            IWebSocketsModule ndmWebSocketsModule = _api.WebSocketsManager.GetModule("ndm");
             monitoringService?.RegisterMetrics(typeof(Metrics));
 
             DataRequestFactory dataRequestFactory = new DataRequestFactory(wallet, nodePublicKey);
@@ -217,7 +221,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure
                     requiredBlockConfirmations);
             }
 
-            depositReportService = new DepositReportService(depositRepository, receiptRepository, sessionRepository,
+            depositReportService = new DepositReportService(depositRepository, depositUnitsCalculator, receiptRepository, sessionRepository,
                 timestamper);
             ReceiptService receiptService = new ReceiptService(depositProvider, providerService, receiptRequestValidator,
                 sessionService, timestamper, receiptRepository, sessionRepository, abiEncoder, wallet, ecdsa,
@@ -228,11 +232,13 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure
                 transactionVerifier, gasPriceService, timestamper, logManager);
             _api.AccountService = new AccountService(configManager, dataStreamService, providerService,
                 sessionService, consumerNotifier, wallet, configId, consumerAddress, logManager);
+            _api.NdmAccountUpdater = new NdmAccountUpdater(ndmWebSocketsModule, consumerAddress, _api.MainBlockProcessor, _api.StateProvider);
             ProxyService proxyService = new ProxyService(jsonRpcClientProxy, configManager, configId, logManager);
             _api.ConsumerService = new ConsumerService(_api.AccountService, dataAssetService, dataRequestService,
                 dataConsumerService, dataStreamService, depositManager, depositApprovalService, providerService,
                 receiptService, refundService, sessionService, proxyService);
             ethPriceService = new EthPriceService(httpClient, timestamper, logManager);
+            daiPriceService = new DaiPriceService(httpClient, timestamper, logManager);
             consumerTransactionsService = new ConsumerTransactionsService(transactionService, depositRepository,
                 timestamper, logManager);
             gasLimitsService = new ConsumerGasLimitsService(depositService, refundService);
@@ -246,6 +252,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure
                         refundClaimant,
                         depositConfirmationService,
                         ethPriceService,
+                        daiPriceService,
                         _api.GasPriceService,
                         _api.MainBlockProcessor,
                         depositRepository,
@@ -259,7 +266,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure
 
         public void InitRpcModules()
         {
-            _api.RpcModuleProvider.Register(new SingletonModulePool<INdmRpcConsumerModule>(new NdmRpcConsumerModule(_api.ConsumerService, depositReportService, jsonRpcNdmConsumerChannel, ethRequestService, ethPriceService, gasPriceService, consumerTransactionsService, gasLimitsService, _api.Wallet, timestamper), true));
+            _api.RpcModuleProvider.Register(new SingletonModulePool<INdmRpcConsumerModule>(new NdmRpcConsumerModule(_api.ConsumerService, depositReportService, jsonRpcNdmConsumerChannel, ethRequestService, ethPriceService, daiPriceService, gasPriceService, consumerTransactionsService, gasLimitsService, _api.Wallet, timestamper), true));
         }
 
         private static void AddDecoders()
