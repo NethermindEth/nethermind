@@ -20,10 +20,10 @@ namespace Nethermind.Db.Rocks
 {
     public class SimpleRocksDb : DbOnTheRocks
     {
-        public override string Name { get; protected set; }
 
-        public SimpleRocksDb(string basePath, string dbName, IPlugableDbConfig dbConfig, ILogManager logManager = null)
-            : base(basePath, dbName, dbName, dbConfig, logManager)
+        public override string Name { get; protected set; } = "SimpleRocksDb";
+        public SimpleRocksDb(string basePath, string dbPath, string dbName, IPlugableDbConfig dbConfig, ILogManager logManager = null)
+                : base(basePath, dbPath, dbName, dbConfig, logManager)
         {
         }
     }

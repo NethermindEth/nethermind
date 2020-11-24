@@ -34,8 +34,8 @@ namespace Nethermind.Baseline.Db
 
     public class BaselineDbProvider : IBaselineDbProvider
     {
-        private const string BaselineTreeDbName = "BaselineTree";
-        private const string BaselineTreeMetadataDbName = "BaselineTreeMetadata";
+        private const string BaselineTreeDbName = "baselineTree";
+        private const string BaselineTreeMetadataDbName = "baselineTreeMetadata";
 
         private readonly IDbFactory _dbFactory;
         private readonly IBaselineConfig _baselineConfig;

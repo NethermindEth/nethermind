@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Globalization;
 using System.IO;
 using Nethermind.Api;
 using Nethermind.Config;
@@ -71,7 +72,7 @@ namespace Nethermind.Runner.Ethereum.Steps.Db
 
         public IDb Create(string dbName, IPlugableDbConfig? dbConfig = null, bool createInMemoryWriteStore = true)
         {
-            return Create((string basePath, IConfig config) => new SimpleRocksDb(basePath, dbName, dbConfig ??_defaultDbConfig, _logManager), createInMemoryWriteStore);
+            return Create((string basePath, IConfig config) => new SimpleRocksDb(basePath, dbName, CultureInfo.CurrentUICulture.TextInfo.ToTitleCase(dbName), dbConfig ??_defaultDbConfig, _logManager), createInMemoryWriteStore);
         }
     }
 }
