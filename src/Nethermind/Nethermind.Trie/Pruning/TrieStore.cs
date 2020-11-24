@@ -20,6 +20,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
 using Nethermind.Core;
+using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
@@ -70,6 +71,8 @@ namespace Nethermind.Trie.Pruning
             _keyValueStore = keyValueStore ?? throw new ArgumentNullException(nameof(keyValueStore));
             _pruningStrategy = pruningStrategy ?? throw new ArgumentNullException(nameof(pruningStrategy));
             _persistenceStrategy = persistenceStrategy ?? throw new ArgumentNullException(nameof(persistenceStrategy));
+            
+            _pruneNodeAction = n => n.PrunePersistedRecursively(this);
         }
 
         public long LastPersistedBlockNumber
@@ -251,11 +254,11 @@ namespace Nethermind.Trie.Pruning
             return rlp;
         }
 
-        public bool IsNodeCached(Keccak hash) => _dirtyNodesCache.ContainsKey(hash) || _persistedNodesCache.ContainsKey(hash);
+        public bool IsNodeCached(Keccak hash) => _dirtyNodesCache.ContainsKey(hash) || _persistedNodesCache.Contains(hash);
 
         public TrieNode FindCachedOrUnknown(Keccak hash)
         {
-            bool isMissing = !_persistedNodesCache.TryGetValue(hash, out TrieNode trieNode);
+            bool isMissing = !_persistedNodesCache.TryGet(hash, out TrieNode trieNode);
             if (isMissing)
             {
                 isMissing = !_dirtyNodesCache.TryGetValue(hash, out trieNode);    
@@ -287,12 +290,6 @@ namespace Nethermind.Trie.Pruning
             {
                 _logger.Trace($"Trie node dirty cache ({_dirtyNodesCache.Count})");
                 foreach (KeyValuePair<Keccak, TrieNode> keyValuePair in _dirtyNodesCache)
-                {
-                    _logger.Trace($"  {keyValuePair.Value}");
-                }
-                
-                _logger.Trace($"Trie node persistes cache ({_persistedNodesCache.Count})");
-                foreach (KeyValuePair<Keccak, TrieNode> keyValuePair in _persistedNodesCache)
                 {
                     _logger.Trace($"  {keyValuePair.Value}");
                 }
@@ -352,6 +349,8 @@ namespace Nethermind.Trie.Pruning
             return false;
         }
 
+        private Action<TrieNode> _pruneNodeAction;
+        
         /// <summary>
         /// Prunes persisted branches of the previously committed roots
         /// </summary>
@@ -366,11 +365,8 @@ namespace Nethermind.Trie.Pruning
             //     blockCommitSet.Root?.PrunePersistedRecursively(this);
             // }
 
-            foreach (KeyValuePair<Keccak,TrieNode> keyValuePair in _persistedNodesCache)
-            {
-                keyValuePair.Value.PrunePersistedRecursively(this);
-            }
-            
+            _persistedNodesCache.ForEach(_pruneNodeAction);
+
             stopwatch.Stop();
             Metrics.DeepPruningTime = stopwatch.ElapsedMilliseconds;
             if (_logger.IsWarn) _logger.Warn(
@@ -406,7 +402,7 @@ namespace Nethermind.Trie.Pruning
                     }
                     
                     // different approach now
-                    _persistedNodesCache.Add(key, node);
+                    _persistedNodesCache.Set(key, node);
 
                     Metrics.PrunedPersistedNodesCount++;
                 }
@@ -486,7 +482,8 @@ namespace Nethermind.Trie.Pruning
 
         private Dictionary<Keccak, TrieNode> _dirtyNodesCache = new Dictionary<Keccak, TrieNode>();
         
-        private Dictionary<Keccak, TrieNode> _persistedNodesCache = new Dictionary<Keccak, TrieNode>();
+        private LruCache<Keccak, TrieNode> _persistedNodesCache = new LruCache<Keccak, TrieNode>(
+            MemoryAllowance.TrieNodeCacheCount, MemoryAllowance.TrieNodeCacheCount, "persisted nodes");
 
         private readonly IPruningStrategy _pruningStrategy;
 
