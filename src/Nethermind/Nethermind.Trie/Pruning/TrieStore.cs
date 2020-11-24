@@ -30,7 +30,6 @@ namespace Nethermind.Trie.Pruning
     {
         public static HashSet<Keccak> Tracked = new HashSet<Keccak>
         {
-            new Keccak("0xe7ec9ecd3f7905ee1def22a24322a319f500c225bf56167b68c5848a47457eb4")
         };
     }
 
