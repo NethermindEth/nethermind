@@ -24,6 +24,8 @@ namespace Nethermind.Trie.Pruning
 
         public bool IsSealed { get; private set; }
 
+        public long MemorySizeOfCommittedNodes { get; set; }
+
         public BlockCommitSet(long blockNumber)
         {
             BlockNumber = blockNumber;

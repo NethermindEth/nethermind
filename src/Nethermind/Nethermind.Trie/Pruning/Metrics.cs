@@ -49,6 +49,8 @@ namespace Nethermind.Trie.Pruning
         
         public static long MemoryUsedByCache { get; set; }
         
+        public static long MemoryUsedByPersistedCache { get; set; }
+        
         public static long MemoryUsedByDeepCache { get; set; }
     }
 }

@@ -27,7 +27,7 @@ namespace Nethermind.Trie.Test.Pruning
         public void Initial_memory_is_0()
         {
             TrieStore trieStore = new TrieStore(new MemDb(), No.Pruning, No.Persistence, _logManager);
-            trieStore.MemoryUsedByCache.Should().Be(0);
+            trieStore.MemoryUsedByDirtyCache.Should().Be(0);
         }
         
         [Test]
@@ -37,7 +37,7 @@ namespace Nethermind.Trie.Test.Pruning
         
             TrieStore trieStore = new TrieStore(new MemDb(), No.Pruning, No.Persistence, _logManager);
             trieStore.CommitNode(1234, new NodeCommitInfo(trieNode));
-            trieStore.MemoryUsedByCache.Should().Be(
+            trieStore.MemoryUsedByDirtyCache.Should().Be(
                 trieNode.GetMemorySize(false));
         }
         
@@ -50,7 +50,7 @@ namespace Nethermind.Trie.Test.Pruning
             TrieStore trieStore = new TrieStore(new MemDb(), No.Pruning, No.Persistence, _logManager);
             trieStore.CommitNode(1234, new NodeCommitInfo(trieNode1));
             trieStore.CommitNode(1234, new NodeCommitInfo(trieNode2));
-            trieStore.MemoryUsedByCache.Should().Be(
+            trieStore.MemoryUsedByDirtyCache.Should().Be(
                 trieNode1.GetMemorySize(false) +
                 trieNode2.GetMemorySize(false));
         }
@@ -72,7 +72,7 @@ namespace Nethermind.Trie.Test.Pruning
             
             // depending on whether the node gets resolved it gives different values here in debugging and run
             // needs some attention
-            trieStore.MemoryUsedByCache.Should().BeLessOrEqualTo(
+            trieStore.MemoryUsedByDirtyCache.Should().BeLessOrEqualTo(
                 trieNode1.GetMemorySize(false) +
                 trieNode2.GetMemorySize(false));
         }
@@ -99,7 +99,7 @@ namespace Nethermind.Trie.Test.Pruning
             trieStore.CommitNode(1235, new NodeCommitInfo(trieNode4));
             trieStore.FinishBlockCommit(TrieType.State, 1235, trieNode2);
             trieStore.FinishBlockCommit(TrieType.State, 1236, trieNode2);
-            trieStore.MemoryUsedByCache.Should().Be(
+            trieStore.MemoryUsedByDirtyCache.Should().Be(
                 trieNode1.GetMemorySize(false) +
                 trieNode2.GetMemorySize(false) +
                 trieNode3.GetMemorySize(false) +
@@ -126,7 +126,7 @@ namespace Nethermind.Trie.Test.Pruning
             trieStore.FinishBlockCommit(TrieType.State, 1234, trieNode2);
             trieStore.CommitNode(1235, new NodeCommitInfo(trieNode3));
             trieStore.CommitNode(1235, new NodeCommitInfo(trieNode4));
-            trieStore.MemoryUsedByCache.Should().Be(
+            trieStore.MemoryUsedByDirtyCache.Should().Be(
                 trieNode1.GetMemorySize(false) +
                 trieNode2.GetMemorySize(false) +
                 trieNode3.GetMemorySize(false) +
@@ -152,7 +152,7 @@ namespace Nethermind.Trie.Test.Pruning
                 trieStore.FinishBlockCommit(TrieType.State, i, fakeRoot);
             }
         
-            trieStore.MemoryUsedByCache.Should().BeLessThan(512 * 2);
+            trieStore.MemoryUsedByDirtyCache.Should().BeLessThan(512 * 2);
         }
 
         [Test]
