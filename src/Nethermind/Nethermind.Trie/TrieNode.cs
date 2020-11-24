@@ -549,6 +549,7 @@ namespace Nethermind.Trie
         /// </summary>
         /// <param name="cache"></param>
         /// <param name="logger"></param>
+        // TODO: visitor?
         private void MarkPersistedRecursively(ITrieNodeResolver cache, ILogger logger)
         {
             if (!IsLeaf)
@@ -575,6 +576,7 @@ namespace Nethermind.Trie
             IsPersisted = true;
         }
 
+        // TODO: visitor?
         public void PersistRecursively(Action<TrieNode> action, ITrieNodeResolver resolver, ILogger logger)
         {
             if (IsPersisted)
@@ -726,5 +728,36 @@ namespace Nethermind.Trie
         }
 
         #endregion
+
+        // TODO: visitor?
+        public void PrunePersistedRecursively(ITrieNodeResolver cache)
+        {
+            if (!IsLeaf)
+            {
+                if (_data != null)
+                {
+                    for (int i = 0; i < _data!.Length; i++)
+                    {
+                        object o = _data[i];
+                        if (o is TrieNode child)
+                        {
+                            if (child.IsPersisted)
+                            {
+                                Pruning.Metrics.DeepPrunedPersistedNodesCount++;
+                                UnresolveChild(i);
+                            }
+                            else
+                            {
+                                child.PrunePersistedRecursively(cache);
+                            }
+                        }
+                    }
+                }
+            }
+            else if (TryResolveStorageRoot(cache))
+            {
+                _storageRoot?.PrunePersistedRecursively(cache);
+            }
+        }
     }
 }

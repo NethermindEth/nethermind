@@ -22,7 +22,7 @@ namespace Nethermind.Core.Resettables
 {
     public class ResettableDictionary<TKey, TValue> : IDictionary<TKey, TValue> where TKey : notnull
     {
-        private readonly IEqualityComparer<TKey> _comparer;
+        private readonly IEqualityComparer<TKey>? _comparer;
         private int _currentCapacity;
         private int _startCapacity;
         private int _resetRatio;

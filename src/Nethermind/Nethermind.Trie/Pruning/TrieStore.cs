@@ -288,98 +288,136 @@ namespace Nethermind.Trie.Pruning
                     break;
                 }
 
-                if (_logger.IsWarn) _logger.Warn($"Pruning nodes {MemoryUsedByCache / 1.MB()}MB , last persisted block: {LastPersistedBlockNumber} current: {NewestKeptBlockNumber}.");
+                PruneCache();
 
-                Stopwatch stopwatch = Stopwatch.StartNew();
-                List<TrieNode> toRemove = new List<TrieNode>(); // TODO: resettable
+                if (CanPruneCacheFurther()) continue;
+                break;
+            }
+        }
 
-                long newMemory = 0;
-                foreach ((Keccak key, TrieNode node) in _nodeCache)
+        private bool CanPruneCacheFurther()
+        {
+            if (_pruningStrategy.ShouldPrune(MemoryUsedByCache))
+            {
+                if (_logger.IsDebug) _logger.Debug("Elevated pruning starting");
+
+                BlockCommitSet? candidateSet = null;
+                while (_commitSetQueue.TryPeek(out BlockCommitSet? frontSet))
                 {
-                    if (node.IsPersisted)
+                    if (frontSet!.BlockNumber >= NewestKeptBlockNumber - Reorganization.MaxDepth)
                     {
-                        if (_logger.IsTrace || node.ShouldTrack()) _logger.Trace($"Removing persisted {node} from memory.");
-                        toRemove.Add(node);
-                        if (node.Keccak == null)
-                        {
-                            node.ResolveKey(this, true); // TODO: hack
-                            if (node.Keccak != key)
-                            {
-                                throw new InvalidOperationException($"Persisted {node} {key} != {node.Keccak}");
-                            }
-                        }
-
-                        Metrics.PrunedPersistedNodesCount++;
+                        break;
                     }
-                    else if (IsNoLongerNeeded(node))
-                    {
-                        if (_logger.IsTrace || node.ShouldTrack()) _logger.Trace($"Removing {node} from memory (no longer referenced).");
-                        toRemove.Add(node);
-                        if (node.Keccak == null)
-                        {
-                            throw new InvalidOperationException($"Removed {node}");
-                        }
 
-                        Metrics.PrunedTransientNodesCount++;
+                    if (_commitSetQueue.TryDequeue(out frontSet))
+                    {
+                        candidateSet = frontSet;
                     }
                     else
                     {
-                        newMemory += node.GetMemorySize(false);
+                        break;
                     }
                 }
 
-                foreach (TrieNode trieNode in toRemove)
+                if (candidateSet != null)
                 {
-                    if (trieNode.Keccak == null)
-                    {
-                        throw new InvalidOperationException($"{trieNode} has a null key");
-                    }
-
-                    _nodeCache.Remove(trieNode.Keccak!);
+                    if (_logger.IsWarn) _logger.Warn($"Elevated pruning for candidate {candidateSet.BlockNumber}");
+                    Persist(candidateSet);
+                    return true;
                 }
 
-                MemoryUsedByCache = newMemory;
-                Metrics.CachedNodesCount = _nodeCache.Count;
-
-                stopwatch.Stop();
-                Metrics.PruningTime = stopwatch.ElapsedMilliseconds;
-
-                if (_logger.IsWarn) _logger.Warn($"Finished pruning nodes in {stopwatch.ElapsedMilliseconds}ms {MemoryUsedByCache / 1.MB()}MB, last persisted block: {LastPersistedBlockNumber} current: {NewestKeptBlockNumber}.");
-
-                if (_pruningStrategy.ShouldPrune(MemoryUsedByCache))
-                {
-                    if (_logger.IsDebug) _logger.Debug("Elevated pruning starting");
-
-                    BlockCommitSet? candidateSet = null;
-                    while (_commitSetQueue.TryPeek(out BlockCommitSet? frontSet))
-                    {
-                        if (frontSet!.BlockNumber >= NewestKeptBlockNumber - Reorganization.MaxDepth)
-                        {
-                            break;
-                        }
-
-                        if (_commitSetQueue.TryDequeue(out frontSet))
-                        {
-                            candidateSet = frontSet;
-                        }
-                        else
-                        {
-                            break;
-                        }
-                    }
-
-                    if (candidateSet != null)
-                    {
-                        if (_logger.IsWarn) _logger.Warn($"Elevated pruning for candidate {candidateSet.BlockNumber}");
-                        Persist(candidateSet);
-                        continue;
-                    }
-
-                    if (_logger.IsWarn) _logger.Warn($"Found no candidate for elevated pruning ({_commitSetQueue.Count})");
-                }
-
-                break;
+                if (_logger.IsWarn) _logger.Warn($"Found no candidate for elevated pruning ({_commitSetQueue.Count})");
             }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Prunes persisted branches of the previously committed roots
+        /// </summary>
+        private void PruneOldTrees()
+        {
+            if (_logger.IsWarn) _logger.Warn(
+                $"Deep pruning nodes {MemoryUsedByCache / 1.MB()}MB, {Metrics.DeepPrunedPersistedNodesCount}.");
+            
+            Stopwatch stopwatch = Stopwatch.StartNew();
+            foreach (BlockCommitSet blockCommitSet in _commitSetQueue)
+            {
+                blockCommitSet.Root?.PrunePersistedRecursively(this);
+            }
+            
+            stopwatch.Stop();
+            Metrics.PruningTime = stopwatch.ElapsedMilliseconds;
+            if (_logger.IsWarn) _logger.Warn(
+                $"Finished deep pruning nodes in {stopwatch.ElapsedMilliseconds}ms, {Metrics.DeepPrunedPersistedNodesCount}");
+        }
+
+        /// <summary>
+        /// This method is responsible for reviewing the nodes that are directly in the cache and
+        /// removing ones that are either no longer referenced or already persisted.
+        /// </summary>
+        /// <exception cref="InvalidOperationException"></exception>
+        private void PruneCache()
+        {
+            if (_logger.IsWarn) _logger.Warn(
+                $"Pruning nodes {MemoryUsedByCache / 1.MB()}MB , last persisted block: {LastPersistedBlockNumber} current: {NewestKeptBlockNumber}.");
+            Stopwatch stopwatch = Stopwatch.StartNew();
+            List<TrieNode> toRemove = new List<TrieNode>(); // TODO: resettable
+
+            long newMemory = 0;
+            foreach ((Keccak key, TrieNode node) in _nodeCache)
+            {
+                if (node.IsPersisted)
+                {
+                    if (_logger.IsTrace || node.ShouldTrack()) _logger.Trace($"Removing persisted {node} from memory.");
+                    toRemove.Add(node);
+                    if (node.Keccak == null)
+                    {
+                        node.ResolveKey(this, true); // TODO: hack
+                        if (node.Keccak != key)
+                        {
+                            throw new InvalidOperationException($"Persisted {node} {key} != {node.Keccak}");
+                        }
+                    }
+
+                    Metrics.PrunedPersistedNodesCount++;
+                }
+                else if (IsNoLongerNeeded(node))
+                {
+                    if (_logger.IsTrace || node.ShouldTrack()) _logger.Trace($"Removing {node} from memory (no longer referenced).");
+                    toRemove.Add(node);
+                    if (node.Keccak == null)
+                    {
+                        throw new InvalidOperationException($"Removed {node}");
+                    }
+
+                    Metrics.PrunedTransientNodesCount++;
+                }
+                else
+                {
+                    newMemory += node.GetMemorySize(false);
+                }
+            }
+
+            foreach (TrieNode trieNode in toRemove)
+            {
+                if (trieNode.Keccak == null)
+                {
+                    throw new InvalidOperationException($"{trieNode} has a null key");
+                }
+
+                _nodeCache.Remove(trieNode.Keccak!);
+            }
+
+            MemoryUsedByCache = newMemory;
+            Metrics.CachedNodesCount = _nodeCache.Count;
+
+            stopwatch.Stop();
+            Metrics.PruningTime = stopwatch.ElapsedMilliseconds;
+            if (_logger.IsWarn) _logger.Warn(
+                $"Finished pruning nodes in {stopwatch.ElapsedMilliseconds}ms {MemoryUsedByCache / 1.MB()}MB, last persisted block: {LastPersistedBlockNumber} current: {NewestKeptBlockNumber}.");
+            
+            PruneOldTrees();
         }
 
         public void ClearCache()
@@ -498,6 +536,8 @@ namespace Nethermind.Trie.Pruning
                 // it is a bit of a hack as we simply want to force Rocks to flush the changes
                 _keyValueStore.CommitBatch();
             }
+            
+            PruneOldTrees();
         }
 
         private void Persist(TrieNode currentNode, long blockNumber)
@@ -605,7 +645,7 @@ namespace Nethermind.Trie.Pruning
                 }
                 else
                 {
-                    _logger.Warn($"Block commit was null...");
+                    _logger.Warn("Block commit was null...");
                 }
             }
 

@@ -27,6 +27,8 @@ namespace Nethermind.Trie.Pruning
         
         public static long PrunedPersistedNodesCount { get; set; }
         
+        public static long DeepPrunedPersistedNodesCount { get; set; }
+        
         public static long PrunedTransientNodesCount { get; set; }
         
         public static long LoadedFromDbNodesCount { get; set; }
@@ -44,5 +46,7 @@ namespace Nethermind.Trie.Pruning
         public static long LastPersistedBlockNumber { get; set; }
         
         public static long MemoryUsedByCache { get; set; }
+        
+        public static long MemoryUsedByDeepCache { get; set; }
     }
 }
