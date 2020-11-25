@@ -347,7 +347,7 @@ namespace Nethermind.Trie.Pruning
 
                 _commitSetQueue.TryPeek(out BlockCommitSet? uselessFrontSet);
                 if (_logger.IsWarn) _logger.Warn(
-                    $"Found no candidate for elevated pruning (sets: {_commitSetQueue.Count}, earliest: {uselessFrontSet}, newest kept: {NewestKeptBlockNumber}, reorg depth {Reorganization.MaxDepth})");
+                    $"Found no candidate for elevated pruning (sets: {_commitSetQueue.Count}, earliest: {uselessFrontSet?.BlockNumber}, newest kept: {NewestKeptBlockNumber}, reorg depth {Reorganization.MaxDepth})");
             }
 
             return false;
