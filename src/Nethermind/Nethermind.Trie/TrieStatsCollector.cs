@@ -59,10 +59,12 @@ namespace Nethermind.Trie
         {
             if (trieVisitContext.IsStorage)
             {
+                Stats.StorageSize += node.FullRlp?.Length ?? 0;
                 Stats.StorageBranchCount++;
             }
             else
             {
+                Stats.StateSize += node.FullRlp?.Length ?? 0;
                 Stats.StateBranchCount++;
             }
         }
@@ -71,10 +73,12 @@ namespace Nethermind.Trie
         {
             if (trieVisitContext.IsStorage)
             {
+                Stats.StorageSize += node.FullRlp?.Length ?? 0;
                 Stats.StorageExtensionCount++;
             }
             else
             {
+                Stats.StateSize += node.FullRlp?.Length ?? 0;
                 Stats.StateExtensionCount++;
             }
         }
@@ -89,10 +93,12 @@ namespace Nethermind.Trie
 
             if (trieVisitContext.IsStorage)
             {
+                Stats.StorageSize += node.FullRlp?.Length ?? 0;
                 Stats.StorageLeafCount++;
             }
             else
             {
+                Stats.StateSize += node.FullRlp?.Length ?? 0;
                 Stats.AccountCount++;
             }
         }
@@ -102,6 +108,7 @@ namespace Nethermind.Trie
             byte[] code = _codeKeyValueStore[codeHash.Bytes];
             if (code != null)
             {
+                Stats.CodeSize += code.Length;
                 Stats.CodeCount++;
             }
             else
