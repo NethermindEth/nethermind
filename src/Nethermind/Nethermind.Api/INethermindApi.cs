@@ -17,7 +17,6 @@
 
 #nullable enable
 using Nethermind.Config;
-using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Api
 {

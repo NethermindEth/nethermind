@@ -33,7 +33,7 @@ namespace Nethermind.Runner.Ethereum.Steps
     [RunnerStepDependencies(typeof(StartBlockProcessor), typeof(SetupKeyStore), typeof(ReviewBlockTree))]
     public class StartBlockProducer : IStep
     {
-        protected readonly IApiWithBlockchain _api;
+        protected IApiWithBlockchain _api;
         private BlockProducerContext? _blockProducerContext;
 
         public StartBlockProducer(INethermindApi api)
