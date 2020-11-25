@@ -19,11 +19,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Nethermind.JsonRpc.Modules;
-using Nethermind.Logging;
 using Nethermind.JsonRpc.Modules.Eth;
-using Nethermind.Synchronization.Peers;
-using System.Collections.Concurrent;
-using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc.Modules.Net;
 
 namespace Nethermind.HealthChecks
