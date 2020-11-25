@@ -23,5 +23,7 @@ namespace Nethermind.Config
         public string Description { get; set; }
         
         public string DefaultValue { get; set; }
+        
+        public bool HiddenFromDocs { get; set; }
     }
 }

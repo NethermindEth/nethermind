@@ -18,6 +18,7 @@
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
+using Nethermind.Logging;
 using Nethermind.PubSub.Kafka.Avro;
 using Nethermind.PubSub.Kafka.Models;
 
@@ -25,7 +26,12 @@ namespace Nethermind.PubSub.Kafka
 {
     public class KafkaPlugin : INethermindPlugin
     {
+        private IKafkaConfig _kafkaConfig;
+
         private KafkaPublisher _kafkaPublisher;
+
+        private ILogger _logger;
+        private INethermindApi _api;
 
         public void Dispose()
         {
@@ -33,27 +39,64 @@ namespace Nethermind.PubSub.Kafka
         }
 
         public string Name => "Kafka";
-        
+
         public string Description => "Kafka Publisher for Nethermind";
-        
+
         public string Author => "Nethermind";
-        
+
         public Task Init(INethermindApi api)
         {
-            IKafkaConfig kafkaConfig = api.Config<IKafkaConfig>();
-            _kafkaPublisher = new KafkaPublisher(
-                kafkaConfig,
-                new PubSubModelMapper(),
-                new AvroMapper(api.BlockTree),
-                api.LogManager);
-            api.Publishers.Add(_kafkaPublisher);
+            _api = api;
+            var (getFromAPi, _) = _api.ForInit;
             
+            _kafkaConfig = getFromAPi.Config<IKafkaConfig>();
+            _logger = getFromAPi.LogManager.GetClassLogger();
             return Task.CompletedTask;
         }
 
-        public Task InitNetworkProtocol()
+        public Task InitBlockchain()
         {
             return Task.CompletedTask;
+        }
+
+        public Task InitBlockProducer()
+        {
+            return Task.CompletedTask;
+        }
+
+        public async Task InitNetworkProtocol()
+        {
+            var (getFromAPi, _) = _api.ForNetwork;
+            if (_kafkaConfig.Enabled)
+            {
+                _kafkaPublisher = new KafkaPublisher(
+                    _kafkaConfig,
+                    new PubSubModelMapper(),
+                    new AvroMapper(getFromAPi.BlockTree),
+                    getFromAPi.LogManager);
+                getFromAPi.Publishers.Add(_kafkaPublisher);
+
+                IPublisher kafkaPublisher = await PrepareKafkaProducer();
+                getFromAPi.Publishers.Add(kafkaPublisher);
+                getFromAPi.DisposeStack.Push(kafkaPublisher);
+            }
+        }
+
+        private async Task<IPublisher> PrepareKafkaProducer()
+        {
+            var (getFromAPi, _) = _api.ForNetwork;
+            
+            PubSubModelMapper pubSubModelMapper = new PubSubModelMapper();
+            AvroMapper avroMapper = new AvroMapper(getFromAPi.BlockTree);
+            KafkaPublisher kafkaPublisher = new KafkaPublisher(
+                _kafkaConfig, pubSubModelMapper, avroMapper, getFromAPi.LogManager);
+            
+            await kafkaPublisher.InitAsync().ContinueWith(x =>
+            {
+                if (x.IsFaulted && _logger.IsError) _logger.Error("Error during Kafka initialization", x.Exception);
+            });
+
+            return kafkaPublisher;
         }
 
         public Task InitRpcModules()

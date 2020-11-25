@@ -391,7 +391,7 @@ namespace Nethermind.Network.Test
             {
                 RlpxPeer = new RlpxMock(Sessions);
                 DiscoveryApp = Substitute.For<IDiscoveryApp>();
-                Stats = new NodeStatsManager(new StatsConfig(), LimboLogs.Instance);
+                Stats = new NodeStatsManager(LimboLogs.Instance);
                 Storage = new InMemoryStorage();
                 PeerLoader = new PeerLoader(new NetworkConfig(), new DiscoveryConfig(), Stats, Storage, LimboLogs.Instance);
                 NetworkConfig = new NetworkConfig();

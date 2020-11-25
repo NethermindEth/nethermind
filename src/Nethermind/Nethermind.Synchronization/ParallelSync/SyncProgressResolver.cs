@@ -41,6 +41,9 @@ namespace Nethermind.Synchronization.ParallelSync
         // ReSharper disable once NotAccessedField.Local
         private ILogger _logger;
 
+        private long _bodiesBarrier;
+        private long _receiptsBarrier;
+        
         public SyncProgressResolver(IBlockTree blockTree, IReceiptStorage receiptStorage, IDb stateDb, IDb beamStateDb, ISyncConfig syncConfig, ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
@@ -49,6 +52,9 @@ namespace Nethermind.Synchronization.ParallelSync
             _stateDb = stateDb ?? throw new ArgumentNullException(nameof(stateDb));
             _beamStateDb = beamStateDb ?? throw new ArgumentNullException(nameof(beamStateDb));
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
+
+            _bodiesBarrier = _syncConfig.AncientBodiesBarrierCalc;
+            _receiptsBarrier = _syncConfig.AncientReceiptsBarrierCalc;
         }
 
         private bool IsFullySynced(Keccak stateRoot)
@@ -161,9 +167,9 @@ namespace Nethermind.Synchronization.ParallelSync
 
         public bool IsFastBlocksHeadersFinished() => !IsFastBlocks() || (_blockTree.LowestInsertedHeader?.Number ?? long.MaxValue) <= 1;
         
-        public bool IsFastBlocksBodiesFinished() => !IsFastBlocks() || (!_syncConfig.DownloadBodiesInFastSync || (_blockTree.LowestInsertedBodyNumber ?? long.MaxValue) <= 1);
+        public bool IsFastBlocksBodiesFinished() => !IsFastBlocks() || (!_syncConfig.DownloadBodiesInFastSync || (_blockTree.LowestInsertedBodyNumber ?? long.MaxValue) <= _bodiesBarrier);
 
-        public bool IsFastBlocksReceiptsFinished() => !IsFastBlocks() || (!_syncConfig.DownloadReceiptsInFastSync || (_receiptStorage.LowestInsertedReceiptBlockNumber ?? long.MaxValue) <= 1);
+        public bool IsFastBlocksReceiptsFinished() => !IsFastBlocks() || (!_syncConfig.DownloadReceiptsInFastSync || (_receiptStorage.LowestInsertedReceiptBlockNumber ?? long.MaxValue) <= _receiptsBarrier);
 
         private bool IsFastBlocks()
         {

@@ -16,7 +16,6 @@
 
 using System.Linq;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Runner.Ethereum.Api;
 using Nethermind.Specs.Forks;

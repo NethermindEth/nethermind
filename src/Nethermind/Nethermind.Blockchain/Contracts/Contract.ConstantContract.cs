@@ -55,7 +55,7 @@ namespace Nethermind.Blockchain.Contracts
 
             private object[] Call(BlockHeader parentHeader, string functionName, Address sender, params object[] arguments)
             {
-                return CallRaw(parentHeader, functionName, sender, arguments); ;
+                return CallRaw(parentHeader, functionName, sender, arguments);
             }
 
             /// <summary>

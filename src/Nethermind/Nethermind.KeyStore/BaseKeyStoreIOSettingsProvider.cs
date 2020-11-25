@@ -23,6 +23,7 @@ namespace Nethermind.KeyStore
     {
         public string GetStoreDirectory(string keyStoreFolderName)
         {
+            // TODO - we should have a file system implementation that does this
             var directory = keyStoreFolderName.GetApplicationResourcePath();
             if (!Directory.Exists(directory))
             {

@@ -14,7 +14,6 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System.IO.Abstractions;
 using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
@@ -31,7 +30,7 @@ namespace Nethermind.Runner.Ethereum.Steps
     [RunnerStepDependencies(typeof(ResolveIps))]
     public class SetupKeyStore : IStep
     {
-        private readonly INethermindApi _api;
+        private readonly IApiWithBlockchain _api;
 
         public SetupKeyStore(INethermindApi api)
         {
@@ -40,42 +39,44 @@ namespace Nethermind.Runner.Ethereum.Steps
 
         public async Task Execute(CancellationToken cancellationToken)
         {
+            var (_get, _set) = _api.ForInit;
             // why is the await Task.Run here?
             await Task.Run(() =>
             {
-                IKeyStoreConfig keyStoreConfig = _api.Config<IKeyStoreConfig>();
-                INetworkConfig networkConfig = _api.Config<INetworkConfig>();
+                IKeyStoreConfig keyStoreConfig = _get.Config<IKeyStoreConfig>();
+                INetworkConfig networkConfig = _get.Config<INetworkConfig>();
 
                 AesEncrypter encrypter = new AesEncrypter(
                     keyStoreConfig,
-                    _api.LogManager);
+                    _get.LogManager);
 
-                _api.KeyStore = new FileKeyStore(
+                var keyStore = _set.KeyStore = new FileKeyStore(
                     keyStoreConfig,
-                    _api.EthereumJsonSerializer,
+                    _get.EthereumJsonSerializer,
                     encrypter,
-                    _api.CryptoRandom,
-                    _api.LogManager,
+                    _get.CryptoRandom,
+                    _get.LogManager,
                     new PrivateKeyStoreIOSettingsProvider(keyStoreConfig));
 
-                _api.Wallet = _api.Config<IInitConfig>() switch
+                _set.Wallet = _get.Config<IInitConfig>() switch
                 {
-                    var config when config.EnableUnsecuredDevWallet && config.KeepDevWalletInMemory => new DevWallet(_api.Config<IWalletConfig>(), _api.LogManager),
-                    var config when config.EnableUnsecuredDevWallet && !config.KeepDevWalletInMemory => new DevKeyStoreWallet(_api.KeyStore, _api.LogManager),
-                    _ => new ProtectedKeyStoreWallet(_api.KeyStore, new ProtectedPrivateKeyFactory(_api.CryptoRandom, _api.Timestamper), _api.Timestamper, _api.LogManager),
+                    var config when config.EnableUnsecuredDevWallet && config.KeepDevWalletInMemory => new DevWallet(_get.Config<IWalletConfig>(), _get.LogManager),
+                    var config when config.EnableUnsecuredDevWallet && !config.KeepDevWalletInMemory => new DevKeyStoreWallet(_get.KeyStore, _get.LogManager),
+                    _ => new ProtectedKeyStoreWallet(keyStore, new ProtectedPrivateKeyFactory(_get.CryptoRandom, _get.Timestamper), _get.Timestamper, _get.LogManager),
                 };
 
-                new AccountUnlocker(keyStoreConfig, _api.Wallet, _api.LogManager, new KeyStorePasswordProvider(keyStoreConfig)).UnlockAccounts();
+                new AccountUnlocker(keyStoreConfig, _get.Wallet, _get.LogManager, new KeyStorePasswordProvider(keyStoreConfig))
+                    .UnlockAccounts();
 
-                var passwordProvider = new KeyStorePasswordProvider(keyStoreConfig) { Account = keyStoreConfig.BlockAuthorAccount }
+                var passwordProvider = new KeyStorePasswordProvider(keyStoreConfig)
                                         .OrReadFromConsole($"Provide password for validator account { keyStoreConfig.BlockAuthorAccount}");
 
-                INodeKeyManager nodeKeyManager = new NodeKeyManager(_api.CryptoRandom, _api.KeyStore, keyStoreConfig, _api.LogManager, passwordProvider);
-                _api.NodeKey = nodeKeyManager.LoadNodeKey();
-                _api.OriginalSignerKey = nodeKeyManager.LoadSignerKey();
-                _api.Enode = new Enode(_api.NodeKey.PublicKey, IPAddress.Parse(networkConfig.ExternalIp), networkConfig.P2PPort);
+                INodeKeyManager nodeKeyManager = new NodeKeyManager(_get.CryptoRandom, _get.KeyStore, keyStoreConfig, _get.LogManager, passwordProvider);
+                var nodeKey = _set.NodeKey = nodeKeyManager.LoadNodeKey();
+                _set.OriginalSignerKey = nodeKeyManager.LoadSignerKey();
+                var enode = _set.Enode = new Enode(nodeKey.PublicKey, IPAddress.Parse(networkConfig.ExternalIp), networkConfig.P2PPort);
                 
-                _api.LogManager.SetGlobalVariable("enode", _api.Enode.ToString());
+                _get.LogManager.SetGlobalVariable("enode", enode.ToString());
             }, cancellationToken);
         }
     }

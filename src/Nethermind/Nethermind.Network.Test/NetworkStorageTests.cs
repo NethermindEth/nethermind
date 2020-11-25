@@ -32,8 +32,6 @@ namespace Nethermind.Network.Test
     [TestFixture]
     public class NetworkStorageTests
     {
-        private IStatsConfig _statsConfig;
-
         [SetUp]
         public void SetUp()
         {
@@ -41,7 +39,6 @@ namespace Nethermind.Network.Test
             ILogManager logManager = LimboLogs.Instance;
             ConfigProvider configSource = new ConfigProvider();
             _tempDir = TempPath.GetTempDirectory();
-            _statsConfig = configSource.GetConfig<IStatsConfig>();
 
             var db = new SimpleFilePublicKeyDb("Test",_tempDir.Path, logManager);
             _storage = new NetworkStorage(db, logManager);
@@ -60,7 +57,7 @@ namespace Nethermind.Network.Test
         {
             INodeLifecycleManager manager = Substitute.For<INodeLifecycleManager>();
             manager.ManagedNode.Returns(node);
-            manager.NodeStats.Returns(new NodeStatsLight(node, _statsConfig)
+            manager.NodeStats.Returns(new NodeStatsLight(node)
             {
                 CurrentPersistedNodeReputation = node.Port
             });

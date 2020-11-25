@@ -45,7 +45,7 @@ namespace Nethermind.Blockchain
             {new Address("0xA8e8F14732658E4B51E8711931053a8A69BaF2B1"), "Dapowerplay"},
             {new Address("0x8b24Eb4E6aAe906058242D83e51fB077370c4720"), "Infura"},
             {new Address("0x4c2ae482593505f0163cdeFc073e81c63CdA4107"), "Nethermind"},
-            {new Address("0x22eA9f6b28DB76A7162054c05ed812dEb2f519Cd"), "Pantheon"},
+            {new Address("0x22eA9f6b28DB76A7162054c05ed812dEb2f519Cd"), "PegaSys"},
             {new Address("0xe0a2Bd4258D2768837BAa26A28fE71Dc079f84c7"), "Parity"},
             {new Address("0x9d525e28fe5830ee92d7aa799c4d21590567b595"), "roninkaizen"}
         };
