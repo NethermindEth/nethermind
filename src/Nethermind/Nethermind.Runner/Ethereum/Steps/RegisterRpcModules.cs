@@ -89,7 +89,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             INetworkConfig networkConfig = _api.Config<INetworkConfig>();
             
             // lets add threads to support parallel eth_getLogs
-            ThreadPool.GetMinThreads(out var workerThreads, out var completionPortThreads);
+            ThreadPool.GetMinThreads(out int workerThreads, out int completionPortThreads);
             ThreadPool.SetMinThreads(workerThreads + Environment.ProcessorCount, completionPortThreads + Environment.ProcessorCount);
             
             EthModuleFactory ethModuleFactory = new EthModuleFactory(

@@ -242,7 +242,7 @@ namespace Nethermind.Runner.Ethereum.Steps.Migrations
                             yield break;
                         }
                         
-                        if (TryGetMainChainBlockHashFromLevel(i, out var blockHash))
+                        if (TryGetMainChainBlockHashFromLevel(i, out Keccak? blockHash))
                         {
                             var header = _blockTree.FindBlock(blockHash, BlockTreeLookupOptions.None);
                             yield return header ?? GetMissingBlock(i, blockHash);
