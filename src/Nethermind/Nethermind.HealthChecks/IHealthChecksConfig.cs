@@ -21,7 +21,25 @@ namespace Nethermind.HealthChecks
 {
     public interface IHealthChecksConfig : IConfig
     {
-        [ConfigItem(Description = "If 'false' then health checks endpoints will be disabled", DefaultValue = "false")]
-        public bool HealthChecksEnabled { get; set; }
+        [ConfigItem(Description = "If 'true' then Health Check endpoints is enabled at /health", DefaultValue = "false")]
+        public bool Enabled { get; set; }
+
+        [ConfigItem(Description = "If 'true' then Webhooks can be configured", DefaultValue = "false")]
+        public bool WebhooksEnabled { get; set; }
+
+        [ConfigItem(Description = "The Webhooks endpoints e.g. Slack WebHooks", DefaultValue = "null")]
+        public string WebhooksUri { get; set; }
+
+        [ConfigItem(Description = "Payload is the json payload that will be send on Failure and must be escaped.", DefaultValue = "null")]
+        public string WebhooksPayload { get; set; }
+
+        [ConfigItem(Description = "RestorePayload is the json payload that will be send on Recovery and must be escaped.", DefaultValue = "null")]
+        public string WebhooksRestorePayload { get; set; }
+
+        [ConfigItem(Description = "If 'true' then HealthChecks UI will be avaiable at /healthchecks-ui", DefaultValue = "false")]
+        public bool UIEnabled { get; set; }
+
+        [ConfigItem(Description = "Configures the UI to poll for healthchecks updates", DefaultValue = "5")]
+        public int PollingInterval { get; set; }
     }
 }

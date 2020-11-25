@@ -110,7 +110,6 @@ namespace Nethermind.Runner.Ethereum
                     {
                         plugin.AddServices(s);
                     };
-
                 })
                 .UseStartup<Startup>()
                 .UseUrls(urls)

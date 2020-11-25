@@ -3,6 +3,9 @@ using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Logging;
+using Nethermind.Config;
+using System.Reflection;
+using System;
 
 namespace Nethermind.HealthChecks
 {
@@ -29,7 +32,7 @@ namespace Nethermind.HealthChecks
             _healthChecksConfig = _api.Config<IHealthChecksConfig>();
             _logger =  _api.LogManager.GetClassLogger();
 
-            if (_logger.IsWarn) _logger.Warn($"Health Checks Endpoint is enabled");
+            if (_logger.IsWarn) _logger.Warn($"Health Checks Plugin is enabled");
             return Task.CompletedTask;
         }
 
@@ -39,13 +42,20 @@ namespace Nethermind.HealthChecks
                 .AddTypeActivatedCheck<NodeHealthCheck>(
                     "node-health", 
                     args: new object[] { _api.RpcModuleProvider });
-            service.AddHealthChecksUI(setup =>
+            if (_healthChecksConfig.UIEnabled)
+            {
+                service.AddHealthChecksUI(setup =>
                 {
                     setup.AddHealthCheckEndpoint("health", "/health");
-                    setup.SetEvaluationTimeInSeconds(5);
+                    setup.SetEvaluationTimeInSeconds(_healthChecksConfig.PollingInterval);
                     setup.SetHeaderText("Nethermind Node Health");
+                    if (_healthChecksConfig.WebhooksEnabled) 
+                    {
+                        setup.AddWebhookNotification("webhook", uri: _healthChecksConfig.WebhooksUri, payload: _healthChecksConfig.WebhooksPayload, restorePayload: _healthChecksConfig.WebhooksRestorePayload);
+                    }
                 })
                 .AddInMemoryStorage();
+            }
         }
         public Task InitNetworkProtocol()
         {

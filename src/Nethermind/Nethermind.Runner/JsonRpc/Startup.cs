@@ -40,6 +40,7 @@ using Nethermind.JsonRpc.Client;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Runner.Ethereum.Api;
+using Nethermind.HealthChecks;
 
 namespace Nethermind.Runner
 {
@@ -85,6 +86,7 @@ namespace Nethermind.Runner
             IConfigProvider configProvider = app.ApplicationServices.GetService<IConfigProvider>();
             IInitConfig initConfig = configProvider.GetConfig<IInitConfig>();
             IJsonRpcConfig jsonRpcConfig = configProvider.GetConfig<IJsonRpcConfig>();
+            IHealthChecksConfig healthChecksConfig = configProvider.GetConfig<IHealthChecksConfig>();
             if (initConfig.WebSocketsEnabled)
             {
                 app.UseWebSockets();
@@ -95,13 +97,18 @@ namespace Nethermind.Runner
 
             app.UseEndpoints(endpoints =>
             {
-                endpoints.MapControllers();
-                endpoints.MapHealthChecks("/health", new HealthCheckOptions()
+                if (healthChecksConfig.Enabled)
                 {
-                    Predicate = _ => true,
-                    ResponseWriter = UIResponseWriter.WriteHealthCheckUIResponse
-                });
-                endpoints.MapHealthChecksUI(setup => setup.AddCustomStylesheet("nethermind.css"));
+                    endpoints.MapHealthChecks("/health", new HealthCheckOptions()
+                    {
+                        Predicate = _ => true,
+                        ResponseWriter = UIResponseWriter.WriteHealthCheckUIResponse
+                    });
+                    if (healthChecksConfig.UIEnabled)
+                    {
+                        endpoints.MapHealthChecksUI(setup => setup.AddCustomStylesheet("nethermind.css"));
+                    }
+                }
             });
 
             app.Use(async (ctx, next) =>
