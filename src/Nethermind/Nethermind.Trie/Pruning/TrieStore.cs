@@ -254,11 +254,14 @@ namespace Nethermind.Trie.Pruning
             return rlp;
         }
 
-        public bool IsNodeCached(Keccak hash) => _dirtyNodesCache.ContainsKey(hash) || _persistedNodesCache.Contains(hash);
+        public bool IsNodeCached(Keccak hash) => _dirtyNodesCache.ContainsKey(hash);
+                                                 // || _persistedNodesCache.Contains(hash);
 
         public TrieNode FindCachedOrUnknown(Keccak hash)
         {
-            bool isMissing = !_persistedNodesCache.TryGet(hash, out TrieNode trieNode);
+            bool isMissing = true;
+            TrieNode trieNode = null;
+            // isMissing = !_persistedNodesCache.TryGet(hash, out trieNode);
             if (isMissing)
             {
                 isMissing = !_dirtyNodesCache.TryGetValue(hash, out trieNode);    
@@ -365,7 +368,7 @@ namespace Nethermind.Trie.Pruning
                 blockCommitSet.Root?.PrunePersistedRecursively(this);
             }
 
-            _persistedNodesCache.ForEach(_pruneNodeAction);
+            // _persistedNodesCache.ForEach(_pruneNodeAction);
 
             stopwatch.Stop();
             Metrics.DeepPruningTime = stopwatch.ElapsedMilliseconds;
@@ -402,7 +405,7 @@ namespace Nethermind.Trie.Pruning
                     }
                     
                     // different approach now
-                    _persistedNodesCache.Set(key, node);
+                    // _persistedNodesCache.Set(key, node);
 
                     Metrics.PrunedPersistedNodesCount++;
                 }
@@ -482,8 +485,8 @@ namespace Nethermind.Trie.Pruning
 
         private Dictionary<Keccak, TrieNode> _dirtyNodesCache = new Dictionary<Keccak, TrieNode>();
         
-        private LruCache<Keccak, TrieNode> _persistedNodesCache = new LruCache<Keccak, TrieNode>(
-            MemoryAllowance.TrieNodeCacheCount, MemoryAllowance.TrieNodeCacheCount, "persisted nodes");
+        // private LruCache<Keccak, TrieNode> _persistedNodesCache = new LruCache<Keccak, TrieNode>(
+            // MemoryAllowance.TrieNodeCacheCount, MemoryAllowance.TrieNodeCacheCount, "persisted nodes");
 
         private readonly IPruningStrategy _pruningStrategy;
 
