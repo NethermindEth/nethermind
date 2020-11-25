@@ -16,7 +16,6 @@
 
 using Nethermind.Db;
 using Nethermind.Db.Rocks;
-using Nethermind.Db.Rocks.Config;
 using Nethermind.Logging;
 
 namespace Nethermind.DataMarketplace.Infrastructure.Db
