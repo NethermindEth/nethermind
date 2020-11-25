@@ -616,7 +616,7 @@ namespace Nethermind.Trie
             bool hasStorage = false;
             if (IsLeaf)
             {
-                if ((Value?.Length ?? 0) > 64) // if not a storage leaf
+                if (_storageRoot == null && (Value?.Length ?? 0) > 64) // if not a storage leaf
                 {
                     Keccak storageRoot = _accountDecoder.DecodeStorageRootOnly(Value.AsRlpStream());
                     if (storageRoot != Keccak.EmptyTreeHash)
@@ -754,9 +754,9 @@ namespace Nethermind.Trie
                     }
                 }
             }
-            else if (TryResolveStorageRoot(cache))
+            else
             {
-                _storageRoot?.PrunePersistedRecursively(cache);
+                _storageRoot = null;
             }
         }
     }
