@@ -108,6 +108,7 @@ namespace Nethermind.Runner.Ethereum.Steps
 
             if (_api.Config<IInitConfig>().DiagnosticMode == DiagnosticMode.VerifyTrie)
             {
+                logger.Info("Collecting trie stats and verifying that no nodes are missing...");
                 TrieStats stats = _api.StateProvider.CollectStats(_api.DbProvider.CodeDb, _api.LogManager);
                 logger.Info($"Starting from {_api.BlockTree.Head?.Number} {_api.BlockTree.Head?.StateRoot}" + stats);
             }
