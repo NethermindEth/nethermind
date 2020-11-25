@@ -83,7 +83,7 @@ namespace Nethermind.Runner.Ethereum.Steps
 
             ReceiptsRecovery receiptsRecovery = new ReceiptsRecovery(_get.EthereumEcdsa, _get.SpecProvider);
             var receiptStorage = _set.ReceiptStorage
-                = initConfig.StoreReceipts ? (IReceiptStorage?) new PersistentReceiptStorage(_get.DbProvider.ReceiptsDb, _get.SpecProvider, receiptsRecovery, _get.LogManager) : NullReceiptStorage.Instance;
+                = initConfig.StoreReceipts ? (IReceiptStorage?) new PersistentReceiptStorage(_get.DbProvider.ReceiptsDb, _get.SpecProvider, receiptsRecovery) : NullReceiptStorage.Instance;
             var receiptFinder = _set.ReceiptFinder = new FullInfoReceiptFinder(receiptStorage, receiptsRecovery, blockTree);
             
             LogFinder logFinder = new LogFinder(
