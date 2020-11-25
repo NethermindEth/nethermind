@@ -35,7 +35,7 @@ namespace Nethermind.Db
         public IDb ChtDb { get; } = new MemDb();
         public IDb BeamStateDb { get; } = new MemDb();
 
-        public IEnumerable<IDb> OtherDbs => throw new System.NotImplementedException();
+        public IEnumerable<IDb> OtherDbs => _otherDbs;
 
         public void Dispose()
         {
