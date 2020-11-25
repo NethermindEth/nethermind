@@ -20,7 +20,7 @@ namespace Nethermind.Trie.Pruning
 {
     public interface ITrieNodeResolver
     {
-        TrieNode FindCachedOrUnknown(Keccak hash);
+        TrieNode FindCachedOrUnknown(Keccak hash, bool addToCacheWhenFound);
         
         byte[] LoadRlp(Keccak hash, bool allowCaching);
     }

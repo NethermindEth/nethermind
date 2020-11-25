@@ -256,7 +256,7 @@ namespace Nethermind.Trie.Pruning
         public bool IsNodeCached(Keccak hash) => _dirtyNodesCache.ContainsKey(hash);
                                                  // || _persistedNodesCache.Contains(hash);
 
-        public TrieNode FindCachedOrUnknown(Keccak hash)
+        public TrieNode FindCachedOrUnknown(Keccak hash, bool addToCacheWhenFound = true)
         {
             bool isMissing = true;
             TrieNode trieNode = null;
