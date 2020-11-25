@@ -16,6 +16,7 @@
 // 
 
 using System;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Receipts;
@@ -38,7 +39,7 @@ namespace Nethermind.Blockchain.Visitors
         }
 
         public bool PreventsAcceptingNewBlocks => false;
-        public long StartLevelInclusive => 3788088;
+        public long StartLevelInclusive => 3729844;
         public long EndLevelExclusive { get; }
         
         public Task<LevelVisitOutcome> VisitLevelStart(ChainLevelInfo chainLevelInfo, long levelNumber, CancellationToken cancellationToken)
@@ -54,18 +55,22 @@ namespace Nethermind.Blockchain.Visitors
 
         private long _reviewed = 0;
         private long _lastReported = 0;
+        private int good = 0;
+        private int bad = 0;
         
         public Task<BlockVisitOutcome> VisitBlock(Block block, CancellationToken cancellationToken)
         {
-            int txReceiptsLength = GetTxReceiptsLength(block, true);
+            int txReceiptsLength = GetTxReceiptsLength(block, false);
             int transactionsLength = (block.Transactions?.Length ?? 0);
             if (txReceiptsLength != transactionsLength)
             {
-                if (_logger.IsError) _logger.Error($"Missing receipts for block {block.ToString(Block.Format.FullHashAndNumber)}, expected {transactionsLength} but got {txReceiptsLength}.");
+                bad++;
+                if (_logger.IsError) _logger.Error($"Missing receipts for block {block.ToString(Block.Format.FullHashAndNumber)}, expected {transactionsLength} but got {txReceiptsLength}. Good {good}, Bad {bad}");
             }
             else
             {
-                if (_logger.IsTrace) _logger.Info($"OK Receipts for block {block.ToString(Block.Format.FullHashAndNumber)}.");
+                good++;
+                if (_logger.IsInfo) _logger.Info($"OK Receipts for block {block.ToString(Block.Format.FullHashAndNumber)}, expected {transactionsLength}. Good {good}, Bad {bad}");
             }
 
             if (_lastReported < (_reviewed * 100 / EndLevelExclusive))
@@ -85,12 +90,16 @@ namespace Nethermind.Blockchain.Visitors
                 int txReceiptsLength = 0;
                 if (_receiptStorage.TryGetReceiptsIterator(block.Number, block.Hash, out var iterator))
                 {
-                    using (iterator)
+                    try
                     {
-                        while (iterator.TryGetNext(out var receipt))
+                        while (iterator.TryGetNext(out _))
                         {
                             txReceiptsLength++;
                         }
+                    }
+                    finally
+                    {
+                        iterator.Dispose();
                     }
                 }
 
@@ -98,7 +107,7 @@ namespace Nethermind.Blockchain.Visitors
             }
             else
             {
-                return _receiptStorage.Get(block)?.Length ?? 0;
+                return _receiptStorage.Get(block)?.Where(r => r != null).Count() ?? 0;
             }
         }
 
