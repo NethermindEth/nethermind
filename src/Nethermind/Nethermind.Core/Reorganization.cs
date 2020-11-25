@@ -19,6 +19,6 @@ namespace Nethermind.Core
 {
     public static class Reorganization
     {
-        public static long MaxDepth = 512;
+        public static long MaxDepth = 64;
     }
 }
