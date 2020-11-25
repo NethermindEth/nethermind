@@ -15,16 +15,22 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections.Generic;
 
 namespace Nethermind.Db
 {
     public class ReadOnlyDbProvider : IReadOnlyDbProvider
     {
+        private readonly IDbProvider _wrappedProvider;
+        private readonly bool _createInMemoryWriteStore;
+        private List<ReadOnlyDb> _otherDbs = new List<ReadOnlyDb>();
         public ReadOnlyDb NestedStateDb { get; }
         public ReadOnlyDb NestedCodeDb { get; }
         
         public ReadOnlyDbProvider(IDbProvider wrappedProvider, bool createInMemoryWriteStore)
         {
+            _wrappedProvider = wrappedProvider;
+            _createInMemoryWriteStore = createInMemoryWriteStore;
             if (wrappedProvider == null)
             {
                 throw new ArgumentNullException(nameof(wrappedProvider));
@@ -45,10 +51,16 @@ namespace Nethermind.Db
             NestedEthRequestsDb = new ReadOnlyDb(wrappedProvider.EthRequestsDb, createInMemoryWriteStore);
             NestedBloomDb = new ReadOnlyDb(wrappedProvider.BloomDb, createInMemoryWriteStore);
             NestedChtDb = new ReadOnlyDb(wrappedProvider.ChtDb, createInMemoryWriteStore);
+
+            foreach (var otherDb in wrappedProvider.OtherDbs)
+            {
+                _otherDbs.Add(new ReadOnlyDb(otherDb, createInMemoryWriteStore));
+            }
         }
 
         public void Dispose()
         {
+            // ToDo why wee don't dispose dbs here - investigate it or consult with someone
         }
 
         public ISnapshotableDb StateDb { get; }
@@ -72,12 +84,8 @@ namespace Nethermind.Db
         public ReadOnlyDb NestedEthRequestsDb { get; }
         public ReadOnlyDb NestedBloomDb { get; }
         public ReadOnlyDb NestedChtDb { get; }
-        public ReadOnlyDb NestedBaselineTreeDb { get; }
-        public ReadOnlyDb NestedBaselineTreeMetadataDb { get; }
 
-        public IDb BaselineTreeDb => NestedBaselineTreeDb;
-
-        public IDb BaselineTreeMetadataDb => NestedBaselineTreeMetadataDb;
+        public IEnumerable<IDb> OtherDbs => _otherDbs;
 
         public void ClearTempChanges()
         {
@@ -92,9 +100,21 @@ namespace Nethermind.Db
             NestedReceiptsDb.Restore(-1);
             NestedBloomDb.Restore(-1);
             NestedChtDb.Restore(-1);
-            NestedBaselineTreeDb.Restore(-1);
-            NestedBaselineTreeMetadataDb.Restore(-1);
+            
+            foreach(var otherDb in _otherDbs)
+            {
+                otherDb.Restore(-1);
+            }
+
             BeamStateDb.Clear();
+        }
+
+        public IDb RegisterDb(string name, IPlugableDbConfig config)
+        {
+            var newDb = _wrappedProvider.RegisterDb(name, config);
+            var newReadonlyDb = new ReadOnlyDb(newDb, _createInMemoryWriteStore);
+            _otherDbs.Add(newReadonlyDb);
+            return newReadonlyDb;
         }
     }
 }

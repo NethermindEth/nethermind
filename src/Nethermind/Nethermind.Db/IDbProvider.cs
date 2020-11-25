@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections.Generic;
 
 namespace Nethermind.Db
 {
@@ -47,5 +48,9 @@ namespace Nethermind.Db
         // NDM
         IDb ConfigsDb { get; }
         IDb EthRequestsDb { get; }
+
+        IDb RegisterDb(string name, IPlugableDbConfig config);
+
+        IEnumerable<IDb> OtherDbs { get; }
     }
 }

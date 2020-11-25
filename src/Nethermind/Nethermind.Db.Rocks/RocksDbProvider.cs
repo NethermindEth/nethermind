@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Collections.Generic;
+using System.Globalization;
 using System.Threading.Tasks;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Logging;
@@ -25,11 +26,16 @@ namespace Nethermind.Db.Rocks
     {
         private readonly ILogManager _logManager;
         private readonly bool _addNdmDbs;
+        private readonly string _basePath;
+        private readonly IDbConfig _defaultDbConfig;
+        private readonly List<IDb> _otherDbs = new List<IDb>();
 
-        public RocksDbProvider(ILogManager logManager, bool addNdmDbs = true)
+        public RocksDbProvider(ILogManager logManager, IDbConfig dbConfig, string basePath, bool addNdmDbs = true)
         {
             _logManager = logManager;
             _addNdmDbs = addNdmDbs;
+            _basePath = basePath;
+            _defaultDbConfig = dbConfig;
         }
 
         public async Task Init(string basePath, IDbConfig dbConfig, bool useReceiptsDb)
@@ -78,6 +84,8 @@ namespace Nethermind.Db.Rocks
 
         public IDb BaselineTreeMetadataDb { get; private set; }
 
+        public IEnumerable<IDb> OtherDbs => _otherDbs;
+
         public void Dispose()
         {
             StateDb?.Dispose();
@@ -93,6 +101,21 @@ namespace Nethermind.Db.Rocks
             ChtDb?.Dispose();
             BaselineTreeDb?.Dispose();
             BaselineTreeMetadataDb?.Dispose();
+
+            if (_otherDbs != null)
+            {
+                foreach (var otherDb in _otherDbs)
+                {
+                    otherDb?.Dispose();
+                }
+            }
+        }
+
+        public IDb RegisterDb(string name, IPlugableDbConfig dbConfig)
+        {
+            var newDb = new SimpleRocksDb(_basePath, name, CultureInfo.CurrentUICulture.TextInfo.ToTitleCase(name), dbConfig ?? _defaultDbConfig, _logManager);
+            _otherDbs.Add(newDb);
+            return newDb;
         }
     }
 }

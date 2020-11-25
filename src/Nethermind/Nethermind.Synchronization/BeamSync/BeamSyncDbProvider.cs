@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections.Generic;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -59,6 +60,8 @@ namespace Nethermind.Synchronization.BeamSync
         public IDb BeamStateDb => _otherProvider.BeamStateDb;
         public IDb ChtDb => _otherProvider.ChtDb;
 
+        public IEnumerable<IDb> OtherDbs => _otherProvider.OtherDbs;
+
         public void Dispose()
         {
             StateDb?.Dispose();
@@ -72,6 +75,11 @@ namespace Nethermind.Synchronization.BeamSync
             EthRequestsDb?.Dispose();
             BloomDb?.Dispose();
             ChtDb?.Dispose();
+        }
+
+        public IDb RegisterDb(string name, IPlugableDbConfig config)
+        {
+            return _otherProvider.RegisterDb(name, config);
         }
     }
 }

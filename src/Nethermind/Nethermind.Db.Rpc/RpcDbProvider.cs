@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.Collections.Generic;
 using Nethermind.JsonRpc.Client;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
@@ -23,10 +24,17 @@ namespace Nethermind.Db.Rpc
     public class RpcDbProvider : IDbProvider
     {
         private readonly IDbProvider _recordDbProvider;
+        private readonly IJsonSerializer _serializer;
+        private readonly IJsonRpcClient _client;
+        private readonly ILogManager _logManager;
+        private List<IDb> _otherDbs = new List<IDb>();
 
         public RpcDbProvider(IJsonSerializer serializer, IJsonRpcClient client, ILogManager logManager, IDbProvider recordDbProvider)
         {
             _recordDbProvider = recordDbProvider;
+            _serializer = serializer;
+            _client = client;
+            _logManager = logManager;
             StateDb = new StateDb(new ReadOnlyDb(new RpcDb(DbNames.State, serializer, client, logManager, recordDbProvider?.StateDb), true));
             CodeDb = new StateDb(new ReadOnlyDb(new RpcDb(DbNames.Code, serializer, client, logManager, recordDbProvider?.CodeDb), true));
             ReceiptsDb = new ReadOnlyColumnsDb<ReceiptsColumns>(new RpcColumnsDb<ReceiptsColumns>(DbNames.Receipts, serializer, client, logManager, recordDbProvider?.ReceiptsDb), true);
@@ -52,9 +60,7 @@ namespace Nethermind.Db.Rpc
         public IDb ChtDb { get; }
         public IDb BeamStateDb { get; } = new MemDb();
 
-        public IDb BaselineTreeDb { get; }
-
-        public IDb BaselineTreeMetadataDb { get; }
+        public IEnumerable<IDb> OtherDbs => _otherDbs;
 
         public void Dispose()
         {
@@ -70,6 +76,22 @@ namespace Nethermind.Db.Rpc
             _recordDbProvider?.Dispose();
             BloomDb?.Dispose();
             ChtDb?.Dispose();
+
+            if (_otherDbs != null)
+            {
+                foreach (var otherDb in _otherDbs)
+                {
+                    otherDb?.Dispose();
+                }
+            }
+        }
+
+        public IDb RegisterDb(string name, IPlugableDbConfig config)
+        {
+            var newDb = _recordDbProvider.RegisterDb(name, config);
+            var newRpcDb = new ReadOnlyDb(new RpcDb(name, _serializer, _client, _logManager, newDb), true);
+            _otherDbs.Add(newRpcDb);
+            return newRpcDb;
         }
     }
 }

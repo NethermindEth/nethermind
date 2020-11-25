@@ -14,10 +14,13 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.Collections.Generic;
+
 namespace Nethermind.Db
 {
     public class MemDbProvider : IDbProvider
     {
+        private List<IDb> _otherDbs = new List<IDb>();
         public ISnapshotableDb StateDb { get; } = new StateDb();
         public ISnapshotableDb CodeDb { get; } = new StateDb();
         public IColumnsDb<ReceiptsColumns> ReceiptsDb { get; } = new MemColumnsDb<ReceiptsColumns>();
@@ -31,9 +34,7 @@ namespace Nethermind.Db
         public IDb ChtDb { get; } = new MemDb();
         public IDb BeamStateDb { get; } = new MemDb();
 
-        public IDb BaselineTreeDb { get; } = new MemDb();
-
-        public IDb BaselineTreeMetadataDb { get; } = new MemDb();
+        public IEnumerable<IDb> OtherDbs => throw new System.NotImplementedException();
 
         public void Dispose()
         {
@@ -47,8 +48,21 @@ namespace Nethermind.Db
             EthRequestsDb?.Dispose();
             BloomDb?.Dispose();
             ChtDb?.Dispose();
-            BaselineTreeDb?.Dispose();
-            BaselineTreeMetadataDb?.Dispose();
+
+            if (_otherDbs != null)
+            {
+                foreach (var otherDb in _otherDbs)
+                {
+                    otherDb?.Dispose();
+                }
+            }
+        }
+
+        public IDb RegisterDb(string name, IPlugableDbConfig config)
+        {
+            var newDb = new MemDb();
+            _otherDbs.Add(newDb);
+            return newDb;
         }
     }
 }
