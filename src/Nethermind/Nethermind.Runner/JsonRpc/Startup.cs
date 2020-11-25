@@ -17,7 +17,6 @@
 using System;
 using System.Diagnostics;
 using System.IO;
-using System.Reflection;
 using System.Text;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
@@ -28,18 +27,12 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Nethermind.Api;
 using Nethermind.Config;
-using Nethermind.Core.Attributes;
 using Nethermind.Core.Extensions;
 using Nethermind.JsonRpc;
 using Nethermind.Serialization.Json;
 using Nethermind.WebSockets;
 using Newtonsoft.Json;
-using Newtonsoft.Json.Serialization;
 using HealthChecks.UI.Client;
-using Nethermind.JsonRpc.Client;
-using Microsoft.Extensions.Diagnostics.HealthChecks;
-using Nethermind.JsonRpc.Modules;
-using Nethermind.Runner.Ethereum.Api;
 using Nethermind.HealthChecks;
 
 namespace Nethermind.Runner
