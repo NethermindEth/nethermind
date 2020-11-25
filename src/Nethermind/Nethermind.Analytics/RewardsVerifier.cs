@@ -67,7 +67,7 @@ namespace Nethermind.Analytics
             return Task.FromResult(BlockVisitOutcome.None);
         }
 
-        public Task<LevelVisitOutcome> VisitLevelStart(ChainLevelInfo chainLevelInfo, CancellationToken cancellationToken)
+        public Task<LevelVisitOutcome> VisitLevelStart(ChainLevelInfo chainLevelInfo, long levelNumber, CancellationToken cancellationToken)
             => Task.FromResult(LevelVisitOutcome.None);
 
         public Task<bool> VisitMissing(Keccak hash, CancellationToken cancellationToken)
@@ -76,7 +76,7 @@ namespace Nethermind.Analytics
         public Task<HeaderVisitOutcome> VisitHeader(BlockHeader header, CancellationToken cancellationToken)
             => Task.FromResult(HeaderVisitOutcome.None);
         
-        public Task<LevelVisitOutcome> VisitLevelEnd(CancellationToken cancellationToken)
+        public Task<LevelVisitOutcome> VisitLevelEnd(ChainLevelInfo chainLevelInfo, long levelNumber, CancellationToken cancellationToken)
             => Task.FromResult(LevelVisitOutcome.None);
     }
 }

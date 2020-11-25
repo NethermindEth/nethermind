@@ -62,7 +62,7 @@ namespace Nethermind.Blockchain.Visitors
 
         public long EndLevelExclusive => _startNumber + _blocksToLoad;
 
-        Task<LevelVisitOutcome> IBlockTreeVisitor.VisitLevelStart(ChainLevelInfo chainLevelInfo, CancellationToken cancellationToken)
+        Task<LevelVisitOutcome> IBlockTreeVisitor.VisitLevelStart(ChainLevelInfo chainLevelInfo, long levelNumber, CancellationToken cancellationToken)
         {
             if (_currentLevelNumber >= EndLevelExclusive - 1)
             {
@@ -137,7 +137,7 @@ namespace Nethermind.Blockchain.Visitors
             return Task.FromResult(BlockVisitOutcome.None);
         }
 
-        Task<LevelVisitOutcome> IBlockTreeVisitor.VisitLevelEnd(CancellationToken cancellationToken)
+        Task<LevelVisitOutcome> IBlockTreeVisitor.VisitLevelEnd(ChainLevelInfo chainLevelInfo, long levelNumber, CancellationToken cancellationToken)
         {
             int expectedVisitedBlocksCount = _currentLevel?.BlockInfos.Length ?? 0;
             if (_blocksCheckedInCurrentLevel != expectedVisitedBlocksCount)
