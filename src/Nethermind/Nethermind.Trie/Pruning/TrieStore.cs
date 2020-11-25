@@ -20,7 +20,6 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
 using Nethermind.Core;
-using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
@@ -346,7 +345,9 @@ namespace Nethermind.Trie.Pruning
                     return true;
                 }
 
-                if (_logger.IsWarn) _logger.Warn($"Found no candidate for elevated pruning ({_commitSetQueue.Count})");
+                _commitSetQueue.TryPeek(out BlockCommitSet? uselessFrontSet);
+                if (_logger.IsWarn) _logger.Warn(
+                    $"Found no candidate for elevated pruning (sets: {_commitSetQueue.Count}, earliest: {uselessFrontSet}, newest kept: {NewestKeptBlockNumber}, reorg depth {Reorganization.MaxDepth})");
             }
 
             return false;
