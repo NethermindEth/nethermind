@@ -107,7 +107,15 @@ namespace Nethermind.Runner.Ethereum.Steps
             _api.SyncPeerPool = new SyncPeerPool(_api.BlockTree!, _api.NodeStatsManager!, maxPeersCount, _api.LogManager);
             _api.DisposeStack.Push(_api.SyncPeerPool);
 
-            SyncProgressResolver syncProgressResolver = new SyncProgressResolver(_api.BlockTree!, _api.ReceiptStorage!, _api.DbProvider.StateDb, _api.DbProvider.BeamStateDb, _syncConfig, _api.LogManager);
+            SyncProgressResolver syncProgressResolver = new SyncProgressResolver(
+                _api.BlockTree!,
+                _api.ReceiptStorage!,
+                _api.DbProvider.StateDb,
+                _api.DbProvider.BeamStateDb,
+                _api.ReadOnlyTrieStore!,
+                _syncConfig,
+                _api.LogManager);
+            
             MultiSyncModeSelector syncModeSelector = CreateMultiSyncModeSelector(syncProgressResolver);
             if (_api.SyncModeSelector != null)
             {
@@ -402,7 +410,18 @@ namespace Nethermind.Runner.Ethereum.Steps
             NetworkStorage peerStorage = new NetworkStorage(peersDb, _api.LogManager);
 
             ProtocolValidator protocolValidator = new ProtocolValidator(_api.NodeStatsManager, _api.BlockTree, _api.LogManager);
-            _api.ProtocolsManager = new ProtocolsManager(_api.SyncPeerPool, _api.SyncServer, _api.TxPool, _api.DiscoveryApp, _api.MessageSerializationService, _api.RlpxPeer, _api.NodeStatsManager, protocolValidator, peerStorage, _api.SpecProvider, _api.LogManager);
+            _api.ProtocolsManager = new ProtocolsManager(
+                _api.SyncPeerPool,
+                _api.SyncServer,
+                _api.TxPool,
+                _api.DiscoveryApp,
+                _api.MessageSerializationService,
+                _api.RlpxPeer,
+                _api.NodeStatsManager,
+                protocolValidator,
+                peerStorage,
+                _api.SpecProvider,
+                _api.LogManager);
             _api.ProtocolValidator = protocolValidator;
 
             foreach (var plugin in _api.Plugins)

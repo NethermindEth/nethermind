@@ -305,7 +305,8 @@ namespace Nethermind.Synchronization.Test
                 Timestamper.Default,
                 logManager);
 
-            SyncProgressResolver resolver = new SyncProgressResolver(tree, receiptStorage, stateDb, new MemDb(), syncConfig, logManager);
+            SyncProgressResolver resolver = new SyncProgressResolver(
+                tree, receiptStorage, stateDb, new MemDb(), NullTrieNodeResolver.Instance, syncConfig, logManager);
             MultiSyncModeSelector selector = new MultiSyncModeSelector(resolver, syncPeerPool, syncConfig, logManager);
             Synchronizer synchronizer = new Synchronizer(
                 dbProvider,

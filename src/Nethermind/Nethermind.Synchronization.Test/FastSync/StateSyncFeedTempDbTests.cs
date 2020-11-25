@@ -55,7 +55,14 @@ namespace Nethermind.Synchronization.Test.FastSync
             IBlockTree blockTree = Substitute.For<IBlockTree>(); 
             ISyncPeerPool pool = Substitute.For<ISyncPeerPool>(); 
             
-            SyncProgressResolver syncProgressResolver = new SyncProgressResolver(blockTree, NullReceiptStorage.Instance, stateDB, new MemDb(), syncConfig, LimboLogs.Instance);
+            SyncProgressResolver syncProgressResolver = new SyncProgressResolver(
+                blockTree,
+                NullReceiptStorage.Instance,
+                stateDB,
+                new MemDb(),
+                new TrieStore(stateDB.Innermost, LimboLogs.Instance),
+                syncConfig,
+                LimboLogs.Instance);
             ISyncModeSelector syncModeSelector = new MultiSyncModeSelector(syncProgressResolver, pool, syncConfig, LimboLogs.Instance);
             StateSyncFeed stateSyncFeed = new StateSyncFeed(codeDb, stateDB, tempDb, syncModeSelector, blockTree, LimboLogs.Instance);
 

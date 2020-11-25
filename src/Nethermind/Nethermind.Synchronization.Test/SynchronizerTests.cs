@@ -41,6 +41,7 @@ using Nethermind.Db.Blooms;
 using Nethermind.Synchronization.Blocks;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
+using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using NUnit.Framework;
 
@@ -308,7 +309,14 @@ namespace Nethermind.Synchronization.Test
                 NodeStatsManager stats = new NodeStatsManager(_logManager);
                 SyncPeerPool = new SyncPeerPool(BlockTree, stats, 25, _logManager);
 
-                SyncProgressResolver syncProgressResolver = new SyncProgressResolver(BlockTree, NullReceiptStorage.Instance, stateDb, new MemDb(), syncConfig, _logManager);
+                SyncProgressResolver syncProgressResolver = new SyncProgressResolver(
+                    BlockTree,
+                    NullReceiptStorage.Instance,
+                    stateDb,
+                    new MemDb(),
+                    new TrieStore(stateDb, LimboLogs.Instance),
+                    syncConfig,
+                    _logManager);
                 MultiSyncModeSelector syncModeSelector = new MultiSyncModeSelector(syncProgressResolver, SyncPeerPool, syncConfig, _logManager);
                 Synchronizer = new Synchronizer(
                     dbProvider,

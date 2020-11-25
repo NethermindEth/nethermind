@@ -23,6 +23,8 @@ using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Trie;
+using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Synchronization.ParallelSync
 {
@@ -37,20 +39,30 @@ namespace Nethermind.Synchronization.ParallelSync
         private readonly IReceiptStorage _receiptStorage;
         private readonly IDb _stateDb;
         private readonly IDb _beamStateDb;
+        private readonly ITrieNodeResolver _trieNodeResolver;
         private readonly ISyncConfig _syncConfig;
+
         // ReSharper disable once NotAccessedField.Local
         private ILogger _logger;
 
         private long _bodiesBarrier;
         private long _receiptsBarrier;
-        
-        public SyncProgressResolver(IBlockTree blockTree, IReceiptStorage receiptStorage, IDb stateDb, IDb beamStateDb, ISyncConfig syncConfig, ILogManager logManager)
+
+        public SyncProgressResolver(
+            IBlockTree blockTree,
+            IReceiptStorage receiptStorage,
+            IDb stateDb,
+            IDb beamStateDb,
+            ITrieNodeResolver trieNodeResolver,
+            ISyncConfig syncConfig,
+            ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
             _stateDb = stateDb ?? throw new ArgumentNullException(nameof(stateDb));
             _beamStateDb = beamStateDb ?? throw new ArgumentNullException(nameof(beamStateDb));
+            _trieNodeResolver = trieNodeResolver ?? throw new ArgumentNullException(nameof(trieNodeResolver));
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
 
             _bodiesBarrier = _syncConfig.AncientBodiesBarrierCalc;
@@ -66,11 +78,21 @@ namespace Nethermind.Synchronization.ParallelSync
 
             if (_syncConfig.BeamSync)
             {
+                // in Beam Sync we the innermost DB as we may have state root in the beam sync DB
+                // which does not yet mean that we have the block synced
                 return _stateDb.Innermost.Get(stateRoot) != null;
             }
             else
             {
-                return _stateDb.Get(stateRoot) != null;
+                TrieNode trieNode = _trieNodeResolver.FindCachedOrUnknown(stateRoot, false);
+                bool stateRootIsInMemory = trieNode.NodeType != NodeType.Unknown;
+                // We check whether one of below happened:
+                //   1) the block has been processed but not yet persisted (pruning) OR
+                //   2) the block has been persisted and removed from cache already OR
+                //   3) the full block state has been synced in the state nodes sync (fast sync)
+                // In 2) and 3) the state root will be saved in the database.
+                // In fast sync we never save the state root unless all the descendant nodes have been stored in the DB.
+                return stateRootIsInMemory || _stateDb.Get(stateRoot) != null;
             }
         }
 
@@ -92,7 +114,7 @@ namespace Nethermind.Synchronization.ParallelSync
             // if we full syncing then the state should be at head
             // if we are beam syncing then the state should be in a different DB and should not cause much trouble here
             // it also may seem tricky if best suggested is part of a reorg while we are already full syncing so
-            // ideally we would like to check it siblings too (but this may be a bit expensive and less likely
+            // ideally we would like to check its siblings too (but this may be a bit expensive and less likely
             // to be important
             // we want to avoid a scenario where state is not found even as it is just near head or best suggested
 
@@ -128,7 +150,7 @@ namespace Nethermind.Synchronization.ParallelSync
                     break;
                 }
 
-                if (IsFullySynced(startHeader.StateRoot))
+                if (IsFullySynced(startHeader.StateRoot!))
                 {
                     bestFullState = startHeader.Number;
                     break;
@@ -141,7 +163,7 @@ namespace Nethermind.Synchronization.ParallelSync
         }
 
         public long FindBestHeader() => _blockTree.BestSuggestedHeader?.Number ?? 0;
-        
+
         public long FindBestFullBlock() => Math.Min(FindBestHeader(), _blockTree.BestSuggestedBody?.Number ?? 0); // avoiding any potential concurrency issue
 
         public bool IsLoadingBlocksFromDb()
@@ -152,6 +174,7 @@ namespace Nethermind.Synchronization.ParallelSync
         public long FindBestProcessedBlock() => _blockTree.Head?.Number ?? -1;
 
         public UInt256 ChainDifficulty => _blockTree.BestSuggestedBody?.TotalDifficulty ?? UInt256.Zero;
+
         public UInt256? GetTotalDifficulty(Keccak blockHash)
         {
             BlockHeader best = _blockTree.BestSuggestedHeader;
@@ -173,7 +196,7 @@ namespace Nethermind.Synchronization.ParallelSync
         }
 
         public bool IsFastBlocksHeadersFinished() => !IsFastBlocks() || (_blockTree.LowestInsertedHeader?.Number ?? long.MaxValue) <= 1;
-        
+
         public bool IsFastBlocksBodiesFinished() => !IsFastBlocks() || (!_syncConfig.DownloadBodiesInFastSync || (_blockTree.LowestInsertedBodyNumber ?? long.MaxValue) <= _bodiesBarrier);
 
         public bool IsFastBlocksReceiptsFinished() => !IsFastBlocks() || (!_syncConfig.DownloadReceiptsInFastSync || (_receiptStorage.LowestInsertedReceiptBlockNumber ?? long.MaxValue) <= _receiptsBarrier);
@@ -187,7 +210,7 @@ namespace Nethermind.Synchronization.ParallelSync
             {
                 return false;
             }
-            
+
             bool immediateBeamSync = !_syncConfig.DownloadHeadersInFastSync;
             bool anyHeaderDownloaded = _blockTree.LowestInsertedHeader != null;
             if (immediateBeamSync && anyHeaderDownloaded)
@@ -197,7 +220,5 @@ namespace Nethermind.Synchronization.ParallelSync
 
             return true;
         }
-
-
     }
 }

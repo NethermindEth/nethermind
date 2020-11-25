@@ -20,8 +20,22 @@ namespace Nethermind.Trie.Pruning
 {
     public interface ITrieNodeResolver
     {
+        /// <summary>
+        /// Returns a cached and resolved <see cref="TrieNode"/> or a <see cref="TrieNode"/> with Unknown type
+        /// but the hash set. The latter case allows to resolve the node later. Resolving the node means loading
+        /// its RLP data from the state database.
+        /// </summary>
+        /// <param name="hash">Keccak hash of the RLP of the node.</param>
+        /// <param name="addToCacheWhenFound">Sometimes (read only cases) we want to read the node without caching.</param>
+        /// <returns></returns>
         TrieNode FindCachedOrUnknown(Keccak hash, bool addToCacheWhenFound = true);
         
+        /// <summary>
+        /// Loads RLP of the node.
+        /// </summary>
+        /// <param name="hash"></param>
+        /// <param name="allowCaching"></param>
+        /// <returns></returns>
         byte[] LoadRlp(Keccak hash, bool allowCaching);
     }
 }
