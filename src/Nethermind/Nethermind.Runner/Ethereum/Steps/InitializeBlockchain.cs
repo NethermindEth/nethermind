@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
@@ -110,7 +111,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             {
                 logger.Info("Collecting trie stats and verifying that no nodes are missing...");
                 TrieStats stats = _api.StateProvider.CollectStats(_api.DbProvider.CodeDb, _api.LogManager);
-                logger.Info($"Starting from {_api.BlockTree.Head?.Number} {_api.BlockTree.Head?.StateRoot}" + stats);
+                logger.Info($"Starting from {_api.BlockTree.Head?.Number} {_api.BlockTree.Head?.StateRoot}{Environment.NewLine}" + stats);
             }
 
             // Init state if we need system calls before actual processing starts
