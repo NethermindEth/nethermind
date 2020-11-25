@@ -61,7 +61,7 @@ namespace Nethermind.Db.Rocks
         }
 
 
-        public DbOnTheRocks(string basePath, string dbPath, IDbConfig dbConfig, ILogManager logManager, ColumnFamilies columnFamilies = null, bool deleteOnStart = false)
+        public DbOnTheRocks(string basePath, string dbPath, IPlugableDbConfig dbConfig, ILogManager logManager, ColumnFamilies columnFamilies = null, bool deleteOnStart = false)
         {
             Db = Init(basePath, dbPath, dbConfig, logManager, columnFamilies, deleteOnStart);
         }

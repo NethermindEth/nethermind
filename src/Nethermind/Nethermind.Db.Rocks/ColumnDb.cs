@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -117,9 +117,9 @@ namespace Nethermind.Db.Rocks
         /// <exception cref="NotSupportedException"></exception>
         public void Clear() { throw new NotSupportedException();}
 
-        private void UpdateWriteMetrics() => _mainDb.UpdateWriteMetrics();
+        protected internal void UpdateWriteMetrics() => _mainDb.UpdateWriteMetrics();
 
-        private void UpdateReadMetrics() => _mainDb.UpdateReadMetrics();
+        protected internal void UpdateReadMetrics() => _mainDb.UpdateReadMetrics();
         
         public Span<byte> GetSpan(byte[] key) => _rocksDb.GetSpan(key, _columnFamily);
 

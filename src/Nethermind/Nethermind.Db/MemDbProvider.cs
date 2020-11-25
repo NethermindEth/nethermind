@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Collections.Generic;
 
 namespace Nethermind.Db
@@ -59,6 +60,13 @@ namespace Nethermind.Db
         }
 
         public IDb RegisterDb(string dbPath, string name, IPlugableDbConfig config)
+        {
+            var newDb = new MemDb();
+            _otherDbs.Add(newDb);
+            return newDb;
+        }
+
+        public IDb RegisterDb(Func<string, IPlugableDbConfig, IDb> dbToRegister)
         {
             var newDb = new MemDb();
             _otherDbs.Add(newDb);

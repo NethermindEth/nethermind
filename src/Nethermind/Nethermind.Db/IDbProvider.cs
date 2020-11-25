@@ -44,12 +44,10 @@ namespace Nethermind.Db
         
         // Beam Sync (StateDB like)
         IDb BeamStateDb { get; }
-        
-        // NDM
-        IDb ConfigsDb { get; }
-        IDb EthRequestsDb { get; }
 
         IDb RegisterDb(string dbPath, string name, IPlugableDbConfig dbConfig);
+
+        IDb RegisterDb(Func<string, IPlugableDbConfig, IDb> dbToRegister);
 
         IEnumerable<IDb> OtherDbs { get; }
     }

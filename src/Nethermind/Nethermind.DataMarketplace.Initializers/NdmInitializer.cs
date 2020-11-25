@@ -38,6 +38,7 @@ using Nethermind.DataMarketplace.Subprotocols.Factories;
 using Nethermind.Db;
 using Nethermind.WebSockets;
 using Nethermind.DataMarketplace.Infrastructure.Updaters;
+using Nethermind.DataMarketplace.Infrastructure.Db;
 
 [assembly: InternalsVisibleTo("Nethermind.DataMarketplace.Test")]
 
@@ -104,8 +105,10 @@ namespace Nethermind.DataMarketplace.Initializers
                     break;
                 default:
                     ndmApi.MongoProvider = NullMongoProvider.Instance;
-                    configRepository = new ConfigRocksRepository(dbProvider.ConfigsDb, new NdmConfigDecoder());
-                    ethRequestRepository = new EthRequestRocksRepository(dbProvider.EthRequestsDb,
+                    var ndmDbProvider = new NdmDbProvider(ndmApi.DbProvider, ndmApi.LogManager);
+                    await ndmDbProvider.Init();
+                    configRepository = new ConfigRocksRepository(ndmDbProvider.ConfigsDb, new NdmConfigDecoder());
+                    ethRequestRepository = new EthRequestRocksRepository(ndmDbProvider.EthRequestsDb,
                         new EthRequestDecoder());
                     break;
             }

@@ -47,8 +47,6 @@ namespace Nethermind.Db
             NestedBlocksDb = new ReadOnlyDb(wrappedProvider.BlocksDb, createInMemoryWriteStore);
             NestedHeadersDb = new ReadOnlyDb(wrappedProvider.HeadersDb, createInMemoryWriteStore);
             NestedPendingTxsDb = new ReadOnlyDb(wrappedProvider.PendingTxsDb, createInMemoryWriteStore);
-            NestedConfigsDb = new ReadOnlyDb(wrappedProvider.ConfigsDb, createInMemoryWriteStore);
-            NestedEthRequestsDb = new ReadOnlyDb(wrappedProvider.EthRequestsDb, createInMemoryWriteStore);
             NestedBloomDb = new ReadOnlyDb(wrappedProvider.BloomDb, createInMemoryWriteStore);
             NestedChtDb = new ReadOnlyDb(wrappedProvider.ChtDb, createInMemoryWriteStore);
 
@@ -70,8 +68,6 @@ namespace Nethermind.Db
         public IDb HeadersDb => NestedHeadersDb;
         public IDb BlockInfosDb => NestedBlockInfosDb;
         public IDb PendingTxsDb => NestedPendingTxsDb;
-        public IDb ConfigsDb => NestedConfigsDb;
-        public IDb EthRequestsDb => NestedEthRequestsDb;
         public IDb BloomDb => NestedBloomDb;
         public IDb ChtDb => NestedChtDb;
         public IDb BeamStateDb { get; } = new MemDb(); 
@@ -80,8 +76,6 @@ namespace Nethermind.Db
         public ReadOnlyDb NestedHeadersDb { get; }
         public ReadOnlyDb NestedBlockInfosDb { get; }
         public ReadOnlyDb NestedPendingTxsDb { get; }
-        public ReadOnlyDb NestedConfigsDb { get; }
-        public ReadOnlyDb NestedEthRequestsDb { get; }
         public ReadOnlyDb NestedBloomDb { get; }
         public ReadOnlyDb NestedChtDb { get; }
 
@@ -95,8 +89,6 @@ namespace Nethermind.Db
             NestedBlocksDb.Restore(-1);
             NestedHeadersDb.Restore(-1);
             NestedBlockInfosDb.Restore(-1);
-            NestedConfigsDb.Restore(-1);
-            NestedEthRequestsDb.Restore(-1); 
             NestedReceiptsDb.Restore(-1);
             NestedBloomDb.Restore(-1);
             NestedChtDb.Restore(-1);
@@ -113,6 +105,14 @@ namespace Nethermind.Db
         {
             var newDb = _wrappedProvider.RegisterDb(dbPath, name, config);
             var newReadonlyDb = new ReadOnlyDb(newDb, _createInMemoryWriteStore);
+            _otherDbs.Add(newReadonlyDb);
+            return newReadonlyDb;
+        }
+
+        public IDb RegisterDb(Func<string, IPlugableDbConfig, IDb> dbToRegister)
+        {
+            var registeredDb = _wrappedProvider.RegisterDb(dbToRegister);
+            var newReadonlyDb = new ReadOnlyDb(registeredDb, _createInMemoryWriteStore);
             _otherDbs.Add(newReadonlyDb);
             return newReadonlyDb;
         }

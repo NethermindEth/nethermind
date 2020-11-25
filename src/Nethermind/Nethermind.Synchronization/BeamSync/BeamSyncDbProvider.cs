@@ -54,8 +54,6 @@ namespace Nethermind.Synchronization.BeamSync
         public IDb HeadersDb => _otherProvider.HeadersDb;
         public IDb BlockInfosDb => _otherProvider.BlockInfosDb;
         public IDb PendingTxsDb => _otherProvider.PendingTxsDb;
-        public IDb ConfigsDb => _otherProvider.ConfigsDb;
-        public IDb EthRequestsDb => _otherProvider.EthRequestsDb;
         public IDb BloomDb => _otherProvider.BloomDb;
         public IDb BeamStateDb => _otherProvider.BeamStateDb;
         public IDb ChtDb => _otherProvider.ChtDb;
@@ -71,8 +69,6 @@ namespace Nethermind.Synchronization.BeamSync
             HeadersDb?.Dispose();
             BlockInfosDb?.Dispose();
             PendingTxsDb?.Dispose();
-            ConfigsDb?.Dispose();
-            EthRequestsDb?.Dispose();
             BloomDb?.Dispose();
             ChtDb?.Dispose();
         }
@@ -80,6 +76,11 @@ namespace Nethermind.Synchronization.BeamSync
         public IDb RegisterDb(string dbPath, string name, IPlugableDbConfig config)
         {
             return _otherProvider.RegisterDb(dbPath, name, config);
+        }
+
+        public IDb RegisterDb(Func<string, IPlugableDbConfig, IDb> dbToRegister)
+        {
+            return _otherProvider.RegisterDb(dbToRegister);
         }
     }
 }

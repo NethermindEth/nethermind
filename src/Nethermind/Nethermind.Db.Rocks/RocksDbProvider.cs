@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Db.Rocks.Config;
@@ -24,15 +25,13 @@ namespace Nethermind.Db.Rocks
     public class RocksDbProvider : IDbProvider
     {
         private readonly ILogManager _logManager;
-        private readonly bool _addNdmDbs;
         private readonly string _basePath;
         private readonly IDbConfig _defaultDbConfig;
         private readonly List<IDb> _otherDbs = new List<IDb>();
 
-        public RocksDbProvider(ILogManager logManager, IDbConfig dbConfig, string basePath, bool addNdmDbs = true)
+        public RocksDbProvider(ILogManager logManager, IDbConfig dbConfig, string basePath)
         {
             _logManager = logManager;
-            _addNdmDbs = addNdmDbs;
             _basePath = basePath;
             _defaultDbConfig = dbConfig;
         }
@@ -48,8 +47,6 @@ namespace Nethermind.Db.Rocks
             allInitializers.Add(Task.Run(() => PendingTxsDb = new PendingTxsRocksDb(basePath, dbConfig, _logManager)));
             allInitializers.Add(Task.Run(() => BloomDb = new BloomRocksDb(basePath, dbConfig, _logManager)));
             allInitializers.Add(Task.Run(() => ChtDb = new CanonicalHashRocksDb(basePath, dbConfig, _logManager)));
-            allInitializers.Add(Task.Run(() => ConfigsDb = _addNdmDbs ? new ConfigsRocksDb(basePath, dbConfig, _logManager) : (IDb)new MemDb()));
-            allInitializers.Add(Task.Run(() => EthRequestsDb = _addNdmDbs ? new EthRequestsRocksDb(basePath, dbConfig, _logManager) : (IDb)new MemDb()));
 
             allInitializers.Add(Task.Run(() =>
             {
@@ -115,6 +112,13 @@ namespace Nethermind.Db.Rocks
             var newDb = new SimpleRocksDb(_basePath, dbPath, name, dbConfig ?? _defaultDbConfig, _logManager);
             _otherDbs.Add(newDb);
             return newDb;
+        }
+
+        public IDb RegisterDb(Func<string, IPlugableDbConfig, IDb> newDb)
+        {
+            var registeredDb = newDb(_basePath, _defaultDbConfig);
+            _otherDbs.Add(registeredDb);
+            return registeredDb;
         }
     }
 }

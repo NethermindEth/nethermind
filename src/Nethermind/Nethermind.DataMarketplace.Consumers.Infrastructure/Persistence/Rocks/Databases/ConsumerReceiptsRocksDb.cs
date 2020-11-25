@@ -22,7 +22,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Rocks.
 {
     public class ConsumerReceiptsRocksDb : DbOnTheRocks
     {
-        public override string Name { get; } = "ConsumerReceipts";
+        public override string Name { get; protected set; } = "ConsumerReceipts";
 
         public ConsumerReceiptsRocksDb(string basePath, IDbConfig dbConfig, ILogManager logManager)
             : base(basePath, "consumerReceipts", dbConfig, logManager)

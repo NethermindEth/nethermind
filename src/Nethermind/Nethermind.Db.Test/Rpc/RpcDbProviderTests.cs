@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -45,12 +45,10 @@ namespace Nethermind.Db.Test.Rpc
 
             ValidateDb<ReadOnlyDb>(
                 rpcDbProvider.BlocksDb, 
-                rpcDbProvider.BloomDb, 
-                rpcDbProvider.ConfigsDb, 
+                rpcDbProvider.BloomDb,
                 rpcDbProvider.HeadersDb,
                 rpcDbProvider.ReceiptsDb, 
-                rpcDbProvider.BlockInfosDb, 
-                rpcDbProvider.EthRequestsDb, 
+                rpcDbProvider.BlockInfosDb,
                 rpcDbProvider.PendingTxsDb);
 
             ValidateDb<StateDb>(

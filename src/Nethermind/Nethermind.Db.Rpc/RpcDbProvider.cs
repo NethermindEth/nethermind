@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Collections.Generic;
 using Nethermind.JsonRpc.Client;
 using Nethermind.Logging;
@@ -42,8 +43,6 @@ namespace Nethermind.Db.Rpc
             HeadersDb = new ReadOnlyDb(new RpcDb(DbNames.Headers, serializer, client, logManager, recordDbProvider?.HeadersDb), true);
             BlockInfosDb = new ReadOnlyDb(new RpcDb(DbNames.BlockInfos, serializer, client, logManager, recordDbProvider?.BlockInfosDb), true);
             PendingTxsDb = new ReadOnlyDb(new RpcDb(DbNames.PendingTxs, serializer, client, logManager, recordDbProvider?.ReceiptsDb), true);
-            ConfigsDb = new ReadOnlyDb(new RpcDb(DbNames.Configs, serializer, client, logManager, recordDbProvider?.ConfigsDb), true);
-            EthRequestsDb = new ReadOnlyDb(new RpcDb(DbNames.EthRequests, serializer, client, logManager, recordDbProvider?.EthRequestsDb), true);
             BloomDb = new ReadOnlyDb(new RpcDb(DbNames.EthRequests, serializer, client, logManager, recordDbProvider?.BloomDb), true);
         }
         
@@ -54,8 +53,6 @@ namespace Nethermind.Db.Rpc
         public IDb HeadersDb { get; }
         public IDb BlockInfosDb { get; }
         public IDb PendingTxsDb { get; }
-        public IDb ConfigsDb { get; }
-        public IDb EthRequestsDb { get; }
         public IDb BloomDb { get; }
         public IDb ChtDb { get; }
         public IDb BeamStateDb { get; } = new MemDb();
@@ -71,8 +68,6 @@ namespace Nethermind.Db.Rpc
             HeadersDb?.Dispose();
             BlockInfosDb?.Dispose();
             PendingTxsDb?.Dispose();
-            ConfigsDb?.Dispose();
-            EthRequestsDb?.Dispose();
             _recordDbProvider?.Dispose();
             BloomDb?.Dispose();
             ChtDb?.Dispose();
@@ -90,6 +85,14 @@ namespace Nethermind.Db.Rpc
         {
             var newDb = _recordDbProvider.RegisterDb(dbPath, name, config);
             var newRpcDb = new ReadOnlyDb(new RpcDb(name, _serializer, _client, _logManager, newDb), true);
+            _otherDbs.Add(newRpcDb);
+            return newRpcDb;
+        }
+
+        public IDb RegisterDb(Func<string, IPlugableDbConfig, IDb> dbToRegister)
+        {
+            var newDb = _recordDbProvider.RegisterDb(dbToRegister);
+            var newRpcDb = new ReadOnlyDb(new RpcDb(newDb.Name, _serializer, _client, _logManager, newDb), true);
             _otherDbs.Add(newRpcDb);
             return newRpcDb;
         }
