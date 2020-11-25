@@ -60,7 +60,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 if (initConfig.WebSocketsEnabled)
                 {
                     // TODO: I do not like passing both service and processor to any of the types
-                    JsonRpcWebSocketsModule? webSocketsModule = new JsonRpcWebSocketsModule(
+                    JsonRpcWebSocketsModule webSocketsModule = new JsonRpcWebSocketsModule(
                         jsonRpcProcessor,
                         jsonRpcService,
                         _api.EthereumJsonSerializer,
@@ -75,7 +75,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 Bootstrap.Instance.JsonRpcLocalStats = jsonRpcLocalStats;
                 var jsonRpcRunner = new JsonRpcRunner(
                     jsonRpcProcessor,
-                    _api.WebSocketsManager,
+                    _api.WebSocketsManager!,
                     _api.ConfigProvider,
                     _api.LogManager);
 
