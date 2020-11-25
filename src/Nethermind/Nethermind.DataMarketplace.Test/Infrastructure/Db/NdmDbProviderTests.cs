@@ -24,7 +24,10 @@ using Nethermind.DataMarketplace.Infrastructure.Db;
 using Nethermind.Db;
 using Nethermind.Db.Rocks;
 using Nethermind.Db.Rocks.Config;
+using Nethermind.Db.Rpc;
+using Nethermind.JsonRpc.Client;
 using Nethermind.Logging;
+using Nethermind.Serialization.Json;
 using Nethermind.Synchronization.BeamSync;
 using Nethermind.Synchronization.ParallelSync;
 using NSubstitute;
@@ -89,14 +92,31 @@ namespace Nethermind.Baseline.Test
         {
             var syncModeSelector = Substitute.For<ISyncModeSelector>();
             var dbProvider = new MemDbProvider();
-            var readonlyDbProvider = new BeamSyncDbProvider(syncModeSelector, dbProvider, new SyncConfig(), LimboLogs.Instance);
-            var provider = new NdmDbProvider(readonlyDbProvider, LimboLogs.Instance);
+            var beamSyncDbProvider = new BeamSyncDbProvider(syncModeSelector, dbProvider, new SyncConfig(), LimboLogs.Instance);
+            var provider = new NdmDbProvider(beamSyncDbProvider, LimboLogs.Instance);
             await provider.Init();
             Assert.NotNull(provider.ConfigsDb);
             Assert.NotNull(provider.EthRequestsDb);
             Assert.AreEqual(2, dbProvider.OtherDbs.Count());
             Assert.IsTrue(provider.ConfigsDb is MemDb);
             Assert.IsTrue(provider.EthRequestsDb is MemDb);
+        }
+
+        [Test]
+        public async Task ProviderInitTests_RpcDbProvider()
+        {
+            var serializer = Substitute.For<IJsonSerializer>();
+            var client = Substitute.For<IJsonRpcClient>();
+            var dbProvider = new MemDbProvider();
+            var rpcDbProvider = new RpcDbProvider(serializer, client, LimboLogs.Instance, dbProvider);
+            var provider = new NdmDbProvider(rpcDbProvider, LimboLogs.Instance);
+            rpcDbProvider.RegisterDb("test", "Test", new DbConfig());
+            await provider.Init();
+            Assert.NotNull(provider.ConfigsDb);
+            Assert.NotNull(provider.EthRequestsDb);
+            Assert.AreEqual(3, dbProvider.OtherDbs.Count());
+            Assert.IsTrue(provider.ConfigsDb is ReadOnlyDb);
+            Assert.IsTrue(provider.EthRequestsDb is ReadOnlyDb);
         }
 
         [OneTimeTearDown]
