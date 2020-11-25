@@ -29,7 +29,7 @@ namespace Nethermind.Trie.Pruning
             _trieStore = trieStore ?? throw new ArgumentNullException(nameof(trieStore));
         }
 
-        public TrieNode FindCachedOrUnknown(Keccak hash, bool addToCacheWhenFound)
+        public TrieNode FindCachedOrUnknown(Keccak hash, bool addToCacheWhenNotFound)
         {
             return _trieStore.FindCachedOrUnknown(hash, false);
         }

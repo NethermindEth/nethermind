@@ -24,7 +24,7 @@ namespace Nethermind.Trie.Pruning
         
         public static NullTrieNodeResolver Instance = new NullTrieNodeResolver();
 
-        public TrieNode FindCachedOrUnknown(Keccak hash, bool _)
+        public TrieNode FindCachedOrUnknown(Keccak hash, bool addToCacheWhenNotFound)
         {
             return new TrieNode(NodeType.Unknown, hash);
         }

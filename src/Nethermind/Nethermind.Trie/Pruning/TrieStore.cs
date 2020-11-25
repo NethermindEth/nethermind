@@ -256,7 +256,7 @@ namespace Nethermind.Trie.Pruning
         public bool IsNodeCached(Keccak hash) => _dirtyNodesCache.ContainsKey(hash);
                                                  // || _persistedNodesCache.Contains(hash);
 
-        public TrieNode FindCachedOrUnknown(Keccak hash, bool addToCacheWhenFound = true)
+        public TrieNode FindCachedOrUnknown(Keccak hash, bool addToCacheWhenNotFound = true)
         {
             bool isMissing = true;
             TrieNode trieNode = null;
@@ -268,9 +268,13 @@ namespace Nethermind.Trie.Pruning
             
             if (isMissing)
             {
-                trieNode = new TrieNode(NodeType.Unknown, hash);
                 if (_logger.IsTrace || trieNode.ShouldTrack()) _logger.Trace($"Creating new node {trieNode}");
-                _dirtyNodesCache.TryAdd(trieNode.Keccak!, trieNode);
+                trieNode = new TrieNode(NodeType.Unknown, hash);
+                if (addToCacheWhenNotFound)
+                {
+                    _dirtyNodesCache.TryAdd(trieNode.Keccak!, trieNode);
+                }
+
                 if (trieNode.Keccak == null)
                 {
                     throw new InvalidOperationException($"Adding node with null hash {trieNode}");
