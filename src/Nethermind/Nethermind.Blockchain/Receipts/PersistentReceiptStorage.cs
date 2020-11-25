@@ -208,11 +208,6 @@ namespace Nethermind.Blockchain.Receipts
             
             var result = CanGetReceiptsByHash(blockNumber);
             var receiptsData = _blocksDb.GetSpan(blockHash);
-            if (receiptsData == null)
-            {
-                receiptsData = Span<byte>.Empty;
-            }
-            
             iterator = result ? new ReceiptsIterator(receiptsData, _blocksDb) : new ReceiptsIterator();
             return result;
         }
