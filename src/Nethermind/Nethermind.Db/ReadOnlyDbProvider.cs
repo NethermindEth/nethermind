@@ -58,7 +58,7 @@ namespace Nethermind.Db
 
         public void Dispose()
         {
-            // ToDo why wee don't dispose dbs here - investigate it or consult with someone
+            // ToDo why we don't dispose dbs here - investigate it or consult with someone
         }
 
         public ISnapshotableDb StateDb { get; }

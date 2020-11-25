@@ -117,9 +117,9 @@ namespace Nethermind.Db.Rocks
         /// <exception cref="NotSupportedException"></exception>
         public void Clear() { throw new NotSupportedException();}
 
-        protected internal void UpdateWriteMetrics() => _mainDb.UpdateWriteMetrics();
+        private void UpdateWriteMetrics() => _mainDb.UpdateWriteMetrics();
 
-        protected internal void UpdateReadMetrics() => _mainDb.UpdateReadMetrics();
+        private void UpdateReadMetrics() => _mainDb.UpdateReadMetrics();
         
         public Span<byte> GetSpan(byte[] key) => _rocksDb.GetSpan(key, _columnFamily);
 

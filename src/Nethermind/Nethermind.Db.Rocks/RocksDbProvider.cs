@@ -36,23 +36,23 @@ namespace Nethermind.Db.Rocks
             _defaultDbConfig = dbConfig;
         }
 
-        public async Task Init(string basePath, IDbConfig dbConfig, bool useReceiptsDb)
+        public async Task Init(bool useReceiptsDb)
         {
             HashSet<Task> allInitializers = new HashSet<Task>();
-            allInitializers.Add(Task.Run(() => BlocksDb = new BlocksRocksDb(basePath, dbConfig, _logManager)));
-            allInitializers.Add(Task.Run(() => HeadersDb = new HeadersRocksDb(basePath, dbConfig, _logManager)));
-            allInitializers.Add(Task.Run(() => BlockInfosDb = new BlockInfosRocksDb(basePath, dbConfig, _logManager)));
-            allInitializers.Add(Task.Run(() => StateDb = new StateDb(new StateRocksDb(basePath, dbConfig, _logManager))));
-            allInitializers.Add(Task.Run(() => CodeDb = new StateDb(new CodeRocksDb(basePath, dbConfig, _logManager))));
-            allInitializers.Add(Task.Run(() => PendingTxsDb = new PendingTxsRocksDb(basePath, dbConfig, _logManager)));
-            allInitializers.Add(Task.Run(() => BloomDb = new BloomRocksDb(basePath, dbConfig, _logManager)));
-            allInitializers.Add(Task.Run(() => ChtDb = new CanonicalHashRocksDb(basePath, dbConfig, _logManager)));
+            allInitializers.Add(Task.Run(() => BlocksDb = new BlocksRocksDb(_basePath, _dbConfig, _logManager)));
+            allInitializers.Add(Task.Run(() => HeadersDb = new HeadersRocksDb(_basePath, _dbConfig, _logManager)));
+            allInitializers.Add(Task.Run(() => BlockInfosDb = new BlockInfosRocksDb(_basePath, _dbConfig, _logManager)));
+            allInitializers.Add(Task.Run(() => StateDb = new StateDb(new StateRocksDb(_basePath, _dbConfig, _logManager))));
+            allInitializers.Add(Task.Run(() => CodeDb = new StateDb(new CodeRocksDb(_basePath, _dbConfig, _logManager))));
+            allInitializers.Add(Task.Run(() => PendingTxsDb = new PendingTxsRocksDb(_basePath, _dbConfig, _logManager)));
+            allInitializers.Add(Task.Run(() => BloomDb = new BloomRocksDb(_basePath, _dbConfig, _logManager)));
+            allInitializers.Add(Task.Run(() => ChtDb = new CanonicalHashRocksDb(_basePath, _dbConfig, _logManager)));
 
             allInitializers.Add(Task.Run(() =>
             {
                 if (useReceiptsDb)
                 {
-                    ReceiptsDb = new ReceiptsRocksDb(basePath, dbConfig, _logManager);
+                    ReceiptsDb = new ReceiptsRocksDb(_basePath, _dbConfig, _logManager);
                 }
                 else
                 {

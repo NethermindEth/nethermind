@@ -19,12 +19,20 @@ using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Db;
-using Nethermind.Db.Rocks;
 using Nethermind.Logging;
 
 namespace Nethermind.DataMarketplace.Infrastructure.Db
 {
-    public class NdmDbProvider
+    public interface INdmDbProvider
+    {
+        public IDb? ConfigsDb { get; }
+
+        public IDb? EthRequestsDb { get; }
+
+        Task Init();
+    }
+
+    public class NdmDbProvider : INdmDbProvider
     {
         private readonly IDbProvider _dbProvider;
         private readonly ILogManager _logManager;
