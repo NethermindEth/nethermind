@@ -37,7 +37,7 @@ namespace Nethermind.Trie.Pruning
             remove { }
         }
 
-        public TrieNode FindCachedOrUnknown(Keccak hash)
+        public TrieNode FindCachedOrUnknown(Keccak hash, bool _)
         {
             return new TrieNode(NodeType.Unknown, hash);
         }
