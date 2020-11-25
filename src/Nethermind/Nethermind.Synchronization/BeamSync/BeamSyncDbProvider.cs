@@ -77,9 +77,9 @@ namespace Nethermind.Synchronization.BeamSync
             ChtDb?.Dispose();
         }
 
-        public IDb RegisterDb(string name, IPlugableDbConfig config)
+        public IDb RegisterDb(string dbPath, string name, IPlugableDbConfig config)
         {
-            return _otherProvider.RegisterDb(name, config);
+            return _otherProvider.RegisterDb(dbPath, name, config);
         }
     }
 }

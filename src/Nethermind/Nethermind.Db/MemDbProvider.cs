@@ -58,7 +58,7 @@ namespace Nethermind.Db
             }
         }
 
-        public IDb RegisterDb(string name, IPlugableDbConfig config)
+        public IDb RegisterDb(string dbPath, string name, IPlugableDbConfig config)
         {
             var newDb = new MemDb();
             _otherDbs.Add(newDb);

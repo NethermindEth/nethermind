@@ -86,9 +86,9 @@ namespace Nethermind.Db.Rpc
             }
         }
 
-        public IDb RegisterDb(string name, IPlugableDbConfig config)
+        public IDb RegisterDb(string dbPath, string name, IPlugableDbConfig config)
         {
-            var newDb = _recordDbProvider.RegisterDb(name, config);
+            var newDb = _recordDbProvider.RegisterDb(dbPath, name, config);
             var newRpcDb = new ReadOnlyDb(new RpcDb(name, _serializer, _client, _logManager, newDb), true);
             _otherDbs.Add(newRpcDb);
             return newRpcDb;

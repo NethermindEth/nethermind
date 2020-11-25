@@ -34,18 +34,20 @@ namespace Nethermind.Baseline.Db
 
     public class BaselineDbProvider : IBaselineDbProvider
     {
-        private const string BaselineTreeDbName = "baselineTree";
-        private const string BaselineTreeMetadataDbName = "baselineTreeMetadata";
+        private const string BaselineTreeDbName = "BaselineTree";
+        private const string BaselineTreeMetadataDbName = "BaselineTreeMetadata";
+        private const string BaselineTreeDbPath = "baselineTree";
+        private const string BaselineTreeMetadataDbPath = "baselineTreeMetadata";
 
-        private readonly IDbFactory _dbFactory;
+        private readonly IDbProvider _dbProvider;
         private readonly IBaselineConfig _baselineConfig;
         private readonly IDbConfig _dbConfig;
         public BaselineDbProvider(
-            IDbFactory dbFactory,
+            IDbProvider dbProvider,
             IBaselineConfig baselineConfig,
             IDbConfig dbConfig)
         {
-            _dbFactory = dbFactory ?? throw new ArgumentNullException(nameof(dbFactory));
+            _dbProvider = dbProvider ?? throw new ArgumentNullException(nameof(dbProvider));
             _baselineConfig = baselineConfig ?? throw new ArgumentNullException(nameof(baselineConfig));
             _dbConfig = dbConfig ?? throw new ArgumentNullException(nameof(dbConfig));
         }
@@ -53,8 +55,8 @@ namespace Nethermind.Baseline.Db
         {
             var baselineDbConfig = new BaselineDbConfig(_baselineConfig, _dbConfig);
             HashSet<Task> allInitializers = new HashSet<Task>();
-            allInitializers.Add(Task.Run(() => BaselineTreeDb = _dbFactory.Create(BaselineTreeDbName, baselineDbConfig)));
-            allInitializers.Add(Task.Run(() => BaselineTreeMetadataDb = _dbFactory.Create(BaselineTreeMetadataDbName, baselineDbConfig)));
+            allInitializers.Add(Task.Run(() => BaselineTreeDb = _dbProvider.RegisterDb(BaselineTreeDbPath, BaselineTreeDbName, baselineDbConfig)));
+            allInitializers.Add(Task.Run(() => BaselineTreeMetadataDb = _dbProvider.RegisterDb(BaselineTreeMetadataDbPath, BaselineTreeMetadataDbName, baselineDbConfig)));
             await Task.WhenAll(allInitializers);
         }
         public IDb? BaselineTreeDb { get; private set; }

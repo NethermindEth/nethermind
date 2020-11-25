@@ -15,7 +15,6 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Collections.Generic;
-using System.Globalization;
 using System.Threading.Tasks;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Logging;
@@ -111,9 +110,9 @@ namespace Nethermind.Db.Rocks
             }
         }
 
-        public IDb RegisterDb(string name, IPlugableDbConfig dbConfig)
+        public IDb RegisterDb(string dbPath, string name, IPlugableDbConfig dbConfig)
         {
-            var newDb = new SimpleRocksDb(_basePath, name, CultureInfo.CurrentUICulture.TextInfo.ToTitleCase(name), dbConfig ?? _defaultDbConfig, _logManager);
+            var newDb = new SimpleRocksDb(_basePath, dbPath, name, dbConfig ?? _defaultDbConfig, _logManager);
             _otherDbs.Add(newDb);
             return newDb;
         }

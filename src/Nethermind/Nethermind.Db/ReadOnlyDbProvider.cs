@@ -109,9 +109,9 @@ namespace Nethermind.Db
             BeamStateDb.Clear();
         }
 
-        public IDb RegisterDb(string name, IPlugableDbConfig config)
+        public IDb RegisterDb(string dbPath, string name, IPlugableDbConfig config)
         {
-            var newDb = _wrappedProvider.RegisterDb(name, config);
+            var newDb = _wrappedProvider.RegisterDb(dbPath, name, config);
             var newReadonlyDb = new ReadOnlyDb(newDb, _createInMemoryWriteStore);
             _otherDbs.Add(newReadonlyDb);
             return newReadonlyDb;

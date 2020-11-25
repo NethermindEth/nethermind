@@ -49,7 +49,7 @@ namespace Nethermind.Db
         IDb ConfigsDb { get; }
         IDb EthRequestsDb { get; }
 
-        IDb RegisterDb(string name, IPlugableDbConfig config);
+        IDb RegisterDb(string dbPath, string name, IPlugableDbConfig dbConfig);
 
         IEnumerable<IDb> OtherDbs { get; }
     }
