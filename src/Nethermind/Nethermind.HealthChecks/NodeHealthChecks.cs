@@ -15,51 +15,57 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using System.IO;
-using System.Net.Http;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
-using Nethermind.Blockchain.Find;
-using Nethermind.JsonRpc.Client;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
-using Newtonsoft.Json;
-using Newtonsoft.Json.Linq;
-using System.Reflection;
 using Nethermind.JsonRpc.Modules.Eth;
+using Nethermind.Synchronization.Peers;
+using System.Collections.Concurrent;
+using Nethermind.Core.Crypto;
+using Nethermind.JsonRpc.Modules.Net;
 
 namespace Nethermind.HealthChecks
 {
     public class NodeHealthCheck: IHealthCheck
     {
-        private readonly IJsonRpcClient _client;
-        private readonly ILogger _logger;
         private readonly IRpcModuleProvider _rpcModuleProvider;
-
         public NodeHealthCheck(IRpcModuleProvider rpcModuleProvider)
         {
             _rpcModuleProvider = rpcModuleProvider ?? throw new ArgumentNullException(nameof(rpcModuleProvider));
         }
 
         public async Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext context, CancellationToken cancellationToken = default)
-        {
-            
+        {            
+            IEthModule ethModule = (IEthModule) await _rpcModuleProvider.Rent("eth_syncing", false);
+            INetModule netModule = (INetModule) await _rpcModuleProvider.Rent("net_peerCount", false);
             try
             {
-                IEthModule result = (IEthModule) await _rpcModuleProvider.Rent("eth_syncing", false);
-                SyncingResult ethSyncing = (SyncingResult) result.eth_syncing().GetData();
-                throw new Exception(ethSyncing.IsSyncing.ToString());                  
-                return HealthCheckResult.Healthy(description: "The node is now fully synced with a network");
+                long netPeerCount = (long) netModule.net_peerCount().GetData();
+                SyncingResult ethSyncing = (SyncingResult) ethModule.eth_syncing().GetData();
+
+                if(ethSyncing.IsSyncing == false && netPeerCount > 0)
+                {
+                    return HealthCheckResult.Healthy(description: $"The node is now fully synced with a network, number of peers: {netPeerCount}");
+                }
+                else if (ethSyncing.IsSyncing == false && netPeerCount == 0)
+                {
+                    return HealthCheckResult.Unhealthy(description: $"The node has 0 peers connected");
+                }
+                else
+                {
+                    return HealthCheckResult.Unhealthy(description: $"The node is still syncing, CurrentBlock: {ethSyncing.CurrentBlock}, HighestBlock: {ethSyncing.HighestBlock}, Peers: {netPeerCount}");
+                }
             }
-            // finally 
-            // {
-            //     _rpcModuleProvider.Return()
-            // }
             catch (Exception ex)
             {
                 return new HealthCheckResult(context.Registration.FailureStatus, exception: ex);
+            }
+            finally 
+            {
+                _rpcModuleProvider.Return("eth_syncing", ethModule);
+                _rpcModuleProvider.Return("net_peerCount", netModule);
             }
         }
     }

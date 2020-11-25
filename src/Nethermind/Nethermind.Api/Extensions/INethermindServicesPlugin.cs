@@ -1,7 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
-using Nethermind.Api;
 
-namespace Nethermind.Services.Plugin
+namespace Nethermind.Api.Extensions
 {
     public interface INethermindServicesPlugin
     {

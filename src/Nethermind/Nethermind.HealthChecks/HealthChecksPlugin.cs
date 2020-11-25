@@ -1,10 +1,8 @@
 using System.Threading.Tasks;
-using Microsoft.AspNetCore;
-using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
-using Nethermind.Services.Plugin;
+using Nethermind.Logging;
 
 namespace Nethermind.HealthChecks
 {
@@ -12,6 +10,8 @@ namespace Nethermind.HealthChecks
     {
         private INethermindApi _api;
         private IHealthChecksConfig _healthChecksConfig;
+        private ILogger _logger;
+
 
         public void Dispose()
         {
@@ -27,6 +27,9 @@ namespace Nethermind.HealthChecks
         {
             _api = api;
             _healthChecksConfig = _api.Config<IHealthChecksConfig>();
+            _logger =  _api.LogManager.GetClassLogger();
+
+            if (_logger.IsWarn) _logger.Warn($"Health Checks Endpoint is enabled");
             return Task.CompletedTask;
         }
 

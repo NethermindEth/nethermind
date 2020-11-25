@@ -24,13 +24,13 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Nethermind.Api;
+using Nethermind.Api.Extensions;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Runner.Logging;
 using Nethermind.WebSockets;
-using Nethermind.Services.Plugin;
 using ILogger = Nethermind.Logging.ILogger;
 using LogLevel = Microsoft.Extensions.Logging.LogLevel;
 

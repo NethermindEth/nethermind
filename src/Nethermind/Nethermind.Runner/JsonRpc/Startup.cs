@@ -101,7 +101,7 @@ namespace Nethermind.Runner
                     Predicate = _ => true,
                     ResponseWriter = UIResponseWriter.WriteHealthCheckUIResponse
                 });
-                endpoints.MapHealthChecksUI();
+                endpoints.MapHealthChecksUI(setup => setup.AddCustomStylesheet("nethermind.css"));
             });
 
             app.Use(async (ctx, next) =>
