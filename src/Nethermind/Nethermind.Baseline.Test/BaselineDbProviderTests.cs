@@ -90,8 +90,8 @@ namespace Nethermind.Baseline.Test
         {
             var syncModeSelector = Substitute.For<ISyncModeSelector>();
             var dbProvider = new MemDbProvider();
-            var readonlyDbProvider = new BeamSyncDbProvider(syncModeSelector, dbProvider, new SyncConfig(), LimboLogs.Instance);
-            var provider = new BaselineDbProvider(readonlyDbProvider, new BaselineConfig(), new DbConfig());
+            var beamSyncDbProvider = new BeamSyncDbProvider(syncModeSelector, dbProvider, new SyncConfig(), LimboLogs.Instance);
+            var provider = new BaselineDbProvider(beamSyncDbProvider, new BaselineConfig(), new DbConfig());
             await provider.Init();
             Assert.NotNull(provider.BaselineTreeDb);
             Assert.NotNull(provider.BaselineTreeMetadataDb);
