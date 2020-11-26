@@ -45,7 +45,7 @@ namespace Nethermind.Blockchain
 
                     ChainLevelInfo level = LoadLevel(levelNumber);
                     
-                    LevelVisitOutcome visitOutcome = await visitor.VisitLevelStart(level, cancellationToken);
+                    LevelVisitOutcome visitOutcome = await visitor.VisitLevelStart(level, levelNumber, cancellationToken);
                     if ((visitOutcome & LevelVisitOutcome.DeleteLevel) == LevelVisitOutcome.DeleteLevel)
                     {
                         _chainLevelInfoRepository.Delete(levelNumber);
@@ -81,7 +81,7 @@ namespace Nethermind.Blockchain
                         }
                     }
 
-                    visitOutcome = await visitor.VisitLevelEnd(cancellationToken);
+                    visitOutcome = await visitor.VisitLevelEnd(level, levelNumber, cancellationToken);
                     if ((visitOutcome & LevelVisitOutcome.DeleteLevel) == LevelVisitOutcome.DeleteLevel)
                     {
                         _chainLevelInfoRepository.Delete(levelNumber);

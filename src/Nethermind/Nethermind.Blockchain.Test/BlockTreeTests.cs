@@ -1589,7 +1589,7 @@ namespace Nethermind.Blockchain.Test
             public bool PreventsAcceptingNewBlocks { get; } = true;
             public long StartLevelInclusive { get; } = 0;
             public long EndLevelExclusive { get; } = 3;
-            public async Task<LevelVisitOutcome> VisitLevelStart(ChainLevelInfo chainLevelInfo, CancellationToken cancellationToken)
+            public async Task<LevelVisitOutcome> VisitLevelStart(ChainLevelInfo chainLevelInfo, long levelNumber, CancellationToken cancellationToken)
             {
                 if (_wait)
                 {
@@ -1615,7 +1615,7 @@ namespace Nethermind.Blockchain.Test
                 return Task.FromResult(BlockVisitOutcome.None);
             }
 
-            public Task<LevelVisitOutcome> VisitLevelEnd(CancellationToken cancellationToken)
+            public Task<LevelVisitOutcome> VisitLevelEnd(ChainLevelInfo chainLevelInfo, long levelNumber, CancellationToken cancellationToken)
             {
                 return Task.FromResult(LevelVisitOutcome.None);
             }
