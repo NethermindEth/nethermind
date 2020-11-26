@@ -107,7 +107,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 receiptStorage,
                 LimboLogs.Instance);
 
-            var signatureRecovery = new TxSignaturesRecoveryStep(ethereumEcdsa, txPool, specProvider, LimboLogs.Instance);
+            var signatureRecovery = new RecoverSignatures(ethereumEcdsa, txPool, specProvider, LimboLogs.Instance);
             BlockchainProcessor blockchainProcessor = new BlockchainProcessor(blockTree, blockProcessor, signatureRecovery, LimboLogs.Instance, BlockchainProcessor.Options.Default);
             
             blockchainProcessor.Start();

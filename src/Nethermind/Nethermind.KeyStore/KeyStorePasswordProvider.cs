@@ -16,13 +16,13 @@
 
 using System;
 using System.Security;
+using Nethermind.Core;
 using Nethermind.Crypto;
 using Nethermind.KeyStore.Config;
-using Nethermind.Logging;
 
 namespace Nethermind.KeyStore
 {
-    public class KeyStorePasswordProvider : BasePasswordProvider, IKeyStorePasswordProvider
+    public class KeyStorePasswordProvider : BasePasswordProvider
     {
         private readonly IKeyStoreConfig _keyStoreConfig;
         private readonly FilePasswordProvider _filePasswordProvider;
@@ -30,32 +30,40 @@ namespace Nethermind.KeyStore
         public KeyStorePasswordProvider(IKeyStoreConfig keyStoreConfig)
         {
             _keyStoreConfig = keyStoreConfig ?? throw new ArgumentNullException(nameof(keyStoreConfig));
-            _filePasswordProvider = new FilePasswordProvider();
+            _filePasswordProvider = new FilePasswordProvider(Map);
         }
 
-        public string Account { private get; set; }
-
-        public override SecureString GetPassword()
+        private static string GetNthOrLast(int n, string[] items)
+            => items?.Length > 0 ? items[Math.Min(n, items.Length - 1)] : null;
+        
+        private string Map(Address address)
         {
-            string GetPasswordN(int n, string[] passwordsCollection) => passwordsCollection?.Length > 0 ? passwordsCollection[Math.Min(n, passwordsCollection.Length - 1)] : null;
-            SecureString password = null;
-            var keyStoreConfigPasswordIndex = Array.IndexOf(_keyStoreConfig.UnlockAccounts, Account);
+            string result = string.Empty;
+
+            int keyStoreConfigPasswordIndex = _keyStoreConfig.FindUnlockAccountIndex(address);
             if (keyStoreConfigPasswordIndex >= 0)
             {
-                var passwordFile = GetPasswordN(keyStoreConfigPasswordIndex, _keyStoreConfig.PasswordFiles);
-                if (passwordFile != null)
-                {
-                    string passwordFilePath = passwordFile.GetApplicationResourcePath();
-                    _filePasswordProvider.FileName = passwordFilePath;
-                    password = _filePasswordProvider.GetPassword();
-                }
+                var passwordFile = GetNthOrLast(keyStoreConfigPasswordIndex, _keyStoreConfig.PasswordFiles);
+                result = passwordFile ?? string.Empty;
+            }
 
-                password ??= GetPasswordN(keyStoreConfigPasswordIndex, _keyStoreConfig.Passwords)?.Secure();
+            return result;
+        }
+        
+        public override SecureString GetPassword(Address address)
+        {
+            SecureString password = null;
+            int keyStoreConfigPasswordIndex = _keyStoreConfig.FindUnlockAccountIndex(address);
+            
+            if (keyStoreConfigPasswordIndex >= 0)
+            {
+                password = _filePasswordProvider.GetPassword(address);
+                password ??= GetNthOrLast(keyStoreConfigPasswordIndex, _keyStoreConfig.Passwords)?.Secure();
             }
 
             if (password == null && AlternativeProvider != null)
             {
-                password = AlternativeProvider.GetPassword();
+                password = AlternativeProvider.GetPassword(address);
             }
 
             return password;

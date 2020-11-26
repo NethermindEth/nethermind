@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -13,18 +13,31 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using Nethermind.Config;
-using Nethermind.Logging;
-using Nethermind.Serialization.Json;
+using System.Threading;
+using System.Threading.Tasks;
+using Nethermind.Api;
+using Nethermind.Core.Attributes;
+using Nethermind.Crypto;
 
-namespace Nethermind.Runner.Ethereum.Api
+namespace Nethermind.Runner.Ethereum.Steps
 {
-    public class NethDevNethermindApi : NethermindApi
+    [RunnerStepDependencies(typeof(InitRlp))]
+    public class InitCrypto : IStep
     {
-        public NethDevNethermindApi(IConfigProvider configProvider, IJsonSerializer jsonSerializer, ILogManager logManager)
-            : base(configProvider, jsonSerializer, logManager)
+        private readonly IBasicApi _api;
+
+        public InitCrypto(INethermindApi api)
         {
+            _api = api;
+        }
+
+        [Todo(Improve.Refactor, "Automatically scan all the references solutions?")]
+        public virtual Task Execute(CancellationToken _)
+        {
+            _api.EthereumEcdsa = new EthereumEcdsa(_api.SpecProvider!.ChainId, _api.LogManager);
+            return Task.CompletedTask;
         }
     }
 }

@@ -29,7 +29,15 @@ namespace Nethermind.Core
     {
         internal BlockHeader() { }
 
-        public BlockHeader(Keccak parentHash, Keccak ommersHash, Address beneficiary, UInt256 difficulty, long number, long gasLimit, UInt256 timestamp, byte[] extraData)
+        public BlockHeader(
+            Keccak parentHash,
+            Keccak ommersHash,
+            Address beneficiary,
+            UInt256 difficulty,
+            long number,
+            long gasLimit,
+            UInt256 timestamp,
+            byte[] extraData)
         {
             ParentHash = parentHash;
             OmmersHash = ommersHash;

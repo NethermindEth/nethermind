@@ -48,6 +48,7 @@ namespace Nethermind.KeyStore.Test
             public TestContext()
             {
                 KeyStoreConfig = new KeyStoreConfig();
+                KeyStoreConfig.KeyStoreDirectory = NUnit.Framework.TestContext.CurrentContext.WorkDirectory;
 
                 TestPasswordSecured = new SecureString();
                 WrongPasswordSecured = new SecureString();

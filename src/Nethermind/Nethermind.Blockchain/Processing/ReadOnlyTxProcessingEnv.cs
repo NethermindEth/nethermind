@@ -24,12 +24,13 @@ namespace Nethermind.Blockchain.Processing
 {
     public class ReadOnlyTxProcessingEnv
     {
-        public IStateReader StateReader;
-        public IStateProvider StateProvider;
-        public IStorageProvider StorageProvider;
-        public ITransactionProcessor TransactionProcessor;
-        public IBlockTree BlockTree;
-        
+        public IStateReader StateReader { get; }
+        public IStateProvider StateProvider { get; }
+        public IStorageProvider StorageProvider { get; }
+        public ITransactionProcessor TransactionProcessor { get; set; }
+        public IBlockTree BlockTree { get; }
+        public IReadOnlyDbProvider DbProvider { get; }
+
         private IBlockhashProvider BlockhashProvider;
         private IVirtualMachine VirtualMachine;
 
@@ -39,6 +40,7 @@ namespace Nethermind.Blockchain.Processing
             ISpecProvider specProvider,
             ILogManager logManager)
         {
+            DbProvider = readOnlyDbProvider;
             ISnapshotableDb stateDb = readOnlyDbProvider.StateDb;
             IDb codeDb = readOnlyDbProvider.CodeDb;
 

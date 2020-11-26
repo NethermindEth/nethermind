@@ -4,7 +4,17 @@ on:
   push:
     tags:
     - '*'
+    inputs:
+      branch:
+        description: 'Branch to get tests from'
+        required: true
+        default: 'master'
   workflow_dispatch:
+    inputs:
+      branch:
+        description: 'Branch to get tests from'
+        required: true
+        default: 'master'
 
 jobs:
   posdao-tests:
@@ -20,9 +30,9 @@ jobs:
         git clone https://github.com/NethermindEth/nethermind.git --recursive
         cd nethermind
         git submodule update --init src/rocksdb-sharp src/int256 src/Dirichlet
-    - name: Cloning posdao-test repo from POA
+    - name: Cloning posdao-test-setup repo from Nethermind
       run: |
-        git clone https://github.com/poanetwork/posdao-test-setup
+        git clone https://github.com/NethermindEth/posdao-test-setup
     - name: Building Nethermind binary
       run: |
         cd nethermind

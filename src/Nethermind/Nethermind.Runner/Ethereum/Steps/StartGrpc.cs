@@ -29,7 +29,7 @@ namespace Nethermind.Runner.Ethereum.Steps
     [RunnerStepDependencies(typeof(InitializeNetwork))]
     public class StartGrpc : IStep
     {
-        private readonly INethermindApi _api;
+        private readonly IApiWithNetwork _api;
 
         public StartGrpc(INethermindApi api)
         {

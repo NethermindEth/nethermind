@@ -19,7 +19,7 @@ using Nethermind.Core;
 
 namespace Nethermind.Blockchain.Test
 {
-    public class NullRecoveryStep : IBlockDataRecoveryStep
+    public class NullRecoveryStep : IBlockPreprocessorStep
     {
         private NullRecoveryStep()
         {

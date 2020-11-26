@@ -31,7 +31,7 @@ namespace Nethermind.Vault.KeyStore
 
         public string GetKey()
         {
-            var password = _passwordProvider.GetPassword();
+            var password = _passwordProvider.GetPassword(null);
             return password.Unsecure();
         }
     }

@@ -305,7 +305,7 @@ namespace Nethermind.Synchronization.Test
                 ISnapshotableDb codeDb = dbProvider.CodeDb;
                 MemDb blockInfoDb = new MemDb();
                 BlockTree = new BlockTree(new MemDb(), new MemDb(), blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), new SingleReleaseSpecProvider(Constantinople.Instance, 1), NullBloomStorage.Instance, _logManager);
-                NodeStatsManager stats = new NodeStatsManager(new StatsConfig(), _logManager);
+                NodeStatsManager stats = new NodeStatsManager(_logManager);
                 SyncPeerPool = new SyncPeerPool(BlockTree, stats, 25, _logManager);
 
                 SyncProgressResolver syncProgressResolver = new SyncProgressResolver(BlockTree, NullReceiptStorage.Instance, stateDb, new MemDb(), syncConfig, _logManager);

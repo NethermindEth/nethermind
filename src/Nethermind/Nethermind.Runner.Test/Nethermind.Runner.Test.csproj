@@ -19,8 +19,8 @@
     </ItemGroup>
     <ItemGroup>
         <ProjectReference Include="..\Nethermind.Analytics\Nethermind.Analytics.csproj" />
-        <ProjectReference Include="..\Nethermind.Api\Nethermind.Api.csproj" />
-        <ProjectReference Include="..\Nethermind.Baseline\Nethermind.Baseline.csproj" />
+        <ProjectReference Include="..\Nethermind.Api\Nethermind.Api.csproj" />        
+        <ProjectReference Include="..\Nethermind.Config.Test\Nethermind.Config.Test.csproj" />
         <ProjectReference Include="..\Nethermind.Core.Test\Nethermind.Core.Test.csproj" />
         <ProjectReference Include="..\Nethermind.Runner\Nethermind.Runner.csproj" />
         <Content Include="..\Chains\AuRaTest.json" CopyToOutputDirectory="PreserveNewest">

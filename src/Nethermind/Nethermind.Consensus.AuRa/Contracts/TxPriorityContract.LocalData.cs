@@ -17,6 +17,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO.Abstractions;
 using System.Linq;
 using Nethermind.Blockchain.Data;
 using Nethermind.Core;
@@ -30,15 +31,15 @@ namespace Nethermind.Consensus.AuRa.Contracts
     {
         public class LocalDataSource : FileLocalDataSource<LocalData>
         {
-            public LocalDataSource(string filePath, IJsonSerializer jsonSerializer, ILogManager logManager) 
-                : base(filePath, jsonSerializer, logManager)
+            public LocalDataSource(string filePath, IJsonSerializer jsonSerializer, IFileSystem fileSystem, ILogManager logManager, int interval = 500) 
+                : base(filePath, jsonSerializer, fileSystem, logManager, interval)
             {
             }
 
             public ILocalDataSource<IEnumerable<Address>> GetWhitelistLocalDataSource() => new LocalDataSource<Address>(this, LocalData.GetWhitelist);
             public ILocalDataSource<IEnumerable<Destination>> GetPrioritiesLocalDataSource() => new LocalDataSource<Destination>(this, LocalData.GetPriorities);
             public ILocalDataSource<IEnumerable<Destination>> GetMinGasPricesLocalDataSource() => new LocalDataSource<Destination>(this, LocalData.GetMinGasPrices);
-            protected override LocalData GetDefaultValue() => new LocalData();
+            protected override LocalData DefaultValue => new LocalData();
         }
 
         private class LocalDataSource<T> : ILocalDataSource<IEnumerable<T>>

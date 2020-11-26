@@ -34,6 +34,7 @@ namespace Nethermind.Baseline.Test
 {
     [TestFixture(0)]
     [TestFixture(5)]
+    [Parallelizable(ParallelScope.All)]
     public class BaselineTreeTests
     {
         private readonly int _truncationLength;

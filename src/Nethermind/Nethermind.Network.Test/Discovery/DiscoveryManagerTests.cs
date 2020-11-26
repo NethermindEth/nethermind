@@ -64,8 +64,6 @@ namespace Nethermind.Network.Test.Discovery
             IDiscoveryConfig discoveryConfig = new DiscoveryConfig();
             discoveryConfig.PongTimeout = 100;
 
-            IStatsConfig statsConfig = new StatsConfig();
-
             _messageSender = Substitute.For<IMessageSender>();
             var calculator = new NodeDistanceCalculator(discoveryConfig);
 
@@ -80,7 +78,7 @@ namespace Nethermind.Network.Test.Discovery
             _ipResolver = new IPResolver(_networkConfig, logManager);
 
             var evictionManager = new EvictionManager(_nodeTable, logManager);
-            var lifecycleFactory = new NodeLifecycleManagerFactory(_nodeTable, new DiscoveryMessageFactory(_timestamper), evictionManager, new NodeStatsManager(statsConfig, logManager), discoveryConfig, logManager);
+            var lifecycleFactory = new NodeLifecycleManagerFactory(_nodeTable, new DiscoveryMessageFactory(_timestamper), evictionManager, new NodeStatsManager(logManager), discoveryConfig, logManager);
 
             _nodes = new[] {new Node("192.168.1.18", 1), new Node("192.168.1.19", 2)};
 

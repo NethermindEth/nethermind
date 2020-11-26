@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -13,27 +13,16 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using System;
+using Nethermind.Core;
 
-namespace Nethermind.Config
+namespace Nethermind.Consensus.Transactions
 {
-    public class ConfigPropertyAttribute : Attribute
+    public class NullTxFilter : ITxFilter
     {
-        public string Category { get; }
-        public string Name { get; }
-        public string Description { get; }
-
-        public ConfigPropertyAttribute(string category, string name)
-            : this(category, name, $"{category}.{name}")
-        {
-        }
-
-        public ConfigPropertyAttribute(string category, string name, string description)
-        {
-            Category = category;
-            Name = name;
-            Description = description;
-        }
+        public (bool Allowed, string Reason) IsAllowed(Transaction tx, BlockHeader parentHeader) => (true, string.Empty);
+        
+        public static readonly NullTxFilter Instance = new NullTxFilter(); 
     }
 }

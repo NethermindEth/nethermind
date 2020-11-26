@@ -94,6 +94,7 @@ namespace Nethermind.Consensus.Clique
             Snapshot snapshot = _snapshotManager.GetOrCreateSnapshot(blockNumber - 1, parentHash);
             if (!_signer.CanSign)
             {
+                if (_logger.IsTrace) _logger.Trace("Signer cannot sing any blocks");
                 return false;
             }
             

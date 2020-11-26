@@ -45,7 +45,7 @@ namespace Nethermind.Plugin.Baseline
             {
                 _vaultService = new VaultService(_vaultConfig, _api.LogManager);
 
-                var passwordProvider = new FilePasswordProvider() { FileName = _vaultConfig.VaultKeyFile.GetApplicationResourcePath() }
+                var passwordProvider = new FilePasswordProvider(a => _vaultConfig.VaultKeyFile.GetApplicationResourcePath())
                                             .OrReadFromConsole("Provide passsphrase to unlock Vault");
                 var vaultKeyStoreFacade = new VaultKeyStoreFacade(passwordProvider);
                 _vaultSealingHelper = new VaultSealingHelper(vaultKeyStoreFacade, _vaultConfig, _logger);
@@ -59,6 +59,11 @@ namespace Nethermind.Plugin.Baseline
                 // TODO: need to verify the timing of initializations so the TxSender replacement works fine
                 _api.TxSender = new VaultTxSender(vaultSigner, _vaultConfig, _api.ChainSpec.ChainId);
             }
+        }
+
+        public Task InitBlockchain()
+        {
+            return Task.CompletedTask;
         }
 
         public Task InitNetworkProtocol()
