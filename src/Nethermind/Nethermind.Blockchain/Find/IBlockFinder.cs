@@ -82,7 +82,7 @@ namespace Nethermind.Blockchain.Find
         
         BlockHeader FindBestSuggestedHeader();
 
-        public Block FindBlock(BlockParameter blockParameter)
+        public Block FindBlock(BlockParameter blockParameter, bool headLimit = false)
         {
             if (blockParameter == null)
             {
@@ -94,13 +94,15 @@ namespace Nethermind.Blockchain.Find
                 BlockParameterType.Pending => FindPendingBlock(),
                 BlockParameterType.Latest => FindLatestBlock(),
                 BlockParameterType.Earliest => FindEarliestBlock(),
-                BlockParameterType.BlockNumber => FindBlock(blockParameter.BlockNumber.Value, blockParameter.RequireCanonical ? BlockTreeLookupOptions.RequireCanonical : BlockTreeLookupOptions.None),
+                BlockParameterType.BlockNumber => headLimit && blockParameter.BlockNumber.Value >= Head.Number 
+                    ? FindLatestBlock()
+                    : FindBlock(blockParameter.BlockNumber.Value, blockParameter.RequireCanonical ? BlockTreeLookupOptions.RequireCanonical : BlockTreeLookupOptions.None),
                 BlockParameterType.BlockHash => FindBlock(blockParameter.BlockHash, blockParameter.RequireCanonical ? BlockTreeLookupOptions.RequireCanonical : BlockTreeLookupOptions.None),
                 _ => throw new ArgumentException($"{nameof(BlockParameterType)} not supported: {blockParameter.Type}")
             };
         }
         
-        public BlockHeader FindHeader(BlockParameter blockParameter, bool limitToProcessed = false)
+        public BlockHeader FindHeader(BlockParameter blockParameter, bool headLimit = false)
         {
             if (blockParameter == null)
             {
@@ -112,9 +114,9 @@ namespace Nethermind.Blockchain.Find
                 BlockParameterType.Pending => FindPendingHeader(),
                 BlockParameterType.Latest => FindLatestHeader(),
                 BlockParameterType.Earliest => FindEarliestHeader(),
-                BlockParameterType.BlockNumber => limitToProcessed && blockParameter.BlockNumber.Value >= Head.Number 
-                    ? Head.Header : 
-                    FindHeader(blockParameter.BlockNumber.Value, blockParameter.RequireCanonical ? BlockTreeLookupOptions.RequireCanonical : BlockTreeLookupOptions.None),
+                BlockParameterType.BlockNumber => headLimit && blockParameter.BlockNumber.Value >= Head.Number 
+                    ? FindLatestHeader() 
+                    : FindHeader(blockParameter.BlockNumber.Value, blockParameter.RequireCanonical ? BlockTreeLookupOptions.RequireCanonical : BlockTreeLookupOptions.None),
                 BlockParameterType.BlockHash => FindHeader(blockParameter.BlockHash, blockParameter.RequireCanonical ? BlockTreeLookupOptions.RequireCanonical : BlockTreeLookupOptions.None),
                 _ => throw new ArgumentException($"{nameof(BlockParameterType)} not supported: {blockParameter.Type}")
             };
