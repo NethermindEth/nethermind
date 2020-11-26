@@ -170,5 +170,6 @@ namespace Nethermind.Runner.Ethereum.Api
         public DisposableStack DisposeStack { get; } = new DisposableStack();
         public IList<INethermindPlugin> Plugins { get; } = new List<INethermindPlugin>();
         public IList<IPublisher> Publishers { get; } = new List<IPublisher>(); // this should be called publishers
+        public IRocksDbFactory? RocksDbFactory { get => throw new System.NotImplementedException(); set => throw new System.NotImplementedException(); }
     }
 }

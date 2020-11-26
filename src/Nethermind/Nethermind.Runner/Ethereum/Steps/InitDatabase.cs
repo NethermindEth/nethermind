@@ -73,6 +73,22 @@ namespace Nethermind.Runner.Ethereum.Steps
             }
         }
 
+        private IMemDbFactory GetMemDbFactory(IInitConfig initConfig)
+        {
+                return null;
+        }
+
+        private IRocksDbFactory GetRocksDbFactory(IInitConfig initConfig)
+        {
+            switch (initConfig.DiagnosticMode)
+            {
+                case DiagnosticMode.RpcDb:
+                    return new RpcDbFactory();
+                default:
+                    return new RocksDbFactory();
+            }
+        }
+
         private async Task<IDbProvider> GetDbProvider(IInitConfig initConfig, IDbConfig dbConfig, bool storeReceipts)
         {
             RocksDbProvider rocksDb;

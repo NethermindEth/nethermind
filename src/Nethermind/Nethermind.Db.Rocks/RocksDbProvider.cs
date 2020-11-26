@@ -82,6 +82,8 @@ namespace Nethermind.Db.Rocks
 
         public IEnumerable<IDb> OtherDbs => _otherDbs;
 
+        public DbModeHint DbMode => throw new NotImplementedException();
+
         public void Dispose()
         {
             StateDb?.Dispose();
@@ -119,6 +121,16 @@ namespace Nethermind.Db.Rocks
             var registeredDb = newDb(_basePath, _defaultDbConfig);
             _otherDbs.Add(registeredDb);
             return registeredDb;
+        }
+
+        public T GetDb<T>(string dbName) where T : IDb
+        {
+            throw new NotImplementedException();
+        }
+
+        public void RegisterDb<T>(string dbName, T db) where T : IDb
+        {
+            throw new NotImplementedException();
         }
     }
 }

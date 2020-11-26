@@ -81,6 +81,8 @@ namespace Nethermind.Db
 
         public IEnumerable<IDb> OtherDbs => _otherDbs;
 
+        public DbModeHint DbMode => throw new NotImplementedException();
+
         public void ClearTempChanges()
         {
             StateDb.Restore(-1);
@@ -115,6 +117,16 @@ namespace Nethermind.Db
             var newReadonlyDb = new ReadOnlyDb(registeredDb, _createInMemoryWriteStore);
             _otherDbs.Add(newReadonlyDb);
             return newReadonlyDb;
+        }
+
+        public T GetDb<T>(string dbName) where T : IDb
+        {
+            throw new NotImplementedException();
+        }
+
+        public void RegisterDb<T>(string dbName, T db) where T : IDb
+        {
+            throw new NotImplementedException();
         }
     }
 }

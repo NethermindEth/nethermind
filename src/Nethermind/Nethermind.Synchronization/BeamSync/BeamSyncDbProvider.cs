@@ -60,6 +60,8 @@ namespace Nethermind.Synchronization.BeamSync
 
         public IEnumerable<IDb> OtherDbs => _otherProvider.OtherDbs;
 
+        public DbModeHint DbMode => throw new NotImplementedException();
+
         public void Dispose()
         {
             StateDb?.Dispose();
@@ -81,6 +83,16 @@ namespace Nethermind.Synchronization.BeamSync
         public IDb RegisterDb(Func<string, IPlugableDbConfig, IDb> dbToRegister)
         {
             return _otherProvider.RegisterDb(dbToRegister);
+        }
+
+        public T GetDb<T>(string dbName) where T : IDb
+        {
+            throw new NotImplementedException();
+        }
+
+        public void RegisterDb<T>(string dbName, T db) where T : IDb
+        {
+            throw new NotImplementedException();
         }
     }
 }

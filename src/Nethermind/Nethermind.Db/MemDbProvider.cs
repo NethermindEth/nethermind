@@ -37,6 +37,8 @@ namespace Nethermind.Db
 
         public IEnumerable<IDb> OtherDbs => _otherDbs;
 
+        public DbModeHint DbMode => throw new NotImplementedException();
+
         public void Dispose()
         {
             StateDb?.Dispose();
@@ -59,6 +61,11 @@ namespace Nethermind.Db
             }
         }
 
+        public T GetDb<T>(string dbName) where T : IDb
+        {
+            throw new NotImplementedException();
+        }
+
         public IDb RegisterDb(string dbPath, string name, IPlugableDbConfig config)
         {
             var newDb = new MemDb();
@@ -71,6 +78,11 @@ namespace Nethermind.Db
             var newDb = new MemDb();
             _otherDbs.Add(newDb);
             return newDb;
+        }
+
+        public void RegisterDb<T>(string dbName, T db) where T : IDb
+        {
+            throw new NotImplementedException();
         }
     }
 }

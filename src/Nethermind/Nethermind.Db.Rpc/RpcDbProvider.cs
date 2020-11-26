@@ -59,6 +59,8 @@ namespace Nethermind.Db.Rpc
 
         public IEnumerable<IDb> OtherDbs => _otherDbs;
 
+        public DbModeHint DbMode => throw new NotImplementedException();
+
         public void Dispose()
         {
             StateDb?.Dispose();
@@ -81,6 +83,11 @@ namespace Nethermind.Db.Rpc
             }
         }
 
+        public T GetDb<T>(string dbName) where T : IDb
+        {
+            throw new NotImplementedException();
+        }
+
         public IDb RegisterDb(string dbPath, string name, IPlugableDbConfig config)
         {
             var newDb = _recordDbProvider.RegisterDb(dbPath, name, config);
@@ -95,6 +102,11 @@ namespace Nethermind.Db.Rpc
             var newRpcDb = new ReadOnlyDb(new RpcDb(newDb.Name, _serializer, _client, _logManager, newDb), true);
             _otherDbs.Add(newRpcDb);
             return newRpcDb;
+        }
+
+        public void RegisterDb<T>(string dbName, T db) where T : IDb
+        {
+            throw new NotImplementedException();
         }
     }
 }

@@ -19,6 +19,12 @@ using System.Collections.Generic;
 
 namespace Nethermind.Db
 {
+    public enum DbModeHint
+    {
+        Mem,
+        Persisted
+    }
+
     public interface IReadOnlyDbProvider : IDbProvider
     {
         void ClearTempChanges();
@@ -26,6 +32,7 @@ namespace Nethermind.Db
     
     public interface IDbProvider : IDisposable
     {
+        DbModeHint DbMode { get; }
         ISnapshotableDb StateDb { get; }
         ISnapshotableDb CodeDb { get; }
         IColumnsDb<ReceiptsColumns> ReceiptsDb { get; }
@@ -48,6 +55,10 @@ namespace Nethermind.Db
         IDb RegisterDb(string dbPath, string name, IPlugableDbConfig dbConfig);
 
         IDb RegisterDb(Func<string, IPlugableDbConfig, IDb> dbToRegister);
+
+        T GetDb<T>(string dbName) where T : IDb;
+
+        void RegisterDb<T>(string dbName, T db) where T : IDb;
 
         IEnumerable<IDb> OtherDbs { get; }
     }
