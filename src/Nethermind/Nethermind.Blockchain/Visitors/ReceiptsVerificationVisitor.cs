@@ -29,7 +29,7 @@ namespace Nethermind.Blockchain.Visitors
     public class ReceiptsVerificationVisitor : IBlockTreeVisitor
     {
         private readonly IReceiptStorage _receiptStorage;
-        private readonly ILogger _logger;
+        protected readonly ILogger _logger;
         private int _good = 0;
         private int _bad = 0;
         private ChainLevelInfo _currentLevel;
@@ -40,7 +40,7 @@ namespace Nethermind.Blockchain.Visitors
         {
             _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-            EndLevelExclusive = endLevel + 1;
+            EndLevelExclusive = endLevel;
             StartLevelInclusive = startLevel; // we should start post-pivot
             _toCheck = EndLevelExclusive - StartLevelInclusive;
         }
@@ -62,16 +62,16 @@ namespace Nethermind.Blockchain.Visitors
         public Task<HeaderVisitOutcome> VisitHeader(BlockHeader header, CancellationToken cancellationToken) =>
             Task.FromResult(HeaderVisitOutcome.None);
 
-        public Task<BlockVisitOutcome> VisitBlock(Block block, CancellationToken cancellationToken)
+        public async Task<BlockVisitOutcome> VisitBlock(Block block, CancellationToken cancellationToken)
         {
-            int txReceiptsLength = GetTxReceiptsLength(block, false);
+            int txReceiptsLength = GetTxReceiptsLength(block, true);
             int transactionsLength = (block.Transactions?.Length ?? 0);
             if (txReceiptsLength != transactionsLength)
             {
                 if (_currentLevel.MainChainBlock?.BlockHash == block.Hash)
                 {
                     _bad++;
-                    if (_logger.IsError) _logger.Error($"Missing receipts for block {block.ToString(Block.Format.FullHashAndNumber)}, expected {transactionsLength} but got {txReceiptsLength}. Good {_good}, Bad {_bad}");
+                    await OnBlockWithoutReceipts(block, transactionsLength, txReceiptsLength);
                 }
                 else
                 {
@@ -85,7 +85,13 @@ namespace Nethermind.Blockchain.Visitors
                 if (_logger.IsDebug) _logger.Debug($"OK Receipts for block {block.ToString(Block.Format.FullHashAndNumber)}, expected {transactionsLength}. Good {_good}, Bad {_bad}");
             }
             
-            return Task.FromResult(BlockVisitOutcome.None);
+            return BlockVisitOutcome.None;
+        }
+
+        protected virtual Task OnBlockWithoutReceipts(Block block, int transactionsLength, int txReceiptsLength)
+        {
+            if (_logger.IsError) _logger.Error($"Missing receipts for block {block.ToString(Block.Format.FullHashAndNumber)}, expected {transactionsLength} but got {txReceiptsLength}. Good {_good}, Bad {_bad}");
+            return Task.CompletedTask;
         }
 
         private int GetTxReceiptsLength(Block block, bool useIterator)

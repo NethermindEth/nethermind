@@ -94,5 +94,8 @@ namespace Nethermind.Blockchain.Synchronization
 
         [ConfigItem(HiddenFromDocs = true, DefaultValue = "1")]
         public long AncientReceiptsBarrierCalc => Math.Max(1, Math.Min(PivotNumberParsed, Math.Max(AncientBodiesBarrier, AncientReceiptsBarrier)));
+        
+        [ConfigItem(Description = "[ONLY FOR MISSING RECEIPTS ISSUE] Turns on receipts validation that checks for ones that might be missing due to previous bug. It downloads them from network if needed. ", DefaultValue = "false")]
+        public bool FixReceipts { get; set; }
     }
 }
