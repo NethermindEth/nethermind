@@ -30,20 +30,29 @@ namespace Nethermind.Blockchain.Visitors
     {
         private readonly IReceiptStorage _receiptStorage;
         private readonly ILogger _logger;
+        private int _good = 0;
+        private int _bad = 0;
+        private ChainLevelInfo _currentLevel;
+        private long _checked = 0;
+        private readonly long _toCheck;
 
-        public ReceiptsVerificationVisitor(long endLevel, IReceiptStorage receiptStorage, ILogManager logManager)
+        public ReceiptsVerificationVisitor(long startLevel, long endLevel, IReceiptStorage receiptStorage, ILogManager logManager)
         {
             _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             EndLevelExclusive = endLevel + 1;
+            StartLevelInclusive = startLevel; // we should start post-pivot
+            _toCheck = EndLevelExclusive - StartLevelInclusive;
         }
 
         public bool PreventsAcceptingNewBlocks => false;
-        public long StartLevelInclusive => 3729844;
+        public long StartLevelInclusive { get; }
+        
         public long EndLevelExclusive { get; }
         
         public Task<LevelVisitOutcome> VisitLevelStart(ChainLevelInfo chainLevelInfo, long levelNumber, CancellationToken cancellationToken)
         {
+            _currentLevel = chainLevelInfo;
             return Task.FromResult(LevelVisitOutcome.None);
         }
 
@@ -53,33 +62,29 @@ namespace Nethermind.Blockchain.Visitors
         public Task<HeaderVisitOutcome> VisitHeader(BlockHeader header, CancellationToken cancellationToken) =>
             Task.FromResult(HeaderVisitOutcome.None);
 
-        private long _reviewed = 0;
-        private long _lastReported = 0;
-        private int good = 0;
-        private int bad = 0;
-        
         public Task<BlockVisitOutcome> VisitBlock(Block block, CancellationToken cancellationToken)
         {
             int txReceiptsLength = GetTxReceiptsLength(block, false);
             int transactionsLength = (block.Transactions?.Length ?? 0);
             if (txReceiptsLength != transactionsLength)
             {
-                bad++;
-                if (_logger.IsError) _logger.Error($"Missing receipts for block {block.ToString(Block.Format.FullHashAndNumber)}, expected {transactionsLength} but got {txReceiptsLength}. Good {good}, Bad {bad}");
+                if (_currentLevel.MainChainBlock?.BlockHash == block.Hash)
+                {
+                    _bad++;
+                    if (_logger.IsError) _logger.Error($"Missing receipts for block {block.ToString(Block.Format.FullHashAndNumber)}, expected {transactionsLength} but got {txReceiptsLength}. Good {_good}, Bad {_bad}");
+                }
+                else
+                {
+                    if (_logger.IsDebug) _logger.Debug($"Missing receipts for non-canonical block  {block.ToString(Block.Format.FullHashAndNumber)}, expected {transactionsLength} but got {txReceiptsLength}. Good {_good}, Bad {_bad}");
+                }
+
             }
             else
             {
-                good++;
-                if (_logger.IsInfo) _logger.Info($"OK Receipts for block {block.ToString(Block.Format.FullHashAndNumber)}, expected {transactionsLength}. Good {good}, Bad {bad}");
-            }
-
-            if (_lastReported < (_reviewed * 100 / EndLevelExclusive))
-            {
-                _lastReported++;
-                if (_logger.IsInfo) _logger.Info($"Reviewed {_lastReported}% Receipts.");
+                _good++;
+                if (_logger.IsDebug) _logger.Debug($"OK Receipts for block {block.ToString(Block.Format.FullHashAndNumber)}, expected {transactionsLength}. Good {_good}, Bad {_bad}");
             }
             
-            _reviewed++;
             return Task.FromResult(BlockVisitOutcome.None);
         }
 
@@ -111,7 +116,14 @@ namespace Nethermind.Blockchain.Visitors
             }
         }
 
-        public Task<LevelVisitOutcome> VisitLevelEnd(ChainLevelInfo chainLevelInfo, long levelNumber, CancellationToken cancellationToken) =>
-            Task.FromResult(LevelVisitOutcome.None);
+        public Task<LevelVisitOutcome> VisitLevelEnd(ChainLevelInfo chainLevelInfo, long levelNumber, CancellationToken cancellationToken)
+        {
+            _checked++;
+            if (_checked % 1000 == 0)
+            {
+                if (_logger.IsInfo) _logger.Info($"Checking receipts {_checked}/{_toCheck}");
+            }
+            return Task.FromResult(LevelVisitOutcome.None);
+        }
     }
 }

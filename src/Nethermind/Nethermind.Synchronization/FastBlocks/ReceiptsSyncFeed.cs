@@ -219,7 +219,6 @@ namespace Nethermind.Synchronization.FastBlocks
                         Block block = _blockTree.FindBlock(blockInfo.BlockHash);
                         if (block == null)
                         {
-                            if(_logger.IsWarn) _logger.Warn($"Could not find block {blockInfo.BlockHash}");
                             if (_logger.IsWarn) _logger.Warn($"Could not find block {blockInfo.BlockHash}");
                             _syncStatusList.MarkUnknown(blockInfo.BlockNumber);
                         }
