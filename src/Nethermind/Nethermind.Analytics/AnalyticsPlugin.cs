@@ -44,9 +44,10 @@ namespace Nethermind.Analytics
         public Task Init(INethermindApi api)
         {
             _api = api;
-            _analyticsConfig = api.Config<IAnalyticsConfig>();
+            var (getFromAPi, _) = _api.ForInit;
+            _analyticsConfig = getFromAPi.Config<IAnalyticsConfig>();
 
-            IInitConfig initConfig = _api.Config<IInitConfig>();
+            IInitConfig initConfig = getFromAPi.Config<IInitConfig>();
             _isOn = initConfig.WebSocketsEnabled &&
                     (_analyticsConfig.PluginsEnabled ||
                      _analyticsConfig.StreamBlocks ||
@@ -56,27 +57,12 @@ namespace Nethermind.Analytics
             {
                 if (!initConfig.WebSocketsEnabled)
                 {
-                    _api.LogManager.GetClassLogger().Warn($"{nameof(AnalyticsPlugin)} disabled due to {nameof(initConfig.WebSocketsEnabled)} set to false");
+                    getFromAPi.LogManager.GetClassLogger().Warn($"{nameof(AnalyticsPlugin)} disabled due to {nameof(initConfig.WebSocketsEnabled)} set to false");
                 }
                 else
                 {
-                    _api.LogManager.GetClassLogger().Warn($"{nameof(AnalyticsPlugin)} plugin disabled due to {nameof(AnalyticsConfig)} settings set to false");
+                    getFromAPi.LogManager.GetClassLogger().Warn($"{nameof(AnalyticsPlugin)} plugin disabled due to {nameof(AnalyticsConfig)} settings set to false");
                 }
-            }
-            
-            return Task.CompletedTask;
-        }
-
-        public Task InitBlockchain()
-        {
-            return Task.CompletedTask;
-        }
-
-        public Task InitBlockProducer()
-        {
-            if (_isOn)
-            {
-                _api.ForProducer.GetFromApi.TxPool!.NewDiscovered += TxPoolOnNewDiscovered;
             }
             
             return Task.CompletedTask;
@@ -97,6 +83,11 @@ namespace Nethermind.Analytics
         public Task InitNetworkProtocol()
         {
             var (getFromAPi, _) = _api.ForNetwork;
+            if (_isOn)
+            {
+                getFromAPi.TxPool!.NewDiscovered += TxPoolOnNewDiscovered;
+            }
+            
             if (_isOn)
             {
                 AnalyticsWebSocketsModule webSocketsModule = new AnalyticsWebSocketsModule(getFromAPi.EthereumJsonSerializer);
