@@ -18,6 +18,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -192,6 +193,10 @@ namespace Nethermind.Trie.Pruning
                 {
                     Persist(set);
                 }
+                else
+                {
+                    PruneOldTrees();
+                }
 
                 CurrentPackage = null;
             }
@@ -343,14 +348,12 @@ namespace Nethermind.Trie.Pruning
         /// </summary>
         private void PruneOldTrees()
         {
-            if (_logger.IsWarn) _logger.Warn(
-                $"Deep pruning nodes {MemoryUsedByDirtyCache / 1.MB()}MB, {Metrics.DeepPrunedPersistedNodesCount}.");
-            
             Stopwatch stopwatch = Stopwatch.StartNew();
-            foreach (BlockCommitSet blockCommitSet in _commitSetQueue)
-            {
-                blockCommitSet.Root?.PrunePersistedRecursively(this);
-            }
+            if (_logger.IsWarn) _logger.Warn(
+                $"Deep pruning - {CurrentPackage?.Root?.GetMemorySize(true)}");
+            CurrentPackage?.Root?.PrunePersistedRecursively(this);
+            if (_logger.IsWarn) _logger.Warn(
+                $"After deep pruning - {CurrentPackage?.Root?.GetMemorySize(true)}");
 
             // _persistedNodesCache.ForEach(_pruneNodeAction);
 
@@ -367,6 +370,14 @@ namespace Nethermind.Trie.Pruning
         /// <exception cref="InvalidOperationException"></exception>
         private void PruneCache()
         {
+            long actualMem = 0;
+            foreach (KeyValuePair<Keccak,TrieNode> keyValuePair in _dirtyNodesCache)
+            {
+                actualMem += keyValuePair.Value.GetMemorySize(false);
+            }
+            
+            _logger.Warn($"Actual memory {actualMem} vs mem {MemoryUsedByDirtyCache}");
+            
             if (_logger.IsWarn) _logger.Warn(
                 $"Pruning nodes {MemoryUsedByDirtyCache / 1.MB()}MB , last persisted block: {LastPersistedBlockNumber} current: {NewestKeptBlockNumber}.");
             Stopwatch stopwatch = Stopwatch.StartNew();
