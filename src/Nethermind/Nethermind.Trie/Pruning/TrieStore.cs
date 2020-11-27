@@ -352,12 +352,12 @@ namespace Nethermind.Trie.Pruning
             
             Stopwatch stopwatch = Stopwatch.StartNew();
             // long? before = CurrentPackage?.Root?.GetMemorySize(true);
-            foreach (BlockCommitSet blockCommitSet in _commitSetQueue)
-            {
-                blockCommitSet.Root?.PrunePersistedRecursively(this, 3);    
-            }
+            // foreach (BlockCommitSet blockCommitSet in _commitSetQueue)
+            // {
+            //     blockCommitSet.Root?.PrunePersistedRecursively(this, 3);    
+            // }
             
-            CurrentPackage?.Root?.PrunePersistedRecursively(this, 4);
+            CurrentPackage?.Root?.PrunePersistedRecursively(this, 3);
             // _persistedNodesCache.ForEach(_pruneNodeAction);
 
             stopwatch.Stop();
