@@ -38,7 +38,7 @@ namespace Nethermind.Synchronization.FastSync
 {
     public partial class StateSyncFeed : SyncFeed<StateSyncBatch?>, IDisposable
     {
-        private const int AlreadySavedCapacity = 1024 * 64;
+        private const int AlreadySavedCapacity = 1024 * 1024;
         private const int MaxRequestSize = 384;
         private const StateSyncBatch EmptyBatch = null;
 
@@ -305,7 +305,7 @@ namespace Nethermind.Synchronization.FastSync
                 }
 
                 _dependencies = new Dictionary<Keccak, HashSet<DependentItem>>();
-                _alreadySaved = new LruKeyCache<Keccak>(AlreadySavedCapacity, "saved nodes");
+                // _alreadySaved = new LruKeyCache<Keccak>(AlreadySavedCapacity, "saved nodes");
             }
 
             if (_pendingItems.Count != 0)
