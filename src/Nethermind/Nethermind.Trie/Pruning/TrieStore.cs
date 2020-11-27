@@ -349,18 +349,14 @@ namespace Nethermind.Trie.Pruning
         private void PruneOldTrees()
         {
             Stopwatch stopwatch = Stopwatch.StartNew();
-            if (_logger.IsWarn) _logger.Warn(
-                $"Deep pruning - {CurrentPackage?.Root?.GetMemorySize(true)}");
+            long? before = CurrentPackage?.Root?.GetMemorySize(true);
             CurrentPackage?.Root?.PrunePersistedRecursively(this);
-            if (_logger.IsWarn) _logger.Warn(
-                $"After deep pruning - {CurrentPackage?.Root?.GetMemorySize(true)}");
-
             // _persistedNodesCache.ForEach(_pruneNodeAction);
 
             stopwatch.Stop();
             Metrics.DeepPruningTime = stopwatch.ElapsedMilliseconds;
             if (_logger.IsWarn) _logger.Warn(
-                $"Finished deep pruning nodes in {stopwatch.ElapsedMilliseconds}ms, {Metrics.DeepPrunedPersistedNodesCount}");
+                $"Deep pruning in {stopwatch.ElapsedMilliseconds}ms - before {before}, after {CurrentPackage?.Root?.GetMemorySize(true)} | {Metrics.DeepPrunedPersistedNodesCount} | {MemoryUsedByDirtyCache}");
         }
 
         /// <summary>
