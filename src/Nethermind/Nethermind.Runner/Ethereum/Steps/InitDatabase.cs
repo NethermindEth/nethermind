@@ -76,7 +76,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             }
         }
 
-        // ToDo: readonly factory?, dbMode for dbProvider, dbMode and RocksDbFactory? default implementation of interface
+        // ToDo: add logging readonly factory?, dbMode for dbProvider, dbMode and RocksDbFactory? default implementation of interface
 
         private async Task InitDbApi(IInitConfig initConfig, IDbConfig dbConfig, bool storeReceipts)
         {
