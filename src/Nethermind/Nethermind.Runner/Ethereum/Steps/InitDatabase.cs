@@ -21,7 +21,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Blockchain.Synchronization;
-using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.Db.Rocks;
 using Nethermind.Db.Rocks.Config;
@@ -59,7 +58,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             try
             {
                 _api.DbProvider = GetDbProvider(initConfig, dbConfig, initConfig.StoreReceipts || syncConfig.DownloadReceiptsInFastSync);
-                await InitDbApi(initConfig, dbConfig, initConfig.StoreReceipts || syncConfig.DownloadReceiptsInFastSync);
+                InitDbApi(initConfig, dbConfig, initConfig.StoreReceipts || syncConfig.DownloadReceiptsInFastSync);
                 var dbInitalizer = new StandardDbInitializer(_api.DbProvider, _api.RocksDbFactory, _api.MemDbFactory);
                 await dbInitalizer.InitStandardDbs();
                 if (syncConfig.BeamSync)
@@ -76,9 +75,9 @@ namespace Nethermind.Runner.Ethereum.Steps
             }
         }
 
-        // ToDo: add logging readonly factory?, dbMode for dbProvider, dbMode and RocksDbFactory? default implementation of interface
+        // ToDo: receipts columns db, add logging readonly factory?, dbMode and RocksDbFactory? default implementation of interface, rocksDbSettings with builder
 
-        private async Task InitDbApi(IInitConfig initConfig, IDbConfig dbConfig, bool storeReceipts)
+        private void InitDbApi(IInitConfig initConfig, IDbConfig dbConfig, bool storeReceipts)
         {
             switch (initConfig.DiagnosticMode)
             {
