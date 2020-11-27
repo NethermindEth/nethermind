@@ -80,8 +80,6 @@ namespace Nethermind.Db.Rocks
 
         public IDb BaselineTreeMetadataDb { get; private set; }
 
-        public IEnumerable<IDb> OtherDbs => _otherDbs;
-
         public DbModeHint DbMode => throw new NotImplementedException();
 
         public void Dispose()

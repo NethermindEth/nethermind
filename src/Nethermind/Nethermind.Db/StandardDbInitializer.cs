@@ -36,16 +36,28 @@ namespace Nethermind.Db
         public async Task InitStandardDbs()
         {
             HashSet<Task> allInitializers = new HashSet<Task>();
-            allInitializers.Add(RegisterDb(DbNames.Code, () => Metrics.CodeDbReads++, () => Metrics.CodeDbWrites++));
+            allInitializers.Add(RegisterDb(DbNames.Blocks, () => Metrics.BlocksDbReads++, () => Metrics.BlocksDbWrites++));
+            allInitializers.Add(RegisterDb(DbNames.Headers, () => Metrics.HeaderDbReads++, () => Metrics.HeaderDbWrites++));
+            allInitializers.Add(RegisterDb(DbNames.BlockInfos, () => Metrics.BlockInfosDbReads++, () => Metrics.BlockInfosDbWrites++));
+            allInitializers.Add(RegisterDb(DbNames.State, () => Metrics.StateDbReads++, () => Metrics.StateDbWrites++, snapshotDb: true));
+            allInitializers.Add(RegisterDb(DbNames.Code, () => Metrics.CodeDbReads++, () => Metrics.CodeDbWrites++, snapshotDb: true));
+            allInitializers.Add(RegisterDb(DbNames.PendingTxs, () => Metrics.PendingTxsDbReads++, () => Metrics.PendingTxsDbWrites++));
+            allInitializers.Add(RegisterDb(DbNames.Bloom, () => Metrics.BloomDbReads++, () => Metrics.BloomDbWrites++));
+            allInitializers.Add(RegisterDb(DbNames.CHT, () => Metrics.CHTDbReads++, () => Metrics.CHTDbWrites++));
 
             await Task.WhenAll(allInitializers);
         }
 
-        private Task RegisterDb(string dbName, Action updateReadsMetrics, Action updateWriteMetrics)
+        private Task RegisterDb(string dbName, Action updateReadsMetrics, Action updateWriteMetrics, bool snapshotDb = false)
         {
             return Task.Run(() =>
             {
-                var db = CreateDb(dbName, updateReadsMetrics, updateWriteMetrics);
+                IDb db;
+                if (snapshotDb)
+                    db = CreateSnapshotableDb(dbName, updateReadsMetrics, updateWriteMetrics);
+                else
+                    db = CreateDb(dbName, updateReadsMetrics, updateWriteMetrics);
+
                 _dbProvider.RegisterDb(dbName, db);
             });
         }
@@ -54,16 +66,33 @@ namespace Nethermind.Db
         {
             if (_dbProvider.DbMode == DbModeHint.Persisted)
             {
-                return _rocksDbFactory.CreateDb(new RocksDbSettings()
-                {
-                    DbName = UppercaseFirst(dbName),
-                    DbPath = dbName,
-                    UpdateReadMetrics = updateReadsMetrics,
-                    UpdateWriteMetrics = updateWriteMetrics
-                });
+                var settings = GetRocksDbSettings(dbName, updateReadsMetrics, updateWriteMetrics);
+                return _rocksDbFactory.CreateDb(settings);
             }
 
             return _memDbFactory.CreateDb(dbName);
+        }
+
+        private IDb CreateSnapshotableDb(string dbName, Action updateReadsMetrics, Action updateWriteMetrics)
+        {
+            if (_dbProvider.DbMode == DbModeHint.Persisted)
+            {
+                var settings = GetRocksDbSettings(dbName, updateReadsMetrics, updateWriteMetrics);
+                return _rocksDbFactory.CreateSnapshotableDb(settings);
+            }
+
+            return _memDbFactory.CreateSnapshotableDb(dbName);
+        }
+
+        private RocksDbSettings GetRocksDbSettings(string dbName, Action updateReadsMetrics, Action updateWriteMetrics)
+        {
+            return new RocksDbSettings()
+            {
+                DbName = UppercaseFirst(dbName),
+                DbPath = dbName,
+                UpdateReadMetrics = updateReadsMetrics,
+                UpdateWriteMetrics = updateWriteMetrics
+            };
         }
 
         private string UppercaseFirst(string str)

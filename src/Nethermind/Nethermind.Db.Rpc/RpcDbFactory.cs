@@ -60,6 +60,12 @@ namespace Nethermind.Db.Rpc
             return new StateDb(CreateDb(rocksDbSettings));
         }
 
+        public ISnapshotableDb CreateSnapshotableDb(string dbName)
+        {
+            var memDb = _wrappedMemDbFactory.CreateDb(dbName);
+            return new StateDb(WrapWithRpc(memDb));
+        }
+
         private IDb WrapWithRpc(IDb db)
         {
             return new ReadOnlyDb(new RpcDb(db.Name, _jsonSerializer, _jsonRpcClient, _logManager, db), true);

@@ -20,6 +20,18 @@ namespace Nethermind.Db
 {
     public static class Metrics
     {
+        [Description("Number of Bloom DB reads.")]
+        public static long BloomDbReads { get; set; }
+
+        [Description("Number of Bloom DB writes.")]
+        public static long BloomDbWrites { get; set; }
+
+        [Description("Number of CHT DB reads.")]
+        public static long CHTDbReads { get; set; }
+
+        [Description("Number of CHT DB writes.")]
+        public static long CHTDbWrites { get; set; }
+
         [Description("Number of Blocks DB reads.")]
         public static long BlocksDbReads { get; set; }
         

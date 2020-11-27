@@ -71,6 +71,7 @@ namespace Nethermind.Baseline.Db
                     });
                 else
                     BaselineTreeDb = _memDbFactory.CreateDb(BaselineTreeDbName);
+                _dbProvider.RegisterDb(BaselineTreeDbName, BaselineTreeDb);
             }));
             allInitializers.Add(Task.Run(() =>
             {
@@ -82,6 +83,7 @@ namespace Nethermind.Baseline.Db
                     });
                 else
                     BaselineTreeMetadataDb = _memDbFactory.CreateDb(BaselineTreeMetadataDbName);
+                _dbProvider.RegisterDb(BaselineTreeDbName, BaselineTreeDb);
             }));
             await Task.WhenAll(allInitializers);
         }

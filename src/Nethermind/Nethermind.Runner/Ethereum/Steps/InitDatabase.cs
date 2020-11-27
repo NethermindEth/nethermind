@@ -60,7 +60,8 @@ namespace Nethermind.Runner.Ethereum.Steps
             {
                 _api.DbProvider = await GetDbProvider(initConfig, dbConfig, initConfig.StoreReceipts || syncConfig.DownloadReceiptsInFastSync);
                 await InitDbApi(initConfig, dbConfig, initConfig.StoreReceipts || syncConfig.DownloadReceiptsInFastSync);
-                // Init Standard databases
+                var dbInitalizer = new StandardDbInitializer(_api.DbProvider, _api.RocksDbFactory, _api.MemDbFactory);
+                await dbInitalizer.InitStandardDbs();
                 if (syncConfig.BeamSync)
                 {
                     _api.SyncModeSelector = new PendingSyncModeSelector();
@@ -75,7 +76,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             }
         }
 
-        // ToDo: memDbFactory, rpc wrap, readonly factory?, dbMode for dbProvider, dbMode and RocksDbFactory?
+        // ToDo: readonly factory?, dbMode for dbProvider, dbMode and RocksDbFactory? default implementation of interface
 
         private async Task InitDbApi(IInitConfig initConfig, IDbConfig dbConfig, bool storeReceipts)
         {

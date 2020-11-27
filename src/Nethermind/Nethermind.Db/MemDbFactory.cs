@@ -19,6 +19,8 @@ namespace Nethermind.Db
     public interface IMemDbFactory
     {
         IDb CreateDb(string dbName);
+
+        ISnapshotableDb CreateSnapshotableDb(string dbName);
     }
 
     public class MemDbFactory : IMemDbFactory
@@ -26,6 +28,11 @@ namespace Nethermind.Db
         public IDb CreateDb(string dbName)
         {
             return new MemDb(dbName);
+        }
+
+        public ISnapshotableDb CreateSnapshotableDb(string dbName)
+        {
+            return new StateDb(new MemDb(dbName));
         }
     }
 }
