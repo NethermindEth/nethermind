@@ -348,15 +348,17 @@ namespace Nethermind.Trie.Pruning
         /// </summary>
         private void PruneOldTrees()
         {
+            // TODO: by pruning the persisted nodes as they are added or retrieved from the cache we can achieve the same result without deep search
+            
             Stopwatch stopwatch = Stopwatch.StartNew();
-            long? before = CurrentPackage?.Root?.GetMemorySize(true);
+            // long? before = CurrentPackage?.Root?.GetMemorySize(true);
             CurrentPackage?.Root?.PrunePersistedRecursively(this);
             // _persistedNodesCache.ForEach(_pruneNodeAction);
 
             stopwatch.Stop();
             Metrics.DeepPruningTime = stopwatch.ElapsedMilliseconds;
-            if (_logger.IsWarn) _logger.Warn(
-                $"Deep pruning in {stopwatch.ElapsedMilliseconds}ms - before {before}, after {CurrentPackage?.Root?.GetMemorySize(true)} | {Metrics.DeepPrunedPersistedNodesCount} | {MemoryUsedByDirtyCache}");
+            // if (_logger.IsWarn) _logger.Warn(
+            //     $"Deep pruning in {stopwatch.ElapsedMilliseconds}ms - before {before}, after {CurrentPackage?.Root?.GetMemorySize(true)} | {Metrics.DeepPrunedPersistedNodesCount} | {MemoryUsedByDirtyCache}");
         }
 
         /// <summary>
