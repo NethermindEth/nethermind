@@ -59,6 +59,8 @@ namespace Nethermind.Runner.Ethereum.Steps
             try
             {
                 _api.DbProvider = await GetDbProvider(initConfig, dbConfig, initConfig.StoreReceipts || syncConfig.DownloadReceiptsInFastSync);
+                await InitDbApi(initConfig, dbConfig, initConfig.StoreReceipts || syncConfig.DownloadReceiptsInFastSync);
+                // Init Standard databases
                 if (syncConfig.BeamSync)
                 {
                     _api.SyncModeSelector = new PendingSyncModeSelector();
@@ -73,19 +75,27 @@ namespace Nethermind.Runner.Ethereum.Steps
             }
         }
 
-        private IMemDbFactory GetMemDbFactory(IInitConfig initConfig)
-        {
-                return null;
-        }
-
-        private IRocksDbFactory GetRocksDbFactory(IInitConfig initConfig)
+        private async Task InitDbApi(IInitConfig initConfig, IDbConfig dbConfig, bool storeReceipts)
         {
             switch (initConfig.DiagnosticMode)
             {
                 case DiagnosticMode.RpcDb:
-                    return new RpcDbFactory();
+                    _api.DbProvider = await GetRocksDbProvider(dbConfig, Path.Combine(initConfig.BaseDbPath, "debug"), storeReceipts);
+                    _api.RocksDbFactory = new RpcDbFactory();
+                    break;
+                case DiagnosticMode.ReadOnlyDb:
+                    var rocksDbProvider = await GetRocksDbProvider(dbConfig, Path.Combine(initConfig.BaseDbPath, "debug"), storeReceipts);
+                    _api.DbProvider = new ReadOnlyDbProvider(rocksDbProvider, storeReceipts); // ToDo storeReceipts as createInMemoryWriteStore - bug?
+                    _api.RocksDbFactory = new RocksDbFactory();
+                    break;
+                case DiagnosticMode.MemDb:
+                    _api.DbProvider = new MemDbProvider();
+                    _api.RocksDbFactory = new RocksDbFactory();
+                    break;
                 default:
-                    return new RocksDbFactory();
+                    _api.DbProvider = await GetRocksDbProvider(dbConfig, initConfig.BaseDbPath, storeReceipts);
+                    _api.RocksDbFactory = new RocksDbFactory();
+                    break;
             }
         }
 
