@@ -174,6 +174,19 @@ namespace Nethermind.DataMarketplace.Infrastructure
             set => _nethermindApi.DbProvider = value;
         }
 
+        public IRocksDbFactory? RocksDbFactory
+        {
+            get => _nethermindApi.RocksDbFactory;
+            set => _nethermindApi.RocksDbFactory = value;
+        }
+
+        public IMemDbFactory? MemDbFactory 
+        {
+            get => _nethermindApi.MemDbFactory;
+            set => _nethermindApi.MemDbFactory = value;
+        }
+
+
         public IDiscoveryApp? DiscoveryApp
         {
             get => _nethermindApi.DiscoveryApp;

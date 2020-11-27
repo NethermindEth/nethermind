@@ -25,7 +25,7 @@ namespace Nethermind.Baseline.Db
 {
     public interface IBaselineDbProvider
     {
-        public IDb? BaselineTreeDb { get;  }
+        public IDb? BaselineTreeDb { get; }
 
         public IDb? BaselineTreeMetadataDb { get; }
 
@@ -42,21 +42,47 @@ namespace Nethermind.Baseline.Db
         private readonly IDbProvider _dbProvider;
         private readonly IBaselineConfig _baselineConfig;
         private readonly IDbConfig _dbConfig;
+        private readonly IRocksDbFactory _rocksDbFactory;
+        private readonly IMemDbFactory _memDbFactory;
         public BaselineDbProvider(
             IDbProvider dbProvider,
             IBaselineConfig baselineConfig,
-            IDbConfig dbConfig)
+            IDbConfig dbConfig,
+            IRocksDbFactory rocksDbFactory,
+            IMemDbFactory memDbFactory)
         {
             _dbProvider = dbProvider ?? throw new ArgumentNullException(nameof(dbProvider));
             _baselineConfig = baselineConfig ?? throw new ArgumentNullException(nameof(baselineConfig));
             _dbConfig = dbConfig ?? throw new ArgumentNullException(nameof(dbConfig));
+            _rocksDbFactory = rocksDbFactory ?? throw new ArgumentNullException(nameof(rocksDbFactory));
+            _memDbFactory = memDbFactory ?? throw new ArgumentNullException(nameof(memDbFactory));
         }
         public async Task Init()
         {
             var baselineDbConfig = new BaselineDbConfig(_baselineConfig, _dbConfig);
             HashSet<Task> allInitializers = new HashSet<Task>();
-            allInitializers.Add(Task.Run(() => BaselineTreeDb = _dbProvider.RegisterDb(BaselineTreeDbPath, BaselineTreeDbName, baselineDbConfig)));
-            allInitializers.Add(Task.Run(() => BaselineTreeMetadataDb = _dbProvider.RegisterDb(BaselineTreeMetadataDbPath, BaselineTreeMetadataDbName, baselineDbConfig)));
+            allInitializers.Add(Task.Run(() =>
+            {
+                if (_dbProvider.DbMode == DbModeHint.Persisted)
+                    BaselineTreeDb = _rocksDbFactory.CreateDb(new RocksDbSettings()
+                    {
+                        DbName = BaselineTreeDbName,
+                        DbPath = BaselineTreeDbPath
+                    });
+                else
+                    BaselineTreeDb = _memDbFactory.CreateDb(BaselineTreeDbName);
+            }));
+            allInitializers.Add(Task.Run(() =>
+            {
+                if (_dbProvider.DbMode == DbModeHint.Persisted)
+                    BaselineTreeMetadataDb = _rocksDbFactory.CreateDb(new RocksDbSettings()
+                    {
+                        DbName = BaselineTreeMetadataDbName,
+                        DbPath = BaselineTreeMetadataDbPath
+                    });
+                else
+                    BaselineTreeMetadataDb = _memDbFactory.CreateDb(BaselineTreeMetadataDbName);
+            }));
             await Task.WhenAll(allInitializers);
         }
         public IDb? BaselineTreeDb { get; private set; }

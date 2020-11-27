@@ -34,20 +34,53 @@ namespace Nethermind.DataMarketplace.Infrastructure.Db
 
     public class NdmDbProvider : INdmDbProvider
     {
+        private const string ConfigsDbName = "Configs";
+        private const string EthRequestsDbName = "EthRequests";
+        private const string ConfigsDbPath = "configs";
+        private const string EthRequestsDbPath = "ethRequests";
+
         private readonly IDbProvider _dbProvider;
         private readonly ILogManager _logManager;
+        private readonly IRocksDbFactory _rocksDbFactory;
+        private readonly IMemDbFactory _memDbFactory;
         public NdmDbProvider(
             IDbProvider dbProvider,
-            ILogManager logManager)
+            ILogManager logManager,
+            IRocksDbFactory rocksDbFactory,
+            IMemDbFactory memDbFactory)
         {
             _dbProvider = dbProvider ?? throw new ArgumentNullException(nameof(dbProvider));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
+            _rocksDbFactory = rocksDbFactory ?? throw new ArgumentNullException(nameof(rocksDbFactory));
+            _memDbFactory = memDbFactory ?? throw new ArgumentNullException(nameof(memDbFactory));
         }
         public async Task Init()
         {
             HashSet<Task> allInitializers = new HashSet<Task>();
-            allInitializers.Add(Task.Run(() => ConfigsDb = _dbProvider.RegisterDb((basePath, config) => new ConfigsRocksDb(basePath, config, _logManager))));
-            allInitializers.Add(Task.Run(() => EthRequestsDb = _dbProvider.RegisterDb((basePath, config) => new EthRequestsRocksDb(basePath, config, _logManager))));
+            allInitializers.Add(Task.Run(() =>
+            {
+                if (_dbProvider.DbMode == DbModeHint.Persisted)
+                    ConfigsDb = _rocksDbFactory.CreateDb(new RocksDbSettings()
+                    {
+                        DbName = ConfigsDbName,
+                        DbPath = ConfigsDbPath
+                    });
+                else
+                    ConfigsDb = _memDbFactory.CreateDb(ConfigsDbName);
+            }));
+            allInitializers.Add(Task.Run(() =>
+            {
+                if (_dbProvider.DbMode == DbModeHint.Persisted)
+                    EthRequestsDb = _rocksDbFactory.CreateDb(new RocksDbSettings()
+                    {
+                        DbName = EthRequestsDbName,
+                        DbPath = EthRequestsDbPath,
+                        UpdateReadMetrics = () => Metrics.EthRequestsDbReads++,
+                        UpdateWriteMetrics = () => Metrics.EthRequestsDbWrites++,
+                    });
+                else
+                    EthRequestsDb = _memDbFactory.CreateDb(EthRequestsDbName);
+            }));
             await Task.WhenAll(allInitializers);
         }
         public IDb? ConfigsDb { get; private set; }
