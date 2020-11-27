@@ -195,8 +195,12 @@ namespace Nethermind.Runner.Ethereum.Steps.Migrations
                             
                             if (notNullReceipts.Length != receipts.Length)
                             {
-                                if(_logger.IsWarn) _logger.Warn(GetLogMessage("warning", $"Block {block.ToString(Block.Format.FullHashAndNumber)} is missing {receipts.Length - notNullReceipts.Length} receipts!"));
+                                if(_logger.IsWarn) _logger.Warn(GetLogMessage("warning", $"Block {block.ToString(Block.Format.FullHashAndNumber)} is missing {receipts.Length - notNullReceipts.Length} of {receipts.Length} receipts!"));
                             }
+                        }
+                        else if (block.Number <= _blockTree.Head?.Number)
+                        {
+                            if(_logger.IsWarn) _logger.Warn(GetLogMessage("warning", $"Block {block.ToString(Block.Format.FullHashAndNumber)} is missing {receipts.Length - notNullReceipts.Length} of {receipts.Length} receipts!"));
                         }
                     }
                 }

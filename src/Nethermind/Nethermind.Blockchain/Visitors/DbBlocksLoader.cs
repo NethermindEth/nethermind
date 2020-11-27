@@ -77,7 +77,7 @@ namespace Nethermind.Blockchain.Visitors
 
         public long EndLevelExclusive { get; }
 
-        Task<LevelVisitOutcome> IBlockTreeVisitor.VisitLevelStart(ChainLevelInfo chainLevelInfo, CancellationToken cancellationToken)
+        Task<LevelVisitOutcome> IBlockTreeVisitor.VisitLevelStart(ChainLevelInfo chainLevelInfo, long levelNumber, CancellationToken cancellationToken)
         {
             if (chainLevelInfo == null)
             {
@@ -131,7 +131,7 @@ namespace Nethermind.Blockchain.Visitors
             return BlockVisitOutcome.Suggest;
         }
 
-        Task<LevelVisitOutcome> IBlockTreeVisitor.VisitLevelEnd(CancellationToken cancellationToken)
+        Task<LevelVisitOutcome> IBlockTreeVisitor.VisitLevelEnd(ChainLevelInfo chainLevelInfo, long levelNumber, CancellationToken cancellationToken)
         {
             return Task.FromResult(LevelVisitOutcome.None);
         }
