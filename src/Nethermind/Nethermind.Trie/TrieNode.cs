@@ -398,7 +398,15 @@ namespace Nethermind.Trie
              */
             childIndex = IsExtension ? childIndex + 1 : childIndex;
             ResolveChild(tree, childIndex);
-            return ReferenceEquals(_data![childIndex], _nullNode) ? null : (TrieNode) _data[childIndex];
+            TrieNode? child = ReferenceEquals(_data![childIndex], _nullNode) ? null : (TrieNode) _data[childIndex];
+            
+            // pruning trick so we never store long persisted paths
+            if (child?.IsPersisted ?? false)
+            {
+                UnresolveChild(childIndex);
+            }
+
+            return child;
         }
 
         public void ReplaceChildRef(int i, TrieNode child)
