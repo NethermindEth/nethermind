@@ -75,26 +75,34 @@ namespace Nethermind.Runner.Ethereum.Steps
             }
         }
 
+        // ToDo: memDbFactory, rpc wrap, readonly factory?, dbMode for dbProvider, dbMode and RocksDbFactory?
+
         private async Task InitDbApi(IInitConfig initConfig, IDbConfig dbConfig, bool storeReceipts)
         {
             switch (initConfig.DiagnosticMode)
             {
                 case DiagnosticMode.RpcDb:
                     _api.DbProvider = await GetRocksDbProvider(dbConfig, Path.Combine(initConfig.BaseDbPath, "debug"), storeReceipts);
-                    _api.RocksDbFactory = new RpcDbFactory();
+                    var rocksDbFactory = new RocksDbFactory(dbConfig, _api.LogManager, Path.Combine(initConfig.BaseDbPath, "debug"));
+                    var rpcDbFactory = new RpcDbFactory(new MemDbFactory(), rocksDbFactory, _api.EthereumJsonSerializer, new BasicJsonRpcClient(new Uri(initConfig.RpcDbUrl), _api.EthereumJsonSerializer, _api.LogManager), _api.LogManager);
+                    _api.RocksDbFactory = rpcDbFactory;
+                    _api.MemDbFactory = rpcDbFactory;
                     break;
                 case DiagnosticMode.ReadOnlyDb:
                     var rocksDbProvider = await GetRocksDbProvider(dbConfig, Path.Combine(initConfig.BaseDbPath, "debug"), storeReceipts);
                     _api.DbProvider = new ReadOnlyDbProvider(rocksDbProvider, storeReceipts); // ToDo storeReceipts as createInMemoryWriteStore - bug?
                     _api.RocksDbFactory = new RocksDbFactory(dbConfig, _api.LogManager, Path.Combine(initConfig.BaseDbPath, "debug"));
+                    _api.MemDbFactory = new MemDbFactory();
                     break;
                 case DiagnosticMode.MemDb:
                     _api.DbProvider = new MemDbProvider();
                     _api.RocksDbFactory = new RocksDbFactory(dbConfig, _api.LogManager, Path.Combine(initConfig.BaseDbPath, "debug"));
+                    _api.MemDbFactory = new MemDbFactory();
                     break;
                 default:
                     _api.DbProvider = await GetRocksDbProvider(dbConfig, initConfig.BaseDbPath, storeReceipts);
                     _api.RocksDbFactory = new RocksDbFactory(dbConfig, _api.LogManager, initConfig.BaseDbPath);
+                    _api.MemDbFactory = new MemDbFactory();
                     break;
             }
         }

@@ -20,23 +20,49 @@ using Nethermind.Serialization.Json;
 
 namespace Nethermind.Db.Rpc
 {
-    public class RpcDbFactory : IRocksDbFactory
+    public class RpcDbFactory : IRocksDbFactory, IMemDbFactory
     {
+        private readonly IMemDbFactory _wrappedMemDbFactory;
         private readonly IRocksDbFactory _wrappedRocksDbFactory;
         private readonly IJsonSerializer _jsonSerializer;
         private readonly IJsonRpcClient _jsonRpcClient;
         private readonly ILogManager _logManager;
 
+        public RpcDbFactory(
+            IMemDbFactory wrappedMemDbFactory,
+            IRocksDbFactory wrappedRocksDbFactory,
+            IJsonSerializer jsonSerializer,
+            IJsonRpcClient jsonRpcClient,
+            ILogManager logManager)
+        {
+            _wrappedMemDbFactory = wrappedMemDbFactory;
+            _wrappedRocksDbFactory = wrappedRocksDbFactory;
+            _jsonSerializer = jsonSerializer;
+            _jsonRpcClient = jsonRpcClient;
+            _logManager = logManager;
+        }
+
 
         public IDb CreateDb(RocksDbSettings rocksDbSettings)
         {
             var rocksDb = _wrappedRocksDbFactory.CreateDb(rocksDbSettings);
-            return new ReadOnlyDb(new RpcDb(rocksDb.Name, _jsonSerializer, _jsonRpcClient, _logManager, rocksDb), true);
+            return WrapWithRpc(rocksDb);
+        }
+
+        public IDb CreateDb(string dbName)
+        {
+            var memDb = _wrappedMemDbFactory.CreateDb(dbName);
+            return WrapWithRpc(memDb);
         }
 
         public ISnapshotableDb CreateSnapshotableDb(RocksDbSettings rocksDbSettings)
         {
             return new StateDb(CreateDb(rocksDbSettings));
+        }
+
+        private IDb WrapWithRpc(IDb db)
+        {
+            return new ReadOnlyDb(new RpcDb(db.Name, _jsonSerializer, _jsonRpcClient, _logManager, db), true);
         }
     }
 }

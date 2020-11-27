@@ -43,7 +43,7 @@ namespace Nethermind.Db.Rpc
             HeadersDb = new ReadOnlyDb(new RpcDb(DbNames.Headers, serializer, client, logManager, recordDbProvider?.HeadersDb), true);
             BlockInfosDb = new ReadOnlyDb(new RpcDb(DbNames.BlockInfos, serializer, client, logManager, recordDbProvider?.BlockInfosDb), true);
             PendingTxsDb = new ReadOnlyDb(new RpcDb(DbNames.PendingTxs, serializer, client, logManager, recordDbProvider?.ReceiptsDb), true);
-            BloomDb = new ReadOnlyDb(new RpcDb(DbNames.EthRequests, serializer, client, logManager, recordDbProvider?.BloomDb), true);
+            BloomDb = new ReadOnlyDb(new RpcDb(DbNames.Bloom, serializer, client, logManager, recordDbProvider?.BloomDb), true);
         }
         
         public ISnapshotableDb StateDb { get; }
