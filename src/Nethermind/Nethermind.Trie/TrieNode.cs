@@ -738,8 +738,9 @@ namespace Nethermind.Trie
         #endregion
 
         // TODO: visitor?
-        public void PrunePersistedRecursively(ITrieNodeResolver cache)
+        public void PrunePersistedRecursively(ITrieNodeResolver cache, int maxLevelsDeep)
         {
+            maxLevelsDeep--;
             if (!IsLeaf)
             {
                 if (_data != null)
@@ -754,9 +755,9 @@ namespace Nethermind.Trie
                                 Pruning.Metrics.DeepPrunedPersistedNodesCount++;
                                 UnresolveChild(i);
                             }
-                            else
+                            else if(maxLevelsDeep != 0)
                             {
-                                child.PrunePersistedRecursively(cache);
+                                child.PrunePersistedRecursively(cache, maxLevelsDeep);
                             }
                         }
                     }

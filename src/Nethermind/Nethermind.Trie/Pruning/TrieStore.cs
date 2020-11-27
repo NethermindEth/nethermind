@@ -51,7 +51,7 @@ namespace Nethermind.Trie.Pruning
             _pruningStrategy = pruningStrategy ?? throw new ArgumentNullException(nameof(pruningStrategy));
             _persistenceStrategy = persistenceStrategy ?? throw new ArgumentNullException(nameof(persistenceStrategy));
             
-            _pruneNodeAction = n => n.PrunePersistedRecursively(this);
+            _pruneNodeAction = n => n.PrunePersistedRecursively(this, 3);
         }
 
         public long LastPersistedBlockNumber
@@ -352,7 +352,12 @@ namespace Nethermind.Trie.Pruning
             
             Stopwatch stopwatch = Stopwatch.StartNew();
             // long? before = CurrentPackage?.Root?.GetMemorySize(true);
-            CurrentPackage?.Root?.PrunePersistedRecursively(this);
+            foreach (BlockCommitSet blockCommitSet in _commitSetQueue)
+            {
+                blockCommitSet.Root?.PrunePersistedRecursively(this, 3);    
+            }
+            
+            CurrentPackage?.Root?.PrunePersistedRecursively(this, 4);
             // _persistedNodesCache.ForEach(_pruneNodeAction);
 
             stopwatch.Stop();
