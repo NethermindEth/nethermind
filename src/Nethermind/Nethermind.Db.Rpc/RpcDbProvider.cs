@@ -36,7 +36,7 @@ namespace Nethermind.Db.Rpc
             PendingTxsDb = new ReadOnlyDb(new RpcDb(DbNames.PendingTxs, serializer, client, logManager, recordDbProvider?.ReceiptsDb), true);
             ConfigsDb = new ReadOnlyDb(new RpcDb(DbNames.Configs, serializer, client, logManager, recordDbProvider?.ConfigsDb), true);
             EthRequestsDb = new ReadOnlyDb(new RpcDb(DbNames.EthRequests, serializer, client, logManager, recordDbProvider?.EthRequestsDb), true);
-            BloomDb = new ReadOnlyDb(new RpcDb(DbNames.EthRequests, serializer, client, logManager, recordDbProvider?.BloomDb), true);
+            BloomDb = new ReadOnlyDb(new RpcDb(DbNames.Bloom, serializer, client, logManager, recordDbProvider?.BloomDb), true);
             BaselineTreeDb = new ReadOnlyDb(new RpcDb(DbNames.BaselineTree, serializer, client, logManager, recordDbProvider?.BaselineTreeDb), true);
             BaselineTreeMetadataDb = new ReadOnlyDb(new RpcDb(DbNames.BaselineTreeMetadata, serializer, client, logManager, recordDbProvider?.BaselineTreeMetadataDb), true);
         }
