@@ -16,105 +16,60 @@
 
 using System;
 using System.Collections.Generic;
-using System.Threading.Tasks;
-using Nethermind.Db.Rocks.Config;
-using Nethermind.Logging;
 
 namespace Nethermind.Db.Rocks
 {
     public class RocksDbProvider : IDbProvider
     {
-        private readonly ILogManager _logManager;
-        private readonly string _basePath;
-        private readonly IDbConfig _defaultDbConfig;
-        private readonly List<IDb> _otherDbs = new List<IDb>();
+        private readonly Dictionary<string, IDb> _registeredDbs = new Dictionary<string, IDb>();
 
-        public RocksDbProvider(ILogManager logManager, IDbConfig dbConfig, string basePath)
+        public RocksDbProvider(DbModeHint dbMode)
         {
-            _logManager = logManager;
-            _basePath = basePath;
-            _defaultDbConfig = dbConfig;
+            DbMode = dbMode;
         }
 
-        public async Task Init(bool useReceiptsDb)
-        {
-            HashSet<Task> allInitializers = new HashSet<Task>();
-            allInitializers.Add(Task.Run(() => BlocksDb = new BlocksRocksDb(_basePath, _defaultDbConfig, _logManager)));
-            allInitializers.Add(Task.Run(() => HeadersDb = new HeadersRocksDb(_basePath, _defaultDbConfig, _logManager)));
-            allInitializers.Add(Task.Run(() => BlockInfosDb = new BlockInfosRocksDb(_basePath, _defaultDbConfig, _logManager)));
-            allInitializers.Add(Task.Run(() => StateDb = new StateDb(new StateRocksDb(_basePath, _defaultDbConfig, _logManager))));
-            allInitializers.Add(Task.Run(() => CodeDb = new StateDb(new CodeRocksDb(_basePath, _defaultDbConfig, _logManager))));
-            allInitializers.Add(Task.Run(() => PendingTxsDb = new PendingTxsRocksDb(_basePath, _defaultDbConfig, _logManager)));
-            allInitializers.Add(Task.Run(() => BloomDb = new BloomRocksDb(_basePath, _defaultDbConfig, _logManager)));
-            allInitializers.Add(Task.Run(() => ChtDb = new CanonicalHashRocksDb(_basePath, _defaultDbConfig, _logManager)));
-
-            allInitializers.Add(Task.Run(() =>
-            {
-                if (useReceiptsDb)
-                {
-                    ReceiptsDb = new ReceiptsRocksDb(_basePath, _defaultDbConfig, _logManager);
-                }
-                else
-                {
-                    ReceiptsDb = new ReadOnlyColumnsDb<ReceiptsColumns>(new MemColumnsDb<ReceiptsColumns>(), false);
-                }
-            }));
-
-            await Task.WhenAll(allInitializers);
-        }
-
-        public ISnapshotableDb StateDb { get; private set; }
-        public ISnapshotableDb CodeDb { get; private set; }
-        public IColumnsDb<ReceiptsColumns> ReceiptsDb { get; private set; }
-        public IDb BlocksDb { get; private set; }
-        public IDb HeadersDb { get; private set; }
-        public IDb BlockInfosDb { get; private set; }
-        public IDb PendingTxsDb { get; private set; }
-        public IDb ConfigsDb { get; private set; }
-        public IDb EthRequestsDb { get; private set; }
-        public IDb BloomDb { get; private set; }
-        public IDb ChtDb { get; private set; }
+        public ISnapshotableDb StateDb => GetDb<ISnapshotableDb>(DbNames.State);
+        public ISnapshotableDb CodeDb => GetDb<ISnapshotableDb>(DbNames.Code);
+        public IColumnsDb<ReceiptsColumns> ReceiptsDb => GetDb<IColumnsDb<ReceiptsColumns>>(DbNames.Receipts);
+        public IDb BlocksDb => GetDb<IDb>(DbNames.Blocks);
+        public IDb HeadersDb => GetDb<IDb>(DbNames.Headers);
+        public IDb BlockInfosDb => GetDb<IDb>(DbNames.BlockInfos);
+        public IDb PendingTxsDb => GetDb<IDb>(DbNames.PendingTxs);
+        public IDb BloomDb => GetDb<IDb>(DbNames.Bloom);
+        public IDb ChtDb => GetDb<IDb>(DbNames.CHT);
         public IDb BeamStateDb { get; } = new MemDb();
 
-        public IDb BaselineTreeDb { get; private set; }
-
-        public IDb BaselineTreeMetadataDb { get; private set; }
-
-        public DbModeHint DbMode => throw new NotImplementedException();
+        public DbModeHint DbMode { get; }
 
         public void Dispose()
         {
-            StateDb?.Dispose();
-            CodeDb?.Dispose();
-            ReceiptsDb?.Dispose();
-            BlocksDb?.Dispose();
-            HeadersDb?.Dispose();
-            BlockInfosDb?.Dispose();
-            PendingTxsDb?.Dispose();
-            ConfigsDb?.Dispose();
-            EthRequestsDb?.Dispose();
-            BloomDb?.Dispose();
-            ChtDb?.Dispose();
-            BaselineTreeDb?.Dispose();
-            BaselineTreeMetadataDb?.Dispose();
-
-            if (_otherDbs != null)
+            if (_registeredDbs != null)
             {
-                foreach (var otherDb in _otherDbs)
+                foreach (var registeredDb in _registeredDbs)
                 {
-                    otherDb?.Dispose();
+                    registeredDb.Value?.Dispose();
                 }
             }
         }
 
         public T GetDb<T>(string dbName) where T : IDb
         {
-            throw new NotImplementedException();
+            if (!_registeredDbs.ContainsKey(dbName))
+            {
+                throw new ArgumentException($"{dbName} wasn't registed.");
+            }
+
+            return (T)_registeredDbs[dbName];
         }
 
         public void RegisterDb<T>(string dbName, T db) where T : IDb
         {
-            throw new NotImplementedException();
+            if (_registeredDbs.ContainsKey(dbName))
+            {
+                throw new ArgumentException($"{dbName} has already registered.");
+            }
+
+            _registeredDbs.Add(dbName, db);
         }
     }
 }

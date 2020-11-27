@@ -23,7 +23,7 @@
     },
     "Goerli": {
       "commandName": "Project",
-      "commandLineArgs": "--config configs\\goerli.cfg --baseDbPath C:\\goerli_mem_fast --JsonRpc.Enabled true"
+      "commandLineArgs": "--config goerli --JsonRpc.Enabled true --JsonRpc.Port 8512 --JsonRpc.RpcRecorderEnabled true --Network.DiscoveryPort 30112 --Network.P2PPort 30112 --baseDbPath C:\\Goerli_db_tests --Baseline.Enabled true"
     },
     "Sokol": {
       "commandName": "Project",
