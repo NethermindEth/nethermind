@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -67,12 +67,6 @@ namespace Nethermind.Db
         
         [Description("Number of Pending Tx DB writes.")]
         public static long PendingTxsDbWrites { get; set; }
-        
-        [Description("Number of Eth Request (faucet) DB reads.")]
-        public static long EthRequestsDbReads { get; set; }
-        
-        [Description("Number of Eth Request (faucet) DB writes.")]
-        public static long EthRequestsDbWrites { get; set; }
         
         [Description("Number of other DB reads.")]
         public static long OtherDbReads { get; set; }

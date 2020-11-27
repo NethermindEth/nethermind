@@ -67,6 +67,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Db
                     });
                 else
                     ConfigsDb = _memDbFactory.CreateDb(ConfigsDbName);
+                _dbProvider.RegisterDb(ConfigsDbName, ConfigsDb);
             }));
             allInitializers.Add(Task.Run(() =>
             {
@@ -80,6 +81,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Db
                     });
                 else
                     EthRequestsDb = _memDbFactory.CreateDb(EthRequestsDbName);
+                _dbProvider.RegisterDb(EthRequestsDbName, EthRequestsDb);
             }));
             await Task.WhenAll(allInitializers);
         }

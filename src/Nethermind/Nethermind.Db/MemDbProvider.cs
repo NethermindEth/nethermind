@@ -66,20 +66,6 @@ namespace Nethermind.Db
             throw new NotImplementedException();
         }
 
-        public IDb RegisterDb(string dbPath, string name, IPlugableDbConfig config)
-        {
-            var newDb = new MemDb();
-            _otherDbs.Add(newDb);
-            return newDb;
-        }
-
-        public IDb RegisterDb(Func<string, IPlugableDbConfig, IDb> dbToRegister)
-        {
-            var newDb = new MemDb();
-            _otherDbs.Add(newDb);
-            return newDb;
-        }
-
         public void RegisterDb<T>(string dbName, T db) where T : IDb
         {
             throw new NotImplementedException();

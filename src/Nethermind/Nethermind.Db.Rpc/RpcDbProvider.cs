@@ -88,22 +88,6 @@ namespace Nethermind.Db.Rpc
             throw new NotImplementedException();
         }
 
-        public IDb RegisterDb(string dbPath, string name, IPlugableDbConfig config)
-        {
-            var newDb = _recordDbProvider.RegisterDb(dbPath, name, config);
-            var newRpcDb = new ReadOnlyDb(new RpcDb(name, _serializer, _client, _logManager, newDb), true);
-            _otherDbs.Add(newRpcDb);
-            return newRpcDb;
-        }
-
-        public IDb RegisterDb(Func<string, IPlugableDbConfig, IDb> dbToRegister)
-        {
-            var newDb = _recordDbProvider.RegisterDb(dbToRegister);
-            var newRpcDb = new ReadOnlyDb(new RpcDb(newDb.Name, _serializer, _client, _logManager, newDb), true);
-            _otherDbs.Add(newRpcDb);
-            return newRpcDb;
-        }
-
         public void RegisterDb<T>(string dbName, T db) where T : IDb
         {
             throw new NotImplementedException();

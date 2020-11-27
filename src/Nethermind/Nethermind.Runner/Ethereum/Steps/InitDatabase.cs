@@ -86,15 +86,15 @@ namespace Nethermind.Runner.Ethereum.Steps
                 case DiagnosticMode.ReadOnlyDb:
                     var rocksDbProvider = await GetRocksDbProvider(dbConfig, Path.Combine(initConfig.BaseDbPath, "debug"), storeReceipts);
                     _api.DbProvider = new ReadOnlyDbProvider(rocksDbProvider, storeReceipts); // ToDo storeReceipts as createInMemoryWriteStore - bug?
-                    _api.RocksDbFactory = new RocksDbFactory();
+                    _api.RocksDbFactory = new RocksDbFactory(dbConfig, _api.LogManager, Path.Combine(initConfig.BaseDbPath, "debug"));
                     break;
                 case DiagnosticMode.MemDb:
                     _api.DbProvider = new MemDbProvider();
-                    _api.RocksDbFactory = new RocksDbFactory();
+                    _api.RocksDbFactory = new RocksDbFactory(dbConfig, _api.LogManager, Path.Combine(initConfig.BaseDbPath, "debug"));
                     break;
                 default:
                     _api.DbProvider = await GetRocksDbProvider(dbConfig, initConfig.BaseDbPath, storeReceipts);
-                    _api.RocksDbFactory = new RocksDbFactory();
+                    _api.RocksDbFactory = new RocksDbFactory(dbConfig, _api.LogManager, initConfig.BaseDbPath);
                     break;
             }
         }

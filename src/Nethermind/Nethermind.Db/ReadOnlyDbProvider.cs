@@ -49,11 +49,6 @@ namespace Nethermind.Db
             NestedPendingTxsDb = new ReadOnlyDb(wrappedProvider.PendingTxsDb, createInMemoryWriteStore);
             NestedBloomDb = new ReadOnlyDb(wrappedProvider.BloomDb, createInMemoryWriteStore);
             NestedChtDb = new ReadOnlyDb(wrappedProvider.ChtDb, createInMemoryWriteStore);
-
-            foreach (var otherDb in wrappedProvider.OtherDbs)
-            {
-                _otherDbs.Add(new ReadOnlyDb(otherDb, createInMemoryWriteStore));
-            }
         }
 
         public void Dispose()
@@ -101,22 +96,6 @@ namespace Nethermind.Db
             }
 
             BeamStateDb.Clear();
-        }
-
-        public IDb RegisterDb(string dbPath, string name, IPlugableDbConfig config)
-        {
-            var newDb = _wrappedProvider.RegisterDb(dbPath, name, config);
-            var newReadonlyDb = new ReadOnlyDb(newDb, _createInMemoryWriteStore);
-            _otherDbs.Add(newReadonlyDb);
-            return newReadonlyDb;
-        }
-
-        public IDb RegisterDb(Func<string, IPlugableDbConfig, IDb> dbToRegister)
-        {
-            var registeredDb = _wrappedProvider.RegisterDb(dbToRegister);
-            var newReadonlyDb = new ReadOnlyDb(registeredDb, _createInMemoryWriteStore);
-            _otherDbs.Add(newReadonlyDb);
-            return newReadonlyDb;
         }
 
         public T GetDb<T>(string dbName) where T : IDb

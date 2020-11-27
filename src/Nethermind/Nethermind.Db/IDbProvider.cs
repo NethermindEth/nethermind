@@ -52,14 +52,8 @@ namespace Nethermind.Db
         // Beam Sync (StateDB like)
         IDb BeamStateDb { get; }
 
-        IDb RegisterDb(string dbPath, string name, IPlugableDbConfig dbConfig);
-
-        IDb RegisterDb(Func<string, IPlugableDbConfig, IDb> dbToRegister);
-
         T GetDb<T>(string dbName) where T : IDb;
 
         void RegisterDb<T>(string dbName, T db) where T : IDb;
-
-        IEnumerable<IDb> OtherDbs { get; }
     }
 }

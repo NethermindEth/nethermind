@@ -109,20 +109,6 @@ namespace Nethermind.Db.Rocks
             }
         }
 
-        public IDb RegisterDb(string dbPath, string name, IPlugableDbConfig dbConfig)
-        {
-            var newDb = new SimpleRocksDb(_basePath, dbPath, name, dbConfig ?? _defaultDbConfig, _logManager);
-            _otherDbs.Add(newDb);
-            return newDb;
-        }
-
-        public IDb RegisterDb(Func<string, IPlugableDbConfig, IDb> newDb)
-        {
-            var registeredDb = newDb(_basePath, _defaultDbConfig);
-            _otherDbs.Add(registeredDb);
-            return registeredDb;
-        }
-
         public T GetDb<T>(string dbName) where T : IDb
         {
             throw new NotImplementedException();
