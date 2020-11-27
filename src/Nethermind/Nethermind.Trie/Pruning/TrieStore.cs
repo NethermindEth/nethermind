@@ -18,12 +18,13 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Linq;
 using System.Threading;
+using System.Timers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
+using Timer = System.Timers.Timer;
 
 namespace Nethermind.Trie.Pruning
 {
@@ -52,7 +53,26 @@ namespace Nethermind.Trie.Pruning
             _persistenceStrategy = persistenceStrategy ?? throw new ArgumentNullException(nameof(persistenceStrategy));
             
             _pruneNodeAction = n => n.PrunePersistedRecursively(this, 3);
+            
+            _mrPruner = new Timer(1000);
+            _mrPruner.AutoReset = false;
+            _mrPruner.Elapsed += MrPrunerOnElapsed;
+            _mrPruner.Start();
         }
+
+        private void MrPrunerOnElapsed(object sender, ElapsedEventArgs e)
+        {
+            foreach (BlockCommitSet blockCommitSet in _commitSetQueue)
+            {
+                blockCommitSet.Root?.PrunePersistedRecursively(this, int.MaxValue);
+            }
+            
+            
+            
+            _mrPruner.Enabled = true;
+        }
+
+        private Timer _mrPruner;
 
         public long LastPersistedBlockNumber
         {
@@ -348,22 +368,22 @@ namespace Nethermind.Trie.Pruning
         /// </summary>
         private void PruneOldTrees()
         {
-            // TODO: by pruning the persisted nodes as they are added or retrieved from the cache we can achieve the same result without deep search
-            
-            Stopwatch stopwatch = Stopwatch.StartNew();
-            // long? before = CurrentPackage?.Root?.GetMemorySize(true);
-            // foreach (BlockCommitSet blockCommitSet in _commitSetQueue)
-            // {
-            //     blockCommitSet.Root?.PrunePersistedRecursively(this, 3);    
-            // }
-            
-            CurrentPackage?.Root?.PrunePersistedRecursively(this, 3);
-            // _persistedNodesCache.ForEach(_pruneNodeAction);
-
-            stopwatch.Stop();
-            Metrics.DeepPruningTime = stopwatch.ElapsedMilliseconds;
-            // if (_logger.IsWarn) _logger.Warn(
-            //     $"Deep pruning in {stopwatch.ElapsedMilliseconds}ms - before {before}, after {CurrentPackage?.Root?.GetMemorySize(true)} | {Metrics.DeepPrunedPersistedNodesCount} | {MemoryUsedByDirtyCache}");
+            // // TODO: by pruning the persisted nodes as they are added or retrieved from the cache we can achieve the same result without deep search
+            //
+            // Stopwatch stopwatch = Stopwatch.StartNew();
+            // // long? before = CurrentPackage?.Root?.GetMemorySize(true);
+            // // foreach (BlockCommitSet blockCommitSet in _commitSetQueue)
+            // // {
+            // //     blockCommitSet.Root?.PrunePersistedRecursively(this, 3);    
+            // // }
+            //
+            // CurrentPackage?.Root?.PrunePersistedRecursively(this, 3);
+            // // _persistedNodesCache.ForEach(_pruneNodeAction);
+            //
+            // stopwatch.Stop();
+            // Metrics.DeepPruningTime = stopwatch.ElapsedMilliseconds;
+            // // if (_logger.IsWarn) _logger.Warn(
+            // //     $"Deep pruning in {stopwatch.ElapsedMilliseconds}ms - before {before}, after {CurrentPackage?.Root?.GetMemorySize(true)} | {Metrics.DeepPrunedPersistedNodesCount} | {MemoryUsedByDirtyCache}");
         }
 
         /// <summary>
@@ -431,7 +451,7 @@ namespace Nethermind.Trie.Pruning
                     throw new InvalidOperationException($"{trieNode} has a null key");
                 }
 
-                _dirtyNodesCache.Remove(trieNode.Keccak!);
+                _dirtyNodesCache.Remove(trieNode.Keccak!, out _);
             }
 
             MemoryUsedByDirtyCache = newMemory;
@@ -481,7 +501,7 @@ namespace Nethermind.Trie.Pruning
 
         private readonly IKeyValueStoreWithBatching _keyValueStore;
 
-        private Dictionary<Keccak, TrieNode> _dirtyNodesCache = new Dictionary<Keccak, TrieNode>();
+        private ConcurrentDictionary<Keccak, TrieNode> _dirtyNodesCache = new ConcurrentDictionary<Keccak, TrieNode>();
         
         // private LruCache<Keccak, TrieNode> _persistedNodesCache = new LruCache<Keccak, TrieNode>(
             // MemoryAllowance.TrieNodeCacheCount, MemoryAllowance.TrieNodeCacheCount, "persisted nodes");
