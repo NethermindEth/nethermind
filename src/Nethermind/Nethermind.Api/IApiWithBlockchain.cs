@@ -50,6 +50,7 @@ namespace Nethermind.Api
         ISealer? Sealer { get; set; }
         ISealValidator? SealValidator { get; set; }
         IStateProvider? StateProvider { get; set; }
+        IReadOnlyStateProvider? ChainHeadStateProvider { get; set; }
         IStateReader? StateReader { get; set; }
         IStorageProvider? StorageProvider { get; set; }
         ITransactionProcessor? TransactionProcessor { get; set; }
