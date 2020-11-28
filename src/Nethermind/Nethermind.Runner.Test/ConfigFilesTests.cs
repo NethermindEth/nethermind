@@ -375,7 +375,8 @@ namespace Nethermind.Runner.Test
         }
 
         [TestCase("^mainnet ^validators ^beam ^archive", true, true)]
-        [TestCase("mainnet ^beam", false, false)]
+        [TestCase("mainnet ^beam ^fast", false, false)]
+        [TestCase("mainnet fast", true, true)]
         [TestCase("beam", false, false, false)]
         [TestCase("validators", true, false)]
         public void Fast_sync_settings_as_expected(string configWildcard, bool downloadBodies, bool downloadsReceipts, bool downloadHeaders = true)
@@ -406,11 +407,12 @@ namespace Nethermind.Runner.Test
             Test<IBloomConfig, bool>(configWildcard, c => c.MigrationStatistics, false);
         }
         
-        [TestCase("*")]
-        public void Barriers_are_zero_by_default(string configWildcard)
+        [TestCase("^mainnet", 0)]
+        [TestCase("mainnet fast", 11052984)]
+        public void Barriers_defaults_are_correct(string configWildcard, long barrier)
         {
-            Test<ISyncConfig, long>(configWildcard, c => c.AncientBodiesBarrier, 0L);
-            Test<ISyncConfig, long>(configWildcard, c => c.AncientReceiptsBarrier, 0L);
+            Test<ISyncConfig, long>(configWildcard, c => c.AncientBodiesBarrier, barrier);
+            Test<ISyncConfig, long>(configWildcard, c => c.AncientReceiptsBarrier, barrier);
         }
 
         [TestCase("^spaceneth", "nethermind_db")]
