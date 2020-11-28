@@ -362,17 +362,8 @@ namespace Nethermind.Trie.Pruning
         /// <exception cref="InvalidOperationException"></exception>
         private void PruneCache()
         {
-            long actualMem = 0;
-            foreach (KeyValuePair<Keccak, TrieNode> keyValuePair in _dirtyNodesCache)
-            {
-                actualMem += keyValuePair.Value.GetMemorySize(false);
-            }
-
-            _logger.Warn($"Actual memory {actualMem} vs mem {MemoryUsedByDirtyCache}");
-
-            if (_logger.IsWarn)
-                _logger.Warn(
-                    $"Pruning nodes {MemoryUsedByDirtyCache / 1.MB()}MB , last persisted block: {LastPersistedBlockNumber} current: {NewestKeptBlockNumber}.");
+            if (_logger.IsWarn) _logger.Warn(
+                $"Pruning nodes {MemoryUsedByDirtyCache / 1.MB()}MB , last persisted block: {LastPersistedBlockNumber} current: {NewestKeptBlockNumber}.");
             Stopwatch stopwatch = Stopwatch.StartNew();
             List<TrieNode> toRemove = new List<TrieNode>(); // TODO: resettable
 
