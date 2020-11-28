@@ -45,6 +45,7 @@ namespace Nethermind.Core.Caching
             public TKey Key;
         }
 
+        [MethodImpl(MethodImplOptions.Synchronized)]
         public void Clear()
         {
             _cacheMap?.Clear();
@@ -52,6 +53,7 @@ namespace Nethermind.Core.Caching
             _head = Node.Null;
         }
 
+        [MethodImpl(MethodImplOptions.Synchronized)]
         public LruCache(int maxCapacity, int startCapacity, string name)
         {
             _maxCapacity = maxCapacity;
