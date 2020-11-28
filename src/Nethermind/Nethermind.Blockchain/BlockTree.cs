@@ -324,7 +324,7 @@ namespace Nethermind.Blockchain
                 bestSuggestedHeaderNumber < bestSuggestedBodyNumber)
             {
                 if (_logger.IsWarn) _logger.Warn(
-                    $"Detected corrupted block tree data ({bestSuggestedHeaderNumber} < {bestSuggestedBodyNumber)} (possibly due to an unexpected shutdown). Attempting to fix by moving head backwards. This may fail and you may need to resync the node.");
+                    $"Detected corrupted block tree data ({bestSuggestedHeaderNumber} < {bestSuggestedBodyNumber}) (possibly due to an unexpected shutdown). Attempting to fix by moving head backwards. This may fail and you may need to resync the node.");
                 if (bestSuggestedHeaderNumber < bestSuggestedBodyNumber)
                 {
                     bestSuggestedBodyNumber = bestSuggestedHeaderNumber;
