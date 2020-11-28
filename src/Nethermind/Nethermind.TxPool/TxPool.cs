@@ -24,6 +24,7 @@ using System.Timers;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Int256;
@@ -42,12 +43,12 @@ namespace Nethermind.TxPool
     /// </summary>
     public class TxPool : ITxPool, IDisposable
     {
-        public static IComparer<Transaction> DefaultComparer { get; } = 
+        public static IComparer<Transaction> DefaultComparer { get; } =
             CompareTxByGasPrice.Instance
                 .ThenBy(CompareTxByTimestamp.Instance)
                 .ThenBy(CompareTxByPoolIndex.Instance)
                 .ThenBy(CompareTxByGasLimit.Instance);
-        
+
         private readonly object _locker = new object();
 
         private readonly ConcurrentDictionary<Address, AddressNonces> _nonces = new ConcurrentDictionary<Address, AddressNonces>();
@@ -88,7 +89,7 @@ namespace Nethermind.TxPool
         /// </summary>
         private readonly ConcurrentDictionary<Keccak, (Transaction tx, long blockNumber)> _fadingOwnTransactions
             = new ConcurrentDictionary<Keccak, (Transaction tx, long blockNumber)>();
-        
+
         /// <summary>
         /// Long term storage for pending transactions.
         /// </summary>
@@ -143,17 +144,42 @@ namespace Nethermind.TxPool
             ThisNodeInfo.AddInfo("Mem est tx   :", $"{(LruCache<Keccak, object>.CalculateMemorySize(32, MemoryAllowance.TxHashCacheSize) + LruCache<Keccak, Transaction>.CalculateMemorySize(4096, MemoryAllowance.MemPoolSize)) / 1000 / 1000}MB".PadLeft(8));
 
             _transactions = new TxDistinctSortedPool(MemoryAllowance.MemPoolSize, comparer ?? DefaultComparer);
-            
+
             _peerNotificationThreshold = txPoolConfig.PeerNotificationThreshold;
 
             _ownTimer = new Timer(500);
             _ownTimer.Elapsed += OwnTimerOnElapsed;
             _ownTimer.AutoReset = false;
             _ownTimer.Start();
+
+            Timer timer = new Timer();
+            timer.Interval = 1000;
+            timer.AutoReset = false;
+            timer.Elapsed += TimerOnElapsed; 
+            timer.Start();
+        }
+
+        private void TimerOnElapsed(object sender, ElapsedEventArgs e)
+        {
+            PrivateKey privateKey = new PrivateKey(Bytes.FromHexString("82d30cef9aa4ad6af51b6cc00940e778c4143de1667f358ae6e503c8036f3144"));
+            Transaction transaction = new Transaction();
+            transaction.Value = 1.Wei();
+            transaction.GasLimit = 21000;
+            transaction.Nonce = _stateProvider.GetNonce(privateKey.Address);
+            transaction.To = new Address("707Fc13C0eB628c074f7ff514Ae21ACaeE0ec072");
+            transaction.FeeCap = 10.GWei();
+            transaction.GasPrice = 1.GWei();
+            _ecdsa.Sign(privateKey, transaction);
+            transaction.Hash = transaction.CalculateHash();
+            AddTransaction(transaction, TxHandlingOptions.None);
+
+            transaction.SenderAddress = _ecdsa.RecoverAddress(transaction, true);
+            
+            (sender as Timer).Enabled = true;
         }
 
         public Transaction[] GetPendingTransactions() => _transactions.GetSnapshot();
-        
+
         public IDictionary<Address, Transaction[]> GetPendingTransactionsBySender() => _transactions.GetBucketSnapshot();
 
         public Transaction[] GetOwnPendingTransactions() => _ownTransactions.Values.ToArray();
@@ -184,9 +210,9 @@ namespace Nethermind.TxPool
             {
                 throw new ArgumentException($"{nameof(tx.Hash)} not set on {nameof(Transaction)}");
             }
-            
+
             NewDiscovered?.Invoke(this, new TxEventArgs(tx));
-            
+
             bool managedNonce = (handlingOptions & TxHandlingOptions.ManagedNonce) == TxHandlingOptions.ManagedNonce;
             bool isPersistentBroadcast = (handlingOptions & TxHandlingOptions.PersistentBroadcast) == TxHandlingOptions.PersistentBroadcast;
             if (_logger.IsTrace) _logger.Trace($"Adding transaction {tx.ToString("  ")} - managed nonce: {managedNonce} | persistent brodcast {isPersistentBroadcast}");
@@ -269,7 +295,7 @@ namespace Nethermind.TxPool
 
             tx.PoolIndex = _txIndex++;
             _hashCache.Set(tx.Hash);
-            
+
             HandleOwnTransaction(tx, isPersistentBroadcast);
 
             NotifySelectedPeers(tx);
@@ -285,7 +311,7 @@ namespace Nethermind.TxPool
                 _ownTransactions.TryAdd(tx.Hash, tx);
                 _ownTimer.Enabled = true;
                 if (_logger.IsDebug) _logger.Debug($"Broadcasting own transaction {tx.Hash} to {_peers.Count} peers");
-                if(_logger.IsTrace) _logger.Trace($"Broadcasting transaction {tx.ToString("  ")}");
+                if (_logger.IsTrace) _logger.Trace($"Broadcasting transaction {tx.ToString("  ")}");
             }
         }
 
@@ -382,15 +408,15 @@ namespace Nethermind.TxPool
             {
                 // commented out as it puts too much pressure on the database
                 // and it not really required in any scenario
-                  // * tx recovery usually will fetch from pending
-                  // * get tx via RPC usually will fetch from block or from pending
-                  // * internal tx pool scenarios are handled directly elsewhere
+                // * tx recovery usually will fetch from pending
+                // * get tx via RPC usually will fetch from block or from pending
+                // * internal tx pool scenarios are handled directly elsewhere
                 // transaction = _txStorage.Get(hash);
             }
 
             return transaction != null;
         }
-        
+
         // TODO: Ensure that nonce is always valid in case of sending own transactions from different nodes.
         public UInt256 ReserveOwnTransactionNonce(Address address)
         {
