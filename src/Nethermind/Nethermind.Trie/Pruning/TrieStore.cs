@@ -420,6 +420,7 @@ namespace Nethermind.Trie.Pruning
                 }
                 else
                 {
+                    node.PrunePersistedRecursively(this, 1);
                     newMemory += node.GetMemorySize(false);
                 }
             }
