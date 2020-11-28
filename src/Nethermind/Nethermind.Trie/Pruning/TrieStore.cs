@@ -36,9 +36,7 @@ namespace Nethermind.Trie.Pruning
         private int _isFirst;
 
         public TrieStore(IKeyValueStoreWithBatching? keyValueStore, ILogManager? logManager)
-            : this(keyValueStore, No.Pruning, Full.Archive, logManager)
-        {
-        }
+            : this(keyValueStore, No.Pruning, Full.Archive, logManager) { }
 
         public TrieStore(
             IKeyValueStoreWithBatching? keyValueStore,
@@ -50,8 +48,6 @@ namespace Nethermind.Trie.Pruning
             _keyValueStore = keyValueStore ?? throw new ArgumentNullException(nameof(keyValueStore));
             _pruningStrategy = pruningStrategy ?? throw new ArgumentNullException(nameof(pruningStrategy));
             _persistenceStrategy = persistenceStrategy ?? throw new ArgumentNullException(nameof(persistenceStrategy));
-            
-            _pruneNodeAction = n => n.PrunePersistedRecursively(this, 3);
         }
 
         public long LastPersistedBlockNumber
@@ -77,7 +73,7 @@ namespace Nethermind.Trie.Pruning
                 _memoryUsedByDirtyCache = value;
             }
         }
-        
+
         // public long MemoryUsedByPersistedCache
         // {
         //     get => _memoryUsedByPersistedCache;
@@ -178,12 +174,10 @@ namespace Nethermind.Trie.Pruning
                 if (set != null)
                 {
                     set.Root = root;
-                    if (_logger.IsTrace)
-                        _logger.Trace(
-                            $"Current root (block {blockNumber}): {set.Root}, block {set.BlockNumber}");
-                    if (_logger.IsTrace)
-                        _logger.Trace(
-                            $"Incrementing refs from block {blockNumber} root {set.Root?.ToString() ?? "NULL"} ");
+                    if (_logger.IsTrace) _logger.Trace(
+                        $"Current root (block {blockNumber}): {set.Root}, block {set.BlockNumber}");
+                    if (_logger.IsTrace) _logger.Trace(
+                        $"Incrementing refs from block {blockNumber} root {set.Root?.ToString() ?? "NULL"} ");
 
                     set.Seal();
                 }
@@ -195,7 +189,7 @@ namespace Nethermind.Trie.Pruning
                 }
                 else
                 {
-                    PruneOldTrees();
+                    PruneCurrentSet();
                 }
 
                 CurrentPackage = null;
@@ -238,18 +232,19 @@ namespace Nethermind.Trie.Pruning
         }
 
         public bool IsNodeCached(Keccak hash) => _dirtyNodesCache.ContainsKey(hash);
-                                                 // || _persistedNodesCache.Contains(hash);
+        // || _persistedNodesCache.Contains(hash);
 
         public TrieNode FindCachedOrUnknown(Keccak hash, bool addToCacheWhenNotFound = true)
         {
             bool isMissing = true;
             TrieNode trieNode = null;
             // isMissing = !_persistedNodesCache.TryGet(hash, out trieNode);
+            // ReSharper disable once ConditionIsAlwaysTrueOrFalse
             if (isMissing)
             {
-                isMissing = !_dirtyNodesCache.TryGetValue(hash, out trieNode);    
+                isMissing = !_dirtyNodesCache.TryGetValue(hash, out trieNode);
             }
-            
+
             if (isMissing)
             {
                 if (_logger.IsTrace) _logger.Trace($"Creating new node {trieNode}");
@@ -334,36 +329,30 @@ namespace Nethermind.Trie.Pruning
                 }
 
                 _commitSetQueue.TryPeek(out BlockCommitSet? uselessFrontSet);
-                if (_logger.IsWarn) _logger.Warn(
-                    $"Found no candidate for elevated pruning (sets: {_commitSetQueue.Count}, earliest: {uselessFrontSet?.BlockNumber}, newest kept: {NewestKeptBlockNumber}, reorg depth {Reorganization.MaxDepth})");
+                if (_logger.IsWarn)
+                    _logger.Warn(
+                        $"Found no candidate for elevated pruning (sets: {_commitSetQueue.Count}, earliest: {uselessFrontSet?.BlockNumber}, newest kept: {NewestKeptBlockNumber}, reorg depth {Reorganization.MaxDepth})");
             }
 
             return false;
         }
 
-        private Action<TrieNode> _pruneNodeAction;
-        
         /// <summary>
-        /// Prunes persisted branches of the previously committed roots
+        /// Prunes persisted branches of the current commit set root.
         /// </summary>
-        private void PruneOldTrees()
+        private void PruneCurrentSet()
         {
-            // TODO: by pruning the persisted nodes as they are added or retrieved from the cache we can achieve the same result without deep search
-            
             Stopwatch stopwatch = Stopwatch.StartNew();
-            // long? before = CurrentPackage?.Root?.GetMemorySize(true);
-            // foreach (BlockCommitSet blockCommitSet in _commitSetQueue)
-            // {
-            //     blockCommitSet.Root?.PrunePersistedRecursively(this, 3);    
-            // }
             
-            CurrentPackage?.Root?.PrunePersistedRecursively(this, 2);
-            // _persistedNodesCache.ForEach(_pruneNodeAction);
-
+            // We assume that the most recent package very likely resolved many persisted nodes and only replaced
+            // some top level branches. Any of these persisted nodes are held in cache now so we just prune them here
+            // to avoid the references still being held after we prune the cache.
+            // We prune them here but just up to two levels deep which makes it a very lightweight operation.
+            // Note that currently the TrieNode ResolveChild un-resolves any persisted child immediately which
+            // may make this call unnecessary.
+            CurrentPackage?.Root?.PrunePersistedRecursively(2);
             stopwatch.Stop();
             Metrics.DeepPruningTime = stopwatch.ElapsedMilliseconds;
-            // if (_logger.IsWarn) _logger.Warn(
-            //     $"Deep pruning in {stopwatch.ElapsedMilliseconds}ms - before {before}, after {CurrentPackage?.Root?.GetMemorySize(true)} | {Metrics.DeepPrunedPersistedNodesCount} | {MemoryUsedByDirtyCache}");
         }
 
         /// <summary>
@@ -374,15 +363,16 @@ namespace Nethermind.Trie.Pruning
         private void PruneCache()
         {
             long actualMem = 0;
-            foreach (KeyValuePair<Keccak,TrieNode> keyValuePair in _dirtyNodesCache)
+            foreach (KeyValuePair<Keccak, TrieNode> keyValuePair in _dirtyNodesCache)
             {
                 actualMem += keyValuePair.Value.GetMemorySize(false);
             }
-            
+
             _logger.Warn($"Actual memory {actualMem} vs mem {MemoryUsedByDirtyCache}");
-            
-            if (_logger.IsWarn) _logger.Warn(
-                $"Pruning nodes {MemoryUsedByDirtyCache / 1.MB()}MB , last persisted block: {LastPersistedBlockNumber} current: {NewestKeptBlockNumber}.");
+
+            if (_logger.IsWarn)
+                _logger.Warn(
+                    $"Pruning nodes {MemoryUsedByDirtyCache / 1.MB()}MB , last persisted block: {LastPersistedBlockNumber} current: {NewestKeptBlockNumber}.");
             Stopwatch stopwatch = Stopwatch.StartNew();
             List<TrieNode> toRemove = new List<TrieNode>(); // TODO: resettable
 
@@ -401,8 +391,13 @@ namespace Nethermind.Trie.Pruning
                             throw new InvalidOperationException($"Persisted {node} {key} != {node.Keccak}");
                         }
                     }
-                    
-                    // different approach now
+
+                    // I still keep commented out code with persisted nodes cache.
+                    // It is an idea where the persisted nodes are stored in an LRU cache while
+                    // transient nodes are stored in a normal cache.
+                    // When tested it lead to long persisted nodes reference chains but it was before the
+                    // immediate un-resolve calls were added in the TrieNode class after calling ResolveChild.
+                    // I suggest coming back to this solution, should time allow.
                     // _persistedNodesCache.Set(key, node);
 
                     Metrics.PrunedPersistedNodesCount++;
@@ -420,7 +415,7 @@ namespace Nethermind.Trie.Pruning
                 }
                 else
                 {
-                    node.PrunePersistedRecursively(this, 1);
+                    node.PrunePersistedRecursively(1);
                     newMemory += node.GetMemorySize(false);
                 }
             }
@@ -440,10 +435,14 @@ namespace Nethermind.Trie.Pruning
 
             stopwatch.Stop();
             Metrics.PruningTime = stopwatch.ElapsedMilliseconds;
-            if (_logger.IsWarn) _logger.Warn(
-                $"Finished pruning nodes in {stopwatch.ElapsedMilliseconds}ms {MemoryUsedByDirtyCache / 1.MB()}MB, last persisted block: {LastPersistedBlockNumber} current: {NewestKeptBlockNumber}.");
+            if (_logger.IsWarn)
+                _logger.Warn(
+                    $"Finished pruning nodes in {stopwatch.ElapsedMilliseconds}ms {MemoryUsedByDirtyCache / 1.MB()}MB, last persisted block: {LastPersistedBlockNumber} current: {NewestKeptBlockNumber}.");
         }
 
+        /// <summary>
+        /// This method is here to support testing.
+        /// </summary>
         public void ClearCache()
         {
             _dirtyNodesCache.Clear();
@@ -456,7 +455,7 @@ namespace Nethermind.Trie.Pruning
             PersistOnShutdown();
         }
 
-        public void RemoveHistorical()
+        public void DequeueOldCommitSets()
         {
             while (_commitSetQueue.TryPeek(out BlockCommitSet blockCommitSet))
             {
@@ -483,9 +482,9 @@ namespace Nethermind.Trie.Pruning
         private readonly IKeyValueStoreWithBatching _keyValueStore;
 
         private Dictionary<Keccak, TrieNode> _dirtyNodesCache = new Dictionary<Keccak, TrieNode>();
-        
+
         // private LruCache<Keccak, TrieNode> _persistedNodesCache = new LruCache<Keccak, TrieNode>(
-            // MemoryAllowance.TrieNodeCacheCount, MemoryAllowance.TrieNodeCacheCount, "persisted nodes");
+        // MemoryAllowance.TrieNodeCacheCount, MemoryAllowance.TrieNodeCacheCount, "persisted nodes");
 
         private readonly IPruningStrategy _pruningStrategy;
 
@@ -496,8 +495,8 @@ namespace Nethermind.Trie.Pruning
         private ConcurrentQueue<BlockCommitSet> _commitSetQueue = new ConcurrentQueue<BlockCommitSet>();
 
         private long _memoryUsedByDirtyCache;
-        
-        private long _memoryUsedByPersistedCache;
+
+        // private long _memoryUsedByPersistedCache;
 
         private int _committedNodesCount;
 
@@ -524,7 +523,7 @@ namespace Nethermind.Trie.Pruning
             _commitSetQueue.Enqueue(commitSet);
             NewestKeptBlockNumber = Math.Max(blockNumber, NewestKeptBlockNumber);
             AnnounceReorgBoundaries();
-            RemoveHistorical();
+            DequeueOldCommitSets();
             Prune();
 
             CurrentPackage = commitSet;
@@ -540,33 +539,39 @@ namespace Nethermind.Trie.Pruning
             Metrics.CachedNodesCount = _dirtyNodesCache.Count;
         }
 
+        /// <summary>
+        /// Persists all transient (not yet persisted) starting from <paramref name="commitSet"/> root.
+        /// Already persisted nodes are skipped. After this action we are sure that the full state is available
+        /// for the block represented by this commit set.
+        /// </summary>
+        /// <param name="commitSet">A commit set of a block which root is to be persisted.</param>
         private void Persist(BlockCommitSet commitSet)
         {
+            void PersistNode(TrieNode tn) => Persist(tn, commitSet.BlockNumber);
+            
             try
             {
                 _keyValueStore.StartBatch();
-
                 if (_logger.IsDebug) _logger.Debug($"Persisting from root {commitSet.Root} in {commitSet.BlockNumber}");
 
                 Stopwatch stopwatch = Stopwatch.StartNew();
-                commitSet.Root?.PersistRecursively(tn => Persist(tn, commitSet.BlockNumber), this, _logger);
+                commitSet.Root?.CallRecursively(PersistNode, this, true, _logger);
                 stopwatch.Stop();
                 Metrics.SnapshotPersistenceTime = stopwatch.ElapsedMilliseconds;
 
-                if (_logger.IsWarn)
-                    _logger.Warn(
-                        $"Persisted trie from {commitSet.Root} at {commitSet.BlockNumber} in {stopwatch.ElapsedMilliseconds}ms (cache memory {MemoryUsedByDirtyCache})");
+                if (_logger.IsWarn) _logger.Warn(
+                    $"Persisted trie from {commitSet.Root} at {commitSet.BlockNumber} in {stopwatch.ElapsedMilliseconds}ms (cache memory {MemoryUsedByDirtyCache})");
 
                 LastPersistedBlockNumber = commitSet.BlockNumber;
             }
             finally
             {
-                // generally we prefer to commit half of the batch rather than not commit at all because of some other issue
-                // it is a bit of a hack as we simply want to force Rocks to flush the changes
+                // For safety we prefer to commit half of the batch rather than not commit at all.
+                // Generally hanging nodes are not a problem in the DB but anything missing from the DB is.
                 _keyValueStore.CommitBatch();
             }
-            
-            PruneOldTrees();
+
+            PruneCurrentSet();
         }
 
         private void Persist(TrieNode currentNode, long blockNumber)

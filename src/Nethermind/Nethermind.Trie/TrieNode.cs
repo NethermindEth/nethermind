@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -550,46 +550,27 @@ namespace Nethermind.Trie
         private TrieNode? _storageRoot;
 
         /// <summary>
-        /// There are two similar methods and we should see how they can be merged
-        /// (probably by adding some parameters)
-        /// This one is force-fixing the IsPersisted state and the other one is allowing external caller to persist
-        /// this node and its descendants.
+        /// Imagine a branch like this:
+        ///        B
+        /// ||||||||||||||||
+        /// -T--TP----P--TT-
+        /// where T is a transient child (not yet persisted) and P is a persisted child node
+        /// After calling this method with <paramref name="skipPersisted"/> == <value>false</value> you will end up with
+        ///        B
+        /// ||||||||||||||||
+        /// -A--AA----A--AA-
+        /// where A is a <see cref="TrieNode"/> on which the <paramref name="action"/> was invoked.
+        /// After calling this method with <paramref name="skipPersisted"/> == <value>true</value> you will end up with
+        ///        B
+        /// ||||||||||||||||
+        /// -A--AP----P--AA-
+        /// where A is a <see cref="TrieNode"/> on which the <paramref name="action"/> was invoked.
         /// </summary>
-        /// <param name="cache"></param>
-        /// <param name="logger"></param>
-        // TODO: visitor?
-        private void MarkPersistedRecursively(ITrieNodeResolver cache, ILogger logger)
+        public void CallRecursively(Action<TrieNode> action, ITrieNodeResolver resolver, bool skipPersisted, ILogger logger)
         {
-            if (!IsLeaf)
+            if (skipPersisted && IsPersisted)
             {
-                if (_data != null)
-                {
-                    for (int i = 0; i < _data.Length; i++)
-                    {
-                        object o = _data[i];
-                        if (o is TrieNode child)
-                        {
-                            if (logger.IsTrace) logger.Trace($"Mark persisted on child {i} {child} of {this}");
-                            child.MarkPersistedRecursively(cache, logger);
-                        }
-                    }
-                }
-            }
-            else if (TryResolveStorageRoot(cache))
-            {
-                if (logger.IsTrace) logger.Trace($"Mark persisted recursively on storage root {_storageRoot} of {this}");
-                _storageRoot?.MarkPersistedRecursively(cache, logger);
-            }
-
-            IsPersisted = true;
-        }
-
-        // TODO: visitor?
-        public void PersistRecursively(Action<TrieNode> action, ITrieNodeResolver resolver, ILogger logger)
-        {
-            if (IsPersisted)
-            {
-                if (logger.IsTrace) logger.Trace($"Ignoring {this} - alredy persisted");
+                if (logger.IsTrace) logger.Trace($"Skipping {this} - already persisted");
                 return;
             }
 
@@ -603,7 +584,7 @@ namespace Nethermind.Trie
                         if (o is TrieNode child)
                         {
                             if (logger.IsTrace) logger.Trace($"Persist recursively on child {i} {child} of {this}");
-                            child.PersistRecursively(action, resolver, logger);
+                            child.CallRecursively(action, resolver, skipPersisted, logger);
                         }
                     }
                 }
@@ -611,10 +592,62 @@ namespace Nethermind.Trie
             else if (TryResolveStorageRoot(resolver))
             {
                 if (logger.IsTrace) logger.Trace($"Persist recursively on storage root {_storageRoot} of {this}");
-                _storageRoot!.PersistRecursively(action, resolver, logger);
+                _storageRoot!.CallRecursively(action, resolver, skipPersisted, logger);
             }
 
             action(this);
+        }
+        
+        /// <summary>
+        /// Imagine a branch like this:
+        ///        B
+        /// ||||||||||||||||
+        /// -T--TP----P--TT-
+        /// where T is a transient child (not yet persisted) and P is a persisted child node
+        /// After calling this method you will end up with
+        ///        B
+        /// ||||||||||||||||
+        /// -?--T?----?--TT-
+        /// where ? stands for an unresolved child (unresolved child is one for which we know the hash in RLP
+        /// abd for which we do not have an in-memory .NET object representation - TrieNode)
+        /// Unresolved child can be resolved by calling ResolveChild(child_index).
+        /// </summary>
+        /// <param name="maxLevelsDeep">How many levels deep we will be pruning the child nodes.</param>
+        public void PrunePersistedRecursively(int maxLevelsDeep)
+        {
+            maxLevelsDeep--;
+            if (!IsLeaf)
+            {
+                if (_data != null)
+                {
+                    for (int i = 0; i < _data!.Length; i++)
+                    {
+                        object o = _data[i];
+                        if (o is TrieNode child)
+                        {
+                            if (child.IsPersisted)
+                            {
+                                Pruning.Metrics.DeepPrunedPersistedNodesCount++;
+                                UnresolveChild(i);
+                            }
+                            else if(maxLevelsDeep != 0)
+                            {
+                                child.PrunePersistedRecursively(maxLevelsDeep);
+                            }
+                        }
+                    }
+                }
+            }
+            else if (_storageRoot?.IsPersisted ?? false)
+            {
+                _storageRoot = null;
+            }
+            // else
+            // {
+            //     // we assume that the storage root will get resolved during persistence even if not persisted yet
+            //     // if this is not true then the code above that is commented out would be critical to call isntead
+            //     _storageRoot = null;
+            // }
         }
 
         #region private
@@ -643,6 +676,8 @@ namespace Nethermind.Trie
         private static TrieNodeDecoder _nodeDecoder = new TrieNodeDecoder();
 
         private static AccountDecoder _accountDecoder = new AccountDecoder();
+
+        private static Action<TrieNode> _markPersisted => tn => tn.IsPersisted = true;
 
         private RlpStream? _rlpStream;
 
@@ -719,7 +754,7 @@ namespace Nethermind.Trie
 
                         if (IsPersisted && !cachedOrUnknown.IsPersisted)
                         {
-                            cachedOrUnknown.MarkPersistedRecursively(tree, NullLogger.Instance);
+                            cachedOrUnknown.CallRecursively(_markPersisted, tree, false, NullLogger.Instance);
                         }
                         
                         break;
@@ -736,37 +771,5 @@ namespace Nethermind.Trie
         }
 
         #endregion
-
-        // TODO: visitor?
-        public void PrunePersistedRecursively(ITrieNodeResolver cache, int maxLevelsDeep)
-        {
-            maxLevelsDeep--;
-            if (!IsLeaf)
-            {
-                if (_data != null)
-                {
-                    for (int i = 0; i < _data!.Length; i++)
-                    {
-                        object o = _data[i];
-                        if (o is TrieNode child)
-                        {
-                            if (child.IsPersisted)
-                            {
-                                Pruning.Metrics.DeepPrunedPersistedNodesCount++;
-                                UnresolveChild(i);
-                            }
-                            else if(maxLevelsDeep != 0)
-                            {
-                                child.PrunePersistedRecursively(cache, maxLevelsDeep);
-                            }
-                        }
-                    }
-                }
-            }
-            else
-            {
-                _storageRoot = null;
-            }
-        }
     }
 }
