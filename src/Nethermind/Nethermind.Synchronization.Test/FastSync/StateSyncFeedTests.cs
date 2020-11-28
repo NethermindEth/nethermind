@@ -566,7 +566,8 @@ namespace Nethermind.Synchronization.Test.FastSync
 
             dbContext.RemoteCodeDb.Set(Keccak.Compute(TrieScenarios.Code0), TrieScenarios.Code0);
 
-            dbContext.RemoteStateTree.Set(TestItem.AddressD, TrieScenarios.AccountJustState0.WithChangedCodeHash(Keccak.Compute(TrieScenarios.Code0)));
+            var changedAccount = TrieScenarios.AccountJustState0.WithChangedCodeHash(Keccak.Compute(TrieScenarios.Code0));
+            dbContext.RemoteStateTree.Set(TestItem.AddressD, changedAccount);
             dbContext.RemoteStateTree.Commit(0);
 
             dbContext.CompareTrees("BEGIN");

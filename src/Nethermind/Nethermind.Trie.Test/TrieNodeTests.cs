@@ -662,6 +662,150 @@ namespace Nethermind.Trie.Test
         }
 
         [Test]
+        public void Pruning_regression()
+        {
+            TrieNode child = new TrieNode(NodeType.Unknown, Keccak.Zero);
+            TrieNode trieNode = new TrieNode(NodeType.Extension);
+            trieNode.SetChild(0, child);
+
+            trieNode.PrunePersistedRecursively(1);
+            trieNode.Key = HexPrefix.Extension("abcd");
+            trieNode.RlpEncode(NullTrieStore.Instance);
+        }
+
+        [Test]
+        public void Extension_child_as_keccak()
+        {
+            TrieNode child = new TrieNode(NodeType.Unknown, Keccak.Zero);
+            TrieNode trieNode = new TrieNode(NodeType.Extension);
+            trieNode.SetChild(0, child);
+
+            trieNode.PrunePersistedRecursively(1);
+            trieNode.GetChild(NullTrieStore.Instance, 0).Should().BeOfType<TrieNode>();
+        }
+        
+        [Test]
+        public void Extension_child_as_keccak_memory_size()
+        {
+            TrieNode child = new TrieNode(NodeType.Unknown, Keccak.Zero);
+            TrieNode trieNode = new TrieNode(NodeType.Extension);
+            trieNode.SetChild(0, child);
+
+            trieNode.PrunePersistedRecursively(1);
+            trieNode.GetMemorySize(false).Should().Be(176);
+        }
+        
+        [Test]
+        public void Extension_child_as_keccak_clone()
+        {
+            TrieNode child = new TrieNode(NodeType.Unknown, Keccak.Zero);
+            TrieNode trieNode = new TrieNode(NodeType.Extension);
+            trieNode.SetChild(0, child);
+
+            trieNode.PrunePersistedRecursively(1);
+            TrieNode cloned = trieNode.Clone();
+            
+            cloned.GetMemorySize(false).Should().Be(176);
+        }
+        
+        [Test]
+        public void Unresolve_of_persisted()
+        {
+            TrieNode child = new TrieNode(NodeType.Unknown, Keccak.Zero);
+            TrieNode trieNode = new TrieNode(NodeType.Extension);
+            trieNode.SetChild(0, child);
+            trieNode.Key = HexPrefix.Extension("abcd");
+            trieNode.ResolveKey(NullTrieStore.Instance, false);
+
+            trieNode.PrunePersistedRecursively(1);
+            trieNode.PrunePersistedRecursively(1);
+        }
+        
+        [Test]
+        public void Small_child_unresolve()
+        {
+            TrieNode child = new TrieNode(NodeType.Leaf);
+            child.Value = Bytes.FromHexString("a");
+            child.Key = HexPrefix.Leaf("b");
+            child.ResolveKey(NullTrieStore.Instance, false);
+            child.IsPersisted = true;
+            
+            TrieNode trieNode = new TrieNode(NodeType.Extension);
+            trieNode.SetChild(0, child);
+            trieNode.Key = HexPrefix.Extension("abcd");
+            trieNode.ResolveKey(NullTrieStore.Instance, false);
+
+            trieNode.PrunePersistedRecursively(2);
+            trieNode.GetChild(NullTrieStore.Instance, 0).Should().Be(child);
+        }
+
+        [Test]
+        public void Extension_child_as_keccak_not_dirty()
+        {
+            TrieNode child = new TrieNode(NodeType.Unknown, Keccak.Zero);
+            TrieNode trieNode = new TrieNode(NodeType.Extension);
+            trieNode.SetChild(0, child);
+
+            trieNode.PrunePersistedRecursively(1);
+            trieNode.IsChildDirty(0).Should().Be(false);
+        }
+        
+        [TestCase(true)]
+        [TestCase(false)]
+        public void Extension_child_as_keccak_call_recursively(bool skipPersisted)
+        {
+            TrieNode child = new TrieNode(NodeType.Unknown, Keccak.Zero);
+            TrieNode trieNode = new TrieNode(NodeType.Extension);
+            trieNode.SetChild(0, child);
+
+            trieNode.PrunePersistedRecursively(1);
+            int count = 0;
+            trieNode.CallRecursively(n => count++, NullTrieStore.Instance, skipPersisted, LimboTraceLogger.Instance);
+            count.Should().Be(1);
+        }
+        
+        [Test]
+        public void Branch_child_as_keccak_encode()
+        {
+            TrieNode child = new TrieNode(NodeType.Unknown, Keccak.Zero);
+            TrieNode trieNode = new TrieNode(NodeType.Branch);
+            trieNode.SetChild(0, child);
+            trieNode.SetChild(4, child);
+
+            trieNode.PrunePersistedRecursively(1);
+            trieNode.RlpEncode(NullTrieStore.Instance);
+        }
+        
+        [Test]
+        public void Branch_child_as_keccak_resolved()
+        {
+            TrieNode child = new TrieNode(NodeType.Unknown, Keccak.Zero);
+            TrieNode trieNode = new TrieNode(NodeType.Branch);
+            trieNode.SetChild(0, child);
+            trieNode.SetChild(4, child);
+
+            trieNode.PrunePersistedRecursively(1);
+            var trieStore = Substitute.For<ITrieNodeResolver>();
+            trieStore.FindCachedOrUnknown(Arg.Any<Keccak>()).Returns(child);
+            trieNode.GetChild(trieStore, 0).Should().Be(child);
+            trieNode.GetChild(trieStore, 1).Should().BeNull();
+            trieNode.GetChild(trieStore, 4).Should().Be(child);
+        }
+
+        [Test]
+        public void Child_as_keccak_cached()
+        {
+            TrieNode child = new TrieNode(NodeType.Unknown, Keccak.Zero);
+            TrieNode trieNode = new TrieNode(NodeType.Extension);
+            trieNode.SetChild(0, child);
+
+            trieNode.PrunePersistedRecursively(1);
+            var trieStore = Substitute.For<ITrieNodeResolver>();
+            trieStore.FindCachedOrUnknown(Arg.Any<Keccak>()).Returns(child);
+            trieNode.GetChild(trieStore, 0).Should().Be(child);
+        }
+
+        [Test]
         public void Rlp_is_cloned_when_cloning()
         {
             TrieStore trieStore = new TrieStore(new MemDb(), NullLogManager.Instance);

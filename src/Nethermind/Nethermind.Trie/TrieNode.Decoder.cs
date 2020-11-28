@@ -144,6 +144,10 @@ namespace Nethermind.Trie
                         {
                             totalLength++;
                         }
+                        else if(item._data[i] is Keccak)
+                        {
+                            totalLength += Rlp.LengthOfKeccakRlp;
+                        }
                         else
                         {
                             TrieNode childNode = (TrieNode) item._data[i];
@@ -180,6 +184,10 @@ namespace Nethermind.Trie
                         if (ReferenceEquals(item._data![i], _nullNode) || item._data[i] == null)
                         {
                             destination[position++] = 128;
+                        }
+                        else if(item._data[i] is Keccak)
+                        {
+                            position = Rlp.Encode(destination, position, (item._data[i] as Keccak)!.Bytes);
                         }
                         else
                         {

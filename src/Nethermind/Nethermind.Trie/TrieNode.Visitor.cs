@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.IO;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
@@ -129,7 +130,25 @@ namespace Nethermind.Trie
 
         private void UnresolveChild(int i)
         {
-            _data![i] = null;
+            if (IsPersisted)
+            {
+                _data![i] = null;
+            }
+            else
+            {
+                TrieNode childNode = _data![i] as TrieNode;
+                if (childNode != null)
+                {
+                    if (!childNode.IsPersisted)
+                    {
+                        throw new InvalidOperationException("Cannot unresolve a child that is not persisted yet.");
+                    }
+                    else if (childNode.Keccak != null) // if not by value node
+                    {
+                        _data![i] = childNode.Keccak;
+                    }
+                }
+            }
         }
     }
 }

@@ -51,7 +51,7 @@ namespace Nethermind.Trie
             {
                 throw new ArgumentNullException(nameof(keccak));
             }
-            
+
             NodeType = nodeType;
             Keccak = keccak;
             if (nodeType == NodeType.Unknown)
@@ -382,6 +382,11 @@ namespace Nethermind.Trie
                 return false;
             }
 
+            if (_data[i] is Keccak)
+            {
+                return false;
+            }
+            
             return ((TrieNode) _data[i])!.IsDirty;
         }
 
@@ -398,8 +403,12 @@ namespace Nethermind.Trie
              */
             childIndex = IsExtension ? childIndex + 1 : childIndex;
             ResolveChild(tree, childIndex);
-            TrieNode? child = ReferenceEquals(_data![childIndex], _nullNode) ? null : (TrieNode) _data[childIndex];
-            
+            TrieNode? child = ReferenceEquals(_data![childIndex], _nullNode) || ReferenceEquals(_data![childIndex], null) 
+                ? null
+                : _data[childIndex] is TrieNode
+                    ? (TrieNode) _data[childIndex]
+                    : tree.FindCachedOrUnknown((_data[childIndex] as Keccak)!);
+
             // pruning trick so we never store long persisted paths
             if (child?.IsPersisted ?? false)
             {
@@ -553,18 +562,19 @@ namespace Nethermind.Trie
         /// Imagine a branch like this:
         ///        B
         /// ||||||||||||||||
-        /// -T--TP----P--TT-
-        /// where T is a transient child (not yet persisted) and P is a persisted child node
+        /// -T--TP-K--P--TT-
+        /// where T is a transient child (not yet persisted) and P is a persisted child node and K is node hash
         /// After calling this method with <paramref name="skipPersisted"/> == <value>false</value> you will end up with
         ///        B
         /// ||||||||||||||||
-        /// -A--AA----A--AA-
+        /// -A--AA-K--A--AA-
         /// where A is a <see cref="TrieNode"/> on which the <paramref name="action"/> was invoked.
         /// After calling this method with <paramref name="skipPersisted"/> == <value>true</value> you will end up with
         ///        B
         /// ||||||||||||||||
-        /// -A--AP----P--AA-
+        /// -A--AP-K--P--AA-
         /// where A is a <see cref="TrieNode"/> on which the <paramref name="action"/> was invoked.
+        /// Note that nodes referenced by hash are not called.
         /// </summary>
         public void CallRecursively(Action<TrieNode> action, ITrieNodeResolver resolver, bool skipPersisted, ILogger logger)
         {
@@ -597,7 +607,7 @@ namespace Nethermind.Trie
 
             action(this);
         }
-        
+
         /// <summary>
         /// Imagine a branch like this:
         ///        B
@@ -630,7 +640,7 @@ namespace Nethermind.Trie
                                 Pruning.Metrics.DeepPrunedPersistedNodesCount++;
                                 UnresolveChild(i);
                             }
-                            else if(maxLevelsDeep != 0)
+                            else if (maxLevelsDeep != 0)
                             {
                                 child.PrunePersistedRecursively(maxLevelsDeep);
                             }
@@ -642,6 +652,7 @@ namespace Nethermind.Trie
             {
                 _storageRoot = null;
             }
+
             // else
             // {
             //     // we assume that the storage root will get resolved during persistence even if not persisted yet
@@ -756,7 +767,7 @@ namespace Nethermind.Trie
                         {
                             cachedOrUnknown.CallRecursively(_markPersisted, tree, false, NullLogger.Instance);
                         }
-                        
+
                         break;
                     default:
                     {
