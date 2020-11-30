@@ -21,10 +21,17 @@ namespace Nethermind.Db
         IDb CreateDb(string dbName);
 
         ISnapshotableDb CreateSnapshotableDb(string dbName);
+
+        IColumnsDb<T> CreateColumnsDb<T>(string dbName);
     }
 
     public class MemDbFactory : IMemDbFactory
     {
+        public IColumnsDb<T> CreateColumnsDb<T>(string dbName)
+        {
+            return new MemColumnsDb<T>(dbName);
+        }
+
         public IDb CreateDb(string dbName)
         {
             return new MemDb(dbName);

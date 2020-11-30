@@ -33,7 +33,7 @@ namespace Nethermind.Db
             _memDbFactory = memDbFactory;
         }
 
-        public async Task InitStandardDbs()
+        public async Task InitStandardDbs(bool useReceiptsDb)
         {
             HashSet<Task> allInitializers = new HashSet<Task>();
             allInitializers.Add(RegisterDb(DbNames.Blocks, () => Metrics.BlocksDbReads++, () => Metrics.BlocksDbWrites++));
@@ -45,7 +45,33 @@ namespace Nethermind.Db
             allInitializers.Add(RegisterDb(DbNames.Bloom, () => Metrics.BloomDbReads++, () => Metrics.BloomDbWrites++));
             allInitializers.Add(RegisterDb(DbNames.CHT, () => Metrics.CHTDbReads++, () => Metrics.CHTDbWrites++));
 
+            if (useReceiptsDb)
+            {
+                allInitializers.Add(RegisterColumnsDb<ReceiptsColumns>(DbNames.Receipts, () => Metrics.ReceiptsDbReads++, () => Metrics.ReceiptsDbWrites++));
+            }
+            else
+            {
+                allInitializers.Add(RegisterDb(DbNames.Receipts, new ReadOnlyColumnsDb<ReceiptsColumns>(new MemColumnsDb<ReceiptsColumns>(), false)));
+            }
+
             await Task.WhenAll(allInitializers);
+        }
+
+        private Task RegisterColumnsDb<T>(string dbName, Action updateReadsMetrics, Action updateWriteMetrics)
+        {
+            return Task.Run(() =>
+            {
+                var db = CreateColumnsDb<T>(dbName, updateReadsMetrics, updateWriteMetrics);
+                _dbProvider.RegisterDb(dbName, db);
+            });
+        }
+
+        private Task RegisterDb(string dbName, IDb db)
+        {
+            return Task.Run(() =>
+            {
+                _dbProvider.RegisterDb(dbName, db);
+            });
         }
 
         private Task RegisterDb(string dbName, Action updateReadsMetrics, Action updateWriteMetrics, bool snapshotDb = false)
@@ -82,6 +108,17 @@ namespace Nethermind.Db
             }
 
             return _memDbFactory.CreateSnapshotableDb(dbName);
+        }
+
+        private IDb CreateColumnsDb<T>(string dbName, Action updateReadsMetrics, Action updateWriteMetrics)
+        {
+            if (_dbProvider.DbMode == DbModeHint.Persisted)
+            {
+                var settings = GetRocksDbSettings(dbName, updateReadsMetrics, updateWriteMetrics);
+                return _rocksDbFactory.CreateColumnsDb<T>(settings);
+            }
+
+            return _memDbFactory.CreateColumnsDb<T>(dbName);
         }
 
         private RocksDbSettings GetRocksDbSettings(string dbName, Action updateReadsMetrics, Action updateWriteMetrics)

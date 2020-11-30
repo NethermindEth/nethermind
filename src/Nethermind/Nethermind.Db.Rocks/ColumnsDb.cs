@@ -17,7 +17,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using Nethermind.Db.Rocks.Config;
 using Nethermind.Logging;
 using RocksDbSharp;
 
@@ -27,7 +26,7 @@ namespace Nethermind.Db.Rocks
     {
         private readonly IDictionary<T, IDbWithSpan> _columnDbs = new Dictionary<T, IDbWithSpan>();
         
-        protected ColumnsDb(string basePath, string dbPath, IDbConfig dbConfig, ILogManager logManager, string name, params T[] keys) : base(basePath, dbPath, dbConfig, logManager, GetColumnFamilies(dbConfig, name, GetEnumKeys(keys)))
+        protected ColumnsDb(string basePath, string dbPath, IPluggableDbConfig dbConfig, ILogManager logManager, string name, params T[] keys) : base(basePath, dbPath, dbConfig, logManager, GetColumnFamilies(dbConfig, name, GetEnumKeys(keys)))
         {
             Name = name;
             keys = GetEnumKeys(keys);
@@ -50,7 +49,7 @@ namespace Nethermind.Db.Rocks
             return keys;
         }
 
-        private static ColumnFamilies GetColumnFamilies(IPlugableDbConfig dbConfig, string name, T[] keys)
+        private static ColumnFamilies GetColumnFamilies(IPluggableDbConfig dbConfig, string name, T[] keys)
         {
             InitCache(dbConfig);
             
@@ -69,7 +68,7 @@ namespace Nethermind.Db.Rocks
             return result;
         }
 
-        protected override DbOptions BuildOptions(IPlugableDbConfig dbConfig)
+        protected override DbOptions BuildOptions(IPluggableDbConfig dbConfig)
         {
             var options = base.BuildOptions(dbConfig);
             options.SetCreateMissingColumnFamilies();

@@ -42,6 +42,17 @@ namespace Nethermind.Db.Rpc
             _logManager = logManager;
         }
 
+        public IColumnsDb<T> CreateColumnsDb<T>(RocksDbSettings rocksDbSettings)
+        {
+            var rocksDb = _wrappedRocksDbFactory.CreateDb(rocksDbSettings);
+            return new ReadOnlyColumnsDb<T>(new RpcColumnsDb<T>(rocksDbSettings.DbName, _jsonSerializer, _jsonRpcClient, _logManager, rocksDb), true);
+        }
+
+        public IColumnsDb<T> CreateColumnsDb<T>(string dbName)
+        {
+            var memDb = _wrappedMemDbFactory.CreateColumnsDb<T>(dbName);
+            return new ReadOnlyColumnsDb<T>(new RpcColumnsDb<T>(dbName, _jsonSerializer, _jsonRpcClient, _logManager, memDb), true);
+        }
 
         public IDb CreateDb(RocksDbSettings rocksDbSettings)
         {

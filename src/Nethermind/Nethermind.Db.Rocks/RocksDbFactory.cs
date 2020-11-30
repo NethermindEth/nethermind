@@ -31,20 +31,31 @@ namespace Nethermind.Db.Rocks
             _basePath = basePath;
         }
 
-        public IDb CreateDb(RocksDbSettings rocksDbSpecification)
+        public IDb CreateDb(RocksDbSettings rocksDbSettings)
         { 
             return new SimpleRocksDb(_basePath, 
-                rocksDbSpecification.DbPath, 
-                rocksDbSpecification.DbName, 
+                rocksDbSettings.DbPath, 
+                rocksDbSettings.DbName, 
                 _dbConfig, 
                 _logManager, 
-                rocksDbSpecification.UpdateReadMetrics, 
-                rocksDbSpecification.UpdateWriteMetrics);
+                rocksDbSettings.UpdateReadMetrics, 
+                rocksDbSettings.UpdateWriteMetrics);
         }
 
         public ISnapshotableDb CreateSnapshotableDb(RocksDbSettings rocksDbSettings)
         {
             return new StateDb(CreateDb(rocksDbSettings));
+        }
+
+        public IColumnsDb<T> CreateColumnsDb<T>(RocksDbSettings rocksDbSettings)
+        {
+            return new SimpleColumnRocksDb<T>(_basePath,
+                rocksDbSettings.DbPath,
+                rocksDbSettings.DbName,
+                _dbConfig,
+                _logManager,
+                rocksDbSettings.UpdateReadMetrics,
+                rocksDbSettings.UpdateWriteMetrics);
         }
     }
 }

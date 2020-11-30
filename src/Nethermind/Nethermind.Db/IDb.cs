@@ -39,6 +39,8 @@ namespace Nethermind.Db
         void Flush();
         
         void Clear();
+
+        public IDb CreateReadOnly(bool createInMemWriteStore) => new ReadOnlyDb(this, createInMemWriteStore);
     }
 
     public interface IDbWithSpan : IDb

@@ -19,39 +19,44 @@ using Nethermind.Logging;
 
 namespace Nethermind.Db.Rocks
 {
-    //public class SimpleColumnRocksDb<T> : ColumnsDb<T>
-    //{
-    //    private readonly Action _updateReadMetrics;
-    //    private readonly Action _updateWriteMetrics;
-    //    public override string Name { get; protected set; } = "SimpleColumnRocksDb";
-    //    public SimpleColumnRocksDb(
-    //        string basePath,
-    //        string dbPath,
-    //        string dbName,
-    //        IPlugableDbConfig dbConfig,
-    //        ILogManager logManager = null,
-    //        Action updateReadMetrics = null,
-    //        Action updateWriteMetrics = null)
-    //            : base(basePath, dbPath, dbName, dbConfig, logManager)
-    //    {
-    //        _updateReadMetrics = updateReadMetrics;
-    //        _updateWriteMetrics = updateWriteMetrics;
-    //    }
+    public class SimpleColumnRocksDb<T> : ColumnsDb<T>
+    {
+        private readonly Action _updateReadMetrics;
+        private readonly Action _updateWriteMetrics;
+        public override string Name { get; protected set; } = "SimpleColumnRocksDb";
+        public SimpleColumnRocksDb(
+            string basePath,
+            string dbPath,
+            string dbName,
+            IPluggableDbConfig dbConfig,
+            ILogManager logManager = null,
+            Action updateReadMetrics = null,
+            Action updateWriteMetrics = null)
+                : base(basePath, dbPath, dbConfig, logManager, dbName)
+        {
+            _updateReadMetrics = updateReadMetrics;
+            _updateWriteMetrics = updateWriteMetrics;
+        }
 
-    //    protected internal override void UpdateReadMetrics()
-    //    {
-    //        if (_updateReadMetrics != null)
-    //            _updateReadMetrics?.Invoke();
-    //        else
-    //            Metrics.OtherDbReads++;
-    //    }
+        protected internal override void UpdateReadMetrics()
+        {
+            if (_updateReadMetrics != null)
+                _updateReadMetrics?.Invoke();
+            else
+                Metrics.OtherDbReads++;
+        }
 
-    //    protected internal override void UpdateWriteMetrics()
-    //    {
-    //        if (_updateWriteMetrics != null)
-    //            _updateWriteMetrics?.Invoke();
-    //        else
-    //            Metrics.OtherDbWrites++;
-    //    }
-    //}
+        protected internal override void UpdateWriteMetrics()
+        {
+            if (_updateWriteMetrics != null)
+                _updateWriteMetrics?.Invoke();
+            else
+                Metrics.OtherDbWrites++;
+        }
+
+        public IDb CreateReadOnly(bool createInMemWriteStore)
+        {
+            return new ReadOnlyColumnsDb<T>(this, createInMemWriteStore);
+        }
+    }
 }

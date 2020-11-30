@@ -19,7 +19,7 @@ using Nethermind.Config;
 namespace Nethermind.Db.Rocks.Config
 {
     [ConfigCategory(HiddenFromDocs = true)]
-    public interface IDbConfig : IConfig, IPlugableDbConfig
+    public interface IDbConfig : IConfig, IPluggableDbConfig
     {
         ulong ReceiptsDbWriteBufferSize { get; set; }
         uint ReceiptsDbWriteBufferNumber { get; set; }

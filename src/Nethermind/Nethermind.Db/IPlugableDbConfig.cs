@@ -5,7 +5,7 @@ using Nethermind.Config;
 
 namespace Nethermind.Db
 {
-    public interface IPlugableDbConfig
+    public interface IPluggableDbConfig
     {
         ulong WriteBufferSize { get; set; }
         uint WriteBufferNumber { get; set; }

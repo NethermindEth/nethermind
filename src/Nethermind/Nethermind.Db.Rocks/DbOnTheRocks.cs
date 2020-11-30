@@ -45,7 +45,7 @@ namespace Nethermind.Db.Rocks
         
         protected static IntPtr _cache;
         
-        protected static void InitCache(IPlugableDbConfig dbConfig)
+        protected static void InitCache(IPluggableDbConfig dbConfig)
         {
             if (Interlocked.CompareExchange(ref _cacheInitialized, 1, 0) == 0)
             {
@@ -54,19 +54,19 @@ namespace Nethermind.Db.Rocks
             }
         }
 
-        public DbOnTheRocks(string basePath, string dbPath, string dbName, IPlugableDbConfig dbConfig, ILogManager logManager, ColumnFamilies columnFamilies = null, bool deleteOnStart = false)
+        public DbOnTheRocks(string basePath, string dbPath, string dbName, IPluggableDbConfig dbConfig, ILogManager logManager, ColumnFamilies columnFamilies = null, bool deleteOnStart = false)
         {
             Name = dbName;
             Db = Init(basePath, dbPath, dbConfig, logManager, columnFamilies, deleteOnStart);
         }
 
 
-        public DbOnTheRocks(string basePath, string dbPath, IPlugableDbConfig dbConfig, ILogManager logManager, ColumnFamilies columnFamilies = null, bool deleteOnStart = false)
+        public DbOnTheRocks(string basePath, string dbPath, IPluggableDbConfig dbConfig, ILogManager logManager, ColumnFamilies columnFamilies = null, bool deleteOnStart = false)
         {
             Db = Init(basePath, dbPath, dbConfig, logManager, columnFamilies, deleteOnStart);
         }
 
-        private RocksDb Init(string basePath, string dbPath, IPlugableDbConfig dbConfig, ILogManager logManager, ColumnFamilies columnFamilies = null, bool deleteOnStart = false)
+        private RocksDb Init(string basePath, string dbPath, IPluggableDbConfig dbConfig, ILogManager logManager, ColumnFamilies columnFamilies = null, bool deleteOnStart = false)
         {
             static RocksDb Open(string path, (DbOptions Options, ColumnFamilies Families) db)
             {
@@ -112,12 +112,12 @@ namespace Nethermind.Db.Rocks
         protected internal virtual void UpdateReadMetrics() => Metrics.OtherDbReads++;
         protected internal virtual void UpdateWriteMetrics() => Metrics.OtherDbWrites++;
 
-        private T ReadConfig<T>(IPlugableDbConfig dbConfig, string propertyName)
+        private T ReadConfig<T>(IPluggableDbConfig dbConfig, string propertyName)
         {
             return ReadConfig<T>(dbConfig, propertyName, Name);
         }
 
-        protected static T ReadConfig<T>(IPlugableDbConfig dbConfig, string propertyName, string tableName)
+        protected static T ReadConfig<T>(IPluggableDbConfig dbConfig, string propertyName, string tableName)
         {
             string prefixed = string.Concat(tableName == "State" ? string.Empty : string.Concat(tableName, "Db"), propertyName);
             try
@@ -130,7 +130,7 @@ namespace Nethermind.Db.Rocks
             }
         }
 
-        protected virtual DbOptions BuildOptions(IPlugableDbConfig dbConfig)
+        protected virtual DbOptions BuildOptions(IPluggableDbConfig dbConfig)
         {
             _maxThisDbSize = 0;
             BlockBasedTableOptions tableOptions = new BlockBasedTableOptions();

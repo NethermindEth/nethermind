@@ -28,7 +28,7 @@ namespace Nethermind.Db.Rocks
             string basePath, 
             string dbPath, 
             string dbName, 
-            IPlugableDbConfig dbConfig, 
+            IPluggableDbConfig dbConfig, 
             ILogManager logManager = null, 
             Action updateReadMetrics = null, 
             Action updateWriteMetrics = null)

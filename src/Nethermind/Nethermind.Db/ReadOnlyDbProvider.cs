@@ -105,7 +105,7 @@ namespace Nethermind.Db
 
         public void RegisterDb<T>(string dbName, T db) where T : IDb
         {
-            throw new NotImplementedException();
+            var readonlyDb = db.CreateReadOnly(_createInMemoryWriteStore);
         }
     }
 }
