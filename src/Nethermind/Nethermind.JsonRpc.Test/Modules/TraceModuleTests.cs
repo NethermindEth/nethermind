@@ -65,7 +65,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
         private void Initialize(bool auRa = false)
         {
-            MemDbProvider dbProvider = new MemDbProvider();
+            TestMemDbProvider dbProvider = new TestMemDbProvider();
             ISpecProvider specProvider = MainnetSpecProvider.Instance;
             _jsonRpcConfig = new JsonRpcConfig();
             IEthereumEcdsa ethereumEcdsa = new EthereumEcdsa(specProvider.ChainId, LimboLogs.Instance);

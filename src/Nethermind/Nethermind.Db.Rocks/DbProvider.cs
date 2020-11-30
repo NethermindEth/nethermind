@@ -19,17 +19,20 @@ using System.Collections.Generic;
 
 namespace Nethermind.Db.Rocks
 {
-    public class RocksDbProvider : IDbProvider
+    public class DbProvider : IDbProvider
     {
         private readonly Dictionary<string, IDb> _registeredDbs = new Dictionary<string, IDb>();
 
-        public RocksDbProvider(DbModeHint dbMode)
+        public DbProvider(DbModeHint dbMode)
         {
             DbMode = dbMode;
         }
+
         public IDb BeamStateDb { get; } = new MemDb();
 
         public DbModeHint DbMode { get; }
+
+        public IEnumerable<IDb> RegisteredDbs => _registeredDbs.Values;
 
         public void Dispose()
         {

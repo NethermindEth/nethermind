@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections.Generic;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -25,6 +26,7 @@ namespace Nethermind.Synchronization.BeamSync
 {
     public class BeamSyncDbProvider : IDbProvider
     {
+        private readonly Dictionary<string, IDb> _registeredDbs = new Dictionary<string, IDb>();
         private readonly IDbProvider _otherProvider;
         private BeamSyncDb _stateDb;
         private BeamSyncDb _codeDb;
@@ -36,8 +38,9 @@ namespace Nethermind.Synchronization.BeamSync
             _codeDb = new BeamSyncDb(otherProvider.CodeDb.Innermost, otherProvider.BeamStateDb, syncModeSelector, logManager, syncConfig.BeamSyncContextTimeout, syncConfig.BeamSyncPreProcessorTimeout);
             _stateDb = new BeamSyncDb(otherProvider.StateDb.Innermost, otherProvider.BeamStateDb, syncModeSelector, logManager, syncConfig.BeamSyncContextTimeout, syncConfig.BeamSyncPreProcessorTimeout);
             BeamSyncFeed = new CompositeStateSyncFeed<StateSyncBatch?>(logManager, _codeDb, _stateDb);
-            StateDb = new StateDb(_stateDb);
-            CodeDb = new StateDb(_codeDb);
+
+            _registeredDbs.Add(DbNames.Code, new StateDb(_codeDb));
+            _registeredDbs.Add(DbNames.State, new StateDb(_stateDb));
         }
 
         public void EnableVerifiedMode()
@@ -45,41 +48,27 @@ namespace Nethermind.Synchronization.BeamSync
             _stateDb.VerifiedModeEnabled = true;
             _codeDb.VerifiedModeEnabled = true;
         }
-        
-        public ISnapshotableDb StateDb { get; }
-        public ISnapshotableDb CodeDb { get; }
-        public IColumnsDb<ReceiptsColumns> ReceiptsDb => _otherProvider.ReceiptsDb;
-        public IDb BlocksDb => _otherProvider.BlocksDb;
-        public IDb HeadersDb => _otherProvider.HeadersDb;
-        public IDb BlockInfosDb => _otherProvider.BlockInfosDb;
-        public IDb PendingTxsDb => _otherProvider.PendingTxsDb;
-        public IDb BloomDb => _otherProvider.BloomDb;
         public IDb BeamStateDb => _otherProvider.BeamStateDb;
-        public IDb ChtDb => _otherProvider.ChtDb;
 
-        public DbModeHint DbMode => throw new NotImplementedException();
+        public DbModeHint DbMode => _otherProvider.DbMode;
+
+        public IEnumerable<IDb> RegisteredDbs => _otherProvider.RegisteredDbs;
 
         public void Dispose()
         {
-            StateDb?.Dispose();
-            CodeDb?.Dispose();
-            ReceiptsDb?.Dispose();
-            BlocksDb?.Dispose();
-            HeadersDb?.Dispose();
-            BlockInfosDb?.Dispose();
-            PendingTxsDb?.Dispose();
-            BloomDb?.Dispose();
-            ChtDb?.Dispose();
         }
 
         public T GetDb<T>(string dbName) where T : IDb
         {
-            throw new NotImplementedException();
+            if (DbNames.Code == dbName || DbNames.State == dbName)
+                return (T)_registeredDbs[dbName];
+
+            return _otherProvider.GetDb<T>(dbName);
         }
 
         public void RegisterDb<T>(string dbName, T db) where T : IDb
         {
-            throw new NotImplementedException();
+            _otherProvider.RegisterDb<T>(dbName, db);
         }
     }
 }

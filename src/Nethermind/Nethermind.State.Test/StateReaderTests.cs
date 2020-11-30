@@ -199,7 +199,7 @@ namespace Nethermind.Store.Test
         [Test]
         public void Get_storage()
         {
-            MemDbProvider dbProvider = new MemDbProvider();
+            TestMemDbProvider dbProvider = new TestMemDbProvider();
             
             /* all testing will be touching just a single storage cell */
             StorageCell storageCell = new StorageCell(_address1, UInt256.One);

@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections.Generic;
 
 namespace Nethermind.Db
 {
@@ -54,5 +55,7 @@ namespace Nethermind.Db
         T GetDb<T>(string dbName) where T : IDb;
 
         void RegisterDb<T>(string dbName, T db) where T : IDb;
+
+        IEnumerable<IDb> RegisteredDbs { get; }
     }
 }

@@ -57,7 +57,7 @@ namespace Nethermind.Facade.Test
         [SetUp]
         public void SetUp()
         {
-            _dbProvider = new MemDbProvider();
+            _dbProvider = new TestMemDbProvider();
             _timestamper = new ManualTimestamper();
             _blockTree = Substitute.For<IBlockTree>();
             _txPool = Substitute.For<ITxPool>();

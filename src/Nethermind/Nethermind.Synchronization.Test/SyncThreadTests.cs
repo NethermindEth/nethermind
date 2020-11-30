@@ -245,7 +245,7 @@ namespace Nethermind.Synchronization.Test
 //            var logManager = new OneLoggerLogManager(logger);
             var specProvider = new SingleReleaseSpecProvider(ConstantinopleFix.Instance, MainnetSpecProvider.Instance.ChainId);
 
-            var dbProvider = new MemDbProvider();
+            var dbProvider = new TestMemDbProvider();
             IDb blockDb = dbProvider.BlocksDb;
             IDb headerDb = dbProvider.HeadersDb;
             IDb blockInfoDb = dbProvider.BlockInfosDb;

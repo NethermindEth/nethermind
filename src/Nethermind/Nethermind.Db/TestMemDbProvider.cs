@@ -19,9 +19,8 @@ using System.Collections.Generic;
 
 namespace Nethermind.Db
 {
-    public class MemDbProvider : IDbProvider
+    public class TestMemDbProvider : IDbProvider
     {
-        private List<IDb> _otherDbs = new List<IDb>();
         public ISnapshotableDb StateDb { get; } = new StateDb();
         public ISnapshotableDb CodeDb { get; } = new StateDb();
         public IColumnsDb<ReceiptsColumns> ReceiptsDb { get; } = new MemColumnsDb<ReceiptsColumns>();
@@ -35,9 +34,9 @@ namespace Nethermind.Db
         public IDb ChtDb { get; } = new MemDb();
         public IDb BeamStateDb { get; } = new MemDb();
 
-        public IEnumerable<IDb> OtherDbs => _otherDbs;
-
         public DbModeHint DbMode => throw new NotImplementedException();
+
+        public IEnumerable<IDb> RegisteredDbs => throw new NotImplementedException();
 
         public void Dispose()
         {
@@ -51,14 +50,6 @@ namespace Nethermind.Db
             EthRequestsDb?.Dispose();
             BloomDb?.Dispose();
             ChtDb?.Dispose();
-
-            if (_otherDbs != null)
-            {
-                foreach (var otherDb in _otherDbs)
-                {
-                    otherDb?.Dispose();
-                }
-            }
         }
 
         public T GetDb<T>(string dbName) where T : IDb

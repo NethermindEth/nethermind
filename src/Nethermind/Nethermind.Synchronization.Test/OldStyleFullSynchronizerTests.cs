@@ -50,7 +50,7 @@ namespace Nethermind.Synchronization.Test
         {
             _genesisBlock = Build.A.Block.WithNumber(0).TestObject;
             _blockTree = Build.A.BlockTree(_genesisBlock).OfChainLength(1).TestObject;
-            MemDbProvider dbProvider = new MemDbProvider();
+            TestMemDbProvider dbProvider = new TestMemDbProvider();
             _stateDb = dbProvider.StateDb;
             _codeDb = dbProvider.CodeDb;
             _receiptsDb = dbProvider.ReceiptsDb;

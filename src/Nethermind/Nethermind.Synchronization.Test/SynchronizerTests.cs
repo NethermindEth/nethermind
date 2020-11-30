@@ -300,7 +300,7 @@ namespace Nethermind.Synchronization.Test
             {
                 _logger = _logManager.GetClassLogger();
                 ISyncConfig syncConfig = synchronizerType == SynchronizerType.Fast ? SyncConfig.WithFastSync : SyncConfig.WithFullSyncOnly;
-                MemDbProvider dbProvider = new MemDbProvider();
+                TestMemDbProvider dbProvider = new TestMemDbProvider();
                 ISnapshotableDb stateDb = dbProvider.StateDb;
                 ISnapshotableDb codeDb = dbProvider.CodeDb;
                 MemDb blockInfoDb = new MemDb();

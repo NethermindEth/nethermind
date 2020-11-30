@@ -33,6 +33,11 @@ namespace Nethermind.Db
             {
                 throw new ArgumentNullException(nameof(wrappedProvider));
             }
+
+            foreach (var registeredDb in _wrappedProvider.RegisteredDbs)
+            {
+                RegisterDb(registeredDb.Name, registeredDb);
+            }
         }
 
         public void Dispose()
@@ -43,6 +48,8 @@ namespace Nethermind.Db
         public IDb BeamStateDb { get; } = new MemDb();
 
         public DbModeHint DbMode => _wrappedProvider.DbMode;
+
+        public IEnumerable<IDb> RegisteredDbs => _registeredDbs.Values;
 
         public void ClearTempChanges()
         {            

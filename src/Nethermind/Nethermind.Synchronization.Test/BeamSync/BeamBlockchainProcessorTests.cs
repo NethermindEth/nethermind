@@ -167,7 +167,7 @@ namespace Nethermind.Synchronization.Test.BeamSync
 
         private void SetupBeamProcessor(ISyncModeSelector syncModeSelector = null)
         {
-            MemDbProvider memDbProvider = new MemDbProvider();
+            TestMemDbProvider memDbProvider = new TestMemDbProvider();
             _beamBlockchainProcessor  = new BeamBlockchainProcessor(
                 new ReadOnlyDbProvider(memDbProvider, false),
                 _blockTree,

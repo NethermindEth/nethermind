@@ -69,7 +69,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
             InMemoryReceiptStorage receiptStorage = new InMemoryReceiptStorage();
             _specProvider = new TestSpecProvider(Homestead.Instance);
             _blockTree = Build.A.BlockTree().WithTransactions(receiptStorage, _specProvider).OfChainLength(10).TestObject;
-            _dbProvider = new MemDbProvider();
+            _dbProvider = new TestMemDbProvider();
             ProofModuleFactory moduleFactory = new ProofModuleFactory(
                 _dbProvider,
                 _blockTree,
