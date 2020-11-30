@@ -23,9 +23,7 @@ namespace Nethermind.Db
     {
         private readonly IDbProvider _wrappedProvider;
         private readonly bool _createInMemoryWriteStore;
-        private List<ReadOnlyDb> _otherDbs = new List<ReadOnlyDb>();
-        public ReadOnlyDb NestedStateDb { get; }
-        public ReadOnlyDb NestedCodeDb { get; }
+        private readonly Dictionary<string, IReadOnlyDb> _registeredDbs = new Dictionary<string, IReadOnlyDb>();
         
         public ReadOnlyDbProvider(IDbProvider wrappedProvider, bool createInMemoryWriteStore)
         {
@@ -35,20 +33,6 @@ namespace Nethermind.Db
             {
                 throw new ArgumentNullException(nameof(wrappedProvider));
             }
-
-            NestedStateDb = new ReadOnlyDb(wrappedProvider.StateDb, createInMemoryWriteStore);
-            StateDb = new StateDb(NestedStateDb);
-            NestedCodeDb = new ReadOnlyDb(wrappedProvider.CodeDb, createInMemoryWriteStore);
-            CodeDb = new StateDb(NestedCodeDb);
-            // StateDb = new ReadOnlyDb(wrappedProvider.StateDb, createInMemoryWriteStore);
-            // CodeDb = new ReadOnlyDb(wrappedProvider.CodeDb, createInMemoryWriteStore);
-            NestedReceiptsDb = new ReadOnlyColumnsDb<ReceiptsColumns>(wrappedProvider.ReceiptsDb, createInMemoryWriteStore);
-            NestedBlockInfosDb = new ReadOnlyDb(wrappedProvider.BlockInfosDb, createInMemoryWriteStore);
-            NestedBlocksDb = new ReadOnlyDb(wrappedProvider.BlocksDb, createInMemoryWriteStore);
-            NestedHeadersDb = new ReadOnlyDb(wrappedProvider.HeadersDb, createInMemoryWriteStore);
-            NestedPendingTxsDb = new ReadOnlyDb(wrappedProvider.PendingTxsDb, createInMemoryWriteStore);
-            NestedBloomDb = new ReadOnlyDb(wrappedProvider.BloomDb, createInMemoryWriteStore);
-            NestedChtDb = new ReadOnlyDb(wrappedProvider.ChtDb, createInMemoryWriteStore);
         }
 
         public void Dispose()
@@ -56,43 +40,15 @@ namespace Nethermind.Db
             // ToDo why we don't dispose dbs here - investigate it or consult with someone
         }
 
-        public ISnapshotableDb StateDb { get; }
-        public ISnapshotableDb CodeDb { get; }
-        public IColumnsDb<ReceiptsColumns> ReceiptsDb => NestedReceiptsDb;
-        public IDb BlocksDb => NestedBlocksDb;
-        public IDb HeadersDb => NestedHeadersDb;
-        public IDb BlockInfosDb => NestedBlockInfosDb;
-        public IDb PendingTxsDb => NestedPendingTxsDb;
-        public IDb BloomDb => NestedBloomDb;
-        public IDb ChtDb => NestedChtDb;
-        public IDb BeamStateDb { get; } = new MemDb(); 
-        public ReadOnlyColumnsDb<ReceiptsColumns> NestedReceiptsDb { get; }
-        public ReadOnlyDb NestedBlocksDb { get; }
-        public ReadOnlyDb NestedHeadersDb { get; }
-        public ReadOnlyDb NestedBlockInfosDb { get; }
-        public ReadOnlyDb NestedPendingTxsDb { get; }
-        public ReadOnlyDb NestedBloomDb { get; }
-        public ReadOnlyDb NestedChtDb { get; }
+        public IDb BeamStateDb { get; } = new MemDb();
 
-        public IEnumerable<IDb> OtherDbs => _otherDbs;
-
-        public DbModeHint DbMode => throw new NotImplementedException();
+        public DbModeHint DbMode => _wrappedProvider.DbMode;
 
         public void ClearTempChanges()
-        {
-            StateDb.Restore(-1);
-            CodeDb.Restore(-1);
-            NestedReceiptsDb.Restore(-1);
-            NestedBlocksDb.Restore(-1);
-            NestedHeadersDb.Restore(-1);
-            NestedBlockInfosDb.Restore(-1);
-            NestedReceiptsDb.Restore(-1);
-            NestedBloomDb.Restore(-1);
-            NestedChtDb.Restore(-1);
-            
-            foreach(var otherDb in _otherDbs)
+        {            
+            foreach(var readonlyDb in _registeredDbs.Values)
             {
-                otherDb.Restore(-1);
+                readonlyDb.Restore(-1);
             }
 
             BeamStateDb.Clear();
@@ -100,12 +56,23 @@ namespace Nethermind.Db
 
         public T GetDb<T>(string dbName) where T : IDb
         {
-            throw new NotImplementedException();
+            if (!_registeredDbs.ContainsKey(dbName))
+            {
+                throw new ArgumentException($"{dbName} wasn't registed.");
+            }
+
+            return (T)_registeredDbs[dbName];
         }
 
         public void RegisterDb<T>(string dbName, T db) where T : IDb
         {
+            if (_registeredDbs.ContainsKey(dbName))
+            {
+                throw new ArgumentException($"{dbName} has already registered.");
+            }
+
             var readonlyDb = db.CreateReadOnly(_createInMemoryWriteStore);
+            _registeredDbs.Add(dbName, readonlyDb);
         }
     }
 }

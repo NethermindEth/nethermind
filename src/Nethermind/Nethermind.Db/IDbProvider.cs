@@ -32,21 +32,21 @@ namespace Nethermind.Db
     public interface IDbProvider : IDisposable
     {
         DbModeHint DbMode { get; }
-        ISnapshotableDb StateDb { get; }
-        ISnapshotableDb CodeDb { get; }
-        IColumnsDb<ReceiptsColumns> ReceiptsDb { get; }
-        IDb BlocksDb { get; }
-        IDb HeadersDb { get; }
-        IDb BlockInfosDb { get; }
-        
+        public ISnapshotableDb StateDb => GetDb<ISnapshotableDb>(DbNames.State);
+        public ISnapshotableDb CodeDb => GetDb<ISnapshotableDb>(DbNames.Code);
+        public IColumnsDb<ReceiptsColumns> ReceiptsDb => GetDb<IColumnsDb<ReceiptsColumns>>(DbNames.Receipts);
+        public IDb BlocksDb => GetDb<IDb>(DbNames.Blocks);
+        public IDb HeadersDb => GetDb<IDb>(DbNames.Headers);
+        public IDb BlockInfosDb => GetDb<IDb>(DbNames.BlockInfos);
+
         // BloomDB progress / config (does not contain blooms - they are kept in bloom storage)
-        IDb BloomDb { get; }
-        
+        public IDb BloomDb => GetDb<IDb>(DbNames.Bloom);
+
         // deleted on startup and built from empty each time
-        IDb PendingTxsDb { get; }
-        
+        public IDb PendingTxsDb => GetDb<IDb>(DbNames.PendingTxs);
+
         // LES (ignore)
-        IDb ChtDb { get; }
+        public IDb ChtDb => GetDb<IDb>(DbNames.CHT);
         
         // Beam Sync (StateDB like)
         IDb BeamStateDb { get; }

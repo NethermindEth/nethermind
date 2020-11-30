@@ -137,7 +137,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _get.LogManager);
 
             ReadOnlyDbProvider readOnly = new ReadOnlyDbProvider(_api.DbProvider, false);
-            _set.StateReader = new StateReader(readOnly.StateDb, readOnly.CodeDb, _api.LogManager);
+            _set.StateReader = new StateReader(readOnly.GetDb<ISnapshotableDb>(DbNames.State), readOnly.GetDb<ISnapshotableDb>(DbNames.Code), _api.LogManager);
             _set.TxPoolInfoProvider = new TxPoolInfoProvider(_api.StateReader, _api.TxPool);
 
             var mainBlockProcessor = _set.MainBlockProcessor = CreateBlockProcessor();

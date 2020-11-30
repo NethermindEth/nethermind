@@ -27,16 +27,6 @@ namespace Nethermind.Db.Rocks
         {
             DbMode = dbMode;
         }
-
-        public ISnapshotableDb StateDb => GetDb<ISnapshotableDb>(DbNames.State);
-        public ISnapshotableDb CodeDb => GetDb<ISnapshotableDb>(DbNames.Code);
-        public IColumnsDb<ReceiptsColumns> ReceiptsDb => GetDb<IColumnsDb<ReceiptsColumns>>(DbNames.Receipts);
-        public IDb BlocksDb => GetDb<IDb>(DbNames.Blocks);
-        public IDb HeadersDb => GetDb<IDb>(DbNames.Headers);
-        public IDb BlockInfosDb => GetDb<IDb>(DbNames.BlockInfos);
-        public IDb PendingTxsDb => GetDb<IDb>(DbNames.PendingTxs);
-        public IDb BloomDb => GetDb<IDb>(DbNames.Bloom);
-        public IDb ChtDb => GetDb<IDb>(DbNames.CHT);
         public IDb BeamStateDb { get; } = new MemDb();
 
         public DbModeHint DbMode { get; }

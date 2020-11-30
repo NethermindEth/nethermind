@@ -40,7 +40,14 @@ namespace Nethermind.Db
         
         void Clear();
 
-        public IDb CreateReadOnly(bool createInMemWriteStore) => new ReadOnlyDb(this, createInMemWriteStore);
+        public IReadOnlyDb CreateReadOnly(bool createInMemWriteStore) => new ReadOnlyDb(this, createInMemWriteStore);
+    }
+
+    public interface IReadOnlyDb : IDb
+    {
+        void Restore(int snapshot);
+
+        void ClearTempChanges();
     }
 
     public interface IDbWithSpan : IDb
