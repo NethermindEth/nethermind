@@ -20,7 +20,7 @@ using Nethermind.Db.Rocks.Config;
 
 namespace Nethermind.Baseline.Db
 {
-    public interface IBaselineDbConfig : IPlugableDbConfig
+    public interface IBaselineDbConfig : IPluggableDbConfig
     {
         bool BaselineTreeDbCacheIndexAndFilterBlocks { get; }
         ulong BaselineTreeDbBlockCacheSize { get; }

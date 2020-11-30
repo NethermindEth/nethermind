@@ -68,7 +68,7 @@ namespace Nethermind.Plugin.Baseline
         {
             if (_baselineConfig.Enabled)
             {
-                _baselineDbProvider = new BaselineDbProvider(_api.DbProvider, _baselineConfig, _dbConfig);
+                _baselineDbProvider = new BaselineDbProvider(_api.DbProvider, _baselineConfig, _dbConfig, _api.RocksDbFactory, _api.MemDbFactory);
                 await _baselineDbProvider.Init();
 
                 BaselineModuleFactory baselineModuleFactory = new BaselineModuleFactory(
