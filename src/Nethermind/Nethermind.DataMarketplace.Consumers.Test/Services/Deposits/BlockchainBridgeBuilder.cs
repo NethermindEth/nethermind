@@ -25,7 +25,6 @@ using Nethermind.Crypto;
 using Nethermind.DataMarketplace.Core.Services;
 using Nethermind.Db;
 using Nethermind.Db.Blooms;
-using Nethermind.Evm;
 using Nethermind.Facade;
 using Nethermind.Logging;
 using Nethermind.Specs;
@@ -41,7 +40,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Deposits
     {
         public static INdmBlockchainBridge BuildABridge()
         {
-            MemDbProvider memDbProvider = new MemDbProvider();
+            IDbProvider memDbProvider = TestMemDbProvider.Init();
             StateReader stateReader = new StateReader(memDbProvider.StateDb, memDbProvider.CodeDb, LimboLogs.Instance);
             StateProvider stateProvider = new StateProvider(memDbProvider.StateDb, memDbProvider.CodeDb, LimboLogs.Instance);
             IEthereumEcdsa ecdsa = new EthereumEcdsa(ChainId.Mainnet, LimboLogs.Instance);
