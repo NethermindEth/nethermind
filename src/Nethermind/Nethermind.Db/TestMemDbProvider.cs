@@ -16,11 +16,29 @@
 
 using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
+using System.Threading.Tasks;
 
 namespace Nethermind.Db
 {
     public class TestMemDbProvider : IDbProvider
     {
+        public static async Task<IDbProvider> InitAsync()
+        {
+            IDbProvider memDbProvider = new DbProvider(DbModeHint.Mem);
+            var standardDbInitializer = new StandardDbInitializer(memDbProvider, null, new MemDbFactory());
+            await standardDbInitializer.InitStandardDbsAsync(true);
+            return memDbProvider;
+        }
+
+        public static IDbProvider Init()
+        {
+            IDbProvider memDbProvider = new DbProvider(DbModeHint.Mem);
+            var standardDbInitializer = new StandardDbInitializer(memDbProvider, null, new MemDbFactory());
+            standardDbInitializer.InitStandardDbs(true);
+            return memDbProvider;
+        }
+
         public ISnapshotableDb StateDb { get; } = new StateDb();
         public ISnapshotableDb CodeDb { get; } = new StateDb();
         public IColumnsDb<ReceiptsColumns> ReceiptsDb { get; } = new MemColumnsDb<ReceiptsColumns>();
@@ -34,9 +52,9 @@ namespace Nethermind.Db
         public IDb ChtDb { get; } = new MemDb();
         public IDb BeamStateDb { get; } = new MemDb();
 
-        public DbModeHint DbMode => throw new NotImplementedException();
+        public DbModeHint DbMode => DbModeHint.Mem;
 
-        public IEnumerable<IDb> RegisteredDbs => throw new NotImplementedException();
+        public IDictionary<string, IDb> RegisteredDbs => throw new NotImplementedException();
 
         public void Dispose()
         {

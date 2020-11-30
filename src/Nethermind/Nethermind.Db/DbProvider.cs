@@ -15,13 +15,14 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 
-namespace Nethermind.Db.Rocks
+namespace Nethermind.Db
 {
     public class DbProvider : IDbProvider
     {
-        private readonly Dictionary<string, IDb> _registeredDbs = new Dictionary<string, IDb>();
+        private readonly ConcurrentDictionary<string, IDb> _registeredDbs = new ConcurrentDictionary<string, IDb>();
 
         public DbProvider(DbModeHint dbMode)
         {
@@ -32,7 +33,7 @@ namespace Nethermind.Db.Rocks
 
         public DbModeHint DbMode { get; }
 
-        public IEnumerable<IDb> RegisteredDbs => _registeredDbs.Values;
+        public IDictionary<string, IDb> RegisteredDbs => _registeredDbs;
 
         public void Dispose()
         {
@@ -62,7 +63,7 @@ namespace Nethermind.Db.Rocks
                 throw new ArgumentException($"{dbName} has already registered.");
             }
 
-            _registeredDbs.Add(dbName, db);
+            _registeredDbs.TryAdd(dbName, db);
         }
     }
 }

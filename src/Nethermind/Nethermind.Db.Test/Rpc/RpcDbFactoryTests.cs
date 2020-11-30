@@ -24,7 +24,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Db.Test.Rpc
 {
-    public class RpcDbProviderTests
+    public class RpcDbFactoryTests
     {
         [Test]
         public void ValidateDbs()
@@ -40,20 +40,23 @@ namespace Nethermind.Db.Test.Rpc
             
             var jsonSerializer = Substitute.For<IJsonSerializer>();
             var jsonRpcClient = Substitute.For<IJsonRpcClient>();
-            var recordDbProvider = Substitute.For<IDbProvider>();
-            var rpcDbProvider = new RpcDbProvider(jsonSerializer, jsonRpcClient, LimboLogs.Instance, recordDbProvider);
+            IMemDbFactory rpcDbFactory = new RpcDbFactory(new MemDbFactory(), null, jsonSerializer, jsonRpcClient, LimboLogs.Instance);
+
+            IDbProvider memDbProvider = new DbProvider(DbModeHint.Mem);
+            var standardDbInitializer = new StandardDbInitializer(memDbProvider, null, rpcDbFactory);
+            standardDbInitializer.InitStandardDbs(true);
 
             ValidateDb<ReadOnlyDb>(
-                rpcDbProvider.BlocksDb, 
-                rpcDbProvider.BloomDb,
-                rpcDbProvider.HeadersDb,
-                rpcDbProvider.ReceiptsDb, 
-                rpcDbProvider.BlockInfosDb,
-                rpcDbProvider.PendingTxsDb);
+                memDbProvider.BlocksDb,
+                memDbProvider.BloomDb,
+                memDbProvider.HeadersDb,
+                memDbProvider.ReceiptsDb,
+                memDbProvider.BlockInfosDb,
+                memDbProvider.PendingTxsDb);
 
             ValidateDb<StateDb>(
-                rpcDbProvider.StateDb,
-                rpcDbProvider.CodeDb);
+                memDbProvider.StateDb,
+                memDbProvider.CodeDb);
         }
     }
 }

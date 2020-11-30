@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -300,9 +300,9 @@ namespace Nethermind.Synchronization.Test
             {
                 _logger = _logManager.GetClassLogger();
                 ISyncConfig syncConfig = synchronizerType == SynchronizerType.Fast ? SyncConfig.WithFastSync : SyncConfig.WithFullSyncOnly;
-                TestMemDbProvider dbProvider = new TestMemDbProvider();
-                ISnapshotableDb stateDb = dbProvider.StateDb;
-                ISnapshotableDb codeDb = dbProvider.CodeDb;
+                IDbProvider dbProvider = TestMemDbProvider.Init();
+                ISnapshotableDb stateDb = new StateDb(new MemDb());
+                ISnapshotableDb codeDb = new StateDb(new MemDb());
                 MemDb blockInfoDb = new MemDb();
                 BlockTree = new BlockTree(new MemDb(), new MemDb(), blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), new SingleReleaseSpecProvider(Constantinople.Instance, 1), NullBloomStorage.Instance, _logManager);
                 NodeStatsManager stats = new NodeStatsManager(_logManager);

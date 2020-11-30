@@ -60,7 +60,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 var useReceiptsDb = initConfig.StoreReceipts || syncConfig.DownloadReceiptsInFastSync;
                 InitDbApi(initConfig, dbConfig, initConfig.StoreReceipts || syncConfig.DownloadReceiptsInFastSync);
                 var dbInitalizer = new StandardDbInitializer(_api.DbProvider, _api.RocksDbFactory, _api.MemDbFactory);
-                await dbInitalizer.InitStandardDbs(useReceiptsDb);
+                await dbInitalizer.InitStandardDbsAsync(useReceiptsDb);
                 if (syncConfig.BeamSync)
                 {
                     _api.SyncModeSelector = new PendingSyncModeSelector();

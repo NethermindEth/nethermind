@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -63,9 +63,9 @@ namespace Nethermind.JsonRpc.Test.Modules
             Initialize();
         }
 
-        private void Initialize(bool auRa = false)
+        private async Task Initialize(bool auRa = false)
         {
-            TestMemDbProvider dbProvider = new TestMemDbProvider();
+            IDbProvider dbProvider = await TestMemDbProvider.InitAsync();
             ISpecProvider specProvider = MainnetSpecProvider.Instance;
             _jsonRpcConfig = new JsonRpcConfig();
             IEthereumEcdsa ethereumEcdsa = new EthereumEcdsa(specProvider.ChainId, LimboLogs.Instance);

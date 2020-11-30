@@ -36,7 +36,7 @@ namespace Nethermind.Db
 
             foreach (var registeredDb in _wrappedProvider.RegisteredDbs)
             {
-                RegisterDb(registeredDb.Name, registeredDb);
+                RegisterDb(registeredDb.Key, registeredDb.Value);
             }
         }
 
@@ -49,8 +49,7 @@ namespace Nethermind.Db
 
         public DbModeHint DbMode => _wrappedProvider.DbMode;
 
-        public IEnumerable<IDb> RegisteredDbs => _registeredDbs.Values;
-
+        public IDictionary<string, IDb> RegisteredDbs => _wrappedProvider.RegisteredDbs;
         public void ClearTempChanges()
         {            
             foreach(var readonlyDb in _registeredDbs.Values)

@@ -56,6 +56,6 @@ namespace Nethermind.Db
 
         void RegisterDb<T>(string dbName, T db) where T : IDb;
 
-        IEnumerable<IDb> RegisteredDbs { get; }
+        IDictionary<string, IDb> RegisteredDbs { get; }
     }
 }

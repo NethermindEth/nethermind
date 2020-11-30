@@ -52,7 +52,7 @@ namespace Nethermind.Synchronization.BeamSync
 
         public DbModeHint DbMode => _otherProvider.DbMode;
 
-        public IEnumerable<IDb> RegisteredDbs => _otherProvider.RegisteredDbs;
+        public IDictionary<string, IDb> RegisteredDbs => _otherProvider.RegisteredDbs;
 
         public void Dispose()
         {

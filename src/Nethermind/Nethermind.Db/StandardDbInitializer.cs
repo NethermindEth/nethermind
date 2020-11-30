@@ -17,6 +17,7 @@
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using Nethermind.HashLib;
 
 namespace Nethermind.Db
 {
@@ -33,59 +34,70 @@ namespace Nethermind.Db
             _memDbFactory = memDbFactory;
         }
 
-        public async Task InitStandardDbs(bool useReceiptsDb)
+        public void InitStandardDbs(bool useReceiptsDb)
         {
-            HashSet<Task> allInitializers = new HashSet<Task>();
-            allInitializers.Add(RegisterDb(DbNames.Blocks, () => Metrics.BlocksDbReads++, () => Metrics.BlocksDbWrites++));
-            allInitializers.Add(RegisterDb(DbNames.Headers, () => Metrics.HeaderDbReads++, () => Metrics.HeaderDbWrites++));
-            allInitializers.Add(RegisterDb(DbNames.BlockInfos, () => Metrics.BlockInfosDbReads++, () => Metrics.BlockInfosDbWrites++));
-            allInitializers.Add(RegisterDb(DbNames.State, () => Metrics.StateDbReads++, () => Metrics.StateDbWrites++, snapshotDb: true));
-            allInitializers.Add(RegisterDb(DbNames.Code, () => Metrics.CodeDbReads++, () => Metrics.CodeDbWrites++, snapshotDb: true));
-            allInitializers.Add(RegisterDb(DbNames.PendingTxs, () => Metrics.PendingTxsDbReads++, () => Metrics.PendingTxsDbWrites++));
-            allInitializers.Add(RegisterDb(DbNames.Bloom, () => Metrics.BloomDbReads++, () => Metrics.BloomDbWrites++));
-            allInitializers.Add(RegisterDb(DbNames.CHT, () => Metrics.CHTDbReads++, () => Metrics.CHTDbWrites++));
-
-            if (useReceiptsDb)
+            var registrations = RegisterAll(useReceiptsDb);
+            foreach (var registration in registrations)
             {
-                allInitializers.Add(RegisterColumnsDb<ReceiptsColumns>(DbNames.Receipts, () => Metrics.ReceiptsDbReads++, () => Metrics.ReceiptsDbWrites++));
+                registration.Invoke();
             }
-            else
+        }
+
+        public async Task InitStandardDbsAsync(bool useReceiptsDb)
+        {
+            var allInitializers = new HashSet<Task>();
+            var registrations = RegisterAll(useReceiptsDb);
+            foreach (var registration in registrations)
             {
-                allInitializers.Add(RegisterDb(DbNames.Receipts, new ReadOnlyColumnsDb<ReceiptsColumns>(new MemColumnsDb<ReceiptsColumns>(), false)));
+                allInitializers.Add(Task.Run(() => registration.Invoke()));
             }
 
             await Task.WhenAll(allInitializers);
         }
 
-        private Task RegisterColumnsDb<T>(string dbName, Action updateReadsMetrics, Action updateWriteMetrics)
+        private IEnumerable<Action> RegisterAll(bool useReceiptsDb)
         {
-            return Task.Run(() =>
+            var allRegistraiotns = new HashSet<Action>();
+            allRegistraiotns.Add(() => RegisterDb(DbNames.Blocks, () => Metrics.BlocksDbReads++, () => Metrics.BlocksDbWrites++));
+            allRegistraiotns.Add(() => RegisterDb(DbNames.Headers, () => Metrics.HeaderDbReads++, () => Metrics.HeaderDbWrites++));
+            allRegistraiotns.Add(() => RegisterDb(DbNames.BlockInfos, () => Metrics.BlockInfosDbReads++, () => Metrics.BlockInfosDbWrites++));
+            allRegistraiotns.Add(() => RegisterDb(DbNames.State, () => Metrics.StateDbReads++, () => Metrics.StateDbWrites++, snapshotDb: true));
+            allRegistraiotns.Add(() => RegisterDb(DbNames.Code, () => Metrics.CodeDbReads++, () => Metrics.CodeDbWrites++, snapshotDb: true));
+            allRegistraiotns.Add(() => RegisterDb(DbNames.PendingTxs, () => Metrics.PendingTxsDbReads++, () => Metrics.PendingTxsDbWrites++));
+            allRegistraiotns.Add(() => RegisterDb(DbNames.Bloom, () => Metrics.BloomDbReads++, () => Metrics.BloomDbWrites++));
+            allRegistraiotns.Add(() => RegisterDb(DbNames.CHT, () => Metrics.CHTDbReads++, () => Metrics.CHTDbWrites++));
+            if (useReceiptsDb)
             {
-                var db = CreateColumnsDb<T>(dbName, updateReadsMetrics, updateWriteMetrics);
-                _dbProvider.RegisterDb(dbName, db);
-            });
+                allRegistraiotns.Add(() => RegisterColumnsDb<ReceiptsColumns>(DbNames.Receipts, () => Metrics.ReceiptsDbReads++, () => Metrics.ReceiptsDbWrites++));
+            }
+            else
+            {
+                allRegistraiotns.Add(() => RegisterDb(DbNames.Receipts, new ReadOnlyColumnsDb<ReceiptsColumns>(new MemColumnsDb<ReceiptsColumns>(), false)));
+            }
+
+            return allRegistraiotns;
         }
 
-        private Task RegisterDb(string dbName, IDb db)
+        private void RegisterColumnsDb<T>(string dbName, Action updateReadsMetrics, Action updateWriteMetrics)
         {
-            return Task.Run(() =>
-            {
-                _dbProvider.RegisterDb(dbName, db);
-            });
+            var db = CreateColumnsDb<T>(dbName, updateReadsMetrics, updateWriteMetrics);
+            _dbProvider.RegisterDb(dbName, db);
         }
 
-        private Task RegisterDb(string dbName, Action updateReadsMetrics, Action updateWriteMetrics, bool snapshotDb = false)
+        private void RegisterDb(string dbName, IDb db)
         {
-            return Task.Run(() =>
-            {
-                IDb db;
-                if (snapshotDb)
-                    db = CreateSnapshotableDb(dbName, updateReadsMetrics, updateWriteMetrics);
-                else
-                    db = CreateDb(dbName, updateReadsMetrics, updateWriteMetrics);
+            _dbProvider.RegisterDb(dbName, db);
+        }
 
-                _dbProvider.RegisterDb(dbName, db);
-            });
+        private void RegisterDb(string dbName, Action updateReadsMetrics, Action updateWriteMetrics, bool snapshotDb = false)
+        {
+            IDb db;
+            if (snapshotDb)
+                db = CreateSnapshotableDb(dbName, updateReadsMetrics, updateWriteMetrics);
+            else
+                db = CreateDb(dbName, updateReadsMetrics, updateWriteMetrics);
+
+            _dbProvider.RegisterDb(dbName, db);
         }
 
         private IDb CreateDb(string dbName, Action updateReadsMetrics, Action updateWriteMetrics)
