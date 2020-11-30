@@ -18,7 +18,6 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
@@ -283,16 +282,6 @@ namespace Nethermind.Blockchain.Processing
 
             ProcessingBranch processingBranch = PrepareProcessingBranch(suggestedBlock, options);
             PrepareBlocksToProcess(suggestedBlock, options, processingBranch);
-            if (processingBranch.Blocks.Count > 1)
-            {
-                Block lastBlock = null;
-                foreach (Block block in processingBranch.Blocks.OrderBy(b => b.Number))
-                {
-                    lastBlock = Process(block, options, tracer);
-                }
-
-                return lastBlock;
-            }
 
             Stopwatch stopwatch = Stopwatch.StartNew();
             Block[] processedBlocks = ProcessBranch(processingBranch, options, tracer);
