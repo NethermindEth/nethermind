@@ -31,13 +31,13 @@ namespace Nethermind.Consensus.AuRa.Transactions
     {
         private readonly VersionedContract<ITransactionPermissionContract> _contract;
         private readonly Cache _cache;
-        private readonly IStateProvider _stateProvider;
+        private readonly IReadOnlyStateProvider _stateProvider;
         private readonly ILogger _logger;
 
         public PermissionBasedTxFilter(
             VersionedContract<ITransactionPermissionContract> contract,
             Cache cache,
-            IStateProvider stateProvider,
+            IReadOnlyStateProvider stateProvider,
             ILogManager logManager)
         {
             _contract = contract ?? throw new ArgumentNullException(nameof(contract));

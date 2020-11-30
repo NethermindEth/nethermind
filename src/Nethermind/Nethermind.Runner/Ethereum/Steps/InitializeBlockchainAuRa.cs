@@ -58,6 +58,7 @@ namespace Nethermind.Runner.Ethereum.Steps
         protected override BlockProcessor CreateBlockProcessor()
         {
             if (_api.SpecProvider == null) throw new StepDependencyException(nameof(_api.SpecProvider));
+            if (_api.ChainHeadStateProvider == null) throw new StepDependencyException(nameof(_api.ChainHeadStateProvider));
             if (_api.BlockValidator == null) throw new StepDependencyException(nameof(_api.BlockValidator));
             if (_api.RewardCalculatorSource == null) throw new StepDependencyException(nameof(_api.RewardCalculatorSource));
             if (_api.TransactionProcessor == null) throw new StepDependencyException(nameof(_api.TransactionProcessor));
@@ -69,7 +70,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             
             var processingReadOnlyTransactionProcessorSource = new ReadOnlyTxProcessorSource(_api.DbProvider, _api.BlockTree, _api.SpecProvider, _api.LogManager);
             var txPermissionFilterOnlyTxProcessorSource = new ReadOnlyTxProcessorSource(_api.DbProvider, _api.BlockTree, _api.SpecProvider, _api.LogManager);
-            ITxFilter? txPermissionFilter = TxFilterBuilders.CreateTxPermissionFilter(_api, txPermissionFilterOnlyTxProcessorSource, _api.StateProvider);
+            ITxFilter? txPermissionFilter = TxFilterBuilders.CreateTxPermissionFilter(_api, txPermissionFilterOnlyTxProcessorSource, _api.ChainHeadStateProvider);
             
             var processor = new AuRaBlockProcessor(
                 _api.SpecProvider,
@@ -253,7 +254,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 NethermindApi.Config<IMiningConfig>(),
                 _api,
                 txPoolReadOnlyTransactionProcessorSource,
-                _api.StateProvider!,
+                _api.ChainHeadStateProvider!,
                 minGasPricesContractDataStore);
             
             return new FilteredTxPool(
@@ -261,7 +262,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.EthereumEcdsa,
                 _api.SpecProvider,
                 NethermindApi.Config<ITxPoolConfig>(),
-                _api.StateProvider,
+                _api.ChainHeadStateProvider,
                 _api.LogManager,
                 CreateTxPoolTxComparer(txPriorityContract, localDataSource),
                 new TxFilterAdapter(_api.BlockTree, txPoolFilter));

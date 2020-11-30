@@ -60,7 +60,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             return gasPriceTxFilter;
         }
         
-        public static ITxFilter? CreateTxPermissionFilter(AuRaNethermindApi api, IReadOnlyTransactionProcessorSource readOnlyTxProcessorSource, IStateProvider stateProvider)
+        public static ITxFilter? CreateTxPermissionFilter(AuRaNethermindApi api, IReadOnlyTransactionProcessorSource readOnlyTxProcessorSource, IReadOnlyStateProvider stateProvider)
         {
             if (api.ChainSpec == null) throw new StepDependencyException(nameof(api.ChainSpec));
             
@@ -88,7 +88,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             IMiningConfig miningConfig,
             AuRaNethermindApi api,
             IReadOnlyTransactionProcessorSource readOnlyTxProcessorSource,
-            IStateProvider stateProvider,
+            IReadOnlyStateProvider stateProvider,
             IDictionaryContractDataStore<TxPriorityContract.Destination>? minGasPricesContractDataStore)
         {
             ITxFilter baseAuRaTxFilter = CreateBaseAuRaTxFilter(miningConfig, api, readOnlyTxProcessorSource, minGasPricesContractDataStore);
