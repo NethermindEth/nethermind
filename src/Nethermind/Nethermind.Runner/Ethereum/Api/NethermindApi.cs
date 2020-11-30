@@ -151,13 +151,6 @@ namespace Nethermind.Runner.Ethereum.Api
         public ISyncPeerPool? SyncPeerPool { get; set; }
         public ISynchronizer? Synchronizer { get; set; }
         public ISyncServer? SyncServer { get; set; }
-        
-        /// <summary>
-        /// Can be used only for processing blocks, on all other contexts use <see cref="StateReader"/> or <see cref="ChainHeadStateProvider"/>.
-        /// </summary>
-        /// <remarks>
-        /// DO NOT USE OUTSIDE OF PROCESSING BLOCK CONTEXT!
-        /// </remarks>
         public IStateProvider? StateProvider { get; set; }
         public IReadOnlyStateProvider? ChainHeadStateProvider { get; set; }
         public IStateReader? StateReader { get; set; }

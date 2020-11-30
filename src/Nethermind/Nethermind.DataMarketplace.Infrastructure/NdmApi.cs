@@ -364,10 +364,22 @@ namespace Nethermind.DataMarketplace.Infrastructure
             set => _nethermindApi.SyncServer = value;
         }
 
+        /// <summary>
+        /// Can be used only for processing blocks, on all other contexts use <see cref="StateReader"/> or <see cref="ChainHeadStateProvider"/>.
+        /// </summary>
+        /// <remarks>
+        /// DO NOT USE OUTSIDE OF PROCESSING BLOCK CONTEXT!
+        /// </remarks>
         public IStateProvider? StateProvider
         {
             get => _nethermindApi.StateProvider;
             set => _nethermindApi.StateProvider = value;
+        }
+
+        public IReadOnlyStateProvider? ChainHeadStateProvider         
+        {
+            get => _nethermindApi.ChainHeadStateProvider;
+            set => _nethermindApi.ChainHeadStateProvider = value;
         }
 
         public IStateReader? StateReader
