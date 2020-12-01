@@ -19,6 +19,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Google.Protobuf.WellKnownTypes;
 using Nethermind.Api;
+using Nethermind.Api.Extensions;
 using Nethermind.Core;
 using Nethermind.Logging;
 using Nethermind.Runner.Ethereum.Steps;
@@ -60,6 +61,11 @@ namespace Nethermind.Runner.Ethereum
             Task blockchainProcessorTask = Stop(() => _api.BlockchainProcessor?.StopAsync(), "Stopping blockchain processor");
             Task rlpxPeerTask = Stop(() => _api.RlpxPeer?.Shutdown(), "Stopping rlpx peer");
             await Task.WhenAll(discoveryStopTask, rlpxPeerTask, peerManagerTask, synchronizerTask, peerPoolTask, blockchainProcessorTask, blockProducerTask);
+
+            foreach (INethermindPlugin plugin in _api.Plugins)
+            {
+                Stop(() => plugin.Dispose(), $"Disposing plugin {plugin.Name}");
+            }
 
             while (_api.DisposeStack.Count != 0)
             {

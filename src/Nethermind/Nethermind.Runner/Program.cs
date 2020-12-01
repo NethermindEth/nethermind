@@ -163,8 +163,7 @@ namespace Nethermind.Runner
                 INethermindApi nethermindApi = apiBuilder.Create();
                 foreach (Type pluginType in pluginLoader.PluginTypes)
                 {
-                    INethermindPlugin? plugin = Activator.CreateInstance(pluginType) as INethermindPlugin;
-                    if (plugin != null)
+                    if (Activator.CreateInstance(pluginType) is INethermindPlugin plugin)
                     {
                         nethermindApi.Plugins.Add(plugin);
                     }
