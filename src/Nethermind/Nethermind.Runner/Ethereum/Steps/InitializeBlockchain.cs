@@ -78,7 +78,7 @@ namespace Nethermind.Runner.Ethereum.Steps
 
             Account.AccountStartNonce = _get.ChainSpec.Parameters.AccountStartNonce;
             
-            if (pruningConfig.Pruning)
+            if (pruningConfig.Enabled)
             {
                 _api.TrieStore = new TrieStore(
                     _get.DbProvider!.StateDb.Innermost, // TODO: PRUNING what a hack here just to pass the actual DB

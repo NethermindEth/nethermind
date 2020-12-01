@@ -22,7 +22,7 @@ namespace Nethermind.Blockchain.Synchronization
     public interface IPruningConfig : IConfig
     {
         [ConfigItem(Description = "Enables pruning (beta).", DefaultValue = "false")]
-        bool Pruning { get; set; }
+        bool Enabled { get; set; }
         
         [ConfigItem(Description = "Pruning cache size in MB (beta).", DefaultValue = "512")]
         long PruningCacheMb { get; set; }
