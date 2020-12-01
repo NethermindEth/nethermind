@@ -73,7 +73,7 @@ namespace Nethermind.TxPool
         private readonly SortedPool<Keccak, Transaction, Address> _transactions;
 
         private readonly ISpecProvider _specProvider;
-        private readonly IStateProvider _stateProvider;
+        private readonly IReadOnlyStateProvider _stateProvider;
         private readonly IEthereumEcdsa _ecdsa;
         protected readonly ILogger _logger;
 
@@ -129,7 +129,7 @@ namespace Nethermind.TxPool
             IEthereumEcdsa ecdsa,
             ISpecProvider specProvider,
             ITxPoolConfig txPoolConfig,
-            IStateProvider stateProvider,
+            IReadOnlyStateProvider stateProvider,
             ILogManager logManager,
             IComparer<Transaction> comparer = null)
         {

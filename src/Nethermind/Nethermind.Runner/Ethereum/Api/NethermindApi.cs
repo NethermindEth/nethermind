@@ -154,6 +154,7 @@ namespace Nethermind.Runner.Ethereum.Api
         public ISynchronizer? Synchronizer { get; set; }
         public ISyncServer? SyncServer { get; set; }
         public IStateProvider? StateProvider { get; set; }
+        public IReadOnlyStateProvider? ChainHeadStateProvider { get; set; }
         public IStateReader? StateReader { get; set; }
         public IStorageProvider? StorageProvider { get; set; }
         public IStaticNodesManager? StaticNodesManager { get; set; }

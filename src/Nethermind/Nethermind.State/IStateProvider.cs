@@ -22,33 +22,15 @@ using Nethermind.Trie;
 
 namespace Nethermind.State
 {
-    public interface IStateProvider
+    public interface IStateProvider : IReadOnlyStateProvider
     {
         void RecalculateStateRoot();
         
-        Keccak StateRoot { get; set; }
-        
-        void CreateAccount(Address address, in UInt256 balance);
+        new Keccak StateRoot { get; set; }
 
         void DeleteAccount(Address address);
 
-        bool AccountExists(Address address);
-
-        bool IsDeadAccount(Address address);
-
-        Account GetAccount(Address address);
-        
-        UInt256 GetNonce(Address address);
-
-        UInt256 GetBalance(Address address);
-        
-        Keccak GetStorageRoot(Address address);
-
-        byte[] GetCode(Keccak codeHash);
-        
-        Keccak UpdateCode(byte[] code);
-        
-        Keccak GetCodeHash(Address address);
+        void CreateAccount(Address address, in UInt256 balance);
 
         void UpdateCodeHash(Address address, Keccak codeHash, IReleaseSpec spec);
 
@@ -61,6 +43,8 @@ namespace Nethermind.State
         void IncrementNonce(Address address);
         
         void DecrementNonce(Address address);
+        
+        Keccak UpdateCode(byte[] code);
 
         /* snapshots */
         
@@ -84,5 +68,7 @@ namespace Nethermind.State
         /// pruning hack
         /// </summary>
         void CommitCode();
+
+        TrieStats CollectStats();
     }
 }

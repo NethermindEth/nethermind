@@ -52,9 +52,9 @@ namespace Nethermind.Runner
         
         private static ILogger _logger = SimpleConsoleLogger.Instance;
 
-        private static CancellationTokenSource _processCloseCancellationSource = new CancellationTokenSource();
-        private static TaskCompletionSource<object?>? _cancelKeySource;
-        private static TaskCompletionSource<object?>? _processExit;
+        private static readonly CancellationTokenSource _processCloseCancellationSource = new CancellationTokenSource();
+        private static readonly TaskCompletionSource<object?> _cancelKeySource = new TaskCompletionSource<object?>();
+        private static readonly TaskCompletionSource<object?> _processExit = new TaskCompletionSource<object?>();
 
         public static void Main(string[] args)
         {
@@ -85,9 +85,6 @@ namespace Nethermind.Runner
             {
                 NLogLogger.Shutdown();
             }
-
-            Console.WriteLine("Press RETURN to exit.");
-            Console.ReadLine();
         }
 
         private static void Run(string[] args)
@@ -166,17 +163,13 @@ namespace Nethermind.Runner
                 INethermindApi nethermindApi = apiBuilder.Create();
                 foreach (Type pluginType in pluginLoader.PluginTypes)
                 {
-                    INethermindPlugin? plugin = Activator.CreateInstance(pluginType) as INethermindPlugin;
-                    if (plugin != null)
+                    if (Activator.CreateInstance(pluginType) is INethermindPlugin plugin)
                     {
                         nethermindApi.Plugins.Add(plugin);
                     }
                 }
                 
                 nethermindApi.WebSocketsManager = new WebSocketsManager();
-
-                _processExit = new TaskCompletionSource<object?>();
-                _cancelKeySource = new TaskCompletionSource<object?>();
                 EthereumRunner ethereumRunner = new EthereumRunner(nethermindApi);
                 await ethereumRunner.Start(_processCloseCancellationSource.Token).ContinueWith(x =>
                 {
@@ -307,7 +300,7 @@ namespace Nethermind.Runner
         private static void CurrentDomainOnProcessExit(object? sender, EventArgs e)
         {
             _processCloseCancellationSource.Cancel();
-            _processExit?.SetResult(null);
+            _processExit.SetResult(null);
         }
 
         private static void LogMemoryConfiguration()
@@ -337,8 +330,9 @@ namespace Nethermind.Runner
 
         private static void ConsoleOnCancelKeyPress(object sender, ConsoleCancelEventArgs e)
         {
-            _cancelKeySource?.TrySetResult(null);
-            e.Cancel = false;
+            _processCloseCancellationSource.Cancel();
+            _cancelKeySource.TrySetResult(null);
+            e.Cancel = true;
         }
 
         private static void ConfigureSeqLogger(IConfigProvider configProvider)

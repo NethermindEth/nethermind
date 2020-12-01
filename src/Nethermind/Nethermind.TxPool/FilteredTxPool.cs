@@ -38,7 +38,7 @@ namespace Nethermind.TxPool
             IEthereumEcdsa ecdsa, 
             ISpecProvider specProvider, 
             ITxPoolConfig txPoolConfig, 
-            IStateProvider stateProvider,
+            IReadOnlyStateProvider stateProvider,
             ILogManager logManager, 
             IComparer<Transaction> comparer = null,
             ITxPoolFilter txPoolFilter = null) 

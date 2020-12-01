@@ -7,13 +7,13 @@ on:
     inputs:
       branch:
         description: 'Branch to get tests from'
-        required: true
+        required: false
         default: 'master'
   workflow_dispatch:
     inputs:
       branch:
         description: 'Branch to get tests from'
-        required: true
+        required: false
         default: 'master'
 
 jobs:
@@ -26,13 +26,17 @@ jobs:
         sudo apt-get update
         sudo apt-get install libsnappy-dev libc6-dev libc6
     - name: Cloning Nethermind repo
-      run: |
-        git clone https://github.com/NethermindEth/nethermind.git --recursive
-        cd nethermind
-        git submodule update --init src/rocksdb-sharp src/int256 src/Dirichlet
+      uses: actions/checkout@v2
+      with:
+        submodules: recursive
+        path: nethermind
     - name: Cloning posdao-test-setup repo from Nethermind
-      run: |
-        git clone https://github.com/NethermindEth/posdao-test-setup
+      uses: actions/checkout@v2
+      with:
+        repository: NethermindEth/posdao-test-setup
+        ref: ${{ github.event.inputs.branch }}
+        submodules: recursive
+        path: posdao-test-setup
     - name: Building Nethermind binary
       run: |
         cd nethermind

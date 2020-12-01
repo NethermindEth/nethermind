@@ -150,14 +150,15 @@ namespace Nethermind.Runner.Ethereum.Steps
 
             if (_txPriorityContract != null || _localDataSource != null)
             {
-                _minGasPricesContractDataStore = TxFilterBuilders.CreateMinGasPricesDataStore(_api, _txPriorityContract, _localDataSource, _api.MainBlockProcessor)!;
+                _minGasPricesContractDataStore = TxFilterBuilders.CreateMinGasPricesDataStore(_api, _txPriorityContract, _localDataSource)!;
                 _api.DisposeStack.Push(_minGasPricesContractDataStore);                
 
                 IBlockProcessor? blockProcessor = _api.MainBlockProcessor;
                 ContractDataStore<Address, IContractDataStoreCollection<Address>> whitelistContractDataStore = new ContractDataStoreWithLocalData<Address>(
                     new HashSetContractDataStoreCollection<Address>(),
                     _txPriorityContract?.SendersWhitelist,
-                    blockProcessor,
+                    _api.BlockTree,
+                    _api.ReceiptFinder,
                     _api.LogManager,
                     _localDataSource?.GetWhitelistLocalDataSource() ?? new EmptyLocalDataSource<IEnumerable<Address>>());
 
@@ -165,7 +166,8 @@ namespace Nethermind.Runner.Ethereum.Steps
                     new DictionaryContractDataStore<TxPriorityContract.Destination, TxPriorityContract.DestinationSortedListContractDataStoreCollection>(
                         new TxPriorityContract.DestinationSortedListContractDataStoreCollection(),
                         _txPriorityContract?.Priorities,
-                        blockProcessor,
+                        _api.BlockTree,
+                        _api.ReceiptFinder,
                         _api.LogManager,
                         _localDataSource?.GetPrioritiesLocalDataSource());
                 

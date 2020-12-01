@@ -17,7 +17,9 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using Google.Protobuf.WellKnownTypes;
 using Nethermind.Api;
+using Nethermind.Api.Extensions;
 using Nethermind.Core;
 using Nethermind.Logging;
 using Nethermind.Runner.Ethereum.Steps;
@@ -47,52 +49,79 @@ namespace Nethermind.Runner.Ethereum
             string infoScreen = ThisNodeInfo.BuildNodeInfoScreen();
             if (_logger.IsInfo) _logger.Info(infoScreen);
         }
-        
+
         public async Task StopAsync()
         {
             if (_logger.IsInfo) _logger.Info("Persisting trie...");
             _api.TrieStore?.HackPersistOnShutdown();
             
-            if (_logger.IsInfo) _logger.Info("Stopping synchronizer...");
-            Task synchronizerTask = _api.Synchronizer?.StopAsync() ?? Task.CompletedTask;
-            
-            if (_logger.IsInfo) _logger.Info("Stopping blockchain processor...");
-            Task blockchainProcessorTask = (_api.BlockchainProcessor?.StopAsync() ?? Task.CompletedTask);
-            
-            await Task.WhenAll(synchronizerTask, blockchainProcessorTask);
+            Stop(() => _api.SessionMonitor?.Stop(), "Stopping session monitor");
+            Task discoveryStopTask = Stop(() => _api.DiscoveryApp?.StopAsync(), "Stopping discovery app");
+            Task blockProducerTask = Stop(() => _api.BlockProducer?.StopAsync(), "Stopping block producer");
+            Task peerPoolTask = Stop(() => _api.SyncPeerPool?.StopAsync(), "Stopping sync peer pool");
+            Task peerManagerTask = Stop(() => _api.PeerManager?.StopAsync(), "Stopping peer manager");
+            Task synchronizerTask = Stop(() => _api.Synchronizer?.StopAsync(), "Stopping synchronizer");
+            Task blockchainProcessorTask = Stop(() => _api.BlockchainProcessor?.StopAsync(), "Stopping blockchain processor");
+            Task rlpxPeerTask = Stop(() => _api.RlpxPeer?.Shutdown(), "Stopping rlpx peer");
+            await Task.WhenAll(discoveryStopTask, rlpxPeerTask, peerManagerTask, synchronizerTask, peerPoolTask, blockchainProcessorTask, blockProducerTask);
 
-            if (_logger.IsInfo) _logger.Info("Closing DBs...");
-            _api.DbProvider?.Dispose();
-            if (_logger.IsInfo) _logger.Info("All DBs closed.");
-            
-            if (_logger.IsInfo) _logger.Info("Stopping block producer...");
-            Task blockProducerTask = _api.BlockProducer?.StopAsync() ?? Task.CompletedTask;
-            
+            foreach (INethermindPlugin plugin in _api.Plugins)
+            {
+                Stop(() => plugin.Dispose(), $"Disposing plugin {plugin.Name}");
+            }
+
             while (_api.DisposeStack.Count != 0)
             {
                 IAsyncDisposable disposable = _api.DisposeStack.Pop();
-                if (_logger.IsDebug) _logger.Debug($"Disposing {disposable}");
-                await disposable.DisposeAsync();
+                await Stop(() => disposable.DisposeAsync(), $"Disposing {disposable}");
             }
 
-            if (_logger.IsInfo) _logger.Info("Stopping session monitor...");
-            _api.SessionMonitor?.Stop();
+            Stop(() => _api.DbProvider?.Dispose(), "Closing DBs");
 
-            if (_logger.IsInfo) _logger.Info("Stopping discovery app...");
-            Task discoveryStopTask = _api.DiscoveryApp?.StopAsync() ?? Task.CompletedTask;
-
-            if (_logger.IsInfo) _logger.Info("Stopping sync peer pool...");
-            Task peerPoolTask = _api.SyncPeerPool?.StopAsync() ?? Task.CompletedTask;
-
-            if (_logger.IsInfo) _logger.Info("Stopping peer manager...");
-            Task peerManagerTask = _api.PeerManager?.StopAsync() ?? Task.CompletedTask;
-
-            if (_logger.IsInfo) _logger.Info("Stopping rlpx peer...");
-            Task rlpxPeerTask = _api.RlpxPeer?.Shutdown() ?? Task.CompletedTask;
-
-            await Task.WhenAll(discoveryStopTask, rlpxPeerTask, peerManagerTask, peerPoolTask, blockProducerTask);
+            if (_logger.IsInfo) _logger.Info("All DBs closed.");
 
             if (_logger.IsInfo) _logger.Info("Ethereum shutdown complete... please wait for all components to close");
+        }
+
+        private void Stop(Action stopAction, string description)
+        {
+            try
+            {
+                if (_logger.IsInfo) _logger.Info($"{description}...");
+                stopAction();
+            }
+            catch (Exception e)
+            {
+                if (_logger.IsError) _logger.Error($"{description} shutdown error.", e);
+            }
+        }
+        
+        private Task Stop(Func<Task?> stopAction, string description)
+        {
+            try
+            {
+                if (_logger.IsInfo) _logger.Info($"{description}...");
+                return stopAction() ?? Task.CompletedTask;
+            }
+            catch (Exception e)
+            {
+                if (_logger.IsError) _logger.Error($"{description} shutdown error.", e);
+                return Task.CompletedTask;
+            }
+        }
+        
+        private ValueTask Stop(Func<ValueTask?> stopAction, string description)
+        {
+            try
+            {
+                if (_logger.IsInfo) _logger.Info($"{description}...");
+                return stopAction() ?? default;
+            }
+            catch (Exception e)
+            {
+                if (_logger.IsError) _logger.Error($"{description} shutdown error.", e);
+                return default;
+            }
         }
     }
 }
