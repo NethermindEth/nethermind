@@ -20,8 +20,7 @@ using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Baseline;
 using Nethermind.Baseline.Config;
-using Nethermind.Baseline.Db;
-using Nethermind.Db.Rocks.Config;
+using Nethermind.Baseline.Database;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
 

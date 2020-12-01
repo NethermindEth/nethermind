@@ -19,8 +19,15 @@ using Nethermind.Config;
 namespace Nethermind.Db.Rocks.Config
 {
     [ConfigCategory(HiddenFromDocs = true)]
-    public interface IDbConfig : IConfig, IPluggableDbConfig
+    public interface IDbConfig : IConfig
     {
+        ulong WriteBufferSize { get; set; }
+        uint WriteBufferNumber { get; set; }
+        ulong BlockCacheSize { get; set; }
+        bool CacheIndexAndFilterBlocks { get; set; }
+
+        uint RecycleLogFileNum { get; set; }
+        bool WriteAheadLogSync { get; set; }
         ulong ReceiptsDbWriteBufferSize { get; set; }
         uint ReceiptsDbWriteBufferNumber { get; set; }
         ulong ReceiptsDbBlockCacheSize { get; set; }

@@ -20,7 +20,7 @@ using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Baseline.Config;
-using Nethermind.Baseline.Db;
+using Nethermind.Baseline.Database;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Db;
 using Nethermind.Db.Rocks;

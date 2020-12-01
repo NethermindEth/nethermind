@@ -21,6 +21,7 @@ using System.IO;
 using System.Reflection;
 using System.Threading;
 using Nethermind.Core;
+using Nethermind.Db.Rocks.Config;
 using Nethermind.Logging;
 using RocksDbSharp;
 
@@ -46,7 +47,7 @@ namespace Nethermind.Db.Rocks
 
         private readonly RocksDbSettings _settings;
 
-        protected static void InitCache(IPluggableDbConfig dbConfig)
+        protected static void InitCache(IDbConfig dbConfig)
         {
             if (Interlocked.CompareExchange(ref _cacheInitialized, 1, 0) == 0)
             {
@@ -55,14 +56,14 @@ namespace Nethermind.Db.Rocks
             }
         }
 
-        public DbOnTheRocks(string basePath, RocksDbSettings rocksDbSettings, IPluggableDbConfig dbConfig, ILogManager logManager, ColumnFamilies columnFamilies = null, bool deleteOnStart = false)
+        public DbOnTheRocks(string basePath, RocksDbSettings rocksDbSettings, IDbConfig dbConfig, ILogManager logManager, ColumnFamilies columnFamilies = null, bool deleteOnStart = false)
         {
             Name = rocksDbSettings.DbName;
             _settings = rocksDbSettings;
             Db = Init(basePath, rocksDbSettings.DbPath, dbConfig, logManager, columnFamilies, deleteOnStart);
         }
 
-        private RocksDb Init(string basePath, string dbPath, IPluggableDbConfig dbConfig, ILogManager logManager, ColumnFamilies columnFamilies = null, bool deleteOnStart = false)
+        private RocksDb Init(string basePath, string dbPath, IDbConfig dbConfig, ILogManager logManager, ColumnFamilies columnFamilies = null, bool deleteOnStart = false)
         {
             static RocksDb Open(string path, (DbOptions Options, ColumnFamilies Families) db)
             {
@@ -121,12 +122,12 @@ namespace Nethermind.Db.Rocks
                 Metrics.OtherDbWrites++;
         }
 
-        private T ReadConfig<T>(IPluggableDbConfig dbConfig, string propertyName)
+        private T ReadConfig<T>(IDbConfig dbConfig, string propertyName)
         {
             return ReadConfig<T>(dbConfig, propertyName, Name);
         }
 
-        protected static T ReadConfig<T>(IPluggableDbConfig dbConfig, string propertyName, string tableName)
+        protected static T ReadConfig<T>(IDbConfig dbConfig, string propertyName, string tableName)
         {
             string prefixed = string.Concat(tableName == "State" ? string.Empty : string.Concat(tableName, "Db"), propertyName);
             try
@@ -139,7 +140,7 @@ namespace Nethermind.Db.Rocks
             }
         }
 
-        protected virtual DbOptions BuildOptions(IPluggableDbConfig dbConfig)
+        protected virtual DbOptions BuildOptions(IDbConfig dbConfig)
         {
             _maxThisDbSize = 0;
             BlockBasedTableOptions tableOptions = new BlockBasedTableOptions();
@@ -203,28 +204,28 @@ namespace Nethermind.Db.Rocks
             return options;
         }
 
-        private bool GetCacheIndexAndFilterBlocks(IPluggableDbConfig dbConfig)
+        private bool GetCacheIndexAndFilterBlocks(IDbConfig dbConfig)
         {
             return _settings.CacheIndexAndFilterBlocks.HasValue
                 ? _settings.CacheIndexAndFilterBlocks.Value
                 : ReadConfig<bool>(dbConfig, nameof(dbConfig.CacheIndexAndFilterBlocks));
         }
 
-        private ulong GetBlockCacheSize(IPluggableDbConfig dbConfig)
+        private ulong GetBlockCacheSize(IDbConfig dbConfig)
         {
             return _settings.BlockCacheSize.HasValue
                 ? _settings.BlockCacheSize.Value
                 : ReadConfig<ulong>(dbConfig, nameof(dbConfig.BlockCacheSize));
         }
 
-        private ulong GetWriteBufferSize(IPluggableDbConfig dbConfig)
+        private ulong GetWriteBufferSize(IDbConfig dbConfig)
         {
             return _settings.WriteBufferSize.HasValue
                 ? _settings.WriteBufferSize.Value
                 : ReadConfig<ulong>(dbConfig, nameof(dbConfig.WriteBufferSize));
         }
 
-        private ulong GetWriteBufferNumber(IPluggableDbConfig dbConfig)
+        private ulong GetWriteBufferNumber(IDbConfig dbConfig)
         {
             return _settings.WriteBufferNumber.HasValue
                 ? _settings.WriteBufferNumber.Value

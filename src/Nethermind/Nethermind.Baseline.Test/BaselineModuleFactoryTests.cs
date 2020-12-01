@@ -18,7 +18,7 @@
 using System.IO.Abstractions;
 using FluentAssertions;
 using Nethermind.Abi;
-using Nethermind.Baseline.Db;
+using Nethermind.Baseline.Database;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Core;

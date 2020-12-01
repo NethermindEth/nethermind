@@ -16,7 +16,7 @@
 
 using System.ComponentModel;
 
-namespace Nethermind.Baseline.Db
+namespace Nethermind.Baseline.Database
 {
     public static class Metrics
     {

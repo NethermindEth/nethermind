@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using Nethermind.Db.Rocks.Config;
 using Nethermind.Logging;
 
 namespace Nethermind.Db.Rocks
@@ -23,7 +24,7 @@ namespace Nethermind.Db.Rocks
         public SimpleColumnRocksDb(
             string basePath,
             RocksDbSettings rocksDbSettings,
-            IPluggableDbConfig dbConfig,
+            IDbConfig dbConfig,
             ILogManager logManager = null)
                 : base(basePath, rocksDbSettings, dbConfig, logManager)
         {
