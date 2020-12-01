@@ -15,10 +15,10 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System.Reactive.Disposables;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
+using Nethermind.Core;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.WebSockets;
 using Nethermind.Logging;
@@ -85,7 +85,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                         logger.Error("Error during jsonRpc runner start", x.Exception);
                 });
 
-                _api.DisposeStack.Push(Disposable.Create(() => jsonRpcRunner.StopAsync())); // do not await
+                _api.DisposeStack.Push(new Reactive.AnonymousDisposable(() => jsonRpcRunner.StopAsync())); // do not await
             }
             else
             {
