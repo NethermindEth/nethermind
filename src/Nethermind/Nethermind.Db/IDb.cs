@@ -46,8 +46,6 @@ namespace Nethermind.Db
     public interface IReadOnlyDb : IDb
     {
         void Restore(int snapshot);
-
-        void ClearTempChanges();
     }
 
     public interface IDbWithSpan : IDb

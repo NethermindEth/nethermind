@@ -169,7 +169,7 @@ namespace Nethermind.Db
             _pendingChanges[key] = _currentPosition;
         }
 
-        public IDb CreateReadOnly(bool createInMemWriteStore)
+        public IReadOnlyDb CreateReadOnly(bool createInMemWriteStore)
         {
             return new StateDb(new ReadOnlyDb(this, createInMemWriteStore));
         }
