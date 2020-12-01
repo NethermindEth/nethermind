@@ -58,9 +58,9 @@ namespace Nethermind.JsonRpc.Test.Modules
         private IJsonRpcConfig _jsonRpcConfig;
 
         [SetUp]
-        public void SetUp()
+        public async Task SetUp()
         {
-            Initialize();
+            await Initialize();
         }
 
         private async Task Initialize(bool auRa = false)

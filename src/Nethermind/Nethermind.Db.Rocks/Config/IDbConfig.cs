@@ -68,34 +68,14 @@ namespace Nethermind.Db.Rocks.Config
         ulong DataAssetsDbWriteBufferSize { get; set; }
         uint DataAssetsDbWriteBufferNumber { get; set; }
 
-        bool ProviderSessionsDbCacheIndexAndFilterBlocks { get; set; }
-        ulong ProviderSessionsDbBlockCacheSize { get; set; }
-        ulong ProviderSessionsDbWriteBufferSize { get; set; }
-        uint ProviderSessionsDbWriteBufferNumber { get; set; }
-
-        bool ConsumersDbCacheIndexAndFilterBlocks { get; set; }
-        ulong ConsumersDbBlockCacheSize { get; set; }
-        ulong ConsumersDbWriteBufferSize { get; set; }
-        uint ConsumersDbWriteBufferNumber { get; set; }
-
         bool PaymentClaimsDbCacheIndexAndFilterBlocks { get; set; }
         ulong PaymentClaimsDbBlockCacheSize { get; set; }
         ulong PaymentClaimsDbWriteBufferSize { get; set; }
         uint PaymentClaimsDbWriteBufferNumber { get; set; }
         
-        bool ProviderDepositApprovalsDbCacheIndexAndFilterBlocks { get; set; }
-        ulong ProviderDepositApprovalsDbBlockCacheSize { get; set; }
-        ulong ProviderDepositApprovalsDbWriteBufferSize { get; set; }
-        uint ProviderDepositApprovalsDbWriteBufferNumber { get; set; }
-        
         ulong CanonicalHashTrieDbWriteBufferSize { get; set; }
         uint CanonicalHashTrieDbWriteBufferNumber { get; set; }
         ulong CanonicalHashTrieDbBlockCacheSize { get; set; }
         bool CanonicalHashTrieDbCacheIndexAndFilterBlocks { get; set; }
-        
-        bool ProviderReceiptsDbCacheIndexAndFilterBlocks { get; set; }
-        ulong ProviderReceiptsDbBlockCacheSize { get; set; }
-        ulong ProviderReceiptsDbWriteBufferSize { get; set; }
-        uint ProviderReceiptsDbWriteBufferNumber { get; set; }
     }
 }
