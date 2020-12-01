@@ -70,8 +70,8 @@ namespace Nethermind.Runner.Ethereum.Steps
             
             var processingReadOnlyTransactionProcessorSource = new ReadOnlyTxProcessorSource(_api.DbProvider, _api.ReadOnlyTrieStore, _api.BlockTree, _api.SpecProvider, _api.LogManager);
             var txPermissionFilterOnlyTxProcessorSource = new ReadOnlyTxProcessorSource(_api.DbProvider, _api.ReadOnlyTrieStore, _api.BlockTree, _api.SpecProvider, _api.LogManager);
-            ITxFilter? txPermissionFilter = TxFilterBuilders.CreateTxPermissionFilter(_api, txPermissionFilterOnlyTxProcessorSource, _api.ChainHeadStateProvider);
-            
+            ITxFilter? txPermissionFilter = TxFilterBuilders.CreateTxPermissionFilter(_api, txPermissionFilterOnlyTxProcessorSource, _api.StateProvider);
+
             var processor = new AuRaBlockProcessor(
                 _api.SpecProvider,
                 _api.BlockValidator,
