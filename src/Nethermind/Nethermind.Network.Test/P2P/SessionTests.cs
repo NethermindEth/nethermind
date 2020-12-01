@@ -179,6 +179,38 @@ namespace Nethermind.Network.Test.P2P
             session.MarkDisconnected(DisconnectReason.Other, DisconnectType.Remote, "test");
             session.EnableSnappy();
         }
+        
+        [Test]
+        public async Task Adding_protocols_when_disconnecting_will_not_cause_trouble()
+        {
+            bool shouldStop = false;
+            int i = 0;
+            Session session = new Session(30312, LimboLogs.Instance, _channel, new Node("127.0.0.1", 8545));
+            Action addProtocol = () =>
+            {
+                IProtocolHandler required = Substitute.For<IProtocolHandler>();
+                required.ProtocolCode.Returns("p2p");
+                session.AddProtocolHandler(required);
+                while (!shouldStop)
+                {
+                    IProtocolHandler protocolHandler = Substitute.For<IProtocolHandler>();
+                    protocolHandler.ProtocolCode.Returns("aa" + i++);
+                    protocolHandler.MessageIdSpaceSize.Returns(10);
+                    session.AddProtocolHandler(protocolHandler);
+                    TestContext.WriteLine("aaa");
+                }
+            };
+            
+            session.Handshake(TestItem.PublicKeyA);
+            session.Init(5, _channelHandlerContext, _packetSender);
+            Task task = new Task(addProtocol);
+            task.Start();
+
+            await Task.Delay(20);
+            session.InitiateDisconnect(DisconnectReason.Other, "test");
+            await Task.Delay(10);
+            shouldStop = true;
+        }
 
         [Test]
         public void Cannot_init_before_the_handshake()

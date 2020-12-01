@@ -39,7 +39,7 @@ namespace Nethermind.Network.P2P
         private IChannel _channel;
         private IChannelHandlerContext _context;
 
-        private Dictionary<string, IProtocolHandler> _protocols = new Dictionary<string, IProtocolHandler>();
+        private ConcurrentDictionary<string, IProtocolHandler> _protocols = new ConcurrentDictionary<string, IProtocolHandler>();
 
         public Session(int localPort, ILogManager logManager, IChannel channel)
         {
@@ -248,7 +248,11 @@ namespace Nethermind.Network.P2P
             }
 
             packet.PacketType = messageId;
-            _protocols[protocol].HandleMessage(packet);
+
+            if (State < SessionState.DisconnectingProtocols)
+            {
+                _protocols[protocol].HandleMessage(packet);
+            }
         }
 
         public void Init(byte p2PVersion, IChannelHandlerContext context, IPacketSender packetSender)
@@ -472,19 +476,27 @@ namespace Nethermind.Network.P2P
 
         public void AddProtocolHandler(IProtocolHandler handler)
         {
-            if (_protocols.ContainsKey(handler.ProtocolCode))
+            if (State < SessionState.DisconnectingProtocols)
             {
-                throw new InvalidOperationException($"{this} already has {handler.ProtocolCode} started");
-            }
+                if (_protocols.ContainsKey(handler.ProtocolCode))
+                {
+                    throw new InvalidOperationException($"{this} already has {handler.ProtocolCode} started");
+                }
 
-            if (handler.ProtocolCode != Protocol.P2P && !_protocols.ContainsKey(Protocol.P2P))
+                if (handler.ProtocolCode != Protocol.P2P && !_protocols.ContainsKey(Protocol.P2P))
+                {
+                    throw new InvalidOperationException(
+                        $"{Protocol.P2P} handler has to be started before starting {handler.ProtocolCode} handler on {this}");
+                }
+
+                _protocols.TryAdd(handler.ProtocolCode, handler);
+                _resolver = GetOrCreateResolver();
+            }
+            else
             {
-                throw new InvalidOperationException(
-                    $"{Protocol.P2P} handler has to be started before starting {handler.ProtocolCode} handler on {this}");
+                // the protocol handler will never be disposed but the risk is small in current implementations
+                // plugins may be surprised but any leak should be detectable
             }
-
-            _protocols.Add(handler.ProtocolCode, handler);
-            _resolver = GetOrCreateResolver();
         }
 
         private AdaptiveCodeResolver GetOrCreateResolver()
@@ -512,7 +524,7 @@ namespace Nethermind.Network.P2P
         {
             private readonly (string ProtocolCode, int SpaceSize)[] _alphabetically;
 
-            public AdaptiveCodeResolver(Dictionary<string, IProtocolHandler> protocols)
+            public AdaptiveCodeResolver(IDictionary<string, IProtocolHandler> protocols)
             {
                 _alphabetically = new (string, int)[protocols.Count];
                 _alphabetically[0] = (Protocol.P2P, protocols[Protocol.P2P].MessageIdSpaceSize);
