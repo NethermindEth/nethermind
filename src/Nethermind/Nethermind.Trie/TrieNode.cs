@@ -402,12 +402,12 @@ namespace Nethermind.Trie
              * so just to treat them in the same way we update index on extensions
              */
             childIndex = IsExtension ? childIndex + 1 : childIndex;
-            ResolveChild(tree, childIndex);
-            TrieNode? child = ReferenceEquals(_data![childIndex], _nullNode) || ReferenceEquals(_data![childIndex], null) 
+            object childOrRef = ResolveChild(tree, childIndex);
+            TrieNode? child = ReferenceEquals(childOrRef, _nullNode) || ReferenceEquals(childOrRef, null) 
                 ? null
-                : _data[childIndex] is TrieNode
-                    ? (TrieNode) _data[childIndex]
-                    : tree.FindCachedOrUnknown((_data[childIndex] as Keccak)!);
+                : childOrRef is TrieNode childNode
+                    ? childNode
+                    : tree.FindCachedOrUnknown((childOrRef as Keccak)!);
 
             // pruning trick so we never store long persisted paths
             if (child?.IsPersisted ?? false)
@@ -739,46 +739,55 @@ namespace Nethermind.Trie
             }
         }
 
-        private void ResolveChild(ITrieNodeResolver tree, int i)
+        private object? ResolveChild(ITrieNodeResolver tree, int i)
         {
+            object? childOrRef;
             if (_rlpStream == null)
             {
-                return;
+                childOrRef = _data?[i];
             }
-
-            InitData();
-            if (_data![i] == null)
+            else
             {
-                SeekChild(i);
-                int prefix = _rlpStream!.ReadByte();
-                switch (prefix)
+                InitData();
+                if (_data![i] == null)
                 {
-                    case 0:
-                    case 128:
-                        _data![i] = _nullNode;
-                        break;
-                    case 160:
-                        _rlpStream.Position--;
-                        Keccak keccak = _rlpStream.DecodeKeccak();
-                        TrieNode cachedOrUnknown = tree.FindCachedOrUnknown(keccak);
-                        _data![i] = cachedOrUnknown;
-
-                        if (IsPersisted && !cachedOrUnknown.IsPersisted)
-                        {
-                            cachedOrUnknown.CallRecursively(_markPersisted, tree, false, NullLogger.Instance);
-                        }
-
-                        break;
-                    default:
+                    SeekChild(i);
+                    int prefix = _rlpStream!.ReadByte();
+                    switch (prefix)
                     {
-                        _rlpStream.Position--;
-                        Span<byte> fullRlp = _rlpStream.PeekNextItem();
-                        TrieNode child = new TrieNode(NodeType.Unknown, fullRlp.ToArray());
-                        _data![i] = child;
-                        break;
+                        case 0:
+                        case 128:
+                            _data![i] = childOrRef = _nullNode;
+                            break;
+                        case 160:
+                            _rlpStream.Position--;
+                            Keccak keccak = _rlpStream.DecodeKeccak();
+                            TrieNode cachedOrUnknown = tree.FindCachedOrUnknown(keccak);
+                            _data![i] = childOrRef = cachedOrUnknown;
+
+                            if (IsPersisted && !cachedOrUnknown.IsPersisted)
+                            {
+                                cachedOrUnknown.CallRecursively(_markPersisted, tree, false, NullLogger.Instance);
+                            }
+
+                            break;
+                        default:
+                        {
+                            _rlpStream.Position--;
+                            Span<byte> fullRlp = _rlpStream.PeekNextItem();
+                            TrieNode child = new TrieNode(NodeType.Unknown, fullRlp.ToArray());
+                            _data![i] = childOrRef = child;
+                            break;
+                        }
                     }
                 }
+                else
+                {
+                    childOrRef = _data?[i];
+                }
             }
+
+            return childOrRef;
         }
 
         #endregion

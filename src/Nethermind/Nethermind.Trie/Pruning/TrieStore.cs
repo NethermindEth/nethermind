@@ -36,7 +36,9 @@ namespace Nethermind.Trie.Pruning
         private int _isFirst;
 
         public TrieStore(IKeyValueStoreWithBatching? keyValueStore, ILogManager? logManager)
-            : this(keyValueStore, No.Pruning, Full.Archive, logManager) { }
+            : this(keyValueStore, No.Pruning, Full.Archive, logManager)
+        {
+        }
 
         public TrieStore(
             IKeyValueStoreWithBatching? keyValueStore,
@@ -174,10 +176,12 @@ namespace Nethermind.Trie.Pruning
                 if (set != null)
                 {
                     set.Root = root;
-                    if (_logger.IsTrace) _logger.Trace(
-                        $"Current root (block {blockNumber}): {set.Root}, block {set.BlockNumber}");
-                    if (_logger.IsTrace) _logger.Trace(
-                        $"Incrementing refs from block {blockNumber} root {set.Root?.ToString() ?? "NULL"} ");
+                    if (_logger.IsTrace)
+                        _logger.Trace(
+                            $"Current root (block {blockNumber}): {set.Root}, block {set.BlockNumber}");
+                    if (_logger.IsTrace)
+                        _logger.Trace(
+                            $"Incrementing refs from block {blockNumber} root {set.Root?.ToString() ?? "NULL"} ");
 
                     set.Seal();
                 }
@@ -236,6 +240,11 @@ namespace Nethermind.Trie.Pruning
 
         public TrieNode FindCachedOrUnknown(Keccak hash, bool addToCacheWhenNotFound = true)
         {
+            if (hash == null)
+            {
+                throw new ArgumentNullException(nameof(hash));
+            }
+
             bool isMissing = true;
             TrieNode trieNode = null;
             // isMissing = !_persistedNodesCache.TryGet(hash, out trieNode);
@@ -249,14 +258,14 @@ namespace Nethermind.Trie.Pruning
             {
                 if (_logger.IsTrace) _logger.Trace($"Creating new node {trieNode}");
                 trieNode = new TrieNode(NodeType.Unknown, hash);
-                if (addToCacheWhenNotFound)
-                {
-                    _dirtyNodesCache.TryAdd(trieNode.Keccak!, trieNode);
-                }
-
                 if (trieNode.Keccak == null)
                 {
                     throw new InvalidOperationException($"Adding node with null hash {trieNode}");
+                }
+                
+                if (addToCacheWhenNotFound)
+                {
+                    _dirtyNodesCache.TryAdd(trieNode.Keccak!, trieNode);
                 }
 
                 MemoryUsedByDirtyCache += trieNode.GetMemorySize(false);
@@ -343,7 +352,7 @@ namespace Nethermind.Trie.Pruning
         private void PruneCurrentSet()
         {
             Stopwatch stopwatch = Stopwatch.StartNew();
-            
+
             // We assume that the most recent package very likely resolved many persisted nodes and only replaced
             // some top level branches. Any of these persisted nodes are held in cache now so we just prune them here
             // to avoid the references still being held after we prune the cache.
@@ -362,8 +371,9 @@ namespace Nethermind.Trie.Pruning
         /// <exception cref="InvalidOperationException"></exception>
         private void PruneCache()
         {
-            if (_logger.IsWarn) _logger.Warn(
-                $"Pruning nodes {MemoryUsedByDirtyCache / 1.MB()}MB , last persisted block: {LastPersistedBlockNumber} current: {NewestKeptBlockNumber}.");
+            if (_logger.IsWarn)
+                _logger.Warn(
+                    $"Pruning nodes {MemoryUsedByDirtyCache / 1.MB()}MB , last persisted block: {LastPersistedBlockNumber} current: {NewestKeptBlockNumber}.");
             Stopwatch stopwatch = Stopwatch.StartNew();
             List<TrieNode> toRemove = new List<TrieNode>(); // TODO: resettable
 
@@ -418,7 +428,7 @@ namespace Nethermind.Trie.Pruning
                     throw new InvalidOperationException($"{trieNode} has a null key");
                 }
 
-                _dirtyNodesCache.Remove(trieNode.Keccak!);
+                _dirtyNodesCache.TryRemove(trieNode.Keccak!, out _);
             }
 
             MemoryUsedByDirtyCache = newMemory;
@@ -472,7 +482,7 @@ namespace Nethermind.Trie.Pruning
 
         private readonly IKeyValueStoreWithBatching _keyValueStore;
 
-        private Dictionary<Keccak, TrieNode> _dirtyNodesCache = new Dictionary<Keccak, TrieNode>();
+        private ConcurrentDictionary<Keccak, TrieNode> _dirtyNodesCache = new ConcurrentDictionary<Keccak, TrieNode>();
 
         // private LruCache<Keccak, TrieNode> _persistedNodesCache = new LruCache<Keccak, TrieNode>(
         // MemoryAllowance.TrieNodeCacheCount, MemoryAllowance.TrieNodeCacheCount, "persisted nodes");
@@ -539,7 +549,7 @@ namespace Nethermind.Trie.Pruning
         private void Persist(BlockCommitSet commitSet)
         {
             void PersistNode(TrieNode tn) => Persist(tn, commitSet.BlockNumber);
-            
+
             try
             {
                 _keyValueStore.StartBatch();
@@ -550,8 +560,9 @@ namespace Nethermind.Trie.Pruning
                 stopwatch.Stop();
                 Metrics.SnapshotPersistenceTime = stopwatch.ElapsedMilliseconds;
 
-                if (_logger.IsWarn) _logger.Warn(
-                    $"Persisted trie from {commitSet.Root} at {commitSet.BlockNumber} in {stopwatch.ElapsedMilliseconds}ms (cache memory {MemoryUsedByDirtyCache})");
+                if (_logger.IsWarn)
+                    _logger.Warn(
+                        $"Persisted trie from {commitSet.Root} at {commitSet.BlockNumber} in {stopwatch.ElapsedMilliseconds}ms (cache memory {MemoryUsedByDirtyCache})");
 
                 LastPersistedBlockNumber = commitSet.BlockNumber;
             }
