@@ -85,9 +85,6 @@ namespace Nethermind.Runner
             {
                 NLogLogger.Shutdown();
             }
-
-            Console.WriteLine("Press RETURN to exit.");
-            Console.ReadLine();
         }
 
         private static void Run(string[] args)
