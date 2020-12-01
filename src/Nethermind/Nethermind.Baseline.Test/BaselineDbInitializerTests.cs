@@ -34,7 +34,7 @@ using NUnit.Framework;
 namespace Nethermind.Baseline.Test
 {
     [Parallelizable(ParallelScope.All)]
-    public class BaselineDbProviderTests
+    public class BaselineDbInitializerTests
     {
         private List<IDb> _dbsToCleanup = new List<IDb>();
         private string _folderWithDbs;
