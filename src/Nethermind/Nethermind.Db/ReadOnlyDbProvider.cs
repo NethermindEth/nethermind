@@ -37,7 +37,7 @@ namespace Nethermind.Db
 
             foreach (var registeredDb in _wrappedProvider.RegisteredDbs)
             {
-                RegisterDb(registeredDb.Key, registeredDb.Value);
+                RegisterReadOnlyDb(registeredDb.Key, registeredDb.Value);
             }
         }
 
@@ -70,16 +70,16 @@ namespace Nethermind.Db
             return (T)_registeredDbs[dbName];
         }
 
-        public void RegisterDb<T>(string dbName, T db) where T : IDb
+        private void RegisterReadOnlyDb<T>(string dbName, T db) where T : IDb
         {
-            if (_registeredDbs.ContainsKey(dbName))
-            {
-                throw new ArgumentException($"{dbName} has already registered.");
-            }
-
-            _wrappedProvider.RegisterDb(dbName, db);
             var readonlyDb = db.CreateReadOnly(_createInMemoryWriteStore);
             _registeredDbs.TryAdd(dbName, readonlyDb);
+        }
+
+        public void RegisterDb<T>(string dbName, T db) where T : IDb
+        {
+            _wrappedProvider.RegisterDb(dbName, db);
+            RegisterReadOnlyDb(dbName, db);
         }
     }
 }
