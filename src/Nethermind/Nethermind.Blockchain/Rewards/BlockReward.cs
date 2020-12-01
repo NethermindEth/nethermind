@@ -14,7 +14,6 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Int256;
 
@@ -30,7 +29,9 @@ namespace Nethermind.Blockchain.Rewards
         }
         
         public Address Address { get; }
+        
         public UInt256 Value { get; }
+        
         public BlockRewardType RewardType { get; }
     }
 }

@@ -68,9 +68,6 @@ namespace Nethermind.Blockchain.Rewards
             return blockReward - ((uint) (blockHeader.Number - ommer.Number) * blockReward >> 3);
         }
 
-        public IRewardCalculator Get(ITransactionProcessor processor)
-        {
-            return this;
-        }
+        public IRewardCalculator Get(ITransactionProcessor processor) => this;
     }
 }
