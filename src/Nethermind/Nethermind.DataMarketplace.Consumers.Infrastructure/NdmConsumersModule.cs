@@ -60,6 +60,8 @@ using Nethermind.Wallet;
 using Nethermind.DataMarketplace.Consumers.Shared;
 using Nethermind.DataMarketplace.Infrastructure.Updaters;
 using Nethermind.WebSockets;
+using System.Threading.Tasks;
+using Nethermind.Db;
 
 namespace Nethermind.DataMarketplace.Consumers.Infrastructure
 {
@@ -79,7 +81,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure
 
         public NdmConsumersModule(INdmApi api)
         {
-           _api = api ?? throw new ArgumentNullException(nameof(api)); 
+            _api = api ?? throw new ArgumentNullException(nameof(api));
         }
 
         public void Init()
@@ -112,8 +114,6 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure
             Address contractAddress = string.IsNullOrWhiteSpace(ndmConfig.ContractAddress)
                 ? Address.Zero
                 : new Address(ndmConfig.ContractAddress);
-            ConsumerRocksDbProvider rocksDbProvider = new ConsumerRocksDbProvider(_api.BaseDbPath, dbConfig,
-                logManager);
             DepositDetailsDecoder depositDetailsRlpDecoder = new DepositDetailsDecoder();
             DepositApprovalDecoder depositApprovalRlpDecoder = new DepositApprovalDecoder();
             DataDeliveryReceiptDetailsDecoder receiptRlpDecoder = new DataDeliveryReceiptDetailsDecoder();
@@ -150,15 +150,17 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure
                     sessionRepository = new ConsumerSessionInMemoryRepository();
                     break;
                 default:
-                    depositRepository = new DepositDetailsRocksRepository(rocksDbProvider.DepositsDb,
+                    var dbInitializer = new ConsumerNdmDbInitializer(_api.DbProvider, ndmConfig, _api.RocksDbFactory, _api.MemDbFactory);
+                    dbInitializer.Init();
+                    depositRepository = new DepositDetailsRocksRepository(_api.DbProvider.GetDb<IDb>(ConsumerNdmDbConsts.DepositsDbName),
                         depositDetailsRlpDecoder);
                     depositApprovalRepository = new ConsumerDepositApprovalRocksRepository(
-                        rocksDbProvider.ConsumerDepositApprovalsDb, depositApprovalRlpDecoder);
-                    providerRepository = new ProviderRocksRepository(rocksDbProvider.DepositsDb,
+                        _api.DbProvider.GetDb<IDb>(ConsumerNdmDbConsts.ConsumerDepositApprovalsDbName), depositApprovalRlpDecoder);
+                    providerRepository = new ProviderRocksRepository(_api.DbProvider.GetDb<IDb>(ConsumerNdmDbConsts.DepositsDbName),
                         depositDetailsRlpDecoder);
-                    receiptRepository = new ReceiptRocksRepository(rocksDbProvider.ConsumerReceiptsDb,
+                    receiptRepository = new ReceiptRocksRepository(_api.DbProvider.GetDb<IDb>(ConsumerNdmDbConsts.ConsumerReceiptsDbName),
                         receiptRlpDecoder);
-                    sessionRepository = new ConsumerSessionRocksRepository(rocksDbProvider.ConsumerSessionsDb,
+                    sessionRepository = new ConsumerSessionRocksRepository(_api.DbProvider.GetDb<IDb>(ConsumerNdmDbConsts.ConsumerSessionsDbName),
                         sessionRlpDecoder);
                     break;
             }

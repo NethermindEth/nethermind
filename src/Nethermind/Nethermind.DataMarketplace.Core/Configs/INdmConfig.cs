@@ -85,5 +85,35 @@ namespace Nethermind.DataMarketplace.Core.Configs
         uint CancelTransactionGasPricePercentageMultiplier { get; set; }
         [ConfigItem(Description = "If 'true', data stream results can be fetched via 'ndm_pullData('depositId')' method.", DefaultValue = "false")]
         bool JsonRpcDataChannelEnabled { get; }
+
+        ulong DepositsDbWriteBufferSize { get; set; }
+        uint DepositsDbWriteBufferNumber { get; set; }
+        ulong DepositsDbBlockCacheSize { get; set; }
+        bool DepositsDbCacheIndexAndFilterBlocks { get; set; }
+
+        ulong ConsumerSessionsDbWriteBufferSize { get; set; }
+        uint ConsumerSessionsDbWriteBufferNumber { get; set; }
+        ulong ConsumerSessionsDbBlockCacheSize { get; set; }
+        bool ConsumerSessionsDbCacheIndexAndFilterBlocks { get; set; }
+
+        ulong ConsumerReceiptsDbWriteBufferSize { get; set; }
+        uint ConsumerReceiptsDbWriteBufferNumber { get; set; }
+        ulong ConsumerReceiptsDbBlockCacheSize { get; set; }
+        bool ConsumerReceiptsDbCacheIndexAndFilterBlocks { get; set; }
+
+        ulong ConsumerDepositApprovalsDbWriteBufferSize { get; set; }
+        uint ConsumerDepositApprovalsDbWriteBufferNumber { get; set; }
+        ulong ConsumerDepositApprovalsDbBlockCacheSize { get; set; }
+        bool ConsumerDepositApprovalsDbCacheIndexAndFilterBlocks { get; set; }
+
+        ulong ConfigsDbWriteBufferSize { get; set; }
+        uint ConfigsDbWriteBufferNumber { get; set; }
+        ulong ConfigsDbBlockCacheSize { get; set; }
+        bool ConfigsDbCacheIndexAndFilterBlocks { get; set; }
+
+        ulong EthRequestsDbWriteBufferSize { get; set; }
+        uint EthRequestsDbWriteBufferNumber { get; set; }
+        ulong EthRequestsDbBlockCacheSize { get; set; }
+        bool EthRequestsDbCacheIndexAndFilterBlocks { get; set; }
     }
 }

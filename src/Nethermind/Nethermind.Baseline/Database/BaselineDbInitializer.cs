@@ -15,18 +15,13 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Baseline.Config;
 using Nethermind.Db;
+using Nethermind.Db.Rocks;
 
 namespace Nethermind.Baseline.Database
 {
-    public interface IBaselineDbInitializer
-    {
-        Task Init();
-    }
-
     public class BaselineDbConsts
     {
         public const string BaselineTreeDbName = "BaselineTree";
@@ -35,70 +30,48 @@ namespace Nethermind.Baseline.Database
         public const string BaselineTreeMetadataDbPath = "baselineTreeMetadata";
     }
 
-    public class BaselineDbInitializer : IBaselineDbInitializer
+    public class BaselineDbInitializer : RocksDbInitializer
     {
-
-        private readonly IDbProvider _dbProvider;
         private readonly IBaselineConfig _baselineConfig;
-        private readonly IRocksDbFactory _rocksDbFactory;
-        private readonly IMemDbFactory _memDbFactory;
         public BaselineDbInitializer(
             IDbProvider dbProvider,
             IBaselineConfig baselineConfig,
             IRocksDbFactory rocksDbFactory,
             IMemDbFactory memDbFactory)
+            : base (dbProvider, rocksDbFactory, memDbFactory)
         {
-            _dbProvider = dbProvider ?? throw new ArgumentNullException(nameof(dbProvider));
             _baselineConfig = baselineConfig ?? throw new ArgumentNullException(nameof(baselineConfig));
-            _rocksDbFactory = rocksDbFactory ?? throw new ArgumentNullException(nameof(rocksDbFactory));
-            _memDbFactory = memDbFactory ?? throw new ArgumentNullException(nameof(memDbFactory));
         }
         public async Task Init()
         {
-            HashSet<Task> allInitializers = new HashSet<Task>();
-            allInitializers.Add(Task.Run(() =>
+            RegisterDb(new RocksDbSettings()
             {
-                IDb baselineTreeDb;
-                if (_dbProvider.DbMode == DbModeHint.Persisted)
-                    baselineTreeDb = _rocksDbFactory.CreateDb(new RocksDbSettings()
-                    {
-                        DbName = BaselineDbConsts.BaselineTreeDbName,
-                        DbPath = BaselineDbConsts.BaselineTreeDbPath,
+                DbName = BaselineDbConsts.BaselineTreeDbName,
+                DbPath = BaselineDbConsts.BaselineTreeDbPath,
 
-                        CacheIndexAndFilterBlocks = _baselineConfig.BaselineTreeDbCacheIndexAndFilterBlocks,
-                        BlockCacheSize = _baselineConfig.BaselineTreeDbBlockCacheSize,
-                        WriteBufferNumber = _baselineConfig.BaselineTreeDbWriteBufferNumber,
-                        WriteBufferSize = _baselineConfig.BaselineTreeDbWriteBufferSize,
+                CacheIndexAndFilterBlocks = _baselineConfig.BaselineTreeDbCacheIndexAndFilterBlocks,
+                BlockCacheSize = _baselineConfig.BaselineTreeDbBlockCacheSize,
+                WriteBufferNumber = _baselineConfig.BaselineTreeDbWriteBufferNumber,
+                WriteBufferSize = _baselineConfig.BaselineTreeDbWriteBufferSize,
 
-                        UpdateReadMetrics = () => Metrics.BaselineTreeDbReads++,
-                        UpdateWriteMetrics = () => Metrics.BaselineTreeDbWrites++,
-                    });
-                else
-                    baselineTreeDb = _memDbFactory.CreateDb(BaselineDbConsts.BaselineTreeDbName);
-                _dbProvider.RegisterDb(BaselineDbConsts.BaselineTreeDbName, baselineTreeDb);
-            }));
-            allInitializers.Add(Task.Run(() =>
+                UpdateReadMetrics = () => Metrics.BaselineTreeDbReads++,
+                UpdateWriteMetrics = () => Metrics.BaselineTreeDbWrites++,
+            });
+            RegisterDb(new RocksDbSettings()
             {
-                IDb baselineMetadataDb;
-                if (_dbProvider.DbMode == DbModeHint.Persisted)
-                    baselineMetadataDb = _rocksDbFactory.CreateDb(new RocksDbSettings()
-                    {
-                        DbName = BaselineDbConsts.BaselineTreeMetadataDbName,
-                        DbPath = BaselineDbConsts.BaselineTreeMetadataDbPath,
+                DbName = BaselineDbConsts.BaselineTreeMetadataDbName,
+                DbPath = BaselineDbConsts.BaselineTreeMetadataDbPath,
 
-                        CacheIndexAndFilterBlocks = _baselineConfig.BaselineTreeDbCacheIndexAndFilterBlocks,
-                        BlockCacheSize = _baselineConfig.BaselineTreeDbBlockCacheSize,
-                        WriteBufferNumber = _baselineConfig.BaselineTreeDbWriteBufferNumber,
-                        WriteBufferSize = _baselineConfig.BaselineTreeDbWriteBufferSize,
+                CacheIndexAndFilterBlocks = _baselineConfig.BaselineTreeMetadataDbCacheIndexAndFilterBlocks,
+                BlockCacheSize = _baselineConfig.BaselineTreeMetadataDbBlockCacheSize,
+                WriteBufferNumber = _baselineConfig.BaselineTreeMetadataDbWriteBufferNumber,
+                WriteBufferSize = _baselineConfig.BaselineTreeMetadataDbWriteBufferSize,
 
-                        UpdateReadMetrics = () => Metrics.BaselineTreeMetadataDbReads++,
-                        UpdateWriteMetrics = () => Metrics.BaselineTreeMetadataDbWrites++,
-                    });
-                else
-                    baselineMetadataDb = _memDbFactory.CreateDb(BaselineDbConsts.BaselineTreeMetadataDbName);
-                _dbProvider.RegisterDb(BaselineDbConsts.BaselineTreeMetadataDbName, baselineMetadataDb);
-            }));
-            await Task.WhenAll(allInitializers);
+                UpdateReadMetrics = () => Metrics.BaselineTreeMetadataDbReads++,
+                UpdateWriteMetrics = () => Metrics.BaselineTreeMetadataDbWrites++,
+            });
+
+            await InitAllAsync();
         }
     }
 }

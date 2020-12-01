@@ -14,22 +14,22 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using Nethermind.Db.Rocks;
-using Nethermind.Db.Rocks.Config;
-using Nethermind.Logging;
+using System.ComponentModel;
 
-namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Rocks.Databases
+namespace Nethermind.DataMarketplace.Infrastructure.Database
 {
-    public class ConsumerReceiptsRocksDb : DbOnTheRocks
+    public static class Metrics
     {
-        public override string Name { get; protected set; } = "ConsumerReceipts";
+        [Description("Number of Eth Request (faucet) DB reads.")]
+        public static long EthRequestsDbReads { get; set; }
 
-        public ConsumerReceiptsRocksDb(string basePath, IDbConfig dbConfig, ILogManager logManager)
-            : base(basePath, "consumerReceipts", dbConfig, logManager)
-        {
-        }
+        [Description("Number of Eth Request (faucet) DB writes.")]
+        public static long EthRequestsDbWrites { get; set; }
 
-        protected override void UpdateReadMetrics() => ConsumerMetrics.ConsumerReceiptsDbReads++;
-        protected override void UpdateWriteMetrics() => ConsumerMetrics.ConsumerReceiptsDbWrites++;
+        [Description("Number of configs DB reads.")]
+        public static long ConfigsDbReads { get; set; }
+
+        [Description("Number of configs DB writes.")]
+        public static long ConfigsDbWrites { get; set; }
     }
 }

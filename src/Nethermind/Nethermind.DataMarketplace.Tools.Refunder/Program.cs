@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -13,9 +13,12 @@ using Nethermind.DataMarketplace.Consumers.Deposits.Queries;
 using Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Rocks;
 using Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Rocks.Repositories;
 using Nethermind.DataMarketplace.Consumers.Infrastructure.Rlp;
+using Nethermind.DataMarketplace.Core.Configs;
 using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.DataMarketplace.Core.Services.Models;
 using Nethermind.DataMarketplace.Infrastructure.Rlp;
+using Nethermind.Db;
+using Nethermind.Db.Rocks;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Int256;
 using Nethermind.KeyStore;
@@ -130,8 +133,11 @@ namespace Nethermind.DataMarketplace.Tools.Refunder
 
         private static async Task<PagedResult<DepositDetails>> LoadDeposits(ILogManager logManager, string dbPath)
         {
-            ConsumerRocksDbProvider consumerRocksDbProvider = new ConsumerRocksDbProvider(dbPath, DbConfig.Default, logManager);
-            DepositDetailsRocksRepository depositsRepo = new DepositDetailsRocksRepository(consumerRocksDbProvider.DepositsDb, new DepositDetailsDecoder());
+            var dbProvider = new DbProvider(DbModeHint.Persisted);
+            var rocksDbFactory = new RocksDbFactory(DbConfig.Default, logManager, dbPath);
+            var dbInitializer = new ConsumerNdmDbInitializer(dbProvider, new NdmConfig(), rocksDbFactory, new MemDbFactory());
+            dbInitializer.Init();
+            DepositDetailsRocksRepository depositsRepo = new DepositDetailsRocksRepository(dbProvider.GetDb<IDb>(ConsumerNdmDbConsts.DepositsDbName), new DepositDetailsDecoder());
             // var deposits = await depositsRepo.BrowseAsync(new GetDeposits());
             var deposits = await depositsRepo.BrowseAsync(new GetDeposits {CurrentBlockTimestamp = Timestamper.Default.EpochSecondsLong, EligibleToRefund = true});
             return deposits;

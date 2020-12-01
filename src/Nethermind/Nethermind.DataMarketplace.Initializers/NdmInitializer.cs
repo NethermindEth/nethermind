@@ -38,7 +38,7 @@ using Nethermind.DataMarketplace.Subprotocols.Factories;
 using Nethermind.Db;
 using Nethermind.WebSockets;
 using Nethermind.DataMarketplace.Infrastructure.Updaters;
-using Nethermind.DataMarketplace.Infrastructure.Db;
+using Nethermind.DataMarketplace.Infrastructure.Database;
 
 [assembly: InternalsVisibleTo("Nethermind.DataMarketplace.Test")]
 
@@ -105,10 +105,10 @@ namespace Nethermind.DataMarketplace.Initializers
                     break;
                 default:
                     ndmApi.MongoProvider = NullMongoProvider.Instance;
-                    var ndmDbProvider = new NdmDbProvider(ndmApi.DbProvider, ndmApi.LogManager, ndmApi.RocksDbFactory, ndmApi.MemDbFactory);
+                    var ndmDbProvider = new NdmDbInitializer(defaultConfig, ndmApi.DbProvider, ndmApi.RocksDbFactory, ndmApi.MemDbFactory);
                     await ndmDbProvider.Init();
-                    configRepository = new ConfigRocksRepository(ndmDbProvider.ConfigsDb, new NdmConfigDecoder());
-                    ethRequestRepository = new EthRequestRocksRepository(ndmDbProvider.EthRequestsDb,
+                    configRepository = new ConfigRocksRepository(ndmApi.DbProvider.GetDb<IDb>(NdmDbConsts.ConfigsDbName), new NdmConfigDecoder());
+                    ethRequestRepository = new EthRequestRocksRepository(ndmApi.DbProvider.GetDb<IDb>(NdmDbConsts.EthRequestsDbName),
                         new EthRequestDecoder());
                     break;
             }

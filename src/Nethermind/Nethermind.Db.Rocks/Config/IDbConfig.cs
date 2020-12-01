@@ -58,36 +58,6 @@ namespace Nethermind.Db.Rocks.Config
         ulong CodeDbBlockCacheSize { get; set; }
         bool CodeDbCacheIndexAndFilterBlocks { get; set; }
 
-        ulong DepositsDbWriteBufferSize { get; set; }
-        uint DepositsDbWriteBufferNumber { get; set; }
-        ulong DepositsDbBlockCacheSize { get; set; }
-        bool DepositsDbCacheIndexAndFilterBlocks { get; set; }
-
-        ulong ConsumerSessionsDbWriteBufferSize { get; set; }
-        uint ConsumerSessionsDbWriteBufferNumber { get; set; }
-        ulong ConsumerSessionsDbBlockCacheSize { get; set; }
-        bool ConsumerSessionsDbCacheIndexAndFilterBlocks { get; set; }
-
-        ulong ConsumerReceiptsDbWriteBufferSize { get; set; }
-        uint ConsumerReceiptsDbWriteBufferNumber { get; set; }
-        ulong ConsumerReceiptsDbBlockCacheSize { get; set; }
-        bool ConsumerReceiptsDbCacheIndexAndFilterBlocks { get; set; }
-
-        ulong ConsumerDepositApprovalsDbWriteBufferSize { get; set; }
-        uint ConsumerDepositApprovalsDbWriteBufferNumber { get; set; }
-        ulong ConsumerDepositApprovalsDbBlockCacheSize { get; set; }
-        bool ConsumerDepositApprovalsDbCacheIndexAndFilterBlocks { get; set; }
-
-        ulong ConfigsDbWriteBufferSize { get; set; }
-        uint ConfigsDbWriteBufferNumber { get; set; }
-        ulong ConfigsDbBlockCacheSize { get; set; }
-        bool ConfigsDbCacheIndexAndFilterBlocks { get; set; }
-
-        ulong EthRequestsDbWriteBufferSize { get; set; }
-        uint EthRequestsDbWriteBufferNumber { get; set; }
-        ulong EthRequestsDbBlockCacheSize { get; set; }
-        bool EthRequestsDbCacheIndexAndFilterBlocks { get; set; }
-
         ulong BloomDbWriteBufferSize { get; set; }
         uint BloomDbWriteBufferNumber { get; set; }
         ulong BloomDbBlockCacheSize { get; set; }
