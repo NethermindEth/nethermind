@@ -18,7 +18,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 
-namespace Nethermind.Db.Rocks
+namespace Nethermind.Db
 {
     public abstract class RocksDbInitializer
     {
@@ -32,6 +32,18 @@ namespace Nethermind.Db.Rocks
             _dbProvider = dbProvider;
             _rocksDbFactory = rocksDbFactory;
             _memDbFactory = memDbFactory;
+        }
+
+        protected void RegisterCustomDb(string dbName, Func<IDb> dbFunc)
+        {
+            var action = new Action(() =>
+            {
+                var db = dbFunc();
+
+                _dbProvider.RegisterDb(dbName, db);
+            });
+
+            _registrations.Add(action);
         }
 
         protected void RegisterDb(RocksDbSettings settings)

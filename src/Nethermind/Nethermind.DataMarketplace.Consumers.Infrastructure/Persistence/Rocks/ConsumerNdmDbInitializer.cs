@@ -15,10 +15,8 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using System.Threading.Tasks;
 using Nethermind.DataMarketplace.Core.Configs;
 using Nethermind.Db;
-using Nethermind.Db.Rocks;
 
 namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Rocks
 {

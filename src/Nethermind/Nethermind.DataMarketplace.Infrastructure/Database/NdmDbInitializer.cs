@@ -19,7 +19,6 @@ using System;
 using System.Threading.Tasks;
 using Nethermind.DataMarketplace.Core.Configs;
 using Nethermind.Db;
-using Nethermind.Db.Rocks;
 
 namespace Nethermind.DataMarketplace.Infrastructure.Database
 {
