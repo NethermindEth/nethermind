@@ -69,6 +69,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             ILogger logger = _get.LogManager.GetClassLogger();
             IInitConfig initConfig = _get.Config<IInitConfig>();
             ISyncConfig syncConfig = _get.Config<ISyncConfig>();
+            IPruningConfig pruningConfig = _get.Config<IPruningConfig>();
             if (syncConfig.DownloadReceiptsInFastSync && !syncConfig.DownloadBodiesInFastSync)
             {
                 logger.Warn($"{nameof(syncConfig.DownloadReceiptsInFastSync)} is selected but {nameof(syncConfig.DownloadBodiesInFastSync)} - enabling bodies to support receipts download.");
@@ -77,12 +78,12 @@ namespace Nethermind.Runner.Ethereum.Steps
 
             Account.AccountStartNonce = _get.ChainSpec.Parameters.AccountStartNonce;
             
-            if (syncConfig.Pruning)
+            if (pruningConfig.Pruning)
             {
                 _api.TrieStore = new TrieStore(
                     _get.DbProvider!.StateDb.Innermost, // TODO: PRUNING what a hack here just to pass the actual DB
-                    new MemoryLimit(syncConfig.PruningCacheMb * 1.MB()), // TODO: memory hint should define this
-                    new ConstantInterval(syncConfig.PruningPersistenceInterval), // TODO: this should be based on time
+                    new MemoryLimit(pruningConfig.PruningCacheMb * 1.MB()), // TODO: memory hint should define this
+                    new ConstantInterval(pruningConfig.PruningPersistenceInterval), // TODO: this should be based on time
                     _api.LogManager);
             }
             else

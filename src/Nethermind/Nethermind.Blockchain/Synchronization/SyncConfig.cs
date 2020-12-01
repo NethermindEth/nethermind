@@ -18,6 +18,14 @@ using Nethermind.Config;
 
 namespace Nethermind.Blockchain.Synchronization
 {
+    [ConfigCategory(Description = "Configuration of the pruning parameters.")]
+    public class PruningConfig : IPruningConfig
+    {
+        public bool Pruning { get; set; }
+        public long PruningCacheMb { get; set; } = 512;
+        public long PruningPersistenceInterval { get; set; } = 8192;    
+    }
+    
     [ConfigCategory(Description = "Configuration of the synchronization modes.")]
     public class SyncConfig : ISyncConfig
     {
@@ -31,9 +39,6 @@ namespace Nethermind.Blockchain.Synchronization
         public bool FastBlocks { get; set; }
         public bool UseGethLimitsInFastBlocks { get; set; } = true;
         public bool BeamSync { get; set; }
-        public bool Pruning { get; set; }
-        public long PruningCacheMb { get; set; } = 512;
-        public long PruningPersistenceInterval { get; set; } = 8192;
         public bool FastSync { get; set; }
         public bool DownloadHeadersInFastSync { get; set; } = true;
         public bool DownloadBodiesInFastSync { get; set; } = true;

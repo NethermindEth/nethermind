@@ -1449,10 +1449,7 @@ namespace Nethermind.Blockchain
 
         public void SavePruningReorganizationBoundary(long blockNumber)
         {
-            if (_syncConfig.Pruning)
-            {
-                _blockInfoDb.Set(StateHeadHashDbEntryAddress, Rlp.Encode(blockNumber).Bytes);
-            }
+            _blockInfoDb.Set(StateHeadHashDbEntryAddress, Rlp.Encode(blockNumber).Bytes);
         }
     }
 }
