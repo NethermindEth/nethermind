@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 
 namespace Nethermind.Db
@@ -23,7 +24,7 @@ namespace Nethermind.Db
     {
         private readonly IDbProvider _wrappedProvider;
         private readonly bool _createInMemoryWriteStore;
-        private readonly Dictionary<string, IReadOnlyDb> _registeredDbs = new Dictionary<string, IReadOnlyDb>();
+        private readonly ConcurrentDictionary<string, IReadOnlyDb> _registeredDbs = new ConcurrentDictionary<string, IReadOnlyDb>();
         
         public ReadOnlyDbProvider(IDbProvider wrappedProvider, bool createInMemoryWriteStore)
         {
@@ -42,7 +43,6 @@ namespace Nethermind.Db
 
         public void Dispose()
         {
-            // ToDo why we don't dispose dbs here - investigate it or consult with someone
         }
 
         public IDb BeamStateDb { get; } = new MemDb();
@@ -77,8 +77,9 @@ namespace Nethermind.Db
                 throw new ArgumentException($"{dbName} has already registered.");
             }
 
+            _wrappedProvider.RegisterDb(dbName, db);
             var readonlyDb = db.CreateReadOnly(_createInMemoryWriteStore);
-            _registeredDbs.Add(dbName, readonlyDb);
+            _registeredDbs.TryAdd(dbName, readonlyDb);
         }
     }
 }

@@ -21,7 +21,6 @@ using System.IO;
 using System.Reflection;
 using System.Threading;
 using Nethermind.Core;
-using Nethermind.Db.Rocks.Config;
 using Nethermind.Logging;
 using RocksDbSharp;
 
@@ -44,7 +43,9 @@ namespace Nethermind.Db.Rocks
         private static int _cacheInitialized;
         
         protected static IntPtr _cache;
-        
+
+        private readonly RocksDbSettings _settings;
+
         protected static void InitCache(IPluggableDbConfig dbConfig)
         {
             if (Interlocked.CompareExchange(ref _cacheInitialized, 1, 0) == 0)
@@ -54,16 +55,11 @@ namespace Nethermind.Db.Rocks
             }
         }
 
-        public DbOnTheRocks(string basePath, string dbPath, string dbName, IPluggableDbConfig dbConfig, ILogManager logManager, ColumnFamilies columnFamilies = null, bool deleteOnStart = false)
+        public DbOnTheRocks(string basePath, RocksDbSettings rocksDbSettings, IPluggableDbConfig dbConfig, ILogManager logManager, ColumnFamilies columnFamilies = null, bool deleteOnStart = false)
         {
-            Name = dbName;
-            Db = Init(basePath, dbPath, dbConfig, logManager, columnFamilies, deleteOnStart);
-        }
-
-
-        public DbOnTheRocks(string basePath, string dbPath, IPluggableDbConfig dbConfig, ILogManager logManager, ColumnFamilies columnFamilies = null, bool deleteOnStart = false)
-        {
-            Db = Init(basePath, dbPath, dbConfig, logManager, columnFamilies, deleteOnStart);
+            Name = rocksDbSettings.DbName;
+            _settings = rocksDbSettings;
+            Db = Init(basePath, rocksDbSettings.DbPath, dbConfig, logManager, columnFamilies, deleteOnStart);
         }
 
         private RocksDb Init(string basePath, string dbPath, IPluggableDbConfig dbConfig, ILogManager logManager, ColumnFamilies columnFamilies = null, bool deleteOnStart = false)
@@ -109,8 +105,21 @@ namespace Nethermind.Db.Rocks
             }
         }
 
-        protected internal virtual void UpdateReadMetrics() => Metrics.OtherDbReads++;
-        protected internal virtual void UpdateWriteMetrics() => Metrics.OtherDbWrites++;
+        protected internal virtual void UpdateReadMetrics()
+        {
+            if (_settings.UpdateReadMetrics != null)
+                _settings.UpdateReadMetrics?.Invoke();
+            else
+                Metrics.OtherDbReads++;
+        }
+
+        protected internal virtual void UpdateWriteMetrics()
+        {
+            if (_settings.UpdateWriteMetrics != null)
+                _settings.UpdateWriteMetrics?.Invoke();
+            else
+                Metrics.OtherDbWrites++;
+        }
 
         private T ReadConfig<T>(IPluggableDbConfig dbConfig, string propertyName)
         {
@@ -136,12 +145,12 @@ namespace Nethermind.Db.Rocks
             BlockBasedTableOptions tableOptions = new BlockBasedTableOptions();
             tableOptions.SetBlockSize(16 * 1024);
             tableOptions.SetPinL0FilterAndIndexBlocksInCache(true);
-            tableOptions.SetCacheIndexAndFilterBlocks(ReadConfig<bool>(dbConfig, nameof(dbConfig.CacheIndexAndFilterBlocks)));
+            tableOptions.SetCacheIndexAndFilterBlocks(GetCacheIndexAndFilterBlocks(dbConfig));
 
             tableOptions.SetFilterPolicy(BloomFilterPolicy.Create(10, true));
             tableOptions.SetFormatVersion(2);
 
-            ulong blockCacheSize = ReadConfig<ulong>(dbConfig, nameof(dbConfig.BlockCacheSize));
+            ulong blockCacheSize = GetBlockCacheSize(dbConfig);
 
             tableOptions.SetBlockCache(_cache);
             
@@ -166,9 +175,9 @@ namespace Nethermind.Db.Rocks
             options.SetMaxBackgroundCompactions(Environment.ProcessorCount);
 
             //options.SetMaxOpenFiles(32);
-            ulong writeBufferSize = ReadConfig<ulong>(dbConfig, nameof(dbConfig.WriteBufferSize));
+            ulong writeBufferSize = GetWriteBufferSize(dbConfig);
             options.SetWriteBufferSize(writeBufferSize);
-            int writeBufferNumber = (int) ReadConfig<uint>(dbConfig, nameof(dbConfig.WriteBufferNumber));
+            int writeBufferNumber = (int)GetWriteBufferNumber(dbConfig);
             options.SetMaxWriteBufferNumber(writeBufferNumber);
             options.SetMinWriteBufferNumberToMerge(2);
 
@@ -193,6 +202,35 @@ namespace Nethermind.Db.Rocks
 
             return options;
         }
+
+        private bool GetCacheIndexAndFilterBlocks(IPluggableDbConfig dbConfig)
+        {
+            return _settings.CacheIndexAndFilterBlocks.HasValue
+                ? _settings.CacheIndexAndFilterBlocks.Value
+                : ReadConfig<bool>(dbConfig, nameof(dbConfig.CacheIndexAndFilterBlocks));
+        }
+
+        private ulong GetBlockCacheSize(IPluggableDbConfig dbConfig)
+        {
+            return _settings.BlockCacheSize.HasValue
+                ? _settings.BlockCacheSize.Value
+                : ReadConfig<ulong>(dbConfig, nameof(dbConfig.BlockCacheSize));
+        }
+
+        private ulong GetWriteBufferSize(IPluggableDbConfig dbConfig)
+        {
+            return _settings.WriteBufferSize.HasValue
+                ? _settings.WriteBufferSize.Value
+                : ReadConfig<ulong>(dbConfig, nameof(dbConfig.WriteBufferSize));
+        }
+
+        private ulong GetWriteBufferNumber(IPluggableDbConfig dbConfig)
+        {
+            return _settings.WriteBufferNumber.HasValue
+                ? _settings.WriteBufferNumber.Value
+                : ReadConfig<uint>(dbConfig, nameof(dbConfig.WriteBufferNumber));
+        }
+
 
         public byte[] this[byte[] key]
         {

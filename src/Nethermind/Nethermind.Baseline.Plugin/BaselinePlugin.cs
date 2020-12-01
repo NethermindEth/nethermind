@@ -34,8 +34,6 @@ namespace Nethermind.Plugin.Baseline
         private ILogger _logger;
         
         private IBaselineConfig _baselineConfig;
-        private IDbConfig _dbConfig;
-        private IBaselineDbProvider _baselineDbProvider;
 
         public void Dispose() { }
 
@@ -48,7 +46,6 @@ namespace Nethermind.Plugin.Baseline
         public Task Init(INethermindApi api)
         {
             _baselineConfig = api.Config<IBaselineConfig>();
-            _dbConfig = api.Config<IDbConfig>();
             _api = api;
             _logger = api.LogManager.GetClassLogger();
             return Task.CompletedTask;
@@ -68,8 +65,8 @@ namespace Nethermind.Plugin.Baseline
         {
             if (_baselineConfig.Enabled)
             {
-                _baselineDbProvider = new BaselineDbProvider(_api.DbProvider, _baselineConfig, _dbConfig, _api.RocksDbFactory, _api.MemDbFactory);
-                await _baselineDbProvider.Init();
+                var baselineDbInitializer = new BaselineDbInitializer(_api.DbProvider, _baselineConfig, _api.RocksDbFactory, _api.MemDbFactory);
+                await baselineDbInitializer.Init();
 
                 BaselineModuleFactory baselineModuleFactory = new BaselineModuleFactory(
                     _api.TxSender!,
@@ -81,7 +78,7 @@ namespace Nethermind.Plugin.Baseline
                     _api.LogManager,
                     _api.MainBlockProcessor,
                     _api.DisposeStack,
-                    _baselineDbProvider);
+                    _api.DbProvider);
 
                 var modulePool = new SingletonModulePool<IBaselineModule>(baselineModuleFactory);
                 _api.RpcModuleProvider!.Register(modulePool);

@@ -34,12 +34,9 @@ namespace Nethermind.Db.Rocks
         public IDb CreateDb(RocksDbSettings rocksDbSettings)
         { 
             return new SimpleRocksDb(_basePath, 
-                rocksDbSettings.DbPath, 
-                rocksDbSettings.DbName, 
+                rocksDbSettings,
                 _dbConfig, 
-                _logManager, 
-                rocksDbSettings.UpdateReadMetrics, 
-                rocksDbSettings.UpdateWriteMetrics);
+                _logManager);
         }
 
         public ISnapshotableDb CreateSnapshotableDb(RocksDbSettings rocksDbSettings)
@@ -50,12 +47,9 @@ namespace Nethermind.Db.Rocks
         public IColumnsDb<T> CreateColumnsDb<T>(RocksDbSettings rocksDbSettings)
         {
             return new SimpleColumnRocksDb<T>(_basePath,
-                rocksDbSettings.DbPath,
-                rocksDbSettings.DbName,
+                rocksDbSettings,
                 _dbConfig,
-                _logManager,
-                rocksDbSettings.UpdateReadMetrics,
-                rocksDbSettings.UpdateWriteMetrics);
+                _logManager);
         }
     }
 }

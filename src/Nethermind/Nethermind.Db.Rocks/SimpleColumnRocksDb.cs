@@ -14,44 +14,19 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System;
 using Nethermind.Logging;
 
 namespace Nethermind.Db.Rocks
 {
     public class SimpleColumnRocksDb<T> : ColumnsDb<T>
     {
-        private readonly Action _updateReadMetrics;
-        private readonly Action _updateWriteMetrics;
-        public override string Name { get; protected set; } = "SimpleColumnRocksDb";
         public SimpleColumnRocksDb(
             string basePath,
-            string dbPath,
-            string dbName,
+            RocksDbSettings rocksDbSettings,
             IPluggableDbConfig dbConfig,
-            ILogManager logManager = null,
-            Action updateReadMetrics = null,
-            Action updateWriteMetrics = null)
-                : base(basePath, dbPath, dbConfig, logManager, dbName)
+            ILogManager logManager = null)
+                : base(basePath, rocksDbSettings, dbConfig, logManager)
         {
-            _updateReadMetrics = updateReadMetrics;
-            _updateWriteMetrics = updateWriteMetrics;
-        }
-
-        protected internal override void UpdateReadMetrics()
-        {
-            if (_updateReadMetrics != null)
-                _updateReadMetrics?.Invoke();
-            else
-                Metrics.OtherDbReads++;
-        }
-
-        protected internal override void UpdateWriteMetrics()
-        {
-            if (_updateWriteMetrics != null)
-                _updateWriteMetrics?.Invoke();
-            else
-                Metrics.OtherDbWrites++;
         }
     }
 }

@@ -37,9 +37,9 @@ namespace Nethermind.Baseline.Test
         [Test]
         public void Can_create_many()
         {
-            var dbProvider = Substitute.For<IBaselineDbProvider>();
-            dbProvider.BaselineTreeDb.Returns(new MemDb());
-            dbProvider.BaselineTreeMetadataDb.Returns(new MemDb());
+            var dbProvider = new DbProvider(DbModeHint.Mem);
+            dbProvider.RegisterDb(BaselineDbConsts.BaselineTreeDbName, new MemDb());
+            dbProvider.RegisterDb(BaselineDbConsts.BaselineTreeMetadataDbName, new MemDb());
             BaselineModuleFactory factory = new BaselineModuleFactory(
                 Substitute.For<ITxSender>(),
                 Substitute.For<IStateReader>(),

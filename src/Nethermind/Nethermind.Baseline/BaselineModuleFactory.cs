@@ -40,7 +40,7 @@ namespace Nethermind.Baseline
         private readonly IAbiEncoder _abiEncoder;
         private readonly IBlockProcessor _blockProcessor;
         private readonly DisposableStack _disposableStack;
-        private readonly IBaselineDbProvider _dbProvider;
+        private readonly IDbProvider _dbProvider;
         
         public BaselineModuleFactory(
             ITxSender txSender,
@@ -52,7 +52,7 @@ namespace Nethermind.Baseline
             ILogManager logManager,
             IBlockProcessor blockProcessor,
             DisposableStack disposableStack,
-            IBaselineDbProvider dbProvider)
+            IDbProvider dbProvider)
         {
             _txSender = txSender ?? throw new ArgumentNullException(nameof(txSender));
             _logFinder = logFinder ?? throw new ArgumentNullException(nameof(logFinder));
@@ -75,8 +75,8 @@ namespace Nethermind.Baseline
                 _blockFinder,
                 _abiEncoder,
                 _fileSystem,
-                _dbProvider?.BaselineTreeDb ?? new MemDb(),
-                _dbProvider?.BaselineTreeMetadataDb ?? new MemDb(),
+                _dbProvider.GetDb<IDb>(BaselineDbConsts.BaselineTreeDbName),
+                _dbProvider.GetDb<IDb>(BaselineDbConsts.BaselineTreeMetadataDbName),
                 _logManager,
                 _blockProcessor,
                 _disposableStack);
