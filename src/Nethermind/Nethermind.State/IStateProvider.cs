@@ -59,16 +59,10 @@ namespace Nethermind.State
         void CommitTree(long blockNumber);
         
         int TakeSnapshot();
-        
-        /* visitors */
-
-        void Accept(ITreeVisitor visitor, Keccak stateRoot);
 
         /// <summary>
         /// pruning hack
         /// </summary>
         void CommitCode();
-
-        TrieStats CollectStats();
     }
 }
