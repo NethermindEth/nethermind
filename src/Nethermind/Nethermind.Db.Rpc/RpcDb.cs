@@ -105,10 +105,5 @@ namespace Nethermind.Db.Rpc
 
             return value;
         }
-
-        public IDb CreateReadOnly(bool createInMemWriteStore)
-        {
-            return new ReadOnlyDb(this, createInMemWriteStore);
-        }
     }
 }

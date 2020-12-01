@@ -53,10 +53,5 @@ namespace Nethermind.Db.Rocks
             else
                 Metrics.OtherDbWrites++;
         }
-
-        public IDb CreateReadOnly(bool createInMemWriteStore)
-        {
-            return new ReadOnlyColumnsDb<T>(this, createInMemWriteStore);
-        }
     }
 }

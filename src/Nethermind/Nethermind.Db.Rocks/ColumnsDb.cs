@@ -78,5 +78,10 @@ namespace Nethermind.Db.Rocks
         public IDbWithSpan GetColumnDb(T key) => _columnDbs[key];
 
         public IEnumerable<T> ColumnKeys => _columnDbs.Keys;
+
+        public IReadOnlyDb CreateReadOnly(bool createInMemWriteStore)
+        {
+            return new ReadOnlyColumnsDb<T>(this, createInMemWriteStore);
+        }
     }
 }
