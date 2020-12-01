@@ -125,14 +125,14 @@ namespace Nethermind.Runner.Ethereum.Steps
         public static DictionaryContractDataStore<TxPriorityContract.Destination, TxPriorityContract.DestinationSortedListContractDataStoreCollection>? CreateMinGasPricesDataStore(
             AuRaNethermindApi api, 
             TxPriorityContract? txPriorityContract, 
-            TxPriorityContract.LocalDataSource? localDataSource, 
-            IBlockProcessor blockProcessor)
+            TxPriorityContract.LocalDataSource? localDataSource)
         {
             return txPriorityContract != null || localDataSource != null
                 ? new DictionaryContractDataStore<TxPriorityContract.Destination, TxPriorityContract.DestinationSortedListContractDataStoreCollection>(
                     new TxPriorityContract.DestinationSortedListContractDataStoreCollection(),
                     txPriorityContract?.MinGasPrices,
-                    blockProcessor,
+                    api.BlockTree,
+                    api.ReceiptFinder,
                     api.LogManager,
                     localDataSource?.GetMinGasPricesLocalDataSource())
                 : null;

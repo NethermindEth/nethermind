@@ -17,9 +17,13 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Nethermind.Abi;
+using Nethermind.Blockchain;
+using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Processing;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
@@ -30,17 +34,19 @@ namespace Nethermind.Consensus.AuRa.Contracts.DataStore
     {
         internal TCollection Collection { get; }
         private readonly IDataContract<T> _dataContract;
-        private readonly IBlockProcessor _blockProcessor;
+        private readonly IReceiptFinder _receiptFinder;
+        private readonly IBlockTree _blockTree;
         private Keccak _lastHash;
         protected readonly ILogger _logger;
 
-        protected internal ContractDataStore(TCollection collection, IDataContract<T> dataContract, IBlockProcessor blockProcessor, ILogManager logManager)
+        protected internal ContractDataStore(TCollection collection, IDataContract<T> dataContract, IBlockTree blockTree, IReceiptFinder receiptFinder, ILogManager logManager)
         {
             Collection = collection;
             _dataContract = dataContract ?? throw new ArgumentNullException(nameof(dataContract));
-            _blockProcessor = blockProcessor ?? throw new ArgumentNullException(nameof(blockProcessor));;
+            _receiptFinder = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder));
+            _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _logger = logManager?.GetClassLogger<ContractDataStore<T, TCollection>>() ?? throw new ArgumentNullException(nameof(logManager));
-            _blockProcessor.BlockProcessed += OnBlockProcessed;
+            blockTree.NewHeadBlock += OnNewHead;
         }
 
         [MethodImpl(MethodImplOptions.Synchronized)]
@@ -52,20 +58,19 @@ namespace Nethermind.Consensus.AuRa.Contracts.DataStore
         
         
         [MethodImpl(MethodImplOptions.Synchronized)]
-        private void OnBlockProcessed(object sender, BlockProcessedEventArgs e)
+        private void OnNewHead(object sender, BlockEventArgs e)
         {
             BlockHeader header = e.Block.Header;
-            GetItemsFromContractAtBlock(header, header.ParentHash == _lastHash, e.TxReceipts);
+            GetItemsFromContractAtBlock(header, header.ParentHash == _lastHash, _receiptFinder.Get(e.Block));
         }
         
         private void GetItemsFromContractAtBlock(BlockHeader blockHeader, bool isConsecutiveBlock, TxReceipt[] receipts = null)
         {
             bool fromReceipts = receipts != null;
-
             if (fromReceipts || !isConsecutiveBlock)
             {
                 bool incrementalChanges = _dataContract.IncrementalChanges;
-                bool canGetFullStateFromReceipts = fromReceipts && (isConsecutiveBlock || !incrementalChanges) && !blockHeader.IsGenesis;
+                bool canGetFullStateFromReceipts = fromReceipts && (isConsecutiveBlock || !incrementalChanges);
 
                 try
                 {
@@ -75,6 +80,12 @@ namespace Nethermind.Consensus.AuRa.Contracts.DataStore
                     if (canGetFullStateFromReceipts)
                     {
                         dataChanged = _dataContract.TryGetItemsChangedFromBlock(blockHeader, receipts, out items);
+                        
+                        if (!dataChanged && !isConsecutiveBlock)
+                        {
+                            items = _dataContract.GetAllItemsFromBlock(blockHeader);
+                            dataChanged = true;
+                        }
                     }
                     else
                     {
@@ -89,10 +100,20 @@ namespace Nethermind.Consensus.AuRa.Contracts.DataStore
                         }
 
                         Collection.Insert(items);
-                        TraceDataChanged();
+                        TraceDataChanged("contract");
                     }
 
                     _lastHash = blockHeader.Hash;
+                    
+                    if (_logger.IsTrace) _logger.Trace($"{GetType()} trying to {nameof(GetItemsFromContractAtBlock)} with params " +
+                                                       $"{nameof(canGetFullStateFromReceipts)}:{canGetFullStateFromReceipts}, " +
+                                                       $"{nameof(fromReceipts)}:{fromReceipts}, " +
+                                                       $"{nameof(isConsecutiveBlock)}:{isConsecutiveBlock}, " +
+                                                       $"{nameof(incrementalChanges)}:{incrementalChanges}, " +
+                                                       $"{nameof(dataChanged)}:{dataChanged}. " +
+                                                       $"Results in {string.Join(", ", Collection.GetSnapshot())}. " +
+                                                       $"On {blockHeader.ToString(BlockHeader.Format.FullHashAndNumber)}. " +
+                                                       $"From {new StackTrace()}");
                 }
                 catch (AbiException e)
                 {
@@ -101,9 +122,9 @@ namespace Nethermind.Consensus.AuRa.Contracts.DataStore
             }
         }
 
-        protected void TraceDataChanged()
+        protected void TraceDataChanged(string source)
         {
-            if (_logger.IsTrace) _logger.Trace($"{GetType()} changed to {string.Join(", ", Collection.GetSnapshot())}");
+            if (_logger.IsTrace) _logger.Trace($"{GetType()} changed to {string.Join(", ", Collection.GetSnapshot())} from {source}.");
         }
 
         protected virtual void RemoveOldContractItemsFromCollection()
@@ -113,7 +134,7 @@ namespace Nethermind.Consensus.AuRa.Contracts.DataStore
 
         public virtual void Dispose()
         {
-            _blockProcessor.BlockProcessed -= OnBlockProcessed;
+            _blockTree.NewHeadBlock -= OnNewHead;
         }
     }
 
@@ -122,9 +143,10 @@ namespace Nethermind.Consensus.AuRa.Contracts.DataStore
         public ContractDataStore(
             IContractDataStoreCollection<T> collection, 
             IDataContract<T> dataContract, 
-            IBlockProcessor blockProcessor,
+            IBlockTree blockTree, 
+            IReceiptFinder receiptFinder,
             ILogManager logManager) 
-            : base(collection, dataContract, blockProcessor, logManager)
+            : base(collection, dataContract, blockTree, receiptFinder, logManager)
         {
         }
     }

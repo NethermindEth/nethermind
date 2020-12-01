@@ -20,8 +20,10 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using FluentAssertions;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Data;
 using Nethermind.Blockchain.Processing;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.AuRa.Contracts.DataStore;
 using Nethermind.Core;
@@ -96,8 +98,8 @@ namespace Nethermind.AuRa.Test.Contract
             expected = new []{TestItem.AddressC, TestItem.AddressB};
             testCase.DataContract.GetAllItemsFromBlock(secondBlock.Header).Returns(new [] {TestItem.AddressB});
             testCase.ContractDataStore.GetItemsFromContractAtBlock(blockHeader);
-            testCase.BlockProcessor.BlockProcessed += Raise.EventWith(new BlockProcessedEventArgs(secondBlock, Array.Empty<TxReceipt>()));
-            
+            testCase.BlockTree.NewHeadBlock += Raise.EventWith(new BlockEventArgs(secondBlock));
+
             testCase.ContractDataStore.GetItemsFromContractAtBlock(secondBlock.Header).Should().BeEquivalentTo(expected.Cast<object>());
 
             localDataSource.Data.Returns(new[] {TestItem.AddressC, TestItem.AddressD});
@@ -119,15 +121,18 @@ namespace Nethermind.AuRa.Test.Contract
                 dataContract.IncrementalChanges.Returns(true);
             }
 
-            var blockProcessor = Substitute.For<IBlockProcessor>();
+            var blockTree = Substitute.For<IBlockTree>();
+            var receiptsFinder = Substitute.For<IReceiptFinder>();
+            receiptsFinder.Get(Arg.Any<Block>()).Returns(Array.Empty<TxReceipt>());
 
             return new TestCase<T>()
             {
                 DataContract = dataContract,
-                BlockProcessor = blockProcessor,
+                BlockTree = blockTree,
+                ReceiptFinder = receiptsFinder,
                 ContractDataStore = keyComparer == null
-                    ? (IContractDataStore<T>)new ContractDataStoreWithLocalData<T>(new HashSetContractDataStoreCollection<T>(), dataContract, blockProcessor, LimboLogs.Instance, localDataSource)
-                    : new DictionaryContractDataStore<T, SortedListContractDataStoreCollection<T>>(new SortedListContractDataStoreCollection<T>(keyComparer, valueComparer), dataContract, blockProcessor, LimboLogs.Instance, localDataSource)
+                    ? (IContractDataStore<T>)new ContractDataStoreWithLocalData<T>(new HashSetContractDataStoreCollection<T>(), dataContract, blockTree, receiptsFinder, LimboLogs.Instance, localDataSource)
+                    : new DictionaryContractDataStore<T, SortedListContractDataStoreCollection<T>>(new SortedListContractDataStoreCollection<T>(keyComparer, valueComparer), dataContract, blockTree, receiptsFinder, LimboLogs.Instance, localDataSource)
             };
         }
         

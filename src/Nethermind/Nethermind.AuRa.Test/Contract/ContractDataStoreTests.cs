@@ -20,7 +20,9 @@ using System.Collections.Generic;
 using System.Linq;
 using FluentAssertions;
 using Nethermind.Abi;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Processing;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.AuRa.Contracts.DataStore;
 using Nethermind.Core;
@@ -96,7 +98,7 @@ namespace Nethermind.AuRa.Test.Contract
             testCase.DataContract.GetAllItemsFromBlock(secondBlock.Header).Returns(expected);
             
             testCase.ContractDataStore.GetItemsFromContractAtBlock(blockHeader);
-            testCase.BlockProcessor.BlockProcessed += Raise.EventWith(new BlockProcessedEventArgs(secondBlock, Array.Empty<TxReceipt>()));
+            testCase.BlockTree.NewHeadBlock += Raise.EventWith(new BlockEventArgs(secondBlock));
             
             testCase.ContractDataStore.GetItemsFromContractAtBlock(secondBlock.Header).Should().BeEquivalentTo(expected.Cast<object>());
         }
@@ -118,7 +120,7 @@ namespace Nethermind.AuRa.Test.Contract
                 });
 
             testCase.ContractDataStore.GetItemsFromContractAtBlock(blockHeader);
-            testCase.BlockProcessor.BlockProcessed += Raise.EventWith(new BlockProcessedEventArgs(secondBlock, Array.Empty<TxReceipt>()));
+            testCase.BlockTree.NewHeadBlock += Raise.EventWith(new BlockEventArgs(secondBlock));
             testCase.ContractDataStore.GetItemsFromContractAtBlock(secondBlock.Header).Should().BeEquivalentTo(expected.Cast<object>());
         }
         
@@ -130,7 +132,7 @@ namespace Nethermind.AuRa.Test.Contract
             Block block = Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(0).TestObject).TestObject;
             Address[] expected = {TestItem.AddressB};
             testCase.DataContract.GetAllItemsFromBlock(block.Header).Returns(expected);
-            testCase.BlockProcessor.BlockProcessed += Raise.EventWith(new BlockProcessedEventArgs(block, Array.Empty<TxReceipt>()));
+            testCase.BlockTree.NewHeadBlock += Raise.EventWith(new BlockEventArgs(block));
             testCase.ContractDataStore.GetItemsFromContractAtBlock(block.Header).Should().BeEquivalentTo(expected.Cast<object>());
         }
         
@@ -151,7 +153,7 @@ namespace Nethermind.AuRa.Test.Contract
                 });
             
             testCase.ContractDataStore.GetItemsFromContractAtBlock(blockHeader);
-            testCase.BlockProcessor.BlockProcessed += Raise.EventWith(new BlockProcessedEventArgs(secondBlock, Array.Empty<TxReceipt>()));
+            testCase.BlockTree.NewHeadBlock += Raise.EventWith(new BlockEventArgs(secondBlock));
             
             testCase.ContractDataStore.GetItemsFromContractAtBlock(secondBlock.Header).Should().BeEquivalentTo(expected.Cast<object>());
         }
@@ -171,7 +173,7 @@ namespace Nethermind.AuRa.Test.Contract
                 });
 
             testCase.ContractDataStore.GetItemsFromContractAtBlock(blockHeader);
-            testCase.BlockProcessor.BlockProcessed += Raise.EventWith(new BlockProcessedEventArgs(secondBlock, Array.Empty<TxReceipt>()));
+            testCase.BlockTree.NewHeadBlock += Raise.EventWith(new BlockEventArgs(secondBlock));
             
             testCase.ContractDataStore.GetItemsFromContractAtBlock(secondBlock.Header).Should().BeEquivalentTo(TestItem.AddressA, TestItem.AddressB);
         }
@@ -191,7 +193,7 @@ namespace Nethermind.AuRa.Test.Contract
                 });
 
             testCase.ContractDataStore.GetItemsFromContractAtBlock(blockHeader);
-            testCase.BlockProcessor.BlockProcessed += Raise.EventWith(new BlockProcessedEventArgs(secondBlock, Array.Empty<TxReceipt>()));
+            testCase.BlockTree.NewHeadBlock += Raise.EventWith(new BlockEventArgs(secondBlock));
             
             testCase.ContractDataStore.GetItemsFromContractAtBlock(secondBlock.Header).Should().BeEquivalentTo(TestItem.AddressA, TestItem.AddressC);
         }
@@ -224,7 +226,7 @@ namespace Nethermind.AuRa.Test.Contract
                 });
 
             testCase.ContractDataStore.GetItemsFromContractAtBlock(blockHeader);
-            testCase.BlockProcessor.BlockProcessed += Raise.EventWith(new BlockProcessedEventArgs(secondBlock, Array.Empty<TxReceipt>()));
+            testCase.BlockTree.NewHeadBlock += Raise.EventWith(new BlockEventArgs(secondBlock));
             
             testCase.ContractDataStore.GetItemsFromContractAtBlock(secondBlock.Header).Should().BeEquivalentTo(new[]
             {
@@ -239,15 +241,18 @@ namespace Nethermind.AuRa.Test.Contract
             var dataContract = Substitute.For<IDataContract<T>>();
             dataContract.IncrementalChanges.Returns(true);
                 
-            var blockProcessor = Substitute.For<IBlockProcessor>();
+            var blockTree = Substitute.For<IBlockTree>();
+            var receiptsFinder = Substitute.For<IReceiptFinder>();
+            receiptsFinder.Get(Arg.Any<Block>()).Returns(Array.Empty<TxReceipt>());
 
             return new TestCase<T>()
             {
                 DataContract = dataContract,
-                BlockProcessor = blockProcessor,
+                BlockTree = blockTree,
+                ReceiptFinder = receiptsFinder,
                 ContractDataStore = keyComparer == null
-                    ? (IContractDataStore<T>)new ContractDataStore<T>(new HashSetContractDataStoreCollection<T>(), dataContract, blockProcessor, LimboLogs.Instance)
-                    : new DictionaryContractDataStore<T, SortedListContractDataStoreCollection<T>>(new SortedListContractDataStoreCollection<T>(keyComparer, valueComparer), dataContract, blockProcessor, LimboLogs.Instance)
+                    ? (IContractDataStore<T>)new ContractDataStore<T>(new HashSetContractDataStoreCollection<T>(), dataContract, blockTree, receiptsFinder, LimboLogs.Instance)
+                    : new DictionaryContractDataStore<T, SortedListContractDataStoreCollection<T>>(new SortedListContractDataStoreCollection<T>(keyComparer, valueComparer), dataContract, blockTree, receiptsFinder, LimboLogs.Instance)
             };
         }
 
@@ -255,7 +260,9 @@ namespace Nethermind.AuRa.Test.Contract
         {
             public IContractDataStore<T> ContractDataStore { get; set; }
 
-            public IBlockProcessor BlockProcessor { get; set; }
+            public IBlockTree BlockTree { get; set; }
+            
+            public IReceiptFinder ReceiptFinder { get; set; }
 
             public IDataContract<T> DataContract { get; set; }
         }

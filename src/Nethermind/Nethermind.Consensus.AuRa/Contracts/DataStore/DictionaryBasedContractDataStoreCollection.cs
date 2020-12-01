@@ -35,7 +35,7 @@ namespace Nethermind.Consensus.AuRa.Contracts.DataStore
 
         public virtual IEnumerable<T> GetSnapshot() => Items.Values.ToArray();
 
-        public void Insert(IEnumerable<T> items)
+        public void Insert(IEnumerable<T> items, bool inFront = false)
         {
             IDictionary<T,T> dictionary = Items;
 

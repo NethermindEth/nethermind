@@ -278,20 +278,23 @@ namespace Nethermind.AuRa.Test.Contract
                 Priorities = new DictionaryContractDataStore<TxPriorityContract.Destination, TxPriorityContract.DestinationSortedListContractDataStoreCollection>(
                     new TxPriorityContract.DestinationSortedListContractDataStoreCollection(),  
                     TxPriorityContract.Priorities, 
-                    BlockProcessor,
+                    BlockTree,
+                    ReceiptStorage,
                     LimboLogs.Instance,
                     GetPrioritiesLocalDataStore());
                 
                 MinGasPrices = new DictionaryContractDataStore<TxPriorityContract.Destination, TxPriorityContract.DestinationSortedListContractDataStoreCollection>(
                     new TxPriorityContract.DestinationSortedListContractDataStoreCollection(),
                     TxPriorityContract.MinGasPrices,
-                    BlockProcessor,
+                    BlockTree,
+                    ReceiptStorage,
                     LimboLogs.Instance,
                     GetMinGasPricesLocalDataStore());
                 
                 SendersWhitelist = new ContractDataStoreWithLocalData<Address>(new HashSetContractDataStoreCollection<Address>(),
                     TxPriorityContract.SendersWhitelist, 
-                    BlockProcessor,
+                    BlockTree,
+                    ReceiptStorage,
                     LimboLogs.Instance,
                     GetWhitelistLocalDataStore());
                 
