@@ -104,7 +104,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _get.DbProvider.CodeDb,
                 _get.LogManager);
             
-            ReadOnlyDbProvider readOnly = new ReadOnlyDbProvider(_api.DbProvider, false);
+            IReadOnlyDbProvider readOnly = new ReadOnlyDbProvider(_api.DbProvider, false);
             var stateReader = _set.StateReader = new StateReader(_api.ReadOnlyTrieStore, readOnly.CodeDb, _api.LogManager);
             _set.ChainHeadStateProvider = new ChainHeadReadOnlyStateProvider(_get.BlockTree, stateReader);
 

@@ -59,14 +59,14 @@ namespace Nethermind.JsonRpc.Test.Modules
         private IJsonRpcConfig _jsonRpcConfig;
 
         [SetUp]
-        public void SetUp()
+        public async Task SetUp()
         {
-            Initialize();
+            await Initialize();
         }
 
-        private void Initialize(bool auRa = false)
+        private async Task Initialize(bool auRa = false)
         {
-            MemDbProvider dbProvider = new MemDbProvider();
+            IDbProvider dbProvider = await TestMemDbProvider.InitAsync();
             ISpecProvider specProvider = MainnetSpecProvider.Instance;
             _jsonRpcConfig = new JsonRpcConfig();
             IEthereumEcdsa ethereumEcdsa = new EthereumEcdsa(specProvider.ChainId, LimboLogs.Instance);

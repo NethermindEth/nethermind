@@ -118,6 +118,8 @@ namespace Nethermind.Runner.Ethereum.Api
         public IConfigProvider ConfigProvider { get; set; }
         public ICryptoRandom CryptoRandom { get; }
         public IDbProvider? DbProvider { get; set; }
+        public IRocksDbFactory? RocksDbFactory { get; set; }
+        public IMemDbFactory? MemDbFactory { get; set; }
         public IDiscoveryApp? DiscoveryApp { get; set; }
         public ISigner? EngineSigner { get; set; }
         public ISignerStore? EngineSignerStore { get; set; }
@@ -174,6 +176,6 @@ namespace Nethermind.Runner.Ethereum.Api
         public ChainSpec? ChainSpec { get; set; }
         public DisposableStack DisposeStack { get; } = new DisposableStack();
         public IList<INethermindPlugin> Plugins { get; } = new List<INethermindPlugin>();
-        public IList<IPublisher> Publishers { get; } = new List<IPublisher>(); // this should be called publishers?
+        public IList<IPublisher> Publishers { get; } = new List<IPublisher>(); // this should be called publishers
     }
 }

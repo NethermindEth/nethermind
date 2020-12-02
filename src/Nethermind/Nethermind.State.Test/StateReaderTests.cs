@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -200,10 +200,10 @@ namespace Nethermind.Store.Test
         }
         
         [Test]
-        public void Get_storage()
+        public async Task Get_storage()
         {
-            MemDbProvider dbProvider = new MemDbProvider();
-            
+            IDbProvider dbProvider = await TestMemDbProvider.InitAsync();
+
             /* all testing will be touching just a single storage cell */
             StorageCell storageCell = new StorageCell(_address1, UInt256.One);
             TrieStore trieStore = new TrieStore(dbProvider.StateDb, Logger);

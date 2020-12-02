@@ -21,6 +21,7 @@
       <ProjectReference Include="..\Nethermind.DataMarketplace.Channels\Nethermind.DataMarketplace.Channels.csproj" />
       <ProjectReference Include="..\Nethermind.DataMarketplace.Consumers\Nethermind.DataMarketplace.Consumers.csproj" />
       <ProjectReference Include="..\Nethermind.DataMarketplace.Core\Nethermind.DataMarketplace.Core.csproj" />
+      <ProjectReference Include="..\Nethermind.Db.Rocks\Nethermind.Db.Rocks.csproj" />
       <ProjectReference Include="..\Nethermind.Grpc\Nethermind.Grpc.csproj" />
       <ProjectReference Include="..\Nethermind.JsonRpc\Nethermind.JsonRpc.csproj" />
       <ProjectReference Include="..\Nethermind.Monitoring\Nethermind.Monitoring.csproj" />

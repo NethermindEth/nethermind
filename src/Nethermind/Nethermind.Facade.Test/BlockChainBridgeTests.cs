@@ -38,6 +38,7 @@ using System.Threading;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Trie.Pruning;
+using System.Threading.Tasks;
 
 namespace Nethermind.Facade.Test
 {
@@ -56,9 +57,9 @@ namespace Nethermind.Facade.Test
         private IDbProvider _dbProvider;
 
         [SetUp]
-        public void SetUp()
+        public async Task SetUp()
         {
-            _dbProvider = new MemDbProvider();
+            _dbProvider = await TestMemDbProvider.InitAsync();
             _timestamper = new ManualTimestamper();
             _blockTree = Substitute.For<IBlockTree>();
             _txPool = Substitute.For<ITxPool>();

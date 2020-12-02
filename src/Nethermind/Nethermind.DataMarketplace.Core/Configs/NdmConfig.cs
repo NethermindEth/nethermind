@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 
 namespace Nethermind.DataMarketplace.Core.Configs
@@ -51,5 +52,55 @@ namespace Nethermind.DataMarketplace.Core.Configs
         public string GasPriceType { get; set; } = "custom";
         public uint CancelTransactionGasPricePercentageMultiplier { get; set; } = 110;
         public bool JsonRpcDataChannelEnabled { get; set; }
+
+        public ulong DepositsDbWriteBufferSize { get; set; } = (ulong)16.MiB();
+        public uint DepositsDbWriteBufferNumber { get; set; } = 4;
+        public ulong DepositsDbBlockCacheSize { get; set; } = (ulong)64.MiB();
+        public bool DepositsDbCacheIndexAndFilterBlocks { get; set; } = false;
+
+        public ulong ConsumerSessionsDbWriteBufferSize { get; set; } = (ulong)16.MiB();
+        public uint ConsumerSessionsDbWriteBufferNumber { get; set; } = 4;
+        public ulong ConsumerSessionsDbBlockCacheSize { get; set; } = (ulong)64.MiB();
+        public bool ConsumerSessionsDbCacheIndexAndFilterBlocks { get; set; } = false;
+
+        public ulong ConsumerReceiptsDbWriteBufferSize { get; set; } = (ulong)16.MiB();
+        public uint ConsumerReceiptsDbWriteBufferNumber { get; set; } = 4;
+        public ulong ConsumerReceiptsDbBlockCacheSize { get; set; } = (ulong)64.MiB();
+        public bool ConsumerReceiptsDbCacheIndexAndFilterBlocks { get; set; } = false;
+
+        public ulong ConsumerDepositApprovalsDbWriteBufferSize { get; set; } = (ulong)16.MiB();
+        public uint ConsumerDepositApprovalsDbWriteBufferNumber { get; set; } = 4;
+        public ulong ConsumerDepositApprovalsDbBlockCacheSize { get; set; } = (ulong)64.MiB();
+        public bool ConsumerDepositApprovalsDbCacheIndexAndFilterBlocks { get; set; } = false;
+
+        public ulong ConfigsDbWriteBufferSize { get; set; } = (ulong)2.MiB();
+        public uint ConfigsDbWriteBufferNumber { get; set; } = 4;
+        public ulong ConfigsDbBlockCacheSize { get; set; } = (ulong)8.MiB();
+        public bool ConfigsDbCacheIndexAndFilterBlocks { get; set; } = false;
+
+        public ulong EthRequestsDbWriteBufferSize { get; set; } = (ulong)2.MiB();
+        public uint EthRequestsDbWriteBufferNumber { get; set; } = 4;
+        public ulong EthRequestsDbBlockCacheSize { get; set; } = (ulong)8.MiB();
+        public bool EthRequestsDbCacheIndexAndFilterBlocks { get; set; } = false;
+
+        public bool ProviderSessionsDbCacheIndexAndFilterBlocks { get; set; } = false;
+        public ulong ProviderSessionsDbBlockCacheSize { get; set; } = (ulong)1.KiB();
+        public ulong ProviderSessionsDbWriteBufferSize { get; set; } = (ulong)1.KiB();
+        public uint ProviderSessionsDbWriteBufferNumber { get; set; } = 4;
+
+        public bool ConsumersDbCacheIndexAndFilterBlocks { get; set; } = false;
+        public ulong ConsumersDbBlockCacheSize { get; set; } = (ulong)1.KiB();
+        public ulong ConsumersDbWriteBufferSize { get; set; } = (ulong)1.KiB();
+        public uint ConsumersDbWriteBufferNumber { get; set; } = 4;
+
+        public bool ProviderDepositApprovalsDbCacheIndexAndFilterBlocks { get; set; } = false;
+        public ulong ProviderDepositApprovalsDbBlockCacheSize { get; set; } = (ulong)1.KiB();
+        public ulong ProviderDepositApprovalsDbWriteBufferSize { get; set; } = (ulong)1.KiB();
+        public uint ProviderDepositApprovalsDbWriteBufferNumber { get; set; } = 4;
+
+        public bool ProviderReceiptsDbCacheIndexAndFilterBlocks { get; set; } = false;
+        public ulong ProviderReceiptsDbBlockCacheSize { get; set; } = (ulong)1.KiB();
+        public ulong ProviderReceiptsDbWriteBufferSize { get; set; } = (ulong)1.KiB();
+        public uint ProviderReceiptsDbWriteBufferNumber { get; set; } = 4;
     }
 }

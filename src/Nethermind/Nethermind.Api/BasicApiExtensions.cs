@@ -16,6 +16,7 @@
 // 
 
 using Nethermind.Config;
+using Nethermind.Db;
 
 namespace Nethermind.Api
 {
@@ -24,6 +25,11 @@ namespace Nethermind.Api
         public static T Config<T>(this IBasicApi api) where T : IConfig
         {
             return api.ConfigProvider.GetConfig<T>();
+        }
+
+        public static T Db<T>(this IBasicApi api, string dbName) where T : IDb
+        {
+            return api.DbProvider!.GetDb<T>(dbName);
         }
     }
 }

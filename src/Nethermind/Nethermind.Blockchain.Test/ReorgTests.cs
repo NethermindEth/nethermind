@@ -50,7 +50,7 @@ namespace Nethermind.Blockchain.Test
         [SetUp]
         public void Setup()
         {
-            MemDbProvider memDbProvider = new MemDbProvider();
+            IDbProvider memDbProvider = TestMemDbProvider.Init();
             TrieStore trieStore = new TrieStore(new MemDb(), LimboLogs.Instance);
             StateProvider stateProvider = new StateProvider(trieStore, new StateDb(), LimboLogs.Instance);
             StorageProvider storageProvider = new StorageProvider(trieStore, stateProvider, LimboLogs.Instance);

@@ -17,6 +17,7 @@
 using System;
 using System.IO.Abstractions;
 using Nethermind.Abi;
+using Nethermind.Baseline.Database;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Core;
@@ -74,8 +75,8 @@ namespace Nethermind.Baseline
                 _blockFinder,
                 _abiEncoder,
                 _fileSystem,
-                _dbProvider.BaselineTreeDb,
-                _dbProvider.BaselineTreeMetadataDb,
+                _dbProvider.GetDb<IDb>(BaselineDbNames.BaselineTree),
+                _dbProvider.GetDb<IDb>(BaselineDbNames.BaselineTreeMetadata),
                 _logManager,
                 _blockProcessor,
                 _disposableStack);

@@ -7,6 +7,7 @@
     <ItemGroup>
       <ProjectReference Include="..\..\rocksdb-sharp\RocksDbNative\RocksDbNative.csproj" />
       <ProjectReference Include="..\..\rocksdb-sharp\RocksDbSharp\RocksDbSharp.csproj" />
+      <ProjectReference Include="..\Nethermind.Api\Nethermind.Api.csproj" />
       <ProjectReference Include="..\Nethermind.Db\Nethermind.Db.csproj" />
     </ItemGroup>
 
