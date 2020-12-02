@@ -21,14 +21,44 @@ namespace Nethermind.Db.Test
     public class DbProviderTests
     {
         [Test]
-        public void DbProvider_CanRegisterDiffrentDbTypes()
+        public void DbProvider_CanRegisterMemDb()
         {
             var memDbFactory = new MemDbFactory();
-            var dbProvider = new DbProvider(DbModeHint.Mem);
-            var memDb = memDbFactory.CreateDb("MemDb");
-            dbProvider.RegisterDb<IDb>("MemDb", memDb);
-            var db = dbProvider.GetDb<IDb>("MemDb");
-            Assert.AreEqual(memDb, db);
+            using (var dbProvider = new DbProvider(DbModeHint.Mem))
+            {
+                var memDb = memDbFactory.CreateDb("MemDb");
+                dbProvider.RegisterDb("MemDb", memDb);
+                var db = dbProvider.GetDb<IDb>("MemDb");
+                Assert.AreEqual(memDb, db);
+            }
+        }
+
+        [Test]
+        public void DbProvider_CanRegisterSnapshotableDb()
+        {
+            var memDbFactory = new MemDbFactory();
+            using (var dbProvider = new DbProvider(DbModeHint.Mem))
+            {
+                var memSnapshotableDb = memDbFactory.CreateSnapshotableDb("SnapshotableDb");
+                dbProvider.RegisterDb("SnapshotableDb", memSnapshotableDb);
+                var snapshotableDb = dbProvider.GetDb<ISnapshotableDb>("SnapshotableDb");
+                Assert.AreEqual(memSnapshotableDb, snapshotableDb);
+                Assert.IsTrue(memSnapshotableDb is ISnapshotableDb);
+            }
+        }
+
+        [Test]
+        public void DbProvider_CanRegisterColumnsDb()
+        {
+            using (var dbProvider = new DbProvider(DbModeHint.Mem))
+            {
+                var memDbFactory = new MemDbFactory();
+                var memSnapshotableDb = memDbFactory.CreateColumnsDb<ReceiptsColumns>("ColumnsDb");
+                dbProvider.RegisterDb("ColumnsDb", memSnapshotableDb);
+                var columnsDb = dbProvider.GetDb<IColumnsDb<ReceiptsColumns>>("ColumnsDb");
+                Assert.AreEqual(memSnapshotableDb, columnsDb);
+                Assert.IsTrue(memSnapshotableDb is IColumnsDb<ReceiptsColumns>);
+            }
         }
     }
 }

@@ -15,7 +15,6 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
@@ -106,7 +105,7 @@ namespace Nethermind.Baseline.Test
         public void TearDown()
         {
             if (Directory.Exists(_folderWithDbs))
-                Directory.Delete(_folderWithDbs);
+                Directory.Delete(_folderWithDbs, true);
         }
     }
 }

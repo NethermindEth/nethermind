@@ -106,7 +106,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure.Persistence.R
         public void TearDown()
         {
             if (Directory.Exists(_folderWithDbs))
-                Directory.Delete(_folderWithDbs);
+                Directory.Delete(_folderWithDbs, true);
         }
     }
 }

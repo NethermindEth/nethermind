@@ -39,7 +39,6 @@ namespace Nethermind.DataMarketplace.Test
     [Parallelizable(ParallelScope.All)]
     public class NdmDbProviderTests
     {
-        private List<IDb> _dbsToCleanup = new List<IDb>();
         private string _folderWithDbs;
 
         [OneTimeSetUp]
@@ -128,13 +127,8 @@ namespace Nethermind.DataMarketplace.Test
         [OneTimeTearDown]
         public void TearDown()
         {
-            foreach (var dbToCleanup in _dbsToCleanup)
-            {
-                dbToCleanup?.Dispose();
-            }
-
             if (Directory.Exists(_folderWithDbs))
-                Directory.Delete(_folderWithDbs);
+                Directory.Delete(_folderWithDbs, true);
         }
     }
 }
