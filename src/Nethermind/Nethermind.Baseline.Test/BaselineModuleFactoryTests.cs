@@ -38,8 +38,8 @@ namespace Nethermind.Baseline.Test
         public void Can_create_many()
         {
             var dbProvider = new DbProvider(DbModeHint.Mem);
-            dbProvider.RegisterDb(BaselineDbConsts.BaselineTreeDbName, new MemDb());
-            dbProvider.RegisterDb(BaselineDbConsts.BaselineTreeMetadataDbName, new MemDb());
+            dbProvider.RegisterDb(BaselineDbNames.BaselineTree, new MemDb());
+            dbProvider.RegisterDb(BaselineDbNames.BaselineTreeMetadata, new MemDb());
             BaselineModuleFactory factory = new BaselineModuleFactory(
                 Substitute.For<ITxSender>(),
                 Substitute.For<IStateReader>(),

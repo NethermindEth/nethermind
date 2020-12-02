@@ -62,6 +62,7 @@ using Nethermind.DataMarketplace.Infrastructure.Updaters;
 using Nethermind.WebSockets;
 using System.Threading.Tasks;
 using Nethermind.Db;
+using Nethermind.Api;
 
 namespace Nethermind.DataMarketplace.Consumers.Infrastructure
 {
@@ -152,15 +153,15 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure
                 default:
                     var dbInitializer = new ConsumerNdmDbInitializer(_api.DbProvider, ndmConfig, _api.RocksDbFactory, _api.MemDbFactory);
                     await dbInitializer.Init();
-                    depositRepository = new DepositDetailsRocksRepository(_api.DbProvider.GetDb<IDb>(ConsumerNdmDbConsts.DepositsDbName),
+                    depositRepository = new DepositDetailsRocksRepository(_api.Db<IDb>(ConsumerNdmDbNames.Deposits),
                         depositDetailsRlpDecoder);
                     depositApprovalRepository = new ConsumerDepositApprovalRocksRepository(
-                        _api.DbProvider.GetDb<IDb>(ConsumerNdmDbConsts.ConsumerDepositApprovalsDbName), depositApprovalRlpDecoder);
-                    providerRepository = new ProviderRocksRepository(_api.DbProvider.GetDb<IDb>(ConsumerNdmDbConsts.DepositsDbName),
+                        _api.Db<IDb>(ConsumerNdmDbNames.ConsumerDepositApprovals), depositApprovalRlpDecoder);
+                    providerRepository = new ProviderRocksRepository(_api.Db<IDb>(ConsumerNdmDbNames.Deposits),
                         depositDetailsRlpDecoder);
-                    receiptRepository = new ReceiptRocksRepository(_api.DbProvider.GetDb<IDb>(ConsumerNdmDbConsts.ConsumerReceiptsDbName),
+                    receiptRepository = new ReceiptRocksRepository(_api.Db<IDb>(ConsumerNdmDbNames.ConsumerReceipts),
                         receiptRlpDecoder);
-                    sessionRepository = new ConsumerSessionRocksRepository(_api.DbProvider.GetDb<IDb>(ConsumerNdmDbConsts.ConsumerSessionsDbName),
+                    sessionRepository = new ConsumerSessionRocksRepository(_api.Db<IDb>(ConsumerNdmDbNames.ConsumerSessions),
                         sessionRlpDecoder);
                     break;
             }

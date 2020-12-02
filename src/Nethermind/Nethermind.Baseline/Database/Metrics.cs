@@ -20,16 +20,16 @@ namespace Nethermind.Baseline.Database
 {
     public static class Metrics
     {
-        [Description("Number of baseline tree (faucet) DB reads.")]
+        [Description("Number of baseline tree DB reads.")]
         public static long BaselineTreeDbReads { get; set; }
 
         [Description("Number of baseline tree DB writes.")]
         public static long BaselineTreeDbWrites { get; set; }
 
-        [Description("Number of baseline tree (faucet) DB reads.")]
+        [Description("Number of baseline tree metadata DB reads.")]
         public static long BaselineTreeMetadataDbReads { get; set; }
 
-        [Description("Number of baseline tree DB writes.")]
+        [Description("Number of baseline tree metadata DB writes.")]
         public static long BaselineTreeMetadataDbWrites { get; set; }
     }
 }

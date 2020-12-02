@@ -52,10 +52,10 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure.Persistence.R
             var initializer = new ConsumerNdmDbInitializer(dbProvider, new NdmConfig(), rocksDbFactory, new MemDbFactory());
             await initializer.Init();
             Assert.AreEqual(4, dbProvider.RegisteredDbs.Count());
-            Assert.IsTrue(dbProvider.GetDb<IDb>(ConsumerNdmDbConsts.ConsumerDepositApprovalsDbName) is MemDb);
-            Assert.IsTrue(dbProvider.GetDb<IDb>(ConsumerNdmDbConsts.ConsumerReceiptsDbName) is MemDb);
-            Assert.IsTrue(dbProvider.GetDb<IDb>(ConsumerNdmDbConsts.ConsumerSessionsDbName) is MemDb);
-            Assert.IsTrue(dbProvider.GetDb<IDb>(ConsumerNdmDbConsts.DepositsDbName) is MemDb);
+            Assert.IsTrue(dbProvider.GetDb<IDb>(ConsumerNdmDbNames.ConsumerDepositApprovals) is MemDb);
+            Assert.IsTrue(dbProvider.GetDb<IDb>(ConsumerNdmDbNames.ConsumerReceipts) is MemDb);
+            Assert.IsTrue(dbProvider.GetDb<IDb>(ConsumerNdmDbNames.ConsumerSessions) is MemDb);
+            Assert.IsTrue(dbProvider.GetDb<IDb>(ConsumerNdmDbNames.Deposits) is MemDb);
         }
 
         [Test]
@@ -66,10 +66,10 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure.Persistence.R
             var initializer = new ConsumerNdmDbInitializer(dbProvider, new NdmConfig(), rocksDbFactory, new MemDbFactory());
             await initializer.Init();
             Assert.AreEqual(4, dbProvider.RegisteredDbs.Count());
-            Assert.IsTrue(dbProvider.GetDb<IDb>(ConsumerNdmDbConsts.ConsumerDepositApprovalsDbName) is DbOnTheRocks);
-            Assert.IsTrue(dbProvider.GetDb<IDb>(ConsumerNdmDbConsts.ConsumerReceiptsDbName) is DbOnTheRocks);
-            Assert.IsTrue(dbProvider.GetDb<IDb>(ConsumerNdmDbConsts.ConsumerSessionsDbName) is DbOnTheRocks);
-            Assert.IsTrue(dbProvider.GetDb<IDb>(ConsumerNdmDbConsts.DepositsDbName) is DbOnTheRocks);
+            Assert.IsTrue(dbProvider.GetDb<IDb>(ConsumerNdmDbNames.ConsumerDepositApprovals) is DbOnTheRocks);
+            Assert.IsTrue(dbProvider.GetDb<IDb>(ConsumerNdmDbNames.ConsumerReceipts) is DbOnTheRocks);
+            Assert.IsTrue(dbProvider.GetDb<IDb>(ConsumerNdmDbNames.ConsumerSessions) is DbOnTheRocks);
+            Assert.IsTrue(dbProvider.GetDb<IDb>(ConsumerNdmDbNames.Deposits) is DbOnTheRocks);
         }
 
         [Test]
@@ -81,10 +81,10 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure.Persistence.R
             var initializer = new ConsumerNdmDbInitializer(readonlyDbProvider, new NdmConfig(), rocksDbFactory, new MemDbFactory());
             await initializer.Init();
             Assert.AreEqual(4, readonlyDbProvider.RegisteredDbs.Count());
-            Assert.IsTrue(readonlyDbProvider.GetDb<IDb>(ConsumerNdmDbConsts.ConsumerDepositApprovalsDbName) is ReadOnlyDb);
-            Assert.IsTrue(readonlyDbProvider.GetDb<IDb>(ConsumerNdmDbConsts.ConsumerReceiptsDbName) is ReadOnlyDb);
-            Assert.IsTrue(readonlyDbProvider.GetDb<IDb>(ConsumerNdmDbConsts.ConsumerSessionsDbName) is ReadOnlyDb);
-            Assert.IsTrue(readonlyDbProvider.GetDb<IDb>(ConsumerNdmDbConsts.DepositsDbName) is ReadOnlyDb);
+            Assert.IsTrue(readonlyDbProvider.GetDb<IDb>(ConsumerNdmDbNames.ConsumerDepositApprovals) is ReadOnlyDb);
+            Assert.IsTrue(readonlyDbProvider.GetDb<IDb>(ConsumerNdmDbNames.ConsumerReceipts) is ReadOnlyDb);
+            Assert.IsTrue(readonlyDbProvider.GetDb<IDb>(ConsumerNdmDbNames.ConsumerSessions) is ReadOnlyDb);
+            Assert.IsTrue(readonlyDbProvider.GetDb<IDb>(ConsumerNdmDbNames.Deposits) is ReadOnlyDb);
         }
 
         [Test]
@@ -96,10 +96,10 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure.Persistence.R
             IDbProvider beamSyncDbProvider = new BeamSyncDbProvider(syncModeSelector, dbProvider, new SyncConfig(), LimboLogs.Instance);
             var initializer = new ConsumerNdmDbInitializer(beamSyncDbProvider, new NdmConfig(), rocksDbFactory, new MemDbFactory());
             await initializer.Init();
-            Assert.IsTrue(beamSyncDbProvider.GetDb<IDb>(ConsumerNdmDbConsts.ConsumerDepositApprovalsDbName) is MemDb);
-            Assert.IsTrue(beamSyncDbProvider.GetDb<IDb>(ConsumerNdmDbConsts.ConsumerReceiptsDbName) is MemDb);
-            Assert.IsTrue(beamSyncDbProvider.GetDb<IDb>(ConsumerNdmDbConsts.ConsumerSessionsDbName) is MemDb);
-            Assert.IsTrue(beamSyncDbProvider.GetDb<IDb>(ConsumerNdmDbConsts.DepositsDbName) is MemDb);
+            Assert.IsTrue(beamSyncDbProvider.GetDb<IDb>(ConsumerNdmDbNames.ConsumerDepositApprovals) is MemDb);
+            Assert.IsTrue(beamSyncDbProvider.GetDb<IDb>(ConsumerNdmDbNames.ConsumerReceipts) is MemDb);
+            Assert.IsTrue(beamSyncDbProvider.GetDb<IDb>(ConsumerNdmDbNames.ConsumerSessions) is MemDb);
+            Assert.IsTrue(beamSyncDbProvider.GetDb<IDb>(ConsumerNdmDbNames.Deposits) is MemDb);
         }
 
         [OneTimeTearDown]

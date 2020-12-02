@@ -50,11 +50,11 @@ namespace Nethermind.Baseline.Test
             var rocksDbFactory = new RocksDbFactory(new DbConfig(), LimboLogs.Instance, Path.Combine(_folderWithDbs, "mem"));
             var initializer = new BaselineDbInitializer(dbProvider, new BaselineConfig(), rocksDbFactory, new MemDbFactory());
             await initializer.Init();
-            Assert.NotNull(dbProvider.GetDb<IDb>(BaselineDbConsts.BaselineTreeDbName));
-            Assert.NotNull(dbProvider.GetDb<IDb>(BaselineDbConsts.BaselineTreeMetadataDbName));
+            Assert.NotNull(dbProvider.GetDb<IDb>(BaselineDbNames.BaselineTree));
+            Assert.NotNull(dbProvider.GetDb<IDb>(BaselineDbNames.BaselineTreeMetadata));
             Assert.AreEqual(2, dbProvider.RegisteredDbs.Count());
-            Assert.IsTrue(dbProvider.GetDb<IDb>(BaselineDbConsts.BaselineTreeDbName) is MemDb);
-            Assert.IsTrue(dbProvider.GetDb<IDb>(BaselineDbConsts.BaselineTreeMetadataDbName) is MemDb);
+            Assert.IsTrue(dbProvider.GetDb<IDb>(BaselineDbNames.BaselineTree) is MemDb);
+            Assert.IsTrue(dbProvider.GetDb<IDb>(BaselineDbNames.BaselineTreeMetadata) is MemDb);
         }
 
         [Test]
@@ -64,11 +64,11 @@ namespace Nethermind.Baseline.Test
             var dbProvider = new DbProvider(DbModeHint.Persisted);
             var initializer = new BaselineDbInitializer(dbProvider, new BaselineConfig(), rocksDbFactory, new MemDbFactory());
             await initializer.Init();
-            Assert.NotNull(dbProvider.GetDb<IDb>(BaselineDbConsts.BaselineTreeDbName));
-            Assert.NotNull(dbProvider.GetDb<IDb>(BaselineDbConsts.BaselineTreeMetadataDbName));
+            Assert.NotNull(dbProvider.GetDb<IDb>(BaselineDbNames.BaselineTree));
+            Assert.NotNull(dbProvider.GetDb<IDb>(BaselineDbNames.BaselineTreeMetadata));
             Assert.AreEqual(2, dbProvider.RegisteredDbs.Count());
-            Assert.IsTrue(dbProvider.GetDb<IDb>(BaselineDbConsts.BaselineTreeDbName) is DbOnTheRocks);
-            Assert.IsTrue(dbProvider.GetDb<IDb>(BaselineDbConsts.BaselineTreeMetadataDbName) is DbOnTheRocks);
+            Assert.IsTrue(dbProvider.GetDb<IDb>(BaselineDbNames.BaselineTree) is DbOnTheRocks);
+            Assert.IsTrue(dbProvider.GetDb<IDb>(BaselineDbNames.BaselineTreeMetadata) is DbOnTheRocks);
         }
 
         [Test]
@@ -79,11 +79,11 @@ namespace Nethermind.Baseline.Test
             var readonlyDbProvider = new ReadOnlyDbProvider(dbProvider, true);
             var initializer = new BaselineDbInitializer(readonlyDbProvider, new BaselineConfig(), rocksDbFactory, new MemDbFactory());
             await initializer.Init();
-            Assert.NotNull(readonlyDbProvider.GetDb<IDb>(BaselineDbConsts.BaselineTreeDbName));
-            Assert.NotNull(readonlyDbProvider.GetDb<IDb>(BaselineDbConsts.BaselineTreeMetadataDbName));
+            Assert.NotNull(readonlyDbProvider.GetDb<IDb>(BaselineDbNames.BaselineTree));
+            Assert.NotNull(readonlyDbProvider.GetDb<IDb>(BaselineDbNames.BaselineTreeMetadata));
             Assert.AreEqual(2, readonlyDbProvider.RegisteredDbs.Count());
-            Assert.IsTrue(readonlyDbProvider.GetDb<IDb>(BaselineDbConsts.BaselineTreeDbName) is ReadOnlyDb);
-            Assert.IsTrue(readonlyDbProvider.GetDb<IDb>(BaselineDbConsts.BaselineTreeMetadataDbName) is ReadOnlyDb);
+            Assert.IsTrue(readonlyDbProvider.GetDb<IDb>(BaselineDbNames.BaselineTree) is ReadOnlyDb);
+            Assert.IsTrue(readonlyDbProvider.GetDb<IDb>(BaselineDbNames.BaselineTreeMetadata) is ReadOnlyDb);
         }
 
         [Test]
@@ -95,10 +95,10 @@ namespace Nethermind.Baseline.Test
             IDbProvider beamSyncDbProvider = new BeamSyncDbProvider(syncModeSelector, dbProvider, new SyncConfig(), LimboLogs.Instance);
             var initializer = new BaselineDbInitializer(beamSyncDbProvider, new BaselineConfig(), rocksDbFactory, new MemDbFactory());
             await initializer.Init();
-            Assert.NotNull(beamSyncDbProvider.GetDb<IDb>(BaselineDbConsts.BaselineTreeDbName));
-            Assert.NotNull(beamSyncDbProvider.GetDb<IDb>(BaselineDbConsts.BaselineTreeMetadataDbName));
-            Assert.IsTrue(beamSyncDbProvider.GetDb<IDb>(BaselineDbConsts.BaselineTreeDbName) is MemDb);
-            Assert.IsTrue(beamSyncDbProvider.GetDb<IDb>(BaselineDbConsts.BaselineTreeMetadataDbName) is MemDb);
+            Assert.NotNull(beamSyncDbProvider.GetDb<IDb>(BaselineDbNames.BaselineTree));
+            Assert.NotNull(beamSyncDbProvider.GetDb<IDb>(BaselineDbNames.BaselineTreeMetadata));
+            Assert.IsTrue(beamSyncDbProvider.GetDb<IDb>(BaselineDbNames.BaselineTree) is MemDb);
+            Assert.IsTrue(beamSyncDbProvider.GetDb<IDb>(BaselineDbNames.BaselineTreeMetadata) is MemDb);
         }
 
         [OneTimeTearDown]

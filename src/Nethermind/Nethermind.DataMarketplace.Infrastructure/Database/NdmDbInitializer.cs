@@ -22,10 +22,10 @@ using Nethermind.Db;
 
 namespace Nethermind.DataMarketplace.Infrastructure.Database
 {
-    public class NdmDbConsts
+    public class NdmDbNames
     {
-        public const string ConfigsDbName = "configs";
-        public const string EthRequestsDbName = "ethRequests";
+        public const string Configs = "configs";
+        public const string EthRequests = "ethRequests";
     }
 
     public class NdmDbInitializer : RocksDbInitializer
@@ -44,8 +44,8 @@ namespace Nethermind.DataMarketplace.Infrastructure.Database
         {
             RegisterDb(new RocksDbSettings()
             {
-                DbName = GetTitleDbName(NdmDbConsts.ConfigsDbName),
-                DbPath = NdmDbConsts.ConfigsDbName,
+                DbName = GetTitleDbName(NdmDbNames.Configs),
+                DbPath = NdmDbNames.Configs,
 
                 CacheIndexAndFilterBlocks = _ndmConfig.ConfigsDbCacheIndexAndFilterBlocks,
                 BlockCacheSize = _ndmConfig.ConfigsDbBlockCacheSize,
@@ -57,8 +57,8 @@ namespace Nethermind.DataMarketplace.Infrastructure.Database
             });
             RegisterDb(new RocksDbSettings()
             {
-                DbName = GetTitleDbName(NdmDbConsts.EthRequestsDbName),
-                DbPath = NdmDbConsts.EthRequestsDbName,
+                DbName = GetTitleDbName(NdmDbNames.EthRequests),
+                DbPath = NdmDbNames.EthRequests,
 
                 CacheIndexAndFilterBlocks = _ndmConfig.EthRequestsDbCacheIndexAndFilterBlocks,
                 BlockCacheSize = _ndmConfig.EthRequestsDbBlockCacheSize,

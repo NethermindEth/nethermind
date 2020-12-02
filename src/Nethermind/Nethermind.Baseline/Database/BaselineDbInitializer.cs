@@ -21,10 +21,10 @@ using Nethermind.Db;
 
 namespace Nethermind.Baseline.Database
 {
-    public class BaselineDbConsts
+    public class BaselineDbNames
     {
-        public const string BaselineTreeDbName = "baselineTree";
-        public const string BaselineTreeMetadataDbName = "baselineTreeMetadata";
+        public const string BaselineTree = "baselineTree";
+        public const string BaselineTreeMetadata = "baselineTreeMetadata";
     }
 
     public class BaselineDbInitializer : RocksDbInitializer
@@ -43,8 +43,8 @@ namespace Nethermind.Baseline.Database
         {
             RegisterDb(new RocksDbSettings()
             {
-                DbName = GetTitleDbName(BaselineDbConsts.BaselineTreeDbName),
-                DbPath = BaselineDbConsts.BaselineTreeDbName,
+                DbName = GetTitleDbName(BaselineDbNames.BaselineTree),
+                DbPath = BaselineDbNames.BaselineTree,
 
                 CacheIndexAndFilterBlocks = _baselineConfig.BaselineTreeDbCacheIndexAndFilterBlocks,
                 BlockCacheSize = _baselineConfig.BaselineTreeDbBlockCacheSize,
@@ -56,8 +56,8 @@ namespace Nethermind.Baseline.Database
             });
             RegisterDb(new RocksDbSettings()
             {
-                DbName = GetTitleDbName(BaselineDbConsts.BaselineTreeMetadataDbName),
-                DbPath = BaselineDbConsts.BaselineTreeMetadataDbName,
+                DbName = GetTitleDbName(BaselineDbNames.BaselineTreeMetadata),
+                DbPath = BaselineDbNames.BaselineTreeMetadata,
 
                 CacheIndexAndFilterBlocks = _baselineConfig.BaselineTreeMetadataDbCacheIndexAndFilterBlocks,
                 BlockCacheSize = _baselineConfig.BaselineTreeMetadataDbBlockCacheSize,

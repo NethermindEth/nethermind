@@ -138,7 +138,7 @@ namespace Nethermind.DataMarketplace.Tools.Refunder
                 var rocksDbFactory = new RocksDbFactory(DbConfig.Default, logManager, dbPath);
                 var dbInitializer = new ConsumerNdmDbInitializer(dbProvider, new NdmConfig(), rocksDbFactory, new MemDbFactory());
                 await dbInitializer.Init();
-                DepositDetailsRocksRepository depositsRepo = new DepositDetailsRocksRepository(dbProvider.GetDb<IDb>(ConsumerNdmDbConsts.DepositsDbName), new DepositDetailsDecoder());
+                DepositDetailsRocksRepository depositsRepo = new DepositDetailsRocksRepository(dbProvider.GetDb<IDb>(ConsumerNdmDbNames.Deposits), new DepositDetailsDecoder());
                 // var deposits = await depositsRepo.BrowseAsync(new GetDeposits());
                 var deposits = await depositsRepo.BrowseAsync(new GetDeposits { CurrentBlockTimestamp = Timestamper.Default.EpochSecondsLong, EligibleToRefund = true });
                 return deposits;

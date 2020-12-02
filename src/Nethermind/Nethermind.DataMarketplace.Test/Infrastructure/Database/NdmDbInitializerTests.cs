@@ -54,11 +54,11 @@ namespace Nethermind.DataMarketplace.Test
             var rocksDbFactory = new RocksDbFactory(new DbConfig(), LimboLogs.Instance, Path.Combine(_folderWithDbs, "mem"));
             var initializer = new NdmDbInitializer(new NdmConfig(), dbProvider, rocksDbFactory, new MemDbFactory());
             await initializer.Init();
-            Assert.NotNull(dbProvider.GetDb<IDb>(NdmDbConsts.ConfigsDbName));
-            Assert.NotNull(dbProvider.GetDb<IDb>(NdmDbConsts.EthRequestsDbName));
+            Assert.NotNull(dbProvider.GetDb<IDb>(NdmDbNames.Configs));
+            Assert.NotNull(dbProvider.GetDb<IDb>(NdmDbNames.EthRequests));
             Assert.AreEqual(2, dbProvider.RegisteredDbs.Count());
-            Assert.IsTrue(dbProvider.GetDb<IDb>(NdmDbConsts.ConfigsDbName) is MemDb);
-            Assert.IsTrue(dbProvider.GetDb<IDb>(NdmDbConsts.EthRequestsDbName) is MemDb);
+            Assert.IsTrue(dbProvider.GetDb<IDb>(NdmDbNames.Configs) is MemDb);
+            Assert.IsTrue(dbProvider.GetDb<IDb>(NdmDbNames.EthRequests) is MemDb);
         }
 
         [Test]
@@ -68,11 +68,11 @@ namespace Nethermind.DataMarketplace.Test
             var rocksDbFactory = new RocksDbFactory(new DbConfig(), LimboLogs.Instance, Path.Combine(_folderWithDbs, "rocks"));
             var initializer = new NdmDbInitializer(new NdmConfig(), dbProvider, rocksDbFactory, new MemDbFactory());
             await initializer.Init();
-            Assert.NotNull(dbProvider.GetDb<IDb>(NdmDbConsts.ConfigsDbName));
-            Assert.NotNull(dbProvider.GetDb<IDb>(NdmDbConsts.EthRequestsDbName));
+            Assert.NotNull(dbProvider.GetDb<IDb>(NdmDbNames.Configs));
+            Assert.NotNull(dbProvider.GetDb<IDb>(NdmDbNames.EthRequests));
             Assert.AreEqual(2, dbProvider.RegisteredDbs.Count());
-            Assert.IsTrue(dbProvider.GetDb<IDb>(NdmDbConsts.ConfigsDbName) is DbOnTheRocks);
-            Assert.IsTrue(dbProvider.GetDb<IDb>(NdmDbConsts.EthRequestsDbName) is DbOnTheRocks);
+            Assert.IsTrue(dbProvider.GetDb<IDb>(NdmDbNames.Configs) is DbOnTheRocks);
+            Assert.IsTrue(dbProvider.GetDb<IDb>(NdmDbNames.EthRequests) is DbOnTheRocks);
         }
 
         [Test]
@@ -83,11 +83,11 @@ namespace Nethermind.DataMarketplace.Test
             var readonlyDbProvider = new ReadOnlyDbProvider(dbProvider, true);
             var initializer = new NdmDbInitializer(new NdmConfig(), readonlyDbProvider, rocksDbFactory, new MemDbFactory());
             await initializer.Init();
-            Assert.NotNull(readonlyDbProvider.GetDb<IDb>(NdmDbConsts.ConfigsDbName));
-            Assert.NotNull(readonlyDbProvider.GetDb<IDb>(NdmDbConsts.EthRequestsDbName));
+            Assert.NotNull(readonlyDbProvider.GetDb<IDb>(NdmDbNames.Configs));
+            Assert.NotNull(readonlyDbProvider.GetDb<IDb>(NdmDbNames.EthRequests));
             Assert.AreEqual(2, readonlyDbProvider.RegisteredDbs.Count());
-            Assert.IsTrue(readonlyDbProvider.GetDb<IDb>(NdmDbConsts.ConfigsDbName) is ReadOnlyDb);
-            Assert.IsTrue(readonlyDbProvider.GetDb<IDb>(NdmDbConsts.EthRequestsDbName) is ReadOnlyDb);
+            Assert.IsTrue(readonlyDbProvider.GetDb<IDb>(NdmDbNames.Configs) is ReadOnlyDb);
+            Assert.IsTrue(readonlyDbProvider.GetDb<IDb>(NdmDbNames.EthRequests) is ReadOnlyDb);
         }
 
         [Test]
@@ -99,10 +99,10 @@ namespace Nethermind.DataMarketplace.Test
             IDbProvider beamSyncDbProvider = new BeamSyncDbProvider(syncModeSelector, dbProvider, new SyncConfig(), LimboLogs.Instance);
             var initializer = new NdmDbInitializer(new NdmConfig(), beamSyncDbProvider, rocksDbFactory, new MemDbFactory());
             await initializer.Init();
-            Assert.NotNull(beamSyncDbProvider.GetDb<IDb>(NdmDbConsts.ConfigsDbName));
-            Assert.NotNull(beamSyncDbProvider.GetDb<IDb>(NdmDbConsts.EthRequestsDbName));
-            Assert.IsTrue(beamSyncDbProvider.GetDb<IDb>(NdmDbConsts.ConfigsDbName) is MemDb);
-            Assert.IsTrue(beamSyncDbProvider.GetDb<IDb>(NdmDbConsts.EthRequestsDbName) is MemDb);
+            Assert.NotNull(beamSyncDbProvider.GetDb<IDb>(NdmDbNames.Configs));
+            Assert.NotNull(beamSyncDbProvider.GetDb<IDb>(NdmDbNames.EthRequests));
+            Assert.IsTrue(beamSyncDbProvider.GetDb<IDb>(NdmDbNames.Configs) is MemDb);
+            Assert.IsTrue(beamSyncDbProvider.GetDb<IDb>(NdmDbNames.EthRequests) is MemDb);
         }
 
         [Test]
@@ -116,11 +116,11 @@ namespace Nethermind.DataMarketplace.Test
             var initializer = new NdmDbInitializer(new NdmConfig(), dbProvider, rpcDbFactory, rpcDbFactory);
             await initializer.Init();
             dbProvider.RegisterDb("test", new MemDb());
-            Assert.NotNull(dbProvider.GetDb<IDb>(NdmDbConsts.ConfigsDbName));
-            Assert.NotNull(dbProvider.GetDb<IDb>(NdmDbConsts.EthRequestsDbName));
+            Assert.NotNull(dbProvider.GetDb<IDb>(NdmDbNames.Configs));
+            Assert.NotNull(dbProvider.GetDb<IDb>(NdmDbNames.EthRequests));
             Assert.AreEqual(3, dbProvider.RegisteredDbs.Count());
-            Assert.IsTrue(dbProvider.GetDb<IDb>(NdmDbConsts.ConfigsDbName) is ReadOnlyDb);
-            Assert.IsTrue(dbProvider.GetDb<IDb>(NdmDbConsts.EthRequestsDbName) is ReadOnlyDb);
+            Assert.IsTrue(dbProvider.GetDb<IDb>(NdmDbNames.Configs) is ReadOnlyDb);
+            Assert.IsTrue(dbProvider.GetDb<IDb>(NdmDbNames.EthRequests) is ReadOnlyDb);
         }
 
         [OneTimeTearDown]

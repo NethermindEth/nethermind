@@ -75,8 +75,8 @@ namespace Nethermind.Baseline
                 _blockFinder,
                 _abiEncoder,
                 _fileSystem,
-                _dbProvider.GetDb<IDb>(BaselineDbConsts.BaselineTreeDbName),
-                _dbProvider.GetDb<IDb>(BaselineDbConsts.BaselineTreeMetadataDbName),
+                _dbProvider.GetDb<IDb>(BaselineDbNames.BaselineTree),
+                _dbProvider.GetDb<IDb>(BaselineDbNames.BaselineTreeMetadata),
                 _logManager,
                 _blockProcessor,
                 _disposableStack);

@@ -107,8 +107,8 @@ namespace Nethermind.DataMarketplace.Initializers
                     ndmApi.MongoProvider = NullMongoProvider.Instance;
                     var ndmDbProvider = new NdmDbInitializer(defaultConfig, ndmApi.DbProvider, ndmApi.RocksDbFactory, ndmApi.MemDbFactory);
                     await ndmDbProvider.Init();
-                    configRepository = new ConfigRocksRepository(ndmApi.DbProvider.GetDb<IDb>(NdmDbConsts.ConfigsDbName), new NdmConfigDecoder());
-                    ethRequestRepository = new EthRequestRocksRepository(ndmApi.DbProvider.GetDb<IDb>(NdmDbConsts.EthRequestsDbName),
+                    configRepository = new ConfigRocksRepository(ndmApi.DbProvider.GetDb<IDb>(NdmDbNames.Configs), new NdmConfigDecoder());
+                    ethRequestRepository = new EthRequestRocksRepository(ndmApi.DbProvider.GetDb<IDb>(NdmDbNames.EthRequests),
                         new EthRequestDecoder());
                     break;
             }
