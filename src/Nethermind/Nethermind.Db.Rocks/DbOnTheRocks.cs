@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -21,7 +21,6 @@ using System.IO;
 using System.Reflection;
 using System.Threading;
 using Nethermind.Core;
-using Nethermind.Core.Extensions;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Logging;
 using RocksDbSharp;
@@ -36,7 +35,7 @@ namespace Nethermind.Db.Rocks
         internal WriteBatch CurrentBatch { get; private set; }
         internal WriteOptions WriteOptions { get; private set; }
 
-        public abstract string Name { get; }
+        public abstract string Name { get; protected set; }
 
         private static long _maxRocksSize;
 
@@ -45,7 +44,9 @@ namespace Nethermind.Db.Rocks
         private static int _cacheInitialized;
         
         protected static IntPtr _cache;
-        
+
+        private readonly RocksDbSettings _settings;
+
         protected static void InitCache(IDbConfig dbConfig)
         {
             if (Interlocked.CompareExchange(ref _cacheInitialized, 1, 0) == 0)
@@ -54,8 +55,15 @@ namespace Nethermind.Db.Rocks
                 Interlocked.Add(ref _maxRocksSize, (long)dbConfig.BlockCacheSize);
             }
         }
-        
-        public DbOnTheRocks(string basePath, string dbPath, IDbConfig dbConfig, ILogManager logManager, ColumnFamilies columnFamilies = null, bool deleteOnStart = false)
+
+        public DbOnTheRocks(string basePath, RocksDbSettings rocksDbSettings, IDbConfig dbConfig, ILogManager logManager, ColumnFamilies columnFamilies = null, bool deleteOnStart = false)
+        {
+            Name = rocksDbSettings.DbName;
+            _settings = rocksDbSettings;
+            Db = Init(basePath, rocksDbSettings.DbPath, dbConfig, logManager, columnFamilies, deleteOnStart);
+        }
+
+        private RocksDb Init(string basePath, string dbPath, IDbConfig dbConfig, ILogManager logManager, ColumnFamilies columnFamilies = null, bool deleteOnStart = false)
         {
             static RocksDb Open(string path, (DbOptions Options, ColumnFamilies Families) db)
             {
@@ -83,7 +91,7 @@ namespace Nethermind.Db.Rocks
 
                 // ReSharper disable once VirtualMemberCallInConstructor
                 if (_logger.IsDebug) _logger.Debug($"Loading DB {Name.PadRight(13)} from {_fullPath} with max memory footprint of {_maxThisDbSize / 1000 / 1000}MB");
-                Db = DbsByPath.GetOrAdd(_fullPath, Open, (options, columnFamilies));
+                return DbsByPath.GetOrAdd(_fullPath, Open, (options, columnFamilies));
             }
             catch (DllNotFoundException e) when (e.Message.Contains("libdl"))
             {
@@ -93,13 +101,26 @@ namespace Nethermind.Db.Rocks
             }
             catch (RocksDbException x) when (x.Message.Contains("LOCK"))
             {
-                if(_logger.IsWarn) _logger.Warn("If your database did not close properly you need to call 'find -type f -name '*LOCK*' -delete' from the databse folder");
+                if (_logger.IsWarn) _logger.Warn("If your database did not close properly you need to call 'find -type f -name '*LOCK*' -delete' from the databse folder");
                 throw;
             }
         }
 
-        protected internal virtual void UpdateReadMetrics() => Metrics.OtherDbReads++;
-        protected internal virtual void UpdateWriteMetrics() => Metrics.OtherDbWrites++;
+        protected internal virtual void UpdateReadMetrics()
+        {
+            if (_settings.UpdateReadMetrics != null)
+                _settings.UpdateReadMetrics?.Invoke();
+            else
+                Metrics.OtherDbReads++;
+        }
+
+        protected internal virtual void UpdateWriteMetrics()
+        {
+            if (_settings.UpdateWriteMetrics != null)
+                _settings.UpdateWriteMetrics?.Invoke();
+            else
+                Metrics.OtherDbWrites++;
+        }
 
         private T ReadConfig<T>(IDbConfig dbConfig, string propertyName)
         {
@@ -111,7 +132,7 @@ namespace Nethermind.Db.Rocks
             string prefixed = string.Concat(tableName == "State" ? string.Empty : string.Concat(tableName, "Db"), propertyName);
             try
             {
-                return (T) dbConfig.GetType().GetProperty(prefixed, BindingFlags.Public | BindingFlags.Instance)?.GetValue(dbConfig);
+                return (T) dbConfig.GetType().GetProperty(prefixed, BindingFlags.IgnoreCase | BindingFlags.Public | BindingFlags.Instance)?.GetValue(dbConfig);
             }
             catch (Exception e)
             {
@@ -125,12 +146,12 @@ namespace Nethermind.Db.Rocks
             BlockBasedTableOptions tableOptions = new BlockBasedTableOptions();
             tableOptions.SetBlockSize(16 * 1024);
             tableOptions.SetPinL0FilterAndIndexBlocksInCache(true);
-            tableOptions.SetCacheIndexAndFilterBlocks(ReadConfig<bool>(dbConfig, nameof(dbConfig.CacheIndexAndFilterBlocks)));
+            tableOptions.SetCacheIndexAndFilterBlocks(GetCacheIndexAndFilterBlocks(dbConfig));
 
             tableOptions.SetFilterPolicy(BloomFilterPolicy.Create(10, true));
             tableOptions.SetFormatVersion(2);
 
-            ulong blockCacheSize = ReadConfig<ulong>(dbConfig, nameof(dbConfig.BlockCacheSize));
+            ulong blockCacheSize = GetBlockCacheSize(dbConfig);
 
             tableOptions.SetBlockCache(_cache);
             
@@ -155,9 +176,9 @@ namespace Nethermind.Db.Rocks
             options.SetMaxBackgroundCompactions(Environment.ProcessorCount);
 
             //options.SetMaxOpenFiles(32);
-            ulong writeBufferSize = ReadConfig<ulong>(dbConfig, nameof(dbConfig.WriteBufferSize));
+            ulong writeBufferSize = GetWriteBufferSize(dbConfig);
             options.SetWriteBufferSize(writeBufferSize);
-            int writeBufferNumber = (int) ReadConfig<uint>(dbConfig, nameof(dbConfig.WriteBufferNumber));
+            int writeBufferNumber = (int)GetWriteBufferNumber(dbConfig);
             options.SetMaxWriteBufferNumber(writeBufferNumber);
             options.SetMinWriteBufferNumberToMerge(2);
 
@@ -182,6 +203,35 @@ namespace Nethermind.Db.Rocks
 
             return options;
         }
+
+        private bool GetCacheIndexAndFilterBlocks(IDbConfig dbConfig)
+        {
+            return _settings.CacheIndexAndFilterBlocks.HasValue
+                ? _settings.CacheIndexAndFilterBlocks.Value
+                : ReadConfig<bool>(dbConfig, nameof(dbConfig.CacheIndexAndFilterBlocks));
+        }
+
+        private ulong GetBlockCacheSize(IDbConfig dbConfig)
+        {
+            return _settings.BlockCacheSize.HasValue
+                ? _settings.BlockCacheSize.Value
+                : ReadConfig<ulong>(dbConfig, nameof(dbConfig.BlockCacheSize));
+        }
+
+        private ulong GetWriteBufferSize(IDbConfig dbConfig)
+        {
+            return _settings.WriteBufferSize.HasValue
+                ? _settings.WriteBufferSize.Value
+                : ReadConfig<ulong>(dbConfig, nameof(dbConfig.WriteBufferSize));
+        }
+
+        private ulong GetWriteBufferNumber(IDbConfig dbConfig)
+        {
+            return _settings.WriteBufferNumber.HasValue
+                ? _settings.WriteBufferNumber.Value
+                : ReadConfig<uint>(dbConfig, nameof(dbConfig.WriteBufferNumber));
+        }
+
 
         public byte[] this[byte[] key]
         {

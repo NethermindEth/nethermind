@@ -63,7 +63,7 @@ namespace Nethermind.Runner.Test.Ethereum
                 Wallet = Substitute.For<IWallet>(),
                 BlockTree = Substitute.For<IBlockTree>(),
                 SyncServer = Substitute.For<ISyncServer>(),
-                DbProvider = Substitute.For<IDbProvider>(),
+                DbProvider = TestMemDbProvider.Init(),
                 PeerManager = Substitute.For<IPeerManager>(),
                 SpecProvider = Substitute.For<ISpecProvider>(),
                 EthereumEcdsa = Substitute.For<IEthereumEcdsa>(),

@@ -14,16 +14,20 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System;
-using Nethermind.Db;
+using Nethermind.Db.Rocks.Config;
+using Nethermind.Logging;
 
-namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Rocks
+namespace Nethermind.Db.Rocks
 {
-    public interface IConsumerDbProvider : IDisposable
+    public class SimpleColumnRocksDb<T> : ColumnsDb<T>
     {
-        IDb ConsumerDepositApprovalsDb { get; }
-        IDb ConsumerSessionsDb { get; }
-        IDb ConsumerReceiptsDb { get; }
-        IDb DepositsDb { get; }
+        public SimpleColumnRocksDb(
+            string basePath,
+            RocksDbSettings rocksDbSettings,
+            IDbConfig dbConfig,
+            ILogManager logManager = null)
+                : base(basePath, rocksDbSettings, dbConfig, logManager)
+        {
+        }
     }
 }

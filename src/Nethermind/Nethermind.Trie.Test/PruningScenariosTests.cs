@@ -55,7 +55,7 @@ namespace Nethermind.Trie.Test
             {
                 _logManager = new TestLogManager(LogLevel.Trace);
                 _logger = _logManager.GetClassLogger();
-                _dbProvider = new MemDbProvider();
+                _dbProvider = TestMemDbProvider.Init();
                 _persistenceStrategy = persistenceStrategy;
                 _pruningStrategy = pruningStrategy;
                 _trieStore = new TrieStore(_dbProvider.StateDb, _pruningStrategy, _persistenceStrategy, _logManager);

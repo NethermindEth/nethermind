@@ -48,11 +48,11 @@ namespace Nethermind.JsonRpc.Test.Modules
         private BoundedModulePool<IEthModule> _modulePool;
 
         [SetUp]
-        public void Initialize()
+        public async Task Initialize()
         {
             ISpecProvider specProvider = MainnetSpecProvider.Instance;
             ITxPool txPool = NullTxPool.Instance;
-            MemDbProvider dbProvider = new MemDbProvider();
+            IDbProvider dbProvider = await TestMemDbProvider.InitAsync();
 
             BlockTree blockTree = new BlockTree(
                 dbProvider.BlocksDb,

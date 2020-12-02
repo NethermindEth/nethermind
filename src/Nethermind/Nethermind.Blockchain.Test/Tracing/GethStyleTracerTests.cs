@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -45,7 +45,7 @@ namespace Nethermind.Blockchain.Test.Tracing
         [SetUp]
         public void Setup()
         {
-            IDbProvider dbProvider = new MemDbProvider();
+            IDbProvider dbProvider = TestMemDbProvider.Init();
             
             ChainLevelInfoRepository repository = new ChainLevelInfoRepository(dbProvider);
             ISpecProvider specProvider = MainnetSpecProvider.Instance;
