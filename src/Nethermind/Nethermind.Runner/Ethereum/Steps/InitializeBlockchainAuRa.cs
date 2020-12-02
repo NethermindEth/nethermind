@@ -34,6 +34,7 @@ using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.Tracing;
+using Nethermind.Logging;
 using Nethermind.Runner.Ethereum.Api;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Storages;
@@ -242,6 +243,9 @@ namespace Nethermind.Runner.Ethereum.Steps
             // This has to be different object than the _processingReadOnlyTransactionProcessorSource as this is in separate thread
             var txPoolReadOnlyTransactionProcessorSource = new ReadOnlyTxProcessorSource(_api.DbProvider, _api.BlockTree, _api.SpecProvider, _api.LogManager);
             var (txPriorityContract, localDataSource) = TxFilterBuilders.CreateTxPrioritySources(_auraConfig, _api, txPoolReadOnlyTransactionProcessorSource!);
+
+            ReportTxPriorityRules(txPriorityContract, localDataSource);
+
             var minGasPricesContractDataStore = TxFilterBuilders.CreateMinGasPricesDataStore(_api, txPriorityContract, localDataSource);
 
             ITxFilter txPoolFilter = TxFilterBuilders.CreateAuRaTxFilter(
@@ -260,6 +264,21 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.LogManager,
                 CreateTxPoolTxComparer(txPriorityContract, localDataSource),
                 new TxFilterAdapter(_api.BlockTree, txPoolFilter));
+        }
+
+        private void ReportTxPriorityRules(TxPriorityContract? txPriorityContract, TxPriorityContract.LocalDataSource? localDataSource)
+        {
+            ILogger? logger = _api.LogManager.GetClassLogger();
+            
+            if (localDataSource?.FilePath != null)
+            {
+                if (logger.IsInfo) logger.Info($"Using TxPriority rules from local file: {localDataSource.FilePath}.");
+            }
+            
+            if (txPriorityContract != null)
+            {
+                if (logger.IsInfo) logger.Info($"Using TxPriority rules from contract at address: {txPriorityContract.ContractAddress}.");
+            }
         }
     }
 }
