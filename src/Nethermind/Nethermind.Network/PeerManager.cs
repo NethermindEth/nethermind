@@ -218,6 +218,7 @@ namespace Nethermind.Network
         {
             int loopCount = 0;
             long previousActivePeersCount = 0;
+            int failCount = 0;
             while (true)
             {
                 try
@@ -335,6 +336,8 @@ namespace Nethermind.Network
                     {
                         _peerUpdateRequested.Set();
                     }
+
+                    failCount = 0;
                 }
                 catch (AggregateException e) when (e.InnerExceptions.Any(inner => inner is OperationCanceledException))
                 {
@@ -349,7 +352,15 @@ namespace Nethermind.Network
                 catch (Exception e)
                 {
                     if (_logger.IsError) _logger.Error("Peer update loop failure", e);
-                    break;
+                    ++failCount;
+                    if (failCount >= 10)
+                    {
+                        break;
+                    }
+                    else
+                    {
+                        await Task.Delay(1000);
+                    }
                 }
             }
         }
