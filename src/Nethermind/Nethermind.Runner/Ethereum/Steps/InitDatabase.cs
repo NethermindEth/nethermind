@@ -75,8 +75,6 @@ namespace Nethermind.Runner.Ethereum.Steps
             }
         }
 
-        // ToDo: receipts columns db, add logging readonly factory?, dbMode and RocksDbFactory? default implementation of interface, rocksDbSettings with builder
-
         private void InitDbApi(IInitConfig initConfig, IDbConfig dbConfig, bool storeReceipts)
         {
             switch (initConfig.DiagnosticMode)
@@ -95,7 +93,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                     _api.MemDbFactory = new MemDbFactory();
                     break;
                 case DiagnosticMode.MemDb:
-                    _api.DbProvider = new DbProvider(DbModeHint.Mem); ;
+                    _api.DbProvider = new DbProvider(DbModeHint.Mem);
                     _api.RocksDbFactory = new RocksDbFactory(dbConfig, _api.LogManager, Path.Combine(initConfig.BaseDbPath, "debug"));
                     _api.MemDbFactory = new MemDbFactory();
                     break;
