@@ -13,34 +13,17 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
 using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Stats;
 
 namespace Nethermind.Network
 {
-    internal class PeerComparer : IComparer<Peer>
+    public static class NodeStatsManagerExtension
     {
-        public int Compare(Peer x, Peer y)
-        {
-            if (x == null)
-            {
-                return y == null ? 0 : 1;
-            }
-
-            if (y == null)
-            {
-                return -1;
-            }
-
-            int staticValue = -x.Node.IsStatic.CompareTo(y.Node.IsStatic);
-            if (staticValue != 0)
-            {
-                return staticValue;
-            }
-
-            int reputation = -x.Node.CurrentReputation.CompareTo(y.Node.CurrentReputation);
-            return reputation;
-        }
+        public static void UpdateCurrentReputation(this INodeStatsManager nodeStatsManager, IEnumerable<Peer> peers) =>
+            nodeStatsManager.UpdateCurrentReputation(peers.Where(p => p?.Node != null).Select(p => p.Node));
     }
 }

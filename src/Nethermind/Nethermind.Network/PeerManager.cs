@@ -544,11 +544,7 @@ namespace Nethermind.Network
                 _currentSelection.Candidates.AddRange(staticPeers.Where(sn => !_activePeers.ContainsKey(sn.Node.Id)));
             }
 
-            for (var i = 0; i < _currentSelection.Candidates.Count; i++)
-            {
-                Node node = _currentSelection.Candidates[i].Node;
-                node.CurrentReputation = _stats.GetCurrentReputation(node);
-            }
+            _stats.UpdateCurrentReputation(_currentSelection.Candidates);
             _currentSelection.Candidates.Sort(_peerComparer);
         }
 
