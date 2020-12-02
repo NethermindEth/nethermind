@@ -22,7 +22,7 @@ namespace Nethermind.Db
 {
     public class DbProvider : IDbProvider
     {
-        private readonly ConcurrentDictionary<string, IDb> _registeredDbs = new ConcurrentDictionary<string, IDb>();
+        private readonly ConcurrentDictionary<string, IDb> _registeredDbs = new ConcurrentDictionary<string, IDb>(StringComparer.InvariantCultureIgnoreCase);
 
         public DbProvider(DbModeHint dbMode)
         {

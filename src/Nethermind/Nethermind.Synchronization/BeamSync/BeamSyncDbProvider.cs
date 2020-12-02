@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Db;
@@ -26,7 +27,7 @@ namespace Nethermind.Synchronization.BeamSync
 {
     public class BeamSyncDbProvider : IDbProvider
     {
-        private readonly Dictionary<string, IDb> _registeredDbs = new Dictionary<string, IDb>();
+        private readonly ConcurrentDictionary<string, IDb> _registeredDbs = new ConcurrentDictionary<string, IDb>(StringComparer.InvariantCultureIgnoreCase);
         private readonly IDbProvider _otherProvider;
         private BeamSyncDb _stateDb;
         private BeamSyncDb _codeDb;
@@ -39,8 +40,8 @@ namespace Nethermind.Synchronization.BeamSync
             _stateDb = new BeamSyncDb(otherProvider.StateDb.Innermost, otherProvider.BeamStateDb, syncModeSelector, logManager, syncConfig.BeamSyncContextTimeout, syncConfig.BeamSyncPreProcessorTimeout);
             BeamSyncFeed = new CompositeStateSyncFeed<StateSyncBatch?>(logManager, _codeDb, _stateDb);
 
-            _registeredDbs.Add(DbNames.Code, new StateDb(_codeDb));
-            _registeredDbs.Add(DbNames.State, new StateDb(_stateDb));
+            _registeredDbs.TryAdd(DbNames.Code, new StateDb(_codeDb));
+            _registeredDbs.TryAdd(DbNames.State, new StateDb(_stateDb));
         }
 
         public void EnableVerifiedMode()
@@ -60,7 +61,7 @@ namespace Nethermind.Synchronization.BeamSync
 
         public T GetDb<T>(string dbName) where T : IDb
         {
-            if (DbNames.Code == dbName || DbNames.State == dbName)
+            if (string.Equals(DbNames.Code, dbName, StringComparison.OrdinalIgnoreCase) || string.Equals(DbNames.State, dbName, StringComparison.OrdinalIgnoreCase))
                 return (T)_registeredDbs[dbName];
 
             return _otherProvider.GetDb<T>(dbName);

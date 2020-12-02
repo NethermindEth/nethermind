@@ -133,14 +133,16 @@ namespace Nethermind.DataMarketplace.Tools.Refunder
 
         private static async Task<PagedResult<DepositDetails>> LoadDeposits(ILogManager logManager, string dbPath)
         {
-            var dbProvider = new DbProvider(DbModeHint.Persisted);
-            var rocksDbFactory = new RocksDbFactory(DbConfig.Default, logManager, dbPath);
-            var dbInitializer = new ConsumerNdmDbInitializer(dbProvider, new NdmConfig(), rocksDbFactory, new MemDbFactory());
-            dbInitializer.Init();
-            DepositDetailsRocksRepository depositsRepo = new DepositDetailsRocksRepository(dbProvider.GetDb<IDb>(ConsumerNdmDbConsts.DepositsDbName), new DepositDetailsDecoder());
-            // var deposits = await depositsRepo.BrowseAsync(new GetDeposits());
-            var deposits = await depositsRepo.BrowseAsync(new GetDeposits {CurrentBlockTimestamp = Timestamper.Default.EpochSecondsLong, EligibleToRefund = true});
-            return deposits;
+            using (var dbProvider = new DbProvider(DbModeHint.Persisted))
+            {
+                var rocksDbFactory = new RocksDbFactory(DbConfig.Default, logManager, dbPath);
+                var dbInitializer = new ConsumerNdmDbInitializer(dbProvider, new NdmConfig(), rocksDbFactory, new MemDbFactory());
+                await dbInitializer.Init();
+                DepositDetailsRocksRepository depositsRepo = new DepositDetailsRocksRepository(dbProvider.GetDb<IDb>(ConsumerNdmDbConsts.DepositsDbName), new DepositDetailsDecoder());
+                // var deposits = await depositsRepo.BrowseAsync(new GetDeposits());
+                var deposits = await depositsRepo.BrowseAsync(new GetDeposits { CurrentBlockTimestamp = Timestamper.Default.EpochSecondsLong, EligibleToRefund = true });
+                return deposits;
+            }
         }
 
         private static IKeyStore BuildKeyStore(OneLoggerLogManager logManager)
