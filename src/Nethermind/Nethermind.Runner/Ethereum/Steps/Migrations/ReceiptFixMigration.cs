@@ -69,18 +69,19 @@ namespace Nethermind.Runner.Ethereum.Steps.Migrations
                     _api.LogManager,
                     _api.SyncPeerPool!,
                     cancellationToken);
-                
-                _fixTask = _api.BlockTree.Accept(visitor, cancellationToken).ContinueWith(t =>
-                {
-                    if (t.IsFaulted)
+
+                _fixTask = Task.Factory.StartNew(() => _api.BlockTree.Accept(visitor, cancellationToken), TaskCreationOptions.LongRunning)
+                    .ContinueWith(t =>
                     {
-                        if (logger.IsError) logger.Error("Fixing receipts in DB failed.", t.Exception);
-                    }
-                    else if (t.IsCanceled)
-                    {
-                        if (logger.IsWarn) logger.Warn("Fixing receipts in DB canceled.");
-                    }
-                });
+                        if (t.IsFaulted)
+                        {
+                            if (logger.IsError) logger.Error("Fixing receipts in DB failed.", t.Exception);
+                        }
+                        else if (t.IsCanceled)
+                        {
+                            if (logger.IsWarn) logger.Warn("Fixing receipts in DB canceled.");
+                        }
+                    }, cancellationToken);
             }
         }
 

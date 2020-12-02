@@ -266,7 +266,7 @@ namespace Nethermind.Synchronization.BeamSync
                 
                 Stopwatch stopwatch = Stopwatch.StartNew();
                 Block? processedBlock = null;
-                beamProcessingTask = Task.Run(() =>
+                beamProcessingTask = Task.Factory.StartNew(() =>
                 {
                     BeamSyncContext.MinimumDifficulty.Value = block.TotalDifficulty.Value;
                     BeamSyncContext.Description.Value = $"[preProcess of {block.Hash.ToShortString()}]";
@@ -283,7 +283,7 @@ namespace Nethermind.Synchronization.BeamSync
                         Interlocked.Increment(ref Metrics.BeamedBlocks);
                         if(_logger.IsInfo) _logger.Info($"Successfully beam processed block {processedBlock.ToString(Block.Format.Short)} in {stopwatch.ElapsedMilliseconds}ms");
                     }
-                }).ContinueWith(t =>
+                }, TaskCreationOptions.LongRunning).ContinueWith(t =>
                 {
                     if (t.IsFaulted)
                     {

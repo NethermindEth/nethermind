@@ -110,7 +110,7 @@ namespace Nethermind.Runner.Ethereum.Steps.Migrations
                 _cancellationTokenSource = new CancellationTokenSource();
                 _api.DisposeStack.Push(this);
                 _stopwatch = Stopwatch.StartNew();
-                _migrationTask = Task.Run(() => RunBloomMigration(_cancellationTokenSource.Token))
+                _migrationTask = Task.Factory.StartNew(() => RunBloomMigration(_cancellationTokenSource.Token), TaskCreationOptions.LongRunning)
                     .ContinueWith(x =>
                     {
                         if (x.IsFaulted && _logger.IsError)

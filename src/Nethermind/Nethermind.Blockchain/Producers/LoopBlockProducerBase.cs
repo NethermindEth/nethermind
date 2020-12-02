@@ -67,22 +67,23 @@ namespace Nethermind.Blockchain.Producers
         {
             BlockProcessingQueue.ProcessingQueueEmpty += OnBlockProcessorQueueEmpty;
             BlockTree.NewBestSuggestedBlock += BlockTreeOnNewBestSuggestedBlock;
-            
-            _producerTask = Task.Run(ProducerLoop, LoopCancellationTokenSource.Token).ContinueWith(t =>
-            {
-                if (t.IsFaulted)
+
+            _producerTask = Task.Factory.StartNew(ProducerLoop, LoopCancellationTokenSource.Token, TaskCreationOptions.LongRunning, TaskScheduler.Default)
+                .ContinueWith(t =>
                 {
-                    if (Logger.IsError) Logger.Error($"{_name} block producer encountered an exception.", t.Exception);
-                }
-                else if (t.IsCanceled)
-                {
-                    if (Logger.IsDebug) Logger.Debug($"{_name} block producer stopped.");
-                }
-                else if (t.IsCompleted)
-                {
-                    if (Logger.IsDebug) Logger.Debug($"{_name} block producer complete.");
-                }
-            });
+                    if (t.IsFaulted)
+                    {
+                        if (Logger.IsError) Logger.Error($"{_name} block producer encountered an exception.", t.Exception);
+                    }
+                    else if (t.IsCanceled)
+                    {
+                        if (Logger.IsDebug) Logger.Debug($"{_name} block producer stopped.");
+                    }
+                    else if (t.IsCompleted)
+                    {
+                        if (Logger.IsDebug) Logger.Debug($"{_name} block producer complete.");
+                    }
+                });
         }
 
         public override async Task StopAsync()
