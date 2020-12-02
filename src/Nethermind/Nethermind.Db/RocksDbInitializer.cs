@@ -98,7 +98,7 @@ namespace Nethermind.Db
 
         public string GetTitleDbName(string dbName)
         {
-            return char.ToLower(dbName[0]) + dbName.Substring(1);
+            return char.ToUpper(dbName[0]) + dbName.Substring(1);
         }
     }
 }
