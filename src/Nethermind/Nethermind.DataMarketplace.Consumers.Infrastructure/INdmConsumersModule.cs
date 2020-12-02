@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.Threading.Tasks;
 using Nethermind.DataMarketplace.Infrastructure;
 using Nethermind.JsonRpc.Modules;
 
@@ -22,7 +23,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure
     [RpcModule(ModuleType.NdmConsumer)]
     public interface INdmConsumersModule : IModule
     {
-        void Init();
+        Task Init();
         void InitRpcModules();
     }
 }

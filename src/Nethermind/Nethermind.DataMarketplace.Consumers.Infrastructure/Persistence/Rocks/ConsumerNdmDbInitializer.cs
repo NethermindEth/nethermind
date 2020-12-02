@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Threading.Tasks;
 using Nethermind.DataMarketplace.Core.Configs;
 using Nethermind.Db;
 
@@ -40,7 +41,8 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Rocks
         {
             _ndmConfig = ndmConfig ?? throw new ArgumentNullException(nameof(NdmConfig));
         }
-        public void Init()
+
+        public async Task Init()
         {
             RegisterDb(new RocksDbSettings()
             {
@@ -95,7 +97,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Rocks
                 UpdateWriteMetrics = () => ConsumerMetrics.DepositsDbWrites++,
             });
 
-            InitAll();
+            await InitAllAsync();
         }
     }
 }

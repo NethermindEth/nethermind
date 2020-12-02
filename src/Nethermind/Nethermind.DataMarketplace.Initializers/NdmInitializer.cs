@@ -170,7 +170,7 @@ namespace Nethermind.DataMarketplace.Initializers
                 ? Address.Zero
                 : new Address(ndmApi.NdmConfig.ProviderAddress);
             
-            _ndmConsumersModule.Init();
+            await _ndmConsumersModule.Init();
         }
 
         public virtual async Task<INdmCapabilityConnector> InitAsync(INdmApi api)

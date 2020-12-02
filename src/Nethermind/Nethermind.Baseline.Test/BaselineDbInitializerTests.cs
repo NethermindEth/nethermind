@@ -36,7 +36,6 @@ namespace Nethermind.Baseline.Test
     [Parallelizable(ParallelScope.All)]
     public class BaselineDbInitializerTests
     {
-        private List<IDb> _dbsToCleanup = new List<IDb>();
         private string _folderWithDbs;
 
         [OneTimeSetUp]
@@ -106,11 +105,6 @@ namespace Nethermind.Baseline.Test
         [OneTimeTearDown]
         public void TearDown()
         {
-            foreach (var dbToCleanup in _dbsToCleanup)
-            {
-                dbToCleanup?.Dispose();
-            }
-
             if (Directory.Exists(_folderWithDbs))
                 Directory.Delete(_folderWithDbs);
         }

@@ -30,8 +30,4 @@
       <ProjectReference Include="..\Nethermind.DataMarketplace.Test\Nethermind.DataMarketplace.Test.csproj" />
     </ItemGroup>
 
-    <ItemGroup>
-      <Folder Include="Infrastructure\Persistence\Rocks\" />
-    </ItemGroup>
-
 </Project>

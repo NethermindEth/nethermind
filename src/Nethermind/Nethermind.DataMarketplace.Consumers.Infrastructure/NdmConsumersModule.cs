@@ -84,7 +84,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure
             _api = api ?? throw new ArgumentNullException(nameof(api));
         }
 
-        public void Init()
+        public async Task Init()
         {
             AddDecoders();
             ILogManager logManager = _api.LogManager;
@@ -151,7 +151,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure
                     break;
                 default:
                     var dbInitializer = new ConsumerNdmDbInitializer(_api.DbProvider, ndmConfig, _api.RocksDbFactory, _api.MemDbFactory);
-                    dbInitializer.Init();
+                    await dbInitializer.Init();
                     depositRepository = new DepositDetailsRocksRepository(_api.DbProvider.GetDb<IDb>(ConsumerNdmDbConsts.DepositsDbName),
                         depositDetailsRlpDecoder);
                     depositApprovalRepository = new ConsumerDepositApprovalRocksRepository(
