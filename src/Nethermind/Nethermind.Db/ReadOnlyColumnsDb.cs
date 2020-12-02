@@ -42,5 +42,10 @@ namespace Nethermind.Db
                 columnDbsValue.ClearTempChanges();
             }
         }
+
+        public IReadOnlyDb CreateReadOnly(bool createInMemWriteStore)
+        {
+            return new ReadOnlyColumnsDb<T>(this, createInMemWriteStore);
+        }
     }
 }

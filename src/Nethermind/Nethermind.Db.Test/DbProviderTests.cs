@@ -19,6 +19,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Db.Test
 {
+    [Parallelizable(ParallelScope.All)]
     public class DbProviderTests
     {
         [Test]

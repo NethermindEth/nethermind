@@ -132,7 +132,7 @@ namespace Nethermind.Db.Rocks
             string prefixed = string.Concat(tableName == "State" ? string.Empty : string.Concat(tableName, "Db"), propertyName);
             try
             {
-                return (T) dbConfig.GetType().GetProperty(prefixed, BindingFlags.Public | BindingFlags.Instance)?.GetValue(dbConfig);
+                return (T) dbConfig.GetType().GetProperty(prefixed, BindingFlags.IgnoreCase | BindingFlags.Public | BindingFlags.Instance)?.GetValue(dbConfig);
             }
             catch (Exception e)
             {
