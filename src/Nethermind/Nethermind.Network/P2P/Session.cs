@@ -175,7 +175,7 @@ namespace Nethermind.Network.P2P
             if (protocol == null)
             {
                 if (_logger.IsTrace)
-                    _logger.Warn($"Received a message from node: {RemoteNodeId}, " + 
+                    _logger.Warn($"Received a message from node: {RemoteNodeId}, " +
                                  $"({dynamicMessageCode} => {messageId}), known protocols ({_protocols.Count}): " +
                                  $"{string.Join(", ", _protocols.Select(x => $"{x.Value.Name} {x.Value.MessageIdSpaceSize}"))}");
                 return;
@@ -476,27 +476,19 @@ namespace Nethermind.Network.P2P
 
         public void AddProtocolHandler(IProtocolHandler handler)
         {
-            if (State < SessionState.DisconnectingProtocols)
+            if (_protocols.ContainsKey(handler.ProtocolCode))
             {
-                if (_protocols.ContainsKey(handler.ProtocolCode))
-                {
-                    throw new InvalidOperationException($"{this} already has {handler.ProtocolCode} started");
-                }
-
-                if (handler.ProtocolCode != Protocol.P2P && !_protocols.ContainsKey(Protocol.P2P))
-                {
-                    throw new InvalidOperationException(
-                        $"{Protocol.P2P} handler has to be started before starting {handler.ProtocolCode} handler on {this}");
-                }
-
-                _protocols.TryAdd(handler.ProtocolCode, handler);
-                _resolver = GetOrCreateResolver();
+                throw new InvalidOperationException($"{this} already has {handler.ProtocolCode} started");
             }
-            else
+
+            if (handler.ProtocolCode != Protocol.P2P && !_protocols.ContainsKey(Protocol.P2P))
             {
-                // the protocol handler will never be disposed but the risk is small in current implementations
-                // plugins may be surprised but any leak should be detectable
+                throw new InvalidOperationException(
+                    $"{Protocol.P2P} handler has to be started before starting {handler.ProtocolCode} handler on {this}");
             }
+
+            _protocols.TryAdd(handler.ProtocolCode, handler);
+            _resolver = GetOrCreateResolver();
         }
 
         private AdaptiveCodeResolver GetOrCreateResolver()
