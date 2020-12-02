@@ -96,7 +96,7 @@ namespace Nethermind.Db
             await Task.WhenAll(allInitializers);
         }
 
-        public string GetDbPathByNameConvention(string dbName)
+        public string GetTitleDbName(string dbName)
         {
             return char.ToLower(dbName[0]) + dbName.Substring(1);
         }

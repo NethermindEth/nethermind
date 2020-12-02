@@ -22,10 +22,10 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Rocks
 {
     public class ConsumerNdmDbConsts
     {
-        public const string ConsumerDepositApprovalsDbName = "ConsumerDepositApprovals";
-        public const string ConsumerReceiptsDbName = "ConsumerReceipts";
-        public const string ConsumerSessionsDbName = "ConsumerSessions";
-        public const string DepositsDbName = "Deposits";
+        public const string ConsumerDepositApprovalsDbName = "consumerDepositApprovals";
+        public const string ConsumerReceiptsDbName = "consumerReceipts";
+        public const string ConsumerSessionsDbName = "consumerSessions";
+        public const string DepositsDbName = "deposits";
     }
 
     public class ConsumerNdmDbInitializer : RocksDbInitializer
@@ -44,8 +44,8 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Rocks
         {
             RegisterDb(new RocksDbSettings()
             {
-                DbName = ConsumerNdmDbConsts.ConsumerDepositApprovalsDbName,
-                DbPath = GetDbPathByNameConvention(ConsumerNdmDbConsts.ConsumerDepositApprovalsDbName),
+                DbName = GetTitleDbName(ConsumerNdmDbConsts.ConsumerDepositApprovalsDbName),
+                DbPath = ConsumerNdmDbConsts.ConsumerDepositApprovalsDbName,
 
                 CacheIndexAndFilterBlocks = _ndmConfig.ConsumerDepositApprovalsDbCacheIndexAndFilterBlocks,
                 BlockCacheSize = _ndmConfig.ConsumerDepositApprovalsDbBlockCacheSize,
@@ -57,8 +57,8 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Rocks
             });
             RegisterDb(new RocksDbSettings()
             {
-                DbName = ConsumerNdmDbConsts.ConsumerReceiptsDbName,
-                DbPath = GetDbPathByNameConvention(ConsumerNdmDbConsts.ConsumerReceiptsDbName),
+                DbName = GetTitleDbName(ConsumerNdmDbConsts.ConsumerReceiptsDbName),
+                DbPath = ConsumerNdmDbConsts.ConsumerReceiptsDbName,
 
                 CacheIndexAndFilterBlocks = _ndmConfig.ConsumerReceiptsDbCacheIndexAndFilterBlocks,
                 BlockCacheSize = _ndmConfig.ConsumerReceiptsDbBlockCacheSize,
@@ -70,8 +70,8 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Rocks
             });
             RegisterDb(new RocksDbSettings()
             {
-                DbName = ConsumerNdmDbConsts.ConsumerSessionsDbName,
-                DbPath = GetDbPathByNameConvention(ConsumerNdmDbConsts.ConsumerSessionsDbName),
+                DbName = GetTitleDbName(ConsumerNdmDbConsts.ConsumerSessionsDbName),
+                DbPath = ConsumerNdmDbConsts.ConsumerSessionsDbName,
 
                 CacheIndexAndFilterBlocks = _ndmConfig.ConsumerSessionsDbCacheIndexAndFilterBlocks,
                 BlockCacheSize = _ndmConfig.ConsumerSessionsDbBlockCacheSize,
@@ -83,8 +83,8 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Rocks
             });
             RegisterDb(new RocksDbSettings()
             {
-                DbName = ConsumerNdmDbConsts.DepositsDbName,
-                DbPath = GetDbPathByNameConvention(ConsumerNdmDbConsts.DepositsDbName),
+                DbName = GetTitleDbName(ConsumerNdmDbConsts.DepositsDbName),
+                DbPath = ConsumerNdmDbConsts.DepositsDbName,
 
                 CacheIndexAndFilterBlocks = _ndmConfig.DepositsDbCacheIndexAndFilterBlocks,
                 BlockCacheSize = _ndmConfig.DepositsDbBlockCacheSize,

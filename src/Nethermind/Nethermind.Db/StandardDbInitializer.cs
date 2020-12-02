@@ -65,8 +65,8 @@ namespace Nethermind.Db
         {
             return new RocksDbSettings()
             {
-                DbName = dbName,
-                DbPath = GetDbPathByNameConvention(dbName),
+                DbName = GetTitleDbName(dbName),
+                DbPath = dbName,
                 UpdateReadMetrics = updateReadsMetrics,
                 UpdateWriteMetrics = updateWriteMetrics
             };
