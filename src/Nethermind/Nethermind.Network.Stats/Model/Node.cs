@@ -84,6 +84,7 @@ namespace Nethermind.Stats.Model
         public NodeClientType ClientType { get; private set; } = NodeClientType.Unknown;
         
         public string EthDetails { get; set; }
+        public long CurrentReputation { get; set; }
 
         public Node(PublicKey id, IPEndPoint address)
         {
