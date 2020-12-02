@@ -101,7 +101,6 @@ namespace Nethermind.DataMarketplace.Test
             await initializer.Init();
             Assert.NotNull(beamSyncDbProvider.GetDb<IDb>(NdmDbConsts.ConfigsDbName));
             Assert.NotNull(beamSyncDbProvider.GetDb<IDb>(NdmDbConsts.EthRequestsDbName));
-            Assert.AreEqual(2, beamSyncDbProvider.RegisteredDbs.Count());
             Assert.IsTrue(beamSyncDbProvider.GetDb<IDb>(NdmDbConsts.ConfigsDbName) is MemDb);
             Assert.IsTrue(beamSyncDbProvider.GetDb<IDb>(NdmDbConsts.EthRequestsDbName) is MemDb);
         }

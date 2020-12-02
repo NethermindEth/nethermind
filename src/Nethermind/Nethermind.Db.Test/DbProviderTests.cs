@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using NUnit.Framework;
 
 namespace Nethermind.Db.Test
@@ -58,6 +59,30 @@ namespace Nethermind.Db.Test
                 var columnsDb = dbProvider.GetDb<IColumnsDb<ReceiptsColumns>>("ColumnsDb");
                 Assert.AreEqual(memSnapshotableDb, columnsDb);
                 Assert.IsTrue(memSnapshotableDb is IColumnsDb<ReceiptsColumns>);
+            }
+        }
+
+        [Test]
+        public void DbProvider_ThrowExceptionOnRegisteringTheSameDb()
+        {
+            using (var dbProvider = new DbProvider(DbModeHint.Mem))
+            {
+                var memDbFactory = new MemDbFactory();
+                var memSnapshotableDb = memDbFactory.CreateColumnsDb<ReceiptsColumns>("ColumnsDb");
+                dbProvider.RegisterDb("ColumnsDb", memSnapshotableDb);
+                Assert.Throws<ArgumentException>(() => dbProvider.RegisterDb("columnsdb", new MemDb()));
+            }
+        }
+
+        [Test]
+        public void DbProvider_ThrowExceptionOnGettingNotRegisteredDb()
+        {
+            using (var dbProvider = new DbProvider(DbModeHint.Mem))
+            {
+                var memDbFactory = new MemDbFactory();
+                var memSnapshotableDb = memDbFactory.CreateColumnsDb<ReceiptsColumns>("ColumnsDb");
+                dbProvider.RegisterDb("ColumnsDb", memSnapshotableDb);
+                Assert.Throws<ArgumentException>(() => dbProvider.GetDb<IColumnsDb<ReceiptsColumns>>("differentdb"));
             }
         }
     }
