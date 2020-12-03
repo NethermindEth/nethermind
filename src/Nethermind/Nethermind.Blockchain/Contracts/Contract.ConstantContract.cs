@@ -16,6 +16,7 @@
 // 
 
 using System;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm;
@@ -47,6 +48,7 @@ namespace Nethermind.Blockchain.Contracts
                 _readOnlyTransactionProcessorSource = readOnlyTransactionProcessorSource ?? throw new ArgumentNullException(nameof(readOnlyTransactionProcessorSource));
             }
 
+            [MethodImpl(MethodImplOptions.Synchronized)]
             private byte[] Call(BlockHeader parentHeader, string functionName, Transaction transaction)
             {
                 using var readOnlyTransactionProcessor = _readOnlyTransactionProcessorSource.Get(GetState(parentHeader));
