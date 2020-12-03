@@ -19,6 +19,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
+using System.Threading.Tasks;
 using Nethermind.Abi;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
@@ -55,13 +56,24 @@ namespace Nethermind.Consensus.AuRa.Contracts.DataStore
             GetItemsFromContractAtBlock(blockHeader, blockHeader.Hash == _lastHash);
             return Collection.GetSnapshot();
         }
-        
-        
-        [MethodImpl(MethodImplOptions.Synchronized)]
+
         private void OnNewHead(object sender, BlockEventArgs e)
         {
-            BlockHeader header = e.Block.Header;
-            GetItemsFromContractAtBlock(header, header.ParentHash == _lastHash, _receiptFinder.Get(e.Block));
+            // we don't want this to be on main processing thread
+            Task.Run(() => Refresh(e.Block))
+                .ContinueWith(t =>
+                {
+                    if (t.IsFaulted)
+                    {
+                        if (_logger.IsError) _logger.Error($"Couldn't load contract data from block {e.Block.ToString(Block.Format.FullHashAndNumber)}.", t.Exception);
+                    }
+                });
+        }
+
+        [MethodImpl(MethodImplOptions.Synchronized)]
+        private void Refresh(Block block)
+        {
+            GetItemsFromContractAtBlock(block.Header, block.Header.ParentHash == _lastHash, _receiptFinder.Get(block));
         }
         
         private void GetItemsFromContractAtBlock(BlockHeader blockHeader, bool isConsecutiveBlock, TxReceipt[] receipts = null)
