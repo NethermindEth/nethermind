@@ -38,7 +38,8 @@ namespace Nethermind.Consensus.AuRa.Contracts.DataStore
         private readonly IReceiptFinder _receiptFinder;
         private readonly IBlockTree _blockTree;
         private Keccak _lastHash;
-        protected readonly ILogger _logger;
+        private readonly object _lock = new object();
+        private readonly ILogger _logger;
 
         protected internal ContractDataStore(TCollection collection, IDataContract<T> dataContract, IBlockTree blockTree, IReceiptFinder receiptFinder, ILogManager logManager)
         {
@@ -50,7 +51,6 @@ namespace Nethermind.Consensus.AuRa.Contracts.DataStore
             blockTree.NewHeadBlock += OnNewHead;
         }
 
-        [MethodImpl(MethodImplOptions.Synchronized)]
         public IEnumerable<T> GetItemsFromContractAtBlock(BlockHeader blockHeader)
         {
             GetItemsFromContractAtBlock(blockHeader, blockHeader.Hash == _lastHash);
@@ -70,7 +70,6 @@ namespace Nethermind.Consensus.AuRa.Contracts.DataStore
                 });
         }
 
-        [MethodImpl(MethodImplOptions.Synchronized)]
         private void Refresh(Block block)
         {
             GetItemsFromContractAtBlock(block.Header, block.Header.ParentHash == _lastHash, _receiptFinder.Get(block));
@@ -88,20 +87,23 @@ namespace Nethermind.Consensus.AuRa.Contracts.DataStore
                 {
                     bool dataChanged = true;
                     IEnumerable<T> items;
-                    
-                    if (canGetFullStateFromReceipts)
+
+                    lock (_lock)
                     {
-                        dataChanged = _dataContract.TryGetItemsChangedFromBlock(blockHeader, receipts, out items);
-                        
-                        if (!dataChanged && !isConsecutiveBlock)
+                        if (canGetFullStateFromReceipts)
+                        {
+                            dataChanged = _dataContract.TryGetItemsChangedFromBlock(blockHeader, receipts, out items);
+
+                            if (!dataChanged && !isConsecutiveBlock)
+                            {
+                                items = _dataContract.GetAllItemsFromBlock(blockHeader);
+                                dataChanged = true;
+                            }
+                        }
+                        else
                         {
                             items = _dataContract.GetAllItemsFromBlock(blockHeader);
-                            dataChanged = true;
                         }
-                    }
-                    else
-                    {
-                        items = _dataContract.GetAllItemsFromBlock(blockHeader);
                     }
 
                     if (dataChanged)

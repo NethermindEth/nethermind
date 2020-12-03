@@ -41,18 +41,20 @@ namespace Nethermind.Blockchain.Contracts
             private readonly Contract _contract;
             private readonly IReadOnlyTransactionProcessorSource _readOnlyTransactionProcessorSource;
             public const long DefaultConstantContractGasLimit = 50_000_000L;
-
+            
             public ConstantContract(Contract contract, IReadOnlyTransactionProcessorSource readOnlyTransactionProcessorSource)
             {
                 _contract = contract;
                 _readOnlyTransactionProcessorSource = readOnlyTransactionProcessorSource ?? throw new ArgumentNullException(nameof(readOnlyTransactionProcessorSource));
             }
 
-            [MethodImpl(MethodImplOptions.Synchronized)]
             private byte[] Call(BlockHeader parentHeader, string functionName, Transaction transaction)
             {
-                using var readOnlyTransactionProcessor = _readOnlyTransactionProcessorSource.Get(GetState(parentHeader));
-                return _contract.CallCore(readOnlyTransactionProcessor, parentHeader, functionName, transaction, true);
+                lock (_readOnlyTransactionProcessorSource)
+                {
+                    using var readOnlyTransactionProcessor = _readOnlyTransactionProcessorSource.Get(GetState(parentHeader));
+                    return _contract.CallCore(readOnlyTransactionProcessor, parentHeader, functionName, transaction, true);
+                }
             }
 
             private object[] Call(BlockHeader parentHeader, string functionName, Address sender, params object[] arguments)
