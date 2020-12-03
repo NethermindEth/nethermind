@@ -70,7 +70,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             
             var processingReadOnlyTransactionProcessorSource = new ReadOnlyTxProcessorSource(_api.DbProvider, _api.BlockTree, _api.SpecProvider, _api.LogManager);
             var txPermissionFilterOnlyTxProcessorSource = new ReadOnlyTxProcessorSource(_api.DbProvider, _api.BlockTree, _api.SpecProvider, _api.LogManager);
-            ITxFilter? txPermissionFilter = TxFilterBuilders.CreateTxPermissionFilter(_api, txPermissionFilterOnlyTxProcessorSource, _api.StateProvider);
+            ITxFilter? txPermissionFilter = TxFilterBuilders.CreateTxPermissionFilter(_api, txPermissionFilterOnlyTxProcessorSource);
             
             var processor = new AuRaBlockProcessor(
                 _api.SpecProvider,
@@ -252,7 +252,6 @@ namespace Nethermind.Runner.Ethereum.Steps
                 NethermindApi.Config<IMiningConfig>(),
                 _api,
                 txPoolReadOnlyTransactionProcessorSource,
-                _api.ChainHeadStateProvider!,
                 minGasPricesContractDataStore);
             
             return new FilteredTxPool(

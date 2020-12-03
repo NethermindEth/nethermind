@@ -98,7 +98,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             if (_api.EngineSigner == null) throw new StepDependencyException(nameof(_api.EngineSigner));
 
             var chainSpecAuRa = _api.ChainSpec.AuRa;
-            _txPermissionFilter = TxFilterBuilders.CreateTxPermissionFilter(_api, readOnlyTxProcessorSource, readOnlyTxProcessingEnv.StateProvider);
+            _txPermissionFilter = TxFilterBuilders.CreateTxPermissionFilter(_api, readOnlyTxProcessorSource);
 
             _validator = new AuRaValidatorFactory(
                     readOnlyTxProcessingEnv.StateProvider,
@@ -271,7 +271,6 @@ namespace Nethermind.Runner.Ethereum.Steps
                 NethermindApi.Config<IMiningConfig>(),
                 _api,
                 readOnlyTxProcessorSource,
-                readOnlyTxProcessingEnv.StateProvider,
                 _minGasPricesContractDataStore);
 
         private IGasLimitCalculator CreateGasLimitCalculator(ReadOnlyTxProcessorSource readOnlyTxProcessorSource)
