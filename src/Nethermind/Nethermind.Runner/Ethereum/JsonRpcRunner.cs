@@ -116,6 +116,7 @@ namespace Nethermind.Runner.Ethereum
                 .ConfigureLogging(logging =>
                 {
                     logging.SetMinimumLevel(LogLevel.Information);
+                    logging.AddFilter("Microsoft.Extensions.Diagnostics.HealthChecks", LogLevel.Critical);
                     logging.ClearProviders();
                     logging.AddProvider(new CustomMicrosoftLoggerProvider(_logManager));
                 })
