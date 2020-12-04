@@ -49,10 +49,8 @@ namespace Nethermind.HealthChecks
                 {
                     return HealthCheckResult.Unhealthy(description: $"The node has 0 peers connected");
                 }
-                else
-                {
-                    return HealthCheckResult.Unhealthy(description: $"The node is still syncing, CurrentBlock: {ethSyncing.CurrentBlock}, HighestBlock: {ethSyncing.HighestBlock}, Peers: {netPeerCount}");
-                }
+
+                return HealthCheckResult.Unhealthy(description: $"The node is still syncing, CurrentBlock: {ethSyncing.CurrentBlock}, HighestBlock: {ethSyncing.HighestBlock}, Peers: {netPeerCount}");
             }
             catch (Exception ex)
             {
