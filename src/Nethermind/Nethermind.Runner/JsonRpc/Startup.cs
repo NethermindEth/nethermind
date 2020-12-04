@@ -99,7 +99,7 @@ namespace Nethermind.Runner
                     });
                     if (healthChecksConfig.UIEnabled)
                     {
-                        endpoints.MapHealthChecksUI(setup => setup.AddCustomStylesheet("nethermind.css"));
+                        endpoints.MapHealthChecksUI(setup => setup.AddCustomStylesheet(Path.Combine(AppDomain.CurrentDomain.BaseDirectory!, "nethermind.css")));
                     }
                 }
             });
