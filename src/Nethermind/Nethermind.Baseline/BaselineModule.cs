@@ -76,7 +76,7 @@ namespace Nethermind.Baseline
             InitTrees();
         }
 
-        public async Task<ResultWrapper<Keccak>> baseline_insertLeaf(Address address, Address contractAddress, Keccak hash)
+        public async Task<ResultWrapper<Keccak>> baseline_insertCommit(Address address, Address contractAddress, Keccak hash)
         {
             if (hash == Keccak.Zero)
             {
@@ -100,7 +100,7 @@ namespace Nethermind.Baseline
             return ResultWrapper<Keccak>.Success(txHash);
         }
 
-        public async Task<ResultWrapper<Keccak>> baseline_insertLeaves(
+        public async Task<ResultWrapper<Keccak>> baseline_insertCommits(
             Address address,
             Address contractAddress,
             params Keccak[] hashes)
@@ -136,7 +136,7 @@ namespace Nethermind.Baseline
             Address contractAddress,
             BlockParameter? blockParameter = null)
         {
-            bool isTracked = _baselineTrees.TryGetValue(contractAddress, out BaselineTree? tree);
+            bool isTracked = TryGetTracked(contractAddress, out BaselineTree? tree);
 
             ResultWrapper<Keccak> result;
             if (!isTracked || tree == null)
@@ -169,12 +169,12 @@ namespace Nethermind.Baseline
             return Task.FromResult(result);
         }
 
-        public Task<ResultWrapper<BaselineTreeNode>> baseline_getLeaf(
+        public Task<ResultWrapper<BaselineTreeNode>> baseline_getCommit(
             Address contractAddress,
             UInt256 leafIndex,
             BlockParameter? blockParameter = null)
         {
-            bool isTracked = _baselineTrees.TryGetValue(contractAddress, out BaselineTree? tree);
+            bool isTracked = TryGetTracked(contractAddress, out BaselineTree? tree);
             bool isLeafIndexValid = !(leafIndex > BaselineTree.MaxLeafIndex || leafIndex < 0L);
 
             ResultWrapper<BaselineTreeNode> result;
@@ -218,7 +218,7 @@ namespace Nethermind.Baseline
             Address contractAddress,
             BlockParameter? blockParameter = null)
         {
-            bool isTracked = _baselineTrees.TryGetValue(contractAddress, out BaselineTree? tree);
+            bool isTracked = TryGetTracked(contractAddress, out BaselineTree? tree);
 
             ResultWrapper<long> result;
             if (!isTracked || tree == null)
@@ -250,12 +250,12 @@ namespace Nethermind.Baseline
             return Task.FromResult(result);
         }
 
-        public Task<ResultWrapper<BaselineTreeNode[]>> baseline_getLeaves(
+        public Task<ResultWrapper<BaselineTreeNode[]>> baseline_getCommits(
             Address contractAddress,
             UInt256[] leafIndexes,
             BlockParameter? blockParameter = null)
         {
-            bool isTracked = _baselineTrees.TryGetValue(contractAddress, out BaselineTree? tree);
+            bool isTracked = TryGetTracked(contractAddress, out BaselineTree? tree);
             bool leafIndexesAreValid = true;
             foreach (UInt256 leafIndex in leafIndexes)
             {
@@ -310,7 +310,7 @@ namespace Nethermind.Baseline
             // sample shield arguments:
             // Goerli:  000000000000000000000000b881525d318d6bb54058116af45dd83e7c34fc4e0000000000000000000000000000000000000000000000000000000000000020
             // Ropsten: 000000000000000000000000aba8d681f5391fcf27636416b02a2c748d7b0a9e0000000000000000000000000000000000000000000000000000000000000020
-            
+
             ResultWrapper<Keccak> result;
             try
             {
@@ -377,7 +377,7 @@ namespace Nethermind.Baseline
             BaselineTreeNode[] path,
             BlockParameter? blockParameter = null)
         {
-            bool isTracked = _baselineTrees.TryGetValue(contractAddress, out BaselineTree? tree);
+            bool isTracked = TryGetTracked(contractAddress, out BaselineTree? tree);
             ResultWrapper<bool> result;
             if (!isTracked)
             {
@@ -425,7 +425,7 @@ namespace Nethermind.Baseline
 
             ResultWrapper<BaselineTreeNode[]> result;
 
-            bool isTracked = _baselineTrees.TryGetValue(contractAddress, out BaselineTree? tree);
+            bool isTracked = TryGetTracked(contractAddress, out BaselineTree? tree);
             if (!isTracked)
             {
                 result = ResultWrapper<BaselineTreeNode[]>.Fail(
@@ -478,6 +478,32 @@ namespace Nethermind.Baseline
             }
 
             return Task.FromResult(result);
+        }
+
+        public Task<ResultWrapper<bool>> baseline_untrack(Address contractAddress)
+        {
+            ResultWrapper<bool> result;
+
+            bool isTracked = TryGetTracked(contractAddress, out _);
+            if (!isTracked)
+            {
+                result = ResultWrapper<bool>.Fail(
+                    $"{contractAddress} tree is not tracked",
+                    ErrorCodes.InvalidInput);
+            }
+            else
+            {
+                bool managedToUntrack = _trackingOverrides.TryUpdate(contractAddress, true, false);
+                result = ResultWrapper<bool>.Success(managedToUntrack);
+            }
+
+            return Task.FromResult(result);
+        }
+
+        private bool TryGetTracked(Address contractAddress, out BaselineTree? tree)
+        {
+            bool isTracked = _baselineTrees.TryGetValue(contractAddress, out tree);
+            return isTracked && (_trackingOverrides.TryGetValue(contractAddress, out bool isUntracked) && !isUntracked);
         }
 
         public Task<ResultWrapper<Address[]>> baseline_getTracked()
@@ -665,20 +691,44 @@ namespace Nethermind.Baseline
 
         private bool TryAddTree(Address trackedTree)
         {
-            if (_stateReader.GetCode(_blockFinder.Head.StateRoot, trackedTree).Length == 0)
+            bool treeAdded = false;
+
+            bool wasUntracked = _trackingOverrides.TryGetValue(trackedTree, out bool result) && result;
+            if (!wasUntracked)
             {
-                return false;
+                if (_stateReader.GetCode(_blockFinder.Head.StateRoot, trackedTree).Length != 0)
+                {
+                    ShaBaselineTree tree = new ShaBaselineTree(_baselineDb, _metadataBaselineDb, trackedTree.Bytes, TruncationLength, _logger);
+                    treeAdded = _baselineTrees.TryAdd(trackedTree, tree);
+                    if (treeAdded)
+                    {
+                        BaselineTreeTracker? tracker = new BaselineTreeTracker(trackedTree, tree, _blockProcessor, _baselineTreeHelper, _blockFinder, _logger);
+                        _disposableStack.Push(tracker);
+                    }
+                }
+                
+                _trackingOverrides.TryAdd(trackedTree, false);
+            }
+            else
+            {
+                treeAdded = _trackingOverrides.TryUpdate(trackedTree, false, true);
             }
 
-            ShaBaselineTree tree = new ShaBaselineTree(_baselineDb, _metadataBaselineDb, trackedTree.Bytes, TruncationLength, _logger);
-            bool result = _baselineTrees.TryAdd(trackedTree, tree);
-            if (result)
-            {
-                var tracker = new BaselineTreeTracker(trackedTree, tree, _blockProcessor, _baselineTreeHelper, _blockFinder, _logger);
-                _disposableStack.Push(tracker);
-            }
-
-            return result;
+            return treeAdded;
+        }
+        
+        private ConcurrentDictionary<Address, bool> _trackingOverrides = new ConcurrentDictionary<Address, bool>();
+        
+        private bool TryRemoveTree(Address trackedTree)
+        {
+            if (_logger.IsWarn) _logger.Warn("Tree untracking has no effect for the moment.");
+            // TODO: review if we need to clear metadata and store empty metadata in the database
+            // TODO: review if there will be a conflict if we track again later
+            // TODO: review if we can drop old databases on untracking
+            // TODO: all these todos are fine for now if we do nothing on untrack
+            // TODO: the only problem now is if we track, untrack, track again
+            
+            return true;
         }
 
         #endregion
