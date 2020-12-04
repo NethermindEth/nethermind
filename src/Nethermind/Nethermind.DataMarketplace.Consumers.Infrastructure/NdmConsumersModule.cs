@@ -227,7 +227,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure
                 sessionService, timestamper, receiptRepository, sessionRepository, abiEncoder, wallet, ecdsa,
                 nodePublicKey, logManager);
             RefundService refundService = new RefundService(blockchainBridge, abiEncoder, depositRepository,
-                contractAddress, logManager);
+                contractAddress, logManager, wallet);
             RefundClaimant refundClaimant = new RefundClaimant(refundService, blockchainBridge, depositRepository,
                 transactionVerifier, gasPriceService, timestamper, logManager);
             _api.AccountService = new AccountService(configManager, dataStreamService, providerService,
