@@ -1347,7 +1347,7 @@ namespace Nethermind.Blockchain.Test
 
         [TestCase(true)]
         [TestCase(false)]
-        public void When_block_is_moved_out_of_main_transactions_are_removed_from_tx_pool(bool isEip155Enabled)
+        public async Task When_block_is_moved_out_of_main_transactions_are_removed_from_tx_pool(bool isEip155Enabled)
         {
             MemDb blocksDb = new MemDb();
             MemDb headersDb = new MemDb();
@@ -1370,6 +1370,8 @@ namespace Nethermind.Blockchain.Test
             blockTree.SuggestBlock(block1A);
             blockTree.UpdateMainChain(block1A);
             blockTree.UpdateMainChain(block1B);
+
+            await Task.Delay(10); // await for OnChainTxWatcher
 
             txPoolMock.Received().AddTransaction(t1, isEip155Enabled ? TxHandlingOptions.None : TxHandlingOptions.PreEip155Signing);
         }
