@@ -1320,7 +1320,7 @@ namespace Nethermind.Blockchain.Test
         }
 
         [Test]
-        public void When_block_is_moved_to_main_transactions_are_removed_from_tx_pool()
+        public async Task When_block_is_moved_to_main_transactions_are_removed_from_tx_pool()
         {
             MemDb blocksDb = new MemDb();
             MemDb headersDb = new MemDb();
@@ -1341,6 +1341,8 @@ namespace Nethermind.Blockchain.Test
             blockTree.SuggestBlock(block1B);
             blockTree.SuggestBlock(block1A);
             blockTree.UpdateMainChain(block1A);
+
+            await Task.Delay(10); // await for OnChainTxWatcher
 
             txPoolMock.Received().RemoveTransaction(t1.Hash, 1, true);
         }
