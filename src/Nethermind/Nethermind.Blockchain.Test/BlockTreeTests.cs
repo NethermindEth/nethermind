@@ -1320,7 +1320,7 @@ namespace Nethermind.Blockchain.Test
         }
 
         [Test]
-        public void When_block_is_moved_to_main_transactions_are_removed_from_tx_pool()
+        public async Task When_block_is_moved_to_main_transactions_are_removed_from_tx_pool()
         {
             MemDb blocksDb = new MemDb();
             MemDb headersDb = new MemDb();
@@ -1331,7 +1331,7 @@ namespace Nethermind.Blockchain.Test
 
             ITxPool txPoolMock = Substitute.For<ITxPool>();
             BlockTree blockTree = new BlockTree(blocksDb, headersDb, blockInfosDb, new ChainLevelInfoRepository(blockInfosDb), OlympicSpecProvider.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
-            new OnChainTxWatcher(blockTree, txPoolMock, OlympicSpecProvider.Instance);
+            new OnChainTxWatcher(blockTree, txPoolMock, OlympicSpecProvider.Instance, LimboLogs.Instance);
             Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
             Block block1A = Build.A.Block.WithNumber(1).WithDifficulty(2).WithTransactions(t1).WithParent(block0).TestObject;
             Block block1B = Build.A.Block.WithNumber(1).WithDifficulty(3).WithTransactions(t2).WithParent(block0).TestObject;
@@ -1342,12 +1342,14 @@ namespace Nethermind.Blockchain.Test
             blockTree.SuggestBlock(block1A);
             blockTree.UpdateMainChain(block1A);
 
+            await Task.Delay(100); // await for OnChainTxWatcher
+
             txPoolMock.Received().RemoveTransaction(t1.Hash, 1, true);
         }
 
         [TestCase(true)]
         [TestCase(false)]
-        public void When_block_is_moved_out_of_main_transactions_are_removed_from_tx_pool(bool isEip155Enabled)
+        public async Task When_block_is_moved_out_of_main_transactions_are_removed_from_tx_pool(bool isEip155Enabled)
         {
             MemDb blocksDb = new MemDb();
             MemDb headersDb = new MemDb();
@@ -1359,7 +1361,7 @@ namespace Nethermind.Blockchain.Test
             ITxPool txPoolMock = Substitute.For<ITxPool>();
             ISpecProvider specProvider = isEip155Enabled ? (ISpecProvider)GoerliSpecProvider.Instance : OlympicSpecProvider.Instance;
             BlockTree blockTree = new BlockTree(blocksDb, headersDb, blockInfosDb, new ChainLevelInfoRepository(blockInfosDb), specProvider, NullBloomStorage.Instance, LimboLogs.Instance);
-            new OnChainTxWatcher(blockTree, txPoolMock, specProvider);
+            new OnChainTxWatcher(blockTree, txPoolMock, specProvider, LimboLogs.Instance);
             Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
             Block block1A = Build.A.Block.WithNumber(1).WithDifficulty(2).WithTransactions(t1).WithParent(block0).TestObject;
             Block block1B = Build.A.Block.WithNumber(1).WithDifficulty(3).WithTransactions(t2).WithParent(block0).TestObject;
@@ -1370,6 +1372,8 @@ namespace Nethermind.Blockchain.Test
             blockTree.SuggestBlock(block1A);
             blockTree.UpdateMainChain(block1A);
             blockTree.UpdateMainChain(block1B);
+
+            await Task.Delay(100); // await for OnChainTxWatcher
 
             txPoolMock.Received().AddTransaction(t1, isEip155Enabled ? TxHandlingOptions.None : TxHandlingOptions.PreEip155Signing);
         }

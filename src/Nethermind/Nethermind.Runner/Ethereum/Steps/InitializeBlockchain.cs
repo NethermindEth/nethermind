@@ -92,7 +92,7 @@ namespace Nethermind.Runner.Ethereum.Steps
 
             var txPool = _api.TxPool = CreateTxPool(txStorage);
 
-            var onChainTxWatcher = new OnChainTxWatcher(_get.BlockTree, txPool, _get.SpecProvider);
+            var onChainTxWatcher = new OnChainTxWatcher(_get.BlockTree, txPool, _get.SpecProvider, _api.LogManager);
             _get.DisposeStack.Push(onChainTxWatcher);
 
             _api.BlockPreprocessor.AddFirst(
