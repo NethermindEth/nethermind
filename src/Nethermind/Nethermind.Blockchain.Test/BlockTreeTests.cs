@@ -1342,7 +1342,7 @@ namespace Nethermind.Blockchain.Test
             blockTree.SuggestBlock(block1A);
             blockTree.UpdateMainChain(block1A);
 
-            await Task.Delay(10); // await for OnChainTxWatcher
+            await Task.Delay(50); // await for OnChainTxWatcher
 
             txPoolMock.Received().RemoveTransaction(t1.Hash, 1, true);
         }
@@ -1373,7 +1373,7 @@ namespace Nethermind.Blockchain.Test
             blockTree.UpdateMainChain(block1A);
             blockTree.UpdateMainChain(block1B);
 
-            await Task.Delay(10); // await for OnChainTxWatcher
+            await Task.Delay(50); // await for OnChainTxWatcher
 
             txPoolMock.Received().AddTransaction(t1, isEip155Enabled ? TxHandlingOptions.None : TxHandlingOptions.PreEip155Signing);
         }
