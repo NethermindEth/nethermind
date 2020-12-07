@@ -135,8 +135,8 @@ namespace Nethermind.DataMarketplace.Test.Services
             uint claimableAfter = timestamp + (uint)TimeSpan.FromDays(1).TotalSeconds;
             AbiSignature earlyRefundAbiDef = new AbiSignature("earlyRefund", new AbiBytes(32), new AbiUInt(32));
             byte[] earlyRefundData = _abiEncoder.Encode(AbiEncodingStyle.Packed, earlyRefundAbiDef, depositId.Bytes, claimableAfter);
-            RefundService refundService = new RefundService(_ndmBridge, _abiEncoder, _depositRepository, _contractAddress, LimboLogs.Instance, _wallet);
-            
+            RefundService refundService = new RefundService(_ndmBridge, _abiEncoder, _depositRepository,
+                _contractAddress, LimboLogs.Instance, _wallet);
             // it will not work so far as we do everything within the same block and timestamp is wrong
             
             uint newTimestamp = 1546871954 + (uint)TimeSpan.FromDays(2).TotalSeconds;
