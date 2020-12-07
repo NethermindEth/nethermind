@@ -98,7 +98,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             if (_api.EngineSigner == null) throw new StepDependencyException(nameof(_api.EngineSigner));
 
             var chainSpecAuRa = _api.ChainSpec.AuRa;
-            _txPermissionFilter = TxFilterBuilders.CreateTxPermissionFilter(_api, readOnlyTxProcessorSource, readOnlyTxProcessingEnv.StateProvider);
+            _txPermissionFilter = TxFilterBuilders.CreateTxPermissionFilter(_api, readOnlyTxProcessorSource);
 
             _validator = new AuRaValidatorFactory(
                     readOnlyTxProcessingEnv.StateProvider,
@@ -146,16 +146,17 @@ namespace Nethermind.Runner.Ethereum.Steps
 
         protected override TxPoolTxSource CreateTxPoolTxSource(ReadOnlyTxProcessingEnv processingEnv, ReadOnlyTxProcessorSource readOnlyTxProcessorSource)
         {
-            if (_api.MainBlockProcessor == null) throw new StepDependencyException(nameof(_api.MainBlockProcessor));
+            // We need special one for TxPriority as its following Head separately with events and we want rules from Head, not produced block
+            ReadOnlyTxProcessorSource readOnlyTxProcessorSourceForTxPriority = 
+                new ReadOnlyTxProcessorSource(_api.DbProvider, _api.BlockTree, _api.SpecProvider, _api.LogManager);
             
-            (_txPriorityContract, _localDataSource) = TxFilterBuilders.CreateTxPrioritySources(_auraConfig, _api, readOnlyTxProcessorSource);
+            (_txPriorityContract, _localDataSource) = TxFilterBuilders.CreateTxPrioritySources(_auraConfig, _api, readOnlyTxProcessorSourceForTxPriority);
 
             if (_txPriorityContract != null || _localDataSource != null)
             {
                 _minGasPricesContractDataStore = TxFilterBuilders.CreateMinGasPricesDataStore(_api, _txPriorityContract, _localDataSource)!;
                 _api.DisposeStack.Push(_minGasPricesContractDataStore);                
 
-                IBlockProcessor? blockProcessor = _api.MainBlockProcessor;
                 ContractDataStore<Address, IContractDataStoreCollection<Address>> whitelistContractDataStore = new ContractDataStoreWithLocalData<Address>(
                     new HashSetContractDataStoreCollection<Address>(),
                     _txPriorityContract?.SendersWhitelist,
@@ -270,7 +271,6 @@ namespace Nethermind.Runner.Ethereum.Steps
                 NethermindApi.Config<IMiningConfig>(),
                 _api,
                 readOnlyTxProcessorSource,
-                readOnlyTxProcessingEnv.StateProvider,
                 _minGasPricesContractDataStore);
 
         private IGasLimitCalculator CreateGasLimitCalculator(ReadOnlyTxProcessorSource readOnlyTxProcessorSource)
