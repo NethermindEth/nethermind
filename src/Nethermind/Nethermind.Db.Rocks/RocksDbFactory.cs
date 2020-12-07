@@ -14,7 +14,6 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using Nethermind.Core;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Logging;
 
@@ -25,42 +24,32 @@ namespace Nethermind.Db.Rocks
         private readonly IDbConfig _dbConfig;
         private readonly ILogManager _logManager;
         private readonly string _basePath;
-        private readonly DisposableStack _disposeStack;
-        public RocksDbFactory(IDbConfig dbConfig, ILogManager logManager, string basePath, DisposableStack disposeStack)
+        public RocksDbFactory(IDbConfig dbConfig, ILogManager logManager, string basePath)
         {
             _dbConfig = dbConfig;
             _logManager = logManager;
             _basePath = basePath;
-            _disposeStack = disposeStack;
         }
 
         public IDb CreateDb(RocksDbSettings rocksDbSettings)
         { 
-            var db = new SimpleRocksDb(_basePath,
+            return new SimpleRocksDb(_basePath, 
                 rocksDbSettings,
-                _dbConfig,
+                _dbConfig, 
                 _logManager);
-            _disposeStack.Push(db);
-            return db;
         }
 
         public ISnapshotableDb CreateSnapshotableDb(RocksDbSettings rocksDbSettings)
         {
-            var rocksDb = CreateDb(rocksDbSettings);
-            var stateDb = new StateDb(CreateDb(rocksDbSettings));
-            _disposeStack.Push(stateDb);
-            _disposeStack.Push(rocksDb);
-            return stateDb;
+            return new StateDb(CreateDb(rocksDbSettings));
         }
 
         public IColumnsDb<T> CreateColumnsDb<T>(RocksDbSettings rocksDbSettings)
         {
-            var rocksDb = new SimpleColumnRocksDb<T>(_basePath,
+            return new SimpleColumnRocksDb<T>(_basePath,
                 rocksDbSettings,
                 _dbConfig,
                 _logManager);
-            _disposeStack.Push(rocksDb);
-            return rocksDb;
         }
     }
 }

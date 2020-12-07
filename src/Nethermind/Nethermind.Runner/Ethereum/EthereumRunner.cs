@@ -76,7 +76,7 @@ namespace Nethermind.Runner.Ethereum
                 await Stop(() => disposable.DisposeAsync(), $"Disposing {disposable}");
             }
 
-           // Stop(() => _api.DbProvider?.Dispose(), "Closing DBs");
+            Stop(() => _api.DbProvider?.Dispose(), "Closing DBs");
 
             if (_logger.IsInfo) _logger.Info("All DBs closed.");
 

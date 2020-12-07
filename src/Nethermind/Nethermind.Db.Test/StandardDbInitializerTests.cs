@@ -19,7 +19,6 @@ using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
-using Nethermind.Core;
 using Nethermind.Db.Rocks;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Logging;
@@ -34,7 +33,6 @@ namespace Nethermind.Db.Test
     public class StandardDbInitializerTests
     {
         private string _folderWithDbs;
-        private DisposableStack _disposeStack = new DisposableStack();
 
         [OneTimeSetUp]
         public void Initialize()
@@ -48,7 +46,7 @@ namespace Nethermind.Db.Test
         {
             using (IDbProvider dbProvider = new DbProvider(DbModeHint.Mem))
             {
-                var rocksDbFactory = new RocksDbFactory(new DbConfig(), LimboLogs.Instance, Path.Combine(_folderWithDbs, "mem"), new Core.DisposableStack());
+                var rocksDbFactory = new RocksDbFactory(new DbConfig(), LimboLogs.Instance, Path.Combine(_folderWithDbs, "mem"));
                 var initializer = new StandardDbInitializer(dbProvider, rocksDbFactory, new MemDbFactory());
                 await initializer.InitStandardDbsAsync(useReceipts);
                 var receiptsType = useReceipts ? typeof(MemColumnsDb<ReceiptsColumns>) : typeof(ReadOnlyColumnsDb<ReceiptsColumns>);
@@ -62,7 +60,7 @@ namespace Nethermind.Db.Test
         {
             using (IDbProvider dbProvider = new DbProvider(DbModeHint.Persisted))
             {
-                var rocksDbFactory = new RocksDbFactory(new DbConfig(), LimboLogs.Instance, Path.Combine(_folderWithDbs, $"rocks_{useReceipts}"), new Core.DisposableStack());
+                var rocksDbFactory = new RocksDbFactory(new DbConfig(), LimboLogs.Instance, Path.Combine(_folderWithDbs, $"rocks_{useReceipts}"));
                 var initializer = new StandardDbInitializer(dbProvider, rocksDbFactory, new MemDbFactory());
                 await initializer.InitStandardDbsAsync(useReceipts);
                 var receiptsType = useReceipts ? typeof(SimpleColumnRocksDb<ReceiptsColumns>) : typeof(ReadOnlyColumnsDb<ReceiptsColumns>);
@@ -76,7 +74,7 @@ namespace Nethermind.Db.Test
         {
             using (IDbProvider dbProvider = new DbProvider(DbModeHint.Persisted))
             {
-                var rocksDbFactory = new RocksDbFactory(new DbConfig(), LimboLogs.Instance, Path.Combine(_folderWithDbs, $"readonly_{useReceipts}"), new Core.DisposableStack());
+                var rocksDbFactory = new RocksDbFactory(new DbConfig(), LimboLogs.Instance, Path.Combine(_folderWithDbs, $"readonly_{useReceipts}"));
                 var initializer = new StandardDbInitializer(dbProvider, rocksDbFactory, new MemDbFactory());
                 await initializer.InitStandardDbsAsync(useReceipts);
                 using (var readonlyDbProvider = new ReadOnlyDbProvider(dbProvider, true))
@@ -102,14 +100,8 @@ namespace Nethermind.Db.Test
         }
 
         [OneTimeTearDown]
-        public async Task TearDown()
+        public void TearDown()
         {
-            while (_disposeStack.Count != 0)
-            {
-                IAsyncDisposable disposable = _disposeStack.Pop();
-                await disposable.DisposeAsync();
-            }
-
             if (Directory.Exists(_folderWithDbs))
                 Directory.Delete(_folderWithDbs, true);
         }
