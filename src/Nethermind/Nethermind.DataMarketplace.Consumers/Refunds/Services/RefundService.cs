@@ -90,7 +90,7 @@ namespace Nethermind.DataMarketplace.Consumers.Refunds.Services
             byte[] txData = _abiEncoder.Encode(AbiEncodingStyle.IncludeSignature, ContractData.ClaimEarlyRefundSig,
                 earlyRefundClaim.AssetId.Bytes, earlyRefundClaim.Units, earlyRefundClaim.Value,
                 earlyRefundClaim.ExpiryTime, earlyRefundClaim.Pepper, earlyRefundClaim.Provider,
-                earlyRefundClaim.ClaimableAfter, (byte) earlyRefundClaim.Signature.V, earlyRefundClaim.Signature.R,
+                earlyRefundClaim.ClaimableAfter, earlyRefundClaim.Signature.V, earlyRefundClaim.Signature.R,
                 earlyRefundClaim.Signature.S, onBehalfOf);
             Transaction transaction = new Transaction();
             transaction.Value = 0;

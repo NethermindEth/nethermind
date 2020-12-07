@@ -124,10 +124,6 @@ namespace Nethermind.Abi
                 bytes = new byte[2];
                 BinaryPrimitives.WriteUInt16BigEndian(bytes, ushortInput);
             }
-            else if (arg is byte byteInput)
-            {
-                bytes = new[] {byteInput};
-            }
             else
             {
                 throw new AbiException(AbiEncodingExceptionMessage);
