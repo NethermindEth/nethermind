@@ -81,7 +81,8 @@ namespace Nethermind.DataMarketplace.Test.Services
             // calls revert and cannot reuse the same state - use only for manual debugging
 //            Assert.True(depositService.VerifyDeposit(deposit.Id), "deposit verified");
 
-            RefundService refundService = new RefundService(_ndmBridge, _abiEncoder, _depositRepository, _contractAddress, LimboLogs.Instance);
+            RefundService refundService = new RefundService(_ndmBridge, _abiEncoder, _depositRepository,
+                _contractAddress, LimboLogs.Instance, _wallet);
 
             // it will not work so far as we do everything within the same block and timestamp is wrong
             
@@ -134,8 +135,8 @@ namespace Nethermind.DataMarketplace.Test.Services
             uint claimableAfter = timestamp + (uint)TimeSpan.FromDays(1).TotalSeconds;
             AbiSignature earlyRefundAbiDef = new AbiSignature("earlyRefund", new AbiBytes(32), new AbiUInt(32));
             byte[] earlyRefundData = _abiEncoder.Encode(AbiEncodingStyle.Packed, earlyRefundAbiDef, depositId.Bytes, claimableAfter);
-            RefundService refundService = new RefundService(_ndmBridge, _abiEncoder, _depositRepository, _contractAddress, LimboLogs.Instance);
-
+            RefundService refundService = new RefundService(_ndmBridge, _abiEncoder, _depositRepository,
+                _contractAddress, LimboLogs.Instance, _wallet);
             // it will not work so far as we do everything within the same block and timestamp is wrong
             
             uint newTimestamp = 1546871954 + (uint)TimeSpan.FromDays(2).TotalSeconds;
@@ -158,7 +159,7 @@ namespace Nethermind.DataMarketplace.Test.Services
         {
             const RefundReason reason = RefundReason.DataDiscontinued;
             var ticket = new EarlyRefundTicket(TestItem.KeccakA, 0, null);
-            var refundService = new RefundService(_ndmBridge, _abiEncoder, _depositRepository, _contractAddress, LimboLogs.Instance);
+            var refundService = new RefundService(_ndmBridge, _abiEncoder, _depositRepository, _contractAddress, LimboLogs.Instance, _wallet);
             await refundService.SetEarlyRefundTicketAsync(ticket, reason);
             await _depositRepository.Received().GetAsync(ticket.DepositId);
             await _depositRepository.DidNotReceiveWithAnyArgs().UpdateAsync(null);
@@ -171,7 +172,8 @@ namespace Nethermind.DataMarketplace.Test.Services
             var deposit = new Deposit(TestItem.KeccakA, 1, 1, 1);
             var depositDetails = new DepositDetails(deposit, null, null, null, 0, null, 0);
             var ticket = new EarlyRefundTicket(deposit.Id, 0, null);
-            var refundService = new RefundService(_ndmBridge, _abiEncoder, _depositRepository, _contractAddress, LimboLogs.Instance);
+            var refundService = new RefundService(_ndmBridge, _abiEncoder, _depositRepository, _contractAddress,
+                LimboLogs.Instance, _wallet);
             _depositRepository.GetAsync(ticket.DepositId).Returns(depositDetails);
             await refundService.SetEarlyRefundTicketAsync(ticket, reason);
             depositDetails.EarlyRefundTicket.Should().Be(ticket);
