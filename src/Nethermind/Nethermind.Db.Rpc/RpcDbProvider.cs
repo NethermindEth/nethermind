@@ -38,7 +38,8 @@ namespace Nethermind.Db.Rpc
             EthRequestsDb = new ReadOnlyDb(new RpcDb(DbNames.EthRequests, serializer, client, logManager, recordDbProvider?.EthRequestsDb), true);
             BloomDb = new ReadOnlyDb(new RpcDb(DbNames.Bloom, serializer, client, logManager, recordDbProvider?.BloomDb), true);
             BaselineTreeDb = new ReadOnlyDb(new RpcDb(DbNames.BaselineTree, serializer, client, logManager, recordDbProvider?.BaselineTreeDb), true);
-            BaselineTreeMetadataDb = new ReadOnlyDb(new RpcDb(DbNames.BaselineTreeMetadata, serializer, client, logManager, recordDbProvider?.BaselineTreeMetadataDb), true);
+            BaselineTreeMetadataDb = new ReadOnlyDb(new RpcDb(DbNames.BaselineTreeMetadata, serializer, client, logManager, recordDbProvider?.BaselineTreeMetadataDb), true); 
+            ChtDb = new ReadOnlyDb(new RpcDb(DbNames.CHT, serializer, client, logManager, recordDbProvider?.ChtDb), true);
         }
         
         public ISnapshotableDb StateDb { get; }
