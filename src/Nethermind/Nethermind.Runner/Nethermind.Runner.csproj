@@ -24,6 +24,7 @@
     <PackageReference Include="NLog" Version="4.7.2" />
     <PackageReference Include="Seq.Api" Version="5.1.2" />
     <PackageReference Include="System.IO.Abstractions" Version="12.1.10" />
+    <PackageReference Include="YamlDotNet" Version="9.1.0" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Nethermind.Api\Nethermind.Api.csproj" />
