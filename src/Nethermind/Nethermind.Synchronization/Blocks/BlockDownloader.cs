@@ -445,13 +445,13 @@ namespace Nethermind.Synchronization.Blocks
                     TxReceipt[] txReceipts = result[i];
                     if (!context.TrySetReceipts(i + offset, txReceipts, out var block))
                     {
-                        throw new EthSyncException($"{peer} sent invalid receipts for block {block.ToString(Block.Format.Short)}.");
+                        if (_logger.IsDebug) _logger.Debug($"{peer} sent invalid receipts for block {block.ToString(Block.Format.Short)}.");
                     }
                 }
 
                 if (result.Length == 0)
                 {
-                    throw new EthSyncException("Empty receipts response received");
+                    if (_logger.IsDebug) _logger.Debug("Empty receipts response received");
                 }
 
                 offset += result.Length;
