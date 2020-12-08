@@ -131,7 +131,7 @@ namespace Nethermind.Consensus.AuRa.Contracts.DataStore
                 }
                 catch (AbiException e)
                 {
-                    if (_logger.IsError) _logger.Error("Failed to update data from contract.", e);
+                    if (_logger.IsError) _logger.Error($"Failed to update data from contract on block {blockHeader.ToString(BlockHeader.Format.FullHashAndNumber)} {new StackTrace()}.", e);
                 }
             }
         }
