@@ -44,10 +44,15 @@ namespace Nethermind.Db.Rpc
 
         public void Dispose()
         {
+            _logger.Info($"Disposing RPC DB {Name}");
             if (_recordDb is StateDb stateDb)
             {
-                stateDb.Commit();
+                {
+                    stateDb.Commit(); stateDb.Commit();
+                }
             }
+
+            _recordDb.Dispose();
         }
 
         public string Name { get; } = "RpcDb";
@@ -96,7 +101,7 @@ namespace Nethermind.Db.Rpc
             byte[] value = null;
             if (response.Result != null)
             {
-                value = Bytes.FromHexString((string) response.Result);
+                value = Bytes.FromHexString((string)response.Result);
                 if (_recordDb != null)
                 {
                     _recordDb[key] = value;
