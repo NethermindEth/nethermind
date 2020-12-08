@@ -28,7 +28,7 @@ namespace Nethermind.DataMarketplace.Core.Domain
         ProviderNotFound,
         InvalidSignature,
         DataAssetNotFound,
-        DataAssetUnavailable,
+        DataAssetClosed,
         InvalidDataRequestUnits,
         InvalidDataRequestValue,
         DepositVerified
