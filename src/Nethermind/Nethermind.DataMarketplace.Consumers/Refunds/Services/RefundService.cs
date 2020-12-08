@@ -67,7 +67,9 @@ namespace Nethermind.DataMarketplace.Consumers.Refunds.Services
 
         public async Task<Keccak?> ClaimRefundAsync(Address onBehalfOf, RefundClaim refundClaim, UInt256 gasPrice)
         {
-            byte[] txData = _abiEncoder.Encode(AbiEncodingStyle.IncludeSignature, ContractData.ClaimRefundSig, refundClaim.AssetId.Bytes, refundClaim.Units, refundClaim.Value, refundClaim.ExpiryTime, refundClaim.Pepper, refundClaim.Provider, onBehalfOf);
+            byte[] txData = _abiEncoder.Encode(AbiEncodingStyle.IncludeSignature, ContractData.ClaimRefundSig, 
+                refundClaim.AssetId.Bytes, refundClaim.Units, refundClaim.Value, refundClaim.ExpiryTime, 
+                refundClaim.Pepper, refundClaim.Provider, onBehalfOf);
             Transaction transaction = new Transaction();
             transaction.Value = 0;
             transaction.Data = txData;
@@ -75,6 +77,9 @@ namespace Nethermind.DataMarketplace.Consumers.Refunds.Services
             transaction.SenderAddress = onBehalfOf;
             transaction.GasLimit = (long) GasLimit;
             transaction.GasPrice = gasPrice;
+            transaction.Nonce = await _blockchainBridge.GetNonceAsync(onBehalfOf);
+            
+            _wallet.Sign(transaction, (int)await _blockchainBridge.GetNetworkIdAsync());
 
             if (_logger.IsInfo)
             {
