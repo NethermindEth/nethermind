@@ -114,7 +114,7 @@ namespace Nethermind.Wallet
 
         private ProtectedPrivateKey LoadKeyForAccount(string account)
         {
-            if (account != null)
+            if (!string.IsNullOrEmpty(account))
             {
                 Address blockAuthor = new Address(Bytes.FromHexString(account));
                 SecureString password = _passwordProvider.GetPassword(blockAuthor);

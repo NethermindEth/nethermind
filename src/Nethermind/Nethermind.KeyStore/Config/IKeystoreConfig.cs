@@ -63,7 +63,7 @@ namespace Nethermind.KeyStore.Config
         [ConfigItem(Description = "See https://github.com/ethereum/wiki/wiki/Web3-Secret-Storage-Definition", DefaultValue = "16")]
         int IVSize { get; set; }
 
-        [ConfigItem(Description = "Plain private key to be used in test scenarios", DefaultValue = "")]
+        [ConfigItem(Description = "Plain private key to be used in test scenarios")]
         string TestNodeKey { get; set; }
 
         [ConfigItem(Description = "Account to be used by the block author / coinbase, to be loaded from keystore")]
