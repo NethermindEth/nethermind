@@ -66,8 +66,14 @@ namespace Nethermind.KeyStore.Config
         [ConfigItem(Description = "Plain private key to be used in test scenarios")]
         string TestNodeKey { get; set; }
 
-        [ConfigItem(Description = "Account to be used by the block author / coinbase")]
+        [ConfigItem(Description = "Account to be used by the block author / coinbase, to be loaded from keystore")]
         string BlockAuthorAccount { get; set; }
+        
+        [ConfigItem(Description = "Account to be used by the node for network communication (enode), to be loaded from keystore")]
+        string EnodeAccount { get; set; }
+        
+        [ConfigItem(Description = "Path to key file to be used by the node for network communication (enode)")]
+        string EnodeKeyFile { get; set; }
 
         [ConfigItem(Description = "Passwords to use to unlock accounts from the UnlockAccounts configuration item. Only used when no PasswordFiles provided.", DefaultValue = "System.String[]")]
         string[] Passwords { get; set; }
