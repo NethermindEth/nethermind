@@ -91,7 +91,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
                 }
                 catch (AbiException e)
                 {
-                    if (_logger.IsError) _logger.Error($"Error calling tx permissions contract {new StackTrace()}.", e);
+                    if (_logger.IsError) _logger.Error($"Error calling tx permissions contract on {parentHeader.ToString(BlockHeader.Format.FullHashAndNumber)} {new StackTrace()}.", e);
                 }
             }
 
