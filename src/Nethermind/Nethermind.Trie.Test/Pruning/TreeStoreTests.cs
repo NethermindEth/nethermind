@@ -45,18 +45,17 @@ namespace Nethermind.Trie.Test.Pruning
         public void FindCachedOrUnknown_CorrectlyCalculatedMemoryUsedByDirtyCache()
         {
             TrieStore trieStore = new TrieStore(new MemDb(), No.Pruning, No.Persistence, _logManager);
-            Assert.AreEqual(trieStore.MemoryUsedByDirtyCache, 0);
             trieStore.FindCachedOrUnknown(TestItem.KeccakA);
             var oneKeccakSize = trieStore.MemoryUsedByDirtyCache;
             Assert.AreNotEqual(oneKeccakSize, 0);
             trieStore.FindCachedOrUnknown(TestItem.KeccakB);
-            Assert.AreNotEqual(2 * oneKeccakSize, 0);
+            Assert.AreEqual(2 * oneKeccakSize, trieStore.MemoryUsedByDirtyCache);
             trieStore.FindCachedOrUnknown(TestItem.KeccakB);
-            Assert.AreNotEqual(2 * oneKeccakSize, 0);
+            Assert.AreEqual(2 * oneKeccakSize, trieStore.MemoryUsedByDirtyCache);
             trieStore.FindCachedOrUnknown(TestItem.KeccakC);
-            Assert.AreNotEqual(3 * oneKeccakSize, 0);
+            Assert.AreEqual(3 * oneKeccakSize, trieStore.MemoryUsedByDirtyCache);
             trieStore.FindCachedOrUnknown(TestItem.KeccakD, false);
-            Assert.AreNotEqual(3 * oneKeccakSize, 0);
+            Assert.AreEqual(3 * oneKeccakSize, trieStore.MemoryUsedByDirtyCache);
         }
 
         [Test]
