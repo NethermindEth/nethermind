@@ -265,10 +265,11 @@ namespace Nethermind.Trie.Pruning
                 
                 if (addToCacheWhenNotFound)
                 {
-                    _dirtyNodesCache.TryAdd(trieNode.Keccak!, trieNode);
+                    if (_dirtyNodesCache.TryAdd(trieNode.Keccak!, trieNode))
+                    {
+                        MemoryUsedByDirtyCache += trieNode.GetMemorySize(false);
+                    }
                 }
-
-                MemoryUsedByDirtyCache += trieNode.GetMemorySize(false);
             }
             else
             {
