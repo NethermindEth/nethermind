@@ -34,7 +34,7 @@ namespace Nethermind.Core
         
         public static bool IsEnabled { get; set; }
 
-        private static ConcurrentDictionary<string, List<string>> events = new ConcurrentDictionary<string, List<string>>();
+        private static readonly ConcurrentDictionary<string, ConcurrentQueue<string>> _events = new ConcurrentDictionary<string, ConcurrentQueue<string>>();
 
         public static void Start()
         {
@@ -47,7 +47,8 @@ namespace Nethermind.Core
         private static void DumpEvents()
         {
             StringBuilder stringBuilder = new StringBuilder();
-            foreach (KeyValuePair<string,List<string>> keyValuePair in events)
+
+            foreach (KeyValuePair<string, ConcurrentQueue<string>> keyValuePair in _events)
             {
                 stringBuilder.AppendLine(keyValuePair.Key);
                 foreach (string s in keyValuePair.Value)
@@ -62,9 +63,9 @@ namespace Nethermind.Core
         [MethodImpl(MethodImplOptions.Synchronized)]
         private static void Add(IPEndPoint farAddress, string line)
         {
-            events.AddOrUpdate(farAddress.Address.MapToIPv4().ToString(), ni => new List<string>(), (s, list) =>
+            _events.AddOrUpdate(farAddress.Address.MapToIPv4().ToString(), ni => new ConcurrentQueue<string>(), (s, list) =>
             {
-                list.Add(line);
+                list.Enqueue(line);
                 return list;
             });
         }
