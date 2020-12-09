@@ -51,7 +51,7 @@ namespace Nethermind.Trie.Test.Pruning
             var oneKeccakSize = trieNode.GetMemorySize(false);
             Assert.AreEqual(startSize + oneKeccakSize, trieStore.MemoryUsedByDirtyCache);
             trieStore.FindCachedOrUnknown(TestItem.KeccakB);
-            Assert.AreEqual(2 * oneKeccakSize + startSize, trieStore.MemoryUsedByDirtyCache );
+            Assert.AreEqual(2 * oneKeccakSize + startSize, trieStore.MemoryUsedByDirtyCache);
             trieStore.FindCachedOrUnknown(TestItem.KeccakB);
             Assert.AreEqual(2 * oneKeccakSize + startSize, trieStore.MemoryUsedByDirtyCache);
             trieStore.FindCachedOrUnknown(TestItem.KeccakC);

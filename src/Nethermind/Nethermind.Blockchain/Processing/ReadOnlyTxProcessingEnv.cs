@@ -43,7 +43,6 @@ namespace Nethermind.Blockchain.Processing
             ILogManager logManager)
         {
             DbProvider = readOnlyDbProvider;
-            ISnapshotableDb stateDb = readOnlyDbProvider.StateDb;
             ISnapshotableDb codeDb = readOnlyDbProvider.CodeDb;
 
             ReadOnlyTrieStore readOnlyTrieStore = new ReadOnlyTrieStore(trieStore);

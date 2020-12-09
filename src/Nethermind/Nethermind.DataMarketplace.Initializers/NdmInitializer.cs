@@ -132,7 +132,7 @@ namespace Nethermind.DataMarketplace.Initializers
             string baseDbPath = configProvider.GetConfig<IInitConfig>().BaseDbPath;
             ndmApi.BaseDbPath = DbPath = Path.Combine(baseDbPath, ndmApi.NdmConfig.DatabasePath);
 
-            _ndmModule.Init();
+            await _ndmModule.Init();
             
             if (ndmApi.NdmConfig.FaucetEnabled)
             {
