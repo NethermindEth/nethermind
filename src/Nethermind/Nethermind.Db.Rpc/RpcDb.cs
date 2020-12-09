@@ -44,10 +44,13 @@ namespace Nethermind.Db.Rpc
 
         public void Dispose()
         {
+            _logger.Info($"Disposing RPC DB {Name}");
             if (_recordDb is StateDb stateDb)
             {
                 stateDb.Commit();
             }
+
+            _recordDb.Dispose();
         }
 
         public string Name { get; } = "RpcDb";

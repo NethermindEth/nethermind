@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.DataMarketplace.Core.Configs;
 using Nethermind.DataMarketplace.Core.Services;
@@ -27,27 +28,23 @@ namespace Nethermind.DataMarketplace.Test.Infrastructure
 {
     public class NdmModuleTests
     {
-        private string _baseDbPath;
-        private bool _enableUnsecuredDevWallet;
         private INdmModule _ndmModule;
         private INdmApi _ndmApi;
 
         [SetUp]
         public void Setup()
         {
-            _baseDbPath = "db";
-            _enableUnsecuredDevWallet = false;
             _ndmApi = new NdmApi(Substitute.For<INethermindApi>());
             _ndmModule = new NdmModule(_ndmApi);
         }
 
         [Test]
-        public void init_should_return_services()
+        public async Task init_should_return_services()
         {
             _ndmApi.HttpClient = Substitute.For<IHttpClient>();
             _ndmApi.ConfigManager = Substitute.For<IConfigManager>();
             _ndmApi.NdmConfig = new NdmConfig();
-            _ndmModule.Init();
+            await _ndmModule.Init();
         }
     }
 }
