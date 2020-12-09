@@ -21,7 +21,6 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
-using Nethermind.Logging;
 using Nethermind.State.Proofs;
 using Nethermind.Synchronization.Peers;
 
@@ -34,16 +33,14 @@ namespace Nethermind.Synchronization.Blocks
         private readonly PeerInfo _syncPeer;
         private readonly bool _downloadReceipts;
         private readonly IReceiptsRecovery _receiptsRecovery;
-        private readonly ILogger _logger;
 
-        public BlockDownloadContext(ISpecProvider specProvider, PeerInfo syncPeer, BlockHeader[] headers, bool downloadReceipts, IReceiptsRecovery receiptsRecovery, ILogManager logManager)
+        public BlockDownloadContext(ISpecProvider specProvider, PeerInfo syncPeer, BlockHeader[] headers, bool downloadReceipts, IReceiptsRecovery receiptsRecovery)
         {
             _indexMapping = new Dictionary<int, int>();
             _downloadReceipts = downloadReceipts;
             _receiptsRecovery = receiptsRecovery;
             _specProvider = specProvider;
             _syncPeer = syncPeer;
-            _logger = logManager.GetClassLogger();
 
             Blocks = new Block[headers.Length - 1];
             NonEmptyBlockHashes = new List<Keccak>();
@@ -103,7 +100,7 @@ namespace Nethermind.Synchronization.Blocks
             Block block = Blocks[_indexMapping[index]];
             if (body == null)
             {
-                if (_logger.IsDebug) _logger.Debug($"{_syncPeer} sent an empty body for {block.ToString(Block.Format.Short)}.");
+                throw new EthSyncException($"{_syncPeer} sent an empty body for {block.ToString(Block.Format.Short)}.");
             }
 
             block.Body = body;

@@ -267,7 +267,7 @@ namespace Nethermind.Synchronization.Blocks
 
                 if (cancellation.IsCancellationRequested) return blocksSynced; // check before every heavy operation
                 BlockHeader[] headers = await RequestHeaders(bestPeer, cancellation, currentNumber, headersToRequest);
-                BlockDownloadContext context = new BlockDownloadContext(_specProvider, bestPeer, headers, downloadReceipts, receiptsRecovery, _logManager);
+                BlockDownloadContext context = new BlockDownloadContext(_specProvider, bestPeer, headers, downloadReceipts, receiptsRecovery);
 
                 if (cancellation.IsCancellationRequested) return blocksSynced; // check before every heavy operation
                 await RequestBodies(bestPeer, cancellation, context);
@@ -445,13 +445,13 @@ namespace Nethermind.Synchronization.Blocks
                     TxReceipt[] txReceipts = result[i];
                     if (!context.TrySetReceipts(i + offset, txReceipts, out var block))
                     {
-                        if (_logger.IsDebug) _logger.Debug($"{peer} sent invalid receipts for block {block.ToString(Block.Format.Short)}.");
+                        throw new EthSyncException($"{peer} sent invalid receipts for block {block.ToString(Block.Format.Short)}.");
                     }
                 }
 
                 if (result.Length == 0)
                 {
-                    if (_logger.IsDebug) _logger.Debug("Empty receipts response received");
+                    throw new EthSyncException("Empty receipts response received");
                 }
 
                 offset += result.Length;
@@ -593,7 +593,7 @@ namespace Nethermind.Synchronization.Blocks
                     }
                     else
                     {
-                        if (_logger.IsInfo) _logger.Error($"DEBUG/ERROR Block download from {peerInfo} failed. {t.Exception}");
+                        if (_logger.IsDebug) _logger.Error($"DEBUG/ERROR Block download from {peerInfo} failed. {t.Exception}");
                         reason = "sync fault";
                     }
 
