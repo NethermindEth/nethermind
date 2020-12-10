@@ -461,13 +461,8 @@ namespace Nethermind.Trie.Pruning
         {
             while (_commitSetQueue.TryPeek(out BlockCommitSet blockCommitSet))
             {
-                // safety
-                if (_commitSetQueue.Count <= Reorganization.MaxDepth + 3)
-                {
-                    break;
-                }
 
-                if (blockCommitSet.BlockNumber < NewestKeptBlockNumber - Reorganization.MaxDepth)
+                if (blockCommitSet.BlockNumber < NewestKeptBlockNumber - Reorganization.MaxDepth - 1)
                 {
                     // if (_logger.IsWarn) _logger.Warn($"Removing historical ({_commitSetQueue.Count}) {blockCommitSet.BlockNumber} < {NewestKeptBlockNumber} - 512");    
                     _commitSetQueue.TryDequeue(out _);
@@ -670,10 +665,18 @@ namespace Nethermind.Trie.Pruning
             // from the past (by going max reorg back)
 
             BlockCommitSet? persistenceCandidate = null;
+            bool firstCandidateFound = false;
             while (_commitSetQueue.TryDequeue(out BlockCommitSet? blockCommitSet))
             {
                 if (blockCommitSet != null)
                 {
+                    if (firstCandidateFound == false)
+                    {
+                        persistenceCandidate = blockCommitSet;
+                        _logger.Warn($"New persistence candidate {persistenceCandidate}");
+                        firstCandidateFound = true;
+                        continue;
+                    }
                     if (blockCommitSet.BlockNumber <= NewestKeptBlockNumber - Reorganization.MaxDepth)
                     {
                         persistenceCandidate = blockCommitSet;
