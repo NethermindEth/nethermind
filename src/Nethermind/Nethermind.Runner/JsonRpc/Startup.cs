@@ -45,7 +45,14 @@ namespace Nethermind.Runner
 
         public void ConfigureServices(IServiceCollection services)
         {
-            services.Configure<KestrelServerOptions>(options => { options.AllowSynchronousIO = true; });
+            var sp = services.BuildServiceProvider();
+            IConfigProvider configProvider = sp.GetService<IConfigProvider>();
+            IJsonRpcConfig jsonRpcConfig = configProvider.GetConfig<IJsonRpcConfig>();
+
+            services.Configure<KestrelServerOptions>(options => {
+                options.AllowSynchronousIO = true;
+                options.Limits.MaxRequestBodySize = jsonRpcConfig.MaxRequestBodySize;
+            });
             Bootstrap.Instance.RegisterJsonRpcServices(services);
             services.AddControllers();
             string corsOrigins = Environment.GetEnvironmentVariable("NETHERMIND_CORS_ORIGINS") ?? "*";
