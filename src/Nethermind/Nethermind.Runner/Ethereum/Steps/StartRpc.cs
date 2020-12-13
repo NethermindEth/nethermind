@@ -77,7 +77,8 @@ namespace Nethermind.Runner.Ethereum.Steps
                     jsonRpcProcessor,
                     _api.WebSocketsManager!,
                     _api.ConfigProvider,
-                    _api.LogManager);
+                    _api.LogManager,
+                    _api);
 
                 await jsonRpcRunner.Start(cancellationToken).ContinueWith(x =>
                 {

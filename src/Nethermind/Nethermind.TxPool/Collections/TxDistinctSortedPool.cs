@@ -18,13 +18,14 @@
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Logging;
 
 namespace Nethermind.TxPool.Collections
 {
     public class TxDistinctSortedPool : DistinctValueSortedPool<Keccak, Transaction, Address>
     {
-        public TxDistinctSortedPool(int capacity, IComparer<Transaction> comparer = null) 
-            : base(capacity, comparer ?? TxPool.DefaultComparer, CompetingTransactionEqualityComparer.Instance)
+        public TxDistinctSortedPool(int capacity, ILogManager logManager, IComparer<Transaction> comparer = null) 
+            : base(capacity, comparer ?? TxPool.DefaultComparer, CompetingTransactionEqualityComparer.Instance, logManager)
         {
         }
 

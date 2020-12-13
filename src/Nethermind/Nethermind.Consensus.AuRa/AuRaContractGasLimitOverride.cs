@@ -17,6 +17,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using Nethermind.Abi;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Core;
@@ -102,7 +103,7 @@ namespace Nethermind.Consensus.AuRa
             }
             catch (AbiException e)
             {
-                if (_logger.IsError) _logger.Error("Contract call failed. Not changing the block gas limit.", e);
+                if (_logger.IsError) _logger.Error($"Contract call failed. Not changing the block gas limit on block {parent.ToString(BlockHeader.Format.FullHashAndNumber)} {new StackTrace()}.", e);
                 return null;
             }
         }

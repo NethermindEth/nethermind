@@ -19,6 +19,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
+using System.Threading.Tasks;
 using Nethermind.Abi;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
@@ -37,7 +38,8 @@ namespace Nethermind.Consensus.AuRa.Contracts.DataStore
         private readonly IReceiptFinder _receiptFinder;
         private readonly IBlockTree _blockTree;
         private Keccak _lastHash;
-        protected readonly ILogger _logger;
+        private readonly object _lock = new object();
+        private readonly ILogger _logger;
 
         protected internal ContractDataStore(TCollection collection, IDataContract<T> dataContract, IBlockTree blockTree, IReceiptFinder receiptFinder, ILogManager logManager)
         {
@@ -49,19 +51,28 @@ namespace Nethermind.Consensus.AuRa.Contracts.DataStore
             blockTree.NewHeadBlock += OnNewHead;
         }
 
-        [MethodImpl(MethodImplOptions.Synchronized)]
         public IEnumerable<T> GetItemsFromContractAtBlock(BlockHeader blockHeader)
         {
             GetItemsFromContractAtBlock(blockHeader, blockHeader.Hash == _lastHash);
             return Collection.GetSnapshot();
         }
-        
-        
-        [MethodImpl(MethodImplOptions.Synchronized)]
+
         private void OnNewHead(object sender, BlockEventArgs e)
         {
-            BlockHeader header = e.Block.Header;
-            GetItemsFromContractAtBlock(header, header.ParentHash == _lastHash, _receiptFinder.Get(e.Block));
+            // we don't want this to be on main processing thread
+            Task.Run(() => Refresh(e.Block))
+                .ContinueWith(t =>
+                {
+                    if (t.IsFaulted)
+                    {
+                        if (_logger.IsError) _logger.Error($"Couldn't load contract data from block {e.Block.ToString(Block.Format.FullHashAndNumber)}.", t.Exception);
+                    }
+                });
+        }
+
+        private void Refresh(Block block)
+        {
+            GetItemsFromContractAtBlock(block.Header, block.Header.ParentHash == _lastHash, _receiptFinder.Get(block));
         }
         
         private void GetItemsFromContractAtBlock(BlockHeader blockHeader, bool isConsecutiveBlock, TxReceipt[] receipts = null)
@@ -76,20 +87,23 @@ namespace Nethermind.Consensus.AuRa.Contracts.DataStore
                 {
                     bool dataChanged = true;
                     IEnumerable<T> items;
-                    
-                    if (canGetFullStateFromReceipts)
+
+                    lock (_lock)
                     {
-                        dataChanged = _dataContract.TryGetItemsChangedFromBlock(blockHeader, receipts, out items);
-                        
-                        if (!dataChanged && !isConsecutiveBlock)
+                        if (canGetFullStateFromReceipts)
+                        {
+                            dataChanged = _dataContract.TryGetItemsChangedFromBlock(blockHeader, receipts, out items);
+
+                            if (!dataChanged && !isConsecutiveBlock)
+                            {
+                                items = _dataContract.GetAllItemsFromBlock(blockHeader);
+                                dataChanged = true;
+                            }
+                        }
+                        else
                         {
                             items = _dataContract.GetAllItemsFromBlock(blockHeader);
-                            dataChanged = true;
                         }
-                    }
-                    else
-                    {
-                        items = _dataContract.GetAllItemsFromBlock(blockHeader);
                     }
 
                     if (dataChanged)
@@ -117,7 +131,7 @@ namespace Nethermind.Consensus.AuRa.Contracts.DataStore
                 }
                 catch (AbiException e)
                 {
-                    if (_logger.IsError) _logger.Error("Failed to update data from contract.", e);
+                    if (_logger.IsError) _logger.Error($"Failed to update data from contract on block {blockHeader.ToString(BlockHeader.Format.FullHashAndNumber)} {new StackTrace()}.", e);
                 }
             }
         }

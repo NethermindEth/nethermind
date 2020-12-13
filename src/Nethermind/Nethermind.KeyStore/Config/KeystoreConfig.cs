@@ -52,6 +52,10 @@ namespace Nethermind.KeyStore.Config
         
         public string BlockAuthorAccount { get; set; }
         
+        public string EnodeAccount { get; set; }
+        
+        public string EnodeKeyFile { get; set; }
+
         public string[] Passwords { get; set; } = Array.Empty<string>();
         
         public string[] PasswordFiles { get; set; } = Array.Empty<string>();
