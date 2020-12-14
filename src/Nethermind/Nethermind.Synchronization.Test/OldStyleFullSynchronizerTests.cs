@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -47,11 +47,11 @@ namespace Nethermind.Synchronization.Test
         private readonly TimeSpan _standardTimeoutUnit = TimeSpan.FromMilliseconds(4000);
         
         [SetUp]
-        public void Setup()
+        public async Task Setup()
         {
             _genesisBlock = Build.A.Block.WithNumber(0).TestObject;
             _blockTree = Build.A.BlockTree(_genesisBlock).OfChainLength(1).TestObject;
-            MemDbProvider dbProvider = new MemDbProvider();
+            IDbProvider dbProvider = await TestMemDbProvider.InitAsync();
             _stateDb = dbProvider.StateDb;
             _codeDb = dbProvider.CodeDb;
             _receiptStorage = Substitute.For<IReceiptStorage>();

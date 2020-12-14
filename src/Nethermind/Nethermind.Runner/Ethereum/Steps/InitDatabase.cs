@@ -21,7 +21,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Blockchain.Synchronization;
-using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.Db.Rocks;
 using Nethermind.Db.Rocks.Config;
@@ -59,7 +58,10 @@ namespace Nethermind.Runner.Ethereum.Steps
 
             try
             {
-                _api.DbProvider = await GetDbProvider(initConfig, dbConfig, initConfig.StoreReceipts || syncConfig.DownloadReceiptsInFastSync);
+                var useReceiptsDb = initConfig.StoreReceipts || syncConfig.DownloadReceiptsInFastSync;
+                InitDbApi(initConfig, dbConfig, initConfig.StoreReceipts || syncConfig.DownloadReceiptsInFastSync);
+                var dbInitalizer = new StandardDbInitializer(_api.DbProvider, _api.RocksDbFactory, _api.MemDbFactory);
+                await dbInitalizer.InitStandardDbsAsync(useReceiptsDb);
                 if (syncConfig.BeamSync)
                 {
                     _api.SyncModeSelector = new PendingSyncModeSelector();
@@ -74,32 +76,34 @@ namespace Nethermind.Runner.Ethereum.Steps
             }
         }
 
-        private async Task<IDbProvider> GetDbProvider(IInitConfig initConfig, IDbConfig dbConfig, bool storeReceipts)
+        private void InitDbApi(IInitConfig initConfig, IDbConfig dbConfig, bool storeReceipts)
         {
-            RocksDbProvider rocksDb;
             switch (initConfig.DiagnosticMode)
             {
                 case DiagnosticMode.RpcDb:
-                    rocksDb = await GetRocksDbProvider(dbConfig, Path.Combine(initConfig.BaseDbPath, "debug"), storeReceipts);
-                    return new RpcDbProvider(_api.EthereumJsonSerializer, new BasicJsonRpcClient(new Uri(initConfig.RpcDbUrl), _api.EthereumJsonSerializer, _api.LogManager), _api.LogManager, rocksDb);
+                    _api.DbProvider = new DbProvider(DbModeHint.Persisted);
+                    var rocksDbFactory = new RocksDbFactory(dbConfig, _api.LogManager, Path.Combine(initConfig.BaseDbPath, "debug"));
+                    var rpcDbFactory = new RpcDbFactory(new MemDbFactory(), rocksDbFactory, _api.EthereumJsonSerializer, new BasicJsonRpcClient(new Uri(initConfig.RpcDbUrl), _api.EthereumJsonSerializer, _api.LogManager), _api.LogManager);
+                    _api.RocksDbFactory = rpcDbFactory;
+                    _api.MemDbFactory = rpcDbFactory;
+                    break;
                 case DiagnosticMode.ReadOnlyDb:
-                    rocksDb = await GetRocksDbProvider(dbConfig, Path.Combine(initConfig.BaseDbPath, "debug"), storeReceipts);
-                    return new ReadOnlyDbProvider(rocksDb, storeReceipts);
+                    var rocksDbProvider = new DbProvider(DbModeHint.Persisted);
+                    _api.DbProvider = new ReadOnlyDbProvider(rocksDbProvider, storeReceipts); // ToDo storeReceipts as createInMemoryWriteStore - bug?
+                    _api.RocksDbFactory = new RocksDbFactory(dbConfig, _api.LogManager, Path.Combine(initConfig.BaseDbPath, "debug"));
+                    _api.MemDbFactory = new MemDbFactory();
+                    break;
                 case DiagnosticMode.MemDb:
-                    return new MemDbProvider();
+                    _api.DbProvider = new DbProvider(DbModeHint.Mem);
+                    _api.RocksDbFactory = new RocksDbFactory(dbConfig, _api.LogManager, Path.Combine(initConfig.BaseDbPath, "debug"));
+                    _api.MemDbFactory = new MemDbFactory();
+                    break;
                 default:
-                    return await GetRocksDbProvider(dbConfig, initConfig.BaseDbPath, storeReceipts);
+                    _api.DbProvider = new DbProvider(DbModeHint.Persisted);
+                    _api.RocksDbFactory = new RocksDbFactory(dbConfig, _api.LogManager, initConfig.BaseDbPath);
+                    _api.MemDbFactory = new MemDbFactory();
+                    break;
             }
-        }
-
-        private async Task<RocksDbProvider> GetRocksDbProvider(IDbConfig dbConfig, string basePath, bool useReceiptsDb)
-        {
-            // bool addNdmDbs = _api.Config<INdmConfig>().Enabled;
-            IInitConfig initConfig = _api.Config<IInitConfig>();
-            RocksDbProvider debugRecorder = new RocksDbProvider(_api.LogManager, false, false);
-            ThisNodeInfo.AddInfo("DB location  :", $"{basePath}");
-            await debugRecorder.Init(basePath, dbConfig, useReceiptsDb);
-            return debugRecorder;
         }
     }
 }

@@ -15,93 +15,73 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
 
 namespace Nethermind.Db
 {
     // TODO: create some nicer DB providers
     public class ReadOnlyDbProvider : IReadOnlyDbProvider
     {
-        public ReadOnlyDb NestedStateDb { get; }
-        public ReadOnlyDb NestedCodeDb { get; }
+        private readonly IDbProvider _wrappedProvider;
+        private readonly bool _createInMemoryWriteStore;
+        private readonly ConcurrentDictionary<string, IReadOnlyDb> _registeredDbs = new ConcurrentDictionary<string, IReadOnlyDb>(StringComparer.InvariantCultureIgnoreCase);
         
         public ReadOnlyDbProvider(IDbProvider wrappedProvider, bool createInMemoryWriteStore)
         {
+            _wrappedProvider = wrappedProvider;
+            _createInMemoryWriteStore = createInMemoryWriteStore;
             if (wrappedProvider == null)
             {
                 throw new ArgumentNullException(nameof(wrappedProvider));
             }
-
-            NestedStateDb = new ReadOnlyDb(wrappedProvider.StateDb, createInMemoryWriteStore);
-            StateDb = new StateDb(NestedStateDb);
-            NestedCodeDb = new ReadOnlyDb(wrappedProvider.CodeDb, createInMemoryWriteStore);
-            CodeDb = new StateDb(NestedCodeDb);
-            // StateDb = new ReadOnlyDb(wrappedProvider.StateDb, createInMemoryWriteStore);
-            // CodeDb = new ReadOnlyDb(wrappedProvider.CodeDb, createInMemoryWriteStore);
-            NestedReceiptsDb = new ReadOnlyColumnsDb<ReceiptsColumns>(wrappedProvider.ReceiptsDb, createInMemoryWriteStore);
-            NestedBlockInfosDb = new ReadOnlyDb(wrappedProvider.BlockInfosDb, createInMemoryWriteStore);
-            NestedBlocksDb = new ReadOnlyDb(wrappedProvider.BlocksDb, createInMemoryWriteStore);
-            NestedHeadersDb = new ReadOnlyDb(wrappedProvider.HeadersDb, createInMemoryWriteStore);
-            NestedPendingTxsDb = new ReadOnlyDb(wrappedProvider.PendingTxsDb, createInMemoryWriteStore);
-            NestedConfigsDb = new ReadOnlyDb(wrappedProvider.ConfigsDb, createInMemoryWriteStore);
-            NestedEthRequestsDb = new ReadOnlyDb(wrappedProvider.EthRequestsDb, createInMemoryWriteStore);
-            NestedBloomDb = new ReadOnlyDb(wrappedProvider.BloomDb, createInMemoryWriteStore);
-            NestedChtDb = new ReadOnlyDb(wrappedProvider.ChtDb, createInMemoryWriteStore);
-            NestedWitnessDb = new ReadOnlyDb(wrappedProvider.WitnessDb, createInMemoryWriteStore);
-            NestedBaselineTreeDb = new ReadOnlyDb(wrappedProvider.BaselineTreeDb, createInMemoryWriteStore);
-            NestedBaselineTreeMetadataDb = new ReadOnlyDb(wrappedProvider.BaselineTreeMetadataDb, createInMemoryWriteStore);
+            
+            foreach (var registeredDb in _wrappedProvider.RegisteredDbs)
+            {
+                RegisterReadOnlyDb(registeredDb.Key, registeredDb.Value);
+            }
         }
 
         public void Dispose()
         {
         }
 
-        public ISnapshotableDb StateDb { get; }
-        public ISnapshotableDb CodeDb { get; }
-        public IColumnsDb<ReceiptsColumns> ReceiptsDb => NestedReceiptsDb;
-        public IDb BlocksDb => NestedBlocksDb;
-        public IDb HeadersDb => NestedHeadersDb;
-        public IDb BlockInfosDb => NestedBlockInfosDb;
-        public IDb PendingTxsDb => NestedPendingTxsDb;
-        public IDb WitnessDb => NestedWitnessDb;
-        public IDb ConfigsDb => NestedConfigsDb;
-        public IDb EthRequestsDb => NestedEthRequestsDb;
-        public IDb BloomDb => NestedBloomDb;
-        public IDb ChtDb => NestedChtDb;
-        public IDb BeamStateDb { get; } = new MemDb(); 
-        public ReadOnlyColumnsDb<ReceiptsColumns> NestedReceiptsDb { get; }
-        public ReadOnlyDb NestedBlocksDb { get; }
-        public ReadOnlyDb NestedHeadersDb { get; }
-        public ReadOnlyDb NestedBlockInfosDb { get; }
-        public ReadOnlyDb NestedPendingTxsDb { get; }
-        public ReadOnlyDb NestedConfigsDb { get; }
-        public ReadOnlyDb NestedEthRequestsDb { get; }
-        public ReadOnlyDb NestedBloomDb { get; }
-        public ReadOnlyDb NestedChtDb { get; }
-        public ReadOnlyDb NestedWitnessDb { get; }
-        public ReadOnlyDb NestedBaselineTreeDb { get; }
-        public ReadOnlyDb NestedBaselineTreeMetadataDb { get; }
+        public IDb BeamStateDb { get; } = new MemDb();
 
-        public IDb BaselineTreeDb => NestedBaselineTreeDb;
+        public DbModeHint DbMode => _wrappedProvider.DbMode;
 
-        public IDb BaselineTreeMetadataDb => NestedBaselineTreeMetadataDb;
-
+        public IDictionary<string, IDb> RegisteredDbs => _wrappedProvider.RegisteredDbs;
+        
         public void ClearTempChanges()
-        {
-            StateDb.Restore(-1);
-            CodeDb.Restore(-1);
-            NestedReceiptsDb.Restore(-1);
-            NestedBlocksDb.Restore(-1);
-            NestedHeadersDb.Restore(-1);
-            NestedBlockInfosDb.Restore(-1);
-            NestedConfigsDb.Restore(-1);
-            NestedEthRequestsDb.Restore(-1); 
-            NestedReceiptsDb.Restore(-1);
-            NestedBloomDb.Restore(-1);
-            NestedWitnessDb.Restore(-1);
-            NestedChtDb.Restore(-1);
-            NestedBaselineTreeDb.Restore(-1);
-            NestedBaselineTreeMetadataDb.Restore(-1);
+        {            
+            foreach(var readonlyDb in _registeredDbs.Values)
+            {
+                readonlyDb.Restore(-1);
+            }
+            
             BeamStateDb.Clear();
+        }
+
+        public T GetDb<T>(string dbName) where T : IDb
+        {
+            if (!_registeredDbs.ContainsKey(dbName))
+            {
+                throw new ArgumentException($"{dbName} wasn't registed.");
+            }
+
+            return (T)_registeredDbs[dbName];
+        }
+
+        private void RegisterReadOnlyDb<T>(string dbName, T db) where T : IDb
+        {
+            var readonlyDb = db.CreateReadOnly(_createInMemoryWriteStore);
+            _registeredDbs.TryAdd(dbName, readonlyDb);
+        }
+
+        public void RegisterDb<T>(string dbName, T db) where T : IDb
+        {
+            _wrappedProvider.RegisterDb(dbName, db);
+            RegisterReadOnlyDb(dbName, db);
         }
     }
 }

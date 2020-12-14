@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -41,6 +41,7 @@ using Nethermind.State.Proofs;
 using Nethermind.Db.Blooms;
 using Nethermind.TxPool;
 using NUnit.Framework;
+using System.Threading.Tasks;
 
 namespace Nethermind.JsonRpc.Test.Modules.Proof
 {
@@ -64,12 +65,13 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
         }
         
         [SetUp]
-        public void Setup()
+        public async Task Setup()
         {
             InMemoryReceiptStorage receiptStorage = new InMemoryReceiptStorage();
             _specProvider = new TestSpecProvider(Homestead.Instance);
             _blockTree = Build.A.BlockTree().WithTransactions(receiptStorage, _specProvider).OfChainLength(10).TestObject;
-            _dbProvider = new MemDbProvider();
+            _dbProvider = await TestMemDbProvider.InitAsync();
+
             ProofModuleFactory moduleFactory = new ProofModuleFactory(
                 _dbProvider,
                 _blockTree,

@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -22,6 +22,11 @@ namespace Nethermind.Db
     {
         private readonly IDictionary<TKey, IDbWithSpan> _columnDbs = new Dictionary<TKey, IDbWithSpan>();
 
+        public MemColumnsDb(string name)
+            : base(name)
+        {
+        }
+
         public MemColumnsDb(params TKey[] keys)
         {
             foreach (var key in keys)
@@ -32,5 +37,10 @@ namespace Nethermind.Db
         
         public IDbWithSpan GetColumnDb(TKey key) => !_columnDbs.TryGetValue(key, out var db) ? _columnDbs[key] = new MemDb() : db;
         public IEnumerable<TKey> ColumnKeys => _columnDbs.Keys;
+
+        public IReadOnlyDb CreateReadOnly(bool createInMemWriteStore)
+        {
+            return new ReadOnlyColumnsDb<TKey>(this, createInMemWriteStore);
+        }
     }
 }

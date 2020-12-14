@@ -23,5 +23,15 @@ namespace Nethermind.Baseline.Config
     {
         [ConfigItem(Description = "If 'true' then the Baseline Module is enabled via JSON RPC", DefaultValue = "false")]
         bool Enabled { get; }
+
+        bool BaselineTreeDbCacheIndexAndFilterBlocks { get; set; }
+        ulong BaselineTreeDbBlockCacheSize { get; set; }
+        ulong BaselineTreeDbWriteBufferSize { get; set; }
+        uint BaselineTreeDbWriteBufferNumber { get; set; }
+
+        bool BaselineTreeMetadataDbCacheIndexAndFilterBlocks { get; set; }
+        ulong BaselineTreeMetadataDbBlockCacheSize { get; set; }
+        ulong BaselineTreeMetadataDbWriteBufferSize { get; set; }
+        uint BaselineTreeMetadataDbWriteBufferNumber { get; set; }
     }
 }

@@ -15,6 +15,8 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -25,6 +27,7 @@ namespace Nethermind.Synchronization.BeamSync
 {
     public class BeamSyncDbProvider : IDbProvider
     {
+        private readonly ConcurrentDictionary<string, IDb> _registeredDbs = new ConcurrentDictionary<string, IDb>(StringComparer.InvariantCultureIgnoreCase);
         private readonly IDbProvider _otherProvider;
         private BeamSyncDb _stateDb;
         private BeamSyncDb _codeDb;
@@ -36,8 +39,9 @@ namespace Nethermind.Synchronization.BeamSync
             _codeDb = new BeamSyncDb(otherProvider.CodeDb.Innermost, otherProvider.BeamStateDb, syncModeSelector, logManager, syncConfig.BeamSyncContextTimeout, syncConfig.BeamSyncPreProcessorTimeout);
             _stateDb = new BeamSyncDb(otherProvider.StateDb.Innermost, otherProvider.BeamStateDb, syncModeSelector, logManager, syncConfig.BeamSyncContextTimeout, syncConfig.BeamSyncPreProcessorTimeout);
             BeamSyncFeed = new CompositeStateSyncFeed<StateSyncBatch?>(logManager, _codeDb, _stateDb);
-            StateDb = new StateDb(_stateDb);
-            CodeDb = new StateDb(_codeDb);
+
+            _registeredDbs.TryAdd(DbNames.Code, new StateDb(_codeDb));
+            _registeredDbs.TryAdd(DbNames.State, new StateDb(_stateDb));
         }
 
         public void EnableVerifiedMode()
@@ -45,37 +49,27 @@ namespace Nethermind.Synchronization.BeamSync
             _stateDb.VerifiedModeEnabled = true;
             _codeDb.VerifiedModeEnabled = true;
         }
-        
-        public ISnapshotableDb StateDb { get; }
-        public ISnapshotableDb CodeDb { get; }
-        public IColumnsDb<ReceiptsColumns> ReceiptsDb => _otherProvider.ReceiptsDb;
-        public IDb BlocksDb => _otherProvider.BlocksDb;
-        public IDb HeadersDb => _otherProvider.HeadersDb;
-        public IDb BlockInfosDb => _otherProvider.BlockInfosDb;
-        public IDb PendingTxsDb => _otherProvider.PendingTxsDb;
-        public IDb ConfigsDb => _otherProvider.ConfigsDb;
-        public IDb EthRequestsDb => _otherProvider.EthRequestsDb;
-        public IDb BloomDb => _otherProvider.BloomDb;
         public IDb BeamStateDb => _otherProvider.BeamStateDb;
-        public IDb ChtDb => _otherProvider.ChtDb;
-        public IDb WitnessDb => _otherProvider.WitnessDb;
-        public IDb BaselineTreeDb => _otherProvider.BaselineTreeDb;
-        public IDb BaselineTreeMetadataDb => _otherProvider.BaselineTreeMetadataDb;
+
+        public DbModeHint DbMode => _otherProvider.DbMode;
+
+        public IDictionary<string, IDb> RegisteredDbs => _otherProvider.RegisteredDbs;
 
         public void Dispose()
         {
-            StateDb?.Dispose();
-            CodeDb?.Dispose();
-            ReceiptsDb?.Dispose();
-            BlocksDb?.Dispose();
-            HeadersDb?.Dispose();
-            BlockInfosDb?.Dispose();
-            PendingTxsDb?.Dispose();
-            ConfigsDb?.Dispose();
-            EthRequestsDb?.Dispose();
-            BloomDb?.Dispose();
-            ChtDb?.Dispose();
-            WitnessDb?.Dispose();
+        }
+
+        public T GetDb<T>(string dbName) where T : IDb
+        {
+            if (string.Equals(DbNames.Code, dbName, StringComparison.OrdinalIgnoreCase) || string.Equals(DbNames.State, dbName, StringComparison.OrdinalIgnoreCase))
+                return (T)_registeredDbs[dbName];
+
+            return _otherProvider.GetDb<T>(dbName);
+        }
+
+        public void RegisterDb<T>(string dbName, T db) where T : IDb
+        {
+            _otherProvider.RegisterDb<T>(dbName, db);
         }
     }
 }

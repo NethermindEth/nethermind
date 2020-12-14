@@ -48,6 +48,7 @@ EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Baseline.Benchmark", "Nethermind.Baseline.Benchmark\Nethermind.Baseline.Benchmark.csproj", "{13746112-5DEC-42CC-93D4-B9B01F67DF9E}"
 EndProject
 <<<<<<< HEAD
+<<<<<<< HEAD
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.State", "Nethermind.State\Nethermind.State.csproj", "{7A0C83C4-B98A-41F2-B8BB-955CCED3AB4A}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Synchronization", "Nethermind.Synchronization\Nethermind.Synchronization.csproj", "{A604A23D-CD2E-4C7D-9A53-F6C8E648EF0E}"
@@ -55,13 +56,22 @@ EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Network.Stats", "Nethermind.Network.Stats\Nethermind.Network.Stats.csproj", "{4FD2C60F-FE9F-4B2F-A36E-4914D848AD83}"
 =======
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Consensus", "Nethermind.Consensus\Nethermind.Consensus.csproj", "{BF9CA071-EC56-49CE-93F5-0EFAFBE29A02}"
+=======
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Consensus", "Nethermind.Consensus\Nethermind.Consensus.csproj", "{BF9CA071-EC56-49CE-93F5-0EFAFBE29A02}"
+>>>>>>> db_refactoring
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Synchronization", "Nethermind.Synchronization\Nethermind.Synchronization.csproj", "{FBB92690-C449-4814-B678-C43618FA834B}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Synchronization", "Nethermind.Synchronization\Nethermind.Synchronization.csproj", "{FBB92690-C449-4814-B678-C43618FA834B}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Db", "Nethermind.Db\Nethermind.Db.csproj", "{DD343C66-E154-494E-BC01-1B66BA345DDE}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Db", "Nethermind.Db\Nethermind.Db.csproj", "{DD343C66-E154-494E-BC01-1B66BA345DDE}"
 EndProject
+<<<<<<< HEAD
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Config.Test", "Nethermind.Config.Test\Nethermind.Config.Test.csproj", "{964B7AB0-A507-4763-866B-C61D80266DEF}"
 >>>>>>> master
+=======
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Config.Test", "Nethermind.Config.Test\Nethermind.Config.Test.csproj", "{964B7AB0-A507-4763-866B-C61D80266DEF}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Db.Rocks", "Nethermind.Db.Rocks\Nethermind.Db.Rocks.csproj", "{328856A0-914B-4F2F-9E77-9BA2A7F1C621}"
+>>>>>>> db_refactoring
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -183,7 +193,14 @@ Global
 		{964B7AB0-A507-4763-866B-C61D80266DEF}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{964B7AB0-A507-4763-866B-C61D80266DEF}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{964B7AB0-A507-4763-866B-C61D80266DEF}.Release|Any CPU.Build.0 = Release|Any CPU
+<<<<<<< HEAD
 >>>>>>> master
+=======
+		{328856A0-914B-4F2F-9E77-9BA2A7F1C621}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{328856A0-914B-4F2F-9E77-9BA2A7F1C621}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{328856A0-914B-4F2F-9E77-9BA2A7F1C621}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{328856A0-914B-4F2F-9E77-9BA2A7F1C621}.Release|Any CPU.Build.0 = Release|Any CPU
+>>>>>>> db_refactoring
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -212,7 +229,11 @@ Global
 		{FBB92690-C449-4814-B678-C43618FA834B} = {E4D07050-1288-4344-B79D-470C2DC86146}
 		{DD343C66-E154-494E-BC01-1B66BA345DDE} = {E4D07050-1288-4344-B79D-470C2DC86146}
 		{964B7AB0-A507-4763-866B-C61D80266DEF} = {E4D07050-1288-4344-B79D-470C2DC86146}
+<<<<<<< HEAD
 >>>>>>> master
+=======
+		{328856A0-914B-4F2F-9E77-9BA2A7F1C621} = {E4D07050-1288-4344-B79D-470C2DC86146}
+>>>>>>> db_refactoring
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {F5822673-96EF-4C5C-AEC1-74D165BF8D0C}

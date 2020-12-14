@@ -75,9 +75,10 @@ namespace Nethermind.Runner.Ethereum.Steps
             Account.AccountStartNonce = getApi.ChainSpec.Parameters.AccountStartNonce;
             
             // TODO: if wit protocol enabled, otherwise NullWitnessCollector
-            _api.WitnessCollector = new WitnessCollector(_api.DbProvider.WitnessDb, _api.LogManager);
-            var stateDb = _api.MainStateDbWithCache.WitnessedBy(_api.WitnessCollector);
-            var codeDb = _api.DbProvider.CodeDb.WitnessedBy(_api.WitnessCollector);
+            var mainStateDbWithCache = setApi.MainStateDbWithCache = new CachingStore(getApi.DbProvider.StateDb, PatriciaTree.RlpCacheSize);
+            var witnessCollector = setApi.WitnessCollector = new WitnessCollector(getApi.DbProvider.WitnessDb, _api.LogManager);
+            var stateDb = mainStateDbWithCache.WitnessedBy(witnessCollector);
+            var codeDb = getApi.DbProvider.CodeDb.WitnessedBy(witnessCollector);
 
             var stateProvider = _api.StateProvider = new StateProvider(
                 stateDb,
@@ -86,10 +87,14 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.LogManager);
 
             ReadOnlyDbProvider readOnly = new ReadOnlyDbProvider(_api.DbProvider, false);
-            var stateReader = setApi.StateReader = new StateReader(readOnly.StateDb, readOnly.CodeDb, _api.LogManager);
-            setApi.ChainHeadStateProvider = new ChainHeadReadOnlyStateProvider(getApi.BlockTree, stateReader);
             
             PersistentTxStorage txStorage = new PersistentTxStorage(getApi.DbProvider.PendingTxsDb);
+            var stateReader = setApi.StateReader = new StateReader(
+                readOnly.GetDb<ISnapshotableDb>(DbNames.State),
+                readOnly.GetDb<ISnapshotableDb>(DbNames.Code),
+                _api.LogManager);
+            
+            setApi.ChainHeadStateProvider = new ChainHeadReadOnlyStateProvider(getApi.BlockTree, stateReader);
 
             // Init state if we need system calls before actual processing starts
             if (getApi.BlockTree!.Head != null)
@@ -148,10 +153,8 @@ namespace Nethermind.Runner.Ethereum.Steps
                 getApi.SpecProvider,
                 getApi.LogManager);
             
-            _api.MainStateDbWithCache = new CachingStore(_api.DbProvider.StateDb, PatriciaTree.RlpCacheSize);
-
-            setApi.TxPoolInfoProvider = new TxPoolInfoProvider(_api.StateReader, _api.TxPool);
-
+            setApi.TxPoolInfoProvider = new TxPoolInfoProvider(stateReader, txPool);
+            
             var mainBlockProcessor = setApi.MainBlockProcessor = CreateBlockProcessor();
 
             BlockchainProcessor blockchainProcessor = new BlockchainProcessor(
