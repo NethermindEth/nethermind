@@ -156,7 +156,7 @@ namespace Nethermind.AuRa.Test.Contract
             {
                 if (chain.LocalDataSource.Data == null)
                 {
-                    Assert.Fail("Local file rule storage wasn't loaded.");
+                    Assert.Fail("Local file rule storage has not been loaded.");
                 }
             }
 
@@ -205,7 +205,7 @@ namespace Nethermind.AuRa.Test.Contract
             {
                 if (chain.LocalDataSource.Data == null)
                 {
-                    Assert.Fail("Local file rule storage wasn't loaded.");
+                    Assert.Fail("Local file rule storage has not been loaded.");
                 }
             }
             
@@ -251,7 +251,7 @@ namespace Nethermind.AuRa.Test.Contract
             {
                 if (chain.LocalDataSource.Data == null)
                 {
-                    Assert.Fail("Local file rule storage wasn't loaded.");
+                    Assert.Fail("Local file rule storage has not been loaded.");
                 }
             }
             

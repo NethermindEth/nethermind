@@ -66,7 +66,7 @@ namespace Nethermind.Db
         {
             if (!_registeredDbs.ContainsKey(dbName))
             {
-                throw new ArgumentException($"{dbName} wasn't registed.");
+                throw new ArgumentException($"{dbName} database has not been registered in {nameof(ReadOnlyDbProvider)}.");
             }
 
             return (T)_registeredDbs[dbName];
