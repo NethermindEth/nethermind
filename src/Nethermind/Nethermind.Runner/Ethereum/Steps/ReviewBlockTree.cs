@@ -20,14 +20,13 @@ using Nethermind.Api;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Visitors;
 using Nethermind.Logging;
-using Nethermind.Runner.Ethereum.Api;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
     [RunnerStepDependencies(typeof(StartBlockProcessor))]
     public class ReviewBlockTree : IStep
     {
-        private readonly INethermindApi _api;
+        private readonly IApiWithBlockchain _api;
         private ILogger _logger;
 
         public ReviewBlockTree(INethermindApi api)
@@ -75,7 +74,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             }
             else
             {
-                StartupBlockTreeFixer fixer = new StartupBlockTreeFixer(_api.Config<ISyncConfig>(), _api.BlockTree, _logger);
+                StartupBlockTreeFixer fixer = new StartupBlockTreeFixer(syncConfig, _api.BlockTree, _logger);
                 await _api.BlockTree.Accept(fixer, cancellationToken).ContinueWith(t =>
                 {
                     if (t.IsFaulted)

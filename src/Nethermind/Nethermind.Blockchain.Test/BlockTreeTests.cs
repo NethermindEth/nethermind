@@ -34,6 +34,7 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Repositories;
 using Nethermind.Db.Blooms;
+using Nethermind.Int256;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
@@ -53,7 +54,7 @@ namespace Nethermind.Blockchain.Test
             _headersDb = new MemDb();
             _blocksInfosDb = new MemDb();
             _chainLevelInfoRepository = new ChainLevelInfoRepository(_blocksInfosDb);
-            return new BlockTree(_blocksDb, _headersDb, _blocksInfosDb, _chainLevelInfoRepository, MainnetSpecProvider.Instance, NullTxPool.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
+            return new BlockTree(_blocksDb, _headersDb, _blocksInfosDb, _chainLevelInfoRepository, MainnetSpecProvider.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
         }
 
         private static void AddToMain(BlockTree blockTree, Block block0)
@@ -181,7 +182,7 @@ namespace Nethermind.Blockchain.Test
             MemDb blocksDb = new MemDb();
             MemDb blockInfosDb = new MemDb();
             MemDb headersDb = new MemDb();
-            BlockTree tree = new BlockTree(blocksDb, headersDb, blockInfosDb, new ChainLevelInfoRepository(blockInfosDb), MainnetSpecProvider.Instance, NullTxPool.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
+            BlockTree tree = new BlockTree(blocksDb, headersDb, blockInfosDb, new ChainLevelInfoRepository(blockInfosDb), MainnetSpecProvider.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
             Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
             Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).TestObject;
             Block block2 = Build.A.Block.WithNumber(2).WithDifficulty(3).WithParent(block1).TestObject;
@@ -193,7 +194,7 @@ namespace Nethermind.Blockchain.Test
             tree.SuggestBlock(block3);
 
             blockInfosDb.Set(BlockTree.DeletePointerAddressInDb, block1.Hash.Bytes);
-            BlockTree tree2 = new BlockTree(blocksDb, headersDb, blockInfosDb, new ChainLevelInfoRepository(blockInfosDb), MainnetSpecProvider.Instance, NullTxPool.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
+            BlockTree tree2 = new BlockTree(blocksDb, headersDb, blockInfosDb, new ChainLevelInfoRepository(blockInfosDb), MainnetSpecProvider.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
 
             Assert.AreEqual(0L, tree2.BestKnownNumber, "best known");
             Assert.AreEqual(null, tree2.Head, "head");
@@ -214,7 +215,7 @@ namespace Nethermind.Blockchain.Test
             MemDb blocksDb = new MemDb();
             MemDb blockInfosDb = new MemDb();
             MemDb headersDb = new MemDb();
-            BlockTree tree = new BlockTree(blocksDb, headersDb, blockInfosDb, new ChainLevelInfoRepository(blockInfosDb), MainnetSpecProvider.Instance, NullTxPool.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
+            BlockTree tree = new BlockTree(blocksDb, headersDb, blockInfosDb, new ChainLevelInfoRepository(blockInfosDb), MainnetSpecProvider.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
             Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
             Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).TestObject;
             Block block2 = Build.A.Block.WithNumber(2).WithDifficulty(3).WithParent(block1).TestObject;
@@ -234,7 +235,7 @@ namespace Nethermind.Blockchain.Test
             tree.SuggestBlock(block3B);
 
             blockInfosDb.Set(BlockTree.DeletePointerAddressInDb, block1.Hash.Bytes);
-            BlockTree tree2 = new BlockTree(blocksDb, headersDb, blockInfosDb, new ChainLevelInfoRepository(blockInfosDb), MainnetSpecProvider.Instance, NullTxPool.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
+            BlockTree tree2 = new BlockTree(blocksDb, headersDb, blockInfosDb, new ChainLevelInfoRepository(blockInfosDb), MainnetSpecProvider.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
 
             Assert.AreEqual(3L, tree2.BestKnownNumber, "best known");
             Assert.AreEqual(null, tree2.Head, "head");
@@ -260,7 +261,7 @@ namespace Nethermind.Blockchain.Test
             blocksInfosDb[BlockTree.DeletePointerAddressInDb.Bytes].Returns((byte[]) null);
             blocksInfosDb[Arg.Is<byte[]>(b => !Bytes.AreEqual(b, BlockTree.DeletePointerAddressInDb.Bytes))].Returns(chainLevel.Bytes);
 
-            BlockTree blockTree = new BlockTree(_blocksDb, _headersDb, blocksInfosDb, new ChainLevelInfoRepository(blocksInfosDb), MainnetSpecProvider.Instance, NullTxPool.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
+            BlockTree blockTree = new BlockTree(_blocksDb, _headersDb, blocksInfosDb, new ChainLevelInfoRepository(blocksInfosDb), MainnetSpecProvider.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
 
             Assert.AreEqual(256000000, blockTree.BestKnownNumber);
         }
@@ -714,7 +715,7 @@ namespace Nethermind.Blockchain.Test
 
             blockInfosDb.Set(0, Rlp.Encode(level).Bytes);
 
-            BlockTree blockTree = new BlockTree(blocksDb, headersDb, blockInfosDb, new ChainLevelInfoRepository(blockInfosDb), OlympicSpecProvider.Instance, Substitute.For<ITxPool>(), NullBloomStorage.Instance, LimboLogs.Instance);
+            BlockTree blockTree = new BlockTree(blocksDb, headersDb, blockInfosDb, new ChainLevelInfoRepository(blockInfosDb), OlympicSpecProvider.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
             Assert.AreEqual(headBlock.Hash, blockTree.Head?.Hash, "head");
             Assert.AreEqual(headBlock.Hash, blockTree.Genesis?.Hash, "genesis");
         }
@@ -732,7 +733,6 @@ namespace Nethermind.Blockchain.Test
                 blockInfosDb,
                 new ChainLevelInfoRepository(blockInfosDb),
                 OlympicSpecProvider.Instance,
-                Substitute.For<ITxPool>(),
                 NullBloomStorage.Instance,
                 LimboLogs.Instance);
             
@@ -837,7 +837,7 @@ namespace Nethermind.Blockchain.Test
             MemDb blockInfosDb = new MemDb();
             MemDb headersDb = new MemDb();
 
-            BlockTree blockTree = new BlockTree(blocksDb, headersDb, blockInfosDb, new ChainLevelInfoRepository(blockInfosDb), OlympicSpecProvider.Instance, Substitute.For<ITxPool>(), NullBloomStorage.Instance, LimboLogs.Instance);
+            BlockTree blockTree = new BlockTree(blocksDb, headersDb, blockInfosDb, new ChainLevelInfoRepository(blockInfosDb), OlympicSpecProvider.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
             Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
             Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).TestObject;
             Block block2 = Build.A.Block.WithNumber(1).WithDifficulty(3).WithParent(block0).TestObject;
@@ -881,7 +881,7 @@ namespace Nethermind.Blockchain.Test
             MemDb blocksDb = new MemDb();
             MemDb blockInfosDb = new MemDb();
             MemDb headersDb = new MemDb();
-            BlockTree tree = new BlockTree(blocksDb, headersDb, blockInfosDb, new ChainLevelInfoRepository(blockInfosDb), MainnetSpecProvider.Instance, NullTxPool.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
+            BlockTree tree = new BlockTree(blocksDb, headersDb, blockInfosDb, new ChainLevelInfoRepository(blockInfosDb), MainnetSpecProvider.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
             Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
             Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).TestObject;
             Block block2 = Build.A.Block.WithNumber(2).WithDifficulty(3).WithParent(block1).TestObject;
@@ -916,7 +916,7 @@ namespace Nethermind.Blockchain.Test
             MemDb blockInfosDb = new MemDb();
             MemDb headersDb = new MemDb();
             ChainLevelInfoRepository repository = new ChainLevelInfoRepository(blockInfosDb);
-            BlockTree tree = new BlockTree(blocksDb, headersDb, blockInfosDb, repository, MainnetSpecProvider.Instance, NullTxPool.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
+            BlockTree tree = new BlockTree(blocksDb, headersDb, blockInfosDb, repository, MainnetSpecProvider.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
             Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
             Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).TestObject;
             Block block2 = Build.A.Block.WithNumber(2).WithDifficulty(3).WithParent(block1).TestObject;
@@ -969,7 +969,7 @@ namespace Nethermind.Blockchain.Test
             MemDb blocksDb = new MemDb();
             MemDb blockInfosDb = new MemDb();
             MemDb headersDb = new MemDb();
-            BlockTree tree = new BlockTree(blocksDb, headersDb, blockInfosDb, new ChainLevelInfoRepository(blockInfosDb), MainnetSpecProvider.Instance, NullTxPool.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
+            BlockTree tree = new BlockTree(blocksDb, headersDb, blockInfosDb, new ChainLevelInfoRepository(blockInfosDb), MainnetSpecProvider.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
             Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
             Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).TestObject;
             Block block2 = Build.A.Block.WithNumber(2).WithDifficulty(3).WithParent(block1).TestObject;
@@ -991,7 +991,7 @@ namespace Nethermind.Blockchain.Test
             MemDb blocksDb = new MemDb();
             MemDb blockInfosDb = new MemDb();
             MemDb headersDb = new MemDb();
-            BlockTree tree = new BlockTree(blocksDb, headersDb, blockInfosDb, new ChainLevelInfoRepository(blockInfosDb), MainnetSpecProvider.Instance, NullTxPool.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
+            BlockTree tree = new BlockTree(blocksDb, headersDb, blockInfosDb, new ChainLevelInfoRepository(blockInfosDb), MainnetSpecProvider.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
             Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
             Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).TestObject;
             Block block2 = Build.A.Block.WithNumber(2).WithDifficulty(3).WithParent(block1).TestObject;
@@ -1015,7 +1015,7 @@ namespace Nethermind.Blockchain.Test
             MemDb blocksDb = new MemDb();
             MemDb blockInfosDb = new MemDb();
             MemDb headersDb = new MemDb();
-            BlockTree tree = new BlockTree(blocksDb, headersDb, blockInfosDb, new ChainLevelInfoRepository(blockInfosDb), MainnetSpecProvider.Instance, NullTxPool.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
+            BlockTree tree = new BlockTree(blocksDb, headersDb, blockInfosDb, new ChainLevelInfoRepository(blockInfosDb), MainnetSpecProvider.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
             Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
             Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).TestObject;
             Block block2 = Build.A.Block.WithNumber(2).WithDifficulty(3).WithParent(block1).TestObject;
@@ -1054,7 +1054,7 @@ namespace Nethermind.Blockchain.Test
             SyncConfig syncConfig = new SyncConfig();
             syncConfig.PivotNumber = beginIndex.ToString();
 
-            BlockTree tree = new BlockTree(blocksDb, headersDb, blockInfosDb, new ChainLevelInfoRepository(blockInfosDb), MainnetSpecProvider.Instance, NullTxPool.Instance, NullBloomStorage.Instance, syncConfig, LimboLogs.Instance);
+            BlockTree tree = new BlockTree(blocksDb, headersDb, blockInfosDb, new ChainLevelInfoRepository(blockInfosDb), MainnetSpecProvider.Instance, NullBloomStorage.Instance, syncConfig, LimboLogs.Instance);
             tree.SuggestBlock(Build.A.Block.Genesis.TestObject);
 
             for (long i = beginIndex; i > beginIndex - insertedBlocks; i--)
@@ -1062,7 +1062,7 @@ namespace Nethermind.Blockchain.Test
                 tree.Insert(Build.A.BlockHeader.WithNumber(i).WithTotalDifficulty(i).TestObject);
             }
 
-            BlockTree loadedTree = new BlockTree(blocksDb, headersDb, blockInfosDb, new ChainLevelInfoRepository(blockInfosDb), MainnetSpecProvider.Instance, NullTxPool.Instance, NullBloomStorage.Instance, syncConfig, LimboLogs.Instance);
+            BlockTree loadedTree = new BlockTree(blocksDb, headersDb, blockInfosDb, new ChainLevelInfoRepository(blockInfosDb), MainnetSpecProvider.Instance, NullBloomStorage.Instance, syncConfig, LimboLogs.Instance);
 
             Assert.AreEqual(expectedResult, tree.LowestInsertedHeader?.Number, "tree");
             Assert.AreEqual(expectedResult, loadedTree.LowestInsertedHeader?.Number, "loaded tree");
@@ -1084,7 +1084,7 @@ namespace Nethermind.Blockchain.Test
             syncConfig.PivotNumber = beginIndex.ToString();
 
             var repo = new ChainLevelInfoRepository(blockInfosDb);
-            BlockTree tree = new BlockTree(blocksDb, headersDb, blockInfosDb, repo, MainnetSpecProvider.Instance, NullTxPool.Instance, NullBloomStorage.Instance, syncConfig, LimboLogs.Instance);
+            BlockTree tree = new BlockTree(blocksDb, headersDb, blockInfosDb, repo, MainnetSpecProvider.Instance, NullBloomStorage.Instance, syncConfig, LimboLogs.Instance);
             tree.SuggestBlock(Build.A.Block.Genesis.TestObject);
 
             for (long i = beginIndex; i > beginIndex - insertedBlocks; i--)
@@ -1095,7 +1095,7 @@ namespace Nethermind.Blockchain.Test
             }
 
             var loadedRepo = new ChainLevelInfoRepository(blockInfosDb);
-            BlockTree loadedTree = new BlockTree(blocksDb, headersDb, blockInfosDb, loadedRepo, MainnetSpecProvider.Instance, NullTxPool.Instance, NullBloomStorage.Instance, syncConfig, LimboLogs.Instance);
+            BlockTree loadedTree = new BlockTree(blocksDb, headersDb, blockInfosDb, loadedRepo, MainnetSpecProvider.Instance, NullBloomStorage.Instance, syncConfig, LimboLogs.Instance);
 
             Assert.AreEqual(null, tree.LowestInsertedBodyNumber, "tree");
             Assert.AreEqual(1, loadedTree.LowestInsertedBodyNumber, "loaded tree");
@@ -1142,7 +1142,7 @@ namespace Nethermind.Blockchain.Test
             SyncConfig syncConfig = new SyncConfig();
             syncConfig.PivotNumber = beginIndex.ToString();
 
-            BlockTree tree = new BlockTree(blocksDb, headersDb, blockInfosDb, new ChainLevelInfoRepository(blockInfosDb), MainnetSpecProvider.Instance, NullTxPool.Instance, NullBloomStorage.Instance, syncConfig, LimboLogs.Instance);
+            BlockTree tree = new BlockTree(blocksDb, headersDb, blockInfosDb, new ChainLevelInfoRepository(blockInfosDb), MainnetSpecProvider.Instance, NullBloomStorage.Instance, syncConfig, LimboLogs.Instance);
             tree.SuggestBlock(Build.A.Block.Genesis.TestObject);
 
             for (long i = beginIndex; i > beginIndex - insertedBlocks; i--)
@@ -1158,7 +1158,6 @@ namespace Nethermind.Blockchain.Test
                 blockInfosDb,
                 new ChainLevelInfoRepository(blockInfosDb),
                 MainnetSpecProvider.Instance,
-                NullTxPool.Instance,
                 NullBloomStorage.Instance,
                 syncConfig,
                 LimboLogs.Instance);
@@ -1179,7 +1178,7 @@ namespace Nethermind.Blockchain.Test
             SyncConfig syncConfig = new SyncConfig();
             syncConfig.PivotNumber = pivotNumber.ToString();
 
-            BlockTree tree = new BlockTree(blocksDb, headersDb, blockInfosDb, new ChainLevelInfoRepository(blockInfosDb), MainnetSpecProvider.Instance, NullTxPool.Instance, NullBloomStorage.Instance, syncConfig, LimboLogs.Instance);
+            BlockTree tree = new BlockTree(blocksDb, headersDb, blockInfosDb, new ChainLevelInfoRepository(blockInfosDb), MainnetSpecProvider.Instance, NullBloomStorage.Instance, syncConfig, LimboLogs.Instance);
             tree.SuggestBlock(Build.A.Block.Genesis.TestObject);
 
             Block pivotBlock = null;
@@ -1192,7 +1191,7 @@ namespace Nethermind.Blockchain.Test
 
             tree.SuggestHeader(Build.A.BlockHeader.WithNumber(pivotNumber + 1).WithParent(pivotBlock!.Header).TestObject);
 
-            BlockTree loadedTree = new BlockTree(blocksDb, headersDb, blockInfosDb, new ChainLevelInfoRepository(blockInfosDb), MainnetSpecProvider.Instance, NullTxPool.Instance, NullBloomStorage.Instance, syncConfig, LimboLogs.Instance);
+            BlockTree loadedTree = new BlockTree(blocksDb, headersDb, blockInfosDb, new ChainLevelInfoRepository(blockInfosDb), MainnetSpecProvider.Instance, NullBloomStorage.Instance, syncConfig, LimboLogs.Instance);
 
             Assert.AreEqual(pivotNumber + 1, tree.BestKnownNumber, "tree");
             Assert.AreEqual(1, tree.LowestInsertedHeader?.Number, "loaded tree - lowest header");
@@ -1215,7 +1214,6 @@ namespace Nethermind.Blockchain.Test
                 treeBuilder.BlockInfoDb,
                 treeBuilder.ChainLevelInfoRepository,
                 MainnetSpecProvider.Instance,
-                NullTxPool.Instance,
                 NullBloomStorage.Instance,
                 syncConfig,
                 LimboLogs.Instance);
@@ -1235,7 +1233,7 @@ namespace Nethermind.Blockchain.Test
             SyncConfig syncConfig = new SyncConfig();
             syncConfig.PivotNumber = pivotNumber.ToString();
 
-            BlockTree tree = new BlockTree(blocksDb, headersDb, blockInfosDb, new ChainLevelInfoRepository(blockInfosDb), MainnetSpecProvider.Instance, NullTxPool.Instance, NullBloomStorage.Instance, syncConfig, LimboLogs.Instance);
+            BlockTree tree = new BlockTree(blocksDb, headersDb, blockInfosDb, new ChainLevelInfoRepository(blockInfosDb), MainnetSpecProvider.Instance, NullBloomStorage.Instance, syncConfig, LimboLogs.Instance);
             Block genesis = Build.A.Block.Genesis.TestObject;
             tree.SuggestBlock(genesis);
             Assert.Throws<InvalidOperationException>(() => tree.Insert(genesis));
@@ -1255,7 +1253,7 @@ namespace Nethermind.Blockchain.Test
             SyncConfig syncConfig = new SyncConfig();
             syncConfig.PivotNumber = pivotNumber.ToString();
 
-            BlockTree tree = new BlockTree(blocksDb, headersDb, blockInfosDb, new ChainLevelInfoRepository(blockInfosDb), MainnetSpecProvider.Instance, NullTxPool.Instance, NullBloomStorage.Instance, syncConfig, LimboLogs.Instance);
+            BlockTree tree = new BlockTree(blocksDb, headersDb, blockInfosDb, new ChainLevelInfoRepository(blockInfosDb), MainnetSpecProvider.Instance, NullBloomStorage.Instance, syncConfig, LimboLogs.Instance);
             tree.SuggestBlock(Build.A.Block.Genesis.TestObject);
 
             List<Block> blocks = new List<Block>();
@@ -1282,7 +1280,7 @@ namespace Nethermind.Blockchain.Test
             syncConfig.PivotNumber = pivotNumber.ToString();
 
             var bloomStorage = Substitute.For<IBloomStorage>();
-            BlockTree tree = new BlockTree(blocksDb, headersDb, blockInfosDb, new ChainLevelInfoRepository(blockInfosDb), MainnetSpecProvider.Instance, NullTxPool.Instance, bloomStorage, syncConfig, LimboLogs.Instance);
+            BlockTree tree = new BlockTree(blocksDb, headersDb, blockInfosDb, new ChainLevelInfoRepository(blockInfosDb), MainnetSpecProvider.Instance, bloomStorage, syncConfig, LimboLogs.Instance);
             tree.SuggestBlock(Build.A.Block.Genesis.TestObject);
 
             for (long i = 5; i > 0; i--)
@@ -1304,7 +1302,7 @@ namespace Nethermind.Blockchain.Test
             syncConfig.PivotNumber = 0L.ToString();
 
             Block genesis = Build.A.Block.Genesis.TestObject;
-            BlockTree tree = new BlockTree(blocksDb, headersDb, blockInfosDb, new ChainLevelInfoRepository(blockInfosDb), MainnetSpecProvider.Instance, NullTxPool.Instance, NullBloomStorage.Instance, syncConfig, LimboLogs.Instance);
+            BlockTree tree = new BlockTree(blocksDb, headersDb, blockInfosDb, new ChainLevelInfoRepository(blockInfosDb), MainnetSpecProvider.Instance, NullBloomStorage.Instance, syncConfig, LimboLogs.Instance);
             tree.SuggestBlock(genesis);
 
             Block previousBlock = genesis;
@@ -1317,12 +1315,12 @@ namespace Nethermind.Blockchain.Test
 
             Block lastBlock = previousBlock;
 
-            BlockTree loadedTree = new BlockTree(blocksDb, headersDb, blockInfosDb, new ChainLevelInfoRepository(blockInfosDb), MainnetSpecProvider.Instance, NullTxPool.Instance, NullBloomStorage.Instance, syncConfig, LimboLogs.Instance);
+            BlockTree loadedTree = new BlockTree(blocksDb, headersDb, blockInfosDb, new ChainLevelInfoRepository(blockInfosDb), MainnetSpecProvider.Instance, NullBloomStorage.Instance, syncConfig, LimboLogs.Instance);
             loadedTree.FindHeader(lastBlock.Hash, BlockTreeLookupOptions.None);
         }
 
         [Test]
-        public void When_block_is_moved_to_main_transactions_are_removed_from_tx_pool()
+        public async Task When_block_is_moved_to_main_transactions_are_removed_from_tx_pool()
         {
             MemDb blocksDb = new MemDb();
             MemDb headersDb = new MemDb();
@@ -1332,7 +1330,8 @@ namespace Nethermind.Blockchain.Test
             Transaction t2 = Build.A.Transaction.TestObject;
 
             ITxPool txPoolMock = Substitute.For<ITxPool>();
-            BlockTree blockTree = new BlockTree(blocksDb, headersDb, blockInfosDb, new ChainLevelInfoRepository(blockInfosDb), OlympicSpecProvider.Instance, txPoolMock, NullBloomStorage.Instance, LimboLogs.Instance);
+            BlockTree blockTree = new BlockTree(blocksDb, headersDb, blockInfosDb, new ChainLevelInfoRepository(blockInfosDb), OlympicSpecProvider.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
+            new OnChainTxWatcher(blockTree, txPoolMock, OlympicSpecProvider.Instance, LimboLogs.Instance);
             Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
             Block block1A = Build.A.Block.WithNumber(1).WithDifficulty(2).WithTransactions(t1).WithParent(block0).TestObject;
             Block block1B = Build.A.Block.WithNumber(1).WithDifficulty(3).WithTransactions(t2).WithParent(block0).TestObject;
@@ -1343,12 +1342,14 @@ namespace Nethermind.Blockchain.Test
             blockTree.SuggestBlock(block1A);
             blockTree.UpdateMainChain(block1A);
 
-            txPoolMock.Received().RemoveTransaction(t1.Hash, 1);
+            await Task.Delay(100); // await for OnChainTxWatcher
+
+            txPoolMock.Received().RemoveTransaction(t1.Hash, 1, true);
         }
 
         [TestCase(true)]
         [TestCase(false)]
-        public void When_block_is_moved_out_of_main_transactions_are_removed_from_tx_pool(bool isEip155Enabled)
+        public async Task When_block_is_moved_out_of_main_transactions_are_removed_from_tx_pool(bool isEip155Enabled)
         {
             MemDb blocksDb = new MemDb();
             MemDb headersDb = new MemDb();
@@ -1358,7 +1359,9 @@ namespace Nethermind.Blockchain.Test
             Transaction t2 = Build.A.Transaction.TestObject;
 
             ITxPool txPoolMock = Substitute.For<ITxPool>();
-            BlockTree blockTree = new BlockTree(blocksDb, headersDb, blockInfosDb, new ChainLevelInfoRepository(blockInfosDb), isEip155Enabled ? (ISpecProvider)GoerliSpecProvider.Instance : OlympicSpecProvider.Instance, txPoolMock, NullBloomStorage.Instance, LimboLogs.Instance);
+            ISpecProvider specProvider = isEip155Enabled ? (ISpecProvider)GoerliSpecProvider.Instance : OlympicSpecProvider.Instance;
+            BlockTree blockTree = new BlockTree(blocksDb, headersDb, blockInfosDb, new ChainLevelInfoRepository(blockInfosDb), specProvider, NullBloomStorage.Instance, LimboLogs.Instance);
+            new OnChainTxWatcher(blockTree, txPoolMock, specProvider, LimboLogs.Instance);
             Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
             Block block1A = Build.A.Block.WithNumber(1).WithDifficulty(2).WithTransactions(t1).WithParent(block0).TestObject;
             Block block1B = Build.A.Block.WithNumber(1).WithDifficulty(3).WithTransactions(t2).WithParent(block0).TestObject;
@@ -1369,6 +1372,8 @@ namespace Nethermind.Blockchain.Test
             blockTree.SuggestBlock(block1A);
             blockTree.UpdateMainChain(block1A);
             blockTree.UpdateMainChain(block1B);
+
+            await Task.Delay(100); // await for OnChainTxWatcher
 
             txPoolMock.Received().AddTransaction(t1, isEip155Enabled ? TxHandlingOptions.None : TxHandlingOptions.PreEip155Signing);
         }
@@ -1383,9 +1388,8 @@ namespace Nethermind.Blockchain.Test
             Transaction t1 = Build.A.Transaction.TestObject;
             Transaction t2 = Build.A.Transaction.TestObject;
 
-            ITxPool txPoolMock = Substitute.For<ITxPool>();
             var bloomStorage = Substitute.For<IBloomStorage>();
-            BlockTree blockTree = new BlockTree(blocksDb, headersDb, blockInfosDb, new ChainLevelInfoRepository(blockInfosDb), OlympicSpecProvider.Instance, txPoolMock, bloomStorage, LimboLogs.Instance);
+            BlockTree blockTree = new BlockTree(blocksDb, headersDb, blockInfosDb, new ChainLevelInfoRepository(blockInfosDb), OlympicSpecProvider.Instance, bloomStorage, LimboLogs.Instance);
             Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
             Block block1A = Build.A.Block.WithNumber(1).WithDifficulty(2).WithTransactions(t1).WithParent(block0).TestObject;
             Block block1B = Build.A.Block.WithNumber(1).WithDifficulty(3).WithTransactions(t2).WithParent(block0).TestObject;
@@ -1527,6 +1531,43 @@ namespace Nethermind.Blockchain.Test
             blockTree.ReleaseAcceptingNewBlocks();
             blockTree.CanAcceptNewBlocks.Should().BeTrue();
         }
+
+        [TestCase(10, 10000000ul)]
+        [TestCase(4, 4000000ul)]
+        [TestCase(10, null)]
+        public void Recovers_total_difficulty(int chainLength, ulong? expectedTotalDifficulty)
+        {
+            BlockTreeBuilder blockTreeBuilder = Build.A.BlockTree().OfChainLength(chainLength);
+            BlockTree blockTree = blockTreeBuilder.TestObject;
+            int chainLeft = expectedTotalDifficulty.HasValue ? 1 : 0;
+            for (int i = chainLength - 1; i >= chainLeft; i--)
+            {
+                var level = blockTreeBuilder.ChainLevelInfoRepository.LoadLevel(i);
+                for (int j = 0; j < level.BlockInfos.Length; j++)
+                {
+                    Keccak blockHash = level.BlockInfos[j].BlockHash;
+                    var header = blockTree.FindHeader(blockHash, BlockTreeLookupOptions.None);
+                    header.TotalDifficulty = null;
+                }
+                blockTreeBuilder.ChainLevelInfoRepository.Delete(i);
+            }
+
+            if (expectedTotalDifficulty.HasValue)
+            {
+                blockTree.FindBlock(blockTree.Head.Hash, BlockTreeLookupOptions.None).TotalDifficulty.Should().Be(new UInt256(expectedTotalDifficulty.Value));
+                for (int i = chainLength - 1; i >= chainLeft; i--)
+                {
+                    var level = blockTreeBuilder.ChainLevelInfoRepository.LoadLevel(i);
+                    level.Should().NotBeNull();
+                    level.BlockInfos.Should().HaveCount(1);
+                }
+            }
+            else
+            {
+                Action action = () => blockTree.FindBlock(blockTree.Head.Hash, BlockTreeLookupOptions.None);
+                action.Should().Throw<InvalidOperationException>();
+            }
+        }
         
         [Test]
         public async Task Visitor_can_block_adding_blocks()
@@ -1552,7 +1593,7 @@ namespace Nethermind.Blockchain.Test
             public bool PreventsAcceptingNewBlocks { get; } = true;
             public long StartLevelInclusive { get; } = 0;
             public long EndLevelExclusive { get; } = 3;
-            public async Task<LevelVisitOutcome> VisitLevelStart(ChainLevelInfo chainLevelInfo, CancellationToken cancellationToken)
+            public async Task<LevelVisitOutcome> VisitLevelStart(ChainLevelInfo chainLevelInfo, long levelNumber, CancellationToken cancellationToken)
             {
                 if (_wait)
                 {
@@ -1578,7 +1619,7 @@ namespace Nethermind.Blockchain.Test
                 return Task.FromResult(BlockVisitOutcome.None);
             }
 
-            public Task<LevelVisitOutcome> VisitLevelEnd(CancellationToken cancellationToken)
+            public Task<LevelVisitOutcome> VisitLevelEnd(ChainLevelInfo chainLevelInfo, long levelNumber, CancellationToken cancellationToken)
             {
                 return Task.FromResult(LevelVisitOutcome.None);
             }

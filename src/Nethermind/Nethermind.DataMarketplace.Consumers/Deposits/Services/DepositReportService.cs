@@ -39,10 +39,13 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Services
         private readonly IReceiptRepository _receiptRepository;
         private readonly IConsumerSessionRepository _sessionRepository;
         private readonly ITimestamper _timestamper;
+        private readonly IDepositUnitsCalculator _depositUnitsCalculator;
 
-        public DepositReportService(IDepositDetailsRepository depositRepository, IReceiptRepository receiptRepository,
+
+        public DepositReportService(IDepositDetailsRepository depositRepository, IDepositUnitsCalculator depositUnitsCalculator, IReceiptRepository receiptRepository,
             IConsumerSessionRepository sessionRepository, ITimestamper timestamper)
         {
+             _depositUnitsCalculator = depositUnitsCalculator;
             _depositRepository = depositRepository;
             _receiptRepository = receiptRepository;
             _sessionRepository = sessionRepository;
@@ -133,7 +136,7 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Services
                     DepositId = deposit.Id,
                     Results = int.MaxValue
                 });
-                uint consumedUnits = sessions.Items.Any() ? (uint) sessions.Items.Sum(s => s.ConsumedUnits) : 0;
+                uint consumedUnits = await _depositUnitsCalculator.GetConsumedAsync(deposit);
                 items.Add(ToReportItem(deposit, expired, consumedUnits, receiptItems ?? Enumerable.Empty<DataDeliveryReceiptReportItem>()));
             }
 

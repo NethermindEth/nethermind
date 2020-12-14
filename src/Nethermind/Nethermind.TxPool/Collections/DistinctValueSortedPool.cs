@@ -17,6 +17,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
+using Nethermind.Logging;
 
 namespace Nethermind.TxPool.Collections
 {
@@ -31,6 +32,7 @@ namespace Nethermind.TxPool.Collections
     {
         private readonly IComparer<TValue> _comparer;
         private readonly IDictionary<TValue, KeyValuePair<TKey, TValue>> _distinctDictionary;
+        private readonly ILogger _logger;
 
         /// <summary>
         /// Constructor
@@ -38,13 +40,16 @@ namespace Nethermind.TxPool.Collections
         /// <param name="capacity">Max capacity</param>
         /// <param name="comparer">Comparer to sort items.</param>
         /// <param name="distinctComparer">Comparer to distinct items. Based on this duplicates will be removed.</param>
+        /// <param name="logManager">Log manager</param>
         protected DistinctValueSortedPool(
             int capacity,
             IComparer<TValue> comparer,
-            IEqualityComparer<TValue> distinctComparer) 
+            IEqualityComparer<TValue> distinctComparer,
+            ILogManager logManager) 
             : base(capacity, comparer)
         {
             _comparer = comparer ?? throw new ArgumentNullException(nameof(comparer));
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _distinctDictionary = new Dictionary<TValue, KeyValuePair<TKey, TValue>>(distinctComparer);
         }
         
@@ -52,9 +57,9 @@ namespace Nethermind.TxPool.Collections
         {
             base.InsertCore(key, value, bucketCollection);
 
-            if (_distinctDictionary.TryGetValue(value, out var oldKvp))
+            if (_distinctDictionary.TryGetValue(value, out KeyValuePair<TKey, TValue> oldKvp))
             {
-                TryRemove(oldKvp.Key, out _);
+                TryRemove(oldKvp.Key);
             }
 
 
@@ -71,8 +76,25 @@ namespace Nethermind.TxPool.Collections
         {
             // either there is no distinct value or it would go before (or at same place) as old value
             // if it would go after old value in order, we ignore it and wont add it
-            return base.CanInsert(key, value)
-                   && (!_distinctDictionary.TryGetValue(value, out var oldKvp) || _comparer.Compare(value, oldKvp.Value) <= 0);
+            if (base.CanInsert(key, value))
+            {
+                bool isDuplicate = _distinctDictionary.TryGetValue(value, out var oldKvp);
+                if (isDuplicate)
+                {
+                    bool isHigher = _comparer.Compare(value, oldKvp.Value) <= 0;
+                    
+                    if (_logger.IsTrace && !isHigher)
+                    {
+                        _logger.Trace($"Cannot insert {nameof(TValue)} {value}, its not distinct and not higher than old {nameof(TValue)} {oldKvp.Value}.");
+                    }
+
+                    return isHigher;
+                }
+
+                return true;
+            }
+
+            return false;
         }
     }
 }

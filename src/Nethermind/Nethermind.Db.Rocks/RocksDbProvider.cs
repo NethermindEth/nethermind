@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -15,8 +15,6 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Collections.Generic;
-using System.Diagnostics.CodeAnalysis;
-using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Logging;
@@ -27,11 +25,13 @@ namespace Nethermind.Db.Rocks
     {
         private readonly ILogManager _logManager;
         private readonly bool _addNdmDbs;
+        private readonly bool _addBaselineDbs;
 
-        public RocksDbProvider(ILogManager logManager, bool addNdmDbs = true)
+        public RocksDbProvider(ILogManager logManager, bool addNdmDbs = true, bool addBaselineDbs = true)
         {
             _logManager = logManager;
             _addNdmDbs = addNdmDbs;
+            _addBaselineDbs = addBaselineDbs;
         }
 
         public async Task Init(string basePath, IDbConfig dbConfig, bool useReceiptsDb)
@@ -48,6 +48,10 @@ namespace Nethermind.Db.Rocks
             allInitializers.Add(Task.Run(() => ConfigsDb = _addNdmDbs ? new ConfigsRocksDb(basePath, dbConfig, _logManager) : (IDb) new MemDb()));
             allInitializers.Add(Task.Run(() => EthRequestsDb = _addNdmDbs ? new EthRequestsRocksDb(basePath, dbConfig, _logManager) : (IDb) new MemDb()));
             allInitializers.Add(Task.Run(() => WitnessDb = new WitnessDb(basePath, dbConfig, _logManager)));
+            allInitializers.Add(Task.Run(() => ConfigsDb = _addNdmDbs ? new ConfigsRocksDb(basePath, dbConfig, _logManager) : (IDb)new MemDb()));
+            allInitializers.Add(Task.Run(() => EthRequestsDb = _addNdmDbs ? new EthRequestsRocksDb(basePath, dbConfig, _logManager) : (IDb)new MemDb()));
+            allInitializers.Add(Task.Run(() => BaselineTreeDb = _addBaselineDbs ? new BaselineTreeDb(basePath, dbConfig, _logManager) : (IDb)new MemDb()));
+            allInitializers.Add(Task.Run(() => BaselineTreeMetadataDb = _addBaselineDbs ? new BaselineTreeMetadataDb(basePath, dbConfig, _logManager) : (IDb)new MemDb()));
 
             allInitializers.Add(Task.Run(() =>
             {
@@ -78,6 +82,10 @@ namespace Nethermind.Db.Rocks
         public IDb BeamStateDb { get; } = new MemDb();
         public IDb WitnessDb { get; private set; }
 
+        public IDb BaselineTreeDb { get; private set; }
+
+        public IDb BaselineTreeMetadataDb { get; private set; }
+
         public void Dispose()
         {
             StateDb?.Dispose();
@@ -92,6 +100,8 @@ namespace Nethermind.Db.Rocks
             BloomDb?.Dispose();
             ChtDb?.Dispose();
             WitnessDb?.Dispose();
+            BaselineTreeDb?.Dispose();
+            BaselineTreeMetadataDb?.Dispose();
         }
     }
 }

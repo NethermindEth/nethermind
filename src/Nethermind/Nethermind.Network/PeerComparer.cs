@@ -21,13 +21,6 @@ namespace Nethermind.Network
 {
     internal class PeerComparer : IComparer<Peer>
     {
-        private readonly INodeStatsManager _stats;
-
-        public PeerComparer(INodeStatsManager stats)
-        {
-            _stats = stats;
-        }
-
         public int Compare(Peer x, Peer y)
         {
             if (x == null)
@@ -46,7 +39,7 @@ namespace Nethermind.Network
                 return staticValue;
             }
 
-            int reputation = -_stats.GetCurrentReputation(x.Node).CompareTo(_stats.GetCurrentReputation(y.Node));
+            int reputation = -x.Node.CurrentReputation.CompareTo(y.Node.CurrentReputation);
             return reputation;
         }
     }

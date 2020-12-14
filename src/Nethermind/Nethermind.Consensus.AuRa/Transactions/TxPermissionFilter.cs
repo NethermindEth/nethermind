@@ -16,6 +16,7 @@
 // 
 
 using System;
+using System.Diagnostics;
 using Nethermind.Abi;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.Transactions;
@@ -31,13 +32,13 @@ namespace Nethermind.Consensus.AuRa.Transactions
     {
         private readonly VersionedContract<ITransactionPermissionContract> _contract;
         private readonly Cache _cache;
-        private readonly IStateProvider _stateProvider;
+        private readonly IReadOnlyStateProvider _stateProvider;
         private readonly ILogger _logger;
 
         public PermissionBasedTxFilter(
             VersionedContract<ITransactionPermissionContract> contract,
             Cache cache,
-            IStateProvider stateProvider,
+            IReadOnlyStateProvider stateProvider,
             ILogManager logManager)
         {
             _contract = contract ?? throw new ArgumentNullException(nameof(contract));
@@ -46,22 +47,18 @@ namespace Nethermind.Consensus.AuRa.Transactions
             _logger = logManager?.GetClassLogger<PermissionBasedTxFilter>() ?? throw new ArgumentNullException(nameof(logManager));
         }
         
-        public bool IsAllowed(Transaction tx, BlockHeader parentHeader)
+        public (bool Allowed, string Reason) IsAllowed(Transaction tx, BlockHeader parentHeader)
         {
             if (parentHeader.Number + 1 < _contract.Activation)
             {
-                return true;
+                return (true, string.Empty);
             }
-            else
-            {
-                var txType = GetTxType(tx);
-                var txPermissions = GetPermissions(tx, parentHeader);
-                if (_logger.IsTrace)
-                    _logger.Trace(
-                        $"Given transaction: {tx.Hash} sender: {tx.SenderAddress} to: {tx.To} value: {tx.Value}, gas_price: {tx.GasPrice}. " +
-                        $"Permissions required: {txType}, got: {txPermissions}.");
-                return (txPermissions & txType) == txType;
-            }
+
+            var txType = GetTxType(tx);
+            var txPermissions = GetPermissions(tx, parentHeader);
+            if (_logger.IsTrace) _logger.Trace($"Given transaction: {tx.Hash} sender: {tx.SenderAddress} to: {tx.To} value: {tx.Value}, gas_price: {tx.GasPrice}. " +
+                                               $"Permissions required: {txType}, got: {txPermissions}.");
+            return (txPermissions & txType) == txType ? (true, string.Empty) : (false, "permission denied");
         }
 
         private ITransactionPermissionContract.TxPermissions GetPermissions(Transaction tx, BlockHeader parentHeader)
@@ -94,7 +91,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
                 }
                 catch (AbiException e)
                 {
-                    if (_logger.IsError) _logger.Error("Error calling tx permissions contract.", e);
+                    if (_logger.IsError) _logger.Error($"Error calling tx permissions contract on {parentHeader.ToString(BlockHeader.Format.FullHashAndNumber)} {new StackTrace()}.", e);
                 }
             }
 

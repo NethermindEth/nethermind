@@ -44,6 +44,7 @@ namespace Nethermind.Baseline
         public const int TruncationLength = 5;
         public static Keccak LeafTopic = new Keccak("0x6a82ba2aa1d2c039c41e6e2b5a5a1090d09906f060d32af9c1ac0beff7af75c0");
         public static Keccak LeavesTopic = new Keccak("0x8ec50f97970775682a68d3c6f9caedf60fd82448ea40706b8b65d6c03648b922");
+        private const TxHandlingOptions TxHandlingOptions = TxPool.TxHandlingOptions.ManagedNonce | TxPool.TxHandlingOptions.PersistentBroadcast;
 
         public BaselineModule(
             ITxSender txSender,
@@ -53,7 +54,7 @@ namespace Nethermind.Baseline
             IAbiEncoder abiEncoder,
             IFileSystem fileSystem,
             IDb baselineDb,
-            IKeyValueStore metadataBaselineDb,
+            IDb metadataBaselineDb,
             ILogManager logManager,
             IBlockProcessor blockProcessor,
             DisposableStack disposableStack)
@@ -68,14 +69,14 @@ namespace Nethermind.Baseline
             _logFinder = logFinder ?? throw new ArgumentNullException(nameof(logFinder));
             _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
             _blockProcessor = blockProcessor ?? throw new ArgumentNullException(nameof(blockProcessor));
-            _baselineTreeHelper = new BaselineTreeHelper(_logFinder, baselineDb, metadataBaselineDb);
+            _baselineTreeHelper = new BaselineTreeHelper(_logFinder, baselineDb, metadataBaselineDb, _logger);
             _disposableStack = disposableStack ?? throw new ArgumentNullException(nameof(disposableStack));
 
             _metadata = LoadMetadata();
             InitTrees();
         }
 
-        public async Task<ResultWrapper<Keccak>> baseline_insertLeaf(Address address, Address contractAddress, Keccak hash)
+        public async Task<ResultWrapper<Keccak>> baseline_insertCommit(Address address, Address contractAddress, Keccak hash)
         {
             if (hash == Keccak.Zero)
             {
@@ -95,11 +96,11 @@ namespace Nethermind.Baseline
             tx.GasLimit = 1000000;
             tx.GasPrice = 20.GWei();
 
-            Keccak txHash = await _txSender.SendTransaction(tx, TxHandlingOptions.ManagedNonce);
+            Keccak txHash = await _txSender.SendTransaction(tx, TxHandlingOptions);
             return ResultWrapper<Keccak>.Success(txHash);
         }
 
-        public async Task<ResultWrapper<Keccak>> baseline_insertLeaves(
+        public async Task<ResultWrapper<Keccak>> baseline_insertCommits(
             Address address,
             Address contractAddress,
             params Keccak[] hashes)
@@ -126,7 +127,7 @@ namespace Nethermind.Baseline
             tx.GasLimit = 1000000;
             tx.GasPrice = 20.GWei();
 
-            Keccak txHash = await _txSender.SendTransaction(tx, TxHandlingOptions.ManagedNonce);
+            Keccak txHash = await _txSender.SendTransaction(tx, TxHandlingOptions);
 
             return ResultWrapper<Keccak>.Success(txHash);
         }
@@ -135,7 +136,7 @@ namespace Nethermind.Baseline
             Address contractAddress,
             BlockParameter? blockParameter = null)
         {
-            bool isTracked = _baselineTrees.TryGetValue(contractAddress, out BaselineTree? tree);
+            bool isTracked = TryGetTracked(contractAddress, out BaselineTree? tree);
 
             ResultWrapper<Keccak> result;
             if (!isTracked || tree == null)
@@ -146,7 +147,7 @@ namespace Nethermind.Baseline
             }
             else
             {
-                if (blockParameter == null)
+                if (blockParameter == null || blockParameter == BlockParameter.Latest)
                 {
                     result = ResultWrapper<Keccak>.Success(tree.Root);
                 }
@@ -168,12 +169,12 @@ namespace Nethermind.Baseline
             return Task.FromResult(result);
         }
 
-        public Task<ResultWrapper<BaselineTreeNode>> baseline_getLeaf(
+        public Task<ResultWrapper<BaselineTreeNode>> baseline_getCommit(
             Address contractAddress,
             UInt256 leafIndex,
             BlockParameter? blockParameter = null)
         {
-            bool isTracked = _baselineTrees.TryGetValue(contractAddress, out BaselineTree? tree);
+            bool isTracked = TryGetTracked(contractAddress, out BaselineTree? tree);
             bool isLeafIndexValid = !(leafIndex > BaselineTree.MaxLeafIndex || leafIndex < 0L);
 
             ResultWrapper<BaselineTreeNode> result;
@@ -193,7 +194,7 @@ namespace Nethermind.Baseline
             {
                 if (blockParameter == null)
                 {
-                    result = ResultWrapper<BaselineTreeNode>.Success(tree.GetLeaf((uint)leafIndex));
+                    result = ResultWrapper<BaselineTreeNode>.Success(tree.GetLeaf((uint) leafIndex));
                 }
                 else
                 {
@@ -204,7 +205,7 @@ namespace Nethermind.Baseline
                     }
                     else
                     {
-                        var leaf = _baselineTreeHelper.GetHistoricalLeaf(tree, (uint)leafIndex, searchResult.Object.Number);
+                        var leaf = _baselineTreeHelper.GetHistoricalLeaf(tree, (uint) leafIndex, searchResult.Object.Number);
                         result = ResultWrapper<BaselineTreeNode>.Success(leaf);
                     }
                 }
@@ -213,12 +214,48 @@ namespace Nethermind.Baseline
             return Task.FromResult(result);
         }
 
-        public Task<ResultWrapper<BaselineTreeNode[]>> baseline_getLeaves(
+        public Task<ResultWrapper<long>> baseline_getCount(
+            Address contractAddress,
+            BlockParameter? blockParameter = null)
+        {
+            bool isTracked = TryGetTracked(contractAddress, out BaselineTree? tree);
+
+            ResultWrapper<long> result;
+            if (!isTracked || tree == null)
+            {
+                result = ResultWrapper<long>.Fail(
+                    $"{contractAddress} tree is not tracked",
+                    ErrorCodes.InvalidInput);
+            }
+            else
+            {
+                if (blockParameter == null)
+                {
+                    result = ResultWrapper<long>.Success(tree.Count);
+                }
+                else
+                {
+                    SearchResult<BlockHeader> searchResult = _blockFinder.SearchForHeader(blockParameter);
+                    if (searchResult.IsError)
+                    {
+                        result = ResultWrapper<long>.Fail(searchResult);
+                    }
+                    else
+                    {
+                        result = ResultWrapper<long>.Success(tree.GetBlockCount(searchResult.Object.Number));
+                    }
+                }
+            }
+
+            return Task.FromResult(result);
+        }
+
+        public Task<ResultWrapper<BaselineTreeNode[]>> baseline_getCommits(
             Address contractAddress,
             UInt256[] leafIndexes,
             BlockParameter? blockParameter = null)
         {
-            bool isTracked = _baselineTrees.TryGetValue(contractAddress, out BaselineTree? tree);
+            bool isTracked = TryGetTracked(contractAddress, out BaselineTree? tree);
             bool leafIndexesAreValid = true;
             foreach (UInt256 leafIndex in leafIndexes)
             {
@@ -244,7 +281,7 @@ namespace Nethermind.Baseline
             }
             else
             {
-                var indexes = leafIndexes.Select(i => (uint)i).ToArray();
+                var indexes = leafIndexes.Select(i => (uint) i).ToArray();
                 if (blockParameter == null)
                 {
                     result = ResultWrapper<BaselineTreeNode[]>.Success(
@@ -268,12 +305,16 @@ namespace Nethermind.Baseline
             return Task.FromResult(result);
         }
 
-        public async Task<ResultWrapper<Keccak>> baseline_deploy(Address address, string contractType)
+        public async Task<ResultWrapper<Keccak>> baseline_deploy(Address address, string contractType, string? argumentsAbi = null)
         {
+            // sample shield arguments:
+            // Goerli:  000000000000000000000000b881525d318d6bb54058116af45dd83e7c34fc4e0000000000000000000000000000000000000000000000000000000000000020
+            // Ropsten: 000000000000000000000000aba8d681f5391fcf27636416b02a2c748d7b0a9e0000000000000000000000000000000000000000000000000000000000000020
+
             ResultWrapper<Keccak> result;
             try
             {
-                var bytecode = await GetContractBytecode(contractType);
+                var bytecode = await GetContractBytecode(contractType, argumentsAbi);
                 try
                 {
                     Keccak txHash = await DeployBytecode(address, contractType, bytecode);
@@ -328,7 +369,7 @@ namespace Nethermind.Baseline
 
             return result;
         }
-        
+
         public Task<ResultWrapper<bool>> baseline_verify(
             Address contractAddress,
             Keccak root,
@@ -336,7 +377,7 @@ namespace Nethermind.Baseline
             BaselineTreeNode[] path,
             BlockParameter? blockParameter = null)
         {
-            bool isTracked = _baselineTrees.TryGetValue(contractAddress, out BaselineTree? tree);
+            bool isTracked = TryGetTracked(contractAddress, out BaselineTree? tree);
             ResultWrapper<bool> result;
             if (!isTracked)
             {
@@ -384,7 +425,7 @@ namespace Nethermind.Baseline
 
             ResultWrapper<BaselineTreeNode[]> result;
 
-            bool isTracked = _baselineTrees.TryGetValue(contractAddress, out BaselineTree? tree);
+            bool isTracked = TryGetTracked(contractAddress, out BaselineTree? tree);
             if (!isTracked)
             {
                 result = ResultWrapper<BaselineTreeNode[]>.Fail(
@@ -395,7 +436,7 @@ namespace Nethermind.Baseline
             {
                 if (blockParameter == null)
                 {
-                    result = ResultWrapper<BaselineTreeNode[]>.Success(tree!.GetProof((uint)leafIndex));
+                    result = ResultWrapper<BaselineTreeNode[]>.Success(tree!.GetProof((uint) leafIndex));
                 }
                 else
                 {
@@ -407,7 +448,7 @@ namespace Nethermind.Baseline
                     else
                     {
                         var historicalTree = _baselineTreeHelper.CreateHistoricalTree(contractAddress, searchResult.Object.Number);
-                        result = ResultWrapper<BaselineTreeNode[]>.Success(historicalTree!.GetProof((uint)leafIndex));
+                        result = ResultWrapper<BaselineTreeNode[]>.Success(historicalTree!.GetProof((uint) leafIndex));
                     }
                 }
             }
@@ -439,12 +480,64 @@ namespace Nethermind.Baseline
             return Task.FromResult(result);
         }
 
+        public Task<ResultWrapper<bool>> baseline_untrack(Address contractAddress)
+        {
+            ResultWrapper<bool> result;
+
+            bool isTracked = TryGetTracked(contractAddress, out _);
+            if (!isTracked)
+            {
+                result = ResultWrapper<bool>.Fail(
+                    $"{contractAddress} tree is not tracked",
+                    ErrorCodes.InvalidInput);
+            }
+            else
+            {
+                bool managedToUntrack = _trackingOverrides.TryUpdate(contractAddress, true, false);
+                result = ResultWrapper<bool>.Success(managedToUntrack);
+            }
+
+            return Task.FromResult(result);
+        }
+
+        private bool TryGetTracked(Address contractAddress, out BaselineTree? tree)
+        {
+            bool isTracked = _baselineTrees.TryGetValue(contractAddress, out tree);
+            return isTracked && (_trackingOverrides.TryGetValue(contractAddress, out bool isUntracked) && !isUntracked);
+        }
+
         public Task<ResultWrapper<Address[]>> baseline_getTracked()
         {
             lock (_metadata)
             {
                 return Task.FromResult(ResultWrapper<Address[]>.Success(_metadata.TrackedTrees));
             }
+        }
+
+        public async Task<ResultWrapper<VerifyAndPushResponse>> baseline_verifyAndPush(
+            Address address,
+            Address contractAddress,
+            UInt256[] proof,
+            UInt256[] publicInputs,
+            Keccak newCommitment)
+        {
+            var txData = _abiEncoder.Encode(
+                AbiEncodingStyle.IncludeSignature,
+                ContractShield.VerifyAndPushSig,
+                proof,
+                publicInputs,
+                newCommitment);
+
+            Transaction tx = new Transaction();
+            tx.Value = 0;
+            tx.Data = txData;
+            tx.To = contractAddress;
+            tx.SenderAddress = address;
+            tx.GasLimit = 1000000;
+            tx.GasPrice = 20.GWei();
+
+            Keccak txHash = await _txSender.SendTransaction(tx, TxHandlingOptions);
+            return ResultWrapper<VerifyAndPushResponse>.Success(new VerifyAndPushResponse(txHash));
         }
 
         #region private
@@ -463,8 +556,9 @@ namespace Nethermind.Baseline
         private readonly DisposableStack _disposableStack;
 
         private BaselineMetadata _metadata;
+
         private byte[] _metadataKey = {0};
-        
+
         private ConcurrentDictionary<Address, BaselineTree> _baselineTrees
             = new ConcurrentDictionary<Address, BaselineTree>();
 
@@ -483,7 +577,7 @@ namespace Nethermind.Baseline
                      (c >= 'a' && c <= 'f') ||
                      (c >= 'A' && c <= 'F'));
         }
-        
+
         private async Task<Keccak> DeployBytecode(Address address, string contractType, byte[] bytecode)
         {
             Transaction tx = new Transaction();
@@ -493,13 +587,13 @@ namespace Nethermind.Baseline
             tx.GasPrice = 20.GWei();
             tx.SenderAddress = address;
 
-            Keccak txHash = await _txSender.SendTransaction(tx, TxHandlingOptions.ManagedNonce);
+            Keccak txHash = await _txSender.SendTransaction(tx, TxHandlingOptions);
 
             _logger.Info($"Sent transaction at price {tx.GasPrice} to {tx.SenderAddress}");
             _logger.Info($"Contract {contractType} has been deployed");
             return txHash;
         }
-    
+
         private void UpdateMetadata(Address contractAddress)
         {
             lock (_metadata)
@@ -543,17 +637,29 @@ namespace Nethermind.Baseline
         /// 608060405234801561001057600080fd5b5061080980610(...)
         /// </summary>
         /// <param name="contract"></param>
+        /// <param name="argumentsAbi"></param>
         /// <returns></returns>
-        private async Task<byte[]> GetContractBytecode(string contract)
+        private async Task<byte[]> GetContractBytecode(string contract, string? argumentsAbi)
         {
-            string[] contractBytecode = await _fileSystem.File.ReadAllLinesAsync($"contracts/{contract}.bin");
+            // TODO: remove the hack and write code nicely
+            string[] contractBytecode = await _fileSystem.File.ReadAllLinesAsync($"plugins/contracts/{contract}.bin".GetApplicationResourcePath());
             if (contractBytecode.Length < 4)
             {
-                throw new IOException("Bytecode not found");
+                contractBytecode = await _fileSystem.File.ReadAllLinesAsync($"contracts/{contract}.bin".GetApplicationResourcePath());
+                if (contractBytecode.Length < 4)
+                {
+                    contractBytecode = await _fileSystem.File.ReadAllLinesAsync($"contracts/{contract}.bin");
+                    if (contractBytecode.Length < 4)
+                    {
+                        throw new IOException("Bytecode not found");
+                    }
+                }
             }
 
             if (_logger.IsInfo) _logger.Info($"Loading bytecode of {contractBytecode[1]}");
-            return Bytes.FromHexString(contractBytecode[3]);
+            string bytecodeHex = contractBytecode[3];
+            bytecodeHex = bytecodeHex.Replace("#argumentsAbi#", argumentsAbi ?? string.Empty);
+            return Bytes.FromHexString(bytecodeHex);
         }
 
         private void InitTrees()
@@ -585,15 +691,44 @@ namespace Nethermind.Baseline
 
         private bool TryAddTree(Address trackedTree)
         {
-            if (_stateReader.GetCode(_blockFinder.Head.StateRoot, trackedTree).Length == 0)
+            bool treeAdded = false;
+
+            bool wasUntracked = _trackingOverrides.TryGetValue(trackedTree, out bool result) && result;
+            if (!wasUntracked)
             {
-                return false;
+                if (_stateReader.GetCode(_blockFinder.Head.StateRoot, trackedTree).Length != 0)
+                {
+                    ShaBaselineTree tree = new ShaBaselineTree(_baselineDb, _metadataBaselineDb, trackedTree.Bytes, TruncationLength, _logger);
+                    treeAdded = _baselineTrees.TryAdd(trackedTree, tree);
+                    if (treeAdded)
+                    {
+                        BaselineTreeTracker? tracker = new BaselineTreeTracker(trackedTree, tree, _blockProcessor, _baselineTreeHelper, _blockFinder, _logger);
+                        _disposableStack.Push(tracker);
+                    }
+                }
+                
+                _trackingOverrides.TryAdd(trackedTree, false);
+            }
+            else
+            {
+                treeAdded = _trackingOverrides.TryUpdate(trackedTree, false, true);
             }
 
-            ShaBaselineTree tree = new ShaBaselineTree(_baselineDb, _metadataBaselineDb, trackedTree.Bytes, TruncationLength);
-            var tracker = new BaselineTreeTracker(trackedTree, tree, _blockProcessor, _baselineTreeHelper, _blockFinder);
-            _disposableStack.Push(tracker);
-            return _baselineTrees.TryAdd(trackedTree, tree);
+            return treeAdded;
+        }
+        
+        private ConcurrentDictionary<Address, bool> _trackingOverrides = new ConcurrentDictionary<Address, bool>();
+        
+        private bool TryRemoveTree(Address trackedTree)
+        {
+            if (_logger.IsWarn) _logger.Warn("Tree untracking has no effect for the moment.");
+            // TODO: review if we need to clear metadata and store empty metadata in the database
+            // TODO: review if there will be a conflict if we track again later
+            // TODO: review if we can drop old databases on untracking
+            // TODO: all these todos are fine for now if we do nothing on untrack
+            // TODO: the only problem now is if we track, untrack, track again
+            
+            return true;
         }
 
         #endregion

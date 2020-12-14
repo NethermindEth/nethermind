@@ -8,7 +8,6 @@
 
     <ItemGroup>
       <ProjectReference Include="..\Nethermind.Blockchain\Nethermind.Blockchain.csproj" />
-      <ProjectReference Include="..\Nethermind.Consensus.AuRa\Nethermind.Consensus.AuRa.csproj" />
       <ProjectReference Include="..\Nethermind.Facade\Nethermind.Facade.csproj" />
       <ProjectReference Include="..\Nethermind.Grpc\Nethermind.Grpc.csproj" />
       <ProjectReference Include="..\Nethermind.JsonRpc\Nethermind.JsonRpc.csproj" />

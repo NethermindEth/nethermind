@@ -118,14 +118,15 @@ namespace Nethermind.Core.Test.Blockchain
             IDb blockDb = new MemDb();
             IDb headerDb = new MemDb();
             IDb blockInfoDb = new MemDb();
-            BlockTree = new BlockTree(blockDb, headerDb, blockInfoDb, new ChainLevelInfoRepository(blockDb), SpecProvider, TxPool, NullBloomStorage.Instance, LimboLogs.Instance);
+            BlockTree = new BlockTree(blockDb, headerDb, blockInfoDb, new ChainLevelInfoRepository(blockDb), SpecProvider, NullBloomStorage.Instance, LimboLogs.Instance);
+            new OnChainTxWatcher(BlockTree, TxPool, SpecProvider, LimboLogs.Instance);
 
             ReceiptStorage = new InMemoryReceiptStorage();
             VirtualMachine virtualMachine = new VirtualMachine(State, Storage, new BlockhashProvider(BlockTree, LimboLogs.Instance), SpecProvider, LimboLogs.Instance);
             TxProcessor = new TransactionProcessor(SpecProvider, State, Storage, virtualMachine, LimboLogs.Instance);
             BlockProcessor = CreateBlockProcessor();
 
-            BlockchainProcessor chainProcessor = new BlockchainProcessor(BlockTree, BlockProcessor, new TxSignaturesRecoveryStep(EthereumEcdsa, TxPool, SpecProvider, LimboLogs.Instance), LimboLogs.Instance, BlockchainProcessor.Options.Default);
+            BlockchainProcessor chainProcessor = new BlockchainProcessor(BlockTree, BlockProcessor, new RecoverSignatures(EthereumEcdsa, TxPool, SpecProvider, LimboLogs.Instance), LimboLogs.Instance, BlockchainProcessor.Options.Default);
             chainProcessor.Start();
 
             StateReader = new StateReader(StateDb, CodeDb, LimboLogs.Instance);

@@ -36,6 +36,7 @@ namespace Nethermind.Logging
             }
 
             ExecutingDirectory = Path.GetDirectoryName(process.MainModule.FileName);
+            Console.WriteLine($"Resolved executing directory as {ExecutingDirectory}.");
         }
 
         public static string GetApplicationResourcePath(this string resourcePath, string overridePrefixPath = null)

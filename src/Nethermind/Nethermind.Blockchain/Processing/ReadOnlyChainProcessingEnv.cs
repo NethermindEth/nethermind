@@ -38,7 +38,7 @@ namespace Nethermind.Blockchain.Processing
         public ReadOnlyChainProcessingEnv(
             ReadOnlyTxProcessingEnv txEnv,
             IBlockValidator blockValidator,
-            IBlockDataRecoveryStep recoveryStep,
+            IBlockPreprocessorStep recoveryStep,
             IRewardCalculator rewardCalculator,
             IReceiptStorage receiptStorage,
             IReadOnlyDbProvider dbProvider,

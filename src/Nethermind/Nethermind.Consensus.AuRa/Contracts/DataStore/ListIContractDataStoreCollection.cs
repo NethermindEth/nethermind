@@ -33,9 +33,16 @@ namespace Nethermind.Consensus.AuRa.Contracts.DataStore
 
         public IEnumerable<T> GetSnapshot() => Items.ToList();
 
-        public void Insert(IEnumerable<T> items)
+        public void Insert(IEnumerable<T> items, bool inFront = false)
         {
-            Items.AddRange(items);
+            if (inFront)
+            {
+                Items.InsertRange(0, items);
+            }
+            else
+            {
+                Items.AddRange(items);
+            }
         }
 
         public void Remove(IEnumerable<T> items)

@@ -57,7 +57,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
             IDb headersDb = new MemDb();
             ChainLevelInfoRepository repository = new ChainLevelInfoRepository(blocksInfoDb);
             ISpecProvider specProvider = MainnetSpecProvider.Instance;
-            _blockTree = new BlockTree(blocksDb, headersDb, blocksInfoDb, repository, specProvider, NullTxPool.Instance, NullBloomStorage.Instance, new SyncConfig(), LimboLogs.Instance);
+            _blockTree = new BlockTree(blocksDb, headersDb, blocksInfoDb, repository, specProvider, NullBloomStorage.Instance, new SyncConfig(), LimboLogs.Instance);
 
             ISnapshotableDb stateDb = new StateDb();
             ISnapshotableDb codeDb = new StateDb();
@@ -85,7 +85,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
                 NullWitnessCollector.Instance,
                 LimboLogs.Instance);
             
-            var txRecovery = new TxSignaturesRecoveryStep(new EthereumEcdsa(ChainId.Mainnet, LimboLogs.Instance), NullTxPool.Instance, specProvider, LimboLogs.Instance);
+            var txRecovery = new RecoverSignatures(new EthereumEcdsa(ChainId.Mainnet, LimboLogs.Instance), NullTxPool.Instance, specProvider, LimboLogs.Instance);
             _processor = new BlockchainProcessor(_blockTree, blockProcessor, txRecovery, LimboLogs.Instance, BlockchainProcessor.Options.NoReceipts);
 
             Block genesis = Build.A.Block.Genesis.TestObject;

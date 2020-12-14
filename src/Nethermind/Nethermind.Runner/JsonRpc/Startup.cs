@@ -17,9 +17,9 @@
 using System;
 using System.Diagnostics;
 using System.IO;
-using System.Reflection;
 using System.Text;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
@@ -27,26 +27,34 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Nethermind.Api;
 using Nethermind.Config;
-using Nethermind.Core.Attributes;
 using Nethermind.Core.Extensions;
 using Nethermind.JsonRpc;
 using Nethermind.Serialization.Json;
 using Nethermind.WebSockets;
 using Newtonsoft.Json;
-using Newtonsoft.Json.Serialization;
+using HealthChecks.UI.Client;
+using Nethermind.HealthChecks;
 
 namespace Nethermind.Runner
 {
     public class Startup
     {
         private IJsonSerializer _jsonSerializer = CreateJsonSerializer();
-
+        
         private static EthereumJsonSerializer CreateJsonSerializer() => new EthereumJsonSerializer();
 
         public void ConfigureServices(IServiceCollection services)
         {
-            services.Configure<KestrelServerOptions>(options => { options.AllowSynchronousIO = true; });
+            var sp = services.BuildServiceProvider();
+            IConfigProvider configProvider = sp.GetService<IConfigProvider>();
+            IJsonRpcConfig jsonRpcConfig = configProvider.GetConfig<IJsonRpcConfig>();
+
+            services.Configure<KestrelServerOptions>(options => {
+                options.AllowSynchronousIO = true;
+                options.Limits.MaxRequestBodySize = jsonRpcConfig.MaxRequestBodySize;
+            });
             Bootstrap.Instance.RegisterJsonRpcServices(services);
+            services.AddControllers();
             string corsOrigins = Environment.GetEnvironmentVariable("NETHERMIND_CORS_ORIGINS") ?? "*";
             services.AddCors(c => c.AddPolicy("Cors",
                 p => p.AllowAnyMethod().AllowAnyHeader().WithOrigins(corsOrigins)));
@@ -73,10 +81,12 @@ namespace Nethermind.Runner
             }
 
             app.UseCors("Cors");
+            app.UseRouting();
 
             IConfigProvider configProvider = app.ApplicationServices.GetService<IConfigProvider>();
             IInitConfig initConfig = configProvider.GetConfig<IInitConfig>();
             IJsonRpcConfig jsonRpcConfig = configProvider.GetConfig<IJsonRpcConfig>();
+            IHealthChecksConfig healthChecksConfig = configProvider.GetConfig<IHealthChecksConfig>();
             if (initConfig.WebSocketsEnabled)
             {
                 app.UseWebSockets();
@@ -84,14 +94,30 @@ namespace Nethermind.Runner
                                    && ctx.Connection.LocalPort == jsonRpcConfig.WebSocketsPort,
                 builder => builder.UseWebSocketsModules());
             }
-            
+
+            app.UseEndpoints(endpoints =>
+            {
+                if (healthChecksConfig.Enabled)
+                {
+                    endpoints.MapHealthChecks("/health", new HealthCheckOptions()
+                    {
+                        Predicate = _ => true,
+                        ResponseWriter = UIResponseWriter.WriteHealthCheckUIResponse
+                    });
+                    if (healthChecksConfig.UIEnabled)
+                    {
+                        endpoints.MapHealthChecksUI(setup => setup.AddCustomStylesheet(Path.Combine(AppDomain.CurrentDomain.BaseDirectory!, "nethermind.css")));
+                    }
+                }
+            });
+
             app.Use(async (ctx, next) =>
             {
                 if (ctx.Request.Method == "GET")
                 {
                     await ctx.Response.WriteAsync("Nethermind JSON RPC");
                 }
-                else if (ctx.Connection.LocalPort == jsonRpcConfig.Port && ctx.Request.Method == "POST")
+                if (ctx.Connection.LocalPort == jsonRpcConfig.Port && ctx.Request.Method == "POST")
                 {
                     Stopwatch stopwatch = Stopwatch.StartNew();
                     using StreamReader reader = new StreamReader(ctx.Request.Body, Encoding.UTF8);

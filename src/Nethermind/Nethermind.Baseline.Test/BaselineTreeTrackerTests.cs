@@ -45,7 +45,7 @@ namespace Nethermind.Baseline.Test
         private IFileSystem _fileSystem;
         private AbiEncoder _abiEncoder;
         private IDb _baselineDb;
-        private IKeyValueStore _metadataBaselineDb;
+        private IDb _metadataBaselineDb;
 
         [SetUp]
         public void SetUp()
@@ -58,8 +58,6 @@ namespace Nethermind.Baseline.Test
             _metadataBaselineDb = new MemDb();
         }
 
-
-
         [Test]
         public async Task Tree_tracker_insert_leaf([ValueSource(nameof(InsertLeafTestCases))]InsertLeafTest test)
         {
@@ -68,24 +66,51 @@ namespace Nethermind.Baseline.Test
             var testRpc = result.TestRpc;
             BaselineTree baselineTree = BuildATree();
             var fromContractAdress = ContractAddress.From(address, 0L);
-            var baselineTreeHelper = new BaselineTreeHelper(testRpc.LogFinder, _baselineDb, _metadataBaselineDb);
-            new BaselineTreeTracker(fromContractAdress, baselineTree, testRpc.BlockProcessor, baselineTreeHelper, testRpc.BlockFinder);
+            var baselineTreeHelper = new BaselineTreeHelper(testRpc.LogFinder, _baselineDb, _metadataBaselineDb, LimboNoErrorLogger.Instance);
+            new BaselineTreeTracker(fromContractAdress, baselineTree, testRpc.BlockProcessor, baselineTreeHelper, testRpc.BlockFinder, LimboNoErrorLogger.Instance);
 
             var contract = new MerkleTreeSHAContract(_abiEncoder, fromContractAdress);
             UInt256 nonce = 1L;
             for (int i = 0; i < test.ExpectedTreeCounts.Length; i++)
             {
-                for (int j = 0; j < test.LeavesInTransactionsAndBlocks[i].Length; j++)
-                {
-                    var leafHash = test.LeavesInTransactionsAndBlocks[i][j];
-                    var transaction = contract.InsertLeaf(address, leafHash);
-                    transaction.Nonce = nonce;
-                    ++nonce;
-                    await testRpc.TxSender.SendTransaction(transaction, TxPool.TxHandlingOptions.None);
-                }
+                nonce = await InsertLeafFromArray(test.LeavesInTransactionsAndBlocks[i], nonce, testRpc, contract, address);
 
                 await testRpc.AddBlock();
                 Assert.AreEqual(test.ExpectedTreeCounts[i], baselineTree.Count);
+            }
+        }
+
+
+        [Test]
+        public async Task Tree_tracker_start_stop_tracking([ValueSource(nameof(InsertLeafTestCases))]InsertLeafTest test)
+        {
+            var address = TestItem.Addresses[0];
+            var result = await InitializeTestRpc(address);
+            var testRpc = result.TestRpc;
+            BaselineTree baselineTree = BuildATree();
+            var fromContractAdress = ContractAddress.From(address, 0L);
+            var baselineTreeHelper = new BaselineTreeHelper(testRpc.LogFinder, _baselineDb, _metadataBaselineDb, LimboNoErrorLogger.Instance);
+
+            var contract = new MerkleTreeSHAContract(_abiEncoder, fromContractAdress);
+            UInt256 nonce = 1L;
+            for (int i = 0; i < test.ExpectedTreeCounts.Length; i++)
+            {
+                nonce = await InsertLeafFromArray(test.LeavesInTransactionsAndBlocks[i], nonce, testRpc, contract, address);
+
+                await testRpc.AddBlock();
+            }
+
+            var tracker = new BaselineTreeTracker(fromContractAdress, baselineTree, testRpc.BlockProcessor, baselineTreeHelper, testRpc.BlockFinder, LimboNoErrorLogger.Instance);
+            Assert.AreEqual(test.ExpectedTreeCounts[test.ExpectedTreeCounts.Length - 1], baselineTree.Count);
+            var afterStartTrackingCount = baselineTree.Count;
+            for (int i = 0; i < test.ExpectedTreeCounts.Length; i++)
+            {
+                tracker.StopTracking();
+                nonce = await InsertLeafFromArray(test.LeavesInTransactionsAndBlocks[i], nonce, testRpc, contract, address);
+
+                await testRpc.AddBlock();
+                tracker.StartTracking();
+                Assert.AreEqual(test.ExpectedTreeCounts[i] + afterStartTrackingCount, baselineTree.Count);
             }
         }
 
@@ -97,23 +122,15 @@ namespace Nethermind.Baseline.Test
             var testRpc = result.TestRpc;
             BaselineTree baselineTree = BuildATree();
             var fromContractAdress = ContractAddress.From(address, 0);
-            var baselineTreeHelper = new BaselineTreeHelper(testRpc.LogFinder, _baselineDb, _metadataBaselineDb);
-            new BaselineTreeTracker(fromContractAdress, baselineTree, testRpc.BlockProcessor, baselineTreeHelper, testRpc.BlockFinder);
+            var baselineTreeHelper = new BaselineTreeHelper(testRpc.LogFinder, _baselineDb, _metadataBaselineDb, LimboNoErrorLogger.Instance);
+            new BaselineTreeTracker(fromContractAdress, baselineTree, testRpc.BlockProcessor, baselineTreeHelper, testRpc.BlockFinder, LimboNoErrorLogger.Instance);
 
             var contract = new MerkleTreeSHAContract(_abiEncoder, fromContractAdress);
 
             UInt256 nonce = 1L;
             for (int i = 0; i < test.ExpectedTreeCounts.Length; i++)
             {
-                for (int j = 0; j < test.LeavesInTransactionsAndBlocks[i].Length; j++)
-                {
-                    var hashes = test.LeavesInTransactionsAndBlocks[i][j];
-                    var transaction = contract.InsertLeaves(address, hashes);
-                    transaction.Nonce = nonce;
-                    ++nonce;
-                    await testRpc.TxSender.SendTransaction(transaction, TxPool.TxHandlingOptions.None);
-                }
-
+                nonce = await InsertLeavesFromArray(test.LeavesInTransactionsAndBlocks[i], nonce, testRpc, contract, address);
                 await testRpc.AddBlock();
                 Assert.AreEqual(test.ExpectedTreeCounts[i], baselineTree.Count);
             }
@@ -148,7 +165,7 @@ namespace Nethermind.Baseline.Test
 
         private BaselineTree BuildATree(IKeyValueStore keyValueStore = null)
         {
-            return new ShaBaselineTree(_baselineDb, _metadataBaselineDb, new byte[] { }, 0);
+            return new ShaBaselineTree(_baselineDb, _metadataBaselineDb, new byte[] { }, 0, LimboNoErrorLogger.Instance);
         }
 
         public class InsertLeafTest

@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -59,6 +59,8 @@ namespace Nethermind.Synchronization.BeamSync
         public IDb BeamStateDb => _otherProvider.BeamStateDb;
         public IDb ChtDb => _otherProvider.ChtDb;
         public IDb WitnessDb => _otherProvider.WitnessDb;
+        public IDb BaselineTreeDb => _otherProvider.BaselineTreeDb;
+        public IDb BaselineTreeMetadataDb => _otherProvider.BaselineTreeMetadataDb;
 
         public void Dispose()
         {

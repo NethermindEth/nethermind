@@ -221,18 +221,18 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure
                     requiredBlockConfirmations);
             }
 
-            depositReportService = new DepositReportService(depositRepository, receiptRepository, sessionRepository,
+            depositReportService = new DepositReportService(depositRepository, depositUnitsCalculator, receiptRepository, sessionRepository,
                 timestamper);
             ReceiptService receiptService = new ReceiptService(depositProvider, providerService, receiptRequestValidator,
                 sessionService, timestamper, receiptRepository, sessionRepository, abiEncoder, wallet, ecdsa,
                 nodePublicKey, logManager);
             RefundService refundService = new RefundService(blockchainBridge, abiEncoder, depositRepository,
-                contractAddress, logManager);
+                contractAddress, logManager, wallet);
             RefundClaimant refundClaimant = new RefundClaimant(refundService, blockchainBridge, depositRepository,
                 transactionVerifier, gasPriceService, timestamper, logManager);
             _api.AccountService = new AccountService(configManager, dataStreamService, providerService,
                 sessionService, consumerNotifier, wallet, configId, consumerAddress, logManager);
-            _api.NdmAccountUpdater = new NdmAccountUpdater(ndmWebSocketsModule, consumerAddress, _api.MainBlockProcessor, _api.StateProvider);
+            _api.NdmAccountUpdater = new NdmAccountUpdater(ndmWebSocketsModule, consumerAddress, _api.MainBlockProcessor, _api.ChainHeadStateProvider);
             ProxyService proxyService = new ProxyService(jsonRpcClientProxy, configManager, configId, logManager);
             _api.ConsumerService = new ConsumerService(_api.AccountService, dataAssetService, dataRequestService,
                 dataConsumerService, dataStreamService, depositManager, depositApprovalService, providerService,

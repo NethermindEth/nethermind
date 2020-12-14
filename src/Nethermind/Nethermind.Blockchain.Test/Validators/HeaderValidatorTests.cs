@@ -52,7 +52,7 @@ namespace Nethermind.Blockchain.Test.Validators
             _ethash = new EthashSealValidator(LimboLogs.Instance, calculator, new CryptoRandom(), new Ethash(LimboLogs.Instance));
             _testLogger = new TestLogger();
             var blockInfoDb = new MemDb();
-            BlockTree blockStore = new BlockTree(new MemDb(), new MemDb(), blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), FrontierSpecProvider.Instance, Substitute.For<ITxPool>(), Substitute.For<IBloomStorage>(), LimboLogs.Instance);
+            BlockTree blockStore = new BlockTree(new MemDb(), new MemDb(), blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), FrontierSpecProvider.Instance, Substitute.For<IBloomStorage>(), LimboLogs.Instance);
             
             _validator = new HeaderValidator(blockStore, _ethash, new SingleReleaseSpecProvider(Byzantium.Instance, 3), new OneLoggerLogManager(_testLogger));
             _parentBlock = Build.A.Block.WithDifficulty(1).TestObject;

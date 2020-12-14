@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using Nethermind.Core.Extensions;
@@ -21,27 +22,43 @@ using Nethermind.Core.Extensions;
 namespace Nethermind.Core.Caching
 {
     /// <summary>
-    /// https://stackoverflow.com/questions/754233/is-it-there-any-lru-implementation-of-idictionary
+    /// A custom array based LRU cache.
     /// </summary>
-    public class LruCache<TKey, TValue> : ICache<TKey, TValue>
+    /// <remarks>
+    /// The array based solution is preferred to lower the overall memory management overhead. The <see cref="LinkedListNode{T}"/> based approach is very costly.
+    /// </remarks>
+    public class LruCache<TKey, TValue> : ICache<TKey, TValue> where TKey : notnull
     {
         private readonly int _maxCapacity;
-        private readonly Dictionary<TKey, LinkedListNode<LruCacheItem>> _cacheMap;
-        private readonly LinkedList<LruCacheItem> _lruList;
+        private readonly Dictionary<TKey, int> _cacheMap;
+        private Node[] _list;
+
+        private const int MinimumListCapacity = 16;
+
+        struct Node
+        {
+            public const int Null = -1;
+
+            public int Prev;
+            public int Next;
+            public TValue Value;
+            public TKey Key;
+        }
 
         public void Clear()
         {
             _cacheMap?.Clear();
-            _lruList?.Clear();
+            _list = new Node[MinimumListCapacity];
+            _head = Node.Null;
         }
 
         public LruCache(int maxCapacity, int startCapacity, string name)
         {
             _maxCapacity = maxCapacity;
             _cacheMap = typeof(TKey) == typeof(byte[])
-                ? new Dictionary<TKey, LinkedListNode<LruCacheItem>>((IEqualityComparer<TKey>) Bytes.EqualityComparer)
-                : new Dictionary<TKey, LinkedListNode<LruCacheItem>>(startCapacity); // do not initialize it at the full capacity
-            _lruList = new LinkedList<LruCacheItem>();
+                ? new Dictionary<TKey, int>((IEqualityComparer<TKey>)Bytes.EqualityComparer)
+                : new Dictionary<TKey, int>(startCapacity); // do not initialize it at the full capacity
+            _list = new Node[Math.Max(startCapacity, MinimumListCapacity)];
         }
 
         public LruCache(int maxCapacity, string name)
@@ -52,29 +69,39 @@ namespace Nethermind.Core.Caching
         [MethodImpl(MethodImplOptions.Synchronized)]
         public TValue Get(TKey key)
         {
-            if (_cacheMap.TryGetValue(key, out LinkedListNode<LruCacheItem> node))
+            if (_cacheMap.TryGetValue(key, out int node))
             {
-                TValue value = node.Value.Value;
-                _lruList.Remove(node);
-                _lruList.AddLast(node);
+                TValue value = _list[node].Value;
+
+                NodeRemove(node);
+                NodeAddLast(node);
+
                 return value;
             }
 
+#pragma warning disable 8603
+            // fixed C# 9
             return default;
+#pragma warning restore 8603
         }
 
         [MethodImpl(MethodImplOptions.Synchronized)]
         public bool TryGet(TKey key, out TValue value)
         {
-            if (_cacheMap.TryGetValue(key, out LinkedListNode<LruCacheItem> node))
+            if (_cacheMap.TryGetValue(key, out int node))
             {
-                value = node.Value.Value;
-                _lruList.Remove(node);
-                _lruList.AddLast(node);
+                value = _list[node].Value;
+
+                NodeRemove(node);
+                NodeAddLast(node);
+
                 return true;
             }
 
+#pragma warning disable 8601
+            // fixed C# 9
             value = default;
+#pragma warning restore 8601
             return false;
         }
 
@@ -87,11 +114,12 @@ namespace Nethermind.Core.Caching
                 return;
             }
 
-            if (_cacheMap.TryGetValue(key, out LinkedListNode<LruCacheItem> node))
+            if (_cacheMap.TryGetValue(key, out int node))
             {
-                node.Value.Value = val;
-                _lruList.Remove(node);
-                _lruList.AddLast(node);
+                _list[node].Value = val;
+
+                NodeRemove(node);
+                NodeAddLast(node);
             }
             else
             {
@@ -101,10 +129,18 @@ namespace Nethermind.Core.Caching
                 }
                 else
                 {
-                    LruCacheItem cacheItem = new LruCacheItem(key, val);
-                    LinkedListNode<LruCacheItem> newNode = new LinkedListNode<LruCacheItem>(cacheItem);
-                    _lruList.AddLast(newNode);
-                    _cacheMap.Add(key, newNode);    
+                    int newNode = _cacheMap.Count;
+
+                    if (newNode >= _list.Length)
+                    {
+                        Array.Resize(ref _list, _list.Length * 2);
+                    }
+
+                    _list[newNode].Value = val;
+                    _list[newNode].Key = key;
+
+                    NodeAddLast(newNode);
+                    _cacheMap.Add(key, newNode);
                 }
             }
         }
@@ -112,10 +148,26 @@ namespace Nethermind.Core.Caching
         [MethodImpl(MethodImplOptions.Synchronized)]
         public void Delete(TKey key)
         {
-            if (_cacheMap.TryGetValue(key, out LinkedListNode<LruCacheItem> node))
+            if (_cacheMap.Remove(key, out int node))
             {
-                _lruList.Remove(node);
-                _cacheMap.Remove(key);
+                int nextFree = _cacheMap.Count;
+
+                ref Node removed = ref NodeRemove(node, true);
+
+                if (nextFree == 0)
+                {
+                    // head is null, nothing to remove
+                }
+                else if (nextFree == node)
+                {
+                    // nothing to do, the last node was removed
+                }
+                else
+                {
+                    removed = _list[nextFree];
+                    _list[removed.Prev].Next = node;
+                    _list[removed.Next].Prev = node;
+                }
             }
         }
 
@@ -124,26 +176,73 @@ namespace Nethermind.Core.Caching
 
         private void Replace(TKey key, TValue value)
         {
-            LinkedListNode<LruCacheItem> node = _lruList.First;
-            _lruList.RemoveFirst();
-            _cacheMap.Remove(node.Value.Key);
-            
-            node.Value.Value = value;
-            node.Value.Key = key;
-            _lruList.AddLast(node);
-            _cacheMap.Add(key, node);
+            int i = _head;
+            ref Node node = ref NodeRemove(i);
+            _cacheMap.Remove(node.Key);
+
+            node.Value = value;
+            node.Key = key;
+            NodeAddLast(i);
+
+            _cacheMap.Add(key, i);
         }
 
-        private class LruCacheItem
+        private int _head = Node.Null;
+
+        private ref Node NodeRemove(int i, bool cleanValues = false)
         {
-            public LruCacheItem(TKey k, TValue v)
+            ref Node node = ref _list[i];
+
+            if (node.Next == i)
             {
-                Key = k;
-                Value = v;
+                _head = Node.Null;
+            }
+            else
+            {
+                _list[node.Next].Prev = node.Prev;
+                _list[node.Prev].Next = node.Next;
+
+                if (_head == i)
+                {
+                    _head = node.Next;
+                }
             }
 
-            public TKey Key;
-            public TValue Value;
+            if (cleanValues)
+            {
+                node.Value = default!;
+                node.Key = default!;
+            }
+
+            return ref node;
+        }
+
+        private void NodeAddLast(int i)
+        {
+            if (_head == Node.Null)
+                NodeInsertToEmptyList(i);
+            else
+                NodeInsertBefore(_head, i);
+        }
+
+        private void NodeInsertToEmptyList(int i)
+        {
+            ref Node node = ref _list[i];
+
+            node.Next = i;
+            node.Prev = i;
+            _head = i;
+        }
+
+        private void NodeInsertBefore(int n, int @new)
+        {
+            ref Node node = ref _list[n];
+            ref Node newNode = ref _list[@new];
+
+            newNode.Next = n;
+            newNode.Prev = node.Prev;
+            _list[node.Prev].Next = @new;
+            node.Prev = @new;
         }
 
         public int MemorySize => CalculateMemorySize(0, _cacheMap.Count);
@@ -151,7 +250,7 @@ namespace Nethermind.Core.Caching
         public static int CalculateMemorySize(int keyPlusValueSize, int currentItemsCount)
         {
             // it may actually be different if the initial capacity not equal to max (depending on the dictionary growth path)
-            
+
             const int preInit = 48 /* LinkedList */ + 80 /* Dictionary */ + 24;
             int postInit = 52 /* lazy init of two internal dictionary arrays + dictionary size times (entry size + int) */ + MemorySizes.FindNextPrime(currentItemsCount) * 28 + currentItemsCount * 80 /* LinkedListNode and CacheItem times items count */;
             return MemorySizes.Align(preInit + postInit + keyPlusValueSize * currentItemsCount);

@@ -28,23 +28,15 @@ using NUnit.Framework;
 namespace Nethermind.Config.Test
 {
     [TestFixture]
+    [Parallelizable(ParallelScope.All)]
     public class DefaultConfigProviderTests
     {
-        [SetUp]
-        public void Initialize()
-        {
-            var keystoreConfig = new KeyStoreConfig();
-            var networkConfig = new NetworkConfig();
-            var jsonRpcConfig = new JsonRpcConfig();
-            var statsConfig = new StatsConfig();
-        }
-
         [Test]
         public void Can_read_without_sources()
         {
             ConfigProvider configProvider = new ConfigProvider();
-            IStatsConfig statsConfig = configProvider.GetConfig<IStatsConfig>();
-            Assert.AreEqual(10000, statsConfig.PenalizedReputationTooManyPeersTimeout);
+            INetworkConfig config = configProvider.GetConfig<INetworkConfig>();
+            Assert.AreEqual(30303, config.DiscoveryPort);
         }
 
         public int DefaultTestProperty { get; set; } = 5;
@@ -75,26 +67,26 @@ namespace Nethermind.Config.Test
                 Dictionary<string, string> args = new Dictionary<string, string>();
                 if (bitArray.Get(4))
                 {
-                    args.Add("Stats.CaptureNodeStatsEventHistory", bitArray.Get(5).ToString());
+                    args.Add("JsonRpc.Enabled", bitArray.Get(5).ToString());
                 }
 
-                Environment.SetEnvironmentVariable("NETHERMIND_STATSCONFIG_CAPTURENODESTATSEVENTHISTORY", null, EnvironmentVariableTarget.Process);
+                Environment.SetEnvironmentVariable("NETHERMIND_JSONRPCCONFIG_ENABLED", null, EnvironmentVariableTarget.Process);
                 if (bitArray.Get(2))
                 {
-                    Environment.SetEnvironmentVariable("NETHERMIND_STATSCONFIG_CAPTURENODESTATSEVENTHISTORY", bitArray.Get(3).ToString(), EnvironmentVariableTarget.Process);
+                    Environment.SetEnvironmentVariable("NETHERMIND_JSONRPCCONFIG_ENABLED", bitArray.Get(3).ToString(), EnvironmentVariableTarget.Process);
                 }
 
                 Dictionary<string, string> fakeJson = new Dictionary<string, string>();
                 if (bitArray.Get(0))
                 {
-                    fakeJson.Add("Stats.CaptureNodeStatsEventHistory", bitArray.Get(1).ToString());
+                    fakeJson.Add("JsonRpc.Enabled", bitArray.Get(1).ToString());
                 }
 
                 configProvider.AddSource(new ArgsConfigSource(args));
                 configProvider.AddSource(new EnvConfigSource());
                 configProvider.AddSource(new ArgsConfigSource(fakeJson));
 
-                var config = configProvider.GetConfig<IStatsConfig>();
+                var config = configProvider.GetConfig<IJsonRpcConfig>();
                 bool expectedResult = bitArray.Get(4)
                     ? bitArray.Get(5)
                     : bitArray.Get(2)
@@ -103,7 +95,7 @@ namespace Nethermind.Config.Test
                             ? bitArray.Get(1)
                             : false;
 
-                Assert.AreEqual(expectedResult, config.CaptureNodeStatsEventHistory, bitArray.ToBitString());
+                Assert.AreEqual(expectedResult, config.Enabled, bitArray.ToBitString());
             }
         }
     }

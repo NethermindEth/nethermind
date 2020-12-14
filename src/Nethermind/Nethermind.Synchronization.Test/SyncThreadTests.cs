@@ -265,7 +265,7 @@ namespace Nethermind.Synchronization.Test
 
             var ecdsa = new EthereumEcdsa(specProvider.ChainId, logManager);
             var txPool = new TxPool.TxPool(new InMemoryTxStorage(), ecdsa, specProvider, new TxPoolConfig(), stateProvider, logManager);
-            var tree = new BlockTree(blockDb, headerDb, blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), specProvider, txPool, NullBloomStorage.Instance, logManager);
+            var tree = new BlockTree(blockDb, headerDb, blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), specProvider, NullBloomStorage.Instance, logManager);
             var blockhashProvider = new BlockhashProvider(tree, LimboLogs.Instance);
             var virtualMachine = new VirtualMachine(stateProvider, storageProvider, blockhashProvider, specProvider, logManager);
 
@@ -293,10 +293,10 @@ namespace Nethermind.Synchronization.Test
                 NullWitnessCollector.Instance,
                 logManager);
 
-            var step = new TxSignaturesRecoveryStep(ecdsa, txPool, specProvider, logManager);
+            var step = new RecoverSignatures(ecdsa, txPool, specProvider, logManager);
             var processor = new BlockchainProcessor(tree, blockProcessor, step, logManager, BlockchainProcessor.Options.Default);
 
-            var nodeStatsManager = new NodeStatsManager(new StatsConfig(), logManager);
+            var nodeStatsManager = new NodeStatsManager(logManager);
             var syncPeerPool = new SyncPeerPool(tree, nodeStatsManager, 25, logManager);
 
             StateProvider devState = new StateProvider(stateDb, codeDb, logManager);

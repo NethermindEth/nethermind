@@ -27,7 +27,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Network.Test.Rlpx
 {
-    [Parallelizable(ParallelScope.Self)]
+    [Parallelizable(ParallelScope.All)]
     [TestFixture]
     public class RlpxPeerTests
     {

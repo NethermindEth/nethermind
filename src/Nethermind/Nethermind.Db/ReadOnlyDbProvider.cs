@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -47,6 +47,8 @@ namespace Nethermind.Db
             NestedBloomDb = new ReadOnlyDb(wrappedProvider.BloomDb, createInMemoryWriteStore);
             NestedChtDb = new ReadOnlyDb(wrappedProvider.ChtDb, createInMemoryWriteStore);
             NestedWitnessDb = new ReadOnlyDb(wrappedProvider.WitnessDb, createInMemoryWriteStore);
+            NestedBaselineTreeDb = new ReadOnlyDb(wrappedProvider.BaselineTreeDb, createInMemoryWriteStore);
+            NestedBaselineTreeMetadataDb = new ReadOnlyDb(wrappedProvider.BaselineTreeMetadataDb, createInMemoryWriteStore);
         }
 
         public void Dispose()
@@ -76,6 +78,12 @@ namespace Nethermind.Db
         public ReadOnlyDb NestedBloomDb { get; }
         public ReadOnlyDb NestedChtDb { get; }
         public ReadOnlyDb NestedWitnessDb { get; }
+        public ReadOnlyDb NestedBaselineTreeDb { get; }
+        public ReadOnlyDb NestedBaselineTreeMetadataDb { get; }
+
+        public IDb BaselineTreeDb => NestedBaselineTreeDb;
+
+        public IDb BaselineTreeMetadataDb => NestedBaselineTreeMetadataDb;
 
         public void ClearTempChanges()
         {
@@ -91,6 +99,8 @@ namespace Nethermind.Db
             NestedBloomDb.Restore(-1);
             NestedWitnessDb.Restore(-1);
             NestedChtDb.Restore(-1);
+            NestedBaselineTreeDb.Restore(-1);
+            NestedBaselineTreeMetadataDb.Restore(-1);
             BeamStateDb.Clear();
         }
     }

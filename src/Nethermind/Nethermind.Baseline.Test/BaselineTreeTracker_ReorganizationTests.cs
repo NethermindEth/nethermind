@@ -25,12 +25,14 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Evm;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Test.Modules;
+using Nethermind.Logging;
 using NUnit.Framework;
 
 namespace Nethermind.Baseline.Test
 {
     public partial class BaselineTreeTrackerTests
     {
+       
         [Test]
         public async Task Tree_tracker_reorganization([ValueSource(nameof(ReorganizationTestCases))]ReorganizedInsertLeafTest test)
         {
@@ -39,14 +41,14 @@ namespace Nethermind.Baseline.Test
             var testRpc = result.TestRpc;
             BaselineTree baselineTree = BuildATree();
             var fromContractAdress = ContractAddress.From(address, 0L);
-            var baselineTreeHelper = new BaselineTreeHelper(testRpc.LogFinder, _baselineDb, _metadataBaselineDb);
-            new BaselineTreeTracker(fromContractAdress, baselineTree, testRpc.BlockProcessor, baselineTreeHelper, testRpc.BlockFinder);
+            var baselineTreeHelper = new BaselineTreeHelper(testRpc.LogFinder, _baselineDb, _metadataBaselineDb, LimboNoErrorLogger.Instance);
+            new BaselineTreeTracker(fromContractAdress, baselineTree, testRpc.BlockProcessor, baselineTreeHelper, testRpc.BlockFinder, LimboNoErrorLogger.Instance);
 
             var contract = new MerkleTreeSHAContract(_abiEncoder, fromContractAdress);
             UInt256 nonce = 1L;
             for (int i = 0; i < test.ExpectedTreeCounts.Length; i++)
             {
-                nonce = await SendTransactions(test.LeavesInTransactionsAndBlocks[i], nonce, testRpc, contract, address);
+                nonce = await InsertLeafFromArray(test.LeavesInTransactionsAndBlocks[i], nonce, testRpc, contract, address);
 
                 await testRpc.AddBlock();
                 Assert.AreEqual(test.ExpectedTreeCounts[i], baselineTree.Count);
@@ -57,24 +59,39 @@ namespace Nethermind.Baseline.Test
             testRpc.BlockProducer.BlockParent = testRpc.BlockTree.FindHeader(allBlocksCount);
 
             nonce = 1L;
-            nonce = await SendTransactions(test.LeavesInMiddleOfReorganization, nonce, testRpc, contract, address);
+            nonce = await InsertLeafFromArray(test.LeavesInMiddleOfReorganization, nonce, testRpc, contract, address);
 
             await testRpc.AddBlock(false);
             testRpc.BlockProducer.BlockParent = testRpc.BlockProducer.LastProducedBlock.Header;
 
-            await SendTransactions(test.LeavesInAfterReorganization, nonce, testRpc, contract, address);
+            await InsertLeafFromArray(test.LeavesInAfterReorganization, nonce, testRpc, contract, address);
 
             await testRpc.AddBlock();
             Assert.AreEqual(test.TreeCountAfterAll, baselineTree.Count);
         }
 
-        private async Task<UInt256> SendTransactions(Keccak[] transactions, UInt256 startingNonce, TestRpcBlockchain testRpc, MerkleTreeSHAContract contract, Address address)
+        private async Task<UInt256> InsertLeafFromArray(Keccak[] transactions, UInt256 startingNonce, TestRpcBlockchain testRpc, MerkleTreeSHAContract contract, Address address)
         {
             UInt256 nonce = startingNonce;
             for (int j = 0; j < transactions.Length; j++)
             {
                 var leafHash = transactions[j];
                 var transaction = contract.InsertLeaf(address, leafHash);
+                transaction.Nonce = nonce;
+                ++nonce;
+                await testRpc.TxSender.SendTransaction(transaction, TxPool.TxHandlingOptions.None);
+            }
+
+            return nonce;
+        }
+
+        private async Task<UInt256> InsertLeavesFromArray(Keccak[][] transactions, UInt256 startingNonce, TestRpcBlockchain testRpc, MerkleTreeSHAContract contract, Address address)
+        {
+            UInt256 nonce = startingNonce;
+            for (int j = 0; j < transactions.Length; j++)
+            {
+                var hashes = transactions[j];
+                var transaction = contract.InsertLeaves(address, hashes);
                 transaction.Nonce = nonce;
                 ++nonce;
                 await testRpc.TxSender.SendTransaction(transaction, TxPool.TxHandlingOptions.None);

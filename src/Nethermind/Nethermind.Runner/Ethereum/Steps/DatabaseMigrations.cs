@@ -15,30 +15,17 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Collections.Generic;
-using System.Diagnostics;
-using System.Linq;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using System.Timers;
 using Nethermind.Api;
-using Nethermind.Blockchain;
-using Nethermind.Blockchain.Synchronization;
-using Nethermind.Core;
-using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
-using Nethermind.Int256;
 using Nethermind.Runner.Ethereum.Steps.Migrations;
-using Nethermind.Db.Blooms;
-using Nethermind.Runner.Ethereum.Api;
-using Timer = System.Timers.Timer;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
     [RunnerStepDependencies(typeof(InitRlp), typeof(InitDatabase), typeof(InitializeBlockchain), typeof(InitializeNetwork), typeof(ResetDatabaseMigrations))]
     public class DatabaseMigrations : IStep
     {
-        private readonly INethermindApi _api;
+        private readonly IApiWithNetwork _api;
 
         public DatabaseMigrations(INethermindApi api)
         {
@@ -59,6 +46,7 @@ namespace Nethermind.Runner.Ethereum.Steps
         {
             yield return new BloomMigration(_api);
             yield return new ReceiptMigration(_api);
+            yield return new ReceiptFixMigration(_api);
         }
     }
 }

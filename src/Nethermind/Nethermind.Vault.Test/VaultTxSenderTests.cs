@@ -14,10 +14,14 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
+using System.Threading.Tasks;
 using Nethermind.Logging;
 using Nethermind.TxPool;
 using Nethermind.Vault.Config;
+using Newtonsoft.Json;
 using NUnit.Framework;
+using static Nethermind.Vault.VaultTxSender;
 
 namespace Nethermind.Vault.Test
 {

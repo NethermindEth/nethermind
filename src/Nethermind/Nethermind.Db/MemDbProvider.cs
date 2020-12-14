@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -32,6 +32,10 @@ namespace Nethermind.Db
         public IDb ChtDb { get; } = new MemDb();
         public IDb BeamStateDb { get; } = new MemDb();
 
+        public IDb BaselineTreeDb { get; } = new MemDb();
+
+        public IDb BaselineTreeMetadataDb { get; } = new MemDb();
+
         public void Dispose()
         {
             StateDb?.Dispose();
@@ -44,6 +48,8 @@ namespace Nethermind.Db
             EthRequestsDb?.Dispose();
             BloomDb?.Dispose();
             ChtDb?.Dispose();
+            BaselineTreeDb?.Dispose();
+            BaselineTreeMetadataDb?.Dispose();
         }
     }
 }

@@ -35,7 +35,8 @@ namespace Nethermind.Blockchain.Producers
     {
         private readonly ITxPool _txPool;
         private readonly SemaphoreSlim _newBlockLock = new SemaphoreSlim(1, 1);
-        private Timer _timer;
+        private readonly Timer _timer;
+        private readonly TimeSpan _timeout = TimeSpan.FromMilliseconds(200);
 
         public DevBlockProducer(
             ITxSource txSource,
@@ -58,7 +59,7 @@ namespace Nethermind.Blockchain.Producers
                 logManager)
         {
             _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
-            _timer = new System.Timers.Timer(200);
+            _timer = new Timer(_timeout.TotalMilliseconds);
             _timer.Elapsed += TimerOnElapsed;
         }
 
@@ -94,22 +95,26 @@ namespace Nethermind.Blockchain.Producers
             OnNewPendingTxAsync(e);
         }
 
+        protected override bool PreparedBlockCanBeMined(Block block) => base.PreparedBlockCanBeMined(block) && block?.Transactions?.Length > 0;
+
         private async void OnNewPendingTxAsync(TxEventArgs e)
         {
-            _newBlockLock.Wait(TimeSpan.FromSeconds(1));
-            try
+            if (await _newBlockLock.WaitAsync(_timeout))
             {
-                if (!await TryProduceNewBlock(CancellationToken.None))
+                try
                 {
+                    if (!await TryProduceNewBlock(CancellationToken.None))
+                    {
+                        _newBlockLock.Release();
+                    }
+                }
+                catch (Exception exception)
+                {
+                    if (Logger.IsError)
+                        Logger.Error(
+                            $"Failed to produce block after receiving transaction {e.Transaction}", exception);
                     _newBlockLock.Release();
                 }
-            }
-            catch (Exception exception)
-            {
-                if (Logger.IsError)
-                    Logger.Error(
-                        $"Failed to produce block after receiving transaction {e.Transaction}", exception);
-                _newBlockLock.Release();
             }
         }
 

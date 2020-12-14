@@ -17,6 +17,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using Nethermind.Abi;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.Transactions;
@@ -42,8 +43,8 @@ namespace Nethermind.Consensus.AuRa.Transactions
             _logger = logManager?.GetClassLogger<TxCertifierFilter>() ?? throw new ArgumentNullException(nameof(logManager));
         }
         
-        public bool IsAllowed(Transaction tx, BlockHeader parentHeader) => 
-            IsCertified(tx, parentHeader) || _notCertifiedFilter.IsAllowed(tx, parentHeader);
+        public (bool Allowed, string Reason) IsAllowed(Transaction tx, BlockHeader parentHeader) => 
+            IsCertified(tx, parentHeader) ? (true, string.Empty) : _notCertifiedFilter.IsAllowed(tx, parentHeader);
 
         private bool IsCertified(Transaction tx, BlockHeader parentHeader)
         {
@@ -67,7 +68,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
             }
             catch (AbiException e)
             {
-                if (_logger.IsError) _logger.Error($"Call to certifier contract failed.", e);
+                if (_logger.IsError) _logger.Error($"Call to certifier contract failed on block {parentHeader.ToString(BlockHeader.Format.FullHashAndNumber)} {new StackTrace()}.", e);
                 return false;
             }
         }

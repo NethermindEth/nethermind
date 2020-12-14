@@ -32,6 +32,11 @@ namespace Nethermind.Plugin.Baseline
             return Task.CompletedTask;
         }
 
+        public Task InitBlockchain()
+        {
+            return Task.CompletedTask;
+        }
+
         public Task InitNetworkProtocol()
         {
             return Task.CompletedTask;
@@ -50,12 +55,17 @@ namespace Nethermind.Plugin.Baseline
                     _api.FileSystem,
                     _api.LogManager,
                     _api.MainBlockProcessor,
-                    _api.DisposeStack);
+                    _api.DisposeStack,
+                    _api.DbProvider);
 
-                var modulePool = new BoundedModulePool<IBaselineModule>(baselineModuleFactory, 2, 1000);
+                var modulePool = new SingletonModulePool<IBaselineModule>(baselineModuleFactory);
                 _api.RpcModuleProvider!.Register(modulePool);
                 
                 if (_logger.IsInfo) _logger.Info("Baseline RPC Module has been enabled");
+            }
+            else
+            {
+                if (_logger.IsWarn) _logger.Info("Skipping Baseline RPC due to baseline being disabled in config.");
             }
 
             return Task.CompletedTask;

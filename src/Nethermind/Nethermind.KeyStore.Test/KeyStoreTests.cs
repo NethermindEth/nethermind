@@ -31,39 +31,42 @@ using NUnit.Framework;
 
 namespace Nethermind.KeyStore.Test
 {
-    [Parallelizable(ParallelScope.Self)]
+    [Parallelizable(ParallelScope.All)]
     [TestFixture]
     public class KeyStoreTests
     {
-        private FileKeyStore _store;
-        private IJsonSerializer _serializer;
-        private IKeyStoreConfig _keyStoreConfig;
-        private ICryptoRandom _cryptoRandom;
-        private SecureString _testPasswordSecured;
-        private SecureString _wrongPasswordSecured;
-        private readonly string _testPassword = "testpassword";
-
-        [SetUp]
-        public void Initialize()
+        private class TestContext
         {
-            _keyStoreConfig = new KeyStoreConfig();
+            public FileKeyStore Store { get; }
+            public IJsonSerializer Serializer { get; }
+            public IKeyStoreConfig KeyStoreConfig { get; }
+            public ICryptoRandom CryptoRandom { get; }
+            public SecureString TestPasswordSecured { get; }
+            public SecureString WrongPasswordSecured { get; }
+            public const string TestPassword = "testpassword";
 
-            _testPasswordSecured = new SecureString();
-            _wrongPasswordSecured = new SecureString();
-
-            for (int i = 0; i < _testPassword.Length; i++)
+            public TestContext()
             {
-                _testPasswordSecured.AppendChar(_testPassword[i]);
-                _wrongPasswordSecured.AppendChar('*');
+                KeyStoreConfig = new KeyStoreConfig();
+                KeyStoreConfig.KeyStoreDirectory = NUnit.Framework.TestContext.CurrentContext.WorkDirectory;
+
+                TestPasswordSecured = new SecureString();
+                WrongPasswordSecured = new SecureString();
+
+                for (int i = 0; i < TestPassword.Length; i++)
+                {
+                    TestPasswordSecured.AppendChar(TestPassword[i]);
+                    WrongPasswordSecured.AppendChar('*');
+                }
+
+                TestPasswordSecured.MakeReadOnly();
+                WrongPasswordSecured.MakeReadOnly();
+
+                ILogManager logger = LimboLogs.Instance;
+                Serializer = new EthereumJsonSerializer();
+                CryptoRandom = new CryptoRandom();
+                Store = new FileKeyStore(KeyStoreConfig, Serializer, new AesEncrypter(KeyStoreConfig, logger), CryptoRandom, logger, new PrivateKeyStoreIOSettingsProvider(KeyStoreConfig));
             }
-
-            _testPasswordSecured.MakeReadOnly();
-            _wrongPasswordSecured.MakeReadOnly();
-
-            ILogManager logger = LimboLogs.Instance;
-            _serializer = new EthereumJsonSerializer();
-            _cryptoRandom = new CryptoRandom();
-            _store = new FileKeyStore(_keyStoreConfig, _serializer, new AesEncrypter(_keyStoreConfig, logger), _cryptoRandom, logger, new PrivateKeyStoreIOSettingsProvider(_keyStoreConfig));
         }
 
         [TestCase("{\"address\":\"20b2e4bb8688a44729780d15dc64adb42f9f5a0a\",\"crypto\":{\"cipher\":\"aes-128-ctr\",\"ciphertext\":\"d30cbb0f5b30ef86e57b7fa111307398b911b8c0a3eab4ac4edc4b2c8839afbe\",\"cipherparams\":{\"iv\":\"1e29e79023d73be3f3bb065ca9ddc078\"},\"kdf\":\"scrypt\",\"kdfparams\":{\"dklen\":32,\"n\":262144,\"p\":1,\"r\":8,\"salt\":\"fffcd979c3223b3cdfcb2cf21b07bd4313e6f8d02af8a79a5c5dc879a25680d3\"},\"mac\":\"3ac5a539775c33bd73adfd2c0d4ef8c9154e4b404e2a15c77b0e6c78cb90df20\"},\"id\":\"68462de1-4114-4f92-828b-883fae5f779c\",\"version\":3}")]
@@ -72,6 +75,7 @@ namespace Nethermind.KeyStore.Test
         [TestCase("{\"address\":\"25dead29c683c5db3e0fabcf8f3757cdb0abe549\",\"crypto\":{\"cipher\":\"aes-128-ctr\",\"ciphertext\":\"4fd59f3a3fa1bed32774b29a40886d5489c0c06a8da014cb44b25792f6c32cb2\",\"cipherparams\":{\"iv\":\"6b850162043a0a879726839cfca55220\"},\"kdf\":\"scrypt\",\"kdfparams\":{\"dklen\":32,\"n\":262144,\"p\":1,\"r\":8,\"salt\":\"cafbe520e0d711cf32d9a2e6b2ecbd231cc7aed09018c5032c637436e02754d1\"},\"mac\":\"379f51c673f1f355a6ffc92b31b37381670eea2e0e23604a2572f5df650d148e\"},\"id\":\"fc7ff6bf-c51e-4e02-bb7c-0c91a3eeab4c\",\"version\":3}")]
         public void Can_unlock_test_accounts(string keyJson)
         {
+            TestContext test = new TestContext();
             EthereumJsonSerializer serializer = new EthereumJsonSerializer();
             KeyStoreItem item = serializer.Deserialize<KeyStoreItem>(keyJson);
 
@@ -84,16 +88,16 @@ namespace Nethermind.KeyStore.Test
             
             securePassword.MakeReadOnly();
 
-            _store.StoreKey(new Address(item.Address), item);
+            test.Store.StoreKey(new Address(item.Address), item);
             try
             {
-                (PrivateKey key, Result result) = _store.GetKey(new Address(item.Address), securePassword);
+                (PrivateKey key, Result result) = test.Store.GetKey(new Address(item.Address), securePassword);
                 Assert.AreEqual(ResultType.Success, result.ResultType, item.Address + " " + result.Error);
                 Assert.AreEqual(key.Address.ToString(false, false), item.Address);
             }
             finally
             {
-                _store.DeleteKey(new Address(item.Address));
+                test.Store.DeleteKey(new Address(item.Address));
             }
         }
 
@@ -103,6 +107,7 @@ namespace Nethermind.KeyStore.Test
         [TestCase("{\"address\":\"25dead29c683c5db3e0fabcf8f3757cdb0abe549\",\"crypto\":{\"cipher\":\"aes-128-ctr\",\"ciphertext\":\"4fd59f3a3fa1bed32774b29a40886d5489c0c06a8da014cb44b25792f6c32cb2\",\"cipherparams\":{\"iv\":\"6b850162043a0a879726839cfca55220\"},\"kdf\":\"scrypt\",\"kdfparams\":{\"dklen\":32,\"n\":262144,\"p\":1,\"r\":8,\"salt\":\"cafbe520e0d711cf32d9a2e6b2ecbd231cc7aed09018c5032c637436e02754d1\"},\"mac\":\"379f51c673f1f355a6ffc92b31b37381670eea2e0e23604a2572f5df650d148e\"},\"id\":\"fc7ff6bf-c51e-4e02-bb7c-0c91a3eeab4c\",\"version\":3}", Ignore="Order of fields changed from geth to mycryptowallet.")]
         public void Same_storage_format_as_in_geth(string keyJson)
         {
+            TestContext test = new TestContext();
             EthereumJsonSerializer serializer = new EthereumJsonSerializer();
             KeyStoreItem item = serializer.Deserialize<KeyStoreItem>(keyJson);
 
@@ -114,28 +119,30 @@ namespace Nethermind.KeyStore.Test
             }
 
             Address address = new Address(item.Address);
-            _store.StoreKey(address, item);
+            test.Store.StoreKey(address, item);
             
             try
             {
-                string[] files = _store.FindKeyFiles(address);
+                string[] files = test.Store.FindKeyFiles(address);
                 Assert.AreEqual(1, files.Length);
                 string text = File.ReadAllText(files[0]);
                 Assert.AreEqual(keyJson, text, "same json");
             }
             finally
             {
-                _store.DeleteKey(new Address(item.Address));
+                test.Store.DeleteKey(new Address(item.Address));
             }
         }
 
         [Test]
         public void GenerateKeyAddressesTest()
         {
+            TestContext test = new TestContext();
+            
             PrivateKey key1;
             PrivateKey key2;
 
-            string notAKeyPath = Path.Combine(_keyStoreConfig.KeyStoreDirectory, "not_a_key");
+            string notAKeyPath = Path.Combine(test.KeyStoreConfig.KeyStoreDirectory, "not_a_key");
 
             using (var stream = File.Create(notAKeyPath))
             {
@@ -144,22 +151,22 @@ namespace Nethermind.KeyStore.Test
             try
             {
                 Result result;
-                (key1, result) = _store.GenerateKey(_testPasswordSecured);
+                (key1, result) = test.Store.GenerateKey(test.TestPasswordSecured);
                 Assert.AreEqual(ResultType.Success, result.ResultType, "generate key 1");
 
-                (key2, result) = _store.GenerateKey(_testPasswordSecured);
+                (key2, result) = test.Store.GenerateKey(test.TestPasswordSecured);
                 Assert.AreEqual(ResultType.Success, result.ResultType, "generate key 2");
 
-                (IReadOnlyCollection<Address> addresses, Result getAllResult) = _store.GetKeyAddresses();
+                (IReadOnlyCollection<Address> addresses, Result getAllResult) = test.Store.GetKeyAddresses();
                 Assert.AreEqual(ResultType.Success, getAllResult.ResultType, "get key");
                 Assert.IsTrue(addresses.Count() >= 2);
                 Assert.IsNotNull(addresses.FirstOrDefault(x => x.Equals(key1.Address)), "key 1 not null");
                 Assert.IsNotNull(addresses.FirstOrDefault(x => x.Equals(key2.Address)), "key 2 not null");
 
-                result = _store.DeleteKey(key1.Address);
+                result = test.Store.DeleteKey(key1.Address);
                 Assert.AreEqual(ResultType.Success, result.ResultType, "delete key 1");
 
-                result = _store.DeleteKey(key2.Address);
+                result = test.Store.DeleteKey(key2.Address);
                 Assert.AreEqual(ResultType.Success, result.ResultType, "delete key 2");
             }
             finally
@@ -171,89 +178,94 @@ namespace Nethermind.KeyStore.Test
         [Test]
         public void GenerateKeyTest()
         {
-            (PrivateKey, Result) key = _store.GenerateKey(_testPasswordSecured);
+            TestContext test = new TestContext();
+            (PrivateKey, Result) key = test.Store.GenerateKey(test.TestPasswordSecured);
             Assert.AreEqual(ResultType.Success, key.Item2.ResultType);
 
-            (PrivateKey, Result) persistedKey = _store.GetKey(key.Item1.Address, _testPasswordSecured);
+            (PrivateKey, Result) persistedKey = test.Store.GetKey(key.Item1.Address, test.TestPasswordSecured);
             Assert.AreEqual(ResultType.Success, persistedKey.Item2.ResultType);
             Assert.IsTrue(Bytes.AreEqual(key.Item1.KeyBytes, persistedKey.Item1.KeyBytes));
 
-            Result result = _store.DeleteKey(key.Item1.Address);
+            Result result = test.Store.DeleteKey(key.Item1.Address);
             Assert.AreEqual(ResultType.Success, result.ResultType);
 
-            (PrivateKey, Result) deletedKey = _store.GetKey(key.Item1.Address, _testPasswordSecured);
+            (PrivateKey, Result) deletedKey = test.Store.GetKey(key.Item1.Address, test.TestPasswordSecured);
             Assert.AreEqual(ResultType.Failure, deletedKey.Item2.ResultType);
         }
 
         [Test]
         public void Salt32Test()
         {
-            (PrivateKey, Result) key = _store.GenerateKey(_testPasswordSecured);
+            TestContext test = new TestContext();
+            (PrivateKey, Result) key = test.Store.GenerateKey(test.TestPasswordSecured);
             Assert.AreEqual(ResultType.Success, key.Item2.ResultType);
 
-            (PrivateKey, Result) persistedKey = _store.GetKey(key.Item1.Address, _testPasswordSecured);
+            (PrivateKey, Result) persistedKey = test.Store.GetKey(key.Item1.Address, test.TestPasswordSecured);
             Assert.AreEqual(ResultType.Success, persistedKey.Item2.ResultType);
             Assert.IsTrue(Bytes.AreEqual(key.Item1.KeyBytes, persistedKey.Item1.KeyBytes));
 
-            Result result = _store.DeleteKey(key.Item1.Address);
+            Result result = test.Store.DeleteKey(key.Item1.Address);
             Assert.AreEqual(ResultType.Success, result.ResultType);
 
-            (PrivateKey, Result) deletedKey = _store.GetKey(key.Item1.Address, _testPasswordSecured);
+            (PrivateKey, Result) deletedKey = test.Store.GetKey(key.Item1.Address, test.TestPasswordSecured);
             Assert.AreEqual(ResultType.Failure, deletedKey.Item2.ResultType);
         }
 
         [Test]
         public void KeyStoreVersionMismatchTest()
         {
+            TestContext test = new TestContext();
             //generate key
-            (PrivateKey key, Result storeResult) = _store.GenerateKey(_testPasswordSecured);
+            (PrivateKey key, Result storeResult) = test.Store.GenerateKey(test.TestPasswordSecured);
             Assert.AreEqual(ResultType.Success, storeResult.ResultType, "generate result");
 
-            (KeyStoreItem keyData, Result result) = _store.GetKeyData(key.Address);
+            (KeyStoreItem keyData, Result result) = test.Store.GetKeyData(key.Address);
             Assert.AreEqual(ResultType.Success, result.ResultType, "load result");
 
-            Result deleteResult = _store.DeleteKey(key.Address);
+            Result deleteResult = test.Store.DeleteKey(key.Address);
             Assert.AreEqual(ResultType.Success, deleteResult.ResultType, "delete result");
 
             keyData.Version = 0;
-            _store.StoreKey(key.Address, keyData);
+            test.Store.StoreKey(key.Address, keyData);
 
-            (_, Result loadResult) = _store.GetKey(key.Address, _testPasswordSecured);
+            (_, Result loadResult) = test.Store.GetKey(key.Address, test.TestPasswordSecured);
             Assert.AreEqual(ResultType.Failure, loadResult.ResultType, "bad load result");
             Assert.AreEqual("KeyStore version mismatch", loadResult.Error);
 
-            _store.DeleteKey(key.Address);
+            test.Store.DeleteKey(key.Address);
         }
 
         [Test]
         public void WrongPasswordTest()
         {
-            (PrivateKey key, Result generateResult) = _store.GenerateKey(_testPasswordSecured);
+            TestContext test = new TestContext();
+            (PrivateKey key, Result generateResult) = test.Store.GenerateKey(test.TestPasswordSecured);
             Assert.AreEqual(ResultType.Success, generateResult.ResultType);
 
-            (PrivateKey keyRestored, Result getResult) = _store.GetKey(key.Address, _testPasswordSecured);
+            (PrivateKey keyRestored, Result getResult) = test.Store.GetKey(key.Address, test.TestPasswordSecured);
             Assert.AreEqual(ResultType.Success, getResult.ResultType);
             Assert.IsTrue(Bytes.AreEqual(key.KeyBytes, keyRestored.KeyBytes));
 
-            (PrivateKey _, Result wrongResult) = _store.GetKey(key.Address, _wrongPasswordSecured);
+            (PrivateKey _, Result wrongResult) = test.Store.GetKey(key.Address, test.WrongPasswordSecured);
             Assert.AreEqual(ResultType.Failure, wrongResult.ResultType);
             Assert.AreEqual("Incorrect MAC", wrongResult.Error);
 
-            Result deleteResult = _store.DeleteKey(key.Address);
+            Result deleteResult = test.Store.DeleteKey(key.Address);
             Assert.AreEqual(ResultType.Success, deleteResult.ResultType);
         }
 
         [Test]
         public void ShouldSaveFileWithoutBom()
         {
+            TestContext test = new TestContext();
             const string bomBytesHex = "efbbbf";
             const string validBytesHex = "7b2276";
-            var (key, _) = _store.GenerateKey(_testPasswordSecured);
-            var directory = _keyStoreConfig.KeyStoreDirectory.GetApplicationResourcePath();
+            var (key, _) = test.Store.GenerateKey(test.TestPasswordSecured);
+            var directory = test.KeyStoreConfig.KeyStoreDirectory.GetApplicationResourcePath();
             var addressHex = key.Address.ToString(false, false);
             var file = Directory.GetFiles(directory).SingleOrDefault(f => f.Contains(addressHex));
             var bytes = File.ReadAllBytes(file);
-            _store.DeleteKey(key.Address);
+            test.Store.DeleteKey(key.Address);
             var bytesHex = bytes.ToHexString();
             bytesHex.Should().NotStartWith(bomBytesHex);
             bytesHex.Should().StartWith(validBytesHex);

@@ -37,6 +37,7 @@ using NUnit.Framework;
 namespace Nethermind.Blockchain.Test
 {
     [TestFixture]
+    [Parallelizable(ParallelScope.Self)]
     public class BlockchainProcessorTests
     {
         private class ProcessingTestContext
@@ -120,7 +121,7 @@ namespace Nethermind.Blockchain.Test
                 }
             }
 
-            private class RecoveryStepMock : IBlockDataRecoveryStep
+            private class RecoveryStepMock : IBlockPreprocessorStep
             {
                 private ILogger _logger;
                 
@@ -188,7 +189,7 @@ namespace Nethermind.Blockchain.Test
                 MemDb blockDb = new MemDb();
                 MemDb blockInfoDb = new MemDb();
                 MemDb headersDb = new MemDb();
-                _blockTree = new BlockTree(blockDb, headersDb, blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), MainnetSpecProvider.Instance, NullTxPool.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
+                _blockTree = new BlockTree(blockDb, headersDb, blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), MainnetSpecProvider.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
                 _blockProcessor = new BlockProcessorMock(_logManager);
                 _recoveryStep = new RecoveryStepMock(_logManager);
                 _processor = new BlockchainProcessor(_blockTree, _blockProcessor, _recoveryStep, LimboLogs.Instance, BlockchainProcessor.Options.Default);

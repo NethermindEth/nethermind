@@ -37,13 +37,21 @@ namespace Nethermind.Consensus.AuRa.Transactions
         }
 
 
-        public bool IsAllowed(Transaction tx, BlockHeader parentHeader)
+        public (bool Allowed, string Reason) IsAllowed(Transaction tx, BlockHeader parentHeader)
         {
-            return _minGasPriceFilter.IsAllowed(tx, parentHeader)
-                   && (
-                       !_minGasPrices.TryGetValue(parentHeader, tx, out var @override)
-                       || tx.GasPrice >= @override.Value
-                   );
+            (bool Allowed, string Reason) result = _minGasPriceFilter.IsAllowed(tx, parentHeader);
+            if (!result.Allowed)
+            {
+                return result;
+            }
+            else if (_minGasPrices.TryGetValue(parentHeader, tx, out var @override) && tx.GasPrice < @override.Value)
+            {
+                return (false, $"gas price too low {tx.GasPrice} < {@override.Value} for override");
+            }
+            else
+            {
+                return (true, string.Empty);
+            }
         }
     }
 }

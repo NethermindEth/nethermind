@@ -50,7 +50,7 @@ namespace Nethermind.Core.Crypto
         private Memory<byte> _remainderBuffer;
         private int _remainderLength;
         private Memory<ulong> _state;
-        private byte[] _hash;
+        private byte[]? _hash;
 
         /// <summary>
         /// Indicates the hash size in bytes.

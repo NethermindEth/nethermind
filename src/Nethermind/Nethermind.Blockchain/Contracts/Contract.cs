@@ -86,7 +86,7 @@ namespace Nethermind.Blockchain.Contracts
         /// <summary>
         /// Generates transaction.
         /// That transaction can be added to a produced block or broadcasted - if <see cref="GeneratedTransaction"/> is used as <see cref="T"/>.
-        /// That transaction can be used in <see cref="CallableContract.Call(Nethermind.Core.BlockHeader,Nethermind.Core.Transaction)"/> if <see cref="SystemTransaction"/> is used as <see cref="T"/>.
+        /// That transaction can be used in <see cref="CallableContract.Call(Nethermind.Core.BlockHeader,string,Nethermind.Core.Transaction)"/> if <see cref="SystemTransaction"/> is used as <see cref="T"/>.
         /// </summary>
         /// <param name="functionName">Function in contract that is called by the transaction.</param>
         /// <param name="sender">Sender of the transaction - caller of the function.</param>
@@ -99,7 +99,7 @@ namespace Nethermind.Blockchain.Contracts
         /// <summary>
         /// Generates transaction.
         /// That transaction can be added to a produced block or broadcasted - if <see cref="GeneratedTransaction"/> is used as <see cref="T"/>.
-        /// That transaction can be used in <see cref="CallableContract.Call(Nethermind.Core.BlockHeader,Nethermind.Core.Transaction)"/> if <see cref="SystemTransaction"/> is used as <see cref="T"/>.
+        /// That transaction can be used in <see cref="CallableContract.Call(Nethermind.Core.BlockHeader,string,Nethermind.Core.Transaction)"/> if <see cref="SystemTransaction"/> is used as <see cref="T"/>.
         /// </summary>
         /// <param name="functionName">Function in contract that is called by the transaction.</param>
         /// <param name="sender">Sender of the transaction - caller of the function.</param>
@@ -114,7 +114,7 @@ namespace Nethermind.Blockchain.Contracts
         /// <summary>
         /// Generates transaction.
         /// That transaction can be added to a produced block or broadcasted - if <see cref="GeneratedTransaction"/> is used as <see cref="T"/>.
-        /// That transaction can be used in <see cref="CallableContract.Call(Nethermind.Core.BlockHeader,Nethermind.Core.Transaction)"/> if <see cref="SystemTransaction"/> is used as <see cref="T"/>.
+        /// That transaction can be used in <see cref="CallableContract.Call(Nethermind.Core.BlockHeader,string,Nethermind.Core.Transaction)"/> if <see cref="SystemTransaction"/> is used as <see cref="T"/>.
         /// </summary>
         /// <param name="functionName">Function in contract that is called by the transaction.</param>
         /// <param name="sender">Sender of the transaction - caller of the function.</param>

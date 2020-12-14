@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -17,7 +17,6 @@
 using Nethermind.JsonRpc.Client;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
-using Nethermind.Db.Blooms;
 
 namespace Nethermind.Db.Rpc
 {
@@ -39,6 +38,9 @@ namespace Nethermind.Db.Rpc
             EthRequestsDb = new ReadOnlyDb(new RpcDb(DbNames.EthRequests, serializer, client, logManager, recordDbProvider?.EthRequestsDb), true);
             BloomDb = new ReadOnlyDb(new RpcDb(DbNames.EthRequests, serializer, client, logManager, recordDbProvider?.BloomDb), true);
             WitnessDb = new ReadOnlyDb(new RpcDb(DbNames.Witness, serializer, client, logManager, recordDbProvider?.WitnessDb), true);
+            BaselineTreeDb = new ReadOnlyDb(new RpcDb(DbNames.BaselineTree, serializer, client, logManager, recordDbProvider?.BaselineTreeDb), true);
+            BaselineTreeMetadataDb = new ReadOnlyDb(new RpcDb(DbNames.BaselineTreeMetadata, serializer, client, logManager, recordDbProvider?.BaselineTreeMetadataDb), true); 
+            ChtDb = new ReadOnlyDb(new RpcDb(DbNames.CHT, serializer, client, logManager, recordDbProvider?.ChtDb), true);
         }
         
         public ISnapshotableDb StateDb { get; }
@@ -55,6 +57,10 @@ namespace Nethermind.Db.Rpc
         public IDb ChtDb { get; }
         public IDb BeamStateDb { get; } = new MemDb();
 
+        public IDb BaselineTreeDb { get; }
+
+        public IDb BaselineTreeMetadataDb { get; }
+
         public void Dispose()
         {
             StateDb?.Dispose();
@@ -70,6 +76,8 @@ namespace Nethermind.Db.Rpc
             BloomDb?.Dispose();
             ChtDb?.Dispose();
             WitnessDb?.Dispose();
+            BaselineTreeDb?.Dispose();
+            BaselineTreeMetadataDb?.Dispose();
         }
     }
 }

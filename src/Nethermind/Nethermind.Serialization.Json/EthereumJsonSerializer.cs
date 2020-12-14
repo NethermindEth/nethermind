@@ -71,12 +71,24 @@ namespace Nethermind.Serialization.Json
             new PublicKeyConverter()
         };
 
+        public T Deserialize<T>(Stream stream)
+        {
+            using StreamReader reader = new StreamReader(stream);
+            return Deserialize<T>(reader);
+        }
+        
         public T Deserialize<T>(string json)
         {
             using StringReader reader = new StringReader(json);
+            return Deserialize<T>(reader);
+        }
+        
+        private T Deserialize<T>(TextReader reader)
+        {
             using JsonReader jsonReader = new JsonTextReader(reader);
             return _internalSerializer.Deserialize<T>(jsonReader);
         }
+
 
         public string Serialize<T>(T value, bool indented = false)
         {

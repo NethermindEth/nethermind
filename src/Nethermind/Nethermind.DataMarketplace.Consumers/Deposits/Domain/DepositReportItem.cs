@@ -120,8 +120,7 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Domain
             
             if (Units < ConsumedUnits)
             {
-                throw new InvalidDataException(
-                    $"Deposit {nameof(Units)} ({Units}) cannot be less than {nameof(ConsumedUnits)} ({ConsumedUnits})");
+                ConsumedUnits = Units;
             }
             
             RemainingValue = Value - ClaimedValue - RefundedValue;

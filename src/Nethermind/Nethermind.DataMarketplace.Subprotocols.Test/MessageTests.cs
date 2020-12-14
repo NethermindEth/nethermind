@@ -52,7 +52,7 @@ namespace Nethermind.DataMarketplace.Subprotocols.Test
 
             Test(new DataAssetStateChangedMessage(Keccak.OfAnEmptyString, DataAssetState.Archived));
             Test(new DataAssetStateChangedMessage(Keccak.OfAnEmptyString, DataAssetState.UnderMaintenance));
-            Test(new DataAssetStateChangedMessage(Keccak.OfAnEmptyString, DataAssetState.Unavailable));
+            Test(new DataAssetStateChangedMessage(Keccak.OfAnEmptyString, DataAssetState.Closed));
             Test(new DataAssetStateChangedMessage(Keccak.OfAnEmptyString, DataAssetState.Published));
             Test(new DataAssetStateChangedMessage(Keccak.OfAnEmptyString, DataAssetState.Unpublished));
 

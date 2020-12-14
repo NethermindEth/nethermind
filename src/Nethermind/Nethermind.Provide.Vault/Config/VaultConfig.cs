@@ -25,5 +25,12 @@ namespace Nethermind.Vault.Config
         public string Path { get; set; } = "api/v1";
         public string VaultId { get; set;}
         public string VaultKeyFile { get; set; }
+        public string VaultSealUnsealKey { get; set; }
+        public string NChainHost { get; set; }
+        public string NChainToken { get; set; }
+        public string NChainScheme { get; set; }
+        public string NChainPath { get; set; }
+        public string NChainNetworkId { get; set; }
+        public string NChainAccountId { get; set; }
     }
 }

@@ -169,12 +169,12 @@ namespace Nethermind.Baseline.Test.JsonRpc
         }
 
         [Test]
-        public async Task insert_leaf_given_hash_is_emitting_an_event()
+        public async Task insert_commit_given_hash_is_emitting_an_event()
         {
             SingleReleaseSpecProvider spec = new SingleReleaseSpecProvider(ConstantinopleFix.Instance, 1);
             TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(spec);
             BaselineModule baselineModule = CreateBaselineModule(testRpc);
-            BaselineTree baselineTree = new ShaBaselineTree(new MemDb(), new MemDb(), new byte[] { }, 0);
+            BaselineTree baselineTree = new ShaBaselineTree(new MemDb(), new MemDb(), new byte[] { }, 0, LimboNoErrorLogger.Instance);
             await testRpc.AddFunds(TestItem.Addresses[0], 1.Ether());
             await testRpc.AddFunds(TestItem.Addresses[1], 1.Ether());
             Keccak txHash = (await baselineModule.baseline_deploy(TestItem.Addresses[0], "MerkleTreeSHA")).Data;
@@ -184,7 +184,7 @@ namespace Nethermind.Baseline.Test.JsonRpc
             ReceiptForRpc receipt = (await testRpc.EthModule.eth_getTransactionReceipt(txHash)).Data;
 
             Keccak insertLeafTxHash = (
-                await baselineModule.baseline_insertLeaf(
+                await baselineModule.baseline_insertCommit(
                     TestItem.Addresses[1],
                     receipt.ContractAddress,
                     TestItem.KeccakH)).Data;
@@ -198,7 +198,7 @@ namespace Nethermind.Baseline.Test.JsonRpc
         [TestCase(1)]
         [TestCase(2)]
         [TestCase(128)]
-        public async Task insert_leaves_given_hash_is_emitting_an_event(int leafCount)
+        public async Task insert_commits_given_hash_is_emitting_an_event(int leafCount)
         {
             SingleReleaseSpecProvider spec = new SingleReleaseSpecProvider(ConstantinopleFix.Instance, 1);
             TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(spec);
@@ -212,7 +212,7 @@ namespace Nethermind.Baseline.Test.JsonRpc
             ReceiptForRpc receipt = (await testRpc.EthModule.eth_getTransactionReceipt(txHash)).Data;
 
             Keccak[] leaves = Enumerable.Repeat(TestItem.KeccakH, leafCount).ToArray();
-            Keccak insertLeavesTxHash = (await baselineModule.baseline_insertLeaves(
+            Keccak insertLeavesTxHash = (await baselineModule.baseline_insertCommits(
                 TestItem.Addresses[1],
                 receipt.ContractAddress,
                 leaves)).Data;
@@ -225,7 +225,7 @@ namespace Nethermind.Baseline.Test.JsonRpc
         }
 
         [Test]
-        public async Task can_get_siblings_after_leaf_is_added()
+        public async Task can_get_siblings_after_commit_is_added()
         {
             SingleReleaseSpecProvider spec = new SingleReleaseSpecProvider(ConstantinopleFix.Instance, 1);
             TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(spec);
@@ -238,7 +238,7 @@ namespace Nethermind.Baseline.Test.JsonRpc
 
             ReceiptForRpc receipt = (await testRpc.EthModule.eth_getTransactionReceipt(txHash)).Data;
 
-            await baselineModule.baseline_insertLeaf(
+            await baselineModule.baseline_insertCommit(
                 TestItem.Addresses[1], receipt.ContractAddress, TestItem.KeccakH);
             await testRpc.AddBlock();
 
@@ -264,7 +264,7 @@ namespace Nethermind.Baseline.Test.JsonRpc
         }
 
         [Test]
-        public async Task can_get_leaf_fails_on_not_tracked()
+        public async Task can_get_commit_fails_on_not_tracked()
         {
             SingleReleaseSpecProvider spec = new SingleReleaseSpecProvider(ConstantinopleFix.Instance, 1);
             TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(spec);
@@ -276,17 +276,17 @@ namespace Nethermind.Baseline.Test.JsonRpc
 
             ReceiptForRpc receipt = (await testRpc.EthModule.eth_getTransactionReceipt(txHash)).Data;
 
-            await baselineModule.baseline_insertLeaf(TestItem.Addresses[1], receipt.ContractAddress, TestItem.KeccakH);
+            await baselineModule.baseline_insertCommit(TestItem.Addresses[1], receipt.ContractAddress, TestItem.KeccakH);
             await testRpc.AddBlock();
 
-            var result = await baselineModule.baseline_getLeaf(receipt.ContractAddress, 0);
+            var result = await baselineModule.baseline_getCommit(receipt.ContractAddress, 0);
 
             result.Result.ResultType.Should().Be(ResultType.Failure);
             result.ErrorCode.Should().Be(ErrorCodes.InvalidInput);
         }
 
         [Test]
-        public async Task can_get_leaf_fails_on_wrong_index()
+        public async Task can_get_commit_fails_on_wrong_index()
         {
             SingleReleaseSpecProvider spec = new SingleReleaseSpecProvider(ConstantinopleFix.Instance, 1);
             TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(spec);
@@ -298,11 +298,11 @@ namespace Nethermind.Baseline.Test.JsonRpc
 
             ReceiptForRpc receipt = (await testRpc.EthModule.eth_getTransactionReceipt(txHash)).Data;
 
-            await baselineModule.baseline_insertLeaf(TestItem.Addresses[1], receipt.ContractAddress, TestItem.KeccakH);
+            await baselineModule.baseline_insertCommit(TestItem.Addresses[1], receipt.ContractAddress, TestItem.KeccakH);
             await testRpc.AddBlock();
 
             await baselineModule.baseline_track(receipt.ContractAddress);
-            var result = await baselineModule.baseline_getLeaf(receipt.ContractAddress, (UInt256) uint.MaxValue + 1);
+            var result = await baselineModule.baseline_getCommit(receipt.ContractAddress, (UInt256) uint.MaxValue + 1);
             await testRpc.AddBlock();
 
             result.Result.ResultType.Should().Be(ResultType.Failure);
@@ -310,7 +310,7 @@ namespace Nethermind.Baseline.Test.JsonRpc
         }
 
         [Test]
-        public async Task can_get_leaf_after_leaf_is_added()
+        public async Task can_get_commit_after_commit_is_added()
         {
             SingleReleaseSpecProvider spec = new SingleReleaseSpecProvider(ConstantinopleFix.Instance, 1);
             TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(spec);
@@ -323,11 +323,11 @@ namespace Nethermind.Baseline.Test.JsonRpc
 
             ReceiptForRpc receipt = (await testRpc.EthModule.eth_getTransactionReceipt(txHash)).Data;
 
-            await baselineModule.baseline_insertLeaf(TestItem.Addresses[1], receipt.ContractAddress, TestItem.KeccakH);
+            await baselineModule.baseline_insertCommit(TestItem.Addresses[1], receipt.ContractAddress, TestItem.KeccakH);
             await testRpc.AddBlock();
 
             await baselineModule.baseline_track(receipt.ContractAddress);
-            var result = await baselineModule.baseline_getLeaf(receipt.ContractAddress, 0);
+            var result = await baselineModule.baseline_getCommit(receipt.ContractAddress, 0);
             await testRpc.AddBlock();
 
             result.Result.ResultType.Should().Be(ResultType.Success);
@@ -337,7 +337,7 @@ namespace Nethermind.Baseline.Test.JsonRpc
         }
 
         [Test]
-        public async Task can_get_leaves_after_leaf_is_added()
+        public async Task can_get_commits_after_commit_is_added()
         {
             SingleReleaseSpecProvider spec = new SingleReleaseSpecProvider(ConstantinopleFix.Instance, 1);
             TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(spec);
@@ -350,11 +350,11 @@ namespace Nethermind.Baseline.Test.JsonRpc
 
             ReceiptForRpc receipt = (await testRpc.EthModule.eth_getTransactionReceipt(txHash)).Data;
 
-            await baselineModule.baseline_insertLeaf(TestItem.Addresses[1], receipt.ContractAddress, TestItem.KeccakH);
+            await baselineModule.baseline_insertCommit(TestItem.Addresses[1], receipt.ContractAddress, TestItem.KeccakH);
             await testRpc.AddBlock();
 
             await baselineModule.baseline_track(receipt.ContractAddress);
-            var result = await baselineModule.baseline_getLeaves(receipt.ContractAddress, new UInt256[] {0, 1});
+            var result = await baselineModule.baseline_getCommits(receipt.ContractAddress, new UInt256[] {0, 1});
             await testRpc.AddBlock();
 
             result.Result.ResultType.Should().Be(ResultType.Success);
@@ -365,7 +365,7 @@ namespace Nethermind.Baseline.Test.JsonRpc
         }
 
         [Test]
-        public async Task can_get_leaves_fails_if_not_tracking()
+        public async Task can_get_commits_fails_if_not_tracking()
         {
             SingleReleaseSpecProvider spec = new SingleReleaseSpecProvider(ConstantinopleFix.Instance, 1);
             TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(spec);
@@ -377,10 +377,10 @@ namespace Nethermind.Baseline.Test.JsonRpc
 
             ReceiptForRpc receipt = (await testRpc.EthModule.eth_getTransactionReceipt(txHash)).Data;
 
-            await baselineModule.baseline_insertLeaf(TestItem.Addresses[1], receipt.ContractAddress, TestItem.KeccakH);
+            await baselineModule.baseline_insertCommit(TestItem.Addresses[1], receipt.ContractAddress, TestItem.KeccakH);
             await testRpc.AddBlock();
 
-            var result = await baselineModule.baseline_getLeaves(receipt.ContractAddress, new UInt256[] {0, 1});
+            var result = await baselineModule.baseline_getCommits(receipt.ContractAddress, new UInt256[] {0, 1});
             await testRpc.AddBlock();
 
             result.Result.ResultType.Should().Be(ResultType.Failure);
@@ -388,7 +388,7 @@ namespace Nethermind.Baseline.Test.JsonRpc
         }
 
         [Test]
-        public async Task can_get_leaves_fails_if_any_index_invalid()
+        public async Task can_get_commits_fails_if_any_index_invalid()
         {
             SingleReleaseSpecProvider spec = new SingleReleaseSpecProvider(ConstantinopleFix.Instance, 1);
             TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(spec);
@@ -401,10 +401,10 @@ namespace Nethermind.Baseline.Test.JsonRpc
             ReceiptForRpc receipt = (await testRpc.EthModule.eth_getTransactionReceipt(txHash)).Data;
 
             await baselineModule.baseline_track(receipt.ContractAddress);
-            await baselineModule.baseline_insertLeaf(TestItem.Addresses[1], receipt.ContractAddress, TestItem.KeccakH);
+            await baselineModule.baseline_insertCommit(TestItem.Addresses[1], receipt.ContractAddress, TestItem.KeccakH);
             await testRpc.AddBlock();
 
-            var result = await baselineModule.baseline_getLeaves(
+            var result = await baselineModule.baseline_getCommits(
                 receipt.ContractAddress, new UInt256[] {0, (UInt256) uint.MaxValue + 1});
             await testRpc.AddBlock();
 
@@ -436,13 +436,13 @@ namespace Nethermind.Baseline.Test.JsonRpc
             receipt2.Status.Should().Be(1);
             receipt3.Status.Should().Be(1);
 
-            await baselineModule.baseline_insertLeaves(
+            await baselineModule.baseline_insertCommits(
                 TestItem.Addresses[1], receipt.ContractAddress, TestItem.KeccakG, TestItem.KeccakH);
-            await baselineModule.baseline_insertLeaves(
+            await baselineModule.baseline_insertCommits(
                 TestItem.Addresses[1], receipt2.ContractAddress, TestItem.KeccakE, TestItem.KeccakF);
-            await baselineModule.baseline_insertLeaf(
+            await baselineModule.baseline_insertCommit(
                 TestItem.Addresses[1], receipt3.ContractAddress, TestItem.KeccakG);
-            await baselineModule.baseline_insertLeaf(
+            await baselineModule.baseline_insertCommit(
                 TestItem.Addresses[1], receipt3.ContractAddress, TestItem.KeccakH);
 
             await testRpc.AddBlock();
@@ -543,13 +543,70 @@ namespace Nethermind.Baseline.Test.JsonRpc
             BaselineModule baselineModule = CreateBaselineModule(testRpc);
 
             await testRpc.AddFunds(TestItem.Addresses[0], 1.Ether());
-
-            await baselineModule.baseline_track(TestItem.AddressC);
-            var result = await baselineModule.baseline_track(TestItem.AddressC);
+            Address treeAddress = await Deploy(testRpc, baselineModule);
+            
+            var result =  await baselineModule.baseline_track(treeAddress);
+            result.Result.ResultType.Should().Be(ResultType.Success);
+            
+            result = await baselineModule.baseline_track(treeAddress);
 
             result.Result.ResultType.Should().Be(ResultType.Failure);
             result.Result.Error.Should().NotBeNull();
             result.ErrorCode.Should().Be(ErrorCodes.InvalidInput);
+        }
+        
+        [Test]
+        public async Task track_untrack_track_works()
+        {
+            SingleReleaseSpecProvider spec = new SingleReleaseSpecProvider(ConstantinopleFix.Instance, 1);
+            TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(spec);
+            BaselineModule baselineModule = CreateBaselineModule(testRpc);
+
+            await testRpc.AddFunds(TestItem.Addresses[0], 1.Ether());
+            Address treeAddress = await Deploy(testRpc, baselineModule);
+            
+            var result = await baselineModule.baseline_track(treeAddress);
+            result.Result.ResultType.Should().Be(ResultType.Success);
+            result = await baselineModule.baseline_untrack(treeAddress);
+            result.Result.ResultType.Should().Be(ResultType.Success);
+            result = await baselineModule.baseline_track(treeAddress);
+            result.Result.ResultType.Should().Be(ResultType.Success);
+            
+            var countResult = await baselineModule.baseline_getCount(treeAddress);
+            countResult.Result.ResultType.Should().Be(ResultType.Success);
+        }
+        
+        [Test]
+        public async Task track_untrack_will_cause_tracking_checks_to_start_failing()
+        {
+            SingleReleaseSpecProvider spec = new SingleReleaseSpecProvider(ConstantinopleFix.Instance, 1);
+            TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(spec);
+            BaselineModule baselineModule = CreateBaselineModule(testRpc);
+
+            await testRpc.AddFunds(TestItem.Addresses[0], 1.Ether());
+            Address treeAddress = await Deploy(testRpc, baselineModule);
+            
+            var result = await baselineModule.baseline_track(treeAddress);
+            result.Result.ResultType.Should().Be(ResultType.Success);
+            result = await baselineModule.baseline_untrack(treeAddress);
+            var keccakResult = await baselineModule.baseline_insertCommit(TestItem.Addresses[0], TestItem.AddressC, Keccak.Zero);
+            keccakResult.Result.ResultType.Should().Be(ResultType.Failure);
+            
+            keccakResult = await baselineModule.baseline_insertCommits(TestItem.Addresses[0], TestItem.AddressC, Keccak.Zero);
+            keccakResult.Result.ResultType.Should().Be(ResultType.Failure);
+        }
+        
+        [Test]
+        public async Task untrack_fails_when_not_tracked()
+        {
+            SingleReleaseSpecProvider spec = new SingleReleaseSpecProvider(ConstantinopleFix.Instance, 1);
+            TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(spec);
+            BaselineModule baselineModule = CreateBaselineModule(testRpc);
+
+            await testRpc.AddFunds(TestItem.Addresses[0], 1.Ether());
+            
+            var result = await baselineModule.baseline_untrack(TestItem.AddressC);
+            result.Result.ResultType.Should().Be(ResultType.Failure);
         }
 
         [Test]
@@ -637,28 +694,34 @@ namespace Nethermind.Baseline.Test.JsonRpc
         }
 
         [Test]
-        public async Task cannot_get_siblings_after_leaf_is_added_if_not_traced()
+        public async Task cannot_get_siblings_after_commit_is_added_if_not_traced()
         {
             SingleReleaseSpecProvider spec = new SingleReleaseSpecProvider(ConstantinopleFix.Instance, 1);
             TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(spec);
             BaselineModule baselineModule = CreateBaselineModule(testRpc);
 
             await testRpc.AddFunds(TestItem.Addresses[0], 1.Ether());
-            Keccak txHash = (await baselineModule.baseline_deploy(TestItem.Addresses[0], "MerkleTreeSHA")).Data;
+            Address treeAddress = await Deploy(testRpc, baselineModule);
+
+            await baselineModule.baseline_insertCommit(TestItem.Addresses[1], treeAddress, TestItem.KeccakH);
             await testRpc.AddBlock();
 
-            ReceiptForRpc receipt = (await testRpc.EthModule.eth_getTransactionReceipt(txHash)).Data;
-
-            await baselineModule.baseline_insertLeaf(TestItem.Addresses[1], receipt.ContractAddress, TestItem.KeccakH);
-            await testRpc.AddBlock();
-
-            var result = await baselineModule.baseline_getSiblings(receipt.ContractAddress, 1);
+            var result = await baselineModule.baseline_getSiblings(treeAddress, 1);
             await testRpc.AddBlock();
 
             result.Result.ResultType.Should().Be(ResultType.Failure);
             result.Result.Error.Should().NotBe(null);
             result.ErrorCode.Should().NotBe(0);
             result.Data.Should().BeNull();
+        }
+
+        private static async Task<Address> Deploy(TestRpcBlockchain testRpc, BaselineModule baselineModule)
+        {
+            Keccak txHash = (await baselineModule.baseline_deploy(TestItem.Addresses[0], "MerkleTreeSHA")).Data;
+            await testRpc.AddBlock();
+
+            ReceiptForRpc receipt = (await testRpc.EthModule.eth_getTransactionReceipt(txHash)).Data;
+            return receipt.ContractAddress;
         }
 
         [TestCase(-1L)]
@@ -675,7 +738,7 @@ namespace Nethermind.Baseline.Test.JsonRpc
 
             ReceiptForRpc receipt = (await testRpc.EthModule.eth_getTransactionReceipt(txHash)).Data;
 
-            await baselineModule.baseline_insertLeaf(TestItem.Addresses[1], receipt.ContractAddress, TestItem.KeccakH);
+            await baselineModule.baseline_insertCommit(TestItem.Addresses[1], receipt.ContractAddress, TestItem.KeccakH);
             await testRpc.AddBlock();
 
             var result = await baselineModule.baseline_getSiblings(receipt.ContractAddress, leafIndex);
@@ -714,7 +777,7 @@ namespace Nethermind.Baseline.Test.JsonRpc
             for (int i = 0; i < 16; i++)
             {
                 Stopwatch stopwatch = Stopwatch.StartNew();
-                await baselineModule.baseline_insertLeaf(TestItem.Addresses[taskId], contract, TestItem.Keccaks[i % TestItem.Keccaks.Length]);
+                await baselineModule.baseline_insertCommit(TestItem.Addresses[taskId], contract, TestItem.Keccaks[i % TestItem.Keccaks.Length]);
                 await testRpc.AddBlock();
                 Block headBlock = testRpc.BlockTree.Head;
                 BaselineTreeNode[] siblings = (await baselineModule.baseline_getSiblings(

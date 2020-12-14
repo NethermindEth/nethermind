@@ -122,7 +122,7 @@ namespace Nethermind.Consensus.AuRa
             for (int i = 0; i < block.Transactions.Length; i++)
             {
                 var tx = block.Transactions[i];
-                if (!_txFilter.IsAllowed(tx, parentHeader))
+                if (!_txFilter.IsAllowed(tx, parentHeader).Allowed)
                 {
                     if (_logger.IsError) _logger.Error($"Proposed block is not valid {block.ToString(Block.Format.FullHashAndNumber)}. {tx.ToShortString()} doesn't have required permissions.");
                     throw new InvalidBlockException(block.Hash);

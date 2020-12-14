@@ -96,8 +96,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
         {
             SyncingResult result;
             long bestSuggestedNumber = _blockFinder.FindBestSuggestedHeader().Number;
-            bool isSyncing = bestSuggestedNumber > _blockFinder.Head.Number + 1;
-
+            bool isSyncing = bestSuggestedNumber > _blockFinder.Head.Number + 8;
+            
             if (isSyncing)
             {
                 result = new SyncingResult
@@ -345,6 +345,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             }
             catch (Exception e)
             {
+                if (_logger.IsError) _logger.Error("Failed to send transaction.", e);
                 return ResultWrapper<Keccak>.Fail(e.Message, ErrorCodes.TransactionRejected);
             }
         }

@@ -16,6 +16,7 @@
 
 using System.Collections.Generic;
 using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Logging;
 using Nethermind.Stats;
@@ -33,7 +34,7 @@ namespace Nethermind.Synchronization.Test
         [TestCase(true, false)]
         [TestCase(true, true)]
         [TestCase(false, false)]
-        public void Smoke(bool fastSync, bool fastBlocks)
+        public async Task Smoke(bool fastSync, bool fastBlocks)
         {
             ISyncModeSelector selector = Substitute.For<ISyncModeSelector>();
             ISyncPeerPool pool = Substitute.For<ISyncPeerPool>();
@@ -52,11 +53,11 @@ namespace Nethermind.Synchronization.Test
             
             SyncReport syncReport = new SyncReport(pool, Substitute.For<INodeStatsManager>(), selector,  syncConfig, LimboLogs.Instance, 10);
             selector.Current.Returns((ci) => _syncModes.Count > 0 ? _syncModes.Dequeue() : SyncMode.Full);
-            Thread.Sleep(200);
+            await Task.Delay(200);
             syncReport.FastBlocksHeaders.MarkEnd();
             syncReport.FastBlocksBodies.MarkEnd();
             syncReport.FastBlocksReceipts.MarkEnd();
-            Thread.Sleep(20);
+            await Task.Delay(20);
         }
     }
 }

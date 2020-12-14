@@ -18,7 +18,9 @@ using System;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Db;
+using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Repositories;
 using Nethermind.Trie;
@@ -49,7 +51,22 @@ namespace Nethermind.Baseline.Tree
 
         public uint Count { get; private set; }
 
-        public long LastBlockWithLeaves { get; set; }
+        public long LastBlockWithLeaves { get; private set; }
+
+        public void MemorizePastCount(long blockNumber, uint count)
+        { 
+            if(_logger.IsWarn) _logger.Warn($"Saving block number count ({count}, {LastBlockWithLeaves}) of {this} in block {blockNumber}");
+            Metadata.SaveBlockNumberCount(blockNumber, count, LastBlockWithLeaves);
+        }
+        
+        public void MemorizeCurrentCount(Keccak blockHash, long blockNumber, uint count)
+        { 
+            if(_logger.IsWarn) _logger.Warn($"Saving block number count ({count}, {LastBlockWithLeaves}) of {this} in block {blockNumber}");
+            Metadata.SaveBlockNumberCount(blockNumber, count, LastBlockWithLeaves);
+            Metadata.SaveCurrentBlockInDb(blockHash, blockNumber);
+            LastBlockWithLeaves = blockNumber;
+            LastBlockDbHash = blockHash;
+        }
 
         public BaselineTreeMetadata Metadata { get; private set; }
 
@@ -59,13 +76,16 @@ namespace Nethermind.Baseline.Tree
            does it expose any attack vectors? */
         internal static Keccak ZeroHash = Keccak.Zero;
 
-        public BaselineTree(IDb db, IKeyValueStore metadataKeyValueStore, byte[] _dbPrefix, int truncationLength)
+        private ILogger _logger;
+        
+        public BaselineTree(IDb db, IKeyValueStore metadataKeyValueStore, byte[] _dbPrefix, int truncationLength, ILogger logger)
         {
+            _logger = logger;
             TruncationLength = truncationLength;
             _db = db ?? throw new ArgumentNullException(nameof(db));
             _metadataKeyValueStore = metadataKeyValueStore ?? throw new ArgumentNullException(nameof(metadataKeyValueStore));
             this._dbPrefix = _dbPrefix;
-            Metadata = new BaselineTreeMetadata(metadataKeyValueStore, _dbPrefix);
+            Metadata = new BaselineTreeMetadata(metadataKeyValueStore, _dbPrefix, _logger);
 
             InitializeMetadata();
             Root = Count == 0 ? Keccak.Zero : LoadValue(new Index(0, 0));
@@ -102,17 +122,29 @@ namespace Nethermind.Baseline.Tree
             return Metadata.GetBlockCount(LastBlockWithLeaves, blockNumber);
         }
 
-        public uint GetPreviousBlockCount(long blockNumber, bool clearPreviousCounts = false)
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <param name="blockNumber"></param>
+        /// <returns>Deleted leaves count</returns>
+        public uint GoBackTo(long blockNumber)
         {
-            return Metadata.GetPreviousBlockCount(LastBlockWithLeaves, blockNumber, clearPreviousCounts);
+            (uint count, long newLastBlockWithLeaves) = Metadata.GoBackTo(blockNumber, LastBlockWithLeaves);
+            var leavesToDelete = Count - count;
+            LastBlockWithLeaves = newLastBlockWithLeaves;
+            Delete(leavesToDelete, false);
+            return leavesToDelete;
         }
 
         private void InitializeMetadata()
         {
-            var currentBlock = Metadata.LoadCurrentBlockInDb();
+            (Keccak LastBlockDbHash, long LastBlockWithLeaves) currentBlock = Metadata.LoadCurrentBlockInDb();
             LastBlockDbHash = currentBlock.LastBlockDbHash;
             LastBlockWithLeaves = currentBlock.LastBlockWithLeaves;
             Count = LoadCount();
+            
+            if(_logger.IsInfo) _logger.Info(
+                $"Initialized tree {_dbPrefix.ToHexString()} with count {Count}, last block hash {LastBlockDbHash} and last block with leaves {LastBlockWithLeaves}.");
         }
 
         private uint LoadCount()
@@ -159,9 +191,9 @@ namespace Nethermind.Baseline.Tree
 
         public void Delete(uint leavesToRemove, bool recalculateHashes = true)
         {
-            for (uint i = 1; i < leavesToRemove; ++i)
+            for (uint i = 0; i < leavesToRemove; ++i)
             {
-                Index index = new Index(LeafRow, Count - i);
+                Index index = new Index(LeafRow, Count - i - 1);
                 Modify(index, ZeroHash, recalculateHashes);
             }
 
@@ -273,11 +305,20 @@ namespace Nethermind.Baseline.Tree
                 for (uint indexAtRow = startingRowIndex; indexAtRow < nodesToIterate; indexAtRow += 2)
                 {
                     Index index = new Index(row, indexAtRow);
-                    var hash = LoadValue(index);
-                    var siblingIndex = index.Sibling();
-                    var siblingHash = LoadValue(siblingIndex);
+                    Keccak? hash = LoadValue(index);
+                    Index siblingIndex = index.Sibling();
+                    Keccak? siblingHash = siblingIndex.IndexAtRow >= nodesToIterate ? ZeroHash : LoadValue(siblingIndex);
+                    // _logger.Warn($"{siblingIndex.NodeIndex}=>{siblingHash} {index.NodeIndex}=>{hash}");
                     byte[] parentHash = new byte[32];
-                    Hash(hash.Bytes.AsSpan(), siblingHash.Bytes.AsSpan(), parentHash);
+                    if (hash == Keccak.Zero && siblingHash == Keccak.Zero)
+                    {
+                        parentHash = Keccak.Zero.Bytes;
+                    }
+                    else
+                    {
+                        Hash(hash.Bytes.AsSpan(), siblingHash.Bytes.AsSpan(), parentHash);    
+                    }
+                    
                     Index parentIndex = index.Parent();
                     SaveValue(parentIndex, parentHash);
                 }
@@ -296,6 +337,11 @@ namespace Nethermind.Baseline.Tree
         }
 
         public Keccak Root { get; set; }
+
+        public override string ToString()
+        {
+            return $"[BaselineTree|{Metadata.DbPrefix.ToHexString()}|{Count}]";
+        }
 
         protected abstract void Hash(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b, Span<byte> target);
 

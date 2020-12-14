@@ -153,7 +153,7 @@ namespace Nethermind.Blockchain.Test.Find
             var logFilter = AllBlockFilter().Build();
             var action = new Func<IEnumerable<FilterLog>>(() =>_logFinder.FindLogs(logFilter));
             action.Should().Throw<ArgumentException>();
-            blockFinder.Received().FindHeader(logFilter.ToBlock);
+            blockFinder.Received().FindHeader(logFilter.ToBlock, true);
             blockFinder.DidNotReceive().FindHeader(logFilter.FromBlock);
         }
         
