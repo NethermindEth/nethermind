@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -33,6 +33,13 @@ using Nethermind.State;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
+using Nethermind.Core.Test.Blockchain;
+using System.Security;
+using Nethermind.Core.Extensions;
+using Nethermind.Specs.Forks;
+using Nethermind.JsonRpc.Test.Modules;
+using System.Threading.Tasks;
+using System.Threading;
 
 namespace Nethermind.Blockchain.Test
 {
@@ -103,6 +110,40 @@ namespace Nethermind.Blockchain.Test
                 new List<Block> {block},
                 ProcessingOptions.None,
                 AlwaysCancelBlockTracer.Instance));
+        }
+
+        [Test]
+        public async Task Process_long_running_branch()
+        {
+            var address = TestItem.Addresses[0];
+            var spec = new SingleReleaseSpecProvider(ConstantinopleFix.Instance, 1);
+            var blockBuilder = Core.Test.Builders.Build.A.Block.Genesis.WithGasLimit(10000000000);
+            var testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+                .WithGenesisBlockBuilder(blockBuilder)
+                .Build(spec);
+            testRpc.TestWallet.UnlockAccount(address, new SecureString());
+            await testRpc.AddFunds(address, 1.Ether());
+
+            BlockHeader header = Build.A.BlockHeader.WithAuthor(TestItem.AddressD).TestObject;
+            Block block = Build.A.Block.WithHeader(header).TestObject;
+            //List<Block> blocks = new List<Block>();
+            //for (int i=0; i < 3000; ++i)
+            //{
+            //    blocks.Add(block);
+            //}
+            //testRpc.BlockProcessor.Process(TestItem.KeccakA, blocks, ProcessingOptions.None, NullBlockTracer.Instance);
+            await testRpc.AddBlock();
+            var _suggestedBlockResetEvent = new SemaphoreSlim(0);
+            testRpc.BlockTree.NewHeadBlock += (s, e) =>
+            {
+                _suggestedBlockResetEvent.Release(1);
+            };
+
+            await testRpc.BlockProducer.StopAsync();
+            var lastBlock = ((BlockTree)testRpc.BlockTree).AddBranch(6, 3, 0);
+            testRpc.BlockProducer.Start();
+            testRpc.BlockTree.SuggestBlock(lastBlock, true);
+            await _suggestedBlockResetEvent.WaitAsync();
         }
     }
 }
