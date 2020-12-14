@@ -47,7 +47,7 @@ namespace Nethermind.Blockchain.Test.Data
         }
         
         [Test]
-        [Retry(3)]
+        [Retry(10)]
         public async Task correctly_updates_from_existing_file()
         {
             using (var tempFile = TempPath.GetTempFile())
@@ -77,7 +77,7 @@ namespace Nethermind.Blockchain.Test.Data
         }
 
         [Test]
-        [Retry(3)]
+        [Retry(10)]
         public async Task correctly_updates_from_new_file()
         {
             int interval = 30;
@@ -112,7 +112,7 @@ namespace Nethermind.Blockchain.Test.Data
         }
         
         [Test]
-        [Retry(3)]
+        [Retry(10)]
         public async Task retries_loading_file()
         {
             using (var tempFile = TempPath.GetTempFile())
@@ -139,7 +139,7 @@ namespace Nethermind.Blockchain.Test.Data
         }
         
         [Test]
-        [Retry(3)]
+        [Retry(10)]
         public async Task loads_default_when_deleted_file()
         {
             using (var tempFile = TempPath.GetTempFile())

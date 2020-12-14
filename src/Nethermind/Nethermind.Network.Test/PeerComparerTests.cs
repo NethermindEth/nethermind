@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
@@ -34,7 +35,7 @@ namespace Nethermind.Network.Test
         public void SetUp()
         {
             _statsManager = Substitute.For<INodeStatsManager>();
-            _comparer = new PeerComparer(_statsManager);
+            _comparer = new PeerComparer();
         }
 
         [Test]
@@ -52,6 +53,8 @@ namespace Nethermind.Network.Test
             _statsManager.GetCurrentReputation(a).Returns(100);
             _statsManager.GetCurrentReputation(b).Returns(50);
             _statsManager.GetCurrentReputation(c).Returns(200);
+            
+            _statsManager.UpdateCurrentReputation(a, b, c);
 
             Assert.AreEqual(-1, _comparer.Compare(peerA, peerB));
             Assert.AreEqual(1, _comparer.Compare(peerA, peerC));
@@ -83,6 +86,8 @@ namespace Nethermind.Network.Test
             _statsManager.GetCurrentReputation(d).Returns(10);
 
             List<Peer> peers = new List<Peer> {peerA, peerB, peerC, peerD, peerE};
+            
+            _statsManager.UpdateCurrentReputation(peers);
             peers.Sort(_comparer);
             
             Assert.AreEqual(peerC, peers[0]);

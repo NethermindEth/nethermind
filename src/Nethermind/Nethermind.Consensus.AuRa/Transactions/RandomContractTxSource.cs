@@ -113,11 +113,11 @@ namespace Nethermind.Consensus.AuRa.Transactions
             }
             catch (AuRaException e)
             {
-                if (_logger.IsError) _logger.Error("RANDAO Failed", e);
+                if (_logger.IsError) _logger.Error($"RANDAO Failed on block {parent.ToString(BlockHeader.Format.FullHashAndNumber)} {new StackTrace()}", e);
             }
             catch (AbiException e)
             {
-                if (_logger.IsError) _logger.Error("RANDAO Failed", e);
+                if (_logger.IsError) _logger.Error($"RANDAO Failed on block {parent.ToString(BlockHeader.Format.FullHashAndNumber)} {new StackTrace()}", e);
             }
 
             return null;

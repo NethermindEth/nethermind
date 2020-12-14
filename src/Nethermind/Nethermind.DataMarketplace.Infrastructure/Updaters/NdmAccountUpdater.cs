@@ -13,13 +13,13 @@ namespace Nethermind.DataMarketplace.Infrastructure.Updaters
         private readonly Address _accountAddress;
         private readonly Address? _coldWalletAddress;
         private readonly IBlockProcessor _blockProcessor;
-        private readonly IStateProvider _stateProvider;
+        private readonly IReadOnlyStateProvider _stateProvider;
         private UInt256? _balance;
         private UInt256? _coldBalance;
         private UInt256? _nonce;
         private UInt256? _coldNonce;
 
-        public NdmAccountUpdater(IWebSocketsModule module, Address accountAddress, IBlockProcessor blockProcessor, IStateProvider stateProvider, Address? coldWalletAddress = null)
+        public NdmAccountUpdater(IWebSocketsModule module, Address accountAddress, IBlockProcessor blockProcessor, IReadOnlyStateProvider stateProvider, Address? coldWalletAddress = null)
         {
             _blockProcessor = blockProcessor ?? throw new ArgumentNullException(nameof(blockProcessor));
             _webSocketsModule = module ?? throw new ArgumentNullException(nameof(module));

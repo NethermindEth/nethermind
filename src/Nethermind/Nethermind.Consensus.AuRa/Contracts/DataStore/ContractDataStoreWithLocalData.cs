@@ -20,8 +20,10 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Data;
 using Nethermind.Blockchain.Processing;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Logging;
 
 namespace Nethermind.Consensus.AuRa.Contracts.DataStore
@@ -34,10 +36,11 @@ namespace Nethermind.Consensus.AuRa.Contracts.DataStore
         protected internal ContractDataStoreWithLocalData(
             TCollection collection, 
             IDataContract<T> dataContract, 
-            IBlockProcessor blockProcessor,
+            IBlockTree blockTree, 
+            IReceiptFinder receiptFinder,
             ILogManager logManager,
             ILocalDataSource<IEnumerable<T>> localDataSource) 
-            : base(collection, dataContract, blockProcessor, logManager)
+            : base(collection, dataContract, blockTree, receiptFinder, logManager)
         {
             _localDataSource = localDataSource ?? throw new ArgumentNullException(nameof(localDataSource));
             _localDataSource.Changed += OnChanged;
@@ -56,11 +59,12 @@ namespace Nethermind.Consensus.AuRa.Contracts.DataStore
 
         private void LoadLocalData()
         {
-            var oldData = _localData;
+            TraceDataChanged("local data start");
+            Collection.Remove(_localData);
+            TraceDataChanged("local data removed");
             _localData = _localDataSource.Data?.ToArray() ?? Array.Empty<T>();
-            Collection.Remove(oldData.Except(_localData));
-            Collection.Insert(_localData.Except(oldData));
-            TraceDataChanged();
+            Collection.Insert(_localData, true);
+            TraceDataChanged("local data inserted");
         }
 
         protected override void RemoveOldContractItemsFromCollection()
@@ -81,10 +85,11 @@ namespace Nethermind.Consensus.AuRa.Contracts.DataStore
         public ContractDataStoreWithLocalData(
             IContractDataStoreCollection<T> collection, 
             IDataContract<T> dataContract, 
-            IBlockProcessor blockProcessor,
+            IBlockTree blockTree, 
+            IReceiptFinder receiptFinder,
             ILogManager logManager,
             ILocalDataSource<IEnumerable<T>> localDataSource) 
-            : base(collection, dataContract ?? new EmptyDataContract<T>(), blockProcessor, logManager, localDataSource)
+            : base(collection, dataContract ?? new EmptyDataContract<T>(), blockTree, receiptFinder, logManager, localDataSource)
         {
         }
     }

@@ -27,7 +27,6 @@ using Nethermind.Evm;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Runner.Ethereum.Api;
-using Nethermind.State;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
@@ -60,7 +59,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             return gasPriceTxFilter;
         }
         
-        public static ITxFilter? CreateTxPermissionFilter(AuRaNethermindApi api, IReadOnlyTransactionProcessorSource readOnlyTxProcessorSource, IStateProvider stateProvider)
+        public static ITxFilter? CreateTxPermissionFilter(AuRaNethermindApi api, IReadOnlyTransactionProcessorSource readOnlyTxProcessorSource)
         {
             if (api.ChainSpec == null) throw new StepDependencyException(nameof(api.ChainSpec));
             
@@ -75,7 +74,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                         readOnlyTxProcessorSource, 
                         api.TransactionPermissionContractVersions),
                     api.TxFilterCache,
-                    stateProvider,
+                    api.ChainHeadStateProvider,
                     api.LogManager);
                 
                 return txPermissionFilter;
@@ -88,11 +87,10 @@ namespace Nethermind.Runner.Ethereum.Steps
             IMiningConfig miningConfig,
             AuRaNethermindApi api,
             IReadOnlyTransactionProcessorSource readOnlyTxProcessorSource,
-            IStateProvider stateProvider,
             IDictionaryContractDataStore<TxPriorityContract.Destination>? minGasPricesContractDataStore)
         {
             ITxFilter baseAuRaTxFilter = CreateBaseAuRaTxFilter(miningConfig, api, readOnlyTxProcessorSource, minGasPricesContractDataStore);
-            ITxFilter? txPermissionFilter = CreateTxPermissionFilter(api, readOnlyTxProcessorSource, stateProvider);
+            ITxFilter? txPermissionFilter = CreateTxPermissionFilter(api, readOnlyTxProcessorSource);
             return txPermissionFilter != null
                 ? new CompositeTxFilter(baseAuRaTxFilter, txPermissionFilter) 
                 : baseAuRaTxFilter;
@@ -125,14 +123,14 @@ namespace Nethermind.Runner.Ethereum.Steps
         public static DictionaryContractDataStore<TxPriorityContract.Destination, TxPriorityContract.DestinationSortedListContractDataStoreCollection>? CreateMinGasPricesDataStore(
             AuRaNethermindApi api, 
             TxPriorityContract? txPriorityContract, 
-            TxPriorityContract.LocalDataSource? localDataSource, 
-            IBlockProcessor blockProcessor)
+            TxPriorityContract.LocalDataSource? localDataSource)
         {
             return txPriorityContract != null || localDataSource != null
                 ? new DictionaryContractDataStore<TxPriorityContract.Destination, TxPriorityContract.DestinationSortedListContractDataStoreCollection>(
                     new TxPriorityContract.DestinationSortedListContractDataStoreCollection(),
                     txPriorityContract?.MinGasPrices,
-                    blockProcessor,
+                    api.BlockTree,
+                    api.ReceiptFinder,
                     api.LogManager,
                     localDataSource?.GetMinGasPricesLocalDataSource())
                 : null;

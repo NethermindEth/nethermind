@@ -76,6 +76,13 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _get.DbProvider.StateDb,
                 _get.DbProvider.CodeDb,
                 _get.LogManager);
+            
+            ReadOnlyDbProvider readOnly = new ReadOnlyDbProvider(_api.DbProvider, false);
+            var stateReader = _set.StateReader = new StateReader(
+                readOnly.GetDb<ISnapshotableDb>(DbNames.State),
+                readOnly.GetDb<ISnapshotableDb>(DbNames.Code),
+                _api.LogManager);
+            _set.ChainHeadStateProvider = new ChainHeadReadOnlyStateProvider(_get.BlockTree, stateReader);
 
             PersistentTxStorage txStorage = new PersistentTxStorage(_get.DbProvider.PendingTxsDb);
 
@@ -87,7 +94,7 @@ namespace Nethermind.Runner.Ethereum.Steps
 
             var txPool = _api.TxPool = CreateTxPool(txStorage);
 
-            var onChainTxWatcher = new OnChainTxWatcher(_get.BlockTree, txPool, _get.SpecProvider);
+            var onChainTxWatcher = new OnChainTxWatcher(_get.BlockTree, txPool, _get.SpecProvider, _api.LogManager);
             _get.DisposeStack.Push(onChainTxWatcher);
 
             _api.BlockPreprocessor.AddFirst(
@@ -135,8 +142,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 ommersValidator,
                 _get.SpecProvider,
                 _get.LogManager);
-
-            ReadOnlyDbProvider readOnly = new ReadOnlyDbProvider(_api.DbProvider, false);
+            
             _set.StateReader = new StateReader(readOnly.GetDb<ISnapshotableDb>(DbNames.State), readOnly.GetDb<ISnapshotableDb>(DbNames.Code), _api.LogManager);
             _set.TxPoolInfoProvider = new TxPoolInfoProvider(_api.StateReader, _api.TxPool);
 
@@ -192,7 +198,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.EthereumEcdsa,
                 _api.SpecProvider,
                 _api.Config<ITxPoolConfig>(),
-                _api.StateProvider,
+                _api.ChainHeadStateProvider,
                 _api.LogManager,
                 CreateTxPoolTxComparer());
 

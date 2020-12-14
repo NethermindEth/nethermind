@@ -106,7 +106,7 @@ namespace Nethermind.Synchronization.Blocks
             block.Body = body;
         }
 
-        public bool TrySetReceipts(int index, TxReceipt[] receipts)
+        public bool TrySetReceipts(int index, TxReceipt[] receipts, out Block block)
         {
             if (!_downloadReceipts)
             {
@@ -114,7 +114,7 @@ namespace Nethermind.Synchronization.Blocks
             }
 
             int mappedIndex = _indexMapping[index];
-            Block block = Blocks[_indexMapping[index]];
+            block = Blocks[_indexMapping[index]];
             receipts ??= Array.Empty<TxReceipt>();
 
             bool result = _receiptsRecovery.TryRecover(block, receipts); 
@@ -130,6 +130,7 @@ namespace Nethermind.Synchronization.Blocks
         private void ValidateReceipts(Block block, TxReceipt[] blockReceipts)
         {
             Keccak receiptsRoot = new ReceiptTrie(_specProvider.GetSpec(block.Number), blockReceipts).RootHash;
+
             if (receiptsRoot != block.ReceiptsRoot)
             {
                 throw new EthSyncException($"Wrong receipts root for downloaded block {block.ToString(Block.Format.Short)}.");

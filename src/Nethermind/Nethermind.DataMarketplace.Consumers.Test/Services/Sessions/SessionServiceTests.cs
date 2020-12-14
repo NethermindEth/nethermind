@@ -57,9 +57,9 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Sessions
         private Deposit _deposit2;
         private DepositDetails _details2;
 
-        private Keccak _depositForUnavailableId = TestItem.KeccakC;
-        private Deposit _depositForUnavailable;
-        private DepositDetails _depositForUnavailableDetails;
+        private Keccak _depositForClosedId = TestItem.KeccakC;
+        private Deposit _depositForClosed;
+        private DepositDetails _depositForClosedDetails;
 
         private Keccak _depositForMissingId = TestItem.KeccakD;
         private Deposit _depositForMissing;
@@ -75,8 +75,8 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Sessions
 
         private Keccak _missingAssetId = TestItem.KeccakG;
 
-        private Keccak _unavailableId = TestItem.KeccakF;
-        private DataAsset _unavailable;
+        private Keccak _closedId = TestItem.KeccakF;
+        private DataAsset _closed;
 
         private Address _consumerAddress = TestItem.AddressA;
         private PublicKey _consumerNodeId = TestItem.PublicKeyA;
@@ -106,10 +106,10 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Sessions
             _deposit2 = new Deposit(_deposit2Id, 1, 2, 3);
             _details2 = new DepositDetails(_deposit2, _asset2, Address.Zero, new byte[0], 1, new TransactionInfo[0], 2);
 
-            _unavailable = new DataAsset(_unavailableId, "name", "desc", 1, DataAssetUnitType.Unit, 1000, 10000, new DataAssetRules(new DataAssetRule(1)), provider, state: DataAssetState.Unavailable);
-            dataAssetService.AddDiscovered(_unavailable, _ndmPeer);
-            _depositForUnavailable = new Deposit(_depositForUnavailableId, 1, 2, 3);
-            _depositForUnavailableDetails = new DepositDetails(_depositForUnavailable, _unavailable, Address.Zero, new byte[0], 1, new TransactionInfo[0]);
+            _closed = new DataAsset(_closedId, "name", "desc", 1, DataAssetUnitType.Unit, 1000, 10000, new DataAssetRules(new DataAssetRule(1)), provider, state: DataAssetState.Closed);
+            dataAssetService.AddDiscovered(_closed, _ndmPeer);
+            _depositForClosed = new Deposit(_depositForClosedId, 1, 2, 3);
+            _depositForClosedDetails = new DepositDetails(_depositForClosed, _closed, Address.Zero, new byte[0], 1, new TransactionInfo[0]);
 
             _missingAsset = new DataAsset(_missingAssetId, "name", "desc", 1, DataAssetUnitType.Unit, 1000, 10000, new DataAssetRules(new DataAssetRule(1)), provider, state: DataAssetState.Published);
             _depositForMissing = new Deposit(_depositForMissingId, 1, 2, 3);
@@ -119,7 +119,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Sessions
             depositProvider.GetAsync(_deposit1Id).Returns(_details1);
             depositProvider.GetAsync(_deposit2Id).Returns(_details2);
             depositProvider.GetAsync(_depositForMissingId).Returns(_depositForMissingDetails);
-            depositProvider.GetAsync(_depositForUnavailableId).Returns(_depositForUnavailableDetails);
+            depositProvider.GetAsync(_depositForClosedId).Returns(_depositForClosedDetails);
 
             _ndmPeer = Substitute.For<INdmPeer>();
             _ndmPeer.ProviderAddress.Returns(_providerAddress);
@@ -316,11 +316,11 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Sessions
         }
 
         [Test]
-        public async Task Cannot_start_session_for_an_unavailable_data_asset()
+        public async Task Cannot_start_session_for_a_closed_data_asset()
         {
-            ConsumerSession consumerSession = new ConsumerSession(_session1Id, _depositForUnavailableId, _unavailableId, _consumerAddress, _consumerNodeId, _providerAddress, _providerNodeId, SessionState.Started, 1, 2, 4);
+            ConsumerSession consumerSession = new ConsumerSession(_session1Id, _depositForClosedId, _closedId, _consumerAddress, _consumerNodeId, _providerAddress, _providerNodeId, SessionState.Started, 1, 2, 4);
             await _sessionService.StartSessionAsync(consumerSession, _ndmPeer);
-            var result = _sessionService.GetActive(_depositForUnavailableId);
+            var result = _sessionService.GetActive(_depositForClosedId);
             result.Should().BeNull();
         }
 

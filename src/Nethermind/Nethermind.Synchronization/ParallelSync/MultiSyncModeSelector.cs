@@ -353,7 +353,7 @@ namespace Nethermind.Synchronization.ParallelSync
         private bool ShouldBeInStateNodesMode(Snapshot best)
         {
             bool fastSyncEnabled = FastSyncEnabled;
-            bool fastFastSyncBeenActive = best.Header >= PivotNumber;
+            bool hasFastSyncBeenActive = best.Header >= PivotNumber;
             bool hasAnyPostPivotPeer = AnyPostPivotPeerKnown(best.PeerBlock);
             bool notInFastSync = !best.IsInFastSync;
             bool stickyStateNodes = best.PeerBlock - best.Header < (FastSyncLag + StickyStateNodesDelta);
@@ -363,7 +363,7 @@ namespace Nethermind.Synchronization.ParallelSync
             bool notHasJustStartedFullSync = !HasJustStartedFullSync(best);
             
             bool result = fastSyncEnabled &&
-                          fastFastSyncBeenActive &&
+                          hasFastSyncBeenActive &&
                           hasAnyPostPivotPeer &&
                           (notInFastSync || stickyStateNodes) &&
                           stateNotDownloadedYet &&
@@ -374,7 +374,7 @@ namespace Nethermind.Synchronization.ParallelSync
             {
                 _logger.Trace("STATE: " +
                               $"{GetBoolFlagString(fastSyncEnabled)}{nameof(fastSyncEnabled)} && " +
-                              $"{GetBoolFlagString(fastFastSyncBeenActive)}{nameof(fastFastSyncBeenActive)} && " +
+                              $"{GetBoolFlagString(hasFastSyncBeenActive)}{nameof(hasFastSyncBeenActive)} && " +
                               $"{GetBoolFlagString(hasAnyPostPivotPeer)}{nameof(hasAnyPostPivotPeer)} && " +
                               $"{GetBoolFlagString(notInFastSync)}{nameof(notInFastSync)} && " +
                               $"{GetBoolFlagString(stateNotDownloadedYet)}{nameof(stateNotDownloadedYet)} && " +

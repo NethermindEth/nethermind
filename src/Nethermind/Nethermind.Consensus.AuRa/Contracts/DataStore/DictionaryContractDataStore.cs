@@ -17,8 +17,10 @@
 
 using System;
 using System.Collections.Generic;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Data;
 using Nethermind.Blockchain.Processing;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Logging;
 
@@ -31,41 +33,46 @@ namespace Nethermind.Consensus.AuRa.Contracts.DataStore
         public DictionaryContractDataStore(
             TCollection collection,
             IDataContract<T> dataContract,
-            IBlockProcessor blockProcessor,
+            IBlockTree blockTree, 
+            IReceiptFinder receiptFinder,
             ILogManager logManager)
-            : this(CreateContractDataStore(collection, dataContract, blockProcessor, logManager))
+            : this(CreateContractDataStore(collection, dataContract, blockTree, receiptFinder, logManager))
         {
         }
 
         public DictionaryContractDataStore(
             TCollection collection,
             IDataContract<T> dataContract,
-            IBlockProcessor blockProcessor,
+            IBlockTree blockTree, 
+            IReceiptFinder receiptFinder,
             ILogManager logManager,
             ILocalDataSource<IEnumerable<T>> localDataSource)
             : this(localDataSource == null 
-                ? CreateContractDataStore(collection, dataContract, blockProcessor, logManager) 
-                : CreateContractDataStoreWithLocalData(collection, dataContract, blockProcessor, logManager, localDataSource))
+                ? CreateContractDataStore(collection, dataContract, blockTree, receiptFinder, logManager) 
+                : CreateContractDataStoreWithLocalData(collection, dataContract, blockTree, receiptFinder, logManager, localDataSource))
         {
         }
         
         private static ContractDataStore<T, TCollection> CreateContractDataStore(
             TCollection collection, 
             IDataContract<T> dataContract, 
-            IBlockProcessor blockProcessor,
+            IBlockTree blockTree, 
+            IReceiptFinder receiptFinder,
             ILogManager logManager) => 
-            new ContractDataStore<T, TCollection>(collection, dataContract, blockProcessor, logManager);
+            new ContractDataStore<T, TCollection>(collection, dataContract, blockTree, receiptFinder, logManager);
 
         private static ContractDataStoreWithLocalData<T, TCollection> CreateContractDataStoreWithLocalData(
             TCollection collection, 
             IDataContract<T> dataContract, 
-            IBlockProcessor blockProcessor, 
+            IBlockTree blockTree, 
+            IReceiptFinder receiptFinder,
             ILogManager logManager,
             ILocalDataSource<IEnumerable<T>> localDataSource) => 
             new ContractDataStoreWithLocalData<T, TCollection>(
                 collection, 
                 dataContract ?? new EmptyDataContract<T>(), 
-                blockProcessor, 
+                blockTree,
+                receiptFinder, 
                 logManager, 
                 localDataSource);
 

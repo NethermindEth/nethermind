@@ -46,6 +46,7 @@ namespace Nethermind.Runner.Ethereum.Steps
         {
             yield return new BloomMigration(_api);
             yield return new ReceiptMigration(_api);
+            yield return new ReceiptFixMigration(_api);
         }
     }
 }

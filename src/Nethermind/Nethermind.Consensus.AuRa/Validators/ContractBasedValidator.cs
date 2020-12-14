@@ -16,6 +16,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using Nethermind.Abi;
 using Nethermind.Blockchain;
@@ -253,7 +254,7 @@ namespace Nethermind.Consensus.AuRa.Validators
             }
             catch (AbiException e)
             {
-                throw new AuRaException("Failed to initialize validators list.", e);
+                throw new AuRaException($"Failed to initialize validators list on block {parentHeader.ToString(BlockHeader.Format.FullHashAndNumber)} {new StackTrace()}.", e);
             }
         }
 

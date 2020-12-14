@@ -33,7 +33,7 @@ namespace Nethermind.Consensus.AuRa.Contracts.DataStore
 
         public IEnumerable<T> GetSnapshot() => Items.ToHashSet();
 
-        public void Insert(IEnumerable<T> items)
+        public void Insert(IEnumerable<T> items, bool inFront = false)
         {
             ISet<T> set = Items;
             

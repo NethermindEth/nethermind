@@ -73,7 +73,7 @@ namespace Nethermind.TxPool
         private readonly SortedPool<Keccak, Transaction, Address> _transactions;
 
         private readonly ISpecProvider _specProvider;
-        private readonly IStateProvider _stateProvider;
+        private readonly IReadOnlyStateProvider _stateProvider;
         private readonly IEthereumEcdsa _ecdsa;
         protected readonly ILogger _logger;
 
@@ -129,7 +129,7 @@ namespace Nethermind.TxPool
             IEthereumEcdsa ecdsa,
             ISpecProvider specProvider,
             ITxPoolConfig txPoolConfig,
-            IStateProvider stateProvider,
+            IReadOnlyStateProvider stateProvider,
             ILogManager logManager,
             IComparer<Transaction> comparer = null)
         {
@@ -142,7 +142,7 @@ namespace Nethermind.TxPool
             MemoryAllowance.MemPoolSize = txPoolConfig.Size;
             ThisNodeInfo.AddInfo("Mem est tx   :", $"{(LruCache<Keccak, object>.CalculateMemorySize(32, MemoryAllowance.TxHashCacheSize) + LruCache<Keccak, Transaction>.CalculateMemorySize(4096, MemoryAllowance.MemPoolSize)) / 1000 / 1000}MB".PadLeft(8));
 
-            _transactions = new TxDistinctSortedPool(MemoryAllowance.MemPoolSize, comparer ?? DefaultComparer);
+            _transactions = new TxDistinctSortedPool(MemoryAllowance.MemPoolSize, logManager, comparer ?? DefaultComparer);
             
             _peerNotificationThreshold = txPoolConfig.PeerNotificationThreshold;
 
