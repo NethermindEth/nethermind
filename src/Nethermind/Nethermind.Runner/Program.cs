@@ -30,6 +30,7 @@ using Nethermind.Config;
 using Nethermind.Consensus.Clique;
 using Nethermind.Consensus.Ethash;
 using Nethermind.Core;
+using Nethermind.KeyStore.Config;
 using Nethermind.Logging;
 using Nethermind.Logging.NLog;
 using Nethermind.Runner.Ethereum;
@@ -108,6 +109,7 @@ namespace Nethermind.Runner
 
             GlobalDiagnosticsContext.Set("version", ClientVersion.Version);
 
+            CommandOption dataDir = app.Option("-dd|--datadir <dataDir>", "data directory", CommandOptionType.SingleValue);
             CommandOption configFile = app.Option("-c|--config <configFile>", "config file path", CommandOptionType.SingleValue);
             CommandOption dbBasePath = app.Option("-d|--baseDbPath <baseDbPath>", "base db path", CommandOptionType.SingleValue);
             CommandOption logLevelOverride = app.Option("-l|--log <logLevel>", "log level", CommandOptionType.SingleValue);
@@ -145,8 +147,12 @@ namespace Nethermind.Runner
                 appClosed.Reset();
                 IConfigProvider configProvider = BuildConfigProvider(app, loggerConfigSource, logLevelOverride, configsDirectory, configFile);
                 IInitConfig initConfig = configProvider.GetConfig<IInitConfig>();
+                IKeyStoreConfig keyStoreConfig = configProvider.GetConfig<IKeyStoreConfig>();
+
                 Console.Title = initConfig.LogFileName;
                 Console.CancelKeyPress += ConsoleOnCancelKeyPress;
+
+                SetFinalDataDirectory(dataDir.HasValue() ? dataDir.Value() : null, initConfig, keyStoreConfig);
                 NLogManager logManager = new NLogManager(initConfig.LogFileName, initConfig.LogDirectory);
                 
                 _logger = logManager.GetClassLogger();
@@ -325,6 +331,33 @@ namespace Nethermind.Runner
             else
             {
                 initConfig.BaseDbPath ??= Path.Combine(AppDomain.CurrentDomain.BaseDirectory ?? "", "db");    
+            }
+        }
+
+        private static void SetFinalDataDirectory(string? dataDir, IInitConfig initConfig, IKeyStoreConfig keyStoreConfig)
+        {
+            if (!string.IsNullOrWhiteSpace(dataDir))
+            {
+                string newDbPath = Path.Combine(dataDir, initConfig.BaseDbPath);
+                string newKeystorePath = Path.Combine(dataDir, keyStoreConfig.KeyStoreDirectory);
+                string newLogDirectory = Path.Combine(dataDir, initConfig.LogDirectory);
+
+                if (_logger.IsDebug) 
+                {
+                    _logger.Debug($"Setting BaseDbPath to: {newDbPath}, from: {initConfig.BaseDbPath}");
+                    _logger.Debug($"Setting KeyStoreDirectory to: {newKeystorePath}, from: {keyStoreConfig.KeyStoreDirectory}");
+                    _logger.Debug($"Setting LogDirectory to: {newLogDirectory}, from: {initConfig.LogDirectory}");
+                }
+
+                initConfig.BaseDbPath = newDbPath;
+                keyStoreConfig.KeyStoreDirectory = newKeystorePath;
+                initConfig.LogDirectory = newLogDirectory;
+            }
+            else
+            {
+                initConfig.BaseDbPath ??= Path.Combine(AppDomain.CurrentDomain.BaseDirectory ?? "", "db"); 
+                keyStoreConfig.KeyStoreDirectory ??= Path.Combine(AppDomain.CurrentDomain.BaseDirectory ?? "", "keystore");    
+                initConfig.LogDirectory ??= Path.Combine(AppDomain.CurrentDomain.BaseDirectory ?? "", "logs");
             }
         }
 
