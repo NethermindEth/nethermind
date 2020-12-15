@@ -24,8 +24,9 @@ namespace Nethermind.Core.Test.Builders
 {
     public static class BlockTreeExtensions
     {
-        public static void AddBranch(this BlockTree blockTree, int branchLength, int splitBlockNumber, int splitVariant)
+        public static void AddBranch(this BlockTree blockTree, int branchLength, int splitBlockNumber)
         {
+            var splitVariant = 0;
             BlockTree alternative = Build.A.BlockTree(blockTree.FindBlock(0, BlockTreeLookupOptions.RequireCanonical)).OfChainLength(branchLength, splitVariant).TestObject;
             List<Block> blocks = new List<Block>();
             Keccak parentHash = null;
@@ -37,52 +38,31 @@ namespace Nethermind.Core.Test.Builders
                     var mainBlock = blockTree.FindBlock(i - 1, BlockTreeLookupOptions.RequireCanonical);
                     if (mainBlock != null)
                         parentHash = mainBlock.Hash;
-                    //blockTree.SuggestBlock(block);
-                    //blocks.Add(block);
                 }
+
                 block.Header.ParentHash = parentHash;
                 block.Header.Hash = block.Header.CalculateHash();
                 parentHash = block.Hash;
                 blockTree.SuggestBlock(block, i == branchLength - 1, false);
                 blocks.Add(block);
-                //if (i == branchLength - 1)
-                //{
-                //    blockTree.UpdateBestSuggestedBlock(block);
-                //}
 
             }
-
-            // blockTree.UpdateMainChain(blocks.ToArray(), false);
         }
 
-        public static void AddBranch(this BlockTree blockTree, int branchLength, int splitBlockNumber, int splitVariant, bool updateMainChain)
+        public static void AddBranch(this BlockTree blockTree, int branchLength, int splitBlockNumber, int splitVariant)
         {
             BlockTree alternative = Build.A.BlockTree(blockTree.FindBlock(0, BlockTreeLookupOptions.RequireCanonical)).OfChainLength(branchLength, splitVariant).TestObject;
             List<Block> blocks = new List<Block>();
-            Keccak parrentHash = null;
-            for (int i = splitBlockNumber; i < branchLength; i++)
+            for (int i = splitBlockNumber + 1; i < branchLength; i++)
             {
-                if (i == splitBlockNumber)
-                {
-                    var mainBlock = blockTree.FindBlock(i, BlockTreeLookupOptions.RequireCanonical);
-                    parrentHash = mainBlock.Hash;
-                    continue;
-                    //blockTree.SuggestBlock(block);
-                    //blocks.Add(block);
-                }
-                else
-                {
-                    Block block = alternative.FindBlock(i, BlockTreeLookupOptions.RequireCanonical);
-                    block.Header.ParentHash = parrentHash;
-                    blockTree.SuggestBlock(block);
-                    parrentHash = block.Hash;
-                    blocks.Add(block);
-                }
+                Block block = alternative.FindBlock(i, BlockTreeLookupOptions.RequireCanonical);
+                blockTree.SuggestBlock(block);
+                blocks.Add(block);
             }
 
-            if (updateMainChain)
+            if (branchLength > blockTree.Head.Number)
             {
-                blockTree.UpdateMainChain(blocks.ToArray(), false);
+                blockTree.UpdateMainChain(blocks.ToArray(), true);
             }
         }
 

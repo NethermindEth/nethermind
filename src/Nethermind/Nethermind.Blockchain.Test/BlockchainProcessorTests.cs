@@ -230,7 +230,7 @@ namespace Nethermind.Blockchain.Test
                 _logger.Info($"Waiting for {block.ToString(Block.Format.Short)} to process");
                 _blockProcessor.Allow(block.Hash);
                 processedEvent.WaitOne(AfterBlock.ProcessingWait);
-            //    Assert.True(wasProcessed, $"Expected this block to get processed but it was not: {block.ToString(Block.Format.Short)}");
+                Assert.True(wasProcessed, $"Expected this block to get processed but it was not: {block.ToString(Block.Format.Short)}");
 
                 return new AfterBlock(_logManager, this, block);
             }
@@ -414,18 +414,6 @@ namespace Nethermind.Blockchain.Test
                 .FullyProcessed(_blockB3D8).BecomesNewHead()
                 .FullyProcessedSkipped(_block2D4).IsKeptOnBranch()
                 .FullyProcessedSkipped(_block3D6).IsKeptOnBranch();
-        }
-
-
-        [Test]
-        public void Can_process_long_branch()
-        {
-            When.ProcessorIsNotStarted
-                .FullyProcessed(_block0).BecomesGenesis()
-                .Suggested(_block1D2)
-                .Suggested(_blockB2D4)
-                .StartProcessor()
-                .FullyProcessed(_blockB3D8).BecomesNewHead();
         }
 
         [Test]

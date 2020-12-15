@@ -126,12 +126,6 @@ namespace Nethermind.Blockchain.Test
 
             BlockHeader header = Build.A.BlockHeader.WithAuthor(TestItem.AddressD).TestObject;
             Block block = Build.A.Block.WithHeader(header).TestObject;
-            //List<Block> blocks = new List<Block>();
-            //for (int i=0; i < 3000; ++i)
-            //{
-            //    blocks.Add(block);
-            //}
-            //testRpc.BlockProcessor.Process(TestItem.KeccakA, blocks, ProcessingOptions.None, NullBlockTracer.Instance);
             await testRpc.AddBlock();
             var _suggestedBlockResetEvent = new SemaphoreSlim(0);
             testRpc.BlockTree.NewHeadBlock += (s, e) =>
@@ -139,9 +133,7 @@ namespace Nethermind.Blockchain.Test
                 _suggestedBlockResetEvent.Release(1);
             };
 
- //           testRpc.BlockchainProcessor.PauseProcessingLoop();
-            ((BlockTree)testRpc.BlockTree).AddBranch(2006, 5, 0);
-  //          testRpc.BlockchainProcessor.ResumeProcessingLoop();
+            ((BlockTree)testRpc.BlockTree).AddBranch(2006, 5);
             await _suggestedBlockResetEvent.WaitAsync();
         }
     }
