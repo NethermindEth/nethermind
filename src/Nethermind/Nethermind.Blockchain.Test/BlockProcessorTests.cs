@@ -125,14 +125,14 @@ namespace Nethermind.Blockchain.Test
             BlockHeader header = Build.A.BlockHeader.WithAuthor(TestItem.AddressD).TestObject;
             Block block = Build.A.Block.WithHeader(header).TestObject;
             await testRpc.AddBlock();
-            var _suggestedBlockResetEvent = new SemaphoreSlim(0);
+            var suggestedBlockResetEvent = new SemaphoreSlim(0);
             testRpc.BlockTree.NewHeadBlock += (s, e) =>
             {
-                _suggestedBlockResetEvent.Release(1);
+                suggestedBlockResetEvent.Release(1);
             };
 
             ((BlockTree)testRpc.BlockTree).AddBranch(2006, 5);
-            await _suggestedBlockResetEvent.WaitAsync();
+            await suggestedBlockResetEvent.WaitAsync();
         }
     }
 }
