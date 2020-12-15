@@ -53,7 +53,27 @@ namespace Nethermind.Synchronization.BeamSync
 
         public DbModeHint DbMode => _otherProvider.DbMode;
 
-        public IDictionary<string, IDb> RegisteredDbs => _otherProvider.RegisteredDbs;
+        public IDictionary<string, IDb> RegisteredDbs
+        {
+            get
+            {
+                Dictionary<string, IDb > localDictionary = new Dictionary<string, IDb>();
+                foreach (var (key, value) in _otherProvider.RegisteredDbs)
+                {
+                    if (_registeredDbs.ContainsKey(key))
+                    {
+                        localDictionary.Add(key, _registeredDbs[key]);
+                    }
+                    else
+                    {
+                        IDb? other = _otherProvider.RegisteredDbs[key];
+                        localDictionary.Add(key, other);
+                    }
+                }
+
+                return localDictionary;
+            }   
+        }
 
         public void Dispose()
         {
