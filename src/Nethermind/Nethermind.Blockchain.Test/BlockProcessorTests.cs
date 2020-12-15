@@ -139,10 +139,9 @@ namespace Nethermind.Blockchain.Test
                 _suggestedBlockResetEvent.Release(1);
             };
 
-            await testRpc.BlockProducer.StopAsync();
-            var lastBlock = ((BlockTree)testRpc.BlockTree).AddBranch(6, 3, 0);
-            testRpc.BlockProducer.Start();
-            testRpc.BlockTree.SuggestBlock(lastBlock, true);
+ //           testRpc.BlockchainProcessor.PauseProcessingLoop();
+            ((BlockTree)testRpc.BlockTree).AddBranch(2006, 5, 0);
+  //          testRpc.BlockchainProcessor.ResumeProcessingLoop();
             await _suggestedBlockResetEvent.WaitAsync();
         }
     }

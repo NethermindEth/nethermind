@@ -48,7 +48,7 @@ namespace Nethermind.Core.Test.Blockchain
                 blockProcessingQueue,
                 stateProvider,
                 timestamper,
-                FollowOtherMiners.Instance, 
+                FollowOtherMiners.Instance,
                 logManager,
                 "test producer")
         {
@@ -58,8 +58,10 @@ namespace Nethermind.Core.Test.Blockchain
         public event EventHandler<BlockEventArgs> LastProducedBlockChanged;
 
         private SemaphoreSlim _newBlockArrived = new SemaphoreSlim(0);
+        private ManualResetEvent _producerLoop = new ManualResetEvent(true);
         private BlockHeader _blockParent = null;
-        public BlockHeader BlockParent { 
+        public BlockHeader BlockParent
+        {
             get
             {
                 return _blockParent ?? base.GetCurrentBlockParent();
@@ -80,16 +82,32 @@ namespace Nethermind.Core.Test.Blockchain
             _newBlockArrived.Release(1);
         }
 
+        private static EventWaitHandle waitHandle = new ManualResetEvent(initialState: true);
+
+        public void StopProducerLoop()
+        {
+            waitHandle.Reset();
+        }
+
+        public void ResumeProducerLoop()
+        {
+            waitHandle.Set();
+        }
+
         protected override async ValueTask ProducerLoop()
         {
             while (true)
             {
+                //if (Monitor.TryEnter(_synchroObj, 0))
+                //{
+                //    try
+                //    {
                 await _newBlockArrived.WaitAsync(LoopCancellationTokenSource.Token);
-                // Console.WriteLine("Trying to produce a new block.");
                 bool result = await TryProduceNewBlock(LoopCancellationTokenSource.Token);
+            //    waitHandle.WaitOne();
                 // Console.WriteLine($"Produce new block result -> {result}");
             }
-            
+
             // ReSharper disable once FunctionNeverReturns
         }
 

@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -67,7 +67,7 @@ namespace Nethermind.Blockchain
             _wrapped.UpdateHeadBlock(blockHash);
         }
 
-        public AddBlockResult SuggestBlock(Block block, bool shouldProcess = true) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(SuggestBlock)} calls");
+        public AddBlockResult SuggestBlock(Block block, bool shouldProcess = true, bool? setAsMain = null) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(SuggestBlock)} calls");
 
         public AddBlockResult Insert(BlockHeader header) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(Insert)} calls");
 

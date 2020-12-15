@@ -18,15 +18,17 @@ using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Blockchain;
 using Nethermind.Core.Crypto;
+using Nethermind.Crypto;
 
 namespace Nethermind.Core.Test.Builders
 {
     public static class BlockTreeExtensions
     {
-        public static Block AddBranch(this BlockTree blockTree, int branchLength, int splitBlockNumber, int splitVariant)
+        public static void AddBranch(this BlockTree blockTree, int branchLength, int splitBlockNumber, int splitVariant)
         {
             BlockTree alternative = Build.A.BlockTree(blockTree.FindBlock(0, BlockTreeLookupOptions.RequireCanonical)).OfChainLength(branchLength, splitVariant).TestObject;
             List<Block> blocks = new List<Block>();
+            Keccak parentHash = null;
             for (int i = splitBlockNumber + 1; i < branchLength; i++)
             {
                 Block block = alternative.FindBlock(i, BlockTreeLookupOptions.RequireCanonical);
@@ -34,16 +36,15 @@ namespace Nethermind.Core.Test.Builders
                 {
                     var mainBlock = blockTree.FindBlock(i - 1, BlockTreeLookupOptions.RequireCanonical);
                     if (mainBlock != null)
-                    block.Header.ParentHash = mainBlock.Hash;
+                        parentHash = mainBlock.Hash;
                     //blockTree.SuggestBlock(block);
                     //blocks.Add(block);
                 }
-
-                if (branchLength - 1 != i)
-                {
-                    blockTree.SuggestBlock(block, true);
-                    blocks.Add(block);
-                }
+                block.Header.ParentHash = parentHash;
+                block.Header.Hash = block.Header.CalculateHash();
+                parentHash = block.Hash;
+                blockTree.SuggestBlock(block, i == branchLength - 1, false);
+                blocks.Add(block);
                 //if (i == branchLength - 1)
                 //{
                 //    blockTree.UpdateBestSuggestedBlock(block);
@@ -51,7 +52,7 @@ namespace Nethermind.Core.Test.Builders
 
             }
 
-            return blocks.Last();
+            // blockTree.UpdateMainChain(blocks.ToArray(), false);
         }
 
         public static void AddBranch(this BlockTree blockTree, int branchLength, int splitBlockNumber, int splitVariant, bool updateMainChain)
@@ -78,16 +79,16 @@ namespace Nethermind.Core.Test.Builders
                     blocks.Add(block);
                 }
             }
-            
+
             if (updateMainChain)
             {
-                blockTree.UpdateMainChain(blocks.ToArray(), false);    
+                blockTree.UpdateMainChain(blocks.ToArray(), false);
             }
         }
-        
+
         public static void UpdateMainChain(this BlockTree blockTree, Block block)
         {
-            blockTree.UpdateMainChain(new [] {block}, false);
+            blockTree.UpdateMainChain(new[] { block }, false);
         }
     }
 }
