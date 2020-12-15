@@ -15,7 +15,6 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Collections.Generic;
-using System.Linq;
 using Nethermind.Blockchain;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
@@ -68,7 +67,7 @@ namespace Nethermind.Core.Test.Builders
 
         public static void UpdateMainChain(this BlockTree blockTree, Block block)
         {
-            blockTree.UpdateMainChain(new[] { block }, false);
+            blockTree.UpdateMainChain(new[] { block }, true);
         }
     }
 }

@@ -58,7 +58,6 @@ namespace Nethermind.Core.Test.Blockchain
         public event EventHandler<BlockEventArgs> LastProducedBlockChanged;
 
         private SemaphoreSlim _newBlockArrived = new SemaphoreSlim(0);
-        private ManualResetEvent _producerLoop = new ManualResetEvent(true);
         private BlockHeader _blockParent = null;
         public BlockHeader BlockParent
         {
@@ -82,29 +81,12 @@ namespace Nethermind.Core.Test.Blockchain
             _newBlockArrived.Release(1);
         }
 
-        private static EventWaitHandle waitHandle = new ManualResetEvent(initialState: true);
-
-        public void StopProducerLoop()
-        {
-            waitHandle.Reset();
-        }
-
-        public void ResumeProducerLoop()
-        {
-            waitHandle.Set();
-        }
-
         protected override async ValueTask ProducerLoop()
         {
             while (true)
             {
-                //if (Monitor.TryEnter(_synchroObj, 0))
-                //{
-                //    try
-                //    {
                 await _newBlockArrived.WaitAsync(LoopCancellationTokenSource.Token);
                 bool result = await TryProduceNewBlock(LoopCancellationTokenSource.Token);
-            //    waitHandle.WaitOne();
                 // Console.WriteLine($"Produce new block result -> {result}");
             }
 

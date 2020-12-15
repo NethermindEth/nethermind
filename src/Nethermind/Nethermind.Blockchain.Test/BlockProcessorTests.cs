@@ -117,9 +117,7 @@ namespace Nethermind.Blockchain.Test
         {
             var address = TestItem.Addresses[0];
             var spec = new SingleReleaseSpecProvider(ConstantinopleFix.Instance, 1);
-            var blockBuilder = Core.Test.Builders.Build.A.Block.Genesis.WithGasLimit(10000000000);
             var testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
-                .WithGenesisBlockBuilder(blockBuilder)
                 .Build(spec);
             testRpc.TestWallet.UnlockAccount(address, new SecureString());
             await testRpc.AddFunds(address, 1.Ether());
