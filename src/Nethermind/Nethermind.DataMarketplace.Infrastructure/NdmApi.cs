@@ -278,12 +278,6 @@ namespace Nethermind.DataMarketplace.Infrastructure
             set => _nethermindApi.NodeStatsManager = value;
         }
 
-        public IPasswordProvider? PasswordProvider
-        {
-            get => _nethermindApi.PasswordProvider;
-            set => _nethermindApi.PasswordProvider = value;
-        }
-
         public IPeerManager? PeerManager
         {
             get => _nethermindApi.PeerManager;
