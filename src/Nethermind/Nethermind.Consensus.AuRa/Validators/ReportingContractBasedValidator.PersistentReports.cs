@@ -17,8 +17,10 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using Nethermind.Abi;
+using Nethermind.Blockchain;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Int256;
@@ -43,7 +45,7 @@ namespace Nethermind.Consensus.AuRa.Validators
         private const int ReportsSkipBlocks = 1;
 
         private readonly LinkedList<PersistentReport> _persistentReports;
-        private long _resentReportsInBlock = 0;
+        private long _sentReportsInBlock = 0;
         
         public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit)
         {
@@ -83,9 +85,9 @@ namespace Nethermind.Consensus.AuRa.Validators
                 FilterReports(blockHeader);
                 TruncateReports();
 
-                if (blockNumber > _resentReportsInBlock + ReportsSkipBlocks)
+                if (blockNumber > _sentReportsInBlock + ReportsSkipBlocks)
                 {
-                    _resentReportsInBlock = blockNumber;
+                    _sentReportsInBlock = blockNumber;
                     foreach (var persistentReport in _persistentReports)
                     {
                         try
@@ -121,7 +123,7 @@ namespace Nethermind.Consensus.AuRa.Validators
                 }
                 catch (AbiException e)
                 {
-                    if (_logger.IsError) _logger.Error("Failed to query report status, dropping pending report.", e);
+                    if (_logger.IsError) _logger.Error($"Failed to query report status, dropping pending report. {new StackTrace()}", e);
                     _persistentReports.Remove(node);
                 }
 

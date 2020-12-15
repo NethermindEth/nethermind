@@ -24,6 +24,7 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
@@ -63,7 +64,7 @@ namespace Nethermind.AuRa.Test.Validators
         }
         
         [Test]
-        public void Resend_malicious_transactions([Values(0, 5, 15)] int validatorsToReport, [Values(1, 3)] long blockNumber)
+        public void Resend_malicious_transactions([Values(0, 5, 15)] int validatorsToReport, [Values(1, 4)] long blockNumber)
         {
             var cache = new ReportingContractBasedValidator.Cache();
             var proof = TestItem.KeccakA.Bytes;
@@ -82,11 +83,13 @@ namespace Nethermind.AuRa.Test.Validators
             }
 
             var block = Build.A.Block.WithNumber(blockNumber).TestObject;
-            
-            context.ContractBasedValidator.ValidatorContract
-                .ShouldValidatorReport(NodeAddress, MaliciousMinerAddress, Arg.Any<UInt256>(), block.Header)
-                .Returns(0 < validatorsToReport, Enumerable.Range(1, 15).Select(i => i < validatorsToReport).ToArray());
 
+            context.ContractBasedValidator.ValidatorContract
+                .ShouldValidatorReport(NodeAddress, MaliciousMinerAddress, Arg.Any<UInt256>(), Arg.Is<BlockHeader>(h =>  h.Number == blockNumber - 1))
+                .Returns(0 < validatorsToReport, Enumerable.Range(1, 15).Select(i => i < validatorsToReport).ToArray());
+            
+            context.ContractBasedValidator.BlockTree.FindHeader(Arg.Any<Keccak>(), BlockTreeLookupOptions.None)
+                .Returns(Build.A.BlockHeader.WithNumber(blockNumber - 1).TestObject);
             
             bool isPosDao = blockNumber >= context.PosdaoTransition;
             
