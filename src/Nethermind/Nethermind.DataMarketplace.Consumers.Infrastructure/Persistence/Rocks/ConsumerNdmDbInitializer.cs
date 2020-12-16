@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.DataMarketplace.Core.Configs;
 using Nethermind.Db;
@@ -32,6 +33,8 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Rocks
     public class ConsumerNdmDbInitializer : RocksDbInitializer
     {
         private readonly INdmConfig _ndmConfig;
+        private static bool initialized = false;
+        private static SemaphoreSlim _initSemaphore = new SemaphoreSlim(1);
         public ConsumerNdmDbInitializer(
             IDbProvider dbProvider,
             INdmConfig ndmConfig,
@@ -42,62 +45,77 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Rocks
             _ndmConfig = ndmConfig ?? throw new ArgumentNullException(nameof(NdmConfig));
         }
 
-        public async Task Init()
+        public async Task InitAsync()
         {
-            RegisterDb(new RocksDbSettings()
+            if (initialized == false)
             {
-                DbName = GetTitleDbName(ConsumerNdmDbNames.ConsumerDepositApprovals),
-                DbPath = ConsumerNdmDbNames.ConsumerDepositApprovals,
+                await _initSemaphore.WaitAsync();
+                if (initialized)
+                    return;
 
-                CacheIndexAndFilterBlocks = _ndmConfig.ConsumerDepositApprovalsDbCacheIndexAndFilterBlocks,
-                BlockCacheSize = _ndmConfig.ConsumerDepositApprovalsDbBlockCacheSize,
-                WriteBufferNumber = _ndmConfig.ConsumerDepositApprovalsDbWriteBufferNumber,
-                WriteBufferSize = _ndmConfig.ConsumerDepositApprovalsDbWriteBufferSize,
+                try
+                {
+                    initialized = true;
+                    RegisterDb(new RocksDbSettings()
+                    {
+                        DbName = GetTitleDbName(ConsumerNdmDbNames.ConsumerDepositApprovals),
+                        DbPath = ConsumerNdmDbNames.ConsumerDepositApprovals,
 
-                UpdateReadMetrics = () => ConsumerMetrics.ConsumerDepositApprovalsDbReads++,
-                UpdateWriteMetrics = () => ConsumerMetrics.ConsumerDepositApprovalsDbWrites++,
-            });
-            RegisterDb(new RocksDbSettings()
-            {
-                DbName = GetTitleDbName(ConsumerNdmDbNames.ConsumerReceipts),
-                DbPath = ConsumerNdmDbNames.ConsumerReceipts,
+                        CacheIndexAndFilterBlocks = _ndmConfig.ConsumerDepositApprovalsDbCacheIndexAndFilterBlocks,
+                        BlockCacheSize = _ndmConfig.ConsumerDepositApprovalsDbBlockCacheSize,
+                        WriteBufferNumber = _ndmConfig.ConsumerDepositApprovalsDbWriteBufferNumber,
+                        WriteBufferSize = _ndmConfig.ConsumerDepositApprovalsDbWriteBufferSize,
 
-                CacheIndexAndFilterBlocks = _ndmConfig.ConsumerReceiptsDbCacheIndexAndFilterBlocks,
-                BlockCacheSize = _ndmConfig.ConsumerReceiptsDbBlockCacheSize,
-                WriteBufferNumber = _ndmConfig.ConsumerReceiptsDbWriteBufferNumber,
-                WriteBufferSize = _ndmConfig.ConsumerReceiptsDbWriteBufferSize,
+                        UpdateReadMetrics = () => ConsumerMetrics.ConsumerDepositApprovalsDbReads++,
+                        UpdateWriteMetrics = () => ConsumerMetrics.ConsumerDepositApprovalsDbWrites++,
+                    });
+                    RegisterDb(new RocksDbSettings()
+                    {
+                        DbName = GetTitleDbName(ConsumerNdmDbNames.ConsumerReceipts),
+                        DbPath = ConsumerNdmDbNames.ConsumerReceipts,
 
-                UpdateReadMetrics = () => ConsumerMetrics.ConsumerReceiptsDbReads++,
-                UpdateWriteMetrics = () => ConsumerMetrics.ConsumerReceiptsDbWrites++,
-            });
-            RegisterDb(new RocksDbSettings()
-            {
-                DbName = GetTitleDbName(ConsumerNdmDbNames.ConsumerSessions),
-                DbPath = ConsumerNdmDbNames.ConsumerSessions,
+                        CacheIndexAndFilterBlocks = _ndmConfig.ConsumerReceiptsDbCacheIndexAndFilterBlocks,
+                        BlockCacheSize = _ndmConfig.ConsumerReceiptsDbBlockCacheSize,
+                        WriteBufferNumber = _ndmConfig.ConsumerReceiptsDbWriteBufferNumber,
+                        WriteBufferSize = _ndmConfig.ConsumerReceiptsDbWriteBufferSize,
 
-                CacheIndexAndFilterBlocks = _ndmConfig.ConsumerSessionsDbCacheIndexAndFilterBlocks,
-                BlockCacheSize = _ndmConfig.ConsumerSessionsDbBlockCacheSize,
-                WriteBufferNumber = _ndmConfig.ConsumerSessionsDbWriteBufferNumber,
-                WriteBufferSize = _ndmConfig.ConsumerSessionsDbWriteBufferSize,
+                        UpdateReadMetrics = () => ConsumerMetrics.ConsumerReceiptsDbReads++,
+                        UpdateWriteMetrics = () => ConsumerMetrics.ConsumerReceiptsDbWrites++,
+                    });
+                    RegisterDb(new RocksDbSettings()
+                    {
+                        DbName = GetTitleDbName(ConsumerNdmDbNames.ConsumerSessions),
+                        DbPath = ConsumerNdmDbNames.ConsumerSessions,
 
-                UpdateReadMetrics = () => ConsumerMetrics.ConsumerSessionsDbReads++,
-                UpdateWriteMetrics = () => ConsumerMetrics.ConsumerSessionsDbWrites++,
-            });
-            RegisterDb(new RocksDbSettings()
-            {
-                DbName = GetTitleDbName(ConsumerNdmDbNames.Deposits),
-                DbPath = ConsumerNdmDbNames.Deposits,
+                        CacheIndexAndFilterBlocks = _ndmConfig.ConsumerSessionsDbCacheIndexAndFilterBlocks,
+                        BlockCacheSize = _ndmConfig.ConsumerSessionsDbBlockCacheSize,
+                        WriteBufferNumber = _ndmConfig.ConsumerSessionsDbWriteBufferNumber,
+                        WriteBufferSize = _ndmConfig.ConsumerSessionsDbWriteBufferSize,
 
-                CacheIndexAndFilterBlocks = _ndmConfig.DepositsDbCacheIndexAndFilterBlocks,
-                BlockCacheSize = _ndmConfig.DepositsDbBlockCacheSize,
-                WriteBufferNumber = _ndmConfig.DepositsDbWriteBufferNumber,
-                WriteBufferSize = _ndmConfig.DepositsDbWriteBufferSize,
+                        UpdateReadMetrics = () => ConsumerMetrics.ConsumerSessionsDbReads++,
+                        UpdateWriteMetrics = () => ConsumerMetrics.ConsumerSessionsDbWrites++,
+                    });
+                    RegisterDb(new RocksDbSettings()
+                    {
+                        DbName = GetTitleDbName(ConsumerNdmDbNames.Deposits),
+                        DbPath = ConsumerNdmDbNames.Deposits,
 
-                UpdateReadMetrics = () => ConsumerMetrics.DepositsDbReads++,
-                UpdateWriteMetrics = () => ConsumerMetrics.DepositsDbWrites++,
-            });
+                        CacheIndexAndFilterBlocks = _ndmConfig.DepositsDbCacheIndexAndFilterBlocks,
+                        BlockCacheSize = _ndmConfig.DepositsDbBlockCacheSize,
+                        WriteBufferNumber = _ndmConfig.DepositsDbWriteBufferNumber,
+                        WriteBufferSize = _ndmConfig.DepositsDbWriteBufferSize,
 
-            await InitAllAsync();
+                        UpdateReadMetrics = () => ConsumerMetrics.DepositsDbReads++,
+                        UpdateWriteMetrics = () => ConsumerMetrics.DepositsDbWrites++,
+                    });
+
+                    await InitAllAsync();
+                }
+                finally
+                {
+                    _initSemaphore.Release();
+                }
+            }
         }
     }
 }
