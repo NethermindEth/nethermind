@@ -120,8 +120,8 @@ namespace Nethermind.Blockchain.Processing
                         BlockProcessed?.Invoke(this, new BlockProcessedEventArgs(processedBlock, receipts));
                     }
 
-                    // todo comment
-                    if (blocksCount > 64 && i !=0 && i % 64 == 0 && readOnly == false && i != blocksCount - 1)
+                    // CommitBranch in part if we have long running branch
+                    if (i !=0 && i % 64 == 0 && readOnly == false && i != blocksCount - 1)
                     {
                         CommitBranch();
                         previousBranchStateRoot = CreateCheckpoint();
@@ -159,6 +159,8 @@ namespace Nethermind.Blockchain.Processing
                 /* Discarding the other branch data - chain reorganization.
                    We cannot use cached values any more because they may have been written
                    by blocks that are being reorganized out.*/
+
+                // ToDo it could be something different then reorg
                 Metrics.Reorganizations++;
                 _storageProvider.Reset();
                 _stateProvider.Reset();

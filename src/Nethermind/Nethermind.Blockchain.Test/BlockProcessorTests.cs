@@ -119,6 +119,7 @@ namespace Nethermind.Blockchain.Test
         [TestCase(127)]
         [TestCase(128)]
         [TestCase(129)]
+        [TestCase(130)]
         [TestCase(1000)]
         [TestCase(2000)]
         public async Task Process_long_running_branch(int blocksAmount)
