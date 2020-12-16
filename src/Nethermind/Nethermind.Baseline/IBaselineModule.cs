@@ -131,11 +131,34 @@ namespace Nethermind.Baseline
             Description = "Verify data and push new input.",
             IsSharable = false,
             IsImplemented = true)]
-        Task<ResultWrapper<Keccak>> baseline_verifyAndPush(
+        Task<ResultWrapper<VerifyAndPushResponse>> baseline_verifyAndPush(
             Address address,
             Address contractAddress,
             UInt256[] proof,
             UInt256[] publicInputs,
             Keccak newCommitment);
+    }
+    
+    public class VerifyAndPushResponse
+    {
+        public VerifyAndPushResponse(Keccak txHash)
+        {
+            TxHash = txHash;
+        }
+        
+        public Commitment? Commitment { get; set; }
+        public Keccak? TxHash { get; set; }
+    }
+    
+    public class Commitment
+    {
+        public Commitment(long location, Keccak value)
+        {
+            Location = location;
+            Value = value;
+        }
+        
+        public long Location { get; set; }
+        public Keccak Value { get; set; }
     }
 }

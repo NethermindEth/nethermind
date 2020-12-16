@@ -70,11 +70,12 @@ namespace Nethermind.Runner.Ethereum.Steps
 
                 var passwordProvider = new KeyStorePasswordProvider(keyStoreConfig)
                                         .OrReadFromConsole($"Provide password for validator account { keyStoreConfig.BlockAuthorAccount}");
+                
+                INodeKeyManager nodeKeyManager = new NodeKeyManager(_get.CryptoRandom, _get.KeyStore, keyStoreConfig, _get.LogManager, passwordProvider, _get.FileSystem);
+                var nodeKey = _set.NodeKey = nodeKeyManager.LoadNodeKey();
 
-                INodeKeyManager nodeKeyManager = new NodeKeyManager(_get.CryptoRandom, _get.KeyStore, keyStoreConfig, _get.LogManager, passwordProvider);
-                ProtectedPrivateKey? nodeKey = _set.NodeKey = nodeKeyManager.LoadNodeKey();
                 _set.OriginalSignerKey = nodeKeyManager.LoadSignerKey();
-                IEnode? enode = _set.Enode = new Enode(nodeKey.PublicKey, IPAddress.Parse(networkConfig.ExternalIp), networkConfig.P2PPort);
+                IEnode enode = _set.Enode = new Enode(nodeKey.PublicKey, IPAddress.Parse(networkConfig.ExternalIp), networkConfig.P2PPort);
                 
                 _get.LogManager.SetGlobalVariable("enode", enode.ToString());
             }, cancellationToken);

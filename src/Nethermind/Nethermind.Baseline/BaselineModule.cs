@@ -514,7 +514,7 @@ namespace Nethermind.Baseline
             }
         }
 
-        public async Task<ResultWrapper<Keccak>> baseline_verifyAndPush(
+        public async Task<ResultWrapper<VerifyAndPushResponse>> baseline_verifyAndPush(
             Address address,
             Address contractAddress,
             UInt256[] proof,
@@ -537,7 +537,7 @@ namespace Nethermind.Baseline
             tx.GasPrice = 20.GWei();
 
             Keccak txHash = await _txSender.SendTransaction(tx, TxHandlingOptions);
-            return ResultWrapper<Keccak>.Success(txHash);
+            return ResultWrapper<VerifyAndPushResponse>.Success(new VerifyAndPushResponse(txHash));
         }
 
         #region private
