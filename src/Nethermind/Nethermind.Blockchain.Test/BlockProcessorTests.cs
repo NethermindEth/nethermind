@@ -112,6 +112,7 @@ namespace Nethermind.Blockchain.Test
                 AlwaysCancelBlockTracer.Instance));
         }
 
+        [TestCase(20)]
         [TestCase(63)]
         [TestCase(64)]
         [TestCase(65)]
