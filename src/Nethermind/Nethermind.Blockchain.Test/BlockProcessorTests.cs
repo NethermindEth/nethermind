@@ -112,8 +112,15 @@ namespace Nethermind.Blockchain.Test
                 AlwaysCancelBlockTracer.Instance));
         }
 
-        [Test]
-        public async Task Process_long_running_branch()
+        [TestCase(63)]
+        [TestCase(64)]
+        [TestCase(65)]
+        [TestCase(127)]
+        [TestCase(128)]
+        [TestCase(129)]
+        [TestCase(1000)]
+        [TestCase(2000)]
+        public async Task Process_long_running_branch(int blocksAmount)
         {
             var address = TestItem.Addresses[0];
             var spec = new SingleReleaseSpecProvider(ConstantinopleFix.Instance, 1);
@@ -131,8 +138,10 @@ namespace Nethermind.Blockchain.Test
                 suggestedBlockResetEvent.Release(1);
             };
 
-            ((BlockTree)testRpc.BlockTree).AddBranch(2006, 5);
+            var branchLength = blocksAmount + (int)testRpc.BlockTree.BestKnownNumber + 1;
+            ((BlockTree)testRpc.BlockTree).AddBranch(branchLength, (int)testRpc.BlockTree.BestKnownNumber);
             await suggestedBlockResetEvent.WaitAsync();
+            Assert.AreEqual(branchLength - 1, (int)testRpc.BlockTree.BestKnownNumber);
         }
     }
 }

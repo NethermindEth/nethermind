@@ -99,12 +99,13 @@ namespace Nethermind.Blockchain.Processing
             InitBranch(newBranchStateRoot);
 
             bool readOnly = (options & ProcessingOptions.ReadOnlyChain) != 0;
-            Block[] processedBlocks = new Block[suggestedBlocks.Count];
+            var blocksCount = suggestedBlocks.Count;
+            Block[] processedBlocks = new Block[blocksCount];
             try
             {
-                for (int i = 0; i < suggestedBlocks.Count; i++)
+                for (int i = 0; i < blocksCount; i++)
                 {
-                    if (suggestedBlocks.Count > 64 && i % 8 == 0)
+                    if (blocksCount > 64 && i % 8 == 0)
                     {
                         if(_logger.IsInfo) _logger.Info($"Processing part of a long blocks branch {i}/{suggestedBlocks.Count}");
                     }
@@ -117,6 +118,15 @@ namespace Nethermind.Blockchain.Processing
                     if (!readOnly)
                     {
                         BlockProcessed?.Invoke(this, new BlockProcessedEventArgs(processedBlock, receipts));
+                    }
+
+                    // todo comment
+                    if (blocksCount > 64 && i !=0 && i % 64 == 0 && readOnly == false && i != blocksCount - 1)
+                    {
+                        CommitBranch();
+                        previousBranchStateRoot = CreateCheckpoint();
+                        var newStateRoot = suggestedBlocks[i - 1].StateRoot;
+                        InitBranch(newStateRoot);
                     }
                 }
 
