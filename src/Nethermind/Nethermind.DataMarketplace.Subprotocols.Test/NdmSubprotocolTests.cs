@@ -159,7 +159,7 @@ namespace Nethermind.DataMarketplace.Subprotocols.Test
 
             TestBeforeHi(new DataAssetStateChangedMessage(Keccak.OfAnEmptyString, DataAssetState.Archived));
             TestBeforeHi(new DataAssetStateChangedMessage(Keccak.OfAnEmptyString, DataAssetState.UnderMaintenance));
-            TestBeforeHi(new DataAssetStateChangedMessage(Keccak.OfAnEmptyString, DataAssetState.Unavailable));
+            TestBeforeHi(new DataAssetStateChangedMessage(Keccak.OfAnEmptyString, DataAssetState.Closed));
             TestBeforeHi(new DataAssetStateChangedMessage(Keccak.OfAnEmptyString, DataAssetState.Published));
             TestBeforeHi(new DataAssetStateChangedMessage(Keccak.OfAnEmptyString, DataAssetState.Unpublished));
 
@@ -211,7 +211,7 @@ namespace Nethermind.DataMarketplace.Subprotocols.Test
 
             SmokeTestAfterHi(new DataAssetStateChangedMessage(Keccak.OfAnEmptyString, DataAssetState.Archived));
             SmokeTestAfterHi(new DataAssetStateChangedMessage(Keccak.OfAnEmptyString, DataAssetState.UnderMaintenance));
-            SmokeTestAfterHi(new DataAssetStateChangedMessage(Keccak.OfAnEmptyString, DataAssetState.Unavailable));
+            SmokeTestAfterHi(new DataAssetStateChangedMessage(Keccak.OfAnEmptyString, DataAssetState.Closed));
             SmokeTestAfterHi(new DataAssetStateChangedMessage(Keccak.OfAnEmptyString, DataAssetState.Published));
             SmokeTestAfterHi(new DataAssetStateChangedMessage(Keccak.OfAnEmptyString, DataAssetState.Unpublished));
 

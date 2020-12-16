@@ -26,12 +26,14 @@ namespace Nethermind.Evm
     {
         private readonly ITransactionProcessor _transactionProcessor;
         private readonly IStateProvider _stateProvider;
+        private readonly IStorageProvider _storageProvider;
         private readonly Keccak _stateBefore;
 
-        public ReadOnlyTransactionProcessor(ITransactionProcessor transactionProcessor, IStateProvider stateProvider, Keccak startState)
+        public ReadOnlyTransactionProcessor(ITransactionProcessor transactionProcessor, IStateProvider stateProvider, IStorageProvider storageProvider, Keccak startState)
         {
             _transactionProcessor = transactionProcessor ?? throw new ArgumentNullException(nameof(transactionProcessor));
             _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
+            _storageProvider = storageProvider ?? throw new ArgumentNullException(nameof(storageProvider));
             _stateBefore = _stateProvider.StateRoot;
             _stateProvider.StateRoot = startState ?? throw new ArgumentException(nameof(startState));
         }
@@ -50,6 +52,7 @@ namespace Nethermind.Evm
         {
             _stateProvider.StateRoot = _stateBefore;
             _stateProvider.Reset();
+            _storageProvider.Reset();
         }
     }
 }

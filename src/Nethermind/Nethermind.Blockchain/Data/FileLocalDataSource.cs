@@ -37,7 +37,7 @@ namespace Nethermind.Blockchain.Data
         private Timer _timer;
         private readonly int _interval;
         private DateTime _lastChange = DateTime.MinValue;
-        private string _filePath;
+        public string FilePath { get; private set; }
 
         public FileLocalDataSource(string filePath, IJsonSerializer jsonSerializer, IFileSystem fileSystem, ILogManager logManager, int interval = 500)
         {
@@ -80,11 +80,10 @@ namespace Nethermind.Blockchain.Data
             else
             {
                 // file name is valid
-                _filePath = filePath;
+                FilePath = filePath;
                 if (_logger.IsInfo) _logger.Info($"Watching file for changes: {filePath}.");
                 _timer = new Timer(_interval) {Enabled = true};
                 _timer.Elapsed += async (o, e) => await LoadFileAsync();
-                // _timer = new Timer(async (state) => await LoadFileAsync(), null, _interval, _interval);
             }
         }
 
@@ -136,15 +135,15 @@ namespace Nethermind.Blockchain.Data
         {
             DateTime? lastChange = null;
             
-            if (_fileSystem.File.Exists(_filePath))
+            if (_fileSystem.File.Exists(FilePath))
             {
-                var lastWriteTime = _fileSystem.File.GetLastWriteTime(_filePath);
+                var lastWriteTime = _fileSystem.File.GetLastWriteTime(FilePath);
                 if (lastWriteTime > _lastChange)
                 {
-                    if (_logger.IsTrace) _logger.Trace($"Trying to load local data from file: {_filePath} updated on {lastWriteTime:hh:mm:ss:ffff} after last read {_lastChange:hh:mm:ss:ffff}.");
-                    using Stream file = _fileSystem.File.OpenRead(_filePath);
+                    if (_logger.IsTrace) _logger.Trace($"Trying to load local data from file: {FilePath} updated on {lastWriteTime:hh:mm:ss:ffff} after last read {_lastChange:hh:mm:ss:ffff}.");
+                    using Stream file = _fileSystem.File.OpenRead(FilePath);
                     _data = _jsonSerializer.Deserialize<T>(file);
-                    if (_logger.IsDebug) _logger.Debug($"Loaded and deserialized {typeof(T)} from {_filePath}.");
+                    if (_logger.IsDebug) _logger.Debug($"Loaded and deserialized {typeof(T)} from {FilePath}.");
                     lastChange = lastWriteTime;
                 }
             }
@@ -163,17 +162,17 @@ namespace Nethermind.Blockchain.Data
         
         private void ReportJsonError(JsonSerializationException e)
         {
-            if (_logger.IsError) _logger.Error($"Couldn't deserialize {typeof(T)} from {_filePath}. Will not retry any more.", e);
+            if (_logger.IsError) _logger.Error($"Couldn't deserialize {typeof(T)} from {FilePath}. Will not retry any more.", e);
         }
 
         private void ReportRetry(Exception exception)
         {
-            if (_logger.IsError) _logger.Error($"Couldn't load and deserialize {typeof(T)} from {_filePath}. Retrying...", exception);
+            if (_logger.IsError) _logger.Error($"Couldn't load and deserialize {typeof(T)} from {FilePath}. Retrying...", exception);
         }
 
         private void ReportIOError(IOException e)
         {
-            if (_logger.IsError) _logger.Error($"Couldn't load {typeof(T)} from {_filePath}. Will not retry any more.", e);
+            if (_logger.IsError) _logger.Error($"Couldn't load {typeof(T)} from {FilePath}. Will not retry any more.", e);
         }
     }
 }

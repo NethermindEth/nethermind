@@ -35,6 +35,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
+using Nethermind.Logging;
 using Nethermind.Runner.Ethereum.Api;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Storages;
@@ -67,11 +68,11 @@ namespace Nethermind.Runner.Ethereum.Steps
             if (_api.StorageProvider == null) throw new StepDependencyException(nameof(_api.StorageProvider));
             if (_api.TxPool == null) throw new StepDependencyException(nameof(_api.TxPool));
             if (_api.ReceiptStorage == null) throw new StepDependencyException(nameof(_api.ReceiptStorage));
-            
+       
             var processingReadOnlyTransactionProcessorSource = new ReadOnlyTxProcessorSource(_api.DbProvider, _api.ReadOnlyTrieStore, _api.BlockTree, _api.SpecProvider, _api.LogManager);
             var txPermissionFilterOnlyTxProcessorSource = new ReadOnlyTxProcessorSource(_api.DbProvider, _api.ReadOnlyTrieStore, _api.BlockTree, _api.SpecProvider, _api.LogManager);
-            ITxFilter? txPermissionFilter = TxFilterBuilders.CreateTxPermissionFilter(_api, txPermissionFilterOnlyTxProcessorSource, _api.StateProvider);
-
+            ITxFilter? txPermissionFilter = TxFilterBuilders.CreateTxPermissionFilter(_api, txPermissionFilterOnlyTxProcessorSource);
+            
             var processor = new AuRaBlockProcessor(
                 _api.SpecProvider,
                 _api.BlockValidator,
@@ -245,13 +246,15 @@ namespace Nethermind.Runner.Ethereum.Steps
             // This has to be different object than the _processingReadOnlyTransactionProcessorSource as this is in separate thread
             var txPoolReadOnlyTransactionProcessorSource = new ReadOnlyTxProcessorSource(_api.DbProvider, _api.ReadOnlyTrieStore, _api.BlockTree, _api.SpecProvider, _api.LogManager);
             var (txPriorityContract, localDataSource) = TxFilterBuilders.CreateTxPrioritySources(_auraConfig, _api, txPoolReadOnlyTransactionProcessorSource!);
+
+            ReportTxPriorityRules(txPriorityContract, localDataSource);
+
             var minGasPricesContractDataStore = TxFilterBuilders.CreateMinGasPricesDataStore(_api, txPriorityContract, localDataSource);
 
             ITxFilter txPoolFilter = TxFilterBuilders.CreateAuRaTxFilter(
                 NethermindApi.Config<IMiningConfig>(),
                 _api,
                 txPoolReadOnlyTransactionProcessorSource,
-                _api.ChainHeadStateProvider!,
                 minGasPricesContractDataStore);
             
             return new FilteredTxPool(
@@ -264,49 +267,19 @@ namespace Nethermind.Runner.Ethereum.Steps
                 CreateTxPoolTxComparer(txPriorityContract, localDataSource),
                 new TxFilterAdapter(_api.BlockTree, txPoolFilter));
         }
-        
-        private class BlockProcessorWrapper : IBlockProcessor
+
+        private void ReportTxPriorityRules(TxPriorityContract? txPriorityContract, TxPriorityContract.LocalDataSource? localDataSource)
         {
-            private AuRaBlockProcessor? _processor;
-
-            public AuRaBlockProcessor? Processor
-            {
-                get => _processor;
-                set
-                {
-                    if (_processor != null)
-                    {
-                        _processor.BlockProcessed -= OnBlockProcessed;
-                        _processor.TransactionProcessed -= OnTransactionProcessed;
-                    }
-                    _processor = value;
-                    if (_processor != null)
-                    {
-                        _processor.BlockProcessed += OnBlockProcessed;
-                        _processor.TransactionProcessed += OnTransactionProcessed;
-                    }
-                }
-            }
-
-            public Block[] Process(
-                Keccak newBranchStateRoot,
-                List<Block> suggestedBlocks,
-                ProcessingOptions processingOptions,
-                IBlockTracer blockTracer) => 
-                Processor?.Process(newBranchStateRoot, suggestedBlocks, processingOptions, blockTracer) ?? Array.Empty<Block>();
-
-            public event EventHandler<BlockProcessedEventArgs>? BlockProcessed;
-
-            public event EventHandler<TxProcessedEventArgs>? TransactionProcessed;
+            ILogger? logger = _api.LogManager.GetClassLogger();
             
-            private void OnTransactionProcessed(object? sender, TxProcessedEventArgs e)
+            if (localDataSource?.FilePath != null)
             {
-                TransactionProcessed?.Invoke(sender, e);
+                if (logger.IsInfo) logger.Info($"Using TxPriority rules from local file: {localDataSource.FilePath}.");
             }
 
-            private void OnBlockProcessed(object? sender, BlockProcessedEventArgs e)
+            if (txPriorityContract != null)
             {
-                BlockProcessed?.Invoke(sender, e);
+                if (logger.IsInfo) logger.Info($"Using TxPriority rules from contract at address: {txPriorityContract.ContractAddress}.");
             }
         }
     }
