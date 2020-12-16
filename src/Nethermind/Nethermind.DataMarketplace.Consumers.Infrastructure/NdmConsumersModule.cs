@@ -152,7 +152,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure
                     break;
                 default:
                     var dbInitializer = new ConsumerNdmDbInitializer(_api.DbProvider, ndmConfig, _api.RocksDbFactory, _api.MemDbFactory);
-                    await dbInitializer.Init();
+                    await dbInitializer.InitAsync();
                     depositRepository = new DepositDetailsRocksRepository(_api.Db<IDb>(ConsumerNdmDbNames.Deposits),
                         depositDetailsRlpDecoder);
                     depositApprovalRepository = new ConsumerDepositApprovalRocksRepository(

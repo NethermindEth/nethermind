@@ -20,6 +20,6 @@ namespace Nethermind.DataMarketplace.Infrastructure.Modules
 {
     public interface INdmModule
     {
-        Task Init();
+        Task InitAsync();
     }
 }
