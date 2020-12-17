@@ -44,7 +44,7 @@ namespace Nethermind.Db.Rpc
 
         public IColumnsDb<T> CreateColumnsDb<T>(RocksDbSettings rocksDbSettings)
         {
-            var rocksDb = _wrappedRocksDbFactory.CreateDb(rocksDbSettings);
+            var rocksDb = _wrappedRocksDbFactory.CreateColumnsDb<T>(rocksDbSettings);
             return new ReadOnlyColumnsDb<T>(new RpcColumnsDb<T>(rocksDbSettings.DbName, _jsonSerializer, _jsonRpcClient, _logManager, rocksDb), true);
         }
 
