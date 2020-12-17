@@ -34,7 +34,6 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Rocks
     {
         private readonly INdmConfig _ndmConfig;
         private static int _initialized;
-        private static SemaphoreSlim _initSemaphore = new SemaphoreSlim(1);
         public ConsumerNdmDbInitializer(
             IDbProvider dbProvider,
             INdmConfig ndmConfig,
@@ -104,6 +103,11 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Rocks
 
                 await InitAllAsync();
             }
+        }
+
+        public void Reset()
+        {
+            _initialized = 0;
         }
     }
 }

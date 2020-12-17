@@ -33,7 +33,6 @@ using NUnit.Framework;
 namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure.Persistence.Rocks
 {
     [TestFixture]
-    [Parallelizable(ParallelScope.Default)]
     public class ConsumerNdmDbInitializerTests
     {
         private string _folderWithDbs;
@@ -50,6 +49,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure.Persistence.R
             var dbProvider = new DbProvider(DbModeHint.Mem);
             var rocksDbFactory = new RocksDbFactory(new DbConfig(), LimboLogs.Instance, Path.Combine(_folderWithDbs, "mem"));
             var initializer = new ConsumerNdmDbInitializer(dbProvider, new NdmConfig(), rocksDbFactory, new MemDbFactory());
+            initializer.Reset();
             await initializer.InitAsync();
             Assert.AreEqual(4, dbProvider.RegisteredDbs.Count());
             Assert.IsTrue(dbProvider.GetDb<IDb>(ConsumerNdmDbNames.ConsumerDepositApprovals) is MemDb);
@@ -64,6 +64,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure.Persistence.R
             var rocksDbFactory = new RocksDbFactory(new DbConfig(), LimboLogs.Instance, Path.Combine(_folderWithDbs, "rocks"));
             var dbProvider = new DbProvider(DbModeHint.Persisted);
             var initializer = new ConsumerNdmDbInitializer(dbProvider, new NdmConfig(), rocksDbFactory, new MemDbFactory());
+            initializer.Reset();
             await initializer.InitAsync();
             Assert.AreEqual(4, dbProvider.RegisteredDbs.Count());
             Assert.IsTrue(dbProvider.GetDb<IDb>(ConsumerNdmDbNames.ConsumerDepositApprovals) is DbOnTheRocks);
@@ -79,6 +80,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure.Persistence.R
             var rocksDbFactory = new RocksDbFactory(new DbConfig(), LimboLogs.Instance, Path.Combine(_folderWithDbs, "readonly"));
             var readonlyDbProvider = new ReadOnlyDbProvider(dbProvider, true);
             var initializer = new ConsumerNdmDbInitializer(readonlyDbProvider, new NdmConfig(), rocksDbFactory, new MemDbFactory());
+            initializer.Reset();
             await initializer.InitAsync();
             Assert.AreEqual(4, readonlyDbProvider.RegisteredDbs.Count());
             Assert.IsTrue(readonlyDbProvider.GetDb<IDb>(ConsumerNdmDbNames.ConsumerDepositApprovals) is ReadOnlyDb);
@@ -95,6 +97,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure.Persistence.R
             var rocksDbFactory = new RocksDbFactory(new DbConfig(), LimboLogs.Instance, Path.Combine(_folderWithDbs, "beam"));
             IDbProvider beamSyncDbProvider = new BeamSyncDbProvider(syncModeSelector, dbProvider, new SyncConfig(), LimboLogs.Instance);
             var initializer = new ConsumerNdmDbInitializer(beamSyncDbProvider, new NdmConfig(), rocksDbFactory, new MemDbFactory());
+            initializer.Reset();
             await initializer.InitAsync();
             Assert.IsTrue(beamSyncDbProvider.GetDb<IDb>(ConsumerNdmDbNames.ConsumerDepositApprovals) is MemDb);
             Assert.IsTrue(beamSyncDbProvider.GetDb<IDb>(ConsumerNdmDbNames.ConsumerReceipts) is MemDb);
