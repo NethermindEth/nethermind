@@ -89,6 +89,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 case DiagnosticMode.ReadOnlyDb:
                     var rocksDbProvider = new DbProvider(DbModeHint.Persisted);
                     _api.DbProvider = new ReadOnlyDbProvider(rocksDbProvider, storeReceipts); // ToDo storeReceipts as createInMemoryWriteStore - bug?
+                    _api.DisposeStack.Push(rocksDbProvider);
                     _api.RocksDbFactory = new RocksDbFactory(dbConfig, _api.LogManager, Path.Combine(initConfig.BaseDbPath, "debug"));
                     _api.MemDbFactory = new MemDbFactory();
                     break;
