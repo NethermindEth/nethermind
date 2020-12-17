@@ -49,8 +49,7 @@ namespace Nethermind.Network
         private readonly INetworkStorage _peerStorage;
         private readonly IPeerLoader _peerLoader;
         private readonly ManualResetEventSlim _peerUpdateRequested = new ManualResetEventSlim(false);
-        private readonly PeerComparer _peerComparer;
-        private readonly PeerEqualityComparer _peerEqualityComparer;
+        private readonly PeerComparer _peerComparer = new PeerComparer();
         private readonly LocalPeerPool _peerPool;
         
         private int _pending;
@@ -92,8 +91,6 @@ namespace Nethermind.Network
             _peerLoader = peerLoader ?? throw new ArgumentNullException(nameof(peerLoader));
             _peerStorage.StartBatch();
             _peerPool = new LocalPeerPool(_logger);
-            _peerComparer = new PeerComparer(_stats);
-            _peerEqualityComparer = new PeerEqualityComparer();
         }
 
         public IReadOnlyCollection<Peer> ActivePeers => _activePeers.Values.ToList().AsReadOnly();
@@ -218,6 +215,7 @@ namespace Nethermind.Network
         {
             int loopCount = 0;
             long previousActivePeersCount = 0;
+            int failCount = 0;
             while (true)
             {
                 try
@@ -335,6 +333,8 @@ namespace Nethermind.Network
                     {
                         _peerUpdateRequested.Set();
                     }
+
+                    failCount = 0;
                 }
                 catch (AggregateException e) when (e.InnerExceptions.Any(inner => inner is OperationCanceledException))
                 {
@@ -349,7 +349,15 @@ namespace Nethermind.Network
                 catch (Exception e)
                 {
                     if (_logger.IsError) _logger.Error("Peer update loop failure", e);
-                    break;
+                    ++failCount;
+                    if (failCount >= 10)
+                    {
+                        break;
+                    }
+                    else
+                    {
+                        await Task.Delay(1000);
+                    }
                 }
             }
         }
@@ -536,6 +544,7 @@ namespace Nethermind.Network
                 _currentSelection.Candidates.AddRange(staticPeers.Where(sn => !_activePeers.ContainsKey(sn.Node.Id)));
             }
 
+            _stats.UpdateCurrentReputation(_currentSelection.Candidates);
             _currentSelection.Candidates.Sort(_peerComparer);
         }
 

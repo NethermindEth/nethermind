@@ -139,6 +139,8 @@ namespace Nethermind.Baseline.Tree
                 .Union(insertLeafLogs)
                 .OrderBy(fl => fl.BlockNumber).ThenBy(fl => fl.LogIndex))
             {
+                if (filterLog.BlockHash == baselineTree.LastBlockDbHash)
+                    continue;
                 if (currentBlockNumber == null)
                 {
                     currentBlockNumber = filterLog.BlockNumber;

@@ -25,16 +25,12 @@ using System.Timers;
 using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
-using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.Runner.Ethereum.Api;
 using Nethermind.State.Repositories;
-using Nethermind.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
 using Timer = System.Timers.Timer;
 
@@ -65,7 +61,7 @@ namespace Nethermind.Runner.Ethereum.Steps.Migrations
 
         private readonly IInitConfig _initConfig;
 
-        public ReceiptMigration(INethermindApi api)
+        public ReceiptMigration(IApiWithNetwork api)
         {
             _logger = api.LogManager.GetClassLogger<ReceiptMigration>();
             _receiptStorage = api.ReceiptStorage ?? throw new StepDependencyException(nameof(api.ReceiptStorage));
@@ -199,8 +195,12 @@ namespace Nethermind.Runner.Ethereum.Steps.Migrations
                             
                             if (notNullReceipts.Length != receipts.Length)
                             {
-                                if(_logger.IsWarn) _logger.Warn(GetLogMessage("warning", $"Block {block.ToString(Block.Format.FullHashAndNumber)} is missing {receipts.Length - notNullReceipts.Length} receipts!"));
+                                if(_logger.IsWarn) _logger.Warn(GetLogMessage("warning", $"Block {block.ToString(Block.Format.FullHashAndNumber)} is missing {receipts.Length - notNullReceipts.Length} of {receipts.Length} receipts!"));
                             }
+                        }
+                        else if (block.Number <= _blockTree.Head?.Number)
+                        {
+                            if(_logger.IsWarn) _logger.Warn(GetLogMessage("warning", $"Block {block.ToString(Block.Format.FullHashAndNumber)} is missing {receipts.Length - notNullReceipts.Length} of {receipts.Length} receipts!"));
                         }
                     }
                 }

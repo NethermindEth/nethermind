@@ -16,6 +16,7 @@
 
 using System;
 using System.Collections.Generic;
+using Nethermind.Core;
 using Nethermind.Crypto;
 using Nethermind.KeyStore.ConsoleHelpers;
 using NSubstitute;
@@ -28,8 +29,7 @@ namespace Nethermind.KeyStore.Test
         [Test]
         public void Alternative_provider_sets_correctly()
         {
-            var emptyPasswordProvider = new FilePasswordProvider()
-            { FileName = string.Empty };
+            var emptyPasswordProvider = new FilePasswordProvider(address => string.Empty);
             var consolePasswordProvider1 = emptyPasswordProvider
                                             .OrReadFromConsole("Test1");
 
@@ -54,7 +54,7 @@ namespace Nethermind.KeyStore.Test
                 return key;
             });
             var passwordProvider = new ConsolePasswordProvider(new ConsoleUtils(consoleWrapper));
-            var password = passwordProvider.GetPassword();
+            var password = passwordProvider.GetPassword(Address.Zero);
             Assert.IsTrue(password.IsReadOnly());
             Assert.AreEqual(test.ExpectedPassword, password.Unsecure());
         }

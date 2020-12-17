@@ -13,6 +13,9 @@
     <WarningsAsErrors />
   </PropertyGroup>
   <ItemGroup>
+    <PackageReference Include="AspNetCore.HealthChecks.UI" Version="3.1.3" />
+    <PackageReference Include="AspNetCore.HealthChecks.UI.Client" Version="3.1.2" />
+    <PackageReference Include="AspNetCore.HealthChecks.UI.InMemory.Storage" Version="3.1.2" />
     <PackageReference Include="Microsoft.AspNetCore.DataProtection.Abstractions" Version="3.1.8" />
     <PackageReference Include="Microsoft.AspNetCore.DataProtection.Extensions" Version="3.1.8" />
     <PackageReference Include="Microsoft.Extensions.CommandLineUtils" Version="1.1.1" />
@@ -21,26 +24,19 @@
     <PackageReference Include="NLog" Version="4.7.2" />
     <PackageReference Include="Seq.Api" Version="5.1.2" />
     <PackageReference Include="System.IO.Abstractions" Version="12.1.10" />
+    <PackageReference Include="YamlDotNet" Version="9.1.0" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Nethermind.Api\Nethermind.Api.csproj" />
     <ProjectReference Include="..\Nethermind.Consensus.AuRa\Nethermind.Consensus.AuRa.csproj" />
     <ProjectReference Include="..\Nethermind.Consensus.Clique\Nethermind.Consensus.Clique.csproj" />
-    <ProjectReference Include="..\Nethermind.Core\Nethermind.Core.csproj">
-      <Project>{5751C57B-9F2D-45DE-BCC2-42645B85E39E}</Project>
-      <Name>Nethermind.Core</Name>
-    </ProjectReference>
+    <ProjectReference Include="..\Nethermind.Consensus.Ethash\Nethermind.Consensus.Ethash.csproj" />
+    <ProjectReference Include="..\Nethermind.Core\Nethermind.Core.csproj" />
     <ProjectReference Include="..\Nethermind.Db.Rocks\Nethermind.Db.Rocks.csproj" />
-    <ProjectReference Include="..\Nethermind.Db\Nethermind.Db.csproj">
-      <Project>{0B52D472-A7B0-4AB6-AFE3-A644B90F53FC}</Project>
-      <Name>Nethermind.Db</Name>
-    </ProjectReference>
+    <ProjectReference Include="..\Nethermind.Db\Nethermind.Db.csproj" />
     <ProjectReference Include="..\Nethermind.EthStats\Nethermind.EthStats.csproj" />
     <ProjectReference Include="..\Nethermind.Grpc\Nethermind.Grpc.csproj" />
-    <ProjectReference Include="..\Nethermind.JsonRpc\Nethermind.JsonRpc.csproj">
-      <Project>{53D62515-72D1-4DEA-BC60-71BCC9C928E3}</Project>
-      <Name>Nethermind.JsonRpc</Name>
-    </ProjectReference>
+    <ProjectReference Include="..\Nethermind.JsonRpc\Nethermind.JsonRpc.csproj" />
     <ProjectReference Include="..\Nethermind.Logging.NLog\Nethermind.Logging.NLog.csproj" />
     <ProjectReference Include="..\Nethermind.Monitoring\Nethermind.Monitoring.csproj" />
     <ProjectReference Include="..\Nethermind.Network\Nethermind.Network.csproj" />
@@ -51,6 +47,7 @@
     <ProjectReference Include="..\Nethermind.Synchronization\Nethermind.Synchronization.csproj" />
     <ProjectReference Include="..\Nethermind.WebSockets\Nethermind.WebSockets.csproj" />
     <ProjectReference Include="..\Nethermind.Seq\Nethermind.Seq.csproj" />
+    <ProjectReference Include="..\Nethermind.HealthChecks\Nethermind.HealthChecks.csproj" />
   </ItemGroup>
   <ItemGroup>
     <Content Include="..\..\..\Nethermind Data Marketplace - Terms and Conditions 20190831.pdf">
@@ -78,6 +75,9 @@
     <Content Remove="keystore\**" />
     <None Remove="plugins\readme.txt" />
     <Content Include="plugins\**">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="nethermind.css">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
     <Content Update="Data\static-nodes-baseline.json">

@@ -68,28 +68,28 @@ namespace Nethermind.Synchronization.Test.BeamSync
         }
 
         [Test, Retry(3)]
-        public void Valid_block_makes_it_all_the_way()
+        public async Task Valid_block_makes_it_all_the_way()
         {
             SetupBeamProcessor();
             Block newBlock = Build.A.Block.WithParent(_blockTree.Head).WithTotalDifficulty(_blockTree.Head.TotalDifficulty + 1).TestObject;
             _blockTree.SuggestBlock(newBlock);
-            Thread.Sleep(1000);
+            await Task.Delay(1000);
             // _blockchainProcessor.Received().Process(newBlock, ProcessingOptions.Beam, NullBlockTracer.Instance);
         }
 
         [Test, Retry(3)]
-        public void Valid_block_with_transactions_makes_it_all_the_way()
+        public async Task Valid_block_with_transactions_makes_it_all_the_way()
         {
             SetupBeamProcessor();
             EthereumEcdsa ethereumEcdsa = new EthereumEcdsa(ChainId.Mainnet, LimboLogs.Instance);
             Block newBlock = Build.A.Block.WithParent(_blockTree.Head).WithReceiptsRoot(new Keccak("0xeb82c315eaf2c2a5dfc1766b075263d80e8b3ab9cb690d5304cdf114fff26939")).WithTransactions(MuirGlacier.Instance, Build.A.Transaction.SignedAndResolved(ethereumEcdsa, TestItem.PrivateKeyA).TestObject, Build.A.Transaction.SignedAndResolved(ethereumEcdsa, TestItem.PrivateKeyB).TestObject).WithGasUsed(42000).WithTotalDifficulty(_blockTree.Head.TotalDifficulty + 1).TestObject;
             _blockTree.SuggestBlock(newBlock);
-            Thread.Sleep(1000);
+            await Task.Delay(1000);
             // _blockchainProcessor.Received().Process(newBlock, ProcessingOptions.Beam, NullBlockTracer.Instance);
         }
         
         [Test, Retry(3)]
-        public void Valid_block_with_transactions_makes_it_is_processed_normally_if_beam_syncing_finished()
+        public async Task Valid_block_with_transactions_makes_it_is_processed_normally_if_beam_syncing_finished()
         {
             ISyncModeSelector syncModeSelector = Substitute.For<ISyncModeSelector>();
             SetupBeamProcessor(syncModeSelector);
@@ -100,13 +100,13 @@ namespace Nethermind.Synchronization.Test.BeamSync
             EthereumEcdsa ethereumEcdsa = new EthereumEcdsa(ChainId.Mainnet, LimboLogs.Instance);
             Block newBlock = Build.A.Block.WithParent(_blockTree.Head).WithReceiptsRoot(new Keccak("0xeb82c315eaf2c2a5dfc1766b075263d80e8b3ab9cb690d5304cdf114fff26939")).WithTransactions(MuirGlacier.Instance, Build.A.Transaction.SignedAndResolved(ethereumEcdsa, TestItem.PrivateKeyA).TestObject, Build.A.Transaction.SignedAndResolved(ethereumEcdsa, TestItem.PrivateKeyB).TestObject).WithGasUsed(42000).WithTotalDifficulty(_blockTree.Head.TotalDifficulty + 1).TestObject;
             _blockTree.SuggestBlock(newBlock);
-            Thread.Sleep(1000);
+            await Task.Delay(1000);
             _blockchainProcessor.DidNotReceiveWithAnyArgs().Process(newBlock, ProcessingOptions.Beam, NullBlockTracer.Instance);
             _blockchainProcessingQueue.Received().Enqueue(newBlock, ProcessingOptions.StoreReceipts);
         }
         
         [Test, Retry(3)]
-        public void Can_enqueue_previously_shelved()
+        public async Task Can_enqueue_previously_shelved()
         {
             ISyncModeSelector syncModeSelector = Substitute.For<ISyncModeSelector>();
             SetupBeamProcessor(syncModeSelector);
@@ -146,7 +146,7 @@ namespace Nethermind.Synchronization.Test.BeamSync
             syncModeSelector.Preparing += Raise.EventWith(new SyncModeChangedEventArgs(SyncMode.Beam, SyncMode.Full));
             _blockTree.SuggestBlock(newBlock4);
             
-            Thread.Sleep(1000);
+            await Task.Delay(1000);
             // _blockchainProcessor.Received().Process(newBlock0, ProcessingOptions.Beam, NullBlockTracer.Instance);
             _blockchainProcessingQueue.Received().Enqueue(newBlock1, ProcessingOptions.StoreReceipts);
             _blockchainProcessingQueue.Received().Enqueue(newBlock2, ProcessingOptions.StoreReceipts);
@@ -155,7 +155,7 @@ namespace Nethermind.Synchronization.Test.BeamSync
         }
         
         [Test, Retry(3)]
-        public void Will_ignore_transitions_other_than_full()
+        public async Task Will_ignore_transitions_other_than_full()
         {
             ISyncModeSelector syncModeSelector = Substitute.For<ISyncModeSelector>();
             SetupBeamProcessor(syncModeSelector);
@@ -175,7 +175,7 @@ namespace Nethermind.Synchronization.Test.BeamSync
             syncModeSelector.Changed += Raise.EventWith(args);
             _blockTree.SuggestBlock(newBlock3);
             
-            Thread.Sleep(1000);
+            await Task.Delay(1000);
             // _blockchainProcessor.Received().Process(newBlock0, ProcessingOptions.Beam, NullBlockTracer.Instance);
             // _blockchainProcessor.Received().Process(newBlock1, ProcessingOptions.Beam, NullBlockTracer.Instance);
             // _blockchainProcessor.Received().Process(newBlock2, ProcessingOptions.Beam, NullBlockTracer.Instance);

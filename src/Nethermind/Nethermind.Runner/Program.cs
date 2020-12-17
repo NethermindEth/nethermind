@@ -19,6 +19,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.IO.Abstractions;
+using System.Linq;
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
@@ -26,6 +27,8 @@ using Microsoft.Extensions.CommandLineUtils;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Config;
+using Nethermind.Consensus.Clique;
+using Nethermind.Consensus.Ethash;
 using Nethermind.Core;
 using Nethermind.Logging;
 using Nethermind.Logging.NLog;
@@ -49,9 +52,9 @@ namespace Nethermind.Runner
         
         private static ILogger _logger = SimpleConsoleLogger.Instance;
 
-        private static CancellationTokenSource _processCloseCancellationSource = new CancellationTokenSource();
-        private static TaskCompletionSource<object?>? _cancelKeySource;
-        private static TaskCompletionSource<object?>? _processExit;
+        private static readonly CancellationTokenSource _processCloseCancellationSource = new CancellationTokenSource();
+        private static readonly TaskCompletionSource<object?> _cancelKeySource = new TaskCompletionSource<object?>();
+        private static readonly TaskCompletionSource<object?> _processExit = new TaskCompletionSource<object?>();
 
         public static void Main(string[] args)
         {
@@ -82,9 +85,6 @@ namespace Nethermind.Runner
             {
                 NLogLogger.Shutdown();
             }
-
-            Console.WriteLine("Press RETURN to exit.");
-            Console.ReadLine();
         }
 
         private static void Run(string[] args)
@@ -92,12 +92,15 @@ namespace Nethermind.Runner
             _logger.Info("Nethermind starting initialization.");
 
             AppDomain.CurrentDomain.ProcessExit += CurrentDomainOnProcessExit;
-            IFileSystem fileSystem = new FileSystem();
-            PluginLoader pluginLoader = new PluginLoader("plugins", fileSystem);
+            IFileSystem fileSystem = new FileSystem(); ;
+            
+            PluginLoader pluginLoader = new PluginLoader(
+                "plugins", fileSystem, typeof(CliquePlugin), typeof(EthashPlugin), typeof(NethDevPlugin));
             pluginLoader.Load(SimpleConsoleLogManager.Instance);
 
             Type configurationType = typeof(IConfig);
-            IEnumerable<Type> configTypes = new TypeDiscovery().FindNethermindTypes(configurationType);
+            IEnumerable<Type> configTypes = new TypeDiscovery().FindNethermindTypes(configurationType)
+                .Where(ct => ct.IsInterface);
 
             CommandLineApplication app = new CommandLineApplication {Name = "Nethermind.Runner"};
             app.HelpOption("-?|-h|--help");
@@ -111,20 +114,28 @@ namespace Nethermind.Runner
             CommandOption configsDirectory = app.Option("-cd|--configsDirectory <configsDirectory>", "configs directory", CommandOptionType.SingleValue);
             CommandOption loggerConfigSource = app.Option("-lcs|--loggerConfigSource <loggerConfigSource>", "path to the NLog config file", CommandOptionType.SingleValue);
 
-            foreach (Type configType in configTypes)
+            foreach (Type configType in configTypes.OrderBy(c => c.Name))
             {
                 if (configType == null)
                 {
                     continue;
                 }
-                
-                foreach (PropertyInfo propertyInfo in configType.GetProperties(BindingFlags.Public | BindingFlags.Instance))
-                {
-                    Type? interfaceType = configType.GetInterface(configType.Name);
-                    PropertyInfo? interfaceProperty = interfaceType?.GetProperty(propertyInfo.Name);
 
-                    ConfigItemAttribute? configItemAttribute = interfaceProperty?.GetCustomAttribute<ConfigItemAttribute>();
-                    app.Option($"--{configType.Name.Replace("Config", String.Empty)}.{propertyInfo.Name}", $"{(configItemAttribute == null ? "<missing documentation>" : configItemAttribute.Description ?? "<missing documentation>")}", CommandOptionType.SingleValue);
+                ConfigCategoryAttribute? typeLevel = configType.GetCustomAttribute<ConfigCategoryAttribute>();
+                if (typeLevel?.HiddenFromDocs ?? false)
+                {
+                    continue;
+                }
+
+                foreach (PropertyInfo propertyInfo in configType
+                    .GetProperties(BindingFlags.Public | BindingFlags.Instance)
+                    .OrderBy(p => p.Name))
+                {
+                    ConfigItemAttribute? configItemAttribute = propertyInfo.GetCustomAttribute<ConfigItemAttribute>();
+                    if (!(configItemAttribute?.HiddenFromDocs ?? false))
+                    {
+                        app.Option($"--{configType.Name.Substring(1).Replace("Config", String.Empty)}.{propertyInfo.Name}", $"{(configItemAttribute == null ? "<missing documentation>" : configItemAttribute.Description + $" (DEFAULT: {configItemAttribute.DefaultValue})" ?? "<missing documentation>")}", CommandOptionType.SingleValue);
+                    }
                 }
             }
 
@@ -152,17 +163,13 @@ namespace Nethermind.Runner
                 INethermindApi nethermindApi = apiBuilder.Create();
                 foreach (Type pluginType in pluginLoader.PluginTypes)
                 {
-                    INethermindPlugin? plugin = Activator.CreateInstance(pluginType) as INethermindPlugin;
-                    if (plugin != null)
+                    if (Activator.CreateInstance(pluginType) is INethermindPlugin plugin)
                     {
                         nethermindApi.Plugins.Add(plugin);
                     }
                 }
                 
                 nethermindApi.WebSocketsManager = new WebSocketsManager();
-
-                _processExit = new TaskCompletionSource<object?>();
-                _cancelKeySource = new TaskCompletionSource<object?>();
                 EthereumRunner ethereumRunner = new EthereumRunner(nethermindApi);
                 await ethereumRunner.Start(_processCloseCancellationSource.Token).ContinueWith(x =>
                 {
@@ -293,7 +300,7 @@ namespace Nethermind.Runner
         private static void CurrentDomainOnProcessExit(object? sender, EventArgs e)
         {
             _processCloseCancellationSource.Cancel();
-            _processExit?.SetResult(null);
+            _processExit.SetResult(null);
         }
 
         private static void LogMemoryConfiguration()
@@ -323,8 +330,9 @@ namespace Nethermind.Runner
 
         private static void ConsoleOnCancelKeyPress(object sender, ConsoleCancelEventArgs e)
         {
-            _cancelKeySource?.TrySetResult(null);
-            e.Cancel = false;
+            _processCloseCancellationSource.Cancel();
+            _cancelKeySource.TrySetResult(null);
+            e.Cancel = true;
         }
 
         private static void ConfigureSeqLogger(IConfigProvider configProvider)

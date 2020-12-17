@@ -32,6 +32,11 @@ namespace Nethermind.Plugin.Baseline
             return Task.CompletedTask;
         }
 
+        public Task InitBlockchain()
+        {
+            return Task.CompletedTask;
+        }
+
         public Task InitNetworkProtocol()
         {
             return Task.CompletedTask;
@@ -50,7 +55,8 @@ namespace Nethermind.Plugin.Baseline
                     _api.FileSystem,
                     _api.LogManager,
                     _api.MainBlockProcessor,
-                    _api.DisposeStack);
+                    _api.DisposeStack,
+                    _api.DbProvider);
 
                 var modulePool = new SingletonModulePool<IBaselineModule>(baselineModuleFactory);
                 _api.RpcModuleProvider!.Register(modulePool);

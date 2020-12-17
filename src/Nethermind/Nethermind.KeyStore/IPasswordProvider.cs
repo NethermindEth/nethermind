@@ -15,11 +15,12 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Security;
+using Nethermind.Core;
 
 namespace Nethermind.KeyStore
 {
     public interface IPasswordProvider
     {
-        SecureString GetPassword();
+        SecureString GetPassword(Address address);
     }
 }

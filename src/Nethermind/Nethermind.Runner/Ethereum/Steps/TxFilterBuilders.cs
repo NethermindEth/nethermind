@@ -15,7 +15,6 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using Nethermind.Api;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa.Config;
@@ -26,14 +25,15 @@ using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Evm;
 using Nethermind.Int256;
+using Nethermind.Logging;
 using Nethermind.Runner.Ethereum.Api;
-using Nethermind.State;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
     public static class TxFilterBuilders
     {
-        public static ITxFilter CreateStandardTxFilter(IMiningConfig miningConfig) => new MinGasPriceTxFilter(miningConfig.MinGasPrice);
+        public static ITxFilter CreateStandardTxFilter(IMiningConfig miningConfig)
+            => new MinGasPriceTxFilter(miningConfig.MinGasPrice);
         
         private static ITxFilter CreateBaseAuRaTxFilter(
             IMiningConfig miningConfig,
@@ -59,7 +59,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             return gasPriceTxFilter;
         }
         
-        public static ITxFilter? CreateTxPermissionFilter(AuRaNethermindApi api, IReadOnlyTransactionProcessorSource readOnlyTxProcessorSource, IStateProvider stateProvider)
+        public static ITxFilter? CreateTxPermissionFilter(AuRaNethermindApi api, IReadOnlyTransactionProcessorSource readOnlyTxProcessorSource)
         {
             if (api.ChainSpec == null) throw new StepDependencyException(nameof(api.ChainSpec));
             
@@ -74,7 +74,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                         readOnlyTxProcessorSource, 
                         api.TransactionPermissionContractVersions),
                     api.TxFilterCache,
-                    stateProvider,
+                    api.ChainHeadStateProvider,
                     api.LogManager);
                 
                 return txPermissionFilter;
@@ -87,11 +87,10 @@ namespace Nethermind.Runner.Ethereum.Steps
             IMiningConfig miningConfig,
             AuRaNethermindApi api,
             IReadOnlyTransactionProcessorSource readOnlyTxProcessorSource,
-            IStateProvider stateProvider,
             IDictionaryContractDataStore<TxPriorityContract.Destination>? minGasPricesContractDataStore)
         {
             ITxFilter baseAuRaTxFilter = CreateBaseAuRaTxFilter(miningConfig, api, readOnlyTxProcessorSource, minGasPricesContractDataStore);
-            ITxFilter? txPermissionFilter = CreateTxPermissionFilter(api, readOnlyTxProcessorSource, stateProvider);
+            ITxFilter? txPermissionFilter = CreateTxPermissionFilter(api, readOnlyTxProcessorSource);
             return txPermissionFilter != null
                 ? new CompositeTxFilter(baseAuRaTxFilter, txPermissionFilter) 
                 : baseAuRaTxFilter;
@@ -115,7 +114,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             bool usesTxPriorityLocalData = auraConfigTxPriorityConfigFilePath != null;
             if (usesTxPriorityLocalData)
             {
-                api.TxPriorityContractLocalDataSource ??= new TxPriorityContract.LocalDataSource(auraConfigTxPriorityConfigFilePath, api.EthereumJsonSerializer, api.LogManager);
+                api.TxPriorityContractLocalDataSource ??= new TxPriorityContract.LocalDataSource(auraConfigTxPriorityConfigFilePath, api.EthereumJsonSerializer, api.FileSystem, api.LogManager);
             }
 
             return (txPriorityContract, api.TxPriorityContractLocalDataSource);
@@ -124,14 +123,14 @@ namespace Nethermind.Runner.Ethereum.Steps
         public static DictionaryContractDataStore<TxPriorityContract.Destination, TxPriorityContract.DestinationSortedListContractDataStoreCollection>? CreateMinGasPricesDataStore(
             AuRaNethermindApi api, 
             TxPriorityContract? txPriorityContract, 
-            TxPriorityContract.LocalDataSource? localDataSource, 
-            IBlockProcessor blockProcessor)
+            TxPriorityContract.LocalDataSource? localDataSource)
         {
             return txPriorityContract != null || localDataSource != null
                 ? new DictionaryContractDataStore<TxPriorityContract.Destination, TxPriorityContract.DestinationSortedListContractDataStoreCollection>(
                     new TxPriorityContract.DestinationSortedListContractDataStoreCollection(),
                     txPriorityContract?.MinGasPrices,
-                    blockProcessor,
+                    api.BlockTree,
+                    api.ReceiptFinder,
                     api.LogManager,
                     localDataSource?.GetMinGasPricesLocalDataSource())
                 : null;

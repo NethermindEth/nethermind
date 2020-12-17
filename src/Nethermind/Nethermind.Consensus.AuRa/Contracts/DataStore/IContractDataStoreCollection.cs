@@ -25,7 +25,7 @@ namespace Nethermind.Consensus.AuRa.Contracts.DataStore
 
         IEnumerable<T> GetSnapshot();
             
-        void Insert(IEnumerable<T> items);
+        void Insert(IEnumerable<T> items, bool inFront = false);
         
         void Remove(IEnumerable<T> items);
     }

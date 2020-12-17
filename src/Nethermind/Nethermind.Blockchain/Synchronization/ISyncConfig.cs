@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using Nethermind.Config;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -61,16 +62,19 @@ namespace Nethermind.Blockchain.Synchronization
         [ConfigItem(Description = "Hash of the pivot block for the Fast Blocks sync.", DefaultValue = "null")]
         string PivotHash { get; set; }
 
+        [ConfigItem(HiddenFromDocs = true, DefaultValue = "0")]
         long PivotNumberParsed => LongConverter.FromString(PivotNumber ?? "0");
 
-        UInt256 PivotTotalDifficultyParsed => UInt256.Parse(PivotTotalDifficulty ?? "0x0");
+        [ConfigItem(HiddenFromDocs = true, DefaultValue = "0")]
+        UInt256 PivotTotalDifficultyParsed => UInt256.Parse(PivotTotalDifficulty ?? "0");
 
+        [ConfigItem(HiddenFromDocs = true)]
         Keccak PivotHashParsed => PivotHash == null ? null : new Keccak(Bytes.FromHexString(PivotHash));
         
-        [ConfigItem(Description = "Context timeout.", DefaultValue = "4")]
+        [ConfigItem(Description = "Number of seconds before a single beam sync request expires and throw an exception. If you want your JSON RPC requests to keep trying then set this value to a higher number.", DefaultValue = "4")]
         public int BeamSyncContextTimeout { get; set; }
         
-        [ConfigItem(Description = "Beam sync pre processor timeout.", DefaultValue = "15")]
+        [ConfigItem(Description = "Number of seconds to pass without progress before beam sync stops trying to process a single block.", DefaultValue = "15")]
         public int BeamSyncPreProcessorTimeout { get; set; }
         
         [ConfigItem(Description = "Should use beam sync to fix corrupted state DB (dev use).", DefaultValue = "false")]
@@ -78,5 +82,21 @@ namespace Nethermind.Blockchain.Synchronization
         
         [ConfigItem(Description = "When beam syncing should verify each state item loaded from DB (dev use).", DefaultValue = "false")]
         public bool BeamSyncVerifiedMode { get; set; }
+        
+        [ConfigItem(Description = "[EXPERIMENTAL] Defines the earliest body downloaded in fast sync when DownloadBodiesInFastSync is enabled. Actual values used will be Math.Max(1, Math.Min(PivotNumber, AncientBodiesBarrier))", DefaultValue = "0")]
+        public long AncientBodiesBarrier { get; set; }
+
+        [ConfigItem(HiddenFromDocs = true, DefaultValue = "1")]
+        public long AncientBodiesBarrierCalc => Math.Max(1, Math.Min(PivotNumberParsed, AncientBodiesBarrier));
+        
+        [ConfigItem(Description = "[EXPERIMENTAL] Defines the earliest receipts downloaded in fast sync when DownloadReceiptsInFastSync is enabled. Actual value used will be Math.Max(1, Math.Min(PivotNumber, Math.Max(AncientBodiesBarrier, AncientReceiptsBarrier)))", DefaultValue = "0")]
+        public long AncientReceiptsBarrier { get; set; }
+
+        [ConfigItem(HiddenFromDocs = true, DefaultValue = "1")]
+        public long AncientReceiptsBarrierCalc => Math.Max(1, Math.Min(PivotNumberParsed, Math.Max(AncientBodiesBarrier, AncientReceiptsBarrier)));
+        
+        [ConfigItem(Description = "[ONLY FOR MISSING RECEIPTS ISSUE] Turns on receipts validation that checks for ones that might be missing due to previous bug. It downloads them from network if needed." +
+                                  "If used please check that PivotNumber is same as original used when syncing the node as its used as a cut-off point.", DefaultValue = "false")]
+        public bool FixReceipts { get; set; }
     }
 }

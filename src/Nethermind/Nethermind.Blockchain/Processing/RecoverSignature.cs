@@ -23,7 +23,7 @@ using Nethermind.TxPool;
 
 namespace Nethermind.Blockchain.Processing
 {
-    public class TxSignaturesRecoveryStep : IBlockDataRecoveryStep
+    public class RecoverSignatures : IBlockPreprocessorStep
     {
         private readonly IEthereumEcdsa _ecdsa;
         private readonly ITxPool _txPool;
@@ -37,7 +37,7 @@ namespace Nethermind.Blockchain.Processing
         /// <param name="txPool">Finding transactions in mempool can speed up address recovery.</param>
         /// <param name="specProvider">Spec Provider</param>
         /// <param name="logManager">Logging</param>
-        public TxSignaturesRecoveryStep(IEthereumEcdsa ecdsa, ITxPool txPool, ISpecProvider specProvider, ILogManager logManager)
+        public RecoverSignatures(IEthereumEcdsa ecdsa, ITxPool txPool, ISpecProvider specProvider, ILogManager logManager)
         {
             _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
             _txPool = txPool ?? throw new ArgumentNullException(nameof(ecdsa));

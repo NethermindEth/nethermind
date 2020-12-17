@@ -637,6 +637,66 @@ namespace Nethermind.Synchronization.Test
             }
         }
 
+        [TestCase(DownloaderOptions.WithReceipts, true)]
+        [TestCase(DownloaderOptions.None, false)]
+        [TestCase(DownloaderOptions.Process, false)]
+        public async Task Throws_on_null_receipt_downloaded(int options, bool shouldThrow)
+        {
+            Context ctx = new Context();
+            DownloaderOptions downloaderOptions = (DownloaderOptions)options;
+            bool withReceipts = downloaderOptions == DownloaderOptions.WithReceipts;
+            InMemoryReceiptStorage receiptStorage = new InMemoryReceiptStorage();
+            BlockDownloader downloader = new BlockDownloader(ctx.Feed, ctx.PeerPool, ctx.BlockTree, Always.Valid, Always.Valid, NullSyncReport.Instance, receiptStorage, RopstenSpecProvider.Instance, LimboLogs.Instance);
+
+            Response responseOptions = Response.AllCorrect;
+            if (withReceipts)
+            {
+                responseOptions |= Response.WithTransactions;
+            }
+
+            int headNumber = 5;
+
+            // normally chain length should be head number + 1 so here we setup a slightly shorter chain which
+            // will only be fixed slightly later
+            long chainLength = headNumber + 1;
+            SyncPeerMock syncPeerInternal = new SyncPeerMock(chainLength, withReceipts, responseOptions);
+            ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
+            syncPeer.GetBlockHeaders(Arg.Any<long>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+                .Returns(ci => syncPeerInternal.GetBlockHeaders(ci.ArgAt<long>(0), ci.ArgAt<int>(1), ci.ArgAt<int>(2), ci.ArgAt<CancellationToken>(3)));
+
+            syncPeer.GetBlockBodies(Arg.Any<IList<Keccak>>(), Arg.Any<CancellationToken>())
+                .Returns(ci => syncPeerInternal.GetBlockBodies(ci.ArgAt<IList<Keccak>>(0), ci.ArgAt<CancellationToken>(1)));
+
+            syncPeer.GetReceipts(Arg.Any<IList<Keccak>>(), Arg.Any<CancellationToken>())
+                .Returns(async ci =>
+                {
+                    TxReceipt[][] receipts = await syncPeerInternal.GetReceipts(ci.ArgAt<IList<Keccak>>(0), ci.ArgAt<CancellationToken>(1));
+                    receipts[^1] = null;
+                    return receipts;
+                });
+
+            syncPeer.TotalDifficulty.Returns(ci => syncPeerInternal.TotalDifficulty);
+            syncPeer.HeadHash.Returns(ci => syncPeerInternal.HeadHash);
+            syncPeer.HeadNumber.Returns(ci => syncPeerInternal.HeadNumber);
+
+            PeerInfo peerInfo = new PeerInfo(syncPeer);
+
+            int threshold = 2;
+            await downloader.DownloadHeaders(peerInfo, new BlocksRequest(DownloaderOptions.None, threshold), CancellationToken.None);
+            ctx.BlockTree.BestSuggestedHeader.Number.Should().Be(Math.Max(0, Math.Min(headNumber, headNumber - threshold)));
+
+            syncPeerInternal.ExtendTree(chainLength * 2);
+            Func<Task> action = async () => await downloader.DownloadBlocks(peerInfo, new BlocksRequest(downloaderOptions), CancellationToken.None);
+            if (shouldThrow)
+            {
+                action.Should().Throw<EthSyncException>();
+            }
+            else
+            {
+                action.Should().NotThrow();
+            }
+        }
+
         [TestCase(32)]
         [TestCase(1)]
         [TestCase(0)]
@@ -672,7 +732,7 @@ namespace Nethermind.Synchronization.Test
 
         [TestCase(32)]
         [TestCase(1)]
-        public async Task Does_not_throw_on_transaction_count_different_than_receipts_count_in_block(int threshold)
+        public async Task Does_throw_on_transaction_count_different_than_receipts_count_in_block(int threshold)
         {
             Context ctx = new Context();
             InMemoryReceiptStorage inMemoryReceiptStorage = new InMemoryReceiptStorage();
@@ -699,7 +759,7 @@ namespace Nethermind.Synchronization.Test
             syncPeer.HeadNumber.Returns(2);
 
             Func<Task> action = async () => await downloader.DownloadBlocks(peerInfo, new BlocksRequest(DownloaderOptions.WithReceipts), CancellationToken.None);
-            action.Should().NotThrow();
+            action.Should().Throw<EthSyncException>();
         }
 
         [TestCase(32)]

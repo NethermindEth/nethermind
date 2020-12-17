@@ -13,11 +13,17 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-namespace Nethermind.KeyStore
+using System.Collections.Generic;
+using System.Linq;
+using Nethermind.Stats;
+
+namespace Nethermind.Network
 {
-    public interface IKeyStorePasswordProvider : IPasswordProvider
+    public static class NodeStatsManagerExtension
     {
-        string Account { set; }
+        public static void UpdateCurrentReputation(this INodeStatsManager nodeStatsManager, IEnumerable<Peer> peers) =>
+            nodeStatsManager.UpdateCurrentReputation(peers.Where(p => p?.Node != null).Select(p => p.Node));
     }
 }

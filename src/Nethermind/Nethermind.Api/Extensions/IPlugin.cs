@@ -27,9 +27,9 @@ namespace Nethermind.Api.Extensions
         string Description { get; }
         
         string Author { get; }
-        
-        Task Init(INethermindApi api);
-        
+
+        Task Init(INethermindApi nethermindApi);
+
         Task InitNetworkProtocol();
         
         Task InitRpcModules();

@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -14,16 +14,17 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using Nethermind.Config;
+using Nethermind.Db.Rocks.Config;
 using Nethermind.Logging;
-using Nethermind.Serialization.Json;
 
-namespace Nethermind.Runner.Ethereum.Api
+namespace Nethermind.Db.Rocks
 {
-    public class NethDevNethermindApi : NethermindApi
+    public class BaselineTreeDb : DbOnTheRocks
     {
-        public NethDevNethermindApi(IConfigProvider configProvider, IJsonSerializer jsonSerializer, ILogManager logManager)
-            : base(configProvider, jsonSerializer, logManager)
+        public override string Name { get; } = DbNames.BaselineTree;
+
+        public BaselineTreeDb(string basePath, IDbConfig dbConfig, ILogManager logManager = null)
+            : base(basePath, DbNames.BaselineTree, dbConfig, logManager)
         {
         }
     }

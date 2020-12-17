@@ -84,5 +84,10 @@ namespace Nethermind.JsonRpc
             Description = "A path to a file that contains a list of new-line separated approved JSON RPC calls",
             DefaultValue = "Data/jsonrpc.filter")]
         string CallsFilterFilePath { get; set; }
+
+        [ConfigItem(
+            Description = "Max HTTP request body size",
+            DefaultValue = "30000000")]
+        long? MaxRequestBodySize { get; set; }
     }
 }

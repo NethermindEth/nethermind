@@ -57,7 +57,7 @@ namespace Nethermind.Network.Test
         [TestCase(0)]
         [TestCase(1)]
         [Explicit("Travis fails here")]
-        public void Will_keep_pinging(int randomResult)
+        public async Task Will_keep_pinging(int randomResult)
         {
             ISession session1 = CreateSession();
             ISession session2 = CreateUnresponsiveSession();
@@ -69,11 +69,11 @@ namespace Nethermind.Network.Test
             sessionMonitor.AddSession(session1);
             sessionMonitor.AddSession(session2);
             sessionMonitor.Start();
-            Thread.Sleep(300);
+            await Task.Delay(300);
             sessionMonitor.Stop();
 
-            _pingSender.Received().SendPing();
-            _noPong.Received().SendPing();
+            await _pingSender.Received().SendPing();
+            await _noPong.Received().SendPing();
             
             Assert.AreEqual(SessionState.Initialized, session1.State);
             Assert.AreEqual(randomResult == 0? SessionState.Disconnected : SessionState.Initialized, session2.State);

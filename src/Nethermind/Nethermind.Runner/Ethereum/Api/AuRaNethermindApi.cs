@@ -15,7 +15,6 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Data;
 using Nethermind.Config;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.AuRa.Contracts;

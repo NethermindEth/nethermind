@@ -13,27 +13,31 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using System;
+using System.Threading;
+using System.Threading.Tasks;
+using Nethermind.Api;
+using Nethermind.Core.Attributes;
+using Nethermind.Crypto;
 
-namespace Nethermind.Config
+namespace Nethermind.Runner.Ethereum.Steps
 {
-    public class ConfigPropertyAttribute : Attribute
+    [RunnerStepDependencies(typeof(InitRlp))]
+    public class InitCrypto : IStep
     {
-        public string Category { get; }
-        public string Name { get; }
-        public string Description { get; }
+        private readonly IBasicApi _api;
 
-        public ConfigPropertyAttribute(string category, string name)
-            : this(category, name, $"{category}.{name}")
+        public InitCrypto(INethermindApi api)
         {
+            _api = api;
         }
 
-        public ConfigPropertyAttribute(string category, string name, string description)
+        [Todo(Improve.Refactor, "Automatically scan all the references solutions?")]
+        public virtual Task Execute(CancellationToken _)
         {
-            Category = category;
-            Name = name;
-            Description = description;
+            _api.EthereumEcdsa = new EthereumEcdsa(_api.SpecProvider!.ChainId, _api.LogManager);
+            return Task.CompletedTask;
         }
     }
 }

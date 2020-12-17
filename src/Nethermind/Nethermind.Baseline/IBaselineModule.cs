@@ -29,16 +29,16 @@ namespace Nethermind.Baseline
     public interface IBaselineModule : IModule
     {
         [JsonRpcMethod(
-            Description = "Inserts a single leaf to a tree at the given 'address'",
+            Description = "(DEV only - not part of Baseline standard) Inserts a single leaf to a tree at the given 'address'",
             IsSharable = false,
             IsImplemented = true)]
-        Task<ResultWrapper<Keccak>> baseline_insertLeaf(Address address, Address contractAddress, Keccak hash);
+        Task<ResultWrapper<Keccak>> baseline_insertCommit(Address address, Address contractAddress, Keccak hash);
 
         [JsonRpcMethod(
-            Description = "Inserts multiple leaves to a tree at the given 'address'",
+            Description = "(DEV only - not part of Baseline standard) Inserts multiple leaves to a tree at the given 'address'",
             IsSharable = false,
             IsImplemented = true)]
-        Task<ResultWrapper<Keccak>> baseline_insertLeaves(
+        Task<ResultWrapper<Keccak>> baseline_insertCommits(
             Address address,
             Address contractAddress,
             params Keccak[] hash);
@@ -47,7 +47,7 @@ namespace Nethermind.Baseline
             Description = "Gets a single leaf from a tree at the given 'address'",
             IsSharable = true,
             IsImplemented = true)]
-        Task<ResultWrapper<BaselineTreeNode>> baseline_getLeaf(
+        Task<ResultWrapper<BaselineTreeNode>> baseline_getCommit(
             Address contractAddress,
             UInt256 leafIndex,
             BlockParameter? blockParameter = null);
@@ -61,7 +61,7 @@ namespace Nethermind.Baseline
             BlockParameter? blockParameter = null);
 
         [JsonRpcMethod(
-            Description = "Gets count of a tree at the given 'address'",
+            Description = "(DEV only - not part of Baseline standard) Gets count of a tree at the given 'address'",
             IsSharable = true,
             IsImplemented = true)]
         public Task<ResultWrapper<long>> baseline_getCount(
@@ -72,19 +72,19 @@ namespace Nethermind.Baseline
             Description = "Gets multiple leaves from a tree at the given 'address'",
             IsSharable = true,
             IsImplemented = true)]
-        Task<ResultWrapper<BaselineTreeNode[]>> baseline_getLeaves(
+        Task<ResultWrapper<BaselineTreeNode[]>> baseline_getCommits(
             Address contractAddress,
             UInt256[] leafIndexes,
             BlockParameter? blockParameter = null);
 
         [JsonRpcMethod(
-            Description = "Deploys a contract with the given 'contract type'. Requires the account to be unlocked.",
+            Description = "(DEV only - not part of Baseline standard) Deploys a contract with the given 'contract type'. Requires the account to be unlocked.",
             IsSharable = false,
             IsImplemented = true)]
         Task<ResultWrapper<Keccak>> baseline_deploy(Address address, string contractType, string? argumentsAbi = null);
         
         [JsonRpcMethod(
-            Description = "Deploys a contract with the given bytecode. Requires the account to be unlocked.",
+            Description = "(DEV only - not part of Baseline standard) Deploys a contract with the given bytecode. Requires the account to be unlocked.",
             IsSharable = false,
             IsImplemented = true)]
         Task<ResultWrapper<Keccak>> baseline_deployBytecode(Address address, string byteCode);
@@ -114,6 +114,12 @@ namespace Nethermind.Baseline
             IsSharable = false,
             IsImplemented = true)]
         Task<ResultWrapper<bool>> baseline_track(Address contractAddress);
+        
+        [JsonRpcMethod(
+            Description = "Stops tracking a tree at the given address.",
+            IsSharable = false,
+            IsImplemented = true)]
+        Task<ResultWrapper<bool>> baseline_untrack(Address contractAddress);
 
         [JsonRpcMethod(
             Description = "Lists all the tracked tree addresses.",
@@ -125,11 +131,34 @@ namespace Nethermind.Baseline
             Description = "Verify data and push new input.",
             IsSharable = false,
             IsImplemented = true)]
-        Task<ResultWrapper<Keccak>> baseline_verifyAndPush(
+        Task<ResultWrapper<VerifyAndPushResponse>> baseline_verifyAndPush(
             Address address,
             Address contractAddress,
             UInt256[] proof,
             UInt256[] publicInputs,
             Keccak newCommitment);
+    }
+    
+    public class VerifyAndPushResponse
+    {
+        public VerifyAndPushResponse(Keccak txHash)
+        {
+            TxHash = txHash;
+        }
+        
+        public Commitment? Commitment { get; set; }
+        public Keccak? TxHash { get; set; }
+    }
+    
+    public class Commitment
+    {
+        public Commitment(long location, Keccak value)
+        {
+            Location = location;
+            Value = value;
+        }
+        
+        public long Location { get; set; }
+        public Keccak Value { get; set; }
     }
 }

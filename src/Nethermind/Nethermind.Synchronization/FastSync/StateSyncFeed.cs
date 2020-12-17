@@ -304,7 +304,7 @@ namespace Nethermind.Synchronization.FastSync
                 }
 
                 _dependencies = new Dictionary<Keccak, HashSet<DependentItem>>();
-                _alreadySaved = new LruKeyCache<Keccak>(AlreadySavedCapacity, "saved nodes");
+                // _alreadySaved = new LruKeyCache<Keccak>(AlreadySavedCapacity, "saved nodes");
             }
 
             if (_pendingItems.Count != 0)

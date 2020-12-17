@@ -16,6 +16,7 @@
 // 
 
 using System;
+using System.Diagnostics;
 using Nethermind.Abi;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.Transactions;
@@ -31,13 +32,13 @@ namespace Nethermind.Consensus.AuRa.Transactions
     {
         private readonly VersionedContract<ITransactionPermissionContract> _contract;
         private readonly Cache _cache;
-        private readonly IStateProvider _stateProvider;
+        private readonly IReadOnlyStateProvider _stateProvider;
         private readonly ILogger _logger;
 
         public PermissionBasedTxFilter(
             VersionedContract<ITransactionPermissionContract> contract,
             Cache cache,
-            IStateProvider stateProvider,
+            IReadOnlyStateProvider stateProvider,
             ILogManager logManager)
         {
             _contract = contract ?? throw new ArgumentNullException(nameof(contract));
@@ -90,7 +91,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
                 }
                 catch (AbiException e)
                 {
-                    if (_logger.IsError) _logger.Error("Error calling tx permissions contract.", e);
+                    if (_logger.IsError) _logger.Error($"Error calling tx permissions contract on {parentHeader.ToString(BlockHeader.Format.FullHashAndNumber)} {new StackTrace()}.", e);
                 }
             }
 

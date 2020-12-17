@@ -322,6 +322,15 @@ namespace Nethermind.Synchronization.Blocks
                         throw new EthSyncException($"{bestPeer} sent an invalid block {currentBlock.ToString(Block.Format.Short)}.");
                     }
 
+                    if (downloadReceipts)
+                    {
+                        TxReceipt[]? contextReceiptsForBlock = context.ReceiptsForBlocks![blockIndex];
+                        if (currentBlock.Header.HasBody && contextReceiptsForBlock == null)
+                        {
+                            throw new EthSyncException($"{bestPeer} didn't send receipts for block {currentBlock.ToString(Block.Format.Short)}.");
+                        }
+                    }
+
                     if (HandleAddResult(bestPeer, currentBlock.Header, blockIndex == 0, _blockTree.SuggestBlock(currentBlock, shouldProcess)))
                     {
                         if (downloadReceipts)
@@ -330,6 +339,14 @@ namespace Nethermind.Synchronization.Blocks
                             if (contextReceiptsForBlock != null)
                             {
                                 _receiptStorage.Insert(currentBlock, contextReceiptsForBlock);
+                            }
+                            else
+                            {
+                                // this shouldn't now happen with new validation above, still lets keep this check 
+                                if (currentBlock.Header.HasBody)
+                                {
+                                    if (_logger.IsError) _logger.Error($"{currentBlock} is missing receipts");
+                                }
                             }
                         }
 
@@ -422,17 +439,13 @@ namespace Nethermind.Synchronization.Blocks
                 await request.ContinueWith(t => DownloadFailHandler(request, "receipts"));
 
                 TxReceipt[][] result = request.Result;
-                
-                int validResponsesCount = 0;
+
                 for (int i = 0; i < result.Length; i++)
                 {
-                    if(context.TrySetReceipts(i + offset, result[i]))
+                    TxReceipt[] txReceipts = result[i];
+                    if (!context.TrySetReceipts(i + offset, txReceipts, out var block))
                     {
-                        validResponsesCount++;
-                    }
-                    else
-                    {
-                        break;
+                        throw new EthSyncException($"{peer} sent invalid receipts for block {block.ToString(Block.Format.Short)}.");
                     }
                 }
 

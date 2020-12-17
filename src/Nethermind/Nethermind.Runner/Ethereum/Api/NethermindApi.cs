@@ -105,7 +105,7 @@ namespace Nethermind.Runner.Ethereum.Api
 
         public IAbiEncoder AbiEncoder { get; } = new AbiEncoder();
         public IBlockchainProcessor? BlockchainProcessor { get; set; }
-        public IBlockDataRecoveryStep? RecoveryStep { get; set; }
+        public CompositeBlockPreprocessorStep BlockPreprocessor { get; } = new CompositeBlockPreprocessorStep(); 
         public IBlockProcessingQueue? BlockProcessingQueue { get; set; }
         public IBlockProcessor? MainBlockProcessor { get; set; }
         public IBlockProducer? BlockProducer { get; set; }
@@ -117,6 +117,8 @@ namespace Nethermind.Runner.Ethereum.Api
         public ICryptoRandom CryptoRandom { get; }
         public IDbProvider? DbProvider { get; set; }
         public IDiscoveryApp? DiscoveryApp { get; set; }
+        public ISigner? EngineSigner { get; set; }
+        public ISignerStore? EngineSignerStore { get; set; }
         public IEnode? Enode { get; set; }
         public IEthereumEcdsa? EthereumEcdsa { get; set; }
         public IFileSystem FileSystem { get; set; } = new FileSystem();
@@ -137,22 +139,22 @@ namespace Nethermind.Runner.Ethereum.Api
         public IProtocolValidator? ProtocolValidator { get; set; }
         public IReceiptStorage? ReceiptStorage { get; set; }
         public IReceiptFinder? ReceiptFinder { get; set; }
-        public IRewardCalculatorSource? RewardCalculatorSource { get; set; }
+        public IRewardCalculatorSource RewardCalculatorSource { get; set; } = NoBlockRewards.Instance;
         public IRlpxPeer? RlpxPeer { get; set; }
         public IRpcModuleProvider RpcModuleProvider { get; set; } = NullModuleProvider.Instance;
-        public ISealer? Sealer { get; set; }
-        public ISealValidator? SealValidator { get; set; }
-        public ISigner? EngineSigner { get; set; }
-        public ISignerStore? EngineSignerStore { get; set; }
+        public ISealer Sealer { get; set; } = NullSealEngine.Instance;
+        public SealEngineType SealEngineType { get; set; } = SealEngineType.None;
+        public ISealValidator SealValidator { get; set; } = NullSealEngine.Instance;
+        public ISessionMonitor? SessionMonitor { get; set; }
         public ISpecProvider? SpecProvider { get; set; }
         public ISyncModeSelector? SyncModeSelector { get; set; }
         public ISyncPeerPool? SyncPeerPool { get; set; }
         public ISynchronizer? Synchronizer { get; set; }
         public ISyncServer? SyncServer { get; set; }
         public IStateProvider? StateProvider { get; set; }
+        public IReadOnlyStateProvider? ChainHeadStateProvider { get; set; }
         public IStateReader? StateReader { get; set; }
         public IStorageProvider? StorageProvider { get; set; }
-        public ISessionMonitor? SessionMonitor { get; set; }
         public IStaticNodesManager? StaticNodesManager { get; set; }
         public ITimestamper Timestamper { get; } = Core.Timestamper.Default;
         public ITransactionProcessor? TransactionProcessor { get; set; }

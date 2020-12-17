@@ -33,7 +33,7 @@ namespace Nethermind.Blockchain.Receipts
 
         public ReceiptsIterator(in Span<byte> receiptsData, IDbWithSpan blocksDb)
         {
-            _decoderContext = new Rlp.ValueDecoderContext(receiptsData);
+            _decoderContext = receiptsData.AsRlpValueContext();
             _length = receiptsData.Length == 0 ? 0 : _decoderContext.ReadSequenceLength();
             _blocksDb = blocksDb;
             _receipts = null;
@@ -87,9 +87,9 @@ namespace Nethermind.Blockchain.Receipts
 
         public void Dispose()
         {
-            if (_receipts == null)
+            if (_receipts == null && !_decoderContext.Data.IsEmpty)
             {
-                _blocksDb.DangerousReleaseMemory(_decoderContext.Data);
+                _blocksDb?.DangerousReleaseMemory(_decoderContext.Data);
             }
         }
     }

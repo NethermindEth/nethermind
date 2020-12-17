@@ -35,6 +35,8 @@ namespace Nethermind.Blockchain.Synchronization
         public bool DownloadHeadersInFastSync { get; set; } = true;
         public bool DownloadBodiesInFastSync { get; set; } = true;
         public bool DownloadReceiptsInFastSync { get; set; } = true;
+        public long AncientBodiesBarrier { get; set; }
+        public long AncientReceiptsBarrier { get; set; }
         public string PivotTotalDifficulty { get; set; }
         public string PivotNumber { get; set; }
         public string PivotHash { get; set; }
@@ -42,5 +44,6 @@ namespace Nethermind.Blockchain.Synchronization
         public int BeamSyncPreProcessorTimeout { get; set; } = 15;
         public bool BeamSyncFixMode { get; set; } = false;
         public bool BeamSyncVerifiedMode { get; set; } = false;
+        public bool FixReceipts { get; set; } = false;
     }
 }

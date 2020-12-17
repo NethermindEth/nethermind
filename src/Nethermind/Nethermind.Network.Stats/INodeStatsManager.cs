@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.Collections.Generic;
 using Nethermind.Stats.Model;
 
 namespace Nethermind.Stats
@@ -43,5 +44,19 @@ namespace Nethermind.Stats
         Headers,
         Bodies,
         Receipts
+    }
+    
+    public static class NodeStatsManagerExtension
+    {
+        public static void UpdateCurrentReputation(this INodeStatsManager nodeStatsManager, IEnumerable<Node> nodes)
+        {
+            foreach (Node node in nodes)
+            {
+                node.CurrentReputation = nodeStatsManager.GetCurrentReputation(node);
+            }
+        }
+
+        public static void UpdateCurrentReputation(this INodeStatsManager nodeStatsManager, params Node[] nodes) =>
+            UpdateCurrentReputation(nodeStatsManager, (IEnumerable<Node>)nodes);
     }
 }

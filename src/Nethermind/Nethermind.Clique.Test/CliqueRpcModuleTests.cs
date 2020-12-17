@@ -20,23 +20,20 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.Clique;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State;
-using Nethermind.Db.Blooms;
 using Nethermind.Specs;
-using Nethermind.Wallet;
 using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Clique.Test
 {
-    [Parallelizable(ParallelScope.Self)]
+    [Parallelizable(ParallelScope.All)]
     [TestFixture]
-    public class CliqueBridgeTests
+    public class CliqueRpcModuleTests
     {
         [Test]
         public void Sets_clique_block_producer_properly()
@@ -60,7 +57,7 @@ namespace Nethermind.Clique.Test
             
             SnapshotManager snapshotManager = new SnapshotManager(CliqueConfig.Default, new MemDb(), Substitute.For<IBlockTree>(), NullEthereumEcdsa.Instance, LimboLogs.Instance);
             
-            CliqueBridge bridge = new CliqueBridge(producer, snapshotManager, blockTree);
+            CliqueRpcModule bridge = new CliqueRpcModule(producer, snapshotManager, blockTree);
             Assert.DoesNotThrow(() => bridge.CastVote(TestItem.AddressB, true));
             Assert.DoesNotThrow(() => bridge.UncastVote(TestItem.AddressB));
             Assert.DoesNotThrow(() => bridge.CastVote(TestItem.AddressB, false));

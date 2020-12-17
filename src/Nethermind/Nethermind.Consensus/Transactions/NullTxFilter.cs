@@ -13,18 +13,16 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using Nethermind.Config;
-using Nethermind.Logging;
-using Nethermind.Serialization.Json;
+using Nethermind.Core;
 
-namespace Nethermind.Runner.Ethereum.Api
+namespace Nethermind.Consensus.Transactions
 {
-    public class EthashNethermindApi : NethermindApi
+    public class NullTxFilter : ITxFilter
     {
-        public EthashNethermindApi(IConfigProvider configProvider, IJsonSerializer jsonSerializer, ILogManager logManager)
-            : base(configProvider, jsonSerializer, logManager)
-        {
-        }
+        public (bool Allowed, string Reason) IsAllowed(Transaction tx, BlockHeader parentHeader) => (true, string.Empty);
+        
+        public static readonly NullTxFilter Instance = new NullTxFilter(); 
     }
 }

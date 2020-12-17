@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Net;
+using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
@@ -62,7 +63,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             IDb headerDb = new MemDb();
             IDb blockInfoDb = new MemDb();
             IBlockTree blockTree = new BlockTree(blockDb, headerDb, blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), specProvider, NullBloomStorage.Instance, LimboLogs.Instance);
-            new OnChainTxWatcher(blockTree, txPool, specProvider);
+            new OnChainTxWatcher(blockTree, txPool, specProvider, LimboLogs.Instance);
             
             IReceiptStorage receiptStorage = new InMemoryReceiptStorage();
 
@@ -119,8 +120,9 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
 
         [Test]
-        public void parity_pendingTransactions()
+        public async Task parity_pendingTransactions()
         {
+            await Task.Delay(100);
             string serialized = RpcTest.TestSerializedRequest(_parityModule, "parity_pendingTransactions");
             var expectedResult = "{\"jsonrpc\":\"2.0\",\"result\":[{\"hash\":\"0xd4720d1b81c70ed4478553a213a83bd2bf6988291677f5d05c6aae0b287f947e\",\"nonce\":\"0x0\",\"blockHash\":null,\"blockNumber\":null,\"transactionIndex\":null,\"from\":\"0x0000000000000000000000000000000000000002\",\"to\":\"0x0000000000000000000000000000000000000000\",\"value\":\"0x1\",\"gasPrice\":\"0x1\",\"gas\":\"0x5208\",\"input\":\"0x\",\"raw\":\"0xf85f8001825208940000000000000000000000000000000000000000018025a0ef2effb79771cbe42fc7f9cc79440b2a334eedad6e528ea45c2040789def4803a0515bdfe298808be2e07879faaeacd0ad17f3b13305b9f971647bbd5d5b584642\",\"creates\":null,\"publicKey\":\"0x15a1cc027cfd2b970c8aa2b3b22dfad04d29171109f6502d5fb5bde18afe86dddd44b9f8d561577527f096860ee03f571cc7f481ea9a14cb48cc7c20c964373a\",\"chainId\":1,\"condition\":null,\"r\":\"0xef2effb79771cbe42fc7f9cc79440b2a334eedad6e528ea45c2040789def4803\",\"s\":\"0x515bdfe298808be2e07879faaeacd0ad17f3b13305b9f971647bbd5d5b584642\",\"v\":\"0x25\",\"standardV\":\"0x0\"}],\"id\":67}";
             Assert.AreEqual(expectedResult, serialized);

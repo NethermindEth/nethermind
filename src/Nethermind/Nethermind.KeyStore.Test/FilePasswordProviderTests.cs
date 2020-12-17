@@ -14,11 +14,10 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System;
 using System.Collections.Generic;
 using System.IO;
+using Nethermind.Core;
 using Nethermind.Crypto;
-using Nethermind.Logging;
 using NUnit.Framework;
 
 namespace Nethermind.KeyStore.Test
@@ -32,13 +31,14 @@ namespace Nethermind.KeyStore.Test
             ("TestingPasswordProviderFileF3", "   P    F3    ")
         };
 
+        private string TestDir => TestContext.CurrentContext.WorkDirectory;
+        
         [SetUp]
         public void SetUp()
         {
-            var resourcePath = string.Empty.GetApplicationResourcePath();
             foreach (var file in _files)
             {
-                var filePath = Path.Combine(resourcePath, file.Name);
+                var filePath = Path.Combine(TestDir, file.Name);
                 if (!File.Exists(filePath))
                 {
                     File.Create(filePath).Close();
@@ -50,10 +50,9 @@ namespace Nethermind.KeyStore.Test
         [TearDown]
         public void TearDown()
         {
-            var resourcePath = string.Empty.GetApplicationResourcePath();
             foreach (var file in _files)
             {
-                var filePath = Path.Combine(resourcePath, file.Name);
+                var filePath = Path.Combine(TestDir, file.Name);
                 if (File.Exists(filePath))
                 {
                     File.Delete(filePath);
@@ -62,14 +61,12 @@ namespace Nethermind.KeyStore.Test
         }
 
         [Test]
-        public void GetPassword([ValueSource(nameof(PasswordProviderTestCases))] FilePasswordProviderTest test)
+        public void GetPassword([ValueSource(nameof(PasswordProviderTestCases))]
+            FilePasswordProviderTest test)
         {
-            var passwordProvider = new FilePasswordProvider()
-            {
-                FileName = test.FileName.GetApplicationResourcePath()
-            };
+            var passwordProvider = new FilePasswordProvider(address => Path.Combine(TestDir, test.FileName));
 
-            var password = passwordProvider.GetPassword();
+            var password = passwordProvider.GetPassword(Address.Zero);
             Assert.IsTrue(password.IsReadOnly());
             Assert.AreEqual(test.ExpectedPassword, password.Unsecure());
         }
@@ -77,27 +74,31 @@ namespace Nethermind.KeyStore.Test
         [Test]
         public void Return_null_when_file_not_exists()
         {
-            var passwordProvider = new FilePasswordProvider()
+            var passwordProvider = new FilePasswordProvider(address =>
             {
-                FileName = String.Empty
-            };
+                if (address == Address.Zero)
+                {
+                    return string.Empty;
+                }
+                else
+                {
+                    return "NotExistingFile";
+                }
+            });
 
-            var password = passwordProvider.GetPassword();
+            var password = passwordProvider.GetPassword(Address.Zero);
             Assert.AreEqual(null, password);
-            passwordProvider.FileName = "NotExsistingFile";
-            password = passwordProvider.GetPassword();
+            password = passwordProvider.GetPassword(Address.Zero);
             Assert.AreEqual(null, password);
         }
 
         [Test]
-        public void Correctly_use_alterantive_provider()
+        public void Correctly_use_alternative_provider()
         {
-            var passwordProvider = new FilePasswordProvider()
-            {
-                FileName = String.Empty
-            }.OrReadFromFile(_files[0].Name.GetApplicationResourcePath());
+            var passwordProvider = new FilePasswordProvider(a => string.Empty)
+                .OrReadFromFile(Path.Combine(TestDir, _files[0].Name));
 
-            var password = passwordProvider.GetPassword();
+            var password = passwordProvider.GetPassword(Address.Zero);
             Assert.IsTrue(password.IsReadOnly());
             Assert.AreEqual(_files[0].Content.Trim(), password.Unsecure());
         }

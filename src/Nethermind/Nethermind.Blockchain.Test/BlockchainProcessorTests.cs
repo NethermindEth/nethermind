@@ -37,6 +37,7 @@ using NUnit.Framework;
 namespace Nethermind.Blockchain.Test
 {
     [TestFixture]
+    [Parallelizable(ParallelScope.Self)]
     public class BlockchainProcessorTests
     {
         private class ProcessingTestContext
@@ -120,7 +121,7 @@ namespace Nethermind.Blockchain.Test
                 }
             }
 
-            private class RecoveryStepMock : IBlockDataRecoveryStep
+            private class RecoveryStepMock : IBlockPreprocessorStep
             {
                 private ILogger _logger;
                 

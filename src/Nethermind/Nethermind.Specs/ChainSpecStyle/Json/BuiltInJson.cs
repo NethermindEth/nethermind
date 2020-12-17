@@ -15,16 +15,14 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System;
-using Nethermind.Consensus.Transactions;
-using Nethermind.Core;
+using System.Collections.Generic;
+using Newtonsoft.Json.Linq;
 
-namespace Nethermind.Consensus.AuRa.Transactions
+namespace Nethermind.Specs.ChainSpecStyle.Json
 {
-    public class NullTxFilter : ITxFilter
+    internal class BuiltInJson
     {
-        public (bool Allowed, string Reason) IsAllowed(Transaction tx, BlockHeader parentHeader) => (true, string.Empty);
-        
-        public static readonly NullTxFilter Instance = new NullTxFilter(); 
+        public string Name { get; set; }
+        public Dictionary<string, JObject> Pricing { get; set; }
     }
 }

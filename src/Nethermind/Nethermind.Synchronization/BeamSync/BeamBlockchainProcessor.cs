@@ -41,7 +41,7 @@ namespace Nethermind.Synchronization.BeamSync
     {
         private readonly IReadOnlyDbProvider _readOnlyDbProvider;
         private readonly IBlockValidator _blockValidator;
-        private readonly IBlockDataRecoveryStep _recoveryStep;
+        private readonly IBlockPreprocessorStep _recoveryStep;
         private readonly IRewardCalculatorSource _rewardCalculatorSource;
         private readonly ILogger _logger;
 
@@ -58,7 +58,7 @@ namespace Nethermind.Synchronization.BeamSync
             ISpecProvider specProvider,
             ILogManager logManager,
             IBlockValidator blockValidator,
-            IBlockDataRecoveryStep recoveryStep,
+            IBlockPreprocessorStep recoveryStep,
             IRewardCalculatorSource rewardCalculatorSource,
             IBlockProcessingQueue processingQueue,
             ISyncModeSelector syncModeSelector)
