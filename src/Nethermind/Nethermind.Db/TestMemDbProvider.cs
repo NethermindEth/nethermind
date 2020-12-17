@@ -14,21 +14,27 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using Nethermind.Db.Rocks.Config;
-using Nethermind.Logging;
 
-namespace Nethermind.Db.Rocks
+using System.Threading.Tasks;
+
+namespace Nethermind.Db
 {
-    public class HeadersRocksDb : DbOnTheRocks
+    public class TestMemDbProvider
     {
-        public override string Name { get; } = "Headers";
-
-        public HeadersRocksDb(string basePath, IDbConfig dbConfig, ILogManager logManager = null)
-            : base(basePath, "headers", dbConfig, logManager)
+        public static async Task<IDbProvider> InitAsync()
         {
+            IDbProvider memDbProvider = new DbProvider(DbModeHint.Mem);
+            var standardDbInitializer = new StandardDbInitializer(memDbProvider, null, new MemDbFactory());
+            await standardDbInitializer.InitStandardDbsAsync(true);
+            return memDbProvider;
         }
 
-        protected internal override void UpdateReadMetrics() => Metrics.HeaderDbReads++;
-        protected internal override void UpdateWriteMetrics() => Metrics.HeaderDbWrites++;
+        public static IDbProvider Init()
+        {
+            IDbProvider memDbProvider = new DbProvider(DbModeHint.Mem);
+            var standardDbInitializer = new StandardDbInitializer(memDbProvider, null, new MemDbFactory());
+            standardDbInitializer.InitStandardDbs(true);
+            return memDbProvider;
+        }
     }
 }
