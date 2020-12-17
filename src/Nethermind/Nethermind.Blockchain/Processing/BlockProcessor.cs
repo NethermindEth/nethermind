@@ -107,7 +107,7 @@ namespace Nethermind.Blockchain.Processing
                 {
                     if (blocksCount > 64 && i % 8 == 0)
                     {
-                        if(_logger.IsInfo) _logger.Info($"Processing part of a long blocks branch {i}/{suggestedBlocks.Count}");
+                        if(_logger.IsInfo) _logger.Info($"Processing part of a long blocks branch {i}/{blocksCount}");
                     }
                     
                     var (processedBlock, receipts) = ProcessOne(suggestedBlocks[i], options, blockTracer);
@@ -123,6 +123,7 @@ namespace Nethermind.Blockchain.Processing
                     // CommitBranch in part if we have long running branch
                     if (i !=0 && i % 64 == 0 && readOnly == false && i != blocksCount - 1)
                     {
+                        if (_logger.IsInfo) _logger.Info($"Commit part of a long blocks branch {i}/{blocksCount}");
                         CommitBranch();
                         previousBranchStateRoot = CreateCheckpoint();
                         var newStateRoot = suggestedBlocks[i - 1].StateRoot;
