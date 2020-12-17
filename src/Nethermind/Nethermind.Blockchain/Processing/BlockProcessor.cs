@@ -126,7 +126,7 @@ namespace Nethermind.Blockchain.Processing
                         if (_logger.IsInfo) _logger.Info($"Commit part of a long blocks branch {i}/{blocksCount}");
                         CommitBranch();
                         previousBranchStateRoot = CreateCheckpoint();
-                        var newStateRoot = suggestedBlocks[i - 1].StateRoot;
+                        var newStateRoot = suggestedBlocks[i].StateRoot;
                         InitBranch(newStateRoot);
                     }
                 }
