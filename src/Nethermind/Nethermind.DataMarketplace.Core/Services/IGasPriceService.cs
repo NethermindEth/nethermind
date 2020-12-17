@@ -24,7 +24,9 @@ namespace Nethermind.DataMarketplace.Core.Services
     {
         GasPriceTypes? Types { get; }
         Task<UInt256> GetCurrentAsync();
+        Task<UInt256> GetCurrentRefundAsync();
         Task SetAsync(string gasPriceOrType);
+        Task SetRefundAsync(UInt256 gasPrice);
         Task UpdateAsync();
     }
 }
