@@ -38,7 +38,6 @@ namespace Nethermind.Network
 
         public SessionMonitor(INetworkConfig config, ILogManager logManager)
         {
-            
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _networkConfig = config ?? throw new ArgumentNullException(nameof(config));
 
@@ -100,16 +99,18 @@ namespace Nethermind.Network
             if (_pingTasks.Any())
             {
                 bool[] tasks = await Task.WhenAll(_pingTasks);
-                int successes = tasks.Count(x => x == true);
-                int failures = tasks.Count(x => x == false);
-                if (_logger.IsTrace) _logger.Trace($"Sent ping messages to {tasks.Length} peers. Received {successes} pongs.");
-                if (failures > tasks.Length / 3)
+                int tasksLength = tasks.Length;
+                if (tasksLength != 0)
                 {
-                    decimal percentage = (decimal)failures/(successes + failures);
-                    if (_logger.IsInfo) _logger.Info($"{percentage:P0} of nodes did not respond to a Ping message - {failures}/{successes + failures}");
+                    int successes = tasks.Count(x => x);
+                    int failures = tasksLength - successes;
+                    if (_logger.IsTrace) _logger.Trace($"Sent ping messages to {tasksLength} peers. Received {successes} pongs.");
+                    if (failures > tasks.Length / 3)
+                    {
+                        decimal percentage = (decimal) failures / tasksLength;
+                        if (_logger.IsInfo) _logger.Info($"{percentage:P0} of nodes did not respond to a Ping message - {failures}/{tasksLength}");
+                    }
                 }
-
-                _pingTasks.Clear();
             }
             else if (_logger.IsTrace) _logger.Trace("Sent no ping messages.");
         }
@@ -143,7 +144,7 @@ namespace Nethermind.Network
 
                     return true;
                 }
-                
+
                 session.LastPongUtc = DateTime.UtcNow;
                 return true;
             }
@@ -169,6 +170,7 @@ namespace Nethermind.Network
                 }
                 finally
                 {
+                    _pingTasks.Clear();
                     _pingTimer.Enabled = true;
                 }
             };

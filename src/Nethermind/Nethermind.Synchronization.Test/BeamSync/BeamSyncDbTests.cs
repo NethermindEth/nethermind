@@ -16,6 +16,7 @@
 
 using System;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
@@ -63,18 +64,20 @@ namespace Nethermind.Synchronization.Test.BeamSync
         }
         
         [Test]
-        public void Beam_db_provider_smoke_test()
+        public async Task Beam_db_provider_smoke_test()
         {
-            BeamSyncDbProvider dbProvider = new BeamSyncDbProvider(StaticSelector.Beam, new MemDbProvider(), new SyncConfig(), LimboLogs.Instance);
+            var memDbProvider = await TestMemDbProvider.InitAsync();
+            IDbProvider dbProvider = new BeamSyncDbProvider(StaticSelector.Beam, memDbProvider, new SyncConfig(), LimboLogs.Instance);
             // has to be state DB on the outside
             Assert.IsInstanceOf(typeof(StateDb), dbProvider.StateDb);
             Assert.IsInstanceOf(typeof(StateDb), dbProvider.CodeDb);
         }
 
         [Test]
-        public void Beam_db_provider_can_dispose()
+        public async Task Beam_db_provider_can_dispose()
         {
-            BeamSyncDbProvider dbProvider = new BeamSyncDbProvider(StaticSelector.Beam, new MemDbProvider(),new SyncConfig(), LimboLogs.Instance);
+            var memDbProvider = await TestMemDbProvider.InitAsync();
+            BeamSyncDbProvider dbProvider = new BeamSyncDbProvider(StaticSelector.Beam, memDbProvider, new SyncConfig(), LimboLogs.Instance);
             dbProvider.Dispose();
         }
 

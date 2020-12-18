@@ -29,11 +29,37 @@ namespace Nethermind.Baseline.Test
         public void Can_set()
         {
             BaselineConfig config = new BaselineConfig();
+            var dbCacheIndexAndFilterBlocks = true;
+            uint dbBlockCacheSize = 100;
+            uint dbWriteBufferSize = 300;
+            uint dbWriteBufferNumber = 3;
             config.Enabled.Should().BeFalse();
             config.Enabled = true;
             config.Enabled.Should().BeTrue();
             config.Enabled = false;
             config.Enabled.Should().BeFalse();
+
+            config.BaselineTreeDbCacheIndexAndFilterBlocks.Should().BeFalse();
+            config.BaselineTreeMetadataDbCacheIndexAndFilterBlocks.Should().BeFalse();
+            config.BaselineTreeDbCacheIndexAndFilterBlocks = dbCacheIndexAndFilterBlocks;
+            config.BaselineTreeMetadataDbCacheIndexAndFilterBlocks = dbCacheIndexAndFilterBlocks;
+            config.BaselineTreeDbCacheIndexAndFilterBlocks.Should().BeTrue();
+            config.BaselineTreeMetadataDbCacheIndexAndFilterBlocks.Should().BeTrue();
+
+            config.BaselineTreeDbBlockCacheSize = dbBlockCacheSize;
+            config.BaselineTreeMetadataDbBlockCacheSize = dbBlockCacheSize;
+            config.BaselineTreeDbCacheIndexAndFilterBlocks.Should().Equals(dbBlockCacheSize);
+            config.BaselineTreeMetadataDbCacheIndexAndFilterBlocks.Should().Equals(dbBlockCacheSize);
+
+            config.BaselineTreeDbWriteBufferSize = dbWriteBufferSize;
+            config.BaselineTreeMetadataDbWriteBufferSize = dbWriteBufferSize;
+            config.BaselineTreeDbWriteBufferSize.Should().Equals(dbWriteBufferSize);
+            config.BaselineTreeMetadataDbWriteBufferSize.Should().Equals(dbWriteBufferSize);
+
+            config.BaselineTreeDbWriteBufferNumber = dbWriteBufferNumber;
+            config.BaselineTreeMetadataDbWriteBufferNumber = dbWriteBufferNumber;
+            config.BaselineTreeDbWriteBufferNumber.Should().Equals(dbWriteBufferNumber);
+            config.BaselineTreeMetadataDbWriteBufferNumber.Should().Equals(dbWriteBufferNumber);
         }
         
         [TestCase("baseline", true)]

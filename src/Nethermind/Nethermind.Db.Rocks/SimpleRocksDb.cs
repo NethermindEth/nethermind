@@ -19,12 +19,15 @@ using Nethermind.Logging;
 
 namespace Nethermind.Db.Rocks
 {
-    public class ConfigsRocksDb : DbOnTheRocks
+    public class SimpleRocksDb : DbOnTheRocks
     {
-        public override string Name { get; } = "Configs";
-
-        public ConfigsRocksDb(string basePath, IDbConfig dbConfig, ILogManager logManager = null)
-            : base(basePath, "configs", dbConfig, logManager)
+        public override string Name { get; protected set; } = "SimpleRocksDb";
+        public SimpleRocksDb(
+            string basePath,
+            RocksDbSettings rocksDbSettings,
+            IDbConfig dbConfig, 
+            ILogManager logManager = null)
+                : base(basePath, rocksDbSettings, dbConfig, logManager)
         {
         }
     }

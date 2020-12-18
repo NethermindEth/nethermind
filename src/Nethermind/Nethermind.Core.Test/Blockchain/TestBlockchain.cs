@@ -65,7 +65,7 @@ namespace Nethermind.Core.Test.Blockchain
         public IStateProvider State { get; set; }
         public ISnapshotableDb StateDb => DbProvider.StateDb;
         public TestBlockProducer BlockProducer { get; private set; }
-        public MemDbProvider DbProvider { get; set; }
+        public IDbProvider DbProvider { get; set; }
         public ISpecProvider SpecProvider { get; set; }
 
         protected TestBlockchain(SealEngineType sealEngineType)
@@ -91,7 +91,7 @@ namespace Nethermind.Core.Test.Blockchain
             SpecProvider = specProvider ?? MainnetSpecProvider.Instance;
             EthereumEcdsa = new EthereumEcdsa(ChainId.Mainnet, LimboLogs.Instance);
             ITxStorage txStorage = new InMemoryTxStorage();
-            DbProvider = new MemDbProvider();
+            DbProvider = await TestMemDbProvider.InitAsync();
             State = new StateProvider(StateDb, CodeDb, LimboLogs.Instance);
             State.CreateAccount(TestItem.AddressA, (initialValues ?? 1000.Ether()));
             State.CreateAccount(TestItem.AddressB, (initialValues ?? 1000.Ether()));

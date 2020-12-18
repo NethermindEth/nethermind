@@ -26,17 +26,7 @@ namespace Nethermind.Db
         public const string Receipts = "receipts";
         public const string BlockInfos = "blockInfos";
         public const string PendingTxs = "pendingtxs";
-        public const string Trace = "trace";
-        public const string Consumers = "consumers";
-        public const string Deposits = "deposits";
-        public const string ConsumerSessions = "consumerSessions";
-        public const string ConsumerReceipts = "consumerReceipts";
-        public const string ConsumerDepositApprovals = "consumerDepositApprovals";
-        public const string Configs = "configs";
-        public const string EthRequests = "ethRequests";
         public const string Bloom = "bloom";
         public const string CHT = "canonicalHashTrie";
-        public const string BaselineTree = "baselineTree";
-        public const string BaselineTreeMetadata = "baselineTreeMetadata";
     }
 }

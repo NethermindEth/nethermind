@@ -43,7 +43,7 @@ namespace Nethermind.Consensus.AuRa.Validators
         private PendingValidators _currentPendingValidators;
         private long _lastProcessedBlockNumber = 0;
         private IBlockFinalizationManager _blockFinalizationManager;
-        private IBlockTree BlockTree { get; }
+        internal IBlockTree BlockTree { get; }
         private readonly IReceiptFinder _receiptFinder;
         
         internal IValidatorContract ValidatorContract { get; }

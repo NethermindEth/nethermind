@@ -14,21 +14,32 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using Nethermind.Db.Rocks.Config;
-using Nethermind.Logging;
-
-namespace Nethermind.Db.Rocks
+namespace Nethermind.Db
 {
-    public class HeadersRocksDb : DbOnTheRocks
+    public interface IMemDbFactory
     {
-        public override string Name { get; } = "Headers";
+        IDb CreateDb(string dbName);
 
-        public HeadersRocksDb(string basePath, IDbConfig dbConfig, ILogManager logManager = null)
-            : base(basePath, "headers", dbConfig, logManager)
+        ISnapshotableDb CreateSnapshotableDb(string dbName);
+
+        IColumnsDb<T> CreateColumnsDb<T>(string dbName);
+    }
+
+    public class MemDbFactory : IMemDbFactory
+    {
+        public IColumnsDb<T> CreateColumnsDb<T>(string dbName)
         {
+            return new MemColumnsDb<T>(dbName);
         }
 
-        protected internal override void UpdateReadMetrics() => Metrics.HeaderDbReads++;
-        protected internal override void UpdateWriteMetrics() => Metrics.HeaderDbWrites++;
+        public IDb CreateDb(string dbName)
+        {
+            return new MemDb(dbName);
+        }
+
+        public ISnapshotableDb CreateSnapshotableDb(string dbName)
+        {
+            return new StateDb(new MemDb(dbName));
+        }
     }
 }

@@ -14,16 +14,27 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System;
-using Nethermind.Db;
 
-namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Rocks
+using System.Threading.Tasks;
+
+namespace Nethermind.Db
 {
-    public interface IConsumerDbProvider : IDisposable
+    public class TestMemDbProvider
     {
-        IDb ConsumerDepositApprovalsDb { get; }
-        IDb ConsumerSessionsDb { get; }
-        IDb ConsumerReceiptsDb { get; }
-        IDb DepositsDb { get; }
+        public static async Task<IDbProvider> InitAsync()
+        {
+            IDbProvider memDbProvider = new DbProvider(DbModeHint.Mem);
+            var standardDbInitializer = new StandardDbInitializer(memDbProvider, null, new MemDbFactory());
+            await standardDbInitializer.InitStandardDbsAsync(true);
+            return memDbProvider;
+        }
+
+        public static IDbProvider Init()
+        {
+            IDbProvider memDbProvider = new DbProvider(DbModeHint.Mem);
+            var standardDbInitializer = new StandardDbInitializer(memDbProvider, null, new MemDbFactory());
+            standardDbInitializer.InitStandardDbs(true);
+            return memDbProvider;
+        }
     }
 }

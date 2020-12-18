@@ -13,23 +13,16 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using System.Globalization;
-using Nethermind.Db.Rocks.Config;
-using Nethermind.Logging;
+using System.Collections.Generic;
+using Newtonsoft.Json.Linq;
 
-namespace Nethermind.Db.Rocks
+namespace Nethermind.Specs.ChainSpecStyle.Json
 {
-    public class CanonicalHashRocksDb : DbOnTheRocks
+    internal class BuiltInJson
     {
-        public override string Name { get; } = "CanonicalHashTrie";
-        
-        public CanonicalHashRocksDb(string basePath, IDbConfig dbConfig, ILogManager logManager = null)
-            : base(basePath, DbNames.CHT, dbConfig, logManager)
-        {
-        }
-
-        protected internal override void UpdateReadMetrics() => Metrics.OtherDbReads++;
-        protected internal override void UpdateWriteMetrics() => Metrics.OtherDbWrites++;
+        public string Name { get; set; }
+        public Dictionary<string, JObject> Pricing { get; set; }
     }
 }

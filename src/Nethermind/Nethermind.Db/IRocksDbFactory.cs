@@ -14,22 +14,31 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using Nethermind.Db.Rocks.Config;
-using Nethermind.Logging;
+using System;
 
-namespace Nethermind.Db.Rocks
+namespace Nethermind.Db
 {
-    public class ReceiptsRocksDb : ColumnsDb<ReceiptsColumns>
+    public class RocksDbSettings
     {
-        private const string ReceiptsName = "Receipts";
-        public override string Name { get; } = ReceiptsName;
+        public string DbName { get; set; }
 
-        public ReceiptsRocksDb(string basePath, IDbConfig dbConfig, ILogManager logManager = null)
-            : base(basePath, ReceiptsName.ToLower(), dbConfig, logManager, ReceiptsName)
-        {
-        }
+        public string DbPath { get; set; }
 
-        protected internal override void UpdateReadMetrics() => Metrics.ReceiptsDbReads++;
-        protected internal override void UpdateWriteMetrics() => Metrics.ReceiptsDbWrites++;
+        public Action UpdateReadMetrics { get; set; }
+        public Action UpdateWriteMetrics { get; set; }
+
+        public ulong? WriteBufferSize { get; set; }
+        public uint? WriteBufferNumber { get; set; }
+        public ulong? BlockCacheSize { get; set; }
+        public bool? CacheIndexAndFilterBlocks { get; set; }
+    }
+
+    public interface IRocksDbFactory
+    {
+        IDb CreateDb(RocksDbSettings rocksDbSettings);
+
+        ISnapshotableDb CreateSnapshotableDb(RocksDbSettings rocksDbSettings);
+
+        IColumnsDb<T> CreateColumnsDb<T>(RocksDbSettings rocksDbSettings);
     }
 }

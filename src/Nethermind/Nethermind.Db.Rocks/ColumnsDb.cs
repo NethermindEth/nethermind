@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -27,9 +27,10 @@ namespace Nethermind.Db.Rocks
     {
         private readonly IDictionary<T, IDbWithSpan> _columnDbs = new Dictionary<T, IDbWithSpan>();
         
-        protected ColumnsDb(string basePath, string dbPath, IDbConfig dbConfig, ILogManager logManager, string name, params T[] keys) : base(basePath, dbPath, dbConfig, logManager, GetColumnFamilies(dbConfig, name, GetEnumKeys(keys)))
+        protected ColumnsDb(string basePath, RocksDbSettings settings, IDbConfig dbConfig, ILogManager logManager, params T[] keys) 
+            : base(basePath, settings, dbConfig, logManager, GetColumnFamilies(dbConfig, settings.DbName, GetEnumKeys(keys)))
         {
-            Name = name;
+            Name = settings.DbName;
             keys = GetEnumKeys(keys);
 
             foreach (var key in keys)
@@ -38,7 +39,7 @@ namespace Nethermind.Db.Rocks
             }
         }
 
-        public override string Name { get; }
+        public override string Name { get; protected set; }
 
         private static T[] GetEnumKeys(T[] keys)
         {
@@ -79,5 +80,10 @@ namespace Nethermind.Db.Rocks
         public IDbWithSpan GetColumnDb(T key) => _columnDbs[key];
 
         public IEnumerable<T> ColumnKeys => _columnDbs.Keys;
+
+        public IReadOnlyDb CreateReadOnly(bool createInMemWriteStore)
+        {
+            return new ReadOnlyColumnsDb<T>(this, createInMemWriteStore);
+        }
     }
 }
