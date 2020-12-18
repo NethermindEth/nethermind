@@ -57,6 +57,7 @@ namespace Nethermind.Db
         public DbModeHint DbMode => _wrappedProvider.DbMode;
 
         public IDictionary<string, IDb> RegisteredDbs => _wrappedProvider.RegisteredDbs;
+        
         public void ClearTempChanges()
         {            
             foreach(var readonlyDb in _registeredDbs.Values)

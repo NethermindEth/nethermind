@@ -32,7 +32,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Modules
             _api = api ?? throw new ArgumentNullException(nameof(api)); 
         }
 
-        public Task Init()
+        public Task InitAsync()
         {
             AddDecoders();
             var config = _api.NdmConfig;

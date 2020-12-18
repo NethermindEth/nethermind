@@ -52,6 +52,7 @@ namespace Nethermind.DataMarketplace.Core.Configs
         public string GasPriceType { get; set; } = "custom";
         public uint CancelTransactionGasPricePercentageMultiplier { get; set; } = 110;
         public bool JsonRpcDataChannelEnabled { get; set; }
+        public UInt256 RefundGasPrice { get; set; } = 20000000000;
 
         public ulong DepositsDbWriteBufferSize { get; set; } = (ulong)16.MiB();
         public uint DepositsDbWriteBufferNumber { get; set; } = 4;
@@ -82,25 +83,5 @@ namespace Nethermind.DataMarketplace.Core.Configs
         public uint EthRequestsDbWriteBufferNumber { get; set; } = 4;
         public ulong EthRequestsDbBlockCacheSize { get; set; } = (ulong)8.MiB();
         public bool EthRequestsDbCacheIndexAndFilterBlocks { get; set; } = false;
-
-        public bool ProviderSessionsDbCacheIndexAndFilterBlocks { get; set; } = false;
-        public ulong ProviderSessionsDbBlockCacheSize { get; set; } = (ulong)1.KiB();
-        public ulong ProviderSessionsDbWriteBufferSize { get; set; } = (ulong)1.KiB();
-        public uint ProviderSessionsDbWriteBufferNumber { get; set; } = 4;
-
-        public bool ConsumersDbCacheIndexAndFilterBlocks { get; set; } = false;
-        public ulong ConsumersDbBlockCacheSize { get; set; } = (ulong)1.KiB();
-        public ulong ConsumersDbWriteBufferSize { get; set; } = (ulong)1.KiB();
-        public uint ConsumersDbWriteBufferNumber { get; set; } = 4;
-
-        public bool ProviderDepositApprovalsDbCacheIndexAndFilterBlocks { get; set; } = false;
-        public ulong ProviderDepositApprovalsDbBlockCacheSize { get; set; } = (ulong)1.KiB();
-        public ulong ProviderDepositApprovalsDbWriteBufferSize { get; set; } = (ulong)1.KiB();
-        public uint ProviderDepositApprovalsDbWriteBufferNumber { get; set; } = 4;
-
-        public bool ProviderReceiptsDbCacheIndexAndFilterBlocks { get; set; } = false;
-        public ulong ProviderReceiptsDbBlockCacheSize { get; set; } = (ulong)1.KiB();
-        public ulong ProviderReceiptsDbWriteBufferSize { get; set; } = (ulong)1.KiB();
-        public uint ProviderReceiptsDbWriteBufferNumber { get; set; } = 4;
     }
 }

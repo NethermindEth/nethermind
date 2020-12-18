@@ -330,5 +330,14 @@ namespace Nethermind.Core.Test.Specs.ChainSpecStyle
             chainSpec.MuirGlacierNumber.Should().Be(null);
             chainSpec.BerlinBlockNumber.Should().Be(long.MaxValue - 1);
         }
+
+        [Test]
+        public void Can_load_posdao_with_openethereum_pricing_transitions()
+        {
+            string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "Specs/posdao.json");
+            ChainSpec chainSpec = LoadChainSpec(path);
+            chainSpec.Parameters.Eip152Transition.Should().Be(15);
+            chainSpec.Parameters.Eip1108Transition.Should().Be(10);
+        }
     }
 }
