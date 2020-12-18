@@ -89,7 +89,8 @@ namespace Nethermind.Runner
             IHealthChecksConfig healthChecksConfig = configProvider.GetConfig<IHealthChecksConfig>();
             if (initConfig.WebSocketsEnabled)
             {
-                app.UseWebSockets();
+                WebSocketOptions opt = new WebSocketOptions();
+                app.UseWebSockets(new WebSocketOptions());
                 app.UseWhen(ctx => ctx.WebSockets.IsWebSocketRequest 
                                    && ctx.Connection.LocalPort == jsonRpcConfig.WebSocketsPort,
                 builder => builder.UseWebSocketsModules());

@@ -24,16 +24,16 @@ namespace Nethermind.Evm
     {
         public static long GetClearReversalRefund(this IReleaseSpec spec) =>
             spec.UseHotAndColdStorage
-                ? 0L
+                ? RefundOf.SResetReversedHotCold
                 : spec.UseIstanbulNetGasMetering
-                    ? RefundOf.SClearReversedEip2200
+                    ? RefundOf.SResetReversedEip2200
                     : spec.UseConstantinopleNetGasMetering
-                        ? RefundOf.SClearReversedEip1283
+                        ? RefundOf.SResetReversedEip1283
                         : throw new InvalidOperationException("Asking about the net metered cost when net metering not enabled");
         
         public static long GetSetReversalRefund(this IReleaseSpec spec) =>
             spec.UseHotAndColdStorage
-                ? 0L
+                ? RefundOf.SSetReversedHotCold
                 : spec.UseIstanbulNetGasMetering
                     ? RefundOf.SSetReversedEip2200
                     : spec.UseConstantinopleNetGasMetering

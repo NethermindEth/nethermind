@@ -412,7 +412,7 @@ namespace Nethermind.Evm
 
         private static bool UpdateGas(long gasCost, ref long gasAvailable)
         {
-            Console.WriteLine($"{gasCost}");
+            // Console.WriteLine($"{gasCost}");
             if (gasAvailable < gasCost)
             {
                 return false;
@@ -429,6 +429,8 @@ namespace Nethermind.Evm
         
         private static bool ChargeAccountAccessGas(ref long gasAvailable, EvmState vmState, Address address, IReleaseSpec spec, bool chargeForWarm = true)
         {
+            // Console.WriteLine($"Accessing {address}");
+            
             bool result = true;
             if (spec.UseHotAndColdStorage)
             {
@@ -459,6 +461,8 @@ namespace Nethermind.Evm
             StorageAccessType storageAccessType,
             IReleaseSpec spec)
         {
+            // Console.WriteLine($"Accessing {storageCell} {storageAccessType}");
+            
             bool result = true;
             if (spec.UseHotAndColdStorage)
             {
@@ -678,7 +682,7 @@ namespace Nethermind.Evm
             while (programCounter < code.Length)
             {
                 Instruction instruction = (Instruction) code[programCounter];
-                Console.WriteLine(instruction);
+                // Console.WriteLine(instruction);
                 if (traceOpcodes)
                 {
                     StartInstructionTrace(instruction, stack);
@@ -1742,10 +1746,16 @@ namespace Nethermind.Evm
                         {
                             newValue = newValue.WithoutLeadingZeros().ToArray();
                         }
+                        else
+                        {
+                            newValue = new byte[] {0};
+                        }
 
                         StorageCell storageCell = new StorageCell(env.ExecutingAccount, storageIndex);
+                        
                         ChargeStorageAccessGas(ref gasAvailable, vmState, storageCell, StorageAccessType.SSTORE, spec);
                         Span<byte> currentValue = _storage.Get(storageCell);
+                        // Console.WriteLine($"current: {currentValue.ToHexString()} newValue {newValue.ToHexString()}");
                         bool currentIsZero = currentValue.IsZero();
 
                         bool newSameAsCurrent = (newIsZero && currentIsZero) || Bytes.AreEqual(currentValue, newValue);
@@ -1797,7 +1807,7 @@ namespace Nethermind.Evm
                                     }
                                     else // net metered, current == original != new, !currentIsZero
                                     {
-                                        if (!UpdateGas(GasCostOf.SReset, ref gasAvailable))
+                                        if (!UpdateGas(spec.GetSStoreResetCost(), ref gasAvailable))
                                         {
                                             EndInstructionTraceError(EvmExceptionType.OutOfGas);
                                             return CallResult.OutOfGasException;
@@ -2226,6 +2236,8 @@ namespace Nethermind.Evm
                             0L,
                             0L,
                             vmState.IsStatic,
+                            vmState.AccessedAddresses,
+                            vmState.AccessedStorageCells,
                             false,
                             accountExists);
 
@@ -2260,6 +2272,8 @@ namespace Nethermind.Evm
 
                         stack.PopUInt256(out UInt256 gasLimit);
                         Address codeSource = stack.PopAddress();
+                        
+                        // Console.WriteLine($"CALLIN {codeSource}");
                         if (!ChargeAccountAccessGas(ref gasAvailable, vmState, codeSource, spec))
                         {
                             EndInstructionTraceError(EvmExceptionType.OutOfGas);
@@ -2411,6 +2425,8 @@ namespace Nethermind.Evm
                             (long) outputOffset,
                             (long) outputLength,
                             instruction == Instruction.STATICCALL || vmState.IsStatic,
+                            vmState.AccessedAddresses,
+                            vmState.AccessedStorageCells,
                             false,
                             false);
 
@@ -2748,7 +2764,14 @@ namespace Nethermind.Evm
             public static CallResult OutOfGasException => new CallResult(EvmExceptionType.OutOfGas);
             public static CallResult AccessViolationException => new CallResult(EvmExceptionType.AccessViolation);
             public static CallResult InvalidJumpDestination => new CallResult(EvmExceptionType.InvalidJumpDestination);
-            public static CallResult InvalidInstructionException => new CallResult(EvmExceptionType.BadInstruction);
+            public static CallResult InvalidInstructionException
+            {
+                get
+                {
+                    return new CallResult(EvmExceptionType.BadInstruction);
+                }
+            }
+
             public static CallResult StaticCallViolationException => new CallResult(EvmExceptionType.StaticCallViolation);
             public static CallResult StackOverflowException => new CallResult(EvmExceptionType.StackOverflow); // TODO: use these to avoid CALL POP attacks
             public static CallResult StackUnderflowException => new CallResult(EvmExceptionType.StackUnderflow); // TODO: use these to avoid CALL POP attacks

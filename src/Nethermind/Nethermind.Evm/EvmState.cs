@@ -107,7 +107,7 @@ namespace Nethermind.Evm
         public int ReturnStackHead = 0;
 
         public EvmState(long gasAvailable, ExecutionEnvironment env, ExecutionType executionType, bool isTopLevel, bool isContinuation)
-            : this(gasAvailable, env, executionType, isTopLevel, -1, -1, 0L, 0L, false, isContinuation, false)
+            : this(gasAvailable, env, executionType, isTopLevel, -1, -1, 0L, 0L, false, null, null, isContinuation, false)
         {
             GasAvailable = gasAvailable;
             Env = env;
@@ -123,6 +123,8 @@ namespace Nethermind.Evm
             long outputDestination,
             long outputLength,
             bool isStatic,
+            HashSet<Address> accessedAddresses,
+            HashSet<StorageCell> accessedStorage,
             bool isContinuation,
             bool isCreateOnPreExistingAccount)
         {
@@ -142,6 +144,7 @@ namespace Nethermind.Evm
             IsStatic = isStatic;
             IsContinuation = isContinuation;
             IsCreateOnPreExistingAccount = isCreateOnPreExistingAccount;
+            CopyAccessLists(accessedAddresses, accessedStorage);
         }
 
         public Address From
@@ -266,19 +269,24 @@ namespace Nethermind.Evm
                 }
             }
 
-            if (_accessedAddresses != null)
+            parentState.CopyAccessLists(_accessedAddresses, _accessedStorageKeys);
+        }
+
+        private void CopyAccessLists(HashSet<Address> addresses, HashSet<StorageCell> storage)
+        {
+            if (addresses != null)
             {
-                foreach (Address address in AccessedAddresses)
+                foreach (Address address in addresses)
                 {
-                    parentState.AccessedAddresses.Add(address);
+                    AccessedAddresses.Add(address);
                 }
             }
 
-            if (_accessedStorageKeys != null)
+            if (storage != null)
             {
-                foreach (StorageCell storageCell in AccessedStorageCells)
+                foreach (StorageCell storageCell in storage)
                 {
-                    parentState.AccessedStorageCells.Add(storageCell);
+                    AccessedStorageCells.Add(storageCell);
                 }
             }
         }
@@ -286,7 +294,7 @@ namespace Nethermind.Evm
         /// <summary>
         /// EIP-2929 accessed addresses
         /// </summary>
-        private HashSet<Address> AccessedAddresses
+        internal HashSet<Address> AccessedAddresses
         {
             get { return LazyInitializer.EnsureInitialized(ref _accessedAddresses, () => new HashSet<Address>()); }
         }
@@ -294,7 +302,7 @@ namespace Nethermind.Evm
         /// <summary>
         /// EIP-2929 accessed storage keys
         /// </summary>
-        private HashSet<StorageCell> AccessedStorageCells
+        internal HashSet<StorageCell> AccessedStorageCells
         {
             get { return LazyInitializer.EnsureInitialized(ref _accessedStorageKeys, () => new HashSet<StorageCell>()); }
         }
