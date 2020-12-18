@@ -49,6 +49,8 @@ namespace Nethermind.Blockchain.Processing
         private readonly IRewardCalculator _rewardCalculator;
         private readonly ITransactionProcessor _transactionProcessor;
 
+        private const int MaxUncommittedBlocks = 64;
+
         /// <summary>
         /// We use a single receipt tracer for all blocks. Internally receipt tracer forwards most of the calls
         /// to any block-specific tracers.
@@ -120,14 +122,18 @@ namespace Nethermind.Blockchain.Processing
                         BlockProcessed?.Invoke(this, new BlockProcessedEventArgs(processedBlock, receipts));
                     }
 
-                    // CommitBranch in part if we have long running branch
-                    if (i !=0 && i % 64 == 0 && readOnly == false && i != blocksCount - 1)
+                    // CommitBranch in parts if we have long running branch
+                    bool isFirstInBatch = i == 0;
+                    bool isLastInBatch = i == blocksCount - 1;
+                    bool isNotAtTheEdge = !isFirstInBatch && !isLastInBatch;
+                    bool isCommitPoint = i % MaxUncommittedBlocks == 0 && isNotAtTheEdge;
+                    if (isCommitPoint && readOnly == false)
                     {
                         if (_logger.IsInfo) _logger.Info($"Commit part of a long blocks branch {i}/{blocksCount}");
                         CommitBranch();
                         previousBranchStateRoot = CreateCheckpoint();
                         var newStateRoot = suggestedBlocks[i].StateRoot;
-                        InitBranch(newStateRoot);
+                        InitBranch(newStateRoot, false);
                     }
                 }
 
@@ -151,7 +157,7 @@ namespace Nethermind.Blockchain.Processing
         }
 
         // TODO: move to branch processor
-        private void InitBranch(Keccak branchStateRoot)
+        private void InitBranch(Keccak branchStateRoot, bool incrementReorgMetric = true)
         {
             /* Please note that we do not reset the state if branch state root is null.
                That said, I do not remember in what cases we receive null here.*/
@@ -161,8 +167,8 @@ namespace Nethermind.Blockchain.Processing
                    We cannot use cached values any more because they may have been written
                    by blocks that are being reorganized out.*/
 
-                // ToDo it could be something different then reorg
-                Metrics.Reorganizations++;
+                if (incrementReorgMetric)
+                    Metrics.Reorganizations++;
                 _storageProvider.Reset();
                 _stateProvider.Reset();
                 _stateProvider.StateRoot = branchStateRoot;
