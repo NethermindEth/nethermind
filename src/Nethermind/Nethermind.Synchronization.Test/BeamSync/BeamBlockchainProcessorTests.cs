@@ -70,7 +70,7 @@ namespace Nethermind.Synchronization.Test.BeamSync
         [Test, Retry(3)]
         public async Task Valid_block_makes_it_all_the_way()
         {
-            SetupBeamProcessor();
+            await SetupBeamProcessor();
             Block newBlock = Build.A.Block.WithParent(_blockTree.Head).WithTotalDifficulty(_blockTree.Head.TotalDifficulty + 1).TestObject;
             _blockTree.SuggestBlock(newBlock);
             await Task.Delay(1000);
@@ -80,7 +80,7 @@ namespace Nethermind.Synchronization.Test.BeamSync
         [Test, Retry(3)]
         public async Task Valid_block_with_transactions_makes_it_all_the_way()
         {
-            SetupBeamProcessor();
+            await SetupBeamProcessor();
             EthereumEcdsa ethereumEcdsa = new EthereumEcdsa(ChainId.Mainnet, LimboLogs.Instance);
             Block newBlock = Build.A.Block.WithParent(_blockTree.Head).WithReceiptsRoot(new Keccak("0xeb82c315eaf2c2a5dfc1766b075263d80e8b3ab9cb690d5304cdf114fff26939")).WithTransactions(MuirGlacier.Instance, Build.A.Transaction.SignedAndResolved(ethereumEcdsa, TestItem.PrivateKeyA).TestObject, Build.A.Transaction.SignedAndResolved(ethereumEcdsa, TestItem.PrivateKeyB).TestObject).WithGasUsed(42000).WithTotalDifficulty(_blockTree.Head.TotalDifficulty + 1).TestObject;
             _blockTree.SuggestBlock(newBlock);
@@ -92,7 +92,7 @@ namespace Nethermind.Synchronization.Test.BeamSync
         public async Task Valid_block_with_transactions_makes_it_is_processed_normally_if_beam_syncing_finished()
         {
             ISyncModeSelector syncModeSelector = Substitute.For<ISyncModeSelector>();
-            SetupBeamProcessor(syncModeSelector);
+            await SetupBeamProcessor(syncModeSelector);
             syncModeSelector.Preparing += Raise.EventWith(new SyncModeChangedEventArgs(SyncMode.Beam, SyncMode.Full));
             syncModeSelector.Changing += Raise.EventWith(new SyncModeChangedEventArgs(SyncMode.Beam, SyncMode.Full));
             syncModeSelector.Changed += Raise.EventWith(new SyncModeChangedEventArgs(SyncMode.Beam, SyncMode.Full));
@@ -109,7 +109,7 @@ namespace Nethermind.Synchronization.Test.BeamSync
         public async Task Can_enqueue_previously_shelved()
         {
             ISyncModeSelector syncModeSelector = Substitute.For<ISyncModeSelector>();
-            SetupBeamProcessor(syncModeSelector);
+            await SetupBeamProcessor(syncModeSelector);
 
             EthereumEcdsa ethereumEcdsa = new EthereumEcdsa(ChainId.Mainnet, LimboLogs.Instance);
             Block newBlock0 = Build.A.Block.WithParent(_blockTree.Head)
@@ -158,7 +158,7 @@ namespace Nethermind.Synchronization.Test.BeamSync
         public async Task Will_ignore_transitions_other_than_full()
         {
             ISyncModeSelector syncModeSelector = Substitute.For<ISyncModeSelector>();
-            SetupBeamProcessor(syncModeSelector);
+            await SetupBeamProcessor(syncModeSelector);
 
             EthereumEcdsa ethereumEcdsa = new EthereumEcdsa(ChainId.Mainnet, LimboLogs.Instance);
             Block newBlock0 = Build.A.Block.WithParent(_blockTree.Head).WithReceiptsRoot(new Keccak("0xeb82c315eaf2c2a5dfc1766b075263d80e8b3ab9cb690d5304cdf114fff26939")).WithTransactions(MuirGlacier.Instance, Build.A.Transaction.SignedAndResolved(ethereumEcdsa, TestItem.PrivateKeyA).TestObject, Build.A.Transaction.SignedAndResolved(ethereumEcdsa, TestItem.PrivateKeyB).TestObject).WithGasUsed(42000).WithTotalDifficulty(_blockTree.Head.TotalDifficulty + 1).TestObject;
@@ -183,9 +183,9 @@ namespace Nethermind.Synchronization.Test.BeamSync
             _blockchainProcessingQueue.DidNotReceiveWithAnyArgs().Enqueue(newBlock1, ProcessingOptions.StoreReceipts);
         }
 
-        private void SetupBeamProcessor(ISyncModeSelector syncModeSelector = null)
+        private async Task SetupBeamProcessor(ISyncModeSelector syncModeSelector = null)
         {
-            MemDbProvider memDbProvider = new MemDbProvider();
+            IDbProvider memDbProvider = await TestMemDbProvider.InitAsync();
             _beamBlockchainProcessor  = new BeamBlockchainProcessor(
                 new ReadOnlyDbProvider(memDbProvider, false),
                 _blockTree,
@@ -200,9 +200,9 @@ namespace Nethermind.Synchronization.Test.BeamSync
         }
 
         [Test]
-        public void Invalid_block_will_never_reach_actual_processor()
+        public async Task Invalid_block_will_never_reach_actual_processor()
         {
-            SetupBeamProcessor();
+            await SetupBeamProcessor();
             Block newBlock = Build.A.Block.WithParent(_blockTree.Head).WithTotalDifficulty(_blockTree.Head.TotalDifficulty + 1).TestObject;
             newBlock.Header.Hash = Keccak.Zero;
             _blockTree.SuggestBlock(newBlock);
@@ -210,9 +210,9 @@ namespace Nethermind.Synchronization.Test.BeamSync
         }
 
         [Test]
-        public void Valid_block_that_would_be_skipped_will_never_reach_actual_processor()
+        public async Task Valid_block_that_would_be_skipped_will_never_reach_actual_processor()
         {
-            SetupBeamProcessor();
+            await SetupBeamProcessor();
             // setting same difficulty as head to make sure the block will be ignored
             Block newBlock = Build.A.Block.WithParent(_blockTree.Head).WithTotalDifficulty(_blockTree.Head.TotalDifficulty).TestObject;
             _blockTree.SuggestBlock(newBlock);

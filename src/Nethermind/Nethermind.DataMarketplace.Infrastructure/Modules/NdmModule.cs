@@ -16,6 +16,7 @@
 
 using System;
 using System.IO;
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.DataMarketplace.Channels;
 using Nethermind.DataMarketplace.Core.Services;
@@ -31,7 +32,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Modules
             _api = api ?? throw new ArgumentNullException(nameof(api)); 
         }
 
-        public void Init()
+        public Task InitAsync()
         {
             AddDecoders();
             var config = _api.NdmConfig;
@@ -75,6 +76,8 @@ namespace Nethermind.DataMarketplace.Infrastructure.Modules
             {
                 _api.NdmConsumerChannelManager.Add(_api.JsonRpcNdmConsumerChannel);
             }
+
+            return Task.CompletedTask;
         }
 
         private static void AddDecoders()
