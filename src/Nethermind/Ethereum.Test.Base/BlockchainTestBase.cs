@@ -115,14 +115,14 @@ namespace Ethereum.Test.Base
             ISpecProvider specProvider;
             if (test.NetworkAfterTransition != null)
             {
-                specProvider = new CustomSpecProvider(
+                specProvider = new CustomSpecProvider(1, 
                     (0, Frontier.Instance),
                     (1, test.Network),
                     (test.TransitionBlockNumber, test.NetworkAfterTransition));
             }
             else
             {
-                specProvider = new CustomSpecProvider(
+                specProvider = new CustomSpecProvider(1, 
                     (0, Frontier.Instance), // TODO: this thing took a lot of time to find after it was removed!, genesis block is always initialized with Frontier
                     (1, test.Network));
             }
