@@ -19,16 +19,16 @@ using Nethermind.Logging;
 
 namespace Nethermind.Db.Rocks
 {
-    public class BlockInfosRocksDb : DbOnTheRocks
+    public class SimpleRocksDb : DbOnTheRocks
     {
-        public override string Name { get; } = "BlockInfos";
-
-        public BlockInfosRocksDb(string basePath, IDbConfig dbConfig, ILogManager logManager = null)
-            : base(basePath, "blockInfos", dbConfig, logManager)
+        public override string Name { get; protected set; } = "SimpleRocksDb";
+        public SimpleRocksDb(
+            string basePath,
+            RocksDbSettings rocksDbSettings,
+            IDbConfig dbConfig, 
+            ILogManager logManager = null)
+                : base(basePath, rocksDbSettings, dbConfig, logManager)
         {
         }
-
-        protected internal override void UpdateReadMetrics() => Metrics.BlockInfosDbReads++;
-        protected internal override void UpdateWriteMetrics() => Metrics.BlockInfosDbWrites++;
     }
 }

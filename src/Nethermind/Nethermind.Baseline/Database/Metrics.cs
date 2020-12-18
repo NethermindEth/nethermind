@@ -14,22 +14,22 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using Nethermind.Db.Rocks;
-using Nethermind.Db.Rocks.Config;
-using Nethermind.Logging;
+using System.ComponentModel;
 
-namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Rocks.Databases
+namespace Nethermind.Baseline.Database
 {
-    public class ConsumerSessionsRocksDb : DbOnTheRocks
+    public static class Metrics
     {
-        public override string Name { get; } = "ConsumerSessions";
+        [Description("Number of baseline tree DB reads.")]
+        public static long BaselineTreeDbReads { get; set; }
 
-        public ConsumerSessionsRocksDb(string basePath, IDbConfig dbConfig, ILogManager logManager)
-            : base(basePath, "consumerSessions", dbConfig, logManager)
-        {
-        }
+        [Description("Number of baseline tree DB writes.")]
+        public static long BaselineTreeDbWrites { get; set; }
 
-        protected override void UpdateReadMetrics() => ConsumerMetrics.ConsumerSessionsDbReads++;
-        protected override void UpdateWriteMetrics() => ConsumerMetrics.ConsumerSessionsDbWrites++;
+        [Description("Number of baseline tree metadata DB reads.")]
+        public static long BaselineTreeMetadataDbReads { get; set; }
+
+        [Description("Number of baseline tree metadata DB writes.")]
+        public static long BaselineTreeMetadataDbWrites { get; set; }
     }
 }

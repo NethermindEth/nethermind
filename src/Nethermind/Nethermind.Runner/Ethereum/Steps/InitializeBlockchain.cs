@@ -78,9 +78,11 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _get.LogManager);
             
             ReadOnlyDbProvider readOnly = new ReadOnlyDbProvider(_api.DbProvider, false);
-            var stateReader = _set.StateReader = new StateReader(readOnly.StateDb, readOnly.CodeDb, _api.LogManager);
+            var stateReader = _set.StateReader = new StateReader(
+                readOnly.GetDb<ISnapshotableDb>(DbNames.State),
+                readOnly.GetDb<ISnapshotableDb>(DbNames.Code),
+                _api.LogManager);
             _set.ChainHeadStateProvider = new ChainHeadReadOnlyStateProvider(_get.BlockTree, stateReader);
-
 
             PersistentTxStorage txStorage = new PersistentTxStorage(_get.DbProvider.PendingTxsDb);
 
@@ -140,7 +142,8 @@ namespace Nethermind.Runner.Ethereum.Steps
                 ommersValidator,
                 _get.SpecProvider,
                 _get.LogManager);
-
+            
+            _set.StateReader = new StateReader(readOnly.GetDb<ISnapshotableDb>(DbNames.State), readOnly.GetDb<ISnapshotableDb>(DbNames.Code), _api.LogManager);
             _set.TxPoolInfoProvider = new TxPoolInfoProvider(_api.StateReader, _api.TxPool);
 
             var mainBlockProcessor = _set.MainBlockProcessor = CreateBlockProcessor();

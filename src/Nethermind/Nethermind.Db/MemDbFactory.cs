@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -14,22 +14,32 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System.Globalization;
-using Nethermind.Db.Rocks.Config;
-using Nethermind.Logging;
-
-namespace Nethermind.Db.Rocks
+namespace Nethermind.Db
 {
-    public class CanonicalHashRocksDb : DbOnTheRocks
+    public interface IMemDbFactory
     {
-        public override string Name { get; } = "CanonicalHashTrie";
-        
-        public CanonicalHashRocksDb(string basePath, IDbConfig dbConfig, ILogManager logManager = null)
-            : base(basePath, DbNames.CHT, dbConfig, logManager)
+        IDb CreateDb(string dbName);
+
+        ISnapshotableDb CreateSnapshotableDb(string dbName);
+
+        IColumnsDb<T> CreateColumnsDb<T>(string dbName);
+    }
+
+    public class MemDbFactory : IMemDbFactory
+    {
+        public IColumnsDb<T> CreateColumnsDb<T>(string dbName)
         {
+            return new MemColumnsDb<T>(dbName);
         }
 
-        protected internal override void UpdateReadMetrics() => Metrics.OtherDbReads++;
-        protected internal override void UpdateWriteMetrics() => Metrics.OtherDbWrites++;
+        public IDb CreateDb(string dbName)
+        {
+            return new MemDb(dbName);
+        }
+
+        public ISnapshotableDb CreateSnapshotableDb(string dbName)
+        {
+            return new StateDb(new MemDb(dbName));
+        }
     }
 }
