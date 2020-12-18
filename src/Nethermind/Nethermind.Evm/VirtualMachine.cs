@@ -412,6 +412,7 @@ namespace Nethermind.Evm
 
         private static bool UpdateGas(long gasCost, ref long gasAvailable)
         {
+            Console.WriteLine($"{gasCost}");
             if (gasAvailable < gasCost)
             {
                 return false;
