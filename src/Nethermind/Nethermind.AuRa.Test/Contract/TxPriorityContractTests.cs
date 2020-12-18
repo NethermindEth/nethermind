@@ -112,7 +112,6 @@ namespace Nethermind.AuRa.Test.Contract
         
         [Test]
         [Retry(3)]
-        [Explicit]
         public async Task mingas_should_return_correctly()
         {
             using var chain = await TestContractBlockchain.ForTest<TxPermissionContractBlockchainWithBlocks, TxPriorityContractTests>();
