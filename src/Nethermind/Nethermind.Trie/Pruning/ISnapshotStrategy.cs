@@ -18,6 +18,7 @@ namespace Nethermind.Trie.Pruning
 {
     public interface IPruningStrategy
     {
+        bool ShouldCache();
         bool ShouldPrune(in long currentMemory);
     }
 }

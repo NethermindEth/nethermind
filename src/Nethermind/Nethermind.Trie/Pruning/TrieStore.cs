@@ -245,6 +245,11 @@ namespace Nethermind.Trie.Pruning
                 throw new ArgumentNullException(nameof(hash));
             }
 
+            if (_pruningStrategy.ShouldCache() == false)
+            {
+                return new TrieNode(NodeType.Unknown, hash);
+            }
+
             bool isMissing = true;
             TrieNode trieNode = null;
             // isMissing = !_persistedNodesCache.TryGet(hash, out trieNode);
