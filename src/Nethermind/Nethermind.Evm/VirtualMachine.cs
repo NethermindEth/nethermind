@@ -445,8 +445,19 @@ namespace Nethermind.Evm
 
             return result;
         }
+
+        private enum StorageAccessType
+        {
+            SLOAD,
+            SSTORE
+        }
         
-        private static bool ChargeStorageAccessGas(ref long gasAvailable, EvmState vmState, StorageCell storageCell, IReleaseSpec spec)
+        private static bool ChargeStorageAccessGas(
+            ref long gasAvailable,
+            EvmState vmState,
+            StorageCell storageCell,
+            StorageAccessType storageAccessType,
+            IReleaseSpec spec)
         {
             bool result = true;
             if (spec.UseHotAndColdStorage)
@@ -456,8 +467,9 @@ namespace Nethermind.Evm
                     result = UpdateGas(GasCostOf.ColdSLoad, ref gasAvailable);
                     vmState.WarmUp(storageCell);
                 }
-                else
+                else if (storageAccessType == StorageAccessType.SLOAD)
                 {
+                    // we do not charge for WARM_STORAGE_READ_COST in SSTORE scenario
                     result = UpdateGas(GasCostOf.WarmStateRead, ref gasAvailable);
                 }
             }
@@ -666,6 +678,7 @@ namespace Nethermind.Evm
             while (programCounter < code.Length)
             {
                 Instruction instruction = (Instruction) code[programCounter];
+                Console.WriteLine(instruction);
                 if (traceOpcodes)
                 {
                     StartInstructionTrace(instruction, stack);
@@ -1263,7 +1276,7 @@ namespace Nethermind.Evm
                     case Instruction.BALANCE:
                     {
                         long gasCost = spec.GetBalanceCost();
-                        if (!UpdateGas(gasCost, ref gasAvailable))
+                        if (gasCost != 0 && !UpdateGas(gasCost, ref gasAvailable))
                         {
                             EndInstructionTraceError(EvmExceptionType.OutOfGas);
                             return CallResult.OutOfGasException;
@@ -1690,7 +1703,7 @@ namespace Nethermind.Evm
 
                         stack.PopUInt256(out UInt256 storageIndex);
                         StorageCell storageCell = new StorageCell(env.ExecutingAccount, storageIndex);
-                        ChargeStorageAccessGas(ref gasAvailable, vmState, storageCell, spec);
+                        ChargeStorageAccessGas(ref gasAvailable, vmState, storageCell, StorageAccessType.SLOAD, spec);
                         
                         byte[] value = _storage.Get(storageCell);
                         stack.PushBytes(value);
@@ -1731,6 +1744,7 @@ namespace Nethermind.Evm
                         }
 
                         StorageCell storageCell = new StorageCell(env.ExecutingAccount, storageIndex);
+                        ChargeStorageAccessGas(ref gasAvailable, vmState, storageCell, StorageAccessType.SSTORE, spec);
                         Span<byte> currentValue = _storage.Get(storageCell);
                         bool currentIsZero = currentValue.IsZero();
 
@@ -2163,11 +2177,7 @@ namespace Nethermind.Evm
                         Address contractAddress = instruction == Instruction.CREATE
                             ? ContractAddress.From(env.ExecutingAccount, _state.GetNonce(env.ExecutingAccount))
                             : ContractAddress.From(env.ExecutingAccount, salt, initCode);
-                        if (!ChargeAccountAccessGas(ref gasAvailable, vmState, contractAddress, spec))
-                        {
-                            EndInstructionTraceError(EvmExceptionType.OutOfGas);
-                            return CallResult.OutOfGasException;
-                        }
+                        vmState.WarmUp(contractAddress); // EIP-2929 assumes that warm-up cost is included in the costs of CREATE and CREATE2
 
                         _state.IncrementNonce(env.ExecutingAccount);
 

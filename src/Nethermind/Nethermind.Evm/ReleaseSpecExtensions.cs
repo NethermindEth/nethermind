@@ -47,7 +47,7 @@ namespace Nethermind.Evm
         
         public static long GetNetMeteredSStoreCost(this IReleaseSpec spec) =>
             spec.UseHotAndColdStorage
-                ? GasCostOf.ColdSLoad
+                ? GasCostOf.WarmStateRead
                 : spec.UseIstanbulNetGasMetering
                     ? GasCostOf.SStoreNetMeteredEip2200
                     : spec.UseConstantinopleNetGasMetering
