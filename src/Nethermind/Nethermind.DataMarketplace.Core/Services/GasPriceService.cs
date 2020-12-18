@@ -130,6 +130,31 @@ namespace Nethermind.DataMarketplace.Core.Services
             await _configManager.UpdateAsync(config);
             if (_logger.IsInfo) _logger.Info($"Updated refund gas price: {config.RefundGasPrice} wei.");
         }
+        
+        public async Task<UInt256> GetCurrentPaymentClaimAsync()
+        {
+            NdmConfig? config = await _configManager.GetAsync(_configId);
+            return config?.PaymentClaimGasPrice ?? 20.GWei();
+        }
+        
+        public async Task SetPaymentClaimAsync(UInt256 gasPrice)
+        {
+            if (gasPrice <= 0)
+            {
+                throw new ArgumentException("Payment claim gas price must be greater than 0.");
+            }
+
+            NdmConfig? config = await _configManager.GetAsync(_configId);
+            if (config == null)
+            {
+                if (_logger.IsError) _logger.Error($"Failed to retrieve config {_configId} to update payment claim  gas price.");
+                throw new InvalidOperationException($"Failed to retrieve config {_configId} to update payment claim  gas price.");
+            }
+
+            config.PaymentClaimGasPrice = gasPrice;
+            await _configManager.UpdateAsync(config);
+            if (_logger.IsInfo) _logger.Info($"Updated payment claim  gas price: {config.PaymentClaimGasPrice} wei.");
+        }
 
         public async Task UpdateAsync()
         {
