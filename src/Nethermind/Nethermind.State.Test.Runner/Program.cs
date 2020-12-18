@@ -17,7 +17,6 @@
  */
 
 using System;
-using System.Collections.Generic;
 using System.IO;
 using CommandLine;
 using Ethereum.Test.Base;
