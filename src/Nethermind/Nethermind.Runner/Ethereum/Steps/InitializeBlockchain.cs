@@ -73,10 +73,14 @@ namespace Nethermind.Runner.Ethereum.Steps
             }
 
             Account.AccountStartNonce = getApi.ChainSpec.Parameters.AccountStartNonce;
+
             
-            // TODO: if wit protocol enabled, otherwise NullWitnessCollector
             var mainStateDbWithCache = setApi.MainStateDbWithCache = new CachingStore(getApi.DbProvider.StateDb, PatriciaTree.RlpCacheSize);
-            var witnessCollector = setApi.WitnessCollector = new WitnessCollector(getApi.DbProvider.WitnessDb, _api.LogManager);
+            
+            IWitnessCollector witnessCollector = setApi.WitnessCollector = syncConfig.WitnessProtocolEnabled
+                ? new WitnessCollector(getApi.DbProvider.WitnessDb, _api.LogManager)
+                : NullWitnessCollector.Instance;
+
             var stateDb = mainStateDbWithCache.WitnessedBy(witnessCollector);
             var codeDb = getApi.DbProvider.CodeDb.WitnessedBy(witnessCollector);
 

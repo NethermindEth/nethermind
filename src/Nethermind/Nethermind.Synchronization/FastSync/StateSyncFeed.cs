@@ -825,7 +825,7 @@ namespace Nethermind.Synchronization.FastSync
 
                 if (!hasOnlyRootNode)
                 {
-                    AddNodeToPending(new StateSyncItem(_rootNode, NodeDataType.State, 0, 0), null, "initial");
+                    AddNodeToPending(new StateSyncItem(_rootNode, NodeDataType.State), null, "initial");
                 }
             }
         }

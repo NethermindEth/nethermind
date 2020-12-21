@@ -28,6 +28,6 @@ namespace Nethermind.Synchronization.Peers
         Receipts = 4,
         Blocks = 7,
         State = 8,
-        All =15
+        All = 15
     }
 }

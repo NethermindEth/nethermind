@@ -35,7 +35,7 @@ namespace Nethermind.Blockchain.Synchronization
         long HeadNumber { get; set; }
         UInt256 TotalDifficulty { get; set; }
         bool IsInitialized { get; set; }
-        
+        string ProtocolCode { get; }
         void Disconnect(DisconnectReason reason, string details);
         Task<BlockBody[]> GetBlockBodies(IList<Keccak> blockHashes, CancellationToken token);
         Task<BlockHeader[]> GetBlockHeaders(long number, int maxBlocks, int skip, CancellationToken token);
@@ -44,6 +44,6 @@ namespace Nethermind.Blockchain.Synchronization
         Task<TxReceipt[][]> GetReceipts(IList<Keccak> blockHash, CancellationToken token);
         Task<byte[][]> GetNodeData(IList<Keccak> hashes, CancellationToken token);
         
-        Task<Keccak[]> GetWitness(Keccak blockHash, CancellationToken token);
+        Task<Keccak[]> GetBlockWitnessHashes(Keccak blockHash, CancellationToken token);
     }
 }

@@ -61,5 +61,11 @@ namespace Nethermind.Synchronization
 
         [Description("State branch progress (percentage of completed branches at second level).")]
         public static long StateBranchProgress;
+        
+        [Description("Requests sent for processing by the witness state sync")]
+        public static long WitnessStateRequests;
+        
+        [Description("Requests sent for processing by the witness block sync")]
+        public static long WitnessBlockRequests;
     }
 }

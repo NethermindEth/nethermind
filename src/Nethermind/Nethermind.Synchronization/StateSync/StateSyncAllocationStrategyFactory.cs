@@ -21,13 +21,12 @@ using Nethermind.Synchronization.Peers.AllocationStrategies;
 
 namespace Nethermind.Synchronization.StateSync
 {
-    public class StateSyncAllocationStrategyFactory : IPeerAllocationStrategyFactory<StateSyncBatch>
+    public class StateSyncAllocationStrategyFactory : StaticPeerAllocationStrategyFactory<StateSyncBatch>
     {
-        private IPeerAllocationStrategy _strategy = new TotalDiffStrategy(new BySpeedStrategy(TransferSpeedType.NodeData, true), TotalDiffStrategy.TotalDiffSelectionType.CanBeSlightlyWorse);
-
-        public IPeerAllocationStrategy Create(StateSyncBatch request)
+        public static readonly IPeerAllocationStrategy DefaultStrategy = new TotalDiffStrategy(new BySpeedStrategy(TransferSpeedType.NodeData, true), TotalDiffStrategy.TotalDiffSelectionType.CanBeSlightlyWorse);
+        
+        public StateSyncAllocationStrategyFactory() : base(DefaultStrategy)
         {
-            return _strategy;
         }
     }
 }

@@ -60,8 +60,7 @@ namespace Nethermind.Network.P2P
         public override string ToString() => $"[Peer|{Name}|{HeadNumber}|{ClientId}|{Node:s}]";
 
         protected Keccak _remoteHeadBlockHash;
-        protected ITxPool _txPool;
-        protected ITimestamper _timestamper;
+        protected readonly ITimestamper _timestamper;
 
         protected readonly MessageQueue<GetBlockHeadersMessage, BlockHeader[]> _headersRequests;
         protected readonly MessageQueue<GetBlockBodiesMessage, BlockBody[]> _bodiesRequests;
@@ -70,11 +69,9 @@ namespace Nethermind.Network.P2P
             IMessageSerializationService serializer,
             INodeStatsManager statsManager,
             ISyncServer syncServer,
-            ITxPool txPool,
             ILogManager logManager) : base(session, statsManager, serializer, logManager)
         {
             SyncServer = syncServer ?? throw new ArgumentNullException(nameof(syncServer));
-            _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
             _timestamper = Timestamper.Default;
             _headersRequests = new MessageQueue<GetBlockHeadersMessage, BlockHeader[]>(Send);
             _bodiesRequests = new MessageQueue<GetBlockBodiesMessage, BlockBody[]>(Send);
@@ -218,7 +215,7 @@ namespace Nethermind.Network.P2P
             throw new NotSupportedException("Fast sync not supported by eth62 protocol");
         }
 
-        public virtual Task<Keccak[]> GetWitness(Keccak blockHash, CancellationToken token)
+        public virtual Task<Keccak[]> GetBlockWitnessHashes(Keccak blockHash, CancellationToken token)
         {
             throw new NotSupportedException();
         }

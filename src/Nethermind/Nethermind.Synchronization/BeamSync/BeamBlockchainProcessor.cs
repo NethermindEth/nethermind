@@ -236,7 +236,7 @@ namespace Nethermind.Synchronization.BeamSync
             if (block.TotalDifficulty == null)
             {
                 throw new InvalidDataException(
-                    $"Receieved a block with null {nameof(block.TotalDifficulty)} for beam processing");
+                    $"Received a block with null {nameof(block.TotalDifficulty)} for beam processing");
             }
             
             CancellationTokenSource cancellationToken;
@@ -332,7 +332,7 @@ namespace Nethermind.Synchronization.BeamSync
             if (block.TotalDifficulty == null)
             {
                 throw new InvalidDataException(
-                    $"Receieved a block with null {nameof(block.TotalDifficulty)} for beam processing");
+                    $"Received a block with null {nameof(block.TotalDifficulty)} for beam processing");
             }
             
             CancellationTokenSource cancellationToken;
@@ -346,7 +346,7 @@ namespace Nethermind.Synchronization.BeamSync
             }
 
             string description = $"[miner {miner}]";
-            Task minerTask = Task<int>.Run(() =>
+            Task minerTask = Task.Run(() =>
             {
                 BeamSyncContext.MinimumDifficulty.Value = block.TotalDifficulty ?? 0;
                 BeamSyncContext.Description.Value = description;
@@ -360,7 +360,7 @@ namespace Nethermind.Synchronization.BeamSync
                     t.IsFaulted ? $"{description} prefetch failed {t.Exception?.Message}" : $"{description} prefetch complete - resolved {t.Result}");
             });
 
-            Task senderTask = Task<int>.Run(() =>
+            Task senderTask = Task.Run(() =>
             {
                 BeamSyncContext.MinimumDifficulty.Value = block.TotalDifficulty ?? 0;
                 BeamSyncContext.Cancelled.Value = cancellationToken.Token;
@@ -379,7 +379,7 @@ namespace Nethermind.Synchronization.BeamSync
                     t.IsFaulted ? $"tx prefetch failed {t.Exception?.Message}" : $"tx prefetch complete - resolved {t.Result}");
             });
 
-            Task storageTask = Task<int>.Run(() =>
+            Task storageTask = Task.Run(() =>
             {
                 BeamSyncContext.MinimumDifficulty.Value = block.TotalDifficulty ?? 0;
                 BeamSyncContext.Cancelled.Value = cancellationToken.Token;
@@ -401,7 +401,7 @@ namespace Nethermind.Synchronization.BeamSync
             });
 
 
-            Task codeTask = Task<int>.Run(() =>
+            Task codeTask = Task.Run(() =>
             {
                 BeamSyncContext.MinimumDifficulty.Value = block.TotalDifficulty.Value;
                 BeamSyncContext.Cancelled.Value = cancellationToken.Token;

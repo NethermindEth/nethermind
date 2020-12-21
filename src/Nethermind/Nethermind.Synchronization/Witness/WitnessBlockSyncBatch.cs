@@ -13,20 +13,27 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using Nethermind.Synchronization.Peers.AllocationStrategies;
+using System;
+using Nethermind.Core.Crypto;
 
-namespace Nethermind.Synchronization.ParallelSync
+namespace Nethermind.Synchronization.Witness
 {
-    public class StaticPeerAllocationStrategyFactory<T> : IPeerAllocationStrategyFactory<T>
+    public class WitnessBlockSyncBatch
     {
-        private readonly IPeerAllocationStrategy _allocationStrategy;
-
-        public StaticPeerAllocationStrategyFactory(IPeerAllocationStrategy allocationStrategy)
+        public WitnessBlockSyncBatch(Keccak blockHash)
         {
-            _allocationStrategy = allocationStrategy;
+            BlockHash = blockHash;
         }
+        
+        public Keccak BlockHash { get; }
+        
+        public Memory<Keccak>? Response { get; set; }
 
-        public IPeerAllocationStrategy Create(T request) => _allocationStrategy;
+        public override string ToString()
+        {
+            return $"block {BlockHash} witnesses requests with {Response?.Length ?? 0} node response";
+        }
     }
 }

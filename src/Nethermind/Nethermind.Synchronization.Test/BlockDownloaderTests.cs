@@ -40,6 +40,7 @@ using Nethermind.State.Proofs;
 using Nethermind.State.Repositories;
 using Nethermind.Stats.Model;
 using Nethermind.Db.Blooms;
+using Nethermind.Network.P2P;
 using Nethermind.Synchronization.Blocks;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
@@ -504,6 +505,8 @@ namespace Nethermind.Synchronization.Test
             public UInt256 TotalDifficulty { get; set; } = UInt256.MaxValue;
             public bool IsInitialized { get; set; }
 
+            public string ProtocolCode { get; } = Protocol.Eth;
+
             public void Disconnect(DisconnectReason reason, string details)
             {
                 throw new NotImplementedException();
@@ -551,7 +554,7 @@ namespace Nethermind.Synchronization.Test
                 throw new NotImplementedException();
             }
 
-            public Task<Keccak[]> GetWitness(Keccak blockHash, CancellationToken token)
+            public Task<Keccak[]> GetBlockWitnessHashes(Keccak blockHash, CancellationToken token)
             {
                 throw new NotImplementedException();
             }
@@ -891,6 +894,8 @@ namespace Nethermind.Synchronization.Test
             public UInt256 TotalDifficulty { get; set; }
             public bool IsInitialized { get; set; }
 
+            public string ProtocolCode { get; } = Protocol.Eth;
+
             public void Disconnect(DisconnectReason reason, string details)
             {
                 throw new NotImplementedException();
@@ -982,7 +987,7 @@ namespace Nethermind.Synchronization.Test
                 throw new NotImplementedException();
             }
 
-            public Task<Keccak[]> GetWitness(Keccak blockHash, CancellationToken token)
+            public Task<Keccak[]> GetBlockWitnessHashes(Keccak blockHash, CancellationToken token)
             {
                 throw new NotImplementedException();
             }

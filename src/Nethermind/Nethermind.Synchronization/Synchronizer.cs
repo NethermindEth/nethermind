@@ -33,8 +33,10 @@ using Nethermind.Synchronization.FastBlocks;
 using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
+using Nethermind.Synchronization.Peers.AllocationStrategies;
 using Nethermind.Synchronization.Reporting;
 using Nethermind.Synchronization.StateSync;
+using Nethermind.Synchronization.Witness;
 
 namespace Nethermind.Synchronization
 {
@@ -118,7 +120,58 @@ namespace Nethermind.Synchronization
             if (_syncConfig.FastSync && _syncConfig.BeamSync || _syncConfig.BeamSyncFixMode)
             {
                 StartBeamSyncComponents();
+
+                if (_syncConfig.WitnessProtocolEnabled)
+                {
+                    StartWitnessSyncComponents();
+                }
             }
+        }
+
+        private void StartWitnessSyncComponents()
+        {
+            BeamSyncDbProvider? beamSyncDbProvider = _dbProvider as BeamSyncDbProvider;
+            
+            if (beamSyncDbProvider == null)
+            {
+                throw new InvalidOperationException("Corrupted types when initializing beam sync components " +
+                                                    $"received {_dbProvider.GetType().FullName}");
+            }
+            
+            WitnessStateSyncFeed witnessStateSyncFeed = new WitnessStateSyncFeed(beamSyncDbProvider.BeamStateDb, _logManager);
+            StateSyncDispatcher witnessStateSyncDispatcher = new StateSyncDispatcher(
+                witnessStateSyncFeed!, _syncPeerPool, new StateSyncAllocationStrategyFactory(), _logManager);
+            
+            WitnessBlockSyncFeed witnessBlockSyncFeed = new WitnessBlockSyncFeed(_blockTree, witnessStateSyncFeed, _logManager);
+            StaticPeerAllocationStrategyFactory<WitnessBlockSyncBatch> peerAllocationStrategyFactory = 
+                new StaticPeerAllocationStrategyFactory<WitnessBlockSyncBatch>(
+                    new ProtocolPeerAllocationStrategy(StateSyncAllocationStrategyFactory.DefaultStrategy, "wit"));
+            WitnessBlockSyncDispatcher blockSyncDispatcher = 
+                new WitnessBlockSyncDispatcher(witnessBlockSyncFeed!, _syncPeerPool, peerAllocationStrategyFactory, _logManager);
+
+            blockSyncDispatcher.Start(_syncCancellation.Token).ContinueWith(t =>
+            {
+                if (t.IsFaulted)
+                {
+                    if (_logger.IsError) _logger.Error("Witness block sync failed", t.Exception);
+                }
+                else
+                {
+                    if (_logger.IsInfo) _logger.Info("Witness block sync completed.");
+                }
+            });
+            
+            witnessStateSyncDispatcher.Start(_syncCancellation.Token).ContinueWith(t =>
+            {
+                if (t.IsFaulted)
+                {
+                    if (_logger.IsError) _logger.Error("Witness state sync failed", t.Exception);
+                }
+                else
+                {
+                    if (_logger.IsInfo) _logger.Info("Witness state sync completed.");
+                }
+            });
         }
 
         private void StartBeamSyncComponents()

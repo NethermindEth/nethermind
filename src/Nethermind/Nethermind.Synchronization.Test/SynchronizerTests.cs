@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -36,6 +36,7 @@ using Nethermind.State.Repositories;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Db.Blooms;
+using Nethermind.Network.P2P;
 using Nethermind.State.Witnesses;
 using Nethermind.Synchronization.Blocks;
 using Nethermind.Synchronization.ParallelSync;
@@ -95,6 +96,8 @@ namespace Nethermind.Synchronization.Test
             public UInt256 TotalDifficulty { get; set; }
 
             public bool IsInitialized { get; set; }
+
+            public string ProtocolCode { get; } = Protocol.Eth;
 
             public void Disconnect(DisconnectReason reason, string details)
             {
@@ -203,7 +206,7 @@ namespace Nethermind.Synchronization.Test
                 throw new NotImplementedException();
             }
 
-            public Task<Keccak[]> GetWitness(Keccak blockHash, CancellationToken token)
+            public Task<Keccak[]> GetBlockWitnessHashes(Keccak blockHash, CancellationToken token)
             {
                 throw new NotImplementedException();
             }

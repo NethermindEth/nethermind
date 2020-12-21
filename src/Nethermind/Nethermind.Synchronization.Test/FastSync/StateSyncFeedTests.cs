@@ -31,6 +31,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Network.P2P;
 using Nethermind.State;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
@@ -201,6 +202,8 @@ namespace Nethermind.Synchronization.Test.FastSync
             public UInt256 TotalDifficulty { get; set; }
             public bool IsInitialized { get; set; }
 
+            public string ProtocolCode { get; } = Protocol.Eth;
+
             public void Disconnect(DisconnectReason reason, string details)
             {
                 throw new NotImplementedException();
@@ -262,7 +265,7 @@ namespace Nethermind.Synchronization.Test.FastSync
                 return Task.FromResult(responses);
             }
 
-            public Task<Keccak[]> GetWitness(Keccak blockHash, CancellationToken token)
+            public Task<Keccak[]> GetBlockWitnessHashes(Keccak blockHash, CancellationToken token)
             {
                 throw new NotImplementedException();
             }
