@@ -116,55 +116,59 @@ namespace Nethermind.Trie.Pruning
 
         public void CommitNode(long blockNumber, NodeCommitInfo nodeCommitInfo)
         {
-            if (!_pruningStrategy.Enabled)
-            {
-                _keyValueStore[nodeCommitInfo.Node.Keccak.Bytes] = nodeCommitInfo.Node.FullRlp;
-                return;
-            }
-
             if (blockNumber < 0) throw new ArgumentOutOfRangeException(nameof(blockNumber));
-            EnsureCommitSetExistsForBlock(blockNumber);
+            if (_pruningStrategy.Enabled) EnsureCommitSetExistsForBlock(blockNumber);
 
             if (_logger.IsTrace) _logger.Trace($"Committing {nodeCommitInfo} at {blockNumber}");
             if (!nodeCommitInfo.IsEmptyBlockMarker)
             {
                 TrieNode node = nodeCommitInfo.Node!;
+
+
                 if (node!.Keccak == null)
                 {
-                    throw new PruningException($"The hash of {node} should be known at the time of committing.");
+                    throw new ArgumentException($"The hash of {node} should be known at the time of committing.");
                 }
 
-                if (CurrentPackage == null)
+                if (!_pruningStrategy.Enabled)
                 {
-                    throw new PruningException($"{nameof(CurrentPackage)} is NULL when committing {node} at {blockNumber}.");
-                }
-
-                if (node!.LastSeen.HasValue)
-                {
-                    throw new PruningException($"{nameof(TrieNode.LastSeen)} set on {node} committed at {blockNumber}.");
-                }
-
-                if (IsNodeCached(node.Keccak))
-                {
-                    TrieNode cachedNodeCopy = FindCachedOrUnknown(node.Keccak);
-                    if (!ReferenceEquals(cachedNodeCopy, node))
-                    {
-                        if (_logger.IsTrace) _logger.Trace($"Replacing {node} with its cached copy {cachedNodeCopy}.");
-                        if (!nodeCommitInfo.IsRoot)
-                        {
-                            nodeCommitInfo.NodeParent!.ReplaceChildRef(nodeCommitInfo.ChildPositionAtParent, cachedNodeCopy);
-                        }
-
-                        node = cachedNodeCopy;
-                        Metrics.ReplacedNodesCount++;
-                    }
+                    Persist(node, blockNumber);
                 }
                 else
                 {
-                    SaveInCache(node);
-                }
 
-                node.LastSeen = blockNumber;
+                    if (CurrentPackage == null)
+                    {
+                        throw new PruningException($"{nameof(CurrentPackage)} is NULL when committing {node} at {blockNumber}.");
+                    }
+
+                    if (node!.LastSeen.HasValue)
+                    {
+                        throw new PruningException($"{nameof(TrieNode.LastSeen)} set on {node} committed at {blockNumber}.");
+                    }
+
+                    if (IsNodeCached(node.Keccak))
+                    {
+                        TrieNode cachedNodeCopy = FindCachedOrUnknown(node.Keccak);
+                        if (!ReferenceEquals(cachedNodeCopy, node))
+                        {
+                            if (_logger.IsTrace) _logger.Trace($"Replacing {node} with its cached copy {cachedNodeCopy}.");
+                            if (!nodeCommitInfo.IsRoot)
+                            {
+                                nodeCommitInfo.NodeParent!.ReplaceChildRef(nodeCommitInfo.ChildPositionAtParent, cachedNodeCopy);
+                            }
+
+                            node = cachedNodeCopy;
+                            Metrics.ReplacedNodesCount++;
+                        }
+                    }
+                    else
+                    {
+                        SaveInCache(node);
+                    }
+
+                    node.LastSeen = blockNumber;
+                }
                 CommittedNodesCount++;
             }
         }
@@ -596,7 +600,7 @@ namespace Nethermind.Trie.Pruning
 
             if (currentNode.Keccak != null)
             {
-                Debug.Assert(currentNode.LastSeen.HasValue, $"Cannot persist a dangling node (without {(nameof(TrieNode.LastSeen))} value set).");
+                Debug.Assert(currentNode.LastSeen.HasValue || !_pruningStrategy.Enabled, $"Cannot persist a dangling node (without {(nameof(TrieNode.LastSeen))} value set).");
                 // Note that the LastSeen value here can be 'in the future' (greater than block number
                 // if we replaced a newly added node with an older copy and updated the LastSeen value.
                 // Here we reach it from the old root so it appears to be out of place but it is correct as we need
