@@ -35,7 +35,7 @@ namespace Nethermind.Trie.Pruning
         private int _isFirst;
 
         public TrieStore(IKeyValueStoreWithBatching? keyValueStore, ILogManager? logManager)
-            : this(keyValueStore, No.PruningAndCache, Full.Archive, logManager)
+            : this(keyValueStore, No.Pruning, Full.Archive, logManager)
         {
         }
 

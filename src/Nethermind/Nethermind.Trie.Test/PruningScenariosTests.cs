@@ -67,22 +67,22 @@ namespace Nethermind.Trie.Test
 
             public static PruningContext ArchiveWithManualPruning
             {
-                [DebuggerStepThrough] get => new PruningContext(No.Pruning, Full.Archive);
+                [DebuggerStepThrough] get => new PruningContext(No.Prune, Full.Archive);
             }
 
             public static PruningContext SnapshotEveryOtherBlockWithManualPruning
             {
-                [DebuggerStepThrough] get => new PruningContext(No.Pruning, new ConstantInterval(2));
+                [DebuggerStepThrough] get => new PruningContext(No.Prune, new ConstantInterval(2));
             }
 
             public static PruningContext InMemory
             {
-                [DebuggerStepThrough] get => new PruningContext(No.Pruning, No.Persistence);
+                [DebuggerStepThrough] get => new PruningContext(No.Prune, No.Persistence);
             }
 
             public static PruningContext SetupWithPersistenceEveryEightBlocks
             {
-                [DebuggerStepThrough] get => new PruningContext(No.Pruning, new ConstantInterval(8));
+                [DebuggerStepThrough] get => new PruningContext(No.Prune, new ConstantInterval(8));
             }
 
             public PruningContext CreateAccount(int accountIndex)

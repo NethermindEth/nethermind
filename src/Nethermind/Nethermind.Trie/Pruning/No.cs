@@ -19,8 +19,8 @@ namespace Nethermind.Trie.Pruning
     public static class No
     {
         public static IPersistenceStrategy Persistence => NoPersistence.Instance;
-        public static IPruningStrategy Pruning => NoPrune.Instance;
+        public static IPruningStrategy Prune => NoPrune.Instance;
 
-        public static IPruningStrategy PruningAndCache => NoPruning.Instance;
+        public static IPruningStrategy Pruning => NoPruning.Instance;
     }
 }
