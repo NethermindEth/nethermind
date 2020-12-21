@@ -47,6 +47,8 @@ namespace Nethermind.Blockchain.Processing
         private readonly IRewardCalculator _rewardCalculator;
         private readonly ITransactionProcessor _transactionProcessor;
 
+        private const int MaxUncommittedBlocks = 64;
+
         /// <summary>
         /// We use a single receipt tracer for all blocks. Internally receipt tracer forwards most of the calls
         /// to any block-specific tracers.
@@ -93,14 +95,15 @@ namespace Nethermind.Blockchain.Processing
             InitBranch(newBranchStateRoot);
 
             bool readOnly = (options & ProcessingOptions.ReadOnlyChain) != 0;
-            Block[] processedBlocks = new Block[suggestedBlocks.Count];
+            var blocksCount = suggestedBlocks.Count;
+            Block[] processedBlocks = new Block[blocksCount];
             try
             {
-                for (int i = 0; i < suggestedBlocks.Count; i++)
+                for (int i = 0; i < blocksCount; i++)
                 {
-                    if (suggestedBlocks.Count > 64 && i % 8 == 0)
+                    if (blocksCount > 64 && i % 8 == 0)
                     {
-                        if (_logger.IsInfo) _logger.Info($"Processing part of a long blocks branch {i}/{suggestedBlocks.Count}");
+                        if(_logger.IsInfo) _logger.Info($"Processing part of a long blocks branch {i}/{blocksCount}");
                     }
 
                     var (processedBlock, receipts) = ProcessOne(suggestedBlocks[i], options, blockTracer);
@@ -111,6 +114,20 @@ namespace Nethermind.Blockchain.Processing
                     if (!readOnly)
                     {
                         BlockProcessed?.Invoke(this, new BlockProcessedEventArgs(processedBlock, receipts));
+                    }
+
+                    // CommitBranch in parts if we have long running branch
+                    bool isFirstInBatch = i == 0;
+                    bool isLastInBatch = i == blocksCount - 1;
+                    bool isNotAtTheEdge = !isFirstInBatch && !isLastInBatch;
+                    bool isCommitPoint = i % MaxUncommittedBlocks == 0 && isNotAtTheEdge;
+                    if (isCommitPoint && readOnly == false)
+                    {
+                        if (_logger.IsInfo) _logger.Info($"Commit part of a long blocks branch {i}/{blocksCount}");
+                        CommitBranch();
+                        previousBranchStateRoot = CreateCheckpoint();
+                        var newStateRoot = suggestedBlocks[i].StateRoot;
+                        InitBranch(newStateRoot, false);
                     }
                 }
 
@@ -135,7 +152,7 @@ namespace Nethermind.Blockchain.Processing
         }
 
         // TODO: move to branch processor
-        private void InitBranch(Keccak branchStateRoot)
+        private void InitBranch(Keccak branchStateRoot, bool incrementReorgMetric = true)
         {
             /* Please note that we do not reset the state if branch state root is null.
                That said, I do not remember in what cases we receive null here.*/
@@ -144,7 +161,9 @@ namespace Nethermind.Blockchain.Processing
                 /* Discarding the other branch data - chain reorganization.
                    We cannot use cached values any more because they may have been written
                    by blocks that are being reorganized out.*/
-                Metrics.Reorganizations++;
+
+                if (incrementReorgMetric)
+                    Metrics.Reorganizations++;
                 _storageProvider.Reset();
                 _stateProvider.Reset();
                 _stateProvider.StateRoot = branchStateRoot;

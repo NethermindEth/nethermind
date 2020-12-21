@@ -44,7 +44,7 @@ namespace Nethermind.DataMarketplace.Test.Infrastructure
             _ndmApi.HttpClient = Substitute.For<IHttpClient>();
             _ndmApi.ConfigManager = Substitute.For<IConfigManager>();
             _ndmApi.NdmConfig = new NdmConfig();
-            await _ndmModule.Init();
+            await _ndmModule.InitAsync();
         }
     }
 }

@@ -13,28 +13,16 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
 using System.Collections.Generic;
-using System.Linq;
-using Nethermind.Core.Extensions;
-using Nethermind.Int256;
+using Newtonsoft.Json.Linq;
 
 namespace Nethermind.Specs.ChainSpecStyle.Json
 {
-    internal class AllocationJson
+    internal class BuiltInJson
     {
-        public BuiltInJson BuiltIn { get; set; }
-        
-        public UInt256 Balance { get; set; }
-        
-        public byte[] Code { get; set; }
-        
-        public byte[] Constructor { get; set; }
-        public Dictionary<string, string> Storage { get; set; }
-
-        public Dictionary<UInt256, byte[]> GetConvertedStorage()
-        {
-            return Storage?.ToDictionary(s => Bytes.FromHexString(s.Key).ToUInt256(), s => Bytes.FromHexString(s.Value));
-        }
+        public string Name { get; set; }
+        public Dictionary<string, JObject> Pricing { get; set; }
     }
 }
