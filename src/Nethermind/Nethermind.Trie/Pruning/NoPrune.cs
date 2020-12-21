@@ -16,11 +16,17 @@
 
 namespace Nethermind.Trie.Pruning
 {
-    public static class No
+    public class NoPrune : IPruningStrategy
     {
-        public static IPersistenceStrategy Persistence => NoPersistence.Instance;
-        public static IPruningStrategy Pruning => NoPrune.Instance;
+        private NoPrune() { }
 
-        public static IPruningStrategy PruningAndCache => NoPruning.Instance;
+        public static NoPrune Instance { get; } = new NoPrune();
+
+        public bool Enabled => true;
+
+        public bool ShouldPrune(in long currentMemory)
+        {
+            return false;
+        }
     }
 }

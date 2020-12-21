@@ -28,7 +28,7 @@ namespace Nethermind.Trie.Pruning
             _memoryLimit = memoryLimit;
         }
 
-        public bool ShouldCache() => true;
+        public bool Enabled => true;
 
         public bool ShouldPrune(in long currentMemory)
         {

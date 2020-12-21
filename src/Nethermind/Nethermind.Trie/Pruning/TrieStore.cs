@@ -18,7 +18,6 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Linq;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -36,7 +35,7 @@ namespace Nethermind.Trie.Pruning
         private int _isFirst;
 
         public TrieStore(IKeyValueStoreWithBatching? keyValueStore, ILogManager? logManager)
-            : this(keyValueStore, No.Pruning, Full.Archive, logManager)
+            : this(keyValueStore, No.PruningAndCache, Full.Archive, logManager)
         {
         }
 
@@ -117,6 +116,12 @@ namespace Nethermind.Trie.Pruning
 
         public void CommitNode(long blockNumber, NodeCommitInfo nodeCommitInfo)
         {
+            if (!_pruningStrategy.Enabled)
+            {
+                _keyValueStore[nodeCommitInfo.Node.Keccak.Bytes] = nodeCommitInfo.Node.FullRlp;
+                return;
+            }
+
             if (blockNumber < 0) throw new ArgumentOutOfRangeException(nameof(blockNumber));
             EnsureCommitSetExistsForBlock(blockNumber);
 
@@ -166,6 +171,9 @@ namespace Nethermind.Trie.Pruning
 
         public void FinishBlockCommit(TrieType trieType, long blockNumber, TrieNode? root)
         {
+            if (!_pruningStrategy.Enabled)
+                return;
+
             if (blockNumber < 0) throw new ArgumentOutOfRangeException(nameof(blockNumber));
             EnsureCommitSetExistsForBlock(blockNumber);
 
@@ -202,6 +210,8 @@ namespace Nethermind.Trie.Pruning
 
         public void HackPersistOnShutdown()
         {
+            if (!_pruningStrategy.Enabled)
+                return;
             PersistOnShutdown();
         }
 
@@ -245,7 +255,7 @@ namespace Nethermind.Trie.Pruning
                 throw new ArgumentNullException(nameof(hash));
             }
 
-            if (_pruningStrategy.ShouldCache() == false)
+            if (!_pruningStrategy.Enabled)
             {
                 return new TrieNode(NodeType.Unknown, hash);
             }

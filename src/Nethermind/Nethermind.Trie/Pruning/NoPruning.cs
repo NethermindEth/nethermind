@@ -1,4 +1,4 @@
-//  Copyright (c) 2020 Demerzel Solutions Limited
+// Copyright(c) 2020 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -22,7 +22,7 @@ namespace Nethermind.Trie.Pruning
 
         public static NoPruning Instance { get; } = new NoPruning();
 
-        public bool ShouldCache() => false;
+        public bool Enabled => false;
 
         public bool ShouldPrune(in long currentMemory)
         {
