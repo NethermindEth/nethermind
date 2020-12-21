@@ -117,7 +117,7 @@ namespace Nethermind.Trie.Pruning
         public void CommitNode(long blockNumber, NodeCommitInfo nodeCommitInfo)
         {
             if (blockNumber < 0) throw new ArgumentOutOfRangeException(nameof(blockNumber));
-            if (_pruningStrategy.Enabled) EnsureCommitSetExistsForBlock(blockNumber);
+            if (_pruningStrategy.PruningEnabled) EnsureCommitSetExistsForBlock(blockNumber);
 
             if (_logger.IsTrace) _logger.Trace($"Committing {nodeCommitInfo} at {blockNumber}");
             if (!nodeCommitInfo.IsEmptyBlockMarker)
@@ -130,7 +130,7 @@ namespace Nethermind.Trie.Pruning
                     throw new ArgumentException($"The hash of {node} should be known at the time of committing.");
                 }
 
-                if (!_pruningStrategy.Enabled)
+                if (!_pruningStrategy.PruningEnabled)
                 {
                     Persist(node, blockNumber);
                 }
@@ -175,7 +175,7 @@ namespace Nethermind.Trie.Pruning
 
         public void FinishBlockCommit(TrieType trieType, long blockNumber, TrieNode? root)
         {
-            if (!_pruningStrategy.Enabled)
+            if (!_pruningStrategy.PruningEnabled)
                 return;
 
             if (blockNumber < 0) throw new ArgumentOutOfRangeException(nameof(blockNumber));
@@ -214,7 +214,7 @@ namespace Nethermind.Trie.Pruning
 
         public void HackPersistOnShutdown()
         {
-            if (!_pruningStrategy.Enabled)
+            if (!_pruningStrategy.PruningEnabled)
                 return;
             PersistOnShutdown();
         }
@@ -259,7 +259,7 @@ namespace Nethermind.Trie.Pruning
                 throw new ArgumentNullException(nameof(hash));
             }
 
-            if (!_pruningStrategy.Enabled)
+            if (!_pruningStrategy.PruningEnabled)
             {
                 return new TrieNode(NodeType.Unknown, hash);
             }
@@ -600,7 +600,7 @@ namespace Nethermind.Trie.Pruning
 
             if (currentNode.Keccak != null)
             {
-                Debug.Assert(currentNode.LastSeen.HasValue || !_pruningStrategy.Enabled, $"Cannot persist a dangling node (without {(nameof(TrieNode.LastSeen))} value set).");
+                Debug.Assert(currentNode.LastSeen.HasValue || !_pruningStrategy.PruningEnabled, $"Cannot persist a dangling node (without {(nameof(TrieNode.LastSeen))} value set).");
                 // Note that the LastSeen value here can be 'in the future' (greater than block number
                 // if we replaced a newly added node with an older copy and updated the LastSeen value.
                 // Here we reach it from the old root so it appears to be out of place but it is correct as we need
