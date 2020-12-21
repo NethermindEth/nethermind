@@ -528,6 +528,7 @@ namespace Nethermind.Blockchain
 
                 BlockInfo blockInfo = new BlockInfo(header.Hash, header.TotalDifficulty ?? 0);
                 UpdateOrCreateLevel(header.Number, blockInfo, !shouldProcess);
+                NewSuggestedBlock?.Invoke(this, new BlockEventArgs(block));
             }
 
             if (header.IsGenesis || header.TotalDifficulty > (BestSuggestedHeader?.TotalDifficulty ?? 0))
@@ -1342,6 +1343,8 @@ namespace Nethermind.Blockchain
         public event EventHandler<BlockReplacementEventArgs> BlockAddedToMain;
 
         public event EventHandler<BlockEventArgs> NewBestSuggestedBlock;
+        
+        public event EventHandler<BlockEventArgs> NewSuggestedBlock;
 
         public event EventHandler<BlockEventArgs> NewHeadBlock;
 
