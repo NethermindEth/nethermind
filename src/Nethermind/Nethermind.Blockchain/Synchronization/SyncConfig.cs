@@ -30,7 +30,7 @@ namespace Nethermind.Blockchain.Synchronization
         public long? FastSyncCatchUpHeightDelta { get; set; } = 8192;
         public bool FastBlocks { get; set; }
         public bool UseGethLimitsInFastBlocks { get; set; } = true;
-        public bool BeamSync { get; set; }
+        public bool BeamSync { get; set; } = true;
         public bool FastSync { get; set; }
         public bool DownloadHeadersInFastSync { get; set; } = true;
         public bool DownloadBodiesInFastSync { get; set; } = true;
@@ -44,6 +44,7 @@ namespace Nethermind.Blockchain.Synchronization
         public int BeamSyncPreProcessorTimeout { get; set; } = 15;
         public bool BeamSyncFixMode { get; set; } = false;
         public bool BeamSyncVerifiedMode { get; set; } = false;
+        public bool WitnessProtocolEnabled { get; set; } = true;
         public bool FixReceipts { get; set; } = false;
     }
 }
