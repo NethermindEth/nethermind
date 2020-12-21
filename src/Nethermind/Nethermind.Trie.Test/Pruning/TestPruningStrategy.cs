@@ -14,19 +14,22 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-namespace Nethermind.Trie.Pruning
+using Nethermind.Trie.Pruning;
+
+namespace Nethermind.Trie.Test.Pruning
 {
-    public class NoPrune : IPruningStrategy
+    public class TestPruningStrategy : IPruningStrategy
     {
-        private NoPrune() { }
-
-        public static NoPrune Instance { get; } = new NoPrune();
-
-        public bool Enabled => true;
-
-        public bool ShouldPrune(in long currentMemory)
+        private bool _enabled;
+        private bool _shouldPrune;
+        public TestPruningStrategy(bool enabled, bool shouldPrune = false) 
         {
-            return false;
+            _enabled = enabled;
+            _shouldPrune = shouldPrune;
         }
+
+        public bool Enabled => _enabled;
+
+        public bool ShouldPrune(in long currentMemory) => _shouldPrune;
     }
 }

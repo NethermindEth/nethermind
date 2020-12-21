@@ -24,6 +24,7 @@ using Nethermind.Logging;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
 using Nethermind.Trie.Pruning;
+using Nethermind.Trie.Test.Pruning;
 using NUnit.Framework;
 
 namespace Nethermind.Trie.Test
@@ -67,22 +68,22 @@ namespace Nethermind.Trie.Test
 
             public static PruningContext ArchiveWithManualPruning
             {
-                [DebuggerStepThrough] get => new PruningContext(No.Prune, Full.Archive);
+                [DebuggerStepThrough] get => new PruningContext(new TestPruningStrategy(true), Full.Archive);
             }
 
             public static PruningContext SnapshotEveryOtherBlockWithManualPruning
             {
-                [DebuggerStepThrough] get => new PruningContext(No.Prune, new ConstantInterval(2));
+                [DebuggerStepThrough] get => new PruningContext(new TestPruningStrategy(true), new ConstantInterval(2));
             }
 
             public static PruningContext InMemory
             {
-                [DebuggerStepThrough] get => new PruningContext(No.Prune, No.Persistence);
+                [DebuggerStepThrough] get => new PruningContext(new TestPruningStrategy(true), No.Persistence);
             }
 
             public static PruningContext SetupWithPersistenceEveryEightBlocks
             {
-                [DebuggerStepThrough] get => new PruningContext(No.Prune, new ConstantInterval(8));
+                [DebuggerStepThrough] get => new PruningContext(new TestPruningStrategy(true), new ConstantInterval(8));
             }
 
             public PruningContext CreateAccount(int accountIndex)
