@@ -163,6 +163,11 @@ namespace Nethermind.Trie.Pruning
                 }
 
                 node.LastSeen = blockNumber;
+                if (!_pruningStrategy.ShouldCache)
+                {
+                    Persist(node, blockNumber);
+                }
+
                 CommittedNodesCount++;
             }
         }
