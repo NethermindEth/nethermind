@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -75,7 +75,7 @@ namespace Nethermind.Store.Test
             tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb0"), _account0);
             tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb1"), _account0);
             tree.Commit(0);
-            Assert.AreEqual(6, db.WritesCount, "writes"); // extension, branch, leaf, extension, branch, 2x same leaf
+            Assert.AreEqual(7, db.WritesCount, "writes"); // extension, branch, leaf, extension, branch, 2x same leaf
             Assert.AreEqual(7, Trie.Metrics.TreeNodeHashCalculations, "hashes");
             Assert.AreEqual(7, Trie.Metrics.TreeNodeRlpEncodings, "encodings");
         }
