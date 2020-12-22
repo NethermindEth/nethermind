@@ -31,8 +31,8 @@ namespace Nethermind.State.Witnesses
     /// </summary>
     public class WitnessCollector : IWitnessCollector
     {
-        private LruCache<Keccak, IReadOnlyList<Keccak>> _witnessCache
-            = new LruCache<Keccak, IReadOnlyList<Keccak>>(256, "Witnesses");
+        private LruCache<Keccak, Keccak[]> _witnessCache
+            = new LruCache<Keccak, Keccak[]>(256, "Witnesses");
         
         public IReadOnlyCollection<Keccak> Collected => _collected;
 
@@ -77,11 +77,11 @@ namespace Nethermind.State.Witnesses
             }
         }
 
-        public IReadOnlyCollection<Keccak>? Load(Keccak blockHash)
+        public Keccak[]? Load(Keccak blockHash)
         {
-            if (_witnessCache.TryGet(blockHash, out IReadOnlyList<Keccak>? witness))
+            if (_witnessCache.TryGet(blockHash, out Keccak[]? witness))
             {
-                if(_logger.IsTrace) _logger.Trace($"Loading cached witness for {blockHash} ({witness!.Count})");
+                if(_logger.IsTrace) _logger.Trace($"Loading cached witness for {blockHash} ({witness!.Length})");
             }
             else // not cached
             {

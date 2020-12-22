@@ -26,6 +26,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Stats;
+using Nethermind.Stats.Model;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Peers.AllocationStrategies;
@@ -103,6 +104,11 @@ namespace Nethermind.Synchronization.Test.ParallelSync
             public Task StopAsync()
             {
                 return Task.CompletedTask;
+            }
+
+            public PeerInfo GetPeer(Node node)
+            {
+                return null;
             }
         }
 

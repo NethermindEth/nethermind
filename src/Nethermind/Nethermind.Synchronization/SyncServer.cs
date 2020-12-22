@@ -119,7 +119,7 @@ namespace Nethermind.Synchronization
             }
         }
 
-        public IReadOnlyCollection<Keccak>? GetBlockWitnessHashes(Keccak blockHash)
+        public Keccak[]? GetBlockWitnessHashes(Keccak blockHash)
         {
             return _witnessRepository.Load(blockHash);
         }

@@ -23,19 +23,19 @@ using Nethermind.Stats;
 
 namespace Nethermind.Synchronization.Peers.AllocationStrategies
 {
-    public class ProtocolPeerAllocationStrategy : IPeerAllocationStrategy
+    public class SatelliteProtocolPeerAllocationStrategy<T> : IPeerAllocationStrategy where T : class
     {
         private readonly IPeerAllocationStrategy _strategy;
         private readonly string _protocol;
         public bool CanBeReplaced => false;
 
-        public ProtocolPeerAllocationStrategy(IPeerAllocationStrategy strategy, string protocol)
+        public SatelliteProtocolPeerAllocationStrategy(IPeerAllocationStrategy strategy, string protocol)
         {
             _strategy = strategy ?? throw new ArgumentNullException(nameof(strategy));
             _protocol = protocol;
         }
         
         public PeerInfo? Allocate(PeerInfo? currentPeer, IEnumerable<PeerInfo> peers, INodeStatsManager nodeStatsManager, IBlockTree blockTree) => 
-            _strategy.Allocate(currentPeer, peers.Where(p => p.SyncPeer.ProtocolCode == _protocol), nodeStatsManager, blockTree);
+            _strategy.Allocate(currentPeer, peers.Where(p => p.SyncPeer.TryGetSatelliteProtocol<T>(_protocol, out _)), nodeStatsManager, blockTree);
     }
 }

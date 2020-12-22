@@ -18,31 +18,30 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Blockchain;
-using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
+using Nethermind.Synchronization.Witness;
 
 namespace Nethermind.Network.P2P.Subprotocols.Wit
 {
-    public class WitProtocolHandler : SyncPeerProtocolHandlerBase, IZeroProtocolHandler
+    public class WitProtocolHandler : ProtocolHandlerBase, IZeroProtocolHandler, IWitnessPeer
     {
         private readonly ISyncServer _syncServer;
 
-        private readonly MessageQueue<GetBlockWitnessHashesMessage, IReadOnlyCollection<Keccak>> _witnessRequests;
+        private readonly MessageQueue<GetBlockWitnessHashesMessage, Keccak[]> _witnessRequests;
         
         public WitProtocolHandler(ISession session,
             IMessageSerializationService serializer,
             INodeStatsManager nodeStats,
             ISyncServer syncServer,
-            ILogManager logManager) : base(session, serializer, nodeStats, syncServer, logManager)
+            ILogManager logManager) : base(session, nodeStats, serializer, logManager)
         {
             _syncServer = syncServer ?? throw new ArgumentNullException(nameof(syncServer));
-            _witnessRequests = new MessageQueue<GetBlockWitnessHashesMessage, IReadOnlyCollection<Keccak>>(Send);
+            _witnessRequests = new MessageQueue<GetBlockWitnessHashesMessage, Keccak[]>(Send);
         }
 
         public override byte ProtocolVersion => 0;
@@ -82,7 +81,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Wit
             zeroPacket.Release();
         }
 
-        public override void HandleMessage(ZeroPacket message)
+        public void HandleMessage(ZeroPacket message)
         {
             int size = message.Content.ReadableBytes;
             int packetType = message.PacketType;
@@ -103,7 +102,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Wit
 
         private void Handle(GetBlockWitnessHashesMessage requestMsg)
         {
-            IReadOnlyCollection<Keccak> hashes = _syncServer.GetBlockWitnessHashes(requestMsg.BlockHash);
+            Keccak[] hashes = _syncServer.GetBlockWitnessHashes(requestMsg.BlockHash);
             BlockWitnessHashesMessage msg = new BlockWitnessHashesMessage(requestMsg.RequestId, hashes);
             Send(msg);
         }
@@ -114,35 +113,30 @@ namespace Nethermind.Network.P2P.Subprotocols.Wit
         }
 
         private static long _requestId;
-
-        public async Task<IReadOnlyCollection<Keccak>> GetBlockWitnessHashes(Keccak blockHash, CancellationToken token)
+        
+        public async Task<Keccak[]> GetBlockWitnessHashes(Keccak blockHash, CancellationToken token)
         {
             long requestId = Interlocked.Increment(ref _requestId);
             GetBlockWitnessHashesMessage msg = new GetBlockWitnessHashesMessage(requestId, blockHash);
 
             if (Logger.IsTrace) Logger.Trace(
                 $"{Counter:D5} {nameof(WitMessageCode.GetBlockWitnessHashes)} to {Session}");
-            IReadOnlyCollection<Keccak> witnessHashes = await SendRequest(msg, token);
+            Keccak[] witnessHashes = await SendRequest(msg, token);
             return witnessHashes;
         }
-
-        public override void NotifyOfNewBlock(Block block, SendBlockPriority priority)
-        {
-            
-        }
-
-        private async Task<IReadOnlyCollection<Keccak>> SendRequest(GetBlockWitnessHashesMessage message, CancellationToken token)
+        
+        private async Task<Keccak[]> SendRequest(GetBlockWitnessHashesMessage message, CancellationToken token)
         {
             if (Logger.IsTrace)
             {
                 Logger.Trace($"Sending block witness hashes request: {message.BlockHash}");
             }
 
-            Request<GetBlockWitnessHashesMessage, IReadOnlyCollection<Keccak>> request
-                = new Request<GetBlockWitnessHashesMessage, IReadOnlyCollection<Keccak>>(message);
+            Request<GetBlockWitnessHashesMessage, Keccak[]> request
+                = new Request<GetBlockWitnessHashesMessage, Keccak[]>(message);
             _witnessRequests.Send(request);
 
-            Task<IReadOnlyCollection<Keccak>> task = request.CompletionSource.Task;
+            Task<Keccak[]> task = request.CompletionSource.Task;
             using CancellationTokenSource delayCancellation = new CancellationTokenSource();
             using CancellationTokenSource compositeCancellation = CancellationTokenSource.CreateLinkedTokenSource(token, delayCancellation.Token);
             Task firstTask = await Task.WhenAny(task, Task.Delay(Timeouts.Eth, compositeCancellation.Token));
@@ -162,14 +156,16 @@ namespace Nethermind.Network.P2P.Subprotocols.Wit
         
         #region Cleanup
 
-        protected override void OnDisposed()
+        private int _isDisposed;
+        
+        public override void DisconnectProtocol(DisconnectReason disconnectReason, string details)
         {
             Dispose();
         }
 
-        public override void DisconnectProtocol(DisconnectReason disconnectReason, string details)
+        public override void Dispose()
         {
-            Dispose();
+            if (Interlocked.Exchange(ref _isDisposed, 1) == 0) { }
         }
 
         #endregion

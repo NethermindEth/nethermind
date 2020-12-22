@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -16,14 +16,14 @@
 // 
 
 using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Core.Crypto;
 
-namespace Nethermind.State
+namespace Nethermind.Synchronization.Witness
 {
-    public interface IWitnessRepository
+    public interface IWitnessPeer
     {
-        void Persist(Keccak blockHash);
-        
-        Keccak[]? Load(Keccak blockHash);
+        Task<Keccak[]> GetBlockWitnessHashes(Keccak blockHash, CancellationToken token);
     }
 }

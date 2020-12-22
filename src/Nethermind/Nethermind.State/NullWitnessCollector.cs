@@ -39,7 +39,7 @@ namespace Nethermind.State
         
         public void Persist(Keccak blockHash) { }
         
-        public IReadOnlyCollection<Keccak>? Load(Keccak blockHash)
+        public Keccak[]? Load(Keccak blockHash)
         {
             throw new InvalidOperationException(
                 $"{nameof(NullWitnessCollector)} is not expected to receive {nameof(Load)} calls.");

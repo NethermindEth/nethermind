@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -15,15 +15,16 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System.Collections.Generic;
-using Nethermind.Core.Crypto;
+using Nethermind.Blockchain.Synchronization;
 
-namespace Nethermind.State
+namespace Nethermind.Network.P2P
 {
-    public interface IWitnessRepository
+    public static class PeerWithSatelliteProtocolExtensions
     {
-        void Persist(Keccak blockHash);
-        
-        Keccak[]? Load(Keccak blockHash);
+        public static void RegisterSatelliteProtocol<T>(this IPeerWithSatelliteProtocol peerWithSatelliteProtocol, T handler)
+            where T : ProtocolHandlerBase
+        {
+            peerWithSatelliteProtocol.RegisterSatelliteProtocol(handler.ProtocolCode, handler);
+        }
     }
 }

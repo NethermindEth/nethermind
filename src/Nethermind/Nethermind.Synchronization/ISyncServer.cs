@@ -41,6 +41,6 @@ namespace Nethermind.Synchronization
         int ChainId { get; }
         BlockHeader Genesis { get; }
         BlockHeader? Head { get; }
-        IReadOnlyCollection<Keccak>? GetBlockWitnessHashes(Keccak blockHash);
+        Keccak[]? GetBlockWitnessHashes(Keccak blockHash);
     }
 }
