@@ -20,12 +20,12 @@ using System;
 namespace Nethermind.Trie.Pruning
 {
     [Serializable]
-    public class PruningException : TrieException
+    public class TrieStoreException : TrieException
     {
-        public PruningException() { }
+        public TrieStoreException() { }
 
-        public PruningException(string message) : base(message) { }
+        public TrieStoreException(string message) : base(message) { }
 
-        public PruningException(string message, Exception inner) : base(message, inner) { }
+        public TrieStoreException(string message, Exception inner) : base(message, inner) { }
     }
 }

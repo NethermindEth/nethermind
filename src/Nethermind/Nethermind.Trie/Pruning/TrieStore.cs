@@ -117,36 +117,30 @@ namespace Nethermind.Trie.Pruning
         public void CommitNode(long blockNumber, NodeCommitInfo nodeCommitInfo)
         {
             if (blockNumber < 0) throw new ArgumentOutOfRangeException(nameof(blockNumber));
-            if (_pruningStrategy.PruningEnabled) EnsureCommitSetExistsForBlock(blockNumber);
+            EnsureCommitSetExistsForBlock(blockNumber);
 
             if (_logger.IsTrace) _logger.Trace($"Committing {nodeCommitInfo} at {blockNumber}");
             if (!nodeCommitInfo.IsEmptyBlockMarker)
             {
                 TrieNode node = nodeCommitInfo.Node!;
 
-
                 if (node!.Keccak == null)
                 {
-                    throw new ArgumentException($"The hash of {node} should be known at the time of committing.");
+                    throw new TrieStoreException($"The hash of {node} should be known at the time of committing.");
                 }
 
-                if (!_pruningStrategy.PruningEnabled)
+                if (CurrentPackage == null)
                 {
-                    Persist(node, blockNumber);
+                    throw new TrieStoreException($"{nameof(CurrentPackage)} is NULL when committing {node} at {blockNumber}.");
                 }
-                else
+
+                if (node!.LastSeen.HasValue)
                 {
+                    throw new TrieStoreException($"{nameof(TrieNode.LastSeen)} set on {node} committed at {blockNumber}.");
+                }
 
-                    if (CurrentPackage == null)
-                    {
-                        throw new PruningException($"{nameof(CurrentPackage)} is NULL when committing {node} at {blockNumber}.");
-                    }
-
-                    if (node!.LastSeen.HasValue)
-                    {
-                        throw new PruningException($"{nameof(TrieNode.LastSeen)} set on {node} committed at {blockNumber}.");
-                    }
-
+                if (_pruningStrategy.ShouldCache)
+                {
                     if (IsNodeCached(node.Keccak))
                     {
                         TrieNode cachedNodeCopy = FindCachedOrUnknown(node.Keccak);
@@ -166,18 +160,15 @@ namespace Nethermind.Trie.Pruning
                     {
                         SaveInCache(node);
                     }
-
-                    node.LastSeen = blockNumber;
                 }
+
+                node.LastSeen = blockNumber;
                 CommittedNodesCount++;
             }
         }
 
         public void FinishBlockCommit(TrieType trieType, long blockNumber, TrieNode? root)
         {
-            if (!_pruningStrategy.PruningEnabled)
-                return;
-
             if (blockNumber < 0) throw new ArgumentOutOfRangeException(nameof(blockNumber));
             EnsureCommitSetExistsForBlock(blockNumber);
 
@@ -214,8 +205,6 @@ namespace Nethermind.Trie.Pruning
 
         public void HackPersistOnShutdown()
         {
-            if (!_pruningStrategy.PruningEnabled)
-                return;
             PersistOnShutdown();
         }
 
@@ -259,7 +248,7 @@ namespace Nethermind.Trie.Pruning
                 throw new ArgumentNullException(nameof(hash));
             }
 
-            if (!_pruningStrategy.PruningEnabled)
+            if (!_pruningStrategy.ShouldCache)
             {
                 return new TrieNode(NodeType.Unknown, hash);
             }
@@ -281,7 +270,7 @@ namespace Nethermind.Trie.Pruning
                 {
                     throw new InvalidOperationException($"Adding node with null hash {trieNode}");
                 }
-                
+
                 if (addToCacheWhenNotFound)
                 {
                     if (_dirtyNodesCache.TryAdd(trieNode.Keccak!, trieNode))
@@ -575,8 +564,8 @@ namespace Nethermind.Trie.Pruning
                 stopwatch.Stop();
                 Metrics.SnapshotPersistenceTime = stopwatch.ElapsedMilliseconds;
 
-                if (_logger.IsWarn)
-                    _logger.Warn(
+                if (_logger.IsTrace)
+                    _logger.Trace(
                         $"Persisted trie from {commitSet.Root} at {commitSet.BlockNumber} in {stopwatch.ElapsedMilliseconds}ms (cache memory {MemoryUsedByDirtyCache})");
 
                 LastPersistedBlockNumber = commitSet.BlockNumber;
@@ -600,7 +589,7 @@ namespace Nethermind.Trie.Pruning
 
             if (currentNode.Keccak != null)
             {
-                Debug.Assert(currentNode.LastSeen.HasValue || !_pruningStrategy.PruningEnabled, $"Cannot persist a dangling node (without {(nameof(TrieNode.LastSeen))} value set).");
+                Debug.Assert(currentNode.LastSeen.HasValue, $"Cannot persist a dangling node (without {(nameof(TrieNode.LastSeen))} value set).");
                 // Note that the LastSeen value here can be 'in the future' (greater than block number
                 // if we replaced a newly added node with an older copy and updated the LastSeen value.
                 // Here we reach it from the old root so it appears to be out of place but it is correct as we need

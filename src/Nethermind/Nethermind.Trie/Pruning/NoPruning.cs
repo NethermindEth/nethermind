@@ -22,7 +22,7 @@ namespace Nethermind.Trie.Pruning
 
         public static NoPruning Instance { get; } = new NoPruning();
 
-        public bool PruningEnabled => false;
+        public bool ShouldCache => false;
 
         public bool ShouldPrune(in long currentMemory)
         {
