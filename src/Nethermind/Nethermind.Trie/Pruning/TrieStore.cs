@@ -33,6 +33,7 @@ namespace Nethermind.Trie.Pruning
     public class TrieStore : ITrieStore
     {
         private int _isFirst;
+        private bool _batchStarted = false;
 
         public TrieStore(IKeyValueStoreWithBatching? keyValueStore, ILogManager? logManager)
             : this(keyValueStore, No.Pruning, Full.Archive, logManager)
@@ -561,7 +562,11 @@ namespace Nethermind.Trie.Pruning
 
             try
             {
-                _keyValueStore.StartBatch();
+                if (_batchStarted == false)
+                {
+                    _keyValueStore.StartBatch();
+                    _batchStarted = true;
+                }
                 if (_logger.IsDebug) _logger.Debug($"Persisting from root {commitSet.Root} in {commitSet.BlockNumber}");
 
                 Stopwatch stopwatch = Stopwatch.StartNew();
@@ -580,6 +585,7 @@ namespace Nethermind.Trie.Pruning
                 // For safety we prefer to commit half of the batch rather than not commit at all.
                 // Generally hanging nodes are not a problem in the DB but anything missing from the DB is.
                 _keyValueStore.CommitBatch();
+                _batchStarted = false;
             }
 
             PruneCurrentSet();
@@ -587,6 +593,11 @@ namespace Nethermind.Trie.Pruning
 
         private void Persist(TrieNode currentNode, long blockNumber)
         {
+            if (_batchStarted == false)
+            {
+                _keyValueStore.StartBatch();
+                _batchStarted = true;
+            }
             if (currentNode == null)
             {
                 throw new ArgumentNullException(nameof(currentNode));
