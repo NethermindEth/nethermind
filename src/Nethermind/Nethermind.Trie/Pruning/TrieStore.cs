@@ -178,34 +178,45 @@ namespace Nethermind.Trie.Pruning
             if (blockNumber < 0) throw new ArgumentOutOfRangeException(nameof(blockNumber));
             EnsureCommitSetExistsForBlock(blockNumber);
 
-            if (trieType == TrieType.State) // storage tries happen before state commits
+            try
             {
-                if (_logger.IsTrace) _logger.Trace($"Enqueued blocks {_commitSetQueue.Count}");
-                BlockCommitSet set = CurrentPackage;
-                if (set != null)
+                if (trieType == TrieType.State) // storage tries happen before state commits
                 {
-                    set.Root = root;
-                    if (_logger.IsTrace)
-                        _logger.Trace(
-                            $"Current root (block {blockNumber}): {set.Root}, block {set.BlockNumber}");
-                    if (_logger.IsTrace)
-                        _logger.Trace(
-                            $"Incrementing refs from block {blockNumber} root {set.Root?.ToString() ?? "NULL"} ");
+                    if (_logger.IsTrace) _logger.Trace($"Enqueued blocks {_commitSetQueue.Count}");
+                    BlockCommitSet set = CurrentPackage;
+                    if (set != null)
+                    {
+                        set.Root = root;
+                        if (_logger.IsTrace)
+                            _logger.Trace(
+                                $"Current root (block {blockNumber}): {set.Root}, block {set.BlockNumber}");
+                        if (_logger.IsTrace)
+                            _logger.Trace(
+                                $"Incrementing refs from block {blockNumber} root {set.Root?.ToString() ?? "NULL"} ");
 
-                    set.Seal();
+                        set.Seal();
+                    }
+
+                    bool shouldPersistSnapshot = _persistenceStrategy.ShouldPersist(set.BlockNumber);
+                    if (shouldPersistSnapshot)
+                    {
+                        Persist(set);
+                    }
+                    else
+                    {
+                        PruneCurrentSet();
+                    }
+
+                    CurrentPackage = null;
                 }
-
-                bool shouldPersistSnapshot = _persistenceStrategy.ShouldPersist(set.BlockNumber);
-                if (shouldPersistSnapshot)
+            }
+            finally
+            {
+                if (_batchStarted)
                 {
-                    Persist(set);
+                    _keyValueStore.CommitBatch();
+                    _batchStarted = false;
                 }
-                else
-                {
-                    PruneCurrentSet();
-                }
-
-                CurrentPackage = null;
             }
         }
 
