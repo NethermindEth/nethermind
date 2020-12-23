@@ -89,7 +89,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             else
             {
                 _api.TrieStore = new TrieStore(
-                    _get.DbProvider!.StateDb,
+                    _get.DbProvider!.StateDb.Innermost, // TODO: PRUNING what a hack here just to pass the actual DB
                     No.Pruning,
                     Full.Archive,
                     _api.LogManager);
