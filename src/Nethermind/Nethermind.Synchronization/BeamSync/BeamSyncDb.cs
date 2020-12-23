@@ -303,7 +303,7 @@ namespace Nethermind.Synchronization.BeamSync
                 }
 
                 StateSyncItem[] requestedNodes;
-                if (_requestedNodes.Count < 256)
+                if (_requestedNodes.Count < StateSyncFeed.MaxRequestSize)
                 {
                     // do not make it state sync item :)
                     requestedNodes = _requestedNodes.Select(n => new StateSyncItem(n, NodeDataType.State)).ToArray();
@@ -312,11 +312,11 @@ namespace Nethermind.Synchronization.BeamSync
                 else
                 {
                     Keccak[] source = _requestedNodes.ToArray();
-                    requestedNodes = new StateSyncItem[256];
+                    requestedNodes = new StateSyncItem[StateSyncFeed.MaxRequestSize];
                     _requestedNodes.Clear();
                     for (int i = 0; i < source.Length; i++)
                     {
-                        if (i < 256)
+                        if (i < StateSyncFeed.MaxRequestSize)
                         {
                             // not state sync item
                             requestedNodes[i] = new StateSyncItem(source[i], NodeDataType.State);

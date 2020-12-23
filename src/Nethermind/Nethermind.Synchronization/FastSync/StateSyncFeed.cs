@@ -38,7 +38,7 @@ namespace Nethermind.Synchronization.FastSync
     public partial class StateSyncFeed : SyncFeed<StateSyncBatch?>, IDisposable
     {
         private const int AlreadySavedCapacity = 1024 * 64;
-        private const int MaxRequestSize = 384;
+        public const int MaxRequestSize = 384;
         private const StateSyncBatch EmptyBatch = null;
 
         private static readonly AccountDecoder AccountDecoder = new AccountDecoder();

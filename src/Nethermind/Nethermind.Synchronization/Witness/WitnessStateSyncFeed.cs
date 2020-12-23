@@ -37,9 +37,10 @@ namespace Nethermind.Synchronization.Witness
         private readonly IDb _db;
         private readonly int _maxRequestSize;
         private readonly ConcurrentStack<WitnessBlockSyncBatch> _blockSyncBatches = new ConcurrentStack<WitnessBlockSyncBatch>();
+        private readonly ConcurrentQueue<StateSyncBatch> _retryBatches = new ConcurrentQueue<StateSyncBatch>();
         private readonly ILogger _logger;
         
-        public WitnessStateSyncFeed(IDb db, ILogManager logManager, int maxRequestSize = 256)
+        public WitnessStateSyncFeed(IDb db, ILogManager logManager, int maxRequestSize = StateSyncFeed.MaxRequestSize)
         {
             _db = db ?? throw new ArgumentNullException(nameof(db));
             _maxRequestSize = maxRequestSize;
@@ -69,15 +70,19 @@ namespace Nethermind.Synchronization.Witness
                 if (_logger.IsTrace) _logger.Trace($"Preparing to download state with witness for block {batch.BlockNumber} ({batch.BlockHash}) with {itemsToTake} elements.");
             }
 
-            if (batchElements.Count == 0)
-            {
-                FallAsleep();
-                return Task.FromResult<StateSyncBatch?>(null);
-            }
-            else
+            if (batchElements.Count != 0)
             {
                 Interlocked.Increment(ref Metrics.WitnessStateRequests);
                 return Task.FromResult<StateSyncBatch?>(new StateSyncBatch(batchElements.ToArray()) {ConsumerId = FeedId});
+            }
+            else if (_retryBatches.TryDequeue(out var retryBatch))
+            {
+                return Task.FromResult<StateSyncBatch?>(retryBatch);
+            }
+            else
+            {
+                FallAsleep();
+                return Task.FromResult<StateSyncBatch?>(null);
             }
         }
 
@@ -98,7 +103,7 @@ namespace Nethermind.Synchronization.Witness
             bool wasDataInvalid = false;
             int consumed = 0;
 
-            byte[][]? data = batch.Responses;
+            byte[]?[]? data = batch.Responses;
             if (data != null)
             {
                 for (int i = 0; i < Math.Min(data.Length, batch.RequestedNodes.Length); i++)
@@ -119,7 +124,12 @@ namespace Nethermind.Synchronization.Witness
                     }
                 }
             }
-            
+            else
+            {
+                _retryBatches.Enqueue(batch);
+                Activate();
+            }
+
             if (_logger.IsTrace) _logger.Trace($"Downloaded state with witness. Received {consumed}/{batch.RequestedNodes.Length} elements.");
 
             if (wasDataInvalid)

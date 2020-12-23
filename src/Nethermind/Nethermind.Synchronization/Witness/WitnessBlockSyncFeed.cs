@@ -17,6 +17,7 @@
 
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -33,9 +34,11 @@ namespace Nethermind.Synchronization.Witness
         private readonly IBlockTree _blockTree;
         private readonly IWitnessStateSyncFeed _witnessStateSyncFeed;
         private readonly ISyncModeSelector _syncModeSelector;
-        private readonly ConcurrentStack<WitnessBlockSyncBatch> _blockHashes = new ConcurrentStack<WitnessBlockSyncBatch>();
+        private readonly SortedSet<WitnessBlockSyncBatch> _blockHashes = new SortedSet<WitnessBlockSyncBatch>(new WitnessBlockSyncBatchComparer());
         private readonly ILogger _logger;
         private const int FollowDelta = 256;
+        private static readonly TimeSpan _minRetryDelay = TimeSpan.FromMilliseconds(100);
+        private const int MaxRetries = 6;
 
         public WitnessBlockSyncFeed(IBlockTree blockTree, IWitnessStateSyncFeed witnessStateSyncFeed, ISyncModeSelector syncModeSelector, ILogManager logManager)
         {
@@ -49,20 +52,48 @@ namespace Nethermind.Synchronization.Witness
         private void OnNewSuggestedBlock(object? sender, BlockEventArgs e)
         {
             Block block = e.Block;
-            if (block.Hash != null && ShouldDownloadWitness(block.Number) && (_syncModeSelector.Current & SyncMode.Beam) != 0)
+            bool isBeamSync = (_syncModeSelector.Current & SyncMode.Beam) != 0;
+            bool blockNotToOld = (_blockTree.Head?.Number ?? 0) - block.Number < FollowDelta;
+            bool blockHasWitness = block.Transactions?.Length > 0;
+            if (block.Hash != null && isBeamSync && blockNotToOld && blockHasWitness)
             {
-                _blockHashes.Push(new WitnessBlockSyncBatch(block.Hash, block.Number));
+                lock (_blockHashes)
+                {
+                    _blockHashes.Add(new WitnessBlockSyncBatch(block.Hash, block.Number, DateTime.MinValue));
+                }
+                
                 Activate();
-                if (_logger.IsTrace) _logger.Trace($"Registered block {block.ToString(Block.Format.FullHashAndNumber)} for downloading witness.");
+                if (_logger.IsTrace) _logger.Trace($"Registered block {block.ToString(Block.Format.FullHashAndNumber)} for downloading witness. {_blockHashes.Count} blocks in queue.");
             }
         }
 
         public override Task<WitnessBlockSyncBatch?> PrepareRequest()
         {
-            if (_blockHashes.TryPop(out var witnessBlockSyncBatch))
+            WitnessBlockSyncBatch? witnessBlockSyncBatch = null;
+            if (_blockHashes.Count > 0)
+            {
+                lock (_blockHashes)
+                {
+                    witnessBlockSyncBatch = _blockHashes.Min;
+                    if (witnessBlockSyncBatch != null)
+                    {
+                        TimeSpan timeSinceLastTried = DateTime.UtcNow - witnessBlockSyncBatch.Timestamp;
+                        if (timeSinceLastTried >= _minRetryDelay)
+                        {
+                            _blockHashes.Remove(witnessBlockSyncBatch);
+                        }
+                        else
+                        {
+                            witnessBlockSyncBatch = null;
+                        }
+                    }
+                }
+            }
+
+            if (witnessBlockSyncBatch != null)
             {
                 Interlocked.Increment(ref Metrics.WitnessBlockRequests);
-                if (_logger.IsTrace) _logger.Trace($"Preparing to download witness for block {witnessBlockSyncBatch.BlockNumber} ({witnessBlockSyncBatch.BlockHash}).");
+                if (_logger.IsTrace) _logger.Trace($"Preparing to download witness for block {witnessBlockSyncBatch.BlockNumber} ({witnessBlockSyncBatch.BlockHash}). {_blockHashes.Count} blocks in queue.");
                 return Task.FromResult<WitnessBlockSyncBatch?>(witnessBlockSyncBatch);
             }
             else
@@ -74,6 +105,22 @@ namespace Nethermind.Synchronization.Witness
 
         public override SyncResponseHandlingResult HandleResponse(WitnessBlockSyncBatch? batch)
         {
+            void Retry(int retryForward)
+            {
+                bool blockAfterOrHead = _blockTree.Head?.Number <= batch.BlockNumber;
+                bool isMainChain = _blockTree.IsMainChain(batch.BlockHash);
+                if (batch.Retry < MaxRetries && (blockAfterOrHead || isMainChain))
+                {
+                    batch.Retry += retryForward;
+                    batch.Timestamp = DateTime.UtcNow;
+
+                    lock (_blockHashes)
+                    {
+                        _blockHashes.Add(batch);
+                    }
+                }
+            }
+
             if (batch == null)
             {
                 if(_logger.IsDebug) _logger.Debug($"{nameof(WitnessBlockSyncFeed)} received a NULL batch as a response");
@@ -82,14 +129,20 @@ namespace Nethermind.Synchronization.Witness
             
             if (batch.Response == null)
             {
-                if(_logger.IsDebug) _logger.Debug($"{nameof(WitnessBlockSyncFeed)} received a batch with NULL response");
-                if (batch.Retry < 10)
-                {
-                    batch.Retry++;
-                    _blockHashes.Push(batch);
-                }
+                if(_logger.IsDebug) _logger.Debug($"{nameof(WitnessBlockSyncFeed)} received a batch with NULL response for block {batch.BlockNumber} ({batch.BlockHash})");
+                Retry(1);
                 
-                return SyncResponseHandlingResult.InternalError;
+                // we don't want to punish not assigned peer
+                return SyncResponseHandlingResult.NotAssigned;
+            }
+
+            if (batch.Response.Value.Length == 0)
+            {
+                if(_logger.IsDebug) _logger.Debug($"{nameof(WitnessBlockSyncFeed)} received a batch with 0 elements for block {batch.BlockNumber} ({batch.BlockHash})");
+                Retry(2);
+                
+                // this can be ok if this block is not canonical
+                return SyncResponseHandlingResult.OK;
             }
 
             if (_logger.IsTrace) _logger.Trace($"Downloaded witness for block {batch.BlockNumber} ({batch.BlockHash}) with {batch.Response.Value.Length} elements.");
@@ -99,8 +152,27 @@ namespace Nethermind.Synchronization.Witness
 
         public override bool IsMultiFeed => false;
         
-        public override AllocationContexts Contexts => AllocationContexts.Blocks;
+        public override AllocationContexts Contexts => AllocationContexts.Witness;
 
-        private bool ShouldDownloadWitness(long blockNumber) => (_blockTree.Head?.Number ?? 0) - blockNumber < FollowDelta;
+        private class WitnessBlockSyncBatchComparer : IComparer<WitnessBlockSyncBatch>
+        {
+            public int Compare(WitnessBlockSyncBatch? x, WitnessBlockSyncBatch? y)
+            {
+                if (ReferenceEquals(x, y)) return 0;
+                if (ReferenceEquals(null, y)) return 1;
+                if (ReferenceEquals(null, x)) return -1;
+                
+                // move retried for later
+                int retryComparison = x.Retry.CompareTo(y.Retry);
+                if (retryComparison != 0) return retryComparison;
+
+                // higher block number first
+                int blockNumberComparison = y.BlockNumber.CompareTo(x.BlockNumber);
+                if (blockNumberComparison != 0) return blockNumberComparison;
+                
+                // earlier retries first
+                return x.Timestamp.CompareTo(y.Timestamp);
+            }
+        }
     }
 }
