@@ -109,7 +109,8 @@ namespace Nethermind.Synchronization.Witness
             {
                 bool blockAfterOrHead = _blockTree.Head?.Number <= batch.BlockNumber;
                 bool isMainChain = _blockTree.IsMainChain(batch.BlockHash);
-                if (batch.Retry < MaxRetries && (blockAfterOrHead || isMainChain))
+                bool isBeamSync = (_syncModeSelector.Current & SyncMode.Beam) != 0;
+                if (batch.Retry < MaxRetries && (blockAfterOrHead || isMainChain) && isBeamSync)
                 {
                     batch.Retry += retryForward;
                     batch.Timestamp = DateTime.UtcNow;
@@ -132,7 +133,7 @@ namespace Nethermind.Synchronization.Witness
                 if(_logger.IsDebug) _logger.Debug($"{nameof(WitnessBlockSyncFeed)} received a batch with NULL response for block {batch.BlockNumber} ({batch.BlockHash})");
                 Retry(1);
                 
-                // we don't want to punish not assigned peer
+                // not assigned peer
                 return SyncResponseHandlingResult.NotAssigned;
             }
 
@@ -142,6 +143,7 @@ namespace Nethermind.Synchronization.Witness
                 Retry(2);
                 
                 // this can be ok if this block is not canonical
+                // we don't want to punish peer
                 return SyncResponseHandlingResult.OK;
             }
 

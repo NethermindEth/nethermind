@@ -69,7 +69,7 @@ namespace Nethermind.Core
                 return list;
             });
         }
-        
+
         public static void ReportOutgoingMessage(IPEndPoint nodeInfo, string protocol, string messageCode)
         {
             if(!IsEnabled) return;

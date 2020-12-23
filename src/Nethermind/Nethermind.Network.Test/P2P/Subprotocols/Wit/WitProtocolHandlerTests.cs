@@ -16,6 +16,7 @@
 // 
 
 using System.Linq;
+using System.Net;
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
@@ -160,6 +161,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Wit
                 MessageSerializationService serializationService = new MessageSerializationService();
                 serializationService.Register(typeof(GetBlockWitnessHashesMessage).Assembly);
                 Session = Substitute.For<ISession>();
+                Session.Node.Returns(new Node(TestItem.PublicKeyA, new IPEndPoint(IPAddress.Loopback, 30303)));
                 INodeStatsManager nodeStats = Substitute.For<INodeStatsManager>();
                 SyncServer = Substitute.For<ISyncServer>();
                 WitProtocolHandler = new WitProtocolHandler(
