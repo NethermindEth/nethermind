@@ -23,15 +23,8 @@ namespace Nethermind.State.Witnesses
 {
     public static class IKeyValueStoreExtensions
     {
-        public static IKeyValueStore WitnessedBy(this IKeyValueStore @this, IWitnessCollector witnessCollector)
-        {
-            if (witnessCollector == NullWitnessCollector.Instance)
-            {
-                return @this;
-            }
-            
-            return new WitnessingStore(@this, witnessCollector);
-        }
+        public static IKeyValueStore WitnessedBy(this IKeyValueStore @this, IWitnessCollector witnessCollector) => 
+            witnessCollector == NullWitnessCollector.Instance ? @this : new WitnessingStore(@this, witnessCollector);
     }
     
     public class WitnessingStore : IKeyValueStore

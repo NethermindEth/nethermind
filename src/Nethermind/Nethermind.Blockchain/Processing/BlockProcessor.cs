@@ -112,6 +112,7 @@ namespace Nethermind.Blockchain.Processing
                         if(_logger.IsInfo) _logger.Info($"Processing part of a long blocks branch {i}/{suggestedBlocks.Count}");
                     }
                     
+                    _witnessCollector.Reset();
                     var (processedBlock, receipts) = ProcessOne(suggestedBlocks[i], options, blockTracer);
                     processedBlocks[i] = processedBlock;
 
@@ -119,6 +120,7 @@ namespace Nethermind.Blockchain.Processing
                     PreCommitBlock(newBranchStateRoot); // only needed if we plan to read state root?
                     if (!readOnly)
                     {
+                        _witnessCollector.Persist(processedBlock.Hash!);
                         BlockProcessed?.Invoke(this, new BlockProcessedEventArgs(processedBlock, receipts));
                     }
                 }
@@ -227,7 +229,6 @@ namespace Nethermind.Blockchain.Processing
         // TODO: block processor pipeline
         private (Block Block, TxReceipt[] Receipts) ProcessOne(Block suggestedBlock, ProcessingOptions options, IBlockTracer blockTracer)
         {
-            _witnessCollector.Reset();
             ApplyDaoTransition(suggestedBlock);
             Block block = PrepareBlockForProcessing(suggestedBlock);
             TxReceipt[] receipts = ProcessBlock(block, blockTracer, options);
@@ -236,8 +237,7 @@ namespace Nethermind.Blockchain.Processing
             {
                 StoreTxReceipts(block, receipts);
             }
-
-            _witnessCollector.Persist(block.Hash);
+            
             return (block, receipts);
         }
 

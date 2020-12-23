@@ -68,27 +68,6 @@ namespace Nethermind.State
         {
         }
 
-        public StateProvider(
-            IKeyValueStore? stateDb,
-            IKeyValueStore codeDb,
-            IWitnessCollector? witnessCollector,
-            ILogManager logManager)
-            : this(
-                new StateTree(
-                    witnessCollector == NullWitnessCollector.Instance
-                        ? stateDb
-                        : new WitnessingStore(
-                            stateDb,
-                            witnessCollector)),
-                witnessCollector == NullWitnessCollector.Instance
-                    ? codeDb
-                    : new WitnessingStore(
-                        codeDb,
-                        witnessCollector),
-                logManager)
-        {
-        }
-
         public void Accept(ITreeVisitor visitor, Keccak stateRoot)
         {
             if (visitor == null) throw new ArgumentNullException(nameof(visitor));

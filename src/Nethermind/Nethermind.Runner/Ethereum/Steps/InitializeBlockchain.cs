@@ -85,9 +85,8 @@ namespace Nethermind.Runner.Ethereum.Steps
             var codeDb = getApi.DbProvider.CodeDb.WitnessedBy(witnessCollector);
 
             var stateProvider = _api.StateProvider = new StateProvider(
-                stateDb,
+                new StateTree(stateDb),
                 codeDb,
-                _api.WitnessCollector,
                 _api.LogManager);
 
             ReadOnlyDbProvider readOnly = new ReadOnlyDbProvider(_api.DbProvider, false);
@@ -115,7 +114,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 new RecoverSignatures(getApi.EthereumEcdsa, txPool, getApi.SpecProvider, getApi.LogManager));
 
             var storageProvider = setApi.StorageProvider = new StorageProvider(
-                getApi.DbProvider.StateDb,
+                stateDb,
                 stateProvider,
                 getApi.LogManager);
 
