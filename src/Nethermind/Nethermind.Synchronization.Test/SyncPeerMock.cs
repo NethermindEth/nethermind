@@ -25,7 +25,6 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
-using Nethermind.Network.P2P;
 using Nethermind.Stats.Model;
 
 namespace Nethermind.Synchronization.Test
@@ -81,8 +80,6 @@ namespace Nethermind.Synchronization.Test
         public long HeadNumber { get; set; }
         public UInt256 TotalDifficulty { get; set; }
         public bool IsInitialized { get; set; }
-
-        public string ProtocolCode { get; } = Protocol.Eth;
 
         public void Disconnect(DisconnectReason reason, string details)
         {
@@ -189,7 +186,12 @@ namespace Nethermind.Synchronization.Test
             return Task.FromResult(_remoteSyncServer.GetNodeData(hashes));
         }
 
-        public Task<Keccak[]> GetBlockWitnessHashes(Keccak blockHash, CancellationToken token)
+        public void RegisterSatelliteProtocol<T>(string protocol, T protocolHandler) where T : class
+        {
+            throw new NotImplementedException();
+        }
+
+        public bool TryGetSatelliteProtocol<T>(string protocol, out T protocolHandler) where T : class
         {
             throw new NotImplementedException();
         }

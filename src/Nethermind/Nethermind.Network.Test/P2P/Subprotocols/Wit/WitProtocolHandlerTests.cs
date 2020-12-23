@@ -125,7 +125,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Wit
 
             context.WitProtocolHandler.HandleMessage(new Packet("wit", WitMessageCode.GetBlockWitnessHashes, serialized));
             context.Session.Received().DeliverMessage(
-                Arg.Is<BlockWitnessHashesMessage>(msg => msg.Hashes.Count == 2));
+                Arg.Is<BlockWitnessHashesMessage>(msg => msg.Hashes.Length == 2));
         }
         
         [Test]

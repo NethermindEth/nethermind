@@ -44,6 +44,10 @@ namespace Nethermind.Network
     {
         private readonly ConcurrentDictionary<Guid, SyncPeerProtocolHandlerBase> _syncPeers =
             new ConcurrentDictionary<Guid, SyncPeerProtocolHandlerBase>();
+
+        private readonly ConcurrentDictionary<Node, ConcurrentDictionary<Guid, ProtocolHandlerBase>> _hangingSatelliteProtocols =
+            new ConcurrentDictionary<Node, ConcurrentDictionary<Guid, ProtocolHandlerBase>>();
+        
         private readonly ConcurrentDictionary<Guid, ISession> _sessions = new ConcurrentDictionary<Guid, ISession>();
         private readonly ISyncPeerPool _syncPool;
         private readonly ISyncServer _syncServer;
@@ -114,6 +118,11 @@ namespace Nethermind.Network
                 }
             }
 
+            if (_hangingSatelliteProtocols.TryGetValue(session.Node, out var registrations))
+            {
+                registrations.TryRemove(session.SessionId, out _);
+            }
+            
             _sessions.TryRemove(session.SessionId, out session);
         }
 
@@ -192,13 +201,14 @@ namespace Nethermind.Network
                 },
                 [Protocol.Wit] = (session, version) =>
                 {
-                    var witHandler = version switch
+                    var handler = version switch
                     {
                         0 => new WitProtocolHandler(session, _serializer, _stats, _syncServer, _logManager),
                         _ => throw new NotSupportedException($"{Protocol.Wit}.{version} is not supported.")
                     };
+                    InitSatelliteProtocol(session, handler);
 
-                    return witHandler;
+                    return handler;
                 },
                 [Protocol.Les] = (session, version) =>
                 {
@@ -208,6 +218,52 @@ namespace Nethermind.Network
                     return handler;
                 }
             };
+
+        private void InitSatelliteProtocol(ISession session, ProtocolHandlerBase handler)
+        {
+            session.Node.EthDetails = handler.Name;
+            handler.ProtocolInitialized += (sender, args) =>
+            {
+                if (!RunBasicChecks(session, handler.ProtocolCode, handler.ProtocolVersion)) return;
+                // SyncPeerProtocolInitializedEventArgs typedArgs = (SyncPeerProtocolInitializedEventArgs)args;
+                // _stats.ReportSyncPeerInitializeEvent(handler.ProtocolCode, session.Node, new SyncPeerNodeDetails
+                // {
+                //     ChainId = typedArgs.ChainId,
+                //     BestHash = typedArgs.BestHash,
+                //     GenesisHash = typedArgs.GenesisHash,
+                //     ProtocolVersion = typedArgs.ProtocolVersion,
+                //     TotalDifficulty = (BigInteger)typedArgs.TotalDifficulty
+                // });
+                bool isValid = _protocolValidator.DisconnectOnInvalid(handler.ProtocolCode, session, args);
+                if (isValid)
+                {
+                    var peer = _syncPool.GetPeer(session.Node);
+                    if (peer != null)
+                    {
+                        peer.SyncPeer.RegisterSatelliteProtocol(handler.ProtocolCode, handler);
+                        if (_logger.IsDebug) _logger.Debug($"{handler.ProtocolCode} satellite protocol registered for sync peer {session}.");
+                    }
+                    else
+                    {
+                        _hangingSatelliteProtocols.AddOrUpdate(session.Node, 
+                            new ConcurrentDictionary<Guid, ProtocolHandlerBase>(new[] {new KeyValuePair<Guid, ProtocolHandlerBase>(session.SessionId, handler)}),
+                            (node, dict) =>
+                        {
+                            dict[session.SessionId] = handler;
+                            return dict;
+                        });
+                        
+                        if (_logger.IsDebug) _logger.Debug($"{handler.ProtocolCode} satellite protocol sync peer {session} not found.");
+                    }
+
+                    if (_logger.IsTrace) _logger.Trace($"Finalized {handler.ProtocolCode.ToUpper()} protocol initialization on {session} - adding sync peer {session.Node:s}");
+                }
+                else
+                {
+                    if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| {handler.ProtocolCode}{handler.ProtocolVersion} is invalid on {session}");
+                }
+            };
+        }
 
         private void InitP2PProtocol(ISession session, P2PProtocolHandler handler)
         {
@@ -263,6 +319,15 @@ namespace Nethermind.Network
                 {
                     if (_syncPeers.TryAdd(session.SessionId, handler))
                     {
+                        if (_hangingSatelliteProtocols.TryGetValue(handler.Node, out var handlerDictionary))
+                        {
+                            foreach (KeyValuePair<Guid, ProtocolHandlerBase> registration in handlerDictionary)
+                            {
+                                handler.RegisterSatelliteProtocol(registration.Value);
+                                if (_logger.IsDebug) _logger.Debug($"{handler.ProtocolCode} satellite protocol registered for sync peer {session}.");
+                            }
+                        }
+                        
                         _syncPool.AddPeer(handler);
                         if (handler.IncludeInTxPool) _txPool.AddPeer(handler);
                         if (_logger.IsDebug) _logger.Debug($"{handler.ClientId} sync peer {session} created.");

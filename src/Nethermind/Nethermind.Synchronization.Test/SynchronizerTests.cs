@@ -36,7 +36,6 @@ using Nethermind.State.Repositories;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Db.Blooms;
-using Nethermind.Network.P2P;
 using Nethermind.State.Witnesses;
 using Nethermind.Synchronization.Blocks;
 using Nethermind.Synchronization.ParallelSync;
@@ -96,8 +95,6 @@ namespace Nethermind.Synchronization.Test
             public UInt256 TotalDifficulty { get; set; }
 
             public bool IsInitialized { get; set; }
-
-            public string ProtocolCode { get; } = Protocol.Eth;
 
             public void Disconnect(DisconnectReason reason, string details)
             {
@@ -206,11 +203,6 @@ namespace Nethermind.Synchronization.Test
                 throw new NotImplementedException();
             }
 
-            public Task<Keccak[]> GetBlockWitnessHashes(Keccak blockHash, CancellationToken token)
-            {
-                throw new NotImplementedException();
-            }
-
             public void AddBlocksUpTo(int i, int branchStart = 0, byte branchIndex = 0)
             {
                 Block block = Blocks.Last();
@@ -233,6 +225,16 @@ namespace Nethermind.Synchronization.Test
                 }
                 
                 UpdateHead();
+            }
+
+            public void RegisterSatelliteProtocol<T>(string protocol, T protocolHandler) where T : class
+            {
+                throw new NotImplementedException();
+            }
+
+            public bool TryGetSatelliteProtocol<T>(string protocol, out T protocolHandler) where T : class
+            {
+                throw new NotImplementedException();
             }
         }
 

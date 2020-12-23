@@ -38,7 +38,7 @@ namespace Nethermind.Synchronization.Witness
         private readonly int _maxRequestSize;
         private readonly ConcurrentStack<WitnessBlockSyncBatch> _blockSyncBatches = new ConcurrentStack<WitnessBlockSyncBatch>();
         private readonly ILogger _logger;
-
+        
         public WitnessStateSyncFeed(IDb db, ILogManager logManager, int maxRequestSize = 256)
         {
             _db = db ?? throw new ArgumentNullException(nameof(db));
@@ -65,11 +65,14 @@ namespace Nethermind.Synchronization.Witness
                 }
                 
                 freeSpace = _maxRequestSize - batchElements.Count;
+                
+                if (_logger.IsTrace) _logger.Trace($"Preparing to download state with witness for block {batch.BlockNumber} ({batch.BlockHash}) with {itemsToTake} elements.");
             }
 
             if (batchElements.Count == 0)
             {
-                return Task.FromResult<StateSyncBatch?>(null);                
+                FallAsleep();
+                return Task.FromResult<StateSyncBatch?>(null);
             }
             else
             {
@@ -117,6 +120,8 @@ namespace Nethermind.Synchronization.Witness
                 }
             }
             
+            if (_logger.IsTrace) _logger.Trace($"Downloaded state with witness. Received {consumed}/{batch.RequestedNodes.Length} elements.");
+
             if (wasDataInvalid)
             {
                 return SyncResponseHandlingResult.LesserQuality;
@@ -134,12 +139,9 @@ namespace Nethermind.Synchronization.Witness
             if (batch.Response?.Length > 0)
             {
                 _blockSyncBatches.Push(batch);
+                Activate();
+                if (_logger.IsTrace) _logger.Trace($"Registered block {batch.BlockNumber} ({batch.BlockHash}) for downloading witness state.");
             }
         }
-    }
-
-    public interface IWitnessStateSyncFeed
-    {
-        void AddBlockBatch(WitnessBlockSyncBatch batch);
     }
 }

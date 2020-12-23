@@ -165,6 +165,8 @@ namespace Nethermind.Synchronization.Peers
             Parallel.ForEach(_peers, p => { p.Value.SyncPeer.Disconnect(DisconnectReason.ClientQuitting, "App Close"); });
         }
 
+        public PeerInfo? GetPeer(Node node) => _peers.TryGetValue(node.Id, out PeerInfo? peerInfo) ? peerInfo : null;
+
         public void WakeUpAll()
         {
             foreach (var peer in _peers)

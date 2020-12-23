@@ -22,12 +22,16 @@ namespace Nethermind.Synchronization.Witness
 {
     public class WitnessBlockSyncBatch
     {
-        public WitnessBlockSyncBatch(Keccak blockHash)
+        public WitnessBlockSyncBatch(Keccak blockHash, long blockNumber)
         {
             BlockHash = blockHash;
+            BlockNumber = blockNumber;
         }
         
         public Keccak BlockHash { get; }
+        public long BlockNumber { get; }
+
+        public int Retry { get; set; }
         
         public Memory<Keccak>? Response { get; set; }
 

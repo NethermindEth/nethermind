@@ -450,5 +450,29 @@ namespace Nethermind.Network.P2P
         }
 
         #endregion
+
+        #region IPeerWithSatelliteProtocol
+
+        private IDictionary<string, object> _protocolHandlers;
+        private IDictionary<string, object> ProtocolHandlers => _protocolHandlers ??= new Dictionary<string, object>();
+
+        public void RegisterSatelliteProtocol<T>(string protocol, T protocolHandler) where T : class
+        {
+            ProtocolHandlers[protocol] = protocolHandler;
+        }
+
+        public bool TryGetSatelliteProtocol<T>(string protocol, out T protocolHandler) where T : class
+        {
+            if (ProtocolHandlers.TryGetValue(protocol, out object handler))
+            {
+                protocolHandler = handler as T;
+                return protocolHandler != null;
+            }
+
+            protocolHandler = null;
+            return false;
+        }
+        
+        #endregion
     }
 }

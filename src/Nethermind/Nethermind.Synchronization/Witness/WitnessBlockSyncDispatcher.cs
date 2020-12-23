@@ -19,7 +19,6 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
-using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.ParallelSync;
@@ -37,21 +36,34 @@ namespace Nethermind.Synchronization.Witness
         protected override async Task Dispatch(PeerInfo peerInfo, WitnessBlockSyncBatch request, CancellationToken cancellationToken)
         {
             ISyncPeer peer = peerInfo.SyncPeer;
-            var getNodeDataTask = peer.GetBlockWitnessHashes(request.BlockHash, cancellationToken);
-            await getNodeDataTask.ContinueWith(
-                (t, state) =>
-                {
-                    if (t.IsFaulted)
+            if (peer.TryGetSatelliteProtocol<IWitnessPeer>("wit", out var witnessProtocolHandler) && witnessProtocolHandler != null)
+            {
+                var getNodeDataTask = witnessProtocolHandler.GetBlockWitnessHashes(request.BlockHash, cancellationToken);
+                await getNodeDataTask.ContinueWith(
+                    (t, state) =>
                     {
-                        if(Logger.IsTrace) Logger.Error("DEBUG/ERROR Error after dispatching the state sync request", t.Exception);
-                    }
+                        if (t.IsFaulted)
+                        {
+                            if(Logger.IsTrace) Logger.Error("DEBUG/ERROR Error after dispatching the state sync request", t.Exception);
+                        }
                     
-                    WitnessBlockSyncBatch batchLocal = (WitnessBlockSyncBatch) state!;
-                    if (t.IsCompletedSuccessfully)
-                    {
-                        batchLocal.Response = t.Result;
-                    }
-                }, request, cancellationToken);
+                        WitnessBlockSyncBatch batchLocal = (WitnessBlockSyncBatch) state!;
+                        if (t.IsCompletedSuccessfully)
+                        {
+                            batchLocal.Response = t.Result;
+                        }
+                    }, request, cancellationToken);
+            }
+            else
+            {
+                if(Logger.IsError) Logger.Error($"Couldn't get witness protocol from {peer.Node}.");
+            }
+        }
+
+        protected override async Task<SyncPeerAllocation> Allocate(WitnessBlockSyncBatch request)
+        {
+            var allocate = await base.Allocate(request);
+            return allocate;
         }
     }
 }
