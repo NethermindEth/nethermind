@@ -69,6 +69,9 @@ namespace Nethermind.Blockchain.Test
             bool hasNotified = false;
             BlockTree blockTree = BuildBlockTree();
             blockTree.NewHeadBlock += (sender, args) => { hasNotified = true; };
+            
+            bool hasNotifiedNewSuggested = false;
+            blockTree.NewSuggestedBlock += (sender, args) => { hasNotifiedNewSuggested = true; };
 
             Block block = Build.A.Block.WithNumber(0).TestObject;
             var result = blockTree.SuggestBlock(block);
@@ -76,6 +79,7 @@ namespace Nethermind.Blockchain.Test
 
             Assert.True(hasNotified, "notification");
             Assert.AreEqual(AddBlockResult.Added, result, "result");
+            Assert.True(hasNotifiedNewSuggested, "NewSuggestedBlock");
         }
 
         [Test]
@@ -84,12 +88,16 @@ namespace Nethermind.Blockchain.Test
             bool hasNotified = false;
             BlockTree blockTree = BuildBlockTree();
             blockTree.NewBestSuggestedBlock += (sender, args) => { hasNotified = true; };
+            
+            bool hasNotifiedNewSuggested = false;
+            blockTree.NewSuggestedBlock += (sender, args) => { hasNotifiedNewSuggested = true; };
 
             Block block = Build.A.Block.WithNumber(0).WithDifficulty(0).TestObject;
             var result = blockTree.SuggestBlock(block);
 
             Assert.True(hasNotified, "notification");
             Assert.AreEqual(AddBlockResult.Added, result, "result");
+            Assert.True(hasNotifiedNewSuggested, "NewSuggestedBlock");
         }
 
         [Test]
@@ -111,11 +119,16 @@ namespace Nethermind.Blockchain.Test
             Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).TestObject;
             blockTree.SuggestBlock(block0);
             blockTree.NewHeadBlock += (sender, args) => { hasNotified = true; };
+            
+            bool hasNotifiedNewSuggested = false;
+            blockTree.NewSuggestedBlock += (sender, args) => { hasNotifiedNewSuggested = true; };
+            
             var result = blockTree.SuggestBlock(block1);
             blockTree.UpdateMainChain(block1);
 
             Assert.True(hasNotified, "notification");
             Assert.AreEqual(AddBlockResult.Added, result, "result");
+            Assert.True(hasNotifiedNewSuggested, "NewSuggestedBlock");
         }
 
         [Test]
@@ -127,10 +140,15 @@ namespace Nethermind.Blockchain.Test
             Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).TestObject;
             blockTree.SuggestBlock(block0);
             blockTree.NewBestSuggestedBlock += (sender, args) => { hasNotified = true; };
+            
+            bool hasNotifiedNewSuggested = false;
+            blockTree.NewSuggestedBlock += (sender, args) => { hasNotifiedNewSuggested = true; };
+            
             var result = blockTree.SuggestBlock(block1);
 
             Assert.True(hasNotified, "notification");
             Assert.AreEqual(AddBlockResult.Added, result, "result");
+            Assert.True(hasNotifiedNewSuggested, "NewSuggestedBlock");
         }
 
         [Test]
@@ -146,11 +164,16 @@ namespace Nethermind.Blockchain.Test
             blockTree.SuggestBlock(block1);
             blockTree.NewHeadBlock += (sender, args) => { hasNotifiedHead = true; };
             blockTree.NewBestSuggestedBlock += (sender, args) => { hasNotifiedBest = true; };
+            
+            bool hasNotifiedNewSuggested = false;
+            blockTree.NewSuggestedBlock += (sender, args) => { hasNotifiedNewSuggested = true; };
+            
             var result = blockTree.SuggestBlock(block2);
 
             Assert.False(hasNotifiedBest, "notification best");
             Assert.False(hasNotifiedHead, "notification head");
             Assert.AreEqual(AddBlockResult.Added, result, "result");
+            Assert.True(hasNotifiedNewSuggested, "NewSuggestedBlock");
         }
 
         [Test]
