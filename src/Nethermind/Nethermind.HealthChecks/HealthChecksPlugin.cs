@@ -2,6 +2,7 @@ using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
+using Nethermind.JsonRpc;
 
 namespace Nethermind.HealthChecks
 {
@@ -9,6 +10,8 @@ namespace Nethermind.HealthChecks
     {
         private INethermindApi _api;
         private IHealthChecksConfig _healthChecksConfig;
+        private IJsonRpcConfig _jsonRpcConfig;
+
 
         public void Dispose()
         {
@@ -24,7 +27,8 @@ namespace Nethermind.HealthChecks
         {
             _api = api;
             _healthChecksConfig = _api.Config<IHealthChecksConfig>();
-            
+            _jsonRpcConfig = _api.Config<IJsonRpcConfig>();
+
             return Task.CompletedTask;
         }
 
@@ -38,7 +42,7 @@ namespace Nethermind.HealthChecks
             {
                 service.AddHealthChecksUI(setup =>
                 {
-                    setup.AddHealthCheckEndpoint("health", "/health");
+                    setup.AddHealthCheckEndpoint("health", $"http://{_jsonRpcConfig.Host}:{_jsonRpcConfig.Port}/{_healthChecksConfig.ApiUrl}");
                     setup.SetEvaluationTimeInSeconds(_healthChecksConfig.PollingInterval);
                     setup.SetHeaderText("Nethermind Node Health");
                     if (_healthChecksConfig.WebhooksEnabled) 
