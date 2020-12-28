@@ -18,7 +18,7 @@ namespace Nethermind.Trie.Pruning
 {
     public interface IPruningStrategy
     {
-        bool ShouldCache { get; }
+        bool PruningEnabled { get; }
         bool ShouldPrune(in long currentMemory);
     }
 }

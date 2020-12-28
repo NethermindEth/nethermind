@@ -140,7 +140,7 @@ namespace Nethermind.Trie.Pruning
                     throw new TrieStoreException($"{nameof(TrieNode.LastSeen)} set on {node} committed at {blockNumber}.");
                 }
 
-                if (_pruningStrategy.ShouldCache)
+                if (_pruningStrategy.PruningEnabled)
                 {
                     if (IsNodeCached(node.Keccak))
                     {
@@ -164,7 +164,7 @@ namespace Nethermind.Trie.Pruning
                 }
 
                 node.LastSeen = blockNumber;
-                if (!_pruningStrategy.ShouldCache)
+                if (!_pruningStrategy.PruningEnabled)
                 {
                     Persist(node, blockNumber);
                 }
@@ -265,7 +265,7 @@ namespace Nethermind.Trie.Pruning
                 throw new ArgumentNullException(nameof(hash));
             }
 
-            if (!_pruningStrategy.ShouldCache)
+            if (!_pruningStrategy.PruningEnabled)
             {
                 return new TrieNode(NodeType.Unknown, hash);
             }
