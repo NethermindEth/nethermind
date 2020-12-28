@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -179,7 +179,7 @@ namespace Nethermind.Network.Test.P2P
             session.MarkDisconnected(DisconnectReason.Other, DisconnectType.Remote, "test");
             session.EnableSnappy();
         }
-        
+
         [Test]
         public async Task Adding_protocols_when_disconnecting_will_not_cause_trouble()
         {
@@ -190,6 +190,7 @@ namespace Nethermind.Network.Test.P2P
             {
                 IProtocolHandler required = Substitute.For<IProtocolHandler>();
                 required.ProtocolCode.Returns("p2p");
+                required.MessageIdSpaceSize.Returns(16);
                 session.AddProtocolHandler(required);
                 while (!shouldStop)
                 {
@@ -200,7 +201,7 @@ namespace Nethermind.Network.Test.P2P
                     TestContext.WriteLine("aaa");
                 }
             };
-            
+
             session.Handshake(TestItem.PublicKeyA);
             session.Init(5, _channelHandlerContext, _packetSender);
             Task task = new Task(addProtocol);

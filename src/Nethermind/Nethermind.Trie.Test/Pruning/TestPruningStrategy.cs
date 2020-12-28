@@ -13,19 +13,23 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
 
-using System;
+using Nethermind.Trie.Pruning;
 
-namespace Nethermind.Trie.Pruning
+namespace Nethermind.Trie.Test.Pruning
 {
-    [Serializable]
-    public class PruningException : TrieException
+    public class TestPruningStrategy : IPruningStrategy
     {
-        public PruningException() { }
+        private readonly bool _pruningEnabled;
+        private readonly bool _shouldPrune;
+        public TestPruningStrategy(bool pruningEnabled, bool shouldPrune = false) 
+        {
+            _pruningEnabled = pruningEnabled;
+            _shouldPrune = shouldPrune;
+        }
 
-        public PruningException(string message) : base(message) { }
+        public bool PruningEnabled => _pruningEnabled;
 
-        public PruningException(string message, Exception inner) : base(message, inner) { }
+        public bool ShouldPrune(in long currentMemory) => _pruningEnabled && _shouldPrune;
     }
 }
