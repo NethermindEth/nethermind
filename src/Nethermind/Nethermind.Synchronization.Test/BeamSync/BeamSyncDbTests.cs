@@ -328,7 +328,7 @@ namespace Nethermind.Synchronization.Test.BeamSync
             BeamSyncDb beamSyncDb = new BeamSyncDb(stateDB, beamDb, syncModeSelector, LimboLogs.Instance);
             syncModeSelector.Current.Returns(SyncMode.Beam);
             beamSyncDb[TestItem.KeccakA.Bytes] = new byte[] {1};
-            syncModeSelector.Current.Returns(SyncMode.Idle);
+            syncModeSelector.Current.Returns(SyncMode.None);
             beamSyncDb[TestItem.KeccakB.Bytes] = new byte[] {1, 2};
 
             stateDB[TestItem.KeccakA.Bytes].Should().BeNull();

@@ -887,11 +887,17 @@ namespace Nethermind.Synchronization.Test.ParallelSync
         [TestCase(FastBlocksState.FinishedHeaders)]
         public void Finished_fast_sync_but_not_state_sync_and_lesser_peers_are_known_in_fast_blocks(FastBlocksState fastBlocksState)
         {
+            var expectedSyncMode = fastBlocksState.GetSyncMode();
+            if (expectedSyncMode == SyncMode.None)
+            {
+                expectedSyncMode = SyncMode.Idle;
+            }
+            
             Scenario.GoesLikeThis()
                 .IfThisNodeJustFinishedFastBlocksAndFastSync(fastBlocksState)
                 .AndPeersAreOnlyUsefulForFastBlocks()
                 .WhenFastSyncWithFastBlocksIsConfigured()
-                .TheSyncModeShouldBe(SyncMode.Idle| fastBlocksState.GetSyncMode());
+                .TheSyncModeShouldBe(expectedSyncMode);
         }
 
         [Test]
@@ -1212,11 +1218,11 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                 case FastBlocksState.None:
                     return SyncMode.FastHeaders;
                 case FastBlocksState.FinishedHeaders:
-                    return isFullSync ? SyncMode.FastBodies : SyncMode.Idle;
+                    return isFullSync ? SyncMode.FastBodies : SyncMode.None;
                 case FastBlocksState.FinishedBodies:
-                    return isFullSync ? SyncMode.FastReceipts : SyncMode.Idle;
+                    return isFullSync ? SyncMode.FastReceipts : SyncMode.None;
                 default:
-                    return SyncMode.Idle;
+                    return SyncMode.None;
             }
         }
         

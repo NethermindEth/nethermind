@@ -16,6 +16,7 @@
 
 using System;
 using System.ComponentModel;
+using System.Linq;
 using System.Timers;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Int256;
@@ -141,8 +142,9 @@ namespace Nethermind.Synchronization.ParallelSync
             best.IsInFastBodies = ShouldBeInFastBodiesMode(best);
             best.IsInFastReceipts = ShouldBeInFastReceiptsMode(best);
             best.IsInDisconnected = ShouldBeInDisconnectedMode(best);
+            best.IsInIdle = ShouldBeInIdleMode(best);
 
-            SyncMode newModes = SyncMode.Idle;
+            SyncMode newModes = SyncMode.None;
             CheckAddFlag(best.IsInBeamSync, SyncMode.Beam, ref newModes);
             CheckAddFlag(best.IsInFastHeaders, SyncMode.FastHeaders, ref newModes);
             CheckAddFlag(best.IsInFastBodies, SyncMode.FastBodies, ref newModes);
@@ -151,6 +153,7 @@ namespace Nethermind.Synchronization.ParallelSync
             CheckAddFlag(best.IsInFullSync, SyncMode.Full, ref newModes);
             CheckAddFlag(best.IsInStateSync, SyncMode.StateNodes, ref newModes);
             CheckAddFlag(best.IsInDisconnected, SyncMode.Disconnected, ref newModes);
+            CheckAddFlag(best.IsInIdle, SyncMode.Idle, ref newModes);
             
             if (IsTheModeSwitchWorthMentioning(newModes))
             {
@@ -227,6 +230,18 @@ namespace Nethermind.Synchronization.ParallelSync
             bool hasEverBeenInFullSync = best.Processed > PivotNumber && best.State > PivotNumber;
             long heightDelta = best.PeerBlock - best.Processed;
             return hasEverBeenInFullSync && heightDelta < FastSyncCatchUpHeightDelta;
+        }
+        
+        private bool ShouldBeInIdleMode(Snapshot best)
+        {
+            return !(best.IsInDisconnected 
+                     || best.IsInBeamSync 
+                     || best.IsInFastSync 
+                     || best.IsInStateSync 
+                     || best.IsInFastBodies 
+                     || best.IsInFastHeaders 
+                     || best.IsInFastReceipts 
+                     || best.IsInFullSync);
         }
 
         private bool ShouldBeInFastSyncMode(Snapshot best)
@@ -379,7 +394,6 @@ namespace Nethermind.Synchronization.ParallelSync
                    !best.IsInFullSync &&
                    !best.IsInStateSync &&
                    // maybe some more sophisticated heuristic?
-                   best.PeerBlock == 0 &&
                    best.PeerDifficulty == UInt256.Zero;
         }
 
@@ -545,7 +559,7 @@ namespace Nethermind.Synchronization.ParallelSync
                 PeerBlock = peerBlock;
                 PeerDifficulty = peerDifficulty;
 
-                IsInDisconnected = IsInFastReceipts = IsInFastBodies = IsInFastHeaders = IsInFastSync = IsInBeamSync = IsInFullSync = IsInStateSync = false;
+                IsInIdle = IsInDisconnected = IsInFastReceipts = IsInFastBodies = IsInFastHeaders = IsInFastSync = IsInBeamSync = IsInFullSync = IsInStateSync = false;
             }
 
             public bool IsInFastHeaders { get; set; }
@@ -556,6 +570,7 @@ namespace Nethermind.Synchronization.ParallelSync
             public bool IsInBeamSync { get; set; }
             public bool IsInFullSync { get; set; }
             public bool IsInDisconnected { get; set; }
+            public bool IsInIdle { get; set; }
 
             /// <summary>
             /// Best block that has been processed

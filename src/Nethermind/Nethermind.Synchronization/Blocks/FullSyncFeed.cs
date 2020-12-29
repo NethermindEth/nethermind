@@ -31,7 +31,7 @@ namespace Nethermind.Synchronization.Blocks
             _blocksRequest = new BlocksRequest(BuildOptions());
         }
 
-        protected override SyncMode ActivationSyncModes { get; } = SyncMode.Full;
+        protected override SyncMode ActivationSyncModes { get; } = SyncMode.Full | SyncMode.Beam;
 
         private static DownloaderOptions BuildOptions() => DownloaderOptions.WithBodies | DownloaderOptions.Process;
 
