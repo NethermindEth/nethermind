@@ -215,11 +215,6 @@ namespace Nethermind.Network.P2P
             throw new NotSupportedException("Fast sync not supported by eth62 protocol");
         }
 
-        public virtual Task<Keccak[]> GetBlockWitnessHashes(Keccak blockHash, CancellationToken token)
-        {
-            throw new NotSupportedException();
-        }
-
         public abstract void NotifyOfNewBlock(Block block, SendBlockPriority priority);
 
         public virtual void SendNewTransaction(Transaction transaction, bool isPriority)
