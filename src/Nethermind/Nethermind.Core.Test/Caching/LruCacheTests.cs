@@ -20,7 +20,6 @@ using Nethermind.Core.Caching;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using NUnit.Framework;
-using Org.BouncyCastle.Bcpg.OpenPgp;
 
 namespace Nethermind.Core.Test.Caching
 {
