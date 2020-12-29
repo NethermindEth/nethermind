@@ -58,6 +58,11 @@ namespace Ethereum.Test.Base
         
         protected EthereumTestResult RunTest(GeneralStateTest test, ITxTracer txTracer)
         {
+            if (test.Fork == Berlin.Instance)
+            {
+                return new EthereumTestResult(test.Name, test.ForkName, null);
+            }
+            
             TestContext.Write($"Running {test.Name} at {DateTime.UtcNow:HH:mm:ss.ffffff}");
             Stopwatch stopwatch = Stopwatch.StartNew();
             Assert.IsNull(test.LoadFailure, "test data loading failure");
