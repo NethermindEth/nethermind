@@ -21,7 +21,10 @@ namespace Nethermind.Synchronization.ParallelSync
     [Flags]
     public enum SyncMode
     {
-        None = 0,
+        /// <summary>
+        /// We are connected to nodes and processing based on discovery
+        /// </summary>
+        Idle = 0,
         /// <summary>
         /// Stage of fast sync that downloads headers, bodies or receipts from pivot to beginning of chain in parallel.
         /// </summary>
@@ -58,6 +61,14 @@ namespace Nethermind.Synchronization.ParallelSync
         /// Stage of fast sync that downloads headers in parallel.
         /// </summary>
         FastReceipts = FastBlocks | 256,
-        All = FastBlocks | FastSync | StateNodes | Full | Beam | DbLoad | FastHeaders | FastBodies | FastReceipts
+        /// <summary>
+        /// We are not connected to nodes
+        /// </summary>
+        Disconnected = 512,
+    }
+    
+    public static class SyncModeExtensions
+    {
+        public static bool NotSyncing(this SyncMode syncMode) => syncMode == SyncMode.Idle || syncMode == SyncMode.Disconnected;
     }
 }

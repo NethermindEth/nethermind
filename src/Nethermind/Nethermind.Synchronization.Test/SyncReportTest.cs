@@ -41,11 +41,12 @@ namespace Nethermind.Synchronization.Test
             pool.InitializedPeersCount.Returns(1);
             
             Queue<SyncMode> _syncModes = new Queue<SyncMode>();
-            _syncModes.Enqueue(SyncMode.None);
+            _syncModes.Enqueue(SyncMode.Idle);
             _syncModes.Enqueue(SyncMode.FastSync);
             _syncModes.Enqueue(SyncMode.Full);
             _syncModes.Enqueue(SyncMode.FastBlocks);
             _syncModes.Enqueue(SyncMode.StateNodes);
+            _syncModes.Enqueue(SyncMode.Disconnected);
 
             SyncConfig syncConfig = new SyncConfig();
             syncConfig.FastBlocks = fastBlocks;
