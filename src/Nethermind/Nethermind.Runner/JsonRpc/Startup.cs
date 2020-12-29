@@ -101,7 +101,7 @@ namespace Nethermind.Runner
             {
                 if (healthChecksConfig.Enabled)
                 {
-                    endpoints.MapHealthChecks(healthChecksConfig.ApiUrl, new HealthCheckOptions()
+                    endpoints.MapHealthChecks(healthChecksConfig.Slug, new HealthCheckOptions()
                     {
                         Predicate = _ => true,
                         ResponseWriter = UIResponseWriter.WriteHealthCheckUIResponse

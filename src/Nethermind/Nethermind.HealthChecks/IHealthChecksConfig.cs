@@ -27,8 +27,8 @@ namespace Nethermind.HealthChecks
         [ConfigItem(Description = "If 'true' then Webhooks can be configured", DefaultValue = "false")]
         public bool WebhooksEnabled { get; set; }
 
-        [ConfigItem(Description = "The API URL on which Healthchecks service will be exposed", DefaultValue = "/health")]
-        public string ApiUrl { get; set; }
+        [ConfigItem(Description = "The URL slug on which Healthchecks service will be exposed", DefaultValue = "/health")]
+        public string Slug { get; set; }
 
         [ConfigItem(Description = "The Webhooks endpoint e.g. Slack WebHooks", DefaultValue = "null")]
         public string WebhooksUri { get; set; }
