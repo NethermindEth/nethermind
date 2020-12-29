@@ -173,11 +173,13 @@ namespace Nethermind.Blockchain.Test.TxPools
                 var transactions = AddTransactionsToPool(true, false, transactionsPerPeer);
                 Transaction[] transactionsForFirstTask = transactions.Where(t => t.Nonce == 8).ToArray();
                 Transaction[] transactionsForSecondTask = transactions.Where(t => t.Nonce == 6).ToArray();
+                Transaction[] transactionsForThirdTask = transactions.Where(t => t.Nonce == 7).ToArray();
                 transactions.Should().HaveCount(transactionsPerPeer * 10);
                 transactionsForFirstTask.Should().HaveCount(transactionsPerPeer);
                 var firstTask = Task.Run(() => DeleteTransactionsFromPool(true, transactionsForFirstTask));
                 var secondTask = Task.Run(() => DeleteTransactionsFromPool(true, transactionsForSecondTask));
-                await Task.WhenAll(firstTask, secondTask);
+                var thirdTask = Task.Run(() => DeleteTransactionsFromPool(true, transactionsForThirdTask));
+                await Task.WhenAll(firstTask, secondTask, thirdTask);
                 _txPool.GetPendingTransactions().Should().HaveCount(transactionsPerPeer);
             }
         }
