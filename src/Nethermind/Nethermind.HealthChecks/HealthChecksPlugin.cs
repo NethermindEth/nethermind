@@ -24,7 +24,7 @@ namespace Nethermind.HealthChecks
         {
             _api = api;
             _healthChecksConfig = _api.Config<IHealthChecksConfig>();
-            
+
             return Task.CompletedTask;
         }
 
@@ -38,7 +38,7 @@ namespace Nethermind.HealthChecks
             {
                 service.AddHealthChecksUI(setup =>
                 {
-                    setup.AddHealthCheckEndpoint("health", "/health");
+                    setup.AddHealthCheckEndpoint("health", _healthChecksConfig.Slug);
                     setup.SetEvaluationTimeInSeconds(_healthChecksConfig.PollingInterval);
                     setup.SetHeaderText("Nethermind Node Health");
                     if (_healthChecksConfig.WebhooksEnabled) 
