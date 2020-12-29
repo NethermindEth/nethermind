@@ -358,14 +358,14 @@ namespace Nethermind.Trie.Pruning
 
                 if (candidateSet != null)
                 {
-                    if (_logger.IsWarn) _logger.Warn($"Elevated pruning for candidate {candidateSet.BlockNumber}");
+                    if (_logger.IsDebug) _logger.Debug($"Elevated pruning for candidate {candidateSet.BlockNumber}");
                     Persist(candidateSet);
                     return true;
                 }
 
                 _commitSetQueue.TryPeek(out BlockCommitSet? uselessFrontSet);
-                if (_logger.IsWarn)
-                    _logger.Warn(
+                if (_logger.IsDebug)
+                    _logger.Debug(
                         $"Found no candidate for elevated pruning (sets: {_commitSetQueue.Count}, earliest: {uselessFrontSet?.BlockNumber}, newest kept: {NewestKeptBlockNumber}, reorg depth {Reorganization.MaxDepth})");
             }
 
@@ -397,8 +397,8 @@ namespace Nethermind.Trie.Pruning
         /// <exception cref="InvalidOperationException"></exception>
         private void PruneCache()
         {
-            if (_logger.IsWarn)
-                _logger.Warn(
+            if (_logger.IsDebug)
+                _logger.Debug(
                     $"Pruning nodes {MemoryUsedByDirtyCache / 1.MB()}MB , last persisted block: {LastPersistedBlockNumber} current: {NewestKeptBlockNumber}.");
             Stopwatch stopwatch = Stopwatch.StartNew();
             List<TrieNode> toRemove = new List<TrieNode>(); // TODO: resettable
@@ -462,8 +462,8 @@ namespace Nethermind.Trie.Pruning
 
             stopwatch.Stop();
             Metrics.PruningTime = stopwatch.ElapsedMilliseconds;
-            if (_logger.IsWarn)
-                _logger.Warn(
+            if (_logger.IsDebug)
+                _logger.Debug(
                     $"Finished pruning nodes in {stopwatch.ElapsedMilliseconds}ms {MemoryUsedByDirtyCache / 1.MB()}MB, last persisted block: {LastPersistedBlockNumber} current: {NewestKeptBlockNumber}.");
         }
 
@@ -478,7 +478,7 @@ namespace Nethermind.Trie.Pruning
 
         public void Dispose()
         {
-            _logger.Warn("Disposing trie");
+            if (_logger.IsDebug) _logger.Debug("Disposing trie");
             PersistOnShutdown();
         }
 
@@ -489,7 +489,7 @@ namespace Nethermind.Trie.Pruning
 
                 if (blockCommitSet.BlockNumber < NewestKeptBlockNumber - Reorganization.MaxDepth - 1)
                 {
-                    // if (_logger.IsWarn) _logger.Warn($"Removing historical ({_commitSetQueue.Count}) {blockCommitSet.BlockNumber} < {NewestKeptBlockNumber} - 512");    
+                    if (_logger.IsDebug) _logger.Debug($"Removing historical ({_commitSetQueue.Count}) {blockCommitSet.BlockNumber} < {NewestKeptBlockNumber} - {Reorganization.MaxDepth}");    
                     _commitSetQueue.TryDequeue(out _);
                 }
                 else
@@ -662,7 +662,7 @@ namespace Nethermind.Trie.Pruning
             bool isFirstCommit = Interlocked.Exchange(ref _isFirst, 1) == 0;
             if (isFirstCommit)
             {
-                _logger.Warn(
+                if (_logger.IsDebug) _logger.Debug(
                     $"Reached first commit - newest {NewestKeptBlockNumber}, last persisted {LastPersistedBlockNumber}");
                 // this is important when transitioning from fast sync
                 // imagine that we transition at block 1200000
@@ -708,23 +708,23 @@ namespace Nethermind.Trie.Pruning
                     if (firstCandidateFound == false)
                     {
                         persistenceCandidate = blockCommitSet;
-                        _logger.Warn($"New persistence candidate {persistenceCandidate}");
+                        if (_logger.IsDebug) _logger.Debug($"New persistence candidate {persistenceCandidate}");
                         firstCandidateFound = true;
                         continue;
                     }
                     if (blockCommitSet.BlockNumber <= NewestKeptBlockNumber - Reorganization.MaxDepth)
                     {
                         persistenceCandidate = blockCommitSet;
-                        _logger.Warn($"New persistence candidate {persistenceCandidate}");
+                        if (_logger.IsDebug) _logger.Debug($"New persistence candidate {persistenceCandidate}");
                     }
                 }
                 else
                 {
-                    _logger.Warn("Block commit was null...");
+                    if (_logger.IsDebug) _logger.Debug("Block commit was null...");
                 }
             }
 
-            _logger.Warn($"Persisting on disposal {persistenceCandidate} (cache memory at {MemoryUsedByDirtyCache})");
+            if (_logger.IsDebug) _logger.Debug($"Persisting on disposal {persistenceCandidate} (cache memory at {MemoryUsedByDirtyCache})");
             if (persistenceCandidate != null)
             {
                 Persist(persistenceCandidate);
