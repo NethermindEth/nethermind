@@ -30,7 +30,7 @@ echo =======================================================
 echo Uploading Linux releases
 echo =======================================================
 
-./nethermind/scripts/packaging/upload-github-release-asset.sh github_api_token=$GITHUB_TOKEN owner=$GH_OWNER repo=$GH_REPO tag=$GIT_SHORT_TAG filename=$RELEASE_DIRECTORY/$LIN_RELEASE/$PUB_LIN_FILE
+./nethermind/scripts/deployment/upload-github-release-asset.sh github_api_token=$GITHUB_TOKEN owner=$GH_OWNER repo=$GH_REPO tag=$GIT_SHORT_TAG filename=$RELEASE_DIRECTORY/$LIN_RELEASE/$PUB_LIN_FILE
 
 echo =======================================================
 echo Finished uploading Linux release
@@ -40,7 +40,7 @@ echo =======================================================
 echo Uploading Windows release
 echo =======================================================
 
-./nethermind/scripts/packaging/upload-github-release-asset.sh github_api_token=$GITHUB_TOKEN owner=$GH_OWNER repo=$GH_REPO tag=$GIT_SHORT_TAG filename=$RELEASE_DIRECTORY/$WIN_RELEASE/$PUB_WIN_FILE
+./nethermind/scripts/deployment/upload-github-release-asset.sh github_api_token=$GITHUB_TOKEN owner=$GH_OWNER repo=$GH_REPO tag=$GIT_SHORT_TAG filename=$RELEASE_DIRECTORY/$WIN_RELEASE/$PUB_WIN_FILE
 
 echo =======================================================
 echo Finished uploading Windows release
@@ -50,7 +50,7 @@ echo =======================================================
 echo Uploading Darwin release
 echo ======================================================
 
-./nethermind/scripts/packaging/upload-github-release-asset.sh github_api_token=$GITHUB_TOKEN owner=$GH_OWNER repo=$GH_REPO tag=$GIT_SHORT_TAG filename=$RELEASE_DIRECTORY/$OSX_RELEASE/$PUB_OSX_FILE
+./nethermind/scripts/deployment/upload-github-release-asset.sh github_api_token=$GITHUB_TOKEN owner=$GH_OWNER repo=$GH_REPO tag=$GIT_SHORT_TAG filename=$RELEASE_DIRECTORY/$OSX_RELEASE/$PUB_OSX_FILE
 
 echo =======================================================
 echo Finished uploading Darwin release
@@ -60,7 +60,7 @@ echo =======================================================
 echo Uploading plugins package
 echo =======================================================
 
-./nethermind/scripts/packaging/upload-github-release-asset.sh github_api_token=$GITHUB_TOKEN owner=$GH_OWNER repo=$GH_REPO tag=$GIT_SHORT_TAG filename=$RELEASE_DIRECTORY/plugins/$PUB_PLUGINS_FILE
+./nethermind/scripts/deployment/upload-github-release-asset.sh github_api_token=$GITHUB_TOKEN owner=$GH_OWNER repo=$GH_REPO tag=$GIT_SHORT_TAG filename=$RELEASE_DIRECTORY/plugins/$PUB_PLUGINS_FILE
 
 echo =======================================================
 echo Finished uploading plugins package

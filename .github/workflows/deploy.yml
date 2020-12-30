@@ -55,7 +55,7 @@ jobs:
       name: Upload Nethermind linux package
       with:
         name: nethermind-linux-package
-        path: ${{ env.RELEASE_DIRECTORY }}/${{ env.LIN_RELEASE }}//nethermind-linux-amd64-*
+        path: ${{ env.RELEASE_DIRECTORY }}/${{ env.LIN_RELEASE }}/nethermind-linux-amd64-*
     - uses: actions/upload-artifact@master
       name: Upload Nethermind windows package
       with:
