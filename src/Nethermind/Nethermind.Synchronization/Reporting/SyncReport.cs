@@ -171,7 +171,7 @@ namespace Nethermind.Synchronization.Reporting
                 _logger.Info($"Peers | with known best block: {_syncPeerPool.InitializedPeersCount} | all: {_syncPeerPool.PeerCount} |");
             }
 
-            if (currentSyncMode == SyncMode.Disconnected && _syncPeerPool.InitializedPeersCount == 0)
+            if (currentSyncMode == SyncMode.Disconnected)
             {
                 WriteNotStartedReport();
             }

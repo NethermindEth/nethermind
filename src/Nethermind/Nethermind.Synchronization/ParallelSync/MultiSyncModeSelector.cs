@@ -234,14 +234,14 @@ namespace Nethermind.Synchronization.ParallelSync
         
         private bool ShouldBeInWaitingForBlockMode(Snapshot best)
         {
-            bool nonDesiredPeerKnown = !AnyDesiredPeerKnown(best);
+            bool noDesiredPeerKnown = !AnyDesiredPeerKnown(best);
             bool postPivotPeerAvailable = AnyPostPivotPeerKnown(best.PeerBlock);
             bool hasFastSyncBeenActive = best.Header >= PivotNumber;
             bool notInBeamSync = !best.IsInBeamSync;
             bool notInFastSync = !best.IsInFastSync;
             bool notInStateSync = !best.IsInStateSync;
             
-            bool result = nonDesiredPeerKnown &&
+            bool result = noDesiredPeerKnown &&
                           postPivotPeerAvailable &&
                           hasFastSyncBeenActive &&
                           notInBeamSync &&
@@ -251,7 +251,7 @@ namespace Nethermind.Synchronization.ParallelSync
             if (_logger.IsTrace)
             {
                 _logger.Trace("WAITING FOR BLOCK: " +
-                              $"{GetBoolFlagString(nonDesiredPeerKnown)}{nameof(nonDesiredPeerKnown)} && " +
+                              $"{GetBoolFlagString(noDesiredPeerKnown)}{nameof(noDesiredPeerKnown)} && " +
                               $"{GetBoolFlagString(postPivotPeerAvailable)}{nameof(postPivotPeerAvailable)} && " +
                               $"{GetBoolFlagString(hasFastSyncBeenActive)}{nameof(hasFastSyncBeenActive)} && " +
                               $"{GetBoolFlagString(notInBeamSync)}{nameof(notInBeamSync)} && " +
