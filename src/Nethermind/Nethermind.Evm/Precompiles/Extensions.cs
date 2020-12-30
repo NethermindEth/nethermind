@@ -15,8 +15,6 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using Nethermind.Core.Extensions;
-using Nethermind.Int256;
 
 namespace Nethermind.Evm.Precompiles
 {

@@ -114,7 +114,7 @@ namespace Nethermind.Stats.Model
 
         private void SetIPEndPoint(IPEndPoint address)
         {
-            Host = address.Address.ToString();
+            Host = address.Address.MapToIPv4().ToString();
             Port = address.Port;
             Address = address;
         }
@@ -158,13 +158,13 @@ namespace Nethermind.Stats.Model
        
         public string ToString(string format, IFormatProvider formatProvider)
         {
-            string formattedHost = Host.Replace("::ffff:", string.Empty);
             return format switch
             {
-                "s" => $"{formattedHost}:{Port}",
-                "c" => $"[Node|{formattedHost}:{Port}|{ClientId}|{EthDetails}]",
-                "f" => $"enode://{Id.ToString(false)}@{formattedHost}:{Port}|{ClientId}",
-                _ => $"enode://{Id.ToString(false)}@{formattedHost}:{Port}"
+                "s" => $"{Host}:{Port}",
+                "c" => $"[Node|{Host}:{Port}|{ClientId}|{EthDetails}]",
+                "f" => $"enode://{Id.ToString(false)}@{Host}:{Port}|{ClientId}",
+                "e" => $"enode://{Id.ToString(false)}@{Host}:{Port}",
+                _ => $"enode://{Id.ToString(false)}@{Host}:{Port}"
             };
         }
         

@@ -77,8 +77,8 @@ namespace Nethermind.Synchronization.Reporting
 
         private void SyncModeSelectorOnChanged(object? sender, SyncModeChangedEventArgs e)
         {
-            if (e.Previous == SyncMode.None && e.Current == SyncMode.Full ||
-                e.Previous == SyncMode.Full && e.Current == SyncMode.None)
+            if (e.Previous.NotSyncing() && e.Current == SyncMode.Full ||
+                e.Previous == SyncMode.Full && e.Current.NotSyncing())
             {
                 return;
             }
@@ -171,7 +171,7 @@ namespace Nethermind.Synchronization.Reporting
                 _logger.Info($"Peers | with known best block: {_syncPeerPool.InitializedPeersCount} | all: {_syncPeerPool.PeerCount} |");
             }
 
-            if (currentSyncMode == SyncMode.None && _syncPeerPool.InitializedPeersCount == 0)
+            if (currentSyncMode == SyncMode.Disconnected)
             {
                 WriteNotStartedReport();
             }

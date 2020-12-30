@@ -17,6 +17,7 @@
 using System;
 using System.Diagnostics;
 using System.IO;
+using System.Security.Authentication;
 using System.Text;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
@@ -52,6 +53,7 @@ namespace Nethermind.Runner
             services.Configure<KestrelServerOptions>(options => {
                 options.AllowSynchronousIO = true;
                 options.Limits.MaxRequestBodySize = jsonRpcConfig.MaxRequestBodySize;
+                options.ConfigureHttpsDefaults(co => co.SslProtocols |= SslProtocols.Tls13);
             });
             Bootstrap.Instance.RegisterJsonRpcServices(services);
             services.AddControllers();
@@ -99,7 +101,7 @@ namespace Nethermind.Runner
             {
                 if (healthChecksConfig.Enabled)
                 {
-                    endpoints.MapHealthChecks("/health", new HealthCheckOptions()
+                    endpoints.MapHealthChecks(healthChecksConfig.Slug, new HealthCheckOptions()
                     {
                         Predicate = _ => true,
                         ResponseWriter = UIResponseWriter.WriteHealthCheckUIResponse

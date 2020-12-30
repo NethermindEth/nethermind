@@ -52,6 +52,8 @@ namespace Nethermind.DataMarketplace.Core.Configs
         public string GasPriceType { get; set; } = "custom";
         public uint CancelTransactionGasPricePercentageMultiplier { get; set; } = 110;
         public bool JsonRpcDataChannelEnabled { get; set; }
+        public UInt256 RefundGasPrice { get; set; } = 20000000000;
+        public UInt256 PaymentClaimGasPrice { get; set; } = 20000000000;
 
         public ulong DepositsDbWriteBufferSize { get; set; } = 16.MiB();
         public uint DepositsDbWriteBufferNumber { get; set; } = 4;

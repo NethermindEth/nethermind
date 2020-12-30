@@ -37,7 +37,7 @@ namespace Nethermind.Synchronization.Witness
         public int Retry { get; set; }
         
         public Memory<Keccak>? Response { get; set; }
-
+        
         public override string ToString()
         {
             return $"block {BlockHash} witnesses requests with {Response?.Length ?? 0} node response";

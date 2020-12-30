@@ -14,17 +14,12 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System;
 using System.Linq;
-using System.Threading;
-using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Evm.Tracing;
 using Nethermind.Evm.Tracing.GethStyle;
-using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test.Tracing

@@ -23,7 +23,7 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
 {
     internal class AllocationJson
     {
-        public object BuiltIn { get; set; }
+        public BuiltInJson BuiltIn { get; set; }
         
         public UInt256 Balance { get; set; }
         
@@ -34,10 +34,7 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
 
         public Dictionary<UInt256, byte[]> GetConvertedStorage()
         {
-            if(Storage == null)
-                return null;
-            
-            return Storage.ToDictionary(s => Bytes.FromHexString(s.Key).ToUInt256(), s => Bytes.FromHexString(s.Value));
+            return Storage?.ToDictionary(s => Bytes.FromHexString(s.Key).ToUInt256(), s => Bytes.FromHexString(s.Value));
         }
     }
 }

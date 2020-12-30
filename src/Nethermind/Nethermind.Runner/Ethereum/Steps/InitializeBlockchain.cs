@@ -98,7 +98,6 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.LogManager);
             
             setApi.ChainHeadStateProvider = new ChainHeadReadOnlyStateProvider(getApi.BlockTree, stateReader);
-
             // Init state if we need system calls before actual processing starts
             if (getApi.BlockTree!.Head != null)
             {

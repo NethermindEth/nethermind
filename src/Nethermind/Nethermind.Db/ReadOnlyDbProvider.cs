@@ -44,6 +44,13 @@ namespace Nethermind.Db
 
         public void Dispose()
         {
+            if (_registeredDbs != null)
+            {
+                foreach (var registeredDb in _registeredDbs)
+                {
+                    registeredDb.Value?.Dispose();
+                }
+            }
         }
 
         public IDb BeamStateDb { get; } = new MemDb();

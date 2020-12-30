@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -72,17 +72,8 @@ namespace Nethermind.Db.Rocks.Config
         public uint CanonicalHashTrieDbWriteBufferNumber { get; set; } = 4;
         public ulong CanonicalHashTrieDbBlockCacheSize { get; set; } = 8.MB();
         public bool CanonicalHashTrieDbCacheIndexAndFilterBlocks { get; set; } = true;
-        
-        public bool DataAssetsDbCacheIndexAndFilterBlocks { get; set; } = false;
-        public ulong DataAssetsDbBlockCacheSize { get; set; } = 1.KiB();
-        public ulong DataAssetsDbWriteBufferSize { get; set; } = 1.KiB();
-        public uint DataAssetsDbWriteBufferNumber { get; set; } = 4;
-        
-        public bool PaymentClaimsDbCacheIndexAndFilterBlocks { get; set; } = false;
-        public ulong PaymentClaimsDbBlockCacheSize { get; set; } = 1.KiB();
-        public ulong PaymentClaimsDbWriteBufferSize { get; set; } = 1.KiB();
-        public uint PaymentClaimsDbWriteBufferNumber { get; set; } = 4;
 
+        
         public uint RecycleLogFileNum { get; set; } = 0;
         public bool WriteAheadLogSync { get; set; } = false;
     }

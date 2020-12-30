@@ -16,7 +16,6 @@
 // 
 
 using System.Threading;
-using Nethermind.Core;
 
 namespace Nethermind.Evm.Tracing
 {

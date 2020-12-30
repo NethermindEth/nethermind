@@ -62,6 +62,8 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc
         ResultWrapper<UsdPriceForRpc> ndm_getDaiUsdPrice();
         ResultWrapper<GasPriceTypesForRpc> ndm_getGasPrice();
         Task<ResultWrapper<bool>> ndm_setGasPrice(string gasPriceOrType);
+        Task<ResultWrapper<bool>> ndm_setRefundGasPrice(UInt256 gasPrice);
+        Task<ResultWrapper<UInt256>> ndm_getRefundGasPrice();
         Task<ResultWrapper<UpdatedTransactionInfoForRpc>> ndm_updateDepositGasPrice(Keccak depositId, UInt256 gasPrice);
         Task<ResultWrapper<UpdatedTransactionInfoForRpc>> ndm_updateRefundGasPrice(Keccak depositId, UInt256 gasPrice);
         Task<ResultWrapper<UpdatedTransactionInfoForRpc>> ndm_cancelDeposit(Keccak depositId);

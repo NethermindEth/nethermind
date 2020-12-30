@@ -77,9 +77,9 @@ namespace Nethermind.Synchronization.BeamSync
 
         private void SyncModeSelectorOnChanged(object? sender, SyncModeChangedEventArgs e)
         {
-            if ((e.Current & SyncMode.Full) == SyncMode.Full)
+            if (e.IsBeamSyncFinished())
             {
-                // the beam processor either already switched or is about ti switch to the full sync mode
+                // the beam processor either already switched or is about to switch to the full sync mode
                 // we should be already switched to the new database
                 lock (_finishLock)
                 {
@@ -102,7 +102,7 @@ namespace Nethermind.Synchronization.BeamSync
         {
             // at this stage beam executors are already cancelled and they no longer save to beam DB
             // standard processor is for sure not started yet - it is waiting for us to replace the target
-            if ((e.Current & SyncMode.Full) == SyncMode.Full)
+            if (e.IsBeamSyncFinished())
             {
                 Interlocked.Exchange(ref _targetDbForSaves, _stateDb);
             }

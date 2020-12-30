@@ -46,7 +46,7 @@ namespace Nethermind.Synchronization.ParallelSync
             Changed?.Invoke(this, e);
         }
 
-        public SyncMode Current => _syncModeSelector?.Current ?? SyncMode.None;
+        public SyncMode Current => _syncModeSelector?.Current ?? SyncMode.WaitingForBlock;
         public event EventHandler<SyncModeChangedEventArgs>? Preparing;
         public event EventHandler<SyncModeChangedEventArgs>? Changing;
         public event EventHandler<SyncModeChangedEventArgs>? Changed;
