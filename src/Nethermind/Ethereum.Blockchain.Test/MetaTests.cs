@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -39,7 +39,7 @@ namespace Ethereum.Blockchain.Test
             {
                 string expectedTypeName = ExpectedTypeName(directory);
                 Type type = types.SingleOrDefault(t => string.Equals(t.Name, expectedTypeName, StringComparison.InvariantCultureIgnoreCase));
-                if(type == null && directory != "stEWASMTests" && directory != "Specs" && directory != "runtimes")
+                if(type == null && directory != "stEWASMTests" && directory != "Specs" && directory != "runtimes" && directory != "ref")
                 {
                     if (new DirectoryInfo(directory).GetFiles().Any(f => f.Name.Contains(".resources.")))
                     {
