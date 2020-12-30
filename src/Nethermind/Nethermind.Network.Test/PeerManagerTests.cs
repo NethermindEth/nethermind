@@ -18,6 +18,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
 using DotNetty.Transport.Channels;
@@ -54,6 +55,7 @@ namespace Nethermind.Network.Test
         private const string enodesString = enode1String + "," + enode2String;
         private const string enode1String = "enode://22222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222@51.141.78.53:30303";
         private const string enode2String = "enode://1111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111b@52.141.78.53:30303";
+                                            
 
         [Test, Retry(10)]
         public async Task Will_connect_to_a_candidate_node()
@@ -93,6 +95,26 @@ namespace Nethermind.Network.Test
             
             ctx.RlpxPeer.CreateIncoming(session1, session2);
             ctx.PeerManager.ActivePeers.Count.Should().Be(1);
+        }
+        
+        [Test]
+        public async Task Will_accept_static_connection()
+        {
+            await using Context ctx = new Context();
+            ctx.NetworkConfig.ActivePeersMaxCount = 1;
+            ctx.StaticNodesManager.IsStatic(enode2String).Returns(true);
+            
+            ctx.PeerManager.Init();
+            var enode1 = new Enode(enode1String);
+            Node node1 = new Node(enode1.PublicKey, new IPEndPoint(enode1.HostIp, enode1.Port));
+            Session session1 = new Session(30303, LimboLogs.Instance, Substitute.For<IChannel>(), node1);
+            
+            var enode2 = new Enode(enode2String);
+            Node node2 = new Node(enode2.PublicKey, new IPEndPoint(enode2.HostIp, enode2.Port));            
+            Session session2 = new Session(30303, LimboLogs.Instance, Substitute.For<IChannel>(), node2);
+            
+            ctx.RlpxPeer.CreateIncoming(session1, session2);
+            ctx.PeerManager.ActivePeers.Count.Should().Be(2);
         }
         
         [TestCase(true, ConnectionDirection.In)]
