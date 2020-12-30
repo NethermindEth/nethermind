@@ -745,7 +745,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                 .IfThisNodeHasNeverSyncedBefore()
                 .AndAPeerWithGenesisOnlyIsKnown()
                 .ThenInAnySyncConfiguration()
-                .TheSyncModeShouldBe(SyncMode.None);
+                .TheSyncModeShouldBe(SyncMode.Disconnected);
         }
 
         [Test]
@@ -756,7 +756,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                 .IfThisNodeHasNeverSyncedBefore()
                 .AndAPeerWithHighDiffGenesisOnlyIsKnown()
                 .ThenInAnySyncConfiguration()
-                .TheSyncModeShouldBe(SyncMode.None);
+                .TheSyncModeShouldBe(SyncMode.Disconnected);
         }
 
         [Test]
@@ -766,7 +766,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                 .WhateverTheSyncProgressIs()
                 .AndNoPeersAreKnown()
                 .ThenInAnySyncConfiguration()
-                .TheSyncModeShouldBe(SyncMode.None);
+                .TheSyncModeShouldBe(SyncMode.Disconnected);
         }
 
         [Test]
@@ -777,7 +777,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                 .WhateverThePeerPoolLooks()
                 .WhenSynchronizationIsDisabled()
                 .ThenInAnySyncConfiguration()
-                .TheSyncModeShouldBe(SyncMode.None);
+                .TheSyncModeShouldBe(SyncMode.Disconnected);
         }
 
         [Test]
@@ -891,7 +891,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                 .IfThisNodeJustFinishedFastBlocksAndFastSync(fastBlocksState)
                 .AndPeersAreOnlyUsefulForFastBlocks()
                 .WhenFastSyncWithFastBlocksIsConfigured()
-                .TheSyncModeShouldBe(SyncMode.None| fastBlocksState.GetSyncMode());
+                .TheSyncModeShouldBe(fastBlocksState.GetSyncMode());
         }
 
         [Test]
@@ -1060,7 +1060,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                 .IfTheSyncProgressIsCorrupted()
                 .AndGoodPeersAreKnown()
                 .WhenBeamSyncIsConfigured()
-                .TheSyncModeShouldBe(SyncMode.None);
+                .TheSyncModeShouldBe(SyncMode.WaitingForBlock);
         }
 
         [Test]
@@ -1070,7 +1070,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                 .IfThisNodeIsProcessingAlreadyDownloadedBlocksInFullSync()
                 .AndGoodPeersAreKnown()
                 .WhenBeamSyncIsConfigured()
-                .TheSyncModeShouldBe(SyncMode.None);
+                .TheSyncModeShouldBe(SyncMode.WaitingForBlock);
         }
 
         [Test]
@@ -1100,7 +1100,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                 .IfThisNodeIsFullySynced()
                 .PeersWithWrongDifficultyAreKnown()
                 .ThenInAnyFastSyncConfiguration()
-                .TheSyncModeShouldBe(SyncMode.None);
+                .TheSyncModeShouldBe(SyncMode.WaitingForBlock);
         }
 
         [Test]
