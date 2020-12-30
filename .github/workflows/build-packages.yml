@@ -1,8 +1,7 @@
-name: Deploy Nethermind packages Dev
+name: Build Nethermind packages
 
-# on:
-#   workflow_dispatch:
-on: push
+on: workflow_dispatch
+
 jobs:
   build-nethermind:
     name: Build Nethermind Packages
