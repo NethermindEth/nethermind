@@ -619,7 +619,18 @@ namespace Nethermind.Network
 
         private void ProcessIncomingConnection(ISession session)
         {
+            void CheckIfNodeIsStatic(Node node)
+            {
+                if (_staticNodesManager.IsStatic(node.ToString()))
+                {
+                    node.IsStatic = true;
+                }
+            }
+            
+            CheckIfNodeIsStatic(session.Node);
+            
             if(_logger.IsTrace) _logger.Trace($"INCOMING {session}");
+            
             // if we have already initiated connection before
             if (_activePeers.TryGetValue(session.RemoteNodeId, out Peer existingActivePeer))
             {
@@ -627,7 +638,7 @@ namespace Nethermind.Network
                 return;
             }
 
-            if (_activePeers.Count >= MaxActivePeers)
+            if (!session.Node.IsStatic && _activePeers.Count >= MaxActivePeers)
             {
                 int initCount = 0;
                 foreach (KeyValuePair<PublicKey, Peer> pair in _activePeers)
