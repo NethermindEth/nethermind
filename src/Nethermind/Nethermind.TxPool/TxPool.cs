@@ -42,12 +42,12 @@ namespace Nethermind.TxPool
     /// </summary>
     public class TxPool : ITxPool, IDisposable
     {
-        public static IComparer<Transaction> DefaultComparer { get; } = 
+        public static IComparer<Transaction> DefaultComparer { get; } =
             CompareTxByGasPrice.Instance
                 .ThenBy(CompareTxByTimestamp.Instance)
                 .ThenBy(CompareTxByPoolIndex.Instance)
                 .ThenBy(CompareTxByGasLimit.Instance);
-        
+
         private readonly object _locker = new object();
 
         private readonly ConcurrentDictionary<Address, AddressNonces> _nonces = new ConcurrentDictionary<Address, AddressNonces>();
@@ -88,7 +88,7 @@ namespace Nethermind.TxPool
         /// </summary>
         private readonly ConcurrentDictionary<Keccak, (Transaction tx, long blockNumber)> _fadingOwnTransactions
             = new ConcurrentDictionary<Keccak, (Transaction tx, long blockNumber)>();
-        
+
         /// <summary>
         /// Long term storage for pending transactions.
         /// </summary>
@@ -143,7 +143,7 @@ namespace Nethermind.TxPool
             ThisNodeInfo.AddInfo("Mem est tx   :", $"{(LruCache<Keccak, object>.CalculateMemorySize(32, MemoryAllowance.TxHashCacheSize) + LruCache<Keccak, Transaction>.CalculateMemorySize(4096, MemoryAllowance.MemPoolSize)) / 1000 / 1000}MB".PadLeft(8));
 
             _transactions = new TxDistinctSortedPool(MemoryAllowance.MemPoolSize, logManager, comparer ?? DefaultComparer);
-            
+
             _peerNotificationThreshold = txPoolConfig.PeerNotificationThreshold;
 
             _ownTimer = new Timer(500);
@@ -153,7 +153,7 @@ namespace Nethermind.TxPool
         }
 
         public Transaction[] GetPendingTransactions() => _transactions.GetSnapshot();
-        
+
         public IDictionary<Address, Transaction[]> GetPendingTransactionsBySender() => _transactions.GetBucketSnapshot();
 
         public Transaction[] GetOwnPendingTransactions() => _ownTransactions.Values.ToArray();
@@ -184,9 +184,9 @@ namespace Nethermind.TxPool
             {
                 throw new ArgumentException($"{nameof(tx.Hash)} not set on {nameof(Transaction)}");
             }
-            
+
             NewDiscovered?.Invoke(this, new TxEventArgs(tx));
-            
+
             bool managedNonce = (handlingOptions & TxHandlingOptions.ManagedNonce) == TxHandlingOptions.ManagedNonce;
             bool isPersistentBroadcast = (handlingOptions & TxHandlingOptions.PersistentBroadcast) == TxHandlingOptions.PersistentBroadcast;
             if (_logger.IsTrace) _logger.Trace($"Adding transaction {tx.ToString("  ")} - managed nonce: {managedNonce} | persistent broadcast {isPersistentBroadcast}");
@@ -245,12 +245,12 @@ namespace Nethermind.TxPool
 
             Metrics.PendingTransactionsReceived++;
 
-//            if (tx.Signature.ChainId == null)
-//            {
-//                // Note that we are discarding here any transactions that follow the old signature scheme (no ChainId).
-//                Metrics.PendingTransactionsDiscarded++;
-//                return AddTxResult.OldScheme;
-//            }
+            //            if (tx.Signature.ChainId == null)
+            //            {
+            //                // Note that we are discarding here any transactions that follow the old signature scheme (no ChainId).
+            //                Metrics.PendingTransactionsDiscarded++;
+            //                return AddTxResult.OldScheme;
+            //            }
 
             if (tx.Signature.ChainId != null && tx.Signature.ChainId != _specProvider.ChainId)
             {
@@ -295,7 +295,7 @@ namespace Nethermind.TxPool
                 _ownTransactions.TryAdd(tx.Hash, tx);
                 _ownTimer.Enabled = true;
                 if (_logger.IsDebug) _logger.Debug($"Broadcasting own transaction {tx.Hash} to {_peers.Count} peers");
-                if(_logger.IsTrace) _logger.Trace($"Broadcasting transaction {tx.ToString("  ")}");
+                if (_logger.IsTrace) _logger.Trace($"Broadcasting transaction {tx.ToString("  ")}");
             }
         }
 
@@ -366,10 +366,15 @@ namespace Nethermind.TxPool
                     }
                 }
             }
-            
-            if (_transactions.TryRemove(hash, out var transaction, out ICollection<Transaction> bucket))
+
+            ICollection<Transaction> bucket;
+            Transaction transaction;
+            lock (_locker)
             {
-                RemovedPending?.Invoke(this, new TxEventArgs(transaction));
+                if (_transactions.TryRemove(hash, out transaction, out bucket))
+                {
+                    RemovedPending?.Invoke(this, new TxEventArgs(transaction));
+                }
             }
 
             if (_ownTransactions.Count != 0)
@@ -387,11 +392,14 @@ namespace Nethermind.TxPool
 
             if (bucket != null && removeBelowThisTxNonce)
             {
-                Transaction txWithSmallestNonce = bucket.FirstOrDefault();
-                while (txWithSmallestNonce != null && txWithSmallestNonce.Nonce <= transaction.Nonce)
+                lock (_locker)
                 {
-                    RemoveTransaction(txWithSmallestNonce.Hash, blockNumber);
-                    txWithSmallestNonce = bucket.FirstOrDefault();
+                    Transaction txWithSmallestNonce = bucket.FirstOrDefault();
+                    while (txWithSmallestNonce != null && txWithSmallestNonce.Nonce <= transaction.Nonce)
+                    {
+                        RemoveTransaction(txWithSmallestNonce.Hash, blockNumber);
+                        txWithSmallestNonce = bucket.FirstOrDefault();
+                    }
                 }
             }
         }
@@ -402,15 +410,15 @@ namespace Nethermind.TxPool
             {
                 // commented out as it puts too much pressure on the database
                 // and it not really required in any scenario
-                  // * tx recovery usually will fetch from pending
-                  // * get tx via RPC usually will fetch from block or from pending
-                  // * internal tx pool scenarios are handled directly elsewhere
+                // * tx recovery usually will fetch from pending
+                // * get tx via RPC usually will fetch from block or from pending
+                // * internal tx pool scenarios are handled directly elsewhere
                 // transaction = _txStorage.Get(hash);
             }
 
             return transaction != null;
         }
-        
+
         // TODO: Ensure that nonce is always valid in case of sending own transactions from different nodes.
         public UInt256 ReserveOwnTransactionNonce(Address address)
         {

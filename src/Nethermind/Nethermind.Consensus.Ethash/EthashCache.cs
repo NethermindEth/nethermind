@@ -16,11 +16,7 @@
 
 using System;
 using System.Buffers;
-using System.ComponentModel;
-using System.Diagnostics;
 using System.Runtime.InteropServices;
-using System.Xml.XPath;
-using Nethermind.Core;
 using Nethermind.Crypto;
 
 namespace Nethermind.Consensus.Ethash

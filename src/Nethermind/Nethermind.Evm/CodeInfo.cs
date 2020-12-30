@@ -16,7 +16,6 @@
 
 using System;
 using System.Collections;
-using Nethermind.Core.Extensions;
 using Nethermind.Evm.Precompiles;
 
 namespace Nethermind.Evm

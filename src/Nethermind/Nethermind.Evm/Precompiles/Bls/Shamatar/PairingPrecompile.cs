@@ -15,12 +15,9 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using System.Collections.Generic;
 using Nethermind.Core;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto.Bls;
-using Nethermind.Int256;
 
 namespace Nethermind.Evm.Precompiles.Bls.Shamatar
 {

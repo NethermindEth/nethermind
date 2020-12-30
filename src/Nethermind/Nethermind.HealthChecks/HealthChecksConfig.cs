@@ -21,6 +21,7 @@ namespace Nethermind.HealthChecks
     {
         public bool Enabled { get; set; } = false;
         public bool WebhooksEnabled { get; set; } = false;
+        public string Slug { get; set; } = "/health";
         public int PollingInterval { get; set; } = 5;
         public string WebhooksUri { get; set; } = null;
         public string WebhooksPayload { get; set; } = "{\"attachments\":[{\"color\":\"#FFCC00\",\"pretext\":\"Health Check Status :warning:\",\"fields\":[{\"title\":\"Details\",\"value\":\"More details available at `/healthchecks-ui`\",\"short\":false},{\"title\":\"Description\",\"value\":\"`[[DESCRIPTIONS]]`\",\"short\":false}]}]}";

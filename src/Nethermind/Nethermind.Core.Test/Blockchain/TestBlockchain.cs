@@ -43,7 +43,6 @@ using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Storages;
 using BlockTree = Nethermind.Blockchain.BlockTree;
-using System.IO;
 
 namespace Nethermind.Core.Test.Blockchain
 {

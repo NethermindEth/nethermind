@@ -23,7 +23,6 @@ using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs;
-using Nethermind.Specs.Forks;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test.Specs.ChainSpecStyle
