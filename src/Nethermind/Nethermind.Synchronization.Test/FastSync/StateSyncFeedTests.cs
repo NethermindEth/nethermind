@@ -417,7 +417,7 @@ namespace Nethermind.Synchronization.Test.FastSync
 
         private async Task ActivateAndWait(SafeContext safeContext, DbContext dbContext, long blockNumber, int timeout = TimeoutLength)
         {
-            TaskCompletionSource dormantAgainSource = new TaskCompletionSource();
+            DotNetty.Common.Concurrency.TaskCompletionSource dormantAgainSource = new DotNetty.Common.Concurrency.TaskCompletionSource();
             safeContext.Feed.StateChanged += (s, e) =>
             {
                 if (e.NewState == SyncFeedState.Dormant)
