@@ -60,6 +60,14 @@ namespace Nethermind.Network.Test
             _staticNodesManager.Nodes.Count().Should().Be(1);
             eventRaised.Should().BeTrue();
         }
+        
+        [Test]
+        public async Task is_static_should_report_correctly()
+        {
+            _staticNodesManager.IsStatic(Enode).Should().BeFalse();
+            await _staticNodesManager.AddAsync(Enode, false);
+            _staticNodesManager.IsStatic(Enode).Should().BeTrue();
+        }
 
         [Test]
         public async Task remove_should_delete_an_existing_static_node_and_trigger_an_event()

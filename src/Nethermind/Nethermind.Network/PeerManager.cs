@@ -621,7 +621,7 @@ namespace Nethermind.Network
         {
             void CheckIfNodeIsStatic(Node node)
             {
-                if (_staticNodesManager.IsStatic(node.ToString()))
+                if (_staticNodesManager.IsStatic(node.ToString("e")))
                 {
                     node.IsStatic = true;
                 }
