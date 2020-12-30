@@ -8,7 +8,7 @@ jobs:
     name: Build Nethermind Packages
     runs-on: ubuntu-latest
     env: 
-      RELEASE_DIRECTORY: ~/work/nethermind/nethermind
+      RELEASE_DIRECTORY: /home/runner/work/nethermind/nethermind
       LIN_RELEASE: nethermind-lin-x64
       OSX_RELEASE: nethermind-osx-x64
       WIN_RELEASE: nethermind-win-x64
