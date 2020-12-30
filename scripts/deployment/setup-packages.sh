@@ -24,7 +24,7 @@ touch git-hash.txt
 touch git-tag.txt
 touch git-tag-long.txt
 
-echo $GIT-$DATE> git-hash.txt
+echo $GIT-$DATE > git-hash.txt
 echo ${GIT_TAG_SHORT} > git-tag.txt
 echo ${GIT_TAG_LONG} > git-tag-long.txt
 

@@ -21,6 +21,7 @@ jobs:
       with:
         submodules: recursive
         path: nethermind
+        fetch-depth: 0
     - name: Check out Nethermind Launcher repository
       uses: actions/checkout@master
       with:
@@ -32,12 +33,14 @@ jobs:
         node-version: "13"
     - name: Setup Build Environment
       run: |
-        npm install pkg
+        npm install pkg -g
     - name: Setup Packages
       run: ./nethermind/scripts/deployment/setup-packages.sh
     - name: Build Runner
       run: ./nethermind/scripts/deployment/build-runner.sh
     - name: Build BeamWallet
+      run: ./nethermind/scripts/deployment/build-wallet.sh
+    - name: Build Cli
       run: ./nethermind/scripts/deployment/build-cli.sh
     - name: Build Launcher
       run: ./nethermind/scripts/deployment/build-launcher.sh
