@@ -26,7 +26,7 @@ namespace Nethermind.Synchronization.ParallelSync
         /// <summary>
         /// We are connected to nodes and processing based on discovery
         /// </summary>
-        Idle = 1,
+        WaitingForBlock = 1,
         /// <summary>
         /// We are not connected to nodes
         /// </summary>
@@ -68,11 +68,11 @@ namespace Nethermind.Synchronization.ParallelSync
         /// </summary>
         FastReceipts = FastBlocks | 1024,
         
-        All = Idle | Disconnected | FastBlocks | FastSync | StateNodes | StateNodes | Full | Beam | DbLoad | FastHeaders | FastBodies | FastReceipts
+        All = WaitingForBlock | Disconnected | FastBlocks | FastSync | StateNodes | StateNodes | Full | Beam | DbLoad | FastHeaders | FastBodies | FastReceipts
     }
     
     public static class SyncModeExtensions
     {
-        public static bool NotSyncing(this SyncMode syncMode) => syncMode == SyncMode.Idle || syncMode == SyncMode.Disconnected;
+        public static bool NotSyncing(this SyncMode syncMode) => syncMode == SyncMode.WaitingForBlock || syncMode == SyncMode.Disconnected;
     }
 }

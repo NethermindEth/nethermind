@@ -870,7 +870,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                 .IfThisNodeIsInTheMiddleOfFastSyncAndFastBlocks()
                 .AndPeersAreOnlyUsefulForFastBlocks()
                 .WhenFastSyncWithoutFastBlocksIsConfigured()
-                .TheSyncModeShouldBe(SyncMode.Idle);
+                .TheSyncModeShouldBe(SyncMode.None);
         }
 
         [Test]
@@ -880,24 +880,18 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                 .IfThisNodeJustFinishedFastBlocksAndFastSync()
                 .AndPeersAreOnlyUsefulForFastBlocks()
                 .WhenFastSyncWithoutFastBlocksIsConfigured()
-                .TheSyncModeShouldBe(SyncMode.Idle);
+                .TheSyncModeShouldBe(SyncMode.None);
         }
         
         [TestCase(FastBlocksState.None)]
         [TestCase(FastBlocksState.FinishedHeaders)]
         public void Finished_fast_sync_but_not_state_sync_and_lesser_peers_are_known_in_fast_blocks(FastBlocksState fastBlocksState)
         {
-            var expectedSyncMode = fastBlocksState.GetSyncMode();
-            if (expectedSyncMode == SyncMode.None)
-            {
-                expectedSyncMode = SyncMode.Idle;
-            }
-            
             Scenario.GoesLikeThis()
                 .IfThisNodeJustFinishedFastBlocksAndFastSync(fastBlocksState)
                 .AndPeersAreOnlyUsefulForFastBlocks()
                 .WhenFastSyncWithFastBlocksIsConfigured()
-                .TheSyncModeShouldBe(expectedSyncMode);
+                .TheSyncModeShouldBe(fastBlocksState.GetSyncMode());
         }
 
         [Test]
@@ -982,7 +976,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                 .IfThisNodeIsFullySynced()
                 .AndDesirablePrePivotPeerIsKnown()
                 .WhenBeamSyncIsConfigured()
-                .TheSyncModeShouldBe(SyncMode.Idle);
+                .TheSyncModeShouldBe(SyncMode.None);
         }
 
         [Test]
@@ -992,7 +986,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                 .IfThisNodeFinishedFastBlocksButNotFastSync()
                 .AndDesirablePrePivotPeerIsKnown()
                 .ThenInAnyFastSyncConfiguration()
-                .TheSyncModeShouldBe(SyncMode.Idle);
+                .TheSyncModeShouldBe(SyncMode.None);
         }
 
         [Test]
@@ -1066,7 +1060,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                 .IfTheSyncProgressIsCorrupted()
                 .AndGoodPeersAreKnown()
                 .WhenBeamSyncIsConfigured()
-                .TheSyncModeShouldBe(SyncMode.Idle);
+                .TheSyncModeShouldBe(SyncMode.WaitingForBlock);
         }
 
         [Test]
@@ -1076,7 +1070,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                 .IfThisNodeIsProcessingAlreadyDownloadedBlocksInFullSync()
                 .AndGoodPeersAreKnown()
                 .WhenBeamSyncIsConfigured()
-                .TheSyncModeShouldBe(SyncMode.Idle);
+                .TheSyncModeShouldBe(SyncMode.WaitingForBlock);
         }
 
         [Test]
@@ -1106,7 +1100,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                 .IfThisNodeIsFullySynced()
                 .PeersWithWrongDifficultyAreKnown()
                 .ThenInAnyFastSyncConfiguration()
-                .TheSyncModeShouldBe(SyncMode.Idle);
+                .TheSyncModeShouldBe(SyncMode.WaitingForBlock);
         }
 
         [Test]

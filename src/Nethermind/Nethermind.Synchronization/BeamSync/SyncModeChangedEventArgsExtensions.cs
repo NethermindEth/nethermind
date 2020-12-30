@@ -23,11 +23,7 @@ namespace Nethermind.Synchronization.BeamSync
     {
         public static bool IsBeamSyncFinished(this SyncModeChangedEventArgs e)
         {
-            bool isBeamSyncFinished = (e.Current & SyncMode.StateNodes) == 0
-                                      && (e.Current & SyncMode.Beam) == 0
-                                      && (e.Current & SyncMode.FastSync) == 0
-                                      && (e.Current & SyncMode.Disconnected) == 0;
-            
+            bool isBeamSyncFinished = (e.Current & (SyncMode.Full | SyncMode.WaitingForBlock)) != 0;
             return isBeamSyncFinished;
         }
     }
