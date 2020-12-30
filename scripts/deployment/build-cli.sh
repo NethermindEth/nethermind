@@ -19,9 +19,9 @@ echo =======================================================
 echo Packing Nethermind Cli for different platforms...
 echo =======================================================
 
-rm $OUT/$LIN_RELEASE/Nethermind.Cli.pdb
-rm $OUT/$OSX_RELEASE/Nethermind.Cli.pdb
-rm $OUT/$WIN_RELEASE/Nethermind.Cli.pdb
+rm $OUT/$LIN_RELEASE/*.pdb
+rm $OUT/$OSX_RELEASE/*.pdb
+rm $OUT/$WIN_RELEASE/*.pdb
 
 cp -r $OUT/$LIN_RELEASE $RELEASE_DIRECTORY
 cp -r $OUT/$OSX_RELEASE $RELEASE_DIRECTORY
