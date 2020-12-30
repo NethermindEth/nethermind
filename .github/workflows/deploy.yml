@@ -1,0 +1,60 @@
+name: Deploy Nethermind packages Dev
+
+# on:
+#   workflow_dispatch:
+on: push
+jobs:
+  build-nethermind:
+    name: Build Nethermind Packages
+    runs-on: ubuntu-latest
+    env: 
+      RELEASE_DIRECTORY: ~/work/nethermind/nethermind
+      LIN_RELEASE: nethermind-lin-x64
+      OSX_RELEASE: nethermind-osx-x64
+      WIN_RELEASE: nethermind-win-x64
+      LINUX: linux-x64
+      OSX: osx-x64
+      WIN10: win10-x64
+    steps:
+    - name: Check out Nethermind repository
+      uses: actions/checkout@master
+      with:
+        submodules: recursive
+        path: nethermind
+    - name: Check out Nethermind Launcher repository
+      uses: actions/checkout@master
+      with:
+        repository: NethermindEth/nethermind.launcher
+        path: launcher
+    - name: Setup Node.js
+      uses: actions/setup-node@master
+      with:
+        node-version: "13"
+    - name: Setup Build Environment
+      run: |
+        npm install pkg
+    - name: Setup Packages
+      run: ./scripts/deployment/setup-packages.sh
+    - name: Build Runner
+      run: ./scripts/deployment/build-runner.sh
+    - name: Build BeamWallet
+      run: ./scripts/deployment/build-cli.sh
+    - name: Build Launcher
+      run: ./scripts/deployment/build-launcher.sh
+    - name: Archive packages
+      run: ./scripts/deployment/archive-packages.sh
+    - uses: actions/upload-artifact@master
+      name: Upload Nethermind darwin package
+      with:
+        name: nethermind-darwin-package
+        path: ${{ env.RELEASE_DIRECTORY }}/${{ env.OSX_RELEASE }}/nethermind-darwin-amd64-*
+    - uses: actions/upload-artifact@master
+      name: Upload Nethermind linux package
+      with:
+        name: nethermind-linux-package
+        path: ${{ env.RELEASE_DIRECTORY }}/${{ env.LIN_RELEASE }}//nethermind-linux-amd64-*
+    - uses: actions/upload-artifact@master
+      name: Upload Nethermind windows package
+      with:
+        name: nethermind-windows-package
+        path: ${{ env.RELEASE_DIRECTORY }}/${{ env.WIN_RELEASE }}/nethermind-windows-amd64-*
