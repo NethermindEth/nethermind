@@ -17,7 +17,7 @@ dotnet publish -c release -r $WIN10 -p:PublishSingleFile=true -p:PublishTrimmed=
 
 rm -rf $OUT/$LIN_RELEASE/Data
 rm -rf $OUT/$LIN_RELEASE/Hive
-rm $OUT/$LIN_RELEASE/Nethermind.Runner.pdb
+rm $OUT/$LIN_RELEASE/*.pdb
 rm $OUT/$LIN_RELEASE/web.config
 cp -r plugins $OUT/$LIN_RELEASE
 cp -r configs $OUT/$LIN_RELEASE
@@ -28,23 +28,18 @@ cp Data/static-nodes.json $OUT/$LIN_RELEASE/Data
 
 rm -rf $OUT/$OSX_RELEASE/Data
 rm -rf $OUT/$OSX_RELEASE/Hive
-rm $OUT/$OSX_RELEASE/Nethermind.Runner.pdb
+rm $OUT/$OSX_RELEASE/*.pdb
 rm $OUT/$OSX_RELEASE/web.config
 cp -r plugins $OUT/$OSX_RELEASE
 cp -r configs $OUT/$OSX_RELEASE
 cp -r ../Chains $OUT/$OSX_RELEASE/chainspec
 mkdir $OUT/$OSX_RELEASE/Data
 mkdir $OUT/$OSX_RELEASE/keystore
-#mkdir $OUT/$OSX_RELEASE/plugins
-#mkdir $OUT/$OSX_RELEASE/tools
-#mv $OUT/$OSX_RELEASE/Nethermind.Runner $OUT/$OSX_RELEASE/tools/
 cp Data/static-nodes.json $OUT/$OSX_RELEASE/Data
-#cp ~/repo_pub/install-dependencies.sh $OUT/$OSX_RELEASE/tools/
-#cp ~/repo_pub/update-client.sh $OUT/$OSX_RELEASE/tools/
 
 rm -rf $OUT/$WIN_RELEASE/Data
 rm -rf $OUT/$WIN_RELEASE/Hive
-rm $OUT/$WIN_RELEASE/Nethermind.Runner.pdb
+rm $OUT/$WIN_RELEASE/*.pdb
 rm $OUT/$WIN_RELEASE/web.config
 cp -r plugins $OUT/$WIN_RELEASE
 cp -r configs $OUT/$WIN_RELEASE
