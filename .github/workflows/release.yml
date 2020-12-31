@@ -1,12 +1,13 @@
 name: Release Nethermind Packages
-
+env:
+  DEFAULT_REF: ${{ github.ref }}
 on: 
   workflow_dispatch:
     inputs:
       tag:
         description: 'The tag of the version you want to release'
         required: false
-        default: ${{ env.GITHUB_REF}}
+        default: ${{ DEFAULT_REF }}
 
 jobs:
   build-nethermind:
