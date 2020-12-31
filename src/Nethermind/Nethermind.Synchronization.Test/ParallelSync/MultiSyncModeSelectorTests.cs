@@ -24,6 +24,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using NSubstitute;
@@ -68,6 +69,8 @@ namespace Nethermind.Synchronization.Test.ParallelSync
             public static BlockHeader FutureHead { get; set; } = Build.A.Block.WithDifficulty(1).WithTotalDifficulty(Pivot.TotalDifficulty + 2048 + 128).WithNumber(Pivot.Number + 2048 + 128).TestObject.Header;
 
             public static BlockHeader SlightlyFutureHead { get; set; } = Build.A.Block.WithDifficulty(1).WithTotalDifficulty(Pivot.TotalDifficulty + 2048 + 4).WithNumber(Pivot.Number + 2048 + 4).TestObject.Header;
+
+            public static BlockHeader SlightlyFutureHeadXdai { get; set; } = Build.A.Block.WithDifficulty(1).WithTotalDifficulty(Pivot.TotalDifficulty + 2048 + 4).WithNumber(ChainHead.Number + MultiSyncModeSelector.FastSyncLag + 1).TestObject.Header;
 
             public static BlockHeader MaliciousPrePivot { get; set; } = Build.A.Block.WithDifficulty(1).WithTotalDifficulty((UInt256) 1000000).WithNumber(512).TestObject.Header;
 
@@ -222,6 +225,24 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                             SyncProgressResolver.FindBestProcessedBlock().Returns(ChainHead.Number - FastSyncCatchUpHeightDelta + 1);
                             SyncProgressResolver.IsFastBlocksFinished().Returns(FastBlocksState.FinishedReceipts);
                             SyncProgressResolver.ChainDifficulty.Returns(ChainHead.TotalDifficulty ?? 0);
+                            return "fully syncing";
+                        }
+                    );
+                    return this;
+                }
+
+                // 2020-12-31 10:16:54.0304|INFO|85|Changing state Full to StateNodes at processed:0|state:13797335|block:13797337|header:13797337|peer block:13797338 
+                public ScenarioBuilder XdaiRegression()
+                {
+                    _syncProgressSetups.Add(
+                        () =>
+                        {
+                            SyncProgressResolver.FindBestHeader().Returns(ChainHead.Number);
+                            SyncProgressResolver.FindBestFullBlock().Returns(ChainHead.Number);
+                            SyncProgressResolver.FindBestFullState().Returns(ChainHead.Number - 2);
+                            SyncProgressResolver.FindBestProcessedBlock().Returns(0);
+                            SyncProgressResolver.IsFastBlocksFinished().Returns(FastBlocksState.None);
+                            SyncProgressResolver.ChainDifficulty.Returns((ChainHead.TotalDifficulty ?? 0) + (UInt256)2);
                             return "fully syncing";
                         }
                     );
@@ -541,6 +562,12 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                 public ScenarioBuilder AndPeersMovedSlightlyForward()
                 {
                     AddPeeringSetup("peers moved slightly forward", AddPeer(SlightlyFutureHead));
+                    return this;
+                }
+
+                public ScenarioBuilder AndPeersSlightlyXdai()
+                {
+                    AddPeeringSetup("peers moved slightly forward", AddPeer(SlightlyFutureHeadXdai));
                     return this;
                 }
 
@@ -1061,6 +1088,18 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                 .AndGoodPeersAreKnown()
                 .WhenBeamSyncIsConfigured()
                 .TheSyncModeShouldBe(SyncMode.None);
+        }
+
+
+        //
+        [Test]
+        public void xdai_regression()
+        {
+            Scenario.GoesLikeThis()
+                .XdaiRegression()
+                .AndPeersSlightlyXdai()
+                .ThenInAnyFastSyncConfiguration()
+                .TheSyncModeShouldBe(SyncMode.Full);
         }
 
         [Test]

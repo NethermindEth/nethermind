@@ -52,6 +52,8 @@ namespace Nethermind.Synchronization.ParallelSync
         private bool FastBlocksReceiptsFinished => !FastReceiptsEnabled || _syncProgressResolver.IsFastBlocksReceiptsFinished();
         private long FastSyncCatchUpHeightDelta => _syncConfig.FastSyncCatchUpHeightDelta ?? FastSyncLag;
 
+        internal long? LastBlockByFullSyncEnabled { get; set; }
+
         private Timer _timer;
 
         public MultiSyncModeSelector(
@@ -156,6 +158,7 @@ namespace Nethermind.Synchronization.ParallelSync
                 if (_logger.IsInfo) _logger.Info($"Changing state {Current} to {newModes} at {stateString}");
             }
 
+            
             UpdateSyncModes(newModes);
         }
 
@@ -184,6 +187,7 @@ namespace Nethermind.Synchronization.ParallelSync
             }
 
             SyncMode previous = Current;
+
             SyncModeChangedEventArgs args = new SyncModeChangedEventArgs(previous, newModes);
 
             // Changing is invoked here so we can block until all the subsystems are ready to switch
@@ -407,7 +411,7 @@ namespace Nethermind.Synchronization.ParallelSync
 
         private bool HasJustStartedFullSync(Snapshot best) =>     
             best.State > PivotNumber // we have saved some root
-            && best.State == best.Header // and we do not need to catch up to headers anymore 
+            && (best.State == best.Header || best.Header == best.Block) // and we do not need to catch up to headers anymore 
             && best.Processed < best.State; // not processed the block yet
 
         protected virtual bool AnyDesiredPeerKnown(Snapshot best)
