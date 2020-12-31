@@ -27,11 +27,11 @@ cd Nethermind.Baseline
 dotnet build -c Release
 
 cd $RELEASE_DIRECTORY/plugins
-cp $RELEASE_DIRECTORY/nethermind/src/Nethermind/Nethermind.Analytics/bin/Release/netcoreapp3.1/Nethermind.Analytics.dll .
-cp $RELEASE_DIRECTORY/nethermind/src/Nethermind/Nethermind.Cli/bin/Release/netcoreapp3.1/Nethermind.Cli.dll .
-cp $RELEASE_DIRECTORY/nethermind/src/Nethermind/Nethermind.Baseline/bin/Release/netcoreapp3.1/Nethermind.Baseline.dll .
-cp $RELEASE_DIRECTORY/nethermind/src/Nethermind/Nethermind.Api/bin/Release/netcoreapp3.1/Nethermind.Api.dll .
-cp $RELEASE_DIRECTORY/nethermind/src/Nethermind/Nethermind.HealthChecks/bin/Release/netcoreapp3.1/Nethermind.HealthChecks.dll .
+cp $RELEASE_DIRECTORY/nethermind/src/Nethermind/Nethermind.Analytics/bin/Release/net5.0/Nethermind.Analytics.dll .
+cp $RELEASE_DIRECTORY/nethermind/src/Nethermind/Nethermind.Cli/bin/Release/net5.0/Nethermind.Cli.dll .
+cp $RELEASE_DIRECTORY/nethermind/src/Nethermind/Nethermind.Baseline/bin/Release/net5.0/Nethermind.Baseline.dll .
+cp $RELEASE_DIRECTORY/nethermind/src/Nethermind/Nethermind.Api/bin/Release/net5.0/Nethermind.Api.dll .
+cp $RELEASE_DIRECTORY/nethermind/src/Nethermind/Nethermind.HealthChecks/bin/Release/net5.0/Nethermind.HealthChecks.dll .
 
 zip -r plugins-$GIT_SHORT_TAG-$GIT_HASH.zip . && cd ..
 

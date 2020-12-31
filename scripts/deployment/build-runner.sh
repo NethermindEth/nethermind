@@ -1,7 +1,7 @@
 #!/bin/bash
 
 RUNNER_PATH=$RELEASE_DIRECTORY/nethermind/src/Nethermind/Nethermind.Runner
-PUBLISH_PATH=bin/release/netcoreapp3.1
+PUBLISH_PATH=bin/release/net5.0
 OUT=out
 
 cd $RUNNER_PATH

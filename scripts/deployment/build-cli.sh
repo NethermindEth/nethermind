@@ -1,7 +1,7 @@
 #!/bin/bash
 
 CLI_PATH=$RELEASE_DIRECTORY/nethermind/src/Nethermind/Nethermind.Cli
-PUBLISH_PATH=bin/release/netcoreapp3.1
+PUBLISH_PATH=bin/release/net5.0
 OUT=out
 
 cd $CLI_PATH
