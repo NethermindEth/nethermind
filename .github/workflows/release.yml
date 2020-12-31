@@ -27,7 +27,7 @@ jobs:
       with:
         submodules: recursive
         path: nethermind
-        ref: ${{ github.event.inputs.tag }}
+        ref: ${{ github.event.inputs.tag || env.DEFAULT_REF }}
         fetch-depth: 0
     - name: Check out Nethermind Launcher repository
       uses: actions/checkout@master
@@ -82,7 +82,7 @@ jobs:
     - name: Check out Nethermind repository
       uses: actions/checkout@master
       with:
-        ref: ${{ github.event.inputs.tag }}
+        ref: ${{ github.event.inputs.tag || env.DEFAULT_REF }}
         path: nethermind
     - uses: actions/download-artifact@master
       name: Download Nethermind darwin package
@@ -118,7 +118,7 @@ jobs:
     - name: Check out Nethermind repository
       uses: actions/checkout@master
       with:
-        ref: ${{ github.event.inputs.tag }}
+        ref: ${{ github.event.inputs.tag || env.DEFAULT_REF }}
         path: nethermind
     - uses: actions/download-artifact@master
       name: Download Nethermind darwin package
@@ -154,7 +154,7 @@ jobs:
     - name: Check out Nethermind repository
       uses: actions/checkout@master
       with:
-        ref: ${{ github.event.inputs.tag }}
+        ref: ${{ github.event.inputs.tag || env.DEFAULT_REF }}
         fetch-depth: 0
     - name: Settings
       id: settings
