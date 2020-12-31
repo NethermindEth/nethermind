@@ -83,7 +83,7 @@ namespace Nethermind.Runner.Ethereum.Steps
 
             if (syncConfig.WitnessProtocolEnabled)
             {
-                new WitnessPruner(getApi.BlockTree, witnessCollector).Start();
+                new WitnessPruner(getApi.BlockTree, witnessCollector, getApi.LogManager).Start();
             }
 
             var stateDb = mainStateDbWithCache.WitnessedBy(witnessCollector);
