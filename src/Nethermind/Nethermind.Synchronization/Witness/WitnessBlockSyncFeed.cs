@@ -39,6 +39,7 @@ namespace Nethermind.Synchronization.Witness
         private const int FollowDelta = 256;
         private static readonly TimeSpan _minRetryDelay = TimeSpan.FromMilliseconds(100);
         private const int MaxRetries = 6;
+        private const int MaxBlocksInQueue = 10;
 
         public WitnessBlockSyncFeed(IBlockTree blockTree, IWitnessStateSyncFeed witnessStateSyncFeed, ISyncModeSelector syncModeSelector, ILogManager logManager)
         {
@@ -110,7 +111,7 @@ namespace Nethermind.Synchronization.Witness
                 bool blockAfterOrHead = _blockTree.Head?.Number <= batch.BlockNumber;
                 bool isMainChain = _blockTree.IsMainChain(batch.BlockHash);
                 bool isBeamSync = (_syncModeSelector.Current & SyncMode.Beam) != 0;
-                if (batch.Retry < MaxRetries && (blockAfterOrHead || isMainChain) && isBeamSync)
+                if (batch.Retry < MaxRetries && (blockAfterOrHead || isMainChain) && isBeamSync && _blockHashes.Count < MaxBlocksInQueue)
                 {
                     batch.Retry += retryForward;
                     batch.Timestamp = DateTime.UtcNow;
