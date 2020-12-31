@@ -138,7 +138,7 @@ jobs:
         PASS: ${{ secrets.PASS }}
 
   publish-dockers:
-    name: Publism images do Docker Hub
+    name: Publish images do Docker Hub
     runs-on: ubuntu-latest
     steps:
     - name: Check out Nethermind repository
