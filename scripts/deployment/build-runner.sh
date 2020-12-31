@@ -19,7 +19,6 @@ dotnet publish -c release -r $WIN10 -p:PublishSingleFile=true -o $OUT/$WIN_RELEA
 rm -rf $OUT/$LIN_RELEASE/Data
 rm -rf $OUT/$LIN_RELEASE/Hive
 rm $OUT/$LIN_RELEASE/*.pdb
-rm $OUT/$LIN_RELEASE/web.config
 cp -r plugins $OUT/$LIN_RELEASE
 cp -r configs $OUT/$LIN_RELEASE
 cp -r ../Chains $OUT/$LIN_RELEASE/chainspec
@@ -30,7 +29,6 @@ cp Data/static-nodes.json $OUT/$LIN_RELEASE/Data
 rm -rf $OUT/$OSX_RELEASE/Data
 rm -rf $OUT/$OSX_RELEASE/Hive
 rm $OUT/$OSX_RELEASE/*.pdb
-rm $OUT/$OSX_RELEASE/web.config
 cp -r plugins $OUT/$OSX_RELEASE
 cp -r configs $OUT/$OSX_RELEASE
 cp -r ../Chains $OUT/$OSX_RELEASE/chainspec
@@ -41,7 +39,6 @@ cp Data/static-nodes.json $OUT/$OSX_RELEASE/Data
 rm -rf $OUT/$WIN_RELEASE/Data
 rm -rf $OUT/$WIN_RELEASE/Hive
 rm $OUT/$WIN_RELEASE/*.pdb
-rm $OUT/$WIN_RELEASE/web.config
 cp -r plugins $OUT/$WIN_RELEASE
 cp -r configs $OUT/$WIN_RELEASE
 cp -r ../Chains $OUT/$WIN_RELEASE/chainspec
