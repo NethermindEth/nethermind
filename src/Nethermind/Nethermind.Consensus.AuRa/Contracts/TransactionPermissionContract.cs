@@ -78,14 +78,8 @@ namespace Nethermind.Consensus.AuRa.Contracts
     {
         public virtual UInt256 ContractVersion(BlockHeader blockHeader)
         {
-            try
-            {
                 return Constant.Call<UInt256>(blockHeader, nameof(ContractVersion), Address.Zero);
-            }
-            catch (Exception ex)
-            {
-                return UInt256.One;
-            }
+
         }
 
         /// <summary>
