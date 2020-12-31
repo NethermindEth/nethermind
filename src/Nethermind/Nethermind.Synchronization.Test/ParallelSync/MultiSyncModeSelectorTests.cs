@@ -563,7 +563,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                     return this;
                 }
 
-                public ScenarioBuilder AndPeersSlightlyFutureHeadWithFastSyncLag()
+                public ScenarioBuilder AndPeersMovedSlightlyForwardWithFastSyncLag()
                 {
                     AddPeeringSetup("peers moved slightly forward", AddPeer(SlightlyFutureHeadWithFastSyncLag));
                     return this;
@@ -735,6 +735,8 @@ namespace Nethermind.Synchronization.Test.ParallelSync
 
                     SetDefaults();
 
+                    if (_syncProgressSetups.Count == 0 || _peeringSetups.Count == 0 || _configActions.Count == 0)
+                        throw new ArgumentException($"Invalid test configuration. _syncProgressSetups.Count {_syncProgressSetups.Count}, _peeringSetups.Count {_peeringSetups.Count}, _configActions.Count {_configActions.Count}");
                     foreach (Func<string> syncProgressSetup in _syncProgressSetups)
                     {
                         foreach (Func<string> peeringSetup in _peeringSetups)
@@ -1224,7 +1226,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
         {
             Scenario.GoesLikeThis()
                 .XdaiRegression()
-                .AndPeersSlightlyFutureHeadWithFastSyncLag()
+                .AndPeersMovedSlightlyForwardWithFastSyncLag()
                 .WhenFastSyncWithFastBlocksIsConfigured()
                 .TheSyncModeShouldBe(SyncMode.Full | SyncMode.FastHeaders);
         }
