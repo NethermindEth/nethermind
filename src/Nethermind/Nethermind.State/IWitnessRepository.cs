@@ -25,5 +25,7 @@ namespace Nethermind.State
         void Persist(Keccak blockHash);
 
         Keccak[]? Load(Keccak blockHash);
+
+        void Delete(Keccak blockHash);
     }
 }

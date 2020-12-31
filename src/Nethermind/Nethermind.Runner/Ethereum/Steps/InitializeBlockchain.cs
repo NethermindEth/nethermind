@@ -31,6 +31,7 @@ using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.State.Witnesses;
 using Nethermind.Synchronization.BeamSync;
+using Nethermind.Synchronization.Witness;
 using Nethermind.Trie;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Storages;
@@ -74,12 +75,16 @@ namespace Nethermind.Runner.Ethereum.Steps
 
             Account.AccountStartNonce = getApi.ChainSpec.Parameters.AccountStartNonce;
 
-            
             var mainStateDbWithCache = setApi.MainStateDbWithCache = new CachingStore(getApi.DbProvider.StateDb, PatriciaTree.RlpCacheSize);
             
             IWitnessCollector witnessCollector = setApi.WitnessCollector = syncConfig.WitnessProtocolEnabled
                 ? new WitnessCollector(getApi.DbProvider.WitnessDb, _api.LogManager)
                 : NullWitnessCollector.Instance;
+
+            if (syncConfig.WitnessProtocolEnabled)
+            {
+                new WitnessPruner(getApi.BlockTree, witnessCollector).Start();
+            }
 
             var stateDb = mainStateDbWithCache.WitnessedBy(witnessCollector);
             var codeDb = getApi.DbProvider.CodeDb.WitnessedBy(witnessCollector);

@@ -44,5 +44,11 @@ namespace Nethermind.State
             throw new InvalidOperationException(
                 $"{nameof(NullWitnessCollector)} is not expected to receive {nameof(Load)} calls.");
         }
+
+        public void Delete(Keccak blockHash)
+        {
+            throw new InvalidOperationException(
+                $"{nameof(NullWitnessCollector)} is not expected to receive {nameof(Delete)} calls.");
+        }
     }
 }
