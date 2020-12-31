@@ -1,6 +1,12 @@
 name: Release Nethermind Packages
 
-on: workflow_dispatch
+on: 
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'The tag of the version you want to release'
+        required: false
+        default: ${{ github.ref }}
 
 jobs:
   build-nethermind:
@@ -20,6 +26,7 @@ jobs:
       with:
         submodules: recursive
         path: nethermind
+        ref: ${{ github.event.inputs.tag }}
         fetch-depth: 0
     - name: Check out Nethermind Launcher repository
       uses: actions/checkout@master
@@ -74,6 +81,7 @@ jobs:
     - name: Check out Nethermind repository
       uses: actions/checkout@master
       with:
+        ref: ${{ github.event.inputs.tag }}
         path: nethermind
     - uses: actions/download-artifact@master
       name: Download Nethermind darwin package
@@ -109,6 +117,7 @@ jobs:
     - name: Check out Nethermind repository
       uses: actions/checkout@master
       with:
+        ref: ${{ github.event.inputs.tag }}
         path: nethermind
     - uses: actions/download-artifact@master
       name: Download Nethermind darwin package
@@ -144,6 +153,7 @@ jobs:
     - name: Check out Nethermind repository
       uses: actions/checkout@master
       with:
+        ref: ${{ github.event.inputs.tag }}
         fetch-depth: 0
     - name: Settings
       id: settings
