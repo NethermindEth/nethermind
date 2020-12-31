@@ -6,7 +6,7 @@ on:
       tag:
         description: 'The tag of the version you want to release'
         required: false
-        default: ${{ env.github.ref }}
+        default: ${{ env.GITHUB_REF}}
 
 jobs:
   build-nethermind:
