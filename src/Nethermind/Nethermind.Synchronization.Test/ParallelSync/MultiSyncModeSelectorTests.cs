@@ -70,7 +70,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
 
             public static BlockHeader SlightlyFutureHead { get; set; } = Build.A.Block.WithDifficulty(1).WithTotalDifficulty(Pivot.TotalDifficulty + 2048 + 4).WithNumber(Pivot.Number + 2048 + 4).TestObject.Header;
 
-            public static BlockHeader SlightlyFutureHeadXdai { get; set; } = Build.A.Block.WithDifficulty(1).WithTotalDifficulty(Pivot.TotalDifficulty + 2048 + 4).WithNumber(ChainHead.Number + MultiSyncModeSelector.FastSyncLag + 1).TestObject.Header;
+            public static BlockHeader SlightlyFutureHeadWithFastSyncLag { get; set; } = Build.A.Block.WithDifficulty(1).WithTotalDifficulty(Pivot.TotalDifficulty + 2048 + 4).WithNumber(ChainHead.Number + MultiSyncModeSelector.FastSyncLag + 1).TestObject.Header;
 
             public static BlockHeader MaliciousPrePivot { get; set; } = Build.A.Block.WithDifficulty(1).WithTotalDifficulty((UInt256) 1000000).WithNumber(512).TestObject.Header;
 
@@ -231,7 +231,6 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                     return this;
                 }
 
-                // 2020-12-31 10:16:54.0304|INFO|85|Changing state Full to StateNodes at processed:0|state:13797335|block:13797337|header:13797337|peer block:13797338 
                 public ScenarioBuilder XdaiRegression()
                 {
                     _syncProgressSetups.Add(
@@ -565,9 +564,9 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                     return this;
                 }
 
-                public ScenarioBuilder AndPeersSlightlyXdai()
+                public ScenarioBuilder AndPeersSlightlyFutureHeadWithFastSyncLag()
                 {
-                    AddPeeringSetup("peers moved slightly forward", AddPeer(SlightlyFutureHeadXdai));
+                    AddPeeringSetup("peers moved slightly forward", AddPeer(SlightlyFutureHeadWithFastSyncLag));
                     return this;
                 }
 
@@ -1090,18 +1089,6 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                 .TheSyncModeShouldBe(SyncMode.WaitingForBlock);
         }
 
-
-        //
-        [Test]
-        public void xdai_regression()
-        {
-            Scenario.GoesLikeThis()
-                .XdaiRegression()
-                .AndPeersSlightlyXdai()
-                .ThenInAnyFastSyncConfiguration()
-                .TheSyncModeShouldBe(SyncMode.Full);
-        }
-
         [Test]
         public void Waiting_for_processor()
         {
@@ -1231,6 +1218,16 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                 .AndGoodPeersAreKnown()
                 .WhenBeamSyncIsConfigured()
                 .TheSyncModeShouldBe(SyncMode.StateNodes | SyncMode.Beam);
+        }
+
+        [Test]
+        public void xdai_regression()
+        {
+            Scenario.GoesLikeThis()
+                .XdaiRegression()
+                .AndPeersSlightlyFutureHeadWithFastSyncLag()
+                .ThenInAnyFastSyncConfiguration()
+                .TheSyncModeShouldBe(SyncMode.Full | SyncMode.FastHeaders);
         }
     }
     
