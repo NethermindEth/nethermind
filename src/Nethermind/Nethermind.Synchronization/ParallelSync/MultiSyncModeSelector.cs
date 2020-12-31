@@ -96,7 +96,7 @@ namespace Nethermind.Synchronization.ParallelSync
 
         public void Update()
         {
-            SyncMode newModes = SyncMode.None;
+            SyncMode newModes;
             string reason = string.Empty;
             if (_syncProgressResolver.IsLoadingBlocksFromDb())
             {
@@ -166,9 +166,9 @@ namespace Nethermind.Synchronization.ParallelSync
                         }
                     }
 
-                    if ((newModes & SyncMode.Full) == SyncMode.Full
-                         && (Current & SyncMode.Full) == SyncMode.None)
+                    if ((newModes & SyncMode.Full) == SyncMode.Full)
                     {
+                        if(_logger.IsTrace) _logger.Trace($"Setting last full sync switch block to {best.Block}");
                         LastBlockThatEnabledFullSync = best.Block;
                     }
                 }
