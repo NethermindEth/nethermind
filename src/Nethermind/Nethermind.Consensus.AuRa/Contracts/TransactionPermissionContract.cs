@@ -41,7 +41,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
         /// <param name="tx"></param>
         /// <returns><see cref="TxPermissions"/>Set of allowed transactions types and <see cref="bool"/> If `true` is returned, the same permissions will be applied from the same sender without calling this contract again.</returns>
         (TxPermissions Permissions, bool ShouldCache) AllowedTxTypes(BlockHeader parentHeader, Transaction tx);
-        
+
         [Flags]
         public enum TxPermissions : uint
         {
@@ -78,8 +78,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
     {
         public virtual UInt256 ContractVersion(BlockHeader blockHeader)
         {
-                return Constant.Call<UInt256>(blockHeader, nameof(ContractVersion), Address.Zero);
-
+            return Constant.Call<UInt256>(blockHeader, nameof(ContractVersion), Address.Zero);
         }
 
         /// <summary>

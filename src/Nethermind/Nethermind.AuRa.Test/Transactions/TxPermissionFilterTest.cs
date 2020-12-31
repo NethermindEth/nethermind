@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -225,7 +225,8 @@ namespace Nethermind.AuRa.Test.Transactions
             var transactionPermissionContract = new VersionedTransactionPermissionContract(new AbiEncoder(), 
                 TestItem.AddressA,
                 5, 
-                Substitute.For<IReadOnlyTransactionProcessorSource>(), new LruCache<Keccak, UInt256>(100, "TestCache"));
+                Substitute.For<IReadOnlyTransactionProcessorSource>(), new LruCache<Keccak, UInt256>(100, "TestCache"),
+                LimboLogs.Instance);
             
             var filter = new PermissionBasedTxFilter(transactionPermissionContract, new PermissionBasedTxFilter.Cache(), Substitute.For<IStateProvider>(), LimboLogs.Instance);
             return filter.IsAllowed(Build.A.Transaction.WithSenderAddress(TestItem.AddressB).TestObject, Build.A.BlockHeader.WithNumber(blockNumber).TestObject).Allowed;
@@ -249,7 +250,7 @@ namespace Nethermind.AuRa.Test.Transactions
                 TransactionPermissionContractVersions =
                     new LruCache<Keccak, UInt256>(PermissionBasedTxFilter.Cache.MaxCacheSize, nameof(TransactionPermissionContract));
                 var transactionPermissionContract = new VersionedTransactionPermissionContract(new AbiEncoder(), _contractAddress, 1,
-                    new ReadOnlyTxProcessorSource(DbProvider, BlockTree, SpecProvider, LimboLogs.Instance), TransactionPermissionContractVersions);
+                    new ReadOnlyTxProcessorSource(DbProvider, BlockTree, SpecProvider, LimboLogs.Instance), TransactionPermissionContractVersions, LimboLogs.Instance);
 
                 TxPermissionFilterCache = new PermissionBasedTxFilter.Cache();
                 PermissionBasedTxFilter = new PermissionBasedTxFilter(transactionPermissionContract, TxPermissionFilterCache, State, LimboLogs.Instance);
