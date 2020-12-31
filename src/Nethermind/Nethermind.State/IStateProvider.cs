@@ -61,5 +61,11 @@ namespace Nethermind.State
         TrieStats CollectStats();
 
         void DecrementNonce(Address address);
+        
+        /// <summary>
+        /// For witness
+        /// </summary>
+        /// <param name="codeHash"></param>
+        void TouchCode(Keccak codeHash);
     }
 }

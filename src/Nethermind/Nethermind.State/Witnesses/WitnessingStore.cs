@@ -47,10 +47,15 @@ namespace Nethermind.State.Witnesses
                     throw new NotSupportedException($"{nameof(WitnessingStore)} requires 32 bytes long keys.");
                 }
                 
-                _witnessCollector.Add(new Keccak(key));
+                Touch(key);
                 return _wrapped[key];
             }
             set => _wrapped[key] = value;
+        }
+
+        public void Touch(byte[] key)
+        {
+            _witnessCollector.Add(new Keccak(key));
         }
     }
 }

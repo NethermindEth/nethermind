@@ -273,6 +273,14 @@ namespace Nethermind.State
             PushUpdate(address, changedAccount);
         }
 
+        public void TouchCode(Keccak codeHash)
+        {
+            if (_codeDb is WitnessingStore witnessingStore)
+            {
+                witnessingStore.Touch(codeHash.Bytes);
+            }
+        }
+
         public Keccak UpdateCode(byte[] code)
         {
             _needsStateRootUpdate = true;

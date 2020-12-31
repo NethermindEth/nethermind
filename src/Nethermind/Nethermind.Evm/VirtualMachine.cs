@@ -378,9 +378,10 @@ namespace Nethermind.Evm
 
             Keccak codeHash = _state.GetCodeHash(codeSource);
             CodeInfo cachedCodeInfo = _codeCache.Get(codeHash);
-            byte[] code = _state.GetCode(codeHash); // TODO: change for quick wit
             if (cachedCodeInfo == null)
             {
+                byte[] code = _state.GetCode(codeHash);
+                
                 if (code == null)
                 {
                     throw new NullReferenceException($"Code {codeHash} missing in the state for address {codeSource}");
@@ -388,6 +389,11 @@ namespace Nethermind.Evm
 
                 cachedCodeInfo = new CodeInfo(code);
                 _codeCache.Set(codeHash, cachedCodeInfo);
+            }
+            else
+            {
+                // for witness collection
+                _state.TouchCode(codeHash);
             }
 
             return cachedCodeInfo;
