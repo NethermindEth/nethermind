@@ -1,19 +1,18 @@
 name: Release Nethermind Packages
-env:
-  DEFAULT_REF: ${{ github.ref }}
+
 on: 
   workflow_dispatch:
     inputs:
       tag:
-        description: 'The tag of the version you want to release'
+        description: 'The TAG of the version you want to release.'
         required: false
-        default: ${DEFAULT_REF}
+        default: 'master'
 
 jobs:
   build-nethermind:
     name: Build Nethermind Packages
     runs-on: ubuntu-latest
-    env: 
+    env:      
       RELEASE_DIRECTORY: /home/runner/work/nethermind/nethermind
       LIN_RELEASE: nethermind-lin-x64
       OSX_RELEASE: nethermind-osx-x64
@@ -27,7 +26,7 @@ jobs:
       with:
         submodules: recursive
         path: nethermind
-        ref: ${{ github.event.inputs.tag || env.DEFAULT_REF }}
+        ref: ${{ github.event.inputs.tag }}
         fetch-depth: 0
     - name: Check out Nethermind Launcher repository
       uses: actions/checkout@master
@@ -82,7 +81,7 @@ jobs:
     - name: Check out Nethermind repository
       uses: actions/checkout@master
       with:
-        ref: ${{ github.event.inputs.tag || env.DEFAULT_REF }}
+        ref: ${{ github.event.inputs.tag }}
         path: nethermind
     - uses: actions/download-artifact@master
       name: Download Nethermind darwin package
@@ -118,7 +117,7 @@ jobs:
     - name: Check out Nethermind repository
       uses: actions/checkout@master
       with:
-        ref: ${{ github.event.inputs.tag || env.DEFAULT_REF }}
+        ref: ${{ github.event.inputs.tag }}
         path: nethermind
     - uses: actions/download-artifact@master
       name: Download Nethermind darwin package
@@ -154,7 +153,7 @@ jobs:
     - name: Check out Nethermind repository
       uses: actions/checkout@master
       with:
-        ref: ${{ github.event.inputs.tag || env.DEFAULT_REF }}
+        ref: ${{ github.event.inputs.tag }}
         fetch-depth: 0
     - name: Settings
       id: settings
