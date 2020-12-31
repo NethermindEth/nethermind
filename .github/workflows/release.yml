@@ -98,9 +98,14 @@ jobs:
       with:
         name: nethermind-windows-package
         path: ${{ env.RELEASE_DIRECTORY }}/${{ env.WIN_RELEASE }}/
+    - name: Settings
+      id: settings
+      run: |
+        echo ::set-output name=TAG::$(git describe --tags --abbrev=0)
     - name: Create Release
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        GIT_SHORT_TAG: ${{ steps.settings.outputs.TAG }}
       run: |
         ./nethermind/scripts/deployment/publish-github.sh
 

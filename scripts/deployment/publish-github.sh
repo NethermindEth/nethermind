@@ -7,8 +7,6 @@ echo =======================================================
 echo Publishing packages to Github Releases
 echo =======================================================
 
-cd $RELEASE_DIRECTORY
-GIT_SHORT_TAG="$(tail git-tag.txt)"
 STATUS=$(curl -s -o /dev/null -w '%{http_code}' https://api.github.com/repos/NethermindEth/nethermind/releases/tags/$GIT_SHORT_TAG)
 GIT_SHORT_TAG_FIRST3="${GIT_SHORT_TAG:0:3}"
 
