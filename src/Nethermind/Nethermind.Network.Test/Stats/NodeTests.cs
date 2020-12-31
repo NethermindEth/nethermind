@@ -42,19 +42,24 @@ namespace Nethermind.Network.Test.Stats
             node.Equals(1).Should().BeFalse();
         }
         
-        [TestCase("s")]
-        [TestCase("c")]
-        [TestCase("f")]
-        [TestCase("zzz")]
-        public void To_string_formats(string format)
+        [TestCase("s", "127.0.0.1:30303")]
+        [TestCase("c", "[Node|127.0.0.1:30303|ClientId|Details]")]
+        [TestCase("f", "enode://a49ac7010c2e0a444dfeeabadbafa4856ba4a2d732acb86d20c577b3b365fdaeb0a70ce47f890cf2f9fca562a7ed784f76eb870a2c75c0f2ab476a70ccb67e92@127.0.0.1:30303|ClientId")]
+        [TestCase("e", "enode://a49ac7010c2e0a444dfeeabadbafa4856ba4a2d732acb86d20c577b3b365fdaeb0a70ce47f890cf2f9fca562a7ed784f76eb870a2c75c0f2ab476a70ccb67e92@127.0.0.1:30303")]
+        [TestCase("p", "enode://a49ac7010c2e0a444dfeeabadbafa4856ba4a2d732acb86d20c577b3b365fdaeb0a70ce47f890cf2f9fca562a7ed784f76eb870a2c75c0f2ab476a70ccb67e92@127.0.0.1:30303|0xb7705ae4c6f81b66cdb323c65f4e8133690fc099")]
+        [TestCase("zzz", "enode://a49ac7010c2e0a444dfeeabadbafa4856ba4a2d732acb86d20c577b3b365fdaeb0a70ce47f890cf2f9fca562a7ed784f76eb870a2c75c0f2ab476a70ccb67e92@127.0.0.1:30303")]
+        public void To_string_formats(string format, string expectedFormat)
         {
-            Node node = new Node("127.0.0.1", 30303);
-            node.ToString(format);
-            _ = node.ToString();
+            Node GetNode(string host) => 
+                new Node(TestItem.PublicKeyA, host, 30303) {ClientId = "ClientId", EthDetails = "Details"};
+
+            Node node = GetNode("127.0.0.1");
+            node.ToString(format).Should().Be(expectedFormat);
             
-            node = new Node("::ffff:127.0.0.1", 30303);
-            node.ToString(format);
-            _ = node.ToString();
+            node = GetNode("::ffff:127.0.0.1");
+            node.ToString(format).Should().Be(expectedFormat);
         }
+
+
     }
 }
