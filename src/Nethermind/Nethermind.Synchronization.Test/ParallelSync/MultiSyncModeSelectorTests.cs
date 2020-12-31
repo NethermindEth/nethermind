@@ -24,7 +24,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using NSubstitute;
@@ -1226,7 +1225,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
             Scenario.GoesLikeThis()
                 .XdaiRegression()
                 .AndPeersSlightlyFutureHeadWithFastSyncLag()
-                .ThenInAnyFastSyncConfiguration()
+                .WhenFastSyncWithFastBlocksIsConfigured()
                 .TheSyncModeShouldBe(SyncMode.Full | SyncMode.FastHeaders);
         }
     }
