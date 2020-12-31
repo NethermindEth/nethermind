@@ -67,6 +67,11 @@ jobs:
       with:
         name: nethermind-windows-package
         path: ${{ env.RELEASE_DIRECTORY }}/${{ env.WIN_RELEASE }}/nethermind-windows-amd64-*
+    - uses: actions/upload-artifact@master
+      name: Upload plugins package
+      with:
+        name: plugins
+        path: ${{ env.RELEASE_DIRECTORY }}/plugins/plugins-*
 
   publish-github:
     name: Publish packages to Github Releases
@@ -83,6 +88,7 @@ jobs:
       with:
         ref: ${{ github.event.inputs.tag }}
         path: nethermind
+        fetch-depth: 0
     - uses: actions/download-artifact@master
       name: Download Nethermind darwin package
       with:
@@ -98,6 +104,11 @@ jobs:
       with:
         name: nethermind-windows-package
         path: ${{ env.RELEASE_DIRECTORY }}/${{ env.WIN_RELEASE }}/
+    - uses: actions/download-artifact@master
+      name: Download plugins package
+      with:
+        name: plugins
+        path: ${{ env.RELEASE_DIRECTORY }}/plugins/
     - name: Settings
       id: settings
       run: |
