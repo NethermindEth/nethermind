@@ -1,5 +1,6 @@
 #!/bin/bash
 #exit when any command fails
+RELEASE_DIRECTORY
 set -e
 RUNNER_PATH=$RELEASE_DIRECTORY/nethermind/src/Nethermind/Nethermind.Runner
 PUBLISH_PATH=bin/release/net5.0
@@ -12,9 +13,9 @@ echo Publishing Nethermind Runner for different platforms...
 echo =======================================================
 echo Nethermind Runner path: $RUNNER_PATH
 
-dotnet publish -c release -r $LINUX -p:PublishSingleFile=true -o $OUT/$LIN_RELEASE
-dotnet publish -c release -r $OSX -p:PublishSingleFile=true -o $OUT/$OSX_RELEASE
-dotnet publish -c release -r $WIN10 -p:PublishSingleFile=true -o $OUT/$WIN_RELEASE
+dotnet publish -c release -r $LINUX -p:PublishSingleFile=true -p:IncludeAllContentForSelfExtract=true -o $OUT/$LIN_RELEASE
+dotnet publish -c release -r $OSX -p:PublishSingleFile=true -p:IncludeAllContentForSelfExtract=true -o $OUT/$OSX_RELEASE
+dotnet publish -c release -r $WIN10 -p:PublishSingleFile=true -p:IncludeAllContentForSelfExtract=true -o $OUT/$WIN_RELEASE
 
 rm -rf $OUT/$LIN_RELEASE/Data
 rm -rf $OUT/$LIN_RELEASE/Hive
