@@ -1,5 +1,6 @@
 #!/bin/bash
-
+#exit when any command fails
+set -e
 WALLET_PATH=$RELEASE_DIRECTORY/nethermind/src/Nethermind/Nethermind.BeamWallet
 PUBLISH_PATH=bin/release/net5.0
 OUT=out

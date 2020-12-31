@@ -1,5 +1,6 @@
 #!/bin/bash
-
+#exit when any command fails
+set -e
 RUNNER_PATH=$RELEASE_DIRECTORY/nethermind/src/Nethermind/Nethermind.Runner
 PUBLISH_PATH=bin/release/net5.0
 OUT=out

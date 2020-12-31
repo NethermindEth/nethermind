@@ -1,5 +1,6 @@
 #!/bin/bash
-
+#exit when any command fails
+set -e
 LIN=nethermind-linux-amd64
 OSX=nethermind-darwin-amd64
 WIN=nethermind-windows-amd64

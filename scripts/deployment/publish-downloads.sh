@@ -1,6 +1,7 @@
 #!/bin/bash
 export GPG_TTY=$(tty)
-
+#exit when any command fails
+set -e
 echo =======================================================
 echo Uploading files to Downloads page
 echo =======================================================

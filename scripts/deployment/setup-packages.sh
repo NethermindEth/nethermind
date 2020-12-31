@@ -1,5 +1,6 @@
 #!/bin/bash
-
+#exit when any command fails
+set -e
 echo =======================================================
 echo Setting up Nethermind packages
 echo =======================================================

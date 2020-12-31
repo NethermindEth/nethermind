@@ -1,5 +1,6 @@
 #!/bin/bash
-
+#exit when any command fails
+set -e
 LAUNCHER_PATH=$RELEASE_DIRECTORY/launcher
 APP_NAME=Nethermind.Launcher
 

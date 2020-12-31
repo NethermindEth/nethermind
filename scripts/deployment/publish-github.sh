@@ -1,7 +1,8 @@
 #!/bin/bash
 GH_OWNER=NethermindEth
 GH_REPO=nethermind
-
+#exit when any command fails
+set -e
 echo =======================================================
 echo Publishing packages to Github Releases
 echo =======================================================
