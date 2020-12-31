@@ -7,7 +7,7 @@ on:
       tag:
         description: 'The tag of the version you want to release'
         required: false
-        default: ${{ DEFAULT_REF }}
+        default: ${DEFAULT_REF}
 
 jobs:
   build-nethermind:
