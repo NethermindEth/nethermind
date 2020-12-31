@@ -112,6 +112,7 @@ jobs:
     - name: Settings
       id: settings
       run: |
+        cd nethermind/
         echo ::set-output name=TAG::$(git describe --tags --abbrev=0)
     - name: Create Release
       env:
