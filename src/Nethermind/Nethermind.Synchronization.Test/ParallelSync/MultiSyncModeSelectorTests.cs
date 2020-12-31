@@ -230,7 +230,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                     return this;
                 }
 
-                public ScenarioBuilder XdaiRegression()
+                public ScenarioBuilder IfPeersMovedForwardBeforeThisNodeProcessedFirstFullBlock()
                 {
                     _syncProgressSetups.Add(
                         () =>
@@ -1222,10 +1222,10 @@ namespace Nethermind.Synchronization.Test.ParallelSync
         }
 
         [Test]
-        public void xdai_regression()
+        public void Does_not_move_back_to_state_sync_mistakenly_when_in_full_sync_because_of_thinking_that_it_needs_to_catch_up()
         {
             Scenario.GoesLikeThis()
-                .XdaiRegression()
+                .IfPeersMovedForwardBeforeThisNodeProcessedFirstFullBlock()
                 .AndPeersMovedSlightlyForwardWithFastSyncLag()
                 .WhenFastSyncWithFastBlocksIsConfigured()
                 .TheSyncModeShouldBe(SyncMode.Full | SyncMode.FastHeaders);
