@@ -242,7 +242,7 @@ namespace Nethermind.Synchronization.ParallelSync
 
         private bool IsInAStickyFullSyncMode(Snapshot best)
         {
-            var bestBlock = Math.Max(best.Processed, LastBlockThatEnabledFullSync ?? 0);
+            long bestBlock = Math.Max(best.Processed, LastBlockThatEnabledFullSync ?? 0);
             bool hasEverBeenInFullSync = bestBlock > PivotNumber && best.State > PivotNumber;
             long heightDelta = best.PeerBlock - bestBlock;
             return hasEverBeenInFullSync && heightDelta < FastSyncCatchUpHeightDelta;
