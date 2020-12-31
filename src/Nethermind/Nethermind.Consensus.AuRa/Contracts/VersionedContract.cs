@@ -60,6 +60,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
                 {
                     if (_logger.IsError) _logger.Error("Failed to get contract version", ex);
                     versionNumber = UInt256.One;
+                    _versionsCache.Set(blockHeader.Hash, versionNumber); // ToDo Consult with Łukasz and remove
                 }
             }
 
