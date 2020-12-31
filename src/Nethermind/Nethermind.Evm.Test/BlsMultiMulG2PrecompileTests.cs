@@ -19,7 +19,6 @@ using System.Collections.Generic;
 using FluentAssertions;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm.Precompiles;
-using Nethermind.Evm.Precompiles.Bls;
 using Nethermind.Evm.Precompiles.Bls.Shamatar;
 using NUnit.Framework;
 

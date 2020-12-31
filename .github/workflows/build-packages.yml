@@ -1,0 +1,62 @@
+name: Build Nethermind packages
+
+on: workflow_dispatch
+
+jobs:
+  build-nethermind:
+    name: Build Nethermind Packages
+    runs-on: ubuntu-latest
+    env: 
+      RELEASE_DIRECTORY: /home/runner/work/nethermind/nethermind
+      LIN_RELEASE: nethermind-lin-x64
+      OSX_RELEASE: nethermind-osx-x64
+      WIN_RELEASE: nethermind-win-x64
+      LINUX: linux-x64
+      OSX: osx-x64
+      WIN10: win10-x64
+    steps:
+    - name: Check out Nethermind repository
+      uses: actions/checkout@master
+      with:
+        submodules: recursive
+        path: nethermind
+        fetch-depth: 0
+    - name: Check out Nethermind Launcher repository
+      uses: actions/checkout@master
+      with:
+        repository: NethermindEth/nethermind.launcher
+        path: launcher
+    - name: Setup Node.js
+      uses: actions/setup-node@master
+      with:
+        node-version: "13"
+    - name: Setup Build Environment
+      run: |
+        npm install pkg -g
+    - name: Setup Packages
+      run: ./nethermind/scripts/deployment/setup-packages.sh
+    - name: Build Runner
+      run: ./nethermind/scripts/deployment/build-runner.sh
+    - name: Build BeamWallet
+      run: ./nethermind/scripts/deployment/build-wallet.sh
+    - name: Build Cli
+      run: ./nethermind/scripts/deployment/build-cli.sh
+    - name: Build Launcher
+      run: ./nethermind/scripts/deployment/build-launcher.sh
+    - name: Archive packages
+      run: ./nethermind/scripts/deployment/archive-packages.sh
+    - uses: actions/upload-artifact@master
+      name: Upload Nethermind darwin package
+      with:
+        name: nethermind-darwin-package
+        path: ${{ env.RELEASE_DIRECTORY }}/${{ env.OSX_RELEASE }}/nethermind-darwin-amd64-*
+    - uses: actions/upload-artifact@master
+      name: Upload Nethermind linux package
+      with:
+        name: nethermind-linux-package
+        path: ${{ env.RELEASE_DIRECTORY }}/${{ env.LIN_RELEASE }}/nethermind-linux-amd64-*
+    - uses: actions/upload-artifact@master
+      name: Upload Nethermind windows package
+      with:
+        name: nethermind-windows-package
+        path: ${{ env.RELEASE_DIRECTORY }}/${{ env.WIN_RELEASE }}/nethermind-windows-amd64-*

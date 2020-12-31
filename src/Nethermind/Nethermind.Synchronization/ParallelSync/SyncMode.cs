@@ -22,42 +22,57 @@ namespace Nethermind.Synchronization.ParallelSync
     public enum SyncMode
     {
         None = 0,
+        
+        /// <summary>
+        /// We are connected to nodes and processing based on discovery
+        /// </summary>
+        WaitingForBlock = 1,
+        /// <summary>
+        /// We are not connected to nodes
+        /// </summary>
+        Disconnected = 2,
         /// <summary>
         /// Stage of fast sync that downloads headers, bodies or receipts from pivot to beginning of chain in parallel.
         /// </summary>
-        FastBlocks = 1,
+        FastBlocks = 4,
         /// <summary>
         /// A standard fast sync mode before the peers head - 32 (threshold). It happens after the fast blocks finishes to download from pivot downwards. By default the picot for fast blocks is 0 so the fast blocks finish immediately. 
         /// </summary>
-        FastSync = 2,
+        FastSync = 8,
         /// <summary>
         /// This is the stage of the fast sync when all the trie nodes are downloaded. The node can keep switching between StateNodes and FastSync while it has to catch up with the Head - 32 due to peers not returning old trie nodes.
         /// </summary>
-        StateNodes = 4,
+        StateNodes = 16,
         /// <summary>
         /// This is either a standard full archive sync from genesis or full sync after StateNodes finish.
         /// </summary>
-        Full = 8,
+        Full = 32,
         /// <summary>
         /// Beam sync is not implemented yet.
         /// </summary>
-        Beam = 16,
+        Beam = 64,
         /// <summary>
         /// Loading previously downloaded blocks from the DB
         /// </summary>
-        DbLoad = 32,
+        DbLoad = 128,
         /// <summary>
         /// Stage of fast sync that downloads headers in parallel.
         /// </summary>
-        FastHeaders = FastBlocks | 64,
+        FastHeaders = FastBlocks | 256,
         /// <summary>
         /// Stage of fast sync that downloads headers in parallel.
         /// </summary>
-        FastBodies = FastBlocks | 128,
+        FastBodies = FastBlocks | 512,
         /// <summary>
         /// Stage of fast sync that downloads headers in parallel.
         /// </summary>
-        FastReceipts = FastBlocks | 256,
-        All = FastBlocks | FastSync | StateNodes | Full | Beam | DbLoad | FastHeaders | FastBodies | FastReceipts
+        FastReceipts = FastBlocks | 1024,
+        
+        All = WaitingForBlock | Disconnected | FastBlocks | FastSync | StateNodes | StateNodes | Full | Beam | DbLoad | FastHeaders | FastBodies | FastReceipts
+    }
+    
+    public static class SyncModeExtensions
+    {
+        public static bool NotSyncing(this SyncMode syncMode) => syncMode == SyncMode.WaitingForBlock || syncMode == SyncMode.Disconnected;
     }
 }

@@ -16,10 +16,8 @@
 
 using System;
 using System.Linq;
-using System.Runtime.CompilerServices;
 using Nethermind.Abi;
 using Nethermind.Core.Extensions;
-using Nethermind.Crypto;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 

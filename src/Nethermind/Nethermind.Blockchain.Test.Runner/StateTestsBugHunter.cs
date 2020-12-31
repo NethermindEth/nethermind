@@ -23,7 +23,6 @@ using Ethereum.Test.Base;
 using Ethereum.Test.Base.Interfaces;
 using Nethermind.Logging;
 using Nethermind.Logging.NLog;
-using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Runner
 {

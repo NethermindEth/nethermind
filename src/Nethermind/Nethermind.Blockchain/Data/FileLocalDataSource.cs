@@ -18,7 +18,6 @@
 using System;
 using System.IO;
 using System.IO.Abstractions;
-using System.IO.Enumeration;
 using System.Threading.Tasks;
 using System.Timers;
 using Nethermind.Logging;
