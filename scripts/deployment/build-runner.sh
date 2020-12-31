@@ -12,9 +12,9 @@ echo Publishing Nethermind Runner for different platforms...
 echo =======================================================
 echo Nethermind Runner path: $RUNNER_PATH
 
-dotnet publish -c release -r $LINUX -p:PublishSingleFile=true -p:PublishTrimmed=true -o $OUT/$LIN_RELEASE
-dotnet publish -c release -r $OSX -p:PublishSingleFile=true -p:PublishTrimmed=true -o $OUT/$OSX_RELEASE
-dotnet publish -c release -r $WIN10 -p:PublishSingleFile=true -p:PublishTrimmed=true -o $OUT/$WIN_RELEASE
+dotnet publish -c release -r $LINUX -p:PublishSingleFile=true -o $OUT/$LIN_RELEASE
+dotnet publish -c release -r $OSX -p:PublishSingleFile=true -o $OUT/$OSX_RELEASE
+dotnet publish -c release -r $WIN10 -p:PublishSingleFile=true -o $OUT/$WIN_RELEASE
 
 rm -rf $OUT/$LIN_RELEASE/Data
 rm -rf $OUT/$LIN_RELEASE/Hive
