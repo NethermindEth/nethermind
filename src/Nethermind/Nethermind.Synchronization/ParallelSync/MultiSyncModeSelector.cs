@@ -16,7 +16,6 @@
 
 using System;
 using System.ComponentModel;
-using System.Linq;
 using System.Timers;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Int256;
