@@ -338,19 +338,19 @@ namespace Nethermind.Runner
         {
             if (!string.IsNullOrWhiteSpace(dataDir))
             {
-                string newDbPath = Path.Combine(dataDir, initConfig.BaseDbPath);
-                string newKeystorePath = Path.Combine(dataDir, keyStoreConfig.KeyStoreDirectory);
-                string newLogDirectory = Path.Combine(dataDir, initConfig.LogDirectory);
+                string newDbPath = initConfig.BaseDbPath.GetApplicationResourcePath(dataDir);
+                string newKeyStorePath = keyStoreConfig.KeyStoreDirectory.GetApplicationResourcePath(dataDir);
+                string newLogDirectory = initConfig.LogDirectory.GetApplicationResourcePath(dataDir);
 
-                if (_logger.IsDebug) 
+                if (_logger.IsInfo) 
                 {
-                    _logger.Debug($"Setting BaseDbPath to: {newDbPath}, from: {initConfig.BaseDbPath}");
-                    _logger.Debug($"Setting KeyStoreDirectory to: {newKeystorePath}, from: {keyStoreConfig.KeyStoreDirectory}");
-                    _logger.Debug($"Setting LogDirectory to: {newLogDirectory}, from: {initConfig.LogDirectory}");
+                    _logger.Info($"Setting BaseDbPath to: {newDbPath}, from: {initConfig.BaseDbPath}");
+                    _logger.Info($"Setting KeyStoreDirectory to: {newKeyStorePath}, from: {keyStoreConfig.KeyStoreDirectory}");
+                    _logger.Info($"Setting LogDirectory to: {newLogDirectory}, from: {initConfig.LogDirectory}");
                 }
 
                 initConfig.BaseDbPath = newDbPath;
-                keyStoreConfig.KeyStoreDirectory = newKeystorePath;
+                keyStoreConfig.KeyStoreDirectory = newKeyStorePath;
                 initConfig.LogDirectory = newLogDirectory;
             }
             else
