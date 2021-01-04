@@ -25,7 +25,6 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Rewards;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Consensus;
-using Nethermind.Consensus.Transactions;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -43,7 +42,6 @@ using Nethermind.Db.Blooms;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Storages;
 using BlockTree = Nethermind.Blockchain.BlockTree;
-using System.IO;
 
 namespace Nethermind.Core.Test.Blockchain
 {
@@ -58,13 +56,14 @@ namespace Nethermind.Core.Test.Blockchain
         public ITxPool TxPool { get; set; }
         public ISnapshotableDb CodeDb => DbProvider.CodeDb;
         public IBlockProcessor BlockProcessor { get; set; }
+        public IBlockchainProcessor BlockchainProcessor { get; set; }
         public IBlockTree BlockTree { get; set; }
         public IBlockFinder BlockFinder { get; set; }
         public IJsonSerializer JsonSerializer { get; set; }
         public IStateProvider State { get; set; }
         public ISnapshotableDb StateDb => DbProvider.StateDb;
         public TestBlockProducer BlockProducer { get; private set; }
-        public MemDbProvider DbProvider { get; set; }
+        public IDbProvider DbProvider { get; set; }
         public ISpecProvider SpecProvider { get; set; }
 
         protected TestBlockchain(SealEngineType sealEngineType)
@@ -90,7 +89,7 @@ namespace Nethermind.Core.Test.Blockchain
             SpecProvider = specProvider ?? MainnetSpecProvider.Instance;
             EthereumEcdsa = new EthereumEcdsa(ChainId.Mainnet, LimboLogs.Instance);
             ITxStorage txStorage = new InMemoryTxStorage();
-            DbProvider = new MemDbProvider();
+            DbProvider = await TestMemDbProvider.InitAsync();
             State = new StateProvider(StateDb, CodeDb, LimboLogs.Instance);
             State.CreateAccount(TestItem.AddressA, (initialValues ?? 1000.Ether()));
             State.CreateAccount(TestItem.AddressB, (initialValues ?? 1000.Ether()));
@@ -126,7 +125,8 @@ namespace Nethermind.Core.Test.Blockchain
             TxProcessor = new TransactionProcessor(SpecProvider, State, Storage, virtualMachine, LimboLogs.Instance);
             BlockProcessor = CreateBlockProcessor();
 
-            BlockchainProcessor chainProcessor = new BlockchainProcessor(BlockTree, BlockProcessor, new RecoverSignatures(EthereumEcdsa, TxPool, SpecProvider, LimboLogs.Instance), LimboLogs.Instance, BlockchainProcessor.Options.Default);
+            BlockchainProcessor chainProcessor = new BlockchainProcessor(BlockTree, BlockProcessor, new RecoverSignatures(EthereumEcdsa, TxPool, SpecProvider, LimboLogs.Instance), LimboLogs.Instance, Nethermind.Blockchain.Processing.BlockchainProcessor.Options.Default);
+            BlockchainProcessor = chainProcessor;
             chainProcessor.Start();
 
             StateReader = new StateReader(StateDb, CodeDb, LimboLogs.Instance);

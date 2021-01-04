@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -33,6 +33,13 @@ using Nethermind.State;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
+using Nethermind.Core.Test.Blockchain;
+using System.Security;
+using Nethermind.Core.Extensions;
+using Nethermind.Specs.Forks;
+using Nethermind.JsonRpc.Test.Modules;
+using System.Threading.Tasks;
+using System.Threading;
 
 namespace Nethermind.Blockchain.Test
 {
@@ -103,6 +110,40 @@ namespace Nethermind.Blockchain.Test
                 new List<Block> {block},
                 ProcessingOptions.None,
                 AlwaysCancelBlockTracer.Instance));
+        }
+
+        [TestCase(20)]
+        [TestCase(63)]
+        [TestCase(64)]
+        [TestCase(65)]
+        [TestCase(127)]
+        [TestCase(128)]
+        [TestCase(129)]
+        [TestCase(130)]
+        [TestCase(1000)]
+        [TestCase(2000)]
+        public async Task Process_long_running_branch(int blocksAmount)
+        {
+            var address = TestItem.Addresses[0];
+            var spec = new SingleReleaseSpecProvider(ConstantinopleFix.Instance, 1);
+            var testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+                .Build(spec);
+            testRpc.TestWallet.UnlockAccount(address, new SecureString());
+            await testRpc.AddFunds(address, 1.Ether());
+
+            BlockHeader header = Build.A.BlockHeader.WithAuthor(TestItem.AddressD).TestObject;
+            Block block = Build.A.Block.WithHeader(header).TestObject;
+            await testRpc.AddBlock();
+            var suggestedBlockResetEvent = new SemaphoreSlim(0);
+            testRpc.BlockTree.NewHeadBlock += (s, e) =>
+            {
+                suggestedBlockResetEvent.Release(1);
+            };
+
+            var branchLength = blocksAmount + (int)testRpc.BlockTree.BestKnownNumber + 1;
+            ((BlockTree)testRpc.BlockTree).AddBranch(branchLength, (int)testRpc.BlockTree.BestKnownNumber);
+            await suggestedBlockResetEvent.WaitAsync();
+            Assert.AreEqual(branchLength - 1, (int)testRpc.BlockTree.BestKnownNumber);
         }
     }
 }

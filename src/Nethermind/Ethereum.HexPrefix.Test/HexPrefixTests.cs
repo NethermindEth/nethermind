@@ -19,7 +19,6 @@
 using System.Collections.Generic;
 using System.Linq;
 using Ethereum.Test.Base;
-using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using NUnit.Framework;
 

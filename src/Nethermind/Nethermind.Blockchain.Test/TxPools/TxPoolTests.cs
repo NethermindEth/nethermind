@@ -141,7 +141,8 @@ namespace Nethermind.Blockchain.Test.TxPools
             _txPool.AddTransaction(transactions[0], TxHandlingOptions.PersistentBroadcast);
             Assert.AreEqual(1, _txPool.GetOwnPendingTransactions().Length);
         }
-        
+
+
         [Test]
         public void should_broadcast_own_transactions()
         {
@@ -159,6 +160,28 @@ namespace Nethermind.Blockchain.Test.TxPools
             _txPool.RemoveTransaction(TestItem.KeccakA, 100);
             _txPool.AddTransaction(transactions[0], TxHandlingOptions.None);
             Assert.AreEqual(0, _txPool.GetOwnPendingTransactions().Length);
+        }
+
+        [Test]
+        public async Task should_remove_transactions_concurrently()
+        {
+            var maxTryCount = 5;
+            for (int i = 0; i < maxTryCount; ++i)
+            {
+                _txPool = CreatePool(_noTxStorage);
+                int transactionsPerPeer = 5;
+                var transactions = AddTransactionsToPool(true, false, transactionsPerPeer);
+                Transaction[] transactionsForFirstTask = transactions.Where(t => t.Nonce == 8).ToArray();
+                Transaction[] transactionsForSecondTask = transactions.Where(t => t.Nonce == 6).ToArray();
+                Transaction[] transactionsForThirdTask = transactions.Where(t => t.Nonce == 7).ToArray();
+                transactions.Should().HaveCount(transactionsPerPeer * 10);
+                transactionsForFirstTask.Should().HaveCount(transactionsPerPeer);
+                var firstTask = Task.Run(() => DeleteTransactionsFromPool(true, transactionsForFirstTask));
+                var secondTask = Task.Run(() => DeleteTransactionsFromPool(true, transactionsForSecondTask));
+                var thirdTask = Task.Run(() => DeleteTransactionsFromPool(true, transactionsForThirdTask));
+                await Task.WhenAll(firstTask, secondTask, thirdTask);
+                _txPool.GetPendingTransactions().Should().HaveCount(transactionsPerPeer);
+            }
         }
 
         [TestCase(true, true,10)]

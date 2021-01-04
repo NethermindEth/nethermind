@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -86,7 +86,7 @@ namespace Nethermind.Blockchain
         /// <param name="block">Block to be included</param>
         /// <param name="shouldProcess">Whether a block should be processed or just added to the store</param>
         /// <returns>Result of the operation, eg. Added, AlreadyKnown, etc.</returns>
-        AddBlockResult SuggestBlock(Block block, bool shouldProcess = true);
+        AddBlockResult SuggestBlock(Block block, bool shouldProcess = true, bool? setAsMain = null);
 
         /// <summary>
         /// Suggests a block header (without body)

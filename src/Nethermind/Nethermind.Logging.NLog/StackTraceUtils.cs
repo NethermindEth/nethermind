@@ -18,7 +18,6 @@ using System;
 using System.Diagnostics;
 using System.Reflection;
 using System.Runtime.CompilerServices;
-using NLog.Config;
 
 namespace Nethermind.Logging
 {

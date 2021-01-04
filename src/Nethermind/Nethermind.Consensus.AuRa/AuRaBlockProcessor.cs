@@ -101,7 +101,7 @@ namespace Nethermind.Consensus.AuRa
             long? expectedGasLimit = null;
             if (_gasLimitOverride?.IsGasLimitValid(parentHeader, header.GasLimit, out expectedGasLimit) == false)
             {
-                if (_logger.IsError) _logger.Error($"Invalid gas limit for block {header.Number}, hash {header.Hash}, expected value from contract {expectedGasLimit}, but found {header.GasLimit}.");
+                if (_logger.IsWarn) _logger.Warn($"Invalid gas limit for block {header.Number}, hash {header.Hash}, expected value from contract {expectedGasLimit}, but found {header.GasLimit}.");
                 throw new InvalidBlockException(header.Hash);
             }
         }
@@ -113,7 +113,7 @@ namespace Nethermind.Consensus.AuRa
                 var tx = block.Transactions[i];
                 if (!_txFilter.IsAllowed(tx, parentHeader).Allowed)
                 {
-                    if (_logger.IsError) _logger.Error($"Proposed block is not valid {block.ToString(Block.Format.FullHashAndNumber)}. {tx.ToShortString()} doesn't have required permissions.");
+                    if (_logger.IsWarn) _logger.Warn($"Proposed block is not valid {block.ToString(Block.Format.FullHashAndNumber)}. {tx.ToShortString()} doesn't have required permissions.");
                     throw new InvalidBlockException(block.Hash);
                 }
             }

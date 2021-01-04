@@ -16,11 +16,9 @@
 
 namespace Nethermind.Db
 {
-    public interface ISnapshotableDb : IDb
+    public interface ISnapshotableDb : IReadOnlyDb
     {
         public const int NoChangesCheckpoint = -1;
-        
-        void Restore(int snapshot);
 
         void Commit();
         
