@@ -323,14 +323,14 @@ namespace Nethermind.Runner
         {
             if (!string.IsNullOrWhiteSpace(baseDbPath))
             {
-                string newDbPath = Path.Combine(baseDbPath, initConfig.BaseDbPath);
+                string newDbPath = initConfig.BaseDbPath.GetApplicationResourcePath(baseDbPath);
                 if (_logger.IsDebug) _logger.Debug(
                     $"Adding prefix to baseDbPath, new value: {newDbPath}, old value: {initConfig.BaseDbPath}");
                 initConfig.BaseDbPath = newDbPath;
             }
             else
             {
-                initConfig.BaseDbPath ??= Path.Combine(AppDomain.CurrentDomain.BaseDirectory ?? "", "db");    
+                initConfig.BaseDbPath ??= "".GetApplicationResourcePath("db");
             }
         }
 
@@ -355,9 +355,9 @@ namespace Nethermind.Runner
             }
             else
             {
-                initConfig.BaseDbPath ??= Path.Combine(AppDomain.CurrentDomain.BaseDirectory ?? "", "db"); 
-                keyStoreConfig.KeyStoreDirectory ??= Path.Combine(AppDomain.CurrentDomain.BaseDirectory ?? "", "keystore");    
-                initConfig.LogDirectory ??= Path.Combine(AppDomain.CurrentDomain.BaseDirectory ?? "", "logs");
+                initConfig.BaseDbPath ??= "".GetApplicationResourcePath("db");
+                keyStoreConfig.KeyStoreDirectory ??= "".GetApplicationResourcePath("keystore");
+                initConfig.LogDirectory ??= "".GetApplicationResourcePath("logs");
             }
         }
 
