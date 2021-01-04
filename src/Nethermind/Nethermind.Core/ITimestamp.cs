@@ -22,20 +22,8 @@ namespace Nethermind.Core
     {
         DateTime UtcNow { get; }
 
-        public ulong EpochSeconds => (ulong) EpochSecondsLong;
-        public ulong EpochMilliseconds => (ulong) EpochMillisecondsLong;
-        public long EpochSecondsLong => UtcNowOffset.ToUnixTimeSeconds();
-        public long EpochMillisecondsLong => UtcNowOffset.ToUnixTimeMilliseconds();
-
-        public (long Seconds, long Milliseconds) Epoch
-        {
-            get
-            {
-                var offset = UtcNowOffset;
-                return (offset.ToUnixTimeSeconds(), offset.ToUnixTimeMilliseconds());
-            }
-        }
-        
         public DateTimeOffset UtcNowOffset => new DateTimeOffset(UtcNow);
+        
+        public UnixTime UnixTime => new UnixTime(UtcNow);
     }
 }

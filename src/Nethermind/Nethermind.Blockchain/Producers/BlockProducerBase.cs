@@ -31,6 +31,16 @@ using Nethermind.State.Proofs;
 
 namespace Nethermind.Blockchain.Producers
 {
+    /// <summary>
+    /// I think this class can be significantly simplified if we split the block production into a pipeline:
+    /// * signal block needed
+    /// * prepare block frame
+    /// * select transactions
+    /// * seal
+    /// Then the pipeline can be build from separate components
+    /// And each separate component can be tested independently
+    /// This would also simplify injection of various behaviours into NethDev pipeline
+    /// </summary>
     public abstract class BlockProducerBase : IBlockProducer
     {
         private IBlockchainProcessor Processor { get; }
@@ -168,7 +178,7 @@ namespace Nethermind.Blockchain.Producers
 
         protected virtual Block PrepareBlock(BlockHeader parent)
         {
-            UInt256 timestamp = _timestamper.EpochSeconds;
+            UInt256 timestamp = _timestamper.UnixTime.Seconds;
             UInt256 difficulty = CalculateDifficulty(parent, timestamp);
             BlockHeader header = new BlockHeader(
                 parent.Hash,
@@ -177,7 +187,7 @@ namespace Nethermind.Blockchain.Producers
                 difficulty,
                 parent.Number + 1,
                 _gasLimitCalculator.GetGasLimit(parent),
-                UInt256.Max(parent.Timestamp + 1, _timestamper.EpochSeconds),
+                UInt256.Max(parent.Timestamp + 1, _timestamper.UnixTime.Seconds),
                 Encoding.UTF8.GetBytes("Nethermind"))
             {
                 TotalDifficulty = parent.TotalDifficulty + difficulty,

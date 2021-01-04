@@ -41,7 +41,7 @@ namespace Nethermind.TxPool
             }
 
             tx.Hash = tx.CalculateHash();
-            tx.Timestamp = _timestamper.EpochSeconds;
+            tx.Timestamp = _timestamper.UnixTime.Seconds;
         }
     }
 }

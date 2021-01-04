@@ -13,27 +13,38 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
 using System;
 
 namespace Nethermind.Core
 {
-    public class ManualTimestamper : ITimestamper
+    /// <summary>
+    /// We have used before a construction that was ensuring that the exactly same
+    /// timestamp is used when calculating both seconds and milliseconds.
+    ///
+    /// This struct achieves the same with a slightly neater code.
+    /// </summary>
+    public readonly struct UnixTime
     {
-        public ManualTimestamper() : this(DateTime.UtcNow)
-        {
-        }
+        private readonly DateTimeOffset _offset;
 
-        public ManualTimestamper(DateTime initialValue)
+        public static UnixTime FromSeconds(double seconds)
         {
-            UtcNow = initialValue;
+            return new UnixTime(DateTime.UnixEpoch.Add(TimeSpan.FromSeconds(seconds)));
         }
         
-        public DateTime UtcNow { get; set; }
-
-        public void Add(TimeSpan timeSpan)
+        public UnixTime(DateTime dateTime)
         {
-            UtcNow += timeSpan;
+            _offset = new DateTimeOffset(dateTime);
         }
+
+        public ulong Seconds => (ulong) SecondsLong;
+        
+        public ulong Milliseconds => (ulong) MillisecondsLong;
+        
+        public long SecondsLong => _offset.ToUnixTimeSeconds();
+        
+        public long MillisecondsLong => _offset.ToUnixTimeMilliseconds();
     }
 }

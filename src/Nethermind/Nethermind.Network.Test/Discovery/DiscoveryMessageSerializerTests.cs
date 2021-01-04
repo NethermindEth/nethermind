@@ -68,7 +68,7 @@ namespace Nethermind.Network.Test.Discovery
                 DestinationAddress = _nearAddress,
                 SourceAddress = _farAddress,
                 FarPublicKey = _privateKey.PublicKey,
-                ExpirationTime = 60 + (long) _timestamper.EpochMilliseconds
+                ExpirationTime = _timestamper.UnixTime.MillisecondsLong
             };
 
             var data = _messageSerializationService.Serialize(message);
@@ -95,7 +95,7 @@ namespace Nethermind.Network.Test.Discovery
                 FarAddress = _farAddress,
                 PingMdc = new byte[] {1, 2, 3},
                 FarPublicKey = _privateKey.PublicKey,
-                ExpirationTime = 60 + (long) _timestamper.EpochMilliseconds
+                ExpirationTime = 60 + _timestamper.UnixTime.MillisecondsLong
             };
 
             var data = _messageSerializationService.Serialize(message);
@@ -136,7 +136,7 @@ namespace Nethermind.Network.Test.Discovery
                 FarAddress = _farAddress,
                 SearchedNodeId = new byte[] {1, 2, 3},
                 FarPublicKey = _privateKey.PublicKey,
-                ExpirationTime = 60 + (long) _timestamper.EpochMilliseconds
+                ExpirationTime = 60 + _timestamper.UnixTime.MillisecondsLong
             };
 
             var data = _messageSerializationService.Serialize(message);
@@ -162,7 +162,7 @@ namespace Nethermind.Network.Test.Discovery
                     new Node("192.168.1.4", 3)
                 },
                 FarPublicKey = _privateKey.PublicKey,
-                ExpirationTime = 60 + (long) _timestamper.EpochMilliseconds
+                ExpirationTime = 60 + _timestamper.UnixTime.MillisecondsLong
             };
 
             var data = _messageSerializationService.Serialize(message);
