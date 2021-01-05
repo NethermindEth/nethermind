@@ -5,13 +5,13 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
   <ItemGroup>
-    <Content Include="runtimes\linux-x64\native\libsecp256k1.so">
+    <Content Include="runtimes\linux-x64\native\libsecp256k1.so" Condition=" '$([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform($([System.Runtime.InteropServices.OSPlatform]::Linux)))' ">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <Content Include="runtimes\osx-x64\native\libsecp256k1.dylib">
+    <Content Include="runtimes\osx-x64\native\libsecp256k1.dylib" Condition=" '$([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform($([System.Runtime.InteropServices.OSPlatform]::OSX)))' ">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <Content Include="runtimes\win-x64\native\secp256k1.dll">
+    <Content Include="runtimes\$([System.Runtime.InteropServices.RuntimeInformation]::RuntimeIdentifier)\native\secp256k1.dll" Condition=" '$([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform($([System.Runtime.InteropServices.OSPlatform]::Windows)))' ">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
   </ItemGroup>
