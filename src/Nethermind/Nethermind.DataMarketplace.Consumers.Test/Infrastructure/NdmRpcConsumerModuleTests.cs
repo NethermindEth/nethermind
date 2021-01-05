@@ -583,7 +583,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
             var pendingTransactions = new List<ResourceTransaction>
             {
                 new ResourceTransaction(TestItem.KeccakA.ToString(), "test", TransactionInfo.Default(TestItem.KeccakB,
-                    1.Ether(), 20.GWei(), 10, _timestamper.EpochSeconds))
+                    1.Ether(), 20.GWei(), 10, _timestamper.UnixTime.Seconds))
             };
             
             var transaction = pendingTransactions[0];
