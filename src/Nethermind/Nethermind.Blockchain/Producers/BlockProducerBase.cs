@@ -178,7 +178,7 @@ namespace Nethermind.Blockchain.Producers
 
         protected virtual Block PrepareBlock(BlockHeader parent)
         {
-            UInt256 timestamp = _timestamper.UnixTime.Seconds;
+            UInt256 timestamp = UInt256.Max(parent.Timestamp + 1, _timestamper.UnixTime.Seconds);
             UInt256 difficulty = CalculateDifficulty(parent, timestamp);
             BlockHeader header = new BlockHeader(
                 parent.Hash,
@@ -187,7 +187,7 @@ namespace Nethermind.Blockchain.Producers
                 difficulty,
                 parent.Number + 1,
                 _gasLimitCalculator.GetGasLimit(parent),
-                UInt256.Max(parent.Timestamp + 1, _timestamper.UnixTime.Seconds),
+                timestamp,
                 Encoding.UTF8.GetBytes("Nethermind"))
             {
                 TotalDifficulty = parent.TotalDifficulty + difficulty,

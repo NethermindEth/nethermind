@@ -13,25 +13,37 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
 using System;
 
 namespace Nethermind.Core
 {
-    public class ManualTimestamper : ITimestamper
+    /// <summary>
+    /// Each time this timestamper is asked about the time it move the time forward by some constant
+    /// </summary>
+    public class IncrementalTimestamper : ITimestamper
     {
-        public ManualTimestamper() : this(DateTime.UtcNow) { }
+        private readonly TimeSpan _increment;
+        private DateTime _utcNow;
 
-        public ManualTimestamper(DateTime initialValue)
+        public IncrementalTimestamper()
+            : this(DateTime.UtcNow, TimeSpan.FromSeconds(1)) { }
+
+        public IncrementalTimestamper(DateTime initialValue, TimeSpan increment)
         {
-            UtcNow = initialValue;
+            _increment = increment;
+            _utcNow = initialValue;
         }
-        
-        public DateTime UtcNow { get; set; }
 
-        public void Add(TimeSpan timeSpan)
+        public DateTime UtcNow
         {
-            UtcNow += timeSpan;
+            get
+            {
+                DateTime result = _utcNow;
+                _utcNow = _utcNow.Add(_increment);
+                return result;
+            }
         }
     }
 }
