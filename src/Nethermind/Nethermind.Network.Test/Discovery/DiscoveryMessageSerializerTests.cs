@@ -68,7 +68,7 @@ namespace Nethermind.Network.Test.Discovery
                 DestinationAddress = _nearAddress,
                 SourceAddress = _farAddress,
                 FarPublicKey = _privateKey.PublicKey,
-                ExpirationTime = _timestamper.UnixTime.MillisecondsLong
+                ExpirationTime = 60 + _timestamper.UnixTime.MillisecondsLong
             };
 
             var data = _messageSerializationService.Serialize(message);
