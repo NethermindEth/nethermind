@@ -117,7 +117,7 @@ namespace Nethermind.Blockchain.Producers
             Block block = PrepareBlock(parent);
             if (PreparedBlockCanBeMined(block))
             {
-                var processedBlock = ProcessPreparedBlock(block);
+                Block processedBlock = ProcessPreparedBlock(block);
                 if (processedBlock == null)
                 {
                     if (Logger.IsError) Logger.Error("Block prepared by block producer was rejected by processor.");

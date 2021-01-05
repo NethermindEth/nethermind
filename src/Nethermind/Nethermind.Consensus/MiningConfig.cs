@@ -27,5 +27,7 @@ namespace Nethermind.Consensus
         public long? TargetBlockGasLimit { get; set; } = null;
 
         public UInt256 MinGasPrice { get; set; } = 1.GWei();
+        
+        public bool RandomizedBlocks { get; set; }
     }
 }

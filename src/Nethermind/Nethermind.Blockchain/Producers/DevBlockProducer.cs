@@ -34,6 +34,7 @@ namespace Nethermind.Blockchain.Producers
     public class DevBlockProducer : BlockProducerBase
     {
         private readonly ITxPool _txPool;
+        private readonly IMiningConfig _miningConfig;
         private readonly SemaphoreSlim _newBlockLock = new SemaphoreSlim(1, 1);
         private readonly Timer _timer;
         private readonly TimeSpan _timeout = TimeSpan.FromMilliseconds(200);
@@ -46,7 +47,8 @@ namespace Nethermind.Blockchain.Producers
             IBlockProcessingQueue blockProcessingQueue,
             ITxPool txPool,
             ITimestamper timestamper,
-            ILogManager logManager) 
+            IMiningConfig miningConfig,
+            ILogManager logManager)
             : base(
                 txSource,
                 processor,
@@ -54,11 +56,12 @@ namespace Nethermind.Blockchain.Producers
                 blockTree,
                 blockProcessingQueue,
                 stateProvider,
-                FollowOtherMiners.Instance, 
+                FollowOtherMiners.Instance,
                 timestamper,
                 logManager)
         {
             _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
+            _miningConfig = miningConfig ?? throw new ArgumentNullException(nameof(miningConfig));
             _timer = new Timer(_timeout.TotalMilliseconds);
             _timer.Elapsed += TimerOnElapsed;
         }
@@ -79,7 +82,7 @@ namespace Nethermind.Blockchain.Producers
             BlockTree.NewHeadBlock += OnNewHeadBlock;
             _timer.Start();
         }
-        
+
         public override async Task StopAsync()
         {
             _txPool.NewPending -= OnNewPendingTx;
@@ -88,14 +91,32 @@ namespace Nethermind.Blockchain.Producers
             await Task.CompletedTask;
         }
 
-        protected override UInt256 CalculateDifficulty(BlockHeader parent, UInt256 timestamp) => 1;
+        private readonly Random _random = new Random();
+
+        protected override UInt256 CalculateDifficulty(BlockHeader parent, UInt256 timestamp)
+        {
+            UInt256 difficulty;
+            if (_miningConfig.RandomizedBlocks)
+            {
+                UInt256 change = new UInt256((ulong)(_random.Next(100) + 50));
+                difficulty = UInt256.Max(1000, UInt256.Max(parent.Difficulty, 1000) / 100 * change);
+                if(Logger.IsInfo) Logger.Info($"Randomized difficulty for the child of {parent.ToString(BlockHeader.Format.Short)} is {difficulty}");
+            }
+            else
+            {
+                difficulty = UInt256.One;
+            }
+
+            return difficulty;
+        }
 
         private void OnNewPendingTx(object sender, TxEventArgs e)
         {
             OnNewPendingTxAsync(e);
         }
 
-        protected override bool PreparedBlockCanBeMined(Block block) => base.PreparedBlockCanBeMined(block) && block?.Transactions?.Length > 0;
+        protected override bool PreparedBlockCanBeMined(Block block) =>
+            base.PreparedBlockCanBeMined(block) && block?.Transactions?.Length > 0;
 
         private async void OnNewPendingTxAsync(TxEventArgs e)
         {
@@ -126,5 +147,4 @@ namespace Nethermind.Blockchain.Producers
             }
         }
     }
-    
 }
