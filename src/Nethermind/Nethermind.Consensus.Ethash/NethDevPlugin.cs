@@ -98,7 +98,8 @@ namespace Nethermind.Consensus.Ethash
                 getFromApi.BlockTree,
                 getFromApi.BlockProcessingQueue,
                 getFromApi.TxPool,
-                getFromApi.Timestamper, 
+                getFromApi.Timestamper,
+                getFromApi.Config<IMiningConfig>(),
                 getFromApi.LogManager);
                 
             return Task.CompletedTask;

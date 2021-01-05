@@ -15,19 +15,21 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using Nethermind.Core.Extensions;
-using Nethermind.Int256;
+using System;
+using System.Collections.Generic;
+using Nethermind.Core;
 
-namespace Nethermind.Consensus
+namespace Nethermind.Consensus.Transactions
 {
-    public class MiningConfig : IMiningConfig
+    public class EmptyTxSource : ITxSource
     {
-        public bool Enabled { get; set; } = false;
+        private EmptyTxSource() { }
 
-        public long? TargetBlockGasLimit { get; set; } = null;
+        public static ITxSource Instance { get; } = new EmptyTxSource();
 
-        public UInt256 MinGasPrice { get; set; } = 1.GWei();
-        
-        public bool RandomizedBlocks { get; set; }
+        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit)
+        {
+            return Array.Empty<Transaction>();
+        }
     }
 }

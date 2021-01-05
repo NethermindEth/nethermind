@@ -204,7 +204,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             {
                 Transaction tx = transactions[i];
                 tx.DeliveredBy = Node.Id;
-                tx.Timestamp = _timestamper.EpochSeconds;
+                tx.Timestamp = _timestamper.UnixTime.Seconds;
                 AddTxResult result = _txPool.AddTransaction(tx, TxHandlingOptions.None);
                 _floodController.Report(result == AddTxResult.Added);
 

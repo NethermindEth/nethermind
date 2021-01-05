@@ -46,7 +46,7 @@ namespace Nethermind.DataMarketplace.Core.Services
 
         public async Task UpdateAsync()
         {
-            var currentTime = _timestamper.EpochSeconds;
+            var currentTime = _timestamper.UnixTime.Seconds;
             if (currentTime < UpdatedAt + 1)
             {
                 return;

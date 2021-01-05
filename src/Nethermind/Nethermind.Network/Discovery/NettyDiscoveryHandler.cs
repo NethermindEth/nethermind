@@ -172,7 +172,7 @@ namespace Nethermind.Network.Discovery
 
         private bool ValidateMessage(DiscoveryMessage message, MessageType type, EndPoint address, IChannelHandlerContext ctx, DatagramPacket packet)
         {
-            var timeToExpire = message.ExpirationTime - (long) _timestamper.EpochSeconds;
+            var timeToExpire = message.ExpirationTime - _timestamper.UnixTime.SecondsLong;
             if (timeToExpire < 0)
             {
                 if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(message.FarAddress, "HANDLER disc v4", $"{message.MessageType.ToString()} expired");

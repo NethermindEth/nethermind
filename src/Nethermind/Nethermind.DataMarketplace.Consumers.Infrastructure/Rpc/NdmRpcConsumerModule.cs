@@ -131,7 +131,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc
 
         public async Task<ResultWrapper<PagedResult<DepositDetailsForRpc>>> ndm_getDeposits(GetDeposits? query)
         {
-            uint timestamp = (uint) _timestamper.EpochSeconds;
+            uint timestamp = (uint) _timestamper.UnixTime.Seconds;
             PagedResult<DepositDetails> deposits = await _consumerService.GetDepositsAsync(query ?? new GetDeposits
             {
                 Results = int.MaxValue
@@ -143,7 +143,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc
 
         public async Task<ResultWrapper<DepositDetailsForRpc>> ndm_getDeposit(Keccak depositId)
         {
-            uint timestamp = (uint) _timestamper.EpochSeconds;
+            uint timestamp = (uint) _timestamper.UnixTime.Seconds;
             DepositDetails? deposit = await _consumerService.GetDepositAsync(depositId);
 
             return deposit is null

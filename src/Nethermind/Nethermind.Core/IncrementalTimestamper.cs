@@ -15,19 +15,35 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using Nethermind.Core.Extensions;
-using Nethermind.Int256;
+using System;
 
-namespace Nethermind.Consensus
+namespace Nethermind.Core
 {
-    public class MiningConfig : IMiningConfig
+    /// <summary>
+    /// Each time this timestamper is asked about the time it move the time forward by some constant
+    /// </summary>
+    public class IncrementalTimestamper : ITimestamper
     {
-        public bool Enabled { get; set; } = false;
+        private readonly TimeSpan _increment;
+        private DateTime _utcNow;
 
-        public long? TargetBlockGasLimit { get; set; } = null;
+        public IncrementalTimestamper()
+            : this(DateTime.UtcNow, TimeSpan.FromSeconds(1)) { }
 
-        public UInt256 MinGasPrice { get; set; } = 1.GWei();
-        
-        public bool RandomizedBlocks { get; set; }
+        public IncrementalTimestamper(DateTime initialValue, TimeSpan increment)
+        {
+            _increment = increment;
+            _utcNow = initialValue;
+        }
+
+        public DateTime UtcNow
+        {
+            get
+            {
+                DateTime result = _utcNow;
+                _utcNow = _utcNow.Add(_increment);
+                return result;
+            }
+        }
     }
 }

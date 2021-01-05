@@ -25,6 +25,7 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Rewards;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Validators;
+using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
@@ -303,6 +304,7 @@ namespace Nethermind.Synchronization.Test
                 processor,
                 txPool,
                 Timestamper.Default,
+                new MiningConfig(),
                 logManager);
 
             SyncProgressResolver resolver = new SyncProgressResolver(
