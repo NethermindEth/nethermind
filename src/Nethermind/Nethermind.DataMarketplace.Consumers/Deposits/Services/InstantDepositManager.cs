@@ -72,7 +72,7 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Services
             
             deposit.Transaction.SetIncluded();
             deposit.SetConfirmations(_requiredBlockConfirmations);
-            deposit.SetConfirmationTimestamp((uint) _timestamper.EpochSeconds);
+            deposit.SetConfirmationTimestamp((uint) _timestamper.UnixTime.Seconds);
             await _depositDetailsRepository.UpdateAsync(deposit);
             if (_logger.IsWarn) _logger.Warn($"NDM instantly verified deposit with id '{depositId}'.");
 
