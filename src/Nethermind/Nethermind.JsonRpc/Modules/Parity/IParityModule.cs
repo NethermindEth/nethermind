@@ -40,5 +40,8 @@ namespace Nethermind.JsonRpc.Modules.Parity
 
         [JsonRpcMethod(Description = "", IsImplemented = true)]
         ResultWrapper<bool> parity_clearEngineSigner();
+        
+        [JsonRpcMethod(Description = "", IsImplemented = true)]
+        ResultWrapper<string> parity_nodeStatus();
     }
 }

@@ -43,6 +43,9 @@ namespace Nethermind.Cli.Modules
         
         [CliFunction("parity", "setEngineSignerSecret", Description = "Sets an authority account for signing consensus messages.")]
         public bool SetEngineSignerSecret(string privateKey) => NodeManager.Post<bool>("parity_setEngineSignerSecret", privateKey).Result;
+        
+        [CliFunction("parity", "nodeStatus", Description = "Returns the node status.")]
+        public bool NodeStatus(string privateKey) => NodeManager.Post<bool>("parity_nodeStatus", privateKey).Result;
 
     }
 }

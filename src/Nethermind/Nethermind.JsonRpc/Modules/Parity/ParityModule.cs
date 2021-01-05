@@ -107,6 +107,11 @@ namespace Nethermind.JsonRpc.Modules.Parity
             return ResultWrapper<bool>.Success(true);
         }
 
+        public ResultWrapper<string> parity_nodeStatus()
+        {
+            throw new NotImplementedException();
+        }
+
         public ResultWrapper<string> parity_enode() => ResultWrapper<string>.Success(_enode.ToString());
     }
 }
