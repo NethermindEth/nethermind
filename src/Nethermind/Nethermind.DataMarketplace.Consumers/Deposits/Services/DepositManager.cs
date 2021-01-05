@@ -161,7 +161,7 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Services
                 return null;
             }
 
-            uint now = (uint) _timestamper.EpochSeconds;
+            uint now = (uint) _timestamper.UnixTime.Seconds;
             uint expiryTime = now + (uint) dataAsset.Rules.Expiry.Value;
             expiryTime += dataAsset.UnitType == DataAssetUnitType.Unit ? 0 : units;
             byte[] pepper = _cryptoRandom.GenerateRandomBytes(16);
