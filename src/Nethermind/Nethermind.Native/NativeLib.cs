@@ -25,6 +25,18 @@ namespace Nethermind.Native
     {
         private static OsPlatform GetPlatform()
         {
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux) && RuntimeInformation.OSArchitecture.ToString() == "Arm")
+            {
+                return OsPlatform.LinuxArm;
+            }
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux) && RuntimeInformation.OSArchitecture.ToString() == "Arm64")
+            {
+                return OsPlatform.LinuxArm64;
+            }
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX) && RuntimeInformation.OSArchitecture.ToString() == "Arm64")
+            {
+                return OsPlatform.MacArm64;
+            }
             if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
             {
                 return OsPlatform.Windows;
@@ -43,18 +55,6 @@ namespace Nethermind.Native
             if (RuntimeInformation.IsOSPlatform(OSPlatform.FreeBSD))
             {
                 return OsPlatform.Linux;
-            }
-            if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux) && RuntimeInformation.OSArchitecture.ToString() == "Arm")
-            {
-                return OsPlatform.LinuxArm;
-            }
-            if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux) && RuntimeInformation.OSArchitecture.ToString() == "Arm64")
-            {
-                return OsPlatform.LinuxArm64;
-            }
-            if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX) && RuntimeInformation.OSArchitecture.ToString() == "Arm64")
-            {
-                return OsPlatform.MacArm64;
             }
 
             throw new InvalidOperationException("Unsupported platform.");
