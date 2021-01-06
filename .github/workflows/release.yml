@@ -43,7 +43,7 @@ jobs:
         node-version: "13"
     - name: Setup Build Environment
       run: |
-        npm install pkg -g
+        npm i pkg @vercel/ncc -g
     - name: Setup Packages
       run: ./nethermind/scripts/deployment/setup-packages.sh
     - name: Build Runner
