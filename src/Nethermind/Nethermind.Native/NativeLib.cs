@@ -41,17 +41,14 @@ namespace Nethermind.Native
             {
                 return OsPlatform.Windows;
             }
-
             if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
             {
                 return OsPlatform.Linux;
             }
-
             if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
             {
                 return OsPlatform.Mac;
             }
-            
             if (RuntimeInformation.IsOSPlatform(OSPlatform.FreeBSD))
             {
                 return OsPlatform.Linux;

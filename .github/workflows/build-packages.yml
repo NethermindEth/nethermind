@@ -11,9 +11,13 @@ jobs:
       LIN_RELEASE: nethermind-lin-x64
       OSX_RELEASE: nethermind-osx-x64
       WIN_RELEASE: nethermind-win-x64
+      LIN_ARM64_RELEASE: nethermind-lin-arm64
+      LIN_ARM_RELEASE: nethermind-lin-arm
       LINUX: linux-x64
       OSX: osx-x64
       WIN10: win10-x64
+      LINUX_ARM64: linux-arm64
+      LINUX_ARM: linux-arm
     steps:
     - name: Check out Nethermind repository
       uses: actions/checkout@master
@@ -32,7 +36,7 @@ jobs:
         node-version: "13"
     - name: Setup Build Environment
       run: |
-        npm install pkg -g
+        npm i -g @vercel/ncc pkg
     - name: Setup Packages
       run: ./nethermind/scripts/deployment/setup-packages.sh
     - name: Build Runner
@@ -43,6 +47,16 @@ jobs:
       run: ./nethermind/scripts/deployment/build-cli.sh
     - name: Build Launcher
       run: ./nethermind/scripts/deployment/build-launcher.sh
+    - uses: uraimo/run-on-arch-action@master
+        name: Run commands
+        with:
+          arch: armv7
+          distro: fedora_latest
+
+          # Set an output parameter `uname` for use in subsequent steps
+          run: |
+            uname -a
+            echo ::set-output name=uname::$(uname -a)
     - name: Archive packages
       run: ./nethermind/scripts/deployment/archive-packages.sh
     - uses: actions/upload-artifact@master
