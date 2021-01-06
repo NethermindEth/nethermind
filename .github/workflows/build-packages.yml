@@ -47,16 +47,6 @@ jobs:
       run: ./nethermind/scripts/deployment/build-cli.sh
     - name: Build Launcher
       run: ./nethermind/scripts/deployment/build-launcher.sh
-    - uses: uraimo/run-on-arch-action@master
-        name: Run commands
-        with:
-          arch: armv7
-          distro: fedora_latest
-
-          # Set an output parameter `uname` for use in subsequent steps
-          run: |
-            uname -a
-            echo ::set-output name=uname::$(uname -a)
     - name: Archive packages
       run: ./nethermind/scripts/deployment/archive-packages.sh
     - uses: actions/upload-artifact@master
