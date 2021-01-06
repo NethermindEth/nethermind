@@ -27,6 +27,12 @@ cd ..
 cd $OSX_RELEASE
 gpg --batch --detach-sign --passphrase=$PASS --pinentry-mode loopback --armor $OSX_FILE
 cd ..
+cd $LIN_ARM64_RELEASE
+gpg --batch --detach-sign --passphrase=$PASS --pinentry-mode loopback --armor $LIN_ARM64_FILE
+cd ..
+cd $LIN_ARM_RELEASE
+gpg --batch --detach-sign --passphrase=$PASS --pinentry-mode loopback --armor $LIN_ARM_FILE
+cd ..
 
 echo =======================================================
 echo Files have been successfully signed
@@ -57,6 +63,22 @@ mv $OSX_FILE $filename_osx.$extension
 mv $OSX_FILE.asc $filename_osx.$extension.asc
 
 curl -# -F "files=@${PWD}/${filename_osx}.${extension}" -F "files=@${PWD}/${filename_osx}.${extension}.asc" https://downloads.nethermind.io/files?apikey=$DOWNLOADS_PAGE
+cd ..
+
+cd $LIN_ARM64_RELEASE
+filename_lin_arm64=${LIN_ARM64_FILE::-13}
+
+mv $LIN_ARM64_FILE $filename_lin_arm64.$extension
+mv $LIN_ARM64_FILE.asc $filename_lin_arm64.$extension.asc
+curl -# -F "files=@${PWD}/${filename_lin_arm64}.${extension}" -F "files=@${PWD}/${filename_lin_arm64}.${extension}.asc" https://downloads.nethermind.io/files?apikey=$DOWNLOADS_PAGE
+cd ..
+
+cd $LIN_ARM_RELEASE
+filename_lin_arm=${LIN_ARM_FILE::-13}
+
+mv $LIN_ARM_FILE $filename_lin_arm.$extension
+mv $LIN_ARM_FILE.asc $filename_lin_arm.$extension.asc
+curl -# -F "files=@${PWD}/${filename_lin_arm}.${extension}" -F "files=@${PWD}/${filename_lin_arm}.${extension}.asc" https://downloads.nethermind.io/files?apikey=$DOWNLOADS_PAGE
 cd ..
 
 echo =======================================================
