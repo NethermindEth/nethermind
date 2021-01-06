@@ -18,7 +18,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
@@ -177,9 +176,13 @@ namespace Nethermind.JsonRpc.Modules.Eth
             throw new NotSupportedException();
         }
 
-        public ResultWrapper<TransactionForRpc> eth_getTransactionByHash(Keccak transactionHash)
+        public async Task<ResultWrapper<TransactionForRpc>> eth_getTransactionByHash(Keccak transactionHash)
         {
-            throw new NotSupportedException();
+            var result = await _proxy.eth_getTransactionByHash(transactionHash);
+            var transaction = MapTransaction(result.Result);
+            return transaction is null
+                ? ResultWrapper<TransactionForRpc>.Fail("Transaction was not found.")
+                : ResultWrapper<TransactionForRpc>.Success(transaction);
         }
 
         public ResultWrapper<TransactionForRpc[]> eth_pendingTransactions()
@@ -274,6 +277,28 @@ namespace Nethermind.JsonRpc.Modules.Eth
             BlockParameter blockParameter)
         {
             throw new NotSupportedException();
+        }
+
+        private static TransactionForRpc MapTransaction(TransactionModel transaction)
+        {
+            if (transaction is null)
+            {
+                return null;
+            }
+
+            return new TransactionForRpc
+            {
+                BlockHash = transaction.BlockHash,
+                BlockNumber = (long)transaction.BlockNumber,
+                From = transaction.From,
+                To = transaction.To,
+                Gas = (long)transaction.Gas,
+                GasPrice = transaction.GasPrice,
+                Hash = transaction.Hash,
+                Input = transaction.Input,
+                Nonce = transaction.Nonce,
+                Value = transaction.Value
+            };
         }
 
         private static ReceiptForRpc MapReceipt(ReceiptModel receipt)

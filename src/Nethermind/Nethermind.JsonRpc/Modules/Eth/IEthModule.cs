@@ -106,7 +106,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         ResultWrapper<BlockForRpc> eth_getBlockByNumber(BlockParameter blockParameter, bool returnFullTransactionObjects = false);
         
         [JsonRpcMethod(IsImplemented = true, Description = "Retrieves a transaction by hash", IsSharable = true)]
-        ResultWrapper<TransactionForRpc> eth_getTransactionByHash(Keccak transactionHash);
+        Task<ResultWrapper<TransactionForRpc>> eth_getTransactionByHash(Keccak transactionHash);
         
         [JsonRpcMethod(IsImplemented = true, Description = "Returns the pending transactions list", IsSharable = true)]
         ResultWrapper<TransactionForRpc[]> eth_pendingTransactions();
