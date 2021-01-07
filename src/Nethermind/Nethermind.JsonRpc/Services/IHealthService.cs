@@ -13,15 +13,12 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using System.Threading.Tasks;
-
-namespace Nethermind.Consensus
+namespace Nethermind.JsonRpc.Services
 {
-    public interface IBlockProducer
+    public interface IHealthService
     {
-        void Start();
-        Task StopAsync();
-        public bool IsProducingBlocks { get; }
+        
     }
 }

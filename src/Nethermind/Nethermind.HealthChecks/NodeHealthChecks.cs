@@ -21,6 +21,7 @@ using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Modules.Net;
+using Nethermind.Monitoring.Services;
 
 namespace Nethermind.HealthChecks
 {
@@ -33,7 +34,7 @@ namespace Nethermind.HealthChecks
         }
 
         public async Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext context, CancellationToken cancellationToken = default)
-        {            
+        {
             IEthModule ethModule = (IEthModule) await _rpcModuleProvider.Rent("eth_syncing", false);
             INetModule netModule = (INetModule) await _rpcModuleProvider.Rent("net_peerCount", false);
             try
@@ -41,6 +42,11 @@ namespace Nethermind.HealthChecks
                 long netPeerCount = (long) netModule.net_peerCount().GetData();
                 SyncingResult ethSyncing = (SyncingResult) ethModule.eth_syncing().GetData();
 
+                // if (IsValidator())
+                // {
+                //     if (ethSyncing.IsSyncing == false && IsProducingBlocks())
+                // }
+                
                 if (ethSyncing.IsSyncing == false && netPeerCount > 0)
                 {
                     return HealthCheckResult.Healthy(description: $"The node is now fully synced with a network, number of peers: {netPeerCount}");
@@ -61,6 +67,21 @@ namespace Nethermind.HealthChecks
                 _rpcModuleProvider.Return("eth_syncing", ethModule);
                 _rpcModuleProvider.Return("net_peerCount", netModule);
             }
+        }
+
+        private bool IsProducingBlocks()
+        {
+            throw new NotImplementedException();
+        }
+
+        private bool IsValidator()
+        {
+            throw new NotImplementedException();
+        }
+        
+        private bool IsHandlingBlocks()
+        {
+            throw new NotImplementedException();
         }
     }
 }

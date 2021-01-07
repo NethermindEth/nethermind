@@ -27,6 +27,7 @@ using Nethermind.Crypto;
 using Nethermind.JsonRpc.Data;
 using Nethermind.KeyStore;
 using Nethermind.Logging;
+using Nethermind.Monitoring.Services;
 using Nethermind.Serialization.Rlp;
 using Nethermind.TxPool;
 
@@ -109,6 +110,7 @@ namespace Nethermind.JsonRpc.Modules.Parity
 
         public ResultWrapper<string> parity_nodeStatus()
         {
+            // HealthService
             throw new NotImplementedException();
         }
 

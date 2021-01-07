@@ -27,5 +27,7 @@ namespace Nethermind.Blockchain.Processing
         Task StopAsync(bool processRemainingBlocks = false);
         
         Block Process(Block block, ProcessingOptions options, IBlockTracer tracer);
+
+        public bool IsProcessingBlocks { get; }
     }
 }
