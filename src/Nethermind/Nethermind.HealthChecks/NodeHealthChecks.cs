@@ -41,7 +41,7 @@ namespace Nethermind.HealthChecks
                 long netPeerCount = (long) netModule.net_peerCount().GetData();
                 SyncingResult ethSyncing = (SyncingResult) ethModule.eth_syncing().GetData();
 
-                if(ethSyncing.IsSyncing == false && netPeerCount > 0)
+                if (ethSyncing.IsSyncing == false && netPeerCount > 0)
                 {
                     return HealthCheckResult.Healthy(description: $"The node is now fully synced with a network, number of peers: {netPeerCount}");
                 }

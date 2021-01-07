@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -13,28 +13,18 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using System;
+using Nethermind.Synchronization.ParallelSync;
 
-namespace Nethermind.Synchronization.ParallelSync
+namespace Nethermind.Synchronization.BeamSync
 {
-    public interface ISyncModeSelector
+    public static class SyncModeChangedEventArgsExtensions
     {
-        SyncMode Current { get; }
-        
-        event EventHandler<SyncModeChangedEventArgs> Preparing;
-        
-        event EventHandler<SyncModeChangedEventArgs> Changing;
-        
-        event EventHandler<SyncModeChangedEventArgs> Changed;
-
-        int FastSyncLag { get; }
-    }
-    
-    public class SyncModeSelectorConstants
-    {
-        public const int BeamSyncFastSyncLag = 2;
-        
-        public const int NotBeamSyncFastSyncLag = 32;
+        public static bool IsBeamSyncFinished(this SyncModeChangedEventArgs e)
+        {
+            bool isBeamSyncFinished = (e.Current & (SyncMode.Full | SyncMode.WaitingForBlock)) != SyncMode.None;
+            return isBeamSyncFinished;
+        }
     }
 }

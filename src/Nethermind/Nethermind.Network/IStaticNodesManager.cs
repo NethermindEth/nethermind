@@ -19,6 +19,7 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Config;
 using Nethermind.Network.StaticNodes;
+using Nethermind.Stats.Model;
 
 namespace Nethermind.Network
 {
@@ -30,5 +31,6 @@ namespace Nethermind.Network
         Task InitAsync();
         Task<bool> AddAsync(string enode, bool updateFile = true);
         Task<bool> RemoveAsync(string enode, bool updateFile = true);
+        bool IsStatic(string enode);
     }
 }

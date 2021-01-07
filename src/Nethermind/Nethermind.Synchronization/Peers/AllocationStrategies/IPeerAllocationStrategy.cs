@@ -39,7 +39,7 @@ namespace Nethermind.Synchronization.Peers.AllocationStrategies
         {
             if (!info.IsInitialized)
             {
-                throw new InvalidAsynchronousStateException($"{GetType().Name} found an initilized peer - {info}");
+                throw new InvalidAsynchronousStateException($"{GetType().Name} found an initialized peer - {info}");
             }
         }
     }

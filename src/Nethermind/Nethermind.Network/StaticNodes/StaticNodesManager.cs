@@ -23,6 +23,7 @@ using System.Threading.Tasks;
 using Nethermind.Config;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
+using Nethermind.Stats.Model;
 using Newtonsoft.Json;
 
 namespace Nethermind.Network.StaticNodes
@@ -117,6 +118,12 @@ namespace Nethermind.Network.StaticNodes
             }
 
             return true;
+        }
+
+        public bool IsStatic(string enode)
+        {
+            NetworkNode node = new NetworkNode(enode);
+            return _nodes.TryGetValue(node.NodeId, out NetworkNode staticNode) && string.Equals(staticNode.Host, node.Host, StringComparison.InvariantCultureIgnoreCase);
         }
 
         private Task SaveFileAsync()
