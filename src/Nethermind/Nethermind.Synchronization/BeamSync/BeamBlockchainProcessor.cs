@@ -111,7 +111,7 @@ namespace Nethermind.Synchronization.BeamSync
 
         private void SyncModeSelectorOnPreparing(object? sender, SyncModeChangedEventArgs e)
         {
-            if ((e.Current & SyncMode.Full) == SyncMode.Full)
+            if (e.IsBeamSyncFinished())
             {
                 lock (_transitionLock)
                 {
@@ -137,7 +137,7 @@ namespace Nethermind.Synchronization.BeamSync
 
         private void SyncModeSelectorOnChanged(object? sender, SyncModeChangedEventArgs e)
         {
-            if ((e.Current & SyncMode.Full) == SyncMode.Full)
+            if (e.IsBeamSyncFinished())
             {
                 if(_logger.IsInfo) _logger.Info("Setting block action to standard processing.");
                 _blockAction = EnqueueForStandardProcessing;

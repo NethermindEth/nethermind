@@ -52,7 +52,9 @@ namespace Nethermind.Synchronization.ParallelSync
             add { }
             remove { }
         }
-        
+
+        public int FastSyncLag => (Current & SyncMode.Beam) == SyncMode.Beam ? SyncModeSelectorConstants.BeamSyncFastSyncLag : SyncModeSelectorConstants.NotBeamSyncFastSyncLag;
+
         public event EventHandler<SyncModeChangedEventArgs> Changing
         {
             add { }
