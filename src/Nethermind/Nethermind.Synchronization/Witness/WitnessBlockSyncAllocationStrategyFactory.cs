@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -13,19 +13,20 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
 using Nethermind.Stats;
-using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers.AllocationStrategies;
 
-namespace Nethermind.Synchronization.StateSync
+namespace Nethermind.Synchronization.Witness
 {
-    public class StateSyncAllocationStrategyFactory : StaticPeerAllocationStrategyFactory<StateSyncBatch>
+    public class WitnessBlockSyncAllocationStrategyFactory : StaticPeerAllocationStrategyFactory<WitnessBlockSyncBatch>
     {
-        private static readonly IPeerAllocationStrategy DefaultStrategy = new TotalDiffStrategy(new BySpeedStrategy(TransferSpeedType.NodeData, true), TotalDiffStrategy.TotalDiffSelectionType.CanBeSlightlyWorse);
+        private static readonly IPeerAllocationStrategy TotalDffStrategy = new TotalDiffStrategy(new BySpeedStrategy(TransferSpeedType.NodeData, true), TotalDiffStrategy.TotalDiffSelectionType.AtLeastTheSame);
+        private static readonly IPeerAllocationStrategy DefaultStrategy = new SatelliteProtocolPeerAllocationStrategy<IWitnessPeer>(TotalDffStrategy, "wit");
         
-        public StateSyncAllocationStrategyFactory() : base(DefaultStrategy)
+        public WitnessBlockSyncAllocationStrategyFactory() : base(DefaultStrategy)
         {
         }
     }

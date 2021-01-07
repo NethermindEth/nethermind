@@ -140,15 +140,11 @@ namespace Nethermind.Synchronization
             
             WitnessStateSyncFeed witnessStateSyncFeed = new WitnessStateSyncFeed(beamSyncDbProvider.BeamStateDb, _logManager);
             StateSyncDispatcher witnessStateSyncDispatcher = new StateSyncDispatcher(
-                witnessStateSyncFeed!, _syncPeerPool, new StateSyncAllocationStrategyFactory(), _logManager);
+                witnessStateSyncFeed!, _syncPeerPool, new WitnessStateSyncAllocationStrategyFactory(), _logManager);
             
             WitnessBlockSyncFeed witnessBlockSyncFeed = new WitnessBlockSyncFeed(_blockTree, witnessStateSyncFeed, _syncMode, _logManager);
-            TotalDiffStrategy totalDffStrategy = new TotalDiffStrategy(new BySpeedStrategy(TransferSpeedType.NodeData, true), TotalDiffStrategy.TotalDiffSelectionType.AtLeastTheSame);
-            StaticPeerAllocationStrategyFactory<WitnessBlockSyncBatch> peerAllocationStrategyFactory = 
-                new StaticPeerAllocationStrategyFactory<WitnessBlockSyncBatch>(
-                    new SatelliteProtocolPeerAllocationStrategy<IWitnessPeer>(totalDffStrategy, "wit"));
             WitnessBlockSyncDispatcher blockSyncDispatcher = 
-                new WitnessBlockSyncDispatcher(witnessBlockSyncFeed!, _syncPeerPool, peerAllocationStrategyFactory, _logManager);
+                new WitnessBlockSyncDispatcher(witnessBlockSyncFeed!, _syncPeerPool, new WitnessBlockSyncAllocationStrategyFactory(), _logManager);
 
             blockSyncDispatcher.Start(_syncCancellation.Token).ContinueWith(t =>
             {

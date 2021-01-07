@@ -57,7 +57,7 @@ namespace Nethermind.Synchronization.Witness
                 Memory<Keccak> items = batch.Response!.Value;
                 int itemsToTake = Math.Min(freeSpace, items.Length);
                 batchElements.AddRange(MemoryMarshal.ToEnumerable<Keccak>(items.Slice(0, itemsToTake))
-                    .Select(k => new StateSyncItem(k, NodeDataType.State)));
+                    .Select(GetStateSyncItem));
 
                 if (itemsToTake != items.Length) // still items left
                 {
@@ -73,7 +73,7 @@ namespace Nethermind.Synchronization.Witness
             if (batchElements.Count != 0)
             {
                 Interlocked.Increment(ref Metrics.WitnessStateRequests);
-                return Task.FromResult<StateSyncBatch?>(new StateSyncBatch(batchElements.ToArray()) {ConsumerId = FeedId});
+                return Task.FromResult<StateSyncBatch?>(CreateBatch(batchElements.ToArray()));
             }
             else if (_retryBatches.TryDequeue(out var retryBatch))
             {
@@ -86,8 +86,36 @@ namespace Nethermind.Synchronization.Witness
             }
         }
 
+        private StateSyncBatch CreateBatch(StateSyncItem[] batchElements) => new StateSyncBatch(batchElements) {ConsumerId = FeedId};
+
+        private static StateSyncItem GetStateSyncItem(Keccak key) => new StateSyncItem(key, NodeDataType.State);
+
         public override SyncResponseHandlingResult HandleResponse(StateSyncBatch? batch)
         {
+            IEnumerable<StateSyncItem> Consume(byte[]?[] bytes)
+            {
+                for (int i = 0; i < Math.Min(bytes.Length, batch.RequestedNodes.Length); i++)
+                {
+                    Keccak key = batch.RequestedNodes[i].Hash;
+                    if (bytes[i] != null)
+                    {
+                        if (Keccak.Compute(bytes[i]) == key)
+                        {
+                            _db.Set(key, bytes[i]);
+                        }
+                        else
+                        {
+                            // this can happen if we ask for outdated block? 
+                            if (_logger.IsTrace) _logger.Trace("Received node data which does not match the hash.");
+                            
+                            // return missing keys
+                            yield return GetStateSyncItem(key);
+                        }
+                        
+                    }
+                }
+            }
+
             if (batch == null)
             {
                 if (_logger.IsWarn) _logger.Warn($"{nameof(WitnessStateSyncFeed)} received a NULL batch as a response.");
@@ -100,34 +128,26 @@ namespace Nethermind.Synchronization.Witness
                 return SyncResponseHandlingResult.InternalError;
             }
 
-            bool wasDataInvalid = false;
             int consumed = 0;
-
             byte[]?[]? data = batch.Responses;
+            StateSyncBatch? retryBatch = null;
             if (data != null)
             {
-                for (int i = 0; i < Math.Min(data.Length, batch.RequestedNodes.Length); i++)
+                StateSyncItem[] missing = Consume(data).ToArray();
+                consumed = data.Length - missing.Length;
+                if (missing.Length > 0)
                 {
-                    Keccak key = batch.RequestedNodes[i].Hash;
-                    if (data[i] != null)
-                    {
-                        if (Keccak.Compute(data[i]) == key)
-                        {
-                            _db.Set(key, data[i]);
-                        }
-                        else
-                        {
-                            // this can happen if we ask for outdated block? 
-                            if (_logger.IsTrace) _logger.Trace("Received node data which does not match the hash.");
-                        }
-                        
-                        consumed++;
-                    }
+                    retryBatch = CreateBatch(missing);
                 }
             }
             else
             {
-                _retryBatches.Enqueue(batch);
+                retryBatch = batch;
+            }
+
+            if (retryBatch != null)
+            {
+                _retryBatches.Enqueue(retryBatch);
                 Activate();
             }
 

@@ -19,13 +19,13 @@ using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers.AllocationStrategies;
 
-namespace Nethermind.Synchronization.StateSync
+namespace Nethermind.Synchronization.Witness
 {
-    public class StateSyncAllocationStrategyFactory : StaticPeerAllocationStrategyFactory<StateSyncBatch>
+    public class WitnessStateSyncAllocationStrategyFactory : StaticPeerAllocationStrategyFactory<StateSyncBatch>
     {
-        private static readonly IPeerAllocationStrategy DefaultStrategy = new TotalDiffStrategy(new BySpeedStrategy(TransferSpeedType.NodeData, true), TotalDiffStrategy.TotalDiffSelectionType.CanBeSlightlyWorse);
+        private static readonly IPeerAllocationStrategy DefaultStrategy = new TotalDiffStrategy(new BySpeedStrategy(TransferSpeedType.NodeData, true), TotalDiffStrategy.TotalDiffSelectionType.AtLeastTheSame);
         
-        public StateSyncAllocationStrategyFactory() : base(DefaultStrategy)
+        public WitnessStateSyncAllocationStrategyFactory() : base(DefaultStrategy)
         {
         }
     }
