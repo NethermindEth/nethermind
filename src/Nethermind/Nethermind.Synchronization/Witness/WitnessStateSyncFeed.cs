@@ -39,7 +39,8 @@ namespace Nethermind.Synchronization.Witness
         private readonly ConcurrentStack<WitnessBlockSyncBatch> _blockSyncBatches = new ConcurrentStack<WitnessBlockSyncBatch>();
         private readonly ConcurrentQueue<StateSyncBatch> _retryBatches = new ConcurrentQueue<StateSyncBatch>();
         private readonly ILogger _logger;
-        
+        private const int RetryCount = 10;
+
         public WitnessStateSyncFeed(IDb db, ILogManager logManager, int maxRequestSize = StateSyncFeed.MaxRequestSize)
         {
             _db = db ?? throw new ArgumentNullException(nameof(db));
@@ -86,7 +87,7 @@ namespace Nethermind.Synchronization.Witness
             }
         }
 
-        private StateSyncBatch CreateBatch(StateSyncItem[] batchElements) => new StateSyncBatch(batchElements) {ConsumerId = FeedId};
+        private StateSyncBatch CreateBatch(StateSyncItem[] batchElements) => new StateSyncBatchWithRetries(batchElements) {ConsumerId = FeedId};
 
         private static StateSyncItem GetStateSyncItem(Keccak key) => new StateSyncItem(key, NodeDataType.State);
 
@@ -144,6 +145,14 @@ namespace Nethermind.Synchronization.Witness
                 if (_logger.IsTrace) _logger.Trace($"Failed to receive nodes data which does not match the hashes. Retrying...");
                 retryBatch = batch;
             }
+            
+            if (retryBatch is StateSyncBatchWithRetries batchWithRetries)
+            {
+                if (batchWithRetries.Retry++ > RetryCount)
+                {
+                    retryBatch = null;
+                }
+            }
 
             if (retryBatch != null)
             {
@@ -167,6 +176,15 @@ namespace Nethermind.Synchronization.Witness
                 Activate();
                 if (_logger.IsTrace) _logger.Trace($"Registered block {batch.BlockNumber} ({batch.BlockHash}) for downloading witness state.");
             }
+        }
+
+        private class StateSyncBatchWithRetries : StateSyncBatch
+        {
+            public StateSyncBatchWithRetries(StateSyncItem[] requestedNodes) : base(requestedNodes)
+            {
+            }
+
+            public int Retry { get; set; }
         }
     }
 }
