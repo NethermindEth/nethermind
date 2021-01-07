@@ -112,7 +112,18 @@ namespace Nethermind.Network.P2P
                 if (_logger.IsDebug) _logger.Debug($"Error in communication with {clientId}: {exception}");
             }
 
-            context.DisconnectAsync();
+            if (_session?.Node?.IsStatic != true)
+            {
+                context.DisconnectAsync().ContinueWith(x =>
+                {
+                    if (x.IsFaulted && _logger.IsTrace)
+                        _logger.Trace($"Error while disconnecting on context on {this} : {x.Exception}");
+                });
+            }
+            else
+            {
+                base.ExceptionCaught(context, exception);
+            }
         }
 
         public bool SnappyEnabled { get; private set; }
