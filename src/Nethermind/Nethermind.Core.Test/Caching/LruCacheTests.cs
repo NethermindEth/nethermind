@@ -17,6 +17,7 @@
 using System;
 using FluentAssertions;
 using Nethermind.Core.Caching;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using NUnit.Framework;
@@ -141,6 +142,35 @@ namespace Nethermind.Core.Test.Caching
             {
                 cache.Get(_addresses[i]).Should().Be(_accounts[MapForRefill(i)]);
             }
+        }
+        
+        [Test]
+        public void Delete_keeps_internal_structure()
+        {
+            int maxCapacity = 32;
+            int itemsToKeep = 10;
+            int iterations = 40;
+                
+            LruCache<int, int> cache = new LruCache<int, int>(maxCapacity, "test");
+
+            for (int i = 0; i < iterations; i++)
+            {
+                cache.Set(i, i);
+                cache.Delete(i - itemsToKeep);
+            }
+
+            int count = 0;
+            
+            for (int i = 0; i < iterations; i++)
+            {
+                if (cache.TryGet(i, out int val))
+                {
+                    count++;
+                    val.Should().Be(i);
+                }
+            }
+
+            count.Should().Be(itemsToKeep);
         }
     }
 }
