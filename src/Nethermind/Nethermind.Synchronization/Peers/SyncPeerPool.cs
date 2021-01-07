@@ -182,6 +182,20 @@ namespace Nethermind.Synchronization.Peers
                 foreach ((_, PeerInfo peerInfo) in _peers) yield return peerInfo;
             }
         }
+        
+        public IEnumerable<PeerInfo> NonStaticPeers
+        {
+            get
+            {
+                foreach ((_, PeerInfo peerInfo) in _peers)
+                {
+                    if (peerInfo.SyncPeer.Node?.IsStatic == false)
+                    {
+                        yield return peerInfo;
+                    }
+                }
+            }
+        }
 
         public IEnumerable<PeerInfo> InitializedPeers
         {
@@ -439,7 +453,7 @@ namespace Nethermind.Synchronization.Peers
 
             long ourNumber = _blockTree.BestSuggestedHeader?.Number ?? 0L;
             UInt256 ourDifficulty = _blockTree.BestSuggestedHeader?.TotalDifficulty ?? UInt256.Zero;
-            foreach (PeerInfo peerInfo in AllPeers)
+            foreach (PeerInfo peerInfo in NonStaticPeers)
             {
                 if (peerInfo.HeadNumber == 0
                     && peerInfo.IsInitialized
@@ -486,7 +500,7 @@ namespace Nethermind.Synchronization.Peers
             {
                 long lowestBlockNumber = long.MaxValue;
                 PeerInfo? worstPeer = null;
-                foreach (PeerInfo peerInfo in AllPeers)
+                foreach (PeerInfo peerInfo in NonStaticPeers)
                 {
                     if (peerInfo.HeadNumber < lowestBlockNumber)
                     {

@@ -79,7 +79,7 @@ namespace Nethermind.Network.P2P
 
         public void Disconnect(DisconnectReason reason, string details)
         {
-            if (Logger.IsDebug) Logger.Debug($"Disconnecting {Node:c} bacause of the {details}");
+            if (Logger.IsDebug) Logger.Debug($"Disconnecting {Node:c} because of the {details}");
             Session.InitiateDisconnect(reason, details);
         }
 

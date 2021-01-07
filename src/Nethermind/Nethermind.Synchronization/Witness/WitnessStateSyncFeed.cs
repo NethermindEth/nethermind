@@ -105,13 +105,9 @@ namespace Nethermind.Synchronization.Witness
                         }
                         else
                         {
-                            // this can happen if we ask for outdated block? 
-                            if (_logger.IsTrace) _logger.Trace("Received node data which does not match the hash.");
-                            
                             // return missing keys
                             yield return GetStateSyncItem(key);
                         }
-                        
                     }
                 }
             }
@@ -137,11 +133,15 @@ namespace Nethermind.Synchronization.Witness
                 consumed = data.Length - missing.Length;
                 if (missing.Length > 0)
                 {
+                    // this can happen if we ask for outdated block? 
+                    if (_logger.IsTrace) _logger.Trace($"Received {missing.Length} nodes data which does not match the hashes. Retrying...");
+                    
                     retryBatch = CreateBatch(missing);
                 }
             }
             else
             {
+                if (_logger.IsTrace) _logger.Trace($"Failed to receive nodes data which does not match the hashes. Retrying...");
                 retryBatch = batch;
             }
 
