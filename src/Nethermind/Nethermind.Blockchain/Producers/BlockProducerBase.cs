@@ -71,6 +71,7 @@ namespace Nethermind.Blockchain.Producers
         public abstract void Start();
 
         public abstract Task StopAsync();
+        public bool IsProducingBlocks { get; } // ToDo
 
         private readonly object _newBlockLock = new object();
 

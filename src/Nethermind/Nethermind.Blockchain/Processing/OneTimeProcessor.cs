@@ -63,6 +63,8 @@ namespace Nethermind.Blockchain.Processing
             }
         }
 
+        public bool IsProcessingBlocks { get; } // ToDo
+
         public void Dispose()
         {
             _processor?.Dispose();

@@ -317,6 +317,8 @@ namespace Nethermind.Blockchain.Processing
             return lastProcessed;
         }
 
+        public bool IsProcessingBlocks { get; } // ToDo
+
         private void TraceFailingBranch(ProcessingBranch processingBranch, ProcessingOptions options, IBlockTracer blockTracer)
         {
             try

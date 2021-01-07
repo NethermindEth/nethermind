@@ -22,6 +22,6 @@ namespace Nethermind.Consensus
     {
         void Start();
         Task StopAsync();
-        public bool IsProducingBlocks { get; }
+        bool IsProducingBlocks { get; }
     }
 }

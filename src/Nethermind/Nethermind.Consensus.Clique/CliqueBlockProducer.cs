@@ -292,6 +292,8 @@ namespace Nethermind.Consensus.Clique
             await (_producerTask ?? Task.CompletedTask);
         }
 
+        public bool IsProducingBlocks { get; }
+
         private Keccak? _recentNotAllowedParent;
 
         private Block? PrepareBlock(Block parentBlock)
