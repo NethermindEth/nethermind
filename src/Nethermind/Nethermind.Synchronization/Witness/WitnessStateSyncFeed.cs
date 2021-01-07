@@ -114,13 +114,14 @@ namespace Nethermind.Synchronization.Witness
                         if (Keccak.Compute(data[i]) == key)
                         {
                             _db.Set(key, data[i]);
-                            consumed++;
                         }
                         else
                         {
-                            wasDataInvalid = true;
-                            if (_logger.IsDebug) _logger.Debug("Received node data which does not match the hash.");
+                            // this can happen if we ask for outdated block? 
+                            if (_logger.IsTrace) _logger.Trace("Received node data which does not match the hash.");
                         }
+                        
+                        consumed++;
                     }
                 }
             }
@@ -131,12 +132,6 @@ namespace Nethermind.Synchronization.Witness
             }
 
             if (_logger.IsTrace) _logger.Trace($"Downloaded state with witness. Received {consumed}/{batch.RequestedNodes.Length} elements.");
-
-            if (wasDataInvalid)
-            {
-                return SyncResponseHandlingResult.LesserQuality;
-            }
-
             return consumed == 0 ? SyncResponseHandlingResult.NoProgress : SyncResponseHandlingResult.OK;
         }
 

@@ -17,6 +17,7 @@
 
 using System;
 using Nethermind.Blockchain;
+using Nethermind.Logging;
 using Nethermind.State;
 
 namespace Nethermind.Synchronization.Witness
@@ -26,11 +27,13 @@ namespace Nethermind.Synchronization.Witness
         private readonly IBlockTree _blockTree;
         private readonly IWitnessRepository _witnessRepository;
         private readonly int _followDistance;
+        private ILogger _logger;
 
-        public WitnessPruner(IBlockTree blockTree, IWitnessRepository witnessRepository, int followDistance = 16)
+        public WitnessPruner(IBlockTree blockTree, IWitnessRepository witnessRepository, ILogManager logManager, int followDistance = 16)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _witnessRepository = witnessRepository ?? throw new ArgumentNullException(nameof(witnessRepository));
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _followDistance = followDistance;
         }
 
@@ -45,12 +48,17 @@ namespace Nethermind.Synchronization.Witness
             if (toPrune > 0)
             {
                 var level = _blockTree.FindLevel(toPrune);
-                for (int i = 0; i < level.BlockInfos.Length; i++)
+                if (level != null)
                 {
-                    var blockInfo = level.BlockInfos[i];
-                    if (blockInfo.BlockHash != null)
+                    if (_logger.IsTrace) _logger.Trace($"Pruning witness from blocks with number {toPrune}");
+                    
+                    for (int i = 0; i < level.BlockInfos.Length; i++)
                     {
-                        _witnessRepository.Delete(blockInfo.BlockHash);
+                        var blockInfo = level.BlockInfos[i];
+                        if (blockInfo.BlockHash != null)
+                        {
+                            _witnessRepository.Delete(blockInfo.BlockHash);
+                        }
                     }
                 }
             }
