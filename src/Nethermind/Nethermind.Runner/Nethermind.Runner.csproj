@@ -113,7 +113,7 @@
     <MakeDir Directories="$(PublishDir)ndm-plugins" Condition="!Exists('$(PublishDir)ndm-plugins')" /> 
   </Target>
   <Target Name="CopyHealthChecksPluginOnPublish" AfterTargets="AfterPublish">
-    <Copy SourceFiles="$(PublishDir)Nethermind.HealthChecks.dll" DestinationFolder="$(PublishDir)plugins" />
+    <Copy SourceFiles="$(OutputPath)Nethermind.HealthChecks.dll" DestinationFolder="$(PublishDir)plugins" />
   </Target>
   <Target Name="StoreGitHashBeforeBuild" BeforeTargets="BeforeBuild">
     <Exec Command="git describe --tags --long --always &gt; git-hash" />
