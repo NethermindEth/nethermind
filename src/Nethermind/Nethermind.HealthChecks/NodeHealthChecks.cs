@@ -21,7 +21,6 @@ using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Modules.Net;
-using Nethermind.Monitoring.Services;
 
 namespace Nethermind.HealthChecks
 {

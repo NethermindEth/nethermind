@@ -25,9 +25,9 @@ using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Crypto;
 using Nethermind.JsonRpc.Data;
+using Nethermind.JsonRpc.Services;
 using Nethermind.KeyStore;
 using Nethermind.Logging;
-using Nethermind.Monitoring.Services;
 using Nethermind.Serialization.Rlp;
 using Nethermind.TxPool;
 
@@ -42,6 +42,7 @@ namespace Nethermind.JsonRpc.Modules.Parity
         private readonly IEnode _enode;
         private readonly ISignerStore _signerStore;
         private readonly IKeyStore _keyStore;
+        private readonly IHealthService _healthService;
 
         public ParityModule(
             IEcdsa ecdsa,
@@ -51,7 +52,8 @@ namespace Nethermind.JsonRpc.Modules.Parity
             IEnode enode,
             ISignerStore signerStore,
             IKeyStore keyStore,
-            ILogManager logManager)
+            ILogManager logManager, 
+            IHealthService healthService)
         {
             _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
             _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
@@ -60,6 +62,7 @@ namespace Nethermind.JsonRpc.Modules.Parity
             _enode = enode ?? throw new ArgumentNullException(nameof(enode));
             _signerStore = signerStore ?? throw new ArgumentNullException(nameof(signerStore));
             _keyStore = keyStore ?? throw new ArgumentNullException(nameof(keyStore));
+            _healthService = healthService ?? throw new ArgumentNullException(nameof(healthService));
         }
 
         public ResultWrapper<ParityTransaction[]> parity_pendingTransactions()
@@ -110,8 +113,9 @@ namespace Nethermind.JsonRpc.Modules.Parity
 
         public ResultWrapper<string> parity_nodeStatus()
         {
-            // HealthService
             throw new NotImplementedException();
+            // CheckHealthResult result = _healthService.CheckHealth();
+            // return result.Healthy ? ResultWrapper<string>.Success(result.Message) : ResultWrapper<string>.Fail(result.Message);
         }
 
         public ResultWrapper<string> parity_enode() => ResultWrapper<string>.Success(_enode.ToString());

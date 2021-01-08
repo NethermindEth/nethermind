@@ -35,6 +35,7 @@ using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Core;
 using Nethermind.JsonRpc.Modules.Web3;
+using Nethermind.JsonRpc.Services;
 using Nethermind.Runner.Ethereum.Steps.Migrations;
 
 namespace Nethermind.Runner.Ethereum.Steps
@@ -177,11 +178,15 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.Enode,
                 _api.EngineSignerStore,
                 _api.KeyStore,
-                _api.LogManager);
+                _api.LogManager,
+                _api.HealthService);
             _api.RpcModuleProvider.Register(new SingletonModulePool<IParityModule>(parityModule, true));
 
             Web3Module web3Module = new Web3Module(_api.LogManager);
             _api.RpcModuleProvider.Register(new SingletonModulePool<IWeb3Module>(web3Module, true));
+
+            _api.HealthService = new HealthService(_api.RpcModuleProvider, _api.BlockchainProcessor, _api.BlockProducer,
+                initConfig.IsMining);
             
             foreach (INethermindPlugin plugin in _api.Plugins)
             {

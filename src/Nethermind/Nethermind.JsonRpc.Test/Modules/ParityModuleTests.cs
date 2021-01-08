@@ -33,9 +33,11 @@ using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.State.Repositories;
 using Nethermind.Db.Blooms;
+using Nethermind.JsonRpc.Services;
 using Nethermind.KeyStore;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Storages;
+using NSubstitute;
 using NUnit.Framework;
 using BlockTree = Nethermind.Blockchain.BlockTree;
 
@@ -65,10 +67,11 @@ namespace Nethermind.JsonRpc.Test.Modules
             new OnChainTxWatcher(blockTree, txPool, specProvider, LimboLogs.Instance);
             
             IReceiptStorage receiptStorage = new InMemoryReceiptStorage();
+            IHealthService healthService = Substitute.For<IHealthService>();
 
             _signerStore = new Signer(specProvider.ChainId, TestItem.PrivateKeyB, logger);
             _parityModule = new ParityModule(ethereumEcdsa, txPool, blockTree, receiptStorage, new Enode(TestItem.PublicKeyA, IPAddress.Loopback, 8545), 
-                _signerStore, new MemKeyStore(new[] {TestItem.PrivateKeyA}),  logger);
+                _signerStore, new MemKeyStore(new[] {TestItem.PrivateKeyA}),  logger, healthService);
             
             var blockNumber = 2;
             var pendingTransaction = Build.A.Transaction.Signed(ethereumEcdsa, TestItem.PrivateKeyD, false)

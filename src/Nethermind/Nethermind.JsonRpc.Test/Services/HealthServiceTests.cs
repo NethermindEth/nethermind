@@ -16,10 +16,11 @@
 // 
 
 using System.Collections.Generic;
-using Nethermind.Api;
+using System.Linq;
+using System.Threading.Tasks;
 using Nethermind.Blockchain.Processing;
-using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
+using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Modules.Net;
 using Nethermind.JsonRpc.Services;
@@ -31,20 +32,26 @@ namespace Nethermind.JsonRpc.Test.Services
     public class HealthServiceTests
     {
         [Test]
-        public void CheckHealth_returns_expectedresults([ValueSource(nameof(CheckHealthTestCases))] CheckHealthTest test)
+        public async Task CheckHealth_returns_expectedresults([ValueSource(nameof(CheckHealthTestCases))] CheckHealthTest test)
         {
+            IRpcModuleProvider rpcModuleProvider = Substitute.For<IRpcModuleProvider>();
             IEthModule ethModule = Substitute.For<IEthModule>();
             INetModule netModule = Substitute.For<INetModule>();
             IBlockchainProcessor blockchainProcessor = Substitute.For<IBlockchainProcessor>();
             IBlockProducer blockProducer = Substitute.For<IBlockProducer>();
+            blockchainProcessor.IsProcessingBlocks.Returns(test.IsProcessingBlocks);
+            blockProducer.IsProducingBlocks.Returns(test.IsProducingBlocks);
             netModule.net_peerCount().Returns(ResultWrapper<long>.Success(test.PeerCount));
             ethModule.eth_syncing().Returns(ResultWrapper<SyncingResult>.Success(new SyncingResult() {IsSyncing = test.IsSyncing}));
+
+            rpcModuleProvider.Rent("eth_syncing", false).Returns(ethModule);
+            rpcModuleProvider.Rent("net_peerCount", false).Returns(netModule);
             HealthService healthService =
-                new HealthService(ethModule, netModule, blockchainProcessor, blockProducer, test.IsMining);
-            CheckHealthResult result = healthService.CheckHealth();
+                new HealthService(rpcModuleProvider, blockchainProcessor, blockProducer, test.IsMining);
+            CheckHealthResult result = await healthService.CheckHealth();
             Assert.AreEqual(test.ExpectedHealthy, result.Healthy);
-            Assert.AreEqual(test.ExpectedMessage, result.Message);
-            Assert.AreEqual(test.ExpectedLongMessage, result.LongMessage);
+            Assert.AreEqual(test.ExpectedMessage, FormatMessages(result.Messages.Select(x => x.Message)));
+            Assert.AreEqual(test.ExpectedLongMessage, FormatMessages(result.Messages.Select(x => x.LongMessage)));
         }
 
         public class CheckHealthTest
@@ -81,8 +88,8 @@ namespace Nethermind.JsonRpc.Test.Services
                     IsProcessingBlocks = true,
                     PeerCount = 10,
                     ExpectedHealthy = true,
-                    ExpectedMessage = null,
-                    ExpectedLongMessage = $"The node is now fully synced with a network, number of peers: 10"
+                    ExpectedMessage = "Fully synced. Peers: 10.",
+                    ExpectedLongMessage = $"The node is now fully synced with a network. Peers: 10."
                 };
                 yield return new CheckHealthTest()
                 {
@@ -91,8 +98,8 @@ namespace Nethermind.JsonRpc.Test.Services
                     IsProcessingBlocks = true,
                     PeerCount = 0,
                     ExpectedHealthy = false,
-                    ExpectedMessage = "Node is not connected to any peers.",
-                    ExpectedLongMessage = "Node is not connected to any peers."
+                    ExpectedMessage = "Fully synced. Node is not connected to any peers.",
+                    ExpectedLongMessage = "The node is now fully synced with a network. Node is not connected to any peers."
                 };
                 yield return new CheckHealthTest()
                 {
@@ -100,8 +107,8 @@ namespace Nethermind.JsonRpc.Test.Services
                     IsSyncing = true,
                     PeerCount = 7,
                     ExpectedHealthy = false,
-                    ExpectedMessage = "Still syncing.",
-                    ExpectedLongMessage = $"The node is still syncing, CurrentBlock: 0, HighestBlock: 0, Peers: 7."
+                    ExpectedMessage = "Still syncing. Peers: 7.",
+                    ExpectedLongMessage = $"The node is still syncing, CurrentBlock: 0, HighestBlock: 0. Peers: 7."
                 };
                 yield return new CheckHealthTest()
                 {
@@ -110,8 +117,8 @@ namespace Nethermind.JsonRpc.Test.Services
                     IsProcessingBlocks = false,
                     PeerCount = 7,
                     ExpectedHealthy = false,
-                    ExpectedMessage = "Stopped processing blocks.",
-                    ExpectedLongMessage = $"The node stopped processing blocks."
+                    ExpectedMessage = "Fully synced. Peers: 7. Stopped processing blocks.",
+                    ExpectedLongMessage = $"The node is now fully synced with a network. Peers: 7. The node stopped processing blocks."
                 };
                 yield return new CheckHealthTest()
                 {
@@ -122,8 +129,8 @@ namespace Nethermind.JsonRpc.Test.Services
                     IsProcessingBlocks = false,
                     PeerCount = 4,
                     ExpectedHealthy = true,
-                    ExpectedMessage = "Still syncing.",
-                    ExpectedLongMessage = $"The node is still syncing, CurrentBlock: 0, HighestBlock: 0, Peers: 4"
+                    ExpectedMessage = "Still syncing. Peers: 4.",
+                    ExpectedLongMessage = $"The node is still syncing, CurrentBlock: 0, HighestBlock: 0. Peers: 4."
                 };
                 yield return new CheckHealthTest()
                 {
@@ -134,8 +141,8 @@ namespace Nethermind.JsonRpc.Test.Services
                     IsProcessingBlocks = false,
                     PeerCount = 0,
                     ExpectedHealthy = false,
-                    ExpectedMessage = "Node is not connected to any peers.",
-                    ExpectedLongMessage = "Node is not connected to any peers."
+                    ExpectedMessage = "Still syncing. Node is not connected to any peers.",
+                    ExpectedLongMessage = "The node is still syncing, CurrentBlock: 0, HighestBlock: 0. Node is not connected to any peers."
                 };
                 yield return new CheckHealthTest()
                 {
@@ -146,8 +153,8 @@ namespace Nethermind.JsonRpc.Test.Services
                     IsProcessingBlocks = false,
                     PeerCount = 1,
                     ExpectedHealthy = false,
-                    ExpectedMessage = "Stopped processing blocks. Stopped producing blocks.",
-                    ExpectedLongMessage = "The node stopped processing blocks. The node stopped producing blocks."
+                    ExpectedMessage = "Fully synced. Peers: 1. Stopped processing blocks. Stopped producing blocks.",
+                    ExpectedLongMessage = "The node is now fully synced with a network. Peers: 1. The node stopped processing blocks. The node stopped producing blocks."
                 };
                 yield return new CheckHealthTest()
                 {
@@ -155,13 +162,27 @@ namespace Nethermind.JsonRpc.Test.Services
                     IsSyncing = false,
                     IsMining = true,
                     IsProducingBlocks = true,
-                    IsProcessingBlocks = false,
+                    IsProcessingBlocks = true,
                     PeerCount = 1,
                     ExpectedHealthy = true,
-                    ExpectedMessage = null,
-                    ExpectedLongMessage = $"The node is now fully synced with a network, number of peers: 1"
+                    ExpectedMessage = "Fully synced. Peers: 1.",
+                    ExpectedLongMessage = $"The node is now fully synced with a network. Peers: 1."
                 };
             }
+        }
+        
+        private static string FormatMessages(IEnumerable<string> messages)
+        {
+            if (messages.Where(x => !string.IsNullOrWhiteSpace(x)).Any())
+            {
+                var joined = string.Join(". ", messages.Where(x => !string.IsNullOrWhiteSpace(x)));
+                if (!string.IsNullOrWhiteSpace(joined))
+                {
+                    return joined + ".";
+                }
+            }
+            
+            return string.Empty;
         }
     }
 }
