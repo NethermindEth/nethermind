@@ -125,7 +125,7 @@ namespace Nethermind.Runner.Ethereum.Api
         public IEnode? Enode { get; set; }
         public IEthereumEcdsa? EthereumEcdsa { get; set; }
         
-        public IHealthService HealthService { get; }
+        public IHealthService HealthService { get; set; }
         public IFileSystem FileSystem { get; set; } = new FileSystem();
         public IFilterStore? FilterStore { get; set; }
         public IFilterManager? FilterManager { get; set; }

@@ -173,7 +173,7 @@ namespace Nethermind.JsonRpc.Test.Services
         
         private static string FormatMessages(IEnumerable<string> messages)
         {
-            if (messages.Where(x => !string.IsNullOrWhiteSpace(x)).Any())
+            if (messages.Any(x => !string.IsNullOrWhiteSpace(x)))
             {
                 var joined = string.Join(". ", messages.Where(x => !string.IsNullOrWhiteSpace(x)));
                 if (!string.IsNullOrWhiteSpace(joined))
