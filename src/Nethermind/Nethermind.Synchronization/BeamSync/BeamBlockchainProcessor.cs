@@ -205,7 +205,8 @@ namespace Nethermind.Synchronization.BeamSync
             env.BlockProcessor.TransactionProcessed += (sender, args) =>
             {
                 Interlocked.Increment(ref Metrics.BeamedTransactions);
-                if (_logger.IsInfo) _logger.Info($"Processed tx {args.Index + 1}/{block.Transactions.Length} of {block.Number}");
+                // we can safely use the null forgiving operator on block.Transaction here because this method will only get called when a transaction is processed, which means the block had at least one transaction
+                if (_logger.IsInfo) _logger.Info($"Processed tx {args.Index + 1}/{block.Transactions!.Length} of {block.Number}");
             };
 
             return (env.ChainProcessor, txEnv.StateReader);
@@ -260,10 +261,18 @@ namespace Nethermind.Synchronization.BeamSync
                 _recoveryStep.RecoverData(block);
                 (IBlockchainProcessor beamProcessor, IStateReader stateReader) = CreateProcessor(block, new ReadOnlyDbProvider(_readOnlyDbProvider, true), _specProvider, _logManager);
 
-                BlockHeader parentHeader = _readOnlyBlockTree.FindHeader(block.ParentHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+                BlockHeader? parentHeader = _readOnlyBlockTree.FindHeader(block.ParentHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
                 if (parentHeader != null)
                 {
-                    prefetchTasks = PrefetchNew(stateReader, block, parentHeader.StateRoot, parentHeader.Author ?? parentHeader.Beneficiary);
+                    if (parentHeader.StateRoot == null)
+                    {
+                        throw new InvalidDataException($"Received a block with null {nameof(parentHeader.StateRoot)} for beam processing");
+                    }
+                    if (parentHeader.GasBeneficiary == null)
+                    {
+                        throw new InvalidDataException($"Received a block with null {nameof(parentHeader.GasBeneficiary)} for beam processing");
+                    }
+                    prefetchTasks = PrefetchNew(stateReader, block, parentHeader.StateRoot, parentHeader.GasBeneficiary);
                 }
                 
                 Stopwatch stopwatch = Stopwatch.StartNew();
@@ -271,7 +280,7 @@ namespace Nethermind.Synchronization.BeamSync
                 beamProcessingTask = Task.Run(() =>
                 {
                     BeamSyncContext.MinimumDifficulty.Value = block.TotalDifficulty.Value;
-                    BeamSyncContext.Description.Value = $"[preProcess of {block.Hash.ToShortString()}]";
+                    BeamSyncContext.Description.Value = $"[preProcess of {block.Hash?.ToShortString() ?? "<block with null hash>"}]";
                     BeamSyncContext.LastFetchUtc.Value = DateTime.UtcNow;
                     BeamSyncContext.Cancelled.Value = cancellationToken.Token;
                     processedBlock = beamProcessor.Process(block, ProcessingOptions.Beam, NullBlockTracer.Instance);
@@ -366,9 +375,9 @@ namespace Nethermind.Synchronization.BeamSync
             {
                 BeamSyncContext.MinimumDifficulty.Value = block.TotalDifficulty ?? 0;
                 BeamSyncContext.Cancelled.Value = cancellationToken.Token;
-                for (int i = 0; i < block.Transactions.Length; i++)
+                for (int i = 0; i < (block.Transactions?.Length ?? 0); i++)
                 {
-                    Transaction tx = block.Transactions[i];
+                    Transaction tx = block.Transactions![i];
                     BeamSyncContext.Description.Value = $"[tx prefetch {i}]";
                     BeamSyncContext.LastFetchUtc.Value = DateTime.UtcNow;
                     stateReader.GetAccount(stateRoot, tx.SenderAddress);
@@ -385,9 +394,9 @@ namespace Nethermind.Synchronization.BeamSync
             {
                 BeamSyncContext.MinimumDifficulty.Value = block.TotalDifficulty ?? 0;
                 BeamSyncContext.Cancelled.Value = cancellationToken.Token;
-                for (int i = 0; i < block.Transactions.Length; i++)
+                for (int i = 0; i < (block.Transactions?.Length ?? 0); i++)
                 {
-                    Transaction tx = block.Transactions[i];
+                    Transaction tx = block.Transactions![i];
                     if (tx.To != null)
                     {
                         BeamSyncContext.Description.Value = $"[storage prefetch {i}]";
@@ -407,9 +416,9 @@ namespace Nethermind.Synchronization.BeamSync
             {
                 BeamSyncContext.MinimumDifficulty.Value = block.TotalDifficulty.Value;
                 BeamSyncContext.Cancelled.Value = cancellationToken.Token;
-                for (int i = 0; i < block.Transactions.Length; i++)
+                for (int i = 0; i < (block.Transactions?.Length ?? 0); i++)
                 {
-                    Transaction tx = block.Transactions[i];
+                    Transaction tx = block.Transactions![i];
                     if (tx.To != null)
                     {
                         BeamSyncContext.Description.Value = $"[code prefetch {i}]";

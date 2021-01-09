@@ -34,7 +34,7 @@ namespace Nethermind.Blockchain.Find
         
         Block FindBlock(long blockNumber, BlockTreeLookupOptions options);
         
-        BlockHeader FindHeader(Keccak blockHash, BlockTreeLookupOptions options);
+        BlockHeader? FindHeader(Keccak? blockHash, BlockTreeLookupOptions options);
         
         BlockHeader FindHeader(long blockNumber, BlockTreeLookupOptions options);
         

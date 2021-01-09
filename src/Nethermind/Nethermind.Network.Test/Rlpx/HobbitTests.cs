@@ -209,7 +209,7 @@ namespace Nethermind.Network.Test.Rlpx
             InternalLoggerFactory.DefaultFactory.AddProvider(new ConsoleLoggerProvider(new ConsoleLoggerOptionsMonitor(
                 new ConsoleLoggerOptions
                 {
-                    Format = ConsoleLoggerFormat.Default,
+                    FormatterName = ConsoleFormatterNames.Simple,
                     LogToStandardErrorThreshold = LogLevel.Warning
                 })));
             ResourceLeakDetector.Level = ResourceLeakDetector.DetectionLevel.Paranoid;

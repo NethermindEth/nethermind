@@ -26,7 +26,7 @@ namespace Nethermind.Cli
         string? CurrentUri { get; }
 
         void SwitchUri(Uri uri);
-        
+
         Task<JsValue> PostJint(string method, params object[] parameters);
     }
 }

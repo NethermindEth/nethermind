@@ -84,7 +84,7 @@ namespace Nethermind.Core.Test
 
         [Test]
         [Retry(3)]
-        public async Task Update_twice_current_per_second()
+        public void Update_twice_current_per_second()
         {
             ManualTimestamper manualTimestamper = new ManualTimestamper();
             MeasuredProgress measuredProgress = new MeasuredProgress(manualTimestamper);
@@ -97,7 +97,7 @@ namespace Nethermind.Core.Test
         }
 
         [Test]
-        public async Task Current_starting_from_non_zero()
+        public void Current_starting_from_non_zero()
         {
             ManualTimestamper manualTimestamper = new ManualTimestamper();
             MeasuredProgress measuredProgress = new MeasuredProgress(manualTimestamper);
@@ -109,7 +109,7 @@ namespace Nethermind.Core.Test
         }
 
         [Test]
-        public async Task Update_thrice_result_per_second()
+        public void Update_thrice_result_per_second()
         {
             ManualTimestamper manualTimestamper = new ManualTimestamper();
             MeasuredProgress measuredProgress = new MeasuredProgress(manualTimestamper);
@@ -127,7 +127,7 @@ namespace Nethermind.Core.Test
         }
 
         [Test]
-        public async Task After_ending_does_not_update_total_or_current()
+        public void After_ending_does_not_update_total_or_current()
         {
             ManualTimestamper manualTimestamper = new ManualTimestamper();
             MeasuredProgress measuredProgress = new MeasuredProgress(manualTimestamper);

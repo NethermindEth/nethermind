@@ -27,6 +27,7 @@ namespace Nethermind.Core.Caching
     public class LruKeyCache<TKey> where TKey : notnull
     {
         private readonly int _maxCapacity;
+        // unused, but useful for viewing in a debugger
         private readonly string _name;
         private readonly Dictionary<TKey, LinkedListNode<TKey>> _cacheMap;
         private readonly LinkedList<TKey> _lruList;
@@ -100,13 +101,12 @@ namespace Nethermind.Core.Caching
 
         private void Replace(TKey key)
         {
-            // TODO: some potential null ref issue here?
-            
             LinkedListNode<TKey>? node = _lruList.First;
             _lruList.RemoveFirst();
-            _cacheMap.Remove(node.Value);
+            if (node != null) _cacheMap.Remove(node.Value);
 
-            node.Value = key;
+            // performance optimization: don't create a new node, just re-use the node we just removed
+            node!.Value = key;
             _lruList.AddLast(node);
             _cacheMap.Add(node.Value, node);
         }

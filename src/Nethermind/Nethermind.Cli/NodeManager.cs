@@ -17,6 +17,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Net.Http;
 using System.Threading.Tasks;
 using Jint.Native;
@@ -38,9 +39,9 @@ namespace Nethermind.Cli
 
         private readonly ICliConsole _cliConsole;
 
-        private JsonParser _jsonParser;
+        private readonly JsonParser _jsonParser;
 
-        private Dictionary<Uri, IJsonRpcClient> _clients = new Dictionary<Uri, IJsonRpcClient>();
+        private readonly Dictionary<Uri, IJsonRpcClient> _clients = new Dictionary<Uri, IJsonRpcClient>();
 
         private IJsonRpcClient? _currentClient;
 
@@ -91,14 +92,9 @@ namespace Nethermind.Cli
                     decimal totalMicroseconds = stopwatch.ElapsedTicks * (1_000_000m / Stopwatch.Frequency);
                     Colorful.Console.WriteLine($"Request complete in {totalMicroseconds}μs");
                     string? resultString = result?.ToString();
-                    if (resultString == "0x" || resultString == null)
-                    {
-                        returnValue = JsValue.Null;
-                    }
-                    else
-                    {
-                        returnValue = _jsonParser.Parse(resultString);    
-                    }
+                    returnValue = resultString == "0x" || resultString == null
+                        ? JsValue.Null
+                        : _jsonParser.Parse(resultString);
                 }
             }
             catch (HttpRequestException e)
@@ -119,14 +115,13 @@ namespace Nethermind.Cli
             return returnValue;
         }
 
-        public async Task<string> Post(string method, params object[] parameters)
+        public async Task<string?> Post(string method, params object[] parameters)
         {
             return await Post<string>(method, parameters);
         }
 
-        public async Task<T> Post<T>(string method, params object[] parameters)
+        public async Task<T?> Post<T>(string method, params object[] parameters)
         {
-            T result = default;
             try
             {
                 if (_currentClient == null)
@@ -137,10 +132,11 @@ namespace Nethermind.Cli
                 {
                     Stopwatch stopwatch = new Stopwatch();
                     stopwatch.Start();
-                    result = await _currentClient.Post<T>(method, parameters);
+                    T result = await _currentClient.Post<T>(method, parameters);
                     stopwatch.Stop();
                     decimal totalMicroseconds = stopwatch.ElapsedTicks * (1_000_000m / Stopwatch.Frequency);
-                    Colorful.Console.WriteLine($"Request complete in {totalMicroseconds}μs");   
+                    Colorful.Console.WriteLine($"Request complete in {totalMicroseconds}μs");
+                    return result;
                 }
             }
             catch (HttpRequestException e)
@@ -158,7 +154,7 @@ namespace Nethermind.Cli
                 _cliConsole.WriteException(e);
             }
 
-            return result;
+            return default;
         }
     }
 }

@@ -25,7 +25,7 @@ namespace Nethermind.Core.Caching
     /// <summary>
     /// https://stackoverflow.com/questions/754233/is-it-there-any-lru-implementation-of-idictionary
     /// </summary>
-    public class MemCountingCache : ICache<Keccak, byte[]>
+    public class MemCountingCache : ICache<Keccak, byte[]?>
     {
         private readonly int _maxCapacity;
         private readonly Dictionary<Keccak, LinkedListNode<LruCacheItem>> _cacheMap;
@@ -64,9 +64,9 @@ namespace Nethermind.Core.Caching
         }
 
         [MethodImpl(MethodImplOptions.Synchronized)]
-        public byte[] Get(Keccak key)
+        public byte[]? Get(Keccak key)
         {
-            if (_cacheMap.TryGetValue(key, out LinkedListNode<LruCacheItem> node))
+            if (_cacheMap.TryGetValue(key, out LinkedListNode<LruCacheItem>? node))
             {
                 byte[] value = node.Value.Value;
                 _lruList.Remove(node);
@@ -78,9 +78,9 @@ namespace Nethermind.Core.Caching
         }
 
         [MethodImpl(MethodImplOptions.Synchronized)]
-        public bool TryGet(Keccak key, out byte[] value)
+        public bool TryGet(Keccak key, out byte[]? value)
         {
-            if (_cacheMap.TryGetValue(key, out LinkedListNode<LruCacheItem> node))
+            if (_cacheMap.TryGetValue(key, out LinkedListNode<LruCacheItem>? node))
             {
                 value = node.Value.Value;
                 _lruList.Remove(node);
@@ -93,7 +93,7 @@ namespace Nethermind.Core.Caching
         }
 
         [MethodImpl(MethodImplOptions.Synchronized)]
-        public void Set(Keccak key, byte[] val)
+        public void Set(Keccak key, byte[]? val)
         {
             if (val == null)
             {
@@ -101,7 +101,7 @@ namespace Nethermind.Core.Caching
                 return;
             }
 
-            if (_cacheMap.TryGetValue(key, out LinkedListNode<LruCacheItem> node))
+            if (_cacheMap.TryGetValue(key, out LinkedListNode<LruCacheItem>? node))
             {
                 node.Value.Value = val;
                 _lruList.Remove(node);
@@ -141,7 +141,7 @@ namespace Nethermind.Core.Caching
         [MethodImpl(MethodImplOptions.Synchronized)]
         public void Delete(Keccak key)
         {
-            if (_cacheMap.TryGetValue(key, out LinkedListNode<LruCacheItem> node))
+            if (_cacheMap.TryGetValue(key, out LinkedListNode<LruCacheItem>? node))
             {
                 MemorySize -= node.Value.MemorySize;
                 _lruList.Remove(node);
@@ -154,11 +154,10 @@ namespace Nethermind.Core.Caching
 
         private void Replace(Keccak key, byte[] value)
         {
-            LinkedListNode<LruCacheItem> node = _lruList.First;
-            
-            // ReSharper disable once PossibleNullReferenceException
-            MemorySize += MemorySizes.Align(value.Length) - MemorySizes.Align(node.Value.Value.Length);
-            
+            LinkedListNode<LruCacheItem>? node = _lruList.First;
+
+            MemorySize += MemorySizes.Align(value.Length) - MemorySizes.Align(node!.Value.Value.Length);
+
             _lruList.RemoveFirst();
             _cacheMap.Remove(node.Value.Key);
 
