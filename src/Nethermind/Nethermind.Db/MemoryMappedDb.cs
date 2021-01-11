@@ -87,15 +87,9 @@ namespace Nethermind.Db
 
         public KeyValuePair<byte[], byte[]>[] this[byte[][] keys] => throw new NotImplementedException();
 
-        public IEnumerable<KeyValuePair<byte[], byte[]>> GetAll(bool ordered = false)
-        {
-            throw new NotImplementedException();
-        }
+        public IEnumerable<KeyValuePair<byte[], byte[]>> GetAll(bool ordered = false) => throw new NotImplementedException();
 
-        public IEnumerable<byte[]> GetAllValues(bool ordered = false)
-        {
-            throw new NotImplementedException();
-        }
+        public IEnumerable<byte[]> GetAllValues(bool ordered = false) => throw new NotImplementedException("");
 
         public void StartBatch()
         {
@@ -128,10 +122,7 @@ namespace Nethermind.Db
 
         public void Flush() { }
 
-        public void Clear()
-        {
-            throw new NotImplementedException();
-        }
+        public void Clear() { }
 
         public Span<byte> GetSpan(byte[] key) => _store.TryGet(key, out MemoryMappedKeyValueStore.Slice slice) ? slice.Span : Span<byte>.Empty;
 
