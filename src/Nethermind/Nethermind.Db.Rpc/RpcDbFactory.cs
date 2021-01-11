@@ -42,6 +42,11 @@ namespace Nethermind.Db.Rpc
             _logManager = logManager;
         }
 
+        public ISnapshotableDb CreateSnapshotableMemoryMappedDb(RocksDbSettings rocksDbSettings)
+        {
+            throw new System.NotImplementedException();
+        }
+
         public IColumnsDb<T> CreateColumnsDb<T>(RocksDbSettings rocksDbSettings)
         {
             var rocksDb = _wrappedRocksDbFactory.CreateColumnsDb<T>(rocksDbSettings);

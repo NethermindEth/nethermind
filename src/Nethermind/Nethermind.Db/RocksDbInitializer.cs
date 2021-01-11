@@ -56,6 +56,11 @@ namespace Nethermind.Db
             AddRegisterAction(settings, () => _rocksDbFactory.CreateSnapshotableDb(settings), () => _memDbFactory.CreateSnapshotableDb(settings.DbName));
         }
 
+        protected void RegisterSnapshotableMemoryMappedDb(RocksDbSettings settings)
+        {
+            AddRegisterAction(settings, () => _rocksDbFactory.CreateSnapshotableMemoryMappedDb(settings), () => _memDbFactory.CreateSnapshotableDb(settings.DbName));
+        }
+
         protected void RegisterColumnsDb<T>(RocksDbSettings settings)
         {
             AddRegisterAction(settings, () => _rocksDbFactory.CreateColumnsDb<T>(settings), () => _memDbFactory.CreateColumnsDb<T>(settings.DbName));

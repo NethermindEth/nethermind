@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.IO;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Logging;
 
@@ -42,6 +43,11 @@ namespace Nethermind.Db.Rocks
         public ISnapshotableDb CreateSnapshotableDb(RocksDbSettings rocksDbSettings)
         {
             return new StateDb(CreateDb(rocksDbSettings));
+        }
+
+        public ISnapshotableDb CreateSnapshotableMemoryMappedDb(RocksDbSettings rocksDbSettings)
+        {
+            return new StateDb(new MemoryMappedDb(rocksDbSettings.DbName, new MemoryMappedKeyValueStore(Path.Combine(_basePath, rocksDbSettings.DbName))));
         }
 
         public IColumnsDb<T> CreateColumnsDb<T>(RocksDbSettings rocksDbSettings)

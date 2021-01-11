@@ -39,6 +39,8 @@ namespace Nethermind.Db
 
         ISnapshotableDb CreateSnapshotableDb(RocksDbSettings rocksDbSettings);
 
+        ISnapshotableDb CreateSnapshotableMemoryMappedDb(RocksDbSettings rocksDbSettings);
+
         IColumnsDb<T> CreateColumnsDb<T>(RocksDbSettings rocksDbSettings);
     }
 }

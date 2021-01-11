@@ -90,6 +90,11 @@ namespace Nethermind.Db
 
         public void Initialize()
         {
+            if (!Directory.Exists(_dir))
+            {
+                Directory.CreateDirectory(_dir);
+            }
+            
             string jumpsPath = Path.Combine(_dir, JumpsFileName);
             _jumps = InitializeMap(jumpsPath, JumpsFileSize);
 
