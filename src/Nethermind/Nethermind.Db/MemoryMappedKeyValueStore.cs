@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.IO.MemoryMappedFiles;
 using System.Linq;
+using System.Reflection.Metadata;
 using System.Runtime.CompilerServices;
 using System.Threading;
 
@@ -96,9 +97,9 @@ namespace Nethermind.Db
             {
                 Directory.CreateDirectory(_dir);
             }
-            
+
             string jumpsPath = Path.Combine(_dir, JumpsFileName);
-            _jumps = InitializeMap(jumpsPath, JumpsFileSize);
+            _jumps = InitializeMap(jumpsPath, JumpsFileSize, cleanOnCreate: true);
 
             string[] existingFiles = Directory.GetFiles(_dir, Prefix + "*.*");
             if (existingFiles.Length > 0)
@@ -239,8 +240,9 @@ namespace Nethermind.Db
 
         static string GetFileName(int number) => $"{Prefix}{number:D6}";
 
-        Map InitializeMap(string file, int size)
+        Map InitializeMap(string file, int size, bool cleanOnCreate = false)
         {
+            bool created = false;
             FileStream stream = File.Open(file, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.Read);
             if (stream.Length == 0)
             {
@@ -248,6 +250,7 @@ namespace Nethermind.Db
                 stream.SetLength(size);
                 stream.WriteByte(0); // this is sufficient to create an empty file.
                 stream.Flush(true);
+                created = true;
             }
 
             MemoryMappedFile mmf = MemoryMappedFile.CreateFromFile(stream, null, 0, MemoryMappedFileAccess.ReadWrite, HandleInheritability.None, false);
@@ -257,6 +260,15 @@ namespace Nethermind.Db
             int.TryParse(justNumber, out int number);
             Map map = new Map(stream, mmf, file, number);
             map.Initialize();
+
+            if (created && cleanOnCreate)
+            {
+                unsafe
+                {
+                    new Span<byte>(map.Pointer, size).Clear();
+                }
+            }
+
             return map;
         }
 

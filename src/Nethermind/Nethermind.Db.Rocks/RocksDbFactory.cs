@@ -33,10 +33,10 @@ namespace Nethermind.Db.Rocks
         }
 
         public IDb CreateDb(RocksDbSettings rocksDbSettings)
-        { 
-            return new SimpleRocksDb(_basePath, 
+        {
+            return new SimpleRocksDb(_basePath,
                 rocksDbSettings,
-                _dbConfig, 
+                _dbConfig,
                 _logManager);
         }
 
@@ -47,7 +47,7 @@ namespace Nethermind.Db.Rocks
 
         public ISnapshotableDb CreateSnapshotableMemoryMappedDb(RocksDbSettings rocksDbSettings)
         {
-            MemoryMappedKeyValueStore store = new MemoryMappedKeyValueStore(Path.Combine(_basePath, rocksDbSettings.DbName));
+            MemoryMappedKeyValueStore store = new MemoryMappedKeyValueStore(Path.Combine(_basePath, rocksDbSettings.DbName), logFileSize: 1024 * 1024 * 1024);
             store.Initialize();
             return new StateDb(new MemoryMappedDb(rocksDbSettings.DbPath, store));
         }
