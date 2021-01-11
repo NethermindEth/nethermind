@@ -32,9 +32,11 @@ namespace Nethermind.Db
         const byte EndMarker = 0; // a marker that when written as the first byte of the length in a file marks it as 0
 
         /// <summary>
-        /// This is an important settings as it heavily affects the size of the jump file. For 2 bytes, it will be 512KB long. For 3 bytes it will be 512MB
+        /// This is an important settings as it heavily affects the size of the jump file. The following values will be used:
+        /// - for 2 bytes, the jump file will be 512KB long.
+        /// - for 3 bytes, the jump file will be 512MB long.
         /// </summary>
-        const int NumberOfBytesForJumps = 2;
+        const int NumberOfBytesForJumps = 3;
         const int AddressSize = sizeof(ulong);
         const int JumpsCount = 1 << (NumberOfBytesForJumps * BitsInByte);
         const int JumpsFileSize = AddressSize * JumpsCount;
