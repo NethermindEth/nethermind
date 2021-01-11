@@ -20,6 +20,7 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Rewards;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Test;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Consensus;
@@ -191,7 +192,8 @@ namespace Nethermind.Synchronization.Test.BeamSync
                 NullRecoveryStep.Instance,
                 NoBlockRewards.Instance,
                 _blockchainProcessingQueue,
-                syncModeSelector ?? new StaticSelector(SyncMode.Beam)
+                syncModeSelector ?? new StaticSelector(SyncMode.Beam),
+                new SyncConfig()
             );
         }
 

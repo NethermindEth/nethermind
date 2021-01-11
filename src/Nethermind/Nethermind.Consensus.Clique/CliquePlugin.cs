@@ -24,6 +24,7 @@ using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Producers;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Rewards;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Db;
@@ -50,7 +51,7 @@ namespace Nethermind.Consensus.Clique
             }
 
             var (getFromApi, setInApi) = _nethermindApi.ForInit;
-
+            
             _cliqueConfig = new CliqueConfig
             {
                 BlockPeriod = getFromApi!.ChainSpec!.Clique.Period,
@@ -85,6 +86,7 @@ namespace Nethermind.Consensus.Clique
             var (getFromApi, setInApi) = _nethermindApi!.ForProducer;
 
             _miningConfig = getFromApi.Config<IMiningConfig>();
+            ISyncConfig syncConfig = getFromApi.Config<ISyncConfig>();
             if (!_miningConfig.Enabled)
             {
                 throw new InvalidOperationException("Request to start block producer while mining disabled.");
@@ -123,7 +125,8 @@ namespace Nethermind.Consensus.Clique
                 producerProcessor,
                 getFromApi.BlockPreprocessor,
                 getFromApi.LogManager,
-                BlockchainProcessor.Options.NoReceipts);
+                BlockchainProcessor.Options.NoReceipts,
+                syncConfig);
 
             OneTimeChainProcessor chainProcessor = new OneTimeChainProcessor(
                 readOnlyDbProvider,

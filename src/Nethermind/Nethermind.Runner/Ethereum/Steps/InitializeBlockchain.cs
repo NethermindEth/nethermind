@@ -157,7 +157,8 @@ namespace Nethermind.Runner.Ethereum.Steps
                 {
                     AutoProcess = !syncConfig.BeamSync,
                     StoreReceiptsByDefault = initConfig.StoreReceipts,
-                });
+                },
+                syncConfig);
 
             _set.BlockProcessingQueue = blockchainProcessor;
             _set.BlockchainProcessor = blockchainProcessor;
@@ -173,7 +174,8 @@ namespace Nethermind.Runner.Ethereum.Steps
                     _api.BlockPreprocessor,
                     _api.RewardCalculatorSource!, // TODO: does it work with AuRa?
                     blockchainProcessor,
-                    _get.SyncModeSelector!);
+                    _get.SyncModeSelector!,
+                    syncConfig);
 
                 _api.DisposeStack.Push(beamBlockchainProcessor);
             }

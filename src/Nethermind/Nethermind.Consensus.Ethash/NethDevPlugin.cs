@@ -23,6 +23,7 @@ using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Producers;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Rewards;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Db;
@@ -56,6 +57,7 @@ namespace Nethermind.Consensus.Ethash
             }
             
             var (getFromApi, setInApi) = _nethermindApi!.ForProducer;
+            ISyncConfig syncConfig = getFromApi.Config<ISyncConfig>();
             ITxFilter txFilter = new NullTxFilter();
             ITxSource txSource = new TxPoolTxSource(
                 getFromApi.TxPool, getFromApi.StateReader, getFromApi.LogManager, txFilter);
@@ -90,7 +92,8 @@ namespace Nethermind.Consensus.Ethash
                 producerProcessor,
                 getFromApi.BlockPreprocessor,
                 getFromApi.LogManager,
-                BlockchainProcessor.Options.NoReceipts);
+                BlockchainProcessor.Options.NoReceipts,
+                syncConfig);
             
             setInApi.BlockProducer = new DevBlockProducer(
                 txSource,

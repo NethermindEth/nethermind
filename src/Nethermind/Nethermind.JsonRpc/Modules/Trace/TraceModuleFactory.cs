@@ -21,6 +21,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Rewards;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Config;
@@ -41,6 +42,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
         private readonly ILogManager _logManager;
         private readonly IBlockPreprocessorStep _recoveryStep;
         private readonly IRewardCalculatorSource _rewardCalculatorSource;
+        private readonly ISyncConfig _syncConfig;
         private ILogger _logger;
 
         public TraceModuleFactory(
@@ -51,7 +53,8 @@ namespace Nethermind.JsonRpc.Modules.Trace
             IRewardCalculatorSource rewardCalculatorSource,
             IReceiptStorage receiptFinder,
             ISpecProvider specProvider,
-            ILogManager logManager)
+            ILogManager logManager,
+            ISyncConfig syncConfig)
         {
             _dbProvider = dbProvider ?? throw new ArgumentNullException(nameof(dbProvider));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
@@ -61,6 +64,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
             _receiptStorage = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
+            _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
             _logger = logManager.GetClassLogger();
         }
         
@@ -69,7 +73,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
             var readOnlyTree = new ReadOnlyBlockTree(_blockTree);
             var readOnlyDbProvider = new ReadOnlyDbProvider(_dbProvider, false);
             var readOnlyTxProcessingEnv = new ReadOnlyTxProcessingEnv(readOnlyDbProvider, readOnlyTree, _specProvider, _logManager);
-            var readOnlyChainProcessingEnv = new ReadOnlyChainProcessingEnv(readOnlyTxProcessingEnv, Always.Valid, _recoveryStep, _rewardCalculatorSource.Get(readOnlyTxProcessingEnv.TransactionProcessor), _receiptStorage, readOnlyDbProvider, _specProvider, _logManager);
+            var readOnlyChainProcessingEnv = new ReadOnlyChainProcessingEnv(readOnlyTxProcessingEnv, Always.Valid, _recoveryStep, _rewardCalculatorSource.Get(readOnlyTxProcessingEnv.TransactionProcessor), _receiptStorage, readOnlyDbProvider, _specProvider, _logManager, _syncConfig);
             Tracer tracer = new Tracer(readOnlyChainProcessingEnv.StateProvider, readOnlyChainProcessingEnv.ChainProcessor);
 
             

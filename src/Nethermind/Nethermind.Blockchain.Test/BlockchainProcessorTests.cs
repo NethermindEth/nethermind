@@ -21,6 +21,7 @@ using System.Linq;
 using System.Threading;
 using FluentAssertions;
 using Nethermind.Blockchain.Processing;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
@@ -194,7 +195,7 @@ namespace Nethermind.Blockchain.Test
                 _blockTree = new BlockTree(blockDb, headersDb, blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), MainnetSpecProvider.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
                 _blockProcessor = new BlockProcessorMock(_logManager);
                 _recoveryStep = new RecoveryStepMock(_logManager);
-                _processor = new BlockchainProcessor(_blockTree, _blockProcessor, _recoveryStep, LimboLogs.Instance, BlockchainProcessor.Options.Default);
+                _processor = new BlockchainProcessor(_blockTree, _blockProcessor, _recoveryStep, LimboLogs.Instance, BlockchainProcessor.Options.Default, new SyncConfig());
                 _resetEvent = new AutoResetEvent(false);
 
                 _blockTree.NewHeadBlock += (sender, args) =>
@@ -353,6 +354,12 @@ namespace Nethermind.Blockchain.Test
                     _logger.Info($"Waiting for {_block.ToString(Block.Format.Short)} to become genesis block");
                     _processingTestContext._resetEvent.WaitOne(ProcessingWait);
                     Assert.AreEqual(_block.Header.Hash, _processingTestContext._blockTree.Genesis.Hash, "genesis");
+                    return _processingTestContext;
+                }
+                
+                public ProcessingTestContext Sleep(int milliseconds)
+                {
+                    Thread.Sleep(milliseconds);
                     return _processingTestContext;
                 }
 
@@ -600,6 +607,17 @@ namespace Nethermind.Blockchain.Test
                 .Recovered(_blockB3D8)
                 .Processed(_block1D2).BecomesNewHead()
                 .ProcessedSkipped(_block2D4).IsKeptOnBranch();
+        }
+        
+        [Test]
+        public void IsProcessingBlocks_returns_false_when_max_interval_elapsed()
+        {
+            When.ProcessingBlocks
+                .FullyProcessed(_block0).BecomesGenesis()
+                .FullyProcessed(_block1D2).BecomesNewHead()
+                .FullyProcessed(_block2D4).BecomesNewHead()
+                .FullyProcessed(_block3D6).BecomesNewHead()
+                .FullyProcessed(_blockC2D100).BecomesNewHead();
         }
     }
 }

@@ -17,6 +17,7 @@
 using System;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Rewards;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
@@ -43,11 +44,12 @@ namespace Nethermind.Blockchain.Processing
             IReceiptStorage receiptStorage,
             IReadOnlyDbProvider dbProvider,
             ISpecProvider specProvider,
-            ILogManager logManager)
+            ILogManager logManager,
+            ISyncConfig syncConfig)
         {
             _txEnv = txEnv;
             BlockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, _txEnv.TransactionProcessor, dbProvider.StateDb, dbProvider.CodeDb, StateProvider, _txEnv.StorageProvider, NullTxPool.Instance, receiptStorage, logManager);
-            _blockProcessingQueue = new BlockchainProcessor(_txEnv.BlockTree, BlockProcessor, recoveryStep, logManager, BlockchainProcessor.Options.NoReceipts);
+            _blockProcessingQueue = new BlockchainProcessor(_txEnv.BlockTree, BlockProcessor, recoveryStep, logManager, BlockchainProcessor.Options.NoReceipts, syncConfig);
             BlockProcessingQueue = _blockProcessingQueue;
             ChainProcessor = new OneTimeChainProcessor(dbProvider, _blockProcessingQueue);
         }

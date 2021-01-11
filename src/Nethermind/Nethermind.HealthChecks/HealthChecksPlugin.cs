@@ -33,7 +33,7 @@ namespace Nethermind.HealthChecks
             service.AddHealthChecks()
                 .AddTypeActivatedCheck<NodeHealthCheck>(
                     "node-health", 
-                    args: new object[] { _api.RpcModuleProvider });
+                    args: new object[] { _api.HealthService });
             if (_healthChecksConfig.UIEnabled)
             {
                 service.AddHealthChecksUI(setup =>

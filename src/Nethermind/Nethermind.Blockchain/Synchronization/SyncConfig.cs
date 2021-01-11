@@ -45,5 +45,6 @@ namespace Nethermind.Blockchain.Synchronization
         public bool BeamSyncFixMode { get; set; } = false;
         public bool BeamSyncVerifiedMode { get; set; } = false;
         public bool FixReceipts { get; set; } = false;
+        public int MaxIntervalWithoutProcessedBlock { get; set; }
     }
 }

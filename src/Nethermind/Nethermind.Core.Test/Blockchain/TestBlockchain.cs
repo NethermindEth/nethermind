@@ -23,6 +23,7 @@ using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Producers;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Rewards;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Consensus;
 using Nethermind.Core.Crypto;
@@ -125,7 +126,7 @@ namespace Nethermind.Core.Test.Blockchain
             TxProcessor = new TransactionProcessor(SpecProvider, State, Storage, virtualMachine, LimboLogs.Instance);
             BlockProcessor = CreateBlockProcessor();
 
-            BlockchainProcessor chainProcessor = new BlockchainProcessor(BlockTree, BlockProcessor, new RecoverSignatures(EthereumEcdsa, TxPool, SpecProvider, LimboLogs.Instance), LimboLogs.Instance, Nethermind.Blockchain.Processing.BlockchainProcessor.Options.Default);
+            BlockchainProcessor chainProcessor = new BlockchainProcessor(BlockTree, BlockProcessor, new RecoverSignatures(EthereumEcdsa, TxPool, SpecProvider, LimboLogs.Instance), LimboLogs.Instance, Nethermind.Blockchain.Processing.BlockchainProcessor.Options.Default, new SyncConfig());
             BlockchainProcessor = chainProcessor;
             chainProcessor.Start();
 

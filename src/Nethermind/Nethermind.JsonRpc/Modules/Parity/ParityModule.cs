@@ -17,6 +17,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
@@ -114,7 +115,7 @@ namespace Nethermind.JsonRpc.Modules.Parity
         public ResultWrapper<string> parity_nodeStatus()
         {
             throw new NotImplementedException();
-            // CheckHealthResult result = _healthService.CheckHealth();
+            // CheckHealthResult result = await _healthService.CheckHealth();
             // return result.Healthy ? ResultWrapper<string>.Success(result.Message) : ResultWrapper<string>.Fail(result.Message);
         }
 

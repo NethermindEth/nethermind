@@ -20,6 +20,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Admin;
@@ -88,6 +89,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             IInitConfig initConfig = _api.Config<IInitConfig>();
             IJsonRpcConfig rpcConfig = _api.Config<IJsonRpcConfig>();
             INetworkConfig networkConfig = _api.Config<INetworkConfig>();
+            ISyncConfig syncConfig = _api.Config<ISyncConfig>();
             
             // lets add threads to support parallel eth_getLogs
             ThreadPool.GetMinThreads(out var workerThreads, out var completionPortThreads);
@@ -109,7 +111,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             if (_api.BlockValidator == null) throw new StepDependencyException(nameof(_api.BlockValidator));
             if (_api.RewardCalculatorSource == null) throw new StepDependencyException(nameof(_api.RewardCalculatorSource));
             
-            ProofModuleFactory proofModuleFactory = new ProofModuleFactory(_api.DbProvider, _api.BlockTree, _api.BlockPreprocessor, _api.ReceiptFinder, _api.SpecProvider, _api.LogManager);
+            ProofModuleFactory proofModuleFactory = new ProofModuleFactory(_api.DbProvider, _api.BlockTree, _api.BlockPreprocessor, _api.ReceiptFinder, _api.SpecProvider, _api.LogManager, syncConfig);
             _api.RpcModuleProvider.Register(new BoundedModulePool<IProofModule>(proofModuleFactory, 2, rpcConfig.Timeout));
 
             DebugModuleFactory debugModuleFactory = new DebugModuleFactory(
@@ -123,7 +125,8 @@ namespace Nethermind.Runner.Ethereum.Steps
                 new ReceiptMigration(_api), 
                 _api.ConfigProvider, 
                 _api.SpecProvider, 
-                _api.LogManager);
+                _api.LogManager,
+                syncConfig);
             _api.RpcModuleProvider.Register(new BoundedModulePool<IDebugModule>(debugModuleFactory, _cpuCount, rpcConfig.Timeout));
 
             TraceModuleFactory traceModuleFactory = new TraceModuleFactory(
@@ -134,7 +137,8 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.RewardCalculatorSource, 
                 _api.ReceiptStorage,
                 _api.SpecProvider,
-                _api.LogManager);
+                _api.LogManager,
+                syncConfig);
             _api.RpcModuleProvider.Register(new BoundedModulePool<ITraceModule>(traceModuleFactory, _cpuCount, rpcConfig.Timeout));
             
             if (_api.EthereumEcdsa == null) throw new StepDependencyException(nameof(_api.EthereumEcdsa));

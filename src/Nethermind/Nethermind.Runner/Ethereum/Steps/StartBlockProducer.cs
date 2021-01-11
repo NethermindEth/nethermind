@@ -23,6 +23,7 @@ using Nethermind.Api.Extensions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Producers;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Db;
@@ -60,7 +61,6 @@ namespace Nethermind.Runner.Ethereum.Steps
         protected virtual void BuildProducer()
         {
             if (_api.ChainSpec == null) throw new StepDependencyException(nameof(_api.ChainSpec));
-            
             IConsensusPlugin? consensusPlugin = _api.Plugins
                 .OfType<IConsensusPlugin>()
                 .SingleOrDefault(cp => cp.SealEngineType == _api.SealEngineType);
@@ -79,6 +79,7 @@ namespace Nethermind.Runner.Ethereum.Steps
         {
             BlockProducerContext Create()
             {
+                ISyncConfig syncConfig = _api.Config<ISyncConfig>();
                 ReadOnlyDbProvider dbProvider = new ReadOnlyDbProvider(_api.DbProvider, false);
                 ReadOnlyBlockTree blockTree = new ReadOnlyBlockTree(_api.BlockTree);
                 ReadOnlyTxProcessingEnv txProcessingEnv = new ReadOnlyTxProcessingEnv(
@@ -96,7 +97,8 @@ namespace Nethermind.Runner.Ethereum.Steps
                         blockProcessor,
                         _api.BlockPreprocessor,
                         _api.LogManager,
-                        BlockchainProcessor.Options.NoReceipts);
+                        BlockchainProcessor.Options.NoReceipts,
+                        syncConfig);
 
                 OneTimeChainProcessor chainProcessor = new OneTimeChainProcessor(
                     dbProvider,

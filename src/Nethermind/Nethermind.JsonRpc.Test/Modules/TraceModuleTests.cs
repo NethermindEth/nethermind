@@ -48,6 +48,7 @@ using Nethermind.TxPool.Storages;
 using NUnit.Framework;
 using BlockTree = Nethermind.Blockchain.BlockTree;
 using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.Synchronization;
 
 namespace Nethermind.JsonRpc.Test.Modules
 {
@@ -108,7 +109,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 LimboLogs.Instance);
 
             var signatureRecovery = new RecoverSignatures(ethereumEcdsa, txPool, specProvider, LimboLogs.Instance);
-            BlockchainProcessor blockchainProcessor = new BlockchainProcessor(blockTree, blockProcessor, signatureRecovery, LimboLogs.Instance, BlockchainProcessor.Options.Default);
+            BlockchainProcessor blockchainProcessor = new BlockchainProcessor(blockTree, blockProcessor, signatureRecovery, LimboLogs.Instance, BlockchainProcessor.Options.Default, new SyncConfig());
             
             blockchainProcessor.Start();
 
