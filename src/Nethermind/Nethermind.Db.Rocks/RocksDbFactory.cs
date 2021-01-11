@@ -47,7 +47,9 @@ namespace Nethermind.Db.Rocks
 
         public ISnapshotableDb CreateSnapshotableMemoryMappedDb(RocksDbSettings rocksDbSettings)
         {
-            return new StateDb(new MemoryMappedDb(rocksDbSettings.DbName, new MemoryMappedKeyValueStore(Path.Combine(_basePath, rocksDbSettings.DbName))));
+            MemoryMappedKeyValueStore store = new MemoryMappedKeyValueStore(Path.Combine(_basePath, rocksDbSettings.DbName));
+            store.Initialize();
+            return new StateDb(new MemoryMappedDb(rocksDbSettings.DbName, store));
         }
 
         public IColumnsDb<T> CreateColumnsDb<T>(RocksDbSettings rocksDbSettings)
