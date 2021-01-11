@@ -1,13 +1,14 @@
 #!/bin/bash
 GH_OWNER=NethermindEth
 GH_REPO=nethermind
-
+#exit when any command fails
+set -e
 echo =======================================================
 echo Publishing packages to Github Releases
 echo =======================================================
 
-cd $RELEASE_DIRECTORY
-GIT_SHORT_TAG="$(tail git-tag.txt)"
+cd $RELEASE_DIRECTORY/nethermind
+GIT_SHORT_TAG="$(git describe --tags --abbrev=0)"
 STATUS=$(curl -s -o /dev/null -w '%{http_code}' https://api.github.com/repos/NethermindEth/nethermind/releases/tags/$GIT_SHORT_TAG)
 GIT_SHORT_TAG_FIRST3="${GIT_SHORT_TAG:0:3}"
 
@@ -19,7 +20,7 @@ cd $LIN_RELEASE && PUB_LIN_FILE="$(basename nethermind-linux-amd64-*)" && cd ..
 cd $OSX_RELEASE && PUB_OSX_FILE="$(basename nethermind-darwin-amd64-*)" && cd ..
 cd $WIN_RELEASE && PUB_WIN_FILE="$(basename nethermind-windows-amd64-*)" && cd ..
 
-if [[ $GIT_SHORT_TAG =~ ^$GIT_SHORT_TAG_FIRST3\d* ]] && [[ $STATUS != 200 ]]; then
+if [[ ! -z $GIT_SHORT_TAG ]] && [[ $GIT_SHORT_TAG =~ ^$GIT_SHORT_TAG_FIRST3\d* ]] && [[ $STATUS != 200 ]]; then
 
 API_JSON=$(printf '{"tag_name": "%s","target_commitish": "master","name": "v%s","body": "## Running Nethermind:\\n\\nNethermind Launcher is a self-contained app - you do not need to install .NET separately to run it.\\n\\n**Linux**\\n\\n1. `sudo apt-get update && sudo apt-get install libsnappy-dev libc6-dev libc6 unzip`\\n1. `wget https://github.com/NethermindEth/nethermind/releases/download/%s/%s`\\n1. `unzip %s -d nethermind`\\n1. `cd nethermind`\\n1. `./Nethermind.Launcher`\\n1. Select desired configuration\\n\\nAdditionally for Ubuntu 16.04\\n\\n1. `sudo add-apt-repository ppa:ubuntu-toolchain-r/test`\\n1. `sudo apt-get update`\\n1. `sudo apt-get install gcc-6 g++-6`\\n1. `sudo apt install libzstd1`\\n\\n**Windows**\\n\\n1. download windows package `%s`\\n1. unzip the file\\n1. run Nethermind.Launcher.exe\\n1. select desired configuration\\n\\n**macOS**\\n\\n1. `brew install rocksdb`\\n1. download darwin package `%s`\\n1. unzip the file\\n1. run Nethermind.Launcher\\n1. select desired configuration\\n\\n## Nethermind Data Marketplace:\\n\\nNDM packages can be downloaded directly from http://downloads.nethermind.io/.", "draft" :false, "prerelease": true}' $GIT_SHORT_TAG $GIT_SHORT_TAG $GIT_SHORT_TAG $PUB_LIN_FILE $PUB_LIN_FILE $PUB_WIN_FILE $PUB_OSX_FILE)
 
@@ -71,7 +72,8 @@ echo Packages have been successfully published on $RELEASE_URL
 echo =======================================================
 
 else
-echo =======================================================
-echo Incorrect tag or release already exists in repository
-echo =======================================================
+    echo =======================================================
+    echo Incorrect tag or release already exists in repository
+    echo =======================================================
+    exit 1
 fi
