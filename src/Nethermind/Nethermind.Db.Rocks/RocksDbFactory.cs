@@ -49,7 +49,7 @@ namespace Nethermind.Db.Rocks
         {
             MemoryMappedKeyValueStore store = new MemoryMappedKeyValueStore(Path.Combine(_basePath, rocksDbSettings.DbName));
             store.Initialize();
-            return new StateDb(new MemoryMappedDb(rocksDbSettings.DbName, store));
+            return new StateDb(new MemoryMappedDb(rocksDbSettings.DbPath, store));
         }
 
         public IColumnsDb<T> CreateColumnsDb<T>(RocksDbSettings rocksDbSettings)
