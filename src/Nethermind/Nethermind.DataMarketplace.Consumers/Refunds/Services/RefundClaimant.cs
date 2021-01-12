@@ -79,7 +79,7 @@ namespace Nethermind.DataMarketplace.Consumers.Refunds.Services
                 Address provider = deposit.DataAsset.Provider.Address;
                 RefundClaim refundClaim = new RefundClaim(depositId, deposit.DataAsset.Id, deposit.Deposit.Units,
                     deposit.Deposit.Value, deposit.Deposit.ExpiryTime, deposit.Pepper, provider, refundTo);
-                UInt256 gasPrice = await _gasPriceService.GetCurrentRefundAsync();
+                UInt256 gasPrice = await _gasPriceService.GetCurrentRefundGasPriceAsync();
                 transactionHash = await _refundService.ClaimRefundAsync(refundTo, refundClaim, gasPrice);
                 if (transactionHash is null)
                 {
@@ -134,7 +134,7 @@ namespace Nethermind.DataMarketplace.Consumers.Refunds.Services
                 EarlyRefundClaim earlyRefundClaim = new EarlyRefundClaim(ticket.DepositId, deposit.DataAsset.Id,
                     deposit.Deposit.Units, deposit.Deposit.Value, deposit.Deposit.ExpiryTime, deposit.Pepper, provider,
                     ticket.ClaimableAfter, ticket.Signature, refundTo);
-                UInt256 gasPrice = await _gasPriceService.GetCurrentRefundAsync();
+                UInt256 gasPrice = await _gasPriceService.GetCurrentRefundGasPriceAsync();
                 transactionHash = await _refundService.ClaimEarlyRefundAsync(refundTo, earlyRefundClaim, gasPrice);
                 if (transactionHash is null)
                 {
