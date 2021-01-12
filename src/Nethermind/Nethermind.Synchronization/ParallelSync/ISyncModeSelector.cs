@@ -35,6 +35,6 @@ namespace Nethermind.Synchronization.ParallelSync
     {
         public const int BeamSyncFastSyncLag = 2;
         
-        public const int NotBeamSyncFastSyncLag = 32;
+        public const int NotBeamSyncFastSyncLag = 2;
     }
 }
