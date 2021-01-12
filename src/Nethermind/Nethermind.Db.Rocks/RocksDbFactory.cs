@@ -47,7 +47,7 @@ namespace Nethermind.Db.Rocks
 
         public ISnapshotableDb CreateSnapshotableMemoryMappedDb(RocksDbSettings rocksDbSettings)
         {
-            MemoryMappedKeyValueStore store = new MemoryMappedKeyValueStore(Path.Combine(_basePath, rocksDbSettings.DbName), logFileSize: 1024 * 1024 * 1024);
+            MemoryMappedKeyValueStore store = new MemoryMappedKeyValueStore(Path.Combine(_basePath, rocksDbSettings.DbName), logFileSize: 512 * 1024 * 1024);
             store.Initialize();
             return new StateDb(new MemoryMappedDb(rocksDbSettings.DbPath, store));
         }

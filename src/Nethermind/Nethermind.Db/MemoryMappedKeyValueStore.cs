@@ -188,17 +188,18 @@ namespace Nethermind.Db
 
                 if (_flushFrom % _logFileSize == 0)
                 {
-                    // seal up the current, it written till the limit of the file
+                    // Seal up the current, it written till the limit of the file.
                     current.Flush(_logFileSize);
+
+                    // Flush jumps only when the log is being sealed. When recovery is introduced, this will require to scan only up to one log to recover when needed. 
+                    // For regular usage this should limit the flushes
+                    _jumps.Flush(JumpsFileSize);
                 }
                 else
                 {
                     // flush till the flush from points to
                     current.Flush((int)(_flushFrom % _logFileSize));
                 }
-
-                // log is flushed, flush map
-                _jumps.Flush(JumpsFileSize);
 
                 // remove all mapped already
                 foreach (byte[] key in mapped)
@@ -207,6 +208,9 @@ namespace Nethermind.Db
                 }
                 mapped.Clear();
             }
+
+            // flush jumps as the final step to remember all indexes
+            _jumps.Flush(JumpsFileSize);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
