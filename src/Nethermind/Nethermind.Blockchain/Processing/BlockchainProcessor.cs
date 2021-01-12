@@ -331,6 +331,7 @@ namespace Nethermind.Blockchain.Processing
         public bool IsProcessingBlocks
         {
             get
+          
             {
                 // ToDo check tasks
                 return _lastProcessedBlock.AddSeconds(_syncConfig.MaxIntervalWithoutProcessedBlock) > DateTime.UtcNow;

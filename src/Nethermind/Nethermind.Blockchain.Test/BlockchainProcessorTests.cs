@@ -184,18 +184,19 @@ namespace Nethermind.Blockchain.Test
             private BlockchainProcessor _processor;
             private ILogger _logger;
 
-            public ProcessingTestContext(bool startProcessor)
+            public ProcessingTestContext(bool startProcessor, int maxIntervalWithoutProcessedBlock = 0)
             {
                 _logger = _logManager.GetClassLogger();
                 MemDb blockDb = new MemDb();
                 MemDb blockInfoDb = new MemDb();
                 MemDb headersDb = new MemDb();
                 Block genesis = Build.A.Block.Genesis.TestObject;
+                ISyncConfig syncConfig = new SyncConfig() {MaxIntervalWithoutProcessedBlock = maxIntervalWithoutProcessedBlock};
 
                 _blockTree = new BlockTree(blockDb, headersDb, blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), MainnetSpecProvider.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
                 _blockProcessor = new BlockProcessorMock(_logManager);
                 _recoveryStep = new RecoveryStepMock(_logManager);
-                _processor = new BlockchainProcessor(_blockTree, _blockProcessor, _recoveryStep, LimboLogs.Instance, BlockchainProcessor.Options.Default, new SyncConfig());
+                _processor = new BlockchainProcessor(_blockTree, _blockProcessor, _recoveryStep, LimboLogs.Instance, BlockchainProcessor.Options.Default, syncConfig);
                 _resetEvent = new AutoResetEvent(false);
 
                 _blockTree.NewHeadBlock += (sender, args) =>
@@ -206,6 +207,12 @@ namespace Nethermind.Blockchain.Test
 
                 if (startProcessor)
                     _processor.Start();
+            }
+
+            public ProcessingTestContext IsProcessingBlocks(bool expectedIsProcessingBlocks)
+            {
+                Assert.AreEqual(expectedIsProcessingBlocks, _processor.IsProcessingBlocks);
+                return this;
             }
 
             public ProcessingTestContext AndRecoveryQueueLimitHasBeenReached()
@@ -356,12 +363,6 @@ namespace Nethermind.Blockchain.Test
                     Assert.AreEqual(_block.Header.Hash, _processingTestContext._blockTree.Genesis.Hash, "genesis");
                     return _processingTestContext;
                 }
-                
-                public ProcessingTestContext Sleep(int milliseconds)
-                {
-                    Thread.Sleep(milliseconds);
-                    return _processingTestContext;
-                }
 
                 public ProcessingTestContext BecomesNewHead()
                 {
@@ -390,6 +391,12 @@ namespace Nethermind.Blockchain.Test
                     return _processingTestContext;
                 }
             }
+
+            public ProcessingTestContext Sleep(int milliseconds)
+            {
+                Thread.Sleep(milliseconds);
+                return this;
+            }
         }
 
         private static class When
@@ -397,6 +404,7 @@ namespace Nethermind.Blockchain.Test
             public static ProcessingTestContext ProcessingBlocks => new ProcessingTestContext(true);
 
             public static ProcessingTestContext ProcessorIsNotStarted => new ProcessingTestContext(false);
+            public static ProcessingTestContext MaxIntervalWithoutProcessedBlockIs(int maxIntervalWithoutProcessedBlock) => new ProcessingTestContext(true, maxIntervalWithoutProcessedBlock);
         }
 
         private static Block _block0 = Build.A.Block.WithNumber(0).WithNonce(0).WithDifficulty(0).TestObject;
@@ -610,14 +618,32 @@ namespace Nethermind.Blockchain.Test
         }
         
         [Test]
-        public void IsProcessingBlocks_returns_false_when_max_interval_elapsed()
+        public void IsProcessingBlocks_returns_true_when_processing_blocks()
         {
-            When.ProcessingBlocks
+            When.MaxIntervalWithoutProcessedBlockIs(1)
+                .IsProcessingBlocks(false)
                 .FullyProcessed(_block0).BecomesGenesis()
                 .FullyProcessed(_block1D2).BecomesNewHead()
+                .IsProcessingBlocks(true)
                 .FullyProcessed(_block2D4).BecomesNewHead()
+                .IsProcessingBlocks(true)
                 .FullyProcessed(_block3D6).BecomesNewHead()
-                .FullyProcessed(_blockC2D100).BecomesNewHead();
+                .IsProcessingBlocks(true);
+        }
+        
+        [Test]
+        public void IsProcessingBlocks_returns_false_when_max_interval_elapsed()
+        {
+            When.MaxIntervalWithoutProcessedBlockIs(1)
+                .IsProcessingBlocks(false)
+                .FullyProcessed(_block0).BecomesGenesis()
+                .FullyProcessed(_block1D2).BecomesNewHead()
+                .IsProcessingBlocks(true)
+                .FullyProcessed(_block2D4).BecomesNewHead()
+                .Sleep(2000)
+                .IsProcessingBlocks(false)
+                .FullyProcessed(_block3D6).BecomesNewHead()
+                .IsProcessingBlocks(true);
         }
     }
 }
