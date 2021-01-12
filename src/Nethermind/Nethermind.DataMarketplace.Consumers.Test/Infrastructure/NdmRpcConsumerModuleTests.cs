@@ -524,7 +524,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
             const string type = "test";
             var result = await _rpc.ndm_setGasPrice(type);
             result.Data.Should().BeTrue();
-            await _gasPriceService.Received().SetAsync(type);
+            await _gasPriceService.Received().SetGasPriceOrTypeAsync(type);
         }
         
         [Test]

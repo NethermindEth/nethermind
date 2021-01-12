@@ -60,19 +60,19 @@ namespace Nethermind.DataMarketplace.Core.Services
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
-        public async Task<UInt256> GetCurrentAsync()
+        public async Task<UInt256> GetCurrentGasPriceAsync()
         {
             NdmConfig? config = await _configManager.GetAsync(_configId);
             return config?.GasPrice ?? 20.GWei();
         }
         
-        public async Task<UInt256> GetCurrentRefundAsync()
+        public async Task<UInt256> GetCurrentRefundGasPriceAsync()
         {
             NdmConfig? config = await _configManager.GetAsync(_configId);
             return config?.RefundGasPrice ?? 20.GWei();
         }
 
-        public async Task SetAsync(string gasPriceOrType)
+        public async Task SetGasPriceOrTypeAsync(string gasPriceOrType)
         {
             string type;
             bool isHex = gasPriceOrType.StartsWith("0x");
@@ -112,7 +112,7 @@ namespace Nethermind.DataMarketplace.Core.Services
             }
         }
         
-        public async Task SetRefundAsync(UInt256 gasPrice)
+        public async Task SetRefundGasPriceAsync(UInt256 gasPrice)
         {
             if (gasPrice <= 0)
             {
@@ -131,13 +131,13 @@ namespace Nethermind.DataMarketplace.Core.Services
             if (_logger.IsInfo) _logger.Info($"Updated refund gas price: {config.RefundGasPrice} wei.");
         }
         
-        public async Task<UInt256> GetCurrentPaymentClaimAsync()
+        public async Task<UInt256> GetCurrentPaymentClaimGasPriceAsync()
         {
             NdmConfig? config = await _configManager.GetAsync(_configId);
             return config?.PaymentClaimGasPrice ?? 20.GWei();
         }
         
-        public async Task SetPaymentClaimAsync(UInt256 gasPrice)
+        public async Task SetPaymentClaimGasPriceAsync(UInt256 gasPrice)
         {
             if (gasPrice <= 0)
             {
@@ -156,7 +156,7 @@ namespace Nethermind.DataMarketplace.Core.Services
             if (_logger.IsInfo) _logger.Info($"Updated payment claim  gas price: {config.PaymentClaimGasPrice} wei.");
         }
 
-        public async Task UpdateAsync()
+        public async Task UpdateGasPriceAsync()
         {
             NdmConfig? config = await _configManager.GetAsync(_configId);
             if (config == null)
