@@ -114,6 +114,9 @@ jobs:
     - name: Nethermind.Evm.Test
       run: |
         dotnet test -c Release src/Nethermind/Nethermind.Evm.Test
+    - name: Nethermind.EthStats.Test
+      run: |
+        dotnet test -c Release src/Nethermind/Nethermind.EthStats.Test
     - name: Nethermind.JsonRpc.Test
       run: |
         dotnet test -c Release src/Nethermind/Nethermind.JsonRpc.Test

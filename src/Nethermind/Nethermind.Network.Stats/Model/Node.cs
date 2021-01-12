@@ -121,9 +121,7 @@ namespace Nethermind.Stats.Model
 
         private void SetIPEndPoint(string host, int port)
         {
-            Host = host;
-            Port = port;
-            Address = new IPEndPoint(IPAddress.Parse(host), port);
+            SetIPEndPoint(new IPEndPoint(IPAddress.Parse(host), port));
         }
         
         public override bool Equals(object obj)
@@ -141,21 +139,12 @@ namespace Nethermind.Stats.Model
             return false;
         }
 
-        public override int GetHashCode()
-        {
-            return HashCode.Combine(Id);
-        }
+        public override int GetHashCode() => HashCode.Combine(Id);
 
-        public override string ToString()
-        {
-            return $"enode://{Id.ToString(false)}@{Host}:{Port}|{Id.Address}";
-        }
+        public override string ToString() => ToString("p");
 
-        public string ToString(string format)
-        {
-            return ToString(format, null);
-        }  
-       
+        public string ToString(string format) => ToString(format, null);
+
         public string ToString(string format, IFormatProvider formatProvider)
         {
             return format switch
@@ -164,6 +153,7 @@ namespace Nethermind.Stats.Model
                 "c" => $"[Node|{Host}:{Port}|{ClientId}|{EthDetails}]",
                 "f" => $"enode://{Id.ToString(false)}@{Host}:{Port}|{ClientId}",
                 "e" => $"enode://{Id.ToString(false)}@{Host}:{Port}",
+                "p" => $"enode://{Id.ToString(false)}@{Host}:{Port}|{Id.Address}",
                 _ => $"enode://{Id.ToString(false)}@{Host}:{Port}"
             };
         }

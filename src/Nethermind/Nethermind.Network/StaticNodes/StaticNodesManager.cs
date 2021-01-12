@@ -38,7 +38,7 @@ namespace Nethermind.Network.StaticNodes
 
         public StaticNodesManager(string staticNodesPath, ILogManager logManager)
         {
-            _staticNodesPath = staticNodesPath;
+            _staticNodesPath = staticNodesPath.GetApplicationResourcePath();
             _logger = logManager.GetClassLogger();
         }
 
