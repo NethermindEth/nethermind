@@ -131,16 +131,16 @@ namespace Nethermind.Db
         private class Batch
         {
             private static readonly byte[] s_deleteMarker = new byte[0];
-            private readonly ConcurrentDictionary<byte[], byte[]> _values = new ConcurrentDictionary<byte[], byte[]>(Bytes.EqualityComparer);
+            private readonly List<ValueTuple<byte[], byte[]>> _values = new List<(byte[], byte[])>();
 
             public void Delete(byte[] key)
             {
-                _values[key] = s_deleteMarker;
+                _values.Add((key, s_deleteMarker));
             }
 
             public void Put(byte[] key, byte[] value)
             {
-                _values[key] = value;
+                _values.Add((key, value));
             }
 
             public void Commit(MemoryMappedKeyValueStore store)
