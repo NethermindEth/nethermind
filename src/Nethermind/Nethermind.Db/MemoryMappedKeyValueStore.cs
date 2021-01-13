@@ -173,6 +173,9 @@ namespace Nethermind.Db
                     {
                         // left zeros, bump up the flushFrom and break
                         _flushFrom += leftover;
+
+                        // the current one was not flushed, it should be restored to the next, then we can break
+                        flushed = flushed._next;
                         break;
                     }
 
@@ -186,7 +189,6 @@ namespace Nethermind.Db
 
                     _flushFrom += length;
                     batchCount++;
-
                 }
 
                 if (_flushFrom % _logFileSize == 0)
