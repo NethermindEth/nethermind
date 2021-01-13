@@ -5,9 +5,9 @@ using System.Collections.Generic;
 using System.IO;
 using System.IO.MemoryMappedFiles;
 using System.Linq;
-using System.Reflection.Metadata;
 using System.Runtime.CompilerServices;
 using System.Threading;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Db
 {
@@ -53,8 +53,10 @@ namespace Nethermind.Db
         readonly int _maxBatchFlushSize;
         readonly List<MemoryMappedFile> _files = new List<MemoryMappedFile>();
         readonly Map[] _maps = new Map[MaxNumberOfFiles];
-        readonly ConcurrentDictionary<byte[], byte[]> _values = new ConcurrentDictionary<byte[], byte[]>(new EqualityComparer());
         readonly CancellationTokenSource _cts;
+
+        private volatile Node _head;
+        private volatile Node _recentlyFlushed;
 
         static readonly byte[] s_nullMarker = new byte[0];
 
@@ -89,6 +91,7 @@ namespace Nethermind.Db
             _logFileSize = logFileSize;
             _maxBatchFlushSize = maxBatchFlushSize;
             _cts = new CancellationTokenSource();
+            _head = _recentlyFlushed = new Node(null, null); // guardian
         }
 
         public void Initialize()
@@ -128,10 +131,10 @@ namespace Nethermind.Db
         unsafe void RunFlusher()
         {
             Span<long> jumpTable = new Span<long>(_jumps.Pointer, JumpsCount);
-            List<byte[]> mapped = new List<byte[]>();
 
             SpinWait sw = default;
-            while (!_cts.IsCancellationRequested || !_values.IsEmpty)
+
+            while (!_cts.IsCancellationRequested || !HasNoEntriesToFlush)
             {
                 int fileNumber = (int)(_flushFrom / _logFileSize);
                 ref Map current = ref _maps[fileNumber];
@@ -141,49 +144,49 @@ namespace Nethermind.Db
                     Volatile.Write(ref current, CreateLogFile(fileNumber));
                 }
 
-                if (_values.IsEmpty)
+                if (HasNoEntriesToFlush)
                 {
                     sw.SpinOnce();
                     continue; // nothing to do, nothing to flush
                 }
 
                 int batchCount = 0;
-                using (IEnumerator<KeyValuePair<byte[], byte[]>> enumerator = _values.GetEnumerator())
+
+                Node flushed = _recentlyFlushed;
+                while (_head != flushed && flushed._prev != null && batchCount < _maxBatchFlushSize)
                 {
-                    while (batchCount < _maxBatchFlushSize && enumerator.MoveNext())
+                    // go the prev
+                    flushed = flushed._prev;
+                    byte[] keccak = flushed.Key;
+                    byte[] value = flushed.Key;
+
+                    int index = ReadJumpIndex(keccak);
+                    ref long jump = ref jumpTable[index];
+                    long header = BuildHeader(ReferenceEquals(value, s_nullMarker) ? NullValueLength : value.Length, jump);
+
+                    int length = HeaderLength + KeccakLength + Align(value.Length, ByteAlignment);
+                    int position = (int)(_flushFrom % _logFileSize);
+
+                    int leftover = _logFileSize - position;
+                    Span<byte> span = new Span<byte>(current.Pointer + position, leftover);
+                    if (length > leftover)
                     {
-                        (byte[] keccak, byte[] value) = enumerator.Current;
-
-                        int index = ReadJumpIndex(keccak);
-                        ref long jump = ref jumpTable[index];
-                        long header = BuildHeader(ReferenceEquals(value, s_nullMarker) ? NullValueLength : value.Length, jump);
-
-                        int length = HeaderLength + KeccakLength + Align(value.Length, ByteAlignment);
-                        int position = (int)(_flushFrom % _logFileSize);
-
-                        int leftover = _logFileSize - position;
-                        Span<byte> span = new Span<byte>(current.Pointer + position, leftover);
-                        if (length > leftover)
-                        {
-                            // left zeros, bump up the flushFrom and break
-                            _flushFrom += leftover;
-                            break;
-                        }
-
-                        // write down to span
-                        BinaryPrimitives.WriteInt64LittleEndian(span, header);
-                        keccak.CopyTo(span.Slice(HeaderLength));
-                        value.CopyTo(span.Slice(HeaderLength + KeccakLength));
-
-                        // write to map with volatile making it eventually visible
-                        Volatile.Write(ref jump, _flushFrom);
-
-                        // write to span
-                        mapped.Add(keccak);
-
-                        _flushFrom += length;
-                        batchCount++;
+                        // left zeros, bump up the flushFrom and break
+                        _flushFrom += leftover;
+                        break;
                     }
+
+                    // write down to span
+                    BinaryPrimitives.WriteInt64LittleEndian(span, header);
+                    keccak.CopyTo(span.Slice(HeaderLength));
+                    value.CopyTo(span.Slice(HeaderLength + KeccakLength));
+
+                    // write to map with volatile making it eventually visible
+                    Volatile.Write(ref jump, _flushFrom);
+
+                    _flushFrom += length;
+                    batchCount++;
+
                 }
 
                 if (_flushFrom % _logFileSize == 0)
@@ -201,17 +204,18 @@ namespace Nethermind.Db
                     current.Flush((int)(_flushFrom % _logFileSize));
                 }
 
-                // remove all mapped already
-                foreach (byte[] key in mapped)
-                {
-                    _values.TryRemove(key, out _);
-                }
-                mapped.Clear();
+                // remember what was flushed
+                _recentlyFlushed = flushed;
+                
+                // remove the tail that was already flushed
+                flushed._next = null;
             }
 
             // flush jumps as the final step to remember all indexes
             _jumps.Flush(JumpsFileSize);
         }
+
+        public bool HasNoEntriesToFlush => _head == _recentlyFlushed;
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         static long BuildHeader(int valueLength, long jump) => ((long)valueLength << ValueLengthShift) | jump;
@@ -270,13 +274,13 @@ namespace Nethermind.Db
                 unsafe
                 {
                     new Span<byte>(map.Pointer, size).Clear();
+                    
+                    map.Flush(0);
                 }
             }
 
             return map;
         }
-
-        public bool Flushed => _values.IsEmpty;
 
         public void Delete(byte[] key)
         {
@@ -285,7 +289,7 @@ namespace Nethermind.Db
                 throw new ArgumentException($"The key should be {KeyLength} long", nameof(key));
             }
 
-            _values[key] = s_nullMarker;
+            Enqueue(key, s_nullMarker);
         }
 
         public void Set(byte[] key, byte[] value)
@@ -302,23 +306,32 @@ namespace Nethermind.Db
                 throw new ArgumentException($"The key should be {KeyLength} long", nameof(key));
             }
 
-            _values[key] = value;
+            Enqueue(key, value);
         }
 
         public unsafe bool TryGet(byte[] key, out Slice value)
         {
-            if (_values.TryGetValue(key, out byte[] array))
+            // scan in-memory first
+            Node current = _head;
+
+            while (current != null)
             {
-                if (array == s_nullMarker)
+                if (Bytes.EqualityComparer.Equals(key, current.Key))
                 {
-                    value = default;
-                    return false;
+                    if (current.Value == s_nullMarker)
+                    {
+                        value = default;
+                        return false;
+                    }
+
+                    value = new Slice(current.Value);
+                    return true;
                 }
 
-                value = new Slice(array);
-                return true;
+                current = current._next;
             }
 
+            // read db
             int index = ReadJumpIndex(key);
             Span<long> jumpTable = new Span<long>(_jumps.Pointer, JumpsCount);
 
@@ -475,6 +488,37 @@ namespace Nethermind.Db
 
                 _offset = nextOffsetPosition;
             }
+        }
+
+        private void Enqueue(byte[] key, byte[] value)
+        {
+            Node node = new Node(key, value);
+            Node previousHead;
+
+            do
+            {
+                previousHead = _head;
+                node._next = previousHead;
+            } while (Interlocked.CompareExchange(ref _head, previousHead, node) != previousHead);
+            
+            // swap happened, the node is the new _head
+            previousHead._prev = node;
+
+        }
+
+        class Node
+        {
+            public Node(byte[] key, byte[] value)
+            {
+                Key = key;
+                Value = value;
+            }
+
+            public byte[] Key { get; }
+            public byte[] Value { get; }
+
+            public volatile Node _next;
+            public volatile Node _prev;
         }
     }
 }
