@@ -20,6 +20,7 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Producers;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Int256;
@@ -38,7 +39,8 @@ namespace Nethermind.Core.Test.Blockchain
             IBlockTree blockTree,
             IBlockProcessingQueue blockProcessingQueue,
             ITimestamper timestamper,
-            ILogManager logManager)
+            ILogManager logManager,
+            ISyncConfig syncConfig)
             : base(
                 transactionSource,
                 processor,

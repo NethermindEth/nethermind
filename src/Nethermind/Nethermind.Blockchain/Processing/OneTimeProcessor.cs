@@ -63,7 +63,11 @@ namespace Nethermind.Blockchain.Processing
             }
         }
 
-        public bool IsProcessingBlocks { get; } // ToDo
+        public bool IsProcessingBlocks(ulong? maxProcessingInterval)
+        {
+            // ToDo
+            throw new NotImplementedException();
+        }
 
         public void Dispose()
         {

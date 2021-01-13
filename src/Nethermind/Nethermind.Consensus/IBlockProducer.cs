@@ -22,6 +22,6 @@ namespace Nethermind.Consensus
     {
         void Start();
         Task StopAsync();
-        bool IsProducingBlocks { get; }
+        bool IsProducingBlocks(ulong? maxProducingInterval);
     }
 }

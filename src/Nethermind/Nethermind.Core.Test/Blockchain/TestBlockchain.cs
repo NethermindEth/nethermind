@@ -125,15 +125,15 @@ namespace Nethermind.Core.Test.Blockchain
             VirtualMachine virtualMachine = new VirtualMachine(State, Storage, new BlockhashProvider(BlockTree, LimboLogs.Instance), SpecProvider, LimboLogs.Instance);
             TxProcessor = new TransactionProcessor(SpecProvider, State, Storage, virtualMachine, LimboLogs.Instance);
             BlockProcessor = CreateBlockProcessor();
-
-            BlockchainProcessor chainProcessor = new BlockchainProcessor(BlockTree, BlockProcessor, new RecoverSignatures(EthereumEcdsa, TxPool, SpecProvider, LimboLogs.Instance), LimboLogs.Instance, Nethermind.Blockchain.Processing.BlockchainProcessor.Options.Default, new SyncConfig());
+            ISyncConfig syncConfig = new SyncConfig();
+            BlockchainProcessor chainProcessor = new BlockchainProcessor(BlockTree, BlockProcessor, new RecoverSignatures(EthereumEcdsa, TxPool, SpecProvider, LimboLogs.Instance), LimboLogs.Instance, Nethermind.Blockchain.Processing.BlockchainProcessor.Options.Default);
             BlockchainProcessor = chainProcessor;
             chainProcessor.Start();
 
             StateReader = new StateReader(StateDb, CodeDb, LimboLogs.Instance);
             TxPoolTxSource txPoolTxSource = CreateTxPoolTxSource();
             ISealer sealer = new NethDevSealEngine(TestItem.AddressD);
-            BlockProducer = new TestBlockProducer(txPoolTxSource, chainProcessor, State, sealer, BlockTree, chainProcessor, Timestamper, LimboLogs.Instance);
+            BlockProducer = new TestBlockProducer(txPoolTxSource, chainProcessor, State, sealer, BlockTree, chainProcessor, Timestamper, LimboLogs.Instance, syncConfig);
             BlockProducer.Start();
 
             _resetEvent = new SemaphoreSlim(0);

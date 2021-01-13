@@ -97,8 +97,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                         blockProcessor,
                         _api.BlockPreprocessor,
                         _api.LogManager,
-                        BlockchainProcessor.Options.NoReceipts,
-                        syncConfig);
+                        BlockchainProcessor.Options.NoReceipts);
 
                 OneTimeChainProcessor chainProcessor = new OneTimeChainProcessor(
                     dbProvider,

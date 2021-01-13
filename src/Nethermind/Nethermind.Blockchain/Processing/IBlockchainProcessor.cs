@@ -28,6 +28,6 @@ namespace Nethermind.Blockchain.Processing
         
         Block Process(Block block, ProcessingOptions options, IBlockTracer tracer);
 
-        bool IsProcessingBlocks { get; }
+        bool IsProcessingBlocks(ulong? maxProcessingInterval);
     }
 }

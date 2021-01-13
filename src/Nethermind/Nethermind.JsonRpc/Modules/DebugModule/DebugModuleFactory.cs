@@ -20,7 +20,6 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Rewards;
-using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Config;
@@ -44,7 +43,6 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
         private readonly ISpecProvider _specProvider;
         private readonly ILogManager _logManager;
         private readonly IBlockPreprocessorStep _recoveryStep;
-        private readonly ISyncConfig _syncConfig;
         private ILogger _logger;
 
         public DebugModuleFactory(
@@ -58,8 +56,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
             IReceiptsMigration receiptsMigration,
             IConfigProvider configProvider,
             ISpecProvider specProvider,
-            ILogManager logManager,
-            ISyncConfig syncConfig)
+            ILogManager logManager)
         {
             _dbProvider = dbProvider ?? throw new ArgumentNullException(nameof(dbProvider));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
@@ -72,7 +69,6 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
             _configProvider = configProvider ?? throw new ArgumentNullException(nameof(configProvider));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
-            _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
             _logger = logManager.GetClassLogger();
         }
 
@@ -80,7 +76,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
         {
             IReadOnlyDbProvider readOnlyDbProvider = new ReadOnlyDbProvider(_dbProvider, false);
             ReadOnlyBlockTree readOnlyTree = new ReadOnlyBlockTree(_blockTree);
-
+            
             ReadOnlyTxProcessingEnv txEnv =
                 new ReadOnlyTxProcessingEnv(
                     readOnlyDbProvider,
@@ -97,8 +93,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
                     _receiptStorage,
                     readOnlyDbProvider,
                     _specProvider,
-                    _logManager,
-                    _syncConfig);
+                    _logManager);
 
             IGethStyleTracer tracer =
                 new GethStyleTracer(

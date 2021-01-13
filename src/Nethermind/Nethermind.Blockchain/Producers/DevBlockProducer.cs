@@ -20,6 +20,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Timers;
 using Nethermind.Blockchain.Processing;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
@@ -78,6 +79,7 @@ namespace Nethermind.Blockchain.Producers
             _txPool.NewPending += OnNewPendingTx;
             BlockTree.NewHeadBlock += OnNewHeadBlock;
             _timer.Start();
+            _lastProducedBlock = DateTime.UtcNow;
         }
         
         public override async Task StopAsync()

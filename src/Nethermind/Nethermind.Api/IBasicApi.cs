@@ -24,7 +24,6 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Db;
-using Nethermind.JsonRpc.Services;
 using Nethermind.KeyStore;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
@@ -46,7 +45,6 @@ namespace Nethermind.Api
         IMemDbFactory? MemDbFactory { get; set; }
         IEthereumEcdsa? EthereumEcdsa { get; set; }
         IJsonSerializer EthereumJsonSerializer { get; }
-        IHealthService HealthService { get; set; }
         IFileSystem FileSystem { get; set; }
         IKeyStore? KeyStore { get; set; }
         ILogManager LogManager { get; }

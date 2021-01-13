@@ -9,6 +9,7 @@ namespace Nethermind.HealthChecks
     {
         private INethermindApi _api;
         private IHealthChecksConfig _healthChecksConfig;
+        private INodeHealthService _nodeHealthService;
 
         public void Dispose()
         {
@@ -24,6 +25,8 @@ namespace Nethermind.HealthChecks
         {
             _api = api;
             _healthChecksConfig = _api.Config<IHealthChecksConfig>();
+            IInitConfig initConfig = _api.Config<IInitConfig>();
+            _nodeHealthService = new NodeHealthService(_api.RpcModuleProvider, _api.BlockchainProcessor, _api.BlockProducer, _healthChecksConfig, _api.ChainSpec, initConfig.IsMining);
 
             return Task.CompletedTask;
         }
@@ -33,7 +36,7 @@ namespace Nethermind.HealthChecks
             service.AddHealthChecks()
                 .AddTypeActivatedCheck<NodeHealthCheck>(
                     "node-health", 
-                    args: new object[] { _api.HealthService });
+                    args: new object[] { _nodeHealthService });
             if (_healthChecksConfig.UIEnabled)
             {
                 service.AddHealthChecksUI(setup =>

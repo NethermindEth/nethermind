@@ -42,7 +42,6 @@ using Nethermind.Db.Blooms;
 using Nethermind.TxPool;
 using NUnit.Framework;
 using System.Threading.Tasks;
-using Nethermind.Blockchain.Synchronization;
 
 namespace Nethermind.JsonRpc.Test.Modules.Proof
 {
@@ -79,8 +78,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
                 new CompositeBlockPreprocessorStep(new RecoverSignatures(new EthereumEcdsa(ChainId.Mainnet, LimboLogs.Instance), NullTxPool.Instance, _specProvider, LimboLogs.Instance)),
                 receiptStorage,
                 _specProvider,
-                LimboLogs.Instance,
-                new SyncConfig());
+                LimboLogs.Instance);
 
             _proofModule = moduleFactory.Create();
         }

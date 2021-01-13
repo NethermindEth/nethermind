@@ -170,6 +170,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Analytics", "Net
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.HealthChecks", "Nethermind.HealthChecks\Nethermind.HealthChecks.csproj", "{19105CF0-2602-4F5A-85F3-B3B7BA5B6C40}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.HealthChecks.Test", "Nethermind.HealthChecks.Test\Nethermind.HealthChecks.Test.csproj", "{09A68405-C911-4827-A705-931F45E26EFD}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -456,6 +458,10 @@ Global
 		{19105CF0-2602-4F5A-85F3-B3B7BA5B6C40}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{19105CF0-2602-4F5A-85F3-B3B7BA5B6C40}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{19105CF0-2602-4F5A-85F3-B3B7BA5B6C40}.Release|Any CPU.Build.0 = Release|Any CPU
+		{09A68405-C911-4827-A705-931F45E26EFD}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{09A68405-C911-4827-A705-931F45E26EFD}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{09A68405-C911-4827-A705-931F45E26EFD}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{09A68405-C911-4827-A705-931F45E26EFD}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -550,6 +556,7 @@ Global
 		{B6A4B633-1630-4501-BF43-743D6A40FF86} = {94CF4207-DA03-4D26-AAA2-284475A6DF1E}
 		{99ABC9F6-C0DE-4579-8AFB-B42CDE0E840F} = {94CF4207-DA03-4D26-AAA2-284475A6DF1E}
 		{47D3BEB6-E29C-467F-A615-BB9A1FE3DEA0} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
+		{09A68405-C911-4827-A705-931F45E26EFD} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

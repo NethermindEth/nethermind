@@ -21,7 +21,6 @@ using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
-using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
@@ -41,7 +40,6 @@ namespace Nethermind.Blockchain.Processing
         private readonly IBlockProcessor _blockProcessor;
         private readonly IBlockPreprocessorStep _recoveryStep;
         private readonly Options _options;
-        private readonly ISyncConfig _syncConfig;
         private readonly IBlockTree _blockTree;
         private readonly ILogger _logger;
 
@@ -68,15 +66,13 @@ namespace Nethermind.Blockchain.Processing
             IBlockProcessor blockProcessor,
             IBlockPreprocessorStep recoveryStep,
             ILogManager logManager,
-            Options options,
-            ISyncConfig syncConfig)
+            Options options)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _blockProcessor = blockProcessor ?? throw new ArgumentNullException(nameof(blockProcessor));
             _recoveryStep = recoveryStep ?? throw new ArgumentNullException(nameof(recoveryStep));
             _options = options;
-            _syncConfig = syncConfig;
 
             if (_options.AutoProcess)
             {
@@ -328,14 +324,15 @@ namespace Nethermind.Blockchain.Processing
             return lastProcessed;
         }
 
-        public bool IsProcessingBlocks
+        public bool IsProcessingBlocks(ulong? maxProcessingInterval)
         {
-            get
-          
-            {
-                // ToDo check tasks
-                return _lastProcessedBlock.AddSeconds(_syncConfig.MaxIntervalWithoutProcessedBlock) > DateTime.UtcNow;
-            }
+            if (_processorTask.Status != TaskStatus.Running || _recoveryTask.Status != TaskStatus.Running)
+                return false;
+            
+            if (maxProcessingInterval != null)
+                return _lastProcessedBlock.AddSeconds(maxProcessingInterval.Value) > DateTime.UtcNow;
+            else // user does not setup interval and we cannot set interval time based on chainspec
+                return true;
         }
 
         private void TraceFailingBranch(ProcessingBranch processingBranch, ProcessingOptions options, IBlockTracer blockTracer)

@@ -292,7 +292,11 @@ namespace Nethermind.Consensus.Clique
             await (_producerTask ?? Task.CompletedTask);
         }
 
-        public bool IsProducingBlocks { get; }
+        bool IBlockProducer.IsProducingBlocks(ulong? maxProducingInterval)
+        {
+            // ToDo
+            throw new NotImplementedException();
+        }
 
         private Keccak? _recentNotAllowedParent;
 

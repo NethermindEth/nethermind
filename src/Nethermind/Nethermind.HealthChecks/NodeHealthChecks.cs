@@ -20,26 +20,22 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
-using Nethermind.JsonRpc.Modules;
-using Nethermind.JsonRpc.Modules.Eth;
-using Nethermind.JsonRpc.Modules.Net;
-using Nethermind.JsonRpc.Services;
 
 namespace Nethermind.HealthChecks
 {
     public class NodeHealthCheck: IHealthCheck
     {
-        private readonly IHealthService _healthService;
-        public NodeHealthCheck(IHealthService healthService)
+        private readonly INodeHealthService _nodeHealthService;
+        public NodeHealthCheck(INodeHealthService nodeHealthService)
         {
-            _healthService = healthService ?? throw new ArgumentNullException(nameof(healthService));
+            _nodeHealthService = nodeHealthService ?? throw new ArgumentNullException(nameof(nodeHealthService));
         }
 
         public async Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext context, CancellationToken cancellationToken = default)
         {
             try
             {
-                CheckHealthResult healthResult = await _healthService.CheckHealth();
+                CheckHealthResult healthResult = await Task.Run(() => _nodeHealthService.CheckHealth(), cancellationToken);
                 string description = FormatMessages(healthResult.Messages.Select(x => x.LongMessage));
                 if (healthResult.Healthy)
                     return HealthCheckResult.Healthy(description);

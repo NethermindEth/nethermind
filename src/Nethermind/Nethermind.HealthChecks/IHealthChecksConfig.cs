@@ -44,5 +44,9 @@ namespace Nethermind.HealthChecks
 
         [ConfigItem(Description = "Configures the UI to poll for healthchecks updates (in seconds)", DefaultValue = "5")]
         public int PollingInterval { get; set; }
+        
+        public ulong? MaxIntervalWithoutProcessedBlock { get; set; }
+        
+        public ulong? MaxIntervalWithoutProducedBlock { get; set; }
     }
 }

@@ -17,9 +17,9 @@
 
 using System.Threading.Tasks;
 
-namespace Nethermind.JsonRpc.Services
+namespace Nethermind.HealthChecks
 {
-    public interface IHealthService
+    public interface INodeHealthService
     {
         Task<CheckHealthResult> CheckHealth();
     }

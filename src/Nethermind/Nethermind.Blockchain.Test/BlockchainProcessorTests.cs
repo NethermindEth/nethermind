@@ -184,19 +184,18 @@ namespace Nethermind.Blockchain.Test
             private BlockchainProcessor _processor;
             private ILogger _logger;
 
-            public ProcessingTestContext(bool startProcessor, int maxIntervalWithoutProcessedBlock = 0)
+            public ProcessingTestContext(bool startProcessor)
             {
                 _logger = _logManager.GetClassLogger();
                 MemDb blockDb = new MemDb();
                 MemDb blockInfoDb = new MemDb();
                 MemDb headersDb = new MemDb();
                 Block genesis = Build.A.Block.Genesis.TestObject;
-                ISyncConfig syncConfig = new SyncConfig() {MaxIntervalWithoutProcessedBlock = maxIntervalWithoutProcessedBlock};
 
                 _blockTree = new BlockTree(blockDb, headersDb, blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), MainnetSpecProvider.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
                 _blockProcessor = new BlockProcessorMock(_logManager);
                 _recoveryStep = new RecoveryStepMock(_logManager);
-                _processor = new BlockchainProcessor(_blockTree, _blockProcessor, _recoveryStep, LimboLogs.Instance, BlockchainProcessor.Options.Default, syncConfig);
+                _processor = new BlockchainProcessor(_blockTree, _blockProcessor, _recoveryStep, LimboLogs.Instance, BlockchainProcessor.Options.Default);
                 _resetEvent = new AutoResetEvent(false);
 
                 _blockTree.NewHeadBlock += (sender, args) =>
@@ -209,9 +208,9 @@ namespace Nethermind.Blockchain.Test
                     _processor.Start();
             }
 
-            public ProcessingTestContext IsProcessingBlocks(bool expectedIsProcessingBlocks)
+            public ProcessingTestContext IsProcessingBlocks(bool expectedIsProcessingBlocks, ulong maxInterval)
             {
-                Assert.AreEqual(expectedIsProcessingBlocks, _processor.IsProcessingBlocks);
+                Assert.AreEqual(expectedIsProcessingBlocks, _processor.IsProcessingBlocks(maxInterval));
                 return this;
             }
 
@@ -404,7 +403,6 @@ namespace Nethermind.Blockchain.Test
             public static ProcessingTestContext ProcessingBlocks => new ProcessingTestContext(true);
 
             public static ProcessingTestContext ProcessorIsNotStarted => new ProcessingTestContext(false);
-            public static ProcessingTestContext MaxIntervalWithoutProcessedBlockIs(int maxIntervalWithoutProcessedBlock) => new ProcessingTestContext(true, maxIntervalWithoutProcessedBlock);
         }
 
         private static Block _block0 = Build.A.Block.WithNumber(0).WithNonce(0).WithDifficulty(0).TestObject;
@@ -620,30 +618,30 @@ namespace Nethermind.Blockchain.Test
         [Test]
         public void IsProcessingBlocks_returns_true_when_processing_blocks()
         {
-            When.MaxIntervalWithoutProcessedBlockIs(1)
-                .IsProcessingBlocks(false)
+            When.ProcessingBlocks
+                .IsProcessingBlocks(true,1)
                 .FullyProcessed(_block0).BecomesGenesis()
                 .FullyProcessed(_block1D2).BecomesNewHead()
-                .IsProcessingBlocks(true)
+                .IsProcessingBlocks(true, 1)
                 .FullyProcessed(_block2D4).BecomesNewHead()
-                .IsProcessingBlocks(true)
+                .IsProcessingBlocks(true, 1)
                 .FullyProcessed(_block3D6).BecomesNewHead()
-                .IsProcessingBlocks(true);
+                .IsProcessingBlocks(true, 1);
         }
         
         [Test]
         public void IsProcessingBlocks_returns_false_when_max_interval_elapsed()
         {
-            When.MaxIntervalWithoutProcessedBlockIs(1)
-                .IsProcessingBlocks(false)
+            When.ProcessingBlocks
+                .IsProcessingBlocks(true, 1)
                 .FullyProcessed(_block0).BecomesGenesis()
                 .FullyProcessed(_block1D2).BecomesNewHead()
-                .IsProcessingBlocks(true)
+                .IsProcessingBlocks(true, 1)
                 .FullyProcessed(_block2D4).BecomesNewHead()
                 .Sleep(2000)
-                .IsProcessingBlocks(false)
+                .IsProcessingBlocks(false,1)
                 .FullyProcessed(_block3D6).BecomesNewHead()
-                .IsProcessingBlocks(true);
+                .IsProcessingBlocks(true, 1);
         }
     }
 }

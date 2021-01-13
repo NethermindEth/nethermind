@@ -19,6 +19,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Processing;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
@@ -44,6 +45,8 @@ namespace Nethermind.Blockchain.Producers
         private readonly IGasLimitCalculator _gasLimitCalculator;
         private readonly ITimestamper _timestamper;
         private readonly ITxSource _txSource;
+        
+        protected DateTime _lastProducedBlock;
         protected ILogger Logger { get; }
 
         protected BlockProducerBase(
@@ -71,7 +74,13 @@ namespace Nethermind.Blockchain.Producers
         public abstract void Start();
 
         public abstract Task StopAsync();
-        public bool IsProducingBlocks { get; } // ToDo
+        public bool IsProducingBlocks(ulong? maxProducingInterval)
+        {
+            if (maxProducingInterval != null) // Add tasks checking
+                return _lastProducedBlock.AddSeconds(maxProducingInterval.Value) > DateTime.UtcNow;
+            else
+                return true;
+        }
 
         private readonly object _newBlockLock = new object();
 
@@ -125,6 +134,7 @@ namespace Nethermind.Blockchain.Producers
                                 if (Logger.IsInfo) Logger.Info($"Sealed block {t.Result.ToString(Block.Format.HashNumberDiffAndTx)}");
                                 BlockTree.SuggestBlock(t.Result);
                                 Metrics.BlocksSealed++;
+                                _lastProducedBlock = DateTime.UtcNow;
                                 return true;
                             }
                             else

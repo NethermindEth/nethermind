@@ -36,7 +36,6 @@ using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Core;
 using Nethermind.JsonRpc.Modules.Web3;
-using Nethermind.JsonRpc.Services;
 using Nethermind.Runner.Ethereum.Steps.Migrations;
 
 namespace Nethermind.Runner.Ethereum.Steps
@@ -111,7 +110,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             if (_api.BlockValidator == null) throw new StepDependencyException(nameof(_api.BlockValidator));
             if (_api.RewardCalculatorSource == null) throw new StepDependencyException(nameof(_api.RewardCalculatorSource));
             
-            ProofModuleFactory proofModuleFactory = new ProofModuleFactory(_api.DbProvider, _api.BlockTree, _api.BlockPreprocessor, _api.ReceiptFinder, _api.SpecProvider, _api.LogManager, syncConfig);
+            ProofModuleFactory proofModuleFactory = new ProofModuleFactory(_api.DbProvider, _api.BlockTree, _api.BlockPreprocessor, _api.ReceiptFinder, _api.SpecProvider, _api.LogManager);
             _api.RpcModuleProvider.Register(new BoundedModulePool<IProofModule>(proofModuleFactory, 2, rpcConfig.Timeout));
 
             DebugModuleFactory debugModuleFactory = new DebugModuleFactory(
@@ -125,8 +124,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 new ReceiptMigration(_api), 
                 _api.ConfigProvider, 
                 _api.SpecProvider, 
-                _api.LogManager,
-                syncConfig);
+                _api.LogManager);
             _api.RpcModuleProvider.Register(new BoundedModulePool<IDebugModule>(debugModuleFactory, _cpuCount, rpcConfig.Timeout));
 
             TraceModuleFactory traceModuleFactory = new TraceModuleFactory(
@@ -137,8 +135,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.RewardCalculatorSource, 
                 _api.ReceiptStorage,
                 _api.SpecProvider,
-                _api.LogManager,
-                syncConfig);
+                _api.LogManager);
             _api.RpcModuleProvider.Register(new BoundedModulePool<ITraceModule>(traceModuleFactory, _cpuCount, rpcConfig.Timeout));
             
             if (_api.EthereumEcdsa == null) throw new StepDependencyException(nameof(_api.EthereumEcdsa));
@@ -182,16 +179,12 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.Enode,
                 _api.EngineSignerStore,
                 _api.KeyStore,
-                _api.LogManager,
-                _api.HealthService);
+                _api.LogManager);
             _api.RpcModuleProvider.Register(new SingletonModulePool<IParityModule>(parityModule, true));
 
             Web3Module web3Module = new Web3Module(_api.LogManager);
             _api.RpcModuleProvider.Register(new SingletonModulePool<IWeb3Module>(web3Module, true));
 
-            _api.HealthService = new HealthService(_api.RpcModuleProvider, _api.BlockchainProcessor, _api.BlockProducer,
-                initConfig.IsMining);
-            
             foreach (INethermindPlugin plugin in _api.Plugins)
             {
                 await plugin.InitRpcModules();

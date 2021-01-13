@@ -20,11 +20,14 @@ using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Consensus;
+using Nethermind.Consensus.AuRa.Validators;
+using Nethermind.Core;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Modules.Net;
+using Nethermind.Specs.ChainSpecStyle;
 
-namespace Nethermind.JsonRpc.Services
+namespace Nethermind.HealthChecks
 {
     public class CheckHealthResult
     {
@@ -33,17 +36,27 @@ namespace Nethermind.JsonRpc.Services
         public ICollection<(string Message, string LongMessage)> Messages { get; set; }
     }
 
-    public class HealthService : IHealthService
+    public class NodeHealthService : INodeHealthService
     {
         private readonly IRpcModuleProvider _rpcModuleProvider;
         private readonly IBlockchainProcessor _blockchainProcessor;
         private readonly IBlockProducer _blockProducer;
+        private readonly IHealthChecksConfig _healthChecksConfig;
+        private readonly ChainSpec _chainSpec;
         private readonly bool _isMining;
 
-        public HealthService(IRpcModuleProvider rpcModuleProvider, IBlockchainProcessor blockchainProcessor, IBlockProducer blockProducer, bool isMining)
+        public NodeHealthService(
+            IRpcModuleProvider rpcModuleProvider,
+            IBlockchainProcessor blockchainProcessor,
+            IBlockProducer blockProducer,
+            IHealthChecksConfig healthChecksConfig,
+            ChainSpec chainSpec,
+            bool isMining)
         {
             _rpcModuleProvider = rpcModuleProvider;
             _isMining = isMining;
+            _healthChecksConfig = healthChecksConfig;
+            _chainSpec = chainSpec;
             _blockchainProcessor = blockchainProcessor;
             _blockProducer = blockProducer;
         }
@@ -54,8 +67,10 @@ namespace Nethermind.JsonRpc.Services
             INetModule netModule = (INetModule) await _rpcModuleProvider.Rent("net_peerCount", false);
             List<(string Message, string LongMessage)> messages = new List<(string Message, string LongMessage)>();
             bool healthy = false;
-            long netPeerCount = (long)netModule.net_peerCount().GetData();
-            SyncingResult ethSyncing = (SyncingResult)ethModule.eth_syncing().GetData();
+            long netPeerCount = (long) netModule.net_peerCount().GetData();
+            SyncingResult ethSyncing = (SyncingResult) ethModule.eth_syncing().GetData();
+            bool isProcessingBlocks = _blockchainProcessor.IsProcessingBlocks(_healthChecksConfig.MaxIntervalWithoutProcessedBlock);
+            bool isProducingBlocks = _blockchainProcessor.IsProcessingBlocks(_healthChecksConfig.MaxIntervalWithoutProducedBlock);
             
             if (_isMining == false && ethSyncing.IsSyncing)
             {
@@ -67,7 +82,7 @@ namespace Nethermind.JsonRpc.Services
             {
                 AddFullySyncMessage(messages);
                 bool peers = CheckPeers(messages, netPeerCount);
-                bool processing = IsProcessingBlocks(messages, _blockchainProcessor.IsProcessingBlocks);
+                bool processing = IsProcessingBlocks(messages, isProcessingBlocks);
                 healthy = peers && processing;
             }
             else if (_isMining && ethSyncing.IsSyncing)
@@ -79,19 +94,44 @@ namespace Nethermind.JsonRpc.Services
             {
                 AddFullySyncMessage(messages);
                 bool peers = CheckPeers(messages, netPeerCount);
-                bool processing = IsProcessingBlocks(messages, _blockchainProcessor.IsProcessingBlocks);
-                bool producing = IsProducingBlocks(messages, _blockProducer.IsProducingBlocks);
+                bool processing = IsProcessingBlocks(messages, isProcessingBlocks);
+                bool producing = IsProducingBlocks(messages, isProducingBlocks);
                 healthy = peers && processing && producing;
             }
-            
-            _rpcModuleProvider.Return("eth_syncing", ethModule);
-            _rpcModuleProvider.Return("net_peerCount", netModule);
             
             return new CheckHealthResult()
             {
                 Healthy = healthy, 
                 Messages = messages
             };
+        }
+
+        public ulong? GetBlockProcessorIntervalHint()
+        {
+            ulong? blockProcessorHint;
+            if (_chainSpec.SealEngineType == SealEngineType.Ethash)
+                blockProcessorHint = 15 * 4;
+            else if (_chainSpec.SealEngineType == SealEngineType.Clique)
+                blockProcessorHint = _chainSpec.Clique.Period * 4;
+            else if (_chainSpec.SealEngineType == SealEngineType.AuRa)
+                blockProcessorHint = 10;//_chainSpec.AuRa.StepDuration
+            else
+                blockProcessorHint = null;
+               
+            return blockProcessorHint;
+        }
+        
+        public ulong? GetBlockProducerIntervalHint()
+        {
+            ulong? blockProcessorHint;
+            // check if signer is in validators (_validatorStore.GetValidators()) 
+            // if true get count * 3 * step
+            if (_chainSpec.SealEngineType == SealEngineType.AuRa)
+                blockProcessorHint = 10;//_chainSpec.AuRa.StepDuration
+            else
+                blockProcessorHint = null;
+               
+            return blockProcessorHint;
         }
 
         private static bool CheckPeers(ICollection<(string Description, string LongDescription)> messages, long netPeerCount)

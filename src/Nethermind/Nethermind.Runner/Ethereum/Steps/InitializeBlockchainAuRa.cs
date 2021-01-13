@@ -34,6 +34,7 @@ using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.Tracing;
+using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Runner.Ethereum.Api;
 using Nethermind.TxPool;

@@ -16,13 +16,8 @@
 
 using System;
 using System.Threading.Tasks;
-using Nethermind.Blockchain;
-using Nethermind.Blockchain.Processing;
-using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
-using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Specs;
 using Nethermind.JsonRpc.Modules;

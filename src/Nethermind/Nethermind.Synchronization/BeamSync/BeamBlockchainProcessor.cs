@@ -25,7 +25,6 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Rewards;
-using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -52,7 +51,6 @@ namespace Nethermind.Synchronization.BeamSync
         private readonly IBlockTree _blockTree;
         private readonly ISpecProvider _specProvider;
         private readonly ILogManager _logManager;
-        private readonly ISyncConfig _syncConfig;
 
         public BeamBlockchainProcessor(
             IReadOnlyDbProvider readOnlyDbProvider,
@@ -63,8 +61,7 @@ namespace Nethermind.Synchronization.BeamSync
             IBlockPreprocessorStep recoveryStep,
             IRewardCalculatorSource rewardCalculatorSource,
             IBlockProcessingQueue processingQueue,
-            ISyncModeSelector syncModeSelector,
-            ISyncConfig syncConfig)
+            ISyncModeSelector syncModeSelector)
         {
             _readOnlyDbProvider = readOnlyDbProvider ?? throw new ArgumentNullException(nameof(readOnlyDbProvider));
             _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
@@ -79,7 +76,6 @@ namespace Nethermind.Synchronization.BeamSync
             _logger = logManager.GetClassLogger();
             _blockTree.NewBestSuggestedBlock += OnNewBlock;
             _blockAction = BeamProcess;
-            _syncConfig = syncConfig;
 
             _syncModeSelector.Preparing += SyncModeSelectorOnPreparing;
             _syncModeSelector.Changing += SyncModeSelectorOnChanging;
@@ -203,7 +199,7 @@ namespace Nethermind.Synchronization.BeamSync
         private (IBlockchainProcessor, IStateReader) CreateProcessor(Block block, IReadOnlyDbProvider readOnlyDbProvider, ISpecProvider specProvider, ILogManager logManager)
         {
             ReadOnlyTxProcessingEnv txEnv = new ReadOnlyTxProcessingEnv(readOnlyDbProvider, _readOnlyBlockTree, specProvider, logManager);
-            ReadOnlyChainProcessingEnv env = new ReadOnlyChainProcessingEnv(txEnv, _blockValidator, _recoveryStep, _rewardCalculatorSource.Get(txEnv.TransactionProcessor), NullReceiptStorage.Instance, _readOnlyDbProvider, specProvider, logManager, _syncConfig);
+            ReadOnlyChainProcessingEnv env = new ReadOnlyChainProcessingEnv(txEnv, _blockValidator, _recoveryStep, _rewardCalculatorSource.Get(txEnv.TransactionProcessor), NullReceiptStorage.Instance, _readOnlyDbProvider, specProvider, logManager);
             env.BlockProcessor.TransactionProcessed += (sender, args) =>
             {
                 Interlocked.Increment(ref Metrics.BeamedTransactions);
