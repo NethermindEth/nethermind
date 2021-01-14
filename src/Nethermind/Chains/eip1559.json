@@ -1,17 +1,23 @@
 {
   "name": "EIP1559 Testnet",
-  "dataDir": "goerli",
+  "dataDir": "eip1559",
   "engine": {
-    "clique": {
+    "Ethash": {
       "params": {
-        "period": 15,
-        "epoch": 30000
+        "minimumDifficulty": "0x",
+        "difficultyBoundDivisor": "0x1",
+        "fixedDifficulty": "0x7d0",
+        "durationLimit": "0xd",
+        "blockReward": {
+          "0x0": "0x1BC16D674EC80000"
+        },
+        "homesteadTransition": "0x0",
+        "eip100bTransition": "0x0"
       }
     }
   },
   "params": {
     "accountStartNonce": "0x0",
-    "chainID": "0x5",
     "eip7Transition": "0x0",
     "eip140Transition": "0x0",
     "eip145Transition": "0x0",
@@ -40,13 +46,13 @@
     "maxCodeSizeTransition": "0x0",
     "maximumExtraDataSize": "0xffff",
     "minGasLimit": "0x1388",
-    "networkID": "0x617"
+    "networkID": "0x118"
   },
   "genesis": {
     "author": "0x0000000000000000000000000000000000000000",
     "difficulty": "0x400",
     "extraData": "0x000000000000000000000000000000000000000000000000000000000000000036267c845cc42b57ccb869d655e5d5fb620cc69a0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
-    "gasLimit": "0x1312D00",
+    "gasLimit": "0x1fffffffffffff",
     "parentHash": "0x0000000000000000000000000000000000000000000000000000000000000000",
     "seal": {
       "ethereum": {
@@ -56,9 +62,9 @@
     }
   },
   "nodes": [
-    "enode://0c72e2b7873e4342d725b5990c17adb2b159aad2ff5853de7e4910b25522a1f9e78f9cd802a8a3225b8fae4e994e522b50d6bd5a163eb3a7b49a0a73ca9a1c7e@13.236.147.35:30303",
-    "enode://1c6d296749018e4e4a78baf9a8a3048aae2557c3f2f11a340570d57e71071e2e9816a5f5d9215a333d12b432a81ff5017520b09461c4a102e72c7a1a2d9d7d0f@18.222.108.145:30303",
-    "enode://3eca270e124b5e24e846bb39d0a911d152cfd2671be079478e72e768363c959852301b40b2afffddbe45a285fd752fa4541e8376f73dad688757e0a07a35e164@15.188.238.162:30303"
+    "enode://0c72e2b7873e4342d725b5990c17adb2b159aad2ff5853de7e4910b25522a1f9e78f9cd802a8a3225b8fae4e994e522b50d6bd5a163eb3a7b49a0a73ca9a1c7e@3.16.76.137:30303",
+    "enode://1c6d296749018e4e4a78baf9a8a3048aae2557c3f2f11a340570d57e71071e2e9816a5f5d9215a333d12b432a81ff5017520b09461c4a102e72c7a1a2d9d7d0f@3.136.236.37:30303",
+    "enode://3eca270e124b5e24e846bb39d0a911d152cfd2671be079478e72e768363c959852301b40b2afffddbe45a285fd752fa4541e8376f73dad688757e0a07a35e164@3.129.247.126:30303"
   ],
   "accounts": {
     "fe3b557e8fb62b89f4916b721be55ceb828dbd73": {

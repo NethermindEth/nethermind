@@ -29,6 +29,7 @@ namespace Nethermind.Specs
         public UInt256 BlockReward { get; set; }
         public long DifficultyBombDelay { get; set; }
         public long DifficultyBoundDivisor { get; set; }
+        public long? FixedDifficulty { get; set; }
         public int MaximumUncleCount { get; set; }
         public bool IsTimeAdjustmentPostOlympic { get; set; }
         public bool IsEip2Enabled { get; set; }

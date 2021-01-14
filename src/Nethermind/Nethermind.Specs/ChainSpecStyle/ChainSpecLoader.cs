@@ -136,7 +136,7 @@ namespace Nethermind.Specs.ChainSpecStyle
             if (chainSpecJson.Engine?.Ethash != null)
             {
                 chainSpec.HomesteadBlockNumber = chainSpecJson.Engine.Ethash.HomesteadTransition;
-                chainSpec.DaoForkBlockNumber = chainSpecJson.Engine.Ethash.DaoHardForkTransition;
+                chainSpec.DaoForkBlockNumber = chainSpecJson.Engine.Ethash.DaoHardforkTransition;
             }
             else
             {
@@ -233,6 +233,7 @@ namespace Nethermind.Specs.ChainSpecStyle
                     DaoHardforkBeneficiary = chainSpecJson.Engine.Ethash.DaoHardforkBeneficiary,
                     DaoHardforkAccounts = chainSpecJson.Engine.Ethash.DaoHardforkAccounts ?? Array.Empty<Address>(),
                     Eip100bTransition = chainSpecJson.Engine.Ethash.Eip100bTransition ?? 0L,
+                    FixedDifficulty = chainSpecJson.Engine.Ethash.FixedDifficulty,
                     BlockRewards = new Dictionary<long, UInt256>()
                 };
 
@@ -242,9 +243,12 @@ namespace Nethermind.Specs.ChainSpecStyle
                 }
 
                 chainSpec.Ethash.DifficultyBombDelays = new Dictionary<long, long>();
-                foreach (KeyValuePair<string, long> reward in chainSpecJson.Engine.Ethash.DifficultyBombDelays)
+                if (chainSpecJson.Engine.Ethash.DifficultyBombDelays != null)
                 {
-                    chainSpec.Ethash.DifficultyBombDelays.Add(LongConverter.FromString(reward.Key), reward.Value);
+                    foreach (KeyValuePair<string, long> reward in chainSpecJson.Engine.Ethash.DifficultyBombDelays)
+                    {
+                        chainSpec.Ethash.DifficultyBombDelays.Add(LongConverter.FromString(reward.Key), reward.Value);
+                    }
                 }
             }
             else if (chainSpecJson.Engine?.NethDev != null)

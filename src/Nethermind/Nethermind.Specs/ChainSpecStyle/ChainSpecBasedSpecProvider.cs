@@ -97,6 +97,7 @@ namespace Nethermind.Specs.ChainSpecStyle
                 releaseSpec.MinGasLimit = _chainSpec.Parameters.MinGasLimit;
                 releaseSpec.GasLimitBoundDivisor = _chainSpec.Parameters.GasLimitBoundDivisor;
                 releaseSpec.DifficultyBoundDivisor = _chainSpec.Ethash?.DifficultyBoundDivisor ?? 1;
+                releaseSpec.FixedDifficulty = _chainSpec.Ethash?.FixedDifficulty;
                 releaseSpec.MaxCodeSize = _chainSpec.Parameters.MaxCodeSizeTransition > releaseStartBlock ? long.MaxValue : _chainSpec.Parameters.MaxCodeSize;
                 releaseSpec.IsEip2Enabled = (_chainSpec.Ethash?.HomesteadTransition ?? 0) <= releaseStartBlock;
                 releaseSpec.IsEip7Enabled = (_chainSpec.Ethash?.HomesteadTransition ?? 0) <= releaseStartBlock ||

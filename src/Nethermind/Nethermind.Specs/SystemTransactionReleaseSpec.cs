@@ -42,6 +42,8 @@ namespace Nethermind.Specs
         public long DifficultyBombDelay => _spec.DifficultyBombDelay;
 
         public long DifficultyBoundDivisor => _spec.DifficultyBoundDivisor;
+        
+        public long? FixedDifficulty => _spec.FixedDifficulty;
 
         public int MaximumUncleCount => _spec.MaximumUncleCount;
 

@@ -52,7 +52,9 @@ namespace Nethermind.Specs.ChainSpecStyle
         public ChainParameters Parameters { get; set; }
 
         public Dictionary<Address, ChainSpecAllocation> Allocations { get; set; }
-
+        
+        public long? FixedDifficulty { get; set; }
+        
         public long? DaoForkBlockNumber { get; set; }
 
         public long? HomesteadBlockNumber { get; set; }

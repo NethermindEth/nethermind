@@ -39,6 +39,11 @@ namespace Nethermind.Consensus.Ethash
             bool parentHasUncles)
         {
             IReleaseSpec spec = _specProvider.GetSpec(blockNumber);
+            if (spec.FixedDifficulty != null && blockNumber != 0)
+            {
+                return (UInt256)spec.FixedDifficulty.Value;
+            }
+            
             BigInteger baseIncrease = BigInteger.Divide((BigInteger)parentDifficulty, spec.DifficultyBoundDivisor);
             BigInteger timeAdjustment = TimeAdjustment(spec, (BigInteger)parentTimestamp, (BigInteger)currentTimestamp, parentHasUncles);
             BigInteger timeBomb = TimeBomb(spec, blockNumber);
