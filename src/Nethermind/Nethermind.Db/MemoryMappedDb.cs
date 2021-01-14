@@ -16,9 +16,7 @@
 // 
 
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
-using Nethermind.Core.Extensions;
 
 namespace Nethermind.Db
 {
@@ -26,7 +24,7 @@ namespace Nethermind.Db
     {
         private readonly MemoryMappedKeyValueStore _store;
         private bool _isDisposed;
-        private Batch _batch;
+        private MemoryMappedKeyValueStore.IWriteBatch _batch;
 
         public MemoryMappedDb(string name, MemoryMappedKeyValueStore store)
         {
@@ -98,7 +96,7 @@ namespace Nethermind.Db
                 throw new ObjectDisposedException($"Attempted to create a batch on a disposed database {Name}");
             }
 
-            _batch = new Batch();
+            _batch = _store.StartBatch();
         }
 
         public void CommitBatch()
@@ -108,7 +106,7 @@ namespace Nethermind.Db
                 throw new ObjectDisposedException($"Attempted to commit a batch on a disposed database {Name}");
             }
 
-            _batch.Commit(_store);
+            _batch.Commit();
             _batch = null;
         }
 
@@ -127,36 +125,5 @@ namespace Nethermind.Db
         public Span<byte> GetSpan(byte[] key) => _store.TryGet(key, out MemoryMappedKeyValueStore.Slice slice) ? slice.Span : Span<byte>.Empty;
 
         public void DangerousReleaseMemory(in Span<byte> span) { }
-
-        private class Batch
-        {
-            private static readonly byte[] s_deleteMarker = new byte[0];
-            private readonly List<ValueTuple<byte[], byte[]>> _values = new List<(byte[], byte[])>();
-
-            public void Delete(byte[] key)
-            {
-                _values.Add((key, s_deleteMarker));
-            }
-
-            public void Put(byte[] key, byte[] value)
-            {
-                _values.Add((key, value));
-            }
-
-            public void Commit(MemoryMappedKeyValueStore store)
-            {
-                foreach ((byte[] key, byte[] value) in _values)
-                {
-                    if (value == s_deleteMarker)
-                    {
-                        store.Delete(key);
-                    }
-                    else
-                    {
-                        store.Set(key, value);
-                    }
-                }
-            }
-        }
     }
 }

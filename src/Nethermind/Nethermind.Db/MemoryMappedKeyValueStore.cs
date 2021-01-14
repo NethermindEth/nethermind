@@ -1,4 +1,5 @@
 using System;
+using System.Buffers;
 using System.Buffers.Binary;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -26,7 +27,7 @@ namespace Nethermind.Db
     {
         public const string Prefix = "log_";
         public const string JumpsFileName = "jumps";
-        public const int KeyLength = 32;
+        public const int KeyLength = KeccakLength;
         const int MaxValueLength = NullValueLength - 1;
         const int NullValueLength = short.MaxValue;
         const int MaxNumberOfFiles = 2048;
@@ -53,45 +54,19 @@ namespace Nethermind.Db
         readonly int _maxBatchFlushSize;
         readonly List<MemoryMappedFile> _files = new List<MemoryMappedFile>();
         readonly Map[] _maps = new Map[MaxNumberOfFiles];
-        readonly CancellationTokenSource _cts;
 
-        private volatile Node _head;
-        private volatile Node _recentlyFlushed;
-
-        static readonly byte[] s_nullMarker = new byte[0];
-
-        Thread _flusher;
+        private readonly ConcurrentQueue<WriteBatch> _batches = new ConcurrentQueue<WriteBatch>();
+        private readonly Dictionary<int, long> _jumpCache = new Dictionary<int, long>(1024);
+        
         long _cursor;
         long _flushFrom;
         Map _jumps;
 
-        class EqualityComparer : IEqualityComparer<byte[]>
-        {
-            public bool Equals(byte[] x, byte[] y)
-            {
-                // assumes aligned
-                ref long xb = ref Unsafe.As<byte, long>(ref x[0]);
-                ref long yb = ref Unsafe.As<byte, long>(ref y[0]);
-
-                return xb == yb &&
-                       Unsafe.Add(ref xb, 1) == Unsafe.Add(ref yb, 1) &&
-                       Unsafe.Add(ref xb, 2) == Unsafe.Add(ref yb, 2) &&
-                       Unsafe.Add(ref xb, 3) == Unsafe.Add(ref yb, 3);
-            }
-
-            public int GetHashCode(byte[] obj)
-            {
-                return Unsafe.ReadUnaligned<int>(ref obj[0]);
-            }
-        }
-
-        public MemoryMappedKeyValueStore(string directoryPath, int logFileSize = 256 * 1024 * 1024, int maxBatchFlushSize = 10000)
+        public MemoryMappedKeyValueStore(string directoryPath, int logFileSize = 256 * 1024 * 1024, int maxBatchFlushSize = 10 * 1024 * 1024)
         {
             _dir = directoryPath;
             _logFileSize = logFileSize;
             _maxBatchFlushSize = maxBatchFlushSize;
-            _cts = new CancellationTokenSource();
-            _head = _recentlyFlushed = new Node(null, null); // guardian
         }
 
         public void Initialize()
@@ -124,100 +99,9 @@ namespace Nethermind.Db
             _cursor = current.Number * _logFileSize + current.Offset;
 
             _flushFrom = _cursor;
-            _flusher = new Thread(RunFlusher);
-            _flusher.Start();
         }
 
-        unsafe void RunFlusher()
-        {
-            Span<long> jumpTable = new Span<long>(_jumps.Pointer, JumpsCount);
-
-            SpinWait sw = default;
-
-            while (!_cts.IsCancellationRequested || !HasNoEntriesToFlush)
-            {
-                int fileNumber = (int)(_flushFrom / _logFileSize);
-                ref Map current = ref _maps[fileNumber];
-
-                if (current == null)
-                {
-                    Volatile.Write(ref current, CreateLogFile(fileNumber));
-                }
-
-                if (HasNoEntriesToFlush)
-                {
-                    sw.SpinOnce();
-                    continue; // nothing to do, nothing to flush
-                }
-
-                int batchCount = 0;
-
-                Node flushed = _recentlyFlushed;
-                while (_head != flushed && flushed._prev != null && batchCount < _maxBatchFlushSize)
-                {
-                    // go the prev
-                    flushed = flushed._prev;
-                    byte[] keccak = flushed.Key;
-                    byte[] value = flushed.Key;
-
-                    int index = ReadJumpIndex(keccak);
-                    ref long jump = ref jumpTable[index];
-                    long header = BuildHeader(ReferenceEquals(value, s_nullMarker) ? NullValueLength : value.Length, jump);
-
-                    int length = HeaderLength + KeccakLength + Align(value.Length, ByteAlignment);
-                    int position = (int)(_flushFrom % _logFileSize);
-
-                    int leftover = _logFileSize - position;
-                    Span<byte> span = new Span<byte>(current.Pointer + position, leftover);
-                    if (length > leftover)
-                    {
-                        // left zeros, bump up the flushFrom and break
-                        _flushFrom += leftover;
-
-                        // the current one was not flushed, it should be restored to the next, then we can break
-                        flushed = flushed._next;
-                        break;
-                    }
-
-                    // write down to span
-                    BinaryPrimitives.WriteInt64LittleEndian(span, header);
-                    keccak.CopyTo(span.Slice(HeaderLength));
-                    value.CopyTo(span.Slice(HeaderLength + KeccakLength));
-
-                    // write to map with volatile making it eventually visible
-                    Volatile.Write(ref jump, _flushFrom);
-
-                    _flushFrom += length;
-                    batchCount++;
-                }
-
-                if (_flushFrom % _logFileSize == 0)
-                {
-                    // Seal up the current, it written till the limit of the file.
-                    current.Flush(_logFileSize);
-
-                    // Flush jumps only when the log is being sealed. When recovery is introduced, this will require to scan only up to one log to recover when needed. 
-                    // For regular usage this should limit the flushes
-                    _jumps.Flush(JumpsFileSize);
-                }
-                else
-                {
-                    // flush till the flush from points to
-                    current.Flush((int)(_flushFrom % _logFileSize));
-                }
-
-                // remember what was flushed
-                _recentlyFlushed = flushed;
-                
-                // remove the tail that was already flushed
-                flushed._next = null;
-            }
-
-            // flush jumps as the final step to remember all indexes
-            _jumps.Flush(JumpsFileSize);
-        }
-
-        public bool HasNoEntriesToFlush => _head == _recentlyFlushed;
+        public bool HasNoEntriesToFlush => _batches.IsEmpty;
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         static long BuildHeader(int valueLength, long jump) => ((long)valueLength << ValueLengthShift) | jump;
@@ -232,7 +116,7 @@ namespace Nethermind.Db
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        static int ReadJumpIndex(byte[] key)
+        static int ReadJumpIndex(ReadOnlySpan<byte> key)
         {
             const int mask = JumpsCount - 1;
             const int shift = (4 - NumberOfBytesForJumps) * BitsInByte;
@@ -241,7 +125,7 @@ namespace Nethermind.Db
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        static int Align(int value, int alignment) => (value + (alignment - 1)) & -alignment;
+        static int Align(int value) => (value + (ByteAlignment - 1)) & -ByteAlignment;
 
         Map CreateLogFile(int fileNumber)
         {
@@ -276,7 +160,7 @@ namespace Nethermind.Db
                 unsafe
                 {
                     new Span<byte>(map.Pointer, size).Clear();
-                    
+
                     map.Flush(0);
                 }
             }
@@ -284,56 +168,126 @@ namespace Nethermind.Db
             return map;
         }
 
+        private unsafe void Commit(WriteBatch batch)
+        {
+            _batches.Enqueue(batch);
+            
+            lock (_batches)
+            {
+                if (batch.IsCommitted)
+                {
+                    return; // this batch is already committed
+                }
+                
+                Span<long> jumpTable = new Span<long>(_jumps.Pointer, JumpsCount);
+                int fileNumber, position;
+
+                int writtenSoFar = 0;
+                
+                while (_batches.TryPeek(out WriteBatch commit) && writtenSoFar < _maxBatchFlushSize)
+                {
+                    fileNumber = GetFileAndPosition(out position);
+
+                    ref Map file = ref _maps[fileNumber];
+
+                    if (file == null)
+                    {
+                        Volatile.Write(ref file, CreateLogFile(fileNumber));
+                    }
+
+                    Span<byte> data = commit.Data;
+                    
+                    int leftover = _logFileSize - position;
+                    Span<byte> destination = new Span<byte>(file.Pointer + position, leftover);
+
+                    if (data.Length > destination.Length)
+                    {
+                        // Leave zeros, bump up the flushFrom and re-roll the loop
+                        _flushFrom += leftover;
+
+                        // Seal up the current, it written till the limit of the file.
+                        file.Flush(_logFileSize);
+
+                        // Flush jumps only when the log is being sealed. When recovery is introduced, this will require to scan only up to one log to recover when needed. 
+                        // For regular usage this should limit the flushes
+                        _jumps.Flush(JumpsFileSize);
+                        
+                        // spin again to peek the commit again
+                        continue;
+                    }
+                    
+                    // revisit data, writing proper jumps
+                    Span<byte> toRewrite = data;
+                    while (!toRewrite.IsEmpty)
+                    {
+                        // parse existing header to obtain the length
+                        (int valueLength, _) = ParseHeader(BinaryPrimitives.ReadInt64LittleEndian(data));
+                        
+                        // retrieve the right jump
+                        int jumpIndex = ReadJumpIndex(data.Slice(HeaderLength));
+                        if (!_jumpCache.TryGetValue(jumpIndex, out long jump))
+                        {
+                            // this value was not overwritten by this flush, it needs to be read back from the table
+                            jump = jumpTable[jumpIndex];
+                        }
+
+                        // write down the header
+                        BinaryPrimitives.WriteInt64LittleEndian(data, BuildHeader(valueLength, jump));
+
+                        int length = HeaderLength + KeccakLength + valueLength == NullValueLength ? 0 : Align(valueLength);
+                        
+                        // overwrite the jump to make it flushable AFTER the file is flushed
+                        _jumpCache[jumpIndex] = _flushFrom + writtenSoFar;
+
+                        writtenSoFar += length;
+                        
+                        toRewrite = toRewrite.Slice(length);
+                    }
+                    
+                    data.CopyTo(destination);   // copy data
+                    _flushFrom += data.Length;  // set proper cursor _flushFrom
+                    
+                    _batches.TryDequeue(out _); // dequeue the current that was Peeked at the beginning
+                    commit.IsCommitted = true;// mark this as committed
+                }
+
+                // flush before returning
+                fileNumber = GetFileAndPosition(out position);
+                _maps[fileNumber].Flush(position);
+
+                // write down jumps with volatile to ensure that once the jump is visible the data are visible as well
+                foreach ((int key, long jump) in _jumpCache)
+                {
+                    Volatile.Write(ref jumpTable[key], jump);
+                }
+                
+                _jumpCache.Clear(); // not needed anymore, clear as the same entries might not be reused
+            }
+        }
+
+        private int GetFileAndPosition(out int position)
+        {
+            int fileNumber = (int) Math.DivRem(_flushFrom, _logFileSize, out long pos);
+            position = (int) pos;
+            return fileNumber;
+        }
+
         public void Delete(byte[] key)
         {
-            if (key.Length != KeyLength)
-            {
-                throw new ArgumentException($"The key should be {KeyLength} long", nameof(key));
-            }
-
-            Enqueue(key, s_nullMarker);
+            using WriteBatch batch = new WriteBatch(this);
+            batch.Delete(key);
+            batch.Commit();
         }
 
         public void Set(byte[] key, byte[] value)
         {
-            int length = value.Length;
-
-            if (length > MaxValueLength)
-            {
-                throw new ArgumentException($"The value breached {MaxValueLength}", nameof(value));
-            }
-
-            if (key.Length != KeyLength)
-            {
-                throw new ArgumentException($"The key should be {KeyLength} long", nameof(key));
-            }
-
-            Enqueue(key, value);
+            using WriteBatch batch = new WriteBatch(this);
+            batch.Put(key, value);
+            batch.Commit();
         }
 
         public unsafe bool TryGet(byte[] key, out Slice value)
         {
-            // scan in-memory first
-            Node current = _head;
-
-            while (current != null)
-            {
-                if (Bytes.EqualityComparer.Equals(key, current.Key))
-                {
-                    if (current.Value == s_nullMarker)
-                    {
-                        value = default;
-                        return false;
-                    }
-
-                    value = new Slice(current.Value);
-                    return true;
-                }
-
-                current = current._next;
-            }
-
-            // read db
             int index = ReadJumpIndex(key);
             Span<long> jumpTable = new Span<long>(_jumps.Pointer, JumpsCount);
 
@@ -401,9 +355,6 @@ namespace Nethermind.Db
 
         public void Dispose()
         {
-            _cts.Cancel();
-            _flusher?.Join();
-
             foreach (Map map in _maps)
             {
                 map?.Dispose();
@@ -492,35 +443,96 @@ namespace Nethermind.Db
             }
         }
 
-        private void Enqueue(byte[] key, byte[] value)
+        public IWriteBatch StartBatch() => new WriteBatch(this);
+
+        public interface IWriteBatch : IDisposable
         {
-            Node node = new Node(key, value);
-            Node previousHead;
-
-            do
-            {
-                previousHead = _head;
-                node._next = previousHead;
-            } while (Interlocked.CompareExchange(ref _head, previousHead, node) != previousHead);
-            
-            // swap happened, the node is the new _head
-            previousHead._prev = node;
-
+            void Put(byte[] key, byte[] value);
+            void Delete(byte[] key);
+            void Commit();
         }
 
-        class Node
+        class WriteBatch : IWriteBatch
         {
-            public Node(byte[] key, byte[] value)
+            private readonly MemoryMappedKeyValueStore _store;
+            private int _written;
+            private byte[] _buffer;
+            private const int InitialLength = 256 * 1024;
+            
+            private static readonly byte[] s_empty = new byte[0];
+
+            public bool IsCommitted;
+            
+            public WriteBatch(MemoryMappedKeyValueStore store)
             {
-                Key = key;
-                Value = value;
+                _store = store;
+                _buffer = ArrayPool<byte>.Shared.Rent(InitialLength);
             }
 
-            public byte[] Key { get; }
-            public byte[] Value { get; }
+            public void Put(byte[] key, byte[] value)
+            {
+                // the jump to previous is not known now,
+                const int unknownJumpForNow = 0;
 
-            public volatile Node _next;
-            public volatile Node _prev;
+                if (key.Length != KeyLength)
+                {
+                    throw new ArgumentException($"The key should be {KeyLength} long", nameof(key));
+                }
+
+                long header;
+
+                if (value != null)
+                {
+                    if (value.Length > MaxValueLength)
+                    {
+                        throw new ArgumentException($"The value breached {MaxValueLength}", nameof(value));
+                    }
+
+                    header = BuildHeader(value.Length, unknownJumpForNow);
+                }
+                else
+                {
+                    header = BuildHeader(NullValueLength, unknownJumpForNow); // set 0 for now as the jump is unknown
+                    value = s_empty;
+                }
+
+                int length = HeaderLength + KeccakLength + Align(value.Length);
+                Ensure(length);
+
+                Span<byte> span = new Span<byte>(_buffer, _written, _buffer.Length - _written);
+                
+                BinaryPrimitives.WriteInt64LittleEndian(span, header);
+                key.CopyTo(span.Slice(HeaderLength));
+                value.CopyTo(span.Slice(HeaderLength + KeccakLength));
+
+                _written += length;
+            }
+
+            public void Commit() => _store.Commit(this);
+
+            public void Delete(byte[] key) => Put(key, null);
+
+            public void Dispose()
+            {
+                if (_buffer != null)
+                {
+                    ArrayPool<byte>.Shared.Return(_buffer);
+                    _buffer = null;
+                }
+            }
+
+            public Span<byte> Data => new Span<byte>(_buffer, 0, _written);
+
+            private void Ensure(int length)
+            {
+                if (_buffer.Length - _written < length)
+                {
+                    byte[] bytes = ArrayPool<byte>.Shared.Rent(_buffer.Length * 2);
+                    _buffer.CopyTo(bytes, 0);
+                    ArrayPool<byte>.Shared.Return(_buffer);
+                    _buffer = bytes;
+                }
+            }
         }
     }
 }
