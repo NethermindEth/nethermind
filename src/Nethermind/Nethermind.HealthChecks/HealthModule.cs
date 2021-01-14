@@ -13,42 +13,22 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using System;
-using Nethermind.Core.Attributes;
+using Nethermind.JsonRpc;
 
-namespace Nethermind.JsonRpc.Modules
+namespace Nethermind.HealthChecks
 {
-    [Todo(Improve.Refactor, "Can we use string instead to avoid coupling and introduce conventions?")]
-    public enum ModuleType
+    public class HealthModule : IHealthModule
     {
-        Admin,
-        Clique,
-        Db,
-        Debug,
-        Eth,
-        NdmProvider,
-        NdmConsumer,
-        Net,
-        Parity,
-        Personal,
-        Proof,
-        Trace,
-        TxPool,
-        Web3,
-        Baseline,
-        Vault,
-        Deposit,
-        Health
-    }
-
-    public class RpcModuleAttribute : Attribute
-    {
-        public ModuleType ModuleType { get; }
-
-        public RpcModuleAttribute(ModuleType moduleType)
+        private readonly INodeHealthService _nodeHealthService;
+        public HealthModule(INodeHealthService nodeHealthService)
         {
-            ModuleType = moduleType;
+            _nodeHealthService = nodeHealthService;
+        }
+        public ResultWrapper<string> health_nodeStatus()
+        {
+            throw new System.NotImplementedException();
         }
     }
 }
