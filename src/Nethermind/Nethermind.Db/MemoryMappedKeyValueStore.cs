@@ -174,7 +174,7 @@ namespace Nethermind.Db
             
             lock (_batches)
             {
-                if (batch.IsCommitted)
+                if (batch._isCommitted)
                 {
                     return; // this batch is already committed
                 }
@@ -221,10 +221,10 @@ namespace Nethermind.Db
                     while (!toRewrite.IsEmpty)
                     {
                         // parse existing header to obtain the length
-                        (int valueLength, _) = ParseHeader(BinaryPrimitives.ReadInt64LittleEndian(data));
+                        (int valueLength, _) = ParseHeader(BinaryPrimitives.ReadInt64LittleEndian(toRewrite));
                         
                         // retrieve the right jump
-                        int jumpIndex = ReadJumpIndex(data.Slice(HeaderLength));
+                        int jumpIndex = ReadJumpIndex(toRewrite.Slice(HeaderLength));
                         if (!_jumpCache.TryGetValue(jumpIndex, out long jump))
                         {
                             // this value was not overwritten by this flush, it needs to be read back from the table
@@ -232,9 +232,9 @@ namespace Nethermind.Db
                         }
 
                         // write down the header
-                        BinaryPrimitives.WriteInt64LittleEndian(data, BuildHeader(valueLength, jump));
+                        BinaryPrimitives.WriteInt64LittleEndian(toRewrite, BuildHeader(valueLength, jump));
 
-                        int length = HeaderLength + KeccakLength + valueLength == NullValueLength ? 0 : Align(valueLength);
+                        int length = HeaderLength + KeccakLength + (valueLength == NullValueLength ? 0 : Align(valueLength));
                         
                         // overwrite the jump to make it flushable AFTER the file is flushed
                         _jumpCache[jumpIndex] = _flushFrom + writtenSoFar;
@@ -248,7 +248,7 @@ namespace Nethermind.Db
                     _flushFrom += data.Length;  // set proper cursor _flushFrom
                     
                     _batches.TryDequeue(out _); // dequeue the current that was Peeked at the beginning
-                    commit.IsCommitted = true;// mark this as committed
+                    commit._isCommitted = true;// mark this as committed
                 }
 
                 // flush before returning
@@ -461,7 +461,7 @@ namespace Nethermind.Db
             
             private static readonly byte[] s_empty = new byte[0];
 
-            public bool IsCommitted;
+            public bool _isCommitted;
             
             public WriteBatch(MemoryMappedKeyValueStore store)
             {
@@ -508,7 +508,13 @@ namespace Nethermind.Db
                 _written += length;
             }
 
-            public void Commit() => _store.Commit(this);
+            public void Commit()
+            {
+                if (_written > 0)
+                {
+                    _store.Commit(this);
+                }
+            }
 
             public void Delete(byte[] key) => Put(key, null);
 
