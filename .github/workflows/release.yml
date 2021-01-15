@@ -204,6 +204,7 @@ jobs:
   publish-dockers:
     name: Publish images do Docker Hub
     runs-on: ubuntu-latest
+    needs: build-nethermind
     steps:
     - name: Check out Nethermind repository
       uses: actions/checkout@master
