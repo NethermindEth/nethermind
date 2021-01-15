@@ -12,12 +12,13 @@ jobs:
       USER: ${{ github.event.issue.user.login }}
       AUTHOR_ASSOCIATION: ${{ github.event.issue.author_association }}
       ISSUE_URL: ${{ github.event.issue.url }}
+      ISSUE_TITLE: ${{ github.event.issue.title }}"
     steps:
     - name: Alert Nethermind Team
       if: ${{ $AUTHOR_ASSOCIATION != 'MEMBER' || $AUTHOR_ASSOCIATION != 'COLLABORATOR' }}
       run: |
         curl -X POST https://api.eu.opsgenie.com/v2/alerts -H "Content-Type: application/json" -H "Authorization: GenieKey ${{ secrets.OPSGENIE_KEY }}" -d '{
-          "message": "An issue was created by an user: $USER",
+          "message": "An issue $ISSUE_TITLE has been created by a user: $USER",
           "description":"Github issue URL: $ISSUE_URL",
           "tags": ["GithubIssues"]
         }'
