@@ -24,11 +24,15 @@ using NUnit.Framework;
 
 namespace Nethermind.Db.Test
 {
+    [Explicit("Disk IO ")]
     public class MemoryMappedKeyValueStoreTests
     {
         [SetUp]
         public void SetUp()
         {
+            // lazy IO makes these tests hard on shared file names. Let's sleep it through.
+            Thread.Sleep(TimeSpan.FromSeconds(5));
+            
             string dir = TestContext.CurrentContext.WorkDirectory;
             foreach (string file in Directory.GetFiles(dir, MemoryMappedKeyValueStore.Prefix + "*"))
             {
@@ -42,7 +46,7 @@ namespace Nethermind.Db.Test
             }
         }
 
-        [TestCase(100_000, 1000)]
+        [TestCase(1_000_000, 1000)]
         public void Test(int size, int batchSize)
         {
             const int minLength = 50;
@@ -50,7 +54,7 @@ namespace Nethermind.Db.Test
 
             Console.WriteLine("Working directory {0}", TestContext.CurrentContext.WorkDirectory);
 
-            using MemoryMappedKeyValueStore store = new MemoryMappedKeyValueStore(TestContext.CurrentContext.WorkDirectory, 4 * 1024 * 1024);
+            using MemoryMappedKeyValueStore store = new MemoryMappedKeyValueStore(TestContext.CurrentContext.WorkDirectory);
             store.Initialize();
 
             Random random = new Random(size);

@@ -57,10 +57,11 @@ namespace Nethermind.Db
 
         private readonly ConcurrentQueue<WriteBatch> _batches = new ConcurrentQueue<WriteBatch>();
         private readonly Dictionary<int, long> _jumpCache = new Dictionary<int, long>(1024);
-        
-        long _cursor;
-        long _flushFrom;
-        Map _jumps;
+
+        private long _flushFrom;
+        private Map _jumps;
+        private Thread _flusher;
+        private volatile bool _runFlusher;
 
         public MemoryMappedKeyValueStore(string directoryPath, int logFileSize = 256 * 1024 * 1024, int maxBatchFlushSize = 10 * 1024 * 1024)
         {
@@ -96,9 +97,32 @@ namespace Nethermind.Db
             }
 
             Map current = _maps.Last(m => m != null);
-            _cursor = current.Number * _logFileSize + current.Offset;
+            _flushFrom = current.Number * _logFileSize + current.Offset;
 
-            _flushFrom = _cursor;
+            _runFlusher = true;
+            _flusher = new Thread(RunFlusher);
+            _flusher.Start();
+        }
+
+        private void RunFlusher()
+        {
+            void Flush()
+            {
+                lock (_batches)
+                {
+                    int fileNumber = GetFileAndPosition(out int position);
+                    Map map = _maps[fileNumber];
+                    map?.Flush(position);
+                }
+            }
+
+            while (_runFlusher)
+            {
+                Thread.Sleep(TimeSpan.FromSeconds(1));
+                Flush();
+            }
+
+            Flush();
         }
 
         public bool HasNoEntriesToFlush => _batches.IsEmpty;
@@ -180,13 +204,12 @@ namespace Nethermind.Db
                 }
                 
                 Span<long> jumpTable = new Span<long>(_jumps.Pointer, JumpsCount);
-                int fileNumber, position;
 
                 int writtenSoFar = 0;
                 
                 while (_batches.TryPeek(out WriteBatch commit) && writtenSoFar < _maxBatchFlushSize)
                 {
-                    fileNumber = GetFileAndPosition(out position);
+                    int fileNumber = GetFileAndPosition(out int position);
 
                     ref Map file = ref _maps[fileNumber];
 
@@ -250,10 +273,6 @@ namespace Nethermind.Db
                     _batches.TryDequeue(out _); // dequeue the current that was Peeked at the beginning
                     commit._isCommitted = true;// mark this as committed
                 }
-
-                // flush before returning
-                fileNumber = GetFileAndPosition(out position);
-                _maps[fileNumber].Flush(position);
 
                 // write down jumps with volatile to ensure that once the jump is visible the data are visible as well
                 foreach ((int key, long jump) in _jumpCache)
@@ -355,6 +374,9 @@ namespace Nethermind.Db
 
         public void Dispose()
         {
+            _runFlusher = false;
+            _flusher.Join();
+            
             foreach (Map map in _maps)
             {
                 map?.Dispose();
