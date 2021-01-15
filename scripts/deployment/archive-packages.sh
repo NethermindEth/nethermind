@@ -32,8 +32,8 @@ cp $RELEASE_DIRECTORY/nethermind/src/Nethermind/Nethermind.Cli/bin/Release/netco
 cp $RELEASE_DIRECTORY/nethermind/src/Nethermind/Nethermind.Baseline/bin/Release/netcoreapp3.1/Nethermind.Baseline.dll .
 cp $RELEASE_DIRECTORY/nethermind/src/Nethermind/Nethermind.Api/bin/Release/netcoreapp3.1/Nethermind.Api.dll .
 cp $RELEASE_DIRECTORY/nethermind/src/Nethermind/Nethermind.HealthChecks/bin/Release/netcoreapp3.1/Nethermind.HealthChecks.dll .
-cp $RELEASE_DIRECTORY/nethermind/src/Nethermind/Nethermind.HealthChecks/bin/Release/netcoreapp3.1/Microsoft.Extensions.Diagnostics.HealthChecks.Abstractions.dll .
-cp $RELEASE_DIRECTORY/nethermind/src/Nethermind/Nethermind.HealthChecks/bin/Release/netcoreapp3.1/Microsoft.Extensions.Diagnostics.HealthChecks.dll .
+cp $RELEASE_DIRECTORY/nethermind/src/Nethermind/Nethermind.Runner/bin/Release/netcoreapp3.1/Microsoft.Extensions.Diagnostics.HealthChecks.Abstractions.dll .
+cp $RELEASE_DIRECTORY/nethermind/src/Nethermind/Nethermind.Runner/bin/Release/netcoreapp3.1/Microsoft.Extensions.Diagnostics.HealthChecks.dll .
 
 zip -r plugins-$GIT_SHORT_TAG-$GIT_HASH.zip . && cd ..
 
