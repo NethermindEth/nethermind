@@ -87,10 +87,18 @@ jobs:
         name: plugins
         path: ${{ env.RELEASE_DIRECTORY }}/plugins/plugins-*
 
+  trigger-publish:
+    name: Trigger publish to different sources
+    runs-on: ubuntu-latest
+    needs: build-nethermind
+    environment:
+      name: Release
+      url: https://github.com/NethermindEth/nethermind/releases/tag/${{ github.event.inputs.tag }}
+
   publish-github:
     name: Publish packages to Github Releases
     runs-on: ubuntu-latest
-    needs: build-nethermind
+    needs: trigger-publish
     env: 
       RELEASE_DIRECTORY: /home/runner/work/nethermind/nethermind
       LIN_RELEASE: nethermind-lin-x64
@@ -98,9 +106,6 @@ jobs:
       WIN_RELEASE: nethermind-win-x64
       LIN_ARM64_RELEASE: nethermind-lin-arm64
       LIN_ARM_RELEASE: nethermind-lin-arm
-    environment:
-      name: Release
-      url: https://github.com/NethermindEth/nethermind/releases/tag/${{ github.event.inputs.tag }}
     steps:
     - name: Check out Nethermind repository
       uses: actions/checkout@master
@@ -147,7 +152,7 @@ jobs:
   publish-downloads:
     name: Publish packages to Downloads page
     runs-on: ubuntu-latest
-    needs: build-nethermind
+    needs: trigger-publish
     env: 
       RELEASE_DIRECTORY: /home/runner/work/nethermind/nethermind
       LIN_RELEASE: nethermind-lin-x64
@@ -155,9 +160,6 @@ jobs:
       WIN_RELEASE: nethermind-win-x64
       LIN_ARM64_RELEASE: nethermind-lin-arm64
       LIN_ARM_RELEASE: nethermind-lin-arm
-    environment:
-      name: Release
-      url: https://downloads.nethermind.io
     steps:
     - name: Check out Nethermind repository
       uses: actions/checkout@master
@@ -204,10 +206,7 @@ jobs:
   publish-dockers:
     name: Publish images do Docker Hub
     runs-on: ubuntu-latest
-    needs: build-nethermind
-    environment:
-      name: Release
-      url: https://hub.docker.com/r/nethermind/nethermind/tags
+    needs: trigger-publish
     steps:
     - name: Check out Nethermind repository
       uses: actions/checkout@master
