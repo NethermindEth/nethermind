@@ -99,7 +99,7 @@ jobs:
       LIN_ARM64_RELEASE: nethermind-lin-arm64
       LIN_ARM_RELEASE: nethermind-lin-arm
     environment:
-      name: release_environment
+      name: Release
       url: https://github.com/NethermindEth/nethermind/releases/tag/${{ github.event.inputs.tag }}
     steps:
     - name: Check out Nethermind repository
@@ -156,7 +156,7 @@ jobs:
       LIN_ARM64_RELEASE: nethermind-lin-arm64
       LIN_ARM_RELEASE: nethermind-lin-arm
     environment:
-      name: release_environment
+      name: Release
       url: https://downloads.nethermind.io
     steps:
     - name: Check out Nethermind repository
@@ -206,7 +206,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: build-nethermind
     environment:
-      name: release_environment
+      name: Release
       url: https://hub.docker.com/r/nethermind/nethermind/tags
     steps:
     - name: Check out Nethermind repository
