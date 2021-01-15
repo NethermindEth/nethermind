@@ -92,7 +92,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: build-nethermind
     environment:
-      name: Release
+      name: Releases
       url: https://github.com/NethermindEth/nethermind/releases/tag/${{ github.event.inputs.tag }}
     steps:
     - run: echo "Just a middle-man job"
