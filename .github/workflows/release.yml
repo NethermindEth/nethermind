@@ -94,6 +94,9 @@ jobs:
     environment:
       name: Release
       url: https://github.com/NethermindEth/nethermind/releases/tag/${{ github.event.inputs.tag }}
+    steps:
+      run: echo "Just a middle-man job"
+
 
   publish-github:
     name: Publish packages to Github Releases
