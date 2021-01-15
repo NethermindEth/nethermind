@@ -32,12 +32,27 @@ cp $RELEASE_DIRECTORY/nethermind/src/Nethermind/Nethermind.Cli/bin/Release/netco
 cp $RELEASE_DIRECTORY/nethermind/src/Nethermind/Nethermind.Baseline/bin/Release/netcoreapp3.1/Nethermind.Baseline.dll .
 cp $RELEASE_DIRECTORY/nethermind/src/Nethermind/Nethermind.Api/bin/Release/netcoreapp3.1/Nethermind.Api.dll .
 cp $RELEASE_DIRECTORY/nethermind/src/Nethermind/Nethermind.HealthChecks/bin/Release/netcoreapp3.1/Nethermind.HealthChecks.dll .
+cp $RELEASE_DIRECTORY/nethermind/src/Nethermind/Nethermind.Runner/bin/Release/netcoreapp3.1/Microsoft.Extensions.Diagnostics.HealthChecks.Abstractions.dll .
+cp $RELEASE_DIRECTORY/nethermind/src/Nethermind/Nethermind.Runner/bin/Release/netcoreapp3.1/Microsoft.Extensions.Diagnostics.HealthChecks.dll .
 
 zip -r plugins-$GIT_SHORT_TAG-$GIT_HASH.zip . && cd ..
 
 cp $RELEASE_DIRECTORY/plugins/Nethermind.HealthChecks.dll $LIN_RELEASE/plugins/
 cp $RELEASE_DIRECTORY/plugins/Nethermind.HealthChecks.dll $OSX_RELEASE/plugins/
 cp $RELEASE_DIRECTORY/plugins/Nethermind.HealthChecks.dll $WIN_RELEASE/plugins/
+
+cp $RELEASE_DIRECTORY/plugins/Microsoft.Extensions.Diagnostics.HealthChecks.Abstractions.dll $LIN_RELEASE/plugins/
+cp $RELEASE_DIRECTORY/plugins/Microsoft.Extensions.Diagnostics.HealthChecks.Abstractions.dll $OSX_RELEASE/plugins/
+cp $RELEASE_DIRECTORY/plugins/Microsoft.Extensions.Diagnostics.HealthChecks.Abstractions.dll $WIN_RELEASE/plugins/
+
+cp $RELEASE_DIRECTORY/plugins/Microsoft.Extensions.Diagnostics.HealthChecks.dll $LIN_RELEASE/plugins/
+cp $RELEASE_DIRECTORY/plugins/Microsoft.Extensions.Diagnostics.HealthChecks.dll $OSX_RELEASE/plugins/
+cp $RELEASE_DIRECTORY/plugins/Microsoft.Extensions.Diagnostics.HealthChecks.dll $WIN_RELEASE/plugins/
+
+cp $RELEASE_DIRECTORY/plugins/Nethermind.Api.dll $LIN_RELEASE/plugins/
+cp $RELEASE_DIRECTORY/plugins/Nethermind.Api.dll $OSX_RELEASE/plugins/
+cp $RELEASE_DIRECTORY/plugins/Nethermind.Api.dll $WIN_RELEASE/plugins/
+
 
 cd $LIN_RELEASE && zip -r $LIN-$GIT_SHORT_TAG-$GIT_HASH.zip . && cd ..
 cd $OSX_RELEASE && zip -r $OSX-$GIT_SHORT_TAG-$GIT_HASH.zip . && cd ..
