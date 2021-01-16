@@ -25,7 +25,7 @@ namespace Nethermind.Evm.Test
     [TestFixture]
     public class Eip1344Tests : VirtualMachineTestsBase
     {
-        private void Test(int chainId)
+        private void Test(long chainId)
         {
             var code = Prepare.EvmCode
                 .Op(Instruction.CHAINID)

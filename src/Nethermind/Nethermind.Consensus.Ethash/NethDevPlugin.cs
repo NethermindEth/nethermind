@@ -99,6 +99,7 @@ namespace Nethermind.Consensus.Ethash
                 getFromApi.BlockProcessingQueue,
                 getFromApi.TxPool,
                 getFromApi.Timestamper,
+                getFromApi.SpecProvider,
                 getFromApi.Config<IMiningConfig>(),
                 getFromApi.LogManager);
                 

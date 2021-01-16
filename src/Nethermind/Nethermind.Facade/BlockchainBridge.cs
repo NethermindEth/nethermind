@@ -239,7 +239,7 @@ namespace Nethermind.Facade
             return _stateReader.GetNonce(stateRoot, address);
         }
 
-        public int GetNetworkId() => _blockTree.ChainId;
+        public long GetNetworkId() => _blockTree.ChainId;
         public bool FilterExists(int filterId) => _filterStore.FilterExists(filterId);
         public FilterType GetFilterType(int filterId) => _filterStore.GetFilterType(filterId);
         public FilterLog[] GetFilterLogs(int filterId) => _filterManager.GetLogs(filterId);

@@ -28,6 +28,7 @@ using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
+using Nethermind.Specs.Forks;
 using Nethermind.State;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
@@ -96,7 +97,7 @@ namespace Nethermind.Blockchain.Test
                 LimboLogs.Instance);
 
             BlockHeader header = Build.A.BlockHeader.WithNumber(1).WithAuthor(TestItem.AddressD).TestObject;
-            Block block = Build.A.Block.WithTransactions(1).WithHeader(header).TestObject;
+            Block block = Build.A.Block.WithTransactions(1, MuirGlacier.Instance).WithHeader(header).TestObject;
             Assert.Throws<OperationCanceledException>(() => processor.Process(
                 Keccak.EmptyTreeHash,
                 new List<Block> {block},

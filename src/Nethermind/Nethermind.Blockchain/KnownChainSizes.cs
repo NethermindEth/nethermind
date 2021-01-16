@@ -45,7 +45,7 @@ namespace Nethermind.Blockchain
         /// <summary>
         /// Size in bytes, daily growth rate and the date of manual update
         /// </summary>
-        public static Dictionary<int, SizeInfo> ChainSize = new Dictionary<int, SizeInfo>
+        public static Dictionary<long, SizeInfo> ChainSize = new Dictionary<long, SizeInfo>
         {
             {ChainId.Goerli,  new SizeInfo(2570.MB(), 8.MB(), new DateTime(2020, 11, 19))},
             {ChainId.Rinkeby,  new SizeInfo(13700.MB(), 8.MB(), new DateTime(2020, 4, 23))},

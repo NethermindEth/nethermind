@@ -34,10 +34,10 @@ namespace Nethermind.Crypto
         public static readonly BigInteger MaxLowS = BigInteger.Parse("7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF5D576E7357A4501DDFE92F46681B20A0", NumberStyles.HexNumber);
         public static readonly BigInteger LowSTransform = BigInteger.Parse("00FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141", NumberStyles.HexNumber);
 
-        private readonly int _chainIdValue;
+        private readonly long _chainIdValue;
         private readonly ILogger _logger;
 
-        public EthereumEcdsa(int chainId, ILogManager logManager)
+        public EthereumEcdsa(long chainId, ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _chainIdValue = chainId;

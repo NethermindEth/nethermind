@@ -22,10 +22,8 @@ namespace Nethermind.Evm
     {
         public static long CalculateCost(int byteCodeLength, IReleaseSpec spec)
         {
-            if (spec.IsEip170Enabled && byteCodeLength > spec.MaxCodeSize)
-            {
+            if (spec.LimitCodeSize  && byteCodeLength > spec.MaxCodeSize)
                 return long.MaxValue;
-            }
 
             return GasCostOf.CodeDeposit * byteCodeLength;
         }

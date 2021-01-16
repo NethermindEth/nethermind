@@ -147,6 +147,7 @@ namespace Nethermind.Consensus.Clique
                 getFromApi.Sealer!,
                 gasLimitCalculator,
                 _cliqueConfig!,
+                getFromApi.SpecProvider,
                 getFromApi.LogManager);
 
             return Task.CompletedTask;

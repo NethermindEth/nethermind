@@ -21,9 +21,6 @@ using Nethermind.Core.Extensions;
 
 namespace Nethermind.Core.Caching
 {
-    /// <summary>
-    /// A custom array based LRU cache.
-    /// </summary>
     /// <remarks>
     /// The array based solution is preferred to lower the overall memory management overhead. The <see cref="LinkedListNode{T}"/> based approach is very costly.
     /// </remarks>
@@ -151,6 +148,7 @@ namespace Nethermind.Core.Caching
         public void Delete(TKey key)
         {
             if (_cacheMap.Remove(key, out int node))
+
             {
                 int elementToFree = _cacheMap.Count;
 

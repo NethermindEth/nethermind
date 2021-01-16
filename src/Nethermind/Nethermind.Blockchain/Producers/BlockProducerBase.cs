@@ -23,6 +23,7 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
@@ -53,6 +54,7 @@ namespace Nethermind.Blockchain.Producers
         private readonly IStateProvider _stateProvider;
         private readonly IGasLimitCalculator _gasLimitCalculator;
         private readonly ITimestamper _timestamper;
+        private readonly ISpecProvider _spec;
         private readonly ITxSource _txSource;
         protected ILogger Logger { get; }
 
@@ -65,6 +67,7 @@ namespace Nethermind.Blockchain.Producers
             IStateProvider stateProvider,
             IGasLimitCalculator gasLimitCalculator,
             ITimestamper timestamper,
+            ISpecProvider specProvider,
             ILogManager logManager)
         {
             _txSource = txSource ?? throw new ArgumentNullException(nameof(txSource));
@@ -75,6 +78,7 @@ namespace Nethermind.Blockchain.Producers
             _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
             _gasLimitCalculator = gasLimitCalculator ?? throw new ArgumentNullException(nameof(gasLimitCalculator));
             _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
+            _spec = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             Logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
@@ -198,7 +202,7 @@ namespace Nethermind.Blockchain.Producers
 
             var transactions = _txSource.GetTransactions(parent, header.GasLimit);
             Block block = new Block(header, transactions, Array.Empty<BlockHeader>());
-            header.TxRoot = new TxTrie(block.Transactions).RootHash;
+            header.TxRoot = new TxTrie(block.Transactions, _spec.GetSpec(block.Number)).RootHash;
             return block;
         }
 

@@ -209,7 +209,7 @@ namespace Nethermind.Evm.Test
         protected virtual Block BuildBlock(long blockNumber, SenderRecipientAndMiner senderRecipientAndMiner, Transaction tx)
         {
             senderRecipientAndMiner ??= SenderRecipientAndMiner.Default;
-            return Build.A.Block.WithNumber(blockNumber).WithTransactions(tx == null ? new Transaction[0] : new[] {tx}).WithGasLimit(8000000).WithBeneficiary(senderRecipientAndMiner.Miner).TestObject;
+            return Build.A.Block.WithNumber(blockNumber).WithTransactions(Spec, tx == null ? new Transaction[0] : new[] {tx}).WithGasLimit(8000000).WithBeneficiary(senderRecipientAndMiner.Miner).TestObject;
         }
 
         protected void AssertGas(TestAllTracerWithOutput receipt, long gas)
@@ -227,9 +227,9 @@ namespace Nethermind.Evm.Test
             Assert.AreEqual(value.Bytes, Storage.Get(new StorageCell(Recipient, address)).PadLeft(32), "storage");
         }
 
-        protected void AssertStorage(UInt256 address, byte[] value)
+        protected void AssertStorage(UInt256 address, ReadOnlySpan<byte> value)
         {
-            Assert.AreEqual(value.PadLeft(32), Storage.Get(new StorageCell(Recipient, address)).PadLeft(32), "storage");
+            Assert.AreEqual(new ZeroPaddedSpan(value, 32 - value.Length, PadDirection.Left).ToArray(), Storage.Get(new StorageCell(Recipient, address)).PadLeft(32), "storage");
         }
 
         protected void AssertStorage(UInt256 address, BigInteger expectedValue)

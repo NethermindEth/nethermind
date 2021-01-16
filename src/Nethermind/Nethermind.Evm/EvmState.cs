@@ -19,6 +19,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Linq;
 using System.Threading;
 using Nethermind.Core;
 
@@ -96,13 +97,16 @@ namespace Nethermind.Evm
         public byte[] DataStack;
         
         public int[] ReturnStack;
-
+        
+        private HashSet<Address> _accessedAddresses;
+        private HashSet<StorageCell> _accessedStorageKeys;
+        
         public int DataStackHead = 0;
         
         public int ReturnStackHead = 0;
 
         public EvmState(long gasAvailable, ExecutionEnvironment env, ExecutionType executionType, bool isTopLevel, bool isContinuation)
-            : this(gasAvailable, env, executionType, isTopLevel, -1, -1, 0L, 0L, false, isContinuation, false)
+            : this(gasAvailable, env, executionType, isTopLevel, -1, -1, 0L, 0L, false, null, null, isContinuation, false)
         {
             GasAvailable = gasAvailable;
             Env = env;
@@ -118,9 +122,16 @@ namespace Nethermind.Evm
             long outputDestination,
             long outputLength,
             bool isStatic,
+            HashSet<Address> accessedAddresses,
+            HashSet<StorageCell> accessedStorage,
             bool isContinuation,
             bool isCreateOnPreExistingAccount)
         {
+            if (isTopLevel && isContinuation)
+            {
+                throw new InvalidOperationException("Top level continuations are not valid");
+            }
+            
             GasAvailable = gasAvailable;
             ExecutionType = executionType;
             IsTopLevel = isTopLevel;
@@ -132,6 +143,7 @@ namespace Nethermind.Evm
             IsStatic = isStatic;
             IsContinuation = isContinuation;
             IsCreateOnPreExistingAccount = isCreateOnPreExistingAccount;
+            CopyAccessLists(accessedAddresses, accessedStorage);
         }
 
         public Address From
@@ -199,7 +211,100 @@ namespace Nethermind.Evm
                 (DataStack, ReturnStack) = _stackPool.Value.RentStacks();
             }
         }
+
+        public bool IsCold(Address address)
+        {
+            return _accessedAddresses == null || !AccessedAddresses.Contains(address);
+        }
         
+        public bool IsCold(StorageCell storageCell)
+        {
+            return _accessedStorageKeys == null || !AccessedStorageCells.Contains(storageCell);
+        }
+
+        public void WarmUp(ISet<Address> addresses, ISet<StorageCell> storageCells)
+        {
+            foreach (Address address in addresses ?? Enumerable.Empty<Address>())
+            {
+                WarmUp(address);
+            }
+                    
+            foreach (StorageCell storageCell in storageCells ?? Enumerable.Empty<StorageCell>())
+            {
+                WarmUp(storageCell);
+            }
+        }
+
+        public void WarmUp(Address address)
+        {
+            AccessedAddresses.Add(address);
+        }
+        
+        public void WarmUp(StorageCell storageCell)
+        {
+            AccessedStorageCells.Add(storageCell);
+        }
+
+        // TODO: all of this should be done via checkpoints the same way as storage and state changes in general
+        public void CommitToParent(EvmState parentState)
+        {
+            parentState.Refund += Refund;
+            
+            if (_destroyList != null)
+            {
+                foreach (Address address in DestroyList)
+                {
+                    parentState.DestroyList.Add(address);
+                }
+            }
+
+            if (_logs != null)
+            {
+                for (int i = 0; i < Logs.Count; i++)
+                {
+                    LogEntry logEntry = Logs[i];
+                    parentState.Logs.Add(logEntry);
+                }
+            }
+
+            parentState.CopyAccessLists(_accessedAddresses, _accessedStorageKeys);
+        }
+
+        private void CopyAccessLists(HashSet<Address> addresses, HashSet<StorageCell> storage)
+        {
+            if (addresses != null)
+            {
+                foreach (Address address in addresses)
+                {
+                    AccessedAddresses.Add(address);
+                }
+            }
+
+            if (storage != null)
+            {
+                foreach (StorageCell storageCell in storage)
+                {
+                    AccessedStorageCells.Add(storageCell);
+                }
+            }
+        }
+        
+        /// <summary>
+        /// EIP-2929 accessed addresses
+        /// </summary>
+        internal HashSet<Address> AccessedAddresses
+        {
+            get { return LazyInitializer.EnsureInitialized(ref _accessedAddresses, () => new HashSet<Address>()); }
+        }
+        
+        /// <summary>
+        /// EIP-2929 accessed storage keys
+        /// </summary>
+        internal HashSet<StorageCell> AccessedStorageCells
+        {
+            get { return LazyInitializer.EnsureInitialized(ref _accessedStorageKeys, () => new HashSet<StorageCell>()); }
+        }
+
         private static readonly ThreadLocal<StackPool> _stackPool = new ThreadLocal<StackPool>(() => new StackPool());
         
         private HashSet<Address> _destroyList;

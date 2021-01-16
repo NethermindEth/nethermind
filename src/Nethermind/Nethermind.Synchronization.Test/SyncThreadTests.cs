@@ -303,7 +303,8 @@ namespace Nethermind.Synchronization.Test
                 stateProvider, tree,
                 processor,
                 txPool,
-                Timestamper.Default,
+                Timestamper.Default, 
+                specProvider,
                 new MiningConfig(),
                 logManager);
 

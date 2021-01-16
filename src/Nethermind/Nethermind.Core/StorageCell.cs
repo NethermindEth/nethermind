@@ -16,13 +16,12 @@
 
 using System;
 using System.Diagnostics;
-using Nethermind.Core;
 using Nethermind.Int256;
 
-namespace Nethermind.State
+namespace Nethermind.Core
 {
     [DebuggerDisplay("{Address}->{Index}")]
-    public struct StorageCell : IEquatable<StorageCell>
+    public readonly struct StorageCell : IEquatable<StorageCell>
     {
         public Address Address { get; }
         public UInt256 Index { get; }

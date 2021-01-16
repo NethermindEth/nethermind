@@ -83,6 +83,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.ReportingValidator,
                 _auraConfig,
                 CreateGasLimitCalculator(producerContext.ReadOnlyTxProcessorSource),
+                _api.SpecProvider,
                 _api.LogManager);
         }
 

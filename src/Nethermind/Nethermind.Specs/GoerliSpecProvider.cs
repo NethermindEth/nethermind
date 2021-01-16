@@ -47,7 +47,7 @@ namespace Nethermind.Specs
         public long? DaoBlockNumber { get; } = null;
         public static long IstanbulBlockNumber => 0x17D433;
         public static long BerlinBlockNumber => long.MaxValue - 1;
-        public int ChainId => 0x5;
+        public long ChainId => 0x5;
 
         public long[] TransitionBlocks { get; } =
         {

@@ -117,7 +117,7 @@ namespace Nethermind.Facade.Test
             IEnumerable<Transaction> transactions = Enumerable.Range(0, 10)
                 .Select(i => Build.A.Transaction.WithNonce((UInt256) i).TestObject);
             var block = Build.A.Block
-                .WithTransactions(transactions.ToArray())
+                .WithTransactions(_specProvider.GetSpec(0), transactions.ToArray())
                 .TestObject;
             _blockTree.FindBlock(TestItem.KeccakB, Arg.Any<BlockTreeLookupOptions>()).Returns(block);
             _receiptStorage.FindBlockHash(TestItem.KeccakA).Returns(TestItem.KeccakB);

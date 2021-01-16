@@ -16,6 +16,7 @@
 
 using System;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
@@ -28,7 +29,7 @@ namespace Nethermind.State.Proofs
         private readonly bool _allowProofs;
         private static TransactionDecoder _txDecoder = new TransactionDecoder();
 
-        public TxTrie(Transaction[] txs, bool allowProofs = false)
+        public TxTrie(Transaction[] txs, IReleaseSpec releaseSpec, bool allowProofs = false)
             : base(allowProofs ? (IDb) new MemDb() : NullDb.Instance, EmptyTreeHash, false, false, NullLogManager.Instance)
         {
             _allowProofs = allowProofs;
@@ -42,7 +43,10 @@ namespace Nethermind.State.Proofs
             // a temporary trie would be a trie that exists to create a state root only and then be disposed of
             for (int i = 0; i < txs.Length; i++)
             {
-                Rlp transactionRlp = _txDecoder.Encode(txs[i]);
+                RlpBehaviors behaviors = releaseSpec.UseTransactionTypes
+                    ? RlpBehaviors.UseTransactionTypes
+                    : RlpBehaviors.None;
+                Rlp transactionRlp = _txDecoder.Encode(txs[i], behaviors);
                 Set(Rlp.Encode(i).Bytes, transactionRlp.Bytes);
             }
 
