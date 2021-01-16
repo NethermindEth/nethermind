@@ -45,7 +45,17 @@ namespace Nethermind.Blockchain.Test.Proofs
                 _releaseSpec,
                  Build.A.Transaction.TestObject).TestObject;
             TxTrie txTrie = new TxTrie(block.Transactions, _releaseSpec);
-            Assert.AreEqual("0x29cc403075ed3d1d6af940d577125cc378ee5a26f7746cbaf87f1cf4a38258b5", txTrie.RootHash.ToString());
+
+            if (_releaseSpec == Berlin.Instance)
+            {
+                Assert.AreEqual("0xcf00543cc76e3cf2dd2f52f4359a4cf686ed34e264f782bdf2f95993cc9f3902",
+                    txTrie.RootHash.ToString());
+            }
+            else
+            {
+                Assert.AreEqual("0x29cc403075ed3d1d6af940d577125cc378ee5a26f7746cbaf87f1cf4a38258b5",
+                    txTrie.RootHash.ToString());
+            }
         }
         
         [Test]
