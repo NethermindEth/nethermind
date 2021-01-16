@@ -165,7 +165,7 @@ namespace Nethermind.Synchronization.ParallelSync
             return _blockTree.FindHeader(blockHash)?.TotalDifficulty;
         }
 
-        public bool IsFastBlocksHeadersFinished() => !IsFastBlocks() || (_blockTree.LowestInsertedHeader?.Number ?? long.MaxValue) <= 1;
+        public bool IsFastBlocksHeadersFinished() => !IsFastBlocks() || (!_syncConfig.DownloadHeadersInFastSync || (_blockTree.LowestInsertedHeader?.Number ?? long.MaxValue) <= 1);
         
         public bool IsFastBlocksBodiesFinished() => !IsFastBlocks() || (!_syncConfig.DownloadBodiesInFastSync || (_blockTree.LowestInsertedBodyNumber ?? long.MaxValue) <= _bodiesBarrier);
 
