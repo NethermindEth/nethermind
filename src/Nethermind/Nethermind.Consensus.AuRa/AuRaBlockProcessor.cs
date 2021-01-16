@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -21,11 +21,11 @@ using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Rewards;
 using Nethermind.Blockchain.Validators;
-using Nethermind.Consensus.AuRa.Transactions;
 using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
@@ -106,9 +106,10 @@ namespace Nethermind.Consensus.AuRa
             for (int i = 0; i < block.Transactions.Length; i++)
             {
                 var tx = block.Transactions[i];
-                if (!_txFilter.IsAllowed(tx, parentHeader).Allowed)
+                var txFilterResult = _txFilter.IsAllowed(tx, parentHeader);
+                if (!txFilterResult.Allowed)
                 {
-                    if (_logger.IsWarn) _logger.Warn($"Proposed block is not valid {block.ToString(Block.Format.FullHashAndNumber)}. {tx.ToShortString()} doesn't have required permissions.");
+                    if (_logger.IsWarn) _logger.Warn($"Proposed block is not valid {block.ToString(Block.Format.FullHashAndNumber)}. {tx.ToShortString()} doesn't have required permissions. Reason: {txFilterResult.Reason}.");
                     throw new InvalidBlockException(block.Hash);
                 }
             }
