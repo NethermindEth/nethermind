@@ -22,8 +22,8 @@ namespace Nethermind.Blockchain.Synchronization
     public class PruningConfig : IPruningConfig
     {
         public bool Enabled { get; set; }
-        public long PruningCacheMb { get; set; } = 512;
-        public long PruningPersistenceInterval { get; set; } = 8192;    
+        public long CacheMb { get; set; } = 512;
+        public long PersistenceInterval { get; set; } = 8192;    
     }
     
     [ConfigCategory(Description = "Configuration of the synchronization modes.")]

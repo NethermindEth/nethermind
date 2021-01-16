@@ -36,7 +36,7 @@ namespace Nethermind.Trie.Pruning
         private bool _batchStarted = false;
 
         public TrieStore(IKeyValueStoreWithBatching? keyValueStore, ILogManager? logManager)
-            : this(keyValueStore, No.Pruning, Full.Archive, logManager)
+            : this(keyValueStore, No.Pruning, Pruning.Persist.EveryBlock, logManager)
         {
         }
 

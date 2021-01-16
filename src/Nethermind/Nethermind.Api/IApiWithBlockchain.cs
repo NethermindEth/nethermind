@@ -59,7 +59,7 @@ namespace Nethermind.Api
         /// DO NOT USE OUTSIDE OF PROCESSING BLOCK CONTEXT!
         /// </remarks>
         IStateProvider? StateProvider { get; set; }
-        IKeyValueStore? MainStateDbWithCache { get; set; }
+        IKeyValueStoreWithBatching? MainStateDbWithCache { get; set; }
         IReadOnlyStateProvider? ChainHeadStateProvider { get; set; }
         IStateReader? StateReader { get; set; }
         IStorageProvider? StorageProvider { get; set; }

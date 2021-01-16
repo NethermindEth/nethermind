@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2020 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -13,23 +13,14 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
 
-using Nethermind.Config;
-
-namespace Nethermind.Blockchain.Synchronization
+namespace Nethermind.Trie.Pruning
 {
-    public interface IPruningConfig : IConfig
+    public static class Persist
     {
-        [ConfigItem(Description = "Enables pruning (beta).", DefaultValue = "false")]
-        bool Enabled { get; set; }
-        
-        [ConfigItem(Description = "Pruning cache size in MB (beta).", DefaultValue = "512")]
-        long CacheMb { get; set; }
-        
-        [ConfigItem(
-            Description = "Defines how often blocks will be persisted even if not required by cache memory usage (beta)",
-            DefaultValue = "8192")]
-        long PersistenceInterval { get; set; }
+        public static IPersistenceStrategy EveryBlock = Archive.Instance;
+
+        public static IPersistenceStrategy IfBlockOlderThan(long length)
+            => new ConstantInterval(length);
     }
 }

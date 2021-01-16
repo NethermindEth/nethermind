@@ -18,22 +18,27 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Trie;
 
 namespace Nethermind.State.Witnesses
 {
-    public static class IKeyValueStoreExtensions
+    public static class KeyValueStoreWithBatchingExtensions
     {
-        public static IKeyValueStore WitnessedBy(this IKeyValueStore @this, IWitnessCollector witnessCollector) => 
-            witnessCollector == NullWitnessCollector.Instance ? @this : new WitnessingStore(@this, witnessCollector);
+        public static IKeyValueStoreWithBatching WitnessedBy(
+            this IKeyValueStoreWithBatching @this,
+            IWitnessCollector witnessCollector)
+        {
+            return witnessCollector == NullWitnessCollector.Instance
+                ? @this
+                : new WitnessingStore(@this, witnessCollector);
+        }
     }
     
-    public class WitnessingStore : IKeyValueStore
+    public class WitnessingStore : IKeyValueStoreWithBatching
     {
-        private readonly IKeyValueStore _wrapped;
+        private readonly IKeyValueStoreWithBatching _wrapped;
         private readonly IWitnessCollector _witnessCollector;
 
-        public WitnessingStore(IKeyValueStore? wrapped, IWitnessCollector? witnessCollector)
+        public WitnessingStore(IKeyValueStoreWithBatching? wrapped, IWitnessCollector? witnessCollector)
         {
             _wrapped = wrapped ?? throw new ArgumentNullException(nameof(wrapped));
             _witnessCollector = witnessCollector ?? throw new ArgumentNullException(nameof(witnessCollector));
@@ -52,6 +57,16 @@ namespace Nethermind.State.Witnesses
                 return _wrapped[key];
             }
             set => _wrapped[key] = value;
+        }
+
+        public void StartBatch()
+        {
+            _wrapped.StartBatch();
+        }
+
+        public void CommitBatch()
+        {
+            _wrapped.CommitBatch();
         }
 
         public void Touch(byte[] key)

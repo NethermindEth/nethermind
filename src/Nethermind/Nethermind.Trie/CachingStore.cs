@@ -21,11 +21,19 @@ using Nethermind.Core.Caching;
 
 namespace Nethermind.Trie
 {
-    public class CachingStore : IKeyValueStore
+    public static class KeyValueStoreWithBatchingExtensions
     {
-        private readonly IKeyValueStore _wrappedStore;
+        public static IKeyValueStoreWithBatching Cached(this IKeyValueStoreWithBatching @this, int maxCapacity)
+        {
+            return new CachingStore(@this, maxCapacity);
+        }
+    }
 
-        public CachingStore(IKeyValueStore wrappedStore, int maxCapacity)
+    public class CachingStore : IKeyValueStoreWithBatching
+    {
+        private readonly IKeyValueStoreWithBatching _wrappedStore;
+
+        public CachingStore(IKeyValueStoreWithBatching wrappedStore, int maxCapacity)
         {
             _wrappedStore = wrappedStore ?? throw new ArgumentNullException(nameof(wrappedStore));
             _cache = new LruCache<byte[], byte[]>(maxCapacity, "RLP Cache");
@@ -55,6 +63,16 @@ namespace Nethermind.Trie
                 _cache.Set(key, value);
                 _wrappedStore[key] = value;
             }
+        }
+
+        public void StartBatch()
+        {
+            _wrappedStore.StartBatch();
+        }
+
+        public void CommitBatch()
+        {
+            _wrappedStore.StartBatch();
         }
     }
 }

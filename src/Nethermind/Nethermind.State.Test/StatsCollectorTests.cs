@@ -38,7 +38,7 @@ namespace Nethermind.Store.Test
         {
             MemDb memDb = new MemDb();
             ISnapshotableDb stateDb = new StateDb(memDb);
-            TrieStore trieStore = new TrieStore(stateDb, new MemoryLimit(0.MB()), Full.Archive, LimboLogs.Instance);
+            TrieStore trieStore = new TrieStore(stateDb, new MemoryLimit(0.MB()), Persist.EveryBlock, LimboLogs.Instance);
             StateProvider stateProvider = new StateProvider(trieStore, stateDb, LimboLogs.Instance);
             StorageProvider storageProvider = new StorageProvider(trieStore, stateProvider, LimboLogs.Instance);
 

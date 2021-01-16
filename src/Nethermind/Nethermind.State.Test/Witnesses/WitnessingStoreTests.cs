@@ -96,7 +96,7 @@ namespace Nethermind.Store.Test.Witnesses
         
         private class Context
         {
-            public IKeyValueStore Wrapped { get; } = Substitute.For<IKeyValueStore>();
+            public IKeyValueStoreWithBatching Wrapped { get; } = Substitute.For<IKeyValueStoreWithBatching>();
 
             public WitnessingStore Database { get; }
             

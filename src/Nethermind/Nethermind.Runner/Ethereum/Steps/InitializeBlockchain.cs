@@ -36,7 +36,6 @@ using Nethermind.State.Witnesses;
 using Nethermind.Synchronization.BeamSync;
 using Nethermind.Synchronization.Witness;
 using Nethermind.Trie;
-using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Storages;
@@ -82,55 +81,55 @@ namespace Nethermind.Runner.Ethereum.Steps
             
             Account.AccountStartNonce = getApi.ChainSpec.Parameters.AccountStartNonce;
 
-            IKeyValueStore mainStateDbWithCache = setApi.MainStateDbWithCache = new CachingStore(getApi.DbProvider.StateDb, PatriciaTree.OneNodeAvgMemoryEstimate);
-            
             IWitnessCollector witnessCollector = setApi.WitnessCollector = syncConfig.WitnessProtocolEnabled
                 ? new WitnessCollector(getApi.DbProvider.WitnessDb, _api.LogManager)
+                    .WithPruning(getApi.BlockTree!, getApi.LogManager)
                 : NullWitnessCollector.Instance;
 
-            if (syncConfig.WitnessProtocolEnabled)
-            {
-                new WitnessPruner(getApi.BlockTree, witnessCollector, getApi.LogManager).Start();
-            }
+            setApi.MainStateDbWithCache = getApi.DbProvider.StateDb
+                .Innermost // TODO: PRUNING what a hack here just to pass the actual DB
+                .Cached(Trie.MemoryAllowance.TrieNodeCacheCount)
+                .WitnessedBy(witnessCollector);
+            IKeyValueStore? codeDb = getApi.DbProvider.CodeDb
+                .Innermost // TODO: PRUNING what a hack here just to pass the actual DB
+                .WitnessedBy(witnessCollector);
 
+            ITrieStore trieStore;
             if (pruningConfig.Enabled)
             {
-                _api.TrieStore = new TrieStore(
-                    setApi.DbProvider!.StateDb.Innermost, // TODO: PRUNING what a hack here just to pass the actual DB
-                    new MemoryLimit(pruningConfig.PruningCacheMb * 1.MB()), // TODO: memory hint should define this
-                    new ConstantInterval(pruningConfig.PruningPersistenceInterval), // TODO: this should be based on time
-                    _api.LogManager);
+                trieStore = setApi.TrieStore = new TrieStore(
+                    setApi.MainStateDbWithCache,
+                    Prune.WhenCacheReaches(pruningConfig.CacheMb.MB()), // TODO: memory hint should define this
+                    Persist.IfBlockOlderThan(pruningConfig.PersistenceInterval), // TODO: this should be based on time
+                    getApi.LogManager);
             }
             else
             {
-                _api.TrieStore = new TrieStore(
-                    setApi.DbProvider!.StateDb.Innermost, // TODO: PRUNING what a hack here just to pass the actual DB
+                trieStore = setApi.TrieStore = new TrieStore(
+                    setApi.MainStateDbWithCache, // TODO: PRUNING what a hack here just to pass the actual DB
                     No.Pruning,
-                    Full.Archive,
-                    _api.LogManager);
+                    Persist.EveryBlock,
+                    getApi.LogManager);
             }
-            
-            var stateDb = mainStateDbWithCache.WitnessedBy(witnessCollector);
-            var codeDb = getApi.DbProvider.CodeDb.WitnessedBy(witnessCollector);
 
-            var stateProvider = setApi.StateProvider = new StateProvider(
-                _api.TrieStore,
+            IStateProvider stateProvider = setApi.StateProvider = new StateProvider(
+                trieStore,
                 codeDb,
-                _api.LogManager);
+                getApi.LogManager);
 
-            ReadOnlyDbProvider readOnly = new ReadOnlyDbProvider(_api.DbProvider, false);
+            ReadOnlyDbProvider readOnly = new ReadOnlyDbProvider(getApi.DbProvider, false);
             
             PersistentTxStorage txStorage = new PersistentTxStorage(getApi.DbProvider.PendingTxsDb);
-            var stateReader = setApi.StateReader = new StateReader(_api.ReadOnlyTrieStore, readOnly.GetDb<ISnapshotableDb>(DbNames.Code), _api.LogManager);
+            IStateReader stateReader = setApi.StateReader = new StateReader(_api.ReadOnlyTrieStore, readOnly.GetDb<ISnapshotableDb>(DbNames.Code), _api.LogManager);
             
             setApi.ChainHeadStateProvider = new ChainHeadReadOnlyStateProvider(getApi.BlockTree, stateReader);
             Account.AccountStartNonce = getApi.ChainSpec.Parameters.AccountStartNonce;
 
-            _api.DisposeStack.Push(_api.TrieStore);
-            _api.ReadOnlyTrieStore = new ReadOnlyTrieStore(_api.TrieStore);
-            _api.TrieStore.ReorgBoundaryReached += ReorgBoundaryReached;
+            getApi.DisposeStack.Push(trieStore);
+            setApi.ReadOnlyTrieStore = new ReadOnlyTrieStore(_api.TrieStore);
+            trieStore.ReorgBoundaryReached += ReorgBoundaryReached;
 
-            _api.StateProvider.StateRoot = getApi.BlockTree!.Head?.StateRoot ?? Keccak.EmptyTreeHash;
+            stateProvider.StateRoot = getApi.BlockTree!.Head?.StateRoot ?? Keccak.EmptyTreeHash;
 
             if (_api.Config<IInitConfig>().DiagnosticMode == DiagnosticMode.VerifyTrie)
             {

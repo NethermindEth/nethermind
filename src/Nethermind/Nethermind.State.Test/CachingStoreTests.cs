@@ -78,7 +78,7 @@ namespace Nethermind.Store.Test
 
         private class Context
         {
-            public IKeyValueStore Wrapped { get; set; } = Substitute.For<IKeyValueStore>();
+            public IKeyValueStoreWithBatching Wrapped { get; set; } = Substitute.For<IKeyValueStoreWithBatching>();
 
             public CachingStore Database { get; set; }
 

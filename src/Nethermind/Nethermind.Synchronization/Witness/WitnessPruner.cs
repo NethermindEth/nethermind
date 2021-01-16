@@ -22,6 +22,19 @@ using Nethermind.State;
 
 namespace Nethermind.Synchronization.Witness
 {
+    public static class WitnessCollectorExtensions
+    {
+        public static IWitnessCollector WithPruning(
+            this IWitnessCollector collector,
+            IBlockTree blockTree,
+            ILogManager logManager,
+            int followDistance = 16)
+        {
+            new WitnessPruner(blockTree, collector, logManager, followDistance).Start();
+            return collector;
+        }
+    }
+    
     public class WitnessPruner
     {
         private readonly IBlockTree _blockTree;
