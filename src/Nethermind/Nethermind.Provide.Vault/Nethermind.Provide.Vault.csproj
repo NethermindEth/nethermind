@@ -12,6 +12,7 @@
     <ProjectReference Include="..\Nethermind.Config\Nethermind.Config.csproj" />
   </ItemGroup>
   <ItemGroup>
+    <PackageReference Include="Google.Protobuf" Version="3.14.0" />
     <PackageReference Include="Provide" Version="2.2.0" />
   </ItemGroup>
 
