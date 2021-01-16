@@ -61,9 +61,9 @@ namespace Nethermind.Core
         }
 
         [MethodImpl(MethodImplOptions.Synchronized)]
-        private static void Add(IPEndPoint farAddress, string line)
+        private static void Add(IPEndPoint? farAddress, string line)
         {
-            _events.AddOrUpdate(farAddress.Address.MapToIPv4().ToString(), ni => new ConcurrentQueue<string>(), (s, list) =>
+            _events.AddOrUpdate(farAddress?.Address.MapToIPv4().ToString() ?? "null", ni => new ConcurrentQueue<string>(), (s, list) =>
             {
                 list.Enqueue(line);
                 return list;
