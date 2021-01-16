@@ -62,11 +62,7 @@ using Nethermind.Stats;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
-<<<<<<< HEAD
-using Nethermind.Trie;
-=======
 using Nethermind.Trie.Pruning;
->>>>>>> master
 using Nethermind.TxPool;
 using Nethermind.Wallet;
 using Nethermind.WebSockets;
@@ -262,7 +258,8 @@ namespace Nethermind.DataMarketplace.Infrastructure
 
 
         public ILogManager LogManager => _nethermindApi.LogManager;
-        public IKeyValueStore? MainStateDbWithCache
+        
+        public IKeyValueStoreWithBatching? MainStateDbWithCache
         {
             get => _nethermindApi.MainStateDbWithCache;
             set => _nethermindApi.MainStateDbWithCache = value;
