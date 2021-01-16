@@ -20,6 +20,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62;
+using Nethermind.Specs.Forks;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
@@ -48,7 +49,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         [Test]
         public void Estimate_block_size()
         {
-            var block = Build.A.Block.WithTransactions(100).TestObject;
+            var block = Build.A.Block.WithTransactions(100, MuirGlacier.Instance).TestObject;
             MessageSizeEstimator.EstimateSize(block).Should().Be(10512);
         }
         

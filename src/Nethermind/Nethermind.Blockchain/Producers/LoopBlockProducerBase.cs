@@ -22,6 +22,7 @@ using Nethermind.Blockchain.Processing;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.State;
 
@@ -45,6 +46,7 @@ namespace Nethermind.Blockchain.Producers
             IStateProvider stateProvider,
             ITimestamper timestamper,
             IGasLimitCalculator gasLimitCalculator,
+            ISpecProvider specProvider,
             ILogManager logManager,
             string name) 
             : base(
@@ -56,6 +58,7 @@ namespace Nethermind.Blockchain.Producers
                 stateProvider,
                 gasLimitCalculator,
                 timestamper,
+                specProvider,
                 logManager)
         {
             _name = name;

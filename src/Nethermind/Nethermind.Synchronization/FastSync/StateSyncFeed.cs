@@ -32,13 +32,15 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Trie;
+using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Synchronization.FastSync
 {
     public partial class StateSyncFeed : SyncFeed<StateSyncBatch?>, IDisposable
     {
-        private const int AlreadySavedCapacity = 1024 * 64;
+        public const int AlreadySavedCapacity = 1024 * 1024;
         public const int MaxRequestSize = 384;
+
         private const StateSyncBatch EmptyBatch = null;
 
         private static readonly AccountDecoder AccountDecoder = new AccountDecoder();
@@ -79,7 +81,7 @@ namespace Nethermind.Synchronization.FastSync
         private long _blockNumber;
 
         public StateSyncFeed(
-            ISnapshotableDb codeDb,
+            IDb codeDb,
             ISnapshotableDb stateDb,
             IDb tempDb,
             ISyncModeSelector syncModeSelector,
@@ -347,7 +349,7 @@ namespace Nethermind.Synchronization.FastSync
                     {
                         _lastReview = DateTime.UtcNow;
                         string reviewMessage = _pendingItems.RecalculatePriorities();
-                        if (_logger.IsInfo) _logger.Info(reviewMessage);
+                        if (_logger.IsDebug) _logger.Debug(reviewMessage);
                     }
 
                     _handleWatch.Restart();
@@ -504,7 +506,7 @@ namespace Nethermind.Synchronization.FastSync
         {
             NodeDataType nodeDataType = currentStateSyncItem.NodeDataType;
             TrieNode trieNode = new TrieNode(NodeType.Unknown, currentResponseItem);
-            trieNode.ResolveNode(null);
+            trieNode.ResolveNode(NullTrieNodeResolver.Instance); // TODO: will this work now?
             switch (trieNode.NodeType)
             {
                 case NodeType.Unknown:
@@ -552,11 +554,19 @@ namespace Nethermind.Synchronization.FastSync
 
                     break;
                 case NodeType.Extension:
-                    Keccak next = trieNode[0].Keccak;
+                    Keccak? next = trieNode.GetChild(NullTrieNodeResolver.Instance, 0)?.Keccak;
                     if (next != null)
                     {
                         DependentItem dependentItem = new DependentItem(currentStateSyncItem, currentResponseItem, 1);
-                        AddNodeResult addResult = AddNodeToPending(new StateSyncItem(next, nodeDataType, currentStateSyncItem.Level + trieNode.Path.Length, CalculateRightness(trieNode.NodeType, currentStateSyncItem, 0)) {ParentBranchChildIndex = currentStateSyncItem.BranchChildIndex}, dependentItem, "extension child");
+                        AddNodeResult addResult = AddNodeToPending(
+                            new StateSyncItem(
+                                next,
+                                nodeDataType,
+                                currentStateSyncItem.Level + trieNode.Path!.Length,
+                                CalculateRightness(trieNode.NodeType, currentStateSyncItem, 0))
+                            {ParentBranchChildIndex = currentStateSyncItem.BranchChildIndex},
+                            dependentItem,
+                            "extension child");
                         if (addResult == AddNodeResult.AlreadySaved)
                         {
                             SaveNode(currentStateSyncItem, currentResponseItem);

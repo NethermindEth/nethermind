@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -21,9 +21,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Resettables;
 using Nethermind.Logging;
-using Nethermind.State.Witnesses;
-using Nethermind.Trie;
-using Metrics = Nethermind.Db.Metrics;
+using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State
 {
@@ -39,9 +37,12 @@ namespace Nethermind.State
         private ResettableHashSet<StorageCell> _committedThisRound = new ResettableHashSet<StorageCell>();
 
         private readonly ILogger _logger;
-
+        
         private readonly IKeyValueStore _stateDb;
+        private readonly ITrieStore _trieStore;
+
         private readonly IStateProvider _stateProvider;
+        private readonly ILogManager _logManager;
 
         private ResettableDictionary<Address, StorageTree> _storages = new ResettableDictionary<Address, StorageTree>();
 
@@ -49,14 +50,13 @@ namespace Nethermind.State
         private int _capacity = StartCapacity;
         private Change?[] _changes = new Change[StartCapacity];
         private int _currentPosition = -1;
-
-        public StorageProvider(IKeyValueStore? stateDb,
-            IStateProvider? stateProvider,
-            ILogManager? logManager)
+        
+        public StorageProvider(ITrieStore trieStore, IStateProvider stateProvider, ILogManager logManager)
         {
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager.GetClassLogger<StorageProvider>() ?? throw new ArgumentNullException(nameof(logManager));
+            _trieStore = trieStore ?? throw new ArgumentNullException(nameof(trieStore));
             _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
-            _stateDb = stateDb ?? throw new ArgumentNullException(nameof(stateDb));
         }
 
         public byte[] GetOriginal(StorageCell storageCell)
@@ -253,7 +253,7 @@ namespace Nethermind.State
                         }
 
                         StorageTree tree = GetOrCreateStorage(change.StorageCell.Address);
-                        Metrics.StorageTreeWrites++;
+                        Db.Metrics.StorageTreeWrites++;
                         toUpdateRoots.Add(change.StorageCell.Address);
                         tree.Set(change.StorageCell.Index, change.Value);
                         if (isTracing)
@@ -267,12 +267,15 @@ namespace Nethermind.State
                 }
             }
 
+            // TODO: it seems that we are unnecessarily recalculating root hashes all the time in storage?
             foreach (Address address in toUpdateRoots)
             {
                 // since the accounts could be empty accounts that are removing (EIP-158)
                 if (_stateProvider.AccountExists(address))
                 {
                     Keccak root = RecalculateRootHash(address);
+                    
+                    // _logger.Warn($"Recalculating storage root {address}->{root} ({toUpdateRoots.Count})");
                     _stateProvider.UpdateStorageRoot(address, root);
                 }
             }
@@ -314,12 +317,15 @@ namespace Nethermind.State
             _storages.Reset();
         }
 
-        public void CommitTrees()
+        public void CommitTrees(long blockNumber)
         {
+            // _logger.Warn($"Storage block commit {blockNumber}");
             foreach (KeyValuePair<Address, StorageTree> storage in _storages)
             {
-                storage.Value.Commit();
+                storage.Value.Commit(blockNumber);
             }
+            
+            // TODO: maybe I could update storage roots only now?
 
             // only needed here as there is no control over cached storage size otherwise
             _storages.Reset();
@@ -329,7 +335,7 @@ namespace Nethermind.State
         {
             if (!_storages.ContainsKey(address))
             {
-                StorageTree storageTree = new StorageTree(_stateDb, _stateProvider.GetStorageRoot(address));
+                StorageTree storageTree = new StorageTree(_trieStore, _stateProvider.GetStorageRoot(address), _logManager);
                 return _storages[address] = storageTree;
             }
 
@@ -351,7 +357,7 @@ namespace Nethermind.State
         {
             StorageTree tree = GetOrCreateStorage(storageCell.Address);
 
-            Metrics.StorageTreeReads++;
+            Db.Metrics.StorageTreeReads++;
             byte[] value = tree.Get(storageCell.Index);
             PushToRegistryOnly(storageCell, value);
             return value;
@@ -416,7 +422,8 @@ namespace Nethermind.State
             /* here it is important to make sure that we will not reuse the same tree when the contract is revived
                by means of CREATE 2 - notice that the cached trie may carry information about items that were not
                touched in this block, hence were not zeroed above */
-            _storages[address] = new StorageTree(_stateDb, Keccak.EmptyTreeHash);
+            // TODO: how does it work with pruning?
+            _storages[address] = new StorageTree(_trieStore, Keccak.EmptyTreeHash, _logManager);
         }
 
         private enum ChangeType

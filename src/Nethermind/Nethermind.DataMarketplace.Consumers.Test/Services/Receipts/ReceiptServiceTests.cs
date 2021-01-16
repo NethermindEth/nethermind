@@ -121,7 +121,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Receipts
         [Test]
         public async Task send_should_fail_if_validation_fails()
         {
-            var seconds = _timestamper.EpochSeconds;
+            var seconds = _timestamper.UnixTime.Seconds;
             var receipt = GetDataDeliveryReceiptRequest();
             var deposit = GetDepositDetails();
             var session = GetConsumerSession();
@@ -155,7 +155,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Receipts
         [Test]
         public async Task send_should_fail_if_recover_public_key_fails()
         {
-            var timestamp = _timestamper.EpochSeconds;
+            var timestamp = _timestamper.UnixTime.Seconds;
             var receipt = GetDataDeliveryReceiptRequest();
             var deposit = GetDepositDetails();
             var session = GetConsumerSession();
@@ -192,7 +192,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Receipts
         [Test]
         public async Task send_should_succeed_when_receipt_is_valid()
         {
-            var timestamp = _timestamper.EpochSeconds;
+            var timestamp = _timestamper.UnixTime.Seconds;
             var receipt = GetDataDeliveryReceiptRequest();
             var deposit = GetDepositDetails();
             var session = GetConsumerSession();

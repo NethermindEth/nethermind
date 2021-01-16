@@ -26,6 +26,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State.Witnesses;
 using Nethermind.Trie;
+using Nethermind.Trie.Pruning;
 using Metrics = Nethermind.Db.Metrics;
 
 [assembly: InternalsVisibleTo("Nethermind.State.Test")]
@@ -43,29 +44,19 @@ namespace Nethermind.State
 
         private readonly List<Change> _keptInCache = new List<Change>();
         private readonly ILogger _logger;
-        private readonly IKeyValueStore _codeDb;
+        
         private readonly ILogManager _logManager;
+        private readonly IKeyValueStore _codeDb;
 
         private int _capacity = StartCapacity;
         private Change?[] _changes = new Change?[StartCapacity];
         private int _currentPosition = -1;
-
-        public StateProvider(StateTree stateTree, IKeyValueStore codeDb, ILogManager logManager)
+        
+        public StateProvider(ITrieStore trieStore, IKeyValueStore codeDb, ILogManager logManager)
         {
-            _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
-            _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager.GetClassLogger<StateProvider>() ?? throw new ArgumentNullException(nameof(logManager));
             _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
-            _tree = stateTree ?? throw new ArgumentNullException(nameof(stateTree));
-        }
-
-        public StateProvider(IDbProvider dbProvider, ILogManager logManager)
-            : this(new StateTree(dbProvider.StateDb), dbProvider.CodeDb, logManager)
-        {
-        }
-
-        public StateProvider(ISnapshotableDb stateDb, IDb codeDb, ILogManager logManager)
-            : this(new StateTree(stateDb), codeDb, logManager)
-        {
+            _tree = new StateTree(trieStore, logManager);
         }
 
         public void Accept(ITreeVisitor visitor, Keccak stateRoot)
@@ -76,18 +67,8 @@ namespace Nethermind.State
             _tree.Accept(visitor, stateRoot, true);
         }
 
-        public string DumpState()
+        public void CommitCode()
         {
-            TreeDumper dumper = new TreeDumper();
-            _tree.Accept(dumper, _tree.RootHash, true);
-            return dumper.ToString();
-        }
-
-        public TrieStats CollectStats()
-        {
-            TrieStatsCollector collector = new TrieStatsCollector(_codeDb, _logManager);
-            _tree.Accept(collector, _tree.RootHash, true);
-            return collector.Stats;
         }
 
         private bool _needsStateRootUpdate;
@@ -290,6 +271,7 @@ namespace Nethermind.State
             }
 
             Keccak codeHash = Keccak.Compute(code);
+            
             _codeDb[codeHash.Bytes] = code;
 
             return codeHash;
@@ -760,14 +742,19 @@ namespace Nethermind.State
             _needsStateRootUpdate = false;
         }
 
-        public void CommitTree()
+        public void CommitTree(long blockNumber)
         {
             if (_needsStateRootUpdate)
             {
                 RecalculateStateRoot();
             }
 
-            _tree.Commit();
+            _tree.Commit(blockNumber);
+        }
+        
+        public void CommitBranch()
+        {
+            // placeholder for the three level Commit->CommitBlock->CommitBranch
         }
     }
 }

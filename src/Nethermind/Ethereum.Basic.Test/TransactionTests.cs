@@ -74,7 +74,7 @@ namespace Ethereum.Basic.Test
                 throw new Exception("S is wrong");
             }
 
-            int vToCompare = decodedUnsigned.Signature.V;
+            long vToCompare = decodedUnsigned.Signature.V;
             if (otherS == decodedSigned.Signature.S.ToUnsignedBigInteger())
             {
                 vToCompare = vToCompare == 27 ? 28 : 27;

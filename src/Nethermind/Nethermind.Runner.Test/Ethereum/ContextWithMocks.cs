@@ -45,6 +45,7 @@ using Nethermind.Stats;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
+using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
 using Nethermind.WebSockets;
@@ -109,6 +110,8 @@ namespace Nethermind.Runner.Test.Ethereum
                 SyncPeerPool = Substitute.For<ISyncPeerPool>(),
                 WebSocketsManager = Substitute.For<IWebSocketsManager>(),
                 ChainLevelInfoRepository = Substitute.For<IChainLevelInfoRepository>(),
+                TrieStore = Substitute.For<ITrieStore>(),
+                ReadOnlyTrieStore = Substitute.For<ITrieStore>()
             };
     }
 }

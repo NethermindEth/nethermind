@@ -51,17 +51,17 @@ namespace Nethermind.Runner.Ethereum.Steps
                 ? (IFileStoreFactory) new InMemoryDictionaryFileStoreFactory()
                 : new FixedSizeFileStoreFactory(Path.Combine(initConfig.BaseDbPath, DbNames.Bloom), DbNames.Bloom, Bloom.ByteLength);
 
-            var bloomStorage =
+            IBloomStorage? bloomStorage =
                 _set.BloomStorage = bloomConfig.Index
                     ? new BloomStorage(bloomConfig, _get.DbProvider!.BloomDb, fileStoreFactory)
                     : (IBloomStorage) NullBloomStorage.Instance;
 
             _get.DisposeStack.Push(bloomStorage);
 
-            var chainLevelInfoRepository =
+            IChainLevelInfoRepository? chainLevelInfoRepository =
                 _set.ChainLevelInfoRepository = new ChainLevelInfoRepository(_get.DbProvider!.BlockInfosDb);
 
-            var blockTree = _set.BlockTree = new BlockTree(
+            IBlockTree? blockTree = _set.BlockTree = new BlockTree(
                 _get.DbProvider,
                 chainLevelInfoRepository,
                 _get.SpecProvider,
@@ -82,9 +82,9 @@ namespace Nethermind.Runner.Ethereum.Steps
             _set.EngineSignerStore = signerStore;
 
             ReceiptsRecovery receiptsRecovery = new ReceiptsRecovery(_get.EthereumEcdsa, _get.SpecProvider);
-            var receiptStorage = _set.ReceiptStorage
+            IReceiptStorage? receiptStorage = _set.ReceiptStorage
                 = initConfig.StoreReceipts ? (IReceiptStorage?) new PersistentReceiptStorage(_get.DbProvider.ReceiptsDb, _get.SpecProvider, receiptsRecovery) : NullReceiptStorage.Instance;
-            var receiptFinder = _set.ReceiptFinder = new FullInfoReceiptFinder(receiptStorage, receiptsRecovery, blockTree);
+            IReceiptFinder? receiptFinder = _set.ReceiptFinder = new FullInfoReceiptFinder(receiptStorage, receiptsRecovery, blockTree);
             
             LogFinder logFinder = new LogFinder(
                 blockTree,

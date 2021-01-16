@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Text;
 using Nethermind.Core.Crypto;
@@ -27,6 +28,10 @@ namespace Nethermind.Core
     {
         public const int BaseTxGasCost = 21000;
 
+        /// <summary>
+        /// EIP-2718 transaction type
+        /// </summary>
+        public byte TransactionType { get; set; }
         public UInt256 Nonce { get; set; }
         public UInt256 GasPrice { get; set; }
         public long GasLimit { get; set; }
@@ -42,6 +47,8 @@ namespace Nethermind.Core
         public Keccak? Hash { get; set; }
         public PublicKey? DeliveredBy { get; set; } // tks: this is added so we do not send the pending tx back to original sources, not used yet
         public UInt256 Timestamp { get; set; }
+        public HashSet<Address> AccountAccessList { get; set; } // eip2930
+        public HashSet<StorageCell> StorageAccessList { get; set; } // eip2930
         
         /// <summary>
         /// In-memory only property, representing order of transactions going to TxPool.

@@ -30,7 +30,7 @@ namespace Nethermind.Blockchain
         /// <summary>
         /// Chain ID that identifies the chain among the public and private chains (different IDs for mainnet, ETH classic, etc.)
         /// </summary>
-        int ChainId { get; }
+        long ChainId { get; }
         
         /// <summary>
         /// Genesis block or <value>null</value> if genesis has not been processed yet

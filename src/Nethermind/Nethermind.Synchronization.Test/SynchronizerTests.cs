@@ -40,6 +40,7 @@ using Nethermind.State.Witnesses;
 using Nethermind.Synchronization.Blocks;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
+using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using NUnit.Framework;
 
@@ -276,13 +277,20 @@ namespace Nethermind.Synchronization.Test
                 ISyncConfig syncConfig = synchronizerType == SynchronizerType.Fast ? SyncConfig.WithFastSync : SyncConfig.WithFullSyncOnly;
                 IDbProvider dbProvider = TestMemDbProvider.Init();
                 ISnapshotableDb stateDb = new StateDb(new MemDb());
-                ISnapshotableDb codeDb = new StateDb(new MemDb());
+                IDb codeDb = dbProvider.CodeDb;
                 MemDb blockInfoDb = new MemDb();
                 BlockTree = new BlockTree(new MemDb(), new MemDb(), blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), new SingleReleaseSpecProvider(Constantinople.Instance, 1), NullBloomStorage.Instance, _logManager);
                 NodeStatsManager stats = new NodeStatsManager(_logManager);
                 SyncPeerPool = new SyncPeerPool(BlockTree, stats, 25, _logManager);
 
-                SyncProgressResolver syncProgressResolver = new SyncProgressResolver(BlockTree, NullReceiptStorage.Instance, stateDb, new MemDb(), syncConfig, _logManager);
+                SyncProgressResolver syncProgressResolver = new SyncProgressResolver(
+                    BlockTree,
+                    NullReceiptStorage.Instance,
+                    stateDb,
+                    new MemDb(),
+                    new TrieStore(stateDb, LimboLogs.Instance),
+                    syncConfig,
+                    _logManager);
                 MultiSyncModeSelector syncModeSelector = new MultiSyncModeSelector(syncProgressResolver, SyncPeerPool, syncConfig, _logManager);
                 Synchronizer = new Synchronizer(
                     dbProvider,

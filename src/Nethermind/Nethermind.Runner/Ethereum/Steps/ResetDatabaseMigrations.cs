@@ -63,7 +63,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             
             if (_receiptStorage.MigratedBlockNumber != long.MaxValue)
             {
-                var blockNumber = _blockTree.Head?.Number ?? 0;
+                long blockNumber = _blockTree.Head?.Number ?? 0;
                 while (blockNumber > 0)
                 {
                     var level = _chainLevelInfoRepository.LoadLevel(blockNumber);

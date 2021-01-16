@@ -62,7 +62,7 @@ namespace Nethermind.Synchronization.FastSync
 
             private Known.SizeInfo? _chainSizeInfo;
 
-            public DetailedProgress(int chainId, byte[] serializedInitialState)
+            public DetailedProgress(long chainId, byte[] serializedInitialState)
             {
                 if (Known.ChainSize.ContainsKey(chainId))
                 {

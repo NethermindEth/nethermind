@@ -26,13 +26,9 @@ using Nethermind.Blockchain.Validators;
 using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.AuRa.Contracts;
-using Nethermind.Consensus.AuRa.Transactions;
-using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Core;
-using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
-using Nethermind.Specs.ChainSpecStyle;
-using NSubstitute;
+using Nethermind.Trie.Pruning;
 using NUnit.Framework;
 
 namespace Nethermind.AuRa.Test.Contract
@@ -99,7 +95,10 @@ namespace Nethermind.AuRa.Test.Contract
             {
                 var blockGasLimitContractTransition = ChainSpec.AuRa.BlockGasLimitContractTransitions.First();
                 var gasLimitContract = new BlockGasLimitContract(new AbiEncoder(), blockGasLimitContractTransition.Value, blockGasLimitContractTransition.Key,
-                    new ReadOnlyTxProcessorSource(DbProvider, BlockTree, SpecProvider, LimboLogs.Instance));
+                    new ReadOnlyTxProcessorSource(
+                        DbProvider,
+                        new ReadOnlyTrieStore(new TrieStore(DbProvider.StateDb, LimboLogs.Instance)),
+                        BlockTree, SpecProvider, LimboLogs.Instance));
                 
                 GasLimitOverrideCache = new AuRaContractGasLimitOverride.Cache();
                 GasLimitCalculator = new AuRaContractGasLimitOverride(new[] {gasLimitContract}, GasLimitOverrideCache, false, FollowOtherMiners.Instance, LimboLogs.Instance);
@@ -109,8 +108,6 @@ namespace Nethermind.AuRa.Test.Contract
                     Always.Valid,
                     new RewardCalculator(SpecProvider),
                     TxProcessor,
-                    StateDb,
-                    CodeDb,
                     State,
                     Storage,
                     TxPool,

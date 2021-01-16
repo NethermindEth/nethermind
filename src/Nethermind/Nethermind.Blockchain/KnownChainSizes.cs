@@ -26,8 +26,8 @@ namespace Nethermind.Blockchain
         public readonly struct SizeInfo
         {
             public SizeInfo(
-                ulong sizeAtUpdateDate,
-                ulong dailyGrowth,
+                long sizeAtUpdateDate,
+                long dailyGrowth,
                 DateTime updateDate)
             {
                 SizeAtUpdateDate = sizeAtUpdateDate;
@@ -35,17 +35,17 @@ namespace Nethermind.Blockchain
                 UpdateDate = updateDate;
             }
             
-            public ulong SizeAtUpdateDate { get; }
-            public ulong DailyGrowth { get; }
+            public long SizeAtUpdateDate { get; }
+            public long DailyGrowth { get; }
             public DateTime UpdateDate { get; }
 
-            public ulong Current => SizeAtUpdateDate + (ulong)(DateTime.UtcNow - UpdateDate).Days * DailyGrowth;
+            public long Current => SizeAtUpdateDate + (DateTime.UtcNow - UpdateDate).Days * DailyGrowth;
         }
         
         /// <summary>
         /// Size in bytes, daily growth rate and the date of manual update
         /// </summary>
-        public static Dictionary<int, SizeInfo> ChainSize = new Dictionary<int, SizeInfo>
+        public static Dictionary<long, SizeInfo> ChainSize = new Dictionary<long, SizeInfo>
         {
             {ChainId.Goerli,  new SizeInfo(2570.MB(), 8.MB(), new DateTime(2020, 11, 19))},
             {ChainId.Rinkeby,  new SizeInfo(13700.MB(), 8.MB(), new DateTime(2020, 4, 23))},

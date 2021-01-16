@@ -39,7 +39,7 @@ namespace Nethermind.Network.P2P
         private IChannel _channel;
         private IChannelHandlerContext _context;
 
-        private Dictionary<string, IProtocolHandler> _protocols = new Dictionary<string, IProtocolHandler>();
+        private ConcurrentDictionary<string, IProtocolHandler> _protocols = new ConcurrentDictionary<string, IProtocolHandler>();
 
         public Session(int localPort, ILogManager logManager, IChannel channel)
         {
@@ -175,7 +175,7 @@ namespace Nethermind.Network.P2P
             if (protocol == null)
             {
                 if (_logger.IsTrace)
-                    _logger.Warn($"Received a message from node: {RemoteNodeId}, " + 
+                    _logger.Warn($"Received a message from node: {RemoteNodeId}, " +
                                  $"({dynamicMessageCode} => {messageId}), known protocols ({_protocols.Count}): " +
                                  $"{string.Join(", ", _protocols.Select(x => $"{x.Value.Name} {x.Value.MessageIdSpaceSize}"))}");
                 return;
@@ -248,7 +248,11 @@ namespace Nethermind.Network.P2P
             }
 
             packet.PacketType = messageId;
-            _protocols[protocol].HandleMessage(packet);
+
+            if (State < SessionState.DisconnectingProtocols)
+            {
+                _protocols[protocol].HandleMessage(packet);
+            }
         }
 
         public void Init(byte p2PVersion, IChannelHandlerContext context, IPacketSender packetSender)
@@ -518,7 +522,7 @@ namespace Nethermind.Network.P2P
                     $"{Protocol.P2P} handler has to be started before starting {handler.ProtocolCode} handler on {this}");
             }
 
-            _protocols.Add(handler.ProtocolCode, handler);
+            _protocols.TryAdd(handler.ProtocolCode, handler);
             _resolver = GetOrCreateResolver();
         }
 
@@ -547,7 +551,7 @@ namespace Nethermind.Network.P2P
         {
             private readonly (string ProtocolCode, int SpaceSize)[] _alphabetically;
 
-            public AdaptiveCodeResolver(Dictionary<string, IProtocolHandler> protocols)
+            public AdaptiveCodeResolver(IDictionary<string, IProtocolHandler> protocols)
             {
                 _alphabetically = new (string, int)[protocols.Count];
                 _alphabetically[0] = (Protocol.P2P, protocols[Protocol.P2P].MessageIdSpaceSize);

@@ -59,7 +59,7 @@ namespace Nethermind.DataMarketplace.Test.Services
             _client.GetAsync<Dictionary<string, EthPriceService.Result>>(Arg.Any<string>()).ReturnsForAnyArgs(results);
             await _ethPriceService.UpdateAsync();
             _ethPriceService.UsdPrice.Should().Be(price);
-            _ethPriceService.UpdatedAt.Should().Be(_timestamper.EpochSeconds);
+            _ethPriceService.UpdatedAt.Should().Be(_timestamper.UnixTime.Seconds);
             await _client.ReceivedWithAnyArgs().GetAsync<Dictionary<string, EthPriceService.Result>>(Arg.Any<string>());
         }
     }

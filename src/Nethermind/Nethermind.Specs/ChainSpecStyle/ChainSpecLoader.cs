@@ -52,7 +52,7 @@ namespace Nethermind.Specs.ChainSpecStyle
                 var chainSpecJson = _serializer.Deserialize<ChainSpecJson>(jsonData);
                 var chainSpec = new ChainSpec();
 
-                chainSpec.ChainId = (int) chainSpecJson.Params.NetworkId;
+                chainSpec.ChainId = chainSpecJson.Params.NetworkId;
                 chainSpec.Name = chainSpecJson.Name;
                 chainSpec.DataDir = chainSpecJson.DataDir;
                 LoadGenesis(chainSpecJson, chainSpec);

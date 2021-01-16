@@ -38,7 +38,7 @@ namespace Nethermind.Synchronization
         BlockHeader[] FindHeaders(Keccak hash, int numberOfBlocks, int skip, bool reverse);
         byte[]?[] GetNodeData(IList<Keccak> keys, NodeDataType includedTypes = NodeDataType.Code | NodeDataType.State);
         int GetPeerCount();
-        int ChainId { get; }
+        long ChainId { get; }
         BlockHeader Genesis { get; }
         BlockHeader? Head { get; }
         Keccak[]? GetBlockWitnessHashes(Keccak blockHash);

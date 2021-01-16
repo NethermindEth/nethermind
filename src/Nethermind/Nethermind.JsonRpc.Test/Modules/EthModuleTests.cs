@@ -34,6 +34,7 @@ using Nethermind.JsonRpc.Data;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Trie;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
@@ -575,8 +576,10 @@ namespace Nethermind.JsonRpc.Test.Modules
             var transaction = new TransactionForRpc(Keccak.Zero, 1L, 1, new Transaction());
             transaction.From = TestItem.AddressA;
             transaction.To = TestItem.AddressB;
-
+            
             ctx._test.StateDb.Clear();
+            ctx._test.TrieStore.ClearCache();
+            PatriciaTree.NodeCache.Clear();
 
             string serialized = ctx._test.TestEthRpc("eth_call", ctx._test.JsonSerializer.Serialize(transaction), "latest");
             serialized.Should().StartWith("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32002,");
@@ -686,7 +689,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             TransactionForRpc rpcTx = new TransactionForRpc(tx);
             rpcTx.Nonce = 0;
             string serialized = ctx._test.TestEthRpc("eth_sendTransaction", new EthereumJsonSerializer().Serialize(rpcTx));
-
+            // TODO: actual test missing now
             await txSender.Received().SendTransaction(Arg.Any<Transaction>(), TxHandlingOptions.PersistentBroadcast);
             Assert.AreEqual($"{{\"jsonrpc\":\"2.0\",\"result\":\"{TestItem.KeccakA.Bytes.ToHexString(true)}\",\"id\":67}}", serialized);
         }

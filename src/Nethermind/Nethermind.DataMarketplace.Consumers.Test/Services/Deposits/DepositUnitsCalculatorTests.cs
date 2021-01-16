@@ -98,7 +98,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Deposits
         public async Task should_return_consumed_units_based_on_timestamp_for_confirmed_deposit_with_time_unit_type()
         {
             var deposit = GetDepositDetails(DataAssetUnitType.Time);
-            var expectedConsumedUnits = (uint) _timestamper.EpochSeconds - DepositConfirmationTimestamp;
+            var expectedConsumedUnits = (uint) _timestamper.UnixTime.Seconds - DepositConfirmationTimestamp;
 
             var consumedUnits = await _calculator.GetConsumedAsync(deposit);
 

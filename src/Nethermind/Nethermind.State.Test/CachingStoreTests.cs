@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using Nethermind.Core;
 using Nethermind.Trie;
 using NSubstitute;
 using NUnit.Framework;

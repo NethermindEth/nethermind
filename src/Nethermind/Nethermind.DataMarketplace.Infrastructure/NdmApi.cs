@@ -62,7 +62,11 @@ using Nethermind.Stats;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
+<<<<<<< HEAD
 using Nethermind.Trie;
+=======
+using Nethermind.Trie.Pruning;
+>>>>>>> master
 using Nethermind.TxPool;
 using Nethermind.Wallet;
 using Nethermind.WebSockets;
@@ -431,6 +435,18 @@ namespace Nethermind.DataMarketplace.Infrastructure
         {
             get => _nethermindApi.TransactionProcessor;
             set => _nethermindApi.TransactionProcessor = value;
+        }
+        
+        public ITrieStore? TrieStore
+        {
+            get => _nethermindApi.TrieStore;
+            set => _nethermindApi.TrieStore = value;
+        }
+        
+        public ITrieStore? ReadOnlyTrieStore
+        {
+            get => _nethermindApi.ReadOnlyTrieStore;
+            set => _nethermindApi.ReadOnlyTrieStore = value;
         }
 
         public ITxSender? TxSender

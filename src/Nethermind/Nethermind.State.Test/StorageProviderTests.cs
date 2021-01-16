@@ -23,6 +23,7 @@ using Nethermind.Db;
 using Nethermind.Specs.Forks;
 using Nethermind.Logging;
 using Nethermind.State;
+using Nethermind.Trie.Pruning;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -32,6 +33,18 @@ namespace Nethermind.Store.Test
     public class StorageProviderTests
     {
         private static readonly ILogManager LogManager = LimboLogs.Instance;
+        private readonly Address _address1 = new Address(Keccak.Compute("1"));
+        private readonly Address _address2 = new Address(Keccak.Compute("2"));
+        private IStateProvider _stateProvider;
+
+        [SetUp]
+        public void Setup()
+        {
+            _stateProvider = new StateProvider(new TrieStore(new StateDb(), LogManager), new StateDb(),  LogManager);
+            _stateProvider.CreateAccount(_address1, 0);
+            _stateProvider.CreateAccount(_address2, 0);
+            _stateProvider.Commit(Frontier.Instance);
+        }
 
         private readonly byte[][] _values =
         {
@@ -61,7 +74,7 @@ namespace Nethermind.Store.Test
 
         private StorageProvider BuildStorageProvider(Context ctx)
         {
-            StorageProvider provider = new StorageProvider(new StateDb(), ctx.StateProvider, LogManager);
+            StorageProvider provider = new StorageProvider(new TrieStore(new StateDb(), LogManager), _stateProvider, LogManager);
             return provider;
         }
 
@@ -196,10 +209,11 @@ namespace Nethermind.Store.Test
             StorageProvider storageProvider = BuildStorageProvider(ctx);
             storageProvider.Set(new StorageCell(ctx.Address1, 1), _values[1]);
             storageProvider.Commit();
+
             ctx.StateProvider.Commit(Frontier.Instance);
-            storageProvider.CommitTrees();
-            ctx.StateProvider.CommitTree();
-            
+            storageProvider.CommitTrees(0);
+            ctx.StateProvider.CommitTree(0);
+
             // block 2
             Keccak stateRoot = ctx.StateProvider.StateRoot;
             storageProvider.Set(new StorageCell(ctx.Address1, 1), _values[2]);
@@ -243,7 +257,7 @@ namespace Nethermind.Store.Test
             
             public Context()
             {
-                StateProvider = new StateProvider(new StateDb(new MemDb()), Substitute.For<IDb>(), LogManager);
+                StateProvider = new StateProvider(new TrieStore(new MemDb(), LimboLogs.Instance), Substitute.For<ISnapshotableDb>(), LogManager);
                 StateProvider.CreateAccount(Address1, 0);
                 StateProvider.CreateAccount(Address2, 0);
                 StateProvider.Commit(Frontier.Instance);

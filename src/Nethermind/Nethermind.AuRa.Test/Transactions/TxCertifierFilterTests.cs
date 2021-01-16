@@ -28,12 +28,9 @@ using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.AuRa.Transactions;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
-using Nethermind.Core.Caching;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.Trie.Pruning;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
 using NUnit.Framework;
@@ -117,7 +114,11 @@ namespace Nethermind.AuRa.Test.Transactions
             protected override BlockProcessor CreateBlockProcessor()
             {
                 AbiEncoder abiEncoder = new AbiEncoder();
-                ReadOnlyTxProcessorSource readOnlyTransactionProcessorSource = new ReadOnlyTxProcessorSource(DbProvider, BlockTree, SpecProvider, LimboLogs.Instance);
+                ReadOnlyTxProcessorSource readOnlyTransactionProcessorSource = new ReadOnlyTxProcessorSource(
+                    DbProvider,
+                    new ReadOnlyTrieStore(new TrieStore(DbProvider.StateDb, LimboLogs.Instance)),
+                    BlockTree, SpecProvider,
+                    LimboLogs.Instance);
                 CertifierContract = new CertifierContract(
                     abiEncoder, 
                     new RegisterContract(abiEncoder, ChainSpec.Parameters.Registrar, readOnlyTransactionProcessorSource),
@@ -128,8 +129,6 @@ namespace Nethermind.AuRa.Test.Transactions
                     Always.Valid,
                     new RewardCalculator(SpecProvider),
                     TxProcessor,
-                    StateDb,
-                    CodeDb,
                     State,
                     Storage,
                     TxPool,

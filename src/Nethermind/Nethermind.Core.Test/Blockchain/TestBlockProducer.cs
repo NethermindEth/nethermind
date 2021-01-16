@@ -24,6 +24,7 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Specs;
 using Nethermind.State;
 
 namespace Nethermind.Core.Test.Blockchain
@@ -48,6 +49,7 @@ namespace Nethermind.Core.Test.Blockchain
                 stateProvider,
                 timestamper,
                 FollowOtherMiners.Instance,
+                MainnetSpecProvider.Instance,
                 logManager,
                 "test producer")
         {

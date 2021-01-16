@@ -39,8 +39,6 @@ namespace Nethermind.Blockchain.Processing
     {
         private readonly ILogger _logger;
         private readonly ITxPool _txPool;
-        private readonly ISnapshotableDb _codeDb;
-        private readonly ISnapshotableDb _stateDb;
         private readonly ISpecProvider _specProvider;
         private readonly IStateProvider _stateProvider;
         private readonly IReceiptStorage _receiptStorage;
@@ -63,8 +61,6 @@ namespace Nethermind.Blockchain.Processing
             IBlockValidator blockValidator,
             IRewardCalculator rewardCalculator,
             ITransactionProcessor transactionProcessor,
-            ISnapshotableDb stateDb,
-            ISnapshotableDb codeDb,
             IStateProvider stateProvider,
             IStorageProvider storageProvider,
             ITxPool txPool,
@@ -82,8 +78,6 @@ namespace Nethermind.Blockchain.Processing
             _witnessCollector = witnessCollector ?? throw new ArgumentNullException(nameof(witnessCollector));
             _rewardCalculator = rewardCalculator ?? throw new ArgumentNullException(nameof(rewardCalculator));
             _transactionProcessor = transactionProcessor ?? throw new ArgumentNullException(nameof(transactionProcessor));
-            _stateDb = stateDb ?? throw new ArgumentNullException(nameof(stateDb));
-            _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
 
             _receiptsTracer = new BlockReceiptsTracer();
         }
@@ -114,13 +108,14 @@ namespace Nethermind.Blockchain.Processing
                     {
                         if(_logger.IsInfo) _logger.Info($"Processing part of a long blocks branch {i}/{blocksCount}");
                     }
-                    
+
                     _witnessCollector.Reset();
+
                     var (processedBlock, receipts) = ProcessOne(suggestedBlocks[i], options, blockTracer);
                     processedBlocks[i] = processedBlock;
 
                     // be cautious here as AuRa depends on processing
-                    PreCommitBlock(newBranchStateRoot); // only needed if we plan to read state root?
+                    PreCommitBlock(newBranchStateRoot, suggestedBlocks[i].Number);
                     if (!readOnly)
                     {
                         _witnessCollector.Persist(processedBlock.Hash!);
@@ -154,8 +149,9 @@ namespace Nethermind.Blockchain.Processing
 
                 return processedBlocks;
             }
-            catch (Exception) // try to restore for all cost
+            catch (Exception ex) // try to restore for all cost
             {
+                _logger.Trace($"Encountered exception {ex} while processing blocks.");
                 RestoreBranch(previousBranchStateRoot);
                 throw;
             }
@@ -183,38 +179,28 @@ namespace Nethermind.Blockchain.Processing
         // TODO: move to branch processor
         private Keccak CreateCheckpoint()
         {
-            Keccak currentBranchStateRoot = _stateProvider.StateRoot;
-
-            /* Below is a non-critical assertion that nonetheless should be addressed when it happens. */
-            if (_stateDb.HasUncommittedChanges || _codeDb.HasUncommittedChanges)
-            {
-                if (_logger.IsError) _logger.Error($"Uncommitted state when processing from a branch root {currentBranchStateRoot}.");
-            }
-
-            return currentBranchStateRoot;
+            return _stateProvider.StateRoot;
         }
 
         // TODO: move to block processing pipeline
-        private void PreCommitBlock(Keccak newBranchStateRoot)
+        private void PreCommitBlock(Keccak newBranchStateRoot, long blockNumber)
         {
             if (_logger.IsTrace) _logger.Trace($"Committing the branch - {newBranchStateRoot} | {_stateProvider.StateRoot}");
-            _stateProvider.CommitTree();
-            _storageProvider.CommitTrees();
+            _storageProvider.CommitTrees(blockNumber);
+            _stateProvider.CommitTree(blockNumber);
         }
-        
+
         // TODO: move to branch processor
         private void CommitBranch()
         {
-            _stateDb.Commit();
-            _codeDb.Commit();
+            _stateProvider.CommitCode();
+            // nowadays we could commit branch via TrieStore or similar (after this responsibility has been moved
         }
 
         // TODO: move to branch processor
         private void RestoreBranch(Keccak branchingPointStateRoot)
         {
             if (_logger.IsTrace) _logger.Trace($"Restoring the branch checkpoint - {branchingPointStateRoot}");
-            _stateDb.Restore(ISnapshotableDb.NoChangesCheckpoint);
-            _codeDb.Restore(ISnapshotableDb.NoChangesCheckpoint);
             _storageProvider.Reset();
             _stateProvider.Reset();
             _stateProvider.StateRoot = branchingPointStateRoot;
@@ -248,6 +234,8 @@ namespace Nethermind.Blockchain.Processing
         // TODO: block processor pipeline
         private (Block Block, TxReceipt[] Receipts) ProcessOne(Block suggestedBlock, ProcessingOptions options, IBlockTracer blockTracer)
         {
+            if (_logger.IsTrace) _logger.Trace($"Processing block {suggestedBlock.ToString(Block.Format.Short)} ({options})");
+
             ApplyDaoTransition(suggestedBlock);
             Block block = PrepareBlockForProcessing(suggestedBlock);
             TxReceipt[] receipts = ProcessBlock(block, blockTracer, options);
@@ -275,13 +263,13 @@ namespace Nethermind.Blockchain.Processing
         {
             IReleaseSpec releaseSpec = _specProvider.GetSpec(block.Number);
             TxReceipt[] receipts = ProcessTransactions(block, options, blockTracer);
-            
+
             block.Header.ReceiptsRoot = receipts.GetReceiptsRoot(releaseSpec, block.ReceiptsRoot);
             ApplyMinerRewards(block, blockTracer);
 
             _stateProvider.Commit(releaseSpec);
             _stateProvider.RecalculateStateRoot();
-            
+
             block.Header.StateRoot = _stateProvider.StateRoot;
             block.Header.Hash = block.Header.CalculateHash();
 

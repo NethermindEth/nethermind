@@ -25,7 +25,7 @@ namespace Nethermind.Specs
     {
         private readonly (long BlockNumber, IReleaseSpec Release)[] _transitions;
 
-        public int ChainId { get; }
+        public long ChainId { get; }
         public long[] TransitionBlocks { get; }
 
         public CustomSpecProvider(params (long BlockNumber, IReleaseSpec Release)[] transitions) : this(0, transitions)

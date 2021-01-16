@@ -455,6 +455,8 @@ namespace Nethermind.Db.Rocks
 
         private void Dispose(bool disposing)
         {
+            _logger.Info($"Disposing DB {Name}");
+            
             if (disposing)
             {
                 Flush();

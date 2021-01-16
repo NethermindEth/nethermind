@@ -40,10 +40,12 @@ using Nethermind.State.Proofs;
 using Nethermind.State.Repositories;
 using Nethermind.Stats.Model;
 using Nethermind.Db.Blooms;
+using Nethermind.Specs.Forks;
 using Nethermind.Synchronization.Blocks;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Reporting;
+using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
@@ -838,8 +840,17 @@ namespace Nethermind.Synchronization.Test
                 PeerPool = Substitute.For<ISyncPeerPool>();
                 Feed = Substitute.For<ISyncFeed<BlocksRequest>>();
 
+                var stateDb = new MemDb();
+                
                 SyncConfig syncConfig = new SyncConfig();
-                SyncProgressResolver syncProgressResolver = new SyncProgressResolver(BlockTree, NullReceiptStorage.Instance, new MemDb(), new MemDb(), syncConfig, LimboLogs.Instance);
+                SyncProgressResolver syncProgressResolver = new SyncProgressResolver(
+                    BlockTree,
+                    NullReceiptStorage.Instance,
+                    stateDb,
+                    stateDb,
+                    new TrieStore(stateDb, LimboLogs.Instance),
+                    syncConfig,
+                    LimboLogs.Instance);
                 SyncModeSelector = new MultiSyncModeSelector(syncProgressResolver, PeerPool, syncConfig, LimboLogs.Instance);
                 Feed = new FullSyncFeed(SyncModeSelector, LimboLogs.Instance);
 
@@ -1101,7 +1112,9 @@ namespace Nethermind.Synchronization.Test
 
                         if (withTransactions && header.ReceiptsRoot != Keccak.EmptyTreeHash)
                         {
-                            blockBuilder.WithTransactions(Build.A.Transaction.WithValue(i * 2).SignedAndResolved().TestObject,
+                            blockBuilder.WithTransactions(
+                                MuirGlacier.Instance,
+                                Build.A.Transaction.WithValue(i * 2).SignedAndResolved().TestObject,
                                 Build.A.Transaction.WithValue(i * 2 + 1).SignedAndResolved().TestObject);
                         }
 

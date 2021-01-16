@@ -159,7 +159,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                     Handle(getBodiesMsg);
                     break;
                 case Eth62MessageCode.BlockBodies:
-                    HandleBodies(message.Content, size);
+                    BlockBodiesMessage bodiesMsg = Deserialize<BlockBodiesMessage>(message.Content);
+                    ReportIn(bodiesMsg);
+                    HandleBodies(bodiesMsg, size);
                     break;
                 case Eth62MessageCode.NewBlock:
                     NewBlockMessage newBlockMsg = Deserialize<NewBlockMessage>(message.Content);
@@ -204,7 +206,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             {
                 Transaction tx = transactions[i];
                 tx.DeliveredBy = Node.Id;
-                tx.Timestamp = _timestamper.EpochSeconds;
+                tx.Timestamp = _timestamper.UnixTime.Seconds;
                 AddTxResult result = _txPool.AddTransaction(tx, TxHandlingOptions.None);
                 _floodController.Report(result == AddTxResult.Added);
 

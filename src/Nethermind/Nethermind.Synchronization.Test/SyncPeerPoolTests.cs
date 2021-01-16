@@ -498,9 +498,10 @@ namespace Nethermind.Synchronization.Test
         {
             await using Context ctx = new Context();
             var peers = await SetupPeers(ctx, 3);
-            ctx.Pool.ReportBreachOfProtocol(ctx.Pool.InitializedPeers.First(), "issue details");
+            var peerInfo = ctx.Pool.InitializedPeers.First();
+            ctx.Pool.ReportBreachOfProtocol(peerInfo, "issue details");
 
-            Assert.True(peers[0].DisconnectRequested);
+            Assert.True(((SimpleSyncPeerMock)peerInfo.SyncPeer).DisconnectRequested);
         }
 
         [Test]

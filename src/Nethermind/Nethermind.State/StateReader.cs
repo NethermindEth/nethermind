@@ -21,6 +21,7 @@ using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Trie;
+using Nethermind.Trie.Pruning;
 using Metrics = Nethermind.Db.Metrics;
 
 namespace Nethermind.State
@@ -32,18 +33,12 @@ namespace Nethermind.State
         private readonly StateTree _state;
         private readonly StorageTree _storage;
 
-        public StateReader(IDbProvider dbProvider, ILogManager logManager) 
-            :this(dbProvider.StateDb, dbProvider.CodeDb, logManager)
+        public StateReader(ITrieStore trieStore, IDb codeDb, ILogManager logManager)
         {
-        }
-        
-        public StateReader(IKeyValueStore stateDb, IDb codeDb, ILogManager? logManager)
-        {
-            if (stateDb == null) throw new ArgumentNullException(nameof(stateDb));
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger<StateReader>() ?? throw new ArgumentNullException(nameof(logManager));
             _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
-            _state = new StateTree(stateDb);
-            _storage = new StorageTree(stateDb);
+            _state = new StateTree(trieStore, logManager);
+            _storage = new StorageTree(trieStore, Keccak.EmptyTreeHash, logManager);
         }
 
         public Account? GetAccount(Keccak stateRoot, Address address)

@@ -17,6 +17,7 @@
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62;
+using Nethermind.Specs.Forks;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
@@ -44,7 +45,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             Transaction d = Build.A.Transaction.SignedAndResolved().TestObject;
             Transaction e = Build.A.Transaction.SignedAndResolved().TestObject;
             Transaction f = Build.A.Transaction.SignedAndResolved().TestObject;
-            Block block = Build.A.Block.WithTransactions(a, b, c, d, e, f).TestObject;
+            Block block = Build.A.Block.WithTransactions(MuirGlacier.Instance, a, b, c, d, e, f).TestObject;
             foreach (Transaction transaction in block.Transactions)
             {
                 transaction.SenderAddress = null;

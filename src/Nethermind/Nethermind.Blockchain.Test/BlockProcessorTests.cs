@@ -28,7 +28,9 @@ using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
+using Nethermind.Specs.Forks;
 using Nethermind.State;
+using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
@@ -50,17 +52,16 @@ namespace Nethermind.Blockchain.Test
         {
             ISnapshotableDb stateDb = new StateDb();
             ISnapshotableDb codeDb = new StateDb();
-            IStateProvider stateProvider = new StateProvider(stateDb, codeDb, LimboLogs.Instance);
+            TrieStore trieStore = new TrieStore(stateDb, LimboLogs.Instance);
+            IStateProvider stateProvider = new StateProvider(trieStore, codeDb, LimboLogs.Instance);
             ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
             BlockProcessor processor = new BlockProcessor(
                 RinkebySpecProvider.Instance,
                 TestBlockValidator.AlwaysValid,
                 NoBlockRewards.Instance,
                 transactionProcessor,
-                stateDb,
-                codeDb,
                 stateProvider,
-                new StorageProvider(stateDb, stateProvider, LimboLogs.Instance),
+                new StorageProvider(trieStore, stateProvider, LimboLogs.Instance),
                 NullTxPool.Instance,
                 NullReceiptStorage.Instance,
                 NullWitnessCollector.Instance,
@@ -82,7 +83,9 @@ namespace Nethermind.Blockchain.Test
         {
             ISnapshotableDb stateDb = new StateDb();
             ISnapshotableDb codeDb = new StateDb();
-            IStateProvider stateProvider = new StateProvider(stateDb, codeDb, LimboLogs.Instance);
+            var trieStore = new TrieStore(stateDb, LimboLogs.Instance);
+            
+            IStateProvider stateProvider = new StateProvider(trieStore, codeDb, LimboLogs.Instance);
             ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
             IWitnessCollector witnessCollector = Substitute.For<IWitnessCollector>();
             BlockProcessor processor = new BlockProcessor(
@@ -90,10 +93,8 @@ namespace Nethermind.Blockchain.Test
                 TestBlockValidator.AlwaysValid,
                 NoBlockRewards.Instance,
                 transactionProcessor,
-                stateDb,
-                codeDb,
                 stateProvider,
-                new StorageProvider(stateDb, stateProvider, LimboLogs.Instance),
+                new StorageProvider(trieStore, stateProvider, LimboLogs.Instance),
                 NullTxPool.Instance,
                 NullReceiptStorage.Instance,
                 witnessCollector,
@@ -115,24 +116,23 @@ namespace Nethermind.Blockchain.Test
         {
             ISnapshotableDb stateDb = new StateDb();
             ISnapshotableDb codeDb = new StateDb();
-            IStateProvider stateProvider = new StateProvider(stateDb, codeDb, LimboLogs.Instance);
+            TrieStore trieStore = new TrieStore(stateDb, LimboLogs.Instance);
+            IStateProvider stateProvider = new StateProvider(trieStore, codeDb, LimboLogs.Instance);
             ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
             BlockProcessor processor = new BlockProcessor(
                 RinkebySpecProvider.Instance,
                 TestBlockValidator.AlwaysValid,
                 new RewardCalculator(MainnetSpecProvider.Instance),
                 transactionProcessor,
-                stateDb,
-                codeDb,
                 stateProvider,
-                new StorageProvider(stateDb, stateProvider, LimboLogs.Instance),
+                new StorageProvider(trieStore, stateProvider, LimboLogs.Instance),
                 NullTxPool.Instance,
                 NullReceiptStorage.Instance,
                 NullWitnessCollector.Instance,
                 LimboLogs.Instance);
 
             BlockHeader header = Build.A.BlockHeader.WithNumber(1).WithAuthor(TestItem.AddressD).TestObject;
-            Block block = Build.A.Block.WithTransactions(1).WithHeader(header).TestObject;
+            Block block = Build.A.Block.WithTransactions(1, MuirGlacier.Instance).WithHeader(header).TestObject;
             Assert.Throws<OperationCanceledException>(() => processor.Process(
                 Keccak.EmptyTreeHash,
                 new List<Block> {block},

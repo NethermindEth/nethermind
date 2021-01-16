@@ -104,6 +104,12 @@ namespace Nethermind.Specs
         public bool IsEip2315Enabled => _spec.IsEip2315Enabled;
         
         public bool IsEip2537Enabled => _spec.IsEip2315Enabled;
+        
+        public bool IsEip2929Enabled => _spec.IsEip2929Enabled;
+        
+        public bool IsEip2930Enabled => _spec.IsEip2930Enabled;
+        
+        public bool IsEip2718Enabled => _spec.IsEip2718Enabled;
 
         public bool IsEip158IgnoredAccount(Address address)
         {

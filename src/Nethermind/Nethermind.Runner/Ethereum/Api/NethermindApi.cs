@@ -49,12 +49,11 @@ using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
 using Nethermind.State.Repositories;
-using Nethermind.State.Witnesses;
 using Nethermind.Stats;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
-using Nethermind.Trie;
+using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
 using Nethermind.WebSockets;
@@ -86,6 +85,7 @@ namespace Nethermind.Runner.Ethereum.Api
             // TODO: reuse the same trie cache here
             ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv = new ReadOnlyTxProcessingEnv(
                 readOnlyDbProvider,
+                TrieStore,
                 readOnlyTree,
                 SpecProvider,
                 LogManager);
@@ -167,11 +167,13 @@ namespace Nethermind.Runner.Ethereum.Api
         public IStaticNodesManager? StaticNodesManager { get; set; }
         public ITimestamper Timestamper { get; } = Core.Timestamper.Default;
         public ITransactionProcessor? TransactionProcessor { get; set; }
+        public ITrieStore? TrieStore { get; set; }
+        public ITrieStore? ReadOnlyTrieStore { get; set; }
         public ITxSender? TxSender { get; set; }
         public ITxPool? TxPool { get; set; }
         public ITxPoolInfoProvider? TxPoolInfoProvider { get; set; }
         public IWallet? Wallet { get; set; }
-        public IWebSocketsManager? WebSocketsManager { get; set; }
+        public IWebSocketsManager WebSocketsManager { get; set; } = new WebSocketsManager();
 
         public ProtectedPrivateKey? NodeKey { get; set; }
         public ProtectedPrivateKey? OriginalSignerKey { get; set; } // TODO: please explain what it does

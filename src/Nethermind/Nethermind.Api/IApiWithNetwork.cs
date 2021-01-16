@@ -52,6 +52,6 @@ namespace Nethermind.Api
         ISynchronizer? Synchronizer { get; set; }
         ISyncPeerPool? SyncPeerPool { get; set; }
         ISyncServer? SyncServer { get; set; }
-        IWebSocketsManager? WebSocketsManager { get; set; }
+        IWebSocketsManager WebSocketsManager { get; set; }
     }
 }

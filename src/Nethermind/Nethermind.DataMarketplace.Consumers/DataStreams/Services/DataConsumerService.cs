@@ -61,7 +61,7 @@ namespace Nethermind.DataMarketplace.Consumers.DataStreams.Services
             switch (deposit.DataAsset.UnitType)
             {
                 case DataAssetUnitType.Time:
-                    var now = (uint) _timestamper.EpochSeconds;
+                    var now = (uint) _timestamper.UnixTime.Seconds;
                     var currentlyConsumedUnits = now - deposit.ConfirmationTimestamp;
                     var currentlyUnpaidUnits = currentlyConsumedUnits > session.PaidUnits
                         ? currentlyConsumedUnits - session.PaidUnits

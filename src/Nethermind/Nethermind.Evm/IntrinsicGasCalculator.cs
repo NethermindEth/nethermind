@@ -46,6 +46,9 @@ namespace Nethermind.Evm
                 result += GasCostOf.TxCreate;
             }
 
+            result += transaction.AccountAccessList?.Count ?? 0 * GasCostOf.AccessAccountListEntry;
+            result += transaction.StorageAccessList?.Count ?? 0 * GasCostOf.AccessStorageListEntry;
+
             return result;
         }
     }

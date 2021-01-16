@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
@@ -25,6 +26,8 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Logging;
@@ -33,6 +36,8 @@ using Nethermind.State.Witnesses;
 using Nethermind.Synchronization.BeamSync;
 using Nethermind.Synchronization.Witness;
 using Nethermind.Trie;
+using Nethermind.Trie;
+using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Storages;
 using Nethermind.Wallet;
@@ -56,26 +61,28 @@ namespace Nethermind.Runner.Ethereum.Steps
         }
 
         [Todo(Improve.Refactor, "Use chain spec for all chain configuration")]
-        protected virtual Task InitBlockchain()
+        private Task InitBlockchain()
         {
             var (getApi, setApi) = _api.ForBlockchain;
             
             if (getApi.ChainSpec == null) throw new StepDependencyException(nameof(getApi.ChainSpec));
             if (getApi.DbProvider == null) throw new StepDependencyException(nameof(getApi.DbProvider));
             if (getApi.SpecProvider == null) throw new StepDependencyException(nameof(getApi.SpecProvider));
-
+            
             ILogger logger = getApi.LogManager.GetClassLogger();
             IInitConfig initConfig = getApi.Config<IInitConfig>();
             ISyncConfig syncConfig = getApi.Config<ISyncConfig>();
+            IPruningConfig pruningConfig = getApi.Config<IPruningConfig>();
+
             if (syncConfig.DownloadReceiptsInFastSync && !syncConfig.DownloadBodiesInFastSync)
             {
                 logger.Warn($"{nameof(syncConfig.DownloadReceiptsInFastSync)} is selected but {nameof(syncConfig.DownloadBodiesInFastSync)} - enabling bodies to support receipts download.");
                 syncConfig.DownloadBodiesInFastSync = true;
             }
-
+            
             Account.AccountStartNonce = getApi.ChainSpec.Parameters.AccountStartNonce;
 
-            var mainStateDbWithCache = setApi.MainStateDbWithCache = new CachingStore(getApi.DbProvider.StateDb, PatriciaTree.RlpCacheSize);
+            IKeyValueStore mainStateDbWithCache = setApi.MainStateDbWithCache = new CachingStore(getApi.DbProvider.StateDb, PatriciaTree.OneNodeAvgMemoryEstimate);
             
             IWitnessCollector witnessCollector = setApi.WitnessCollector = syncConfig.WitnessProtocolEnabled
                 ? new WitnessCollector(getApi.DbProvider.WitnessDb, _api.LogManager)
@@ -86,29 +93,58 @@ namespace Nethermind.Runner.Ethereum.Steps
                 new WitnessPruner(getApi.BlockTree, witnessCollector, getApi.LogManager).Start();
             }
 
+            if (pruningConfig.Enabled)
+            {
+                _api.TrieStore = new TrieStore(
+                    setApi.DbProvider!.StateDb.Innermost, // TODO: PRUNING what a hack here just to pass the actual DB
+                    new MemoryLimit(pruningConfig.PruningCacheMb * 1.MB()), // TODO: memory hint should define this
+                    new ConstantInterval(pruningConfig.PruningPersistenceInterval), // TODO: this should be based on time
+                    _api.LogManager);
+            }
+            else
+            {
+                _api.TrieStore = new TrieStore(
+                    setApi.DbProvider!.StateDb.Innermost, // TODO: PRUNING what a hack here just to pass the actual DB
+                    No.Pruning,
+                    Full.Archive,
+                    _api.LogManager);
+            }
+            
             var stateDb = mainStateDbWithCache.WitnessedBy(witnessCollector);
             var codeDb = getApi.DbProvider.CodeDb.WitnessedBy(witnessCollector);
 
-            var stateProvider = _api.StateProvider = new StateProvider(
-                new StateTree(stateDb),
+            var stateProvider = setApi.StateProvider = new StateProvider(
+                _api.TrieStore,
                 codeDb,
                 _api.LogManager);
 
             ReadOnlyDbProvider readOnly = new ReadOnlyDbProvider(_api.DbProvider, false);
             
             PersistentTxStorage txStorage = new PersistentTxStorage(getApi.DbProvider.PendingTxsDb);
-            var stateReader = setApi.StateReader = new StateReader(
-                readOnly.GetDb<ISnapshotableDb>(DbNames.State),
-                readOnly.GetDb<ISnapshotableDb>(DbNames.Code),
-                _api.LogManager);
+            var stateReader = setApi.StateReader = new StateReader(_api.ReadOnlyTrieStore, readOnly.GetDb<ISnapshotableDb>(DbNames.Code), _api.LogManager);
             
             setApi.ChainHeadStateProvider = new ChainHeadReadOnlyStateProvider(getApi.BlockTree, stateReader);
+            Account.AccountStartNonce = getApi.ChainSpec.Parameters.AccountStartNonce;
+
+            _api.DisposeStack.Push(_api.TrieStore);
+            _api.ReadOnlyTrieStore = new ReadOnlyTrieStore(_api.TrieStore);
+            _api.TrieStore.ReorgBoundaryReached += ReorgBoundaryReached;
+
+            _api.StateProvider.StateRoot = getApi.BlockTree!.Head?.StateRoot ?? Keccak.EmptyTreeHash;
+
+            if (_api.Config<IInitConfig>().DiagnosticMode == DiagnosticMode.VerifyTrie)
+            {
+                logger.Info("Collecting trie stats and verifying that no nodes are missing...");
+                TrieStats stats = _api.StateProvider.CollectStats(getApi.DbProvider.CodeDb, _api.LogManager);
+                logger.Info($"Starting from {getApi.BlockTree.Head?.Number} {getApi.BlockTree.Head?.StateRoot}{Environment.NewLine}" + stats);
+            }
+
             // Init state if we need system calls before actual processing starts
             if (getApi.BlockTree!.Head != null)
             {
                 stateProvider.StateRoot = getApi.BlockTree.Head.StateRoot;
             }
-
+            
             var txPool = _api.TxPool = CreateTxPool(txStorage);
 
             var onChainTxWatcher = new OnChainTxWatcher(getApi.BlockTree, txPool, getApi.SpecProvider, _api.LogManager);
@@ -116,9 +152,9 @@ namespace Nethermind.Runner.Ethereum.Steps
 
             _api.BlockPreprocessor.AddFirst(
                 new RecoverSignatures(getApi.EthereumEcdsa, txPool, getApi.SpecProvider, getApi.LogManager));
-
+            
             var storageProvider = setApi.StorageProvider = new StorageProvider(
-                stateDb,
+                _api.TrieStore,
                 stateProvider,
                 getApi.LogManager);
 
@@ -152,16 +188,15 @@ namespace Nethermind.Runner.Ethereum.Steps
                 getApi.LogManager);
 
             TxValidator txValidator = new TxValidator(getApi.SpecProvider.ChainId);
-
+            
             var blockValidator = setApi.BlockValidator = new BlockValidator(
                 txValidator,
                 headerValidator,
                 ommersValidator,
                 getApi.SpecProvider,
                 getApi.LogManager);
-            
+                
             setApi.TxPoolInfoProvider = new TxPoolInfoProvider(stateReader, txPool);
-            
             var mainBlockProcessor = setApi.MainBlockProcessor = CreateBlockProcessor();
 
             BlockchainProcessor blockchainProcessor = new BlockchainProcessor(
@@ -204,8 +239,13 @@ namespace Nethermind.Runner.Ethereum.Steps
             // TODO: possibly hide it (but need to confirm that NDM does not really need it)
             var filterStore = setApi.FilterStore = new FilterStore();
             setApi.FilterManager = new FilterManager(filterStore, mainBlockProcessor, txPool, getApi.LogManager);
-
             return Task.CompletedTask;
+        }
+        
+        private void ReorgBoundaryReached(object? sender, ReorgBoundaryReached e)
+        {
+            _api.LogManager.GetClassLogger().Warn($"Saving reorg boundary {e.BlockNumber}");
+            (_api.BlockTree as BlockTree)!.SavePruningReorganizationBoundary(e.BlockNumber);
         }
 
         protected virtual TxPool.TxPool CreateTxPool(PersistentTxStorage txStorage) =>
@@ -238,8 +278,6 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.BlockValidator,
                 _api.RewardCalculatorSource.Get(_api.TransactionProcessor),
                 _api.TransactionProcessor,
-                _api.DbProvider.StateDb,
-                _api.DbProvider.CodeDb,
                 _api.StateProvider,
                 _api.StorageProvider,
                 _api.TxPool,
