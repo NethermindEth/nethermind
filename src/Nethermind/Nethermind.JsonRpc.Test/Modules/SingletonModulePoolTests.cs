@@ -31,6 +31,7 @@ using Nethermind.State.Repositories;
 using Nethermind.Db.Blooms;
 using Nethermind.Facade;
 using Nethermind.State;
+using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
 using NSubstitute;

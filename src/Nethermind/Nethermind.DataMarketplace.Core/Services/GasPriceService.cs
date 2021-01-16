@@ -180,7 +180,7 @@ namespace Nethermind.DataMarketplace.Core.Services
                 ? new GasPriceDetails(config.GasPrice, 0)
                 : GasPriceDetails.Empty;
 
-            _updatedAt = _timestamper.EpochSeconds;
+            _updatedAt = _timestamper.UnixTime.Seconds;
             Types = new GasPriceTypes(new GasPriceDetails(GetGasPriceGwei(result.SafeLow), result.SafeLowWait),
                 new GasPriceDetails(GetGasPriceGwei(result.Average), result.AvgWait),
                 new GasPriceDetails(GetGasPriceGwei(result.Fast), result.FastWait),

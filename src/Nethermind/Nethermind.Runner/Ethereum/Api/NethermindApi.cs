@@ -53,6 +53,7 @@ using Nethermind.Stats;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
+using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
 using Nethermind.WebSockets;
@@ -82,6 +83,7 @@ namespace Nethermind.Runner.Ethereum.Api
             IReadOnlyDbProvider readOnlyDbProvider = new ReadOnlyDbProvider(DbProvider, false);
             ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv = new ReadOnlyTxProcessingEnv(
                 readOnlyDbProvider,
+                TrieStore,
                 readOnlyTree,
                 SpecProvider,
                 LogManager);
@@ -160,6 +162,8 @@ namespace Nethermind.Runner.Ethereum.Api
         public IStaticNodesManager? StaticNodesManager { get; set; }
         public ITimestamper Timestamper { get; } = Core.Timestamper.Default;
         public ITransactionProcessor? TransactionProcessor { get; set; }
+        public ITrieStore? TrieStore { get; set; }
+        public ITrieStore? ReadOnlyTrieStore { get; set; }
         public ITxSender? TxSender { get; set; }
         public ITxPool? TxPool { get; set; }
         public ITxPoolInfoProvider? TxPoolInfoProvider { get; set; }

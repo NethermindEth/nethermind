@@ -22,51 +22,52 @@ namespace Nethermind.Db.Rocks.Config
     {
         public static DbConfig Default = new DbConfig();
 
-        public ulong WriteBufferSize { get; set; } = 16.MiB();
+        public ulong WriteBufferSize { get; set; } = (ulong) 16.MiB();
         public uint WriteBufferNumber { get; set; } = 4;
-        public ulong BlockCacheSize { get; set; } = 64.MiB();
-        public bool CacheIndexAndFilterBlocks { get; set; } = false;
+        public ulong BlockCacheSize { get; set; } = (ulong) 64.MiB();
+        public bool CacheIndexAndFilterBlocks { get; set; }= false;
 
-        public ulong ReceiptsDbWriteBufferSize { get; set; } = 8.MiB();
+        public ulong ReceiptsDbWriteBufferSize { get; set; } = (ulong) 8.MiB();
         public uint ReceiptsDbWriteBufferNumber { get; set; } = 4;
-        public ulong ReceiptsDbBlockCacheSize { get; set; } = 32.MiB();
+        public ulong ReceiptsDbBlockCacheSize { get; set; } = (ulong)32.MiB();
         public bool ReceiptsDbCacheIndexAndFilterBlocks { get; set; } = false;
 
-        public ulong BlocksDbWriteBufferSize { get; set; } = 8.MiB();
+        public ulong BlocksDbWriteBufferSize { get; set; } = (ulong) 8.MiB();
         public uint BlocksDbWriteBufferNumber { get; set; } = 4;
-        public ulong BlocksDbBlockCacheSize { get; set; } = 32.MiB();
+        public ulong BlocksDbBlockCacheSize { get; set; } = (ulong)32.MiB();
         public bool BlocksDbCacheIndexAndFilterBlocks { get; set; } = false;
 
-        public ulong HeadersDbWriteBufferSize { get; set; } = 8.MiB();
+        public ulong HeadersDbWriteBufferSize { get; set; } = (ulong) 8.MiB();
         public uint HeadersDbWriteBufferNumber { get; set; } = 4;
-        public ulong HeadersDbBlockCacheSize { get; set; } = 32.MiB();
+        public ulong HeadersDbBlockCacheSize { get; set; } = (ulong) 32.MiB();
         public bool HeadersDbCacheIndexAndFilterBlocks { get; set; } = false;
 
-        public ulong BlockInfosDbWriteBufferSize { get; set; } = 8.MiB();
+        public ulong BlockInfosDbWriteBufferSize { get; set; } = (ulong) 8.MiB();
         public uint BlockInfosDbWriteBufferNumber { get; set; } = 4;
-        public ulong BlockInfosDbBlockCacheSize { get; set; } = 32.MiB();
+        public ulong BlockInfosDbBlockCacheSize { get; set; } = (ulong) 32.MiB();
         public bool BlockInfosDbCacheIndexAndFilterBlocks { get; set; } = false;
 
-        public ulong PendingTxsDbWriteBufferSize { get; set; } = 4.MiB();
+        public ulong PendingTxsDbWriteBufferSize { get; set; } = (ulong) 4.MiB();
         public uint PendingTxsDbWriteBufferNumber { get; set; } = 4;
-        public ulong PendingTxsDbBlockCacheSize { get; set; } = 16.MiB();
+        public ulong PendingTxsDbBlockCacheSize { get; set; } = (ulong) 16.MiB();
         public bool PendingTxsDbCacheIndexAndFilterBlocks { get; set; } = false;
 
-        public ulong CodeDbWriteBufferSize { get; set; } = 2.MiB();
+        public ulong CodeDbWriteBufferSize { get; set; } = (ulong) 2.MiB();
         public uint CodeDbWriteBufferNumber { get; set; } = 4;
-        public ulong CodeDbBlockCacheSize { get; set; } = 8.MiB();
+        public ulong CodeDbBlockCacheSize { get; set; } = (ulong) 8.MiB();
         public bool CodeDbCacheIndexAndFilterBlocks { get; set; } = false;
         
-        public ulong BloomDbWriteBufferSize { get; set; } = 1.KiB();
+        public ulong BloomDbWriteBufferSize { get; set; } = (ulong)1.KiB();
         public uint BloomDbWriteBufferNumber { get; set; } = 4;
-        public ulong BloomDbBlockCacheSize { get; set; } = 1.KiB();
+        public ulong BloomDbBlockCacheSize { get; set; } = (ulong)1.KiB();
         public bool BloomDbCacheIndexAndFilterBlocks { get; set; } = false;
 
         // TODO - profile and customize
-        public ulong CanonicalHashTrieDbWriteBufferSize { get; set; } = 2.MB();
+        public ulong CanonicalHashTrieDbWriteBufferSize { get; set; } = (ulong) 2.MB();
         public uint CanonicalHashTrieDbWriteBufferNumber { get; set; } = 4;
-        public ulong CanonicalHashTrieDbBlockCacheSize { get; set; } = 8.MB();
+        public ulong CanonicalHashTrieDbBlockCacheSize { get; set; } = (ulong) 8.MB();
         public bool CanonicalHashTrieDbCacheIndexAndFilterBlocks { get; set; } = true;
+        
 
         public uint RecycleLogFileNum { get; set; } = 0;
         public bool WriteAheadLogSync { get; set; } = false;

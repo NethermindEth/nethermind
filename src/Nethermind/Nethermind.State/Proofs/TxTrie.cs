@@ -18,6 +18,7 @@ using System;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
+using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie;
 
@@ -29,7 +30,7 @@ namespace Nethermind.State.Proofs
         private static TransactionDecoder _txDecoder = new TransactionDecoder();
 
         public TxTrie(Transaction[] txs, IReleaseSpec releaseSpec, bool allowProofs = false)
-            : base(allowProofs ? (IDb) new MemDb() : NullDb.Instance, EmptyTreeHash, false, false)
+            : base(allowProofs ? (IDb) new MemDb() : NullDb.Instance, EmptyTreeHash, false, false, NullLogManager.Instance)
         {
             _allowProofs = allowProofs;
             if (txs.Length == 0)

@@ -15,10 +15,18 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+#nullable enable
+using Nethermind.Config;
+
 namespace Nethermind.Api
 {
     public interface INethermindApi : IApiWithNetwork
     {
+        public T Config<T>() where T : IConfig
+        {
+            return ConfigProvider.GetConfig<T>();
+        }
+
         (IApiWithNetwork GetFromApi, INethermindApi SetInApi) ForRpc => (this, this);
     }
 }

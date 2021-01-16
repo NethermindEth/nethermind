@@ -48,10 +48,10 @@ namespace Nethermind.Runner.Ethereum.Steps
         // Environment.SetEnvironmentVariable("io.netty.allocator.pageSize", "8192");
         private const uint PageSize = 8192;
         
-        public static ulong Estimate(uint cpuCount, int arenaOrder)
+        public static long Estimate(uint cpuCount, int arenaOrder)
         {
             // do not remember why there is 2 in front
-            return 2UL * cpuCount * (1UL << arenaOrder) * PageSize;
+            return 2L * cpuCount * (1L << arenaOrder) * PageSize;
         }
     }
 
@@ -92,6 +92,10 @@ namespace Nethermind.Runner.Ethereum.Steps
             if (_networkConfig.DiagTracerEnabled)
             {
                 NetworkDiagTracer.IsEnabled = true;
+            }
+
+            if (NetworkDiagTracer.IsEnabled)
+            {
                 NetworkDiagTracer.Start();
             }
             
@@ -103,7 +107,15 @@ namespace Nethermind.Runner.Ethereum.Steps
             _api.SyncPeerPool = new SyncPeerPool(_api.BlockTree!, _api.NodeStatsManager!, maxPeersCount, _api.LogManager);
             _api.DisposeStack.Push(_api.SyncPeerPool);
 
-            SyncProgressResolver syncProgressResolver = new SyncProgressResolver(_api.BlockTree!, _api.ReceiptStorage!, _api.DbProvider.StateDb, _api.DbProvider.BeamStateDb, _syncConfig, _api.LogManager);
+            SyncProgressResolver syncProgressResolver = new SyncProgressResolver(
+                _api.BlockTree!,
+                _api.ReceiptStorage!,
+                _api.DbProvider.StateDb,
+                _api.DbProvider.BeamStateDb,
+                _api.ReadOnlyTrieStore!,
+                _syncConfig,
+                _api.LogManager);
+            
             MultiSyncModeSelector syncModeSelector = CreateMultiSyncModeSelector(syncProgressResolver);
             if (_api.SyncModeSelector != null)
             {
@@ -398,7 +410,18 @@ namespace Nethermind.Runner.Ethereum.Steps
             NetworkStorage peerStorage = new NetworkStorage(peersDb, _api.LogManager);
 
             ProtocolValidator protocolValidator = new ProtocolValidator(_api.NodeStatsManager, _api.BlockTree, _api.LogManager);
-            _api.ProtocolsManager = new ProtocolsManager(_api.SyncPeerPool, _api.SyncServer, _api.TxPool, _api.DiscoveryApp, _api.MessageSerializationService, _api.RlpxPeer, _api.NodeStatsManager, protocolValidator, peerStorage, _api.SpecProvider, _api.LogManager);
+            _api.ProtocolsManager = new ProtocolsManager(
+                _api.SyncPeerPool,
+                _api.SyncServer,
+                _api.TxPool,
+                _api.DiscoveryApp,
+                _api.MessageSerializationService,
+                _api.RlpxPeer,
+                _api.NodeStatsManager,
+                protocolValidator,
+                peerStorage,
+                _api.SpecProvider,
+                _api.LogManager);
             _api.ProtocolValidator = protocolValidator;
 
             foreach (var plugin in _api.Plugins)

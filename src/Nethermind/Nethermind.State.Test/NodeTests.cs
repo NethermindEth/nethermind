@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -16,8 +16,11 @@
 
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
+using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
+using Nethermind.State;
 using Nethermind.Trie;
+using Nethermind.Trie.Pruning;
 using NUnit.Framework;
 
 namespace Nethermind.Store.Test
@@ -43,10 +46,10 @@ namespace Nethermind.Store.Test
             TrieNode node = new TrieNode(NodeType.Branch);
             node.SetChild(0, new TrieNode(NodeType.Leaf, TestItem.KeccakA));
             node.SetChild(1, new TrieNode(NodeType.Leaf, TestItem.KeccakB));
-            PatriciaTree tree = BuildATreeFromNode(node);
+            ITrieNodeResolver tree = BuildATreeFromNode(node);
             TrieNode decoded = new TrieNode(NodeType.Unknown, node.Keccak);
             decoded.ResolveNode(tree);
-            decoded.RlpEncode();
+            decoded.RlpEncode(tree);
         }
 
         [Test]
@@ -55,10 +58,10 @@ namespace Nethermind.Store.Test
             TrieNode node = new TrieNode(NodeType.Branch);
             node.SetChild(0, new TrieNode(NodeType.Leaf, TestItem.KeccakA));
             node.SetChild(1, new TrieNode(NodeType.Leaf, TestItem.KeccakB));
-            PatriciaTree tree = BuildATreeFromNode(node);
+            ITrieNodeResolver tree = BuildATreeFromNode(node);
             TrieNode decoded = new TrieNode(NodeType.Unknown, node.Keccak);
             decoded.ResolveNode(tree);
-            decoded.RlpEncode();
+            decoded.RlpEncode(tree);
         }
 
         [Test]
@@ -67,11 +70,11 @@ namespace Nethermind.Store.Test
             TrieNode node = new TrieNode(NodeType.Branch);
             node.SetChild(0, new TrieNode(NodeType.Leaf, TestItem.KeccakA));
             node.SetChild(1, new TrieNode(NodeType.Leaf, TestItem.KeccakB));
-            PatriciaTree tree = BuildATreeFromNode(node);
+            ITrieNodeResolver tree = BuildATreeFromNode(node);
             TrieNode decoded = new TrieNode(NodeType.Unknown, node.Keccak);
             decoded.ResolveNode(tree);
-            TrieNode child0 = decoded.GetChild(0);
-            decoded.RlpEncode();
+            TrieNode child0 = decoded.GetChild(tree, 0);
+            decoded.RlpEncode(tree);
         }
 
         [Test]
@@ -80,11 +83,11 @@ namespace Nethermind.Store.Test
             TrieNode node = new TrieNode(NodeType.Branch);
             node.SetChild(0, new TrieNode(NodeType.Leaf, TestItem.KeccakA));
             node.SetChild(1, new TrieNode(NodeType.Leaf, TestItem.KeccakB));
-            PatriciaTree tree = BuildATreeFromNode(node);
+            ITrieNodeResolver tree = BuildATreeFromNode(node);
             TrieNode decoded = new TrieNode(NodeType.Unknown, node.Keccak);
             decoded.ResolveNode(tree);
-            TrieNode child = decoded.GetChild(3);
-            decoded.RlpEncode();
+            TrieNode child = decoded.GetChild(tree, 3);
+            decoded.RlpEncode(tree);
         }
 
         [Test]
@@ -93,25 +96,27 @@ namespace Nethermind.Store.Test
             TrieNode node = new TrieNode(NodeType.Branch);
             node.SetChild(0, new TrieNode(NodeType.Leaf, TestItem.KeccakA));
             node.SetChild(1, new TrieNode(NodeType.Leaf, TestItem.KeccakB));
-            PatriciaTree tree = BuildATreeFromNode(node);
+            ITrieNodeResolver tree = BuildATreeFromNode(node);
             TrieNode decoded = new TrieNode(NodeType.Unknown, node.Keccak);
             decoded.ResolveNode(tree);
+            decoded = decoded.Clone();
             decoded.SetChild(0, new TrieNode(NodeType.Leaf, TestItem.KeccakC));
-            decoded.RlpEncode();
+            decoded.RlpEncode(tree);
         }
 
         [Test]
-        public void Two_children_store_resolve_updatenull_encode()
+        public void Two_children_store_resolve_update_null_encode()
         {
             TrieNode node = new TrieNode(NodeType.Branch);
             node.SetChild(0, new TrieNode(NodeType.Leaf, TestItem.KeccakA));
             node.SetChild(1, new TrieNode(NodeType.Leaf, TestItem.KeccakB));
-            PatriciaTree tree = BuildATreeFromNode(node);
+            ITrieNodeResolver tree = BuildATreeFromNode(node);
             TrieNode decoded = new TrieNode(NodeType.Unknown, node.Keccak);
             decoded.ResolveNode(tree);
+            decoded = decoded.Clone();
             decoded.SetChild(4, new TrieNode(NodeType.Leaf, TestItem.KeccakC));
             decoded.SetChild(5, new TrieNode(NodeType.Leaf, TestItem.KeccakD));
-            decoded.RlpEncode();
+            decoded.RlpEncode(tree);
         }
 
         [Test]
@@ -120,12 +125,13 @@ namespace Nethermind.Store.Test
             TrieNode node = new TrieNode(NodeType.Branch);
             node.SetChild(0, new TrieNode(NodeType.Leaf, TestItem.KeccakA));
             node.SetChild(1, new TrieNode(NodeType.Leaf, TestItem.KeccakB));
-            PatriciaTree tree = BuildATreeFromNode(node);
+            ITrieNodeResolver tree = BuildATreeFromNode(node);
             TrieNode decoded = new TrieNode(NodeType.Unknown, node.Keccak);
             decoded.ResolveNode(tree);
+            decoded = decoded.Clone();
             decoded.SetChild(0, null);
             decoded.SetChild(4, new TrieNode(NodeType.Leaf, TestItem.KeccakC));
-            decoded.RlpEncode();
+            decoded.RlpEncode(tree);
         }
 
         [Test]
@@ -133,23 +139,23 @@ namespace Nethermind.Store.Test
         {
             TrieNode node = new TrieNode(NodeType.Branch);
             node.SetChild(0, new TrieNode(NodeType.Leaf, TestItem.KeccakA));
-            PatriciaTree tree = BuildATreeFromNode(node);
+            ITrieNodeResolver tree = BuildATreeFromNode(node);
             TrieNode decoded = new TrieNode(NodeType.Unknown, node.Keccak);
             decoded.ResolveNode(tree);
-            decoded.RlpEncode();
+            decoded.RlpEncode(tree);
         }
 
-        private static PatriciaTree BuildATreeFromNode(TrieNode node)
+        private static ITrieNodeResolver BuildATreeFromNode(TrieNode node)
         {
             TrieNode.AllowBranchValues = true;
-            byte[] rlp = node.RlpEncode();
-            node.ResolveKey(true);
+            byte[] rlp = node.RlpEncode(null);
+            node.ResolveKey(null, true);
 
             MemDb memDb = new MemDb();
             memDb[node.Keccak.Bytes] = rlp;
 
-            PatriciaTree tree = new PatriciaTree(memDb, node.Keccak, false, true);
-            return tree;
+            // ITrieNodeResolver tree = new PatriciaTree(memDb, node.Keccak, false, true);
+            return new TrieStore(memDb, NullLogManager.Instance);
         }
     }
 }

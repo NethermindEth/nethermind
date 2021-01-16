@@ -26,8 +26,8 @@ namespace Nethermind.Blockchain
         public readonly struct SizeInfo
         {
             public SizeInfo(
-                ulong sizeAtUpdateDate,
-                ulong dailyGrowth,
+                long sizeAtUpdateDate,
+                long dailyGrowth,
                 DateTime updateDate)
             {
                 SizeAtUpdateDate = sizeAtUpdateDate;
@@ -35,11 +35,11 @@ namespace Nethermind.Blockchain
                 UpdateDate = updateDate;
             }
             
-            public ulong SizeAtUpdateDate { get; }
-            public ulong DailyGrowth { get; }
+            public long SizeAtUpdateDate { get; }
+            public long DailyGrowth { get; }
             public DateTime UpdateDate { get; }
 
-            public ulong Current => SizeAtUpdateDate + (ulong)(DateTime.UtcNow - UpdateDate).Days * DailyGrowth;
+            public long Current => SizeAtUpdateDate + (DateTime.UtcNow - UpdateDate).Days * DailyGrowth;
         }
         
         /// <summary>

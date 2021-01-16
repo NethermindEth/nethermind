@@ -22,23 +22,28 @@ namespace Nethermind.Core.Resettables
 {
     public class ResettableDictionary<TKey, TValue> : IDictionary<TKey, TValue> where TKey : notnull
     {
-        private int _currentCapacity;
         private readonly IEqualityComparer<TKey>? _comparer;
+        private int _currentCapacity;
         private int _startCapacity;
         private int _resetRatio;
 
         private IDictionary<TKey, TValue> _wrapped;
-
-        public ResettableDictionary(IEqualityComparer<TKey>? comparer, int startCapacity = Resettable.StartCapacity, int resetRatio = Resettable.ResetRatio)
+        
+        public ResettableDictionary(
+            IEqualityComparer<TKey>? comparer,
+            int startCapacity = Resettable.StartCapacity,
+            int resetRatio = Resettable.ResetRatio)
         {
-            _wrapped = new Dictionary<TKey, TValue>(startCapacity, comparer);
             _comparer = comparer;
+            _wrapped = new Dictionary<TKey, TValue>(startCapacity, _comparer);
             _startCapacity = startCapacity;
             _resetRatio = resetRatio;
             _currentCapacity = _startCapacity;
         }
 
-        public ResettableDictionary(int startCapacity = Resettable.StartCapacity, int resetRatio = Resettable.ResetRatio)
+        public ResettableDictionary(
+            int startCapacity = Resettable.StartCapacity,
+            int resetRatio = Resettable.ResetRatio)
             : this(null, startCapacity, resetRatio)
         {
         }

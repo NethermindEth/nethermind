@@ -47,8 +47,6 @@ namespace Nethermind.Consensus.AuRa
             IBlockValidator blockValidator,
             IRewardCalculator rewardCalculator,
             ITransactionProcessor transactionProcessor,
-            ISnapshotableDb stateDb,
-            ISnapshotableDb codeDb,
             IStateProvider stateProvider,
             IStorageProvider storageProvider,
             ITxPool txPool,
@@ -57,7 +55,7 @@ namespace Nethermind.Consensus.AuRa
             IBlockTree blockTree,
             ITxFilter txFilter = null,
             AuRaContractGasLimitOverride gasLimitOverride = null)
-            : base(specProvider, blockValidator, rewardCalculator, transactionProcessor, stateDb, codeDb, stateProvider, storageProvider, txPool, receiptStorage, logManager)
+            : base(specProvider, blockValidator, rewardCalculator, transactionProcessor, stateProvider, storageProvider, txPool, receiptStorage, logManager)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _logger = logManager?.GetClassLogger<AuRaBlockProcessor>() ?? throw new ArgumentNullException(nameof(logManager));

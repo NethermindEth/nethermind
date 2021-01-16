@@ -35,6 +35,7 @@ using Nethermind.State.Repositories;
 using Nethermind.Db.Blooms;
 using Nethermind.KeyStore;
 using Nethermind.Specs.Forks;
+using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Storages;
 using NUnit.Framework;
@@ -56,9 +57,10 @@ namespace Nethermind.JsonRpc.Test.Modules
             var specProvider = MainnetSpecProvider.Instance;
             var ethereumEcdsa = new EthereumEcdsa(specProvider.ChainId, logger);
             var txStorage = new InMemoryTxStorage();
+
             var txPool = new TxPool.TxPool(txStorage, ethereumEcdsa, specProvider, new TxPoolConfig(),
-                new StateProvider(new StateDb(), new MemDb(), LimboLogs.Instance),  LimboLogs.Instance);
-            
+                new StateProvider(new TrieStore(new StateDb(), LimboLogs.Instance), new StateDb(), LimboLogs.Instance),  LimboLogs.Instance);
+
             IDb blockDb = new MemDb();
             IDb headerDb = new MemDb();
             IDb blockInfoDb = new MemDb();

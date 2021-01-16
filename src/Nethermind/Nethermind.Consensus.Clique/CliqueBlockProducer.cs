@@ -137,7 +137,7 @@ namespace Nethermind.Consensus.Clique
                 Block? scheduledBlock = _scheduledBlock;
                 if (scheduledBlock == null)
                 {
-                    if (_blockTree.Head.Timestamp + _config.BlockPeriod < _timestamper.EpochSeconds)
+                    if (_blockTree.Head.Timestamp + _config.BlockPeriod < _timestamper.UnixTime.Seconds)
                     {
                         _signalsQueue.Add(_blockTree.FindBlock(_blockTree.Head.Hash, BlockTreeLookupOptions.None));
                     }
@@ -149,7 +149,7 @@ namespace Nethermind.Consensus.Clique
                 string turnDescription = scheduledBlock.IsInTurn() ? "IN TURN" : "OUT OF TURN";
                 
                 int wiggle = _wiggle.WiggleFor(scheduledBlock.Header);
-                if (scheduledBlock.Timestamp * 1000 + (UInt256)wiggle < _timestamper.EpochMilliseconds)
+                if (scheduledBlock.Timestamp * 1000 + (UInt256)wiggle < _timestamper.UnixTime.Milliseconds)
                 {
                     if (scheduledBlock.TotalDifficulty > _blockTree.Head.TotalDifficulty)
                     {
@@ -321,7 +321,7 @@ namespace Nethermind.Consensus.Clique
 
             if (_logger.IsInfo) _logger.Info($"Preparing new block on top of {parentBlock.ToString(Block.Format.Short)}");
 
-            UInt256 timestamp = _timestamper.EpochSeconds;
+            UInt256 timestamp = _timestamper.UnixTime.Seconds;
 
             BlockHeader header = new BlockHeader(
                 parentBlock.Hash,
@@ -388,9 +388,9 @@ namespace Nethermind.Consensus.Clique
             header.MixHash = Keccak.Zero;
             // Ensure the timestamp has the correct delay
             header.Timestamp = parentBlock.Timestamp + _config.BlockPeriod;
-            if (header.Timestamp < _timestamper.EpochSeconds)
+            if (header.Timestamp < _timestamper.UnixTime.Seconds)
             {
-                header.Timestamp = new UInt256(_timestamper.EpochSeconds);
+                header.Timestamp = new UInt256(_timestamper.UnixTime.Seconds);
             }
 
             _stateProvider.StateRoot = parentHeader.StateRoot;

@@ -33,7 +33,7 @@ namespace Nethermind.Runner.Ethereum.Steps
     [RunnerStepDependencies(typeof(StartBlockProcessor), typeof(SetupKeyStore), typeof(ReviewBlockTree))]
     public class StartBlockProducer : IStep
     {
-        protected readonly IApiWithBlockchain _api;
+        protected IApiWithBlockchain _api;
         private BlockProducerContext? _blockProducerContext;
 
         public StartBlockProducer(INethermindApi api)
@@ -81,9 +81,10 @@ namespace Nethermind.Runner.Ethereum.Steps
             {
                 ReadOnlyDbProvider dbProvider = new ReadOnlyDbProvider(_api.DbProvider, false);
                 ReadOnlyBlockTree blockTree = new ReadOnlyBlockTree(_api.BlockTree);
-                ReadOnlyTxProcessingEnv txProcessingEnv = new ReadOnlyTxProcessingEnv(
-                    dbProvider, blockTree, _api.SpecProvider, _api.LogManager);
 
+                ReadOnlyTxProcessingEnv txProcessingEnv =
+                    new ReadOnlyTxProcessingEnv(dbProvider, _api.ReadOnlyTrieStore, blockTree, _api.SpecProvider, _api.LogManager);
+                
                 ReadOnlyTxProcessorSource txProcessorSource =
                     new ReadOnlyTxProcessorSource(txProcessingEnv);
 
@@ -145,8 +146,6 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.BlockValidator,
                 _api.RewardCalculatorSource.Get(readOnlyTxProcessingEnv.TransactionProcessor),
                 readOnlyTxProcessingEnv.TransactionProcessor,
-                readOnlyDbProvider.StateDb,
-                readOnlyDbProvider.CodeDb,
                 readOnlyTxProcessingEnv.StateProvider,
                 readOnlyTxProcessingEnv.StorageProvider,
                 _api.TxPool,

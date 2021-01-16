@@ -182,7 +182,7 @@ namespace Nethermind.Facade
             CallAndRestore(
                 header,
                 header.Number + 1,
-                UInt256.Max(header.Timestamp + 1, _timestamper.EpochSeconds),
+                UInt256.Max(header.Timestamp + 1, _timestamper.UnixTime.Seconds),
                 tx,
                 estimateGasTracer.WithCancellation(cancellationToken));
             

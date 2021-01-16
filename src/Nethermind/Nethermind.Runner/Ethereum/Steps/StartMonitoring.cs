@@ -15,7 +15,6 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System.Reactive.Disposables;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
@@ -65,7 +64,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                         logger.Error("Error during starting a monitoring.", x.Exception);
                 }, cancellationToken);
                 
-                _api.DisposeStack.Push(Disposable.Create(() => _api.MonitoringService.StopAsync())); // do not await
+                _api.DisposeStack.Push(new Reactive.AnonymousDisposable(() => _api.MonitoringService.StopAsync())); // do not await
             }
             else
             {

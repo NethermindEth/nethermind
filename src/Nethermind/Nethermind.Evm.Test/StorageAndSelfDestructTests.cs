@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -42,7 +42,7 @@ namespace Nethermind.Evm.Test
         {
             TestState.CreateAccount(TestItem.PrivateKeyA.Address, 100.Ether());
             TestState.Commit(SpecProvider.GenesisSpec);
-            TestState.CommitTree();
+            TestState.CommitTree(0);
 
             byte[] initByteCode = Prepare.EvmCode
                 .ForInitOf(
@@ -101,7 +101,7 @@ namespace Nethermind.Evm.Test
         {
             TestState.CreateAccount(TestItem.PrivateKeyA.Address, 100.Ether());
             TestState.Commit(SpecProvider.GenesisSpec);
-            TestState.CommitTree();
+            TestState.CommitTree(0);
 
             byte[] baseInitCodeStore = Prepare.EvmCode
                 .PushData(2)
@@ -206,7 +206,7 @@ namespace Nethermind.Evm.Test
         {
             TestState.CreateAccount(TestItem.PrivateKeyA.Address, 100.Ether());
             TestState.Commit(SpecProvider.GenesisSpec);
-            TestState.CommitTree();
+            TestState.CommitTree(0);
 
             byte[] baseInitCodeStore = Prepare.EvmCode
                 .PushData(2)
@@ -366,8 +366,8 @@ namespace Nethermind.Evm.Test
                 .Op(Instruction.STOP).Done;
 
             TestState.CreateAccount(TestItem.PrivateKeyA.Address, 100.Ether());
-            TestState.Commit(SpecProvider.GenesisSpec);
-            TestState.CommitTree();
+            //TestState.Commit(SpecProvider.GenesisSpec);
+            //TestState.CommitTree(0);
             
             TestState.CreateAccount(deploymentAddress, UInt256.One);
             Keccak codeHash = TestState.UpdateCode(contractCode);
@@ -375,9 +375,9 @@ namespace Nethermind.Evm.Test
             
             Storage.Set(new StorageCell(deploymentAddress, 7), new byte[] {7});
             Storage.Commit();
-            Storage.CommitTrees();
+            Storage.CommitTrees(0);
             TestState.Commit(MuirGlacier.Instance);
-            TestState.CommitTree();
+            TestState.CommitTree(0);
             
             long gasLimit = 1000000;
 

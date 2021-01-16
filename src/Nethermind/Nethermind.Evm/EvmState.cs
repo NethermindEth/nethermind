@@ -17,6 +17,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.Linq;
 using System.Threading;
@@ -25,7 +26,7 @@ using Nethermind.Core;
 namespace Nethermind.Evm
 {
     [DebuggerDisplay("{ExecutionType} to {Env.ExecutingAccount}, G {GasAvailable} R {Refund} PC {ProgramCounter} OUT {OutputDestination}:{OutputLength}")]
-    public class EvmState : IDisposable
+    public class EvmState : IDisposable // TODO: rename to CallState
     {
         private class StackPool
         {
@@ -93,17 +94,15 @@ namespace Nethermind.Evm
             }
         }
 
-        private static readonly ThreadLocal<StackPool> _stackPool = new ThreadLocal<StackPool>(() => new StackPool());
-
         public byte[] DataStack;
+        
         public int[] ReturnStack;
-
+        
         private HashSet<Address> _accessedAddresses;
         private HashSet<StorageCell> _accessedStorageKeys;
-        private HashSet<Address> _destroyList;
-        private List<LogEntry> _logs;
         
         public int DataStackHead = 0;
+        
         public int ReturnStackHead = 0;
 
         public EvmState(long gasAvailable, ExecutionEnvironment env, ExecutionType executionType, bool isTopLevel, bool isContinuation)
@@ -153,12 +152,10 @@ namespace Nethermind.Evm
             {
                 switch (ExecutionType)
                 {
-                    
                     case ExecutionType.StaticCall:
                     case ExecutionType.Call:
                     case ExecutionType.CallCode:
                     case ExecutionType.Create:
-                        return Env.Sender;
                     case ExecutionType.Create2:
                         return Env.Sender;
                     case ExecutionType.DelegateCall:
@@ -171,23 +168,24 @@ namespace Nethermind.Evm
             }
         }
 
-        public Address To => Env.CodeSource;
-        
-        public ExecutionEnvironment Env { get; }
         public long GasAvailable { get; set; }
         public int ProgramCounter { get; set; }
-        internal ExecutionType ExecutionType { get; }
-        internal bool IsPrecompile => Env.CodeInfo.IsPrecompile;
-        public bool IsTopLevel { get; }
-        internal long OutputDestination { get; }
-        internal long OutputLength { get; }
-        public bool IsStatic { get; }
-        public bool IsContinuation { get; set; }
-        public bool IsCreateOnPreExistingAccount { get; }
-        public int StateSnapshot { get; }
-        public int StorageSnapshot { get; }
         public long Refund { get; set; }
-        public EvmPooledMemory Memory { get; private set; }
+        
+        public Address To => Env.CodeSource;
+        internal bool IsPrecompile => Env.CodeInfo.IsPrecompile;
+        public ExecutionEnvironment Env { get; }
+        
+        internal ExecutionType ExecutionType { get; } // TODO: move to CallEnv
+        public bool IsTopLevel { get; } // TODO: move to CallEnv
+        internal long OutputDestination { get; } // TODO: move to CallEnv
+        internal long OutputLength { get; } // TODO: move to CallEnv
+        public bool IsStatic { get; } // TODO: move to CallEnv
+        public bool IsContinuation { get; set; } // TODO: move to CallEnv
+        public bool IsCreateOnPreExistingAccount { get; } // TODO: move to CallEnv
+        public int StateSnapshot { get; } // TODO: move to CallEnv
+        public int StorageSnapshot { get; } // TODO: move to CallEnv
+        public EvmPooledMemory Memory { get; set; } // TODO: move to CallEnv
 
         public HashSet<Address> DestroyList
         {
@@ -306,5 +304,11 @@ namespace Nethermind.Evm
         {
             get { return LazyInitializer.EnsureInitialized(ref _accessedStorageKeys, () => new HashSet<StorageCell>()); }
         }
+
+        private static readonly ThreadLocal<StackPool> _stackPool = new ThreadLocal<StackPool>(() => new StackPool());
+        
+        private HashSet<Address> _destroyList;
+        
+        private List<LogEntry> _logs;
     }
 }

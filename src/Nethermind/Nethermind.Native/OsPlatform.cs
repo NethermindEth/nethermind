@@ -21,6 +21,9 @@ namespace Nethermind.Native
     {
         Windows,
         Linux,
+        LinuxArm64,
+        LinuxArm,
+        MacArm64,
         Mac
     }
 }

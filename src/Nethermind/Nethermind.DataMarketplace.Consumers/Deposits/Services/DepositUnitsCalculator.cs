@@ -44,7 +44,7 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Services
             
             if (deposit.DataAsset.UnitType == DataAssetUnitType.Time)
             {
-                return (uint) _timestamper.EpochSeconds - deposit.ConfirmationTimestamp;
+                return (uint) _timestamper.UnixTime.Seconds - deposit.ConfirmationTimestamp;
             }
 
             var sessions = await _sessionRepository.BrowseAsync(new GetConsumerSessions

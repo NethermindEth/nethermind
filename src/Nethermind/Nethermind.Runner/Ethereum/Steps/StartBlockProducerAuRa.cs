@@ -45,10 +45,10 @@ namespace Nethermind.Runner.Ethereum.Steps
     [RunnerStepDependencies(typeof(InitializeNetwork), typeof(SetupKeyStore))]
     public class StartBlockProducerAuRa : StartBlockProducer
     {
-        private readonly AuRaNethermindApi _api;
+        private new readonly AuRaNethermindApi _api;
         private INethermindApi NethermindApi => _api;
         
-        private readonly IAuraConfig _auraConfig;
+        private readonly IAuraConfig? _auraConfig;
         private IAuRaValidator? _validator;
         private DictionaryContractDataStore<TxPriorityContract.Destination, TxPriorityContract.DestinationSortedListContractDataStoreCollection>? _minGasPricesContractDataStore;
         private TxPriorityContract? _txPriorityContract;
@@ -130,8 +130,6 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.BlockValidator,
                 _api.RewardCalculatorSource.Get(readOnlyTxProcessingEnv.TransactionProcessor),
                 readOnlyTxProcessingEnv.TransactionProcessor,
-                readOnlyDbProvider.StateDb,
-                readOnlyDbProvider.CodeDb,
                 readOnlyTxProcessingEnv.StateProvider,
                 readOnlyTxProcessingEnv.StorageProvider,
                 NullTxPool.Instance, 
@@ -149,7 +147,7 @@ namespace Nethermind.Runner.Ethereum.Steps
         {
             // We need special one for TxPriority as its following Head separately with events and we want rules from Head, not produced block
             ReadOnlyTxProcessorSource readOnlyTxProcessorSourceForTxPriority = 
-                new ReadOnlyTxProcessorSource(_api.DbProvider, _api.BlockTree, _api.SpecProvider, _api.LogManager);
+                new ReadOnlyTxProcessorSource(_api.DbProvider, _api.ReadOnlyTrieStore, _api.BlockTree, _api.SpecProvider, _api.LogManager);
             
             (_txPriorityContract, _localDataSource) = TxFilterBuilders.CreateTxPrioritySources(_auraConfig, _api, readOnlyTxProcessorSourceForTxPriority);
 
@@ -206,20 +204,20 @@ namespace Nethermind.Runner.Ethereum.Steps
                 return false;
             }
 
-            bool CheckAddRandomnessTransactions(IList<ITxSource> list, IDictionary<long, Address> randomnessContractAddress, ISigner signer)
+            bool CheckAddRandomnessTransactions(IList<ITxSource> list, IDictionary<long, Address>? randomnessContractAddress, ISigner signer)
             {
                 IList<IRandomContract> GetRandomContracts(
                     IDictionary<long, Address> randomnessContractAddressPerBlock,
                     IAbiEncoder abiEncoder,
                     IReadOnlyTransactionProcessorSource txProcessorSource,
-                    ISigner signer) =>
+                    ISigner signerLocal) =>
                     randomnessContractAddressPerBlock
                         .Select(kvp => new RandomContract(
                             abiEncoder,
                             kvp.Value,
                             txProcessorSource,
                             kvp.Key,
-                            signer))
+                            signerLocal))
                         .ToArray<IRandomContract>();
 
                 if (randomnessContractAddress?.Any() == true)

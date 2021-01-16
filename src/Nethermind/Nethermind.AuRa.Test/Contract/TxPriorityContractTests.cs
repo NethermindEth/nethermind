@@ -274,7 +274,7 @@ namespace Nethermind.AuRa.Test.Contract
                 TxPoolTxSource txPoolTxSource = base.CreateTxPoolTxSource();
                 
                 TxPriorityContract = new TxPriorityContract(new AbiEncoder(), TestItem.AddressA, 
-                    new ReadOnlyTxProcessorSource(DbProvider, BlockTree, SpecProvider, LimboLogs.Instance));
+                    new ReadOnlyTxProcessorSource(DbProvider, TrieStore, BlockTree, SpecProvider, LimboLogs.Instance));
 
                 Priorities = new DictionaryContractDataStore<TxPriorityContract.Destination, TxPriorityContract.DestinationSortedListContractDataStoreCollection>(
                     new TxPriorityContract.DestinationSortedListContractDataStoreCollection(),  

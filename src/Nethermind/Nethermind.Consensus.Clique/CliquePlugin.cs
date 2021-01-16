@@ -101,6 +101,7 @@ namespace Nethermind.Consensus.Clique
 
             ReadOnlyTxProcessingEnv producerEnv = new ReadOnlyTxProcessingEnv(
                 readOnlyDbProvider,
+                getFromApi.ReadOnlyTrieStore,
                 readOnlyBlockTree,
                 getFromApi.SpecProvider,
                 getFromApi.LogManager);
@@ -110,8 +111,6 @@ namespace Nethermind.Consensus.Clique
                 getFromApi!.BlockValidator,
                 NoBlockRewards.Instance,
                 producerEnv.TransactionProcessor,
-                producerEnv.DbProvider.StateDb,
-                producerEnv.DbProvider.CodeDb,
                 producerEnv.StateProvider,
                 producerEnv.StorageProvider,
                 NullTxPool.Instance, // do not remove transactions from the pool when preprocessing

@@ -47,6 +47,14 @@ namespace Nethermind.Trie
         public int StateCount => AccountCount + StateExtensionCount + StateBranchCount;
 
         public int NodesCount => StorageCount + StateCount + CodeCount;
+        
+        public long StorageSize { get; internal set; }
+        
+        public long CodeSize { get; internal set; }
+        
+        public long StateSize { get; internal set; }
+
+        public long Size => StateSize + StorageSize + CodeSize;
 
 //        public List<string> MissingNodes { get; set; } = new List<string>();
 
@@ -54,6 +62,7 @@ namespace Nethermind.Trie
         {
             StringBuilder builder = new StringBuilder();
             builder.AppendLine("TRIE STATS");
+            builder.AppendLine($"  SIZE {Size} (STATE {StateSize}, CODE {CodeSize}, STORAGE {StorageSize})");
             builder.AppendLine($"  ALL NODES {NodesCount} ({StateBranchCount + StorageBranchCount}|{StateExtensionCount + StorageExtensionCount}|{AccountCount + StorageLeafCount})");
             builder.AppendLine($"  STATE NODES {StateCount} ({StateBranchCount}|{StateExtensionCount}|{AccountCount})");
             builder.AppendLine($"  STORAGE NODES {StorageCount} ({StorageBranchCount}|{StorageExtensionCount}|{StorageLeafCount})");

@@ -22,34 +22,34 @@ namespace Nethermind.Core.Extensions
 {
     public static class IntExtensions
     {   
-        public static ulong GB(this int @this)
+        public static long GB(this int @this)
         {
-            return (ulong)@this * 1_000_000_000UL;
+            return @this * 1_000_000_000L;
         }
         
-        public static ulong MB(this int @this)
+        public static long MB(this int @this)
         {
-            return (ulong)@this * 1_000_000UL;
+            return @this * 1_000_000L;
         }
         
-        public static ulong KB(this int @this)
+        public static long KB(this int @this)
         {
-            return (ulong)@this * 1_000UL;
+            return @this * 1_000L;
         }
         
-        public static ulong GiB(this int @this)
+        public static long GiB(this int @this)
         {
-            return (ulong)@this * 1024UL * 1024UL * 1024UL;
+            return @this * 1024L * 1024L * 1024L;
         }
         
-        public static ulong MiB(this int @this)
+        public static long MiB(this int @this)
         {
-            return (ulong)@this * 1024UL * 1024UL;
+            return @this * 1024L * 1024L;
         }
         
-        public static ulong KiB(this int @this)
+        public static long KiB(this int @this)
         {
-            return (ulong)@this * 1024UL;
+            return @this * 1024L;
         }
         
         public static UInt256 Ether(this int @this)

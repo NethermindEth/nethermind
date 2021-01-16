@@ -18,6 +18,14 @@ using Nethermind.Config;
 
 namespace Nethermind.Blockchain.Synchronization
 {
+    [ConfigCategory(Description = "Configuration of the pruning parameters.")]
+    public class PruningConfig : IPruningConfig
+    {
+        public bool Enabled { get; set; }
+        public long PruningCacheMb { get; set; } = 512;
+        public long PruningPersistenceInterval { get; set; } = 8192;    
+    }
+    
     [ConfigCategory(Description = "Configuration of the synchronization modes.")]
     public class SyncConfig : ISyncConfig
     {

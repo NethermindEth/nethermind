@@ -20,6 +20,8 @@ namespace Nethermind.Trie
 {
     public static class MemoryAllowance
     {
-        public static ulong TrieNodeCacheMemory { get; set; } = 128.MB();
+        public static long TrieNodeCacheMemory { get; set; } = 128.MB();
+
+        public static int TrieNodeCacheCount => (int)TrieNodeCacheMemory / PatriciaTree.OneNodeAvgMemoryEstimate;
     }
 }

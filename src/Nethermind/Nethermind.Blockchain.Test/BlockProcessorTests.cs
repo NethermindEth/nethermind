@@ -16,7 +16,6 @@
 
 using System;
 using System.Collections.Generic;
-using FluentAssertions;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Rewards;
@@ -31,6 +30,7 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
+using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
@@ -52,17 +52,16 @@ namespace Nethermind.Blockchain.Test
         {
             ISnapshotableDb stateDb = new StateDb();
             ISnapshotableDb codeDb = new StateDb();
-            IStateProvider stateProvider = new StateProvider(stateDb, codeDb, LimboLogs.Instance);
+            TrieStore trieStore = new TrieStore(stateDb, LimboLogs.Instance);
+            IStateProvider stateProvider = new StateProvider(trieStore, codeDb, LimboLogs.Instance);
             ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
             BlockProcessor processor = new BlockProcessor(
                 RinkebySpecProvider.Instance,
                 TestBlockValidator.AlwaysValid,
                 NoBlockRewards.Instance,
                 transactionProcessor,
-                stateDb,
-                codeDb,
                 stateProvider,
-                new StorageProvider(stateDb, stateProvider, LimboLogs.Instance),
+                new StorageProvider(trieStore, stateProvider, LimboLogs.Instance),
                 NullTxPool.Instance,
                 NullReceiptStorage.Instance,
                 LimboLogs.Instance);
@@ -83,17 +82,16 @@ namespace Nethermind.Blockchain.Test
         {
             ISnapshotableDb stateDb = new StateDb();
             ISnapshotableDb codeDb = new StateDb();
-            IStateProvider stateProvider = new StateProvider(stateDb, codeDb, LimboLogs.Instance);
+            TrieStore trieStore = new TrieStore(stateDb, LimboLogs.Instance);
+            IStateProvider stateProvider = new StateProvider(trieStore, codeDb, LimboLogs.Instance);
             ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
             BlockProcessor processor = new BlockProcessor(
                 RinkebySpecProvider.Instance,
                 TestBlockValidator.AlwaysValid,
                 new RewardCalculator(MainnetSpecProvider.Instance),
                 transactionProcessor,
-                stateDb,
-                codeDb,
                 stateProvider,
-                new StorageProvider(stateDb, stateProvider, LimboLogs.Instance),
+                new StorageProvider(trieStore, stateProvider, LimboLogs.Instance),
                 NullTxPool.Instance,
                 NullReceiptStorage.Instance,
                 LimboLogs.Instance);
