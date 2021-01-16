@@ -556,7 +556,17 @@ namespace Nethermind.Trie.Pruning
         private void SaveInCache(TrieNode node)
         {
             Debug.Assert(node.Keccak != null, "Cannot store in cache nodes without resolved key.");
-            _dirtyNodesCache[node.Keccak!] = node;
+            _dirtyNodesCache.AddOrUpdate(node.Keccak!, node, (keccak, trieNode) =>
+            {
+                if (trieNode.Keccak != keccak)
+                {
+                    throw new TrieException(
+                        $"Inconsistent trie node keccak when saving in the dirty node cache - {trieNode.Keccak} vs {keccak}");
+                }
+
+                return node;
+            });
+            
             MemoryUsedByDirtyCache += node.GetMemorySize(false);
             Metrics.CachedNodesCount = _dirtyNodesCache.Count;
         }
