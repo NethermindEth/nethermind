@@ -98,31 +98,27 @@ namespace Nethermind.GitBook
                 }
 
                 _markdownGenerator.CloseTab(docBuilder);
-                _markdownGenerator.CreateTab(docBuilder, "Response");
-
                 docBuilder.AppendLine();
-                _markdownGenerator.CloseTab(docBuilder);
                 _markdownGenerator.CreateTab(docBuilder, "Response");
-
-                docBuilder.AppendLine();
                 docBuilder.AppendLine(@$"#### Return type");
 
                 Type returnType = GetTypeFromWrapper(method.ReturnType);
                 string returnRpcType = GetJsonRpcType(returnType, rpcTypesToDescribe);
 
                 docBuilder.AppendLine(@$"`{returnRpcType}`");
-                docBuilder.AppendLine();
 
                 _markdownGenerator.CloseTab(docBuilder);
 
                 if (rpcTypesToDescribe.Count != 0)
                 {
+                    docBuilder.AppendLine();
                     _markdownGenerator.CreateTab(docBuilder, "Object definitions");
                     AddRpcObjectsDescription(docBuilder, rpcTypesToDescribe);
                     _markdownGenerator.CloseTab(docBuilder);
                 }
 
                 _markdownGenerator.CloseTabs(docBuilder);
+                docBuilder.AppendLine();
             }
 
             string rpcModuleFile = Directory.GetFiles(docsDir, $"{moduleName}.md", SearchOption.AllDirectories).First();
