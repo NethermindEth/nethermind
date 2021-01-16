@@ -33,18 +33,6 @@ namespace Nethermind.Store.Test
     public class StorageProviderTests
     {
         private static readonly ILogManager LogManager = LimboLogs.Instance;
-        private readonly Address _address1 = new Address(Keccak.Compute("1"));
-        private readonly Address _address2 = new Address(Keccak.Compute("2"));
-        private IStateProvider _stateProvider;
-
-        [SetUp]
-        public void Setup()
-        {
-            _stateProvider = new StateProvider(new TrieStore(new StateDb(), LogManager), new StateDb(),  LogManager);
-            _stateProvider.CreateAccount(_address1, 0);
-            _stateProvider.CreateAccount(_address2, 0);
-            _stateProvider.Commit(Frontier.Instance);
-        }
 
         private readonly byte[][] _values =
         {
@@ -74,7 +62,7 @@ namespace Nethermind.Store.Test
 
         private StorageProvider BuildStorageProvider(Context ctx)
         {
-            StorageProvider provider = new StorageProvider(new TrieStore(new StateDb(), LogManager), _stateProvider, LogManager);
+            StorageProvider provider = new StorageProvider(new TrieStore(new StateDb(), LogManager), ctx.StateProvider, LogManager);
             return provider;
         }
 

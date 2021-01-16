@@ -33,27 +33,27 @@ namespace Nethermind.Trie.Test
     [TestFixture, Parallelizable(ParallelScope.All)]
     public class TrieNodeTests
     {
-        private TrieNode _tiniestLeaf;
-        private TrieNode _heavyLeaf;
-        private TrieNode _accountLeaf;
-
-        [SetUp]
-        public void Setup()
-        {
-            _tiniestLeaf = new TrieNode(NodeType.Leaf);
-            _tiniestLeaf.Key = new HexPrefix(true, 5);
-            _tiniestLeaf.Value = new byte[] {10};
-
-            _heavyLeaf = new TrieNode(NodeType.Leaf);
-            _heavyLeaf.Key = new HexPrefix(true, new byte[20]);
-            _heavyLeaf.Value = Keccak.EmptyTreeHash.Bytes.Concat(Keccak.EmptyTreeHash.Bytes).ToArray();
-
-            Account account = new Account(100);
-            AccountDecoder decoder = new AccountDecoder();
-            _accountLeaf = TrieNodeFactory.CreateLeaf(
-                HexPrefix.Leaf("bbb"),
-                decoder.Encode(account).Bytes);
-        }
+        // private TrieNode _tiniestLeaf;
+        // private TrieNode _heavyLeaf;
+        // private TrieNode _accountLeaf;
+        //
+        // [SetUp]
+        // public void Setup()
+        // {
+        //     _tiniestLeaf = new TrieNode(NodeType.Leaf);
+        //     _tiniestLeaf.Key = new HexPrefix(true, 5);
+        //     _tiniestLeaf.Value = new byte[] {10};
+        //
+        //     _heavyLeaf = new TrieNode(NodeType.Leaf);
+        //     _heavyLeaf.Key = new HexPrefix(true, new byte[20]);
+        //     _heavyLeaf.Value = Keccak.EmptyTreeHash.Bytes.Concat(Keccak.EmptyTreeHash.Bytes).ToArray();
+        //
+        //     Account account = new Account(100);
+        //     AccountDecoder decoder = new AccountDecoder();
+        //     _accountLeaf = TrieNodeFactory.CreateLeaf(
+        //         HexPrefix.Leaf("bbb"),
+        //         decoder.Encode(account).Bytes);
+        // }
         
         [Test]
         public void Throws_trie_exception_when_setting_value_on_branch()
@@ -396,8 +396,8 @@ namespace Nethermind.Trie.Test
             ITreeVisitor visitor = Substitute.For<ITreeVisitor>();
             visitor.ShouldVisit(Arg.Any<Keccak>()).Returns(true);
 
-            TrieVisitContext context = new TrieVisitContext();
-            TrieNode node = TrieNodeFactory.CreateExtension(HexPrefix.Extension("aa"), _accountLeaf);
+            TrieVisitContext context = new();
+            TrieNode node = TrieNodeFactory.CreateExtension(HexPrefix.Extension("aa"), ctx.AccountLeaf);
 
             node.Accept(visitor, NullTrieNodeResolver.Instance, context);
 
@@ -520,14 +520,14 @@ namespace Nethermind.Trie.Test
         public void Size_of_a_heavy_leaf_is_correct()
         {
             Context ctx = new Context();
-            Assert.AreEqual(168, ctx.HeavyLeaf.GetMemorySize(false));
+            Assert.AreEqual(184, ctx.HeavyLeaf.GetMemorySize(false));
         }
         
         [Test]
         public void Size_of_a_tiny_leaf_is_correct()
         {
             Context ctx = new Context();
-            Assert.AreEqual(152, ctx.TiniestLeaf.GetMemorySize(false));
+            Assert.AreEqual(120, ctx.TiniestLeaf.GetMemorySize(false));
         }
 
         [Test]
@@ -553,7 +553,7 @@ namespace Nethermind.Trie.Test
             trieNode.Key = new HexPrefix(false, 1);
             trieNode.SetChild(0, ctx.TiniestLeaf);
             
-            Assert.AreEqual(152, trieNode.GetMemorySize(false));
+            Assert.AreEqual(96, trieNode.GetMemorySize(false));
         }
 
         [Test]
@@ -877,11 +877,12 @@ namespace Nethermind.Trie.Test
                 HeavyLeaf = new TrieNode(NodeType.Leaf);
                 HeavyLeaf.Key = new HexPrefix(true, new byte[20]);
                 HeavyLeaf.Value = Keccak.EmptyTreeHash.Bytes.Concat(Keccak.EmptyTreeHash.Bytes).ToArray();
-
+                
                 Account account = new Account(100);
                 AccountDecoder decoder = new AccountDecoder();
-                AccountLeaf = new TrieNode(NodeType.Leaf);
-                AccountLeaf.Value = decoder.Encode(account).Bytes;
+                AccountLeaf = TrieNodeFactory.CreateLeaf(
+                    HexPrefix.Leaf("bbb"),
+                    decoder.Encode(account).Bytes);
             }
         }
     }
