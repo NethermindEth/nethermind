@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -41,7 +41,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
         /// <param name="tx"></param>
         /// <returns><see cref="TxPermissions"/>Set of allowed transactions types and <see cref="bool"/> If `true` is returned, the same permissions will be applied from the same sender without calling this contract again.</returns>
         (TxPermissions Permissions, bool ShouldCache) AllowedTxTypes(BlockHeader parentHeader, Transaction tx);
-        
+
         [Flags]
         public enum TxPermissions : uint
         {
@@ -78,14 +78,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
     {
         public virtual UInt256 ContractVersion(BlockHeader blockHeader)
         {
-            try
-            {
-                return Constant.Call<UInt256>(blockHeader, nameof(ContractVersion), Address.Zero);
-            }
-            catch (Exception)
-            {
-                return UInt256.One;
-            }
+            return Constant.Call<UInt256>(blockHeader, nameof(ContractVersion), Address.Zero);
         }
 
         /// <summary>
