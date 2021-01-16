@@ -30,7 +30,7 @@ namespace Nethermind.Core
     /// </summary>
     public static class NetworkDiagTracer
     {
-        public const string NetworkDiagTracerPath = @"C:\\Temp\\network_diag.txt";
+        public const string NetworkDiagTracerPath = @"network_diag.txt";
 
         public static bool IsEnabled { get; set; } = true;
 

@@ -100,7 +100,7 @@ namespace Nethermind.Specs.ChainSpecStyle
                 Registrar = chainSpecJson.Params.EnsRegistrar,
                 ForkBlock = chainSpecJson.Params.ForkBlock,
                 ForkCanonHash = chainSpecJson.Params.ForkCanonHash,
-                Eip7Transition = chainSpecJson.Params.Eip7Transition ?? 0,
+                Eip7Transition = chainSpecJson.Params.Eip7Transition,
                 Eip150Transition = chainSpecJson.Params.Eip150Transition ?? 0,
                 Eip152Transition = chainSpecJson.Params.Eip152Transition,
                 Eip160Transition = chainSpecJson.Params.Eip160Transition ?? 0,

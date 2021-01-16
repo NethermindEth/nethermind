@@ -134,7 +134,7 @@ namespace Nethermind.Evm
                 // if (!isCall &&
                 //     (transaction.IsEip1559 && gasLimit > 2 * block.GetGasTarget1559(spec) - block.GasUsedEip1559 ||
                 //      transaction.IsLegacy && gasLimit > block.GetGasTargetLegacy(spec) - block.GasUsedLegacy))
-                if (!isCall && gasLimit > 2 * block.GetGasTarget1559(spec) - block.GasUsed)
+                if (!isCall && gasLimit > 2 * block.GasLimit - block.GasUsed)
                 {
                     TraceLogInvalidTx(transaction,
                         $"BLOCK_GAS_LIMIT_EXCEEDED {gasLimit} > {block.GasLimit} - {block.GasUsed}");
