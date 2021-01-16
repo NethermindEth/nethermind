@@ -175,7 +175,6 @@ namespace Nethermind.Runner
                     }
                 }
                 
-                nethermindApi.WebSocketsManager = new WebSocketsManager();
                 EthereumRunner ethereumRunner = new EthereumRunner(nethermindApi);
                 await ethereumRunner.Start(_processCloseCancellationSource.Token).ContinueWith(x =>
                 {
