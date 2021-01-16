@@ -150,7 +150,7 @@ namespace Nethermind.Synchronization.FastSync
                     bool keyExists = dbToCheck.KeyExists(syncItem.Hash);
                     if (keyExists)
                     {
-                        if (_logger.IsTrace) _logger.IsTrace($"Node already in the DB - skipping {syncItem.Hash}");
+                        if (_logger.IsTrace) _logger.Trace($"Node already in the DB - skipping {syncItem.Hash}");
                         _alreadySaved.Set(syncItem.Hash);
                         Interlocked.Increment(ref _data.StateWasThere);
                         return AddNodeResult.AlreadySaved;
