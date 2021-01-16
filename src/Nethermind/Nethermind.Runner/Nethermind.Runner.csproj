@@ -77,6 +77,9 @@
     <Content Include="plugins\**">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+    <Content Include="ndm-plugins\**">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
     <Content Include="nethermind.css">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
@@ -103,6 +106,15 @@
     <None Remove="out\**" />
     <None Remove="keystore\**" />
   </ItemGroup>
+  <Target Name="CreatePluginsFolder" AfterTargets="AfterPublish">
+    <MakeDir Directories="$(PublishDir)plugins" Condition="!Exists('$(PublishDir)plugins')" /> 
+  </Target>
+  <Target Name="CreateNdmPluginsFolder" AfterTargets="AfterPublish">
+    <MakeDir Directories="$(PublishDir)ndm-plugins" Condition="!Exists('$(PublishDir)ndm-plugins')" /> 
+  </Target>
+  <Target Name="CopyHealthChecksPluginOnPublish" AfterTargets="AfterPublish">
+    <Copy SourceFiles="$(OutputPath)Nethermind.HealthChecks.dll" DestinationFolder="$(PublishDir)plugins" />
+  </Target>
   <Target Name="StoreGitHashBeforeBuild" BeforeTargets="BeforeBuild">
     <Exec Command="git describe --tags --long --always &gt; git-hash" />
   </Target>

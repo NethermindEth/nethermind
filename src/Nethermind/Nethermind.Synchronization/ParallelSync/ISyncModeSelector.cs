@@ -27,5 +27,14 @@ namespace Nethermind.Synchronization.ParallelSync
         event EventHandler<SyncModeChangedEventArgs> Changing;
         
         event EventHandler<SyncModeChangedEventArgs> Changed;
+
+        int FastSyncLag { get; }
+    }
+    
+    public class SyncModeSelectorConstants
+    {
+        public const int BeamSyncFastSyncLag = 2;
+        
+        public const int NotBeamSyncFastSyncLag = 32;
     }
 }

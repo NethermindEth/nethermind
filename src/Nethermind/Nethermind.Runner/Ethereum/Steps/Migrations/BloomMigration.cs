@@ -87,7 +87,7 @@ namespace Nethermind.Runner.Ethereum.Steps.Migrations
             }
         }
         
-        private bool CanMigrate(SyncMode syncMode) => syncMode == SyncMode.None;
+        private bool CanMigrate(SyncMode syncMode) => syncMode.NotSyncing();
 
         private void SynchronizerOnSyncModeChanged(object? sender, SyncModeChangedEventArgs e)
         {

@@ -148,25 +148,35 @@ namespace Nethermind.Core.Caching
             if (_cacheMap.Remove(key, out int node))
 
             {
-                int nextFree = _cacheMap.Count;
+                int elementToFree = _cacheMap.Count;
 
-                ref Node removed = ref NodeRemove(node, true);
+                NodeRemove(node, true);
 
-                if (nextFree == 0)
+                if (elementToFree == 0)
                 {
                     // head is null, nothing to remove
                 }
-                else if (nextFree == node)
+                else if (elementToFree == node)
                 {
                     // nothing to do, the last node was removed
                 }
                 else
                 {
-                    removed = _list[nextFree];
-                    _list[removed.Prev].Next = node;
-                    _list[removed.Next].Prev = node;
+                    MoveToGap(node, elementToFree);
                 }
             }
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void MoveToGap(int gap, int nodeToMove)
+        {
+            ref Node movedNode = ref _list[nodeToMove];
+            _list[gap] = movedNode;
+            
+            // after moving the node, we need to fix references to it from next/prev and map
+            _list[movedNode.Prev].Next = gap;
+            _list[movedNode.Next].Prev = gap;
+            _cacheMap[movedNode.Key] = gap;
         }
 
         [MethodImpl(MethodImplOptions.Synchronized)]

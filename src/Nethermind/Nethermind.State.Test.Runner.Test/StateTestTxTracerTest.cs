@@ -1,16 +1,7 @@
-using Ethereum.Test.Base;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Evm.Test;
-using Nethermind.Logging;
-using Nethermind.Specs;
-using Nethermind.Synchronization.BeamSync;
-using Nethermind.Synchronization.ParallelSync;
-using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.State.Test.Runner.Test

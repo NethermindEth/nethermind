@@ -15,7 +15,6 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using FluentAssertions;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;

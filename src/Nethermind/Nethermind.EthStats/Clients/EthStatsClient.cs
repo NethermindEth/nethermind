@@ -17,55 +17,73 @@
 using System;
 using System.Linq;
 using System.Net.Http;
+using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using Nethermind.EthStats.Messages;
 using Nethermind.Logging;
 using Websocket.Client;
+
+[assembly: InternalsVisibleTo("Nethermind.EthStats.Test")]
 
 namespace Nethermind.EthStats.Clients
 {
     public class EthStatsClient : IEthStatsClient, IDisposable
     {
         private const string ServerPingMessage = "primus::ping::";
-        private string _webSocketsUrl;
+        private readonly string _urlFromConfig;
         private readonly int _reconnectionInterval;
         private readonly IMessageSender _messageSender;
         private readonly ILogger _logger;
         private IWebsocketClient _client;
 
-        public EthStatsClient(string webSocketsUrl, int reconnectionInterval, IMessageSender messageSender,
+        public EthStatsClient(string urlFromConfig, int reconnectionInterval, IMessageSender messageSender,
             ILogManager logManager)
         {
-            _webSocketsUrl = webSocketsUrl;
+            _urlFromConfig = urlFromConfig;
             _reconnectionInterval = reconnectionInterval;
             _messageSender = messageSender;
             _logger = logManager.GetClassLogger();
         }
 
-        public async Task<IWebsocketClient> InitAsync()
+        internal string BuildUrl()
         {
-            if (_logger.IsInfo) _logger.Info($"Starting ETH stats [{_webSocketsUrl}]...");
-            if (!_webSocketsUrl.StartsWith("wss"))
+            string websocketUrl = _urlFromConfig;
+            if (!websocketUrl.StartsWith("wss") && !websocketUrl.StartsWith("ws"))
             {
-                try
+                if (!websocketUrl.Contains("://"))
+                    ThrowIncorrectUrl();
+
+                string[] splitUrl = websocketUrl.Split("://");
+                if (splitUrl.Length != 2)
+                    ThrowIncorrectUrl();
+                
+                string scheme = splitUrl[0];
+                string host = splitUrl[1];
+                
+                switch (scheme)
                 {
-                    using HttpClient httpClient = new HttpClient();
-                    string host = _webSocketsUrl.Split("://").Last();
-                    HttpResponseMessage response = await httpClient.GetAsync($"http://{host}");
-                    Uri requestedUrl = response.RequestMessage.RequestUri;
-                    if (requestedUrl.Scheme.Equals("https"))
-                    {
-                        _webSocketsUrl = $"wss://{host}";
-                        if (_logger.IsInfo) _logger.Info($"Moved ETH stats to: {_webSocketsUrl}");
-                    }
+                    case "https":
+                        websocketUrl = $"wss://{host}";
+                        break;
+                    case "http":
+                        websocketUrl = $"ws://{host}";
+                        break;
+                    default:
+                        ThrowIncorrectUrl();
+                        break;;
                 }
-                catch
-                {
-                    // ignored
-                }
+                
+                if (_logger.IsInfo) _logger.Info($"Moved ETH stats to: {websocketUrl}");
             }
 
-            Uri url = new Uri(_webSocketsUrl);
+            return websocketUrl;
+        }
+
+        public async Task<IWebsocketClient> InitAsync()
+        {
+            if (_logger.IsInfo) _logger.Info($"Starting ETH stats [{_urlFromConfig}]...");
+            string websocketUrl = BuildUrl();
+            Uri url = new Uri(websocketUrl);
             _client = new WebsocketClient(url)
             {
                 ErrorReconnectTimeout = TimeSpan.FromMilliseconds(_reconnectionInterval),
@@ -84,10 +102,17 @@ namespace Nethermind.EthStats.Clients
                     await HandlePingAsync(message.Text);
                 }
             });
+            
             await _client.Start();
             if (_logger.IsDebug) _logger.Debug($"Started ETH stats.");
 
             return _client;
+        }
+
+        private void ThrowIncorrectUrl()
+        {
+            if (_logger.IsError) _logger.Error($"Incorrect ETH stats url: {_urlFromConfig}");
+            throw new ArgumentException($"Incorrect ETH stats url: {_urlFromConfig}");
         }
 
         private async Task HandlePingAsync(string message)

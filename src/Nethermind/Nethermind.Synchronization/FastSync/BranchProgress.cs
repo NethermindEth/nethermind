@@ -23,7 +23,7 @@ namespace Nethermind.Synchronization.FastSync
     /// <summary>
     /// This class represents sync progress as a percentage of second level branches saved in the database.
     /// </summary>
-    internal class StateSyncProgress
+    internal class BranchProgress
     {
         private ILogger _logger;
         private NodeProgressState[] _syncProgress;
@@ -31,7 +31,7 @@ namespace Nethermind.Synchronization.FastSync
         public decimal LastProgress { get; private set; }
         public long CurrentSyncBlock { get; }
 
-        public StateSyncProgress(long syncBlockNumber, ILogger logger)
+        public BranchProgress(long syncBlockNumber, ILogger logger)
         {
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             CurrentSyncBlock = syncBlockNumber;
@@ -168,8 +168,11 @@ namespace Nethermind.Synchronization.FastSync
 
                 detailsString = builder.ToString();
             }
-            
-            if (_logger.IsInfo) _logger.Info($"Branch sync progress (do not extrapolate): {(decimal) savedBranches / _syncProgress.Length:p2} of block {CurrentSyncBlock}{detailsString}");
+
+            Progress = (decimal)savedBranches / _syncProgress.Length;
+            if (_logger.IsInfo) _logger.Info($"Branch sync progress (do not extrapolate): {Progress:p2} of block {CurrentSyncBlock}{detailsString}");
         }
+
+        public decimal Progress { get; set; }
     }
 }

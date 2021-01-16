@@ -17,6 +17,7 @@
 using System;
 using System.Diagnostics;
 using System.IO;
+using System.Security.Authentication;
 using System.Text;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
@@ -34,6 +35,7 @@ using Nethermind.WebSockets;
 using Newtonsoft.Json;
 using HealthChecks.UI.Client;
 using Nethermind.HealthChecks;
+using Nethermind.Logging;
 
 namespace Nethermind.Runner
 {
@@ -52,6 +54,7 @@ namespace Nethermind.Runner
             services.Configure<KestrelServerOptions>(options => {
                 options.AllowSynchronousIO = true;
                 options.Limits.MaxRequestBodySize = jsonRpcConfig.MaxRequestBodySize;
+                options.ConfigureHttpsDefaults(co => co.SslProtocols |= SslProtocols.Tls13);
             });
             Bootstrap.Instance.RegisterJsonRpcServices(services);
             services.AddControllers();
@@ -84,6 +87,8 @@ namespace Nethermind.Runner
             app.UseRouting();
 
             IConfigProvider configProvider = app.ApplicationServices.GetService<IConfigProvider>();
+            ILogManager logManager = app.ApplicationServices.GetService<ILogManager>();
+            ILogger logger = logManager.GetClassLogger();
             IInitConfig initConfig = configProvider.GetConfig<IInitConfig>();
             IJsonRpcConfig jsonRpcConfig = configProvider.GetConfig<IJsonRpcConfig>();
             IHealthChecksConfig healthChecksConfig = configProvider.GetConfig<IHealthChecksConfig>();
@@ -95,19 +100,26 @@ namespace Nethermind.Runner
                                    && ctx.Connection.LocalPort == jsonRpcConfig.WebSocketsPort,
                 builder => builder.UseWebSocketsModules());
             }
-
+            
             app.UseEndpoints(endpoints =>
             {
                 if (healthChecksConfig.Enabled)
                 {
-                    endpoints.MapHealthChecks("/health", new HealthCheckOptions()
+                    try
                     {
-                        Predicate = _ => true,
-                        ResponseWriter = UIResponseWriter.WriteHealthCheckUIResponse
-                    });
-                    if (healthChecksConfig.UIEnabled)
+                        endpoints.MapHealthChecks(healthChecksConfig.Slug, new HealthCheckOptions()
+                        {
+                            Predicate = _ => true,
+                            ResponseWriter = UIResponseWriter.WriteHealthCheckUIResponse
+                        });
+                        if (healthChecksConfig.UIEnabled)
+                        {
+                            endpoints.MapHealthChecksUI(setup => setup.AddCustomStylesheet(Path.Combine(AppDomain.CurrentDomain.BaseDirectory!, "nethermind.css")));
+                        }
+                    }
+                    catch (Exception e)
                     {
-                        endpoints.MapHealthChecksUI(setup => setup.AddCustomStylesheet(Path.Combine(AppDomain.CurrentDomain.BaseDirectory!, "nethermind.css")));
+                        if (logger.IsError) logger.Error("Unable to initialize health checks. Check if you have Nethermind.HealthChecks.dll in your plugins folder.", e);
                     }
                 }
             });

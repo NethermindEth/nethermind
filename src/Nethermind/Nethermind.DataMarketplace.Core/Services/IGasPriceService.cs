@@ -23,10 +23,12 @@ namespace Nethermind.DataMarketplace.Core.Services
     public interface IGasPriceService
     {
         GasPriceTypes? Types { get; }
-        Task<UInt256> GetCurrentAsync();
-        Task<UInt256> GetCurrentRefundAsync();
-        Task SetAsync(string gasPriceOrType);
-        Task SetRefundAsync(UInt256 gasPrice);
-        Task UpdateAsync();
+        Task<UInt256> GetCurrentGasPriceAsync();
+        Task<UInt256> GetCurrentRefundGasPriceAsync();
+        Task<UInt256> GetCurrentPaymentClaimGasPriceAsync();
+        Task SetGasPriceOrTypeAsync(string gasPriceOrType);
+        Task SetRefundGasPriceAsync(UInt256 gasPrice);
+        Task SetPaymentClaimGasPriceAsync(UInt256 gasPrice);
+        Task UpdateGasPriceAsync();
     }
 }
