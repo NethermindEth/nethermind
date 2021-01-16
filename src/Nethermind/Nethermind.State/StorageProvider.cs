@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -20,8 +20,8 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Resettables;
-using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State
 {
@@ -37,26 +37,25 @@ namespace Nethermind.State
         private ResettableHashSet<StorageCell> _committedThisRound = new ResettableHashSet<StorageCell>();
 
         private readonly ILogger _logger;
+        
+        private readonly IKeyValueStore _stateDb;
+        private readonly ITrieStore _trieStore;
 
-        private readonly ISnapshotableDb _stateDb;
         private readonly IStateProvider _stateProvider;
+        private readonly ILogManager _logManager;
 
         private ResettableDictionary<Address, StorageTree> _storages = new ResettableDictionary<Address, StorageTree>();
 
         private const int StartCapacity = Resettable.StartCapacity;
         private int _capacity = StartCapacity;
-        private Change[] _changes = new Change[StartCapacity];
+        private Change?[] _changes = new Change[StartCapacity];
         private int _currentPosition = -1;
-
-        public StorageProvider(IDbProvider dbProvider, IStateProvider stateProvider, ILogManager logManager) 
-            :this(dbProvider.StateDb, stateProvider, logManager)
-        {
-        }
         
-        public StorageProvider(ISnapshotableDb stateDb, IStateProvider stateProvider, ILogManager logManager)
+        public StorageProvider(ITrieStore trieStore, IStateProvider stateProvider, ILogManager logManager)
         {
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-            _stateDb = stateDb ?? throw new ArgumentNullException(nameof(stateDb));
+            _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager.GetClassLogger<StorageProvider>() ?? throw new ArgumentNullException(nameof(logManager));
+            _trieStore = trieStore ?? throw new ArgumentNullException(nameof(trieStore));
             _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
         }
 
@@ -112,9 +111,9 @@ namespace Nethermind.State
             for (int i = 0; i < _currentPosition - snapshot; i++)
             {
                 Change change = _changes[_currentPosition - i];
-                if (_intraBlockCache[change.StorageCell].Count == 1)
+                if (_intraBlockCache[change!.StorageCell].Count == 1)
                 {
-                    if (_changes[_intraBlockCache[change.StorageCell].Peek()].ChangeType == ChangeType.JustCache)
+                    if (_changes[_intraBlockCache[change.StorageCell].Peek()]!.ChangeType == ChangeType.JustCache)
                     {
                         int actualPosition = _intraBlockCache[change.StorageCell].Pop();
                         if (actualPosition != _currentPosition - i)
@@ -160,13 +159,13 @@ namespace Nethermind.State
 
         private struct ChangeTrace
         {
-            public ChangeTrace(byte[] before, byte[] after)
+            public ChangeTrace(byte[]? before, byte[]? after)
             {
                 After = after ?? _zeroValue;
                 Before = before ?? _zeroValue;
             }
 
-            public ChangeTrace(byte[] after)
+            public ChangeTrace(byte[]? after)
             {
                 After = after ?? _zeroValue;
                 Before = _zeroValue;
@@ -176,7 +175,7 @@ namespace Nethermind.State
             public byte[] After { get; }
         }
 
-        public void Commit(IStorageTracer tracer)
+        public void Commit(IStorageTracer? tracer)
         {
             if (_currentPosition == -1)
             {
@@ -199,7 +198,7 @@ namespace Nethermind.State
             HashSet<Address> toUpdateRoots = new HashSet<Address>();
 
             bool isTracing = tracer != null;
-            Dictionary<StorageCell, ChangeTrace> trace = null;
+            Dictionary<StorageCell, ChangeTrace>? trace = null;
             if (isTracing)
             {
                 trace = new Dictionary<StorageCell, ChangeTrace>();
@@ -208,16 +207,16 @@ namespace Nethermind.State
             for (int i = 0; i <= _currentPosition; i++)
             {
                 Change change = _changes[_currentPosition - i];
-                if (!isTracing && change.ChangeType == ChangeType.JustCache)
+                if (!isTracing && change!.ChangeType == ChangeType.JustCache)
                 {
                     continue;
                 }
 
-                if (_committedThisRound.Contains(change.StorageCell))
+                if (_committedThisRound.Contains(change!.StorageCell))
                 {
                     if (isTracing && change.ChangeType == ChangeType.JustCache)
                     {
-                        trace[change.StorageCell] = new ChangeTrace(change.Value, trace[change.StorageCell].After);
+                        trace![change.StorageCell] = new ChangeTrace(change.Value, trace[change.StorageCell].After);
                     }
 
                     continue;
@@ -225,7 +224,7 @@ namespace Nethermind.State
 
                 if (isTracing && change.ChangeType == ChangeType.JustCache)
                 {
-                    tracer.ReportStorageRead(change.StorageCell);
+                    tracer!.ReportStorageRead(change.StorageCell);
                 }
 
                 _committedThisRound.Add(change.StorageCell);
@@ -254,12 +253,12 @@ namespace Nethermind.State
                         }
 
                         StorageTree tree = GetOrCreateStorage(change.StorageCell.Address);
-                        Metrics.StorageTreeWrites++;
+                        Db.Metrics.StorageTreeWrites++;
                         toUpdateRoots.Add(change.StorageCell.Address);
                         tree.Set(change.StorageCell.Index, change.Value);
                         if (isTracing)
                         {
-                            trace[change.StorageCell] = new ChangeTrace(change.Value);
+                            trace![change.StorageCell] = new ChangeTrace(change.Value);
                         }
 
                         break;
@@ -268,12 +267,15 @@ namespace Nethermind.State
                 }
             }
 
+            // TODO: it seems that we are unnecessarily recalculating root hashes all the time in storage?
             foreach (Address address in toUpdateRoots)
             {
                 // since the accounts could be empty accounts that are removing (EIP-158)
                 if (_stateProvider.AccountExists(address))
                 {
                     Keccak root = RecalculateRootHash(address);
+                    
+                    // _logger.Warn($"Recalculating storage root {address}->{root} ({toUpdateRoots.Count})");
                     _stateProvider.UpdateStorageRoot(address, root);
                 }
             }
@@ -285,7 +287,7 @@ namespace Nethermind.State
 
             if (isTracing)
             {
-                ReportChanges(tracer, trace);
+                ReportChanges(tracer!, trace!);
             }
         }
 
@@ -315,12 +317,15 @@ namespace Nethermind.State
             _storages.Reset();
         }
 
-        public void CommitTrees()
+        public void CommitTrees(long blockNumber)
         {
+            // _logger.Warn($"Storage block commit {blockNumber}");
             foreach (KeyValuePair<Address, StorageTree> storage in _storages)
             {
-                storage.Value.Commit();
+                storage.Value.Commit(blockNumber);
             }
+            
+            // TODO: maybe I could update storage roots only now?
 
             // only needed here as there is no control over cached storage size otherwise
             _storages.Reset();
@@ -330,7 +335,7 @@ namespace Nethermind.State
         {
             if (!_storages.ContainsKey(address))
             {
-                StorageTree storageTree = new StorageTree(_stateDb, _stateProvider.GetStorageRoot(address));
+                StorageTree storageTree = new StorageTree(_trieStore, _stateProvider.GetStorageRoot(address), _logManager);
                 return _storages[address] = storageTree;
             }
 
@@ -342,7 +347,7 @@ namespace Nethermind.State
             if (_intraBlockCache.ContainsKey(storageCell))
             {
                 int lastChangeIndex = _intraBlockCache[storageCell].Peek();
-                return _changes[lastChangeIndex].Value;
+                return _changes[lastChangeIndex]!.Value;
             }
 
             return LoadFromTree(storageCell);
@@ -352,7 +357,7 @@ namespace Nethermind.State
         {
             StorageTree tree = GetOrCreateStorage(storageCell.Address);
 
-            Metrics.StorageTreeReads++;
+            Db.Metrics.StorageTreeReads++;
             byte[] value = tree.Get(storageCell.Index);
             PushToRegistryOnly(storageCell, value);
             return value;
@@ -417,7 +422,8 @@ namespace Nethermind.State
             /* here it is important to make sure that we will not reuse the same tree when the contract is revived
                by means of CREATE 2 - notice that the cached trie may carry information about items that were not
                touched in this block, hence were not zeroed above */
-            _storages[address] = new StorageTree(_stateDb, Keccak.EmptyTreeHash);
+            // TODO: how does it work with pruning?
+            _storages[address] = new StorageTree(_trieStore, Keccak.EmptyTreeHash, _logManager);
         }
 
         private enum ChangeType

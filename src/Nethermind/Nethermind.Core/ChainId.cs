@@ -54,7 +54,7 @@ namespace Nethermind.Core
         public const int DefaultGethPrivateChain = 1337;
         public const int Stureby = 314158;
 
-        public static string GetChainName(int chainId)
+        public static string GetChainName(long chainId)
         {
             switch (chainId)
             {

@@ -84,6 +84,7 @@ namespace Nethermind.Stats.Model
         public NodeClientType ClientType { get; private set; } = NodeClientType.Unknown;
         
         public string EthDetails { get; set; }
+        public long CurrentReputation { get; set; }
 
         public Node(PublicKey id, IPEndPoint address)
         {
@@ -113,16 +114,14 @@ namespace Nethermind.Stats.Model
 
         private void SetIPEndPoint(IPEndPoint address)
         {
-            Host = address.Address.ToString();
+            Host = address.Address.MapToIPv4().ToString();
             Port = address.Port;
             Address = address;
         }
 
         private void SetIPEndPoint(string host, int port)
         {
-            Host = host;
-            Port = port;
-            Address = new IPEndPoint(IPAddress.Parse(host), port);
+            SetIPEndPoint(new IPEndPoint(IPAddress.Parse(host), port));
         }
         
         public override bool Equals(object obj)
@@ -140,30 +139,22 @@ namespace Nethermind.Stats.Model
             return false;
         }
 
-        public override int GetHashCode()
-        {
-            return HashCode.Combine(Id);
-        }
+        public override int GetHashCode() => HashCode.Combine(Id);
 
-        public override string ToString()
-        {
-            return $"enode://{Id.ToString(false)}@{Host}:{Port}|{Id.Address}";
-        }
+        public override string ToString() => ToString("p");
 
-        public string ToString(string format)
-        {
-            return ToString(format, null);
-        }  
-       
+        public string ToString(string format) => ToString(format, null);
+
         public string ToString(string format, IFormatProvider formatProvider)
         {
-            string formattedHost = Host.Replace("::ffff:", string.Empty);
             return format switch
             {
-                "s" => $"{formattedHost}:{Port}",
-                "c" => $"[Node|{formattedHost}:{Port}|{ClientId}|{EthDetails}]",
-                "f" => $"enode://{Id.ToString(false)}@{formattedHost}:{Port}|{ClientId}",
-                _ => $"enode://{Id.ToString(false)}@{formattedHost}:{Port}"
+                "s" => $"{Host}:{Port}",
+                "c" => $"[Node|{Host}:{Port}|{ClientId}|{EthDetails}]",
+                "f" => $"enode://{Id.ToString(false)}@{Host}:{Port}|{ClientId}",
+                "e" => $"enode://{Id.ToString(false)}@{Host}:{Port}",
+                "p" => $"enode://{Id.ToString(false)}@{Host}:{Port}|{Id.Address}",
+                _ => $"enode://{Id.ToString(false)}@{Host}:{Port}"
             };
         }
         
@@ -212,6 +203,10 @@ namespace Nethermind.Stats.Model
             else if (_clientId.Contains("OpenEthereum", StringComparison.InvariantCultureIgnoreCase))
             {
                 ClientType = NodeClientType.OpenEthereum;
+            }
+            else if (_clientId.Contains("Trinity", StringComparison.InvariantCultureIgnoreCase))
+            {
+                ClientType = NodeClientType.Trinity;
             }
             else
             {

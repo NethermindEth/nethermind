@@ -15,7 +15,6 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Collections.Concurrent;
-using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 
@@ -27,7 +26,7 @@ namespace Nethermind.Core
 
         public static void AddInfo(string infoDescription, string value)
         {
-            _nodeInfoItems[infoDescription] = value;
+            _nodeInfoItems.TryAdd(infoDescription, value);
         }
 
         public static string BuildNodeInfoScreen()

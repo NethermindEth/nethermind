@@ -32,6 +32,7 @@ namespace Nethermind.Synchronization.Blocks
                 NodeClientType.Nethermind => NethermindSyncLimits.MaxBodyFetch,
                 NodeClientType.Parity => ParitySyncLimits.MaxBodyFetch,
                 NodeClientType.OpenEthereum => ParitySyncLimits.MaxBodyFetch,
+                NodeClientType.Trinity => GethSyncLimits.MaxBodyFetch,
                 NodeClientType.Unknown => 32,
                 _ => throw new ArgumentOutOfRangeException()
             };

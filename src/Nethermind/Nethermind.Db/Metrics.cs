@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -20,6 +20,18 @@ namespace Nethermind.Db
 {
     public static class Metrics
     {
+        [Description("Number of Bloom DB reads.")]
+        public static long BloomDbReads { get; set; }
+
+        [Description("Number of Bloom DB writes.")]
+        public static long BloomDbWrites { get; set; }
+
+        [Description("Number of CHT DB reads.")]
+        public static long CHTDbReads { get; set; }
+
+        [Description("Number of CHT DB writes.")]
+        public static long CHTDbWrites { get; set; }
+
         [Description("Number of Blocks DB reads.")]
         public static long BlocksDbReads { get; set; }
         
@@ -68,23 +80,22 @@ namespace Nethermind.Db
         [Description("Number of Pending Tx DB writes.")]
         public static long PendingTxsDbWrites { get; set; }
         
-        [Description("Number of Eth Request (faucet) DB reads.")]
-        public static long EthRequestsDbReads { get; set; }
-        
-        [Description("Number of Eth Request (faucet) DB writes.")]
-        public static long EthRequestsDbWrites { get; set; }
-        
         [Description("Number of other DB reads.")]
         public static long OtherDbReads { get; set; }
         
         [Description("Number of other DB writes.")]
         public static long OtherDbWrites { get; set; }
-        
-        
+
         [Description("Number of Headers DB reads.")]
         public static long HeaderDbReads { get; set; }
         
         [Description("Number of Headers DB writes.")]
         public static long HeaderDbWrites { get; set; }
+        
+        [Description("Number of Witness DB reads.")]
+        public static long WitnessDbReads { get; set; }
+        
+        [Description("Number of Witness DB writes.")]
+        public static long WitnessDbWrites { get; set; }
     }
 } 

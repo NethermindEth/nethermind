@@ -202,6 +202,21 @@ namespace Nethermind.Core.Specs
         bool IsEip2537Enabled { get; }
         
         /// <summary>
+        /// Berlin transaction type
+        /// </summary>
+        bool IsEip2718Enabled { get; }
+        
+        /// <summary>
+        /// Berlin gas cost increases for state reading opcodes
+        /// </summary>
+        bool IsEip2929Enabled { get; }
+        
+        /// <summary>
+        /// Berlin access lists
+        /// </summary>
+        bool IsEip2930Enabled { get; }
+        
+        /// <summary>
         /// Should EIP158 be ignored for this account.
         /// </summary>
         /// <remarks>THis is needed for SystemUser account compatibility with Parity.</remarks>
@@ -229,5 +244,61 @@ namespace Nethermind.Core.Specs
         public long Eip1559TransitionBlock { get; }
         
         public long Eip1559MigrationDuration { get; }
+
+        // STATE related 
+        public bool ClearEmptyAccountWhenTouched => IsEip158Enabled;
+        
+        // VM
+        public bool LimitCodeSize => IsEip170Enabled;
+
+        public bool UseHotAndColdStorage => IsEip2929Enabled;
+
+        public bool ModExpEnabled => IsEip198Enabled;
+
+        public bool Bn128Enabled => IsEip196Enabled && IsEip197Enabled;
+
+        public bool BlakeEnabled => IsEip152Enabled;
+
+        public bool Bls381Enabled => IsEip2537Enabled;
+
+        public bool ChargeForTopLevelCreate => IsEip2Enabled;
+        
+        public bool FailOnOutOfGasCodeDeposit => IsEip2Enabled;
+
+        public bool UseShanghaiDDosProtection => IsEip150Enabled;
+        
+        public bool UseExpDDosProtection => IsEip160Enabled;
+        
+        public bool UseLargeStateDDosProtection => IsEip1884Enabled;
+        
+        public bool ReturnDataOpcodesEnabled => IsEip211Enabled;
+        
+        public bool ChainIdOpcodeEnabled => IsEip1344Enabled;
+        
+        public bool Create2OpcodeEnabled => IsEip1014Enabled;
+        
+        public bool DelegateCallEnabled => IsEip7Enabled;
+        
+        public bool StaticCallEnabled => IsEip214Enabled;
+        
+        public bool ShiftOpcodesEnabled => IsEip145Enabled;
+        
+        public bool SubroutinesEnabled => IsEip2315Enabled;
+        
+        public bool RevertOpcodeEnabled => IsEip140Enabled;
+        
+        public bool ExtCodeHashOpcodeEnabled => IsEip1052Enabled;
+        
+        public bool SelfBalanceOpcodeEnabled => IsEip1884Enabled;
+        
+        public bool UseConstantinopleNetGasMetering => IsEip1283Enabled;
+        
+        public bool UseIstanbulNetGasMetering => IsEip2200Enabled;
+        
+        public bool UseNetGasMetering => UseConstantinopleNetGasMetering | UseIstanbulNetGasMetering;
+        
+        public bool Use63Over64Rule => UseShanghaiDDosProtection;
+        
+        public bool UseTransactionTypes => IsEip2718Enabled;
     }
 }

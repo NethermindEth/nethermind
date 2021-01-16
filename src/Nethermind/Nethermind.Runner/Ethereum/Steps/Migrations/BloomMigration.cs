@@ -24,16 +24,12 @@ using System.Threading.Tasks;
 using System.Timers;
 using Nethermind.Api;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.State.Repositories;
 using Nethermind.Db.Blooms;
-using Nethermind.Runner.Ethereum.Api;
-using Nethermind.Synchronization;
+using Nethermind.State.Repositories;
 using Nethermind.Synchronization.ParallelSync;
 using Timer = System.Timers.Timer;
 
@@ -43,7 +39,7 @@ namespace Nethermind.Runner.Ethereum.Steps.Migrations
     {
         private static readonly BlockHeader EmptyHeader = new BlockHeader(Keccak.Zero, Keccak.Zero, Address.Zero, UInt256.Zero, 0L, 0L, UInt256.Zero, Array.Empty<byte>());
         
-        private readonly INethermindApi _api;
+        private readonly IApiWithNetwork _api;
         private readonly ILogger _logger;
         private Stopwatch? _stopwatch;
         private readonly MeasuredProgress _progress = new MeasuredProgress();
@@ -54,7 +50,7 @@ namespace Nethermind.Runner.Ethereum.Steps.Migrations
         private readonly StringBuilder _builder = new StringBuilder();
         private readonly IBloomConfig _bloomConfig;
         
-        public BloomMigration(INethermindApi api)
+        public BloomMigration(IApiWithNetwork api)
         {
             _api = api;
             _logger = api.LogManager.GetClassLogger<BloomMigration>();
@@ -92,7 +88,7 @@ namespace Nethermind.Runner.Ethereum.Steps.Migrations
             }
         }
         
-        private bool CanMigrate(SyncMode syncMode) => syncMode == SyncMode.None;
+        private bool CanMigrate(SyncMode syncMode) => syncMode.NotSyncing();
 
         private void SynchronizerOnSyncModeChanged(object? sender, SyncModeChangedEventArgs e)
         {
@@ -159,7 +155,7 @@ namespace Nethermind.Runner.Ethereum.Steps.Migrations
             long from = synced;
             _migrateCount = to + 1;
             _averages = _api.BloomStorage.Averages.ToArray();
-            var chainLevelInfoRepository = _api.ChainLevelInfoRepository;
+            IChainLevelInfoRepository? chainLevelInfoRepository = _api.ChainLevelInfoRepository;
 
             _progress.Update(synced);
 
@@ -218,7 +214,7 @@ namespace Nethermind.Runner.Ethereum.Steps.Migrations
                             yield break;
                         }
 
-                        if (TryGetMainChainBlockHashFromLevel(i, out var blockHash))
+                        if (TryGetMainChainBlockHashFromLevel(i, out Keccak? blockHash))
                         {
                             var header = blockTree.FindHeader(blockHash, BlockTreeLookupOptions.None);
                             yield return header ?? GetMissingBlockHeader(i);

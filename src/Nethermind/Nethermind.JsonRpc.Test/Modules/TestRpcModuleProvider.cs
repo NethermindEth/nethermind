@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -17,6 +17,7 @@
 using System.Collections.Generic;
 using System.IO.Abstractions;
 using System.Reflection;
+using System.Threading.Tasks;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.JsonRpc.Modules.Eth;
@@ -62,7 +63,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             return _provider.Resolve(methodName);
         }
 
-        public IModule Rent(string methodName, bool readOnly)
+        public Task<IModule> Rent(string methodName, bool readOnly)
         {
             return _provider.Rent(methodName, readOnly);
         }

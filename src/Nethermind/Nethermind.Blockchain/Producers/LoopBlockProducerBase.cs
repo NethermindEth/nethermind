@@ -16,7 +16,6 @@
 
 using System;
 using System.Diagnostics;
-using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Processing;
@@ -47,6 +46,7 @@ namespace Nethermind.Blockchain.Producers
             IStateProvider stateProvider,
             ITimestamper timestamper,
             IGasLimitCalculator gasLimitCalculator,
+            ISpecProvider specProvider,
             ILogManager logManager,
             string name) 
             : base(
@@ -58,6 +58,7 @@ namespace Nethermind.Blockchain.Producers
                 stateProvider,
                 gasLimitCalculator,
                 timestamper,
+                specProvider,
                 logManager)
         {
             _name = name;

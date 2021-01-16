@@ -22,13 +22,14 @@ using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
+using Nethermind.State;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
     [RunnerStepDependencies(typeof(StartBlockProcessor), typeof(InitializeBlockchain), typeof(InitializePlugins))]
     public class LoadGenesisBlock : IStep
     {
-        private readonly INethermindApi _api;
+        private readonly IApiWithBlockchain _api;
         private readonly ILogger _logger;
         private IInitConfig? _initConfig;
 

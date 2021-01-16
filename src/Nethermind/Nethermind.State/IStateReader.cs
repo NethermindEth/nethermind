@@ -23,13 +23,13 @@ namespace Nethermind.State
 {
     public interface IStateReader
     {
-        Account GetAccount(Keccak stateRoot, Address address);
+        Account? GetAccount(Keccak stateRoot, Address address);
         
         UInt256 GetNonce(Keccak stateRoot, Address address);
 
         UInt256 GetBalance(Keccak stateRoot, Address address);
         
-        Keccak GetStorageRoot(Keccak stateRoot, Address address);
+        Keccak? GetStorageRoot(Keccak stateRoot, Address address);
         
         byte[] GetStorage(Keccak storageRoot, UInt256 index);
 

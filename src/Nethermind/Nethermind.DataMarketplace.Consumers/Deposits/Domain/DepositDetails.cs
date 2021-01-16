@@ -195,8 +195,8 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Domain
             ConsumedUnits = units;
         }
 
-        public bool CanClaimEarlyRefund(ulong currentBlockTimestamp)
-            => Claimable && !(EarlyRefundTicket is null) && EarlyRefundTicket.ClaimableAfter <= currentBlockTimestamp;
+        public bool CanClaimEarlyRefund(ulong currentBlockTimestamp, uint depositTimestamp)
+            => Claimable && !(EarlyRefundTicket is null) && (depositTimestamp + EarlyRefundTicket.ClaimableAfter <= currentBlockTimestamp);
 
         public bool CanClaimRefund(ulong currentBlockTimestamp)
             => Claimable && currentBlockTimestamp >= Deposit.ExpiryTime &&

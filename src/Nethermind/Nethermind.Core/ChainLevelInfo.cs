@@ -29,6 +29,6 @@ namespace Nethermind.Core
         
         public bool HasBlockOnMainChain { get; set; }
         public BlockInfo[] BlockInfos { get; set; }
-        public BlockInfo MainChainBlock => HasBlockOnMainChain ? BlockInfos[0] : null;
+        public BlockInfo? MainChainBlock => HasBlockOnMainChain ? BlockInfos[0] : null;
     }
 }

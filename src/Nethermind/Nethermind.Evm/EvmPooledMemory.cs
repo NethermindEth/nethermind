@@ -17,6 +17,7 @@
 using System;
 using System.Buffers;
 using System.Collections.Generic;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 
@@ -25,7 +26,8 @@ namespace Nethermind.Evm
     public class EvmPooledMemory : IEvmMemory
     {
         public const int WordSize = 32;
-        private static readonly ArrayPool<byte> Pool = ArrayPool<byte>.Shared;
+
+        private static readonly ArrayPool<byte> Pool = LargerArrayPool.Shared;
 
         private int _lastZeroedSize;
 

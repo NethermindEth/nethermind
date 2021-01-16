@@ -15,7 +15,6 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
@@ -59,7 +58,10 @@ namespace Nethermind.Core
             }
         }
         
+#pragma warning disable 8767
+        // fixed C# 9
         public int Compare(T x, T y)
+#pragma warning restore 8767
         {
             int result = 0;
             for (int i = 0; i < _comparers.Count; i++)

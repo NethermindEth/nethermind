@@ -26,17 +26,26 @@ using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Specs;
+using Nethermind.Specs.Forks;
 using NSubstitute;
 using NUnit.Framework;
+using Org.BouncyCastle.Asn1.X509;
 
 namespace Nethermind.Blockchain.Test.Receipts
 {
-    [TestFixture]
+    [TestFixture(true)]
+    [TestFixture(false)]
     public class PersistentReceiptStorageTests
     {
+        private readonly bool _useEip2718;
         private MemColumnsDb<ReceiptsColumns> _receiptsDb;
         private PersistentReceiptStorage _storage;
 
+        public PersistentReceiptStorageTests(bool useEip2718)
+        {
+            _useEip2718 = useEip2718;
+        }
+        
         [SetUp]
         public void SetUp()
         {
@@ -90,7 +99,9 @@ namespace Nethermind.Blockchain.Test.Receipts
         public void Should_not_cache_empty_non_processed_blocks()
         {
             var block = Build.A.Block
-                .WithTransactions(Build.A.Transaction.SignedAndResolved().TestObject)
+                .WithTransactions(
+                    _useEip2718 ? Berlin.Instance : MuirGlacier.Instance,
+                    Build.A.Transaction.SignedAndResolved().TestObject)
                 .WithReceiptsRoot(TestItem.KeccakA)
                 .TestObject;
 
@@ -146,7 +157,9 @@ namespace Nethermind.Blockchain.Test.Receipts
         private (Block block, TxReceipt[] receipts) InsertBlock(Block block = null)
         {
             block ??= Build.A.Block
-                .WithTransactions(Build.A.Transaction.SignedAndResolved().TestObject)
+                .WithTransactions(
+                    _useEip2718 ? Berlin.Instance : MuirGlacier.Instance,
+                    Build.A.Transaction.SignedAndResolved().TestObject)
                 .WithReceiptsRoot(TestItem.KeccakA)
                 .TestObject;
 

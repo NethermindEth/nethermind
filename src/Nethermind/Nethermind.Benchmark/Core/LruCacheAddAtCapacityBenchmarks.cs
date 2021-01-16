@@ -20,15 +20,22 @@ using Nethermind.Core.Caching;
 namespace Nethermind.Benchmarks.Core
 {
     [MemoryDiagnoser]
-    [SimpleJob]
     public class LruCacheAddAtCapacityBenchmarks
     {
+        const int Capacity = 16;
         private object _object = new object();
+        private LruCache<int, object> shared;
         
-        [Benchmark]
-        public ICache<int, object> No_recycling()
+        [GlobalSetup]
+        public void Setup()
         {
-            LruCache<int, object> cache = new LruCache<int, object>(16, 16, string.Empty);
+            shared = new LruCache<int, object>(Capacity, Capacity, string.Empty);
+        }
+
+        [Benchmark]
+        public ICache<int, object> WithRecreation()
+        {
+            LruCache<int, object> cache = new LruCache<int, object>(Capacity, Capacity, string.Empty);
             for (int j = 0; j < 1024 * 64; j++)
             {
                 cache.Set(j, _object);
@@ -36,17 +43,16 @@ namespace Nethermind.Benchmarks.Core
 
             return cache;
         }
-        
+
         [Benchmark]
-        public ICache<int, object> With_recycling()
+        public void WithClear()
         {
-            LruCache<int, object> cache = new LruCache<int, object>(16, 16, string.Empty);
             for (int j = 0; j < 1024 * 64; j++)
             {
-                cache.Set(j, _object);
+                shared.Set(j, _object);
             }
 
-            return cache;
+            shared.Clear();
         }
     }
 }

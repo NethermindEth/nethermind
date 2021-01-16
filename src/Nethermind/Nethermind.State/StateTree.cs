@@ -18,8 +18,10 @@ using System.Diagnostics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
+using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie;
+using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State
 {
@@ -28,17 +30,21 @@ namespace Nethermind.State
         private readonly AccountDecoder _decoder = new AccountDecoder();
         
         [DebuggerStepThrough]
-        public StateTree() : base(new MemDb(), Keccak.EmptyTreeHash, true, true)
+        public StateTree()
+            : base(new MemDb(), Keccak.EmptyTreeHash, true, true, NullLogManager.Instance)
         {
-        }
-        
-        [DebuggerStepThrough]
-        public StateTree(IDb db) : base(db, Keccak.EmptyTreeHash, true, true)
-        {
+            TrieType = TrieType.State;
         }
 
         [DebuggerStepThrough]
-        public Account Get(Address address, Keccak rootHash = null)
+        public StateTree(ITrieStore store, ILogManager logManager)
+            : base(store, Keccak.EmptyTreeHash, true, true, logManager)
+        {
+            TrieType = TrieType.State;
+        }
+
+        [DebuggerStepThrough]
+        public Account? Get(Address address, Keccak? rootHash = null)
         {
             byte[] bytes = Get(ValueKeccak.Compute(address.Bytes).BytesAsSpan, rootHash);
             if (bytes == null)
@@ -50,7 +56,7 @@ namespace Nethermind.State
         }
         
         [DebuggerStepThrough]
-        internal Account Get(Keccak keccak) // for testing
+        internal Account? Get(Keccak keccak) // for testing
         {
             byte[] bytes = Get(keccak.Bytes);
             if (bytes == null)
@@ -63,14 +69,14 @@ namespace Nethermind.State
 
         private static readonly Rlp EmptyAccountRlp = Rlp.Encode(Account.TotallyEmpty);
 
-        public void Set(Address address, Account account)
+        public void Set(Address address, Account? account)
         {
             ValueKeccak keccak = ValueKeccak.Compute(address.Bytes);
             Set(keccak.BytesAsSpan, account == null ? null : account.IsTotallyEmpty ? EmptyAccountRlp : Rlp.Encode(account));
         }
         
         [DebuggerStepThrough]
-        internal void Set(Keccak keccak, Account account) // for testing
+        internal void Set(Keccak keccak, Account? account) // for testing
         {
             Set(keccak.Bytes, account == null ? null : account.IsTotallyEmpty ? EmptyAccountRlp : Rlp.Encode(account));
         }

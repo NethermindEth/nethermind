@@ -34,6 +34,7 @@ using Nethermind.Db.Blooms;
 using Nethermind.Int256;
 using Nethermind.KeyStore;
 using Nethermind.Specs;
+using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
 using Newtonsoft.Json;
@@ -85,6 +86,12 @@ namespace Nethermind.JsonRpc.Test.Modules
                 _blockchain.TxSender = txSender;
                 return this;
             }
+
+            public Builder WithGenesisBlockBuilder(BlockBuilder blockBuilder)
+            {
+                _blockchain.GenesisBlockBuilder = blockBuilder;
+                return this;
+            }
             
             public async Task<TestRpcBlockchain> Build(ISpecProvider specProvider = null, UInt256? initialValues = null)
             {
@@ -105,6 +112,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             
             ReadOnlyTxProcessingEnv processingEnv = new ReadOnlyTxProcessingEnv(
                 new ReadOnlyDbProvider(DbProvider, false),
+                new TrieStore(DbProvider.StateDb, LimboLogs.Instance),
                 new ReadOnlyBlockTree(BlockTree),
                 SpecProvider,
                 LimboLogs.Instance);

@@ -47,19 +47,17 @@ namespace Nethermind.Stats
             }
         }
         
-        private readonly IStatsConfig _statsConfig;
         private readonly ILogger _logger;
         private readonly ConcurrentDictionary<Node, INodeStats> _nodeStats = new ConcurrentDictionary<Node, INodeStats>(new NodeComparer());
 
-        public NodeStatsManager(IStatsConfig statsConfig, ILogManager logManager)
+        public NodeStatsManager(ILogManager logManager)
         {
-            _statsConfig = statsConfig ?? throw new ArgumentNullException(nameof(statsConfig));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
         private INodeStats AddStats(Node node)
         {
-            return new NodeStatsLight(node, _statsConfig);
+            return new NodeStatsLight(node);
         }
         
         public INodeStats GetOrAdd(Node node)

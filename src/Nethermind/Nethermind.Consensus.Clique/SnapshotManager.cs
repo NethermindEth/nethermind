@@ -211,7 +211,7 @@ namespace Nethermind.Consensus.Clique
         {
             if(_logger.IsTrace) _logger.Trace($"Getting snapshot for {number}");
             // If an in-memory snapshot was found, use that
-            Snapshot cachedSnapshot = _snapshotCache.Get(hash);
+            Snapshot? cachedSnapshot = _snapshotCache.Get(hash);
             if (cachedSnapshot != null) return cachedSnapshot;
 
             // If an on-disk checkpoint snapshot can be found, use that

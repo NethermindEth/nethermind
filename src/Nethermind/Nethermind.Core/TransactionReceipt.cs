@@ -23,29 +23,34 @@ namespace Nethermind.Core
     public class TxReceipt
     {
         /// <summary>
+        /// EIP-2718 transaction type
+        /// </summary>
+        public byte TransactionType { get; set; }
+        
+        /// <summary>
         ///     EIP-658
         /// </summary>
         public byte StatusCode { get; set; }
         public long BlockNumber { get; set; }
-        public Keccak BlockHash { get; set; }
-        public Keccak TxHash { get; set; }
+        public Keccak? BlockHash { get; set; }
+        public Keccak? TxHash { get; set; }
         public int Index { get; set; }
         public long GasUsed { get; set; }
         public long GasUsedTotal { get; set; }
-        public Address Sender { get; set; }
-        public Address ContractAddress { get; set; }
-        public Address Recipient { get; set; }
+        public Address? Sender { get; set; }
+        public Address? ContractAddress { get; set; }
+        public Address? Recipient { get; set; }
         
         [Todo(Improve.Refactor, "Receipt tracer?")]
-        public byte[] ReturnValue { get; set; }
+        public byte[]? ReturnValue { get; set; }
         
         /// <summary>
         ///     Removed in EIP-658
         /// </summary>
-        public Keccak PostTransactionState { get; set; }
-        public Bloom Bloom { get; set; }
-        public LogEntry[] Logs { get; set; }
-        public string Error { get; set; }
+        public Keccak? PostTransactionState { get; set; }
+        public Bloom? Bloom { get; set; }
+        public LogEntry[]? Logs { get; set; }
+        public string? Error { get; set; }
 
         /// <summary>
         /// Ignores receipt output on RLP serialization.
@@ -56,6 +61,11 @@ namespace Nethermind.Core
 
     public ref struct TxReceiptStructRef
     {
+        /// <summary>
+        /// EIP-2718 transaction type
+        /// </summary>
+        public byte TransactionType { get; set; }
+        
         /// <summary>
         ///     EIP-658
         /// </summary>
@@ -85,12 +95,13 @@ namespace Nethermind.Core
         /// </summary>
         public Span<byte> LogsRlp { get; set; }
         
-        public LogEntry[] Logs { get; }
+        public LogEntry[]? Logs { get; }
         
-        public string Error { get; set; }
+        public string? Error { get; set; }
 
         public TxReceiptStructRef(TxReceipt receipt)
         {
+            TransactionType = receipt.TransactionType;
             StatusCode = receipt.StatusCode;
             BlockNumber = receipt.BlockNumber;
             BlockHash = (receipt.BlockHash ?? Keccak.Zero).ToStructRef();

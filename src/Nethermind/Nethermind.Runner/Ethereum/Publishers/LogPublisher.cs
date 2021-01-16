@@ -16,7 +16,6 @@
 // 
 
 using System.Threading.Tasks;
-using Nethermind.Api;
 using Nethermind.Logging;
 using Nethermind.PubSub;
 using Nethermind.Serialization.Json;

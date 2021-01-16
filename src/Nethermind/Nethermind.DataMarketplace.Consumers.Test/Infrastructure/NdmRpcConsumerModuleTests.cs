@@ -57,6 +57,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
         private IJsonRpcNdmConsumerChannel _jsonRpcNdmConsumerChannel;
         private IEthRequestService _ethRequestService;
         private IEthPriceService _ethPriceService;
+        private IDaiPriceService _daiPriceService;
         private IGasPriceService _gasPriceService;
         private IConsumerTransactionsService _consumerTransactionsService;
         private IConsumerGasLimitsService _gasLimitsService;
@@ -74,13 +75,14 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
             _jsonRpcNdmConsumerChannel = Substitute.For<IJsonRpcNdmConsumerChannel>();
             _ethRequestService = Substitute.For<IEthRequestService>();
             _ethPriceService = Substitute.For<IEthPriceService>();
+            _daiPriceService = Substitute.For<IDaiPriceService>();
             _gasPriceService = Substitute.For<IGasPriceService>();
             _gasLimitsService = Substitute.For<IConsumerGasLimitsService>();
             _consumerTransactionsService = Substitute.For<IConsumerTransactionsService>();
             _wallet = Substitute.For<IWallet>();
             _timestamper = new Timestamper(Date);
             _rpc = new NdmRpcConsumerModule(_consumerService, _depositReportService, _jsonRpcNdmConsumerChannel,
-                _ethRequestService, _ethPriceService, _gasPriceService, _consumerTransactionsService, _gasLimitsService,
+                _ethRequestService, _ethPriceService, _daiPriceService, _gasPriceService, _consumerTransactionsService, _gasLimitsService,
                 _wallet, _timestamper);
         }
 
@@ -112,6 +114,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
                 _jsonRpcNdmConsumerChannel,
                 _ethRequestService,
                 _ethPriceService,
+                _daiPriceService,
                 _gasPriceService,
                 _consumerTransactionsService,
                 _gasLimitsService,
@@ -521,7 +524,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
             const string type = "test";
             var result = await _rpc.ndm_setGasPrice(type);
             result.Data.Should().BeTrue();
-            await _gasPriceService.Received().SetAsync(type);
+            await _gasPriceService.Received().SetGasPriceOrTypeAsync(type);
         }
         
         [Test]
@@ -580,7 +583,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
             var pendingTransactions = new List<ResourceTransaction>
             {
                 new ResourceTransaction(TestItem.KeccakA.ToString(), "test", TransactionInfo.Default(TestItem.KeccakB,
-                    1.Ether(), 20.GWei(), 10, _timestamper.EpochSeconds))
+                    1.Ether(), 20.GWei(), 10, _timestamper.UnixTime.Seconds))
             };
             
             var transaction = pendingTransactions[0];

@@ -19,12 +19,9 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Linq;
-using System.Threading.Tasks;
 using Ethereum.Test.Base;
 using Ethereum.Test.Base.Interfaces;
 using Nethermind.Logging;
-using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Runner
 {

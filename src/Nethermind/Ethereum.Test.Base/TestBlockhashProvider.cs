@@ -18,7 +18,6 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Int256;
 using Nethermind.Evm;
 
 namespace Ethereum.Test.Base

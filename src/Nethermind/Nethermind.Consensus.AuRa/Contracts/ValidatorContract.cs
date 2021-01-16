@@ -23,6 +23,7 @@ using Nethermind.Core;
 using Nethermind.Int256;
 using Nethermind.Evm;
 using Nethermind.State;
+using Nethermind.Blockchain.Find;
 
 namespace Nethermind.Consensus.AuRa.Contracts
 {
@@ -64,7 +65,6 @@ namespace Nethermind.Consensus.AuRa.Contracts
     
     public sealed partial class ValidatorContract : CallableContract, IValidatorContract
     {
-        private readonly IAbiEncoder _abiEncoder;
         private readonly IStateProvider _stateProvider;
         private readonly ISigner _signer;
 
@@ -79,7 +79,6 @@ namespace Nethermind.Consensus.AuRa.Contracts
             ISigner signer) 
             : base(transactionProcessor, abiEncoder, contractAddress)
         {
-            _abiEncoder = abiEncoder ?? throw new ArgumentNullException(nameof(abiEncoder));
             _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
             _signer = signer ?? throw new ArgumentNullException(nameof(signer));
             Constant = GetConstant(readOnlyTransactionProcessorSource);

@@ -69,7 +69,7 @@ namespace Nethermind.DataMarketplace.Test.Services
         public async Task get_current_should_return_chosen_gas_price()
         {
             _config.GasPrice = 10.GWei();
-            var gasPrice = await _gasPriceService.GetCurrentAsync();
+            var gasPrice = await _gasPriceService.GetCurrentGasPriceAsync();
             gasPrice.Should().Be(_config.GasPrice);
             await _configManager.Received().GetAsync(ConfigId);
         }
@@ -78,7 +78,7 @@ namespace Nethermind.DataMarketplace.Test.Services
         [TestCase("0x2540be400", NumberStyles.HexNumber)]
         public async Task set_should_parse_custom_gas_price_value_and_update_config(string value, NumberStyles style)
         {
-            await _gasPriceService.SetAsync(value);
+            await _gasPriceService.SetGasPriceOrTypeAsync(value);
             _config.GasPrice = UInt256.Parse(value.StartsWith("0x") ? value.Substring(2) : value, style);
             _config.GasPriceType = CustomType;
             await _configManager.Received().GetAsync(ConfigId);
@@ -89,7 +89,7 @@ namespace Nethermind.DataMarketplace.Test.Services
         public void set_should_fail_if_type_is_empty()
         {
             const string type = "";
-            Func<Task> act = () => _gasPriceService.SetAsync(type);
+            Func<Task> act = () => _gasPriceService.SetGasPriceOrTypeAsync(type);
             act.Should().Throw<ArgumentException>()
                 .WithMessage("Gas price type cannot be empty. (Parameter 'type')");
         }
@@ -98,7 +98,7 @@ namespace Nethermind.DataMarketplace.Test.Services
         public void set_should_fail_if_type_is_invalid()
         {
             const string type = "test";
-            Func<Task> act = () => _gasPriceService.SetAsync(type);
+            Func<Task> act = () => _gasPriceService.SetGasPriceOrTypeAsync(type);
             act.Should().Throw<ArgumentException>()
                 .WithMessage($"Invalid gas price type: {type}. (Parameter 'type')");
         }
@@ -107,7 +107,7 @@ namespace Nethermind.DataMarketplace.Test.Services
         public void set_should_fail_if_type_returns_0_price()
         {
             const string type = "safelow";
-            Func<Task> act = () => _gasPriceService.SetAsync(type);
+            Func<Task> act = () => _gasPriceService.SetGasPriceOrTypeAsync(type);
             act.Should().Throw<ArgumentException>()
                 .WithMessage($"Gas price type: {type} couldn't be updated (price is 0). (Parameter 'type')");
         }
@@ -115,7 +115,7 @@ namespace Nethermind.DataMarketplace.Test.Services
         [Test]
         public async Task update_async_should_set_default_types_if_client_returns_no_result()
         {
-            await _gasPriceService.UpdateAsync();
+            await _gasPriceService.UpdateGasPriceAsync();
             _gasPriceService.Types.SafeLow.Should().Be(GasPriceDetails.Empty);
             _gasPriceService.Types.Average.Should().Be(GasPriceDetails.Empty);
             _gasPriceService.Types.Fast.Should().Be(GasPriceDetails.Empty);
@@ -142,7 +142,7 @@ namespace Nethermind.DataMarketplace.Test.Services
                 FastestWait = 1
             };
             _client.GetAsync<GasPriceService.Result>(Arg.Any<string>()).Returns(result);
-            await _gasPriceService.UpdateAsync();
+            await _gasPriceService.UpdateGasPriceAsync();
             _gasPriceService.Types.SafeLow.Should()
                 .Be(new GasPriceDetails(GetGasPriceGwei(result.SafeLow), result.SafeLowWait));
             _gasPriceService.Types.Average.Should()
@@ -154,7 +154,7 @@ namespace Nethermind.DataMarketplace.Test.Services
             _gasPriceService.Types.Custom.Should()
                 .Be(new GasPriceDetails(_config.GasPrice, 0));
             _gasPriceService.Types.Type.Should().Be(_config.GasPriceType);
-            _gasPriceService.Types.UpdatedAt.Should().Be(_timestamper.EpochSeconds);
+            _gasPriceService.Types.UpdatedAt.Should().Be(_timestamper.UnixTime.Seconds);
             await _configManager.Received().GetAsync(ConfigId);
             await _client.Received().GetAsync<GasPriceService.Result>(Arg.Any<string>());
 
@@ -179,8 +179,8 @@ namespace Nethermind.DataMarketplace.Test.Services
                 FastestWait = 1
             };
             _client.GetAsync<GasPriceService.Result>(Arg.Any<string>()).Returns(result);
-            await _gasPriceService.UpdateAsync();
-            await _gasPriceService.SetAsync(type);
+            await _gasPriceService.UpdateGasPriceAsync();
+            await _gasPriceService.SetGasPriceOrTypeAsync(type);
             _config.GasPriceType = type;
             switch (type)
             {

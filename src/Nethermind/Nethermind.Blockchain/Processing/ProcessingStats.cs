@@ -54,6 +54,11 @@ namespace Nethermind.Blockchain.Processing
 
         public void UpdateStats(Block block, int recoveryQueueSize, int blockQueueSize)
         {
+            if (block is null)
+            {
+                return;
+            }
+            
             if (_lastBlockNumber == 0)
             {
                 _lastBlockNumber = block.Number;

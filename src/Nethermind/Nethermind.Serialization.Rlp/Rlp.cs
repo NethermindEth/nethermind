@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -35,6 +35,7 @@ namespace Nethermind.Serialization.Rlp
     public class Rlp
     {
         public const int LengthOfKeccakRlp = 33;
+        
         public const int LengthOfAddressRlp = 21;
 
         internal const int DebugMessageContentLength = 2048;
@@ -67,7 +68,8 @@ namespace Nethermind.Serialization.Rlp
             Bytes = bytes ?? throw new RlpException("RLP cannot be initialized with null bytes");
         }
 
-        public int MemorySize => /* this */ MemorySizes.SmallObjectOverhead + MemorySizes.ArrayOverhead + Bytes.Length;
+        public long MemorySize => /* this */ MemorySizes.SmallObjectOverhead +
+                                            MemorySizes.Align(MemorySizes.ArrayOverhead + Bytes.Length);
 
         public byte[] Bytes { get; }
 
@@ -225,7 +227,7 @@ namespace Nethermind.Serialization.Rlp
             Transaction transaction,
             bool forSigning,
             bool isEip155Enabled = false,
-            int chainId = 0)
+            long chainId = 0)
         {
             int extraItems = transaction.IsEip1559 ? 2 : 0;
             if (!forSigning || (isEip155Enabled && chainId != 0))
@@ -1363,6 +1365,11 @@ namespace Nethermind.Serialization.Rlp
             item.ToBigEndian(bytes);
             int length = bytes.WithoutLeadingZeros().Length;
             return length + 1;
+        }
+
+        public static int LengthOf(uint _)
+        {
+            return 5;
         }
 
         public static int LengthOf(ulong _)

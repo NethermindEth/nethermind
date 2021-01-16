@@ -27,7 +27,7 @@ namespace Nethermind.Blockchain.Test.Runner
             IEnumerable<BlockchainTest> tests = (IEnumerable<BlockchainTest>)_testsSource.LoadTests();
             foreach (BlockchainTest test in tests)
             {
-                Setup(LimboLogs.Instance);
+                Setup();
 
                 Console.Write($"{test,-120} ");
                 if (test.LoadFailure != null)
@@ -52,7 +52,7 @@ namespace Nethermind.Blockchain.Test.Runner
                             Directory.CreateDirectory(directoryName);
                         }
 
-                        Setup(manager);
+                        Setup();
                         await RunTest(test);
                     }
                 }

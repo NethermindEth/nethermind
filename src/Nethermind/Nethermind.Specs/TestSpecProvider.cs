@@ -36,7 +36,7 @@ namespace Nethermind.Specs
         public IReleaseSpec SpecToReturn { get; set; }
 
         public long? DaoBlockNumber { get; set; }
-        public int ChainId { get; set; }
+        public long ChainId { get; set; }
         public long[] TransitionBlocks { get; set; } = new long[] {0};
     }
 }

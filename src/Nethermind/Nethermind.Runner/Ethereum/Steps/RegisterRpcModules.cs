@@ -33,8 +33,6 @@ using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.JsonRpc.Modules.TxPool;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
-using Nethermind.Blockchain.Find;
-using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.JsonRpc.Modules.Web3;
 using Nethermind.Runner.Ethereum.Steps.Migrations;
@@ -59,18 +57,6 @@ namespace Nethermind.Runner.Ethereum.Steps
             if (_api.ReceiptFinder == null) throw new StepDependencyException(nameof(_api.ReceiptFinder));
             if (_api.BloomStorage == null) throw new StepDependencyException(nameof(_api.BloomStorage));
             if (_api.LogManager == null) throw new StepDependencyException(nameof(_api.LogManager));
-            
-            
-            
-            LogFinder logFinder = new LogFinder(
-                _api.BlockTree,
-                _api.ReceiptFinder,
-                _api.BloomStorage,
-                _api.LogManager,
-                new ReceiptsRecovery(_api.EthereumEcdsa, _api.SpecProvider), 
-                1024);
-
-            _api.LogFinder = logFinder;
 
             IJsonRpcConfig jsonRpcConfig = _api.Config<IJsonRpcConfig>();
             if (!jsonRpcConfig.Enabled)
@@ -103,7 +89,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             INetworkConfig networkConfig = _api.Config<INetworkConfig>();
             
             // lets add threads to support parallel eth_getLogs
-            ThreadPool.GetMinThreads(out var workerThreads, out var completionPortThreads);
+            ThreadPool.GetMinThreads(out int workerThreads, out int completionPortThreads);
             ThreadPool.SetMinThreads(workerThreads + Environment.ProcessorCount, completionPortThreads + Environment.ProcessorCount);
             
             EthModuleFactory ethModuleFactory = new EthModuleFactory(
@@ -118,11 +104,11 @@ namespace Nethermind.Runner.Ethereum.Steps
             _api.RpcModuleProvider.Register(new BoundedModulePool<IEthModule>(ethModuleFactory, _cpuCount, rpcConfig.Timeout));
             
             if (_api.DbProvider == null) throw new StepDependencyException(nameof(_api.DbProvider));
-            if (_api.RecoveryStep == null) throw new StepDependencyException(nameof(_api.RecoveryStep));
+            if (_api.BlockPreprocessor == null) throw new StepDependencyException(nameof(_api.BlockPreprocessor));
             if (_api.BlockValidator == null) throw new StepDependencyException(nameof(_api.BlockValidator));
             if (_api.RewardCalculatorSource == null) throw new StepDependencyException(nameof(_api.RewardCalculatorSource));
             
-            ProofModuleFactory proofModuleFactory = new ProofModuleFactory(_api.DbProvider, _api.BlockTree, _api.RecoveryStep, _api.ReceiptFinder, _api.SpecProvider, _api.LogManager);
+            ProofModuleFactory proofModuleFactory = new ProofModuleFactory(_api.DbProvider, _api.BlockTree, _api.TrieStore, _api.BlockPreprocessor, _api.ReceiptFinder, _api.SpecProvider, _api.LogManager);
             _api.RpcModuleProvider.Register(new BoundedModulePool<IProofModule>(proofModuleFactory, 2, rpcConfig.Timeout));
 
             DebugModuleFactory debugModuleFactory = new DebugModuleFactory(
@@ -130,10 +116,11 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.BlockTree,
 				rpcConfig, 
                 _api.BlockValidator, 
-                _api.RecoveryStep, 
+                _api.BlockPreprocessor, 
                 _api.RewardCalculatorSource, 
                 _api.ReceiptStorage,
-                new ReceiptMigration(_api), 
+                new ReceiptMigration(_api),
+                _api.TrieStore, 
                 _api.ConfigProvider, 
                 _api.SpecProvider, 
                 _api.LogManager);
@@ -142,12 +129,14 @@ namespace Nethermind.Runner.Ethereum.Steps
             TraceModuleFactory traceModuleFactory = new TraceModuleFactory(
                 _api.DbProvider,
                 _api.BlockTree,
+                _api.ReadOnlyTrieStore,
                 rpcConfig,
-                _api.RecoveryStep,
+                _api.BlockPreprocessor,
                 _api.RewardCalculatorSource, 
                 _api.ReceiptStorage,
                 _api.SpecProvider,
                 _api.LogManager);
+
             _api.RpcModuleProvider.Register(new BoundedModulePool<ITraceModule>(traceModuleFactory, _cpuCount, rpcConfig.Timeout));
             
             if (_api.EthereumEcdsa == null) throw new StepDependencyException(nameof(_api.EthereumEcdsa));

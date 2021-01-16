@@ -24,6 +24,7 @@ using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
+using Nethermind.Logging;
 
 namespace Nethermind.Consensus.AuRa.Contracts
 {
@@ -33,30 +34,41 @@ namespace Nethermind.Consensus.AuRa.Contracts
 
         private readonly IVersionedContract _versionSelectorContract;
         private readonly ICache<Keccak, UInt256> _versionsCache;
-        
-        protected VersionedContract(IDictionary<UInt256, T> versions, ICache<Keccak, UInt256> cache, long activation)
+        private readonly ILogger _logger;
+
+        protected VersionedContract(IDictionary<UInt256, T> versions, ICache<Keccak, UInt256> cache, long activation, ILogManager logManager)
         {
             _versions = versions ?? throw new ArgumentNullException(nameof(versions));
             _versionSelectorContract = versions.Values.Last();
             Activation = activation;
             _versionsCache = cache ?? throw new ArgumentNullException(nameof(cache));
+            _logger = logManager.GetClassLogger();
         }
 
         public T ResolveVersion(BlockHeader blockHeader)
         {
             this.BlockActivationCheck(blockHeader);
-            
+
             if (!_versionsCache.TryGet(blockHeader.Hash, out var versionNumber))
             {
-                versionNumber = _versionSelectorContract.ContractVersion(blockHeader);
-                _versionsCache.Set(blockHeader.Hash, versionNumber);
+                try
+                {
+                    versionNumber = _versionSelectorContract.ContractVersion(blockHeader);
+                    _versionsCache.Set(blockHeader.Hash, versionNumber);
+                }
+                catch (Exception ex)
+                {
+                    if (_logger.IsError) _logger.Error("Failed to get contract version", ex);
+                    versionNumber = UInt256.One;
+                    _versionsCache.Set(blockHeader.Hash, versionNumber); // ToDo Consult with Łukasz and remove
+                }
             }
-            
+
             return ResolveVersion(versionNumber);
         }
 
         private T ResolveVersion(UInt256 versionNumber) => _versions.TryGetValue(versionNumber, out var contract) ? contract : default;
-        
+
         public long Activation { get; }
     }
 }

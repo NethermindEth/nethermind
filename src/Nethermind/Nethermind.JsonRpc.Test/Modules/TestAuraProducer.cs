@@ -25,6 +25,7 @@ using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
@@ -44,7 +45,8 @@ namespace Nethermind.JsonRpc.Test.Modules
             ILogManager logManager,
             IAuRaStepCalculator auRaStepCalculator,
             IReportingValidator reportingValidator,
-            IAuraConfig config) 
+            IAuraConfig config,
+            ISpecProvider specProvider) 
             : base(
                 transactionSource,
                 processor,
@@ -56,7 +58,8 @@ namespace Nethermind.JsonRpc.Test.Modules
                 auRaStepCalculator,
                 reportingValidator,
                 config,
-                FollowOtherMiners.Instance, 
+                FollowOtherMiners.Instance,
+                specProvider,
                 logManager)
         {
         }

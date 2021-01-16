@@ -26,6 +26,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle.Json;
+using Newtonsoft.Json.Linq;
 
 namespace Nethermind.Specs.ChainSpecStyle
 {
@@ -51,7 +52,7 @@ namespace Nethermind.Specs.ChainSpecStyle
                 var chainSpecJson = _serializer.Deserialize<ChainSpecJson>(jsonData);
                 var chainSpec = new ChainSpec();
 
-                chainSpec.ChainId = (int) chainSpecJson.Params.NetworkId;
+                chainSpec.ChainId = chainSpecJson.Params.NetworkId;
                 chainSpec.Name = chainSpecJson.Name;
                 chainSpec.DataDir = chainSpecJson.DataDir;
                 LoadGenesis(chainSpecJson, chainSpec);
@@ -71,6 +72,21 @@ namespace Nethermind.Specs.ChainSpecStyle
 
         private void LoadParameters(ChainSpecJson chainSpecJson, ChainSpec chainSpec)
         {
+            long? GetTransitionForExpectedPricing(string builtInName, string innerPath, long expectedValue)
+            {
+                var allocation = chainSpecJson.Accounts.Values.FirstOrDefault(v => v.BuiltIn?.Name.Equals(builtInName, StringComparison.InvariantCultureIgnoreCase) == true);
+                if (allocation != null)
+                {
+                    var pricing = allocation.BuiltIn.Pricing.Where(o => o.Value.SelectToken(innerPath)?.Value<long>() == expectedValue).ToArray();
+                    if (pricing.Length > 0)
+                    {
+                        return long.Parse(pricing[0].Key);
+                    }
+                }
+
+                return null;
+            }
+
             ValidateParams(chainSpecJson.Params);
 
             chainSpec.Parameters = new ChainParameters
@@ -114,6 +130,11 @@ namespace Nethermind.Specs.ChainSpecStyle
                 ValidateChainIdTransition = chainSpecJson.Params.ValidateChainIdTransition,
                 ValidateReceiptsTransition = chainSpecJson.Params.ValidateReceiptsTransition,
             };
+
+            chainSpec.Parameters.Eip152Transition ??= GetTransitionForExpectedPricing("blake2_f", "price.blake2_f.gas_per_round", 1);
+            chainSpec.Parameters.Eip1108Transition ??= GetTransitionForExpectedPricing("alt_bn128_add", "price.alt_bn128_const_operations.price", 150)
+                                                       ?? GetTransitionForExpectedPricing("alt_bn128_mul", "price.alt_bn128_const_operations.price", 6000)
+                                                       ?? GetTransitionForExpectedPricing("alt_bn128_pairing", "price.alt_bn128_pairing.base", 45000);
         }
 
         private static void ValidateParams(ChainSpecParamsJson parameters)

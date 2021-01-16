@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -15,6 +15,9 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.IO;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -25,6 +28,7 @@ namespace Nethermind.Synchronization.BeamSync
 {
     public class BeamSyncDbProvider : IDbProvider
     {
+        private readonly ConcurrentDictionary<string, IDb> _registeredDbs = new ConcurrentDictionary<string, IDb>(StringComparer.InvariantCultureIgnoreCase);
         private readonly IDbProvider _otherProvider;
         private BeamSyncDb _stateDb;
         private BeamSyncDb _codeDb;
@@ -36,8 +40,9 @@ namespace Nethermind.Synchronization.BeamSync
             _codeDb = new BeamSyncDb(otherProvider.CodeDb.Innermost, otherProvider.BeamStateDb, syncModeSelector, logManager, syncConfig.BeamSyncContextTimeout, syncConfig.BeamSyncPreProcessorTimeout);
             _stateDb = new BeamSyncDb(otherProvider.StateDb.Innermost, otherProvider.BeamStateDb, syncModeSelector, logManager, syncConfig.BeamSyncContextTimeout, syncConfig.BeamSyncPreProcessorTimeout);
             BeamSyncFeed = new CompositeStateSyncFeed<StateSyncBatch?>(logManager, _codeDb, _stateDb);
-            StateDb = new StateDb(_stateDb);
-            CodeDb = new StateDb(_codeDb);
+
+            _registeredDbs.TryAdd(DbNames.Code, new StateDb(_codeDb)); // TODO: PRUNING - not state really
+            _registeredDbs.TryAdd(DbNames.State, new StateDb(_stateDb)); // TODO: PRUNING - not state really
         }
 
         public void EnableVerifiedMode()
@@ -46,32 +51,66 @@ namespace Nethermind.Synchronization.BeamSync
             _codeDb.VerifiedModeEnabled = true;
         }
         
-        public ISnapshotableDb StateDb { get; }
-        public ISnapshotableDb CodeDb { get; }
-        public IColumnsDb<ReceiptsColumns> ReceiptsDb => _otherProvider.ReceiptsDb;
-        public IDb BlocksDb => _otherProvider.BlocksDb;
-        public IDb HeadersDb => _otherProvider.HeadersDb;
-        public IDb BlockInfosDb => _otherProvider.BlockInfosDb;
-        public IDb PendingTxsDb => _otherProvider.PendingTxsDb;
-        public IDb ConfigsDb => _otherProvider.ConfigsDb;
-        public IDb EthRequestsDb => _otherProvider.EthRequestsDb;
-        public IDb BloomDb => _otherProvider.BloomDb;
         public IDb BeamStateDb => _otherProvider.BeamStateDb;
-        public IDb ChtDb => _otherProvider.ChtDb;
+
+        public DbModeHint DbMode => _otherProvider.DbMode;
+
+        public IDictionary<string, IDb> RegisteredDbs
+        {
+            get
+            {
+                Dictionary<string, IDb > localDictionary = new Dictionary<string, IDb>();
+                foreach (var (key, value) in _otherProvider.RegisteredDbs)
+                {
+                    if (_registeredDbs.ContainsKey(key))
+                    {
+                        localDictionary.Add(key, _registeredDbs[key]);
+                    }
+                    else
+                    {
+                        IDb? other = _otherProvider.RegisteredDbs[key];
+                        localDictionary.Add(key, other);
+                    }
+                }
+
+                return localDictionary;
+            }   
+        }
 
         public void Dispose()
         {
-            StateDb?.Dispose();
-            CodeDb?.Dispose();
-            ReceiptsDb?.Dispose();
-            BlocksDb?.Dispose();
-            HeadersDb?.Dispose();
-            BlockInfosDb?.Dispose();
-            PendingTxsDb?.Dispose();
-            ConfigsDb?.Dispose();
-            EthRequestsDb?.Dispose();
-            BloomDb?.Dispose();
-            ChtDb?.Dispose();
+        }
+
+        public T GetDb<T>(string dbName) where T : class, IDb
+        {
+            T? result;
+            if (string.Equals(DbNames.Code, dbName, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(DbNames.State, dbName, StringComparison.OrdinalIgnoreCase))
+            {
+                _registeredDbs.TryGetValue(dbName, out IDb? found);
+                result = found as T;
+                if (result == null && found != null)
+                {
+                    throw new IOException(
+                        $"An attempt was made to resolve DB {dbName} as {typeof(T)} while its type is {found.GetType()}.");
+                }
+            }
+            else
+            {
+                result = _otherProvider.GetDb<T>(dbName);    
+            }
+
+            if (result == null)
+            {
+                throw new IOException($"Database {dbName} cannot be found.");
+            }
+            
+            return result;
+        }
+
+        public void RegisterDb<T>(string dbName, T db) where T : class, IDb
+        {
+            _otherProvider.RegisterDb<T>(dbName, db);
         }
     }
 }

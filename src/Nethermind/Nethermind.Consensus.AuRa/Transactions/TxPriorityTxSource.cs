@@ -42,10 +42,10 @@ namespace Nethermind.Consensus.AuRa.Transactions
             ITxPool transactionPool, 
             IStateReader stateReader, 
             ILogManager logManager, 
-            ITxFilter minGasPriceFilter,
+            ITxFilter txFilter,
             IContractDataStore<Address> sendersWhitelist, // expected HashSet based
             IDictionaryContractDataStore<TxPriorityContract.Destination> priorities) // expected SortedList based
-            : base(transactionPool, stateReader, logManager, minGasPriceFilter)
+            : base(transactionPool, stateReader, logManager, txFilter)
         {
             _sendersWhitelist = sendersWhitelist ?? throw new ArgumentNullException(nameof(sendersWhitelist));
             _priorities = priorities ?? throw new ArgumentNullException(nameof(priorities));

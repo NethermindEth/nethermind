@@ -58,6 +58,11 @@ using Nethermind.Logging;
 using Nethermind.Monitoring;
 using Nethermind.Wallet;
 using Nethermind.DataMarketplace.Consumers.Shared;
+using Nethermind.DataMarketplace.Infrastructure.Updaters;
+using Nethermind.WebSockets;
+using System.Threading.Tasks;
+using Nethermind.Db;
+using Nethermind.Api;
 
 namespace Nethermind.DataMarketplace.Consumers.Infrastructure
 {
@@ -68,6 +73,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure
         private IJsonRpcNdmConsumerChannel jsonRpcNdmConsumerChannel;
         private IEthRequestService ethRequestService;
         private IEthPriceService ethPriceService;
+        private IDaiPriceService daiPriceService;
         private IGasPriceService gasPriceService;
         private IConsumerTransactionsService consumerTransactionsService;
         private IConsumerGasLimitsService gasLimitsService;
@@ -76,10 +82,10 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure
 
         public NdmConsumersModule(INdmApi api)
         {
-           _api = api ?? throw new ArgumentNullException(nameof(api)); 
+            _api = api ?? throw new ArgumentNullException(nameof(api));
         }
 
-        public void Init()
+        public async Task Init()
         {
             AddDecoders();
             ILogManager logManager = _api.LogManager;
@@ -109,8 +115,6 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure
             Address contractAddress = string.IsNullOrWhiteSpace(ndmConfig.ContractAddress)
                 ? Address.Zero
                 : new Address(ndmConfig.ContractAddress);
-            ConsumerRocksDbProvider rocksDbProvider = new ConsumerRocksDbProvider(_api.BaseDbPath, dbConfig,
-                logManager);
             DepositDetailsDecoder depositDetailsRlpDecoder = new DepositDetailsDecoder();
             DepositApprovalDecoder depositApprovalRlpDecoder = new DepositApprovalDecoder();
             DataDeliveryReceiptDetailsDecoder receiptRlpDecoder = new DataDeliveryReceiptDetailsDecoder();
@@ -147,15 +151,17 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure
                     sessionRepository = new ConsumerSessionInMemoryRepository();
                     break;
                 default:
-                    depositRepository = new DepositDetailsRocksRepository(rocksDbProvider.DepositsDb,
+                    var dbInitializer = new ConsumerNdmDbInitializer(_api.DbProvider, ndmConfig, _api.RocksDbFactory, _api.MemDbFactory);
+                    await dbInitializer.InitAsync();
+                    depositRepository = new DepositDetailsRocksRepository(_api.Db<IDb>(ConsumerNdmDbNames.Deposits),
                         depositDetailsRlpDecoder);
                     depositApprovalRepository = new ConsumerDepositApprovalRocksRepository(
-                        rocksDbProvider.ConsumerDepositApprovalsDb, depositApprovalRlpDecoder);
-                    providerRepository = new ProviderRocksRepository(rocksDbProvider.DepositsDb,
+                        _api.Db<IDb>(ConsumerNdmDbNames.ConsumerDepositApprovals), depositApprovalRlpDecoder);
+                    providerRepository = new ProviderRocksRepository(_api.Db<IDb>(ConsumerNdmDbNames.Deposits),
                         depositDetailsRlpDecoder);
-                    receiptRepository = new ReceiptRocksRepository(rocksDbProvider.ConsumerReceiptsDb,
+                    receiptRepository = new ReceiptRocksRepository(_api.Db<IDb>(ConsumerNdmDbNames.ConsumerReceipts),
                         receiptRlpDecoder);
-                    sessionRepository = new ConsumerSessionRocksRepository(rocksDbProvider.ConsumerSessionsDb,
+                    sessionRepository = new ConsumerSessionRocksRepository(_api.Db<IDb>(ConsumerNdmDbNames.ConsumerSessions),
                         sessionRlpDecoder);
                     break;
             }
@@ -181,6 +187,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure
             IEthJsonRpcClientProxy? ethJsonRpcClientProxy = _api.EthJsonRpcClientProxy;
             TransactionService transactionService = _api.TransactionService;
             IMonitoringService monitoringService = _api.MonitoringService;
+            IWebSocketsModule ndmWebSocketsModule = _api.WebSocketsManager.GetModule("ndm");
             monitoringService?.RegisterMetrics(typeof(Metrics));
 
             DataRequestFactory dataRequestFactory = new DataRequestFactory(wallet, nodePublicKey);
@@ -217,22 +224,24 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure
                     requiredBlockConfirmations);
             }
 
-            depositReportService = new DepositReportService(depositRepository, receiptRepository, sessionRepository,
+            depositReportService = new DepositReportService(depositRepository, depositUnitsCalculator, receiptRepository, sessionRepository,
                 timestamper);
             ReceiptService receiptService = new ReceiptService(depositProvider, providerService, receiptRequestValidator,
                 sessionService, timestamper, receiptRepository, sessionRepository, abiEncoder, wallet, ecdsa,
                 nodePublicKey, logManager);
             RefundService refundService = new RefundService(blockchainBridge, abiEncoder, depositRepository,
-                contractAddress, logManager);
+                contractAddress, logManager, wallet);
             RefundClaimant refundClaimant = new RefundClaimant(refundService, blockchainBridge, depositRepository,
                 transactionVerifier, gasPriceService, timestamper, logManager);
             _api.AccountService = new AccountService(configManager, dataStreamService, providerService,
                 sessionService, consumerNotifier, wallet, configId, consumerAddress, logManager);
+            _api.NdmAccountUpdater = new NdmAccountUpdater(ndmWebSocketsModule, consumerAddress, _api.MainBlockProcessor, _api.ChainHeadStateProvider);
             ProxyService proxyService = new ProxyService(jsonRpcClientProxy, configManager, configId, logManager);
             _api.ConsumerService = new ConsumerService(_api.AccountService, dataAssetService, dataRequestService,
                 dataConsumerService, dataStreamService, depositManager, depositApprovalService, providerService,
                 receiptService, refundService, sessionService, proxyService);
             ethPriceService = new EthPriceService(httpClient, timestamper, logManager);
+            daiPriceService = new DaiPriceService(httpClient, timestamper, logManager);
             consumerTransactionsService = new ConsumerTransactionsService(transactionService, depositRepository,
                 timestamper, logManager);
             gasLimitsService = new ConsumerGasLimitsService(depositService, refundService);
@@ -246,6 +255,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure
                         refundClaimant,
                         depositConfirmationService,
                         ethPriceService,
+                        daiPriceService,
                         _api.GasPriceService,
                         _api.MainBlockProcessor,
                         depositRepository,
@@ -259,7 +269,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure
 
         public void InitRpcModules()
         {
-            _api.RpcModuleProvider.Register(new SingletonModulePool<INdmRpcConsumerModule>(new NdmRpcConsumerModule(_api.ConsumerService, depositReportService, jsonRpcNdmConsumerChannel, ethRequestService, ethPriceService, gasPriceService, consumerTransactionsService, gasLimitsService, _api.Wallet, timestamper), true));
+            _api.RpcModuleProvider.Register(new SingletonModulePool<INdmRpcConsumerModule>(new NdmRpcConsumerModule(_api.ConsumerService, depositReportService, jsonRpcNdmConsumerChannel, ethRequestService, ethPriceService, daiPriceService, gasPriceService, consumerTransactionsService, gasLimitsService, _api.Wallet, timestamper), true));
         }
 
         private static void AddDecoders()

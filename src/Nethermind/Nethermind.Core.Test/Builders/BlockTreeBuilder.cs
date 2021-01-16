@@ -30,6 +30,7 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
 using Nethermind.State.Repositories;
 using Nethermind.Db.Blooms;
+using Nethermind.Specs.Forks;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
@@ -58,7 +59,7 @@ namespace Nethermind.Core.Test.Builders
             BlocksDb.Set(Keccak.Zero, Rlp.Encode(Build.A.BlockHeader.TestObject).Bytes);
             _genesisBlock = genesisBlock;
             ChainLevelInfoRepository = new ChainLevelInfoRepository(BlockInfoDb);
-            TestObjectInternal = new BlockTree(BlocksDb, HeadersDb, BlockInfoDb, ChainLevelInfoRepository, RopstenSpecProvider.Instance, Substitute.For<ITxPool>(), Substitute.For<IBloomStorage>(), LimboLogs.Instance);
+            TestObjectInternal = new BlockTree(BlocksDb, HeadersDb, BlockInfoDb, ChainLevelInfoRepository, RopstenSpecProvider.Instance, Substitute.For<IBloomStorage>(), LimboLogs.Instance);
         }
 
         public MemDb BlocksDb { get; set; }
@@ -142,7 +143,7 @@ namespace Nethermind.Core.Test.Builders
                     .WithNumber(blockIndex + 1)
                     .WithParent(parent)
                     .WithDifficulty(BlockHeaderBuilder.DefaultDifficulty - (splitFrom > parent.Number ? 0 : (ulong) splitVariant))
-                    .WithTransactions(transactions)
+                    .WithTransactions(MuirGlacier.Instance, transactions)
                     .WithBloom(new Bloom())
                     .WithBeneficiary(beneficiary)
                     .TestObject;
@@ -164,7 +165,7 @@ namespace Nethermind.Core.Test.Builders
                     currentBlock.Bloom.Add(receipt.Logs);
                 }
 
-                currentBlock.Header.TxRoot = new TxTrie(currentBlock.Transactions).RootHash;
+                currentBlock.Header.TxRoot = new TxTrie(currentBlock.Transactions, MuirGlacier.Instance).RootHash;
                 var txReceipts = receipts.ToArray();
                 currentBlock.Header.ReceiptsRoot = new ReceiptTrie(_specProvider.GetSpec(currentBlock.Number), txReceipts).RootHash;
                 currentBlock.Header.Hash = currentBlock.CalculateHash();

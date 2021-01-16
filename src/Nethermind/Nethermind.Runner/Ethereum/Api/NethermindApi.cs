@@ -53,6 +53,7 @@ using Nethermind.Stats;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
+using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
 using Nethermind.WebSockets;
@@ -80,8 +81,11 @@ namespace Nethermind.Runner.Ethereum.Api
         {
             ReadOnlyBlockTree readOnlyTree = new ReadOnlyBlockTree(BlockTree);
             IReadOnlyDbProvider readOnlyDbProvider = new ReadOnlyDbProvider(DbProvider, false);
+            
+            // TODO: reuse the same trie cache here
             ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv = new ReadOnlyTxProcessingEnv(
                 readOnlyDbProvider,
+                TrieStore,
                 readOnlyTree,
                 SpecProvider,
                 LogManager);
@@ -105,7 +109,7 @@ namespace Nethermind.Runner.Ethereum.Api
 
         public IAbiEncoder AbiEncoder { get; } = new AbiEncoder();
         public IBlockchainProcessor? BlockchainProcessor { get; set; }
-        public IBlockDataRecoveryStep? RecoveryStep { get; set; }
+        public CompositeBlockPreprocessorStep BlockPreprocessor { get; } = new CompositeBlockPreprocessorStep(); 
         public IBlockProcessingQueue? BlockProcessingQueue { get; set; }
         public IBlockProcessor? MainBlockProcessor { get; set; }
         public IBlockProducer? BlockProducer { get; set; }
@@ -116,7 +120,11 @@ namespace Nethermind.Runner.Ethereum.Api
         public IConfigProvider ConfigProvider { get; set; }
         public ICryptoRandom CryptoRandom { get; }
         public IDbProvider? DbProvider { get; set; }
+        public IRocksDbFactory? RocksDbFactory { get; set; }
+        public IMemDbFactory? MemDbFactory { get; set; }
         public IDiscoveryApp? DiscoveryApp { get; set; }
+        public ISigner? EngineSigner { get; set; }
+        public ISignerStore? EngineSignerStore { get; set; }
         public IEnode? Enode { get; set; }
         public IEthereumEcdsa? EthereumEcdsa { get; set; }
         public IFileSystem FileSystem { get; set; } = new FileSystem();
@@ -127,8 +135,10 @@ namespace Nethermind.Runner.Ethereum.Api
         public IIPResolver? IpResolver { get; set; }
         public IJsonSerializer EthereumJsonSerializer { get; set; }
         public IKeyStore? KeyStore { get; set; }
+        public IPasswordProvider? PasswordProvider { get; set; }
         public ILogFinder? LogFinder { get; set; }
         public ILogManager LogManager { get; }
+        public IKeyValueStoreWithBatching? MainStateDbWithCache { get; set; }
         public IMessageSerializationService MessageSerializationService { get; } = new MessageSerializationService();
         public IMonitoringService MonitoringService { get; set; } = NullMonitoringService.Instance;
         public INodeStatsManager? NodeStatsManager { get; set; }
@@ -136,31 +146,34 @@ namespace Nethermind.Runner.Ethereum.Api
         public IProtocolsManager? ProtocolsManager { get; set; }
         public IProtocolValidator? ProtocolValidator { get; set; }
         public IReceiptStorage? ReceiptStorage { get; set; }
+        public IWitnessCollector? WitnessCollector { get; set; }
         public IReceiptFinder? ReceiptFinder { get; set; }
-        public IRewardCalculatorSource? RewardCalculatorSource { get; set; }
+        public IRewardCalculatorSource RewardCalculatorSource { get; set; } = NoBlockRewards.Instance;
         public IRlpxPeer? RlpxPeer { get; set; }
         public IRpcModuleProvider RpcModuleProvider { get; set; } = NullModuleProvider.Instance;
-        public ISealer? Sealer { get; set; }
-        public ISealValidator? SealValidator { get; set; }
-        public ISigner? EngineSigner { get; set; }
-        public ISignerStore? EngineSignerStore { get; set; }
+        public ISealer Sealer { get; set; } = NullSealEngine.Instance;
+        public SealEngineType SealEngineType { get; set; } = SealEngineType.None;
+        public ISealValidator SealValidator { get; set; } = NullSealEngine.Instance;
+        public ISessionMonitor? SessionMonitor { get; set; }
         public ISpecProvider? SpecProvider { get; set; }
         public ISyncModeSelector? SyncModeSelector { get; set; }
         public ISyncPeerPool? SyncPeerPool { get; set; }
         public ISynchronizer? Synchronizer { get; set; }
         public ISyncServer? SyncServer { get; set; }
         public IStateProvider? StateProvider { get; set; }
+        public IReadOnlyStateProvider? ChainHeadStateProvider { get; set; }
         public IStateReader? StateReader { get; set; }
         public IStorageProvider? StorageProvider { get; set; }
-        public ISessionMonitor? SessionMonitor { get; set; }
         public IStaticNodesManager? StaticNodesManager { get; set; }
         public ITimestamper Timestamper { get; } = Core.Timestamper.Default;
         public ITransactionProcessor? TransactionProcessor { get; set; }
+        public ITrieStore? TrieStore { get; set; }
+        public ITrieStore? ReadOnlyTrieStore { get; set; }
         public ITxSender? TxSender { get; set; }
         public ITxPool? TxPool { get; set; }
         public ITxPoolInfoProvider? TxPoolInfoProvider { get; set; }
         public IWallet? Wallet { get; set; }
-        public IWebSocketsManager? WebSocketsManager { get; set; }
+        public IWebSocketsManager WebSocketsManager { get; set; } = new WebSocketsManager();
 
         public ProtectedPrivateKey? NodeKey { get; set; }
         public ProtectedPrivateKey? OriginalSignerKey { get; set; } // TODO: please explain what it does
@@ -168,6 +181,6 @@ namespace Nethermind.Runner.Ethereum.Api
         public ChainSpec? ChainSpec { get; set; }
         public DisposableStack DisposeStack { get; } = new DisposableStack();
         public IList<INethermindPlugin> Plugins { get; } = new List<INethermindPlugin>();
-        public IList<IPublisher> Publishers { get; } = new List<IPublisher>(); // this should be called publishers?
+        public IList<IPublisher> Publishers { get; } = new List<IPublisher>(); // this should be called publishers
     }
 }

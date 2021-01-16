@@ -4,7 +4,17 @@ on:
   push:
     tags:
     - '*'
+    inputs:
+      branch:
+        description: 'Branch to get tests from'
+        required: false
+        default: 'master'
   workflow_dispatch:
+    inputs:
+      branch:
+        description: 'Branch to get tests from'
+        required: false
+        default: 'master'
 
 jobs:
   posdao-tests:
@@ -16,20 +26,28 @@ jobs:
         sudo apt-get update
         sudo apt-get install libsnappy-dev libc6-dev libc6
     - name: Cloning Nethermind repo
-      run: |
-        git clone https://github.com/NethermindEth/nethermind.git --recursive
-        cd nethermind
-        git submodule update --init src/rocksdb-sharp src/int256 src/Dirichlet
-    - name: Cloning posdao-test repo from POA
-      run: |
-        git clone https://github.com/poanetwork/posdao-test-setup
+      uses: actions/checkout@v2
+      with:
+        submodules: recursive
+        path: nethermind
+    - name: Cloning posdao-test-setup repo from Nethermind
+      uses: actions/checkout@v2
+      with:
+        repository: NethermindEth/posdao-test-setup
+        ref: ${{ github.event.inputs.branch }}
+        submodules: recursive
+        path: posdao-test-setup
     - name: Building Nethermind binary
       run: |
         cd nethermind
         mkdir bin
         cd src/Nethermind
         dotnet build Nethermind.sln -c Release
-        cp -r Nethermind.Runner/bin/Release/netcoreapp3.1/* /home/runner/work/nethermind/nethermind/nethermind/bin/
+        cp -r Nethermind.Runner/bin/Release/net5.0/* /home/runner/work/nethermind/nethermind/nethermind/bin/
+    - name: Setup the Node.js
+      uses: actions/setup-node@v1.4.4
+      with:
+        node-version: '12'
     - name: Running POSDAO tests
       run: |
         cd posdao-test-setup

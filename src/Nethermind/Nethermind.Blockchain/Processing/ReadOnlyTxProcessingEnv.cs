@@ -19,32 +19,37 @@ using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Logging;
 using Nethermind.State;
+using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Blockchain.Processing
 {
     public class ReadOnlyTxProcessingEnv
     {
-        public IStateReader StateReader;
-        public IStateProvider StateProvider;
-        public IStorageProvider StorageProvider;
-        public ITransactionProcessor TransactionProcessor;
-        public IBlockTree BlockTree;
-        
+        public IStateReader StateReader { get; }
+        public IStateProvider StateProvider { get; }
+        public IStorageProvider StorageProvider { get; }
+        public ITransactionProcessor TransactionProcessor { get; set; }
+        public IBlockTree BlockTree { get; }
+        public IReadOnlyDbProvider DbProvider { get; }
+
         private IBlockhashProvider BlockhashProvider;
         private IVirtualMachine VirtualMachine;
-
+        
         public ReadOnlyTxProcessingEnv(
             IReadOnlyDbProvider readOnlyDbProvider,
+            ITrieNodeResolver trieStore,
             ReadOnlyBlockTree readOnlyBlockTree,
             ISpecProvider specProvider,
             ILogManager logManager)
         {
-            ISnapshotableDb stateDb = readOnlyDbProvider.StateDb;
-            IDb codeDb = readOnlyDbProvider.CodeDb;
-
-            StateReader = new StateReader(stateDb, codeDb, logManager);
-            StateProvider = new StateProvider(stateDb, codeDb, logManager);
-            StorageProvider = new StorageProvider(stateDb, StateProvider, logManager);
+            // TODO: reuse cache for state -> now when the trie is not reusing cache any more
+            DbProvider = readOnlyDbProvider;
+            ISnapshotableDb codeDb = readOnlyDbProvider.CodeDb;
+            
+            ReadOnlyTrieStore readOnlyTrieStore = new ReadOnlyTrieStore(trieStore);
+            StateReader = new StateReader(readOnlyTrieStore, codeDb, logManager);
+            StateProvider = new StateProvider(readOnlyTrieStore, codeDb, logManager);
+            StorageProvider = new StorageProvider(readOnlyTrieStore, StateProvider, logManager);
 
             BlockTree = readOnlyBlockTree;
             BlockhashProvider = new BlockhashProvider(BlockTree, logManager);

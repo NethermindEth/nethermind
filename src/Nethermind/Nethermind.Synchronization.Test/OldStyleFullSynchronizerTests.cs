@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -29,10 +29,12 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Specs;
+using Nethermind.State.Witnesses;
 using Nethermind.Stats;
 using Nethermind.Synchronization.Blocks;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
+using Nethermind.Trie.Pruning;
 using NSubstitute;
 using NUnit.Framework;
 using BlockTree = Nethermind.Blockchain.BlockTree;
@@ -46,25 +48,42 @@ namespace Nethermind.Synchronization.Test
         private readonly TimeSpan _standardTimeoutUnit = TimeSpan.FromMilliseconds(4000);
         
         [SetUp]
-        public void Setup()
+        public async Task Setup()
         {
             _genesisBlock = Build.A.Block.WithNumber(0).TestObject;
             _blockTree = Build.A.BlockTree(_genesisBlock).OfChainLength(1).TestObject;
-            MemDbProvider dbProvider = new MemDbProvider();
+            IDbProvider dbProvider = await TestMemDbProvider.InitAsync();
             _stateDb = dbProvider.StateDb;
             _codeDb = dbProvider.CodeDb;
-            _receiptsDb = dbProvider.ReceiptsDb;
             _receiptStorage = Substitute.For<IReceiptStorage>();
             SyncConfig quickConfig = new SyncConfig();
             quickConfig.FastSync = false;
 
-            var stats = new NodeStatsManager(new StatsConfig(), LimboLogs.Instance);
+            var stats = new NodeStatsManager(LimboLogs.Instance);
             _pool = new SyncPeerPool(_blockTree, stats, 25, LimboLogs.Instance);
             SyncConfig syncConfig = new SyncConfig();
-            SyncProgressResolver resolver = new SyncProgressResolver(_blockTree, _receiptStorage, _stateDb, dbProvider.BeamStateDb, syncConfig, LimboLogs.Instance);
+            SyncProgressResolver resolver = new SyncProgressResolver(
+                _blockTree,
+                _receiptStorage,
+                _stateDb,
+                dbProvider.BeamStateDb,
+                new TrieStore(_stateDb, LimboLogs.Instance),  
+                syncConfig,
+                LimboLogs.Instance);
             MultiSyncModeSelector syncModeSelector = new MultiSyncModeSelector(resolver, _pool, syncConfig, LimboLogs.Instance);
             _synchronizer = new Synchronizer(dbProvider, MainnetSpecProvider.Instance, _blockTree, _receiptStorage, Always.Valid,Always.Valid, _pool, stats, syncModeSelector, syncConfig, LimboLogs.Instance);
-            _syncServer = new SyncServer(_stateDb, _codeDb, _blockTree, _receiptStorage, Always.Valid, Always.Valid, _pool, syncModeSelector, quickConfig, LimboLogs.Instance);
+            _syncServer = new SyncServer(
+                _stateDb,
+                _codeDb,
+                _blockTree,
+                _receiptStorage,
+                Always.Valid,
+                Always.Valid,
+                _pool,
+                syncModeSelector,
+                quickConfig,
+                new WitnessCollector(new MemDb(), LimboLogs.Instance), 
+                LimboLogs.Instance);
         }
 
         [TearDown]
@@ -291,7 +310,7 @@ namespace Nethermind.Synchronization.Test
             _pool.AddPeer(miner2);
             resetEvent.WaitOne(_standardTimeoutUnit);
 
-            await miner2.Received().GetBlockHeaders(6, 1, 0, default(CancellationToken));
+            await miner2.Received().GetBlockHeaders(6, 1, 0, default);
         }
 
         [Test]
@@ -329,7 +348,7 @@ namespace Nethermind.Synchronization.Test
             _pool.AddPeer(miner2);
             resetEvent.WaitOne(_standardTimeoutUnit);
 
-            await miner2.Received().GetBlockHeaders(6, 1, 0, default(CancellationToken));
+            await miner2.Received().GetBlockHeaders(6, 1, 0, default);
         }
 
         [Test]

@@ -16,6 +16,7 @@
 
 using System.Collections.Generic;
 using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Logging;
 using Nethermind.Stats;
@@ -27,25 +28,25 @@ using NUnit.Framework;
 
 namespace Nethermind.Synchronization.Test
 {
-    [Parallelizable(ParallelScope.Self)]
-    [TestFixture]
+    [TestFixture, Parallelizable(ParallelScope.All)]
     public class SyncReportTest
     {
         [TestCase(true, false)]
         [TestCase(true, true)]
         [TestCase(false, false)]
-        public void Smoke(bool fastSync, bool fastBlocks)
+        public async Task Smoke(bool fastSync, bool fastBlocks)
         {
             ISyncModeSelector selector = Substitute.For<ISyncModeSelector>();
             ISyncPeerPool pool = Substitute.For<ISyncPeerPool>();
             pool.InitializedPeersCount.Returns(1);
             
             Queue<SyncMode> _syncModes = new Queue<SyncMode>();
-            _syncModes.Enqueue(SyncMode.None);
+            _syncModes.Enqueue(SyncMode.WaitingForBlock);
             _syncModes.Enqueue(SyncMode.FastSync);
             _syncModes.Enqueue(SyncMode.Full);
             _syncModes.Enqueue(SyncMode.FastBlocks);
             _syncModes.Enqueue(SyncMode.StateNodes);
+            _syncModes.Enqueue(SyncMode.Disconnected);
 
             SyncConfig syncConfig = new SyncConfig();
             syncConfig.FastBlocks = fastBlocks;
@@ -53,11 +54,11 @@ namespace Nethermind.Synchronization.Test
             
             SyncReport syncReport = new SyncReport(pool, Substitute.For<INodeStatsManager>(), selector,  syncConfig, LimboLogs.Instance, 10);
             selector.Current.Returns((ci) => _syncModes.Count > 0 ? _syncModes.Dequeue() : SyncMode.Full);
-            Thread.Sleep(200);
+            await Task.Delay(200);
             syncReport.FastBlocksHeaders.MarkEnd();
             syncReport.FastBlocksBodies.MarkEnd();
             syncReport.FastBlocksReceipts.MarkEnd();
-            Thread.Sleep(20);
+            await Task.Delay(20);
         }
     }
 }

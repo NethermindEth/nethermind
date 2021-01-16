@@ -70,7 +70,8 @@ namespace Nethermind.Evm
             }
             
             Address recipient = tx.To ?? ContractAddress.From(tx.SenderAddress, _stateProvider.GetNonce(tx.SenderAddress));
-
+            
+            // TODO: this is possibly an unnecessary calculation inside EIP-658
             _stateProvider.RecalculateStateRoot();
             Keccak stateRoot = _specProvider.GetSpec(block.Number).IsEip658Enabled ? null : _stateProvider.StateRoot;
             if (txTracer.IsTracingReceipt) txTracer.MarkAsFailed(recipient, tx.GasLimit, Array.Empty<byte>(), reason ?? "invalid", stateRoot);
@@ -240,6 +241,9 @@ namespace Nethermind.Evm
                 ExecutionType executionType = transaction.IsContractCreation ? ExecutionType.Create : ExecutionType.Call;
                 using (EvmState state = new EvmState(unspentGas, env, executionType, true, false))
                 {
+                    state.WarmUp(transaction.AccountAccessList, transaction.StorageAccessList); // eip-2930
+                    state.WarmUp(sender); // eip-2929
+                    state.WarmUp(recipient); // eip-2929
                     substate = _virtualMachine.Run(state, txTracer);
                     unspentGas = state.GasAvailable;
                 }
@@ -257,7 +261,7 @@ namespace Nethermind.Evm
                     if (transaction.IsContractCreation)
                     {
                         long codeDepositGasCost = CodeDepositHandler.CalculateCost(substate.Output.Length, spec);
-                        if (unspentGas < codeDepositGasCost && spec.IsEip2Enabled)
+                        if (unspentGas < codeDepositGasCost && spec.ChargeForTopLevelCreate)
                         {
                             throw new OutOfGasException();
                         }

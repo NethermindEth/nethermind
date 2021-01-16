@@ -16,9 +16,11 @@
 
 using System;
 using System.IO;
+using System.IO.Abstractions;
 using System.Security;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
+using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
 using Nethermind.KeyStore;
 using Nethermind.KeyStore.Config;
@@ -28,26 +30,29 @@ namespace Nethermind.Wallet
 {
     public class NodeKeyManager : INodeKeyManager
     {
-        private const string UnsecuredNodeKeyFilePath = "node.key.plain";
+        public const string UnsecuredNodeKeyFilePath = "node.key.plain";
 
         private readonly ICryptoRandom _cryptoRandom;
         private readonly IKeyStore _keyStore;
         private readonly IKeyStoreConfig _config;
         private readonly ILogger _logger;
         private readonly IPasswordProvider _passwordProvider;
+        private readonly IFileSystem _fileSystem;
 
         public NodeKeyManager(
             ICryptoRandom cryptoRandom, 
             IKeyStore keyStore, 
             IKeyStoreConfig config, 
             ILogManager logManager,
-            IPasswordProvider passwordProvider)
+            IPasswordProvider passwordProvider,
+            IFileSystem fileSystem)
         {
             _cryptoRandom = cryptoRandom ?? throw new ArgumentNullException(nameof(cryptoRandom));
             _keyStore = keyStore ?? throw new ArgumentNullException(nameof(keyStore));
             _config = config ?? throw new ArgumentNullException(nameof(config));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _passwordProvider = passwordProvider ?? throw new ArgumentNullException(nameof(passwordProvider));
+            _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
         }
 
         /// <summary>
@@ -74,59 +79,64 @@ namespace Nethermind.Wallet
         [DoNotUseInSecuredContext("This stored the node key in plaintext - it is just one step further to the full node key protection")]
         public ProtectedPrivateKey LoadNodeKey()
         {
-            // this is not secure at all but this is just the node key, nothing critical so far, will use the key store here later and allow to manage by password when launching the node
-            if (_config.TestNodeKey == null)
+            ProtectedPrivateKey LoadKeyFromFile()
             {
                 string oldPath = UnsecuredNodeKeyFilePath.GetApplicationResourcePath();
-                string newPath = UnsecuredNodeKeyFilePath.GetApplicationResourcePath(_config.KeyStoreDirectory);
-                
-                if (!File.Exists(newPath))
-                {
-                    if (_logger.IsInfo) _logger.Info("Generating private key for the node (no node key in configuration) - stored in plain + key store for JSON RPC unlocking");
-                    using var privateKeyGenerator = new PrivateKeyGenerator(_cryptoRandom);
-                    PrivateKey nodeKey = File.Exists(oldPath) ? new PrivateKey(File.ReadAllBytes(oldPath)) : privateKeyGenerator.Generate();
-                    var keyStoreDirectory = _config.KeyStoreDirectory.GetApplicationResourcePath();
-                    Directory.CreateDirectory(keyStoreDirectory);
-                    File.WriteAllBytes(newPath, nodeKey.KeyBytes);
-                    SecureString nodeKeyPassword = CreateNodeKeyPassword(8);
-                    _keyStore.StoreKey(nodeKey, nodeKeyPassword);
-                    if(_logger.IsInfo) _logger.Info("Store this password for unlocking the node key for JSON RPC - this is not secure - this log message will be in your log files. Use only in DEV contexts.");
-                    if(_logger.IsInfo) _logger.Info(nodeKeyPassword.Unsecure());
-                }
-
-                using var privateKey = new PrivateKey(File.ReadAllBytes(newPath));
+                string newPath = (_config.EnodeKeyFile ?? UnsecuredNodeKeyFilePath).GetApplicationResourcePath(_config.KeyStoreDirectory);
+                GenerateKeyIfNeeded(newPath, oldPath);
+                using var privateKey = new PrivateKey(_fileSystem.File.ReadAllBytes(newPath));
                 return new ProtectedPrivateKey(privateKey, _cryptoRandom);
             }
 
-            return new ProtectedPrivateKey(new PrivateKey(_config.TestNodeKey), _cryptoRandom);
+            void GenerateKeyIfNeeded(string newFile, string oldFile)
+            {
+                if (!_fileSystem.File.Exists(newFile))
+                {
+                    if (_logger.IsInfo) _logger.Info("Generating private key for the node (no node key in configuration) - stored in plain + key store for JSON RPC unlocking");
+                    using var privateKeyGenerator = new PrivateKeyGenerator(_cryptoRandom);
+                    PrivateKey nodeKey = _fileSystem.File.Exists(oldFile) ? new PrivateKey(_fileSystem.File.ReadAllBytes(oldFile)) : privateKeyGenerator.Generate();
+                    var keyStoreDirectory = _config.KeyStoreDirectory.GetApplicationResourcePath();
+                    _fileSystem.Directory.CreateDirectory(keyStoreDirectory);
+                    _fileSystem.File.WriteAllBytes(newFile, nodeKey.KeyBytes);
+                    SecureString nodeKeyPassword = CreateNodeKeyPassword(8);
+                    _keyStore.StoreKey(nodeKey, nodeKeyPassword);
+                    if (_logger.IsInfo) _logger.Info("Store this password for unlocking the node key for JSON RPC - this is not secure - this log message will be in your log files. Use only in DEV contexts.");
+                    if (_logger.IsInfo) _logger.Info(nodeKeyPassword.Unsecure());
+                }
+            }
+
+            if (_config.TestNodeKey != null) return new ProtectedPrivateKey(new PrivateKey(_config.TestNodeKey), _cryptoRandom);
+            var key = LoadKeyForAccount(_config.EnodeAccount);
+            return key ?? LoadKeyFromFile();
         }
 
-        public ProtectedPrivateKey LoadSignerKey()
+        public ProtectedPrivateKey LoadSignerKey() => LoadKeyForAccount(_config.BlockAuthorAccount) ?? LoadNodeKey();
+
+        private ProtectedPrivateKey LoadKeyForAccount(string account)
         {
-            if(_config.BlockAuthorAccount != null)
+            if (!string.IsNullOrEmpty(account))
             {
-                SecureString password = _passwordProvider.GetPassword();
+                Address blockAuthor = new Address(Bytes.FromHexString(account));
+                SecureString password = _passwordProvider.GetPassword(blockAuthor);
 
                 try
                 {
-                    (ProtectedPrivateKey privateKey, Result result) = _keyStore.GetProtectedKey(new Address(_config.BlockAuthorAccount), password);
+                    (ProtectedPrivateKey privateKey, Result result) = _keyStore.GetProtectedKey(new Address(account), password);
                     if (result == Result.Success)
                     {
                         return privateKey;
                     }
-                    else
-                    {
-                        if(_logger.IsError) _logger.Error($"Not able to unlock the key for {_config.BlockAuthorAccount}");
-                        // continue to the other methods
-                    }
+
+                    if (_logger.IsError) _logger.Error($"Not able to unlock the key for {account}");
+                    // continue to the other methods
                 }
                 catch (Exception e)
                 {
-                    if(_logger.IsError) _logger.Error($"Not able to unlock the key for {_config.BlockAuthorAccount}", e);
+                    if (_logger.IsError) _logger.Error($"Not able to unlock the key for {account}", e);
                 }
             }
 
-            return LoadNodeKey();
+            return null;
         }
     }
 }

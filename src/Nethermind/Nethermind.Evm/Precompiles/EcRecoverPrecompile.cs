@@ -20,9 +20,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
-using Nethermind.Specs;
 using Nethermind.Logging;
-using Org.BouncyCastle.Asn1.Cms;
 
 namespace Nethermind.Evm.Precompiles
 {

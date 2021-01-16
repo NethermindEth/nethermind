@@ -24,6 +24,7 @@ namespace Nethermind.Stats.Model
         Nethermind,
         Parity,
         OpenEthereum,
+        Trinity,
         Unknown
     }
 }

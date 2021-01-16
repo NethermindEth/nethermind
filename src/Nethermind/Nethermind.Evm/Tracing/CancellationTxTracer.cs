@@ -297,7 +297,7 @@ namespace Nethermind.Evm.Tracing
             }
         }
 
-        public void SetOperationStorage(Address address, UInt256 storageIndex, byte[] newValue, byte[] currentValue)
+        public void SetOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> newValue, ReadOnlySpan<byte> currentValue)
         {
             _token.ThrowIfCancellationRequested();
             if (_innerTracer.IsTracingOpLevelStorage)

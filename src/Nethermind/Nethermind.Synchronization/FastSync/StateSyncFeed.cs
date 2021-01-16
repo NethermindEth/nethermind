@@ -32,13 +32,15 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Trie;
+using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Synchronization.FastSync
 {
     public partial class StateSyncFeed : SyncFeed<StateSyncBatch?>, IDisposable
     {
-        private const int AlreadySavedCapacity = 1024 * 64;
-        private const int MaxRequestSize = 384;
+        public const int AlreadySavedCapacity = 1024 * 1024;
+        public const int MaxRequestSize = 384;
+
         private const StateSyncBatch EmptyBatch = null;
 
         private static readonly AccountDecoder AccountDecoder = new AccountDecoder();
@@ -74,12 +76,12 @@ namespace Nethermind.Synchronization.FastSync
         private LruKeyCache<Keccak> _alreadySaved = new LruKeyCache<Keccak>(AlreadySavedCapacity, "saved nodes");
         private readonly HashSet<Keccak> _codesSameAsNodes = new HashSet<Keccak>();
 
-        private StateSyncProgress _syncProgress;
+        private BranchProgress _branchProgress;
         private int _hintsToResetRoot;
         private long _blockNumber;
 
         public StateSyncFeed(
-            ISnapshotableDb codeDb,
+            IDb codeDb,
             ISnapshotableDb stateDb,
             IDb tempDb,
             ISyncModeSelector syncModeSelector,
@@ -98,7 +100,7 @@ namespace Nethermind.Synchronization.FastSync
             byte[] progress = _codeDb.Get(_fastSyncProgressKey);
             _data = new DetailedProgress(_blockTree.ChainId, progress);
             _pendingItems = new PendingSyncItems();
-            _syncProgress = new StateSyncProgress(0, _logger);
+            _branchProgress = new BranchProgress(0, _logger);
         }
 
         private void SyncModeSelectorOnChanged(object? sender, SyncModeChangedEventArgs e)
@@ -126,7 +128,7 @@ namespace Nethermind.Synchronization.FastSync
             {
                 if (syncItem.Level <= 2)
                 {
-                    _syncProgress.ReportSynced(
+                    _branchProgress.ReportSynced(
                         syncItem.Level,
                         syncItem.ParentBranchChildIndex,
                         syncItem.BranchChildIndex,
@@ -180,7 +182,7 @@ namespace Nethermind.Synchronization.FastSync
                 }
             }
 
-            _pendingItems.PushToSelectedStream(syncItem, _syncProgress.LastProgress);
+            _pendingItems.PushToSelectedStream(syncItem, _branchProgress.LastProgress);
             if (_logger.IsTrace) _logger.Trace($"Added a node {syncItem.Hash} - {reason}");
             return AddNodeResult.Added;
         }
@@ -285,12 +287,12 @@ namespace Nethermind.Synchronization.FastSync
 
             if (syncItem.IsRoot)
             {
-                if (_logger.IsInfo) _logger.Info($"Saving root {syncItem.Hash} of {_syncProgress.CurrentSyncBlock}");
+                if (_logger.IsInfo) _logger.Info($"Saving root {syncItem.Hash} of {_branchProgress.CurrentSyncBlock}");
                 
                 Interlocked.Exchange(ref _rootSaved, 1);
             }
 
-            _syncProgress.ReportSynced(syncItem.Level, syncItem.ParentBranchChildIndex, syncItem.BranchChildIndex, syncItem.NodeDataType, NodeProgressState.Saved);
+            _branchProgress.ReportSynced(syncItem.Level, syncItem.ParentBranchChildIndex, syncItem.BranchChildIndex, syncItem.NodeDataType, NodeProgressState.Saved);
             PossiblySaveDependentNodes(syncItem.Hash);
         }
 
@@ -304,7 +306,7 @@ namespace Nethermind.Synchronization.FastSync
                 }
 
                 _dependencies = new Dictionary<Keccak, HashSet<DependentItem>>();
-                _alreadySaved = new LruKeyCache<Keccak>(AlreadySavedCapacity, "saved nodes");
+                // _alreadySaved = new LruKeyCache<Keccak>(AlreadySavedCapacity, "saved nodes");
             }
 
             if (_pendingItems.Count != 0)
@@ -347,7 +349,7 @@ namespace Nethermind.Synchronization.FastSync
                     {
                         _lastReview = DateTime.UtcNow;
                         string reviewMessage = _pendingItems.RecalculatePriorities();
-                        if (_logger.IsInfo) _logger.Info(reviewMessage);
+                        if (_logger.IsDebug) _logger.Debug(reviewMessage);
                     }
 
                     _handleWatch.Restart();
@@ -453,7 +455,7 @@ namespace Nethermind.Synchronization.FastSync
                             ? SyncResponseHandlingResult.LesserQuality
                             : SyncResponseHandlingResult.OK;
 
-                    _data.DisplayProgressReport(_pendingRequests.Count, _logger);
+                    _data.DisplayProgressReport(_pendingRequests.Count, _branchProgress, _logger);
 
                     long total = _handleWatch.ElapsedMilliseconds + _networkWatch.ElapsedMilliseconds;
                     if (total != 0)
@@ -504,7 +506,7 @@ namespace Nethermind.Synchronization.FastSync
         {
             NodeDataType nodeDataType = currentStateSyncItem.NodeDataType;
             TrieNode trieNode = new TrieNode(NodeType.Unknown, currentResponseItem);
-            trieNode.ResolveNode(null);
+            trieNode.ResolveNode(NullTrieNodeResolver.Instance); // TODO: will this work now?
             switch (trieNode.NodeType)
             {
                 case NodeType.Unknown:
@@ -536,12 +538,12 @@ namespace Nethermind.Synchronization.FastSync
                             }
                             else
                             {
-                                _syncProgress.ReportSynced(currentStateSyncItem.Level + 1, currentStateSyncItem.BranchChildIndex, childIndex, currentStateSyncItem.NodeDataType, NodeProgressState.AlreadySaved);
+                                _branchProgress.ReportSynced(currentStateSyncItem.Level + 1, currentStateSyncItem.BranchChildIndex, childIndex, currentStateSyncItem.NodeDataType, NodeProgressState.AlreadySaved);
                             }
                         }
                         else
                         {
-                            _syncProgress.ReportSynced(currentStateSyncItem.Level + 1, currentStateSyncItem.BranchChildIndex, childIndex, currentStateSyncItem.NodeDataType, NodeProgressState.Empty);
+                            _branchProgress.ReportSynced(currentStateSyncItem.Level + 1, currentStateSyncItem.BranchChildIndex, childIndex, currentStateSyncItem.NodeDataType, NodeProgressState.Empty);
                         }
                     }
 
@@ -552,11 +554,19 @@ namespace Nethermind.Synchronization.FastSync
 
                     break;
                 case NodeType.Extension:
-                    Keccak next = trieNode[0].Keccak;
+                    Keccak? next = trieNode.GetChild(NullTrieNodeResolver.Instance, 0)?.Keccak;
                     if (next != null)
                     {
                         DependentItem dependentItem = new DependentItem(currentStateSyncItem, currentResponseItem, 1);
-                        AddNodeResult addResult = AddNodeToPending(new StateSyncItem(next, nodeDataType, currentStateSyncItem.Level + trieNode.Path.Length, CalculateRightness(trieNode.NodeType, currentStateSyncItem, 0)) {ParentBranchChildIndex = currentStateSyncItem.BranchChildIndex}, dependentItem, "extension child");
+                        AddNodeResult addResult = AddNodeToPending(
+                            new StateSyncItem(
+                                next,
+                                nodeDataType,
+                                currentStateSyncItem.Level + trieNode.Path!.Length,
+                                CalculateRightness(trieNode.NodeType, currentStateSyncItem, 0))
+                            {ParentBranchChildIndex = currentStateSyncItem.BranchChildIndex},
+                            dependentItem,
+                            "extension child");
                         if (addResult == AddNodeResult.AlreadySaved)
                         {
                             SaveNode(currentStateSyncItem, currentResponseItem);
@@ -785,7 +795,7 @@ namespace Nethermind.Synchronization.FastSync
             _data.LastRequestedNodesCount = _data.RequestedNodesCount;
             if (_rootNode != stateRoot)
             {
-                _syncProgress = new StateSyncProgress(blockNumber, _logger);
+                _branchProgress = new BranchProgress(blockNumber, _logger);
                 _blockNumber = blockNumber;
                 _rootNode = stateRoot;
                 lock (_dependencies) _dependencies.Clear();
@@ -825,7 +835,7 @@ namespace Nethermind.Synchronization.FastSync
 
                 if (!hasOnlyRootNode)
                 {
-                    AddNodeToPending(new StateSyncItem(_rootNode, NodeDataType.State, 0, 0), null, "initial");
+                    AddNodeToPending(new StateSyncItem(_rootNode, NodeDataType.State), null, "initial");
                 }
             }
         }

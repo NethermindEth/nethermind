@@ -26,6 +26,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Stats;
+using Nethermind.Stats.Model;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Peers.AllocationStrategies;
@@ -35,7 +36,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Synchronization.Test.ParallelSync
 {
-    [TestFixture]
+    [TestFixture, Parallelizable(ParallelScope.All)]
     public class SyncDispatcherTests
     {
         private class TestSyncPeerPool : ISyncPeerPool
@@ -103,6 +104,11 @@ namespace Nethermind.Synchronization.Test.ParallelSync
             public Task StopAsync()
             {
                 return Task.CompletedTask;
+            }
+
+            public PeerInfo GetPeer(Node node)
+            {
+                return null;
             }
         }
 

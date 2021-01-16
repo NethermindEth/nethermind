@@ -33,6 +33,7 @@ namespace Nethermind.Synchronization.FastBlocks
 {
     public class ReceiptsSyncFeed : ActivatedSyncFeed<ReceiptsSyncBatch?>
     {
+        private const int MinReceiptBlock = 1;
         private int _requestSize = GethSyncLimits.MaxReceiptFetch;
 
         private readonly ILogger _logger;
@@ -45,8 +46,10 @@ namespace Nethermind.Synchronization.FastBlocks
 
         private SyncStatusList _syncStatusList;
         private readonly long _pivotNumber;
-
-        private bool ShouldFinish => !_syncConfig.DownloadReceiptsInFastSync || _receiptStorage.LowestInsertedReceiptBlockNumber == 1;
+        private readonly long _barrier;
+        
+        private bool ShouldFinish => !_syncConfig.DownloadReceiptsInFastSync || AllReceiptsDownloaded;
+        private bool AllReceiptsDownloaded => _receiptStorage.LowestInsertedReceiptBlockNumber <= _barrier;
 
         public ReceiptsSyncFeed(
             ISyncModeSelector syncModeSelector,
@@ -73,6 +76,10 @@ namespace Nethermind.Synchronization.FastBlocks
             }
 
             _pivotNumber = _syncConfig.PivotNumberParsed;
+            _barrier = _syncConfig.AncientReceiptsBarrierCalc;
+            
+            if(_logger.IsInfo) _logger.Info($"Using pivot {_pivotNumber} and barrier {_barrier} in receipts sync");
+            
             _syncStatusList = new SyncStatusList(
                 _blockTree,
                 _pivotNumber,
@@ -89,8 +96,8 @@ namespace Nethermind.Synchronization.FastBlocks
         private bool ShouldBuildANewBatch()
         {
             bool shouldDownloadReceipts = _syncConfig.DownloadReceiptsInFastSync;
-            bool allReceiptsDownloaded = _receiptStorage.LowestInsertedReceiptBlockNumber == 1;
-            bool isGenesisDownloaded = _syncStatusList.LowestInsertWithoutGaps == 1;
+            bool allReceiptsDownloaded = AllReceiptsDownloaded;
+            bool isGenesisDownloaded = _syncStatusList.LowestInsertWithoutGaps <= MinReceiptBlock;
             bool noBatchesLeft = !shouldDownloadReceipts
                                  || allReceiptsDownloaded
                                  || isGenesisDownloaded;
@@ -212,8 +219,11 @@ namespace Nethermind.Synchronization.FastBlocks
                         Block block = _blockTree.FindBlock(blockInfo.BlockHash);
                         if (block == null)
                         {
-                            if(_logger.IsWarn) _logger.Warn($"Could not find block {blockInfo.BlockHash}");
-                            if (_logger.IsWarn) _logger.Warn($"Could not find block {blockInfo.BlockHash}");
+                            if (blockInfo.BlockNumber >= _barrier)
+                            {
+                                if (_logger.IsWarn) _logger.Warn($"Could not find block {blockInfo.BlockHash}");
+                            }
+                            
                             _syncStatusList.MarkUnknown(blockInfo.BlockNumber);
                         }
                         else

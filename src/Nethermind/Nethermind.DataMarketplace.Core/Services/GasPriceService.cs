@@ -60,13 +60,19 @@ namespace Nethermind.DataMarketplace.Core.Services
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
-        public async Task<UInt256> GetCurrentAsync()
+        public async Task<UInt256> GetCurrentGasPriceAsync()
         {
             NdmConfig? config = await _configManager.GetAsync(_configId);
             return config?.GasPrice ?? 20.GWei();
         }
+        
+        public async Task<UInt256> GetCurrentRefundGasPriceAsync()
+        {
+            NdmConfig? config = await _configManager.GetAsync(_configId);
+            return config?.RefundGasPrice ?? 20.GWei();
+        }
 
-        public async Task SetAsync(string gasPriceOrType)
+        public async Task SetGasPriceOrTypeAsync(string gasPriceOrType)
         {
             string type;
             bool isHex = gasPriceOrType.StartsWith("0x");
@@ -105,8 +111,52 @@ namespace Nethermind.DataMarketplace.Core.Services
                 if (_logger.IsInfo) _logger.Info($"Updated gas price: {config.GasPrice} wei.");
             }
         }
+        
+        public async Task SetRefundGasPriceAsync(UInt256 gasPrice)
+        {
+            if (gasPrice <= 0)
+            {
+                throw new ArgumentException("Refund gas price must be greater than 0.");
+            }
 
-        public async Task UpdateAsync()
+            NdmConfig? config = await _configManager.GetAsync(_configId);
+            if (config == null)
+            {
+                if (_logger.IsError) _logger.Error($"Failed to retrieve config {_configId} to update refund gas price.");
+                throw new InvalidOperationException($"Failed to retrieve config {_configId} to update refund gas price.");
+            }
+
+            config.RefundGasPrice = gasPrice;
+            await _configManager.UpdateAsync(config);
+            if (_logger.IsInfo) _logger.Info($"Updated refund gas price: {config.RefundGasPrice} wei.");
+        }
+        
+        public async Task<UInt256> GetCurrentPaymentClaimGasPriceAsync()
+        {
+            NdmConfig? config = await _configManager.GetAsync(_configId);
+            return config?.PaymentClaimGasPrice ?? 20.GWei();
+        }
+        
+        public async Task SetPaymentClaimGasPriceAsync(UInt256 gasPrice)
+        {
+            if (gasPrice <= 0)
+            {
+                throw new ArgumentException("Payment claim gas price must be greater than 0.");
+            }
+
+            NdmConfig? config = await _configManager.GetAsync(_configId);
+            if (config == null)
+            {
+                if (_logger.IsError) _logger.Error($"Failed to retrieve config {_configId} to update payment claim  gas price.");
+                throw new InvalidOperationException($"Failed to retrieve config {_configId} to update payment claim  gas price.");
+            }
+
+            config.PaymentClaimGasPrice = gasPrice;
+            await _configManager.UpdateAsync(config);
+            if (_logger.IsInfo) _logger.Info($"Updated payment claim  gas price: {config.PaymentClaimGasPrice} wei.");
+        }
+
+        public async Task UpdateGasPriceAsync()
         {
             NdmConfig? config = await _configManager.GetAsync(_configId);
             if (config == null)
@@ -130,7 +180,7 @@ namespace Nethermind.DataMarketplace.Core.Services
                 ? new GasPriceDetails(config.GasPrice, 0)
                 : GasPriceDetails.Empty;
 
-            _updatedAt = _timestamper.EpochSeconds;
+            _updatedAt = _timestamper.UnixTime.Seconds;
             Types = new GasPriceTypes(new GasPriceDetails(GetGasPriceGwei(result.SafeLow), result.SafeLowWait),
                 new GasPriceDetails(GetGasPriceGwei(result.Average), result.AvgWait),
                 new GasPriceDetails(GetGasPriceGwei(result.Fast), result.FastWait),

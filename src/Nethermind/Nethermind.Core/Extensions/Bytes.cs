@@ -18,12 +18,10 @@ using System;
 using System.Buffers.Binary;
 using System.Collections;
 using System.Collections.Generic;
-using System.ComponentModel.Design;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Numerics;
-using System.Reflection.Metadata;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -40,7 +38,7 @@ namespace Nethermind.Core.Extensions
 
         private class BytesEqualityComparer : EqualityComparer<byte[]>
         {
-            public override bool Equals(byte[] x, byte[] y)
+            public override bool Equals(byte[]? x, byte[]? y)
             {
                 return AreEqual(x, y);
             }
@@ -53,7 +51,7 @@ namespace Nethermind.Core.Extensions
 
         private class BytesComparer : Comparer<byte[]>
         {
-            public override int Compare(byte[] x, byte[] y)
+            public override int Compare(byte[]? x, byte[]? y)
             {
                 if (x == null)
                 {
@@ -124,9 +122,19 @@ namespace Nethermind.Core.Extensions
 
         public static bool IsZero(this byte[] bytes)
         {
+            return IsZero((ReadOnlySpan<byte>)bytes);
+        }
+        
+        public static bool IsZero(this Span<byte> bytes)
+        {
+            return IsZero((ReadOnlySpan<byte>)bytes);
+        }
+        
+        public static bool IsZero(this ReadOnlySpan<byte> bytes)
+        {
             if (bytes.Length == 32)
             {
-                return bytes[31] == 0 && bytes.AsSpan().SequenceEqual(Zero32);
+                return bytes[31] == 0 && bytes.SequenceEqual(Zero32);
             }
 
             for (int i = 0; i < bytes.Length / 2; i++)
@@ -598,8 +606,9 @@ namespace Nethermind.Core.Extensions
             State stateToPass = new State(bytes, leadingZerosFirstCheck, withZeroX, withEip55Checksum);
             return string.Create(length, stateToPass, (chars, state) =>
             {
-                string hashHex = null;
-                if (state.WithEip55Checksum)
+                string? hashHex = null;
+                bool isWithChecksum = state.WithEip55Checksum; 
+                if (isWithChecksum)
                 {
                     // this path is rarely used - only in wallets
                     hashHex = Keccak.Compute(state.Bytes.ToHexString(false)).ToString(false);
@@ -623,14 +632,14 @@ namespace Nethermind.Core.Extensions
                     {
                         char char1 = (char) val;
                         chars[i - oddity] =
-                            state.WithEip55Checksum && char.IsLetter(char1) && hashHex[i - offset0x] > '7'
+                            isWithChecksum && char.IsLetter(char1) && hashHex![i - offset0x] > '7'
                                 ? char.ToUpper(char1)
                                 : char1;
                     }
 
                     char char2 = (char) (val >> 16);
                     chars[i + 1 - oddity] =
-                        state.WithEip55Checksum && char.IsLetter(char2) && hashHex[i + 1 - offset0x] > '7'
+                        isWithChecksum && char.IsLetter(char2) && hashHex![i + 1 - offset0x] > '7'
                             ? char.ToUpper(char2)
                             : char2;
                 }

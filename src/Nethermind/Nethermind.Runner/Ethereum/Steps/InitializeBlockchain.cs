@@ -14,36 +14,36 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Processing;
-using Nethermind.Blockchain.Receipts;
-using Nethermind.Blockchain.Rewards;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Validators;
-using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
-using Nethermind.Crypto;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Logging;
 using Nethermind.State;
-using Nethermind.State.Repositories;
-using Nethermind.Db.Blooms;
+using Nethermind.State.Witnesses;
 using Nethermind.Synchronization.BeamSync;
+using Nethermind.Synchronization.Witness;
+using Nethermind.Trie;
+using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Storages;
 using Nethermind.Wallet;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
-    [RunnerStepDependencies(typeof(InitRlp), typeof(InitDatabase), typeof(SetupKeyStore))]
+    [RunnerStepDependencies(typeof(InitializePlugins), typeof(InitializeBlockTree), typeof(SetupKeyStore))]
     public class InitializeBlockchain : IStep
     {
         private readonly INethermindApi _api;
@@ -60,180 +60,204 @@ namespace Nethermind.Runner.Ethereum.Steps
         }
 
         [Todo(Improve.Refactor, "Use chain spec for all chain configuration")]
-        protected virtual Task InitBlockchain()
+        private Task InitBlockchain()
         {
-            if (_api.ChainSpec == null) throw new StepDependencyException(nameof(_api.ChainSpec));
-            if (_api.DbProvider == null) throw new StepDependencyException(nameof(_api.DbProvider));
-            if (_api.SpecProvider == null) throw new StepDependencyException(nameof(_api.SpecProvider));
+            var (getApi, setApi) = _api.ForBlockchain;
             
-            // TODO: can engine signer be just initialized in some block producer related step?
-            ISigner signer = NullSigner.Instance;
-            ISignerStore signerStore = NullSigner.Instance;
-            if (_api.Config<IMiningConfig>().Enabled)
-            {
-                Signer signerAndStore = new Signer(_api.SpecProvider.ChainId, _api.OriginalSignerKey, _api.LogManager);
-                signer = signerAndStore;
-                signerStore = signerAndStore;
-            }
+            if (getApi.ChainSpec == null) throw new StepDependencyException(nameof(getApi.ChainSpec));
+            if (getApi.DbProvider == null) throw new StepDependencyException(nameof(getApi.DbProvider));
+            if (getApi.SpecProvider == null) throw new StepDependencyException(nameof(getApi.SpecProvider));
+            
+            ILogger logger = getApi.LogManager.GetClassLogger();
+            IInitConfig initConfig = getApi.Config<IInitConfig>();
+            ISyncConfig syncConfig = getApi.Config<ISyncConfig>();
+            IPruningConfig pruningConfig = getApi.Config<IPruningConfig>();
 
-            _api.EngineSigner = signer;
-            _api.EngineSignerStore = signerStore;
-
-            ILogger logger = _api.LogManager.GetClassLogger();
-            IInitConfig initConfig = _api.Config<IInitConfig>();
-            ISyncConfig syncConfig = _api.Config<ISyncConfig>();
             if (syncConfig.DownloadReceiptsInFastSync && !syncConfig.DownloadBodiesInFastSync)
             {
                 logger.Warn($"{nameof(syncConfig.DownloadReceiptsInFastSync)} is selected but {nameof(syncConfig.DownloadBodiesInFastSync)} - enabling bodies to support receipts download.");
                 syncConfig.DownloadBodiesInFastSync = true;
             }
+            
+            Account.AccountStartNonce = getApi.ChainSpec.Parameters.AccountStartNonce;
 
-            Account.AccountStartNonce = _api.ChainSpec.Parameters.AccountStartNonce;
+            IWitnessCollector witnessCollector = setApi.WitnessCollector = syncConfig.WitnessProtocolEnabled
+                ? new WitnessCollector(getApi.DbProvider.WitnessDb, _api.LogManager)
+                    .WithPruning(getApi.BlockTree!, getApi.LogManager)
+                : NullWitnessCollector.Instance;
 
-            _api.StateProvider = new StateProvider(
-                _api.DbProvider.StateDb,
-                _api.DbProvider.CodeDb,
-                _api.LogManager);
+            setApi.MainStateDbWithCache = getApi.DbProvider.StateDb
+                .Innermost // TODO: PRUNING what a hack here just to pass the actual DB
+                .Cached(Trie.MemoryAllowance.TrieNodeCacheCount)
+                .WitnessedBy(witnessCollector);
+            IKeyValueStore? codeDb = getApi.DbProvider.CodeDb
+                .Innermost // TODO: PRUNING what a hack here just to pass the actual DB
+                .WitnessedBy(witnessCollector);
 
-            _api.EthereumEcdsa = new EthereumEcdsa(_api.SpecProvider.ChainId, _api.LogManager);
-            _api.TxPool = new TxPool.TxPool(
-                new PersistentTxStorage(_api.DbProvider.PendingTxsDb),
-                _api.EthereumEcdsa,
-                _api.SpecProvider,
-                _api.Config<ITxPoolConfig>(),
-                _api.StateProvider,
-                _api.LogManager,
-                CreateTxPoolTxComparer());
-
-            IBloomConfig bloomConfig = _api.Config<IBloomConfig>();
-
-            IFileStoreFactory fileStoreFactory = initConfig.DiagnosticMode == DiagnosticMode.MemDb
-                ? (IFileStoreFactory) new InMemoryDictionaryFileStoreFactory()
-                : new FixedSizeFileStoreFactory(Path.Combine(initConfig.BaseDbPath, DbNames.Bloom), DbNames.Bloom, Bloom.ByteLength);
-
-            _api.BloomStorage = bloomConfig.Index
-                ? new BloomStorage(bloomConfig, _api.DbProvider.BloomDb, fileStoreFactory)
-                : (IBloomStorage) NullBloomStorage.Instance;
-
-            _api.DisposeStack.Push(_api.BloomStorage);
-
-            _api.ChainLevelInfoRepository = new ChainLevelInfoRepository(_api.DbProvider.BlockInfosDb);
-
-            _api.BlockTree = new BlockTree(
-                _api.DbProvider,
-                _api.ChainLevelInfoRepository,
-                _api.SpecProvider,
-                _api.TxPool,
-                _api.BloomStorage,
-                _api.Config<ISyncConfig>(),
-                _api.LogManager);
-
-            // Init state if we need system calls before actual processing starts
-            if (_api.BlockTree.Head != null)
+            ITrieStore trieStore;
+            if (pruningConfig.Enabled)
             {
-                _api.StateProvider.StateRoot = _api.BlockTree.Head.StateRoot;
+                trieStore = setApi.TrieStore = new TrieStore(
+                    setApi.MainStateDbWithCache,
+                    Prune.WhenCacheReaches(pruningConfig.CacheMb.MB()), // TODO: memory hint should define this
+                    Persist.IfBlockOlderThan(pruningConfig.PersistenceInterval), // TODO: this should be based on time
+                    getApi.LogManager);
+            }
+            else
+            {
+                trieStore = setApi.TrieStore = new TrieStore(
+                    setApi.MainStateDbWithCache, // TODO: PRUNING what a hack here just to pass the actual DB
+                    No.Pruning,
+                    Persist.EveryBlock,
+                    getApi.LogManager);
             }
 
-            ReceiptsRecovery receiptsRecovery = new ReceiptsRecovery(_api.EthereumEcdsa, _api.SpecProvider);
-            _api.ReceiptStorage = initConfig.StoreReceipts ? (IReceiptStorage?) new PersistentReceiptStorage(_api.DbProvider.ReceiptsDb, _api.SpecProvider, receiptsRecovery) : NullReceiptStorage.Instance;
-            _api.ReceiptFinder = new FullInfoReceiptFinder(_api.ReceiptStorage, receiptsRecovery, _api.BlockTree);
+            IStateProvider stateProvider = setApi.StateProvider = new StateProvider(
+                trieStore,
+                codeDb,
+                getApi.LogManager);
 
-            _api.RecoveryStep = new TxSignaturesRecoveryStep(_api.EthereumEcdsa, _api.TxPool, _api.SpecProvider, _api.LogManager);
+            ReadOnlyDbProvider readOnly = new ReadOnlyDbProvider(getApi.DbProvider, false);
+            
+            PersistentTxStorage txStorage = new PersistentTxStorage(getApi.DbProvider.PendingTxsDb);
+            IStateReader stateReader = setApi.StateReader = new StateReader(_api.ReadOnlyTrieStore, readOnly.GetDb<ISnapshotableDb>(DbNames.Code), _api.LogManager);
+            
+            setApi.ChainHeadStateProvider = new ChainHeadReadOnlyStateProvider(getApi.BlockTree, stateReader);
+            Account.AccountStartNonce = getApi.ChainSpec.Parameters.AccountStartNonce;
 
-            _api.StorageProvider = new StorageProvider(
-                _api.DbProvider.StateDb,
-                _api.StateProvider,
-                _api.LogManager);
+            getApi.DisposeStack.Push(trieStore);
+            setApi.ReadOnlyTrieStore = new ReadOnlyTrieStore(_api.TrieStore);
+            trieStore.ReorgBoundaryReached += ReorgBoundaryReached;
+
+            stateProvider.StateRoot = getApi.BlockTree!.Head?.StateRoot ?? Keccak.EmptyTreeHash;
+
+            if (_api.Config<IInitConfig>().DiagnosticMode == DiagnosticMode.VerifyTrie)
+            {
+                logger.Info("Collecting trie stats and verifying that no nodes are missing...");
+                TrieStats stats = _api.StateProvider.CollectStats(getApi.DbProvider.CodeDb, _api.LogManager);
+                logger.Info($"Starting from {getApi.BlockTree.Head?.Number} {getApi.BlockTree.Head?.StateRoot}{Environment.NewLine}" + stats);
+            }
+
+            // Init state if we need system calls before actual processing starts
+            if (getApi.BlockTree!.Head != null)
+            {
+                stateProvider.StateRoot = getApi.BlockTree.Head.StateRoot;
+            }
+            
+            var txPool = _api.TxPool = CreateTxPool(txStorage);
+
+            var onChainTxWatcher = new OnChainTxWatcher(getApi.BlockTree, txPool, getApi.SpecProvider, _api.LogManager);
+            getApi.DisposeStack.Push(onChainTxWatcher);
+
+            _api.BlockPreprocessor.AddFirst(
+                new RecoverSignatures(getApi.EthereumEcdsa, txPool, getApi.SpecProvider, getApi.LogManager));
+            
+            var storageProvider = setApi.StorageProvider = new StorageProvider(
+                _api.TrieStore,
+                stateProvider,
+                getApi.LogManager);
 
             // blockchain processing
             BlockhashProvider blockhashProvider = new BlockhashProvider(
-                _api.BlockTree, _api.LogManager);
+                getApi.BlockTree, getApi.LogManager);
 
             VirtualMachine virtualMachine = new VirtualMachine(
-                _api.StateProvider,
-                _api.StorageProvider,
+                stateProvider,
+                storageProvider,
                 blockhashProvider,
-                _api.SpecProvider,
-                _api.LogManager);
+                getApi.SpecProvider,
+                getApi.LogManager);
 
             _api.TransactionProcessor = new TransactionProcessor(
-                _api.SpecProvider,
-                _api.StateProvider,
-                _api.StorageProvider,
+                getApi.SpecProvider,
+                stateProvider,
+                storageProvider,
                 virtualMachine,
-                _api.LogManager);
+                getApi.LogManager);
 
             InitSealEngine();
             if (_api.SealValidator == null) throw new StepDependencyException(nameof(_api.SealValidator));
 
             /* validation */
-            _api.HeaderValidator = CreateHeaderValidator();
+            var headerValidator = setApi.HeaderValidator = CreateHeaderValidator();
 
             OmmersValidator ommersValidator = new OmmersValidator(
-                _api.BlockTree,
-                _api.HeaderValidator,
-                _api.LogManager);
+                getApi.BlockTree,
+                headerValidator,
+                getApi.LogManager);
 
-            TxValidator txValidator = new TxValidator(_api.SpecProvider.ChainId);
-
-            _api.BlockValidator = new BlockValidator(
+            TxValidator txValidator = new TxValidator(getApi.SpecProvider.ChainId);
+            
+            var blockValidator = setApi.BlockValidator = new BlockValidator(
                 txValidator,
-                _api.HeaderValidator,
+                headerValidator,
                 ommersValidator,
-                _api.SpecProvider,
-                _api.LogManager);
-
-            ReadOnlyDbProvider readOnly = new ReadOnlyDbProvider(_api.DbProvider, false);
-            _api.StateReader = new StateReader(readOnly.StateDb, readOnly.CodeDb, _api.LogManager);
-            _api.TxPoolInfoProvider = new TxPoolInfoProvider(_api.StateReader, _api.TxPool);
-
-            _api.MainBlockProcessor = CreateBlockProcessor();
+                getApi.SpecProvider,
+                getApi.LogManager);
+                
+            setApi.TxPoolInfoProvider = new TxPoolInfoProvider(stateReader, txPool);
+            var mainBlockProcessor = setApi.MainBlockProcessor = CreateBlockProcessor();
 
             BlockchainProcessor blockchainProcessor = new BlockchainProcessor(
-                _api.BlockTree,
-                _api.MainBlockProcessor,
-                _api.RecoveryStep,
-                _api.LogManager,
+                getApi.BlockTree,
+                mainBlockProcessor,
+                _api.BlockPreprocessor,
+                getApi.LogManager,
                 new BlockchainProcessor.Options
                 {
                     AutoProcess = !syncConfig.BeamSync,
                     StoreReceiptsByDefault = initConfig.StoreReceipts,
                 });
 
-            _api.BlockProcessingQueue = blockchainProcessor;
-            _api.BlockchainProcessor = blockchainProcessor;
+            setApi.BlockProcessingQueue = blockchainProcessor;
+            setApi.BlockchainProcessor = blockchainProcessor;
 
             if (syncConfig.BeamSync)
             {
                 BeamBlockchainProcessor beamBlockchainProcessor = new BeamBlockchainProcessor(
                     new ReadOnlyDbProvider(_api.DbProvider, false),
-                    _api.BlockTree,
-                    _api.SpecProvider,
-                    _api.LogManager,
-                    _api.BlockValidator,
-                    _api.RecoveryStep,
-                    _api.RewardCalculatorSource!,
-                    _api.BlockProcessingQueue,
-                    _api.SyncModeSelector!);
+                    getApi.BlockTree,
+                    getApi.SpecProvider,
+                    getApi.LogManager,
+                    blockValidator,
+                    _api.BlockPreprocessor,
+                    _api.RewardCalculatorSource!, // TODO: does it work with AuRa?
+                    blockchainProcessor,
+                    getApi.SyncModeSelector!);
 
                 _api.DisposeStack.Push(beamBlockchainProcessor);
             }
 
             // TODO: can take the tx sender from plugin here maybe
-            ITxSigner txSigner = new WalletTxSigner(_api.Wallet, _api.SpecProvider.ChainId);
-            TxSealer standardSealer = new TxSealer(txSigner, _api.Timestamper);
+            ITxSigner txSigner = new WalletTxSigner(getApi.Wallet, getApi.SpecProvider.ChainId);
+            TxSealer standardSealer = new TxSealer(txSigner, getApi.Timestamper);
             NonceReservingTxSealer nonceReservingTxSealer =
-                new NonceReservingTxSealer(txSigner, _api.Timestamper, _api.TxPool);
-            _api.TxSender = new TxPoolSender(_api.TxPool, standardSealer, nonceReservingTxSealer);
+                new NonceReservingTxSealer(txSigner, getApi.Timestamper, txPool);
+            setApi.TxSender = new TxPoolSender(txPool, nonceReservingTxSealer, standardSealer);
 
             // TODO: possibly hide it (but need to confirm that NDM does not really need it)
-            _api.FilterStore = new FilterStore();
-            _api.FilterManager = new FilterManager(_api.FilterStore, _api.MainBlockProcessor, _api.TxPool, _api.LogManager);
-            
+            var filterStore = setApi.FilterStore = new FilterStore();
+            setApi.FilterManager = new FilterManager(filterStore, mainBlockProcessor, txPool, getApi.LogManager);
             return Task.CompletedTask;
         }
+        
+        private void ReorgBoundaryReached(object? sender, ReorgBoundaryReached e)
+        {
+            _api.LogManager.GetClassLogger().Warn($"Saving reorg boundary {e.BlockNumber}");
+            (_api.BlockTree as BlockTree)!.SavePruningReorganizationBoundary(e.BlockNumber);
+        }
 
-        protected virtual IComparer<Transaction> CreateTxPoolTxComparer() => TxPool.TxPool.DefaultComparer;
+        protected virtual TxPool.TxPool CreateTxPool(PersistentTxStorage txStorage) =>
+            new TxPool.TxPool(
+                txStorage,
+                _api.EthereumEcdsa,
+                _api.SpecProvider,
+                _api.Config<ITxPoolConfig>(),
+                _api.ChainHeadStateProvider,
+                _api.LogManager,
+                CreateTxPoolTxComparer());
+
+        protected IComparer<Transaction> CreateTxPoolTxComparer() => TxPool.TxPool.DefaultComparer;
 
         protected virtual HeaderValidator CreateHeaderValidator() =>
             new HeaderValidator(
@@ -242,6 +266,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.SpecProvider,
                 _api.LogManager);
 
+        // TODO: remove from here - move to consensus?
         protected virtual BlockProcessor CreateBlockProcessor()
         {
             if (_api.DbProvider == null) throw new StepDependencyException(nameof(_api.DbProvider));
@@ -252,20 +277,17 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.BlockValidator,
                 _api.RewardCalculatorSource.Get(_api.TransactionProcessor),
                 _api.TransactionProcessor,
-                _api.DbProvider.StateDb,
-                _api.DbProvider.CodeDb,
                 _api.StateProvider,
                 _api.StorageProvider,
                 _api.TxPool,
                 _api.ReceiptStorage,
+                _api.WitnessCollector,
                 _api.LogManager);
         }
 
+        // TODO: remove from here - move to consensus?
         protected virtual void InitSealEngine()
         {
-            _api.Sealer = NullSealEngine.Instance;
-            _api.SealValidator = NullSealEngine.Instance;
-            _api.RewardCalculatorSource = NoBlockRewards.Instance;
         }
     }
 }

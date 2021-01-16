@@ -31,6 +31,7 @@ using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
+using Nethermind.Trie.Pruning;
 using NUnit.Framework;
 
 namespace Ethereum.Test.Base
@@ -50,14 +51,19 @@ namespace Ethereum.Test.Base
             _logManager = logManager ?? LimboLogs.Instance;
             _logger = _logManager.GetClassLogger();
         }
-        
+
         protected EthereumTestResult RunTest(GeneralStateTest test)
         {
             return RunTest(test, NullTxTracer.Instance);
         }
-        
+
         protected EthereumTestResult RunTest(GeneralStateTest test, ITxTracer txTracer)
         {
+            if (test.Fork == Berlin.Instance)
+            {
+                return new EthereumTestResult(test.Name, test.ForkName, null) {Pass = true};
+            }
+
             TestContext.Write($"Running {test.Name} at {DateTime.UtcNow:HH:mm:ss.ffffff}");
             Stopwatch stopwatch = Stopwatch.StartNew();
             Assert.IsNull(test.LoadFailure, "test data loading failure");
@@ -65,7 +71,7 @@ namespace Ethereum.Test.Base
             ISnapshotableDb stateDb = new StateDb();
             ISnapshotableDb codeDb = new StateDb();
 
-            ISpecProvider specProvider = new CustomSpecProvider(1, 
+            ISpecProvider specProvider = new CustomSpecProvider(1,
                 (0, Frontier.Instance), // TODO: this thing took a lot of time to find after it was removed!, genesis block is always initialized with Frontier
                 (1, test.Fork));
 
@@ -74,9 +80,10 @@ namespace Ethereum.Test.Base
                 Assert.Fail("Expected genesis spec to be Frontier for blockchain tests");
             }
 
-            IStateProvider stateProvider = new StateProvider(stateDb, codeDb, _logManager);
+            TrieStore trieStore = new TrieStore(stateDb, _logManager);
+            IStateProvider stateProvider = new StateProvider(trieStore, codeDb, _logManager);
             IBlockhashProvider blockhashProvider = new TestBlockhashProvider();
-            IStorageProvider storageProvider = new StorageProvider(stateDb, stateProvider, _logManager);
+            IStorageProvider storageProvider = new StorageProvider(trieStore, stateProvider, _logManager);
             IVirtualMachine virtualMachine = new VirtualMachine(
                 stateProvider,
                 storageProvider,
@@ -93,24 +100,22 @@ namespace Ethereum.Test.Base
 
             InitializeTestState(test, stateProvider, storageProvider, specProvider);
 
-            BlockHeader header = new BlockHeader(test.PreviousHash, Keccak.OfAnEmptySequenceRlp, test.CurrentCoinbase, test.CurrentDifficulty, test.CurrentNumber, test.CurrentGasLimit, test.CurrentTimestamp, new byte[0]);
+            BlockHeader header = new BlockHeader(test.PreviousHash, Keccak.OfAnEmptySequenceRlp, test.CurrentCoinbase,
+                test.CurrentDifficulty, test.CurrentNumber, test.CurrentGasLimit, test.CurrentTimestamp, new byte[0]);
             header.StateRoot = test.PostHash;
             header.Hash = Keccak.Compute("1");
-            
-            stateProvider.Commit(specProvider.GenesisSpec);
-            stateProvider.CommitTree();
-            
+
             transactionProcessor.Execute(test.Transaction, header, txTracer);
-            
+
             stateProvider.Commit(specProvider.GenesisSpec);
-            stateProvider.CommitTree();
+            stateProvider.CommitTree(1);
 
             // '@winsvega added a 0-wei reward to the miner , so we had to add that into the state test execution phase. He needed it for retesteth.'
             if (!stateProvider.AccountExists(test.CurrentCoinbase))
             {
                 stateProvider.CreateAccount(test.CurrentCoinbase, 0);
             }
-            
+
             stateProvider.RecalculateStateRoot();
 
             List<string> differences = RunAssertions(test, stateProvider);
@@ -120,18 +125,20 @@ namespace Ethereum.Test.Base
             testResult.Name = test.Name;
             testResult.TimeInMs = (int)stopwatch.Elapsed.TotalMilliseconds;
             testResult.StateRoot = stateProvider.StateRoot;
-            
+
 //            Assert.Zero(differences.Count, "differences");
             return testResult;
         }
 
-        private void InitializeTestState(GeneralStateTest test, IStateProvider stateProvider, IStorageProvider storageProvider, ISpecProvider specProvider)
+        private void InitializeTestState(GeneralStateTest test, IStateProvider stateProvider,
+            IStorageProvider storageProvider, ISpecProvider specProvider)
         {
             foreach (KeyValuePair<Address, AccountState> accountState in test.Pre)
             {
                 foreach (KeyValuePair<UInt256, byte[]> storageItem in accountState.Value.Storage)
                 {
-                    storageProvider.Set(new StorageCell(accountState.Key, storageItem.Key), storageItem.Value.WithoutLeadingZeros().ToArray());
+                    storageProvider.Set(new StorageCell(accountState.Key, storageItem.Key),
+                        storageItem.Value.WithoutLeadingZeros().ToArray());
                 }
 
                 stateProvider.CreateAccount(accountState.Key, accountState.Value.Balance);
@@ -146,8 +153,8 @@ namespace Ethereum.Test.Base
             storageProvider.Commit();
             stateProvider.Commit(specProvider.GenesisSpec);
 
-            storageProvider.CommitTrees();
-            stateProvider.CommitTree();
+            storageProvider.CommitTrees(0);
+            stateProvider.CommitTree(0);
 
             storageProvider.Reset();
             stateProvider.Reset();

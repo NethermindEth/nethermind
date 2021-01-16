@@ -101,11 +101,11 @@ namespace Nethermind.Blockchain.Filters
 
         private int GetFilterId() => _nextFilterId++;
 
-        private TopicsFilter GetTopicsFilter(IEnumerable<object> topics = null)
+        private SequenceTopicsFilter GetTopicsFilter(IEnumerable<object> topics = null)
         {
             if (topics == null)
             {
-                return TopicsFilter.AnyTopic;
+                return SequenceTopicsFilter.AnyTopic;
             }
 
             var filterTopics = GetFilterTopics(topics);
@@ -116,7 +116,7 @@ namespace Nethermind.Blockchain.Filters
                 expressions.Add(GetTopicExpression(filterTopics[i]));
             }
 
-            return new TopicsFilter(expressions.ToArray());
+            return new SequenceTopicsFilter(expressions.ToArray());
         }
 
         private TopicExpression GetTopicExpression(FilterTopic filterTopic)

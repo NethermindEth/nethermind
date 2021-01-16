@@ -39,17 +39,18 @@ namespace Nethermind.Wallet.Test
             ("TestingFileF2", "PF2")
         };
         
+        private string TestDir => TestContext.CurrentContext.WorkDirectory;
+        
         [SetUp]
         public void SetUp()
         {
-            var resourcePath = PathUtils.GetApplicationResourcePath(string.Empty);
-            foreach (var file in _files)
+            foreach ((string name, string content) in _files)
             {
-                var filePath = Path.Combine(resourcePath, file.Name);
+                string filePath = Path.Combine(TestDir, name);
                 if (!File.Exists(filePath))
                 {
                     File.Create(filePath).Close();
-                    File.WriteAllText(filePath, file.Content);
+                    File.WriteAllText(filePath, content);
                 }
             }
         }
@@ -92,7 +93,7 @@ namespace Nethermind.Wallet.Test
         [TearDown]
         public void TearDown()
         {
-            var resourcePath = PathUtils.GetApplicationResourcePath(string.Empty);
+            string resourcePath = TestContext.CurrentContext.TestDirectory;
             foreach (var file in _files)
             {
                 var filePath = Path.Combine(resourcePath, file.Name);

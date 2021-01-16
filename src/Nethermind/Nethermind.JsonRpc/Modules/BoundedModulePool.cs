@@ -17,15 +17,17 @@
 using System;
 using System.Collections.Concurrent;
 using System.Threading;
+using System.Threading.Tasks;
 
 namespace Nethermind.JsonRpc.Modules
 {
     public class BoundedModulePool<T> : IRpcModulePool<T> where T : IModule
     {
         private readonly int _timeout;
-        private T _shared;
-        private ConcurrentBag<T> _bag = new ConcurrentBag<T>();
-        private SemaphoreSlim _semaphore;
+        private readonly T _shared;
+        private readonly Task<T> _sharedAsTask;
+        private readonly ConcurrentQueue<T> _pool = new ConcurrentQueue<T>();
+        private readonly SemaphoreSlim _semaphore;
 
         public BoundedModulePool(IRpcModuleFactory<T> factory, int exclusiveCapacity, int timeout)
         {
@@ -35,25 +37,26 @@ namespace Nethermind.JsonRpc.Modules
             _semaphore = new SemaphoreSlim(exclusiveCapacity);
             for (int i = 0; i < exclusiveCapacity; i++)
             {
-                _bag.Add(Factory.Create());
+                _pool.Enqueue(Factory.Create());
             }
 
             _shared = factory.Create();
+            _sharedAsTask = Task.FromResult(_shared);
         }
         
-        public T GetModule(bool canBeShared)
+        public Task<T> GetModule(bool canBeShared)
         {
-            if (canBeShared)
-            {
-                return _shared;
-            }
-            
-            if (!_semaphore.Wait(_timeout))
+            return canBeShared ? _sharedAsTask : SlowPath();
+        }
+
+        private async Task<T> SlowPath()
+        {
+            if (! await _semaphore.WaitAsync(_timeout))
             {
                 throw new TimeoutException($"Unable to rent an instance of {typeof(T).Name}. Too many concurrent requests.");
             }
 
-            _bag.TryTake(out T result);
+            _pool.TryDequeue(out T result);
             return result;
         }
 
@@ -64,7 +67,7 @@ namespace Nethermind.JsonRpc.Modules
                 return;
             }
             
-            _bag.Add(module);
+            _pool.Enqueue(module);
             _semaphore.Release();
         }
 

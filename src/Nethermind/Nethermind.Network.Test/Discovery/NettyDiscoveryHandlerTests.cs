@@ -75,26 +75,26 @@ namespace Nethermind.Network.Test.Discovery
         }
 
         [TearDown]
-        public void CleanUp()
+        public async Task CleanUp()
         {
             _channels.ToList().ForEach(x => { x.CloseAsync(); });
-            Thread.Sleep(50);
+            await Task.Delay(50);
         }
 
         [Test]
         [Retry(5)]
-        public void PingSentReceivedTest()
+        public async Task PingSentReceivedTest()
         {
             var msg = new PingMessage
             {
                 FarAddress = _address2,
                 SourceAddress = _address,
                 DestinationAddress = _address2,
-                ExpirationTime = (long)(Timestamper.Default.EpochSeconds + 1200),
+                ExpirationTime = Timestamper.Default.UnixTime.SecondsLong + 1200,
                 FarPublicKey = _privateKey2.PublicKey
             };
             _discoveryHandlers[0].SendMessage(msg);
-            SleepWhileWaiting();
+            await SleepWhileWaiting();
             _discoveryManagersMocks[1].Received(1).OnIncomingMessage(Arg.Is<DiscoveryMessage>(x => x.MessageType == MessageType.Ping));
 
             var msg2 = new PingMessage
@@ -102,92 +102,92 @@ namespace Nethermind.Network.Test.Discovery
                 FarAddress = _address,
                 SourceAddress = _address2,
                 DestinationAddress = _address,
-                ExpirationTime = (long)(Timestamper.Default.EpochSeconds + 1200),
+                ExpirationTime = Timestamper.Default.UnixTime.SecondsLong + 1200,
                 FarPublicKey = _privateKey.PublicKey
             };
             _discoveryHandlers[1].SendMessage(msg2);
-            SleepWhileWaiting();
+            await SleepWhileWaiting();
             _discoveryManagersMocks[0].Received(1).OnIncomingMessage(Arg.Is<DiscoveryMessage>(x => x.MessageType == MessageType.Ping));  
         }
 
         [Test]
         [Retry(5)]
-        public void PongSentReceivedTest()
+        public async Task PongSentReceivedTest()
         {
             var msg = new PongMessage
             {
                 FarAddress = _address2,
                 PingMdc = new byte[] {1,2,3},
-                ExpirationTime = (long)(Timestamper.Default.EpochSeconds + 1200),
+                ExpirationTime = Timestamper.Default.UnixTime.SecondsLong + 1200,
                 FarPublicKey = _privateKey2.PublicKey
             };
             _discoveryHandlers[0].SendMessage(msg);
-            SleepWhileWaiting();
+            await SleepWhileWaiting();
             _discoveryManagersMocks[1].Received(1).OnIncomingMessage(Arg.Is<DiscoveryMessage>(x => x.MessageType == MessageType.Pong));
 
             var msg2 = new PongMessage
             {
                 FarAddress = _address,
                 PingMdc = new byte[] { 1, 2, 3 },
-                ExpirationTime = (long)(Timestamper.Default.EpochSeconds + 1200),
+                ExpirationTime = Timestamper.Default.UnixTime.SecondsLong + 1200,
                 FarPublicKey = _privateKey.PublicKey
             };
             _discoveryHandlers[1].SendMessage(msg2);
-            SleepWhileWaiting();
+            await SleepWhileWaiting();
             _discoveryManagersMocks[0].Received(1).OnIncomingMessage(Arg.Is<DiscoveryMessage>(x => x.MessageType == MessageType.Pong));
         }
         
         [Test]
         [Retry(5)]
-        public void FindNodeSentReceivedTest()
+        public async Task FindNodeSentReceivedTest()
         {
             var msg = new FindNodeMessage
             {
                 FarAddress = _address2,
                 SearchedNodeId = new byte[] { 1, 2, 3 },
-                ExpirationTime = (long)(Timestamper.Default.EpochSeconds + 1200),
+                ExpirationTime = Timestamper.Default.UnixTime.SecondsLong + 1200,
                 FarPublicKey = _privateKey2.PublicKey
             };
             _discoveryHandlers[0].SendMessage(msg);
-            SleepWhileWaiting();
+            await SleepWhileWaiting();
             _discoveryManagersMocks[1].Received(1).OnIncomingMessage(Arg.Is<DiscoveryMessage>(x => x.MessageType == MessageType.FindNode));
 
             var msg2 = new FindNodeMessage
             {
                 FarAddress = _address,
                 SearchedNodeId = new byte[] { 1, 2, 3 },
-                ExpirationTime = (long)(Timestamper.Default.EpochSeconds + 1200),
+                ExpirationTime = Timestamper.Default.UnixTime.SecondsLong + 1200,
                 FarPublicKey = _privateKey.PublicKey
             };
             _discoveryHandlers[1].SendMessage(msg2);
-            SleepWhileWaiting();
+            await SleepWhileWaiting();
             _discoveryManagersMocks[0].Received(1).OnIncomingMessage(Arg.Is<DiscoveryMessage>(x => x.MessageType == MessageType.FindNode));
         }
 
         [Test]
         [Retry(5)]
-        public void NeighborsSentReceivedTest()
+        public async Task NeighborsSentReceivedTest()
         {
             var msg = new NeighborsMessage
             {
                 FarAddress = _address2,
                 Nodes = new List<Node>().ToArray(),
-                ExpirationTime = (long)(Timestamper.Default.EpochSeconds + 1200),
+                ExpirationTime = Timestamper.Default.UnixTime.SecondsLong + 1200,
                 FarPublicKey = _privateKey2.PublicKey
             };
             _discoveryHandlers[0].SendMessage(msg);
-            SleepWhileWaiting();
+            await SleepWhileWaiting();
             _discoveryManagersMocks[1].Received(1).OnIncomingMessage(Arg.Is<DiscoveryMessage>(x => x.MessageType == MessageType.Neighbors));
 
             var msg2 = new NeighborsMessage
             {
                 FarAddress = _address,
                 Nodes = new List<Node>().ToArray(),
-                ExpirationTime = (long)(Timestamper.Default.EpochSeconds + 1200),
+                ExpirationTime = Timestamper.Default.UnixTime.SecondsLong + 1200,
                 FarPublicKey = _privateKey.PublicKey
             };
             _discoveryHandlers[1].SendMessage(msg2);
-            SleepWhileWaiting();
+            await SleepWhileWaiting();
             _discoveryManagersMocks[0].Received(1).OnIncomingMessage(Arg.Is<DiscoveryMessage>(x => x.MessageType == MessageType.Neighbors));
         }
 
@@ -218,9 +218,9 @@ namespace Nethermind.Network.Test.Discovery
                 .AddLast(handler);
         }
 
-        private static void SleepWhileWaiting()
+        private static async Task SleepWhileWaiting()
         {
-            Thread.Sleep((TestContext.CurrentContext.CurrentRepeatCount + 1) * 300);
+            await Task.Delay((TestContext.CurrentContext.CurrentRepeatCount + 1) * 300);
         }
     }
 }

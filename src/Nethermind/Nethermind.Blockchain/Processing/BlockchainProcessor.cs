@@ -38,7 +38,7 @@ namespace Nethermind.Blockchain.Processing
         public const int MaxProcessingQueueSize = 2000; // adjust based on tx or gas
 
         private readonly IBlockProcessor _blockProcessor;
-        private readonly IBlockDataRecoveryStep _recoveryStep;
+        private readonly IBlockPreprocessorStep _recoveryStep;
         private readonly Options _options;
         private readonly IBlockTree _blockTree;
         private readonly ILogger _logger;
@@ -64,7 +64,7 @@ namespace Nethermind.Blockchain.Processing
         public BlockchainProcessor(
             IBlockTree blockTree,
             IBlockProcessor blockProcessor,
-            IBlockDataRecoveryStep recoveryStep,
+            IBlockPreprocessorStep recoveryStep,
             ILogManager logManager,
             Options options)
         {
@@ -386,9 +386,11 @@ namespace Nethermind.Blockchain.Processing
             {
                 foreach (Block block in processingBranch.Blocks)
                 {
+                    _loopCancellationSource?.Token.ThrowIfCancellationRequested();
+
                     if (block.Hash != null && _blockTree.WasProcessed(block.Number, block.Hash))
                     {
-                        if (_logger.IsInfo) _logger.Info($"Rerunning block after reorg: {block.ToString(Block.Format.FullHashAndNumber)}");
+                        if (_logger.IsInfo) _logger.Info($"Rerunning block after reorg or pruning: {block.ToString(Block.Format.FullHashAndNumber)}");
                     }
 
                     blocksToProcess.Add(block);
@@ -455,7 +457,12 @@ namespace Nethermind.Blockchain.Processing
                 {
                     break;
                 }
-            } while (!_blockTree.IsMainChain(branchingPoint.Hash));
+                // TODO: there is no test for the second condition
+                // generally if we finish fast sync at block, e.g. 8 and then have 6 blocks processed and close Neth
+                // then on restart we would find 14 as the branch head (since 14 is on the main chain)
+                // we need to dig deeper to go all the way to the false (reorg boundary) head
+                // otherwise some nodes would be missing
+            } while (!_blockTree.IsMainChain(branchingPoint.Hash) || branchingPoint.Number > (_blockTree.Head?.Header.Number ?? 0));
 
             if (branchingPoint != null && branchingPoint.Hash != _blockTree.Head?.Hash)
             {

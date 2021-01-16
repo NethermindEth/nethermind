@@ -18,6 +18,14 @@ using Nethermind.Config;
 
 namespace Nethermind.Blockchain.Synchronization
 {
+    [ConfigCategory(Description = "Configuration of the pruning parameters.")]
+    public class PruningConfig : IPruningConfig
+    {
+        public bool Enabled { get; set; }
+        public long CacheMb { get; set; } = 512;
+        public long PersistenceInterval { get; set; } = 8192;    
+    }
+    
     [ConfigCategory(Description = "Configuration of the synchronization modes.")]
     public class SyncConfig : ISyncConfig
     {
@@ -30,11 +38,13 @@ namespace Nethermind.Blockchain.Synchronization
         public long? FastSyncCatchUpHeightDelta { get; set; } = 8192;
         public bool FastBlocks { get; set; }
         public bool UseGethLimitsInFastBlocks { get; set; } = true;
-        public bool BeamSync { get; set; }
+        public bool BeamSync { get; set; } = false;
         public bool FastSync { get; set; }
         public bool DownloadHeadersInFastSync { get; set; } = true;
         public bool DownloadBodiesInFastSync { get; set; } = true;
         public bool DownloadReceiptsInFastSync { get; set; } = true;
+        public long AncientBodiesBarrier { get; set; }
+        public long AncientReceiptsBarrier { get; set; }
         public string PivotTotalDifficulty { get; set; }
         public string PivotNumber { get; set; }
         public string PivotHash { get; set; }
@@ -42,5 +52,7 @@ namespace Nethermind.Blockchain.Synchronization
         public int BeamSyncPreProcessorTimeout { get; set; } = 15;
         public bool BeamSyncFixMode { get; set; } = false;
         public bool BeamSyncVerifiedMode { get; set; } = false;
+        public bool WitnessProtocolEnabled { get; set; } = false;
+        public bool FixReceipts { get; set; } = false;
     }
 }

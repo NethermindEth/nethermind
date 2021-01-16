@@ -38,6 +38,7 @@ namespace Nethermind.Synchronization.Reporting
         private SyncPeersReport _syncPeersReport;
         private int _reportId;
         private const int SyncReportFrequency = 1;
+        private const int PeerCountFrequency = 15;
         private const int NoProgressStateSyncReportFrequency = 30;
         private const int SyncShortPeersReportFrequency = 30;
         private const int SyncFullPeersReportFrequency = 120;
@@ -77,8 +78,8 @@ namespace Nethermind.Synchronization.Reporting
 
         private void SyncModeSelectorOnChanged(object? sender, SyncModeChangedEventArgs e)
         {
-            if (e.Previous == SyncMode.None && e.Current == SyncMode.Full ||
-                e.Previous == SyncMode.Full && e.Current == SyncMode.None)
+            if (e.Previous.NotSyncing() && e.Current == SyncMode.Full ||
+                e.Previous == SyncMode.Full && e.Current.NotSyncing())
             {
                 return;
             }
@@ -168,10 +169,13 @@ namespace Nethermind.Synchronization.Reporting
 
             if ((currentSyncMode | SyncMode.Full) != SyncMode.Full)
             {
-                _logger.Info($"Peers | with known best block: {_syncPeerPool.InitializedPeersCount} | all: {_syncPeerPool.PeerCount} |");
+                if (_reportId % PeerCountFrequency == 0)
+                {
+                    _logger.Info($"Peers | with known best block: {_syncPeerPool.InitializedPeersCount} | all: {_syncPeerPool.PeerCount} |");
+                }
             }
 
-            if (currentSyncMode == SyncMode.None && _syncPeerPool.InitializedPeersCount == 0)
+            if (currentSyncMode == SyncMode.Disconnected)
             {
                 WriteNotStartedReport();
             }

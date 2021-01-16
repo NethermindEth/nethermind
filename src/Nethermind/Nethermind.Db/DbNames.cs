@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -26,15 +26,8 @@ namespace Nethermind.Db
         public const string Receipts = "receipts";
         public const string BlockInfos = "blockInfos";
         public const string PendingTxs = "pendingtxs";
-        public const string Trace = "trace";
-        public const string Consumers = "consumers";
-        public const string Deposits = "deposits";
-        public const string ConsumerSessions = "consumerSessions";
-        public const string ConsumerReceipts = "consumerReceipts";
-        public const string ConsumerDepositApprovals = "consumerDepositApprovals";
-        public const string Configs = "configs";
-        public const string EthRequests = "ethRequests";
         public const string Bloom = "bloom";
+        public const string Witness = "witness";
         public const string CHT = "canonicalHashTrie";
     }
 }

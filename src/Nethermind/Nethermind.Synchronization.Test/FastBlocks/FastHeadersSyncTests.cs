@@ -43,18 +43,18 @@ namespace Nethermind.Synchronization.Test.FastBlocks
     public class FastHeadersSyncTests
     {
         [Test]
-        public void Will_fail_if_launched_without_fast_blocks_enabled()
+        public async Task Will_fail_if_launched_without_fast_blocks_enabled()
         {
-            MemDbProvider memDbProvider = new MemDbProvider();
-            BlockTree blockTree = new BlockTree(memDbProvider.BlocksDb, memDbProvider.HeadersDb, memDbProvider.BlockInfosDb, new ChainLevelInfoRepository(memDbProvider.BlockInfosDb), MainnetSpecProvider.Instance, NullTxPool.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
+            IDbProvider memDbProvider = await TestMemDbProvider.InitAsync();
+            BlockTree blockTree = new BlockTree(memDbProvider.BlocksDb, memDbProvider.HeadersDb, memDbProvider.BlockInfosDb, new ChainLevelInfoRepository(memDbProvider.BlockInfosDb), MainnetSpecProvider.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
             Assert.Throws<InvalidOperationException>(() => new HeadersSyncFeed(blockTree, Substitute.For<ISyncPeerPool>(), new SyncConfig(), Substitute.For<ISyncReport>(), LimboLogs.Instance));
         }
         
         [Test]
         public async Task Can_prepare_3_requests_in_a_row()
         {
-            MemDbProvider memDbProvider = new MemDbProvider();
-            BlockTree blockTree = new BlockTree(memDbProvider.BlocksDb, memDbProvider.HeadersDb, memDbProvider.BlockInfosDb, new ChainLevelInfoRepository(memDbProvider.BlockInfosDb), MainnetSpecProvider.Instance, NullTxPool.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
+            IDbProvider memDbProvider = await TestMemDbProvider.InitAsync();
+            BlockTree blockTree = new BlockTree(memDbProvider.BlocksDb, memDbProvider.HeadersDb, memDbProvider.BlockInfosDb, new ChainLevelInfoRepository(memDbProvider.BlockInfosDb), MainnetSpecProvider.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
             HeadersSyncFeed feed = new HeadersSyncFeed(blockTree, Substitute.For<ISyncPeerPool>(), new SyncConfig{FastSync = true, FastBlocks = true, PivotNumber = "1000", PivotHash = Keccak.Zero.ToString(), PivotTotalDifficulty = "1000"}, Substitute.For<ISyncReport>(), LimboLogs.Instance);
             HeadersSyncBatch batch1 = await feed.PrepareRequest();
             HeadersSyncBatch batch2 = await feed.PrepareRequest();
@@ -64,8 +64,8 @@ namespace Nethermind.Synchronization.Test.FastBlocks
         [Test]
         public async Task Can_keep_returning_nulls_after_all_batches_were_prepared()
         {
-            MemDbProvider memDbProvider = new MemDbProvider();
-            BlockTree blockTree = new BlockTree(memDbProvider.BlocksDb, memDbProvider.HeadersDb, memDbProvider.BlockInfosDb, new ChainLevelInfoRepository(memDbProvider.BlockInfosDb), MainnetSpecProvider.Instance, NullTxPool.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
+            IDbProvider memDbProvider = await TestMemDbProvider.InitAsync();
+            BlockTree blockTree = new BlockTree(memDbProvider.BlocksDb, memDbProvider.HeadersDb, memDbProvider.BlockInfosDb, new ChainLevelInfoRepository(memDbProvider.BlockInfosDb), MainnetSpecProvider.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
             HeadersSyncFeed feed = new HeadersSyncFeed(blockTree, Substitute.For<ISyncPeerPool>(), new SyncConfig{FastSync = true, FastBlocks = true, PivotNumber = "1000", PivotHash = Keccak.Zero.ToString(), PivotTotalDifficulty = "1000"}, Substitute.For<ISyncReport>(), LimboLogs.Instance);
             for (int i = 0; i < 10; i++)
             {

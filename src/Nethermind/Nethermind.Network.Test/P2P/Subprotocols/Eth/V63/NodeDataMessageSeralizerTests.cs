@@ -23,8 +23,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
 {
-    [Parallelizable(ParallelScope.Self)]
-    [TestFixture]
+    [Parallelizable(ParallelScope.All)]
     public class NodeDataMessageSerializerTests
     {
         private static void Test(byte[][] data)

@@ -38,6 +38,7 @@ using Nethermind.DataMarketplace.Core.Configs;
 using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.DataMarketplace.Core.Services;
 using Nethermind.DataMarketplace.Infrastructure.Persistence.Mongo;
+using Nethermind.DataMarketplace.Infrastructure.Updaters;
 using Nethermind.Db;
 using Nethermind.Db.Blooms;
 using Nethermind.Evm;
@@ -61,6 +62,7 @@ using Nethermind.Stats;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
+using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
 using Nethermind.WebSockets;
@@ -70,7 +72,6 @@ namespace Nethermind.DataMarketplace.Infrastructure
     public class NdmApi : INdmApi
     {
         private INethermindApi _nethermindApi;
-        private List<INethermindPlugin> _plugins;
 
         public NdmApi(INethermindApi nethermindApi)
         {
@@ -90,6 +91,7 @@ namespace Nethermind.DataMarketplace.Infrastructure
         public GasPriceService? GasPriceService { get; set;}
         public TransactionService? TransactionService { get; set;}
         public INdmNotifier? NdmNotifier { get; set;}
+        public INdmAccountUpdater NdmAccountUpdater { get; set; }
         public INdmDataPublisher? NdmDataPublisher { get; set;}
         public IJsonRpcNdmConsumerChannel? JsonRpcNdmConsumerChannel { get; set;}
         public INdmConsumerChannelManager? NdmConsumerChannelManager { get; set;}
@@ -119,11 +121,7 @@ namespace Nethermind.DataMarketplace.Infrastructure
             set => _nethermindApi.BlockchainProcessor = value;
         }
 
-        public IBlockDataRecoveryStep? RecoveryStep
-        {
-            get => _nethermindApi.RecoveryStep;
-            set => _nethermindApi.RecoveryStep = value;
-        }
+        public CompositeBlockPreprocessorStep BlockPreprocessor => _nethermindApi.BlockPreprocessor;
 
         public IBlockProcessingQueue? BlockProcessingQueue
         {
@@ -176,6 +174,19 @@ namespace Nethermind.DataMarketplace.Infrastructure
             get => _nethermindApi.DbProvider;
             set => _nethermindApi.DbProvider = value;
         }
+
+        public IRocksDbFactory? RocksDbFactory
+        {
+            get => _nethermindApi.RocksDbFactory;
+            set => _nethermindApi.RocksDbFactory = value;
+        }
+
+        public IMemDbFactory? MemDbFactory 
+        {
+            get => _nethermindApi.MemDbFactory;
+            set => _nethermindApi.MemDbFactory = value;
+        }
+
 
         public IDiscoveryApp? DiscoveryApp
         {
@@ -247,7 +258,13 @@ namespace Nethermind.DataMarketplace.Infrastructure
 
 
         public ILogManager LogManager => _nethermindApi.LogManager;
-
+        
+        public IKeyValueStoreWithBatching? MainStateDbWithCache
+        {
+            get => _nethermindApi.MainStateDbWithCache;
+            set => _nethermindApi.MainStateDbWithCache = value;
+        }
+        
         public IMessageSerializationService MessageSerializationService => _nethermindApi.MessageSerializationService;
 
         public IMonitoringService MonitoringService
@@ -334,6 +351,9 @@ namespace Nethermind.DataMarketplace.Infrastructure
             set => _nethermindApi.EngineSignerStore = value;
         }
 
+        public SealEngineType SealEngineType      {
+            get => _nethermindApi.SealEngineType;
+        }
         public ISpecProvider? SpecProvider
         {
             get => _nethermindApi.SpecProvider;
@@ -364,10 +384,22 @@ namespace Nethermind.DataMarketplace.Infrastructure
             set => _nethermindApi.SyncServer = value;
         }
 
+        /// <summary>
+        /// Can be used only for processing blocks, on all other contexts use <see cref="StateReader"/> or <see cref="ChainHeadStateProvider"/>.
+        /// </summary>
+        /// <remarks>
+        /// DO NOT USE OUTSIDE OF PROCESSING BLOCK CONTEXT!
+        /// </remarks>
         public IStateProvider? StateProvider
         {
             get => _nethermindApi.StateProvider;
             set => _nethermindApi.StateProvider = value;
+        }
+
+        public IReadOnlyStateProvider? ChainHeadStateProvider         
+        {
+            get => _nethermindApi.ChainHeadStateProvider;
+            set => _nethermindApi.ChainHeadStateProvider = value;
         }
 
         public IStateReader? StateReader
@@ -401,6 +433,18 @@ namespace Nethermind.DataMarketplace.Infrastructure
             get => _nethermindApi.TransactionProcessor;
             set => _nethermindApi.TransactionProcessor = value;
         }
+        
+        public ITrieStore? TrieStore
+        {
+            get => _nethermindApi.TrieStore;
+            set => _nethermindApi.TrieStore = value;
+        }
+        
+        public ITrieStore? ReadOnlyTrieStore
+        {
+            get => _nethermindApi.ReadOnlyTrieStore;
+            set => _nethermindApi.ReadOnlyTrieStore = value;
+        }
 
         public ITxSender? TxSender
         {
@@ -431,6 +475,12 @@ namespace Nethermind.DataMarketplace.Infrastructure
             get => _nethermindApi.WebSocketsManager;
             set => _nethermindApi.WebSocketsManager = value;
         }
+        
+        public IWitnessCollector? WitnessCollector
+        {
+            get => _nethermindApi.WitnessCollector;
+            set => _nethermindApi.WitnessCollector = value;
+        }
 
         public ProtectedPrivateKey? NodeKey
         {
@@ -444,23 +494,13 @@ namespace Nethermind.DataMarketplace.Infrastructure
             set => _nethermindApi.OriginalSignerKey = value;
         }
         
-<<<<<<< HEAD
-        public List<IPublisher> Publishers => _nethermindApi.Publishers;
-        
-        public List<INethermindPlugin> Plugins => _nethermindApi.Plugins;
-=======
         public IList<IPublisher> Publishers => _nethermindApi.Publishers;
         
         public IList<INethermindPlugin> Plugins => _nethermindApi.Plugins;
->>>>>>> master
 
         public IBlockchainBridge CreateBlockchainBridge()
         {
             return _nethermindApi.CreateBlockchainBridge();
         }
     }
-<<<<<<< HEAD
 }
-=======
-}
->>>>>>> master

@@ -37,6 +37,8 @@ using Nethermind.DataMarketplace.Infrastructure.Notifiers;
 using Nethermind.DataMarketplace.Subprotocols.Factories;
 using Nethermind.Db;
 using Nethermind.WebSockets;
+using Nethermind.DataMarketplace.Infrastructure.Updaters;
+using Nethermind.DataMarketplace.Infrastructure.Database;
 
 [assembly: InternalsVisibleTo("Nethermind.DataMarketplace.Test")]
 
@@ -103,8 +105,10 @@ namespace Nethermind.DataMarketplace.Initializers
                     break;
                 default:
                     ndmApi.MongoProvider = NullMongoProvider.Instance;
-                    configRepository = new ConfigRocksRepository(dbProvider.ConfigsDb, new NdmConfigDecoder());
-                    ethRequestRepository = new EthRequestRocksRepository(dbProvider.EthRequestsDb,
+                    var ndmDbProvider = new NdmDbInitializer(defaultConfig, ndmApi.DbProvider, ndmApi.RocksDbFactory, ndmApi.MemDbFactory);
+                    await ndmDbProvider.Init();
+                    configRepository = new ConfigRocksRepository(ndmApi.DbProvider.GetDb<IDb>(NdmDbNames.Configs), new NdmConfigDecoder());
+                    ethRequestRepository = new EthRequestRocksRepository(ndmApi.DbProvider.GetDb<IDb>(NdmDbNames.EthRequests),
                         new EthRequestDecoder());
                     break;
             }
@@ -122,12 +126,13 @@ namespace Nethermind.DataMarketplace.Initializers
 
             IWebSocketsModule webSocketsModule = ndmApi.WebSocketsManager!.GetModule("ndm");
             ndmApi.NdmNotifier = new NdmNotifier(webSocketsModule);
+
             ndmApi.EthRequestService = new EthRequestService(ndmApi.NdmConfig.FaucetHost, logManager);
+
             string baseDbPath = configProvider.GetConfig<IInitConfig>().BaseDbPath;
-            
             ndmApi.BaseDbPath = DbPath = Path.Combine(baseDbPath, ndmApi.NdmConfig.DatabasePath);
 
-            _ndmModule.Init();
+            await _ndmModule.InitAsync();
             
             if (ndmApi.NdmConfig.FaucetEnabled)
             {
@@ -165,7 +170,7 @@ namespace Nethermind.DataMarketplace.Initializers
                 ? Address.Zero
                 : new Address(ndmApi.NdmConfig.ProviderAddress);
             
-            _ndmConsumersModule.Init();
+            await _ndmConsumersModule.Init();
         }
 
         public virtual async Task<INdmCapabilityConnector> InitAsync(INdmApi api)

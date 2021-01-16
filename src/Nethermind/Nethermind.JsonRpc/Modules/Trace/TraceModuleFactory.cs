@@ -27,6 +27,7 @@ using Nethermind.Config;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.Trie.Pruning;
 using Newtonsoft.Json;
 
 namespace Nethermind.JsonRpc.Modules.Trace
@@ -34,20 +35,22 @@ namespace Nethermind.JsonRpc.Modules.Trace
     public class TraceModuleFactory : ModuleFactoryBase<ITraceModule>
     {
         private readonly IBlockTree _blockTree;
+        private readonly ITrieNodeResolver _trieStore;
         private readonly IJsonRpcConfig _jsonRpcConfig;
         private readonly IDbProvider _dbProvider;
         private readonly IReceiptStorage _receiptStorage;
         private readonly ISpecProvider _specProvider;
         private readonly ILogManager _logManager;
-        private readonly IBlockDataRecoveryStep _recoveryStep;
+        private readonly IBlockPreprocessorStep _recoveryStep;
         private readonly IRewardCalculatorSource _rewardCalculatorSource;
         private ILogger _logger;
 
         public TraceModuleFactory(
             IDbProvider dbProvider,
             IBlockTree blockTree,
+            ITrieNodeResolver trieStore,
             IJsonRpcConfig jsonRpcConfig,
-            IBlockDataRecoveryStep recoveryStep,
+            IBlockPreprocessorStep recoveryStep,
             IRewardCalculatorSource rewardCalculatorSource,
             IReceiptStorage receiptFinder,
             ISpecProvider specProvider,
@@ -55,6 +58,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
         {
             _dbProvider = dbProvider ?? throw new ArgumentNullException(nameof(dbProvider));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
+            _trieStore = trieStore ?? throw new ArgumentNullException(nameof(trieStore));
             _jsonRpcConfig = jsonRpcConfig ?? throw new ArgumentNullException(nameof(jsonRpcConfig));
             _recoveryStep = recoveryStep ?? throw new ArgumentNullException(nameof(recoveryStep));
             _rewardCalculatorSource = rewardCalculatorSource ?? throw new ArgumentNullException(nameof(rewardCalculatorSource));
@@ -68,7 +72,8 @@ namespace Nethermind.JsonRpc.Modules.Trace
         {
             var readOnlyTree = new ReadOnlyBlockTree(_blockTree);
             var readOnlyDbProvider = new ReadOnlyDbProvider(_dbProvider, false);
-            var readOnlyTxProcessingEnv = new ReadOnlyTxProcessingEnv(readOnlyDbProvider, readOnlyTree, _specProvider, _logManager);
+            var readOnlyTxProcessingEnv = new ReadOnlyTxProcessingEnv(
+                readOnlyDbProvider, new ReadOnlyTrieStore(_trieStore), readOnlyTree, _specProvider, _logManager);
             var readOnlyChainProcessingEnv = new ReadOnlyChainProcessingEnv(readOnlyTxProcessingEnv, Always.Valid, _recoveryStep, _rewardCalculatorSource.Get(readOnlyTxProcessingEnv.TransactionProcessor), _receiptStorage, readOnlyDbProvider, _specProvider, _logManager);
             Tracer tracer = new Tracer(readOnlyChainProcessingEnv.StateProvider, readOnlyChainProcessingEnv.ChainProcessor);
 

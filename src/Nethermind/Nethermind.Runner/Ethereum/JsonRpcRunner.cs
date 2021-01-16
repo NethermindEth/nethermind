@@ -24,6 +24,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Nethermind.Api;
+using Nethermind.Api.Extensions;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.JsonRpc;
@@ -45,12 +46,14 @@ namespace Nethermind.Runner.Ethereum
         private readonly IJsonRpcConfig _jsonRpcConfig;
         private IWebHost? _webHost;
         private IInitConfig _initConfig;
+        private INethermindApi _api;
 
         public JsonRpcRunner(
             IJsonRpcProcessor jsonRpcProcessor,
             IWebSocketsManager webSocketsManager,
             IConfigProvider configurationProvider,
-            ILogManager logManager)
+            ILogManager logManager,
+            INethermindApi api)
         {
             _jsonRpcConfig = configurationProvider.GetConfig<IJsonRpcConfig>();
             _initConfig = configurationProvider.GetConfig<IInitConfig>();
@@ -59,6 +62,7 @@ namespace Nethermind.Runner.Ethereum
             _jsonRpcProcessor = jsonRpcProcessor;
             _webSocketsManager = webSocketsManager;
             _logger = logManager.GetClassLogger();
+            _api = api;
         }
 
         public Task Start(CancellationToken cancellationToken)
@@ -69,12 +73,12 @@ namespace Nethermind.Runner.Ethereum
                 string host = _jsonRpcConfig.Host;
                 string scheme = "http";
                 var defaultUrl = $"{scheme}://{host}:{_jsonRpcConfig.Port}";
-                var urlVariable = Environment.GetEnvironmentVariable(nethermindUrlVariable);
+                string? urlVariable = Environment.GetEnvironmentVariable(nethermindUrlVariable);
                 string url = defaultUrl;
 
                 if (!string.IsNullOrWhiteSpace(urlVariable))
                 {
-                    if (Uri.TryCreate(urlVariable, UriKind.Absolute, out var uri))
+                    if (Uri.TryCreate(urlVariable, UriKind.Absolute, out Uri? uri))
                     {
                         url = urlVariable;
                         host = uri.Host;
@@ -102,12 +106,17 @@ namespace Nethermind.Runner.Ethereum
                     s.AddSingleton(_configurationProvider);
                     s.AddSingleton(_jsonRpcProcessor);
                     s.AddSingleton(_webSocketsManager);
+                    foreach(var plugin in _api.Plugins.OfType<INethermindServicesPlugin>()) 
+                    {
+                        plugin.AddServices(s);
+                    };
                 })
                 .UseStartup<Startup>()
                 .UseUrls(urls)
                 .ConfigureLogging(logging =>
                 {
                     logging.SetMinimumLevel(LogLevel.Information);
+                    logging.AddFilter("Microsoft.Extensions.Diagnostics.HealthChecks", LogLevel.Critical);
                     logging.ClearProviders();
                     logging.AddProvider(new CustomMicrosoftLoggerProvider(_logManager));
                 })

@@ -17,16 +17,10 @@
 using System;
 using System.Collections.Generic;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Processing;
-using Nethermind.Blockchain.Receipts;
-using Nethermind.Blockchain.Synchronization;
-using Nethermind.Core.Specs;
-using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Facade;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Logging;
-using Nethermind.Db.Blooms;
 using Nethermind.State;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
@@ -37,6 +31,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
     public class EthModuleFactory : ModuleFactoryBase<IEthModule>
     {
         private readonly IBlockTree _blockTree;
+        private readonly IDbProvider _dbProvider;
         private readonly ILogManager _logManager;
         private readonly IStateReader _stateReader;
         private readonly IBlockchainBridgeFactory _blockchainBridgeFactory;

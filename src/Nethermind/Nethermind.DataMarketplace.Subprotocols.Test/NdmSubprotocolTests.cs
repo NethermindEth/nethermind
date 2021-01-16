@@ -49,7 +49,7 @@ namespace Nethermind.DataMarketplace.Subprotocols.Test
         private void BuildSubprotocol()
         {
             ISession session = Substitute.For<ISession>();
-            INodeStatsManager nodeStatsManager = new NodeStatsManager(new StatsConfig(), LimboLogs.Instance);
+            INodeStatsManager nodeStatsManager = new NodeStatsManager(LimboLogs.Instance);
             MessageSerializationService serializationService = new MessageSerializationService();
             serializationService.Register(typeof(HiMessage).Assembly);
             IConsumerService consumerService = Substitute.For<IConsumerService>();
@@ -159,7 +159,7 @@ namespace Nethermind.DataMarketplace.Subprotocols.Test
 
             TestBeforeHi(new DataAssetStateChangedMessage(Keccak.OfAnEmptyString, DataAssetState.Archived));
             TestBeforeHi(new DataAssetStateChangedMessage(Keccak.OfAnEmptyString, DataAssetState.UnderMaintenance));
-            TestBeforeHi(new DataAssetStateChangedMessage(Keccak.OfAnEmptyString, DataAssetState.Unavailable));
+            TestBeforeHi(new DataAssetStateChangedMessage(Keccak.OfAnEmptyString, DataAssetState.Closed));
             TestBeforeHi(new DataAssetStateChangedMessage(Keccak.OfAnEmptyString, DataAssetState.Published));
             TestBeforeHi(new DataAssetStateChangedMessage(Keccak.OfAnEmptyString, DataAssetState.Unpublished));
 
@@ -211,7 +211,7 @@ namespace Nethermind.DataMarketplace.Subprotocols.Test
 
             SmokeTestAfterHi(new DataAssetStateChangedMessage(Keccak.OfAnEmptyString, DataAssetState.Archived));
             SmokeTestAfterHi(new DataAssetStateChangedMessage(Keccak.OfAnEmptyString, DataAssetState.UnderMaintenance));
-            SmokeTestAfterHi(new DataAssetStateChangedMessage(Keccak.OfAnEmptyString, DataAssetState.Unavailable));
+            SmokeTestAfterHi(new DataAssetStateChangedMessage(Keccak.OfAnEmptyString, DataAssetState.Closed));
             SmokeTestAfterHi(new DataAssetStateChangedMessage(Keccak.OfAnEmptyString, DataAssetState.Published));
             SmokeTestAfterHi(new DataAssetStateChangedMessage(Keccak.OfAnEmptyString, DataAssetState.Unpublished));
 

@@ -48,7 +48,7 @@ namespace Nethermind.Network.Test.Discovery
             networkConfig.ExternalIp = IPAddress.Broadcast.ToString();
             
             _masterNode = new Node(TestItem.PublicKeyA, IPAddress.Broadcast.ToString(), 30000, false);
-            DiscoveryConfig config = new DiscoveryConfig();
+            DiscoveryConfig config = new DiscoveryConfig() {DiscoveryNewCycleWaitTime = 1};
             NodeDistanceCalculator distanceCalculator = new NodeDistanceCalculator(config);
             _nodeTable = new NodeTable(
                 distanceCalculator,
@@ -57,7 +57,7 @@ namespace Nethermind.Network.Test.Discovery
                 LimboLogs.Instance);
             DiscoveryMessageFactory messageFactory = new DiscoveryMessageFactory(Timestamper.Default);
             EvictionManager evictionManager = new EvictionManager(_nodeTable, LimboLogs.Instance);
-            NodeStatsManager nodeStatsManager = new NodeStatsManager(new StatsConfig(), LimboLogs.Instance);
+            NodeStatsManager nodeStatsManager = new NodeStatsManager(LimboLogs.Instance);
             NodeLifecycleManagerFactory managerFactory =
                 new NodeLifecycleManagerFactory(
                     _nodeTable,

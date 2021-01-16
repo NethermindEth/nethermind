@@ -96,8 +96,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
         {
             SyncingResult result;
             long bestSuggestedNumber = _blockFinder.FindBestSuggestedHeader().Number;
-            bool isSyncing = bestSuggestedNumber > _blockFinder.Head.Number + 1;
-
+            bool isSyncing = bestSuggestedNumber > _blockFinder.Head.Number + 8;
+            
             if (isSyncing)
             {
                 result = new SyncingResult
@@ -345,6 +345,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             }
             catch (Exception e)
             {
+                if (_logger.IsError) _logger.Error("Failed to send transaction.", e);
                 return ResultWrapper<Keccak>.Fail(e.Message, ErrorCodes.TransactionRejected);
             }
         }
@@ -448,7 +449,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             return ResultWrapper<BlockForRpc>.Success(block == null ? null : new BlockForRpc(block, returnFullTransactionObjects));
         }
 
-        public ResultWrapper<TransactionForRpc> eth_getTransactionByHash(Keccak transactionHash)
+        public Task<ResultWrapper<TransactionForRpc>> eth_getTransactionByHash(Keccak transactionHash)
         {
             _txPoolBridge.TryGetPendingTransaction(transactionHash, out Transaction transaction);
             TxReceipt receipt = null; // note that if transaction is pending then for sure no receipt is known
@@ -457,14 +458,14 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 (receipt, transaction) = _blockchainBridge.GetTransaction(transactionHash);
                 if (transaction == null)
                 {
-                    return ResultWrapper<TransactionForRpc>.Success(null);
+                    return Task.FromResult(ResultWrapper<TransactionForRpc>.Success(null));
                 }
             }
 
             RecoverTxSenderIfNeeded(transaction);
             TransactionForRpc transactionModel = new TransactionForRpc(receipt?.BlockHash, receipt?.BlockNumber, receipt?.Index, transaction);
             if (_logger.IsTrace) _logger.Trace($"eth_getTransactionByHash request {transactionHash}, result: {transactionModel.Hash}");
-            return ResultWrapper<TransactionForRpc>.Success(transactionModel);
+            return Task.FromResult(ResultWrapper<TransactionForRpc>.Success(transactionModel));
         }
 
         public ResultWrapper<TransactionForRpc[]> eth_pendingTransactions()

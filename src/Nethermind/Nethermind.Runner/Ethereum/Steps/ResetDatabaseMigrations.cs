@@ -21,7 +21,6 @@ using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
-using Nethermind.Runner.Ethereum.Api;
 using Nethermind.State.Repositories;
 
 namespace Nethermind.Runner.Ethereum.Steps
@@ -29,7 +28,7 @@ namespace Nethermind.Runner.Ethereum.Steps
     [RunnerStepDependencies(typeof(InitRlp), typeof(InitDatabase), typeof(InitializeBlockchain))]
     public class ResetDatabaseMigrations : IStep
     {
-        private readonly INethermindApi _api;
+        private readonly IApiWithNetwork _api;
         [NotNull]
         private IReceiptStorage? _receiptStorage;
         [NotNull]
@@ -64,7 +63,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             
             if (_receiptStorage.MigratedBlockNumber != long.MaxValue)
             {
-                var blockNumber = _blockTree.Head?.Number ?? 0;
+                long blockNumber = _blockTree.Head?.Number ?? 0;
                 while (blockNumber > 0)
                 {
                     var level = _chainLevelInfoRepository.LoadLevel(blockNumber);

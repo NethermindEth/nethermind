@@ -48,7 +48,7 @@ namespace Nethermind.Consensus.AuRa.Validators
         private readonly ContractBasedValidator _contractValidator;
         private readonly long _posdaoTransition;
         private readonly ITxSender _posdaoTxSender;
-        private readonly IStateProvider _stateProvider;
+        private readonly IReadOnlyStateProvider _stateProvider;
         private readonly Cache _cache;
         private readonly ITxSender _nonPosdaoTxSender;
         private readonly ILogger _logger;
@@ -60,7 +60,7 @@ namespace Nethermind.Consensus.AuRa.Validators
             ITxSender txSender,
             ITxPool txPool,
             IMiningConfig miningConfig,
-            IStateProvider stateProvider,
+            IReadOnlyStateProvider stateProvider,
             Cache cache,
             ILogManager logManager)
         {
@@ -95,6 +95,7 @@ namespace Nethermind.Consensus.AuRa.Validators
             if (IsPosdao(blockNumber))
             {
                 _persistentReports.AddLast(persistentReport);
+                _sentReportsInBlock = blockNumber;
             }
 
             return CreateReportMaliciousTransactionCore(persistentReport);
@@ -224,7 +225,11 @@ namespace Nethermind.Consensus.AuRa.Validators
             _contractValidator.OnBlockProcessingEnd(block, receipts, options);
             if (!_contractValidator.ForSealing)
             {
-                ResendPersistedReports(block.Header);
+                var parentHeader = _contractValidator.BlockTree.FindParentHeader(block.Header, BlockTreeLookupOptions.None);
+                if (parentHeader != null)
+                {
+                    ResendPersistedReports(parentHeader);
+                }
             }
         }
     }

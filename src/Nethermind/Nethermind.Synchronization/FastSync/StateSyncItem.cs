@@ -22,7 +22,7 @@ namespace Nethermind.Synchronization.FastSync
     [DebuggerDisplay("{Level} {NodeDataType} {Hash}")]
     public class StateSyncItem
     {
-        public StateSyncItem(Keccak hash, NodeDataType nodeType, int level, uint rightness)
+        public StateSyncItem(Keccak hash, NodeDataType nodeType, int level = 0, uint rightness = 0)
         {
             Hash = hash;
             NodeDataType = nodeType;

@@ -54,6 +54,7 @@ namespace Nethermind.Consensus.Clique
         private readonly ISpecProvider _specProvider;
         private readonly ISnapshotManager _snapshotManager;
         private readonly ICliqueConfig _config;
+
         private readonly ConcurrentDictionary<Address, bool> _proposals = new ConcurrentDictionary<Address, bool>();
 
         private readonly CancellationTokenSource _cancellationTokenSource = new CancellationTokenSource();
@@ -69,7 +70,7 @@ namespace Nethermind.Consensus.Clique
             ISnapshotManager snapshotManager,
             ISealer cliqueSealer,
             IGasLimitCalculator gasLimitCalculator,
-            ISpecProvider specProvider,
+            ISpecProvider? specProvider,
             ICliqueConfig config,
             ILogManager logManager)
         {
@@ -93,7 +94,8 @@ namespace Nethermind.Consensus.Clique
             _timer.Start();
         }
 
-        private readonly BlockingCollection<Block> _signalsQueue = new BlockingCollection<Block>(new ConcurrentQueue<Block>());
+        private readonly BlockingCollection<Block> _signalsQueue =
+            new BlockingCollection<Block>(new ConcurrentQueue<Block>());
 
         private Block? _scheduledBlock;
 
@@ -133,11 +135,11 @@ namespace Nethermind.Consensus.Clique
                     _timer.Enabled = true;
                     return;
                 }
-                
+
                 Block? scheduledBlock = _scheduledBlock;
                 if (scheduledBlock == null)
                 {
-                    if (_blockTree.Head.Timestamp + _config.BlockPeriod < _timestamper.EpochSeconds)
+                    if (_blockTree.Head.Timestamp + _config.BlockPeriod < _timestamper.UnixTime.Seconds)
                     {
                         _signalsQueue.Add(_blockTree.FindBlock(_blockTree.Head.Hash, BlockTreeLookupOptions.None));
                     }
@@ -147,27 +149,33 @@ namespace Nethermind.Consensus.Clique
                 }
 
                 string turnDescription = scheduledBlock.IsInTurn() ? "IN TURN" : "OUT OF TURN";
-                
+
                 int wiggle = _wiggle.WiggleFor(scheduledBlock.Header);
-                if (scheduledBlock.Timestamp * 1000 + (UInt256)wiggle < _timestamper.EpochMilliseconds)
+                if (scheduledBlock.Timestamp * 1000 + (UInt256)wiggle < _timestamper.UnixTime.Milliseconds)
                 {
                     if (scheduledBlock.TotalDifficulty > _blockTree.Head.TotalDifficulty)
                     {
-                        if(ReferenceEquals(scheduledBlock, _scheduledBlock))
+                        if (ReferenceEquals(scheduledBlock, _scheduledBlock))
                         {
-                            BlockHeader parent = _blockTree.FindParentHeader(scheduledBlock.Header, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+                            BlockHeader parent = _blockTree.FindParentHeader(scheduledBlock.Header,
+                                BlockTreeLookupOptions.TotalDifficultyNotNeeded);
                             Address parentSigner = _snapshotManager.GetBlockSealer(parent);
-                            
+
                             string parentTurnDescription = parent.IsInTurn() ? "IN TURN" : "OUT OF TURN";
-                            string parentDetails = $"{parentTurnDescription} {parent.TimestampDate:HH:mm:ss} {parent.ToString(BlockHeader.Format.Short)} sealed by {KnownAddresses.GetDescription(parentSigner)}";
-                            
-                            if (_logger.IsInfo) _logger.Info($"Suggesting own {turnDescription} {_scheduledBlock.TimestampDate:HH:mm:ss} {scheduledBlock.ToString(Block.Format.HashNumberDiffAndTx)} based on {parentDetails} after the delay of {wiggle}");
+                            string parentDetails =
+                                $"{parentTurnDescription} {parent.TimestampDate:HH:mm:ss} {parent.ToString(BlockHeader.Format.Short)} sealed by {KnownAddresses.GetDescription(parentSigner)}";
+
+                            if (_logger.IsInfo)
+                                _logger.Info(
+                                    $"Suggesting own {turnDescription} {_scheduledBlock.TimestampDate:HH:mm:ss} {scheduledBlock.ToString(Block.Format.HashNumberDiffAndTx)} based on {parentDetails} after the delay of {wiggle}");
                             _blockTree.SuggestBlock(scheduledBlock);
                         }
                     }
                     else
                     {
-                        if (_logger.IsInfo) _logger.Info($"Dropping a losing block {scheduledBlock.ToString(Block.Format.HashNumberDiffAndTx)}");
+                        if (_logger.IsInfo)
+                            _logger.Info(
+                                $"Dropping a losing block {scheduledBlock.ToString(Block.Format.HashNumberDiffAndTx)}");
                     }
 
                     if (ReferenceEquals(scheduledBlock, _scheduledBlock))
@@ -177,7 +185,8 @@ namespace Nethermind.Consensus.Clique
                 }
                 else
                 {
-                    if (_logger.IsTrace) _logger.Trace($"Not yet {scheduledBlock.ToString(Block.Format.HashNumberDiffAndTx)}");
+                    if (_logger.IsTrace)
+                        _logger.Trace($"Not yet {scheduledBlock.ToString(Block.Format.HashNumberDiffAndTx)}");
                 }
 
                 _timer.Enabled = true;
@@ -243,7 +252,8 @@ namespace Nethermind.Consensus.Clique
                     }
 
                     if (_logger.IsInfo) _logger.Info($"Processing prepared block {block.Number}");
-                    Block processedBlock = _processor.Process(block, ProcessingOptions.ProducingBlock, NullBlockTracer.Instance);
+                    Block processedBlock = _processor.Process(block, ProcessingOptions.ProducingBlock,
+                        NullBlockTracer.Instance);
                     if (processedBlock == null)
                     {
                         if (_logger.IsInfo) _logger.Info($"Prepared block has lost the race");
@@ -259,13 +269,16 @@ namespace Nethermind.Consensus.Clique
                         {
                             if (t.Result != null)
                             {
-                                if (_logger.IsInfo) _logger.Info($"Sealed block {t.Result.ToString(Block.Format.HashNumberDiffAndTx)}");
+                                if (_logger.IsInfo)
+                                    _logger.Info($"Sealed block {t.Result.ToString(Block.Format.HashNumberDiffAndTx)}");
                                 _scheduledBlock = t.Result;
                                 Metrics.BlocksSealed++;
                             }
                             else
                             {
-                                if (_logger.IsInfo) _logger.Info($"Failed to seal block {processedBlock.ToString(Block.Format.HashNumberDiffAndTx)} (null seal)");
+                                if (_logger.IsInfo)
+                                    _logger.Info(
+                                        $"Failed to seal block {processedBlock.ToString(Block.Format.HashNumberDiffAndTx)} (null seal)");
                                 Metrics.FailedBlockSeals++;
                             }
                         }
@@ -283,7 +296,10 @@ namespace Nethermind.Consensus.Clique
                 }
                 catch (Exception e)
                 {
-                    if (_logger.IsError) _logger.Error($"Block producer could not produce block on top of {parentBlock.ToString(Block.Format.Short)}", e);
+                    if (_logger.IsError)
+                        _logger.Error(
+                            $"Block producer could not produce block on top of {parentBlock.ToString(Block.Format.Short)}",
+                            e);
                     Metrics.FailedBlockSeals++;
                 }
             }
@@ -303,7 +319,9 @@ namespace Nethermind.Consensus.Clique
             BlockHeader parentHeader = parentBlock.Header;
             if (parentHeader == null)
             {
-                if (_logger.IsError) _logger.Error($"Preparing new block on top of {parentBlock.ToString(Block.Format.Short)} - parent header is null");
+                if (_logger.IsError)
+                    _logger.Error(
+                        $"Preparing new block on top of {parentBlock.ToString(Block.Format.Short)} - parent header is null");
                 return null;
             }
 
@@ -319,9 +337,10 @@ namespace Nethermind.Consensus.Clique
                 return null;
             }
 
-            if (_logger.IsInfo) _logger.Info($"Preparing new block on top of {parentBlock.ToString(Block.Format.Short)}");
+            if (_logger.IsInfo)
+                _logger.Info($"Preparing new block on top of {parentBlock.ToString(Block.Format.Short)}");
 
-            UInt256 timestamp = _timestamper.EpochSeconds;
+            UInt256 timestamp = _timestamper.UnixTime.Seconds;
 
             BlockHeader header = new BlockHeader(
                 parentBlock.Hash,
@@ -337,7 +356,7 @@ namespace Nethermind.Consensus.Clique
             long number = header.Number;
             // Assemble the voting snapshot to check which votes make sense
             Snapshot snapshot = _snapshotManager.GetOrCreateSnapshot(number - 1, header.ParentHash);
-            bool isEpochBlock = (ulong) number % 30000 == 0;
+            bool isEpochBlock = (ulong)number % 30000 == 0;
             if (!isEpochBlock && _proposals.Any())
             {
                 // Gather all the proposals that make sense voting on
@@ -356,7 +375,10 @@ namespace Nethermind.Consensus.Clique
                 if (addresses.Count > 0)
                 {
                     header.Beneficiary = addresses[_cryptoRandom.NextInt(addresses.Count)];
-                    header.Nonce = _proposals[header.Beneficiary] ? Clique.NonceAuthVote : Clique.NonceDropVote;
+                    if (_proposals.TryGetValue(header.Beneficiary!, out bool proposal))
+                    {
+                        header.Nonce = proposal ? Clique.NonceAuthVote : Clique.NonceDropVote;
+                    }
                 }
             }
 
@@ -364,7 +386,8 @@ namespace Nethermind.Consensus.Clique
             header.BaseFee = BlockHeader.CalculateBaseFee(parentHeader, _specProvider.GetSpec(header.Number));
             header.Difficulty = CalculateDifficulty(snapshot, _sealer.Address);
             header.TotalDifficulty = parentBlock.TotalDifficulty + header.Difficulty;
-            if (_logger.IsDebug) _logger.Debug($"Setting total difficulty to {parentBlock.TotalDifficulty} + {header.Difficulty}.");
+            if (_logger.IsDebug)
+                _logger.Debug($"Setting total difficulty to {parentBlock.TotalDifficulty} + {header.Difficulty}.");
 
             // Set extra data
             int mainBytesLength = Clique.ExtraVanityLength + Clique.ExtraSealLength;
@@ -389,16 +412,16 @@ namespace Nethermind.Consensus.Clique
             header.MixHash = Keccak.Zero;
             // Ensure the timestamp has the correct delay
             header.Timestamp = parentBlock.Timestamp + _config.BlockPeriod;
-            if (header.Timestamp < _timestamper.EpochSeconds)
+            if (header.Timestamp < _timestamper.UnixTime.Seconds)
             {
-                header.Timestamp = new UInt256(_timestamper.EpochSeconds);
+                header.Timestamp = new UInt256(_timestamper.UnixTime.Seconds);
             }
 
             _stateProvider.StateRoot = parentHeader.StateRoot;
 
             var selectedTxs = _txSource.GetTransactions(parentBlock.Header, header.GasLimit);
             Block block = new Block(header, selectedTxs, Array.Empty<BlockHeader>());
-            header.TxRoot = new TxTrie(block.Transactions).RootHash;
+            header.TxRoot = new TxTrie(block.Transactions, _specProvider.GetSpec(block.Number)).RootHash;
             block.Header.Author = _sealer.Address;
             return block;
         }

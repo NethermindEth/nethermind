@@ -29,9 +29,9 @@ namespace Nethermind.Consensus.Transactions
             _minGasPrice = minGasPrice;
         }
         
-        public bool IsAllowed(Transaction tx, BlockHeader parentHeader)
+        public (bool Allowed, string Reason) IsAllowed(Transaction tx, BlockHeader parentHeader)
         {
-            return tx.GasPrice >= _minGasPrice;
+            return (tx.GasPrice >= _minGasPrice, $"gas price too low {tx.GasPrice} < {_minGasPrice}");
         }
     }
 }

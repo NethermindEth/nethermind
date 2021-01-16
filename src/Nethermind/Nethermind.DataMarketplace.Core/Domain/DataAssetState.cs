@@ -19,7 +19,7 @@ namespace Nethermind.DataMarketplace.Core.Domain
     public enum DataAssetState
     {
         Unpublished,
-        Unavailable,
+        Closed,
         UnderMaintenance,
         Published,
         Archived

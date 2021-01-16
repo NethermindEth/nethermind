@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -18,8 +18,8 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Rewards;
@@ -36,7 +36,6 @@ using Nethermind.Db;
 using Nethermind.Db.Blooms;
 using Nethermind.Int256;
 using Nethermind.Evm;
-using Nethermind.Facade;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Logging;
@@ -47,6 +46,8 @@ using Nethermind.TxPool.Storages;
 using NUnit.Framework;
 using BlockTree = Nethermind.Blockchain.BlockTree;
 using Nethermind.Blockchain.Find;
+using Nethermind.Specs.Forks;
+using Nethermind.Trie.Pruning;
 
 namespace Nethermind.JsonRpc.Test.Modules
 {
@@ -57,20 +58,21 @@ namespace Nethermind.JsonRpc.Test.Modules
         private IJsonRpcConfig _jsonRpcConfig;
 
         [SetUp]
-        public void SetUp()
+        public async Task SetUp()
         {
-            Initialize();
+            await Initialize();
         }
 
-        private void Initialize(bool auRa = false)
+        private async Task Initialize(bool auRa = false)
         {
-            MemDbProvider dbProvider = new MemDbProvider();
+            IDbProvider dbProvider = await TestMemDbProvider.InitAsync();
             ISpecProvider specProvider = MainnetSpecProvider.Instance;
             _jsonRpcConfig = new JsonRpcConfig();
             IEthereumEcdsa ethereumEcdsa = new EthereumEcdsa(specProvider.ChainId, LimboLogs.Instance);
             ITxStorage txStorage = new InMemoryTxStorage();
             _stateDb = new StateDb();
-            _stateProvider = new StateProvider(dbProvider, LimboLogs.Instance);
+            ITrieStore trieStore = new ReadOnlyTrieStore(new TrieStore(_stateDb, LimboLogs.Instance));
+            _stateProvider = new StateProvider(trieStore, new StateDb(), LimboLogs.Instance);
             _stateProvider.CreateAccount(TestItem.AddressA, 1000.Ether());
             _stateProvider.CreateAccount(TestItem.AddressB, 1000.Ether());
             _stateProvider.CreateAccount(TestItem.AddressC, 1000.Ether());
@@ -79,16 +81,16 @@ namespace Nethermind.JsonRpc.Test.Modules
             _stateProvider.UpdateCode(code);
             _stateProvider.UpdateCodeHash(TestItem.AddressA, codeHash, specProvider.GenesisSpec);
 
-            IStorageProvider storageProvider = new StorageProvider(_stateDb, _stateProvider, LimboLogs.Instance);
+            IStorageProvider storageProvider = new StorageProvider(trieStore, _stateProvider, LimboLogs.Instance);
             storageProvider.Set(new StorageCell(TestItem.AddressA, UInt256.One), Bytes.FromHexString("0xabcdef"));
             storageProvider.Commit();
 
             _stateProvider.Commit(specProvider.GenesisSpec);
-            _stateProvider.CommitTree();
+            _stateProvider.CommitTree(0);
 
             ITxPool txPool = new TxPool.TxPool(txStorage, ethereumEcdsa, specProvider, new TxPoolConfig(), _stateProvider, LimboLogs.Instance);
             IChainLevelInfoRepository chainLevels = new ChainLevelInfoRepository(dbProvider);
-            IBlockTree blockTree = new BlockTree(dbProvider, chainLevels, specProvider, txPool, NullBloomStorage.Instance, LimboLogs.Instance);
+            IBlockTree blockTree = new BlockTree(dbProvider, chainLevels, specProvider, NullBloomStorage.Instance, LimboLogs.Instance);
 
             IReceiptStorage receiptStorage = new InMemoryReceiptStorage();
             VirtualMachine virtualMachine = new VirtualMachine(_stateProvider, storageProvider, new BlockhashProvider(blockTree, LimboLogs.Instance), specProvider, LimboLogs.Instance);
@@ -98,15 +100,14 @@ namespace Nethermind.JsonRpc.Test.Modules
                 Always.Valid,
                 new RewardCalculator(specProvider),
                 txProcessor,
-                dbProvider.StateDb,
-                dbProvider.CodeDb,
                 _stateProvider,
                 storageProvider,
                 txPool,
                 receiptStorage,
+                NullWitnessCollector.Instance, 
                 LimboLogs.Instance);
 
-            var signatureRecovery = new TxSignaturesRecoveryStep(ethereumEcdsa, txPool, specProvider, LimboLogs.Instance);
+            var signatureRecovery = new RecoverSignatures(ethereumEcdsa, txPool, specProvider, LimboLogs.Instance);
             BlockchainProcessor blockchainProcessor = new BlockchainProcessor(blockTree, blockProcessor, signatureRecovery, LimboLogs.Instance, BlockchainProcessor.Options.Default);
             
             blockchainProcessor.Start();
@@ -139,7 +140,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                     transactions.Add(Build.A.Transaction.WithNonce((UInt256)j).SignedAndResolved().TestObject);
                 }
                 
-                BlockBuilder builder = Build.A.Block.WithNumber(i).WithParent(previousBlock).WithTransactions(transactions.ToArray()).WithStateRoot(new Keccak("0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f"));
+                BlockBuilder builder = Build.A.Block.WithNumber(i).WithParent(previousBlock).WithTransactions(MuirGlacier.Instance, transactions.ToArray()).WithStateRoot(new Keccak("0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f"));
                 if (auRa)
                 {
                     builder.WithAura(i, i.ToByteArray());
@@ -169,14 +170,14 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
 
         [Test]
-        public void trace_timeout_is_separate_for_rpc_calls()
+        public async Task trace_timeout_is_separate_for_rpc_calls()
         {
             _jsonRpcConfig.Timeout = 25;
             
             var searchParameter = new BlockParameter(number: 0); 
-            Assert.DoesNotThrow(() => _traceModule.trace_block(searchParameter)); 
+            Assert.DoesNotThrow(() => _traceModule.trace_block(searchParameter));
 
-            Thread.Sleep(_jsonRpcConfig.Timeout + 25); //additional second just to show that in this time span timeout should occur if given one for whole class 
+            await Task.Delay(_jsonRpcConfig.Timeout + 25); //additional second just to show that in this time span timeout should occur if given one for whole class
 
             Assert.DoesNotThrow(() => _traceModule.trace_block(searchParameter));
         }

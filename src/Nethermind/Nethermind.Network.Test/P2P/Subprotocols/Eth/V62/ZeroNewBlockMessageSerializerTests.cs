@@ -19,12 +19,12 @@ using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62;
+using Nethermind.Specs.Forks;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
 {
-    [Parallelizable(ParallelScope.Self)]
-    [TestFixture]
+    [TestFixture, Parallelizable(ParallelScope.All)]
     public class ZeroNewBlockMessageSerializerTests
     {
         [Test]
@@ -35,7 +35,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             {
                 Transaction a = Build.A.Transaction.TestObject;
                 Transaction b = Build.A.Transaction.TestObject;
-                Block block = Build.A.Block.WithTransactions(a, b).TestObject;
+                Block block = Build.A.Block.WithTransactions(MuirGlacier.Instance, a, b).TestObject;
                 NewBlockMessage newBlockMessage = new NewBlockMessage();
                 newBlockMessage.Block = block;
 
@@ -60,7 +60,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             {
                 Transaction a = Build.A.Transaction.TestObject;
                 Transaction b = Build.A.Transaction.TestObject;
-                Block block = Build.A.Block.WithTransactions(a, b).TestObject;
+                Block block = Build.A.Block.WithTransactions(MuirGlacier.Instance, a, b).TestObject;
                 NewBlockMessage newBlockMessage = new NewBlockMessage();
                 newBlockMessage.Block = block;
 

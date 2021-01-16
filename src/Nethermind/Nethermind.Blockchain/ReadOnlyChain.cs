@@ -15,9 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using Nethermind.Blockchain.Processing;
-using Nethermind.Consensus;
 using Nethermind.Consensus.Transactions;
-using Nethermind.Core;
 using Nethermind.State;
 
 namespace Nethermind.Blockchain

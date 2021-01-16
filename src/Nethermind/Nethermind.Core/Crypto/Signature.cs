@@ -90,7 +90,7 @@ namespace Nethermind.Core.Crypto
         }
 
         public byte[] Bytes { get; } = new byte[64];
-        public int V { get; set; }
+        public long V { get; set; }
 
         public int? ChainId => V < 35 ? null : (int?) (V + (V % 2) - 36) / 2;
 
@@ -119,14 +119,14 @@ namespace Nethermind.Core.Crypto
             return string.Concat(Bytes.ToHexString(true), vString.Length % 2 == 0 ? vString : string.Concat("0", vString));
         }
 
-        public bool Equals(Signature other)
+        public bool Equals(Signature? other)
         {
             if (ReferenceEquals(null, other)) return false;
             if (ReferenceEquals(this, other)) return true;
             return Core.Extensions.Bytes.AreEqual(Bytes, other.Bytes) && V == other.V;
         }
 
-        public override bool Equals(object obj)
+        public override bool Equals(object? obj)
         {
             if (ReferenceEquals(null, obj)) return false;
             if (ReferenceEquals(this, obj)) return true;

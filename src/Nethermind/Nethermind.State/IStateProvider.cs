@@ -22,35 +22,15 @@ using Nethermind.Trie;
 
 namespace Nethermind.State
 {
-    public interface IStateProvider
+    public interface IStateProvider : IReadOnlyStateProvider
     {
         void RecalculateStateRoot();
         
-        Keccak StateRoot { get; set; }
+        new Keccak StateRoot { get; set; }
 
         void DeleteAccount(Address address);
 
         void CreateAccount(Address address, in UInt256 balance);
-
-        bool AccountExists(Address address);
-
-        bool IsDeadAccount(Address address);
-
-        bool IsEmptyAccount(Address address);
-
-        Account GetAccount(Address address);
-        
-        UInt256 GetNonce(Address address);
-
-        UInt256 GetBalance(Address address);
-        
-        Keccak GetStorageRoot(Address address);
-
-        Keccak GetCodeHash(Address address);
-        
-        byte[] GetCode(Address address);
-
-        byte[] GetCode(Keccak codeHash);
 
         void UpdateCodeHash(Address address, Keccak codeHash, IReleaseSpec spec);
 
@@ -61,27 +41,34 @@ namespace Nethermind.State
         void UpdateStorageRoot(Address address, Keccak storageRoot);
 
         void IncrementNonce(Address address);
-
+        
+        void DecrementNonce(Address address);
+        
         Keccak UpdateCode(byte[] code);
 
-        void Reset();
-
-        void CommitTree();
+        /* snapshots */
         
-        void Restore(int snapshot);
-
         void Commit(IReleaseSpec releaseSpec);
         
         void Commit(IReleaseSpec releaseSpec, IStateTracer stateTracer);
         
+        void Reset();
+
+        void Restore(int snapshot);
+        
+        void CommitTree(long blockNumber);
+        
         int TakeSnapshot();
         
-        string DumpState();
-        
-        TrieStats CollectStats();
-        
-        void Accept(ITreeVisitor visitor, Keccak stateRoot);
-        
-        void DecrementNonce(Address address);
+        /// <summary>
+        /// For witness
+        /// </summary>
+        /// <param name="codeHash"></param>
+        void TouchCode(Keccak codeHash);
+
+        /// <summary>
+        /// pruning hack
+        /// </summary>
+        void CommitCode();
     }
 }

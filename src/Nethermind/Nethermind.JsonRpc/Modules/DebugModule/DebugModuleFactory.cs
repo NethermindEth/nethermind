@@ -26,6 +26,7 @@ using Nethermind.Config;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.Trie.Pruning;
 using Newtonsoft.Json;
 
 namespace Nethermind.JsonRpc.Modules.DebugModule
@@ -39,10 +40,11 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
         private readonly IRewardCalculatorSource _rewardCalculatorSource;
         private readonly IReceiptStorage _receiptStorage;
         private readonly IReceiptsMigration _receiptsMigration;
+        private readonly ITrieNodeResolver _trieStore;
         private readonly IConfigProvider _configProvider;
         private readonly ISpecProvider _specProvider;
         private readonly ILogManager _logManager;
-        private readonly IBlockDataRecoveryStep _recoveryStep;
+        private readonly IBlockPreprocessorStep _recoveryStep;
         private ILogger _logger;
 
         public DebugModuleFactory(
@@ -50,10 +52,11 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
             IBlockTree blockTree,
             IJsonRpcConfig jsonRpcConfig,
             IBlockValidator blockValidator,
-            IBlockDataRecoveryStep recoveryStep,
+            IBlockPreprocessorStep recoveryStep,
             IRewardCalculatorSource rewardCalculator,
             IReceiptStorage receiptStorage,
             IReceiptsMigration receiptsMigration,
+            ITrieNodeResolver trieStore,
             IConfigProvider configProvider,
             ISpecProvider specProvider,
             ILogManager logManager)
@@ -66,6 +69,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
             _rewardCalculatorSource = rewardCalculator ?? throw new ArgumentNullException(nameof(rewardCalculator));
             _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
             _receiptsMigration = receiptsMigration ?? throw new ArgumentNullException(nameof(receiptsMigration));
+            _trieStore = trieStore ?? throw new ArgumentNullException(nameof(trieStore));
             _configProvider = configProvider ?? throw new ArgumentNullException(nameof(configProvider));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
@@ -80,6 +84,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
             ReadOnlyTxProcessingEnv txEnv =
                 new ReadOnlyTxProcessingEnv(
                     readOnlyDbProvider,
+                    _trieStore, 
                     readOnlyTree,
                     _specProvider,
                     _logManager);

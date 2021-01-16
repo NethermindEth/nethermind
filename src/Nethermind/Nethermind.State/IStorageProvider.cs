@@ -28,7 +28,7 @@ namespace Nethermind.State
 
         void Reset();
         
-        void CommitTrees();
+        void CommitTrees(long blockNumber);
         
         void Restore(int snapshot);
 

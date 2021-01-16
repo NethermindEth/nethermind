@@ -46,5 +46,9 @@ namespace Nethermind.Network.P2P
         /// Nethermind Data Marketplace
         /// </summary>
         public const string Ndm = "ndm";
+        /// <summary>
+        /// Witness
+        /// </summary>
+        public const string Wit = "wit";
     }
 }

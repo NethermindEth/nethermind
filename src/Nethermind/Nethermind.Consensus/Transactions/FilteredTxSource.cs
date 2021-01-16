@@ -20,7 +20,7 @@ using Nethermind.Core;
 
 namespace Nethermind.Consensus.Transactions
 {
-    public class FilteredTxSource : ITxSource
+    public class FilteredTxSource<T> : ITxSource where T : Transaction
     {
         private readonly ITxSource _innerSource;
         private readonly ITxFilter _txFilter;
@@ -35,13 +35,13 @@ namespace Nethermind.Consensus.Transactions
         {
             foreach (Transaction transaction in _innerSource.GetTransactions(parent, gasLimit))
             {
-                if (_txFilter.IsAllowed(transaction, parent))
+                if (!(transaction is T) || _txFilter.IsAllowed(transaction, parent).Allowed)
                 {
                     yield return transaction;
                 }
             }
         }
 
-        public override string ToString() => $"{nameof(FilteredTxSource)} [ {_innerSource} ]";
+        public override string ToString() => $"{nameof(FilteredTxSource<T>)} [ {_innerSource} ]";
     }
 }

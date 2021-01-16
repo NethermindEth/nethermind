@@ -24,7 +24,7 @@ namespace Nethermind.PubSub.Kafka.Avro.Models
 		private string _toAddr;
 		private int _transactionIndex;
 		private string _weiValue;
-		private int _v;
+		private long _v;
 		private string _r;
 		private string _s;
 		public virtual Schema Schema
@@ -155,7 +155,7 @@ namespace Nethermind.PubSub.Kafka.Avro.Models
 				this._weiValue = value;
 			}
 		}
-		public int v
+		public long v
 		{
 			get
 			{

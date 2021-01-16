@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -37,6 +37,7 @@ using NUnit.Framework;
 namespace Nethermind.Blockchain.Test
 {
     [TestFixture]
+    [Parallelizable(ParallelScope.Self)]
     public class BlockchainProcessorTests
     {
         private class ProcessingTestContext
@@ -120,7 +121,7 @@ namespace Nethermind.Blockchain.Test
                 }
             }
 
-            private class RecoveryStepMock : IBlockDataRecoveryStep
+            private class RecoveryStepMock : IBlockPreprocessorStep
             {
                 private ILogger _logger;
                 
@@ -182,13 +183,15 @@ namespace Nethermind.Blockchain.Test
             private BlockchainProcessor _processor;
             private ILogger _logger;
 
-            public ProcessingTestContext()
+            public ProcessingTestContext(bool startProcessor)
             {
                 _logger = _logManager.GetClassLogger();
                 MemDb blockDb = new MemDb();
                 MemDb blockInfoDb = new MemDb();
                 MemDb headersDb = new MemDb();
-                _blockTree = new BlockTree(blockDb, headersDb, blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), MainnetSpecProvider.Instance, NullTxPool.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
+                Block genesis = Build.A.Block.Genesis.TestObject;
+
+                _blockTree = new BlockTree(blockDb, headersDb, blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), MainnetSpecProvider.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
                 _blockProcessor = new BlockProcessorMock(_logManager);
                 _recoveryStep = new RecoveryStepMock(_logManager);
                 _processor = new BlockchainProcessor(_blockTree, _blockProcessor, _recoveryStep, LimboLogs.Instance, BlockchainProcessor.Options.Default);
@@ -200,7 +203,8 @@ namespace Nethermind.Blockchain.Test
                     _resetEvent.Set();
                 };
 
-                _processor.Start();
+                if (startProcessor)
+                    _processor.Start();
             }
 
             public ProcessingTestContext AndRecoveryQueueLimitHasBeenReached()
@@ -273,7 +277,14 @@ namespace Nethermind.Blockchain.Test
 
                 return this;
             }
-            
+
+            public ProcessingTestContext StartProcessor()
+            {
+                _processor.Start();
+
+                return this;
+            }
+
             public ProcessingTestContext Suggested(BlockHeader block)
             {
                 AddBlockResult result = _blockTree.SuggestHeader(block);
@@ -376,7 +387,9 @@ namespace Nethermind.Blockchain.Test
 
         private static class When
         {
-            public static ProcessingTestContext ProcessingBlocks => new ProcessingTestContext();
+            public static ProcessingTestContext ProcessingBlocks => new ProcessingTestContext(true);
+
+            public static ProcessingTestContext ProcessorIsNotStarted => new ProcessingTestContext(false);
         }
 
         private static Block _block0 = Build.A.Block.WithNumber(0).WithNonce(0).WithDifficulty(0).TestObject;

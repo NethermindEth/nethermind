@@ -14,9 +14,9 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Text;
-using System.Threading;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
@@ -28,6 +28,10 @@ namespace Nethermind.Core
     {
         public const int BaseTxGasCost = 21000;
 
+        /// <summary>
+        /// EIP-2718 transaction type
+        /// </summary>
+        public byte TransactionType { get; set; }
         public UInt256 Nonce { get; set; }
         public UInt256 GasPrice { get; set; }
         public UInt256 GasPremium => GasPrice; 
@@ -35,18 +39,20 @@ namespace Nethermind.Core
         public bool IsEip1559 => FeeCap > UInt256.Zero;
         public bool IsLegacy => !IsEip1559;
         public long GasLimit { get; set; }
-        public Address To { get; set; }
+        public Address? To { get; set; }
         public UInt256 Value { get; set; }
-        public byte[] Data { get; set; }
-        public byte[] Init { get; set; }
-        public Address SenderAddress { get; set; }
-        public Signature Signature { get; set; }
+        public byte[]? Data { get; set; }
+        public byte[]? Init { get; set; }
+        public Address? SenderAddress { get; set; }
+        public Signature? Signature { get; set; }
         public bool IsSigned => Signature != null;
         public bool IsContractCreation => Init != null;
         public bool IsMessageCall => Data != null;
-        public Keccak Hash { get; set; }
-        public PublicKey DeliveredBy { get; set; } // tks: this is added so we do not send the pending tx back to original sources, not used yet
+        public Keccak? Hash { get; set; }
+        public PublicKey? DeliveredBy { get; set; } // tks: this is added so we do not send the pending tx back to original sources, not used yet
         public UInt256 Timestamp { get; set; }
+        public HashSet<Address> AccountAccessList { get; set; } // eip2930
+        public HashSet<StorageCell> StorageAccessList { get; set; } // eip2930
         
         /// <summary>
         /// In-memory only property, representing order of transactions going to TxPool.

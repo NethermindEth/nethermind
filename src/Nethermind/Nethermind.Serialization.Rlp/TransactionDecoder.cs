@@ -260,6 +260,11 @@ namespace Nethermind.Serialization.Rlp
             }
             
             int contentLength = GetContentLength(item, false);
+            if ((rlpBehaviors & RlpBehaviors.UseTransactionTypes) != 0)
+            {
+                stream.WriteByte(item.TransactionType);
+            }
+
             stream.StartSequence(contentLength);
             stream.Encode(item.Nonce);
             stream.Encode(item.IsEip1559 ? 0 : item.GasPrice);
@@ -277,7 +282,7 @@ namespace Nethermind.Serialization.Rlp
             stream.Encode(item.Signature == null ? null : item.Signature.SAsSpan.WithoutLeadingZeros());
         }
 
-        private int GetContentLength(Transaction item, bool forSigning, bool isEip155Enabled = false, int chainId = 0)
+        private static int GetContentLength(Transaction item, bool forSigning, bool isEip155Enabled = false, int chainId = 0)
         {
             int contentLength = Rlp.LengthOf(item.Nonce)
                                 + Rlp.LengthOf(item.GasPrice)
@@ -311,15 +316,21 @@ namespace Nethermind.Serialization.Rlp
             return contentLength;
         }
 
-        public int GetLength(Transaction item, RlpBehaviors rlpBehaviors) => Rlp.GetSequenceRlpLength(GetContentLength(item, false));
+        public int GetLength(Transaction item, RlpBehaviors rlpBehaviors) =>
+            ((rlpBehaviors & RlpBehaviors.UseTransactionTypes) != 0 ? 1 : 0) +
+            Rlp.GetSequenceRlpLength(GetContentLength(item, false));
 
-        Rlp IRlpDecoder<GeneratedTransaction>.Encode(GeneratedTransaction item, RlpBehaviors rlpBehaviors) => Encode(item, rlpBehaviors);
+        Rlp IRlpDecoder<GeneratedTransaction>.Encode(GeneratedTransaction item, RlpBehaviors rlpBehaviors) =>
+            Encode(item, rlpBehaviors);
 
-        int IRlpDecoder<GeneratedTransaction>.GetLength(GeneratedTransaction item, RlpBehaviors rlpBehaviors) => GetLength(item, rlpBehaviors);
+        int IRlpDecoder<GeneratedTransaction>.GetLength(GeneratedTransaction item, RlpBehaviors rlpBehaviors) =>
+            GetLength(item, rlpBehaviors);
 
-        Rlp IRlpDecoder<SystemTransaction>.Encode(SystemTransaction item, RlpBehaviors rlpBehaviors) => Encode(item, rlpBehaviors);
+        Rlp IRlpDecoder<SystemTransaction>.Encode(SystemTransaction item, RlpBehaviors rlpBehaviors) =>
+            Encode(item, rlpBehaviors);
 
-        int IRlpDecoder<SystemTransaction>.GetLength(SystemTransaction item, RlpBehaviors rlpBehaviors) => GetLength(item, rlpBehaviors);
+        int IRlpDecoder<SystemTransaction>.GetLength(SystemTransaction item, RlpBehaviors rlpBehaviors) =>
+            GetLength(item, rlpBehaviors);
 
         SystemTransaction IRlpDecoder<SystemTransaction>.Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors)
         {

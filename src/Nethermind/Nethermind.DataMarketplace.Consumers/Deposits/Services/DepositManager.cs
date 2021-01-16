@@ -161,7 +161,7 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Services
                 return null;
             }
 
-            uint now = (uint) _timestamper.EpochSeconds;
+            uint now = (uint) _timestamper.UnixTime.Seconds;
             uint expiryTime = now + (uint) dataAsset.Rules.Expiry.Value;
             expiryTime += dataAsset.UnitType == DataAssetUnitType.Unit ? 0 : units;
             byte[] pepper = _cryptoRandom.GenerateRandomBytes(16);
@@ -172,7 +172,7 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Services
             DepositDetails depositDetails = new DepositDetails(deposit, dataAsset, address, pepper, now,
                 Enumerable.Empty<TransactionInfo>(), 0, requiredConfirmations: _requiredBlockConfirmations);
             UInt256 gasPriceValue = gasPrice is null || gasPrice.Value == 0
-                ? await _gasPriceService.GetCurrentAsync()
+                ? await _gasPriceService.GetCurrentGasPriceAsync()
                 : gasPrice.Value;
             await _depositRepository.AddAsync(depositDetails);
 

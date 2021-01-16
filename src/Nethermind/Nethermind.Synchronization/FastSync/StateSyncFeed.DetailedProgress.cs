@@ -62,7 +62,7 @@ namespace Nethermind.Synchronization.FastSync
 
             private Known.SizeInfo? _chainSizeInfo;
 
-            public DetailedProgress(int chainId, byte[] serializedInitialState)
+            public DetailedProgress(long chainId, byte[] serializedInitialState)
             {
                 if (Known.ChainSize.ContainsKey(chainId))
                 {
@@ -72,7 +72,7 @@ namespace Nethermind.Synchronization.FastSync
                 LoadFromSerialized(serializedInitialState);
             }
 
-            internal void DisplayProgressReport(int pendingRequestsCount, ILogger logger)
+            internal void DisplayProgressReport(int pendingRequestsCount, BranchProgress branchProgress, ILogger logger)
             {
                 TimeSpan sinceLastReport = DateTime.UtcNow - LastReportTime.small;
                 if (sinceLastReport > TimeSpan.FromSeconds(1))
@@ -98,7 +98,7 @@ namespace Nethermind.Synchronization.FastSync
                     }
 
                     if (logger.IsInfo) logger.Info(
-                        $"State Sync {TimeSpan.FromSeconds(SecondsInSync):dd\\.hh\\:mm\\:ss} | {dataSizeInfo} | kB/s: {savedKBytesPerSecond,5:F0} | accounts {SavedAccounts} | nodes {SavedNodesCount} | diagnostics: {pendingRequestsCount}.{AverageTimeInHandler:f2}ms");
+                        $"State Sync {TimeSpan.FromSeconds(SecondsInSync):dd\\.hh\\:mm\\:ss} | {dataSizeInfo} | branches: {branchProgress.Progress:P2} | kB/s: {savedKBytesPerSecond,5:F0} | accounts {SavedAccounts} | nodes {SavedNodesCount} | diagnostics: {pendingRequestsCount}.{AverageTimeInHandler:f2}ms");
                     if (logger.IsDebug && DateTime.UtcNow - LastReportTime.full > TimeSpan.FromSeconds(10))
                     {
                         long allChecks = CheckWasInDependencies + CheckWasCached + StateWasThere + StateWasNotThere;

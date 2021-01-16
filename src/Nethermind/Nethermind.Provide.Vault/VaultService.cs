@@ -33,6 +33,16 @@ namespace Nethermind.Vault
             {"spec", "secp256k1"}
         };
 
+        private static List<string> AllowedKeyTypes = new List<string>()
+        { 
+            "asymmetric", "symmetric", "hdwallet"
+        };
+
+        private static List<string> AllowedKeySpecs = new List<string>()
+        {
+            "secp256k1"
+        };
+
         private readonly ILogger _logger;
 
         private readonly IVaultConfig _vaultConfig;
@@ -129,6 +139,18 @@ namespace Nethermind.Vault
                     $"{nameof(Key)} has to have a non-NULL {nameof(key.Description)}");
             }
 
+            if (!AllowedKeySpecs.Contains(key.Spec))
+            {
+                throw new ArgumentException(
+                    $"Allowed key specs are: {string.Join(",", AllowedKeySpecs)}.");
+            }
+
+            if (!AllowedKeyTypes.Contains(key.Type))
+            {
+                throw new ArgumentException(
+                    $"Allowed key types are: {string.Join(",", AllowedKeyTypes)}.");
+            }
+
             if (_logger.IsDebug) _logger.Debug($"Creating a key named {nameof(key.Name)} in the vault {vaultId}");
             Key vaultKey = await _vaultService.CreateVaultKey(vaultId.ToString(), key);
             return vaultKey;
@@ -160,6 +182,18 @@ namespace Nethermind.Vault
                     $"{nameof(Secret)} has to have a non-NULL {nameof(secret.Description)}");
             }
 
+            if (secret.Type == null)
+            {
+                throw new ArgumentException(
+                    $"{nameof(Secret)} has to have a non-NULL {nameof(secret.Type)}");
+            }
+
+            if (secret.Value == null)
+            {
+                throw new ArgumentException(
+                    $"{nameof(Secret)} has to have a non-NULL {nameof(secret.Value)}");
+            }
+
             if (_logger.IsDebug) _logger.Debug($"Creating a secret in the vault {vaultId}");
             return await _vaultService.CreateVaultSecret(
                 vaultId.ToString(), secret);
@@ -174,16 +208,21 @@ namespace Nethermind.Vault
         public async Task<string> Sign(Guid vaultId, Guid keyId, string message)
         {
             if (_logger.IsDebug) _logger.Debug($"Signing a message with the key {keyId} from the vault {vaultId}");
+            SignMessageRequest request = new SignMessageRequest();
+            request.Message = message;
             SignMessageResponse response = await _vaultService.SignMessage(
-                vaultId.ToString(), keyId.ToString(), message);
+                vaultId.ToString(), keyId.ToString(), request);
             return response.Signature;
         }
 
         public async Task<bool> Verify(Guid vaultId, Guid keyId, string message, string signature)
         {
             if (_logger.IsDebug) _logger.Debug($"Verifying a message with the key {keyId} from the vault {vaultId}");
+            SignatureVerificationRequest request = new SignatureVerificationRequest();
+            request.Message = message;
+            request.Signature = signature;
             SignatureVerificationResponse response = await _vaultService.VerifySignature(
-                vaultId.ToString(), keyId.ToString(), message, signature);
+                vaultId.ToString(), keyId.ToString(), request);
             return response.Verified;
         }
 

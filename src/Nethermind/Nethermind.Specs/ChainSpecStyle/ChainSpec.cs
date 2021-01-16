@@ -35,7 +35,7 @@ namespace Nethermind.Specs.ChainSpecStyle
         /// </summary>
         public string DataDir { get; set; }
         
-        public int ChainId { get; set; }
+        public long ChainId { get; set; }
 
         public NetworkNode[] Bootnodes { get; set; }
         

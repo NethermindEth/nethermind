@@ -56,11 +56,6 @@ namespace Nethermind.Cli
 
         public string? CurrentUri { get; private set; }
 
-        public void SwitchClient(IJsonRpcClient client)
-        {
-            _currentClient = client;
-        }
-
         public void SwitchUri(Uri uri)
         {
             CurrentUri = uri.ToString();
@@ -70,6 +65,11 @@ namespace Nethermind.Cli
             }
 
             _currentClient = _clients[uri];
+        }
+        
+        public void SwitchClient(IJsonRpcClient client)
+        {
+            _currentClient = client;
         }
 
         public async Task<JsValue> PostJint(string method, params object[] parameters)
@@ -158,7 +158,9 @@ namespace Nethermind.Cli
                 _cliConsole.WriteException(e);
             }
 
+#pragma warning disable 8603
             return result;
+#pragma warning restore 8603
         }
     }
 }

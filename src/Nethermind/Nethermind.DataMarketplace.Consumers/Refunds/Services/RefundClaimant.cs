@@ -54,7 +54,7 @@ namespace Nethermind.DataMarketplace.Consumers.Refunds.Services
 
         public async Task<RefundClaimStatus> TryClaimRefundAsync(DepositDetails deposit, Address refundTo)
         {
-            ulong now = _timestamper.EpochSeconds;
+            ulong now = _timestamper.UnixTime.Seconds;
             if (!deposit.CanClaimRefund(now))
             {
                 return RefundClaimStatus.Empty;
@@ -79,7 +79,7 @@ namespace Nethermind.DataMarketplace.Consumers.Refunds.Services
                 Address provider = deposit.DataAsset.Provider.Address;
                 RefundClaim refundClaim = new RefundClaim(depositId, deposit.DataAsset.Id, deposit.Deposit.Units,
                     deposit.Deposit.Value, deposit.Deposit.ExpiryTime, deposit.Pepper, provider, refundTo);
-                UInt256 gasPrice = await _gasPriceService.GetCurrentAsync();
+                UInt256 gasPrice = await _gasPriceService.GetCurrentRefundGasPriceAsync();
                 transactionHash = await _refundService.ClaimRefundAsync(refundTo, refundClaim, gasPrice);
                 if (transactionHash is null)
                 {
@@ -88,7 +88,7 @@ namespace Nethermind.DataMarketplace.Consumers.Refunds.Services
                 }
 
                 deposit.AddClaimedRefundTransaction(TransactionInfo.Default(transactionHash, 0, gasPrice,
-                    _refundService.GasLimit, _timestamper.EpochSeconds));
+                    _refundService.GasLimit, _timestamper.UnixTime.Seconds));
                 await _depositRepository.UpdateAsync(deposit);
                 if (_logger.IsInfo) _logger.Info($"Claimed a refund for deposit: '{depositId}', gas price: {gasPrice} wei, transaction hash: '{transactionHash}' (awaits a confirmation).");
             }
@@ -102,8 +102,8 @@ namespace Nethermind.DataMarketplace.Consumers.Refunds.Services
 
         public async Task<RefundClaimStatus> TryClaimEarlyRefundAsync(DepositDetails deposit, Address refundTo)
         {
-            ulong now = _timestamper.EpochSeconds;
-            if (!deposit.CanClaimEarlyRefund(now))
+            ulong now = _timestamper.UnixTime.Seconds;
+            if (!deposit.CanClaimEarlyRefund(now, deposit.Timestamp))
             {
                 return RefundClaimStatus.Empty;
             }
@@ -115,7 +115,7 @@ namespace Nethermind.DataMarketplace.Consumers.Refunds.Services
             }
             
             now = (ulong) latestBlock.Timestamp;
-            if (!deposit.CanClaimEarlyRefund(now))
+            if (!deposit.CanClaimEarlyRefund(now, deposit.Timestamp))
             {
                 return RefundClaimStatus.Empty;
             }
@@ -134,7 +134,7 @@ namespace Nethermind.DataMarketplace.Consumers.Refunds.Services
                 EarlyRefundClaim earlyRefundClaim = new EarlyRefundClaim(ticket.DepositId, deposit.DataAsset.Id,
                     deposit.Deposit.Units, deposit.Deposit.Value, deposit.Deposit.ExpiryTime, deposit.Pepper, provider,
                     ticket.ClaimableAfter, ticket.Signature, refundTo);
-                UInt256 gasPrice = await _gasPriceService.GetCurrentAsync();
+                UInt256 gasPrice = await _gasPriceService.GetCurrentRefundGasPriceAsync();
                 transactionHash = await _refundService.ClaimEarlyRefundAsync(refundTo, earlyRefundClaim, gasPrice);
                 if (transactionHash is null)
                 {
@@ -143,7 +143,7 @@ namespace Nethermind.DataMarketplace.Consumers.Refunds.Services
                 }
 
                 deposit.AddClaimedRefundTransaction(TransactionInfo.Default(transactionHash, 0, gasPrice,
-                    _refundService.GasLimit, _timestamper.EpochSeconds));
+                    _refundService.GasLimit, _timestamper.UnixTime.Seconds));
                 await _depositRepository.UpdateAsync(deposit);
                 if (_logger.IsInfo) _logger.Info($"Claimed an early refund for deposit: '{depositId}', gas price: {gasPrice} wei, transaction hash: '{transactionHash}' (awaits a confirmation).");
             }

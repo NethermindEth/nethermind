@@ -18,6 +18,7 @@ using Nethermind.Config;
 
 namespace Nethermind.Network.Config
 {
+    [ConfigCategory(HiddenFromDocs = true)]
     public interface IDiscoveryConfig : IConfig
     {
         /// <summary>
@@ -103,11 +104,6 @@ namespace Nethermind.Network.Config
         /// <summary>
         /// Count of NodeLifecycleManagers to remove in one cleanup cycle
         /// </summary>
-        int NodeLifecycleManagersCleanupCount { get; }   
-        
-        /// <summary>
-        /// On/Off for discovery persistence
-        /// </summary>
-        bool IsDiscoveryNodesPersistenceOn { get; set; }
+        int NodeLifecycleManagersCleanupCount { get; }
     }
 }

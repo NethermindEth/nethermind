@@ -13,17 +13,20 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Baseline.Tree;
+using Nethermind.Blockchain.Find;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
-using Nethermind.Trie;
+using Nethermind.Logging;
+using NSubstitute;
 using NUnit.Framework;
 using Index = Nethermind.Baseline.Tree.BaselineTree.Index;
 
@@ -31,6 +34,7 @@ namespace Nethermind.Baseline.Test
 {
     [TestFixture(0)]
     [TestFixture(5)]
+    [Parallelizable(ParallelScope.All)]
     public class BaselineTreeTests
     {
         private readonly int _truncationLength;
@@ -56,9 +60,9 @@ namespace Nethermind.Baseline.Test
             }
         }
 
-        private BaselineTree BuildATree(IKeyValueStore keyValueStore = null)
+        private BaselineTree BuildATree(IDb db = null)
         {
-            return new ShaBaselineTree(keyValueStore ?? new MemDb(), new byte[] { }, _truncationLength);
+            return new ShaBaselineTree(db ?? new MemDb(), new MemDb(), new byte[] { }, _truncationLength, LimboNoErrorLogger.Instance);
         }
 
         [Test]
@@ -239,20 +243,55 @@ namespace Nethermind.Baseline.Test
             baselineTree.Count.Should().Be(1);
         }
 
+        [Test]
+        public void On_inserting_one_leaf_and_deleting_last_element()
+        {
+            BaselineTree baselineTree = BuildATree();
+            baselineTree.Insert(_testLeaves[0]);
+            baselineTree.Count.Should().Be(1);
+            baselineTree.DeleteLast();
+            baselineTree.Count.Should().Be(0);
+        }
+
+        [Test]
+        public void On_deleting_last_element()
+        {
+            BaselineTree baselineTree = BuildATree();
+            baselineTree.Insert(_testLeaves[0]);
+            baselineTree.Insert(_testLeaves[1]);
+            baselineTree.Insert(_testLeaves[2]);
+            baselineTree.Count.Should().Be(3);
+            baselineTree.DeleteLast();
+            baselineTree.Count.Should().Be(2);
+        }
+
+        public class Test
+        {
+            public int PreviousBlockNumber { get; set; }
+            public long Count { get; set; }
+
+            public Test(int PreviousBlockNumber, long Count)
+            {
+                this.PreviousBlockNumber = PreviousBlockNumber;
+                this.Count = Count;
+            }
+        }
+
         [TestCase(0u)]
         [TestCase(1u)]
         [TestCase(123u)]
         public void Can_restore_count_from_the_database(uint leafCount)
         {
             MemDb memDb = new MemDb();
-            BaselineTree baselineTree = BuildATree(memDb);
+            var metadataMemDb = new MemDb();
+            BaselineTree baselineTree = new ShaBaselineTree(memDb, metadataMemDb, new byte[] { }, _truncationLength, LimboNoErrorLogger.Instance);
 
             for (int i = 0; i < leafCount; i++)
             {
                 baselineTree.Insert(_testLeaves[0]);
             }
 
-            BaselineTree baselineTreeRestored = BuildATree(memDb);
+            BaselineTree baselineTreeRestored = new ShaBaselineTree(memDb, metadataMemDb, new byte[] { }, _truncationLength, LimboNoErrorLogger.Instance);
             baselineTreeRestored.Count.Should().Be(leafCount);
         }
 
@@ -398,6 +437,220 @@ namespace Nethermind.Baseline.Test
             baselineTree.Verify(root1, TestItem.KeccakA, proof0_0).Should().BeTrue();
             baselineTree.Verify(root2, TestItem.KeccakA, proof1_0).Should().BeTrue();
             baselineTree.Verify(root2, TestItem.KeccakB, proof1_1).Should().BeTrue();
+        }
+
+        [TestCase(0u)]
+        [TestCase(1u)]
+        [TestCase(2u)]
+        [TestCase(3u)]
+        [TestCase(4u)]
+        [TestCase(5u)]
+        [TestCase(6u)]
+        [TestCase(8u)]
+        [TestCase(13u)]
+        [TestCase(23u)]
+        [TestCase(25u)]
+        [TestCase(32u)]
+        public void Insert_without_recalculating_hashes(uint nodesCount)
+        {
+            BaselineTree withHashesTree = BuildATree();
+            BaselineTree withoutHashesTree = BuildATree();
+            for (int i = 0; i < nodesCount; i++)
+            {
+                withHashesTree.Insert(_testLeaves[i]);
+                withoutHashesTree.Insert(_testLeaves[i], false);
+
+                Assert.AreNotEqual(withHashesTree.Root, withoutHashesTree.Root);
+                Assert.AreEqual(withHashesTree.Count, withoutHashesTree.Count);
+            }
+
+
+            withoutHashesTree.CalculateHashes();
+            Assert.AreEqual(withHashesTree.Root, withoutHashesTree.Root);
+            Assert.AreEqual(withHashesTree.Count, withoutHashesTree.Count);
+        }
+
+        [TestCase(1u, 0u)]
+        [TestCase(1u, 1u)]
+        [TestCase(2u, 1u)]
+        [TestCase(3u, 1u)]
+        [TestCase(3u, 2u)]
+        [TestCase(8u, 3u)]
+        [TestCase(8u, 4u)]
+        [TestCase(8u, 2u)]
+        [TestCase(22u, 21u)]
+        [TestCase(22u, 2u)]
+        [TestCase(21u, 1u)]
+        [TestCase(32u, 6u)]
+        [TestCase(23u, 4u)]
+        [TestCase(32u, 3u)]
+        [TestCase(32u, 4u)]
+        [TestCase(32u, 1u)]
+        [TestCase(32u, 31u)]
+        public void Insert_without_recalculating_hashes_with_starting_index(uint nodesCount, uint startCalculatingHashes)
+        {
+            BaselineTree withHashesTree = BuildATree();
+            BaselineTree withoutHashesTree = BuildATree();
+            for (int i = 0; i < nodesCount; i++)
+            {
+                withHashesTree.Insert(_testLeaves[i]);
+                if (i < startCalculatingHashes)
+                {
+                    withoutHashesTree.Insert(_testLeaves[i]);
+                    Assert.AreEqual(withHashesTree.Root, withoutHashesTree.Root);
+                }
+                else
+                {
+                    withoutHashesTree.Insert(_testLeaves[i], false);
+                    Assert.AreNotEqual(withHashesTree.Root, withoutHashesTree.Root);
+                }
+
+                Assert.AreEqual(withHashesTree.Count, withoutHashesTree.Count);
+            }
+
+
+            withoutHashesTree.CalculateHashes(startCalculatingHashes);
+            Assert.AreEqual(withHashesTree.Root, withoutHashesTree.Root);
+            Assert.AreEqual(withHashesTree.Count, withoutHashesTree.Count);
+        }
+
+        private static Random _random = new Random();
+
+        [TestCase(2, 10, 50, true, false, null)]
+        [TestCase(2, 10, 50, false, false, null)]
+        [TestCase(10, 25, 90, false, true, 1524199427)]
+        [TestCase(10, 25, 90, false, true, 943302129)]
+        [TestCase(10, 25, 90, false, true, null)]
+        [TestCase(10, 100, 90, false, true, 496297040)]
+        [TestCase(10, 100, 90, false, true, null)]
+        [TestCase(10, 10000, 50, false, true, null)]
+        [TestCase(1, 100, 20, false, true, 484284241)]
+        [TestCase(1, 100, 20, false, true, null)]
+        // TODO: fuzzer with concurrent inserts
+        public void Baseline_tree_fuzzer(
+            int leavesPerBlock,
+            int blocksCount,
+            int emptyBlocksRatio,
+            bool recalculateOnInsert,
+            bool withReorgs,
+            int? randomSeed)
+        {
+            MemDb mainDb = new MemDb();
+            MemDb metadataDb = new MemDb();
+            Address address = Address.Zero;
+            BaselineTreeHelper helper = new BaselineTreeHelper(
+                Substitute.For<ILogFinder>(), mainDb, metadataDb, LimboNoErrorLogger.Instance);
+            BaselineTree baselineTree = new ShaBaselineTree(
+                mainDb, metadataDb, address.Bytes, 0, LimboNoErrorLogger.Instance);
+
+            randomSeed ??= _random.Next();
+            Console.WriteLine($"random seed was {randomSeed} - hardcode it to recreate the failign test");
+            // Random random = new Random(1524199427); <- example
+            Random random = new Random(randomSeed.Value);
+            int currentBlockNumber = 0;
+            uint totalCountCheck = 0;
+            Stack<long> lastBlockWithLeavesCheck = new Stack<long>();
+            Dictionary<long, uint> historicalCountChecks = new Dictionary<long, uint>();
+            historicalCountChecks[0] = 0;
+            for (int i = 0; i < blocksCount; i++)
+            {
+
+                if (i == 18)
+                {
+                    
+                }
+                currentBlockNumber++;
+                uint numberOfLeaves = (uint) random.Next(leavesPerBlock) + 1; // not zero
+                bool hasLeaves = random.Next(100) < emptyBlocksRatio;
+
+                if (hasLeaves)
+                {
+                    totalCountCheck += numberOfLeaves;
+                    
+                    TestContext.WriteLine($"Adding {numberOfLeaves} at block {currentBlockNumber}");
+                    for (int j = 0; j < numberOfLeaves; j++)
+                    {
+                        byte[] leafBytes = new byte[32];
+                        random.NextBytes(leafBytes);
+                        baselineTree.Insert(new Keccak(leafBytes), recalculateOnInsert);
+                    }
+
+                    lastBlockWithLeavesCheck.TryPeek(out long previous);
+                    TestContext.WriteLine($"Previous is {previous}");
+                    baselineTree.LastBlockWithLeaves.Should().Be(previous);
+                    baselineTree.MemorizeCurrentCount(TestItem.Keccaks[currentBlockNumber], currentBlockNumber, baselineTree.Count);
+                    lastBlockWithLeavesCheck.Push(currentBlockNumber);
+
+                    baselineTree.Count.Should().Be(totalCountCheck);
+                    baselineTree.LastBlockWithLeaves.Should().Be(lastBlockWithLeavesCheck.Peek());
+                }
+                else
+                {
+                    TestContext.WriteLine($"Block {currentBlockNumber} has no leaves");
+                }
+                
+                historicalCountChecks[currentBlockNumber] = totalCountCheck;
+
+                WriteHistory(historicalCountChecks, baselineTree);
+
+                for (int j = 1; j <= currentBlockNumber; j++)
+                {
+                    TestContext.WriteLine($"Creating historical at {j}");
+                    var historicalTrie = helper.CreateHistoricalTree(address, j);
+                    TestContext.WriteLine($"Checking if trie count ({historicalTrie.Count}) is {historicalCountChecks[j]} as expected");
+                    historicalTrie.Count.Should().Be(historicalCountChecks[j], $"Block is {currentBlockNumber}, checking count at block {j}.");
+                }
+
+                if (withReorgs)
+                {
+                    bool shouldReorg = random.Next(100) < 50;
+                    if (shouldReorg && currentBlockNumber >= 1)
+                    {
+                        int reorgDepth = random.Next(currentBlockNumber) + 1;
+                        TestContext.WriteLine($"Reorganizing {reorgDepth} from {currentBlockNumber}");
+                        uint expectedDeleteCount = historicalCountChecks[currentBlockNumber] - historicalCountChecks[currentBlockNumber - reorgDepth]; 
+                        baselineTree.GoBackTo(currentBlockNumber - reorgDepth).Should().Be(expectedDeleteCount);
+                        for (int j = 0; j < reorgDepth; j++)
+                        {
+                            historicalCountChecks.Remove(currentBlockNumber - j);
+                        }
+                        
+                        currentBlockNumber -= reorgDepth;
+                        totalCountCheck = historicalCountChecks[currentBlockNumber];
+                        baselineTree.MemorizeCurrentCount(TestItem.Keccaks[currentBlockNumber], currentBlockNumber, totalCountCheck);
+                        
+                        TestContext.WriteLine($"Total count after reorg is {totalCountCheck} at block {currentBlockNumber}");
+
+                        
+                        while (lastBlockWithLeavesCheck.Any() && lastBlockWithLeavesCheck.Peek() > currentBlockNumber)
+                        {
+                            lastBlockWithLeavesCheck.Pop();
+                        }
+
+                        lastBlockWithLeavesCheck.TryPeek(out long last);
+                        if (last != currentBlockNumber)
+                        {
+                            TestContext.WriteLine($"Pushing {currentBlockNumber} on test stack after reorg.");
+                            // after reorg we always push a memorized count
+                            lastBlockWithLeavesCheck.Push(currentBlockNumber);
+                        }
+                    }
+                    
+                    WriteHistory(historicalCountChecks, baselineTree);
+                }
+            }
+        }
+
+        private static void WriteHistory(Dictionary<long, uint> historicalCountChecks, BaselineTree baselineTree)
+        {
+            foreach (KeyValuePair<long, uint> check in historicalCountChecks)
+            {
+                TestContext.WriteLine($"  History is {check.Key}=>{check.Value} {baselineTree.Metadata.LoadBlockNumberCount(check.Key)})");
+            }
+
+            TestContext.WriteLine($"  Last with leaves {baselineTree.LastBlockWithLeaves}");
+            TestContext.WriteLine($"  Last with leaves in DB {baselineTree.Metadata.LoadCurrentBlockInDb().LastBlockWithLeaves}");
+            TestContext.WriteLine($"  Count {baselineTree.Count}");
         }
     }
 }

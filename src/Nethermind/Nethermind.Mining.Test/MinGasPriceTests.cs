@@ -35,7 +35,7 @@ namespace Nethermind.Mining.Test
         {
             MinGasPriceTxFilter _filter = new MinGasPriceTxFilter((UInt256)minimum);
             var tx = Build.A.Transaction.WithGasPrice((UInt256)actual).TestObject;
-            _filter.IsAllowed(tx, null).Should().Be(expectedResult);
+            _filter.IsAllowed(tx, null).Allowed.Should().Be(expectedResult);
         }
     }
 }

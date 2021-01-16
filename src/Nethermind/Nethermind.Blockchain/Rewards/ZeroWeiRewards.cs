@@ -24,9 +24,7 @@ namespace Nethermind.Blockchain.Rewards
     /// </summary>
     public class ZeroWeiRewards : IRewardCalculator
     {   
-        private ZeroWeiRewards()
-        {
-        }
+        private ZeroWeiRewards() { }
 
         public static ZeroWeiRewards Instance { get; } = new ZeroWeiRewards();
 

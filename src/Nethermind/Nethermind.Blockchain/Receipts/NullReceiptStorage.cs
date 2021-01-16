@@ -15,7 +15,6 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
@@ -44,7 +43,7 @@ namespace Nethermind.Blockchain.Receipts
 
         public long? LowestInsertedReceiptBlockNumber
         {
-            get => long.MaxValue;
+            get => 0;
             set { }
         }
 

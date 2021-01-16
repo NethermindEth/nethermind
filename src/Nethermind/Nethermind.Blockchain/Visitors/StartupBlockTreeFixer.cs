@@ -62,7 +62,7 @@ namespace Nethermind.Blockchain.Visitors
 
         public long EndLevelExclusive => _startNumber + _blocksToLoad;
 
-        Task<LevelVisitOutcome> IBlockTreeVisitor.VisitLevelStart(ChainLevelInfo chainLevelInfo, CancellationToken cancellationToken)
+        Task<LevelVisitOutcome> IBlockTreeVisitor.VisitLevelStart(ChainLevelInfo chainLevelInfo, long levelNumber, CancellationToken cancellationToken)
         {
             if (_currentLevelNumber >= EndLevelExclusive - 1)
             {
@@ -75,7 +75,7 @@ namespace Nethermind.Blockchain.Visitors
             _currentLevelNumber++;
             _currentLevel = chainLevelInfo;
 
-            if ((_currentLevelNumber - StartLevelInclusive) % 10000 == 0)
+            // if ((_currentLevelNumber - StartLevelInclusive) % 10000 == 0)
             {
                 if(_logger.IsInfo) _logger.Info($"Reviewed {_currentLevelNumber - StartLevelInclusive} blocks out of {EndLevelExclusive - StartLevelInclusive}");
             }
@@ -137,7 +137,7 @@ namespace Nethermind.Blockchain.Visitors
             return Task.FromResult(BlockVisitOutcome.None);
         }
 
-        Task<LevelVisitOutcome> IBlockTreeVisitor.VisitLevelEnd(CancellationToken cancellationToken)
+        Task<LevelVisitOutcome> IBlockTreeVisitor.VisitLevelEnd(ChainLevelInfo chainLevelInfo, long levelNumber, CancellationToken cancellationToken)
         {
             int expectedVisitedBlocksCount = _currentLevel?.BlockInfos.Length ?? 0;
             if (_blocksCheckedInCurrentLevel != expectedVisitedBlocksCount)
@@ -154,15 +154,15 @@ namespace Nethermind.Blockchain.Visitors
             {
                 if(_logger.IsWarn) _logger.Warn($"Found a gap in blocks after last shutdown at level {_currentLevelNumber}. The node will attempt to continue (the problem may be auto-corrected).");
                 // if(_logger.IsInfo) _logger.Info($"Found a gap in blocks after last shutdown - deleting {_currentLevelNumber}");
-                return Task.FromResult(LevelVisitOutcome.StopVisiting);
-                // return Task.FromResult(LevelVisitOutcome.DeleteLevel);
+                // return Task.FromResult(LevelVisitOutcome.StopVisiting);
+                return Task.FromResult(LevelVisitOutcome.DeleteLevel);
             }
 
             if (_bodiesInCurrentLevel == 0)
             {
                 _gapStart = _currentLevelNumber;
-                return Task.FromResult(LevelVisitOutcome.None);
-                // return Task.FromResult(LevelVisitOutcome.DeleteLevel);
+                // return Task.FromResult(LevelVisitOutcome.None);
+                return Task.FromResult(LevelVisitOutcome.DeleteLevel);
             }
 
             return Task.FromResult(LevelVisitOutcome.None);

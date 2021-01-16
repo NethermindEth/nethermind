@@ -14,13 +14,17 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
+using Nethermind.Int256;
 
 namespace Nethermind.Core.Test.Builders
 {
     public static class TestItem
     {
+        private static Random _random = new Random();
+        
         static TestItem()
         {
             NonZeroBloom = new Bloom();
@@ -41,7 +45,15 @@ namespace Nethermind.Core.Test.Builders
                 Keccaks[i - 1] = Keccak.Compute(PublicKeys[i - 1].Bytes);
             }
         }
-        
+
+        public static Keccak KeccakFromNumber(int i)
+        {
+            UInt256 keccakNumber = (UInt256) i;
+            byte[] keccakBytes = new byte[32];
+            keccakNumber.ToBigEndian(keccakBytes);
+            return new Keccak(keccakBytes);
+        }
+
         public static byte[] RandomDataA = {1, 2, 3};
         public static byte[] RandomDataB = {4, 5, 6, 7};
         public static byte[] RandomDataC = {1, 2, 8, 9, 10};
@@ -64,7 +76,7 @@ namespace Nethermind.Core.Test.Builders
         public static PublicKey PublicKeyB = PrivateKeyB.PublicKey;
         public static PublicKey PublicKeyC = PrivateKeyC.PublicKey;
         public static PublicKey PublicKeyD = PrivateKeyD.PublicKey;
-        
+
         public static PrivateKey IgnoredPrivateKey = new PrivateKey("040102030405060708090a0b0c0d0e0f0001abe120919026fffff12155555555");
         public static PublicKey IgnoredPublicKey = IgnoredPrivateKey.PublicKey;
 
@@ -79,5 +91,19 @@ namespace Nethermind.Core.Test.Builders
         public static Address AddressD = PublicKeyD.Address;
 
         public static Bloom NonZeroBloom;
+        
+        public static Address GetRandomAddress(Random random = null)
+        {
+            byte[] bytes = new byte[20];
+            (random ?? _random).NextBytes(bytes);
+            return new Address(bytes);
+        }
+        
+        public static Keccak GetRandomKeccak(Random random = null)
+        {
+            byte[] bytes = new byte[32];
+            (random ?? _random).NextBytes(bytes);
+            return new Keccak(bytes);
+        }
     }
 }

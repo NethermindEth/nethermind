@@ -17,6 +17,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using Nethermind.Blockchain.Synchronization;
@@ -116,58 +117,39 @@ namespace Nethermind.Synchronization.Peers
         private void WakeUp(AllocationContexts allocationContexts)
         {
             SleepingContexts ^= allocationContexts;
-
-            if ((allocationContexts & AllocationContexts.Headers) == AllocationContexts.Headers)
+            
+            foreach (KeyValuePair<AllocationContexts, int> allocationIndex in AllocationIndexes)
             {
-                _headersWeakness = 0;
+                if ((allocationContexts & allocationIndex.Key) == allocationIndex.Key)
+                {
+                    _weaknesses[allocationIndex.Value] = 0;
+                }
             }
-
-            if ((allocationContexts & AllocationContexts.Bodies) == AllocationContexts.Bodies)
-            {
-                _bodiesWeakness = 0;
-            }
-
-            if ((allocationContexts & AllocationContexts.Receipts) == AllocationContexts.Receipts)
-            {
-                _receiptsWeakness = 0;
-            }
-
-            if ((allocationContexts & AllocationContexts.State) == AllocationContexts.State)
-            {
-                _stateWeakness = 0;
-            }
-
+            
             SleepingSince.TryRemove(allocationContexts, out _);
         }
-
-        private int _receiptsWeakness;
-        private int _bodiesWeakness;
-        private int _headersWeakness;
-        private int _stateWeakness;
+        
+        // map from AllocationContexts single flag to index in array of _weaknesses
+        private static readonly IDictionary<AllocationContexts, int> AllocationIndexes =
+            ((AllocationContexts[])Enum.GetValues(typeof(AllocationContexts)))
+            .Where(c => c != AllocationContexts.All && c != AllocationContexts.None)
+            .Select((a, i) => (a, i))
+            .ToDictionary(v => v.a, v => v.i);
+        
+        private readonly int[] _weaknesses = new int[AllocationIndexes.Count];
 
         public const int SleepThreshold = 2;
 
         public AllocationContexts IncreaseWeakness(AllocationContexts allocationContexts)
         {
             AllocationContexts sleeps = AllocationContexts.None;
-            if ((allocationContexts & AllocationContexts.Headers) == AllocationContexts.Headers)
-            {
-                ResolveWeaknessChecks(ref _headersWeakness, AllocationContexts.Headers, ref sleeps);
-            }
 
-            if ((allocationContexts & AllocationContexts.Bodies) == AllocationContexts.Bodies)
+            foreach (KeyValuePair<AllocationContexts, int> allocationIndex in AllocationIndexes)
             {
-                ResolveWeaknessChecks(ref _bodiesWeakness, AllocationContexts.Bodies, ref sleeps);
-            }
-
-            if ((allocationContexts & AllocationContexts.Receipts) == AllocationContexts.Receipts)
-            {
-                ResolveWeaknessChecks(ref _receiptsWeakness, AllocationContexts.Receipts, ref sleeps);
-            }
-
-            if ((allocationContexts & AllocationContexts.State) == AllocationContexts.State)
-            {
-                ResolveWeaknessChecks(ref _stateWeakness, AllocationContexts.State, ref sleeps);
+                if ((allocationContexts & allocationIndex.Key) == allocationIndex.Key)
+                {
+                    ResolveWeaknessChecks(ref _weaknesses[allocationIndex.Value], allocationIndex.Key, ref sleeps);
+                }
             }
 
             return sleeps;
@@ -184,7 +166,7 @@ namespace Nethermind.Synchronization.Peers
 
         private static string BuildContextString(AllocationContexts contexts)
         {
-            return $"{((contexts & AllocationContexts.Headers) == AllocationContexts.Headers ? "H" : " ")}{((contexts & AllocationContexts.Bodies) == AllocationContexts.Bodies ? "B" : " ")}{((contexts & AllocationContexts.Receipts) == AllocationContexts.Receipts ? "R" : " ")}{((contexts & AllocationContexts.State) == AllocationContexts.State ? "S" : " ")}";
+            return $"{((contexts & AllocationContexts.Headers) == AllocationContexts.Headers ? "H" : " ")}{((contexts & AllocationContexts.Bodies) == AllocationContexts.Bodies ? "B" : " ")}{((contexts & AllocationContexts.Receipts) == AllocationContexts.Receipts ? "R" : " ")}{((contexts & AllocationContexts.State) == AllocationContexts.State ? "S" : " ")}{((contexts & AllocationContexts.Witness) == AllocationContexts.Witness ? "W" : " ")}";
         }
         
         public override string ToString() => $"[{BuildContextString(AllocatedContexts)}][{BuildContextString(SleepingContexts)}]{SyncPeer}";

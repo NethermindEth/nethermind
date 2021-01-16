@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -39,12 +39,14 @@ using Nethermind.Specs.Forks;
 using Nethermind.State;
 using Nethermind.State.Proofs;
 using Nethermind.Db.Blooms;
+using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using NUnit.Framework;
+using System.Threading.Tasks;
 
 namespace Nethermind.JsonRpc.Test.Modules.Proof
 {
-    [Parallelizable(ParallelScope.Self)]
+    [Parallelizable(ParallelScope.None)]
     [TestFixture(true, true)]
     [TestFixture(true, false)]
     [TestFixture(false, false)]
@@ -64,16 +66,18 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
         }
         
         [SetUp]
-        public void Setup()
+        public async Task Setup()
         {
             InMemoryReceiptStorage receiptStorage = new InMemoryReceiptStorage();
             _specProvider = new TestSpecProvider(Homestead.Instance);
             _blockTree = Build.A.BlockTree().WithTransactions(receiptStorage, _specProvider).OfChainLength(10).TestObject;
-            _dbProvider = new MemDbProvider();
+            _dbProvider = await TestMemDbProvider.InitAsync();
+
             ProofModuleFactory moduleFactory = new ProofModuleFactory(
                 _dbProvider,
                 _blockTree,
-                new CompositeDataRecoveryStep(new TxSignaturesRecoveryStep(new EthereumEcdsa(ChainId.Mainnet, LimboLogs.Instance), NullTxPool.Instance, _specProvider, LimboLogs.Instance)),
+                new ReadOnlyTrieStore(new TrieStore(_dbProvider.StateDb, LimboLogs.Instance)),
+                new CompositeBlockPreprocessorStep(new RecoverSignatures(new EthereumEcdsa(ChainId.Mainnet, LimboLogs.Instance), NullTxPool.Instance, _specProvider, LimboLogs.Instance)),
                 receiptStorage,
                 _specProvider,
                 LimboLogs.Instance);
@@ -737,17 +741,18 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
         private void TestCallWithStorageAndCode(byte[] code, UInt256 gasPrice, Address from = null)
         {
             StateProvider stateProvider = CreateInitialState(code);
-            StorageProvider storageProvider = new StorageProvider(_dbProvider.StateDb, stateProvider, LimboLogs.Instance);
+            StorageProvider storageProvider = new StorageProvider(new TrieStore(_dbProvider.StateDb, LimboLogs.Instance), stateProvider, LimboLogs.Instance);
+
             for (int i = 0; i < 10000; i++)
             {
                 storageProvider.Set(new StorageCell(TestItem.AddressB, (UInt256)i), i.ToBigEndianByteArray());
             }
 
             storageProvider.Commit();
-            storageProvider.CommitTrees();
+            storageProvider.CommitTrees(0);
 
             stateProvider.Commit(MainnetSpecProvider.Instance.GenesisSpec, null);
-            stateProvider.CommitTree();
+            stateProvider.CommitTree(0);
 
             _dbProvider.StateDb.Commit();
 
@@ -814,7 +819,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
 
         private StateProvider CreateInitialState(byte[] code)
         {
-            StateProvider stateProvider = new StateProvider(_dbProvider.StateDb, _dbProvider.CodeDb, LimboLogs.Instance);
+            StateProvider stateProvider = new StateProvider(new TrieStore(_dbProvider.StateDb, LimboLogs.Instance), _dbProvider.CodeDb, LimboLogs.Instance);
             AddAccount(stateProvider, TestItem.AddressA, 1.Ether());
             AddAccount(stateProvider, TestItem.AddressB, 1.Ether());
 
@@ -828,6 +833,9 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
                 AddAccount(stateProvider, Address.SystemUser, 1.Ether());
             }
 
+            stateProvider.CommitTree(0);
+            _dbProvider.StateDb.Commit();
+
             return stateProvider;
         }
 
@@ -835,8 +843,6 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
         {
             stateProvider.CreateAccount(account, initialBalance);
             stateProvider.Commit(MuirGlacier.Instance, null);
-            stateProvider.CommitTree();
-            _dbProvider.StateDb.Commit();
         }
 
         private void AddCode(StateProvider stateProvider, Address account, byte[] code)
@@ -845,9 +851,6 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
             stateProvider.UpdateCodeHash(account, codeHash, MuirGlacier.Instance);
 
             stateProvider.Commit(MainnetSpecProvider.Instance.GenesisSpec, null);
-            stateProvider.CommitTree();
-            _dbProvider.CodeDb.Commit();
-            _dbProvider.StateDb.Commit();
         }
     }
 }

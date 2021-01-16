@@ -1,7 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
     <PropertyGroup>
-        <TargetFramework>netcoreapp3.1</TargetFramework>
+        <TargetFramework>net5.0</TargetFramework>
         <AssemblyName>Nethermind.PubSub.Kafka</AssemblyName>
         <RootNamespace>Nethermind.PubSub.Kafka</RootNamespace>
         <LangVersion>8.0</LangVersion>

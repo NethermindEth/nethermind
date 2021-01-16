@@ -15,9 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
@@ -205,11 +203,6 @@ namespace Nethermind.Blockchain.Receipts
             
             var result = CanGetReceiptsByHash(blockNumber);
             var receiptsData = _blocksDb.GetSpan(blockHash);
-            if (receiptsData == null)
-            {
-                receiptsData = Span<byte>.Empty;
-            }
-            
             iterator = result ? new ReceiptsIterator(receiptsData, _blocksDb) : new ReceiptsIterator();
             return result;
         }

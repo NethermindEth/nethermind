@@ -72,7 +72,7 @@ namespace Nethermind.Specs
         public const long MuirGlacierBlockNumber  = 7117117;
         public const long BerlinBlockNumber  = long.MaxValue - 1;
 
-        public int ChainId => 3;
+        public long ChainId => 3;
         public long[] TransitionBlocks => new[]
         {
             SpuriousDragonBlockNumber,
