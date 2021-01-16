@@ -172,7 +172,7 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Services
             DepositDetails depositDetails = new DepositDetails(deposit, dataAsset, address, pepper, now,
                 Enumerable.Empty<TransactionInfo>(), 0, requiredConfirmations: _requiredBlockConfirmations);
             UInt256 gasPriceValue = gasPrice is null || gasPrice.Value == 0
-                ? await _gasPriceService.GetCurrentAsync()
+                ? await _gasPriceService.GetCurrentGasPriceAsync()
                 : gasPrice.Value;
             await _depositRepository.AddAsync(depositDetails);
 

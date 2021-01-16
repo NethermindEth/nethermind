@@ -277,20 +277,20 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc
 
         public async Task<ResultWrapper<bool>> ndm_setGasPrice(string gasPriceOrType)
         {
-            await _gasPriceService.SetAsync(gasPriceOrType);
+            await _gasPriceService.SetGasPriceOrTypeAsync(gasPriceOrType);
 
             return ResultWrapper<bool>.Success(true);
         }
 
         public async Task<ResultWrapper<bool>> ndm_setRefundGasPrice(UInt256 gasPrice)
         {
-            await _gasPriceService.SetRefundAsync(gasPrice);
+            await _gasPriceService.SetRefundGasPriceAsync(gasPrice);
 
             return ResultWrapper<bool>.Success(true);
         }
 
         public async Task<ResultWrapper<UInt256>> ndm_getRefundGasPrice()
-            => ResultWrapper<UInt256>.Success(await _gasPriceService.GetCurrentRefundAsync());
+            => ResultWrapper<UInt256>.Success(await _gasPriceService.GetCurrentRefundGasPriceAsync());
         
         public async Task<ResultWrapper<UpdatedTransactionInfoForRpc>> ndm_updateDepositGasPrice(Keccak depositId,
             UInt256 gasPrice)
