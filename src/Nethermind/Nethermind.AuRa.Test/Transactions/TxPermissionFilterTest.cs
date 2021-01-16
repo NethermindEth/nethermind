@@ -258,7 +258,7 @@ namespace Nethermind.AuRa.Test.Transactions
                     LimboLogs.Instance);
 
                 var transactionPermissionContract = new VersionedTransactionPermissionContract(new AbiEncoder(), _contractAddress, 1,
-                    new ReadOnlyTxProcessorSource(DbProvider, BlockTree, SpecProvider, LimboLogs.Instance), TransactionPermissionContractVersions, LimboLogs.Instance);
+                    new ReadOnlyTxProcessorSource(DbProvider, trieStore, BlockTree, SpecProvider, LimboLogs.Instance), TransactionPermissionContractVersions, LimboLogs.Instance);
 
                 TxPermissionFilterCache = new PermissionBasedTxFilter.Cache();
                 PermissionBasedTxFilter = new PermissionBasedTxFilter(transactionPermissionContract, TxPermissionFilterCache, State, LimboLogs.Instance);
