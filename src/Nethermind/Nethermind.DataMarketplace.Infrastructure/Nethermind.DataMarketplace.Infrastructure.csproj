@@ -13,7 +13,7 @@
         <PackageReference Include="Microsoft.Extensions.Configuration.FileExtensions" Version="5.0.0" />
         <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="5.0.0" />
         <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="5.0.1" />
-        <PackageReference Include="MongoDB.Driver" Version="2.11.1" />
+        <PackageReference Include="MongoDB.Driver" Version="2.11.5" />
     </ItemGroup>
     
     <ItemGroup>
