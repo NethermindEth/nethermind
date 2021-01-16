@@ -16,6 +16,7 @@
 
 using System;
 using System.Threading;
+using Nethermind.Core;
 
 namespace Nethermind.Trie
 {

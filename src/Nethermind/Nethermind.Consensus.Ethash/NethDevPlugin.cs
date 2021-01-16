@@ -65,9 +65,10 @@ namespace Nethermind.Consensus.Ethash
             
             ReadOnlyDbProvider readOnlyDbProvider = new ReadOnlyDbProvider(getFromApi.DbProvider, false);
             ReadOnlyBlockTree readOnlyBlockTree = new ReadOnlyBlockTree(getFromApi.BlockTree);
-            
+
             ReadOnlyTxProcessingEnv producerEnv = new ReadOnlyTxProcessingEnv(
                 readOnlyDbProvider,
+                getFromApi.ReadOnlyTrieStore,
                 readOnlyBlockTree,
                 getFromApi.SpecProvider,
                 getFromApi.LogManager);
@@ -77,8 +78,6 @@ namespace Nethermind.Consensus.Ethash
                 getFromApi!.BlockValidator,
                 NoBlockRewards.Instance,
                 producerEnv.TransactionProcessor,
-                producerEnv.DbProvider.StateDb,
-                producerEnv.DbProvider.CodeDb,
                 producerEnv.StateProvider,
                 producerEnv.StorageProvider,
                 NullTxPool.Instance,
@@ -99,7 +98,8 @@ namespace Nethermind.Consensus.Ethash
                 getFromApi.BlockTree,
                 getFromApi.BlockProcessingQueue,
                 getFromApi.TxPool,
-                getFromApi.Timestamper, 
+                getFromApi.Timestamper,
+                getFromApi.Config<IMiningConfig>(),
                 getFromApi.LogManager);
                 
             return Task.CompletedTask;

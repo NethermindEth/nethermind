@@ -58,14 +58,28 @@ namespace Nethermind.Blockchain.Test.Visitors
 
                     headersDb.Set(ithBlock.Hash, Rlp.Encode(ithBlock.Header).Bytes);
 
-                    ChainLevelInfo ithLevel = new ChainLevelInfo(true, new BlockInfo[1] {new BlockInfo(ithBlock.Hash, ithBlock.TotalDifficulty.Value) {WasProcessed = true}});
+                    ChainLevelInfo ithLevel = new ChainLevelInfo(
+                        true,
+                        new BlockInfo[1]
+                        {
+                            new BlockInfo(
+                                ithBlock.Hash,
+                                ithBlock.TotalDifficulty.Value) {WasProcessed = true}
+                        });
                     blockInfosDb.Set(i, Rlp.Encode(ithLevel).Bytes);
                 }
 
                 blockInfosDb.Set(Keccak.Zero, genesisBlock.Header.Hash.Bytes);
                 headersDb.Set(genesisBlock.Header.Hash, Rlp.Encode(genesisBlock.Header).Bytes);
-
-                BlockTree blockTree = new BlockTree(blocksDb, headersDb, blockInfosDb, new ChainLevelInfoRepository(blockInfosDb), OlympicSpecProvider.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
+                
+                BlockTree blockTree = new BlockTree(
+                    blocksDb,
+                    headersDb,
+                    blockInfosDb,
+                    new ChainLevelInfoRepository(blockInfosDb),
+                    OlympicSpecProvider.Instance,
+                    NullBloomStorage.Instance,
+                    LimboLogs.Instance);
 
                 DbBlocksLoader loader = new DbBlocksLoader(blockTree, LimboNoErrorLogger.Instance);
                 await blockTree.Accept(loader, CancellationToken.None);
@@ -93,14 +107,26 @@ namespace Nethermind.Blockchain.Test.Visitors
 
                     headersDb.Set(ithBlock.Hash, Rlp.Encode(ithBlock.Header).Bytes);
 
-                    ChainLevelInfo ithLevel = new ChainLevelInfo(true, new BlockInfo[1] {new BlockInfo(ithBlock.Hash, ithBlock.TotalDifficulty.Value)});
+                    ChainLevelInfo ithLevel = new ChainLevelInfo(true, new BlockInfo[1]
+                    {
+                        new BlockInfo(ithBlock.Hash, ithBlock.TotalDifficulty.Value)
+                    });
+                    
                     blockInfosDb.Set(i, Rlp.Encode(ithLevel).Bytes);
                 }
 
                 blockInfosDb.Set(Keccak.Zero, genesisBlock.Header.Hash.Bytes);
                 headersDb.Set(genesisBlock.Header.Hash, Rlp.Encode(genesisBlock.Header).Bytes);
 
-                BlockTree blockTree = new BlockTree(blocksDb, headersDb, blockInfosDb, new ChainLevelInfoRepository(blockInfosDb), OlympicSpecProvider.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
+                BlockTree blockTree = new BlockTree(
+                    blocksDb,
+                    headersDb,
+                    blockInfosDb,
+                    new ChainLevelInfoRepository(blockInfosDb),
+                    OlympicSpecProvider.Instance,
+                    NullBloomStorage.Instance,
+                    LimboLogs.Instance);
+                
                 DbBlocksLoader loader = new DbBlocksLoader(blockTree, LimboNoErrorLogger.Instance);
                 await blockTree.Accept(loader, CancellationToken.None);
 
@@ -114,7 +140,15 @@ namespace Nethermind.Blockchain.Test.Visitors
             MemDb blocksDb = new MemDb();
             MemDb blockInfosDb = new MemDb();
             MemDb headersDb = new MemDb();
-            BlockTree tree1 = new BlockTree(blocksDb, headersDb, blockInfosDb, new ChainLevelInfoRepository(blockInfosDb), MainnetSpecProvider.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
+
+            BlockTree tree1 = new BlockTree(
+                blocksDb,
+                headersDb,
+                blockInfosDb,
+                new ChainLevelInfoRepository(blockInfosDb),
+                MainnetSpecProvider.Instance,
+                NullBloomStorage.Instance,
+                LimboLogs.Instance);
 
             Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
             Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).TestObject;
@@ -135,8 +169,15 @@ namespace Nethermind.Blockchain.Test.Visitors
             tree1.SuggestBlock(block3B); // expected to be head
 
             tree1.UpdateMainChain(block0);
-
-            BlockTree tree2 = new BlockTree(blocksDb, headersDb, blockInfosDb, new ChainLevelInfoRepository(blockInfosDb), MainnetSpecProvider.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
+            
+            BlockTree tree2 = new BlockTree(
+                blocksDb,
+                headersDb,
+                blockInfosDb,
+                new ChainLevelInfoRepository(blockInfosDb),
+                MainnetSpecProvider.Instance,
+                NullBloomStorage.Instance,
+                LimboLogs.Instance);
 
             CancellationTokenSource tokenSource = new CancellationTokenSource();
 #pragma warning disable 4014
@@ -177,7 +218,15 @@ namespace Nethermind.Blockchain.Test.Visitors
             MemDb blocksDb = new MemDb();
             MemDb blockInfosDb = new MemDb();
             MemDb headersDb = new MemDb();
-            BlockTree tree1 = new BlockTree(blocksDb, headersDb, blockInfosDb, new ChainLevelInfoRepository(blockInfosDb), MainnetSpecProvider.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
+
+            BlockTree tree1 = new BlockTree(
+                blocksDb,
+                headersDb,
+                blockInfosDb,
+                new ChainLevelInfoRepository(blockInfosDb),
+                MainnetSpecProvider.Instance,
+                NullBloomStorage.Instance,
+                LimboLogs.Instance);
 
             Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
             Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).TestObject;
@@ -191,7 +240,14 @@ namespace Nethermind.Blockchain.Test.Visitors
 
             tree1.UpdateMainChain(block0);
 
-            BlockTree tree2 = new BlockTree(blocksDb, headersDb, blockInfosDb, new ChainLevelInfoRepository(blockInfosDb), MainnetSpecProvider.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
+            BlockTree tree2 = new BlockTree(
+                blocksDb,
+                headersDb,
+                blockInfosDb,
+                new ChainLevelInfoRepository(blockInfosDb),
+                MainnetSpecProvider.Instance,
+                NullBloomStorage.Instance,
+                LimboLogs.Instance);
 
             CancellationTokenSource tokenSource = new CancellationTokenSource();
 #pragma warning disable 4014

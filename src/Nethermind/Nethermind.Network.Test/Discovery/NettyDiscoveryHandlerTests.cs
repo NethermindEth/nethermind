@@ -90,7 +90,7 @@ namespace Nethermind.Network.Test.Discovery
                 FarAddress = _address2,
                 SourceAddress = _address,
                 DestinationAddress = _address2,
-                ExpirationTime = (long)(Timestamper.Default.EpochSeconds + 1200),
+                ExpirationTime = Timestamper.Default.UnixTime.SecondsLong + 1200,
                 FarPublicKey = _privateKey2.PublicKey
             };
             _discoveryHandlers[0].SendMessage(msg);
@@ -102,7 +102,7 @@ namespace Nethermind.Network.Test.Discovery
                 FarAddress = _address,
                 SourceAddress = _address2,
                 DestinationAddress = _address,
-                ExpirationTime = (long)(Timestamper.Default.EpochSeconds + 1200),
+                ExpirationTime = Timestamper.Default.UnixTime.SecondsLong + 1200,
                 FarPublicKey = _privateKey.PublicKey
             };
             _discoveryHandlers[1].SendMessage(msg2);
@@ -118,7 +118,7 @@ namespace Nethermind.Network.Test.Discovery
             {
                 FarAddress = _address2,
                 PingMdc = new byte[] {1,2,3},
-                ExpirationTime = (long)(Timestamper.Default.EpochSeconds + 1200),
+                ExpirationTime = Timestamper.Default.UnixTime.SecondsLong + 1200,
                 FarPublicKey = _privateKey2.PublicKey
             };
             _discoveryHandlers[0].SendMessage(msg);
@@ -129,7 +129,7 @@ namespace Nethermind.Network.Test.Discovery
             {
                 FarAddress = _address,
                 PingMdc = new byte[] { 1, 2, 3 },
-                ExpirationTime = (long)(Timestamper.Default.EpochSeconds + 1200),
+                ExpirationTime = Timestamper.Default.UnixTime.SecondsLong + 1200,
                 FarPublicKey = _privateKey.PublicKey
             };
             _discoveryHandlers[1].SendMessage(msg2);
@@ -145,7 +145,7 @@ namespace Nethermind.Network.Test.Discovery
             {
                 FarAddress = _address2,
                 SearchedNodeId = new byte[] { 1, 2, 3 },
-                ExpirationTime = (long)(Timestamper.Default.EpochSeconds + 1200),
+                ExpirationTime = Timestamper.Default.UnixTime.SecondsLong + 1200,
                 FarPublicKey = _privateKey2.PublicKey
             };
             _discoveryHandlers[0].SendMessage(msg);
@@ -156,7 +156,7 @@ namespace Nethermind.Network.Test.Discovery
             {
                 FarAddress = _address,
                 SearchedNodeId = new byte[] { 1, 2, 3 },
-                ExpirationTime = (long)(Timestamper.Default.EpochSeconds + 1200),
+                ExpirationTime = Timestamper.Default.UnixTime.SecondsLong + 1200,
                 FarPublicKey = _privateKey.PublicKey
             };
             _discoveryHandlers[1].SendMessage(msg2);
@@ -172,7 +172,7 @@ namespace Nethermind.Network.Test.Discovery
             {
                 FarAddress = _address2,
                 Nodes = new List<Node>().ToArray(),
-                ExpirationTime = (long)(Timestamper.Default.EpochSeconds + 1200),
+                ExpirationTime = Timestamper.Default.UnixTime.SecondsLong + 1200,
                 FarPublicKey = _privateKey2.PublicKey
             };
             _discoveryHandlers[0].SendMessage(msg);
@@ -183,7 +183,7 @@ namespace Nethermind.Network.Test.Discovery
             {
                 FarAddress = _address,
                 Nodes = new List<Node>().ToArray(),
-                ExpirationTime = (long)(Timestamper.Default.EpochSeconds + 1200),
+                ExpirationTime = Timestamper.Default.UnixTime.SecondsLong + 1200,
                 FarPublicKey = _privateKey.PublicKey
             };
             _discoveryHandlers[1].SendMessage(msg2);

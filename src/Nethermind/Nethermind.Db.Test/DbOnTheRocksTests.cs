@@ -83,10 +83,10 @@ namespace Nethermind.Db.Test
             {
                 DbName = dbName,
                 DbPath = dbPath,
-                BlockCacheSize = 1.KiB(),
+                BlockCacheSize = (ulong)1.KiB(),
                 CacheIndexAndFilterBlocks = false,
                 WriteBufferNumber = 4,
-                WriteBufferSize = 1.KiB()
+                WriteBufferSize = (ulong)1.KiB()
             };
         }
     }

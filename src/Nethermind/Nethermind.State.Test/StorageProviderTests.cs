@@ -23,6 +23,7 @@ using Nethermind.Db;
 using Nethermind.Specs.Forks;
 using Nethermind.Logging;
 using Nethermind.State;
+using Nethermind.Trie.Pruning;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -39,7 +40,7 @@ namespace Nethermind.Store.Test
         [SetUp]
         public void Setup()
         {
-            _stateProvider = new StateProvider(new StateDb(new MemDb()), Substitute.For<IDb>(), LogManager);
+            _stateProvider = new StateProvider(new TrieStore(new StateDb(), LogManager), new StateDb(),  LogManager);
             _stateProvider.CreateAccount(_address1, 0);
             _stateProvider.CreateAccount(_address2, 0);
             _stateProvider.Commit(Frontier.Instance);
@@ -72,7 +73,7 @@ namespace Nethermind.Store.Test
 
         private StorageProvider BuildStorageProvider()
         {
-            StorageProvider provider = new StorageProvider(new StateDb(), _stateProvider, LogManager);
+            StorageProvider provider = new StorageProvider(new TrieStore(new StateDb(), LogManager), _stateProvider, LogManager);
             return provider;
         }
 
@@ -201,8 +202,8 @@ namespace Nethermind.Store.Test
             storageProvider.Set(new StorageCell(_address1, 1), _values[1]);
             storageProvider.Commit();
             _stateProvider.Commit(Frontier.Instance);
-            storageProvider.CommitTrees();
-            _stateProvider.CommitTree();
+            storageProvider.CommitTrees(0);
+            _stateProvider.CommitTree(0);
             
             // block 2
             Keccak stateRoot = _stateProvider.StateRoot;

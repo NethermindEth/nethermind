@@ -16,7 +16,9 @@
 
 using System.Linq;
 using FluentAssertions;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
@@ -24,6 +26,7 @@ using Nethermind.Logging;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
 using Nethermind.Trie;
+using Nethermind.Trie.Pruning;
 using NUnit.Framework;
 
 namespace Nethermind.Store.Test
@@ -36,10 +39,9 @@ namespace Nethermind.Store.Test
         {
             MemDb memDb = new MemDb();
             ISnapshotableDb stateDb = new StateDb(memDb);
-            StateTree stateTree = new StateTree(stateDb);
-            
-            StateProvider stateProvider = new StateProvider(stateTree, stateDb, LimboLogs.Instance);
-            StorageProvider storageProvider = new StorageProvider(stateDb, stateProvider, LimboLogs.Instance);
+            TrieStore trieStore = new TrieStore(stateDb, new MemoryLimit(0.MB()), Full.Archive, LimboLogs.Instance);
+            StateProvider stateProvider = new StateProvider(trieStore, stateDb, LimboLogs.Instance);
+            StorageProvider storageProvider = new StorageProvider(trieStore, stateProvider, LimboLogs.Instance);
 
             stateProvider.CreateAccount(TestItem.AddressA, 1);
             Keccak codeHash = stateProvider.UpdateCode(new byte[] {1, 2, 3});
@@ -58,34 +60,36 @@ namespace Nethermind.Store.Test
             storageProvider.Commit();
             stateProvider.Commit(Istanbul.Instance);
 
-            storageProvider.CommitTrees();
-            stateProvider.CommitTree();
+            storageProvider.CommitTrees(0);
+            stateProvider.CommitTree(0);
+            storageProvider.CommitTrees(1);
+            stateProvider.CommitTree(1);
             
             stateDb.Commit();
             
             memDb.Delete(codeHash2); // missing code
             Keccak storageKey = new Keccak("0x345e54154080bfa9e8f20c99d7a0139773926479bc59e5b4f830ad94b6425332");
             memDb.Delete(storageKey); // deletes some storage
+            trieStore.ClearCache();
 
             TrieStatsCollector statsCollector = new TrieStatsCollector(stateDb, LimboLogs.Instance);
-            stateTree.Accept(statsCollector, stateTree.RootHash, true);
-            string stats = statsCollector.Stats.ToString();
+            stateProvider.Accept(statsCollector, stateProvider.StateRoot);
+            var stats = statsCollector.Stats;
             
-            statsCollector.Stats.CodeCount.Should().Be(1);
-            statsCollector.Stats.MissingCode.Should().Be(1);
+            stats.CodeCount.Should().Be(1);
+            stats.MissingCode.Should().Be(1);
             
-            statsCollector.Stats.NodesCount.Should().Be(1348);
+            stats.NodesCount.Should().Be(1348);
             
-            statsCollector.Stats.StateBranchCount.Should().Be(1);
-            statsCollector.Stats.StateExtensionCount.Should().Be(1);
-            statsCollector.Stats.AccountCount.Should().Be(2);
+            stats.StateBranchCount.Should().Be(1);
+            stats.StateExtensionCount.Should().Be(1);
+            stats.AccountCount.Should().Be(2);
             
-            statsCollector.Stats.StorageCount.Should().Be(1343);
-            statsCollector.Stats.StorageBranchCount.Should().Be(337);
-            statsCollector.Stats.StorageExtensionCount.Should().Be(12);
-            statsCollector.Stats.StorageLeafCount.Should().Be(994);
-            statsCollector.Stats.MissingStorage.Should().Be(1);
-            
+            stats.StorageCount.Should().Be(1343);
+            stats.StorageBranchCount.Should().Be(337);
+            stats.StorageExtensionCount.Should().Be(12);
+            stats.StorageLeafCount.Should().Be(994);
+            stats.MissingStorage.Should().Be(1);
         }
     }
 }

@@ -29,7 +29,9 @@ namespace Nethermind.Blockchain.Rewards
         }
         
         public Address Address { get; }
+        
         public UInt256 Value { get; }
+        
         public BlockRewardType RewardType { get; }
     }
 }

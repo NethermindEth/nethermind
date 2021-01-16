@@ -40,7 +40,7 @@ namespace Nethermind.Consensus.AuRa
         {
             get
             {
-                var timestampSeconds = _timestamper.EpochSecondsLong;
+                var timestampSeconds = _timestamper.UnixTime.SecondsLong;
                 return GetStepInfo(timestampSeconds).GetCurrentStep(timestampSeconds);
             }
         }
@@ -49,9 +49,9 @@ namespace Nethermind.Consensus.AuRa
         
         public TimeSpan TimeToStep(long step)
         {
-            var epoch = _timestamper.Epoch;
-            var currentStepInfo = GetStepInfo(epoch.Seconds);
-            long currentStep = currentStepInfo.GetCurrentStep(epoch.Seconds);
+            var epoch = _timestamper.UnixTime;
+            var currentStepInfo = GetStepInfo(epoch.SecondsLong);
+            long currentStep = currentStepInfo.GetCurrentStep(epoch.SecondsLong);
             if (step <= currentStep)
             {
                 return TimeSpan.Zero;
@@ -68,15 +68,15 @@ namespace Nethermind.Consensus.AuRa
         {
             get
             {
-                var epoch = _timestamper.Epoch;
-                var currentStepInfo = GetStepInfo(epoch.Seconds);
-                return GetTimeToNextStepInTicks(epoch, currentStepInfo);
+                var unixTime = _timestamper.UnixTime;
+                var currentStepInfo = GetStepInfo(unixTime.SecondsLong);
+                return GetTimeToNextStepInTicks(unixTime, currentStepInfo);
             }
         }
 
-        private static long GetTimeToNextStepInTicks((long Seconds, long Milliseconds) epoch, StepDurationInfo currentStepInfo)
+        private static long GetTimeToNextStepInTicks(UnixTime unixTime, StepDurationInfo currentStepInfo)
         {
-            var timeFromTransition = epoch.Milliseconds - currentStepInfo.TransitionTimestampMilliseconds;
+            var timeFromTransition = unixTime.MillisecondsLong - currentStepInfo.TransitionTimestampMilliseconds;
             var timeAlreadyPassedToNextStep = timeFromTransition % currentStepInfo.StepDurationMilliseconds;
             return (currentStepInfo.StepDurationMilliseconds - timeAlreadyPassedToNextStep) * TimeSpan.TicksPerMillisecond;
         }

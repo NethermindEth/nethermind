@@ -50,7 +50,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                     keyStoreConfig,
                     _get.LogManager);
 
-                var keyStore = _set.KeyStore = new FileKeyStore(
+                IKeyStore? keyStore = _set.KeyStore = new FileKeyStore(
                     keyStoreConfig,
                     _get.EthereumJsonSerializer,
                     encrypter,
@@ -70,11 +70,12 @@ namespace Nethermind.Runner.Ethereum.Steps
 
                 var passwordProvider = new KeyStorePasswordProvider(keyStoreConfig)
                                         .OrReadFromConsole($"Provide password for validator account { keyStoreConfig.BlockAuthorAccount}");
-
+                
                 INodeKeyManager nodeKeyManager = new NodeKeyManager(_get.CryptoRandom, _get.KeyStore, keyStoreConfig, _get.LogManager, passwordProvider, _get.FileSystem);
                 var nodeKey = _set.NodeKey = nodeKeyManager.LoadNodeKey();
+
                 _set.OriginalSignerKey = nodeKeyManager.LoadSignerKey();
-                var enode = _set.Enode = new Enode(nodeKey.PublicKey, IPAddress.Parse(networkConfig.ExternalIp), networkConfig.P2PPort);
+                IEnode enode = _set.Enode = new Enode(nodeKey.PublicKey, IPAddress.Parse(networkConfig.ExternalIp), networkConfig.P2PPort);
                 
                 _get.LogManager.SetGlobalVariable("enode", enode.ToString());
             }, cancellationToken);

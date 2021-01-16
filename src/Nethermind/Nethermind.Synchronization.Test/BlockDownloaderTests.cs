@@ -44,6 +44,7 @@ using Nethermind.Synchronization.Blocks;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Reporting;
+using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
@@ -828,8 +829,17 @@ namespace Nethermind.Synchronization.Test
                 PeerPool = Substitute.For<ISyncPeerPool>();
                 Feed = Substitute.For<ISyncFeed<BlocksRequest>>();
 
+                var stateDb = new MemDb();
+                
                 SyncConfig syncConfig = new SyncConfig();
-                SyncProgressResolver syncProgressResolver = new SyncProgressResolver(BlockTree, NullReceiptStorage.Instance, new MemDb(), new MemDb(), syncConfig, LimboLogs.Instance);
+                SyncProgressResolver syncProgressResolver = new SyncProgressResolver(
+                    BlockTree,
+                    NullReceiptStorage.Instance,
+                    stateDb,
+                    stateDb,
+                    new TrieStore(stateDb, LimboLogs.Instance),
+                    syncConfig,
+                    LimboLogs.Instance);
                 SyncModeSelector = new MultiSyncModeSelector(syncProgressResolver, PeerPool, syncConfig, LimboLogs.Instance);
                 Feed = new FullSyncFeed(SyncModeSelector, LimboLogs.Instance);
 

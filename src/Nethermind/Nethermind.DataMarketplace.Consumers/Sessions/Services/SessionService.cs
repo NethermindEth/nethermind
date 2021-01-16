@@ -201,7 +201,7 @@ namespace Nethermind.DataMarketplace.Consumers.Sessions.Services
                 return;
             }
 
-            ulong timestamp = _timestamper.EpochSeconds;
+            ulong timestamp = _timestamper.UnixTime.Seconds;
             foreach ((Keccak _, ConsumerSession session) in _sessions)
             {
                 if (!provider.ProviderAddress.Equals(session.ProviderAddress))

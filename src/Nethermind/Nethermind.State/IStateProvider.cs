@@ -25,7 +25,7 @@ namespace Nethermind.State
     public interface IStateProvider : IReadOnlyStateProvider
     {
         void RecalculateStateRoot();
-
+        
         new Keccak StateRoot { get; set; }
 
         void DeleteAccount(Address address);
@@ -41,25 +41,28 @@ namespace Nethermind.State
         void UpdateStorageRoot(Address address, Keccak storageRoot);
 
         void IncrementNonce(Address address);
-
+        
+        void DecrementNonce(Address address);
+        
         Keccak UpdateCode(byte[] code);
 
-        void Reset();
-
-        void CommitTree();
+        /* snapshots */
         
-        void Restore(int snapshot);
-
         void Commit(IReleaseSpec releaseSpec);
         
         void Commit(IReleaseSpec releaseSpec, IStateTracer stateTracer);
         
-        int TakeSnapshot();
-        
-        string DumpState();
-        
-        TrieStats CollectStats();
+        void Reset();
 
-        void DecrementNonce(Address address);
+        void Restore(int snapshot);
+        
+        void CommitTree(long blockNumber);
+        
+        int TakeSnapshot();
+
+        /// <summary>
+        /// pruning hack
+        /// </summary>
+        void CommitCode();
     }
 }

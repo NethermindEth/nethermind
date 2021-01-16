@@ -35,6 +35,11 @@ namespace Nethermind.Consensus
         [ConfigItem(
             Description = "Minimum gas price for transactions accepted by the block producer.",
             DefaultValue = "1000000000")]
-        UInt256 MinGasPrice{ get; set; }
+        UInt256 MinGasPrice { get; set; }
+        
+        [ConfigItem(
+            Description = "Only used in NethDev. Setting this to true will change the difficulty of the block randomly within the constraints.",
+            DefaultValue = "false")]
+        bool RandomizedBlocks { get; set; }
     }
 }

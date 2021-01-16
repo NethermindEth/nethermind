@@ -25,6 +25,7 @@ using Nethermind.Consensus;
 using Nethermind.Evm;
 using Nethermind.Facade;
 using Nethermind.State;
+using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 
 namespace Nethermind.Api
@@ -37,7 +38,6 @@ namespace Nethermind.Api
         
         IBlockchainProcessor? BlockchainProcessor { get; set; }
         CompositeBlockPreprocessorStep BlockPreprocessor { get; }
-        // IBlockPreprocessorStep RecoveryStep => BlockPreprocessor;
         IBlockProcessingQueue? BlockProcessingQueue { get; set; }
         IBlockProcessor? MainBlockProcessor { get; set; }
         IBlockProducer? BlockProducer { get; set; }
@@ -46,6 +46,7 @@ namespace Nethermind.Api
         IFilterStore FilterStore { get; set; }
         IFilterManager FilterManager { get; set; }
         IHeaderValidator? HeaderValidator { get; set; }
+        ITrieStore? ReadOnlyTrieStore { get; set; }
         IRewardCalculatorSource? RewardCalculatorSource { get; set; }
         ISealer? Sealer { get; set; }
         ISealValidator? SealValidator { get; set; }
@@ -61,6 +62,7 @@ namespace Nethermind.Api
         IStateReader? StateReader { get; set; }
         IStorageProvider? StorageProvider { get; set; }
         ITransactionProcessor? TransactionProcessor { get; set; }
+        ITrieStore? TrieStore { get; set; }
         ITxSender? TxSender { get; set; }
         ITxPool? TxPool { get; set; }
         ITxPoolInfoProvider? TxPoolInfoProvider { get; set; }

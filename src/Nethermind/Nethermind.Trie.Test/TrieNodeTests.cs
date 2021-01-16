@@ -14,15 +14,21 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Linq;
+using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
+using Nethermind.Core.Test.Builders;
+using Nethermind.Db;
+using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Trie;
+using Nethermind.Trie.Pruning;
 using NSubstitute;
 using NUnit.Framework;
 
-namespace Nethermind.Store.Test
+namespace Nethermind.Trie.Test
 {
     [TestFixture]
     public class TrieNodeTests
@@ -44,8 +50,9 @@ namespace Nethermind.Store.Test
 
             Account account = new Account(100);
             AccountDecoder decoder = new AccountDecoder();
-            _accountLeaf = new TrieNode(NodeType.Leaf);
-            _accountLeaf.Value = decoder.Encode(account).Bytes;
+            _accountLeaf = TrieNodeFactory.CreateLeaf(
+                HexPrefix.Leaf("bbb"),
+                decoder.Encode(account).Bytes);
         }
 
         [Test]
@@ -59,29 +66,28 @@ namespace Nethermind.Store.Test
         public void Throws_trie_exception_on_missing_node()
         {
             TrieNode trieNode = new TrieNode(NodeType.Unknown);
-            Assert.Throws<TrieException>(() => trieNode.ResolveNode(new PatriciaTree()));
+            Assert.Throws<TrieException>(() => trieNode.ResolveNode(NullTrieNodeResolver.Instance));
         }
 
         [Test]
         public void Throws_trie_exception_on_unexpected_format()
         {
             TrieNode trieNode = new TrieNode(NodeType.Unknown, new byte[42]);
-            Assert.Throws<TrieException>(() => trieNode.ResolveNode(new PatriciaTree()));
+            Assert.Throws<TrieException>(() => trieNode.ResolveNode(NullTrieNodeResolver.Instance));
         }
 
         [Test]
         public void When_resolving_an_unknown_node_without_keccak_and_rlp_trie_exception_should_be_thrown()
         {
             TrieNode trieNode = new TrieNode(NodeType.Unknown);
-            Assert.Throws<TrieException>(() => trieNode.ResolveNode(new PatriciaTree()));
+            Assert.Throws<TrieException>(() => trieNode.ResolveNode(NullTrieNodeResolver.Instance));
         }
 
         [Test]
         public void When_resolving_an_unknown_node_without_rlp_trie_exception_should_be_thrown()
         {
-            TrieNode trieNode = new TrieNode(NodeType.Unknown);
-            trieNode.Keccak = Keccak.Zero;
-            Assert.Throws<TrieException>(() => trieNode.ResolveNode(new PatriciaTree()));
+            TrieNode trieNode = new TrieNode(NodeType.Unknown, Keccak.Zero);
+            Assert.Throws<TrieException>(() => trieNode.ResolveNode(NullTrieNodeResolver.Instance));
         }
 
         [Test]
@@ -89,14 +95,14 @@ namespace Nethermind.Store.Test
         {
             TrieNode trieNode = new TrieNode(NodeType.Leaf);
             trieNode.Value = new byte[] {1, 2, 3};
-            Assert.Throws<TrieException>(() => trieNode.RlpEncode());
+            Assert.Throws<TrieException>(() => trieNode.RlpEncode(NullTrieNodeResolver.Instance));
         }
 
         [Test]
         public void Throws_trie_exception_when_resolving_key_on_missing_rlp()
         {
             TrieNode trieNode = new TrieNode(NodeType.Unknown);
-            Assert.Throws<TrieException>(() => trieNode.ResolveKey(false));
+            Assert.Throws<TrieException>(() => trieNode.ResolveKey(NullTrieNodeResolver.Instance, false));
         }
 
         [Test(Description = "This is controversial and only used in visitors. Can consider an exception instead.")]
@@ -139,7 +145,7 @@ namespace Nethermind.Store.Test
                     trieNode.SetChild(j, _tiniestLeaf);
                 }
 
-                byte[] rlp = trieNode.RlpEncode();
+                byte[] rlp = trieNode.RlpEncode(NullTrieNodeResolver.Instance);
                 TrieNode restoredNode = new TrieNode(NodeType.Branch, rlp);
 
                 for (int childIndex = 0; childIndex < 16; childIndex++)
@@ -164,12 +170,12 @@ namespace Nethermind.Store.Test
             TrieNode trieNode = new TrieNode(NodeType.Branch);
             trieNode.SetChild(11, _tiniestLeaf);
 
-            byte[] rlp = trieNode.RlpEncode();
+            byte[] rlp = trieNode.RlpEncode(NullTrieNodeResolver.Instance);
 
             TrieNode decoded = new TrieNode(NodeType.Unknown, rlp);
-            decoded.ResolveNode(null);
-            TrieNode decodedTiniest = decoded.GetChild(11);
-            decodedTiniest.ResolveNode(null);
+            decoded.ResolveNode(NullTrieNodeResolver.Instance);
+            TrieNode decodedTiniest = decoded.GetChild(NullTrieNodeResolver.Instance, 11);
+            decodedTiniest.ResolveNode(NullTrieNodeResolver.Instance);
 
             Assert.AreEqual(_tiniestLeaf.Value, decodedTiniest.Value, "value");
             Assert.AreEqual(_tiniestLeaf.Key.ToBytes(), decodedTiniest.Key.ToBytes(), "key");
@@ -181,11 +187,11 @@ namespace Nethermind.Store.Test
             TrieNode trieNode = new TrieNode(NodeType.Branch);
             trieNode.SetChild(11, _heavyLeaf);
 
-            byte[] rlp = trieNode.RlpEncode();
+            byte[] rlp = trieNode.RlpEncode(NullTrieNodeResolver.Instance);
 
             TrieNode decoded = new TrieNode(NodeType.Unknown, rlp);
-            decoded.ResolveNode(null);
-            TrieNode decodedTiniest = decoded.GetChild(11);
+            decoded.ResolveNode(NullTrieNodeResolver.Instance);
+            TrieNode decodedTiniest = decoded.GetChild(NullTrieNodeResolver.Instance, 11);
 
             Assert.AreEqual(decoded.GetChildHash(11), decodedTiniest.Keccak, "value");
         }
@@ -197,15 +203,15 @@ namespace Nethermind.Store.Test
             trieNode.Key = new HexPrefix(false, 5);
             trieNode.SetChild(0, _tiniestLeaf);
 
-            byte[] rlp = trieNode.RlpEncode();
+            byte[] rlp = trieNode.RlpEncode(NullTrieNodeResolver.Instance);
 
             TrieNode decoded = new TrieNode(NodeType.Unknown, rlp);
-            decoded.ResolveNode(null);
-            TrieNode decodedTiniest = decoded.GetChild(0);
-            decodedTiniest.ResolveNode(null);
+            decoded.ResolveNode(NullTrieNodeResolver.Instance);
+            TrieNode? decodedTiniest = decoded.GetChild(NullTrieNodeResolver.Instance, 0);
+            decodedTiniest?.ResolveNode(NullTrieNodeResolver.Instance);
 
-            Assert.AreEqual(_tiniestLeaf.Value, decodedTiniest.Value, "value");
-            Assert.AreEqual(_tiniestLeaf.Key.ToBytes(), decodedTiniest.Key.ToBytes(), "key");
+            Assert.AreEqual(_tiniestLeaf.Value, decodedTiniest?.Value, "value");
+            Assert.AreEqual(_tiniestLeaf.Key?.ToBytes(), decodedTiniest?.Key?.ToBytes(), "key");
         }
 
         [Test]
@@ -215,11 +221,11 @@ namespace Nethermind.Store.Test
             trieNode.Key = new HexPrefix(false, 5);
             trieNode.SetChild(0, _heavyLeaf);
 
-            byte[] rlp = trieNode.RlpEncode();
+            byte[] rlp = trieNode.RlpEncode(NullTrieNodeResolver.Instance);
 
             TrieNode decoded = new TrieNode(NodeType.Unknown, rlp);
-            decoded.ResolveNode(null);
-            TrieNode decodedTiniest = decoded.GetChild(0);
+            decoded.ResolveNode(NullTrieNodeResolver.Instance);
+            TrieNode decodedTiniest = decoded.GetChild(NullTrieNodeResolver.Instance, 0);
 
             Assert.AreEqual(decoded.GetChildHash(0), decodedTiniest.Keccak, "keccak");
         }
@@ -233,7 +239,7 @@ namespace Nethermind.Store.Test
 
             TrieNode trieNode = new TrieNode(NodeType.Branch);
             trieNode[11] = tiniest;
-            TrieNode getResult = trieNode[11];
+            TrieNode getResult = trieNode.GetChild(NullTrieNodeResolver.Instance, 11);
             Assert.AreSame(tiniest, getResult);
         }
 
@@ -242,7 +248,7 @@ namespace Nethermind.Store.Test
         {
             TrieNode trieNode = new TrieNode(NodeType.Branch);
             trieNode[11] = _heavyLeaf;
-            byte[] rlp = trieNode.RlpEncode();
+            byte[] rlp = trieNode.RlpEncode(NullTrieNodeResolver.Instance);
             TrieNode decoded = new TrieNode(NodeType.Branch, rlp);
 
             Keccak getResult = decoded.GetChildHash(11);
@@ -254,7 +260,7 @@ namespace Nethermind.Store.Test
         {
             TrieNode trieNode = new TrieNode(NodeType.Branch);
             trieNode[11] = _tiniestLeaf;
-            byte[] rlp = trieNode.RlpEncode();
+            byte[] rlp = trieNode.RlpEncode(NullTrieNodeResolver.Instance);
             TrieNode decoded = new TrieNode(NodeType.Branch, rlp);
 
             Keccak getResult = decoded.GetChildHash(11);
@@ -267,7 +273,7 @@ namespace Nethermind.Store.Test
             TrieNode trieNode = new TrieNode(NodeType.Extension);
             trieNode[0] = _heavyLeaf;
             trieNode.Key = new HexPrefix(false, 5);
-            byte[] rlp = trieNode.RlpEncode();
+            byte[] rlp = trieNode.RlpEncode(NullTrieNodeResolver.Instance);
             TrieNode decoded = new TrieNode(NodeType.Extension, rlp);
 
             Keccak getResult = decoded.GetChildHash(0);
@@ -280,7 +286,7 @@ namespace Nethermind.Store.Test
             TrieNode trieNode = new TrieNode(NodeType.Extension);
             trieNode[0] = _tiniestLeaf;
             trieNode.Key = new HexPrefix(false, 5);
-            byte[] rlp = trieNode.RlpEncode();
+            byte[] rlp = trieNode.RlpEncode(NullTrieNodeResolver.Instance);
             TrieNode decoded = new TrieNode(NodeType.Extension, rlp);
 
             Keccak getResult = decoded.GetChildHash(0);
@@ -292,12 +298,10 @@ namespace Nethermind.Store.Test
         {
             ITreeVisitor visitor = Substitute.For<ITreeVisitor>();
             TrieVisitContext context = new TrieVisitContext();
-            PatriciaTree tree = new PatriciaTree();
-            TrieNode ignore = new TrieNode(NodeType.Unknown);
-            TrieNode node = new TrieNode(NodeType.Extension);
-            node.SetChild(0, ignore);
+            TrieNode ignore = TrieNodeFactory.CreateLeaf(HexPrefix.Leaf("ccc"), Array.Empty<byte>());
+            TrieNode node = TrieNodeFactory.CreateExtension(HexPrefix.Extension("aa"), ignore);
 
-            node.Accept(visitor, tree, context);
+            node.Accept(visitor, NullTrieNodeResolver.Instance, context);
 
             visitor.Received().VisitExtension(node, context);
         }
@@ -307,10 +311,9 @@ namespace Nethermind.Store.Test
         {
             ITreeVisitor visitor = Substitute.For<ITreeVisitor>();
             TrieVisitContext context = new TrieVisitContext();
-            PatriciaTree tree = new PatriciaTree();
             TrieNode node = new TrieNode(NodeType.Unknown);
 
-            node.Accept(visitor, tree, context);
+            node.Accept(visitor, NullTrieNodeResolver.Instance, context);
 
             visitor.Received().VisitMissingNode(node.Keccak, context);
         }
@@ -320,13 +323,11 @@ namespace Nethermind.Store.Test
         {
             ITreeVisitor visitor = Substitute.For<ITreeVisitor>();
             TrieVisitContext context = new TrieVisitContext();
-            PatriciaTree tree = new PatriciaTree();
             Account account = new Account(100);
             AccountDecoder decoder = new AccountDecoder();
-            TrieNode node = new TrieNode(NodeType.Leaf);
-            node.Value = decoder.Encode(account).Bytes;
+            TrieNode node = TrieNodeFactory.CreateLeaf(HexPrefix.Leaf("aa"), decoder.Encode(account).Bytes);
 
-            node.Accept(visitor, tree, context);
+            node.Accept(visitor, NullTrieNodeResolver.Instance, context);
 
             visitor.Received().VisitLeaf(node, context, node.Value);
         }
@@ -336,13 +337,11 @@ namespace Nethermind.Store.Test
         {
             ITreeVisitor visitor = Substitute.For<ITreeVisitor>();
             TrieVisitContext context = new TrieVisitContext();
-            PatriciaTree tree = new PatriciaTree();
             Account account = new Account(1, 100, Keccak.EmptyTreeHash, Keccak.OfAnEmptyString);
             AccountDecoder decoder = new AccountDecoder();
-            TrieNode node = new TrieNode(NodeType.Leaf);
-            node.Value = decoder.Encode(account).Bytes;
+            TrieNode node = TrieNodeFactory.CreateLeaf(HexPrefix.Leaf("aa"), decoder.Encode(account).Bytes);
 
-            node.Accept(visitor, tree, context);
+            node.Accept(visitor, NullTrieNodeResolver.Instance, context);
 
             visitor.Received().VisitLeaf(node, context, node.Value);
         }
@@ -354,17 +353,15 @@ namespace Nethermind.Store.Test
             visitor.ShouldVisit(Arg.Any<Keccak>()).Returns(true);
 
             TrieVisitContext context = new TrieVisitContext();
-            PatriciaTree tree = new PatriciaTree();
             Account account = new Account(1, 100, Keccak.EmptyTreeHash, Keccak.Zero);
             AccountDecoder decoder = new AccountDecoder();
-            TrieNode node = new TrieNode(NodeType.Leaf);
-            node.Value = decoder.Encode(account).Bytes;
+            TrieNode node = TrieNodeFactory.CreateLeaf(HexPrefix.Leaf("aa"), decoder.Encode(account).Bytes);
 
-            node.Accept(visitor, tree, context);
+            node.Accept(visitor, NullTrieNodeResolver.Instance, context);
 
             visitor.Received().VisitLeaf(node, context, node.Value);
         }
-        
+
         [Test]
         public void Leaf_with_contract_with_storage_and_without_code_can_accept_visitors()
         {
@@ -372,13 +369,11 @@ namespace Nethermind.Store.Test
             visitor.ShouldVisit(Arg.Any<Keccak>()).Returns(true);
 
             TrieVisitContext context = new TrieVisitContext();
-            PatriciaTree tree = new PatriciaTree();
             Account account = new Account(1, 100, Keccak.Zero, Keccak.OfAnEmptyString);
             AccountDecoder decoder = new AccountDecoder();
-            TrieNode node = new TrieNode(NodeType.Leaf);
-            node.Value = decoder.Encode(account).Bytes;
+            TrieNode node = TrieNodeFactory.CreateLeaf(HexPrefix.Leaf("aa"), decoder.Encode(account).Bytes);
 
-            node.Accept(visitor, tree, context);
+            node.Accept(visitor, NullTrieNodeResolver.Instance, context);
 
             visitor.Received().VisitLeaf(node, context, node.Value);
         }
@@ -390,11 +385,9 @@ namespace Nethermind.Store.Test
             visitor.ShouldVisit(Arg.Any<Keccak>()).Returns(true);
 
             TrieVisitContext context = new TrieVisitContext();
-            PatriciaTree tree = new PatriciaTree();
-            TrieNode node = new TrieNode(NodeType.Extension);
-            node.SetChild(0, _accountLeaf);
+            TrieNode node = TrieNodeFactory.CreateExtension(HexPrefix.Extension("aa"), _accountLeaf);
 
-            node.Accept(visitor, tree, context);
+            node.Accept(visitor, NullTrieNodeResolver.Instance, context);
 
             visitor.Received().VisitExtension(node, context);
             visitor.Received().VisitLeaf(_accountLeaf, context, _accountLeaf.Value);
@@ -407,14 +400,13 @@ namespace Nethermind.Store.Test
             visitor.ShouldVisit(Arg.Any<Keccak>()).Returns(true);
 
             TrieVisitContext context = new TrieVisitContext();
-            PatriciaTree tree = new PatriciaTree();
             TrieNode node = new TrieNode(NodeType.Branch);
             for (int i = 0; i < 16; i++)
             {
                 node.SetChild(i, _accountLeaf);
             }
 
-            node.Accept(visitor, tree, context);
+            node.Accept(visitor, NullTrieNodeResolver.Instance, context);
 
             visitor.Received().VisitBranch(node, context);
             visitor.Received(16).VisitLeaf(_accountLeaf, context, _accountLeaf.Value);
@@ -425,14 +417,13 @@ namespace Nethermind.Store.Test
         {
             ITreeVisitor visitor = Substitute.For<ITreeVisitor>();
             TrieVisitContext context = new TrieVisitContext();
-            PatriciaTree tree = new PatriciaTree();
             TrieNode node = new TrieNode(NodeType.Branch);
             for (int i = 0; i < 16; i++)
             {
                 node.SetChild(i, null);
             }
 
-            node.Accept(visitor, tree, context);
+            node.Accept(visitor, NullTrieNodeResolver.Instance, context);
 
             visitor.Received().VisitBranch(node, context);
         }
@@ -441,7 +432,7 @@ namespace Nethermind.Store.Test
         public void Can_encode_branch_with_nulls()
         {
             TrieNode node = new TrieNode(NodeType.Branch);
-            node.RlpEncode();
+            node.RlpEncode(NullTrieNodeResolver.Instance);
         }
 
         [Test]
@@ -463,7 +454,8 @@ namespace Nethermind.Store.Test
         public void Is_child_dirty_on_extension_when_child_is_not_dirty_returns_false()
         {
             TrieNode node = new TrieNode(NodeType.Extension);
-            node.SetChild(0, new TrieNode(NodeType.Leaf));
+            TrieNode cleanChild = new TrieNode(NodeType.Leaf, Keccak.Zero);
+            node.SetChild(0, cleanChild);
             Assert.False(node.IsChildDirty(0));
         }
 
@@ -472,7 +464,6 @@ namespace Nethermind.Store.Test
         {
             TrieNode node = new TrieNode(NodeType.Extension);
             TrieNode dirtyChild = new TrieNode(NodeType.Leaf);
-            dirtyChild.IsDirty = true;
             node.SetChild(0, dirtyChild);
             Assert.True(node.IsChildDirty(0));
         }
@@ -505,23 +496,17 @@ namespace Nethermind.Store.Test
                 node.SetChild(i, randomTrieNode);
             }
 
-            byte[] rlp = node.RlpEncode();
+            byte[] rlp = node.RlpEncode(NullTrieNodeResolver.Instance);
 
             TrieNode restoredNode = new TrieNode(NodeType.Branch, rlp);
 
-            restoredNode.RlpEncode();
+            restoredNode.RlpEncode(NullTrieNodeResolver.Instance);
         }
-        
+
         [Test]
         public void Size_of_a_heavy_leaf_is_correct()
         {
-            Assert.AreEqual(168, _heavyLeaf.MemorySize);
-        }
-        
-        [Test]
-        public void Size_of_a_tiny_leaf_is_correct()
-        {
-            Assert.AreEqual(152, _tiniestLeaf.MemorySize);
+            Assert.AreEqual(184, _heavyLeaf.GetMemorySize(false));
         }
 
         [Test]
@@ -533,28 +518,325 @@ namespace Nethermind.Store.Test
             {
                 node.SetChild(i, _accountLeaf);
             }
-            
-            Assert.AreEqual(216, node.MemorySize);
+
+            Assert.AreEqual(3152, node.GetMemorySize(true));
+            Assert.AreEqual(208, node.GetMemorySize(false));
         }
-        
+
         [Test]
         public void Size_of_an_extension_is_correct()
         {
             TrieNode trieNode = new TrieNode(NodeType.Extension);
             trieNode.Key = new HexPrefix(false, 1);
             trieNode.SetChild(0, _tiniestLeaf);
-            
-            Assert.AreEqual(152, trieNode.MemorySize);
+
+            Assert.AreEqual(216, trieNode.GetMemorySize(true));
+            Assert.AreEqual(96, trieNode.GetMemorySize(false));
         }
-        
+
         [Test]
         public void Size_of_unknown_node_is_correct()
         {
             TrieNode trieNode = new TrieNode(NodeType.Extension);
             trieNode.Key = new HexPrefix(false, 1);
             trieNode.SetChild(0, _tiniestLeaf);
+
+            Assert.AreEqual(216, trieNode.GetMemorySize(true));
+            Assert.AreEqual(96, trieNode.GetMemorySize(false));
+        }
+
+        [Test]
+        public void Size_of_an_unknown_empty_node_is_correct()
+        {
+            TrieNode trieNode = new TrieNode(NodeType.Unknown);
+            trieNode.GetMemorySize(false).Should().Be(56);
+        }
+
+        [Test]
+        public void Size_of_an_unknown_node_with_keccak_is_correct()
+        {
+            TrieNode trieNode = new TrieNode(NodeType.Unknown, Keccak.Zero);
+            trieNode.GetMemorySize(false).Should().Be(136);
+        }
+
+        [Test]
+        public void Size_of_extension_with_child()
+        {
+            TrieNode trieNode = new TrieNode(NodeType.Extension);
+            trieNode.SetChild(0, null);
+            trieNode.GetMemorySize(false).Should().Be(96);
+        }
+
+        [Test]
+        public void Size_of_branch_with_data()
+        {
+            TrieNode trieNode = new TrieNode(NodeType.Branch);
+            trieNode.SetChild(0, null);
+            trieNode.GetMemorySize(false).Should().Be(208);
+        }
+
+        [Test]
+        public void Size_of_leaf_with_value()
+        {
+            TrieNode trieNode = new TrieNode(NodeType.Leaf);
+            trieNode.Value = new byte[7];
+            trieNode.GetMemorySize(false).Should().Be(128);
+        }
+
+        [Test]
+        public void Size_of_an_unknown_node_with_full_rlp_is_correct()
+        {
+            TrieNode trieNode = new TrieNode(NodeType.Unknown, new byte[7]);
+            trieNode.GetMemorySize(false).Should().Be(120);
+        }
+
+        [Test]
+        public void Size_of_keccak_is_correct()
+        {
+            Keccak.MemorySize.Should().Be(80);
+        }
+
+        [Test]
+        public void Size_of_rlp_stream_is_correct()
+        {
+            RlpStream rlpStream = new RlpStream(100);
+            rlpStream.MemorySize.Should().Be(160);
+        }
+
+        [Test]
+        public void Size_of_rlp_stream_7_is_correct()
+        {
+            RlpStream rlpStream = new RlpStream(7);
+            rlpStream.MemorySize.Should().Be(64);
+        }
+
+        [Test]
+        public void Size_of_rlp_unaligned_is_correct()
+        {
+            Rlp rlp = new Rlp(new byte[1]);
+            rlp.MemorySize.Should().Be(56);
+        }
+
+        [Test]
+        public void Size_of_rlp_aligned_is_correct()
+        {
+            Rlp rlp = new Rlp(new byte[8]);
+            rlp.MemorySize.Should().Be(56);
+        }
+
+        [Test]
+        public void Size_of_hex_prefix_is_correct()
+        {
+            HexPrefix hexPrefix = new HexPrefix(true, new byte[5]);
+            hexPrefix.MemorySize.Should().Be(64);
+        }
+
+        [Test]
+        public void Cannot_seal_already_sealed()
+        {
+            TrieNode trieNode = new TrieNode(NodeType.Leaf, Keccak.Zero);
+            Assert.Throws<InvalidOperationException>(() => trieNode.Seal());
+        }
+
+        [Test]
+        public void Cannot_change_value_on_sealed()
+        {
+            TrieNode trieNode = new TrieNode(NodeType.Leaf, Keccak.Zero);
+            Assert.Throws<InvalidOperationException>(() => trieNode.Value = new byte[5]);
+        }
+
+        [Test]
+        public void Cannot_change_key_on_sealed()
+        {
+            TrieNode trieNode = new TrieNode(NodeType.Leaf, Keccak.Zero);
+            Assert.Throws<InvalidOperationException>(
+                () => trieNode.Key = HexPrefix.FromBytes(Bytes.FromHexString("aaa")));
+        }
+
+        [Test]
+        public void Cannot_set_child_on_sealed()
+        {
+            TrieNode child = new TrieNode(NodeType.Leaf, Keccak.Zero);
+            TrieNode trieNode = new TrieNode(NodeType.Extension, Keccak.Zero);
+            Assert.Throws<InvalidOperationException>(() => trieNode.SetChild(0, child));
+        }
+
+        [Test]
+        public void Pruning_regression()
+        {
+            TrieNode child = new TrieNode(NodeType.Unknown, Keccak.Zero);
+            TrieNode trieNode = new TrieNode(NodeType.Extension);
+            trieNode.SetChild(0, child);
+
+            trieNode.PrunePersistedRecursively(1);
+            trieNode.Key = HexPrefix.Extension("abcd");
+            trieNode.RlpEncode(NullTrieStore.Instance);
+        }
+
+        [Test]
+        public void Extension_child_as_keccak()
+        {
+            TrieNode child = new TrieNode(NodeType.Unknown, Keccak.Zero);
+            TrieNode trieNode = new TrieNode(NodeType.Extension);
+            trieNode.SetChild(0, child);
+
+            trieNode.PrunePersistedRecursively(1);
+            trieNode.GetChild(NullTrieStore.Instance, 0).Should().BeOfType<TrieNode>();
+        }
+        
+        [Test]
+        public void Extension_child_as_keccak_memory_size()
+        {
+            TrieNode child = new TrieNode(NodeType.Unknown, Keccak.Zero);
+            TrieNode trieNode = new TrieNode(NodeType.Extension);
+            trieNode.SetChild(0, child);
+
+            trieNode.PrunePersistedRecursively(1);
+            trieNode.GetMemorySize(false).Should().Be(176);
+        }
+        
+        [Test]
+        public void Extension_child_as_keccak_clone()
+        {
+            TrieNode child = new TrieNode(NodeType.Unknown, Keccak.Zero);
+            TrieNode trieNode = new TrieNode(NodeType.Extension);
+            trieNode.SetChild(0, child);
+
+            trieNode.PrunePersistedRecursively(1);
+            TrieNode cloned = trieNode.Clone();
             
-            Assert.AreEqual(152, trieNode.MemorySize);
+            cloned.GetMemorySize(false).Should().Be(176);
+        }
+        
+        [Test]
+        public void Unresolve_of_persisted()
+        {
+            TrieNode child = new TrieNode(NodeType.Unknown, Keccak.Zero);
+            TrieNode trieNode = new TrieNode(NodeType.Extension);
+            trieNode.SetChild(0, child);
+            trieNode.Key = HexPrefix.Extension("abcd");
+            trieNode.ResolveKey(NullTrieStore.Instance, false);
+
+            trieNode.PrunePersistedRecursively(1);
+            trieNode.PrunePersistedRecursively(1);
+        }
+        
+        [Test]
+        public void Small_child_unresolve()
+        {
+            TrieNode child = new TrieNode(NodeType.Leaf);
+            child.Value = Bytes.FromHexString("a");
+            child.Key = HexPrefix.Leaf("b");
+            child.ResolveKey(NullTrieStore.Instance, false);
+            child.IsPersisted = true;
+            
+            TrieNode trieNode = new TrieNode(NodeType.Extension);
+            trieNode.SetChild(0, child);
+            trieNode.Key = HexPrefix.Extension("abcd");
+            trieNode.ResolveKey(NullTrieStore.Instance, false);
+
+            trieNode.PrunePersistedRecursively(2);
+            trieNode.GetChild(NullTrieStore.Instance, 0).Should().Be(child);
+        }
+
+        [Test]
+        public void Extension_child_as_keccak_not_dirty()
+        {
+            TrieNode child = new TrieNode(NodeType.Unknown, Keccak.Zero);
+            TrieNode trieNode = new TrieNode(NodeType.Extension);
+            trieNode.SetChild(0, child);
+
+            trieNode.PrunePersistedRecursively(1);
+            trieNode.IsChildDirty(0).Should().Be(false);
+        }
+        
+        [TestCase(true)]
+        [TestCase(false)]
+        public void Extension_child_as_keccak_call_recursively(bool skipPersisted)
+        {
+            TrieNode child = new TrieNode(NodeType.Unknown, Keccak.Zero);
+            TrieNode trieNode = new TrieNode(NodeType.Extension);
+            trieNode.SetChild(0, child);
+
+            trieNode.PrunePersistedRecursively(1);
+            int count = 0;
+            trieNode.CallRecursively(n => count++, NullTrieStore.Instance, skipPersisted, LimboTraceLogger.Instance);
+            count.Should().Be(1);
+        }
+        
+        [Test]
+        public void Branch_child_as_keccak_encode()
+        {
+            TrieNode child = new TrieNode(NodeType.Unknown, Keccak.Zero);
+            TrieNode trieNode = new TrieNode(NodeType.Branch);
+            trieNode.SetChild(0, child);
+            trieNode.SetChild(4, child);
+
+            trieNode.PrunePersistedRecursively(1);
+            trieNode.RlpEncode(NullTrieStore.Instance);
+        }
+        
+        [Test]
+        public void Branch_child_as_keccak_resolved()
+        {
+            TrieNode child = new TrieNode(NodeType.Unknown, Keccak.Zero);
+            TrieNode trieNode = new TrieNode(NodeType.Branch);
+            trieNode.SetChild(0, child);
+            trieNode.SetChild(4, child);
+
+            trieNode.PrunePersistedRecursively(1);
+            var trieStore = Substitute.For<ITrieNodeResolver>();
+            trieStore.FindCachedOrUnknown(Arg.Any<Keccak>()).Returns(child);
+            trieNode.GetChild(trieStore, 0).Should().Be(child);
+            trieNode.GetChild(trieStore, 1).Should().BeNull();
+            trieNode.GetChild(trieStore, 4).Should().Be(child);
+        }
+
+        [Test]
+        public void Child_as_keccak_cached()
+        {
+            TrieNode child = new TrieNode(NodeType.Unknown, Keccak.Zero);
+            TrieNode trieNode = new TrieNode(NodeType.Extension);
+            trieNode.SetChild(0, child);
+
+            trieNode.PrunePersistedRecursively(1);
+            var trieStore = Substitute.For<ITrieNodeResolver>();
+            trieStore.FindCachedOrUnknown(Arg.Any<Keccak>()).Returns(child);
+            trieNode.GetChild(trieStore, 0).Should().Be(child);
+        }
+
+        [Test]
+        public void Rlp_is_cloned_when_cloning()
+        {
+            TrieStore trieStore = new TrieStore(new MemDb(), NullLogManager.Instance);
+
+            TrieNode leaf1 = new TrieNode(NodeType.Leaf);
+            leaf1.Key = new HexPrefix(true, Bytes.FromHexString("abc"));
+            leaf1.Value = new byte[111];
+            leaf1.ResolveKey(trieStore, false);
+            leaf1.Seal();
+            trieStore.CommitNode(0, new NodeCommitInfo(leaf1));
+
+            TrieNode leaf2 = new TrieNode(NodeType.Leaf);
+            leaf2.Key = new HexPrefix(true, Bytes.FromHexString("abd"));
+            leaf2.Value = new byte[222];
+            leaf2.ResolveKey(trieStore, false);
+            leaf2.Seal();
+            trieStore.CommitNode(0, new NodeCommitInfo(leaf2));
+
+            TrieNode trieNode = new TrieNode(NodeType.Branch);
+            trieNode.SetChild(1, leaf1);
+            trieNode.SetChild(2, leaf2);
+            trieNode.ResolveKey(trieStore, true);
+            byte[] rlp = trieNode.FullRlp;
+
+            TrieNode restoredBranch = new TrieNode(NodeType.Branch, rlp);
+
+            TrieNode clone = restoredBranch.Clone();
+            var restoredLeaf1 = clone.GetChild(trieStore, 1);
+            restoredLeaf1.Should().NotBeNull();
+            restoredLeaf1.ResolveNode(trieStore);
+            restoredLeaf1.Value.Should().BeEquivalentTo(leaf1.Value);
         }
     }
 }

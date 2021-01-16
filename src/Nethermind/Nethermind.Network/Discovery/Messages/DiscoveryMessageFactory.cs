@@ -39,7 +39,7 @@ namespace Nethermind.Network.Discovery.Messages
         {
             T message = Activator.CreateInstance<T>();
             message.FarAddress = destination.Address;
-            message.ExpirationTime = ExpirationTimeInSeconds + _timestamper.EpochSecondsLong;
+            message.ExpirationTime = ExpirationTimeInSeconds + _timestamper.UnixTime.SecondsLong;
             return message;
         }
 

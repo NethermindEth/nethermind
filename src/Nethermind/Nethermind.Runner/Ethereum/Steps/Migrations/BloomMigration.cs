@@ -29,6 +29,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Db.Blooms;
+using Nethermind.State.Repositories;
 using Nethermind.Synchronization.ParallelSync;
 using Timer = System.Timers.Timer;
 
@@ -154,7 +155,7 @@ namespace Nethermind.Runner.Ethereum.Steps.Migrations
             long from = synced;
             _migrateCount = to + 1;
             _averages = _api.BloomStorage.Averages.ToArray();
-            var chainLevelInfoRepository = _api.ChainLevelInfoRepository;
+            IChainLevelInfoRepository? chainLevelInfoRepository = _api.ChainLevelInfoRepository;
 
             _progress.Update(synced);
 
@@ -213,7 +214,7 @@ namespace Nethermind.Runner.Ethereum.Steps.Migrations
                             yield break;
                         }
 
-                        if (TryGetMainChainBlockHashFromLevel(i, out var blockHash))
+                        if (TryGetMainChainBlockHashFromLevel(i, out Keccak? blockHash))
                         {
                             var header = blockTree.FindHeader(blockHash, BlockTreeLookupOptions.None);
                             yield return header ?? GetMissingBlockHeader(i);

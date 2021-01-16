@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -40,7 +40,7 @@ namespace Nethermind.Network.P2P
 {
     public abstract class SyncPeerProtocolHandlerBase : ProtocolHandlerBase, ISyncPeer
     {
-        public static readonly ulong SoftOutgoingMessageSizeLimit = 2.MB();
+        public static readonly ulong SoftOutgoingMessageSizeLimit = (ulong) 2.MB();
         public Node Node => Session?.Node;
         public string ClientId => Node?.ClientId;
         public UInt256 TotalDifficulty { get; set; }
@@ -337,12 +337,10 @@ namespace Nethermind.Network.P2P
             _headersRequests.Handle(message.BlockHeaders, size);
         }
 
-        protected void HandleBodies(IByteBuffer buffer, long size)
+        protected void HandleBodies(BlockBodiesMessage blockBodiesMessage, long size)
         {
             Metrics.Eth62BlockBodiesReceived++;
-
-            BlockBodiesMessage message = Deserialize<BlockBodiesMessage>(buffer);
-            _bodiesRequests.Handle(message.Bodies, size);
+            _bodiesRequests.Handle(blockBodiesMessage.Bodies, size);
         }
 
         protected void Handle(GetReceiptsMessage msg)

@@ -48,6 +48,7 @@ using Nethermind.TxPool.Storages;
 using NUnit.Framework;
 using BlockTree = Nethermind.Blockchain.BlockTree;
 using Nethermind.Blockchain.Find;
+using Nethermind.Trie.Pruning;
 
 namespace Nethermind.JsonRpc.Test.Modules
 {
@@ -71,7 +72,8 @@ namespace Nethermind.JsonRpc.Test.Modules
             IEthereumEcdsa ethereumEcdsa = new EthereumEcdsa(specProvider.ChainId, LimboLogs.Instance);
             ITxStorage txStorage = new InMemoryTxStorage();
             _stateDb = new StateDb();
-            _stateProvider = new StateProvider(dbProvider, LimboLogs.Instance);
+            ITrieStore trieStore = new ReadOnlyTrieStore(new TrieStore(_stateDb, LimboLogs.Instance));
+            _stateProvider = new StateProvider(trieStore, new StateDb(), LimboLogs.Instance);
             _stateProvider.CreateAccount(TestItem.AddressA, 1000.Ether());
             _stateProvider.CreateAccount(TestItem.AddressB, 1000.Ether());
             _stateProvider.CreateAccount(TestItem.AddressC, 1000.Ether());
@@ -80,12 +82,12 @@ namespace Nethermind.JsonRpc.Test.Modules
             _stateProvider.UpdateCode(code);
             _stateProvider.UpdateCodeHash(TestItem.AddressA, codeHash, specProvider.GenesisSpec);
 
-            IStorageProvider storageProvider = new StorageProvider(_stateDb, _stateProvider, LimboLogs.Instance);
+            IStorageProvider storageProvider = new StorageProvider(trieStore, _stateProvider, LimboLogs.Instance);
             storageProvider.Set(new StorageCell(TestItem.AddressA, UInt256.One), Bytes.FromHexString("0xabcdef"));
             storageProvider.Commit();
 
             _stateProvider.Commit(specProvider.GenesisSpec);
-            _stateProvider.CommitTree();
+            _stateProvider.CommitTree(0);
 
             ITxPool txPool = new TxPool.TxPool(txStorage, ethereumEcdsa, specProvider, new TxPoolConfig(), _stateProvider, LimboLogs.Instance);
             IChainLevelInfoRepository chainLevels = new ChainLevelInfoRepository(dbProvider);
@@ -99,8 +101,6 @@ namespace Nethermind.JsonRpc.Test.Modules
                 Always.Valid,
                 new RewardCalculator(specProvider),
                 txProcessor,
-                dbProvider.StateDb,
-                dbProvider.CodeDb,
                 _stateProvider,
                 storageProvider,
                 txPool,

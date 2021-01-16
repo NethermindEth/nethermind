@@ -20,9 +20,7 @@ namespace Nethermind.Core
 {
     public class ManualTimestamper : ITimestamper
     {
-        public ManualTimestamper() : this(DateTime.UtcNow)
-        {
-        }
+        public ManualTimestamper() : this(DateTime.UtcNow) { }
 
         public ManualTimestamper(DateTime initialValue)
         {

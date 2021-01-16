@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -122,9 +122,9 @@ namespace Nethermind.Evm.Test
             TestState.CreateAccount(expectedAddress, 1.Ether());
             Storage.Set(new StorageCell(expectedAddress, 1), new byte[] {1, 2, 3, 4, 5});
             Storage.Commit();
-            Storage.CommitTrees();
+            Storage.CommitTrees(0);
             TestState.Commit(Spec);
-            TestState.CommitTree();
+            TestState.CommitTree(0);
             
             Keccak storageRoot = TestState.GetAccount(expectedAddress).StorageRoot;
             storageRoot.Should().NotBe(PatriciaTree.EmptyTreeHash);
