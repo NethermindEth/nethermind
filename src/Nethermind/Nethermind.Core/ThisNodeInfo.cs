@@ -26,7 +26,7 @@ namespace Nethermind.Core
 
         public static void AddInfo(string infoDescription, string value)
         {
-            _nodeInfoItems[infoDescription] = value;
+            _nodeInfoItems.TryAdd(infoDescription, value);
         }
 
         public static string BuildNodeInfoScreen()

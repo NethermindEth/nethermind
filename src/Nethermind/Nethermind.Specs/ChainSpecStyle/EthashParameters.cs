@@ -44,6 +44,8 @@ namespace Nethermind.Specs.ChainSpecStyle
         public Address[] DaoHardforkAccounts { get; set; }
 
         public long Eip100bTransition { get; set; }
+        
+        public long? FixedDifficulty { get; set; }
 
         public Dictionary<long, UInt256> BlockRewards { get; set; }
 

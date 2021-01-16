@@ -31,8 +31,8 @@ namespace Nethermind.Core
     public static class NetworkDiagTracer
     {
         public const string NetworkDiagTracerPath = @"network_diag.txt";
-        
-        public static bool IsEnabled { get; set; }
+
+        public static bool IsEnabled { get; set; } = true;
 
         private static readonly ConcurrentDictionary<string, ConcurrentQueue<string>> _events = new ConcurrentDictionary<string, ConcurrentQueue<string>>();
 
@@ -61,9 +61,9 @@ namespace Nethermind.Core
         }
 
         [MethodImpl(MethodImplOptions.Synchronized)]
-        private static void Add(IPEndPoint farAddress, string line)
+        private static void Add(IPEndPoint? farAddress, string line)
         {
-            _events.AddOrUpdate(farAddress.Address.MapToIPv4().ToString(), ni => new ConcurrentQueue<string>(), (s, list) =>
+            _events.AddOrUpdate(farAddress?.Address.MapToIPv4().ToString() ?? "null", ni => new ConcurrentQueue<string>(), (s, list) =>
             {
                 list.Enqueue(line);
                 return list;

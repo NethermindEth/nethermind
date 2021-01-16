@@ -91,6 +91,7 @@ namespace Nethermind.Network
             _peerLoader = peerLoader ?? throw new ArgumentNullException(nameof(peerLoader));
             _peerStorage.StartBatch();
             _peerPool = new LocalPeerPool(_logger);
+            _peerComparer = new PeerComparer();
         }
 
         public IReadOnlyCollection<Peer> ActivePeers => _activePeers.Values.ToList().AsReadOnly();

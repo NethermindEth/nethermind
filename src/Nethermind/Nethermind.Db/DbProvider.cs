@@ -17,6 +17,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.IO;
 
 namespace Nethermind.Db
 {
@@ -46,17 +47,25 @@ namespace Nethermind.Db
             }
         }
 
-        public T GetDb<T>(string dbName) where T : IDb
+        public T GetDb<T>(string dbName) where T : class, IDb
         {
             if (!_registeredDbs.ContainsKey(dbName))
             {
                 throw new ArgumentException($"{dbName} database has not been registered in {nameof(DbProvider)}.");
             }
 
-            return (T)_registeredDbs[dbName];
+            _registeredDbs.TryGetValue(dbName, out IDb? found);
+            T result = found as T;
+            if (result == null && found != null)
+            {
+                throw new IOException(
+                    $"An attempt was made to resolve DB {dbName} as {typeof(T)} while its type is {found.GetType()}.");
+            }
+
+            return result;
         }
 
-        public void RegisterDb<T>(string dbName, T db) where T : IDb
+        public void RegisterDb<T>(string dbName, T db) where T : class, IDb
         {
             if (_registeredDbs.ContainsKey(dbName))
             {

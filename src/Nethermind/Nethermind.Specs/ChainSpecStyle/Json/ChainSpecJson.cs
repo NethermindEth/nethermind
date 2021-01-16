@@ -41,8 +41,8 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
             public long? DaoHardforkTransition => Params?.DaoHardforkTransition;
             public Address DaoHardforkBeneficiary => Params?.DaoHardforkBeneficiary;
             public Address[] DaoHardforkAccounts => Params?.DaoHardforkAccounts;
-            public long? DaoHardForkTransition => Params?.DaoHardforkTransition;
             public long? Eip100bTransition => Params?.Eip100bTransition;
+            public long? FixedDifficulty => Params?.FixedDifficulty;
             public long? DifficultyBoundDivisor => Params?.DifficultyBoundDivisor;
             public long? DurationLimit => Params?.DurationLimit;
             public UInt256? MinimumDifficulty => Params?.MinimumDifficulty;
@@ -61,6 +61,7 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
             public Address DaoHardforkBeneficiary { get; set; }
             public Address[] DaoHardforkAccounts { get; set; }
             public long Eip100bTransition { get; set; }
+            public long? FixedDifficulty { get; set; }
             public Dictionary<string, UInt256> BlockReward { get; set; }
             public Dictionary<string, long> DifficultyBombDelays { get; set; }
         }

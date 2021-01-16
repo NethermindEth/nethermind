@@ -311,7 +311,8 @@ namespace Nethermind.Blockchain.Processing
                 TotalDifficulty = bh.TotalDifficulty,
                 AuRaStep = bh.AuRaStep,
                 AuRaSignature = bh.AuRaSignature,
-                ReceiptsRoot = bh.ReceiptsRoot
+                ReceiptsRoot = bh.ReceiptsRoot,
+                BaseFee = bh.BaseFee
             };
 
             return new Block(header, suggestedBlock.Transactions, suggestedBlock.Ommers);

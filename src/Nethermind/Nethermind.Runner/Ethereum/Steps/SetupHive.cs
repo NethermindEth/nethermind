@@ -47,6 +47,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                     _api.LogManager.GetClassLogger(),
                     _api.FileSystem
                 );
+                
                 await hiveRunner.Start(cancellationToken);
             }
         }

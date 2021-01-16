@@ -224,6 +224,7 @@ namespace Nethermind.Runner
                 Stopwatch stopwatch = Stopwatch.StartNew();
                 LogManager.Configuration = new XmlLoggingConfiguration("NLog.config".GetApplicationResourcePath());
                 stopwatch.Stop();
+
                 logger.Info($"NLog.config loaded in {stopwatch.ElapsedMilliseconds}ms.");
             }
 

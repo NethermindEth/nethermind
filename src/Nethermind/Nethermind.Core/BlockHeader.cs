@@ -20,6 +20,7 @@ using System.Text;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Int256;
 
 namespace Nethermind.Core
@@ -63,8 +64,41 @@ namespace Nethermind.Core
         public Bloom? Bloom { get; set; }
         public UInt256 Difficulty { get; set; }
         public long Number { get; set; }
-        public long GasUsed { get; set; }
+        public long GasUsedLegacy { get; set; }
+        public long GasUsedEip1559 { get; set; }
+        public long GasUsed => GasUsedEip1559 + GasUsedLegacy;
         public long GasLimit { get; set; }
+
+        public long GasTarget // just rename the field but the meaning changes
+        {
+            get => GasLimit;
+            set => GasLimit = value;
+        }
+
+        public long GetGasTarget1559(IReleaseSpec releaseSpec)
+        {
+            long transitionBlock = releaseSpec.Eip1559TransitionBlock;
+            long migrationDuration = releaseSpec.Eip1559MigrationDuration;
+            long finalBlock = transitionBlock + migrationDuration;
+            if (Number < transitionBlock)
+            {
+                return 0L;
+            }
+
+            if (Number == transitionBlock)
+            {
+                return GasLimit / 2;
+            }
+
+            if (Number >= finalBlock)
+            {
+                return GasTarget;
+            }
+
+            return (GasTarget + GasTarget * (Number - transitionBlock) / migrationDuration) / 2;
+        }
+
+        public long GetGasTargetLegacy(IReleaseSpec releaseSpec) => GasLimit - GetGasTarget1559(releaseSpec);
         public UInt256 Timestamp { get; set; }
         public DateTime TimestampDate => DateTimeOffset.FromUnixTimeSeconds((long) Timestamp).LocalDateTime;
         public byte[]? ExtraData { get; set; }
@@ -74,7 +108,8 @@ namespace Nethermind.Core
         public UInt256? TotalDifficulty { get; set; }
         public byte[]? AuRaSignature { get; set; }
         public long? AuRaStep { get; set; }
-        
+        public UInt256 BaseFee { get; set; }
+
         public bool HasBody => OmmersHash != Keccak.OfAnEmptySequenceRlp || TxRoot != Keccak.EmptyTreeHash;
         public SealEngineType SealEngineType { get; set; } = SealEngineType.Ethash;
 
@@ -96,6 +131,7 @@ namespace Nethermind.Core
             builder.AppendLine($"{indent}Tx Root: {TxRoot}");
             builder.AppendLine($"{indent}Receipts Root: {ReceiptsRoot}");
             builder.AppendLine($"{indent}State Root: {StateRoot}");
+            builder.AppendLine($"{indent}Base Fee: {BaseFee}");
 
             return builder.ToString();
         }
@@ -124,6 +160,58 @@ namespace Nethermind.Core
             Full,
             Short,
             FullHashAndNumber
+        }
+        
+        private static readonly UInt256 BaseFeeMaxChangeDenominator = 8;
+        
+        public static UInt256 CalculateBaseFee(BlockHeader parent, IReleaseSpec spec)
+        {
+            UInt256 expectedBaseFee = UInt256.Zero;
+            if (spec.IsEip1559Enabled)
+            {
+                long gasDelta;
+                UInt256 feeDelta;
+                long gasTarget = parent.GetGasTarget1559(spec);
+
+                // # check if the base fee is correct
+                //   if parent_gas_used == parent_gas_target:
+                //   expected_base_fee = parent_base_fee
+                //   elif parent_gas_used > parent_gas_target:
+                //   gas_delta = parent_gas_used - parent_gas_target
+                //   fee_delta = max(parent_base_fee * gas_delta // parent_gas_target // BASE_FEE_MAX_CHANGE_DENOMINATOR, 1)
+                //   expected_base_fee = parent_base_fee + fee_delta
+                //   else:
+                //   gas_delta = parent_gas_target - parent_gas_used
+                //   fee_delta = parent_base_fee * gas_delta // parent_gas_target // BASE_FEE_MAX_CHANGE_DENOMINATOR
+                //   expected_base_fee = parent_base_fee - fee_delta
+                //   assert expected_base_fee == block.base_fee, 'invalid block: base fee not correct'
+
+                if (parent.GasUsed == gasTarget)
+                {
+                    expectedBaseFee = parent.BaseFee;
+                }
+                else if (parent.GasUsed > gasTarget)
+                {
+                    gasDelta = parent.GasUsed - gasTarget;
+                    feeDelta = UInt256.Max(
+                        parent.BaseFee * (UInt256) gasDelta / (UInt256) gasTarget / BaseFeeMaxChangeDenominator,
+                        UInt256.One);
+                    expectedBaseFee = parent.BaseFee + feeDelta;
+                }
+                else
+                {
+                    gasDelta = gasTarget - parent.GasUsed;
+                    feeDelta = parent.BaseFee * (UInt256) gasDelta / (UInt256) gasTarget / BaseFeeMaxChangeDenominator;
+                    expectedBaseFee = parent.BaseFee - feeDelta;
+                }
+
+                if (spec.Eip1559TransitionBlock == parent.Number + 1)
+                {
+                    expectedBaseFee = 1.GWei();
+                }
+            }
+
+            return expectedBaseFee;
         }
     }
 }

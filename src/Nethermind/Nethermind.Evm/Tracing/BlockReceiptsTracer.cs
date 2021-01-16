@@ -81,6 +81,11 @@ namespace Nethermind.Evm.Tracing
 
         private TxReceipt BuildReceipt(Address recipient, long spentGas, byte statusCode, LogEntry[] logEntries, Keccak stateRoot = null)
         {
+            if (statusCode != 1)
+            {
+                
+            }
+            
             Transaction transaction = _block.Transactions[_currentIndex];
             TxReceipt txReceipt = new TxReceipt();
             txReceipt.Logs = logEntries;

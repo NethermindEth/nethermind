@@ -31,6 +31,7 @@ namespace Nethermind.Specs.ChainSpecStyle
         public long MinGasLimit { get; set; }
         public Keccak ForkCanonHash { get; set; }
         public long? ForkBlock { get; set; }
+        public long? Eip7Transition { get; set; }
         public long? Eip150Transition { get; set; }
         public long? Eip152Transition { get; set; }
         public long? Eip160Transition { get; set; }
@@ -53,6 +54,8 @@ namespace Nethermind.Specs.ChainSpecStyle
         public long? Eip1884Transition { get; set; }
         public long? Eip2028Transition { get; set; }
         public long? Eip2200Transition { get; set; }
+        public long? Eip1559Transition { get; set; }
+        public long? Eip1559MigrationDuration { get; set; }
         public long? Eip2929Transition { get; set; }
         
         /// <summary>

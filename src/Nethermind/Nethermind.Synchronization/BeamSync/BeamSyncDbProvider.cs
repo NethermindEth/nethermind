@@ -17,6 +17,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.IO;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -49,6 +50,7 @@ namespace Nethermind.Synchronization.BeamSync
             _stateDb.VerifiedModeEnabled = true;
             _codeDb.VerifiedModeEnabled = true;
         }
+        
         public IDb BeamStateDb => _otherProvider.BeamStateDb;
 
         public DbModeHint DbMode => _otherProvider.DbMode;
@@ -79,15 +81,34 @@ namespace Nethermind.Synchronization.BeamSync
         {
         }
 
-        public T GetDb<T>(string dbName) where T : IDb
+        public T GetDb<T>(string dbName) where T : class, IDb
         {
-            if (string.Equals(DbNames.Code, dbName, StringComparison.OrdinalIgnoreCase) || string.Equals(DbNames.State, dbName, StringComparison.OrdinalIgnoreCase))
-                return (T)_registeredDbs[dbName];
+            T? result;
+            if (string.Equals(DbNames.Code, dbName, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(DbNames.State, dbName, StringComparison.OrdinalIgnoreCase))
+            {
+                _registeredDbs.TryGetValue(dbName, out IDb? found);
+                result = found as T;
+                if (result == null && found != null)
+                {
+                    throw new IOException(
+                        $"An attempt was made to resolve DB {dbName} as {typeof(T)} while its type is {found.GetType()}.");
+                }
+            }
+            else
+            {
+                result = _otherProvider.GetDb<T>(dbName);    
+            }
 
-            return _otherProvider.GetDb<T>(dbName);
+            if (result == null)
+            {
+                throw new IOException($"Database {dbName} cannot be found.");
+            }
+            
+            return result;
         }
 
-        public void RegisterDb<T>(string dbName, T db) where T : IDb
+        public void RegisterDb<T>(string dbName, T db) where T : class, IDb
         {
             _otherProvider.RegisterDb<T>(dbName, db);
         }

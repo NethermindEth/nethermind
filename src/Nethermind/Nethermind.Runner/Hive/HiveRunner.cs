@@ -36,7 +36,7 @@ namespace Nethermind.Runner.Hive
         private readonly ILogger _logger;
         private readonly IConfigProvider _configurationProvider;
         private readonly IFileSystem _fileSystem;
-
+        
         public HiveRunner(IBlockTree blockTree,
             IJsonSerializer jsonSerializer,
             IConfigProvider configurationProvider,

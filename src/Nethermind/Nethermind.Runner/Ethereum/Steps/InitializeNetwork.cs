@@ -98,7 +98,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             {
                 NetworkDiagTracer.Start();
             }
-            
+
             Environment.SetEnvironmentVariable("io.netty.allocator.maxOrder", _networkConfig.NettyArenaOrder.ToString());
 
             var cht = new CanonicalHashTrie(_api.DbProvider!.ChtDb);
@@ -217,7 +217,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             {
                 throw new InvalidOperationException("Cannot initialize network without knowing own enode");
             }
-            
+
             ThisNodeInfo.AddInfo("Ethereum     :", $"tcp://{_api.Enode.HostIp}:{_api.Enode.Port}");
             ThisNodeInfo.AddInfo("Version      :", $"{ClientVersion.Description.Replace("Nethermind/v", string.Empty)}");
             ThisNodeInfo.AddInfo("This node    :", $"{_api.Enode.Info}");

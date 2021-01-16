@@ -100,6 +100,7 @@ namespace Nethermind.Specs.ChainSpecStyle
                 Registrar = chainSpecJson.Params.EnsRegistrar,
                 ForkBlock = chainSpecJson.Params.ForkBlock,
                 ForkCanonHash = chainSpecJson.Params.ForkCanonHash,
+                Eip7Transition = chainSpecJson.Params.Eip7Transition,
                 Eip150Transition = chainSpecJson.Params.Eip150Transition ?? 0,
                 Eip152Transition = chainSpecJson.Params.Eip152Transition,
                 Eip160Transition = chainSpecJson.Params.Eip160Transition ?? 0,
@@ -122,6 +123,8 @@ namespace Nethermind.Specs.ChainSpecStyle
                 Eip1884Transition = chainSpecJson.Params.Eip1884Transition,
                 Eip2028Transition = chainSpecJson.Params.Eip2028Transition,
                 Eip2200Transition = chainSpecJson.Params.Eip2200Transition,
+                Eip1559Transition = chainSpecJson.Params.Eip1559Transition,
+                Eip1559MigrationDuration = chainSpecJson.Params.Eip1559MigrationDuration,
                 TransactionPermissionContract = chainSpecJson.Params.TransactionPermissionContract,
                 TransactionPermissionContractTransition = chainSpecJson.Params.TransactionPermissionContractTransition,
                 ValidateChainIdTransition = chainSpecJson.Params.ValidateChainIdTransition,
@@ -154,7 +157,7 @@ namespace Nethermind.Specs.ChainSpecStyle
             if (chainSpecJson.Engine?.Ethash != null)
             {
                 chainSpec.HomesteadBlockNumber = chainSpecJson.Engine.Ethash.HomesteadTransition;
-                chainSpec.DaoForkBlockNumber = chainSpecJson.Engine.Ethash.DaoHardForkTransition;
+                chainSpec.DaoForkBlockNumber = chainSpecJson.Engine.Ethash.DaoHardforkTransition;
             }
             else
             {
@@ -251,6 +254,7 @@ namespace Nethermind.Specs.ChainSpecStyle
                     DaoHardforkBeneficiary = chainSpecJson.Engine.Ethash.DaoHardforkBeneficiary,
                     DaoHardforkAccounts = chainSpecJson.Engine.Ethash.DaoHardforkAccounts ?? Array.Empty<Address>(),
                     Eip100bTransition = chainSpecJson.Engine.Ethash.Eip100bTransition ?? 0L,
+                    FixedDifficulty = chainSpecJson.Engine.Ethash.FixedDifficulty,
                     BlockRewards = new Dictionary<long, UInt256>()
                 };
 
@@ -260,9 +264,12 @@ namespace Nethermind.Specs.ChainSpecStyle
                 }
 
                 chainSpec.Ethash.DifficultyBombDelays = new Dictionary<long, long>();
-                foreach (KeyValuePair<string, long> reward in chainSpecJson.Engine.Ethash.DifficultyBombDelays)
+                if (chainSpecJson.Engine.Ethash.DifficultyBombDelays != null)
                 {
-                    chainSpec.Ethash.DifficultyBombDelays.Add(LongConverter.FromString(reward.Key), reward.Value);
+                    foreach (KeyValuePair<string, long> reward in chainSpecJson.Engine.Ethash.DifficultyBombDelays)
+                    {
+                        chainSpec.Ethash.DifficultyBombDelays.Add(LongConverter.FromString(reward.Key), reward.Value);
+                    }
                 }
             }
             else if (chainSpecJson.Engine?.NethDev != null)
@@ -307,8 +314,7 @@ namespace Nethermind.Specs.ChainSpecStyle
 
             genesisHeader.Author = beneficiary;
             genesisHeader.Hash = Keccak.Zero; // need to run the block to know the actual hash
-            genesisHeader.Bloom = new Bloom();
-            genesisHeader.GasUsed = 0;
+            genesisHeader.Bloom = Bloom.Empty;
             genesisHeader.MixHash = mixHash;
             genesisHeader.Nonce = (ulong) nonce;
             genesisHeader.ReceiptsRoot = Keccak.EmptyTreeHash;
