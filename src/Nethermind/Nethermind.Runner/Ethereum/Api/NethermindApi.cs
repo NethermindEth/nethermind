@@ -168,7 +168,7 @@ namespace Nethermind.Runner.Ethereum.Api
         public ITxPool? TxPool { get; set; }
         public ITxPoolInfoProvider? TxPoolInfoProvider { get; set; }
         public IWallet? Wallet { get; set; }
-        public IWebSocketsManager? WebSocketsManager { get; set; }
+        public IWebSocketsManager WebSocketsManager { get; set; } = new WebSocketsManager();
 
         public ProtectedPrivateKey? NodeKey { get; set; }
         public ProtectedPrivateKey? OriginalSignerKey { get; set; } // TODO: please explain what it does
