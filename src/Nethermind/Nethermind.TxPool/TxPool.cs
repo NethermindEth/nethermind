@@ -55,7 +55,6 @@ namespace Nethermind.TxPool
             new ConcurrentDictionary<Address, AddressNonces>();
 
         private readonly LruKeyCache<Keccak> _hashCache = new LruKeyCache<Keccak>(MemoryAllowance.TxHashCacheSize,
-        private readonly LruKeyCache<Keccak> _hashCache = new LruKeyCache<Keccak>(MemoryAllowance.TxHashCacheSize,
             Math.Min(1024 * 16, MemoryAllowance.TxHashCacheSize), "tx hashes");
 
         /// <summary>
