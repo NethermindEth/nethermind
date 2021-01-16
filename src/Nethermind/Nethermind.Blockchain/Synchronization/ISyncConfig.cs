@@ -97,6 +97,9 @@ namespace Nethermind.Blockchain.Synchronization
         [ConfigItem(HiddenFromDocs = true, DefaultValue = "1")]
         public long AncientReceiptsBarrierCalc => Math.Max(1, Math.Min(PivotNumberParsed, Math.Max(AncientBodiesBarrier, AncientReceiptsBarrier)));
         
+        [ConfigItem(Description = "Enables witness protocol.", DefaultValue = "false")]
+        public bool WitnessProtocolEnabled { get; set; }
+        
         [ConfigItem(Description = "[ONLY FOR MISSING RECEIPTS ISSUE] Turns on receipts validation that checks for ones that might be missing due to previous bug. It downloads them from network if needed." +
                                   "If used please check that PivotNumber is same as original used when syncing the node as its used as a cut-off point.", DefaultValue = "false")]
         public bool FixReceipts { get; set; }

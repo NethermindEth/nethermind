@@ -42,6 +42,7 @@ namespace Nethermind.Blockchain.Processing
         private readonly ISpecProvider _specProvider;
         private readonly IStateProvider _stateProvider;
         private readonly IReceiptStorage _receiptStorage;
+        private readonly IWitnessCollector _witnessCollector;
         private readonly IBlockValidator _blockValidator;
         private readonly IStorageProvider _storageProvider;
         private readonly IRewardCalculator _rewardCalculator;
@@ -64,6 +65,7 @@ namespace Nethermind.Blockchain.Processing
             IStorageProvider storageProvider,
             ITxPool txPool,
             IReceiptStorage receiptStorage,
+            IWitnessCollector witnessCollector,
             ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
@@ -73,6 +75,7 @@ namespace Nethermind.Blockchain.Processing
             _storageProvider = storageProvider ?? throw new ArgumentNullException(nameof(storageProvider));
             _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
             _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
+            _witnessCollector = witnessCollector ?? throw new ArgumentNullException(nameof(witnessCollector));
             _rewardCalculator = rewardCalculator ?? throw new ArgumentNullException(nameof(rewardCalculator));
             _transactionProcessor = transactionProcessor ?? throw new ArgumentNullException(nameof(transactionProcessor));
 
@@ -106,6 +109,8 @@ namespace Nethermind.Blockchain.Processing
                         if(_logger.IsInfo) _logger.Info($"Processing part of a long blocks branch {i}/{blocksCount}");
                     }
 
+                    _witnessCollector.Reset();
+
                     var (processedBlock, receipts) = ProcessOne(suggestedBlocks[i], options, blockTracer);
                     processedBlocks[i] = processedBlock;
 
@@ -113,6 +118,7 @@ namespace Nethermind.Blockchain.Processing
                     PreCommitBlock(newBranchStateRoot, suggestedBlocks[i].Number);
                     if (!readOnly)
                     {
+                        _witnessCollector.Persist(processedBlock.Hash!);
                         BlockProcessed?.Invoke(this, new BlockProcessedEventArgs(processedBlock, receipts));
                     }
 
@@ -238,7 +244,7 @@ namespace Nethermind.Blockchain.Processing
             {
                 StoreTxReceipts(block, receipts);
             }
-
+            
             return (block, receipts);
         }
 

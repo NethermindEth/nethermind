@@ -45,7 +45,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V64
         
         public override string Name => "eth64";
         
-        public override byte ProtocolVersion { get; protected set; } = 64;
+        public override byte ProtocolVersion => 64;
 
         protected override void EnrichStatusMessage(StatusMessage statusMessage)
         {

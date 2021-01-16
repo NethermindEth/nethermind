@@ -25,11 +25,11 @@ namespace Nethermind.Blockchain.Synchronization
         bool Enabled { get; set; }
         
         [ConfigItem(Description = "Pruning cache size in MB (beta).", DefaultValue = "512")]
-        long PruningCacheMb { get; set; }
+        long CacheMb { get; set; }
         
         [ConfigItem(
             Description = "Defines how often blocks will be persisted even if not required by cache memory usage (beta)",
             DefaultValue = "8192")]
-        long PruningPersistenceInterval { get; set; }
+        long PersistenceInterval { get; set; }
     }
 }

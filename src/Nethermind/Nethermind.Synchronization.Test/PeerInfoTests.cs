@@ -29,6 +29,7 @@ namespace Nethermind.Synchronization.Test
     [TestFixture(AllocationContexts.Headers)]
     [TestFixture(AllocationContexts.Bodies)]
     [TestFixture(AllocationContexts.State)]
+    [TestFixture(AllocationContexts.Witness)]
     [TestFixture(AllocationContexts.All)]
     [Parallelizable(ParallelScope.All)]
     public class PeerInfoTests

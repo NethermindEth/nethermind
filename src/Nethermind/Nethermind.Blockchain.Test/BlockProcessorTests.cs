@@ -64,6 +64,7 @@ namespace Nethermind.Blockchain.Test
                 new StorageProvider(trieStore, stateProvider, LimboLogs.Instance),
                 NullTxPool.Instance,
                 NullReceiptStorage.Instance,
+                NullWitnessCollector.Instance,
                 LimboLogs.Instance);
 
             BlockHeader header = Build.A.BlockHeader.WithAuthor(TestItem.AddressD).TestObject;
@@ -75,6 +76,39 @@ namespace Nethermind.Blockchain.Test
                 NullBlockTracer.Instance);
             Assert.AreEqual(1, processedBlocks.Length, "length");
             Assert.AreEqual(block.Author, processedBlocks[0].Author, "author");
+        }
+        
+        [Test]
+        public void Can_store_a_witness()
+        {
+            ISnapshotableDb stateDb = new StateDb();
+            ISnapshotableDb codeDb = new StateDb();
+            var trieStore = new TrieStore(stateDb, LimboLogs.Instance);
+            
+            IStateProvider stateProvider = new StateProvider(trieStore, codeDb, LimboLogs.Instance);
+            ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
+            IWitnessCollector witnessCollector = Substitute.For<IWitnessCollector>();
+            BlockProcessor processor = new BlockProcessor(
+                RinkebySpecProvider.Instance,
+                TestBlockValidator.AlwaysValid,
+                NoBlockRewards.Instance,
+                transactionProcessor,
+                stateProvider,
+                new StorageProvider(trieStore, stateProvider, LimboLogs.Instance),
+                NullTxPool.Instance,
+                NullReceiptStorage.Instance,
+                witnessCollector,
+                LimboLogs.Instance);
+
+            BlockHeader header = Build.A.BlockHeader.WithAuthor(TestItem.AddressD).TestObject;
+            Block block = Build.A.Block.WithHeader(header).TestObject;
+            _ = processor.Process(
+                Keccak.EmptyTreeHash,
+                new List<Block> {block},
+                ProcessingOptions.None,
+                NullBlockTracer.Instance);
+            
+            witnessCollector.Received(1).Persist(block.Hash);
         }
 
         [Test]
@@ -94,6 +128,7 @@ namespace Nethermind.Blockchain.Test
                 new StorageProvider(trieStore, stateProvider, LimboLogs.Instance),
                 NullTxPool.Instance,
                 NullReceiptStorage.Instance,
+                NullWitnessCollector.Instance,
                 LimboLogs.Instance);
 
             BlockHeader header = Build.A.BlockHeader.WithNumber(1).WithAuthor(TestItem.AddressD).TestObject;

@@ -742,6 +742,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
         {
             StateProvider stateProvider = CreateInitialState(code);
             StorageProvider storageProvider = new StorageProvider(new TrieStore(_dbProvider.StateDb, LimboLogs.Instance), stateProvider, LimboLogs.Instance);
+
             for (int i = 0; i < 10000; i++)
             {
                 storageProvider.Set(new StorageCell(TestItem.AddressB, (UInt256)i), i.ToBigEndianByteArray());

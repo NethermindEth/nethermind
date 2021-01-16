@@ -20,7 +20,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Store.Test
 {
-    [TestFixture]
+    [TestFixture] // TODO: these tests are failing in multithreaded scenario - should be investigated
     public class StateDbTests
     {
         private Keccak _hash1 = Keccak.Compute("1");
@@ -96,7 +96,7 @@ namespace Nethermind.Store.Test
         }
         
         [Test]
-        public void Capacity_grwoth_and_shrinkage()
+        public void Capacity_growth_and_shrinkage()
         {
             StateDb db = new StateDb(new MemDb());
             for (int i = 0; i < 16; i++)

@@ -27,12 +27,12 @@ using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
-using Nethermind.State;
 using Nethermind.Trie;
 using Nethermind.TxPool;
 using Block = Nethermind.Core.Block;
 using System.Threading;
 using Nethermind.Blockchain.Processing;
+using Nethermind.State;
 
 namespace Nethermind.Facade
 {

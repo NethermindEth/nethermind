@@ -81,6 +81,8 @@ namespace Nethermind.Runner.Ethereum.Api
         {
             ReadOnlyBlockTree readOnlyTree = new ReadOnlyBlockTree(BlockTree);
             IReadOnlyDbProvider readOnlyDbProvider = new ReadOnlyDbProvider(DbProvider, false);
+            
+            // TODO: reuse the same trie cache here
             ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv = new ReadOnlyTxProcessingEnv(
                 readOnlyDbProvider,
                 TrieStore,
@@ -133,8 +135,10 @@ namespace Nethermind.Runner.Ethereum.Api
         public IIPResolver? IpResolver { get; set; }
         public IJsonSerializer EthereumJsonSerializer { get; set; }
         public IKeyStore? KeyStore { get; set; }
+        public IPasswordProvider? PasswordProvider { get; set; }
         public ILogFinder? LogFinder { get; set; }
         public ILogManager LogManager { get; }
+        public IKeyValueStoreWithBatching? MainStateDbWithCache { get; set; }
         public IMessageSerializationService MessageSerializationService { get; } = new MessageSerializationService();
         public IMonitoringService MonitoringService { get; set; } = NullMonitoringService.Instance;
         public INodeStatsManager? NodeStatsManager { get; set; }
@@ -142,6 +146,7 @@ namespace Nethermind.Runner.Ethereum.Api
         public IProtocolsManager? ProtocolsManager { get; set; }
         public IProtocolValidator? ProtocolValidator { get; set; }
         public IReceiptStorage? ReceiptStorage { get; set; }
+        public IWitnessCollector? WitnessCollector { get; set; }
         public IReceiptFinder? ReceiptFinder { get; set; }
         public IRewardCalculatorSource RewardCalculatorSource { get; set; } = NoBlockRewards.Instance;
         public IRlpxPeer? RlpxPeer { get; set; }

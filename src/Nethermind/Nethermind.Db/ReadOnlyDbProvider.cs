@@ -20,6 +20,7 @@ using System.Collections.Generic;
 
 namespace Nethermind.Db
 {
+    // TODO: create some nicer DB providers
     public class ReadOnlyDbProvider : IReadOnlyDbProvider
     {
         private readonly IDbProvider _wrappedProvider;
@@ -34,7 +35,7 @@ namespace Nethermind.Db
             {
                 throw new ArgumentNullException(nameof(wrappedProvider));
             }
-
+            
             foreach (var registeredDb in _wrappedProvider.RegisteredDbs)
             {
                 RegisterReadOnlyDb(registeredDb.Key, registeredDb.Value);
@@ -64,7 +65,7 @@ namespace Nethermind.Db
             {
                 readonlyDb.Restore(-1);
             }
-
+            
             BeamStateDb.Clear();
         }
 
@@ -72,7 +73,7 @@ namespace Nethermind.Db
         {
             if (!_registeredDbs.ContainsKey(dbName))
             {
-                throw new ArgumentException($"{dbName} wasn't registed.");
+                throw new ArgumentException($"{dbName} database has not been registered in {nameof(ReadOnlyDbProvider)}.");
             }
 
             return (T)_registeredDbs[dbName];

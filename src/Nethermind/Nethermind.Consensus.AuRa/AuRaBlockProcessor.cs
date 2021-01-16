@@ -55,8 +55,18 @@ namespace Nethermind.Consensus.AuRa
             IBlockTree blockTree,
             ITxFilter txFilter = null,
             AuRaContractGasLimitOverride gasLimitOverride = null)
-            : base(specProvider, blockValidator, rewardCalculator, transactionProcessor, stateProvider, storageProvider, txPool, receiptStorage, logManager)
-        {
+            : base(
+                specProvider,
+                blockValidator,
+                rewardCalculator,
+                transactionProcessor,
+                stateProvider,
+                storageProvider,
+                txPool,
+                receiptStorage,
+                NullWitnessCollector.Instance, // TODO: we will not support beam sync on AuRa chains for now
+                logManager)
+            {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _logger = logManager?.GetClassLogger<AuRaBlockProcessor>() ?? throw new ArgumentNullException(nameof(logManager));
             _txFilter = txFilter ?? NullTxFilter.Instance;

@@ -51,6 +51,7 @@ namespace Nethermind.Db
             RegisterDb(BuildRocksDbSettings(DbNames.PendingTxs, () => Metrics.PendingTxsDbReads++, () => Metrics.PendingTxsDbWrites++));
             RegisterDb(BuildRocksDbSettings(DbNames.Bloom, () => Metrics.BloomDbReads++, () => Metrics.BloomDbWrites++));
             RegisterDb(BuildRocksDbSettings(DbNames.CHT, () => Metrics.CHTDbReads++, () => Metrics.CHTDbWrites++));
+            RegisterDb(BuildRocksDbSettings(DbNames.Witness, () => Metrics.WitnessDbReads++, () => Metrics.WitnessDbWrites++));
             if (useReceiptsDb)
             {
                 RegisterColumnsDb<ReceiptsColumns>(BuildRocksDbSettings(DbNames.Receipts, () => Metrics.ReceiptsDbReads++, () => Metrics.ReceiptsDbWrites++));

@@ -29,6 +29,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Specs;
+using Nethermind.State.Witnesses;
 using Nethermind.Stats;
 using Nethermind.Synchronization.Blocks;
 using Nethermind.Synchronization.ParallelSync;
@@ -54,7 +55,6 @@ namespace Nethermind.Synchronization.Test
             IDbProvider dbProvider = await TestMemDbProvider.InitAsync();
             _stateDb = dbProvider.StateDb;
             _codeDb = dbProvider.CodeDb;
-            _receiptsDb = dbProvider.ReceiptsDb;
             _receiptStorage = Substitute.For<IReceiptStorage>();
             SyncConfig quickConfig = new SyncConfig();
             quickConfig.FastSync = false;
@@ -72,7 +72,18 @@ namespace Nethermind.Synchronization.Test
                 LimboLogs.Instance);
             MultiSyncModeSelector syncModeSelector = new MultiSyncModeSelector(resolver, _pool, syncConfig, LimboLogs.Instance);
             _synchronizer = new Synchronizer(dbProvider, MainnetSpecProvider.Instance, _blockTree, _receiptStorage, Always.Valid,Always.Valid, _pool, stats, syncModeSelector, syncConfig, LimboLogs.Instance);
-            _syncServer = new SyncServer(_stateDb, _codeDb, _blockTree, _receiptStorage, Always.Valid, Always.Valid, _pool, syncModeSelector, quickConfig, LimboLogs.Instance);
+            _syncServer = new SyncServer(
+                _stateDb,
+                _codeDb,
+                _blockTree,
+                _receiptStorage,
+                Always.Valid,
+                Always.Valid,
+                _pool,
+                syncModeSelector,
+                quickConfig,
+                new WitnessCollector(new MemDb(), LimboLogs.Instance), 
+                LimboLogs.Instance);
         }
 
         [TearDown]
@@ -83,7 +94,7 @@ namespace Nethermind.Synchronization.Test
         }
 
         private ISnapshotableDb _stateDb;
-        private IDb _codeDb;
+        private ISnapshotableDb _codeDb;
         private IDb _receiptsDb;
         private IBlockTree _blockTree;
         private IBlockTree _remoteBlockTree;
@@ -299,7 +310,7 @@ namespace Nethermind.Synchronization.Test
             _pool.AddPeer(miner2);
             resetEvent.WaitOne(_standardTimeoutUnit);
 
-            await miner2.Received().GetBlockHeaders(6, 1, 0, default(CancellationToken));
+            await miner2.Received().GetBlockHeaders(6, 1, 0, default);
         }
 
         [Test]
@@ -337,7 +348,7 @@ namespace Nethermind.Synchronization.Test
             _pool.AddPeer(miner2);
             resetEvent.WaitOne(_standardTimeoutUnit);
 
-            await miner2.Received().GetBlockHeaders(6, 1, 0, default(CancellationToken));
+            await miner2.Received().GetBlockHeaders(6, 1, 0, default);
         }
 
         [Test]

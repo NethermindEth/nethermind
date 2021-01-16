@@ -110,6 +110,12 @@ namespace Nethermind.Blockchain
             remove { }
         }
 
+        public event EventHandler<BlockEventArgs> NewSuggestedBlock
+        {
+            add { }
+            remove { }
+        }
+
         public event EventHandler<BlockReplacementEventArgs> BlockAddedToMain
         {
             add { }

@@ -82,6 +82,7 @@ namespace Nethermind.Consensus.Ethash
                 producerEnv.StorageProvider,
                 NullTxPool.Instance,
                 NullReceiptStorage.Instance,
+                getFromApi.WitnessCollector,
                 getFromApi.LogManager);
 
             IBlockchainProcessor producerChainProcessor = new BlockchainProcessor(

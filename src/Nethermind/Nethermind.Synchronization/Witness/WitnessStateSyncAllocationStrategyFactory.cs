@@ -1,4 +1,4 @@
-//  Copyright (c) 2020 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -14,10 +14,19 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-namespace Nethermind.Trie.Pruning
+using Nethermind.Stats;
+using Nethermind.Synchronization.FastSync;
+using Nethermind.Synchronization.ParallelSync;
+using Nethermind.Synchronization.Peers.AllocationStrategies;
+
+namespace Nethermind.Synchronization.Witness
 {
-    public static class Full
+    public class WitnessStateSyncAllocationStrategyFactory : StaticPeerAllocationStrategyFactory<StateSyncBatch>
     {
-        public static IPersistenceStrategy Archive = Pruning.Archive.Instance;
+        private static readonly IPeerAllocationStrategy DefaultStrategy = new TotalDiffStrategy(new BySpeedStrategy(TransferSpeedType.NodeData, true), TotalDiffStrategy.TotalDiffSelectionType.AtLeastTheSame);
+        
+        public WitnessStateSyncAllocationStrategyFactory() : base(DefaultStrategy)
+        {
+        }
     }
 }

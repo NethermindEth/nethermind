@@ -16,7 +16,6 @@
 
 using System;
 using System.Linq;
-using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
@@ -191,7 +190,6 @@ namespace Nethermind.Synchronization.Test.BeamSync
             StateSyncBatch request = await _stateBeamLocal.PrepareRequest();
             request!.Responses = new[] {_remoteState.Get(request.RequestedNodes[0].Hash)};
             _stateBeamLocal.HandleResponse(request);
-            PatriciaTree.NodeCache.Clear();
             RunRounds(1);
 
             Assert.AreEqual(1, _needMoreDataInvocations);
@@ -238,7 +236,6 @@ namespace Nethermind.Synchronization.Test.BeamSync
 
         private void Setup((string Name, Action<StateTree, ITrieStore, IDb> SetupTree) scenario)
         {
-            
             TrieScenarios.InitOnce();
             _remoteState = new StateDb(new MemDb());
             TrieStore remoteTrieStore = new TrieStore(_remoteState.Innermost, LimboLogs.Instance);
@@ -253,7 +250,7 @@ namespace Nethermind.Synchronization.Test.BeamSync
             _stateLocal = new StateDb(_stateBeamLocal);
             _codeLocal = new StateDb(_codeBeamLocal);
 
-            _stateReader = new StateReader(new TrieStore(_stateLocal, LimboLogs.Instance), _codeLocal, LimboLogs.Instance);
+            _stateReader = new StateReader(new TrieStore(_stateBeamLocal, LimboLogs.Instance), _codeBeamLocal.Innermost, LimboLogs.Instance);
             _stateBeamLocal.StateChanged += (sender, args) =>
             {
                 if (_stateBeamLocal.CurrentState == SyncFeedState.Active)
@@ -261,6 +258,7 @@ namespace Nethermind.Synchronization.Test.BeamSync
                     Interlocked.Increment(ref _needMoreDataInvocations);
                 }
             };
+            
             PatriciaTree.NodeCache.Clear();
         }
 

@@ -151,6 +151,16 @@ namespace Nethermind.Synchronization.Test
             {
                 _shouldFail = shouldFail;
             }
+
+            public void RegisterSatelliteProtocol<T>(string protocol, T protocolHandler) where T : class
+            {
+                throw new NotImplementedException();
+            }
+
+            public bool TryGetSatelliteProtocol<T>(string protocol, out T protocolHandler) where T : class
+            {
+                throw new NotImplementedException();
+            }
         }
 
         [Test]

@@ -61,7 +61,11 @@ namespace Nethermind.Network.Discovery
                 if (_logger.IsError) _logger.Error("Exception when processing discovery messages", exception);
             }
 
-            context.DisconnectAsync();
+            context.DisconnectAsync().ContinueWith(x =>
+            {
+                if (x.IsFaulted && _logger.IsTrace)
+                    _logger.Trace($"Error while disconnecting on context on {this} : {x.Exception}");
+            });
         }
 
         public override void ChannelReadComplete(IChannelHandlerContext context)

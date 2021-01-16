@@ -165,6 +165,8 @@ namespace Nethermind.Synchronization.Peers
             Parallel.ForEach(_peers, p => { p.Value.SyncPeer.Disconnect(DisconnectReason.ClientQuitting, "App Close"); });
         }
 
+        public PeerInfo? GetPeer(Node node) => _peers.TryGetValue(node.Id, out PeerInfo? peerInfo) ? peerInfo : null;
+
         public void WakeUpAll()
         {
             foreach (var peer in _peers)
@@ -178,6 +180,20 @@ namespace Nethermind.Synchronization.Peers
             get
             {
                 foreach ((_, PeerInfo peerInfo) in _peers) yield return peerInfo;
+            }
+        }
+        
+        public IEnumerable<PeerInfo> NonStaticPeers
+        {
+            get
+            {
+                foreach ((_, PeerInfo peerInfo) in _peers)
+                {
+                    if (peerInfo.SyncPeer.Node?.IsStatic == false)
+                    {
+                        yield return peerInfo;
+                    }
+                }
             }
         }
 
@@ -437,12 +453,13 @@ namespace Nethermind.Synchronization.Peers
 
             long ourNumber = _blockTree.BestSuggestedHeader?.Number ?? 0L;
             UInt256 ourDifficulty = _blockTree.BestSuggestedHeader?.TotalDifficulty ?? UInt256.Zero;
-            foreach (PeerInfo peerInfo in AllPeers)
+            foreach (PeerInfo peerInfo in NonStaticPeers)
             {
                 if (peerInfo.HeadNumber == 0
                     && peerInfo.IsInitialized
                     && ourNumber != 0
-                    && peerInfo.PeerClientType != NodeClientType.Nethermind)
+                    && peerInfo.PeerClientType != NodeClientType.Nethermind
+                    && peerInfo.PeerClientType != NodeClientType.Trinity)
                     // we know that Nethermind reports 0 HeadNumber when it is in sync (and it can still serve a lot of data to other nodes)
                 {
                     if (!CanBeUsefulForFastBlocks(peerInfo.HeadNumber))
@@ -483,7 +500,7 @@ namespace Nethermind.Synchronization.Peers
             {
                 long lowestBlockNumber = long.MaxValue;
                 PeerInfo? worstPeer = null;
-                foreach (PeerInfo peerInfo in AllPeers)
+                foreach (PeerInfo peerInfo in NonStaticPeers)
                 {
                     if (peerInfo.HeadNumber < lowestBlockNumber)
                     {

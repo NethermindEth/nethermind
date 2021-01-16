@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -61,6 +61,11 @@ namespace Nethermind.Db.Rocks.Config
         public uint BloomDbWriteBufferNumber { get; set; } = 4;
         public ulong BloomDbBlockCacheSize { get; set; } = (ulong)1.KiB();
         public bool BloomDbCacheIndexAndFilterBlocks { get; set; } = false;
+        
+        public ulong WitnessDbWriteBufferSize { get; set; } = (ulong)1.KiB();
+        public uint WitnessDbWriteBufferNumber { get; set; } = 4;
+        public ulong WitnessDbBlockCacheSize { get; set; } = (ulong)1.KiB();
+        public bool WitnessDbCacheIndexAndFilterBlocks { get; set; } = false;
 
         // TODO - profile and customize
         public ulong CanonicalHashTrieDbWriteBufferSize { get; set; } = (ulong) 2.MB();
@@ -69,6 +74,7 @@ namespace Nethermind.Db.Rocks.Config
         public bool CanonicalHashTrieDbCacheIndexAndFilterBlocks { get; set; } = true;
         
 
+        
         public uint RecycleLogFileNum { get; set; } = 0;
         public bool WriteAheadLogSync { get; set; } = false;
     }

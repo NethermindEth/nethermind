@@ -31,6 +31,7 @@ using Nethermind.Evm.Precompiles.Snarks.Shamatar;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.State;
+using Nethermind.Trie;
 
 [assembly: InternalsVisibleTo("Nethermind.Evm.Test")]
 
@@ -78,8 +79,12 @@ namespace Nethermind.Evm
         private byte[] _returnDataBuffer = new byte[0];
         private ITxTracer _txTracer;
 
-        public VirtualMachine(IStateProvider stateProvider, IStorageProvider storageProvider,
-            IBlockhashProvider blockhashProvider, ISpecProvider specProvider, ILogManager logManager)
+        public VirtualMachine(
+            IStateProvider stateProvider,
+            IStorageProvider storageProvider,
+            IBlockhashProvider blockhashProvider,
+            ISpecProvider specProvider,
+            ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _state = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
@@ -365,6 +370,7 @@ namespace Nethermind.Evm
             if (cachedCodeInfo == null)
             {
                 byte[] code = _state.GetCode(codeHash);
+                
                 if (code == null)
                 {
                     throw new NullReferenceException($"Code {codeHash} missing in the state for address {codeSource}");
@@ -372,6 +378,11 @@ namespace Nethermind.Evm
 
                 cachedCodeInfo = new CodeInfo(code);
                 _codeCache.Set(codeHash, cachedCodeInfo);
+            }
+            else
+            {
+                // for witness collection
+                _state.TouchCode(codeHash);
             }
 
             return cachedCodeInfo;

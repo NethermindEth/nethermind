@@ -100,7 +100,7 @@ namespace Nethermind.Runner
 
         private void AssignPeersMemory(INetworkConfig networkConfig)
         {
-            PeersMemory = networkConfig.ActivePeersMaxCount * 1.MB();
+            PeersMemory = networkConfig.ActivePeersMaxCount.MB();
             if (PeersMemory > _remainingMemory * 0.75)
             {
                 throw new InvalidDataException(

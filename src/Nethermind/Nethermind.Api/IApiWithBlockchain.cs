@@ -22,6 +22,7 @@ using Nethermind.Blockchain.Rewards;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Config;
 using Nethermind.Consensus;
+using Nethermind.Core;
 using Nethermind.Evm;
 using Nethermind.Facade;
 using Nethermind.State;
@@ -58,6 +59,7 @@ namespace Nethermind.Api
         /// DO NOT USE OUTSIDE OF PROCESSING BLOCK CONTEXT!
         /// </remarks>
         IStateProvider? StateProvider { get; set; }
+        IKeyValueStoreWithBatching? MainStateDbWithCache { get; set; }
         IReadOnlyStateProvider? ChainHeadStateProvider { get; set; }
         IStateReader? StateReader { get; set; }
         IStorageProvider? StorageProvider { get; set; }
@@ -66,5 +68,6 @@ namespace Nethermind.Api
         ITxSender? TxSender { get; set; }
         ITxPool? TxPool { get; set; }
         ITxPoolInfoProvider? TxPoolInfoProvider { get; set; }
+        IWitnessCollector? WitnessCollector { get; set; }
     }
 }

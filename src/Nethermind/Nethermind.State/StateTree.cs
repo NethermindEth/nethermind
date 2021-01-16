@@ -44,7 +44,7 @@ namespace Nethermind.State
         }
 
         [DebuggerStepThrough]
-        public Account Get(Address address, Keccak rootHash = null)
+        public Account? Get(Address address, Keccak? rootHash = null)
         {
             byte[] bytes = Get(ValueKeccak.Compute(address.Bytes).BytesAsSpan, rootHash);
             if (bytes == null)
@@ -56,7 +56,7 @@ namespace Nethermind.State
         }
         
         [DebuggerStepThrough]
-        internal Account Get(Keccak keccak) // for testing
+        internal Account? Get(Keccak keccak) // for testing
         {
             byte[] bytes = Get(keccak.Bytes);
             if (bytes == null)
@@ -69,14 +69,14 @@ namespace Nethermind.State
 
         private static readonly Rlp EmptyAccountRlp = Rlp.Encode(Account.TotallyEmpty);
 
-        public void Set(Address address, Account account)
+        public void Set(Address address, Account? account)
         {
             ValueKeccak keccak = ValueKeccak.Compute(address.Bytes);
             Set(keccak.BytesAsSpan, account == null ? null : account.IsTotallyEmpty ? EmptyAccountRlp : Rlp.Encode(account));
         }
         
         [DebuggerStepThrough]
-        internal void Set(Keccak keccak, Account account) // for testing
+        internal void Set(Keccak keccak, Account? account) // for testing
         {
             Set(keccak.Bytes, account == null ? null : account.IsTotallyEmpty ? EmptyAccountRlp : Rlp.Encode(account));
         }

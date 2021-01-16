@@ -141,7 +141,7 @@ namespace Nethermind.Synchronization.Test
 
             for (int i = 0; i < _peers.Count; i++)
             {
-                Assert.AreEqual(headBlock.Header.Number, _peers[i].SyncServer.Head.Number, i.ToString());
+                Assert.AreEqual(headBlock.Header.Number, _peers[i].SyncServer.Head!.Number, i.ToString());
                 Assert.AreEqual(_originPeer.StateProvider.GetBalance(headBlock.Beneficiary), _peers[i].StateProvider.GetBalance(headBlock.Beneficiary), i + " balance");
                 Assert.AreEqual(_originPeer.StateProvider.GetBalance(TestItem.AddressB), _peers[i].StateProvider.GetBalance(TestItem.AddressB), i + " balance B");
             }
@@ -187,7 +187,7 @@ namespace Nethermind.Synchronization.Test
         {
             foreach (var peer in _peers)
             {
-                Assert.AreEqual(_genesis.Hash, peer.SyncServer.Head.Hash, "genesis hash");
+                Assert.AreEqual(_genesis.Hash, peer.SyncServer.Head!.Hash, "genesis hash");
             }
 
             var headBlock = ProduceBlocks(_chainLength);
@@ -210,7 +210,7 @@ namespace Nethermind.Synchronization.Test
 
             for (int i = 0; i < _peers.Count; i++)
             {
-                Assert.AreEqual(headBlock.Header.Number, _peers[i].SyncServer.Head.Number, i.ToString());
+                Assert.AreEqual(headBlock.Header.Number, _peers[i].SyncServer.Head!.Number, i.ToString());
                 Assert.AreEqual(_originPeer.StateProvider.GetBalance(headBlock.Beneficiary), _peers[i].StateProvider.GetBalance(headBlock.Beneficiary), i + " balance");
                 Assert.AreEqual(_originPeer.StateProvider.GetBalance(TestItem.AddressB), _peers[i].StateProvider.GetBalance(TestItem.AddressB), i + " balance B");
             }
@@ -282,7 +282,18 @@ namespace Nethermind.Synchronization.Test
 
             var rewardCalculator = new RewardCalculator(specProvider);
             var txProcessor = new TransactionProcessor(specProvider, stateProvider, storageProvider, virtualMachine, logManager);
-            var blockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, txProcessor, stateProvider, storageProvider, txPool, receiptStorage, logManager);
+
+            var blockProcessor = new BlockProcessor(
+                specProvider,
+                blockValidator,
+                rewardCalculator,
+                txProcessor,
+                stateProvider,
+                storageProvider,
+                txPool,
+                receiptStorage,
+                NullWitnessCollector.Instance,
+                logManager);
 
             var step = new RecoverSignatures(ecdsa, txPool, specProvider, logManager);
             var processor = new BlockchainProcessor(tree, blockProcessor, step, logManager, BlockchainProcessor.Options.Default);
@@ -294,7 +305,19 @@ namespace Nethermind.Synchronization.Test
             StorageProvider devStorage = new StorageProvider(trieStore, devState, logManager);
             var devEvm = new VirtualMachine(devState, devStorage, blockhashProvider, specProvider, logManager);
             var devTxProcessor = new TransactionProcessor(specProvider, devState, devStorage, devEvm, logManager);
-            var devBlockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, devTxProcessor, devState, devStorage, txPool, receiptStorage, logManager);
+
+            var devBlockProcessor = new BlockProcessor(
+                specProvider,
+                blockValidator,
+                rewardCalculator,
+                devTxProcessor,
+                devState,
+                devStorage,
+                txPool,
+                receiptStorage,
+                NullWitnessCollector.Instance,
+                logManager);
+
             var devChainProcessor = new BlockchainProcessor(tree, devBlockProcessor, step, logManager, BlockchainProcessor.Options.NoReceipts);
             var transactionSelector = new TxPoolTxSource(txPool, stateReader, logManager);
             var producer = new DevBlockProducer(
@@ -323,7 +346,18 @@ namespace Nethermind.Synchronization.Test
                 StaticSelector.Full,
                 syncConfig,
                 logManager);
-            var syncServer = new SyncServer(stateDb, codeDb, tree, receiptStorage, Always.Valid, Always.Valid, syncPeerPool, selector, syncConfig, logManager);
+            var syncServer = new SyncServer(
+                stateDb,
+                codeDb,
+                tree,
+                receiptStorage,
+                Always.Valid,
+                Always.Valid,
+                syncPeerPool,
+                selector,
+                syncConfig,
+                NullWitnessCollector.Instance,
+                logManager);
 
             ManualResetEventSlim waitEvent = new ManualResetEventSlim();
             tree.NewHeadBlock += (s, e) => waitEvent.Set();

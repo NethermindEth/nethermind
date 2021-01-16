@@ -30,6 +30,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63;
+using Nethermind.Network.P2P.Subprotocols.Wit;
 using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
@@ -59,8 +60,7 @@ namespace Nethermind.Network.P2P
         public override string ToString() => $"[Peer|{Name}|{HeadNumber}|{ClientId}|{Node:s}]";
 
         protected Keccak _remoteHeadBlockHash;
-        protected ITxPool _txPool;
-        protected ITimestamper _timestamper;
+        protected readonly ITimestamper _timestamper;
 
         protected readonly MessageQueue<GetBlockHeadersMessage, BlockHeader[]> _headersRequests;
         protected readonly MessageQueue<GetBlockBodiesMessage, BlockBody[]> _bodiesRequests;
@@ -69,11 +69,9 @@ namespace Nethermind.Network.P2P
             IMessageSerializationService serializer,
             INodeStatsManager statsManager,
             ISyncServer syncServer,
-            ITxPool txPool,
             ILogManager logManager) : base(session, statsManager, serializer, logManager)
         {
             SyncServer = syncServer ?? throw new ArgumentNullException(nameof(syncServer));
-            _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
             _timestamper = Timestamper.Default;
             _headersRequests = new MessageQueue<GetBlockHeadersMessage, BlockHeader[]>(Send);
             _bodiesRequests = new MessageQueue<GetBlockBodiesMessage, BlockBody[]>(Send);
@@ -81,7 +79,7 @@ namespace Nethermind.Network.P2P
 
         public void Disconnect(DisconnectReason reason, string details)
         {
-            if (Logger.IsDebug) Logger.Debug($"Disconnecting {Node:c} bacause of the {details}");
+            if (Logger.IsDebug) Logger.Debug($"Disconnecting {Node:c} because of the {details}");
             Session.InitiateDisconnect(reason, details);
         }
 
@@ -404,9 +402,15 @@ namespace Nethermind.Network.P2P
             return headers;
         }
 
+        internal void SetWitHandler(WitProtocolHandler witProtocolHandler)
+        {
+            _witProtocolHandler = witProtocolHandler;
+        }
+        
         #region Cleanup
 
         private int _isDisposed;
+        private WitProtocolHandler _witProtocolHandler;
         protected abstract void OnDisposed();
 
         public override void DisconnectProtocol(DisconnectReason disconnectReason, string details)
@@ -438,6 +442,30 @@ namespace Nethermind.Network.P2P
             }
         }
 
+        #endregion
+
+        #region IPeerWithSatelliteProtocol
+
+        private IDictionary<string, object> _protocolHandlers;
+        private IDictionary<string, object> ProtocolHandlers => _protocolHandlers ??= new Dictionary<string, object>();
+
+        public void RegisterSatelliteProtocol<T>(string protocol, T protocolHandler) where T : class
+        {
+            ProtocolHandlers[protocol] = protocolHandler;
+        }
+
+        public bool TryGetSatelliteProtocol<T>(string protocol, out T protocolHandler) where T : class
+        {
+            if (ProtocolHandlers.TryGetValue(protocol, out object handler))
+            {
+                protocolHandler = handler as T;
+                return protocolHandler != null;
+            }
+
+            protocolHandler = null;
+            return false;
+        }
+        
         #endregion
     }
 }

@@ -25,6 +25,13 @@ namespace Nethermind.Core
 
         private static UInt256 _accountStartNonce = UInt256.Zero;
         
+        /// <summary>
+        /// This is a special field that was used by some of the testnets (namely - Morden and Mordor).
+        /// It makes all the account nonces start from a different number then zero,
+        /// hence preventing potential signature reuse.
+        /// It is no longer needed since the replay attack protection on chain ID is used now.
+        /// We can remove it now but then we also need to remove any historical Mordor / Morden tests.
+        /// </summary>
         public static UInt256 AccountStartNonce
         {
             set

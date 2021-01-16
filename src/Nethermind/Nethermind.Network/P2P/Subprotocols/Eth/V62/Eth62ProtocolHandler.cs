@@ -33,6 +33,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
     {
         private bool _statusReceived;
         private TxFloodController _floodController;
+        protected readonly ITxPool _txPool;
 
         public Eth62ProtocolHandler(
             ISession session,
@@ -40,9 +41,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             INodeStatsManager statsManager,
             ISyncServer syncServer,
             ITxPool txPool,
-            ILogManager logManager) : base(session, serializer, statsManager, syncServer, txPool, logManager)
+            ILogManager logManager) : base(session, serializer, statsManager, syncServer, logManager)
         {
             _floodController = new TxFloodController(this, Timestamper.Default, Logger);
+            _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
         }
 
         public void DisableTxFiltering()
@@ -50,7 +52,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             _floodController.IsEnabled = false;
         }
 
-        public override byte ProtocolVersion { get; protected set; } = 62;
+        public override byte ProtocolVersion => 62;
         public override string ProtocolCode => Protocol.Eth;
         public override int MessageIdSpaceSize => 8;
         public override string Name => "eth62";

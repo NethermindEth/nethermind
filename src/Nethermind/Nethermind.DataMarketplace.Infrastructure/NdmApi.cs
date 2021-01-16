@@ -258,7 +258,13 @@ namespace Nethermind.DataMarketplace.Infrastructure
 
 
         public ILogManager LogManager => _nethermindApi.LogManager;
-
+        
+        public IKeyValueStoreWithBatching? MainStateDbWithCache
+        {
+            get => _nethermindApi.MainStateDbWithCache;
+            set => _nethermindApi.MainStateDbWithCache = value;
+        }
+        
         public IMessageSerializationService MessageSerializationService => _nethermindApi.MessageSerializationService;
 
         public IMonitoringService MonitoringService
@@ -468,6 +474,12 @@ namespace Nethermind.DataMarketplace.Infrastructure
         {
             get => _nethermindApi.WebSocketsManager;
             set => _nethermindApi.WebSocketsManager = value;
+        }
+        
+        public IWitnessCollector? WitnessCollector
+        {
+            get => _nethermindApi.WitnessCollector;
+            set => _nethermindApi.WitnessCollector = value;
         }
 
         public ProtectedPrivateKey? NodeKey

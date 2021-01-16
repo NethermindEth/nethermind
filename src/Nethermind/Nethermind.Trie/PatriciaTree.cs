@@ -42,7 +42,7 @@ namespace Nethermind.Trie
         public static readonly ICache<Keccak, byte[]> NodeCache =
             new LruCache<Keccak, byte[]>(MemoryAllowance.TrieNodeCacheCount, MemoryAllowance.TrieNodeCacheCount, "trie nodes");
 
-        /// <summary>
+            /// <summary>
         ///     0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421
         /// </summary>
         public static readonly Keccak EmptyTreeHash = Keccak.EmptyTreeHash;
@@ -54,7 +54,7 @@ namespace Nethermind.Trie
         /// when we decided to run some of the tree operations in parallel.
         /// </summary>
         private readonly Stack<StackedNode> _nodeStack = new Stack<StackedNode>();
-
+        
         private readonly ConcurrentQueue<Exception>? _commitExceptions;
 
         private readonly ConcurrentQueue<NodeCommitInfo>? _currentCommit;
@@ -78,7 +78,7 @@ namespace Nethermind.Trie
             : this(keyValueStore, EmptyTreeHash, false, true, NullLogManager.Instance)
         {
         }
-
+        
         public PatriciaTree(ITrieStore trieStore, ILogManager logManager)
             : this(trieStore, EmptyTreeHash, false, true, logManager)
         {
@@ -147,7 +147,7 @@ namespace Nethermind.Trie
                 throw new InvalidAsynchronousStateException(
                     $"{nameof(_currentCommit)} is NULL when calling {nameof(Commit)}");
             }
-
+            
             if (!_allowCommits)
             {
                 throw new TrieException("Commits are not allowed on this trie.");
@@ -366,14 +366,14 @@ namespace Nethermind.Trie
             {
                 throw new InvalidOperationException("Only reads can be done in parallel on the Patricia tree");
             }
-
+            
 #if DEBUG
             if (nibblesCount != updatePath.Length)
             {
                 throw new Exception("Does it ever happen?");
             }
 #endif
-
+            
             TraverseContext traverseContext =
                 new TraverseContext(updatePath.Slice(0, nibblesCount), updateValue, isUpdate, ignoreMissingDelete);
 

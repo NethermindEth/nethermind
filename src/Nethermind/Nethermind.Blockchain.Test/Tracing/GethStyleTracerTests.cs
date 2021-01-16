@@ -61,8 +61,19 @@ namespace Nethermind.Blockchain.Test.Tracing
             VirtualMachine virtualMachine = new VirtualMachine(stateProvider, storageProvider, blockhashProvider, specProvider, LimboLogs.Instance);
             
             TransactionProcessor transactionProcessor = new TransactionProcessor(specProvider, stateProvider, storageProvider, virtualMachine, LimboLogs.Instance);
-            BlockProcessor blockProcessor = new BlockProcessor(specProvider, TestBlockValidator.AlwaysValid, NoBlockRewards.Instance, transactionProcessor, stateProvider, storageProvider, NullTxPool.Instance, NullReceiptStorage.Instance, LimboLogs.Instance);
-            
+
+            BlockProcessor blockProcessor = new BlockProcessor(
+                specProvider,
+                TestBlockValidator.AlwaysValid,
+                NoBlockRewards.Instance,
+                transactionProcessor,
+                stateProvider,
+                storageProvider,
+                NullTxPool.Instance,
+                NullReceiptStorage.Instance,
+                NullWitnessCollector.Instance,
+                LimboLogs.Instance);
+
             _processor = new BlockchainProcessor(_blockTree, blockProcessor, new CompositeBlockPreprocessorStep(), LimboLogs.Instance, BlockchainProcessor.Options.NoReceipts);
             Block genesis = Build.A.Block.Genesis.TestObject;
             _blockTree.SuggestBlock(genesis);

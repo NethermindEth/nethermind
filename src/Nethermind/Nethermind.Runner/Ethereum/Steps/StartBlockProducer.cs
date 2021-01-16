@@ -26,6 +26,7 @@ using Nethermind.Blockchain.Producers;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Db;
+using Nethermind.State;
 using Nethermind.Logging;
 
 namespace Nethermind.Runner.Ethereum.Steps
@@ -150,6 +151,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 readOnlyTxProcessingEnv.StorageProvider,
                 _api.TxPool,
                 _api.ReceiptStorage,
+                NullWitnessCollector.Instance,
                 _api.LogManager);
         }
     }

@@ -104,6 +104,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 storageProvider,
                 txPool,
                 receiptStorage,
+                NullWitnessCollector.Instance, 
                 LimboLogs.Instance);
 
             var signatureRecovery = new RecoverSignatures(ethereumEcdsa, txPool, specProvider, LimboLogs.Instance);

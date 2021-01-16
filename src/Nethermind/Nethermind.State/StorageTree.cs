@@ -45,13 +45,13 @@ namespace Nethermind.State
                 Cache[index] = Keccak.Compute(buffer).Bytes;
             }
         }
-
+        
         public StorageTree(ITrieStore trieStore, Keccak rootHash, ILogManager logManager)
             : base(trieStore, rootHash, false, true, logManager)
         {
             TrieType = TrieType.Storage;
         }
-
+        
         public static Span<byte> GetKey(UInt256 index)
         {
             if (index < CacheSize)
@@ -66,7 +66,7 @@ namespace Nethermind.State
             return ValueKeccak.Compute(span).BytesAsSpan.ToArray();
         }
 
-        public byte[] Get(UInt256 index, Keccak storageRoot = null)
+        public byte[] Get(UInt256 index, Keccak? storageRoot = null)
         {
             Span<byte> key = GetKey(index);
             byte[] value = Get(key, storageRoot);

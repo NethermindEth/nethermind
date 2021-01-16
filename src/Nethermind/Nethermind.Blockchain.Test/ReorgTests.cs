@@ -34,6 +34,7 @@ using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.State;
 using Nethermind.State.Repositories;
+using Nethermind.State.Witnesses;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Storages;
@@ -94,6 +95,7 @@ namespace Nethermind.Blockchain.Test
                 storageProvider,
                 txPool,
                 NullReceiptStorage.Instance,
+                new WitnessCollector(memDbProvider.StateDb, LimboLogs.Instance),
                 LimboLogs.Instance);
             _blockchainProcessor = new BlockchainProcessor(
                 _blockTree,

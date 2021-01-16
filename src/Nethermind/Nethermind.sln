@@ -60,6 +60,7 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Chains", "Chains", "{D75E83
 		Chains\energyweb.json = Chains\energyweb.json
 		Chains\baseline.json = Chains\baseline.json
 		Chains\kovan.json = Chains\kovan.json
+		Chains\wit.json = Chains\wit.json
 	EndProjectSection
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.State.Test", "Nethermind.State.Test\Nethermind.State.Test.csproj", "{0A927E80-884F-4F41-BC5E-1825D32726DB}"
@@ -163,6 +164,8 @@ EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Trie.Test", "Nethermind.Trie.Test\Nethermind.Trie.Test.csproj", "{5CCA7D86-2D47-4464-970F-27A3604FC5A5}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Analytics", "Nethermind.Analytics\Nethermind.Analytics.csproj", "{643A1DD3-5DBE-44DB-B56D-9C3C5A46763F}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Cli.Test", "Nethermind.Cli.Test\Nethermind.Cli.Test.csproj", "{A06EBCB5-D56A-47D9-ACC2-B1A27F74E94B}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Int256", "..\int256\src\Nethermind.Int256\Nethermind.Int256.csproj", "{B27A33D7-CBF0-4CD5-A056-14C16819586E}"
 EndProject
@@ -446,6 +449,10 @@ Global
 		{643A1DD3-5DBE-44DB-B56D-9C3C5A46763F}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{643A1DD3-5DBE-44DB-B56D-9C3C5A46763F}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{643A1DD3-5DBE-44DB-B56D-9C3C5A46763F}.Release|Any CPU.Build.0 = Release|Any CPU
+		{A06EBCB5-D56A-47D9-ACC2-B1A27F74E94B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A06EBCB5-D56A-47D9-ACC2-B1A27F74E94B}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A06EBCB5-D56A-47D9-ACC2-B1A27F74E94B}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A06EBCB5-D56A-47D9-ACC2-B1A27F74E94B}.Release|Any CPU.Build.0 = Release|Any CPU
 		{B27A33D7-CBF0-4CD5-A056-14C16819586E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{B27A33D7-CBF0-4CD5-A056-14C16819586E}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{B27A33D7-CBF0-4CD5-A056-14C16819586E}.Release|Any CPU.ActiveCfg = Release|Any CPU
@@ -521,7 +528,10 @@ Global
 		{B6A4B633-1630-4501-BF43-743D6A40FF86} = {94CF4207-DA03-4D26-AAA2-284475A6DF1E}
 		{5CCA7D86-2D47-4464-970F-27A3604FC5A5} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
 		{99ABC9F6-C0DE-4579-8AFB-B42CDE0E840F} = {94CF4207-DA03-4D26-AAA2-284475A6DF1E}
-		{7CD8E337-B91C-46FE-8098-18448501AB04} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
+		{47D3BEB6-E29C-467F-A615-BB9A1FE3DEA0} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
+		{6293A5CB-1D3E-4DC8-884A-DD888BD989F2} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
+		{A06EBCB5-D56A-47D9-ACC2-B1A27F74E94B} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
+		{7CD8E337-B91C-46FE-8098-18448501AB04} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}		
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

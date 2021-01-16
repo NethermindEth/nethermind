@@ -42,9 +42,10 @@ namespace Nethermind.Blockchain.Processing
             ISpecProvider specProvider,
             ILogManager logManager)
         {
+            // TODO: reuse cache for state -> now when the trie is not reusing cache any more
             DbProvider = readOnlyDbProvider;
             ISnapshotableDb codeDb = readOnlyDbProvider.CodeDb;
-
+            
             ReadOnlyTrieStore readOnlyTrieStore = new ReadOnlyTrieStore(trieStore);
             StateReader = new StateReader(readOnlyTrieStore, codeDb, logManager);
             StateProvider = new StateProvider(readOnlyTrieStore, codeDb, logManager);

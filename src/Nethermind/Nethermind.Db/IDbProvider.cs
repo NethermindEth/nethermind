@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+// Copyright (c) 2020 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -24,7 +24,7 @@ namespace Nethermind.Db
         Mem,
         Persisted
     }
-    
+
     public interface IDbProvider : IDisposable
     {
         DbModeHint DbMode { get; }
@@ -46,6 +46,7 @@ namespace Nethermind.Db
         
         // Beam Sync (StateDB like)
         IDb BeamStateDb { get; }
+        IDb WitnessDb => GetDb<IDb>(DbNames.Witness);
 
         T GetDb<T>(string dbName) where T : IDb;
 

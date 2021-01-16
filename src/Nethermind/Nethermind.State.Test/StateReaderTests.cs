@@ -33,7 +33,7 @@ using Metrics = Nethermind.Trie.Pruning.Metrics;
 
 namespace Nethermind.Store.Test
 {
-    [TestFixture]
+    [TestFixture, Parallelizable(ParallelScope.All)]
     public class StateReaderTests
     {
         private static readonly Keccak Hash1 = Keccak.Compute("1");
@@ -45,7 +45,8 @@ namespace Nethermind.Store.Test
         {
             IReleaseSpec spec = MainnetSpecProvider.Instance.GetSpec(MainnetSpecProvider.ConstantinopleFixBlockNumber);
             StateDb stateDb = new StateDb(new MemDb());
-            StateProvider provider = new StateProvider(new TrieStore(stateDb, Logger), Substitute.For<ISnapshotableDb>(), Logger);
+            StateProvider provider =
+                new StateProvider(new TrieStore(stateDb, Logger), Substitute.For<ISnapshotableDb>(), Logger);
             provider.CreateAccount(_address1, 0);
             provider.AddToBalance(_address1, 1, spec);
             provider.Commit(spec);
@@ -70,7 +71,8 @@ namespace Nethermind.Store.Test
             provider.CommitTree(0);
             stateDb.Commit();
 
-            StateReader reader = new StateReader(new TrieStore(stateDb, LimboLogs.Instance), Substitute.For<IDb>(), Logger);
+            StateReader reader =
+                new StateReader(new TrieStore(stateDb, LimboLogs.Instance), Substitute.For<IDb>(), Logger);
 
             Task a = StartTask(reader, stateRoot0, 1);
             Task b = StartTask(reader, stateRoot1, 2);
@@ -133,7 +135,8 @@ namespace Nethermind.Store.Test
 
             stateDb.Commit();
 
-            StateReader reader = new StateReader(new TrieStore(stateDb, LimboLogs.Instance), Substitute.For<IDb>(), Logger);
+            StateReader reader =
+                new StateReader(new TrieStore(stateDb, LimboLogs.Instance), Substitute.For<IDb>(), Logger);
 
             Task a = StartStorageTask(reader, stateRoot0, storageCell, new byte[] {1});
             Task b = StartStorageTask(reader, stateRoot1, storageCell, new byte[] {2});
@@ -166,7 +169,8 @@ namespace Nethermind.Store.Test
             Keccak stateRoot0 = provider.StateRoot;
 
             StateDb stateDb = new StateDb(new MemDb());
-            StateReader reader = new StateReader(new TrieStore(stateDb, LimboLogs.Instance), Substitute.For<IDb>(), Logger);
+            StateReader reader =
+                new StateReader(new TrieStore(stateDb, LimboLogs.Instance), Substitute.For<IDb>(), Logger);
             Keccak storageRoot = reader.GetStorageRoot(stateRoot0, _address1);
             reader.GetStorage(storageRoot, storageCell.Index + 1).Should().BeEquivalentTo(new byte[] {0});
             reader.GetStorage(Keccak.EmptyTreeHash, storageCell.Index + 1).Should().BeEquivalentTo(new byte[] {0});
@@ -177,7 +181,7 @@ namespace Nethermind.Store.Test
             return Task.Run(
                 () =>
                 {
-                    for (int i = 0; i < 100000; i++)
+                    for (int i = 0; i < 10000; i++)
                     {
                         UInt256 balance = reader.GetBalance(stateRoot, _address1);
                         Assert.AreEqual(value, balance);
@@ -190,7 +194,7 @@ namespace Nethermind.Store.Test
             return Task.Run(
                 () =>
                 {
-                    for (int i = 0; i < 10000; i++)
+                    for (int i = 0; i < 1000; i++)
                     {
                         Keccak storageRoot = reader.GetStorageRoot(stateRoot, storageCell.Address);
                         byte[] result = reader.GetStorage(storageRoot, storageCell.Index);
@@ -198,7 +202,7 @@ namespace Nethermind.Store.Test
                     }
                 });
         }
-        
+
         [Test]
         public async Task Get_storage()
         {
@@ -206,6 +210,7 @@ namespace Nethermind.Store.Test
 
             /* all testing will be touching just a single storage cell */
             StorageCell storageCell = new StorageCell(_address1, UInt256.One);
+
             TrieStore trieStore = new TrieStore(dbProvider.StateDb, Logger);
             StateProvider state = new StateProvider(trieStore, dbProvider.CodeDb, Logger);
             StorageProvider storage = new StorageProvider(trieStore, state, Logger);
@@ -214,7 +219,7 @@ namespace Nethermind.Store.Test
             state.CreateAccount(storageCell.Address, UInt256.One);
             state.Commit(MuirGlacier.Instance);
             state.CommitTree(1);
-            
+
             /* at this stage we have an account with empty storage at the address that we want to test */
 
             byte[] initialValue = new byte[] {1, 2, 3};
@@ -228,37 +233,37 @@ namespace Nethermind.Store.Test
                 new TrieStore(dbProvider.StateDb, LimboLogs.Instance), dbProvider.CodeDb, Logger);
 
             var account = reader.GetAccount(state.StateRoot, _address1);
-            var retrieved =  reader.GetStorage(account.StorageRoot, storageCell.Index);
+            var retrieved = reader.GetStorage(account.StorageRoot, storageCell.Index);
             retrieved.Should().BeEquivalentTo(initialValue);
-            
+
             /* at this stage we set the value in storage to 1,2,3 at the tested storage cell */
-            
+
             /* Now we are testing scenario where the storage is being changed by the block processor.
                To do that we create some different storage / state access stack that represents the processor.
                It is a different stack of objects than the one that is used by the blockchain bridge. */
-            
+
             byte[] newValue = new byte[] {1, 2, 3, 4, 5};
 
             StateProvider processorStateProvider =
                 new StateProvider(trieStore, new StateDb(), LimboLogs.Instance);
             processorStateProvider.StateRoot = state.StateRoot;
-            
+
             StorageProvider processorStorageProvider =
                 new StorageProvider(trieStore, processorStateProvider, LimboLogs.Instance);
-            
+
             processorStorageProvider.Set(storageCell, newValue);
             processorStorageProvider.Commit();
             processorStorageProvider.CommitTrees(3);
             processorStateProvider.Commit(MuirGlacier.Instance);
             processorStateProvider.CommitTree(3);
-            
+
             /* At this stage the DB should have the storage value updated to 5.
                We will try to retrieve the value by taking the state root from the processor.*/
-            
+
             retrieved =
                 reader.GetStorage(processorStateProvider.GetStorageRoot(storageCell.Address), storageCell.Index);
             retrieved.Should().BeEquivalentTo(newValue);
-            
+
             /* If it failed then it means that the blockchain bridge cached the previous call value */
         }
     }

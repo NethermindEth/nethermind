@@ -59,6 +59,12 @@ namespace Nethermind.State
         void CommitTree(long blockNumber);
         
         int TakeSnapshot();
+        
+        /// <summary>
+        /// For witness
+        /// </summary>
+        /// <param name="codeHash"></param>
+        void TouchCode(Keccak codeHash);
 
         /// <summary>
         /// pruning hack

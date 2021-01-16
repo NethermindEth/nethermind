@@ -32,6 +32,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.State;
 using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.LesSync;
 using Nethermind.Synchronization.ParallelSync;
@@ -54,6 +55,7 @@ namespace Nethermind.Synchronization
         private readonly ISnapshotableDb _stateDb;
         private readonly IDb _codeDb;
         private readonly ISyncConfig _syncConfig;
+        private readonly IWitnessRepository _witnessRepository;
         private readonly CanonicalHashTrie? _cht;
         private object _dummyValue = new object();
         private ICache<Keccak, object> _recentlySuggested = new LruCache<Keccak, object>(128, 128, "recently suggested blocks");
@@ -71,10 +73,12 @@ namespace Nethermind.Synchronization
             ISyncPeerPool pool,
             ISyncModeSelector syncModeSelector,
             ISyncConfig syncConfig,
+            IWitnessRepository? witnessRepository,
             ILogManager logManager,
             CanonicalHashTrie? cht = null)
         {
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
+            _witnessRepository = witnessRepository ?? throw new ArgumentNullException(nameof(witnessRepository));
             _pool = pool ?? throw new ArgumentNullException(nameof(pool));
             _syncModeSelector = syncModeSelector ?? throw new ArgumentNullException(nameof(syncModeSelector));
             _sealValidator = sealValidator ?? throw new ArgumentNullException(nameof(sealValidator));
@@ -113,6 +117,11 @@ namespace Nethermind.Synchronization
                     ? _pivotHeader ?? _blockTree.Genesis
                     : _blockTree.Head?.Header;
             }
+        }
+
+        public Keccak[]? GetBlockWitnessHashes(Keccak blockHash)
+        {
+            return _witnessRepository.Load(blockHash);
         }
 
         public int GetPeerCount()

@@ -27,9 +27,6 @@ namespace Nethermind.Synchronization.ParallelSync
             _allocationStrategy = allocationStrategy;
         }
 
-        public IPeerAllocationStrategy Create(T request)
-        {
-            return _allocationStrategy;
-        }
+        public IPeerAllocationStrategy Create(T request) => _allocationStrategy;
     }
 }

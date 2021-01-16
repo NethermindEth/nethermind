@@ -85,12 +85,17 @@ namespace Nethermind.Db
         
         [Description("Number of other DB writes.")]
         public static long OtherDbWrites { get; set; }
-        
-        
+
         [Description("Number of Headers DB reads.")]
         public static long HeaderDbReads { get; set; }
         
         [Description("Number of Headers DB writes.")]
         public static long HeaderDbWrites { get; set; }
+        
+        [Description("Number of Witness DB reads.")]
+        public static long WitnessDbReads { get; set; }
+        
+        [Description("Number of Witness DB writes.")]
+        public static long WitnessDbWrites { get; set; }
     }
 } 

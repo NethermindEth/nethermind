@@ -24,6 +24,7 @@ namespace Nethermind.Blockchain.Processing
     public interface IBlockchainProcessor : IDisposable
     {
         void Start();
+        
         Task StopAsync(bool processRemainingBlocks = false);
         
         Block Process(Block block, ProcessingOptions options, IBlockTracer tracer);

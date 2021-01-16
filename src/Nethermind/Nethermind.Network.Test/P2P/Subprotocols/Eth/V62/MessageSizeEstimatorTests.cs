@@ -30,7 +30,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
 {
-    [TestFixture]
+    [TestFixture, Parallelizable(ParallelScope.All)]
     public class MessageSizeEstimatorTests
     {
         [Test]

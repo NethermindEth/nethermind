@@ -36,6 +36,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Store.Test.Proofs
 {
+    [TestFixture, Parallelizable(ParallelScope.All)]
     public class AccountProofCollectorTests
     {
         [Test]

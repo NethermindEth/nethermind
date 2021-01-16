@@ -14,7 +14,6 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System.Linq;
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -31,7 +30,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Store.Test
 {
-    [TestFixture]
+    [TestFixture, Parallelizable(ParallelScope.All)]
     public class StatsCollectorTests
     {
         [Test]
@@ -39,7 +38,7 @@ namespace Nethermind.Store.Test
         {
             MemDb memDb = new MemDb();
             ISnapshotableDb stateDb = new StateDb(memDb);
-            TrieStore trieStore = new TrieStore(stateDb, new MemoryLimit(0.MB()), Full.Archive, LimboLogs.Instance);
+            TrieStore trieStore = new TrieStore(stateDb, new MemoryLimit(0.MB()), Persist.EveryBlock, LimboLogs.Instance);
             StateProvider stateProvider = new StateProvider(trieStore, stateDb, LimboLogs.Instance);
             StorageProvider storageProvider = new StorageProvider(trieStore, stateProvider, LimboLogs.Instance);
 

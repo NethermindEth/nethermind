@@ -68,7 +68,7 @@ namespace Nethermind.Trie.Test
 
             public static PruningContext ArchiveWithManualPruning
             {
-                [DebuggerStepThrough] get => new PruningContext(new TestPruningStrategy(true), Full.Archive);
+                [DebuggerStepThrough] get => new PruningContext(new TestPruningStrategy(true), Persist.EveryBlock);
             }
 
             public static PruningContext SnapshotEveryOtherBlockWithManualPruning

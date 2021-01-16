@@ -271,6 +271,16 @@ namespace Nethermind.Synchronization.Test.FastSync
             {
                 _filter = availableHashes;
             }
+
+            public void RegisterSatelliteProtocol<T>(string protocol, T protocolHandler) where T : class
+            {
+                throw new NotImplementedException();
+            }
+
+            public bool TryGetSatelliteProtocol<T>(string protocol, out T protocolHandler) where T : class
+            {
+                throw new NotImplementedException();
+            }
         }
 
         private SafeContext PrepareDownloader(DbContext dbContext, ISyncPeer syncPeer)
