@@ -1740,7 +1740,8 @@ namespace Nethermind.Evm
                             EndInstructionTraceError(EvmExceptionType.OutOfGas);
                             return CallResult.OutOfGasException;
                         }
-                        else if (spec.UseNetGasMetering)
+                        
+                        if (spec.UseNetGasMeteringWithAStipendFix)
                         {
                             if (_txTracer.IsTracingRefunds) _txTracer.ReportExtraGasPressure(GasCostOf.CallStipend - spec.GetNetMeteredSStoreCost() + 1);
                             if (gasAvailable <= GasCostOf.CallStipend)

@@ -296,6 +296,8 @@ namespace Nethermind.Core.Specs
         public bool UseIstanbulNetGasMetering => IsEip2200Enabled;
         
         public bool UseNetGasMetering => UseConstantinopleNetGasMetering | UseIstanbulNetGasMetering;
+
+        public bool UseNetGasMeteringWithAStipendFix => UseIstanbulNetGasMetering;
         
         public bool Use63Over64Rule => UseShanghaiDDosProtection;
         
