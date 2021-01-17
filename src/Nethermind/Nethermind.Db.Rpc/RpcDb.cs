@@ -17,6 +17,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Client;
@@ -83,12 +84,7 @@ namespace Nethermind.Db.Rpc
 
         public IEnumerable<byte[]> GetAllValues(bool ordered = false) => _recordDb.GetAllValues();
 
-        public void StartBatch()
-        {
-            throw new InvalidOperationException("RPC DB does not support writes");
-        }
-
-        public void CommitBatch()
+        public IBatch StartBatch()
         {
             throw new InvalidOperationException("RPC DB does not support writes");
         }

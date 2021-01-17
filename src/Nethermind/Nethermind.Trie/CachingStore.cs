@@ -65,14 +65,9 @@ namespace Nethermind.Trie
             }
         }
 
-        public void StartBatch()
+        public IBatch StartBatch()
         {
-            _wrappedStore.StartBatch();
-        }
-
-        public void CommitBatch()
-        {
-            _wrappedStore.StartBatch();
+            return _wrappedStore.StartBatch();
         }
     }
 }

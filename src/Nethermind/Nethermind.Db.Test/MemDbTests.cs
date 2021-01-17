@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using FluentAssertions;
+using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using NUnit.Framework;
 
@@ -65,10 +66,12 @@ namespace Nethermind.Db.Test
         public void Can_use_batches_without_issues()
         {
             MemDb memDb = new MemDb();
-            memDb.StartBatch();
-            memDb.Set(TestItem.KeccakA, _sampleValue);
-            memDb.CommitBatch();
-            var retrieved = memDb.Get(TestItem.KeccakA);
+            using (memDb.StartBatch())
+            {
+                memDb.Set(TestItem.KeccakA, _sampleValue);
+            }
+
+            byte[] retrieved = memDb.Get(TestItem.KeccakA);
             retrieved.Should().BeEquivalentTo(_sampleValue);
         }
 
