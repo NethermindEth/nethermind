@@ -54,7 +54,7 @@ namespace Nethermind.Db
             }
         }
 
-        public IDb BeamStateDb { get; } = new MemDb();
+        public IDb BeamTempDb { get; } = new MemDb();
 
         public DbModeHint DbMode => _wrappedProvider.DbMode;
 
@@ -67,7 +67,7 @@ namespace Nethermind.Db
                 readonlyDb.Restore(-1);
             }
             
-            BeamStateDb.Clear();
+            BeamTempDb.Clear();
         }
 
         public T GetDb<T>(string dbName) where T : class, IDb

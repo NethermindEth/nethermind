@@ -30,7 +30,7 @@ namespace Nethermind.Db
             DbMode = dbMode;
         }
 
-        public IDb BeamStateDb { get; } = new MemDb();
+        public IDb? BeamTempDb { get; } = null;
 
         public DbModeHint DbMode { get; }
 

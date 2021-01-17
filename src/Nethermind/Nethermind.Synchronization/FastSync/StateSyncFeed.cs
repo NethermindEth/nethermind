@@ -66,13 +66,12 @@ namespace Nethermind.Synchronization.FastSync
         private readonly ILogger _logger;
         private readonly IDb _codeDb;
         private readonly IDb _stateDb;
-        private readonly IDb _tempDb;
+        private readonly IDb? _tempDb;
         private readonly ISyncModeSelector _syncModeSelector;
         private readonly IBlockTree _blockTree;
 
-        private readonly ConcurrentDictionary<StateSyncBatch, object?> _pendingRequests
-            = new ConcurrentDictionary<StateSyncBatch, object?>();
-        private Dictionary<Keccak, HashSet<DependentItem>> _dependencies = new Dictionary<Keccak, HashSet<DependentItem>>();
+        private readonly ConcurrentDictionary<StateSyncBatch, object?> _pendingRequests = new ();
+        private Dictionary<Keccak, HashSet<DependentItem>> _dependencies = new ();
         private LruKeyCache<Keccak> _alreadySaved = new LruKeyCache<Keccak>(AlreadySavedCapacity, "saved nodes");
         private readonly HashSet<Keccak> _codesSameAsNodes = new HashSet<Keccak>();
 
@@ -83,14 +82,14 @@ namespace Nethermind.Synchronization.FastSync
         public StateSyncFeed(
             IDb codeDb,
             ISnapshotableDb stateDb,
-            IDb tempDb,
+            IDb? tempDb,
             ISyncModeSelector syncModeSelector,
             IBlockTree blockTree,
             ILogManager logManager)
         {
-            _codeDb = codeDb?.Innermost ?? throw new ArgumentNullException(nameof(codeDb));
-            _stateDb = stateDb?.Innermost ?? throw new ArgumentNullException(nameof(stateDb));
-            _tempDb = tempDb ?? throw new ArgumentNullException(nameof(tempDb));
+            _codeDb = codeDb.Innermost ?? throw new ArgumentNullException(nameof(codeDb));
+            _stateDb = stateDb.Innermost ?? throw new ArgumentNullException(nameof(stateDb));
+            _tempDb = tempDb;
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _syncModeSelector = syncModeSelector ?? throw new ArgumentNullException(nameof(syncModeSelector));
             _syncModeSelector.Changed += SyncModeSelectorOnChanged;
@@ -128,18 +127,14 @@ namespace Nethermind.Synchronization.FastSync
             {
                 if (syncItem.Level <= 2)
                 {
-                    _branchProgress.ReportSynced(
-                        syncItem.Level,
-                        syncItem.ParentBranchChildIndex,
-                        syncItem.BranchChildIndex,
-                        syncItem.NodeDataType,
-                        NodeProgressState.Requested);
+                    _branchProgress.ReportSynced(syncItem, NodeProgressState.Requested);
                 }
 
                 if (_alreadySaved.Get(syncItem.Hash))
                 {
                     Interlocked.Increment(ref _data.CheckWasCached);
                     if (_logger.IsTrace) _logger.Trace($"Node already in the DB - skipping {syncItem.Hash}");
+                    _branchProgress.ReportSynced(syncItem, NodeProgressState.AlreadySaved);
                     return AddNodeResult.AlreadySaved;
                 }
 
@@ -149,11 +144,13 @@ namespace Nethermind.Synchronization.FastSync
                     IDb dbToCheck = syncItem.NodeDataType == NodeDataType.Code ? _codeDb : _stateDb;
                     Interlocked.Increment(ref _data.DbChecks);
                     bool keyExists = dbToCheck.KeyExists(syncItem.Hash);
+
                     if (keyExists)
                     {
                         if (_logger.IsTrace) _logger.Trace($"Node already in the DB - skipping {syncItem.Hash}");
                         _alreadySaved.Set(syncItem.Hash);
                         Interlocked.Increment(ref _data.StateWasThere);
+                        _branchProgress.ReportSynced(syncItem, NodeProgressState.AlreadySaved);
                         return AddNodeResult.AlreadySaved;
                     }
 
@@ -222,7 +219,11 @@ namespace Nethermind.Synchronization.FastSync
             {
                 if (dependentItem.IsAccount) Interlocked.Increment(ref _data.SavedAccounts);
                 SaveNode(dependentItem.SyncItem, dependentItem.Value);
-                _tempDb.Remove(dependentItem.SyncItem.Hash.Bytes);
+                if (_tempDb != null)
+                {
+                    // item is no longer needed in the temp DB since it can be retrieved from the persisted DB
+                    _tempDb.Remove(dependentItem.SyncItem.Hash.Bytes);
+                }
             }
         }
 
@@ -645,6 +646,12 @@ namespace Nethermind.Synchronization.FastSync
             throw new InvalidOperationException($"Not designed for {nodeType}");
         }
 
+        /// <summary>
+        /// Stores items that cannot be yet persisted. These items will be persisted as soon as all their descendants
+        /// get persisted.
+        /// </summary>
+        /// <param name="dependency">Sync item that this item is dependent on.</param>
+        /// <param name="dependentItem">Item that can only be persisted if all its dependenies are persisted</param>
         private void AddDependency(Keccak dependency, DependentItem dependentItem)
         {
             lock (_dependencies)
@@ -655,7 +662,12 @@ namespace Nethermind.Synchronization.FastSync
                 }
 
                 _dependencies[dependency].Add(dependentItem);
-                _tempDb[dependentItem.SyncItem.Hash.Bytes] = dependentItem.Value;
+                if (_tempDb != null)
+                {
+                    // item is already retrieved but cannot yet be persisted
+                    // we keep it in temp so the beam sync can use it if needed
+                    _tempDb[dependentItem.SyncItem.Hash.Bytes] = dependentItem.Value;
+                }
             }
         }
 

@@ -66,7 +66,7 @@ namespace Nethermind.Synchronization.Test
                 _blockTree,
                 _receiptStorage,
                 _stateDb,
-                dbProvider.BeamStateDb,
+                dbProvider.BeamTempDb,
                 new TrieStore(_stateDb, LimboLogs.Instance),  
                 syncConfig,
                 LimboLogs.Instance);

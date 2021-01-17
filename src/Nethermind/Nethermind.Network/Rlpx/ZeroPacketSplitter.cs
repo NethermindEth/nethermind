@@ -75,8 +75,8 @@ namespace Nethermind.Network.Rlpx
 
                 if (framesCount == 1)
                 {
-                    // commented out after Trinity reported #2052
-                    // not 100% sure they are right but they may be 
+                    // // commented out after Trinity reported #2052
+                    // // not 100% sure they are right but they may be 
                     // // 193|128 is an RLP encoded array with one element that is zero
                     // /*3*/
                     // output.WriteByte(193);
