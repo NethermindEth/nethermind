@@ -22,6 +22,12 @@ namespace Nethermind.Synchronization.FastSync
 {
     /// <summary>
     /// This class represents sync progress as a percentage of second level branches saved in the database.
+    /// It generates a log view like below.
+    /// 2021-01-17 00:14:11.4390|Branch sync progress (do not extrapolate): 16.02% of block 4117567
+    /// **********************+++++++++**++++++++**********+************
+    /// ****************************************************************
+    /// ++++++++++++++++++*+++++****************************************
+    /// **************************************************************** 
     /// </summary>
     internal class BranchProgress
     {
