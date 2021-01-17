@@ -111,7 +111,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.BlockTree!,
                 _api.ReceiptStorage!,
                 _api.DbProvider.StateDb,
-                _api.DbProvider.BeamStateDb,
+                _api.DbProvider.BeamTempDb,
                 _api.ReadOnlyTrieStore!,
                 _syncConfig,
                 _api.LogManager);
