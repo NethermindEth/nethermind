@@ -44,7 +44,7 @@ namespace Nethermind.State.Witnesses
             _witnessCollector = witnessCollector ?? throw new ArgumentNullException(nameof(witnessCollector));
         }
 
-        public byte[] this[byte[] key]
+        public byte[]? this[byte[] key]
         {
             get
             {
@@ -59,14 +59,9 @@ namespace Nethermind.State.Witnesses
             set => _wrapped[key] = value;
         }
 
-        public void StartBatch()
+        public IBatch StartBatch()
         {
-            _wrapped.StartBatch();
-        }
-
-        public void CommitBatch()
-        {
-            _wrapped.CommitBatch();
+            return _wrapped.StartBatch();
         }
 
         public void Touch(byte[] key)

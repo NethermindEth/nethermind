@@ -16,6 +16,7 @@
 
 using System;
 using System.Collections.Generic;
+using Nethermind.Core;
 
 namespace Nethermind.Db
 {
@@ -76,17 +77,12 @@ namespace Nethermind.Db
 
         public IEnumerable<byte[]> GetAllValues(bool ordered = false) => _memDb.GetAllValues();
 
-        public void StartBatch()
+        public IBatch StartBatch()
         {
+            return this.LikeABatch();
         }
 
-        public void CommitBatch()
-        {
-        }
-
-        public void Remove(byte[] key)
-        {
-        }
+        public void Remove(byte[] key) { }
 
         public bool KeyExists(byte[] key)
         {

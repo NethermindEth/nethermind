@@ -19,6 +19,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -87,11 +88,12 @@ namespace Nethermind.Network
 
         public IEnumerable<byte[]> GetAllValues(bool ordered = false) => _cache.Values;
 
-        public void StartBatch()
+        public IBatch StartBatch()
         {
+            return this.LikeABatch(CommitBatch);
         }
 
-        public void CommitBatch()
+        private void CommitBatch()
         {
             if (!_hasPendingChanges)
             {
@@ -99,36 +101,35 @@ namespace Nethermind.Network
                 return;
             }
 
-            using (Backup backup = new Backup(DbPath, _logger))
-            {
-                _hasPendingChanges = false;
-                var snapshot = _cache.ToArray();
+            using Backup backup = new Backup(DbPath, _logger);
+            _hasPendingChanges = false;
+            KeyValuePair<byte[], byte[]>[] snapshot = _cache.ToArray();
 
-                if (_logger.IsDebug) _logger.Debug($"Saving data in {DbPath} | backup stored in {backup.BackupPath}");
-                try
+            if (_logger.IsDebug) _logger.Debug($"Saving data in {DbPath} | backup stored in {backup.BackupPath}");
+            try
+            {
+                using StreamWriter streamWriter = new StreamWriter(DbPath);
+                foreach ((byte[] key, byte[] value) in snapshot)
                 {
-                    using (var streamWriter = new StreamWriter(DbPath))
+                    if (value != null)
                     {
-                        foreach (var keyValuePair in snapshot)
-                        {
-                            keyValuePair.Key.StreamHex(streamWriter);
-                            streamWriter.Write(',');
-                            keyValuePair.Value.StreamHex(streamWriter);
-                            streamWriter.WriteLine();
-                        }
+                        key.StreamHex(streamWriter);
+                        streamWriter.Write(',');
+                        value.StreamHex(streamWriter);
+                        streamWriter.WriteLine();
                     }
                 }
-                catch (Exception e)
-                {
-                    _logger.Error($"Failed to store data in {DbPath}", e);
-                }
+            }
+            catch (Exception e)
+            {
+                _logger.Error($"Failed to store data in {DbPath}", e);
             }
         }
 
         private class Backup : IDisposable
         {
-            private string _dbPath;
-            private ILogger _logger;
+            private readonly string _dbPath;
+            private readonly ILogger _logger;
             
             public string BackupPath { get; }
 
@@ -158,7 +159,14 @@ namespace Nethermind.Network
                 {
                     if (BackupPath != null && File.Exists(BackupPath))
                     {
-                        File.Delete(BackupPath);
+                        if (File.Exists(_dbPath))
+                        {
+                            File.Delete(BackupPath);
+                        }
+                        else
+                        {
+                            File.Move(BackupPath, _dbPath);    
+                        }
                     }
                 }
                 catch (Exception e)
@@ -177,10 +185,10 @@ namespace Nethermind.Network
                 return;
             }
 
-            var lines = File.ReadAllLines(DbPath);
+            string[] lines = File.ReadAllLines(DbPath);
             foreach (string line in lines)
             {
-                var values = line.Split(",");
+                string[] values = line.Split(",");
                 if (values.Length != 2)
                 {
                     if (_logger.IsError) _logger.Error($"Error when loading data from {Name} - expected two items separated by a comma and got '{line}')");
@@ -209,6 +217,7 @@ namespace Nethermind.Network
 
         public void Dispose()
         {
+            GC.SuppressFinalize(this);
         }
     }
 }

@@ -33,7 +33,7 @@ namespace Nethermind.Trie.Pruning
     public class TrieStore : ITrieStore
     {
         private int _isFirst;
-        private bool _batchStarted = false;
+        private IBatch? _currentBatch;
 
         public TrieStore(IKeyValueStoreWithBatching? keyValueStore, ILogManager? logManager)
             : this(keyValueStore, No.Pruning, Pruning.Persist.EveryBlock, logManager)
@@ -212,11 +212,7 @@ namespace Nethermind.Trie.Pruning
             }
             finally
             {
-                if (_batchStarted)
-                {
-                    _keyValueStore.CommitBatch();
-                    _batchStarted = false;
-                }
+                _currentBatch?.Dispose();
             }
         }
 
@@ -238,7 +234,7 @@ namespace Nethermind.Trie.Pruning
 
             if (rlp is null)
             {
-                rlp = _keyValueStore[keccak.Bytes];
+                rlp = _currentBatch?[keccak.Bytes] ?? _keyValueStore[keccak.Bytes];
                 if (rlp == null)
                 {
                     throw new TrieException($"Node {keccak} is missing from the DB");
@@ -583,11 +579,7 @@ namespace Nethermind.Trie.Pruning
 
             try
             {
-                if (_batchStarted == false)
-                {
-                    _keyValueStore.StartBatch();
-                    _batchStarted = true;
-                }
+                _currentBatch ??= _keyValueStore.StartBatch();
                 if (_logger.IsDebug) _logger.Debug($"Persisting from root {commitSet.Root} in {commitSet.BlockNumber}");
 
                 Stopwatch stopwatch = Stopwatch.StartNew();
@@ -605,8 +597,8 @@ namespace Nethermind.Trie.Pruning
             {
                 // For safety we prefer to commit half of the batch rather than not commit at all.
                 // Generally hanging nodes are not a problem in the DB but anything missing from the DB is.
-                _keyValueStore.CommitBatch();
-                _batchStarted = false;
+                _currentBatch?.Dispose();
+                _currentBatch = null;
             }
 
             PruneCurrentSet();
@@ -614,11 +606,7 @@ namespace Nethermind.Trie.Pruning
 
         private void Persist(TrieNode currentNode, long blockNumber)
         {
-            if (_batchStarted == false)
-            {
-                _keyValueStore.StartBatch();
-                _batchStarted = true;
-            }
+            _currentBatch ??= _keyValueStore.StartBatch();
             if (currentNode == null)
             {
                 throw new ArgumentNullException(nameof(currentNode));
@@ -633,7 +621,7 @@ namespace Nethermind.Trie.Pruning
                 // to prevent it from being removed from cache and also want to have it persisted.
 
                 if (_logger.IsTrace) _logger.Trace($"Persisting {nameof(TrieNode)} {currentNode} in snapshot {blockNumber}.");
-                _keyValueStore[currentNode.Keccak.Bytes] = currentNode.FullRlp;
+                _currentBatch[currentNode.Keccak.Bytes] = currentNode.FullRlp;
                 currentNode.IsPersisted = true;
                 currentNode.LastSeen = blockNumber;
 

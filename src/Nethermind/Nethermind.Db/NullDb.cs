@@ -17,6 +17,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
+using Nethermind.Core;
 
 namespace Nethermind.Db
 {
@@ -57,12 +58,7 @@ namespace Nethermind.Db
 
         public IEnumerable<byte[]> GetAllValues(bool ordered = false) => Enumerable.Empty<byte[]>();
 
-        public void StartBatch()
-        {
-            throw new System.NotSupportedException();
-        }
-
-        public void CommitBatch()
+        public IBatch StartBatch()
         {
             throw new System.NotSupportedException();
         }

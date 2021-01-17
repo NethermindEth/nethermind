@@ -134,7 +134,6 @@ namespace Nethermind.Synchronization.FastSync
                 {
                     Interlocked.Increment(ref _data.CheckWasCached);
                     if (_logger.IsTrace) _logger.Trace($"Node already in the DB - skipping {syncItem.Hash}");
-                    _branchProgress.ReportSynced(syncItem, NodeProgressState.AlreadySaved);
                     return AddNodeResult.AlreadySaved;
                 }
 
