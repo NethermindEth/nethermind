@@ -213,6 +213,7 @@ namespace Nethermind.Trie.Pruning
             finally
             {
                 _currentBatch?.Dispose();
+                _currentBatch = null;
             }
         }
 
