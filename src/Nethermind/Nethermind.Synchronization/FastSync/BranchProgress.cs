@@ -86,6 +86,16 @@ namespace Nethermind.Synchronization.FastSync
             }
         }
 
+        public void ReportSynced(StateSyncItem syncItem, NodeProgressState nodeProgressState)
+        {
+            ReportSynced(
+                syncItem.Level,
+                syncItem.ParentBranchChildIndex,
+                syncItem.BranchChildIndex,
+                syncItem.NodeDataType,
+                NodeProgressState.Requested);
+        }
+        
         public void ReportSynced(int level, int parentIndex, int childIndex, NodeDataType nodeDataType, NodeProgressState nodeProgressState)
         {
             if (level > 2 || nodeDataType != NodeDataType.State)

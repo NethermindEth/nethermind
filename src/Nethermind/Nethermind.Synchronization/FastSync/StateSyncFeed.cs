@@ -127,18 +127,14 @@ namespace Nethermind.Synchronization.FastSync
             {
                 if (syncItem.Level <= 2)
                 {
-                    _branchProgress.ReportSynced(
-                        syncItem.Level,
-                        syncItem.ParentBranchChildIndex,
-                        syncItem.BranchChildIndex,
-                        syncItem.NodeDataType,
-                        NodeProgressState.Requested);
+                    _branchProgress.ReportSynced(syncItem, NodeProgressState.Requested);
                 }
 
                 if (_alreadySaved.Get(syncItem.Hash))
                 {
                     Interlocked.Increment(ref _data.CheckWasCached);
                     if (_logger.IsTrace) _logger.Trace($"Node already in the DB - skipping {syncItem.Hash}");
+                    _branchProgress.ReportSynced(syncItem, NodeProgressState.AlreadySaved);
                     return AddNodeResult.AlreadySaved;
                 }
 
@@ -148,11 +144,13 @@ namespace Nethermind.Synchronization.FastSync
                     IDb dbToCheck = syncItem.NodeDataType == NodeDataType.Code ? _codeDb : _stateDb;
                     Interlocked.Increment(ref _data.DbChecks);
                     bool keyExists = dbToCheck.KeyExists(syncItem.Hash);
+
                     if (keyExists)
                     {
                         if (_logger.IsTrace) _logger.Trace($"Node already in the DB - skipping {syncItem.Hash}");
                         _alreadySaved.Set(syncItem.Hash);
                         Interlocked.Increment(ref _data.StateWasThere);
+                        _branchProgress.ReportSynced(syncItem, NodeProgressState.AlreadySaved);
                         return AddNodeResult.AlreadySaved;
                     }
 
