@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -52,6 +52,9 @@ namespace Nethermind.Runner.Ethereum
 
         public async Task StopAsync()
         {
+            if (_logger.IsInfo) _logger.Info("Persisting trie...");
+            _api.TrieStore?.HackPersistOnShutdown();
+            
             Stop(() => _api.SessionMonitor?.Stop(), "Stopping session monitor");
             Task discoveryStopTask = Stop(() => _api.DiscoveryApp?.StopAsync(), "Stopping discovery app");
             Task blockProducerTask = Stop(() => _api.BlockProducer?.StopAsync(), "Stopping block producer");
@@ -76,6 +79,7 @@ namespace Nethermind.Runner.Ethereum
             Stop(() => _api.DbProvider?.Dispose(), "Closing DBs");
 
             if (_logger.IsInfo) _logger.Info("All DBs closed.");
+
             if (_logger.IsInfo) _logger.Info("Ethereum shutdown complete... please wait for all components to close");
         }
 

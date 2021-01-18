@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -36,7 +36,7 @@ namespace Nethermind.Runner.Hive
         private readonly ILogger _logger;
         private readonly IConfigProvider _configurationProvider;
         private readonly IFileSystem _fileSystem;
-
+        
         public HiveRunner(IBlockTree blockTree,
             IJsonSerializer jsonSerializer,
             IConfigProvider configurationProvider,

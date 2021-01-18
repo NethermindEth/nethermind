@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -27,12 +27,12 @@ using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
-using Nethermind.State;
 using Nethermind.Trie;
 using Nethermind.TxPool;
 using Block = Nethermind.Core.Block;
 using System.Threading;
 using Nethermind.Blockchain.Processing;
+using Nethermind.State;
 
 namespace Nethermind.Facade
 {
@@ -182,7 +182,7 @@ namespace Nethermind.Facade
             CallAndRestore(
                 header,
                 header.Number + 1,
-                UInt256.Max(header.Timestamp + 1, _timestamper.EpochSeconds),
+                UInt256.Max(header.Timestamp + 1, _timestamper.UnixTime.Seconds),
                 tx,
                 estimateGasTracer.WithCancellation(cancellationToken));
             
@@ -239,7 +239,7 @@ namespace Nethermind.Facade
             return _stateReader.GetNonce(stateRoot, address);
         }
 
-        public int GetNetworkId() => _blockTree.ChainId;
+        public long GetNetworkId() => _blockTree.ChainId;
         public bool FilterExists(int filterId) => _filterStore.FilterExists(filterId);
         public FilterType GetFilterType(int filterId) => _filterStore.GetFilterType(filterId);
         public FilterLog[] GetFilterLogs(int filterId) => _filterManager.GetLogs(filterId);

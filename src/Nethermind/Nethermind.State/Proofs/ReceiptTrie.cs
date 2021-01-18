@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -18,6 +18,7 @@ using System;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
+using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie;
 
@@ -29,7 +30,7 @@ namespace Nethermind.State.Proofs
         private static readonly ReceiptMessageDecoder Decoder = new ReceiptMessageDecoder();
         
         public ReceiptTrie(IReleaseSpec releaseSpec, TxReceipt[] txReceipts, bool allowProofs = false)
-            : base(allowProofs ? (IDb) new MemDb() : NullDb.Instance, EmptyTreeHash, false, false)
+            : base(allowProofs ? (IDb) new MemDb() : NullDb.Instance, EmptyTreeHash, false, false, NullLogManager.Instance)
         {
             _allowProofs = allowProofs;
             if (txReceipts.Length == 0)

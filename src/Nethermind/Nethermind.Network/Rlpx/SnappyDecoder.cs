@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -37,7 +37,7 @@ namespace Nethermind.Network.Rlpx
         {
             if (SnappyCodec.GetUncompressedLength(message.Data) > SnappyParameters.MaxSnappyLength)
             {
-                throw new Exception("Max message size exceeeded");
+                throw new Exception("Max message size exceeded");
             }
 
             if (message.Data.Length > SnappyParameters.MaxSnappyLength / 4)
@@ -46,7 +46,7 @@ namespace Nethermind.Network.Rlpx
             }
             else
             {
-                if (_logger.IsTrace) _logger.Trace($"Uncompressing with Snappy a message of length {message.Data.Length}");
+                if (_logger.IsTrace) _logger.Trace($"Decompressing with Snappy a message of length {message.Data.Length}");
             }
 
             try

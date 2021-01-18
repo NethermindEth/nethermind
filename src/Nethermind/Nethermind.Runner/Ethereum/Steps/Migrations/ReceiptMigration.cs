@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -246,7 +246,7 @@ namespace Nethermind.Runner.Ethereum.Steps.Migrations
                             yield break;
                         }
                         
-                        if (TryGetMainChainBlockHashFromLevel(i, out var blockHash))
+                        if (TryGetMainChainBlockHashFromLevel(i, out Keccak? blockHash))
                         {
                             var header = _blockTree.FindBlock(blockHash, BlockTreeLookupOptions.None);
                             yield return header ?? GetMissingBlock(i, blockHash);

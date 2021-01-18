@@ -85,7 +85,6 @@ namespace Nethermind.DataMarketplace.Core.Configs
         uint CancelTransactionGasPricePercentageMultiplier { get; set; }
         [ConfigItem(Description = "If 'true', data stream results can be fetched via 'ndm_pullData('depositId')' method.", DefaultValue = "false")]
         bool JsonRpcDataChannelEnabled { get; }
-        
         [ConfigItem(HiddenFromDocs = true)]
         ulong DepositsDbWriteBufferSize { get; set; }
         [ConfigItem(HiddenFromDocs = true)]

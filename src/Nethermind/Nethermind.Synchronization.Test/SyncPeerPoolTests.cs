@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -150,6 +150,16 @@ namespace Nethermind.Synchronization.Test
             public void SetHeaderFailure(bool shouldFail)
             {
                 _shouldFail = shouldFail;
+            }
+
+            public void RegisterSatelliteProtocol<T>(string protocol, T protocolHandler) where T : class
+            {
+                throw new NotImplementedException();
+            }
+
+            public bool TryGetSatelliteProtocol<T>(string protocol, out T protocolHandler) where T : class
+            {
+                throw new NotImplementedException();
             }
         }
 
@@ -488,9 +498,10 @@ namespace Nethermind.Synchronization.Test
         {
             await using Context ctx = new Context();
             var peers = await SetupPeers(ctx, 3);
-            ctx.Pool.ReportBreachOfProtocol(ctx.Pool.InitializedPeers.First(), "issue details");
+            var peerInfo = ctx.Pool.InitializedPeers.First();
+            ctx.Pool.ReportBreachOfProtocol(peerInfo, "issue details");
 
-            Assert.True(peers[0].DisconnectRequested);
+            Assert.True(((SimpleSyncPeerMock)peerInfo.SyncPeer).DisconnectRequested);
         }
 
         [Test]

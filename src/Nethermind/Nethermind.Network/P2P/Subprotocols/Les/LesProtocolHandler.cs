@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -46,8 +46,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Les
             IMessageSerializationService serializer,
             INodeStatsManager statsManager,
             ISyncServer syncServer,
-            ILogManager logManager,
-            ITxPool txPool): base(session, serializer, statsManager, syncServer, txPool, logManager)
+            ILogManager logManager): base(session, serializer, statsManager, syncServer, logManager)
         {
             _lastSentBlock = SyncServer.Head;
         }
@@ -98,7 +97,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Les
         }
 
 
-        public override byte ProtocolVersion { get; protected set; } = 3;
+        public override byte ProtocolVersion => 3;
 
         public override string ProtocolCode => Protocol.Les;
 

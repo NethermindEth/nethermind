@@ -67,7 +67,7 @@ namespace Nethermind.DataMarketplace.Subprotocols
         protected bool HiReceived;
         public override string Name => "ndm";
         protected override TimeSpan InitTimeout => Timeouts.NdmHi;
-        public override byte ProtocolVersion { get; protected set; } = 1;
+        public override byte ProtocolVersion => 1;
         public override string ProtocolCode => Protocol.Ndm;
         public override int MessageIdSpaceSize => 0x1F;
 

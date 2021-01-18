@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -28,7 +28,6 @@ using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.JsonRpc.Modules;
-using Nethermind.Logging;
 using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.Clique
@@ -101,6 +100,7 @@ namespace Nethermind.Consensus.Clique
 
             ReadOnlyTxProcessingEnv producerEnv = new ReadOnlyTxProcessingEnv(
                 readOnlyDbProvider,
+                getFromApi.ReadOnlyTrieStore,
                 readOnlyBlockTree,
                 getFromApi.SpecProvider,
                 getFromApi.LogManager);
@@ -110,12 +110,11 @@ namespace Nethermind.Consensus.Clique
                 getFromApi!.BlockValidator,
                 NoBlockRewards.Instance,
                 producerEnv.TransactionProcessor,
-                producerEnv.DbProvider.StateDb,
-                producerEnv.DbProvider.CodeDb,
                 producerEnv.StateProvider,
                 producerEnv.StorageProvider,
                 NullTxPool.Instance, // do not remove transactions from the pool when preprocessing
                 NullReceiptStorage.Instance,
+                getFromApi.WitnessCollector,
                 getFromApi.LogManager);
 
             IBlockchainProcessor producerChainProcessor = new BlockchainProcessor(
@@ -147,6 +146,7 @@ namespace Nethermind.Consensus.Clique
                 _snapshotManager!,
                 getFromApi.Sealer!,
                 gasLimitCalculator,
+                getFromApi.SpecProvider,
                 _cliqueConfig!,
                 getFromApi.LogManager);
 

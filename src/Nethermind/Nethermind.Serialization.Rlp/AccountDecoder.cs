@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -24,7 +24,7 @@ namespace Nethermind.Serialization.Rlp
 {
     public class AccountDecoder : IRlpDecoder<Account>
     {
-        public (Keccak CodeHash, Keccak StorageRoot) DecodeHashesOnly(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public (Keccak CodeHash, Keccak StorageRoot) DecodeHashesOnly(RlpStream rlpStream)
         {
             rlpStream.SkipLength();
             rlpStream.SkipItem();
@@ -32,6 +32,15 @@ namespace Nethermind.Serialization.Rlp
             Keccak storageRoot = rlpStream.DecodeKeccak();
             Keccak codeHash = rlpStream.DecodeKeccak();
             return (codeHash, storageRoot);
+        }
+        
+        public Keccak DecodeStorageRootOnly(RlpStream rlpStream)
+        {
+            rlpStream.SkipLength();
+            rlpStream.SkipItem();
+            rlpStream.SkipItem();
+            Keccak storageRoot = rlpStream.DecodeKeccak();
+            return storageRoot;
         }
         
         public Account Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)

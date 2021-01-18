@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -28,8 +28,8 @@ namespace Nethermind.Serialization.Rlp
         Storage = 4,
         Eip658Receipts = 8,
         AllowUnsigned = 16,
-#pragma warning disable 618
-        All = AllowExtraData | ForSealing | Storage | Eip658Receipts | AllowUnsigned
-#pragma warning restore 618
+        Eip1559 = 32,
+        UseTransactionTypes = 64,
+        All = AllowExtraData | ForSealing | Storage | Eip658Receipts | AllowUnsigned | Eip1559 | UseTransactionTypes
     }
 }

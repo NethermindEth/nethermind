@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -35,19 +35,44 @@ namespace Nethermind.Serialization.Rlp
 
             int transactionLength = rlpStream.ReadSequenceLength();
             int lastCheck = rlpStream.Position + transactionLength;
+            int numberOfSequenceFields = rlpStream.ReadNumberOfItemsRemaining(lastCheck);
+            bool isEip1559 = numberOfSequenceFields == 11;
+
             Transaction transaction = new Transaction();
-            transaction.Nonce = rlpStream.DecodeUInt256();
-            transaction.GasPrice = rlpStream.DecodeUInt256();
-            transaction.GasLimit = rlpStream.DecodeLong();
-            transaction.To = rlpStream.DecodeAddress();
-            transaction.Value = rlpStream.DecodeUInt256();
-            if (transaction.To == null)
+            if (!isEip1559)
             {
-                transaction.Init = rlpStream.DecodeByteArray();
+                transaction.Nonce = rlpStream.DecodeUInt256();
+                transaction.GasPrice = rlpStream.DecodeUInt256();
+                transaction.GasLimit = rlpStream.DecodeLong();
+                transaction.To = rlpStream.DecodeAddress();
+                transaction.Value = rlpStream.DecodeUInt256();
+                if (transaction.To == null)
+                {
+                    transaction.Init = rlpStream.DecodeByteArray();
+                }
+                else
+                {
+                    transaction.Data = rlpStream.DecodeByteArray();
+                }
             }
             else
             {
-                transaction.Data = rlpStream.DecodeByteArray();
+                transaction.Nonce = rlpStream.DecodeUInt256();
+                transaction.GasPrice = rlpStream.DecodeUInt256();
+                transaction.GasLimit = rlpStream.DecodeLong();
+                transaction.To = rlpStream.DecodeAddress();
+                transaction.Value = rlpStream.DecodeUInt256();
+                if (transaction.To == null)
+                {
+                    transaction.Init = rlpStream.DecodeByteArray();
+                }
+                else
+                {
+                    transaction.Data = rlpStream.DecodeByteArray();
+                }
+
+                transaction.GasPrice = rlpStream.DecodeUInt256();
+                transaction.FeeCap = rlpStream.DecodeUInt256();
             }
 
             if (rlpStream.Position < lastCheck)
@@ -84,7 +109,7 @@ namespace Nethermind.Serialization.Rlp
                     isSignatureOk = false;
                     signatureError = "Both 'r' and 's' are zero when decoding a transaction.";
                 }
-                
+
                 if (isSignatureOk)
                 {
                     int v = vBytes.ReadEthInt32();
@@ -121,19 +146,44 @@ namespace Nethermind.Serialization.Rlp
 
             int transactionLength = decoderContext.ReadSequenceLength();
             int lastCheck = decoderContext.Position + transactionLength;
+
+            bool isEip1559 = decoderContext.ReadNumberOfItemsRemaining(lastCheck) == 9;
+
             Transaction transaction = new Transaction();
-            transaction.Nonce = decoderContext.DecodeUInt256();
-            transaction.GasPrice = decoderContext.DecodeUInt256();
-            transaction.GasLimit = decoderContext.DecodeLong();
-            transaction.To = decoderContext.DecodeAddress();
-            transaction.Value = decoderContext.DecodeUInt256();
-            if (transaction.To == null)
+            if (isEip1559)
             {
-                transaction.Init = decoderContext.DecodeByteArray();
+                transaction.Nonce = decoderContext.DecodeUInt256();
+                transaction.GasPrice = decoderContext.DecodeUInt256();
+                transaction.GasLimit = decoderContext.DecodeLong();
+                transaction.To = decoderContext.DecodeAddress();
+                transaction.Value = decoderContext.DecodeUInt256();
+                if (transaction.To == null)
+                {
+                    transaction.Init = decoderContext.DecodeByteArray();
+                }
+                else
+                {
+                    transaction.Data = decoderContext.DecodeByteArray();
+                }
             }
             else
             {
-                transaction.Data = decoderContext.DecodeByteArray();
+                transaction.Nonce = decoderContext.DecodeUInt256();
+                transaction.GasPrice = decoderContext.DecodeUInt256();
+                transaction.GasLimit = decoderContext.DecodeLong();
+                transaction.To = decoderContext.DecodeAddress();
+                transaction.Value = decoderContext.DecodeUInt256();
+                if (transaction.To == null)
+                {
+                    transaction.Init = decoderContext.DecodeByteArray();
+                }
+                else
+                {
+                    transaction.Data = decoderContext.DecodeByteArray();
+                }
+                
+                transaction.GasPrice = decoderContext.DecodeUInt256();
+                transaction.FeeCap = decoderContext.DecodeUInt256();
             }
 
             if (decoderContext.Position < lastCheck)
@@ -170,7 +220,7 @@ namespace Nethermind.Serialization.Rlp
                     isSignatureOk = false;
                     signatureError = "Both 'r' and 's' are zero when decoding a transaction.";
                 }
-                
+
                 if (isSignatureOk)
                 {
                     int v = vBytes.ReadEthInt32();
@@ -204,20 +254,35 @@ namespace Nethermind.Serialization.Rlp
 
         public void Encode(RlpStream stream, Transaction item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
+            if (item.IsEip1559)
+            {
+                
+            }
+            
             int contentLength = GetContentLength(item, false);
+            if ((rlpBehaviors & RlpBehaviors.UseTransactionTypes) != 0)
+            {
+                stream.WriteByte(item.TransactionType);
+            }
+
             stream.StartSequence(contentLength);
             stream.Encode(item.Nonce);
-            stream.Encode(item.GasPrice);
+            stream.Encode(item.IsEip1559 ? 0 : item.GasPrice);
             stream.Encode(item.GasLimit);
             stream.Encode(item.To);
             stream.Encode(item.Value);
             stream.Encode(item.To == null ? item.Init : item.Data);
+            if (item.IsEip1559)
+            {
+                stream.Encode(item.GasPrice);
+                stream.Encode(item.FeeCap);
+            }
             stream.Encode(item.Signature?.V ?? 0);
             stream.Encode(item.Signature == null ? null : item.Signature.RAsSpan.WithoutLeadingZeros());
             stream.Encode(item.Signature == null ? null : item.Signature.SAsSpan.WithoutLeadingZeros());
         }
 
-        private int GetContentLength(Transaction item, bool forSigning, bool isEip155Enabled = false, int chainId = 0)
+        private static int GetContentLength(Transaction item, bool forSigning, bool isEip155Enabled = false, int chainId = 0)
         {
             int contentLength = Rlp.LengthOf(item.Nonce)
                                 + Rlp.LengthOf(item.GasPrice)
@@ -225,6 +290,12 @@ namespace Nethermind.Serialization.Rlp
                                 + Rlp.LengthOf(item.To)
                                 + Rlp.LengthOf(item.Value)
                                 + (item.To == null ? Rlp.LengthOf(item.Init) : Rlp.LengthOf(item.Data));
+
+            if (item.IsEip1559)
+            {
+                contentLength += Rlp.LengthOf(item.FeeCap);
+                contentLength += Rlp.LengthOf(0);
+            }
 
             if (forSigning)
             {
@@ -245,15 +316,21 @@ namespace Nethermind.Serialization.Rlp
             return contentLength;
         }
 
-        public int GetLength(Transaction item, RlpBehaviors rlpBehaviors) => Rlp.GetSequenceRlpLength(GetContentLength(item, false));
+        public int GetLength(Transaction item, RlpBehaviors rlpBehaviors) =>
+            ((rlpBehaviors & RlpBehaviors.UseTransactionTypes) != 0 ? 1 : 0) +
+            Rlp.GetSequenceRlpLength(GetContentLength(item, false));
 
-        Rlp IRlpDecoder<GeneratedTransaction>.Encode(GeneratedTransaction item, RlpBehaviors rlpBehaviors) => Encode(item, rlpBehaviors);
+        Rlp IRlpDecoder<GeneratedTransaction>.Encode(GeneratedTransaction item, RlpBehaviors rlpBehaviors) =>
+            Encode(item, rlpBehaviors);
 
-        int IRlpDecoder<GeneratedTransaction>.GetLength(GeneratedTransaction item, RlpBehaviors rlpBehaviors) => GetLength(item, rlpBehaviors);
+        int IRlpDecoder<GeneratedTransaction>.GetLength(GeneratedTransaction item, RlpBehaviors rlpBehaviors) =>
+            GetLength(item, rlpBehaviors);
 
-        Rlp IRlpDecoder<SystemTransaction>.Encode(SystemTransaction item, RlpBehaviors rlpBehaviors) => Encode(item, rlpBehaviors);
+        Rlp IRlpDecoder<SystemTransaction>.Encode(SystemTransaction item, RlpBehaviors rlpBehaviors) =>
+            Encode(item, rlpBehaviors);
 
-        int IRlpDecoder<SystemTransaction>.GetLength(SystemTransaction item, RlpBehaviors rlpBehaviors) => GetLength(item, rlpBehaviors);
+        int IRlpDecoder<SystemTransaction>.GetLength(SystemTransaction item, RlpBehaviors rlpBehaviors) =>
+            GetLength(item, rlpBehaviors);
 
         SystemTransaction IRlpDecoder<SystemTransaction>.Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors)
         {

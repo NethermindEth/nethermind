@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -23,13 +23,13 @@ namespace Nethermind.State
 {
     public interface IStateReader
     {
-        Account GetAccount(Keccak stateRoot, Address address);
+        Account? GetAccount(Keccak stateRoot, Address address);
         
         UInt256 GetNonce(Keccak stateRoot, Address address);
 
         UInt256 GetBalance(Keccak stateRoot, Address address);
         
-        Keccak GetStorageRoot(Keccak stateRoot, Address address);
+        Keccak? GetStorageRoot(Keccak stateRoot, Address address);
         
         byte[] GetStorage(Keccak storageRoot, UInt256 index);
 

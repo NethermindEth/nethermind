@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -90,7 +90,7 @@ namespace Nethermind.Core.Crypto
         }
 
         public byte[] Bytes { get; } = new byte[64];
-        public int V { get; set; }
+        public long V { get; set; }
 
         public int? ChainId => V < 35 ? null : (int?) (V + (V % 2) - 36) / 2;
 

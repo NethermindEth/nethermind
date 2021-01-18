@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -34,6 +34,7 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Synchronization.ParallelSync;
+using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Synchronization.BeamSync
 {
@@ -198,7 +199,8 @@ namespace Nethermind.Synchronization.BeamSync
 
         private (IBlockchainProcessor, IStateReader) CreateProcessor(Block block, IReadOnlyDbProvider readOnlyDbProvider, ISpecProvider specProvider, ILogManager logManager)
         {
-            ReadOnlyTxProcessingEnv txEnv = new ReadOnlyTxProcessingEnv(readOnlyDbProvider, _readOnlyBlockTree, specProvider, logManager);
+            // TODO: need to pass the state with cache
+            ReadOnlyTxProcessingEnv txEnv = new ReadOnlyTxProcessingEnv(readOnlyDbProvider, new TrieStore(readOnlyDbProvider.StateDb, logManager), _readOnlyBlockTree, specProvider, logManager);
             ReadOnlyChainProcessingEnv env = new ReadOnlyChainProcessingEnv(txEnv, _blockValidator, _recoveryStep, _rewardCalculatorSource.Get(txEnv.TransactionProcessor), NullReceiptStorage.Instance, _readOnlyDbProvider, specProvider, logManager);
             env.BlockProcessor.TransactionProcessed += (sender, args) =>
             {
@@ -236,7 +238,7 @@ namespace Nethermind.Synchronization.BeamSync
             if (block.TotalDifficulty == null)
             {
                 throw new InvalidDataException(
-                    $"Receieved a block with null {nameof(block.TotalDifficulty)} for beam processing");
+                    $"Received a block with null {nameof(block.TotalDifficulty)} for beam processing");
             }
             
             CancellationTokenSource cancellationToken;
@@ -332,7 +334,7 @@ namespace Nethermind.Synchronization.BeamSync
             if (block.TotalDifficulty == null)
             {
                 throw new InvalidDataException(
-                    $"Receieved a block with null {nameof(block.TotalDifficulty)} for beam processing");
+                    $"Received a block with null {nameof(block.TotalDifficulty)} for beam processing");
             }
             
             CancellationTokenSource cancellationToken;
@@ -346,7 +348,7 @@ namespace Nethermind.Synchronization.BeamSync
             }
 
             string description = $"[miner {miner}]";
-            Task minerTask = Task<int>.Run(() =>
+            Task minerTask = Task.Run(() =>
             {
                 BeamSyncContext.MinimumDifficulty.Value = block.TotalDifficulty ?? 0;
                 BeamSyncContext.Description.Value = description;
@@ -360,7 +362,7 @@ namespace Nethermind.Synchronization.BeamSync
                     t.IsFaulted ? $"{description} prefetch failed {t.Exception?.Message}" : $"{description} prefetch complete - resolved {t.Result}");
             });
 
-            Task senderTask = Task<int>.Run(() =>
+            Task senderTask = Task.Run(() =>
             {
                 BeamSyncContext.MinimumDifficulty.Value = block.TotalDifficulty ?? 0;
                 BeamSyncContext.Cancelled.Value = cancellationToken.Token;
@@ -379,7 +381,7 @@ namespace Nethermind.Synchronization.BeamSync
                     t.IsFaulted ? $"tx prefetch failed {t.Exception?.Message}" : $"tx prefetch complete - resolved {t.Result}");
             });
 
-            Task storageTask = Task<int>.Run(() =>
+            Task storageTask = Task.Run(() =>
             {
                 BeamSyncContext.MinimumDifficulty.Value = block.TotalDifficulty ?? 0;
                 BeamSyncContext.Cancelled.Value = cancellationToken.Token;
@@ -401,7 +403,7 @@ namespace Nethermind.Synchronization.BeamSync
             });
 
 
-            Task codeTask = Task<int>.Run(() =>
+            Task codeTask = Task.Run(() =>
             {
                 BeamSyncContext.MinimumDifficulty.Value = block.TotalDifficulty.Value;
                 BeamSyncContext.Cancelled.Value = cancellationToken.Token;

@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -25,7 +25,7 @@ namespace Nethermind.State
     public interface IStateProvider : IReadOnlyStateProvider
     {
         void RecalculateStateRoot();
-
+        
         new Keccak StateRoot { get; set; }
 
         void DeleteAccount(Address address);
@@ -41,25 +41,34 @@ namespace Nethermind.State
         void UpdateStorageRoot(Address address, Keccak storageRoot);
 
         void IncrementNonce(Address address);
-
+        
+        void DecrementNonce(Address address);
+        
         Keccak UpdateCode(byte[] code);
 
-        void Reset();
-
-        void CommitTree();
+        /* snapshots */
         
-        void Restore(int snapshot);
-
         void Commit(IReleaseSpec releaseSpec);
         
         void Commit(IReleaseSpec releaseSpec, IStateTracer stateTracer);
         
+        void Reset();
+
+        void Restore(int snapshot);
+        
+        void CommitTree(long blockNumber);
+        
         int TakeSnapshot();
         
-        string DumpState();
-        
-        TrieStats CollectStats();
+        /// <summary>
+        /// For witness
+        /// </summary>
+        /// <param name="codeHash"></param>
+        void TouchCode(Keccak codeHash);
 
-        void DecrementNonce(Address address);
+        /// <summary>
+        /// pruning hack
+        /// </summary>
+        void CommitCode();
     }
 }

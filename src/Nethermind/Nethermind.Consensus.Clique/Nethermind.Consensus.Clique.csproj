@@ -1,14 +1,15 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
     <PropertyGroup>
-        <TargetFramework>netcoreapp3.1</TargetFramework>
+        <TargetFramework>net5.0</TargetFramework>
         <LangVersion>8.0</LangVersion>
-        <Nullable>enable</Nullable>
+        <Nullable>annotations</Nullable>
     </PropertyGroup>
 
     <ItemGroup>
       <ProjectReference Include="..\Nethermind.Api\Nethermind.Api.csproj" />
       <ProjectReference Include="..\Nethermind.Blockchain\Nethermind.Blockchain.csproj" />
+      <ProjectReference Include="..\Nethermind.Cli\Nethermind.Cli.csproj" />
       <ProjectReference Include="..\Nethermind.Consensus\Nethermind.Consensus.csproj" />
       <ProjectReference Include="..\Nethermind.JsonRpc\Nethermind.JsonRpc.csproj" />
     </ItemGroup>

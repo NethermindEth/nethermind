@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -21,6 +21,7 @@ using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Trie;
+using Nethermind.Trie.Pruning;
 using Metrics = Nethermind.Db.Metrics;
 
 namespace Nethermind.State
@@ -32,21 +33,15 @@ namespace Nethermind.State
         private readonly StateTree _state;
         private readonly StorageTree _storage;
 
-        public StateReader(IDbProvider dbProvider, ILogManager logManager) 
-            :this(dbProvider.StateDb, dbProvider.CodeDb, logManager)
+        public StateReader(ITrieStore trieStore, IDb codeDb, ILogManager logManager)
         {
-        }
-        
-        public StateReader(ISnapshotableDb stateDb, IDb codeDb, ILogManager logManager)
-        {
-            if (stateDb == null) throw new ArgumentNullException(nameof(stateDb));
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger<StateReader>() ?? throw new ArgumentNullException(nameof(logManager));
             _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
-            _state = new StateTree(stateDb);
-            _storage = new StorageTree(stateDb);
+            _state = new StateTree(trieStore, logManager);
+            _storage = new StorageTree(trieStore, Keccak.EmptyTreeHash, logManager);
         }
 
-        public Account GetAccount(Keccak stateRoot, Address address)
+        public Account? GetAccount(Keccak stateRoot, Address address)
         {
             return GetState(stateRoot, address);
         }
@@ -56,7 +51,7 @@ namespace Nethermind.State
             return GetState(stateRoot, address)?.Nonce ?? UInt256.Zero;
         }
 
-        public Keccak GetStorageRoot(Keccak stateRoot, Address address)
+        public Keccak? GetStorageRoot(Keccak stateRoot, Address address)
         {
             return GetState(stateRoot, address)?.StorageRoot;
         }
@@ -94,7 +89,7 @@ namespace Nethermind.State
 
         public byte[] GetCode(Keccak stateRoot, Address address)
         {
-            Account account = GetState(stateRoot, address);
+            Account? account = GetState(stateRoot, address);
             if (account == null)
             {
                 return Array.Empty<byte>();
@@ -103,7 +98,7 @@ namespace Nethermind.State
             return GetCode(account.CodeHash);
         }
 
-        private Account GetState(Keccak stateRoot, Address address)
+        private Account? GetState(Keccak stateRoot, Address address)
         {
             if (stateRoot == Keccak.EmptyTreeHash)
             {
@@ -111,7 +106,7 @@ namespace Nethermind.State
             }
 
             Metrics.StateTreeReads++;
-            Account account = _state.Get(address, stateRoot);
+            Account? account = _state.Get(address, stateRoot);
             return account;
         }
     }

@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -110,6 +110,16 @@ namespace Nethermind.Synchronization.Test
         }
 
         public Task<byte[][]> GetNodeData(IList<Keccak> hashes, CancellationToken token)
+        {
+            throw new NotImplementedException();
+        }
+
+        public void RegisterSatelliteProtocol<T>(string protocol, T protocolHandler) where T : class
+        {
+            throw new NotImplementedException();
+        }
+
+        public bool TryGetSatelliteProtocol<T>(string protocol, out T protocolHandler) where T : class
         {
             throw new NotImplementedException();
         }

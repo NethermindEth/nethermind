@@ -33,6 +33,7 @@ using NUnit.Framework;
 namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure.Persistence.Rocks
 {
     [TestFixture]
+    [Parallelizable(ParallelScope.Default)]
     public class ConsumerNdmDbInitializerTests
     {
         private string _folderWithDbs;

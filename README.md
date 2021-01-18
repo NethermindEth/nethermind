@@ -3,7 +3,7 @@
 # .NET Core Ethereum client
 |           |         |               |
 | :-------- | :------ | :------------ |
-| Documentation | [![ReadtheDocs](https://readthedocs.org/projects/nethermind/badge/?version=latest)](https://nethermind.readthedocs.io) | https://docs.nethermind.io |
+| Documentation | | https://docs.nethermind.io |
 | Gitter | [![Gitter](https://img.shields.io/gitter/room/nethermindeth/nethermind.svg)](https://gitter.im/nethermindeth/nethermind) | https://gitter.im/nethermindeth/nethermind |
 | Discord | [![Discord](https://img.shields.io/discord/629004402170134531)](https://discord.gg/GXJFaYk) |
 | Medium | | https://medium.com/nethermind-eth |
@@ -14,7 +14,6 @@
 |Codecov.io| [![codecov](https://codecov.io/gh/NethermindEth/nethermind/branch/master/graph/badge.svg)](https://codecov.io/gh/NethermindEth/nethermind) | https://codecov.io/gh/NethermindEth/nethermind |
 | Fund | with Gitcoin | https://gitcoin.co/grants/142/nethermind |
 | Github Actions | ![Standard Build](https://github.com/NethermindEth/nethermind/workflows/Standard%20Build/badge.svg) ![Build with Code Coverage](https://github.com/NethermindEth/nethermind/workflows/Build%20with%20Code%20Coverage/badge.svg) ![Update Documentation](https://github.com/NethermindEth/nethermind/workflows/Update%20Documentation/badge.svg) ![Publish Nethermind Image to Docker Registry](https://github.com/NethermindEth/nethermind/workflows/Publish%20Nethermind%20Image%20to%20Docker%20Registry/badge.svg) ![Publish ARM64 Image to Docker Registry](https://github.com/NethermindEth/nethermind/workflows/Publish%20ARM64%20Image%20to%20Docker%20Registry/badge.svg) | https://github.com/NethermindEth/nethermind/actions |
-<!--| Travis CI | [![Build Status](https://travis-ci.org/NethermindEth/nethermind.svg?branch=master)](https://travis-ci.org/NethermindEth/nethermind) | https://travis-ci.org/NethermindEth/nethermind |-->
 
 ## Download and run:
 
@@ -22,13 +21,23 @@
 [Linux](http://downloads.nethermind.io)<br/>
 [MacOS](http://downloads.nethermind.io)<br/>
 
-It syncs fully on Mainnet, Ropsten, Rinkeby, Goerli.
+It syncs fully on: 
+* Mainnet
+* Goerli
+* Rinkeby
+* Ropsten
+* xDai
+* Poacore
+* Sokol
+* Energyweb
+* Volta
+* Kovan (only fast sync and may fail if pWASM transactions appear)
 
 # Build from Source
 
-## Prerequisites
+## Prerequisites :construction:
 
-.NET 3.0 SDK
+**.NET 3.1** SDK for 1.9.* series or **.NET 5.0** for 1.10.*
 
 ### Windows
 
@@ -39,23 +48,22 @@ It syncs fully on Mainnet, Ropsten, Rinkeby, Goerli.
 
 #### - Ubuntu
 ```sh
-# Activate Microsoft repository
-wget https://packages.microsoft.com/config/ubuntu/$(lsb_release -rs)/packages-microsoft-prod.deb -O packages-microsoft-prod.deb
-sudo apt install -y ./packages-microsoft-prod.deb apt-transport-https && sudo apt update
+# Install .NET
+https://docs.microsoft.com/en-gb/dotnet/core/install/linux-ubuntu
 
 # Install dependencies
-sudo apt install -y dotnet-sdk-3.1 libsnappy-dev libc6-dev libc6
+sudo apt-get install libsnappy-dev libc6-dev libc6
 ```
 *Tested on Ubuntu 20.04 LTS and 18.04 LTS*
 
 #### - Debian
 ```sh
-# Activate Microsoft repository
-wget https://packages.microsoft.com/config/debian/$(lsb_release -rs | cut -d. -f1)/packages-microsoft-prod.deb -O packages-microsoft-prod.deb
-sudo apt install -y ./packages-microsoft-prod.deb apt-transport-https && sudo apt update
+
+# Install .NET
+https://docs.microsoft.com/en-gb/dotnet/core/install/linux-debian
 
 # Install dependencies
-sudo apt install -y dotnet-sdk-3.1 libsnappy-dev libc6-dev libc6
+sudo apt-get install libsnappy-dev libc6-dev libc6
 ```
 
 *Tested on Debian 10 (9 not working)*
@@ -63,22 +71,29 @@ sudo apt install -y dotnet-sdk-3.1 libsnappy-dev libc6-dev libc6
 
 #### - CentOS
 ```sh
+# Install .NET
+https://docs.microsoft.com/en-gb/dotnet/core/install/linux-centos
+
 # Install dependencies
-sudo yum install --enablerepo=PowerTools -y dotnet-sdk-3.1 gcc snappy-devel glibc-devel bzip2-devel libzstd
+sudo yum install -y glibc-devel bzip2-devel libzstd
 
 # Link libraries
-sudo ln -s `find /usr/lib64/ -type f -name "libsnappy.so.1*"` /usr/lib64/libsnappy.so 
-sudo ln -s `find /usr/lib64/ -type f -name "libbz2.so.1*"` /usr/lib64/libbz2.so.1.0
+sudo ln -s `find /usr/lib64/ -type f -name "libbz2.so.1*"` /usr/lib64/libbz2.so.1.0 && \
+sudo ln -s `find /usr/lib64/ -type f -name "libsnappy.so.1*"` /usr/lib64/libsnappy.so
 ```
 *Tested on CentOS 8*
 
 #### - Fedora
 ```sh
+# Install .NET
+https://docs.microsoft.com/en-gb/dotnet/core/install/linux-fedora
+
 # Install dependencies
-sudo dnf install -y dotnet-sdk-3.1 gcc snappy-devel glibc-devel bzip2-devel libzstd
+sudo yum install -y glibc-devel snappy libzstd
 
 # Link libraries
-sudo ln -s `find /usr/lib64/ -type f -name "libbz2.so.1*"` /usr/lib64/libbz2.so.1.0
+sudo ln -s `find /usr/lib64/ -type f -name "libbz2.so.1*"` /usr/lib64/libbz2.so.1.0 && \
+sudo ln -s `find /usr/lib64/ -type f -name "libsnappy.so.1*"` /usr/lib64/libsnappy.so
 ```
 *Tested on Fedora 32*
 

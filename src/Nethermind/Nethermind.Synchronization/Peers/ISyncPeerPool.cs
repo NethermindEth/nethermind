@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -19,6 +19,7 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core.Crypto;
+using Nethermind.Stats.Model;
 using Nethermind.Synchronization.Peers.AllocationStrategies;
 
 namespace Nethermind.Synchronization.Peers
@@ -95,5 +96,7 @@ namespace Nethermind.Synchronization.Peers
         /// </summary>
         /// <returns></returns>
         Task StopAsync();
+        
+        PeerInfo? GetPeer(Node node);
     }
 }

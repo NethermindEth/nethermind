@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -86,7 +86,9 @@ namespace Nethermind.Network.P2P
             });
         }
 
-        public override byte ProtocolVersion { get; protected set; } = 5;
+        private byte _protocolVersion = 5;
+        
+        public override byte ProtocolVersion => _protocolVersion;
 
         public override string ProtocolCode => Protocol.P2P;
 
@@ -189,7 +191,7 @@ namespace Nethermind.Network.P2P
             // * If the packet is received by a node with higher version,
             //   it can enable backwards-compatibility logic or drop the connection.
 
-            ProtocolVersion = hello.P2PVersion;
+            _protocolVersion = hello.P2PVersion;
 
             List<Capability> capabilities = hello.Capabilities;
             AvailableCapabilities = new List<Capability>(capabilities);
@@ -291,6 +293,7 @@ namespace Nethermind.Network.P2P
             new Capability(Protocol.Eth, 63),
             new Capability(Protocol.Eth, 64),
             new Capability(Protocol.Eth, 65),
+            new Capability(Protocol.Wit, 0),
             // new Capability(Protocol.Les, 3)
         };
 

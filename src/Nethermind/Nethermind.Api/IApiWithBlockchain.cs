@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -22,9 +22,11 @@ using Nethermind.Blockchain.Rewards;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Config;
 using Nethermind.Consensus;
+using Nethermind.Core;
 using Nethermind.Evm;
 using Nethermind.Facade;
 using Nethermind.State;
+using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 
 namespace Nethermind.Api
@@ -37,7 +39,6 @@ namespace Nethermind.Api
         
         IBlockchainProcessor? BlockchainProcessor { get; set; }
         CompositeBlockPreprocessorStep BlockPreprocessor { get; }
-        // IBlockPreprocessorStep RecoveryStep => BlockPreprocessor;
         IBlockProcessingQueue? BlockProcessingQueue { get; set; }
         IBlockProcessor? MainBlockProcessor { get; set; }
         IBlockProducer? BlockProducer { get; set; }
@@ -46,6 +47,7 @@ namespace Nethermind.Api
         IFilterStore FilterStore { get; set; }
         IFilterManager FilterManager { get; set; }
         IHeaderValidator? HeaderValidator { get; set; }
+        ITrieStore? ReadOnlyTrieStore { get; set; }
         IRewardCalculatorSource? RewardCalculatorSource { get; set; }
         ISealer? Sealer { get; set; }
         ISealValidator? SealValidator { get; set; }
@@ -57,12 +59,15 @@ namespace Nethermind.Api
         /// DO NOT USE OUTSIDE OF PROCESSING BLOCK CONTEXT!
         /// </remarks>
         IStateProvider? StateProvider { get; set; }
+        IKeyValueStoreWithBatching? MainStateDbWithCache { get; set; }
         IReadOnlyStateProvider? ChainHeadStateProvider { get; set; }
         IStateReader? StateReader { get; set; }
         IStorageProvider? StorageProvider { get; set; }
         ITransactionProcessor? TransactionProcessor { get; set; }
+        ITrieStore? TrieStore { get; set; }
         ITxSender? TxSender { get; set; }
         ITxPool? TxPool { get; set; }
         ITxPoolInfoProvider? TxPoolInfoProvider { get; set; }
+        IWitnessCollector? WitnessCollector { get; set; }
     }
 }
