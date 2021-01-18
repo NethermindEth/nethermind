@@ -20,7 +20,7 @@ using System.Collections.Generic;
 
 namespace Nethermind.Consensus.AuRa.Contracts.DataStore
 {
-    public class ThreadSafeContractDataStoreCollectionDecorator<T> : IContractDataStoreCollection<T>
+    public class ThreadSafeContractDataStoreCollectionDecorator<T> : IDictionaryContractDataStoreCollection<T>
     {
         private readonly IContractDataStoreCollection<T> _inner;
         private readonly object _lock = new object();
@@ -59,6 +59,20 @@ namespace Nethermind.Consensus.AuRa.Contracts.DataStore
             lock (_lock)
             {
                 _inner.Remove(items);
+            }
+        }
+
+        public bool TryGetValue(T key, out T value)
+        {
+            // ReSharper disable once InconsistentlySynchronizedField
+            if (!(_inner is IDictionaryContractDataStoreCollection<T> dictionaryContractDataStoreCollection))
+            {
+                throw new InvalidOperationException("Inner collection is not dictionary based.");
+            }
+
+            lock (_lock)
+            {
+                return dictionaryContractDataStoreCollection.TryGetValue(key, out value);
             }
         }
     }

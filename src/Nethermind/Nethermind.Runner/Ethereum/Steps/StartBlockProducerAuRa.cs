@@ -50,7 +50,7 @@ namespace Nethermind.Runner.Ethereum.Steps
         
         private readonly IAuraConfig _auraConfig;
         private IAuRaValidator? _validator;
-        private DictionaryContractDataStore<TxPriorityContract.Destination, TxPriorityContract.DestinationSortedListContractDataStoreCollection>? _minGasPricesContractDataStore;
+        private DictionaryContractDataStore<TxPriorityContract.Destination>? _minGasPricesContractDataStore;
         private TxPriorityContract? _txPriorityContract;
         private TxPriorityContract.LocalDataSource? _localDataSource;
         private ITxFilter? _txPermissionFilter;
@@ -165,8 +165,8 @@ namespace Nethermind.Runner.Ethereum.Steps
                     _api.LogManager,
                     _localDataSource?.GetWhitelistLocalDataSource() ?? new EmptyLocalDataSource<IEnumerable<Address>>());
 
-                DictionaryContractDataStore<TxPriorityContract.Destination, TxPriorityContract.DestinationSortedListContractDataStoreCollection> prioritiesContractDataStore =
-                    new DictionaryContractDataStore<TxPriorityContract.Destination, TxPriorityContract.DestinationSortedListContractDataStoreCollection>(
+                DictionaryContractDataStore<TxPriorityContract.Destination> prioritiesContractDataStore =
+                    new DictionaryContractDataStore<TxPriorityContract.Destination>(
                         new TxPriorityContract.DestinationSortedListContractDataStoreCollection(),
                         _txPriorityContract?.Priorities,
                         _api.BlockTree,
