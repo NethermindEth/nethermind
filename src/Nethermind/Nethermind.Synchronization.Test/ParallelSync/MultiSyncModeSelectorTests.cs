@@ -1233,6 +1233,50 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                 .WhenFastSyncWithFastBlocksIsConfigured()
                 .TheSyncModeShouldBe(SyncMode.Full | SyncMode.FastHeaders);
         }
+        
+        [Test]
+        public void Switch_correctly_from_full_sync_to_fast_sync()
+        {
+            ISyncProgressResolver syncProgressResolver = Substitute.For<ISyncProgressResolver>();
+            syncProgressResolver.FindBestHeader().Returns(Scenario.ChainHead.Number);
+            syncProgressResolver.FindBestFullBlock().Returns(Scenario.ChainHead.Number);
+            syncProgressResolver.FindBestFullState().Returns(Scenario.ChainHead.Number - SyncModeSelectorConstants.NotBeamSyncFastSyncLag);
+            syncProgressResolver.FindBestProcessedBlock().Returns(0);
+            syncProgressResolver.IsFastBlocksFinished().Returns(FastBlocksState.FinishedReceipts);
+            syncProgressResolver.ChainDifficulty.Returns(UInt256.Zero);
+
+            List<ISyncPeer> syncPeers = new List<ISyncPeer>();
+
+            BlockHeader header = Scenario.ChainHead;
+            ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
+            syncPeer.HeadHash.Returns(header.Hash);
+            syncPeer.HeadNumber.Returns(header.Number);
+            syncPeer.TotalDifficulty.Returns(header.TotalDifficulty ?? 0);
+            syncPeer.IsInitialized.Returns(true);
+            syncPeer.ClientId.Returns("nethermind");
+            
+            syncPeers.Add(syncPeer);
+            ISyncPeerPool syncPeerPool = Substitute.For<ISyncPeerPool>();
+            IEnumerable<PeerInfo> peerInfos = syncPeers.Select(p => new PeerInfo(p));
+            syncPeerPool.InitializedPeers.Returns(peerInfos);
+            syncPeerPool.AllPeers.Returns(peerInfos);
+
+            ISyncConfig syncConfig = new SyncConfig();
+            syncConfig.FastSync = true;
+            
+            MultiSyncModeSelector selector = new MultiSyncModeSelector(syncProgressResolver, syncPeerPool, syncConfig, LimboLogs.Instance);
+            selector.DisableTimer();
+            selector.Update();
+            selector.Current.Should().Be(SyncMode.Full);
+
+            int goFurther = 9000;
+            syncProgressResolver.FindBestHeader().Returns(Scenario.ChainHead.Number + goFurther);
+            syncProgressResolver.FindBestFullBlock().Returns(Scenario.ChainHead.Number + goFurther);
+            syncProgressResolver.FindBestFullState().Returns(Scenario.ChainHead.Number - SyncModeSelectorConstants.NotBeamSyncFastSyncLag + goFurther);
+            
+            selector.Update();
+            selector.Current.Should().Be(SyncMode.FastSync);
+        }
     }
     
     public enum FastBlocksState
