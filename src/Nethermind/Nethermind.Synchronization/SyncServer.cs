@@ -403,36 +403,45 @@ namespace Nethermind.Synchronization
         private void OnNewHeadBlock(object? sender, BlockEventArgs blockEventArgs)
         {
             Block block = blockEventArgs.Block;
-            if (_blockTree.BestKnownNumber > block.Number) return;
-
-            int peerCount = _pool.PeerCount;
-            double broadcastRatio = Math.Sqrt(peerCount) / peerCount;
-
-            int counter = 0;
-            foreach (PeerInfo peerInfo in _pool.AllPeers)
+            try
             {
-                if (peerInfo.TotalDifficulty < (block.TotalDifficulty ?? UInt256.Zero))
+                if (_blockTree.BestKnownNumber > block.Number) return;
+
+                int peerCount = _pool.PeerCount;
+                double broadcastRatio = Math.Sqrt(peerCount) / peerCount;
+
+                int counter = 0;
+                foreach (PeerInfo peerInfo in _pool.AllPeers)
                 {
-                    if (_broadcastRandomizer.NextDouble() < broadcastRatio)
+                    if (peerInfo.TotalDifficulty < (block.TotalDifficulty ?? UInt256.Zero))
                     {
-                        peerInfo.SyncPeer.NotifyOfNewBlock(block, SendBlockPriority.High);
-                        counter++;
-                    }
-                    else
-                    {
-                        peerInfo.SyncPeer.NotifyOfNewBlock(block, SendBlockPriority.Low);
+                        if (_broadcastRandomizer.NextDouble() < broadcastRatio)
+                        {
+                            peerInfo.SyncPeer.NotifyOfNewBlock(block, SendBlockPriority.High);
+                            counter++;
+                        }
+                        else
+                        {
+                            peerInfo.SyncPeer.NotifyOfNewBlock(block, SendBlockPriority.Low);
+                        }
                     }
                 }
-            }
 
-            if (counter > 0)
-            {
-                if (_logger.IsDebug) _logger.Debug($"Broadcasting block {block.ToString(Block.Format.Short)} to {counter} peers.");
-            }
+                if (counter > 0)
+                {
+                    if (_logger.IsDebug)
+                        _logger.Debug($"Broadcasting block {block.ToString(Block.Format.Short)} to {counter} peers.");
+                }
 
-            if ((block.Number - Sync.MaxReorgLength) % CanonicalHashTrie.SectionSize == 0)
+                if ((block.Number - Sync.MaxReorgLength) % CanonicalHashTrie.SectionSize == 0)
+                {
+                    _ = BuildCHT();
+                }
+            }
+            catch (Exception e)
             {
-                _ = BuildCHT();
+                if (_logger.IsError) _logger.Error(
+                    $"SyncServer OnNewHeadBlock exception. Block number: {block.Number}, block hash: {block.Hash}, parent block hash {block.ParentHash}. ", e);
             }
         }
 
