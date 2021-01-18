@@ -65,6 +65,6 @@ namespace Nethermind.Api
         ITxSender? TxSender { get; set; }
         ITxPool? TxPool { get; set; }
         ITxPoolInfoProvider? TxPoolInfoProvider { get; set; }
-        IHealthHintService HealthHintService { get; set; }
+        IHealthHintService? HealthHintService { get; set; }
     }
 }

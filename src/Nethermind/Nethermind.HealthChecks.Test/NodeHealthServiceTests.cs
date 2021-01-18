@@ -19,6 +19,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Google.Protobuf.WellKnownTypes;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Consensus;
 using Nethermind.JsonRpc;
@@ -41,6 +42,7 @@ namespace Nethermind.HealthChecks.Test
             INetModule netModule = Substitute.For<INetModule>();
             IBlockchainProcessor blockchainProcessor = Substitute.For<IBlockchainProcessor>();
             IBlockProducer blockProducer = Substitute.For<IBlockProducer>();
+            IHealthHintService healthHintService = Substitute.For<IHealthHintService>();
             blockchainProcessor.IsProcessingBlocks(Arg.Any<ulong?>()).Returns(test.IsProcessingBlocks);
             blockProducer.IsProducingBlocks(Arg.Any<ulong?>()).Returns(test.IsProducingBlocks);
             netModule.net_peerCount().Returns(ResultWrapper<long>.Success(test.PeerCount));
@@ -49,7 +51,7 @@ namespace Nethermind.HealthChecks.Test
             rpcModuleProvider.Rent("eth_syncing", false).Returns(ethModule);
             rpcModuleProvider.Rent("net_peerCount", false).Returns(netModule);
             NodeHealthService nodeHealthService =
-                new NodeHealthService(rpcModuleProvider, blockchainProcessor, blockProducer, new HealthChecksConfig(),  new ChainSpec(), test.IsMining);
+                new NodeHealthService(rpcModuleProvider, blockchainProcessor, blockProducer, new HealthChecksConfig(),  healthHintService, test.IsMining);
             CheckHealthResult result = await nodeHealthService.CheckHealth();
             Assert.AreEqual(test.ExpectedHealthy, result.Healthy);
             Assert.AreEqual(test.ExpectedMessage, FormatMessages(result.Messages.Select(x => x.Message)));

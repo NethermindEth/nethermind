@@ -29,7 +29,7 @@ namespace Nethermind.HealthChecks
             _api = api;
             _healthChecksConfig = _api.Config<IHealthChecksConfig>();
             IInitConfig initConfig = _api.Config<IInitConfig>();
-            _nodeHealthService = new NodeHealthService(_api.RpcModuleProvider, _api.BlockchainProcessor, _api.BlockProducer, _healthChecksConfig, _api.ChainSpec, initConfig.IsMining);
+            _nodeHealthService = new NodeHealthService(_api.RpcModuleProvider, _api.BlockchainProcessor, _api.BlockProducer, _healthChecksConfig, _api.HealthHintService, initConfig.IsMining);
             _logger = api.LogManager.GetClassLogger();
             
             return Task.CompletedTask;

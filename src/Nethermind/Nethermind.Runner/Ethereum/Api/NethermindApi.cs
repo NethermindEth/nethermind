@@ -163,7 +163,7 @@ namespace Nethermind.Runner.Ethereum.Api
         public ITxSender? TxSender { get; set; }
         public ITxPool? TxPool { get; set; }
         public ITxPoolInfoProvider? TxPoolInfoProvider { get; set; }
-        public IHealthHintService HealthHintService { get; set; }
+        public IHealthHintService? HealthHintService { get; set; }
         public IWallet? Wallet { get; set; }
         public IWebSocketsManager? WebSocketsManager { get; set; }
 

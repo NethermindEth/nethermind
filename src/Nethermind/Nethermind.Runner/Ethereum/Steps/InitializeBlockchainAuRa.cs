@@ -46,7 +46,7 @@ namespace Nethermind.Runner.Ethereum.Steps
         private INethermindApi NethermindApi => _api;
         
         private AuRaSealValidator? _sealValidator;
-        private IAuRaStepCalculator _auRaStepCalculator;
+        private IAuRaStepCalculator? _auRaStepCalculator;
         private readonly IAuraConfig _auraConfig;
         
         public InitializeBlockchainAuRa(AuRaNethermindApi api) : base(api)

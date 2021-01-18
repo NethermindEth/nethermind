@@ -65,8 +65,7 @@ namespace Nethermind.Blockchain.Processing
 
         public bool IsProcessingBlocks(ulong? maxProcessingInterval)
         {
-            // ToDo
-            throw new NotImplementedException();
+            return _processor.IsProcessingBlocks(maxProcessingInterval);
         }
 
         public void Dispose()

@@ -18,6 +18,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa.Validators;
@@ -42,7 +43,7 @@ namespace Nethermind.HealthChecks
         private readonly IBlockchainProcessor _blockchainProcessor;
         private readonly IBlockProducer _blockProducer;
         private readonly IHealthChecksConfig _healthChecksConfig;
-        private readonly ChainSpec _chainSpec;
+        private readonly IHealthHintService _healthHintService;
         private readonly bool _isMining;
 
         public NodeHealthService(
@@ -50,13 +51,13 @@ namespace Nethermind.HealthChecks
             IBlockchainProcessor blockchainProcessor,
             IBlockProducer blockProducer,
             IHealthChecksConfig healthChecksConfig,
-            ChainSpec chainSpec,
+            IHealthHintService healthHintService,
             bool isMining)
         {
             _rpcModuleProvider = rpcModuleProvider;
             _isMining = isMining;
             _healthChecksConfig = healthChecksConfig;
-            _chainSpec = chainSpec;
+            _healthHintService = healthHintService;
             _blockchainProcessor = blockchainProcessor;
             _blockProducer = blockProducer;
         }
@@ -106,30 +107,14 @@ namespace Nethermind.HealthChecks
 
         public ulong? GetBlockProcessorIntervalHint()
         {
-            ulong? blockProcessorHint;
-            if (_chainSpec.SealEngineType == SealEngineType.Ethash)
-                blockProcessorHint = 15 * 4;
-            else if (_chainSpec.SealEngineType == SealEngineType.Clique)
-                blockProcessorHint = _chainSpec.Clique.Period * 4;
-            else if (_chainSpec.SealEngineType == SealEngineType.AuRa)
-                blockProcessorHint = 10;//_chainSpec.AuRa.StepDuration
-            else
-                blockProcessorHint = null;
-               
-            return blockProcessorHint;
+            return _healthChecksConfig.MaxIntervalWithoutProcessedBlock ??
+                _healthHintService.MaxIntervalForProcessingBlocksHint();
         }
         
         public ulong? GetBlockProducerIntervalHint()
         {
-            ulong? blockProcessorHint;
-            // check if signer is in validators (_validatorStore.GetValidators()) 
-            // if true get count * 3 * step
-            if (_chainSpec.SealEngineType == SealEngineType.AuRa)
-                blockProcessorHint = 10;//_chainSpec.AuRa.StepDuration
-            else
-                blockProcessorHint = null;
-               
-            return blockProcessorHint;
+            return _healthChecksConfig.MaxIntervalWithoutProcessedBlock ??
+                   _healthHintService.MaxIntervalForProcessingBlocksHint();
         }
 
         private static bool CheckPeers(ICollection<(string Description, string LongDescription)> messages, long netPeerCount)
@@ -149,7 +134,8 @@ namespace Nethermind.HealthChecks
         
         private bool IsProducingBlocks(ICollection<(string Description, string LongDescription)> messages)
         {
-            bool producingBlocks = _blockProducer.IsProducingBlocks(_healthChecksConfig.MaxIntervalWithoutProducedBlock);
+            ulong? maxIntervalHint = GetBlockProducerIntervalHint();
+            bool producingBlocks = _blockProducer.IsProducingBlocks(maxIntervalHint);
             if (producingBlocks == false)
             {
                 messages.Add(("Stopped producing blocks", "The node stopped producing blocks"));  
@@ -160,7 +146,8 @@ namespace Nethermind.HealthChecks
         
         private bool IsProcessingBlocks(ICollection<(string Description, string LongDescription)> messages)
         { 
-            bool processingBlocks = _blockchainProcessor.IsProcessingBlocks(_healthChecksConfig.MaxIntervalWithoutProcessedBlock);
+            ulong? maxIntervalHint = GetBlockProcessorIntervalHint();
+            bool processingBlocks = _blockchainProcessor.IsProcessingBlocks(maxIntervalHint);
             if (processingBlocks == false)
             {
                 messages.Add(("Stopped processing blocks", "The node stopped processing blocks"));  
