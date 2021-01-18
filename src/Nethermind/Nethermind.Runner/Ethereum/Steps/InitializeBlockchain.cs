@@ -21,6 +21,7 @@ using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Processing;
+using Nethermind.Blockchain.Services;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
@@ -188,9 +189,14 @@ namespace Nethermind.Runner.Ethereum.Steps
             // TODO: possibly hide it (but need to confirm that NDM does not really need it)
             var filterStore = _set.FilterStore = new FilterStore();
             _set.FilterManager = new FilterManager(filterStore, mainBlockProcessor, txPool, _get.LogManager);
+            _set.HealthHintService = CreateHealthHintService();
 
             return Task.CompletedTask;
         }
+        
+        protected virtual IHealthHintService CreateHealthHintService() =>
+            new HealthHintService(_api.ChainSpec);
+
 
         protected virtual TxPool.TxPool CreateTxPool(PersistentTxStorage txStorage) =>
             new TxPool.TxPool(

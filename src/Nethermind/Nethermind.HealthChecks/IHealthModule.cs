@@ -15,15 +15,16 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System.Threading.Tasks;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 
 namespace Nethermind.HealthChecks
 {
-    [RpcModule(ModuleType.Parity)]
+    [RpcModule(ModuleType.Health)]
     public interface IHealthModule : IModule
     {
-        [JsonRpcMethod(Description = "Todo", IsImplemented = true)]
-        ResultWrapper<string> health_nodeStatus();
+        [JsonRpcMethod(Description = "Check health of the node", IsImplemented = true)]
+        Task<ResultWrapper<string>> health_nodeStatus();
     }
 }

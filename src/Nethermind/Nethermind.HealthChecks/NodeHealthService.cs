@@ -69,9 +69,7 @@ namespace Nethermind.HealthChecks
             bool healthy = false;
             long netPeerCount = (long) netModule.net_peerCount().GetData();
             SyncingResult ethSyncing = (SyncingResult) ethModule.eth_syncing().GetData();
-            bool isProcessingBlocks = _blockchainProcessor.IsProcessingBlocks(_healthChecksConfig.MaxIntervalWithoutProcessedBlock);
-            bool isProducingBlocks = _blockchainProcessor.IsProcessingBlocks(_healthChecksConfig.MaxIntervalWithoutProducedBlock);
-            
+
             if (_isMining == false && ethSyncing.IsSyncing)
             {
                 healthy = false;
@@ -82,7 +80,7 @@ namespace Nethermind.HealthChecks
             {
                 AddFullySyncMessage(messages);
                 bool peers = CheckPeers(messages, netPeerCount);
-                bool processing = IsProcessingBlocks(messages, isProcessingBlocks);
+                bool processing = IsProcessingBlocks(messages);
                 healthy = peers && processing;
             }
             else if (_isMining && ethSyncing.IsSyncing)
@@ -94,8 +92,8 @@ namespace Nethermind.HealthChecks
             {
                 AddFullySyncMessage(messages);
                 bool peers = CheckPeers(messages, netPeerCount);
-                bool processing = IsProcessingBlocks(messages, isProcessingBlocks);
-                bool producing = IsProducingBlocks(messages, isProducingBlocks);
+                bool processing = IsProcessingBlocks(messages);
+                bool producing = IsProducingBlocks(messages);
                 healthy = peers && processing && producing;
             }
             
@@ -149,8 +147,9 @@ namespace Nethermind.HealthChecks
             return hasPeers;
         }
         
-        private static bool IsProducingBlocks(ICollection<(string Description, string LongDescription)> messages, bool producingBlocks)
+        private bool IsProducingBlocks(ICollection<(string Description, string LongDescription)> messages)
         {
+            bool producingBlocks = _blockProducer.IsProducingBlocks(_healthChecksConfig.MaxIntervalWithoutProducedBlock);
             if (producingBlocks == false)
             {
                 messages.Add(("Stopped producing blocks", "The node stopped producing blocks"));  
@@ -159,8 +158,9 @@ namespace Nethermind.HealthChecks
             return producingBlocks;
         }
         
-        private static bool IsProcessingBlocks(ICollection<(string Description, string LongDescription)> messages, bool processingBlocks)
-        {
+        private bool IsProcessingBlocks(ICollection<(string Description, string LongDescription)> messages)
+        { 
+            bool processingBlocks = _blockchainProcessor.IsProcessingBlocks(_healthChecksConfig.MaxIntervalWithoutProcessedBlock);
             if (processingBlocks == false)
             {
                 messages.Add(("Stopped processing blocks", "The node stopped processing blocks"));  

@@ -65,7 +65,7 @@ namespace Nethermind.HealthChecks
         {
             if (_healthChecksConfig.Enabled)
             {
-                HealthModule healthModule = new HealthModule();
+                HealthModule healthModule = new HealthModule(_nodeHealthService);
                 _api.RpcModuleProvider!.Register(new SingletonModulePool<IHealthModule>(healthModule, true));
                 if (_logger.IsInfo) _logger.Info("Health RPC Module has been enabled");
             }

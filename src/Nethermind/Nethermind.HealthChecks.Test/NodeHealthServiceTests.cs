@@ -18,36 +18,42 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using Google.Protobuf.WellKnownTypes;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Consensus;
+using Nethermind.JsonRpc;
+using Nethermind.JsonRpc.Modules;
+using Nethermind.JsonRpc.Modules.Eth;
+using Nethermind.JsonRpc.Modules.Net;
+using Nethermind.Specs.ChainSpecStyle;
 using NSubstitute;
 using NUnit.Framework;
 
-namespace Nethermind.Monitoring.Test
+namespace Nethermind.HealthChecks.Test
 {
     public class NodeHealthServiceTests
     {
         [Test]
         public async Task CheckHealth_returns_expectedresults([ValueSource(nameof(CheckHealthTestCases))] CheckHealthTest test)
         {
-            // IRpcModuleProvider rpcModuleProvider = Substitute.For<IRpcModuleProvider>();
-            // IEthModule ethModule = Substitute.For<IEthModule>();
-            // INetModule netModule = Substitute.For<INetModule>();
-            // IBlockchainProcessor blockchainProcessor = Substitute.For<IBlockchainProcessor>();
-            // IBlockProducer blockProducer = Substitute.For<IBlockProducer>();
-            // blockchainProcessor.IsProcessingBlocks.Returns(test.IsProcessingBlocks);
-            // blockProducer.IsProducingBlocks.Returns(test.IsProducingBlocks);
-            // netModule.net_peerCount().Returns(ResultWrapper<long>.Success(test.PeerCount));
-            // ethModule.eth_syncing().Returns(ResultWrapper<SyncingResult>.Success(new SyncingResult() {IsSyncing = test.IsSyncing}));
-            //
-            // rpcModuleProvider.Rent("eth_syncing", false).Returns(ethModule);
-            // rpcModuleProvider.Rent("net_peerCount", false).Returns(netModule);
-            // NodeHealthService nodeHealthService =
-            //     new NodeHealthService(rpcModuleProvider, blockchainProcessor, blockProducer, test.IsMining);
-            // CheckHealthResult result = await nodeHealthService.CheckHealth();
-            // Assert.AreEqual(test.ExpectedHealthy, result.Healthy);
-            // Assert.AreEqual(test.ExpectedMessage, FormatMessages(result.Messages.Select(x => x.Message)));
-            // Assert.AreEqual(test.ExpectedLongMessage, FormatMessages(result.Messages.Select(x => x.LongMessage)));
+            IRpcModuleProvider rpcModuleProvider = Substitute.For<IRpcModuleProvider>();
+            IEthModule ethModule = Substitute.For<IEthModule>();
+            INetModule netModule = Substitute.For<INetModule>();
+            IBlockchainProcessor blockchainProcessor = Substitute.For<IBlockchainProcessor>();
+            IBlockProducer blockProducer = Substitute.For<IBlockProducer>();
+            blockchainProcessor.IsProcessingBlocks(Arg.Any<ulong?>()).Returns(test.IsProcessingBlocks);
+            blockProducer.IsProducingBlocks(Arg.Any<ulong?>()).Returns(test.IsProducingBlocks);
+            netModule.net_peerCount().Returns(ResultWrapper<long>.Success(test.PeerCount));
+            ethModule.eth_syncing().Returns(ResultWrapper<SyncingResult>.Success(new SyncingResult() {IsSyncing = test.IsSyncing}));
+            
+            rpcModuleProvider.Rent("eth_syncing", false).Returns(ethModule);
+            rpcModuleProvider.Rent("net_peerCount", false).Returns(netModule);
+            NodeHealthService nodeHealthService =
+                new NodeHealthService(rpcModuleProvider, blockchainProcessor, blockProducer, new HealthChecksConfig(),  new ChainSpec(), test.IsMining);
+            CheckHealthResult result = await nodeHealthService.CheckHealth();
+            Assert.AreEqual(test.ExpectedHealthy, result.Healthy);
+            Assert.AreEqual(test.ExpectedMessage, FormatMessages(result.Messages.Select(x => x.Message)));
+            Assert.AreEqual(test.ExpectedLongMessage, FormatMessages(result.Messages.Select(x => x.LongMessage)));
         }
 
         public class CheckHealthTest

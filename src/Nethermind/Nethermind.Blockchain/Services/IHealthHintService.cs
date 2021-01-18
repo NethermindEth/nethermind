@@ -15,23 +15,12 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System.Linq;
-using System.Threading.Tasks;
-using Nethermind.JsonRpc;
-
-namespace Nethermind.HealthChecks
+namespace Nethermind.Blockchain
 {
-    public class HealthModule : IHealthModule
+    public interface IHealthHintService
     {
-        private readonly INodeHealthService _nodeHealthService;
-        public HealthModule(INodeHealthService nodeHealthService)
-        {
-            _nodeHealthService = nodeHealthService;
-        }
-        public async Task<ResultWrapper<string>> health_nodeStatus()
-        {
-            CheckHealthResult result = await _nodeHealthService.CheckHealth();
-            return ResultWrapper<string>.Success(result.Messages.FirstOrDefault().Message);
-        }
+        ulong? MaxIntervalForProcessingBlocksHint();
+        
+        ulong? MaxIntervalForProducingBlocksHint();
     }
 }
