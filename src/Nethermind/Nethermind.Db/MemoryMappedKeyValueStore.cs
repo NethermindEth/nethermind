@@ -8,7 +8,6 @@ using System.IO.MemoryMappedFiles;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
-using Nethermind.Core.Extensions;
 
 namespace Nethermind.Db
 {

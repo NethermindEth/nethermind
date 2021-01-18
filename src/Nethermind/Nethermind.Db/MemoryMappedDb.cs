@@ -17,6 +17,7 @@
 
 using System;
 using System.Collections.Generic;
+using Nethermind.Core;
 
 namespace Nethermind.Db
 {
@@ -24,7 +25,6 @@ namespace Nethermind.Db
     {
         private readonly MemoryMappedKeyValueStore _store;
         private bool _isDisposed;
-        private MemoryMappedKeyValueStore.IWriteBatch _batch;
 
         public MemoryMappedDb(string name, MemoryMappedKeyValueStore store)
         {
@@ -50,27 +50,13 @@ namespace Nethermind.Db
                     throw new ObjectDisposedException($"Attempted to write to a disposed database {Name}");
                 }
 
-                if (_batch != null)
+                if (value == null)
                 {
-                    if (value == null)
-                    {
-                        _batch.Delete(key);
-                    }
-                    else
-                    {
-                        _batch.Put(key, value);
-                    }
+                    Remove(key);
                 }
                 else
                 {
-                    if (value == null)
-                    {
-                        Remove(key);
-                    }
-                    else
-                    {
-                        _store.Set(key, value);
-                    }
+                    _store.Set(key, value);
                 }
             }
         }
@@ -89,27 +75,6 @@ namespace Nethermind.Db
 
         public IEnumerable<byte[]> GetAllValues(bool ordered = false) => throw new NotImplementedException("");
 
-        public void StartBatch()
-        {
-            if (_isDisposed)
-            {
-                throw new ObjectDisposedException($"Attempted to create a batch on a disposed database {Name}");
-            }
-
-            _batch = _store.StartBatch();
-        }
-
-        public void CommitBatch()
-        {
-            if (_isDisposed)
-            {
-                throw new ObjectDisposedException($"Attempted to commit a batch on a disposed database {Name}");
-            }
-
-            _batch.Commit();
-            _batch = null;
-        }
-
         public void Remove(byte[] key) => _store.Delete(key);
 
         private byte[] Get(byte[] key) => _store.TryGet(key, out MemoryMappedKeyValueStore.Slice value) ? value.ToArray() : null;
@@ -117,6 +82,54 @@ namespace Nethermind.Db
         public bool KeyExists(byte[] key) => _store.TryGet(key, out _);
 
         public IDb Innermost => this;
+
+        public IBatch StartBatch() => new MemoryMappedBatch(this);
+
+        internal class MemoryMappedBatch : IBatch
+        {
+            private readonly MemoryMappedDb _db;
+
+            internal readonly MemoryMappedKeyValueStore.IWriteBatch _batch;
+
+            public MemoryMappedBatch(MemoryMappedDb db)
+            {
+                _db = db;
+
+                if (_db._isDisposed)
+                {
+                    throw new ObjectDisposedException($"Attempted to create a batch on a disposed database {_db.Name}");
+                }
+
+                _batch = db._store.StartBatch();
+            }
+
+            public void Dispose()
+            {
+                if (_db._isDisposed)
+                {
+                    throw new ObjectDisposedException($"Attempted to commit a batch on a disposed database {_db.Name}");
+                }
+
+                _batch.Commit();
+                _batch.Dispose();
+            }
+
+            public byte[]? this[byte[] key]
+            {
+                get => _db[key];
+                set
+                {
+                    if (value == null)
+                    {
+                        _batch.Delete(key);
+                    }
+                    else
+                    {
+                        _batch.Put(key, value);
+                    }
+                }
+            }
+        }
 
         public void Flush() { }
 
