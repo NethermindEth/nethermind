@@ -20,7 +20,7 @@ using System.Linq;
 
 namespace Nethermind.Consensus.AuRa.Contracts.DataStore
 {
-    public abstract class DictionaryBasedContractDataStoreCollection<T> : IContractDataStoreCollection<T>
+    public abstract class DictionaryBasedContractDataStoreCollection<T> : IDictionaryContractDataStoreCollection<T>
     {
         private IDictionary<T, T> _items;
 
