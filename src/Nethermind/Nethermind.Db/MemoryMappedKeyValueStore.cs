@@ -111,14 +111,20 @@ namespace Nethermind.Db
                 lock (_batches)
                 {
                     int fileNumber = GetFileAndPosition(out int position);
-                    Map map = _maps[fileNumber];
-                    map?.Flush(position);
+                    if (position > 0)
+                    {
+                        Map map = _maps[fileNumber];
+                        map?.Flush(position);
+                    }
+                    
                 }
             }
 
+            TimeSpan flushPeriod = TimeSpan.FromSeconds(5);
+
             while (_runFlusher)
             {
-                Thread.Sleep(TimeSpan.FromSeconds(1));
+                Thread.Sleep(flushPeriod);
                 Flush();
             }
 
