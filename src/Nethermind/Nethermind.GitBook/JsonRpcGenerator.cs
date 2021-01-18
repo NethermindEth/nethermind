@@ -75,7 +75,7 @@ namespace Nethermind.GitBook
                 docBuilder.AppendLine();
                 _markdownGenerator.OpenTabs(docBuilder);
                 _markdownGenerator.CreateTab(docBuilder, "Request");
-                docBuilder.AppendLine(@"#### **Parameters**");
+                docBuilder.AppendLine(@"### **Parameters**");
                 docBuilder.AppendLine();
 
                 ParameterInfo[] parameters = method.GetParameters();
@@ -100,7 +100,7 @@ namespace Nethermind.GitBook
                 _markdownGenerator.CloseTab(docBuilder);
                 docBuilder.AppendLine();
                 _markdownGenerator.CreateTab(docBuilder, "Response");
-                docBuilder.AppendLine(@$"#### Return type");
+                docBuilder.AppendLine(@$"### Return type");
 
                 Type returnType = GetTypeFromWrapper(method.ReturnType);
                 string returnRpcType = GetJsonRpcType(returnType, rpcTypesToDescribe);
@@ -143,6 +143,7 @@ namespace Nethermind.GitBook
                 "Boolean" => "Boolean",
                 "Int32" => "Quantity",
                 "Int64" => "Quantity",
+                "Int64&" => "Quantity",
                 "Keccak" => "Hash",
                 "String[]" => "Array",
                 _ => $"{type.Name} object",
@@ -159,12 +160,13 @@ namespace Nethermind.GitBook
 
         private void AddRpcObjectsDescription(StringBuilder rpcModuleBuilder, List<Type> rpcTypesToDescribe)
         {
-            rpcModuleBuilder.AppendLine(@$"#### Objects definition");
-            rpcModuleBuilder.AppendLine();
+            rpcModuleBuilder.AppendLine(@$"### Objects definition");
 
             foreach (Type rpcType in rpcTypesToDescribe)
             {
+                rpcModuleBuilder.AppendLine();
                 rpcModuleBuilder.AppendLine(@$"`{rpcType.Name}`");
+                rpcModuleBuilder.AppendLine();
 
                 if(rpcType == typeof(BlockParameterType))
                 {
@@ -184,8 +186,6 @@ namespace Nethermind.GitBook
                     propertyRpcType = GetJsonRpcType(property.PropertyType, null);
                     rpcModuleBuilder.AppendLine($"| {property.Name} | `{propertyRpcType}` |");
                 }
-
-                rpcModuleBuilder.AppendLine();
             }
         }
 
