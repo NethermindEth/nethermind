@@ -19,6 +19,8 @@ cd plugins && PUB_PLUGINS_FILE="$(basename *.zip)" && cd ..
 cd $LIN_RELEASE && PUB_LIN_FILE="$(basename nethermind-linux-amd64-*)" && cd ..
 cd $OSX_RELEASE && PUB_OSX_FILE="$(basename nethermind-darwin-amd64-*)" && cd ..
 cd $WIN_RELEASE && PUB_WIN_FILE="$(basename nethermind-windows-amd64-*)" && cd ..
+cd $LIN_ARM64_RELEASE && PUB_LIN_ARM64_FILE="$(basename nethermind-linux-arm64-*)" && cd ..
+cd $LIN_ARM_RELEASE && PUB_LIN_ARM_FILE="$(basename nethermind-linux-arm-*)" && cd ..
 
 if [[ ! -z $GIT_SHORT_TAG ]] && [[ $GIT_SHORT_TAG =~ ^$GIT_SHORT_TAG_FIRST3\d* ]] && [[ $STATUS != 200 ]]; then
 
@@ -32,6 +34,8 @@ echo Uploading Linux releases
 echo =======================================================
 
 ./nethermind/scripts/deployment/upload-github-release-asset.sh github_api_token=$GITHUB_TOKEN owner=$GH_OWNER repo=$GH_REPO tag=$GIT_SHORT_TAG filename=$RELEASE_DIRECTORY/$LIN_RELEASE/$PUB_LIN_FILE
+./nethermind/scripts/deployment/upload-github-release-asset.sh github_api_token=$GITHUB_TOKEN owner=$GH_OWNER repo=$GH_REPO tag=$GIT_SHORT_TAG filename=$RELEASE_DIRECTORY/$LIN_ARM64_RELEASE/$PUB_LIN_ARM64_FILE
+./nethermind/scripts/deployment/upload-github-release-asset.sh github_api_token=$GITHUB_TOKEN owner=$GH_OWNER repo=$GH_REPO tag=$GIT_SHORT_TAG filename=$RELEASE_DIRECTORY/$LIN_ARM_RELEASE/$PUB_LIN_ARM_FILE
 
 echo =======================================================
 echo Finished uploading Linux release

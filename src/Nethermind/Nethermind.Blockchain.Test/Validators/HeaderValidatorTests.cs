@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -128,7 +128,7 @@ namespace Nethermind.Blockchain.Test.Validators
         [Test]
         public void When_gas_used_above_gas_limit()
         {
-            _block.Header.GasUsed = _parentBlock.Header.GasLimit + 1;
+            _block.Header.GasUsedLegacy = _parentBlock.Header.GasLimit + 1;
             _block.Header.SealEngineType = SealEngineType.None;
             _block.Header.Hash = _block.CalculateHash();
             

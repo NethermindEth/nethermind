@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -40,6 +40,7 @@ using NUnit.Framework;
 using Nethermind.Evm.Tracing.ParityStyle;
 using System.Threading;
 using System;
+using Nethermind.Trie.Pruning;
 using NSubstitute;
 
 namespace Nethermind.JsonRpc.Test.Modules.Trace
@@ -65,21 +66,34 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
 
             ISnapshotableDb stateDb = new StateDb();
             ISnapshotableDb codeDb = new StateDb();
-            StateProvider stateProvider = new StateProvider(stateDb, codeDb, LimboLogs.Instance);
-            StorageProvider storageProvider = new StorageProvider(stateDb, stateProvider, LimboLogs.Instance);
+
+            ITrieStore trieStore = new ReadOnlyTrieStore(new TrieStore(stateDb, LimboLogs.Instance));
+            StateProvider stateProvider = new StateProvider(trieStore, codeDb, LimboLogs.Instance);
+            StorageProvider storageProvider = new StorageProvider(trieStore, stateProvider, LimboLogs.Instance);
 
             BlockhashProvider blockhashProvider = new BlockhashProvider(_blockTree, LimboLogs.Instance);
             VirtualMachine virtualMachine = new VirtualMachine(stateProvider, storageProvider, blockhashProvider, specProvider, LimboLogs.Instance);
             TransactionProcessor transactionProcessor = new TransactionProcessor(specProvider, stateProvider, storageProvider, virtualMachine, LimboLogs.Instance);
             
-            BlockProcessor blockProcessor = new BlockProcessor(specProvider, Always.Valid, NoBlockRewards.Instance, transactionProcessor, stateDb, codeDb, stateProvider, storageProvider, NullTxPool.Instance, NullReceiptStorage.Instance, LimboLogs.Instance);
-            
+            BlockProcessor blockProcessor = new BlockProcessor(
+                specProvider,
+                Always.Valid,
+                NoBlockRewards.Instance,
+                transactionProcessor,
+                stateProvider,
+                storageProvider,
+                NullTxPool.Instance,
+                NullReceiptStorage.Instance,
+                NullWitnessCollector.Instance,
+                LimboLogs.Instance);
+
             var txRecovery = new RecoverSignatures(new EthereumEcdsa(ChainId.Mainnet, LimboLogs.Instance), NullTxPool.Instance, specProvider, LimboLogs.Instance);
             _processor = new BlockchainProcessor(_blockTree, blockProcessor, txRecovery, LimboLogs.Instance, BlockchainProcessor.Options.NoReceipts);
 
             Block genesis = Build.A.Block.Genesis.TestObject;
             _blockTree.SuggestBlock(genesis);
             _processor.Process(genesis, ProcessingOptions.None, NullBlockTracer.Instance);
+            
             _tracer = new Tracer(stateProvider, _processor);
         }
 

@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -30,6 +30,8 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
 using Nethermind.State.Repositories;
 using Nethermind.Db.Blooms;
+using Nethermind.Specs.Forks;
+using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -141,7 +143,7 @@ namespace Nethermind.Core.Test.Builders
                     .WithNumber(blockIndex + 1)
                     .WithParent(parent)
                     .WithDifficulty(BlockHeaderBuilder.DefaultDifficulty - (splitFrom > parent.Number ? 0 : (ulong) splitVariant))
-                    .WithTransactions(transactions)
+                    .WithTransactions(MuirGlacier.Instance, transactions)
                     .WithBloom(new Bloom())
                     .WithBeneficiary(beneficiary)
                     .TestObject;
@@ -163,7 +165,7 @@ namespace Nethermind.Core.Test.Builders
                     currentBlock.Bloom.Add(receipt.Logs);
                 }
 
-                currentBlock.Header.TxRoot = new TxTrie(currentBlock.Transactions).RootHash;
+                currentBlock.Header.TxRoot = new TxTrie(currentBlock.Transactions, MuirGlacier.Instance).RootHash;
                 var txReceipts = receipts.ToArray();
                 currentBlock.Header.ReceiptsRoot = new ReceiptTrie(_specProvider.GetSpec(currentBlock.Number), txReceipts).RootHash;
                 currentBlock.Header.Hash = currentBlock.CalculateHash();

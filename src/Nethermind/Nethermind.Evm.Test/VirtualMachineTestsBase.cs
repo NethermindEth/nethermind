@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -31,6 +31,7 @@ using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Synchronization.BeamSync;
 using Nethermind.Synchronization.ParallelSync;
+using Nethermind.Trie.Pruning;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test
@@ -63,22 +64,30 @@ namespace Nethermind.Evm.Test
         protected virtual ISpecProvider SpecProvider => MainnetSpecProvider.Instance;
         protected IReleaseSpec Spec => SpecProvider.GetSpec(BlockNumber);
 
+        protected virtual ILogManager GetLogManager()
+        {
+            return LimboLogs.Instance;
+        }
+        
         [SetUp]
         public virtual void Setup()
         {
-            ILogManager logger = LimboLogs.Instance;
+            ILogManager logManager = GetLogManager();
 
             MemDb beamStateDb = new MemDb();
-            ISnapshotableDb beamSyncDb = new StateDb(new BeamSyncDb(new MemDb(), beamStateDb, StaticSelector.Full, LimboLogs.Instance));
-            IDb beamSyncCodeDb = new BeamSyncDb(new MemDb(), beamStateDb, StaticSelector.Full, LimboLogs.Instance);
-            IDb codeDb = UseBeamSync ? beamSyncCodeDb : new StateDb();
+            ISnapshotableDb beamSyncDb = new StateDb(
+                new BeamSyncDb(new MemDb(), beamStateDb, StaticSelector.Full, logManager));
+            ISnapshotableDb beamSyncCodeDb = new StateDb(new BeamSyncDb(
+                new MemDb(), beamStateDb, StaticSelector.Full, logManager));
+            ISnapshotableDb codeDb = UseBeamSync ? beamSyncCodeDb : new StateDb();
             _stateDb = UseBeamSync ? beamSyncDb : new StateDb();
-            TestState = new StateProvider(_stateDb, codeDb, logger);
-            Storage = new StorageProvider(_stateDb, TestState, logger);
-            _ethereumEcdsa = new EthereumEcdsa(SpecProvider.ChainId, logger);
+            var trieStore = new TrieStore(_stateDb, logManager);
+            TestState = new StateProvider(trieStore, codeDb, logManager);
+            Storage = new StorageProvider(trieStore, TestState, logManager);
+            _ethereumEcdsa = new EthereumEcdsa(SpecProvider.ChainId, logManager);
             IBlockhashProvider blockhashProvider = TestBlockhashProvider.Instance;
-            Machine = new VirtualMachine(TestState, Storage, blockhashProvider, SpecProvider, logger);
-            _processor = new TransactionProcessor(SpecProvider, TestState, Storage, Machine, logger);
+            Machine = new VirtualMachine(TestState, Storage, blockhashProvider, SpecProvider, logManager);
+            _processor = new TransactionProcessor(SpecProvider, TestState, Storage, Machine, logManager);
         }
 
         protected GethLikeTxTrace ExecuteAndTrace(params byte[] code)
@@ -132,8 +141,12 @@ namespace Nethermind.Evm.Test
             Keccak codeHash = TestState.UpdateCode(code);
             TestState.UpdateCodeHash(senderRecipientAndMiner.Recipient, codeHash, SpecProvider.GenesisSpec);
 
+            GetLogManager().GetClassLogger().Debug("Committing initial state");
             TestState.Commit(SpecProvider.GenesisSpec);
-            TestState.CommitTree();
+            GetLogManager().GetClassLogger().Debug("Committed initial state");
+            GetLogManager().GetClassLogger().Debug("Committing initial tree");
+            TestState.CommitTree(0);
+            GetLogManager().GetClassLogger().Debug("Committed initial tree");
 
             Transaction transaction = Build.A.Transaction
                 .WithGasLimit(gasLimit)
@@ -196,7 +209,7 @@ namespace Nethermind.Evm.Test
         protected virtual Block BuildBlock(long blockNumber, SenderRecipientAndMiner senderRecipientAndMiner, Transaction tx)
         {
             senderRecipientAndMiner ??= SenderRecipientAndMiner.Default;
-            return Build.A.Block.WithNumber(blockNumber).WithTransactions(tx == null ? new Transaction[0] : new[] {tx}).WithGasLimit(8000000).WithBeneficiary(senderRecipientAndMiner.Miner).TestObject;
+            return Build.A.Block.WithNumber(blockNumber).WithTransactions(Spec, tx == null ? new Transaction[0] : new[] {tx}).WithGasLimit(8000000).WithBeneficiary(senderRecipientAndMiner.Miner).TestObject;
         }
 
         protected void AssertGas(TestAllTracerWithOutput receipt, long gas)
@@ -214,9 +227,9 @@ namespace Nethermind.Evm.Test
             Assert.AreEqual(value.Bytes, Storage.Get(new StorageCell(Recipient, address)).PadLeft(32), "storage");
         }
 
-        protected void AssertStorage(UInt256 address, byte[] value)
+        protected void AssertStorage(UInt256 address, ReadOnlySpan<byte> value)
         {
-            Assert.AreEqual(value.PadLeft(32), Storage.Get(new StorageCell(Recipient, address)).PadLeft(32), "storage");
+            Assert.AreEqual(new ZeroPaddedSpan(value, 32 - value.Length, PadDirection.Left).ToArray(), Storage.Get(new StorageCell(Recipient, address)).PadLeft(32), "storage");
         }
 
         protected void AssertStorage(UInt256 address, BigInteger expectedValue)
@@ -241,7 +254,7 @@ namespace Nethermind.Evm.Test
             _callIndex++;
             if (!TestState.AccountExists(storageCell.Address))
             {
-                Assert.AreEqual(expectedValue.ToBigEndian().WithoutLeadingZeros().ToArray(), new byte[1] {0}, $"storage {storageCell}, call {_callIndex}");
+                Assert.AreEqual(expectedValue.ToBigEndian().WithoutLeadingZeros().ToArray(), new byte[] {0}, $"storage {storageCell}, call {_callIndex}");
             }
             else
             {

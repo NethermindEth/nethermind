@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -73,12 +73,12 @@ namespace Nethermind.Runner.Ethereum
                 string host = _jsonRpcConfig.Host;
                 string scheme = "http";
                 var defaultUrl = $"{scheme}://{host}:{_jsonRpcConfig.Port}";
-                var urlVariable = Environment.GetEnvironmentVariable(nethermindUrlVariable);
+                string? urlVariable = Environment.GetEnvironmentVariable(nethermindUrlVariable);
                 string url = defaultUrl;
 
                 if (!string.IsNullOrWhiteSpace(urlVariable))
                 {
-                    if (Uri.TryCreate(urlVariable, UriKind.Absolute, out var uri))
+                    if (Uri.TryCreate(urlVariable, UriKind.Absolute, out Uri? uri))
                     {
                         url = urlVariable;
                         host = uri.Host;

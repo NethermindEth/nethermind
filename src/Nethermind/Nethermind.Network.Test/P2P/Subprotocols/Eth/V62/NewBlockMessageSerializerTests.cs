@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -17,12 +17,12 @@
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62;
+using Nethermind.Specs.Forks;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
 {
-    [Parallelizable(ParallelScope.Self)]
-    [TestFixture]
+    [TestFixture, Parallelizable(ParallelScope.All)]
     public class NewBlockMessageSerializerTests
     {
         [Test]
@@ -45,7 +45,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             Transaction d = Build.A.Transaction.SignedAndResolved().TestObject;
             Transaction e = Build.A.Transaction.SignedAndResolved().TestObject;
             Transaction f = Build.A.Transaction.SignedAndResolved().TestObject;
-            Block block = Build.A.Block.WithTransactions(a, b, c, d, e, f).TestObject;
+            Block block = Build.A.Block.WithTransactions(MuirGlacier.Instance, a, b, c, d, e, f).TestObject;
             foreach (Transaction transaction in block.Transactions)
             {
                 transaction.SenderAddress = null;

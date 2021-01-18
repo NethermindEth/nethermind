@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -25,7 +25,7 @@ namespace Nethermind.Evm.Test
     [TestFixture]
     public class Eip1344Tests : VirtualMachineTestsBase
     {
-        private void Test(int chainId)
+        private void Test(long chainId)
         {
             var code = Prepare.EvmCode
                 .Op(Instruction.CHAINID)

@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -75,13 +75,25 @@ namespace Nethermind.Network.Rlpx
 
                 if (framesCount == 1)
                 {
-                    // 193|128 is an RLP encoded array with one element that is zero
+                    // // commented out after Trinity reported #2052
+                    // // not 100% sure they are right but they may be 
+                    // // 193|128 is an RLP encoded array with one element that is zero
+                    // /*3*/
+                    // output.WriteByte(193);
+                    // /*4*/
+                    // output.WriteByte(128);
+                    // /*5-16*/
+                    // output.WriteZero(11);
+                    
+                    // 194|128 is an RLP encoded array with two elements that are zero
                     /*3*/
-                    output.WriteByte(193);
+                    output.WriteByte(194);
                     /*4*/
                     output.WriteByte(128);
-                    /*5-16*/
-                    output.WriteZero(11);
+                    /*5*/
+                    output.WriteByte(128);
+                    /*6-16*/
+                    output.WriteZero(10);
                 }
                 else
                 {

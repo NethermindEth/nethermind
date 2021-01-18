@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -23,18 +23,26 @@ using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Specs;
+using Nethermind.Specs.Forks;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.TxPools
 {
-    [TestFixture]
+    [TestFixture(true)]
+    [TestFixture(false)]
     public class ReceiptStorageTests
     {
+        private readonly bool _useEip2718;
         private ISpecProvider _specProvider;
         private IEthereumEcdsa _ethereumEcdsa;
         private IReceiptStorage _persistentStorage;
         private IReceiptStorage _inMemoryStorage;
-
+        
+        public ReceiptStorageTests(bool useEip2718)
+        {
+            _useEip2718 = useEip2718;
+        }
+        
         [SetUp]
         public void Setup()
         {
@@ -128,6 +136,9 @@ namespace Nethermind.Blockchain.Test.TxPools
                 .WithTransactionHash(transaction.Hash)
                 .WithBlockHash(block.Hash).TestObject;
         
-        private Block GetBlock(Transaction transaction) => Build.A.Block.WithNumber(0).WithTransactions(transaction).WithReceiptsRoot(TestItem.KeccakA).TestObject;
+        private Block GetBlock(Transaction transaction) =>
+            Build.A.Block.WithNumber(0)
+                .WithTransactions(_useEip2718 ? Berlin.Instance : MuirGlacier.Instance, transaction)
+                .WithReceiptsRoot(TestItem.KeccakA).TestObject;
     }
 }

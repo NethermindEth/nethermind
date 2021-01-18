@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -41,9 +41,9 @@ namespace Nethermind.State.Repositories
             _blockInfoDb = blockInfoDb ?? throw new ArgumentNullException(nameof(blockInfoDb));
         }
 
-        public void Delete(long number, BatchWrite batch = null)
+        public void Delete(long number, BatchWrite? batch = null)
         {
-            void Delete()
+            void LocalDelete()
             {
                 _blockInfoCache.Delete(number);
                 _blockInfoDb.Delete(number);
@@ -54,18 +54,18 @@ namespace Nethermind.State.Repositories
             {
                 lock (_writeLock)
                 {
-                    Delete();
+                    LocalDelete();
                 }
             }
             else
             {
-                Delete();
+                LocalDelete();
             }
         }
 
-        public void PersistLevel(long number, ChainLevelInfo level, BatchWrite batch = null)
+        public void PersistLevel(long number, ChainLevelInfo level, BatchWrite? batch = null)
         {
-            void PersistLevel()
+            void LocalPersistLevel()
             {
                 _blockInfoCache.Set(number, level);
                 _blockInfoDb.Set(number, Rlp.Encode(level).Bytes);
@@ -76,12 +76,12 @@ namespace Nethermind.State.Repositories
             {
                 lock (_writeLock)
                 {
-                    PersistLevel();
+                    LocalPersistLevel();
                 }
             }
             else
             {
-                PersistLevel();
+                LocalPersistLevel();
             }
         }
 

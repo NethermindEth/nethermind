@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -34,10 +34,10 @@ namespace Nethermind.Crypto
         public static readonly BigInteger MaxLowS = BigInteger.Parse("7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF5D576E7357A4501DDFE92F46681B20A0", NumberStyles.HexNumber);
         public static readonly BigInteger LowSTransform = BigInteger.Parse("00FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141", NumberStyles.HexNumber);
 
-        private readonly int _chainIdValue;
+        private readonly long _chainIdValue;
         private readonly ILogger _logger;
 
-        public EthereumEcdsa(int chainId, ILogManager logManager)
+        public EthereumEcdsa(long chainId, ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _chainIdValue = chainId;
@@ -45,7 +45,10 @@ namespace Nethermind.Crypto
 
         public void Sign(PrivateKey privateKey, Transaction tx, bool isEip155Enabled)
         {
-            if(_logger.IsDebug) _logger.Debug($"Signing transaction {tx.SenderAddress} -> {tx.To} ({tx.Value}) with data {tx.Data}");
+            if(_logger.IsDebug)
+                _logger.Debug(
+                    $"Signing transaction {tx.SenderAddress} -> {tx.To} ({tx.Value}) with data of length {tx.Data?.Length}");
+            
             Keccak hash = Keccak.Compute(Rlp.Encode(tx, true, isEip155Enabled, _chainIdValue).Bytes);
             tx.Signature = Sign(privateKey, hash);
             if (isEip155Enabled)

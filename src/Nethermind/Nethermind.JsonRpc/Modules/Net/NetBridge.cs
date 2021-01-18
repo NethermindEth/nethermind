@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -36,7 +36,7 @@ namespace Nethermind.JsonRpc.Modules.Net
 
         public Address LocalAddress => _localNode.Address;
         public string LocalEnode => _localNode.Info;
-        public int NetworkId => _syncServer.ChainId;
+        public long NetworkId => _syncServer.ChainId;
         public int PeerCount => _syncServer.GetPeerCount();
     }
 }

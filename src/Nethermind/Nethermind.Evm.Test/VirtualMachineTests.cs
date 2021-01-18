@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -16,6 +16,7 @@
 
 using System.Linq;
 using System.Numerics;
+using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm.Tracing.GethStyle;
 using Nethermind.State;

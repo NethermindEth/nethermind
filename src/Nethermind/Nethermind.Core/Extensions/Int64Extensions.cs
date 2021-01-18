@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Buffers.Binary;
 using Nethermind.Int256;
 
@@ -125,6 +126,17 @@ namespace Nethermind.Core.Extensions
                 bytes[0] = byte0;
                 return bytes;
             }
+        }
+
+        public static byte[] ToBigEndianByteArray(this long value)
+        {
+            byte[] bytes = BitConverter.GetBytes(value);
+            if (BitConverter.IsLittleEndian)
+            {
+                Array.Reverse(bytes);
+            }
+
+            return bytes;
         }
 
         public static string ToHexString(this long value, bool skipLeadingZeros)

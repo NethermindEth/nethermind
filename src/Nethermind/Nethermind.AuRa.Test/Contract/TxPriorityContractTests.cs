@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -157,7 +157,7 @@ namespace Nethermind.AuRa.Test.Contract
             {
                 if (chain.LocalDataSource.Data == null)
                 {
-                    Assert.Fail("Local file rule storage wasn't loaded.");
+                    Assert.Fail("Local file rule storage has not been loaded.");
                 }
             }
 
@@ -206,7 +206,7 @@ namespace Nethermind.AuRa.Test.Contract
             {
                 if (chain.LocalDataSource.Data == null)
                 {
-                    Assert.Fail("Local file rule storage wasn't loaded.");
+                    Assert.Fail("Local file rule storage has not been loaded.");
                 }
             }
             
@@ -252,7 +252,7 @@ namespace Nethermind.AuRa.Test.Contract
             {
                 if (chain.LocalDataSource.Data == null)
                 {
-                    Assert.Fail("Local file rule storage wasn't loaded.");
+                    Assert.Fail("Local file rule storage has not been loaded.");
                 }
             }
             
@@ -274,7 +274,7 @@ namespace Nethermind.AuRa.Test.Contract
                 TxPoolTxSource txPoolTxSource = base.CreateTxPoolTxSource();
                 
                 TxPriorityContract = new TxPriorityContract(new AbiEncoder(), TestItem.AddressA, 
-                    new ReadOnlyTxProcessorSource(DbProvider, BlockTree, SpecProvider, LimboLogs.Instance));
+                    new ReadOnlyTxProcessorSource(DbProvider, TrieStore, BlockTree, SpecProvider, LimboLogs.Instance));
 
                 Priorities = new DictionaryContractDataStore<TxPriorityContract.Destination, TxPriorityContract.DestinationSortedListContractDataStoreCollection>(
                     new TxPriorityContract.DestinationSortedListContractDataStoreCollection(),  

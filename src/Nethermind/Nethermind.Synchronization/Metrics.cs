@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -61,5 +61,11 @@ namespace Nethermind.Synchronization
 
         [Description("State branch progress (percentage of completed branches at second level).")]
         public static long StateBranchProgress;
+        
+        [Description("Requests sent for processing by the witness state sync")]
+        public static long WitnessStateRequests;
+        
+        [Description("Requests sent for processing by the witness block sync")]
+        public static long WitnessBlockRequests;
     }
 }

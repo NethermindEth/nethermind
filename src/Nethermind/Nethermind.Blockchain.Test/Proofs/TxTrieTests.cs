@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -18,28 +18,51 @@ using System.IO;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Specs.Forks;
 using Nethermind.State.Proofs;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Proofs
 {
+    [TestFixture(true)]
+    [TestFixture(false)]
     public class TxTrieTests
     {
+        private readonly IReleaseSpec _releaseSpec;
+
+        public TxTrieTests(bool useEip2718)
+        {
+            _releaseSpec = useEip2718 ? Berlin.Instance : MuirGlacier.Instance;
+        }
+        
         [Test]
         public void Can_calculate_root()
         {
-            Block block = Build.A.Block.WithTransactions(Build.A.Transaction.TestObject).TestObject;
-            TxTrie txTrie = new TxTrie(block.Transactions);
-            Assert.AreEqual("0x29cc403075ed3d1d6af940d577125cc378ee5a26f7746cbaf87f1cf4a38258b5", txTrie.RootHash.ToString());
+            Block block = Build.A.Block.WithTransactions(
+                _releaseSpec,
+                 Build.A.Transaction.TestObject).TestObject;
+            TxTrie txTrie = new TxTrie(block.Transactions, _releaseSpec);
+
+            if (_releaseSpec == Berlin.Instance)
+            {
+                Assert.AreEqual("0xcf00543cc76e3cf2dd2f52f4359a4cf686ed34e264f782bdf2f95993cc9f3902",
+                    txTrie.RootHash.ToString());
+            }
+            else
+            {
+                Assert.AreEqual("0x29cc403075ed3d1d6af940d577125cc378ee5a26f7746cbaf87f1cf4a38258b5",
+                    txTrie.RootHash.ToString());
+            }
         }
         
         [Test]
         public void Can_collect_proof_trie_case_1()
         {
-            Block block = Build.A.Block.WithTransactions(Build.A.Transaction.TestObject).TestObject;
-            TxTrie txTrie = new TxTrie(block.Transactions, true);
+            Block block = Build.A.Block.WithTransactions(_releaseSpec, Build.A.Transaction.TestObject).TestObject;
+            TxTrie txTrie = new TxTrie(block.Transactions, _releaseSpec, true);
             byte[][] proof = txTrie.BuildProof(0);
             
             txTrie.UpdateRootHash();
@@ -49,8 +72,10 @@ namespace Nethermind.Blockchain.Test.Proofs
         [Test]
         public void Can_collect_proof_with_trie_case_2()
         {
-            Block block = Build.A.Block.WithTransactions(Build.A.Transaction.TestObject, Build.A.Transaction.TestObject).TestObject;
-            TxTrie txTrie = new TxTrie(block.Transactions, true);
+            Block block = Build.A.Block.WithTransactions(
+                _releaseSpec,
+                Build.A.Transaction.TestObject, Build.A.Transaction.TestObject).TestObject;
+            TxTrie txTrie = new TxTrie(block.Transactions, _releaseSpec, true);
             byte[][] proof = txTrie.BuildProof(0);
             Assert.AreEqual(2, proof.Length);
             
@@ -61,8 +86,10 @@ namespace Nethermind.Blockchain.Test.Proofs
         [Test]
         public void Can_collect_proof_with_trie_case_3_modified()
         {
-            Block block = Build.A.Block.WithTransactions(Enumerable.Repeat(Build.A.Transaction.TestObject, 1000).ToArray()).TestObject;
-            TxTrie txTrie = new TxTrie(block.Transactions, true);
+            Block block = Build.A.Block.WithTransactions(
+                _releaseSpec,
+                Enumerable.Repeat(Build.A.Transaction.TestObject, 1000).ToArray()).TestObject;
+            TxTrie txTrie = new TxTrie(block.Transactions, _releaseSpec, true);
 
             txTrie.UpdateRootHash();
             for (int i = 0; i < 1000; i++)

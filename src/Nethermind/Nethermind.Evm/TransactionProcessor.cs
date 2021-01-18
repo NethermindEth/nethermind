@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -60,9 +60,18 @@ namespace Nethermind.Evm
 
         private void QuickFail(Transaction tx, BlockHeader block, ITxTracer txTracer, string reason)
         {
-            block.GasUsed += tx.GasLimit;
+            if (tx.IsEip1559)
+            {
+                block.GasUsedEip1559 += tx.GasLimit;
+            }
+            else
+            {
+                block.GasUsedLegacy += tx.GasLimit;
+            }
+            
             Address recipient = tx.To ?? ContractAddress.From(tx.SenderAddress, _stateProvider.GetNonce(tx.SenderAddress));
-
+            
+            // TODO: this is possibly an unnecessary calculation inside EIP-658
             _stateProvider.RecalculateStateRoot();
             Keccak stateRoot = _specProvider.GetSpec(block.Number).IsEip658Enabled ? null : _stateProvider.StateRoot;
             if (txTracer.IsTracingReceipt) txTracer.MarkAsFailed(recipient, tx.GasLimit, Array.Empty<byte>(), reason ?? "invalid", stateRoot);
@@ -83,7 +92,19 @@ namespace Nethermind.Evm
 
             Address recipient = transaction.To;
             UInt256 value = transaction.Value;
-            UInt256 gasPrice = transaction.GasPrice;
+
+            UInt256 feeCap = transaction.IsEip1559 ? transaction.FeeCap : transaction.GasPrice;
+            UInt256 baseFee = transaction.IsEip1559 ? block.BaseFee : UInt256.Zero;
+            if (baseFee > feeCap)
+            {
+                TraceLogInvalidTx(transaction, "MINER_PREMIUM_IS_NEGATIVE");
+                QuickFail(transaction, block, txTracer, "miner premium is negative");
+                return;
+            }
+            
+            UInt256 premiumPerGas = UInt256.Min(transaction.GasPremium, feeCap - baseFee);
+            UInt256 gasPrice = premiumPerGas + baseFee;
+
             long gasLimit = transaction.GasLimit;
             byte[] machineCode = transaction.Init;
             byte[] data = transaction.Data ?? Array.Empty<byte>();
@@ -110,7 +131,10 @@ namespace Nethermind.Evm
                     return;
                 }
 
-                if (!isCall && gasLimit > block.GasLimit - block.GasUsed)
+                // if (!isCall &&
+                //     (transaction.IsEip1559 && gasLimit > 2 * block.GetGasTarget1559(spec) - block.GasUsedEip1559 ||
+                //      transaction.IsLegacy && gasLimit > block.GetGasTargetLegacy(spec) - block.GasUsedLegacy))
+                if (!isCall && gasLimit > Math.Max(block.GasLimit, 2 * block.GasLimit) - block.GasUsed)
                 {
                     TraceLogInvalidTx(transaction,
                         $"BLOCK_GAS_LIMIT_EXCEEDED {gasLimit} > {block.GasLimit} - {block.GasUsed}");
@@ -217,6 +241,9 @@ namespace Nethermind.Evm
                 ExecutionType executionType = transaction.IsContractCreation ? ExecutionType.Create : ExecutionType.Call;
                 using (EvmState state = new EvmState(unspentGas, env, executionType, true, false))
                 {
+                    state.WarmUp(transaction.AccountAccessList, transaction.StorageAccessList); // eip-2930
+                    state.WarmUp(sender); // eip-2929
+                    state.WarmUp(recipient); // eip-2929
                     substate = _virtualMachine.Run(state, txTracer);
                     unspentGas = state.GasAvailable;
                 }
@@ -234,7 +261,7 @@ namespace Nethermind.Evm
                     if (transaction.IsContractCreation)
                     {
                         long codeDepositGasCost = CodeDepositHandler.CalculateCost(substate.Output.Length, spec);
-                        if (unspentGas < codeDepositGasCost && spec.IsEip2Enabled)
+                        if (unspentGas < codeDepositGasCost && spec.ChargeForTopLevelCreate)
                         {
                             throw new OutOfGasException();
                         }
@@ -276,11 +303,11 @@ namespace Nethermind.Evm
                 {
                     if (!_stateProvider.AccountExists(gasBeneficiary))
                     {
-                        _stateProvider.CreateAccount(gasBeneficiary, (ulong) spentGas * gasPrice);
+                        _stateProvider.CreateAccount(gasBeneficiary, (ulong) spentGas * premiumPerGas);
                     }
                     else
                     {
-                        _stateProvider.AddToBalance(gasBeneficiary, (ulong) spentGas * gasPrice, spec);
+                        _stateProvider.AddToBalance(gasBeneficiary, (ulong) spentGas * premiumPerGas, spec);
                     }
                 }
             }
@@ -313,7 +340,14 @@ namespace Nethermind.Evm
 
             if (!isCall && notSystemTransaction)
             {
-                block.GasUsed += spentGas;
+                if (transaction.IsEip1559)
+                {
+                    block.GasUsedEip1559 += spentGas;
+                }
+                else
+                {
+                    block.GasUsedLegacy += spentGas;
+                }
             }
 
             if (txTracer.IsTracingReceipt)

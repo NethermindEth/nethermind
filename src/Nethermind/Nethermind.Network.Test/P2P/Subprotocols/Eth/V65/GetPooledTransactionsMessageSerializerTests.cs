@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -22,8 +22,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
 {
-    [Parallelizable(ParallelScope.Self)]
-    [TestFixture]
+    [TestFixture, Parallelizable(ParallelScope.All)]
     public class GetPooledTransactionsSerializerTests
     {
         private static void Test(Keccak[] keys)

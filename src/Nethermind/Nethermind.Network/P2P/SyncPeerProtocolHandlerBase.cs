@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -30,6 +30,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63;
+using Nethermind.Network.P2P.Subprotocols.Wit;
 using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
@@ -40,7 +41,7 @@ namespace Nethermind.Network.P2P
 {
     public abstract class SyncPeerProtocolHandlerBase : ProtocolHandlerBase, ISyncPeer
     {
-        public static readonly ulong SoftOutgoingMessageSizeLimit = 2.MB();
+        public static readonly ulong SoftOutgoingMessageSizeLimit = (ulong) 2.MB();
         public Node Node => Session?.Node;
         public string ClientId => Node?.ClientId;
         public UInt256 TotalDifficulty { get; set; }
@@ -59,8 +60,7 @@ namespace Nethermind.Network.P2P
         public override string ToString() => $"[Peer|{Name}|{HeadNumber}|{ClientId}|{Node:s}]";
 
         protected Keccak _remoteHeadBlockHash;
-        protected ITxPool _txPool;
-        protected ITimestamper _timestamper;
+        protected readonly ITimestamper _timestamper;
 
         protected readonly MessageQueue<GetBlockHeadersMessage, BlockHeader[]> _headersRequests;
         protected readonly MessageQueue<GetBlockBodiesMessage, BlockBody[]> _bodiesRequests;
@@ -69,11 +69,9 @@ namespace Nethermind.Network.P2P
             IMessageSerializationService serializer,
             INodeStatsManager statsManager,
             ISyncServer syncServer,
-            ITxPool txPool,
             ILogManager logManager) : base(session, statsManager, serializer, logManager)
         {
             SyncServer = syncServer ?? throw new ArgumentNullException(nameof(syncServer));
-            _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
             _timestamper = Timestamper.Default;
             _headersRequests = new MessageQueue<GetBlockHeadersMessage, BlockHeader[]>(Send);
             _bodiesRequests = new MessageQueue<GetBlockBodiesMessage, BlockBody[]>(Send);
@@ -81,7 +79,7 @@ namespace Nethermind.Network.P2P
 
         public void Disconnect(DisconnectReason reason, string details)
         {
-            if (Logger.IsDebug) Logger.Debug($"Disconnecting {Node:c} bacause of the {details}");
+            if (Logger.IsDebug) Logger.Debug($"Disconnecting {Node:c} because of the {details}");
             Session.InitiateDisconnect(reason, details);
         }
 
@@ -337,12 +335,10 @@ namespace Nethermind.Network.P2P
             _headersRequests.Handle(message.BlockHeaders, size);
         }
 
-        protected void HandleBodies(IByteBuffer buffer, long size)
+        protected void HandleBodies(BlockBodiesMessage blockBodiesMessage, long size)
         {
             Metrics.Eth62BlockBodiesReceived++;
-
-            BlockBodiesMessage message = Deserialize<BlockBodiesMessage>(buffer);
-            _bodiesRequests.Handle(message.Bodies, size);
+            _bodiesRequests.Handle(blockBodiesMessage.Bodies, size);
         }
 
         protected void Handle(GetReceiptsMessage msg)
@@ -406,9 +402,15 @@ namespace Nethermind.Network.P2P
             return headers;
         }
 
+        internal void SetWitHandler(WitProtocolHandler witProtocolHandler)
+        {
+            _witProtocolHandler = witProtocolHandler;
+        }
+        
         #region Cleanup
 
         private int _isDisposed;
+        private WitProtocolHandler _witProtocolHandler;
         protected abstract void OnDisposed();
 
         public override void DisconnectProtocol(DisconnectReason disconnectReason, string details)
@@ -440,6 +442,30 @@ namespace Nethermind.Network.P2P
             }
         }
 
+        #endregion
+
+        #region IPeerWithSatelliteProtocol
+
+        private IDictionary<string, object> _protocolHandlers;
+        private IDictionary<string, object> ProtocolHandlers => _protocolHandlers ??= new Dictionary<string, object>();
+
+        public void RegisterSatelliteProtocol<T>(string protocol, T protocolHandler) where T : class
+        {
+            ProtocolHandlers[protocol] = protocolHandler;
+        }
+
+        public bool TryGetSatelliteProtocol<T>(string protocol, out T protocolHandler) where T : class
+        {
+            if (ProtocolHandlers.TryGetValue(protocol, out object handler))
+            {
+                protocolHandler = handler as T;
+                return protocolHandler != null;
+            }
+
+            protocolHandler = null;
+            return false;
+        }
+        
         #endregion
     }
 }

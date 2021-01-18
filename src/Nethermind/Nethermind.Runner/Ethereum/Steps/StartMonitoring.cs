@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -15,7 +15,6 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System.Reactive.Disposables;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
@@ -65,7 +64,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                         logger.Error("Error during starting a monitoring.", x.Exception);
                 }, cancellationToken);
                 
-                _api.DisposeStack.Push(Disposable.Create(() => _api.MonitoringService.StopAsync())); // do not await
+                _api.DisposeStack.Push(new Reactive.AnonymousDisposable(() => _api.MonitoringService.StopAsync())); // do not await
             }
             else
             {
