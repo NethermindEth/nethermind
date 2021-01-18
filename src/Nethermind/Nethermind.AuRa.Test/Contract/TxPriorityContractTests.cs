@@ -263,9 +263,9 @@ namespace Nethermind.AuRa.Test.Contract
         public class TxPermissionContractBlockchain : TestContractBlockchain
         {
             public TxPriorityContract TxPriorityContract { get; private set; }
-            public DictionaryContractDataStore<TxPriorityContract.Destination, TxPriorityContract.DestinationSortedListContractDataStoreCollection> Priorities { get; private set; }
+            public DictionaryContractDataStore<TxPriorityContract.Destination> Priorities { get; private set; }
             
-            public DictionaryContractDataStore<TxPriorityContract.Destination, TxPriorityContract.DestinationSortedListContractDataStoreCollection> MinGasPrices { get; private set; }
+            public DictionaryContractDataStore<TxPriorityContract.Destination> MinGasPrices { get; private set; }
             
             public ContractDataStoreWithLocalData<Address> SendersWhitelist { get; private set; }
             
@@ -276,7 +276,7 @@ namespace Nethermind.AuRa.Test.Contract
                 TxPriorityContract = new TxPriorityContract(new AbiEncoder(), TestItem.AddressA, 
                     new ReadOnlyTxProcessorSource(DbProvider, BlockTree, SpecProvider, LimboLogs.Instance));
 
-                Priorities = new DictionaryContractDataStore<TxPriorityContract.Destination, TxPriorityContract.DestinationSortedListContractDataStoreCollection>(
+                Priorities = new DictionaryContractDataStore<TxPriorityContract.Destination>(
                     new TxPriorityContract.DestinationSortedListContractDataStoreCollection(),  
                     TxPriorityContract.Priorities, 
                     BlockTree,
@@ -284,7 +284,7 @@ namespace Nethermind.AuRa.Test.Contract
                     LimboLogs.Instance,
                     GetPrioritiesLocalDataStore());
                 
-                MinGasPrices = new DictionaryContractDataStore<TxPriorityContract.Destination, TxPriorityContract.DestinationSortedListContractDataStoreCollection>(
+                MinGasPrices = new DictionaryContractDataStore<TxPriorityContract.Destination>(
                     new TxPriorityContract.DestinationSortedListContractDataStoreCollection(),
                     TxPriorityContract.MinGasPrices,
                     BlockTree,

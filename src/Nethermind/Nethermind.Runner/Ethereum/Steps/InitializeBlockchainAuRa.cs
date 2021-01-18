@@ -215,8 +215,8 @@ namespace Nethermind.Runner.Ethereum.Steps
                     _api.LogManager,
                     localDataSource?.GetWhitelistLocalDataSource() ?? new EmptyLocalDataSource<IEnumerable<Address>>());
 
-                DictionaryContractDataStore<TxPriorityContract.Destination, TxPriorityContract.DestinationSortedListContractDataStoreCollection> prioritiesContractDataStore =
-                    new DictionaryContractDataStore<TxPriorityContract.Destination, TxPriorityContract.DestinationSortedListContractDataStoreCollection>(
+                DictionaryContractDataStore<TxPriorityContract.Destination> prioritiesContractDataStore =
+                    new DictionaryContractDataStore<TxPriorityContract.Destination>(
                         new TxPriorityContract.DestinationSortedListContractDataStoreCollection(),
                         txPriorityContract?.Priorities,
                         _api.BlockTree,

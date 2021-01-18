@@ -26,12 +26,12 @@ using Nethermind.Logging;
 
 namespace Nethermind.Consensus.AuRa.Contracts.DataStore
 {
-    public class DictionaryContractDataStore<T, TCollection> : IDictionaryContractDataStore<T>, IDisposable where TCollection : DictionaryBasedContractDataStoreCollection<T>
+    public class DictionaryContractDataStore<T> : IDictionaryContractDataStore<T>, IDisposable
     {
         public ContractDataStore<T> ContractDataStore { get; private set; }
 
         public DictionaryContractDataStore(
-            TCollection collection,
+            IDictionaryContractDataStoreCollection<T> collection,
             IDataContract<T> dataContract,
             IBlockTree blockTree, 
             IReceiptFinder receiptFinder,
@@ -41,7 +41,7 @@ namespace Nethermind.Consensus.AuRa.Contracts.DataStore
         }
 
         public DictionaryContractDataStore(
-            TCollection collection,
+            IDictionaryContractDataStoreCollection<T> collection,
             IDataContract<T> dataContract,
             IBlockTree blockTree, 
             IReceiptFinder receiptFinder,
@@ -54,7 +54,7 @@ namespace Nethermind.Consensus.AuRa.Contracts.DataStore
         }
         
         private static ContractDataStore<T> CreateContractDataStore(
-            TCollection collection, 
+            IDictionaryContractDataStoreCollection<T> collection, 
             IDataContract<T> dataContract, 
             IBlockTree blockTree, 
             IReceiptFinder receiptFinder,
@@ -62,7 +62,7 @@ namespace Nethermind.Consensus.AuRa.Contracts.DataStore
             new ContractDataStore<T>(collection, dataContract, blockTree, receiptFinder, logManager);
 
         private static ContractDataStoreWithLocalData<T> CreateContractDataStoreWithLocalData(
-            TCollection collection, 
+            IDictionaryContractDataStoreCollection<T> collection, 
             IDataContract<T> dataContract, 
             IBlockTree blockTree, 
             IReceiptFinder receiptFinder,
@@ -84,7 +84,7 @@ namespace Nethermind.Consensus.AuRa.Contracts.DataStore
         public bool TryGetValue(BlockHeader header, T key, out T value)
         {
             GetItemsFromContractAtBlock(header);
-            TCollection collection = ((TCollection)(ContractDataStore.Collection));
+            IDictionaryContractDataStoreCollection<T> collection = ((IDictionaryContractDataStoreCollection<T>)(ContractDataStore.Collection));
             return collection.TryGetValue(key, out value);
         }
 
