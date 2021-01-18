@@ -28,7 +28,7 @@ namespace Nethermind.Consensus.AuRa.Contracts.DataStore
 {
     public class DictionaryContractDataStore<T, TCollection> : IDictionaryContractDataStore<T>, IDisposable where TCollection : DictionaryBasedContractDataStoreCollection<T>
     {
-        public ContractDataStore<T, TCollection> ContractDataStore { get; private set; }
+        public ContractDataStore<T> ContractDataStore { get; private set; }
 
         public DictionaryContractDataStore(
             TCollection collection,
@@ -53,22 +53,22 @@ namespace Nethermind.Consensus.AuRa.Contracts.DataStore
         {
         }
         
-        private static ContractDataStore<T, TCollection> CreateContractDataStore(
+        private static ContractDataStore<T> CreateContractDataStore(
             TCollection collection, 
             IDataContract<T> dataContract, 
             IBlockTree blockTree, 
             IReceiptFinder receiptFinder,
             ILogManager logManager) => 
-            new ContractDataStore<T, TCollection>(collection, dataContract, blockTree, receiptFinder, logManager);
+            new ContractDataStore<T>(collection, dataContract, blockTree, receiptFinder, logManager);
 
-        private static ContractDataStoreWithLocalData<T, TCollection> CreateContractDataStoreWithLocalData(
+        private static ContractDataStoreWithLocalData<T> CreateContractDataStoreWithLocalData(
             TCollection collection, 
             IDataContract<T> dataContract, 
             IBlockTree blockTree, 
             IReceiptFinder receiptFinder,
             ILogManager logManager,
             ILocalDataSource<IEnumerable<T>> localDataSource) => 
-            new ContractDataStoreWithLocalData<T, TCollection>(
+            new ContractDataStoreWithLocalData<T>(
                 collection, 
                 dataContract ?? new EmptyDataContract<T>(), 
                 blockTree,
@@ -76,7 +76,7 @@ namespace Nethermind.Consensus.AuRa.Contracts.DataStore
                 logManager, 
                 localDataSource);
 
-        private DictionaryContractDataStore(ContractDataStore<T, TCollection> contractDataStore)
+        private DictionaryContractDataStore(ContractDataStore<T> contractDataStore)
         {
             ContractDataStore = contractDataStore;
         }
@@ -84,7 +84,8 @@ namespace Nethermind.Consensus.AuRa.Contracts.DataStore
         public bool TryGetValue(BlockHeader header, T key, out T value)
         {
             GetItemsFromContractAtBlock(header);
-            return ContractDataStore.Collection.TryGetValue(key, out value);
+            TCollection collection = ((TCollection)(ContractDataStore.Collection));
+            return collection.TryGetValue(key, out value);
         }
 
         public IEnumerable<T> GetItemsFromContractAtBlock(BlockHeader blockHeader) => ContractDataStore.GetItemsFromContractAtBlock(blockHeader);

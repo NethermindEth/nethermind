@@ -207,7 +207,7 @@ namespace Nethermind.Runner.Ethereum.Steps
         {
             if (txPriorityContract != null || localDataSource != null)
             {
-                ContractDataStore<Address, IContractDataStoreCollection<Address>> whitelistContractDataStore = new ContractDataStoreWithLocalData<Address>(
+                ContractDataStore<Address> whitelistContractDataStore = new ContractDataStoreWithLocalData<Address>(
                     new HashSetContractDataStoreCollection<Address>(),
                     txPriorityContract?.SendersWhitelist,
                     _api.BlockTree,

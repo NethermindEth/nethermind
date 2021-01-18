@@ -443,8 +443,8 @@ namespace Nethermind.AuRa.Test.Contract
                 var fileSemaphore = new SemaphoreSlim(0);
                 EventHandler releaseHandler = (sender, args) => fileSemaphore.Release();
                 SendersWhitelist.Loaded += releaseHandler;
-                ((ContractDataStoreWithLocalData<TxPriorityContract.Destination, TxPriorityContract.DestinationSortedListContractDataStoreCollection>) MinGasPrices.ContractDataStore).Loaded += releaseHandler;
-                ((ContractDataStoreWithLocalData<TxPriorityContract.Destination, TxPriorityContract.DestinationSortedListContractDataStoreCollection>) Priorities.ContractDataStore).Loaded += releaseHandler;
+                ((ContractDataStoreWithLocalData<TxPriorityContract.Destination>) MinGasPrices.ContractDataStore).Loaded += releaseHandler;
+                ((ContractDataStoreWithLocalData<TxPriorityContract.Destination>) Priorities.ContractDataStore).Loaded += releaseHandler;
 
                 WriteFile(LocalData);
                 FileSemaphore.Release();

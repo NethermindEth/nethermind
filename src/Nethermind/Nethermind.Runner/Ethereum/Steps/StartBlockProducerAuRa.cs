@@ -157,7 +157,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _minGasPricesContractDataStore = TxFilterBuilders.CreateMinGasPricesDataStore(_api, _txPriorityContract, _localDataSource)!;
                 _api.DisposeStack.Push(_minGasPricesContractDataStore);                
 
-                ContractDataStore<Address, IContractDataStoreCollection<Address>> whitelistContractDataStore = new ContractDataStoreWithLocalData<Address>(
+                ContractDataStore<Address> whitelistContractDataStore = new ContractDataStoreWithLocalData<Address>(
                     new HashSetContractDataStoreCollection<Address>(),
                     _txPriorityContract?.SendersWhitelist,
                     _api.BlockTree,
