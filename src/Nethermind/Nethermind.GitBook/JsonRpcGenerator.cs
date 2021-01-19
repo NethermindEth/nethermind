@@ -101,6 +101,7 @@ namespace Nethermind.GitBook
                 docBuilder.AppendLine();
                 _markdownGenerator.CreateTab(docBuilder, "Response");
                 docBuilder.AppendLine(@$"### Return type");
+                docBuilder.AppendLine();
 
                 Type returnType = GetTypeFromWrapper(method.ReturnType);
                 string returnRpcType = GetJsonRpcType(returnType, rpcTypesToDescribe);
@@ -134,20 +135,7 @@ namespace Nethermind.GitBook
                 type = Nullable.GetUnderlyingType(type);
             }
 
-            var rpcType = type.Name switch
-            {
-                "Byte[]" => "Data",
-                "String" => "String",
-                "UInt256" => "Quantity",
-                "Address" => "Address",
-                "Boolean" => "Boolean",
-                "Int32" => "Quantity",
-                "Int64" => "Quantity",
-                "Int64&" => "Quantity",
-                "Keccak" => "Hash",
-                "String[]" => "Array",
-                _ => $"{type.Name} object",
-            };
+            string rpcType = ReplaceType(type);
 
             if (rpcType.Equals($"{type.Name} object") && rpcTypesToDescribe != null)
             {
@@ -158,11 +146,37 @@ namespace Nethermind.GitBook
             return rpcType;
         }
 
+        private string ReplaceType(Type type)
+        {
+            if (type.Name.Contains("`")) return "Array";
+            
+            var rpcType = type.Name switch
+            {
+                "Object" => "Object",
+                "Byte" => "Data",
+                "Byte[]" => "Data",
+                "Byte[][]" => "Data",
+                "String" => "String",
+                "UInt256" => "Quantity",
+                "Address" => "Address",
+                "Boolean" => "Boolean",
+                "Int32" => "Quantity",
+                "Int32[]" => "Array",
+                "Int64" => "Quantity",
+                "Int64&" => "Quantity",
+                "Keccak" => "Hash",
+                "String[]" => "Array",
+                "Bloom" => "Bloom Object",
+                _ => $"{type.Name} object",
+            };
+            return rpcType;
+        }
+        
         private void AddRpcObjectsDescription(StringBuilder rpcModuleBuilder, List<Type> rpcTypesToDescribe)
         {
             rpcModuleBuilder.AppendLine(@$"### Objects definition");
 
-            foreach (Type rpcType in rpcTypesToDescribe)
+            foreach (var rpcType in rpcTypesToDescribe.Where(rpcType => ReplaceType(rpcType).Contains("object")))
             {
                 rpcModuleBuilder.AppendLine();
                 rpcModuleBuilder.AppendLine(@$"`{rpcType.Name}`");
@@ -170,7 +184,7 @@ namespace Nethermind.GitBook
 
                 if(rpcType == typeof(BlockParameterType))
                 {
-                    rpcModuleBuilder.AppendLine("`Quantity` or `String` (latest, earliest, pending)");
+                    rpcModuleBuilder.AppendLine("- `Quantity` or `String` (latest, earliest, pending)");
                     rpcModuleBuilder.AppendLine();
                     continue;
                 }
