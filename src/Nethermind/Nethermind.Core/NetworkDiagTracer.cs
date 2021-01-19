@@ -32,7 +32,7 @@ namespace Nethermind.Core
     {
         public const string NetworkDiagTracerPath = @"network_diag.txt";
 
-        public static bool IsEnabled { get; set; } = true;
+        public static bool IsEnabled { get; set; }
 
         private static readonly ConcurrentDictionary<string, ConcurrentQueue<string>> _events = new ConcurrentDictionary<string, ConcurrentQueue<string>>();
 
