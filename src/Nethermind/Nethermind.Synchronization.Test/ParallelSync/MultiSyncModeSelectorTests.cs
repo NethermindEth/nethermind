@@ -1269,10 +1269,10 @@ namespace Nethermind.Synchronization.Test.ParallelSync
             selector.Update();
             selector.Current.Should().Be(SyncMode.Full);
 
-            int goFurther = 9000;
-            syncProgressResolver.FindBestHeader().Returns(Scenario.ChainHead.Number + goFurther);
-            syncProgressResolver.FindBestFullBlock().Returns(Scenario.ChainHead.Number + goFurther);
-            syncProgressResolver.FindBestFullState().Returns(Scenario.ChainHead.Number - SyncModeSelectorConstants.NotBeamSyncFastSyncLag + goFurther);
+            uint goFurther = 9000;
+            syncPeer.HeadNumber.Returns(header.Number + goFurther);
+            syncPeer.TotalDifficulty.Returns(header.TotalDifficulty.Value + goFurther);
+            syncProgressResolver.FindBestProcessedBlock().Returns(header.Number);
             
             selector.Update();
             selector.Current.Should().Be(SyncMode.FastSync);
