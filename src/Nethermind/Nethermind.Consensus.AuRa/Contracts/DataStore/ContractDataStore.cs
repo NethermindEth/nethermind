@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -31,9 +31,9 @@ using Nethermind.Logging;
 
 namespace Nethermind.Consensus.AuRa.Contracts.DataStore
 {
-    public class ContractDataStore<T, TCollection> : IDisposable, IContractDataStore<T> where TCollection : IContractDataStoreCollection<T>
+    public class ContractDataStore<T> : IDisposable, IContractDataStore<T>
     {
-        internal TCollection Collection { get; }
+        internal IContractDataStoreCollection<T> Collection { get; }
         private readonly IDataContract<T> _dataContract;
         private readonly IReceiptFinder _receiptFinder;
         private readonly IBlockTree _blockTree;
@@ -41,13 +41,13 @@ namespace Nethermind.Consensus.AuRa.Contracts.DataStore
         private readonly object _lock = new object();
         private readonly ILogger _logger;
 
-        protected internal ContractDataStore(TCollection collection, IDataContract<T> dataContract, IBlockTree blockTree, IReceiptFinder receiptFinder, ILogManager logManager)
+        protected internal ContractDataStore(IContractDataStoreCollection<T> collection, IDataContract<T> dataContract, IBlockTree blockTree, IReceiptFinder receiptFinder, ILogManager logManager)
         {
-            Collection = collection;
+            Collection = collection == null || collection is ThreadSafeContractDataStoreCollectionDecorator<T> ? collection : new ThreadSafeContractDataStoreCollectionDecorator<T>(collection);
             _dataContract = dataContract ?? throw new ArgumentNullException(nameof(dataContract));
             _receiptFinder = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
-            _logger = logManager?.GetClassLogger<ContractDataStore<T, TCollection>>() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger<ContractDataStore<T>>() ?? throw new ArgumentNullException(nameof(logManager));
             blockTree.NewHeadBlock += OnNewHead;
         }
 
@@ -149,19 +149,6 @@ namespace Nethermind.Consensus.AuRa.Contracts.DataStore
         public virtual void Dispose()
         {
             _blockTree.NewHeadBlock -= OnNewHead;
-        }
-    }
-
-    public class ContractDataStore<T> : ContractDataStore<T, IContractDataStoreCollection<T>>
-    {
-        public ContractDataStore(
-            IContractDataStoreCollection<T> collection, 
-            IDataContract<T> dataContract, 
-            IBlockTree blockTree, 
-            IReceiptFinder receiptFinder,
-            ILogManager logManager) 
-            : base(collection, dataContract, blockTree, receiptFinder, logManager)
-        {
         }
     }
 }

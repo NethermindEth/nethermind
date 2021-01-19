@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -28,8 +28,9 @@ namespace Nethermind.Blockchain.Validators
     public class TxValidator : ITxValidator
     {
         private readonly IntrinsicGasCalculator _intrinsicGasCalculator;
+        private readonly long _chainIdValue;
 
-        public TxValidator(int chainId)
+        public TxValidator(long chainId)
         {
             _intrinsicGasCalculator = new IntrinsicGasCalculator();
             
@@ -41,7 +42,6 @@ namespace Nethermind.Blockchain.Validators
             _chainIdValue = chainId;
         }
         
-        private readonly int _chainIdValue;
 
         /* Full and correct validation is only possible in the context of a specific block
            as we cannot generalize correctness of the transaction without knowing the EIPs implemented

@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -35,6 +35,11 @@ namespace Nethermind.Consensus
         [ConfigItem(
             Description = "Minimum gas price for transactions accepted by the block producer.",
             DefaultValue = "1000000000")]
-        UInt256 MinGasPrice{ get; set; }
+        UInt256 MinGasPrice { get; set; }
+        
+        [ConfigItem(
+            Description = "Only used in NethDev. Setting this to true will change the difficulty of the block randomly within the constraints.",
+            DefaultValue = "false")]
+        bool RandomizedBlocks { get; set; }
     }
 }

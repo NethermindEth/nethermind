@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -27,7 +27,7 @@ namespace Nethermind.Api
             return api.ConfigProvider.GetConfig<T>();
         }
 
-        public static T Db<T>(this IBasicApi api, string dbName) where T : IDb
+        public static T Db<T>(this IBasicApi api, string dbName) where T : class, IDb
         {
             return api.DbProvider!.GetDb<T>(dbName);
         }

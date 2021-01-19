@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -175,7 +175,6 @@ namespace Nethermind.Runner
                     }
                 }
                 
-                nethermindApi.WebSocketsManager = new WebSocketsManager();
                 EthereumRunner ethereumRunner = new EthereumRunner(nethermindApi);
                 await ethereumRunner.Start(_processCloseCancellationSource.Token).ContinueWith(x =>
                 {
@@ -225,6 +224,7 @@ namespace Nethermind.Runner
                 Stopwatch stopwatch = Stopwatch.StartNew();
                 LogManager.Configuration = new XmlLoggingConfiguration("NLog.config".GetApplicationResourcePath());
                 stopwatch.Stop();
+
                 logger.Info($"NLog.config loaded in {stopwatch.ElapsedMilliseconds}ms.");
             }
 

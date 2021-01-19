@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -83,7 +83,7 @@ namespace Nethermind.Specs
         public const long MuirGlacierBlockNumber = 9200000;
         public const long BerlinBlockNumber = long.MaxValue - 1;
 
-        public int ChainId => 1;
+        public long ChainId => 1;
 
         public long[] TransitionBlocks { get; } =
         {

@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -85,12 +85,19 @@ namespace Nethermind.Db
             db.Remove(key.Bytes);
         }
         
+        public static void Set(this IDb db, byte[] key, byte[] value)
+        {
+            db[key] = value;
+        }
+        
         public static void Set(this IDb db, long key, byte[] value)
         {
             db[key.ToBigEndianByteArrayWithoutLeadingZeros()] = value;
         }
         
         public static byte[] Get(this IDb db, long key) => db[key.ToBigEndianByteArrayWithoutLeadingZeros()];
+        
+        public static byte[] Get(this IDb db, byte[] key) => db[key];
         
         /// <summary>
         /// 

@@ -41,9 +41,9 @@ namespace Nethermind.DataMarketplace.Test.Services
         private IDepositDetailsRepository _depositRepository;
         
         [SetUp]
-        public void Setup()
+        public async Task Setup()
         {
-            Prepare();
+            await Prepare();
             _depositRepository = Substitute.For<IDepositDetailsRepository>();
         }
 

@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -38,6 +38,7 @@ namespace Nethermind.Synchronization.Reporting
         private SyncPeersReport _syncPeersReport;
         private int _reportId;
         private const int SyncReportFrequency = 1;
+        private const int PeerCountFrequency = 15;
         private const int NoProgressStateSyncReportFrequency = 30;
         private const int SyncShortPeersReportFrequency = 30;
         private const int SyncFullPeersReportFrequency = 120;
@@ -168,7 +169,10 @@ namespace Nethermind.Synchronization.Reporting
 
             if ((currentSyncMode | SyncMode.Full) != SyncMode.Full)
             {
-                _logger.Info($"Peers | with known best block: {_syncPeerPool.InitializedPeersCount} | all: {_syncPeerPool.PeerCount} |");
+                if (_reportId % PeerCountFrequency == 0)
+                {
+                    _logger.Info($"Peers | with known best block: {_syncPeerPool.InitializedPeersCount} | all: {_syncPeerPool.PeerCount} |");
+                }
             }
 
             if (currentSyncMode == SyncMode.Disconnected)

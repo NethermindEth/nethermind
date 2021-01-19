@@ -1,9 +1,11 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
     <PropertyGroup>
-        <TargetFramework>netcoreapp3.1</TargetFramework>
+        <TargetFramework>net5.0</TargetFramework>
         <LangVersion>8</LangVersion>
         <Nullable>enable</Nullable>
+        <Deterministic>true</Deterministic>
+        <ProduceReferenceAssembly>true</ProduceReferenceAssembly>
     </PropertyGroup>
 
     <ItemGroup>
@@ -11,7 +13,7 @@
     </ItemGroup>
 
     <ItemGroup>
-      <PackageReference Include="MathNet.Numerics.FSharp" Version="4.11.0" />
+      <PackageReference Include="MathNet.Numerics.FSharp" Version="4.15.0" />
     </ItemGroup>
 
 </Project>

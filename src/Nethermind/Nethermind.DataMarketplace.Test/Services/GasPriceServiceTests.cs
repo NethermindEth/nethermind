@@ -154,7 +154,7 @@ namespace Nethermind.DataMarketplace.Test.Services
             _gasPriceService.Types.Custom.Should()
                 .Be(new GasPriceDetails(_config.GasPrice, 0));
             _gasPriceService.Types.Type.Should().Be(_config.GasPriceType);
-            _gasPriceService.Types.UpdatedAt.Should().Be(_timestamper.EpochSeconds);
+            _gasPriceService.Types.UpdatedAt.Should().Be(_timestamper.UnixTime.Seconds);
             await _configManager.Received().GetAsync(ConfigId);
             await _client.Received().GetAsync<GasPriceService.Result>(Arg.Any<string>());
 

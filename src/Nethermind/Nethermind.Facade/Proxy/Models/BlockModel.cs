@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -48,7 +48,7 @@ namespace Nethermind.Facade.Proxy.Models
                 (long) GasLimit, Timestamp, ExtraData));
 
             block.Header.StateRoot = StateRoot;
-            block.Header.GasUsed = (long) GasUsed;
+            block.Header.GasUsedLegacy = (long) GasUsed;
             block.Header.Hash = Hash;
             block.Header.MixHash = MixHash;
             block.Header.Nonce = (ulong) Nonce;

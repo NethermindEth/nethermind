@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -38,8 +38,9 @@ namespace Nethermind.Synchronization
         BlockHeader[] FindHeaders(Keccak hash, int numberOfBlocks, int skip, bool reverse);
         byte[]?[] GetNodeData(IList<Keccak> keys, NodeDataType includedTypes = NodeDataType.Code | NodeDataType.State);
         int GetPeerCount();
-        int ChainId { get; }
+        long ChainId { get; }
         BlockHeader Genesis { get; }
         BlockHeader? Head { get; }
+        Keccak[]? GetBlockWitnessHashes(Keccak blockHash);
     }
 }

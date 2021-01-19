@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -31,7 +31,9 @@ namespace Nethermind.Blockchain.Synchronization
         [ConfigItem(Description = "Enables beam sync that can be useful to create some JSON RPC queries while the node is fast syncing in the background.", DefaultValue = "false")]
         bool BeamSync { get; set; }
 
-        [ConfigItem(Description = "If set to 'true' then the Fast Sync (eth/63) synchronization algorithm will be used.", DefaultValue = "false")]
+        [ConfigItem(
+            Description = "If set to 'true' then the Fast Sync (eth/63) synchronization algorithm will be used.",
+            DefaultValue = "false")]
         bool FastSync { get; set; }
         
         // Minimum is taken from MultiSyncModeSelector.StickyStateNodesDelta
@@ -64,7 +66,7 @@ namespace Nethermind.Blockchain.Synchronization
 
         [ConfigItem(HiddenFromDocs = true, DefaultValue = "0")]
         long PivotNumberParsed => LongConverter.FromString(PivotNumber ?? "0");
-
+        
         [ConfigItem(HiddenFromDocs = true, DefaultValue = "0")]
         UInt256 PivotTotalDifficultyParsed => UInt256.Parse(PivotTotalDifficulty ?? "0");
 
@@ -94,6 +96,9 @@ namespace Nethermind.Blockchain.Synchronization
 
         [ConfigItem(HiddenFromDocs = true, DefaultValue = "1")]
         public long AncientReceiptsBarrierCalc => Math.Max(1, Math.Min(PivotNumberParsed, Math.Max(AncientBodiesBarrier, AncientReceiptsBarrier)));
+        
+        [ConfigItem(Description = "Enables witness protocol.", DefaultValue = "false")]
+        public bool WitnessProtocolEnabled { get; set; }
         
         [ConfigItem(Description = "[ONLY FOR MISSING RECEIPTS ISSUE] Turns on receipts validation that checks for ones that might be missing due to previous bug. It downloads them from network if needed." +
                                   "If used please check that PivotNumber is same as original used when syncing the node as its used as a cut-off point.", DefaultValue = "false")]

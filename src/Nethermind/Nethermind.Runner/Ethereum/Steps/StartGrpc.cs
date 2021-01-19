@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -15,10 +15,10 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System.Reactive.Disposables;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
+using Nethermind.Core;
 using Nethermind.Grpc;
 using Nethermind.Grpc.Producers;
 using Nethermind.Grpc.Servers;
@@ -56,7 +56,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.Publishers.Add(grpcPublisher);
                 
                 _api.DisposeStack.Push(grpcPublisher);
-                _api.DisposeStack.Push(Disposable.Create(() => grpcRunner.StopAsync())); // do not await
+                _api.DisposeStack.Push(new Reactive.AnonymousDisposable(() => grpcRunner.StopAsync())); // do not await
             }
         }
     }

@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -37,7 +37,7 @@ namespace Nethermind.Network.Discovery
 
         public NettyDiscoveryHandler(IDiscoveryManager discoveryManager, IDatagramChannel channel, IMessageSerializationService messageSerializationService, ITimestamper timestamper, ILogManager logManager)
         {
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger<NettyDiscoveryHandler>() ?? throw new ArgumentNullException(nameof(logManager));
             _discoveryManager = discoveryManager ?? throw new ArgumentNullException(nameof(discoveryManager));
             _channel = channel ?? throw new ArgumentNullException(nameof(channel));
             _messageSerializationService = messageSerializationService ?? throw new ArgumentNullException(nameof(messageSerializationService));
@@ -61,7 +61,11 @@ namespace Nethermind.Network.Discovery
                 if (_logger.IsError) _logger.Error("Exception when processing discovery messages", exception);
             }
 
-            context.DisconnectAsync();
+            context.DisconnectAsync().ContinueWith(x =>
+            {
+                if (x.IsFaulted && _logger.IsTrace)
+                    _logger.Trace($"Error while disconnecting on context on {this} : {x.Exception}");
+            });
         }
 
         public override void ChannelReadComplete(IChannelHandlerContext context)
@@ -172,7 +176,7 @@ namespace Nethermind.Network.Discovery
 
         private bool ValidateMessage(DiscoveryMessage message, MessageType type, EndPoint address, IChannelHandlerContext ctx, DatagramPacket packet)
         {
-            var timeToExpire = message.ExpirationTime - (long) _timestamper.EpochSeconds;
+            var timeToExpire = message.ExpirationTime - _timestamper.UnixTime.SecondsLong;
             if (timeToExpire < 0)
             {
                 if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(message.FarAddress, "HANDLER disc v4", $"{message.MessageType.ToString()} expired");

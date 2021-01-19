@@ -97,8 +97,8 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.DataStreams
         [Test]
         public async Task set_units_should_update_units_and_session_for_time_unit_type()
             => await VerifyUnitsAsync(DataAssetUnitType.Time, 10,
-                (d, s) => (uint) (_timestamper.EpochSeconds - s.StartTimestamp),
-                (d, s) => (uint) (_timestamper.EpochSeconds - d.ConfirmationTimestamp - s.PaidUnits));
+                (d, s) => (uint) (_timestamper.UnixTime.Seconds - s.StartTimestamp),
+                (d, s) => (uint) (_timestamper.UnixTime.Seconds - d.ConfirmationTimestamp - s.PaidUnits));
 
         private async Task VerifyUnitsAsync(DataAssetUnitType unitType, uint paidUnits,
             Func<DepositDetails, Session, uint> expectedConsumedUnits,

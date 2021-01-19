@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -25,6 +25,7 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Rewards;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Validators;
+using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
@@ -41,6 +42,7 @@ using Nethermind.Stats;
 using Nethermind.Db.Blooms;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
+using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Storages;
 using NUnit.Framework;
@@ -92,7 +94,7 @@ namespace Nethermind.Synchronization.Test
         {
             foreach (SyncTestContext peer in _peers)
             {
-                Assert.AreEqual(_genesis.Header, peer.SyncServer.Head);
+                Assert.AreEqual(_genesis.Header.Hash, peer.SyncServer.Head?.Hash);
             }
         }
 
@@ -139,7 +141,7 @@ namespace Nethermind.Synchronization.Test
 
             for (int i = 0; i < _peers.Count; i++)
             {
-                Assert.AreEqual(headBlock.Header.Number, _peers[i].SyncServer.Head.Number, i.ToString());
+                Assert.AreEqual(headBlock.Header.Number, _peers[i].SyncServer.Head!.Number, i.ToString());
                 Assert.AreEqual(_originPeer.StateProvider.GetBalance(headBlock.Beneficiary), _peers[i].StateProvider.GetBalance(headBlock.Beneficiary), i + " balance");
                 Assert.AreEqual(_originPeer.StateProvider.GetBalance(TestItem.AddressB), _peers[i].StateProvider.GetBalance(TestItem.AddressB), i + " balance B");
             }
@@ -158,8 +160,8 @@ namespace Nethermind.Synchronization.Test
             for (int i = 0; i < chainLength; i++)
             {
                 Transaction transaction = new Transaction();
-                
-                1.Ether().Divide((UInt256)_chainLength, out UInt256 txValue);
+
+                1.Ether().Divide((UInt256) _chainLength, out UInt256 txValue);
                 transaction.Value = txValue;
                 transaction.SenderAddress = TestItem.AddressA;
                 transaction.To = TestItem.AddressB;
@@ -185,7 +187,7 @@ namespace Nethermind.Synchronization.Test
         {
             foreach (var peer in _peers)
             {
-                Assert.AreEqual(_genesis.Hash, peer.SyncServer.Head.Hash, "genesis hash");
+                Assert.AreEqual(_genesis.Hash, peer.SyncServer.Head!.Hash, "genesis hash");
             }
 
             var headBlock = ProduceBlocks(_chainLength);
@@ -208,7 +210,7 @@ namespace Nethermind.Synchronization.Test
 
             for (int i = 0; i < _peers.Count; i++)
             {
-                Assert.AreEqual(headBlock.Header.Number, _peers[i].SyncServer.Head.Number, i.ToString());
+                Assert.AreEqual(headBlock.Header.Number, _peers[i].SyncServer.Head!.Number, i.ToString());
                 Assert.AreEqual(_originPeer.StateProvider.GetBalance(headBlock.Beneficiary), _peers[i].StateProvider.GetBalance(headBlock.Beneficiary), i + " balance");
                 Assert.AreEqual(_originPeer.StateProvider.GetBalance(TestItem.AddressB), _peers[i].StateProvider.GetBalance(TestItem.AddressB), i + " balance B");
             }
@@ -252,15 +254,16 @@ namespace Nethermind.Synchronization.Test
             ISnapshotableDb codeDb = dbProvider.CodeDb;
             ISnapshotableDb stateDb = dbProvider.StateDb;
 
-            var stateReader = new StateReader(stateDb, codeDb, logManager);
-            var stateProvider = new StateProvider(stateDb, codeDb, logManager);
+            TrieStore trieStore = new TrieStore(stateDb, LimboLogs.Instance);
+            var stateReader = new StateReader(trieStore, codeDb, logManager);
+            var stateProvider = new StateProvider(trieStore, codeDb, logManager);
             stateProvider.CreateAccount(TestItem.AddressA, 10000.Ether());
             stateProvider.Commit(specProvider.GenesisSpec);
-            stateProvider.CommitTree();
+            stateProvider.CommitTree(0);
             stateProvider.RecalculateStateRoot();
             stateDb.Commit();
 
-            var storageProvider = new StorageProvider(stateDb, stateProvider, logManager);
+            var storageProvider = new StorageProvider(trieStore, stateProvider, logManager);
             var receiptStorage = new InMemoryReceiptStorage();
 
             var ecdsa = new EthereumEcdsa(specProvider.ChainId, logManager);
@@ -279,7 +282,18 @@ namespace Nethermind.Synchronization.Test
 
             var rewardCalculator = new RewardCalculator(specProvider);
             var txProcessor = new TransactionProcessor(specProvider, stateProvider, storageProvider, virtualMachine, logManager);
-            var blockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, txProcessor, stateDb, codeDb, stateProvider, storageProvider, txPool, receiptStorage, logManager);
+
+            var blockProcessor = new BlockProcessor(
+                specProvider,
+                blockValidator,
+                rewardCalculator,
+                txProcessor,
+                stateProvider,
+                storageProvider,
+                txPool,
+                receiptStorage,
+                NullWitnessCollector.Instance,
+                logManager);
 
             var step = new RecoverSignatures(ecdsa, txPool, specProvider, logManager);
             var processor = new BlockchainProcessor(tree, blockProcessor, step, logManager, BlockchainProcessor.Options.Default);
@@ -287,11 +301,23 @@ namespace Nethermind.Synchronization.Test
             var nodeStatsManager = new NodeStatsManager(logManager);
             var syncPeerPool = new SyncPeerPool(tree, nodeStatsManager, 25, logManager);
 
-            StateProvider devState = new StateProvider(stateDb, codeDb, logManager);
-            StorageProvider devStorage = new StorageProvider(stateDb, devState, logManager);
+            StateProvider devState = new StateProvider(trieStore, codeDb, logManager);
+            StorageProvider devStorage = new StorageProvider(trieStore, devState, logManager);
             var devEvm = new VirtualMachine(devState, devStorage, blockhashProvider, specProvider, logManager);
             var devTxProcessor = new TransactionProcessor(specProvider, devState, devStorage, devEvm, logManager);
-            var devBlockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, devTxProcessor, stateDb, codeDb, devState, devStorage, txPool, receiptStorage, logManager);
+
+            var devBlockProcessor = new BlockProcessor(
+                specProvider,
+                blockValidator,
+                rewardCalculator,
+                devTxProcessor,
+                devState,
+                devStorage,
+                txPool,
+                receiptStorage,
+                NullWitnessCollector.Instance,
+                logManager);
+
             var devChainProcessor = new BlockchainProcessor(tree, devBlockProcessor, step, logManager, BlockchainProcessor.Options.NoReceipts);
             var transactionSelector = new TxPoolTxSource(txPool, stateReader, logManager);
             var producer = new DevBlockProducer(
@@ -301,9 +327,12 @@ namespace Nethermind.Synchronization.Test
                 processor,
                 txPool,
                 Timestamper.Default, 
+                specProvider,
+                new MiningConfig(),
                 logManager);
-            
-            SyncProgressResolver resolver = new SyncProgressResolver(tree, receiptStorage, stateDb, new MemDb(), syncConfig, logManager);
+
+            SyncProgressResolver resolver = new SyncProgressResolver(
+                tree, receiptStorage, stateDb, new MemDb(), NullTrieNodeResolver.Instance, syncConfig, logManager);
             MultiSyncModeSelector selector = new MultiSyncModeSelector(resolver, syncPeerPool, syncConfig, logManager);
             Synchronizer synchronizer = new Synchronizer(
                 dbProvider,
@@ -317,7 +346,18 @@ namespace Nethermind.Synchronization.Test
                 StaticSelector.Full,
                 syncConfig,
                 logManager);
-            var syncServer = new SyncServer(stateDb, codeDb, tree, receiptStorage, Always.Valid, Always.Valid, syncPeerPool, selector, syncConfig, logManager);
+            var syncServer = new SyncServer(
+                stateDb,
+                codeDb,
+                tree,
+                receiptStorage,
+                Always.Valid,
+                Always.Valid,
+                syncPeerPool,
+                selector,
+                syncConfig,
+                NullWitnessCollector.Instance,
+                logManager);
 
             ManualResetEventSlim waitEvent = new ManualResetEventSlim();
             tree.NewHeadBlock += (s, e) => waitEvent.Set();
@@ -353,3 +393,4 @@ namespace Nethermind.Synchronization.Test
         }
     }
 }
+          

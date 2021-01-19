@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -16,7 +16,6 @@
 
 using System;
 using System.Collections.Generic;
-using FluentAssertions;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Rewards;
@@ -29,7 +28,9 @@ using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
+using Nethermind.Specs.Forks;
 using Nethermind.State;
+using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
@@ -51,19 +52,19 @@ namespace Nethermind.Blockchain.Test
         {
             ISnapshotableDb stateDb = new StateDb();
             ISnapshotableDb codeDb = new StateDb();
-            IStateProvider stateProvider = new StateProvider(stateDb, codeDb, LimboLogs.Instance);
+            TrieStore trieStore = new TrieStore(stateDb, LimboLogs.Instance);
+            IStateProvider stateProvider = new StateProvider(trieStore, codeDb, LimboLogs.Instance);
             ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
             BlockProcessor processor = new BlockProcessor(
                 RinkebySpecProvider.Instance,
                 TestBlockValidator.AlwaysValid,
                 NoBlockRewards.Instance,
                 transactionProcessor,
-                stateDb,
-                codeDb,
                 stateProvider,
-                new StorageProvider(stateDb, stateProvider, LimboLogs.Instance),
+                new StorageProvider(trieStore, stateProvider, LimboLogs.Instance),
                 NullTxPool.Instance,
                 NullReceiptStorage.Instance,
+                NullWitnessCollector.Instance,
                 LimboLogs.Instance);
 
             BlockHeader header = Build.A.BlockHeader.WithAuthor(TestItem.AddressD).TestObject;
@@ -76,29 +77,62 @@ namespace Nethermind.Blockchain.Test
             Assert.AreEqual(1, processedBlocks.Length, "length");
             Assert.AreEqual(block.Author, processedBlocks[0].Author, "author");
         }
+        
+        [Test]
+        public void Can_store_a_witness()
+        {
+            ISnapshotableDb stateDb = new StateDb();
+            ISnapshotableDb codeDb = new StateDb();
+            var trieStore = new TrieStore(stateDb, LimboLogs.Instance);
+            
+            IStateProvider stateProvider = new StateProvider(trieStore, codeDb, LimboLogs.Instance);
+            ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
+            IWitnessCollector witnessCollector = Substitute.For<IWitnessCollector>();
+            BlockProcessor processor = new BlockProcessor(
+                RinkebySpecProvider.Instance,
+                TestBlockValidator.AlwaysValid,
+                NoBlockRewards.Instance,
+                transactionProcessor,
+                stateProvider,
+                new StorageProvider(trieStore, stateProvider, LimboLogs.Instance),
+                NullTxPool.Instance,
+                NullReceiptStorage.Instance,
+                witnessCollector,
+                LimboLogs.Instance);
+
+            BlockHeader header = Build.A.BlockHeader.WithAuthor(TestItem.AddressD).TestObject;
+            Block block = Build.A.Block.WithHeader(header).TestObject;
+            _ = processor.Process(
+                Keccak.EmptyTreeHash,
+                new List<Block> {block},
+                ProcessingOptions.None,
+                NullBlockTracer.Instance);
+            
+            witnessCollector.Received(1).Persist(block.Hash);
+        }
 
         [Test]
         public void Recovers_state_on_cancel()
         {
             ISnapshotableDb stateDb = new StateDb();
             ISnapshotableDb codeDb = new StateDb();
-            IStateProvider stateProvider = new StateProvider(stateDb, codeDb, LimboLogs.Instance);
+            TrieStore trieStore = new TrieStore(stateDb, LimboLogs.Instance);
+            IStateProvider stateProvider = new StateProvider(trieStore, codeDb, LimboLogs.Instance);
             ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
             BlockProcessor processor = new BlockProcessor(
                 RinkebySpecProvider.Instance,
                 TestBlockValidator.AlwaysValid,
                 new RewardCalculator(MainnetSpecProvider.Instance),
                 transactionProcessor,
-                stateDb,
-                codeDb,
                 stateProvider,
-                new StorageProvider(stateDb, stateProvider, LimboLogs.Instance),
+                new StorageProvider(trieStore, stateProvider, LimboLogs.Instance),
                 NullTxPool.Instance,
                 NullReceiptStorage.Instance,
+                NullWitnessCollector.Instance,
                 LimboLogs.Instance);
 
             BlockHeader header = Build.A.BlockHeader.WithNumber(1).WithAuthor(TestItem.AddressD).TestObject;
-            Block block = Build.A.Block.WithTransactions(1).WithHeader(header).TestObject;
+            Block block = Build.A.Block.WithTransactions(1, MuirGlacier.Instance).WithHeader(header).TestObject;
             Assert.Throws<OperationCanceledException>(() => processor.Process(
                 Keccak.EmptyTreeHash,
                 new List<Block> {block},

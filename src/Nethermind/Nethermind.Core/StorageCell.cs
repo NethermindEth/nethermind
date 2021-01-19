@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -16,13 +16,12 @@
 
 using System;
 using System.Diagnostics;
-using Nethermind.Core;
 using Nethermind.Int256;
 
-namespace Nethermind.State
+namespace Nethermind.Core
 {
     [DebuggerDisplay("{Address}->{Index}")]
-    public struct StorageCell : IEquatable<StorageCell>
+    public readonly struct StorageCell : IEquatable<StorageCell>
     {
         public Address Address { get; }
         public UInt256 Index { get; }

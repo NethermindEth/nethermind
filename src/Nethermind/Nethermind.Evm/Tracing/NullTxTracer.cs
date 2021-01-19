@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -71,7 +71,7 @@ namespace Nethermind.Evm.Tracing
 
         public void SetOperationMemory(List<string> memoryTrace) => throw new InvalidOperationException(ErrorMessage);
 
-        public void SetOperationStorage(Address address, UInt256 storageIndex, byte[] newValue, byte[] currentValue) => throw new InvalidOperationException(ErrorMessage);
+        public void SetOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> newValue, ReadOnlySpan<byte> currentValue) => throw new InvalidOperationException(ErrorMessage);
         
         public void ReportSelfDestruct(Address address, UInt256 balance, Address refundAddress) => throw new InvalidOperationException(ErrorMessage);
 

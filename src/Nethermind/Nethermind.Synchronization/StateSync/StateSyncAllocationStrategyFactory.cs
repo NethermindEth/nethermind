@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -21,13 +21,12 @@ using Nethermind.Synchronization.Peers.AllocationStrategies;
 
 namespace Nethermind.Synchronization.StateSync
 {
-    public class StateSyncAllocationStrategyFactory : IPeerAllocationStrategyFactory<StateSyncBatch>
+    public class StateSyncAllocationStrategyFactory : StaticPeerAllocationStrategyFactory<StateSyncBatch>
     {
-        private IPeerAllocationStrategy _strategy = new TotalDiffStrategy(new BySpeedStrategy(TransferSpeedType.NodeData, true), TotalDiffStrategy.TotalDiffSelectionType.CanBeSlightlyWorse);
-
-        public IPeerAllocationStrategy Create(StateSyncBatch request)
+        private static readonly IPeerAllocationStrategy DefaultStrategy = new TotalDiffStrategy(new BySpeedStrategy(TransferSpeedType.NodeData, true), TotalDiffStrategy.TotalDiffSelectionType.CanBeSlightlyWorse);
+        
+        public StateSyncAllocationStrategyFactory() : base(DefaultStrategy)
         {
-            return _strategy;
         }
     }
 }

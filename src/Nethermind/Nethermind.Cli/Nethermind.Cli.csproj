@@ -1,7 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
     <PropertyGroup>
-        <TargetFramework>netcoreapp3.1</TargetFramework>
+        <TargetFramework>net5.0</TargetFramework>
         <TargetLatestRuntimePatch>true</TargetLatestRuntimePatch>
         <OutputType>Exe</OutputType>
         <PackageId>Nethermind CLI</PackageId>
@@ -12,7 +12,7 @@
     </PropertyGroup>
     
     <ItemGroup>
-      <PackageReference Include="Colorful.Console" Version="1.2.10" />
+      <PackageReference Include="Colorful.Console" Version="1.2.15" />
       <PackageReference Include="Jint" Version="2.11.58" />
       <PackageReference Include="ReadLine" Version="2.0.1" />
     </ItemGroup>

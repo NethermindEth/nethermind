@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -42,6 +42,8 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
         public long? ForkBlock { get; set; }
         
         public Keccak ForkCanonHash { get; set; }
+        
+        public long? Eip7Transition { get; set; }
         
         public long? Eip150Transition { get; set; }
         
@@ -90,6 +92,10 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
         public long? Eip2028Transition { get; set; }
         
         public long? Eip2200Transition { get; set; }
+        
+        public long? Eip1559Transition { get; set; }
+        
+        public long? Eip1559MigrationDuration { get; set; }
         
         public Address TransactionPermissionContract { get; set; }
 

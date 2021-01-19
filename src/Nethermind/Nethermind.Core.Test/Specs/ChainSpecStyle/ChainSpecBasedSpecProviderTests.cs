@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -109,7 +109,7 @@ namespace Nethermind.Core.Test.Specs.ChainSpecStyle
                     object a = propertyInfo.GetValue(oldSpec.GetSpec(blockNumber));
                     object b = propertyInfo.GetValue(newSpec.GetSpec(blockNumber));
 
-                    Assert.AreEqual(a, b, blockNumber.ToString() + "." + propertyInfo.Name);
+                    Assert.AreEqual(a, b, blockNumber + "." + propertyInfo.Name);
                 }
                 
                 Assert.AreEqual(oldSpec.GetSpec(blockNumber).DifficultyBombDelay, newSpec.GetSpec(blockNumber).DifficultyBombDelay, blockNumber);    

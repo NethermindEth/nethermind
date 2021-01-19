@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -25,7 +25,7 @@ using Nethermind.TxPool;
 
 namespace Nethermind.Blockchain.Synchronization
 {
-    public interface ISyncPeer : ITxPoolPeer
+    public interface ISyncPeer : ITxPoolPeer, IPeerWithSatelliteProtocol
     {
         Node Node { get; }
 
@@ -35,7 +35,6 @@ namespace Nethermind.Blockchain.Synchronization
         long HeadNumber { get; set; }
         UInt256 TotalDifficulty { get; set; }
         bool IsInitialized { get; set; }
-        
         void Disconnect(DisconnectReason reason, string details);
         Task<BlockBody[]> GetBlockBodies(IList<Keccak> blockHashes, CancellationToken token);
         Task<BlockHeader[]> GetBlockHeaders(long number, int maxBlocks, int skip, CancellationToken token);

@@ -89,7 +89,7 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Services
             if (approval is null)
             {
                 approval = new DepositApproval(assetId, dataAsset.Name, kyc, consumer,
-                    dataAsset.Provider.Address, _timestamper.EpochSeconds, DepositApprovalState.Pending);
+                    dataAsset.Provider.Address, _timestamper.UnixTime.Seconds, DepositApprovalState.Pending);
                 await _depositApprovalRepository.AddAsync(approval);
             }
 

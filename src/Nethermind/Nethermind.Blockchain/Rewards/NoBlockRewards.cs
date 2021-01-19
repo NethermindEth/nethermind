@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -22,19 +22,14 @@ namespace Nethermind.Blockchain.Rewards
 {
     public class NoBlockRewards : IRewardCalculator, IRewardCalculatorSource
     {   
-        private NoBlockRewards()
-        {
-        }
+        private NoBlockRewards() { }
 
         public static NoBlockRewards Instance { get; } = new NoBlockRewards();
 
         private static BlockReward[] _noRewards = Array.Empty<BlockReward>();
 
         public BlockReward[] CalculateRewards(Block block) => _noRewards;
-        
-        public IRewardCalculator Get(ITransactionProcessor processor)
-        {
-            return Instance;
-        }
+
+        public IRewardCalculator Get(ITransactionProcessor processor) => Instance;
     }
 }

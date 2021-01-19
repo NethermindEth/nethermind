@@ -13,11 +13,22 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-namespace Nethermind.Trie
+using System;
+
+namespace Nethermind.Core
 {
-    public interface IKeyValueStore
+    public static class KeyValueStoreExtensions
     {
-        byte[] this[byte[] key] { get; set; }
+        public static IBatch LikeABatch(this IKeyValueStoreWithBatching keyValueStore)
+        {
+            return LikeABatch(keyValueStore, null);
+        }
+        
+        public static IBatch LikeABatch(this IKeyValueStoreWithBatching keyValueStore, Action? onDispose)
+        {
+            return new FakeBatch(keyValueStore, onDispose);
+        }
     }
 }

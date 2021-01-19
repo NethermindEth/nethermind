@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -28,7 +28,7 @@ namespace Nethermind.Consensus
 {
     public class Signer : ISigner, ISignerStore
     {
-        private readonly int _chainId;
+        private readonly long _chainId;
         private ProtectedPrivateKey _key;
         private ILogger _logger;
 
@@ -36,14 +36,14 @@ namespace Nethermind.Consensus
 
         public bool CanSign => _key != null;
 
-        public Signer(int chainId, PrivateKey key, ILogManager logManager)
+        public Signer(long chainId, PrivateKey key, ILogManager logManager)
         {
             _chainId = chainId;
             _logger = logManager?.GetClassLogger<Signer>() ?? throw new ArgumentNullException(nameof(logManager));
             SetSigner(key);
         }
         
-        public Signer(int chainId, ProtectedPrivateKey key, ILogManager logManager)
+        public Signer(long chainId, ProtectedPrivateKey key, ILogManager logManager)
         {
             _chainId = chainId;
             _logger = logManager?.GetClassLogger<Signer>() ?? throw new ArgumentNullException(nameof(logManager));

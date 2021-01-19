@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -24,9 +24,9 @@ namespace Nethermind.Wallet
     public class WalletTxSigner : ITxSigner
     {
         private readonly IWallet _wallet;
-        private readonly int _chainId;
+        private readonly long _chainId;
 
-        public WalletTxSigner(IWallet wallet, int chainId)
+        public WalletTxSigner(IWallet wallet, long chainId)
         {
             _wallet = wallet;
             _chainId = chainId;

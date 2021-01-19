@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -29,6 +29,7 @@ using Nethermind.JsonRpc.Client;
 using Nethermind.Logging;
 using Nethermind.Synchronization.BeamSync;
 using Nethermind.Synchronization.ParallelSync;
+using Nethermind.Trie;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
@@ -89,7 +90,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 case DiagnosticMode.ReadOnlyDb:
                     var rocksDbProvider = new DbProvider(DbModeHint.Persisted);
                     _api.DbProvider = new ReadOnlyDbProvider(rocksDbProvider, storeReceipts); // ToDo storeReceipts as createInMemoryWriteStore - bug?
-                    _api.DisposeStack.Push(rocksDbProvider);
+                    _api.DisposeStack.Push(rocksDbProvider);					
                     _api.RocksDbFactory = new RocksDbFactory(dbConfig, _api.LogManager, Path.Combine(initConfig.BaseDbPath, "debug"));
                     _api.MemDbFactory = new MemDbFactory();
                     break;

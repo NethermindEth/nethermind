@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -26,7 +26,7 @@ namespace Nethermind.Core
         public const int Alignment = 8;
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static int Align(int unalignedSize)
+        public static long Align(long unalignedSize)
         {
             return unalignedSize + (-unalignedSize & AlignmentMask);
         }
@@ -34,9 +34,11 @@ namespace Nethermind.Core
         public const int RefSize = 8;
 
         public const int SmallObjectOverhead = 24;
+        
+        public const int SmallObjectFreeDataSize = 8;
 
         // public const int LargeObjectOverhead = 32; // just guessing, 20 on 32bit
-        public const int ArrayOverhead = 20;
+        public const int ArrayOverhead = 24;
 
         private static BitArray _isPrime = ESieve(1024 * 1024); // 1MB in memory
 

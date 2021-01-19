@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -18,10 +18,12 @@ namespace Nethermind.Evm
 {
     public static class RefundOf
     {
-        public const long SSetReversedEip1283 = 19800;
-        public const long SClearReversedEip1283 = 4800;
-        public const long SSetReversedEip2200 = 19200;
-        public const long SClearReversedEip2200 = 4200;
+        public const long SSetReversedEip1283 = GasCostOf.SSet - GasCostOf.SStoreNetMeteredEip1283;
+        public const long SResetReversedEip1283 = GasCostOf.SReset - GasCostOf.SStoreNetMeteredEip1283;
+        public const long SSetReversedEip2200 = GasCostOf.SSet - GasCostOf.SStoreNetMeteredEip2200;
+        public const long SResetReversedEip2200 = GasCostOf.SReset - GasCostOf.SStoreNetMeteredEip2200;
+        public const long SSetReversedHotCold = GasCostOf.SSet - GasCostOf.WarmStateRead;
+        public const long SResetReversedHotCold = GasCostOf.SReset - GasCostOf.ColdSLoad - GasCostOf.WarmStateRead;
         public const long SClear = 15000;
         public const long Destroy = 24000;
     }
