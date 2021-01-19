@@ -121,13 +121,13 @@ namespace Nethermind.Runner.Ethereum.Steps
             return (txPriorityContract, api.TxPriorityContractLocalDataSource);
         }
 
-        public static DictionaryContractDataStore<TxPriorityContract.Destination, TxPriorityContract.DestinationSortedListContractDataStoreCollection>? CreateMinGasPricesDataStore(
+        public static DictionaryContractDataStore<TxPriorityContract.Destination>? CreateMinGasPricesDataStore(
             AuRaNethermindApi api, 
             TxPriorityContract? txPriorityContract, 
             TxPriorityContract.LocalDataSource? localDataSource)
         {
             return txPriorityContract != null || localDataSource != null
-                ? new DictionaryContractDataStore<TxPriorityContract.Destination, TxPriorityContract.DestinationSortedListContractDataStoreCollection>(
+                ? new DictionaryContractDataStore<TxPriorityContract.Destination>(
                     new TxPriorityContract.DestinationSortedListContractDataStoreCollection(),
                     txPriorityContract?.MinGasPrices,
                     api.BlockTree,
