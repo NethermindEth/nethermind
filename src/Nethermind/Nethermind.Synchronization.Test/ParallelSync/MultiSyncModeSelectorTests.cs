@@ -1235,7 +1235,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
         }
         
         [Test]
-        public void Switch_correctly_from_full_sync_to_fast_sync()
+        public void Switch_correctly_from_full_sync_to_state_nodes_catch_up()
         {
             ISyncProgressResolver syncProgressResolver = Substitute.For<ISyncProgressResolver>();
             syncProgressResolver.FindBestHeader().Returns(Scenario.ChainHead.Number);
@@ -1261,21 +1261,26 @@ namespace Nethermind.Synchronization.Test.ParallelSync
             syncPeerPool.InitializedPeers.Returns(peerInfos);
             syncPeerPool.AllPeers.Returns(peerInfos);
 
-            ISyncConfig syncConfig = new SyncConfig();
+            ISyncConfig syncConfig = new SyncConfig() {FastSyncCatchUpHeightDelta = 2};
             syncConfig.FastSync = true;
             
             MultiSyncModeSelector selector = new MultiSyncModeSelector(syncProgressResolver, syncPeerPool, syncConfig, LimboLogs.Instance);
             selector.DisableTimer();
+            syncProgressResolver.FindBestProcessedBlock().Returns(Scenario.ChainHead.Number);
             selector.Update();
             selector.Current.Should().Be(SyncMode.Full);
 
-            uint goFurther = 9000;
-            syncPeer.HeadNumber.Returns(header.Number + goFurther);
-            syncPeer.TotalDifficulty.Returns(header.TotalDifficulty.Value + goFurther);
-            syncProgressResolver.FindBestProcessedBlock().Returns(header.Number);
-            
-            selector.Update();
-            selector.Current.Should().Be(SyncMode.FastSync);
+            for (uint i = 0; i < syncConfig.FastSyncCatchUpHeightDelta + 1; i++)
+            {
+                long number = header.Number + i;
+                syncPeer.HeadNumber.Returns(number);
+                syncPeer.TotalDifficulty.Returns(header.TotalDifficulty.Value + i);
+                syncProgressResolver.FindBestHeader().Returns(number);
+                syncProgressResolver.FindBestFullBlock().Returns(number);
+                selector.Update();
+            }
+
+            selector.Current.Should().Be(SyncMode.StateNodes);
         }
     }
     
