@@ -165,7 +165,8 @@ namespace Nethermind.Synchronization.ParallelSync
                         }
                     }
 
-                    if ((newModes & SyncMode.Full) == SyncMode.Full)
+                    if ((newModes & (SyncMode.Full | SyncMode.WaitingForBlock)) != SyncMode.None 
+                         && (Current & (SyncMode.Full | SyncMode.WaitingForBlock)) == SyncMode.None)
                     {
                         if(_logger.IsTrace) _logger.Trace($"Setting last full sync switch block to {best.Block}");
                         LastBlockThatEnabledFullSync = best.Block;
