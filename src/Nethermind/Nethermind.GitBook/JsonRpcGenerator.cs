@@ -176,7 +176,7 @@ namespace Nethermind.GitBook
         {
             rpcModuleBuilder.AppendLine(@$"### Objects definition");
 
-            foreach (var rpcType in rpcTypesToDescribe.Where(rpcType => ReplaceType(rpcType).Contains("object")))
+            foreach (var rpcType in rpcTypesToDescribe.Distinct().Where(rpcType => ReplaceType(rpcType).Contains("object")))
             {
                 rpcModuleBuilder.AppendLine();
                 rpcModuleBuilder.AppendLine(@$"`{rpcType.Name}`");
