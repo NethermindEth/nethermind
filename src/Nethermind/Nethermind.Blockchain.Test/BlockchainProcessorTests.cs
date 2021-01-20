@@ -210,7 +210,8 @@ namespace Nethermind.Blockchain.Test
 
             public ProcessingTestContext IsProcessingBlocks(bool expectedIsProcessingBlocks, ulong maxInterval)
             {
-                Assert.AreEqual(expectedIsProcessingBlocks, _processor.IsProcessingBlocks(maxInterval));
+                bool actual = _processor.IsProcessingBlocks(maxInterval);
+                Assert.AreEqual(expectedIsProcessingBlocks, actual);
                 return this;
             }
 
@@ -619,7 +620,7 @@ namespace Nethermind.Blockchain.Test
         public void IsProcessingBlocks_returns_true_when_processing_blocks()
         {
             When.ProcessingBlocks
-                .IsProcessingBlocks(false,1)
+                .IsProcessingBlocks(true,1)
                 .FullyProcessed(_block0).BecomesGenesis()
                 .FullyProcessed(_block1D2).BecomesNewHead()
                 .IsProcessingBlocks(true, 1)
@@ -633,7 +634,7 @@ namespace Nethermind.Blockchain.Test
         public void IsProcessingBlocks_returns_false_when_max_interval_elapsed()
         {
             When.ProcessingBlocks
-                .IsProcessingBlocks(false, 1)
+                .IsProcessingBlocks(true, 1)
                 .FullyProcessed(_block0).BecomesGenesis()
                 .FullyProcessed(_block1D2).BecomesNewHead()
                 .IsProcessingBlocks(true, 1)
@@ -642,6 +643,15 @@ namespace Nethermind.Blockchain.Test
                 .IsProcessingBlocks(false,1)
                 .FullyProcessed(_block3D6).BecomesNewHead()
                 .IsProcessingBlocks(true, 1);
+        }
+        
+        [Test]
+        public void ProcessorIsNotStarted_returns_false()
+        {
+            When.ProcessorIsNotStarted
+                .IsProcessingBlocks(false, 10)
+                .Sleep(1000)
+                .IsProcessingBlocks(false, 10);
         }
     }
 }

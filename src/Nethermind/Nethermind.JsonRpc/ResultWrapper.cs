@@ -55,6 +55,11 @@ namespace Nethermind.JsonRpc
         {
             return new ResultWrapper<T> { Result = Result.Fail(error), ErrorCode = errorCode};
         }
+        
+        public static ResultWrapper<T> Fail(string error, T data)
+        {
+            return new ResultWrapper<T> { Data = data, Result = Result.Fail(error) };
+        }
 
         public static ResultWrapper<T> Success(T data)
         {

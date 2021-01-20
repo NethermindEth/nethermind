@@ -21,17 +21,28 @@ using Nethermind.JsonRpc;
 
 namespace Nethermind.HealthChecks
 {
+    public class NodeStatusResult
+    {
+        public bool Healthy { get; set; }
+
+        public string[] Messages { get; set; }
+    }
+
     public class HealthModule : IHealthModule
     {
         private readonly INodeHealthService _nodeHealthService;
+
         public HealthModule(INodeHealthService nodeHealthService)
         {
             _nodeHealthService = nodeHealthService;
         }
-        public async Task<ResultWrapper<string>> health_nodeStatus()
+
+        public async Task<ResultWrapper<NodeStatusResult>> health_nodeStatus()
         {
-            CheckHealthResult result = await _nodeHealthService.CheckHealth();
-            return ResultWrapper<string>.Success(result.Messages.FirstOrDefault().Message);
+            CheckHealthResult checkHealthResult = await _nodeHealthService.CheckHealth();
+            string[] messages = checkHealthResult.Messages.Select(x => x.Message).ToArray();
+            NodeStatusResult result = new NodeStatusResult() {Healthy = checkHealthResult.Healthy, Messages = messages};
+            return ResultWrapper<NodeStatusResult>.Success(result);
         }
     }
 }

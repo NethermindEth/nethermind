@@ -29,9 +29,9 @@ namespace Nethermind.HealthChecks
         }
         
         [CliFunction("health", "nodeStatus")]
-        public string NodeStatus()
+        public NodeStatusResult NodeStatus()
         {
-            return NodeManager.Post<string>("health_nodeStatus").Result;
+            return NodeManager.Post<NodeStatusResult>("health_nodeStatus").Result;
         }
     }
 }

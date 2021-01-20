@@ -326,7 +326,7 @@ namespace Nethermind.Blockchain.Processing
 
         public bool IsProcessingBlocks(ulong? maxProcessingInterval)
         {
-            if (_processorTask.Status != TaskStatus.Running || _recoveryTask.Status != TaskStatus.Running)
+            if (_processorTask == null || _recoveryTask == null || _processorTask.IsCompleted || _recoveryTask.IsCompleted)
                 return false;
             
             if (maxProcessingInterval != null)

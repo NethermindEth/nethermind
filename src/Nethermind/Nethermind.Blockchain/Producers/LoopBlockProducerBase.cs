@@ -19,7 +19,6 @@ using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Processing;
-using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
@@ -92,9 +91,12 @@ namespace Nethermind.Blockchain.Producers
             LoopCancellationTokenSource?.Cancel();
             await (_producerTask ?? Task.CompletedTask);
         }
+
+        protected override bool IsRunning() => _producerTask != null && _producerTask.IsCompleted == false;
         
         protected virtual async ValueTask ProducerLoop()
         {
+            _lastProducedBlock = DateTime.UtcNow;
             while (!LoopCancellationTokenSource.IsCancellationRequested)
             {
                 if (_canProduce == 1 && BlockProcessingQueue.IsEmpty)

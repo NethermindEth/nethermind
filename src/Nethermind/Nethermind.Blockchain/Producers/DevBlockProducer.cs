@@ -20,7 +20,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Timers;
 using Nethermind.Blockchain.Processing;
-using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
@@ -88,6 +87,11 @@ namespace Nethermind.Blockchain.Producers
             _timer.Stop();
             BlockTree.NewHeadBlock -= OnNewHeadBlock;
             await Task.CompletedTask;
+        }
+
+        protected override bool IsRunning()
+        {
+            return _timer != null && _timer.Enabled;
         }
 
         protected override UInt256 CalculateDifficulty(BlockHeader parent, UInt256 timestamp) => 1;

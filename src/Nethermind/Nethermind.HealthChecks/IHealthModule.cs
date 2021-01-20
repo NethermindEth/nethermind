@@ -24,7 +24,7 @@ namespace Nethermind.HealthChecks
     [RpcModule(ModuleType.Health)]
     public interface IHealthModule : IModule
     {
-        [JsonRpcMethod(Description = "Check health of the node", IsImplemented = true)]
-        Task<ResultWrapper<string>> health_nodeStatus();
+        [JsonRpcMethod(Description = "Check health status of the node", IsImplemented = true)]
+        Task<ResultWrapper<NodeStatusResult>> health_nodeStatus();
     }
 }

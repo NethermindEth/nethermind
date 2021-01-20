@@ -20,7 +20,6 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Producers;
-using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Int256;
@@ -31,6 +30,7 @@ namespace Nethermind.Consensus.Ethash
 {
     public class MinedBlockProducer : BlockProducerBase
     {
+        private bool _isRunning = false;
         private readonly IDifficultyCalculator _difficultyCalculator;
         private readonly object _syncToken = new object();
         private CancellationTokenSource _cancellationTokenSource = new CancellationTokenSource();
@@ -84,6 +84,8 @@ namespace Nethermind.Consensus.Ethash
         {
             BlockProcessingQueue.ProcessingQueueEmpty += OnBlockProcessorQueueEmpty;
             BlockTree.NewBestSuggestedBlock += BlockTreeOnNewBestSuggestedBlock;
+            _lastProducedBlock = DateTime.UtcNow;
+            _isRunning = true;
         }
 
         public override async Task StopAsync()
@@ -95,9 +97,12 @@ namespace Nethermind.Consensus.Ethash
             {
                 _cancellationTokenSource?.Cancel();
             }
-            
+
+            _isRunning = false;
             await Task.CompletedTask;
         }
+
+        protected override bool IsRunning() => _isRunning;
 
         protected override UInt256 CalculateDifficulty(BlockHeader parent, UInt256 timestamp)
         {

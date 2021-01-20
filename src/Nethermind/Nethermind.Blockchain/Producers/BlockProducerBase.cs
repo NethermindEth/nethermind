@@ -19,7 +19,6 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Processing;
-using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
@@ -74,9 +73,13 @@ namespace Nethermind.Blockchain.Producers
         public abstract void Start();
 
         public abstract Task StopAsync();
+
+        protected abstract bool IsRunning();
         public bool IsProducingBlocks(ulong? maxProducingInterval)
         {
-            if (maxProducingInterval != null) // Add tasks checking
+            if (IsRunning() == false)
+                return false;
+            if (maxProducingInterval != null)
                 return _lastProducedBlock.AddSeconds(maxProducingInterval.Value) > DateTime.UtcNow;
             else
                 return true;
