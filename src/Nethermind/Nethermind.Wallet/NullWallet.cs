@@ -58,7 +58,7 @@ namespace Nethermind.Wallet
 
         public Signature Sign(Keccak message, Address address, SecureString passphrase)
         {
-            throw new NotImplementedException();
+            return null;
         }
 
         public Address[] GetAccounts()
@@ -73,7 +73,7 @@ namespace Nethermind.Wallet
 
         public Signature Sign(Keccak message, Address address)
         {
-            throw new NotImplementedException();
+            return null;
         }
     }
 }
