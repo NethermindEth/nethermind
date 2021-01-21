@@ -23,7 +23,6 @@ using Nethermind.Consensus.AuRa.Services;
 using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Core;
 using Nethermind.Logging;
-using Nethermind.Specs.ChainSpecStyle;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -68,10 +67,11 @@ namespace Nethermind.AuRa.Test
             {
                 yield return new BlockProcessorIntervalHint()
                 {
+                    StepDuration = 1,
+                    ExpectedProcessingHint = 4,
+                    ExpectedProducingHint = 2
                 };
             }
         }
-        
-        private IDictionary<long, long> GetStepDurationsForSingleStep(long stepDuration) => new Dictionary<long, long>() {{0, stepDuration}};
     }
 }

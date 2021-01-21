@@ -41,7 +41,7 @@ namespace Nethermind.Consensus.AuRa.Services
 
         public ulong? MaxIntervalForProducingBlocksHint()
         {
-            return (ulong)_validatorStore.GetValidators().Length * TimeToNextStep() * HealthHintConstants.ProducingSafetyMultiplier;
+            return (ulong)Math.Max(_validatorStore.GetValidators().Length, 1) * TimeToNextStep() * HealthHintConstants.ProducingSafetyMultiplier;
         }
 
         private uint TimeToNextStep()
