@@ -71,6 +71,27 @@ namespace Nethermind.AuRa.Test
                     ExpectedProcessingHint = 4,
                     ExpectedProducingHint = 2
                 };
+                yield return new BlockProcessorIntervalHint()
+                {
+                    StepDuration = 2,
+                    ValidatorsCount = 2,
+                    ExpectedProcessingHint = 8,
+                    ExpectedProducingHint = 8
+                };
+                yield return new BlockProcessorIntervalHint()
+                {
+                    StepDuration = 3,
+                    ValidatorsCount = 2,
+                    ExpectedProcessingHint = 12,
+                    ExpectedProducingHint = 12
+                };
+                yield return new BlockProcessorIntervalHint()
+                {
+                    StepDuration = 4,
+                    ValidatorsCount = 10,
+                    ExpectedProcessingHint = 16,
+                    ExpectedProducingHint = 80
+                };
             }
         }
     }

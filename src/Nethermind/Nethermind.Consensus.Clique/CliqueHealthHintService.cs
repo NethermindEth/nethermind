@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System;
 using Nethermind.Blockchain;
 using Nethermind.Specs.ChainSpecStyle;
 
@@ -37,7 +38,7 @@ namespace Nethermind.Consensus.Clique
 
         public ulong? MaxIntervalForProducingBlocksHint()
         {
-            return _snapshotManager.GetLastSignersCount() * _chainSpec.Clique.Period *
+            return Math.Max(_snapshotManager.GetLastSignersCount(), 1) * _chainSpec.Clique.Period *
                 HealthHintConstants.ProducingSafetyMultiplier;
         }
     }

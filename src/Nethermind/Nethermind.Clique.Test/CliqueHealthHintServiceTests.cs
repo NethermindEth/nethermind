@@ -16,21 +16,25 @@
 // 
 
 using System.Collections.Generic;
-using Nethermind.Blockchain.Services;
+using Nethermind.Blockchain;
+using Nethermind.Consensus.Clique;
 using Nethermind.Core;
 using Nethermind.Specs.ChainSpecStyle;
+using NSubstitute;
 using NUnit.Framework;
 
-namespace Nethermind.Blockchain.Test.Services
+namespace Nethermind.Clique.Test
 {
-    public class HealthHintServiceTests
-    {
+    public class CliqueHealthHintServiceTests
+    { 
         [Test]
         public void GetBlockProcessorAndProducerIntervalHint_returns_expected_result(
             [ValueSource(nameof(BlockProcessorIntervalHintTestCases))]
             BlockProcessorIntervalHint test)
         {
-            IHealthHintService healthHintService = new HealthHintService(test.ChainSpec);
+            ISnapshotManager snapshotManager = Substitute.For<ISnapshotManager>();
+            snapshotManager.GetLastSignersCount().Returns(test.ValidatorsCount);
+            IHealthHintService healthHintService = new CliqueHealthHintService(snapshotManager, test.ChainSpec);
             ulong? actualProcessing = healthHintService.MaxIntervalForProcessingBlocksHint();
             ulong? actualProducing = healthHintService.MaxIntervalForProducingBlocksHint();
             Assert.AreEqual(test.ExpectedProcessingHint, actualProcessing);
@@ -40,13 +44,15 @@ namespace Nethermind.Blockchain.Test.Services
         public class BlockProcessorIntervalHint
         {
             public ChainSpec ChainSpec { get; set; }
+            
+            public ulong ValidatorsCount { get; set; }
 
             public ulong? ExpectedProcessingHint { get; set; }
 
             public ulong? ExpectedProducingHint { get; set; }
 
             public override string ToString() =>
-                $"SealEngineType: {ChainSpec.SealEngineType}, ExpectedProcessingHint: {ExpectedProcessingHint}, ExpectedProducingHint: {ExpectedProducingHint}";
+                $"SealEngineType: {ChainSpec.SealEngineType}, ValidatorsCount: {ValidatorsCount}, ExpectedProcessingHint: {ExpectedProcessingHint}, ExpectedProducingHint: {ExpectedProducingHint}";
         }
 
         public static IEnumerable<BlockProcessorIntervalHint> BlockProcessorIntervalHintTestCases
@@ -55,20 +61,29 @@ namespace Nethermind.Blockchain.Test.Services
             {
                 yield return new BlockProcessorIntervalHint()
                 {
-                    ChainSpec = new ChainSpec() {SealEngineType = SealEngineType.NethDev,}
+                    ChainSpec = new ChainSpec() {SealEngineType = SealEngineType.Clique, Clique = new CliqueParameters() { Period = 15}},
+                    ExpectedProcessingHint = 60,
+                    ExpectedProducingHint = 30
                 };
                 yield return new BlockProcessorIntervalHint()
                 {
-                    ChainSpec = new ChainSpec() {SealEngineType = SealEngineType.Ethash },
-                    ExpectedProcessingHint = 60
+                    ChainSpec = new ChainSpec() {SealEngineType = SealEngineType.Clique, Clique = new CliqueParameters() { Period = 23}},
+                    ExpectedProcessingHint = 92,
+                    ExpectedProducingHint = 46
                 };
                 yield return new BlockProcessorIntervalHint()
                 {
-                    ChainSpec = new ChainSpec() {SealEngineType = SealEngineType.Custom }
+                    ValidatorsCount = 10,
+                    ChainSpec = new ChainSpec() {SealEngineType = SealEngineType.Clique, Clique = new CliqueParameters() { Period = 23}},
+                    ExpectedProcessingHint = 92,
+                    ExpectedProducingHint = 460
                 };
                 yield return new BlockProcessorIntervalHint()
                 {
-                    ChainSpec = new ChainSpec() {SealEngineType = SealEngineType.None }
+                    ValidatorsCount = 2,
+                    ChainSpec = new ChainSpec() {SealEngineType = SealEngineType.Clique, Clique = new CliqueParameters() { Period = 10}},
+                    ExpectedProcessingHint = 40,
+                    ExpectedProducingHint = 40
                 };
             }
         }
