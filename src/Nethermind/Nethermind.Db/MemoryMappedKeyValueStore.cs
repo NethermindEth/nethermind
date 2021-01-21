@@ -62,6 +62,12 @@ namespace Nethermind.Db
         private Thread _flusher;
         private volatile bool _runFlusher;
 
+        /// <summary>
+        /// Configures the key value store.
+        /// </summary>
+        /// <param name="directoryPath">The path where the database files will be located. Both jump table and the log files are included in there.</param>
+        /// <param name="logFileSize">The size of a single chunk of the log. Once the chunk is fully written, it won't be overwritten again.</param>
+        /// <param name="maxBatchFlushSize">The maximum number of bytes written down in one batch under one lock.</param>
         public MemoryMappedKeyValueStore(string directoryPath, int logFileSize = 256 * 1024 * 1024, int maxBatchFlushSize = 10 * 1024 * 1024)
         {
             _dir = directoryPath;
