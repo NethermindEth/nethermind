@@ -33,14 +33,14 @@ namespace Nethermind.Db
         const byte EndMarker = 0; // a marker that when written as the first byte of the length in a file marks it as 0
 
         /// <summary>
-        /// This is an important settings as it heavily affects the size of the jump file. The following values will be used:
-        /// - for 2 bytes, the jump file will be 512KB long.
-        /// - for 3 bytes, the jump file will be 512MB long.
+        /// This is an important settings as it heavily affects the size of the jump file and the lookup speed.
+        /// The bigger it is, the bigger the jump file, the more buckets for colliding keys and the smaller linked lists for each bucket.
         /// </summary>
-        const int NumberOfBytesForJumps = 3;
+        const int PrefixBits = 24; // 3bytes
         const int AddressSize = sizeof(ulong);
-        const int JumpsCount = 1 << (NumberOfBytesForJumps * BitsInByte);
+        const int JumpsCount = 1 << PrefixBits;
         const int JumpsFileSize = AddressSize * JumpsCount;
+        
         const int ValueLengthShift = 6 * BitsInByte;
         const int BitsInByte = 8;
 
@@ -115,7 +115,7 @@ namespace Nethermind.Db
                         Map map = _maps[fileNumber];
                         map?.Flush(position);
                     }
-                    
+
                 }
             }
 
@@ -147,8 +147,8 @@ namespace Nethermind.Db
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         static int ReadJumpIndex(ReadOnlySpan<byte> key)
         {
-            const int mask = JumpsCount - 1;
-            const int shift = (4 - NumberOfBytesForJumps) * BitsInByte;
+            const int mask = (PrefixBits << 1) - 1;
+            const int shift = 32 - PrefixBits ;
             uint value = BinaryPrimitives.ReadUInt32LittleEndian(key);
             return (int)((value >> shift) & mask);
         }
@@ -200,18 +200,18 @@ namespace Nethermind.Db
         private unsafe void Commit(WriteBatch batch)
         {
             _batches.Enqueue(batch);
-            
+
             lock (_batches)
             {
                 if (batch._isCommitted)
                 {
                     return; // this batch is already committed
                 }
-                
+
                 Span<long> jumpTable = new Span<long>(_jumps.Pointer, JumpsCount);
 
                 int writtenSoFar = 0;
-                
+
                 while (_batches.TryPeek(out WriteBatch commit) && writtenSoFar < _maxBatchFlushSize)
                 {
                     int fileNumber = GetFileAndPosition(out int position);
@@ -224,7 +224,7 @@ namespace Nethermind.Db
                     }
 
                     Span<byte> data = commit.Data;
-                    
+
                     int leftover = _logFileSize - position;
                     Span<byte> destination = new Span<byte>(file.Pointer + position, leftover);
 
@@ -239,18 +239,18 @@ namespace Nethermind.Db
                         // Flush jumps only when the log is being sealed. When recovery is introduced, this will require to scan only up to one log to recover when needed. 
                         // For regular usage this should limit the flushes
                         _jumps.Flush(JumpsFileSize);
-                        
+
                         // spin again to peek the commit again
                         continue;
                     }
-                    
+
                     // revisit data, writing proper jumps
                     Span<byte> toRewrite = data;
                     while (!toRewrite.IsEmpty)
                     {
                         // parse existing header to obtain the length
                         (int valueLength, _) = ParseHeader(BinaryPrimitives.ReadInt64LittleEndian(toRewrite));
-                        
+
                         // retrieve the right jump
                         int jumpIndex = ReadJumpIndex(toRewrite.Slice(HeaderLength));
                         if (!_jumpCache.TryGetValue(jumpIndex, out long jump))
@@ -263,18 +263,18 @@ namespace Nethermind.Db
                         BinaryPrimitives.WriteInt64LittleEndian(toRewrite, BuildHeader(valueLength, jump));
 
                         int length = HeaderLength + KeccakLength + (valueLength == NullValueLength ? 0 : Align(valueLength));
-                        
+
                         // overwrite the jump to make it flushable AFTER the file is flushed
                         _jumpCache[jumpIndex] = _flushFrom + writtenSoFar;
 
                         writtenSoFar += length;
-                        
+
                         toRewrite = toRewrite.Slice(length);
                     }
-                    
+
                     data.CopyTo(destination);   // copy data
                     _flushFrom += data.Length;  // set proper cursor _flushFrom
-                    
+
                     _batches.TryDequeue(out _); // dequeue the current that was Peeked at the beginning
                     commit._isCommitted = true;// mark this as committed
                 }
@@ -284,15 +284,15 @@ namespace Nethermind.Db
                 {
                     Volatile.Write(ref jumpTable[key], jump);
                 }
-                
+
                 _jumpCache.Clear(); // not needed anymore, clear as the same entries might not be reused
             }
         }
 
         private int GetFileAndPosition(out int position)
         {
-            int fileNumber = (int) Math.DivRem(_flushFrom, _logFileSize, out long pos);
-            position = (int) pos;
+            int fileNumber = (int)Math.DivRem(_flushFrom, _logFileSize, out long pos);
+            position = (int)pos;
             return fileNumber;
         }
 
@@ -381,7 +381,7 @@ namespace Nethermind.Db
         {
             _runFlusher = false;
             _flusher.Join();
-            
+
             foreach (Map map in _maps)
             {
                 map?.Dispose();
@@ -485,11 +485,11 @@ namespace Nethermind.Db
             private int _written;
             private byte[] _buffer;
             private const int InitialLength = 256 * 1024;
-            
+
             private static readonly byte[] s_empty = new byte[0];
 
             public bool _isCommitted;
-            
+
             public WriteBatch(MemoryMappedKeyValueStore store)
             {
                 _store = store;
@@ -527,7 +527,7 @@ namespace Nethermind.Db
                 Ensure(length);
 
                 Span<byte> span = new Span<byte>(_buffer, _written, _buffer.Length - _written);
-                
+
                 BinaryPrimitives.WriteInt64LittleEndian(span, header);
                 key.CopyTo(span.Slice(HeaderLength));
                 value.CopyTo(span.Slice(HeaderLength + KeccakLength));

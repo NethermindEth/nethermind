@@ -46,7 +46,7 @@ namespace Nethermind.Db.Test
             }
         }
 
-        [TestCase(1_000_000, 1000)]
+        [TestCase(1000_000, 10000)]
         public void Test(int size, int batchSize)
         {
             const int minLength = 50;
