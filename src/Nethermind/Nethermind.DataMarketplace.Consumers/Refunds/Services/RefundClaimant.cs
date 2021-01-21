@@ -57,6 +57,11 @@ namespace Nethermind.DataMarketplace.Consumers.Refunds.Services
             ulong now = _timestamper.UnixTime.Seconds;
             if (!deposit.CanClaimRefund(now))
             {
+                var timeLeftToClaimRefund = deposit.GetTimeLeftToClaimRefund(now);
+                if (timeLeftToClaimRefund > 0)
+                {
+                    if (_logger.IsError) _logger.Info($"Time left to claim a refund: {timeLeftToClaimRefund} seconds.");
+                }
                 return RefundClaimStatus.Empty;
             }
             
@@ -69,6 +74,11 @@ namespace Nethermind.DataMarketplace.Consumers.Refunds.Services
             now = (ulong) latestBlock.Timestamp;
             if (!deposit.CanClaimRefund(now))
             {
+                var timeLeftToClaimRefund = deposit.GetTimeLeftToClaimRefund(now);
+                if (timeLeftToClaimRefund > 0)
+                {
+                    if (_logger.IsError) _logger.Info($"Time left to claim a refund: {timeLeftToClaimRefund} seconds.");
+                }
                 return RefundClaimStatus.Empty;
             }
             
