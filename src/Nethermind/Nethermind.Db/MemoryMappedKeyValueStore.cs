@@ -31,15 +31,11 @@ namespace Nethermind.Db
         const int NullValueLength = short.MaxValue;
         const int MaxNumberOfFiles = 2048;
         const byte EndMarker = 0; // a marker that when written as the first byte of the length in a file marks it as 0
-
-        /// <summary>
-        /// This is an important settings as it heavily affects the size of the jump file and the lookup speed.
-        /// The bigger it is, the bigger the jump file, the more buckets for colliding keys and the smaller linked lists for each bucket.
-        /// </summary>
-        const int PrefixBits = 24; // 3bytes
         const int AddressSize = sizeof(ulong);
-        const int JumpsCount = 1 << PrefixBits;
-        const int JumpsFileSize = AddressSize * JumpsCount;
+
+        private readonly int _prefixBits;
+        private readonly int _jumpsCount;
+        private readonly int _jumpsFileSize;
         
         const int ValueLengthShift = 6 * BitsInByte;
         const int BitsInByte = 8;
@@ -66,13 +62,20 @@ namespace Nethermind.Db
         /// Configures the key value store.
         /// </summary>
         /// <param name="directoryPath">The path where the database files will be located. Both jump table and the log files are included in there.</param>
+        /// <param name="keyPrefixBits">This is an important settings as it heavily affects the size of the jump file and the lookup speed. The bigger it is, the bigger the jump file, the more buckets for colliding keys and the smaller linked lists for each bucket.</param>
         /// <param name="logFileSize">The size of a single chunk of the log. Once the chunk is fully written, it won't be overwritten again.</param>
-        /// <param name="maxBatchFlushSize">The maximum number of bytes written down in one batch under one lock.</param>
-        public MemoryMappedKeyValueStore(string directoryPath, int logFileSize = 256 * 1024 * 1024, int maxBatchFlushSize = 10 * 1024 * 1024)
+        /// <param name="maxBatchFlushSize">The maximum number of bytes written down in one batch under one lock in <see cref="Commit"/>.</param>
+        public MemoryMappedKeyValueStore(string directoryPath, 
+            int keyPrefixBits = 24,
+            int logFileSize = 256 * 1024 * 1024, 
+            int maxBatchFlushSize = 10 * 1024 * 1024)
         {
             _dir = directoryPath;
             _logFileSize = logFileSize;
             _maxBatchFlushSize = maxBatchFlushSize;
+            _prefixBits = keyPrefixBits;
+            _jumpsCount = 1 << keyPrefixBits;
+            _jumpsFileSize = AddressSize * _jumpsCount;
         }
 
         public void Initialize()
@@ -83,7 +86,7 @@ namespace Nethermind.Db
             }
 
             string jumpsPath = Path.Combine(_dir, JumpsFileName);
-            _jumps = InitializeMap(jumpsPath, JumpsFileSize, cleanOnCreate: true);
+            _jumps = InitializeMap(jumpsPath, _jumpsFileSize, cleanOnCreate: true);
 
             string[] existingFiles = Directory.GetFiles(_dir, Prefix + "*.*");
             if (existingFiles.Length > 0)
@@ -151,10 +154,10 @@ namespace Nethermind.Db
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        static int ReadJumpIndex(ReadOnlySpan<byte> key)
+        int ReadJumpIndex(ReadOnlySpan<byte> key)
         {
-            const int mask = (PrefixBits << 1) - 1;
-            const int shift = 32 - PrefixBits ;
+            int mask = (_prefixBits << 1) - 1;
+            int shift = 32 - _prefixBits;
             uint value = BinaryPrimitives.ReadUInt32LittleEndian(key);
             return (int)((value >> shift) & mask);
         }
@@ -214,7 +217,7 @@ namespace Nethermind.Db
                     return; // this batch is already committed
                 }
 
-                Span<long> jumpTable = new Span<long>(_jumps.Pointer, JumpsCount);
+                Span<long> jumpTable = new Span<long>(_jumps.Pointer, _jumpsCount);
 
                 int writtenSoFar = 0;
 
@@ -244,7 +247,7 @@ namespace Nethermind.Db
 
                         // Flush jumps only when the log is being sealed. When recovery is introduced, this will require to scan only up to one log to recover when needed. 
                         // For regular usage this should limit the flushes
-                        _jumps.Flush(JumpsFileSize);
+                        _jumps.Flush(_jumpsFileSize);
 
                         // spin again to peek the commit again
                         continue;
@@ -319,7 +322,7 @@ namespace Nethermind.Db
         public unsafe bool TryGet(byte[] key, out Slice value)
         {
             int index = ReadJumpIndex(key);
-            Span<long> jumpTable = new Span<long>(_jumps.Pointer, JumpsCount);
+            Span<long> jumpTable = new Span<long>(_jumps.Pointer, _jumpsCount);
 
             long jump = Volatile.Read(ref jumpTable[index]);
 
