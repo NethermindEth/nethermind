@@ -17,6 +17,17 @@
 
 namespace Nethermind.Blockchain
 {
+    public static class HealthHintConstants
+    {
+        public const int ProcessingSafetyMultiplier = 4;
+
+        public static ulong? InfinityHint = null;
+        
+        public const int EthashStandardProcessingPeriod = 15;
+
+        public const int ProducingSafetyMultiplier = 2;
+    }
+    
     public interface IHealthHintService
     {
         ulong? MaxIntervalForProcessingBlocksHint();

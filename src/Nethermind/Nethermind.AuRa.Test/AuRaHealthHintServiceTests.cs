@@ -15,22 +15,33 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System;
 using System.Collections.Generic;
-using Nethermind.Blockchain.Services;
+using Nethermind.Blockchain;
+using Nethermind.Consensus.AuRa;
+using Nethermind.Consensus.AuRa.Services;
+using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Core;
+using Nethermind.Logging;
 using Nethermind.Specs.ChainSpecStyle;
+using NSubstitute;
 using NUnit.Framework;
 
-namespace Nethermind.Blockchain.Test.Services
+namespace Nethermind.AuRa.Test
 {
-    public class HealthHintServiceTests
+    public class AuRaHealthHintServiceTests
     {
         [Test]
         public void GetBlockProcessorAndProducerIntervalHint_returns_expected_result(
             [ValueSource(nameof(BlockProcessorIntervalHintTestCases))]
             BlockProcessorIntervalHint test)
         {
-            IHealthHintService healthHintService = new HealthHintService(test.ChainSpec);
+            ManualTimestamper manualTimestamper = new ManualTimestamper(DateTime.Now);
+            AuRaStepCalculator stepCalculator = new AuRaStepCalculator(new Dictionary<long, long>() {{0, test.StepDuration}}, manualTimestamper, LimboLogs.Instance);
+            manualTimestamper.Add(stepCalculator.TimeToNextStep);
+            IValidatorStore validatorStore = Substitute.For<IValidatorStore>();
+            validatorStore.GetValidators().Returns(new Address[test.ValidatorsCount]);
+            IHealthHintService healthHintService = new AuraHealthHintService(stepCalculator, validatorStore);
             ulong? actualProcessing = healthHintService.MaxIntervalForProcessingBlocksHint();
             ulong? actualProducing = healthHintService.MaxIntervalForProducingBlocksHint();
             Assert.AreEqual(test.ExpectedProcessingHint, actualProcessing);
@@ -39,14 +50,16 @@ namespace Nethermind.Blockchain.Test.Services
 
         public class BlockProcessorIntervalHint
         {
-            public ChainSpec ChainSpec { get; set; }
+            public long StepDuration { get; set; }
+            
+            public long ValidatorsCount { get; set; }
 
             public ulong? ExpectedProcessingHint { get; set; }
 
             public ulong? ExpectedProducingHint { get; set; }
 
             public override string ToString() =>
-                $"SealEngineType: {ChainSpec.SealEngineType}, ExpectedProcessingHint: {ExpectedProcessingHint}, ExpectedProducingHint: {ExpectedProducingHint}";
+                $"StepDuration: {StepDuration}, ValidatorsCount: {ValidatorsCount}, ExpectedProcessingHint: {ExpectedProcessingHint}, ExpectedProducingHint: {ExpectedProducingHint}";
         }
 
         public static IEnumerable<BlockProcessorIntervalHint> BlockProcessorIntervalHintTestCases
@@ -55,32 +68,10 @@ namespace Nethermind.Blockchain.Test.Services
             {
                 yield return new BlockProcessorIntervalHint()
                 {
-                    ChainSpec = new ChainSpec() {SealEngineType = SealEngineType.NethDev,}
-                };
-                yield return new BlockProcessorIntervalHint()
-                {
-                    ChainSpec = new ChainSpec() {SealEngineType = SealEngineType.Clique, Clique = new CliqueParameters() { Period = 15}},
-                    ExpectedProcessingHint = 60
-                };
-                yield return new BlockProcessorIntervalHint()
-                {
-                    ChainSpec = new ChainSpec() {SealEngineType = SealEngineType.Clique, Clique = new CliqueParameters() { Period = 23}},
-                    ExpectedProcessingHint = 92
-                };
-                yield return new BlockProcessorIntervalHint()
-                {
-                    ChainSpec = new ChainSpec() {SealEngineType = SealEngineType.Ethash },
-                    ExpectedProcessingHint = 60
-                };
-                yield return new BlockProcessorIntervalHint()
-                {
-                    ChainSpec = new ChainSpec() {SealEngineType = SealEngineType.Custom }
-                };
-                yield return new BlockProcessorIntervalHint()
-                {
-                    ChainSpec = new ChainSpec() {SealEngineType = SealEngineType.None }
                 };
             }
         }
+        
+        private IDictionary<long, long> GetStepDurationsForSingleStep(long stepDuration) => new Dictionary<long, long>() {{0, stepDuration}};
     }
 }

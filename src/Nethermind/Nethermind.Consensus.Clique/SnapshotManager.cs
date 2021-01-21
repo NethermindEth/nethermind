@@ -41,6 +41,7 @@ namespace Nethermind.Consensus.Clique
         private readonly ICache<Keccak, Address> _signatures;
         private readonly IEthereumEcdsa _ecdsa;
         private IDb _blocksDb;
+        private ulong _lastSignersCount = 0;
         private ICache<Keccak, Snapshot> _snapshotCache = new LruCache<Keccak, Snapshot>(Clique.InMemorySnapshots, "clique snapshots");
 
         public SnapshotManager(ICliqueConfig cliqueConfig, IDb blocksDb, IBlockTree blockTree, IEthereumEcdsa ecdsa, ILogManager logManager)
@@ -78,7 +79,10 @@ namespace Nethermind.Consensus.Clique
 
         private int CalculateSignersCount(BlockHeader blockHeader)
         {
-            return (blockHeader.ExtraData.Length - Clique.ExtraVanityLength - Clique.ExtraSealLength) / Address.ByteLength;
+            int signersCount = (blockHeader.ExtraData.Length - Clique.ExtraVanityLength - Clique.ExtraSealLength) /
+                               Address.ByteLength;
+            _lastSignersCount = signersCount > 0 ? (ulong)signersCount : 1;
+            return signersCount;
         }
 
         public static Keccak CalculateCliqueHeaderHash(BlockHeader blockHeader)
@@ -95,6 +99,8 @@ namespace Nethermind.Consensus.Clique
 
         private object _snapshotCreationLock = new object();
 
+        public ulong GetLastSignersCount() => _lastSignersCount = 0;
+        
         public Snapshot GetOrCreateSnapshot(long number, Keccak hash)
         {
             Snapshot? snapshot = GetSnapshot(number, hash);

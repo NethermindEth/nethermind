@@ -15,34 +15,30 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using Nethermind.Core;
+using Nethermind.Blockchain;
 using Nethermind.Specs.ChainSpecStyle;
 
-namespace Nethermind.Blockchain.Services
+namespace Nethermind.Consensus.Clique
 {
-    public class HealthHintService : IHealthHintService
+    public class CliqueHealthHintService : IHealthHintService
     {
+        private readonly ISnapshotManager _snapshotManager;
         private readonly ChainSpec _chainSpec;
         
-        public HealthHintService(ChainSpec chainSpec)
+        public CliqueHealthHintService(ISnapshotManager snapshotManager, ChainSpec chainSpec)
         {
+            _snapshotManager = snapshotManager;
             _chainSpec = chainSpec;
         }
-        
         public ulong? MaxIntervalForProcessingBlocksHint()
         {
-            ulong? blockProcessorHint;
-            if (_chainSpec.SealEngineType == SealEngineType.Ethash)
-                blockProcessorHint = HealthHintConstants.EthashStandardProcessingPeriod * HealthHintConstants.ProcessingSafetyMultiplier;
-            else
-                blockProcessorHint = HealthHintConstants.InfinityHint;
-               
-            return blockProcessorHint;
+            return _chainSpec.Clique.Period * HealthHintConstants.ProcessingSafetyMultiplier;
         }
 
         public ulong? MaxIntervalForProducingBlocksHint()
         {
-            return HealthHintConstants.InfinityHint;
+            return _snapshotManager.GetLastSignersCount() * _chainSpec.Clique.Period *
+                HealthHintConstants.ProducingSafetyMultiplier;
         }
     }
 }
