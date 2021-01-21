@@ -30,7 +30,9 @@ namespace Nethermind.Monitoring
         private readonly ILogger _logger;
         private readonly Options _options;
         
+        private readonly int? _exposePort;
         private readonly string _nodeName;
+        private readonly bool _pushEnabled;
         private readonly string _pushGatewayUrl;
         private readonly int _intervalSeconds;
 
@@ -38,18 +40,22 @@ namespace Nethermind.Monitoring
         {
             _metricsUpdater = metricsUpdater ?? throw new ArgumentNullException(nameof(metricsUpdater));
 
+            int? exposePort = metricsConfig.ExposePort;
             string nodeName = metricsConfig.NodeName;
             string pushGatewayUrl = metricsConfig.PushGatewayUrl;
+            bool pushEnabled = metricsConfig.Enabled;
             int intervalSeconds = metricsConfig.IntervalSeconds;
 
+            _exposePort = exposePort;
             _nodeName = string.IsNullOrWhiteSpace(nodeName)
                 ? throw new ArgumentNullException(nameof(nodeName))
                 : nodeName;
             _pushGatewayUrl = string.IsNullOrWhiteSpace(pushGatewayUrl)
                 ? throw new ArgumentNullException(nameof(pushGatewayUrl))
                 : pushGatewayUrl;
+            _pushEnabled = pushEnabled;
             _intervalSeconds = intervalSeconds <= 0
-                ? throw new ArgumentException($"Invalid monitoring interval: {intervalSeconds}s")
+                ? throw new ArgumentException($"Invalid monitoring push interval: {intervalSeconds}s")
                 : intervalSeconds;
             
             _logger = logManager == null
@@ -60,12 +66,20 @@ namespace Nethermind.Monitoring
 
         public async Task StartAsync()
         {
-            MetricPusher metricServer = new MetricPusher(_pushGatewayUrl, _options.Job, _options.Instance,
-                _intervalSeconds * 1000, new[]
-                {
-                    new Tuple<string, string>("nethermind_group", _options.Group),
-                });
-            metricServer.Start();
+            if (!string.IsNullOrWhiteSpace(_pushGatewayUrl))
+            {
+                MetricPusher metricPusher = new MetricPusher(_pushGatewayUrl, _options.Job, _options.Instance,
+                    _intervalSeconds * 1000, new[]
+                    {
+                        new Tuple<string, string>("nethermind_group", _options.Group),
+                    });
+                metricPusher.Start();
+            }
+            if (_exposePort != null)
+            {
+                IMetricServer metricServer = new MetricServer(_exposePort.Value, "metrics/");
+                metricServer.Start();
+            }
             await Task.Factory.StartNew(() => _metricsUpdater.StartUpdating(), TaskCreationOptions.LongRunning);
             if (_logger.IsInfo) _logger.Info($"Started monitoring for the group: {_options.Group}, instance: {_options.Instance}");
         }
