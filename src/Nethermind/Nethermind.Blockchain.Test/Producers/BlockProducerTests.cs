@@ -55,7 +55,7 @@ namespace Nethermind.Blockchain.Test.Producers
                 testRpc.BlockchainProcessor,
                 testRpc.State,
                 testRpc.BlockTree,
-                Substitute.For<IBlockProcessingQueue>(),
+                SubstituteSnapshotManager.For<IBlockProcessingQueue>(),
                 testRpc.TxPool,
                 testRpc.Timestamper, 
                 testRpc.SpecProvider,

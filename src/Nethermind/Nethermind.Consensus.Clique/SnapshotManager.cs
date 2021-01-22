@@ -99,7 +99,7 @@ namespace Nethermind.Consensus.Clique
 
         private object _snapshotCreationLock = new object();
 
-        public ulong GetLastSignersCount() => _lastSignersCount = 0;
+        public ulong GetLastSignersCount() => _lastSignersCount;
         
         public Snapshot GetOrCreateSnapshot(long number, Keccak hash)
         {
