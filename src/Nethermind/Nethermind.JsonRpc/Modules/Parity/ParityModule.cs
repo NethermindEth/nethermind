@@ -106,13 +106,6 @@ namespace Nethermind.JsonRpc.Modules.Parity
             return ResultWrapper<bool>.Success(true);
         }
 
-        public ResultWrapper<string> parity_nodeStatus()
-        {
-            throw new NotImplementedException();
-            // CheckHealthResult result = _healthService.CheckHealth();
-            // return result.Healthy ? ResultWrapper<string>.Success(result.Message) : ResultWrapper<string>.Fail(result.Message);
-        }
-
         public ResultWrapper<string> parity_enode() => ResultWrapper<string>.Success(_enode.ToString());
     }
 }
