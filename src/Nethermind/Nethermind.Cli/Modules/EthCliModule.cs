@@ -43,6 +43,12 @@ namespace Nethermind.Cli.Modules
             Keccak keccak = NodeManager.Post<Keccak>("eth_sendTransaction", tx).Result;
             return keccak.Bytes.ToHexString();
         }
+        
+        [CliFunction("eth", "syncing")]
+        public JsValue Syncing()
+        {
+            return NodeManager.PostJint("eth_syncing").Result;
+        }
 
         [CliFunction("eth", "getProof")]
         public JsValue Call(string address, string[] storageKeys, string? blockParameter = null)

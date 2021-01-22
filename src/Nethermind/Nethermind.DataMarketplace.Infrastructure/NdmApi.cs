@@ -445,6 +445,12 @@ namespace Nethermind.DataMarketplace.Infrastructure
             set => _nethermindApi.TxPoolInfoProvider = value;
         }
 
+        public IHealthHintService? HealthHintService        
+        {
+            get => _nethermindApi.HealthHintService;
+            set => _nethermindApi.HealthHintService = value;
+        }
+
         public IWallet? Wallet
         {
             get => _nethermindApi.Wallet;
