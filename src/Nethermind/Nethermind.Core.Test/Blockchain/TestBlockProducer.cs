@@ -39,8 +39,7 @@ namespace Nethermind.Core.Test.Blockchain
             IBlockTree blockTree,
             IBlockProcessingQueue blockProcessingQueue,
             ITimestamper timestamper,
-            ILogManager logManager,
-            ISyncConfig syncConfig)
+            ILogManager logManager)
             : base(
                 transactionSource,
                 processor,

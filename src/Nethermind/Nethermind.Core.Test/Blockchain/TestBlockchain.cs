@@ -133,7 +133,7 @@ namespace Nethermind.Core.Test.Blockchain
             StateReader = new StateReader(StateDb, CodeDb, LimboLogs.Instance);
             TxPoolTxSource txPoolTxSource = CreateTxPoolTxSource();
             ISealer sealer = new NethDevSealEngine(TestItem.AddressD);
-            BlockProducer = new TestBlockProducer(txPoolTxSource, chainProcessor, State, sealer, BlockTree, chainProcessor, Timestamper, LimboLogs.Instance, syncConfig);
+            BlockProducer = new TestBlockProducer(txPoolTxSource, chainProcessor, State, sealer, BlockTree, chainProcessor, Timestamper, LimboLogs.Instance);
             BlockProducer.Start();
 
             _resetEvent = new SemaphoreSlim(0);

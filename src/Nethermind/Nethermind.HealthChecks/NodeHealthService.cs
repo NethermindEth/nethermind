@@ -118,8 +118,8 @@ namespace Nethermind.HealthChecks
 
         public ulong? GetBlockProducerIntervalHint()
         {
-            return _healthChecksConfig.MaxIntervalWithoutProcessedBlock ??
-                   _healthHintService.MaxIntervalForProcessingBlocksHint();
+            return _healthChecksConfig.MaxIntervalWithoutProducedBlock ??
+                   _healthHintService.MaxIntervalForProducingBlocksHint();
         }
 
         private static bool CheckPeers(ICollection<(string Description, string LongDescription)> messages,
