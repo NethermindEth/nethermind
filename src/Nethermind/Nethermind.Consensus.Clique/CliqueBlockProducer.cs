@@ -297,7 +297,7 @@ namespace Nethermind.Consensus.Clique
 
         bool IBlockProducer.IsProducingBlocks(ulong? maxProducingInterval)
         {
-            if (_producerTask == null || _producerTask.IsCompleted == false)
+            if (_producerTask == null || _producerTask.IsCompleted)
                 return false;
             if (maxProducingInterval != null)
                 return _lastProducedBlock.AddSeconds(maxProducingInterval.Value) > DateTime.UtcNow;
