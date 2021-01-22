@@ -23,13 +23,13 @@ namespace Nethermind.Baseline.Config
         public bool Enabled { get; set; }
 
         public bool BaselineTreeDbCacheIndexAndFilterBlocks { get; set; } = false;
-        public ulong BaselineTreeDbBlockCacheSize { get; set; } = 1.KiB();
-        public ulong BaselineTreeDbWriteBufferSize { get; set; } = 1.KiB();
+        public ulong BaselineTreeDbBlockCacheSize { get; set; } = (ulong)1.KiB();
+        public ulong BaselineTreeDbWriteBufferSize { get; set; } = (ulong)1.KiB();
         public uint BaselineTreeDbWriteBufferNumber { get; set; } = 4;
 
         public bool BaselineTreeMetadataDbCacheIndexAndFilterBlocks { get; set; } = false;
-        public ulong BaselineTreeMetadataDbBlockCacheSize { get; set; } = 1.KiB();
-        public ulong BaselineTreeMetadataDbWriteBufferSize { get; set; } = 1.KiB();
+        public ulong BaselineTreeMetadataDbBlockCacheSize { get; set; } = (ulong)1.KiB();
+        public ulong BaselineTreeMetadataDbWriteBufferSize { get; set; } = (ulong)1.KiB();
         public uint BaselineTreeMetadataDbWriteBufferNumber { get; set; } = 4;
     }
 }

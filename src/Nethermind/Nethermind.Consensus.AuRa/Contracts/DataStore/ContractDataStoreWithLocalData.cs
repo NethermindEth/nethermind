@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -28,19 +28,19 @@ using Nethermind.Logging;
 
 namespace Nethermind.Consensus.AuRa.Contracts.DataStore
 {
-    public class ContractDataStoreWithLocalData<T, TCollection> : ContractDataStore<T, TCollection> where TCollection : IContractDataStoreCollection<T>
+    public class ContractDataStoreWithLocalData<T> : ContractDataStore<T>
     {
         private readonly ILocalDataSource<IEnumerable<T>> _localDataSource;
         private T[] _localData = Array.Empty<T>();
 
-        protected internal ContractDataStoreWithLocalData(
-            TCollection collection, 
+        public ContractDataStoreWithLocalData(
+            IContractDataStoreCollection<T> collection, 
             IDataContract<T> dataContract, 
             IBlockTree blockTree, 
             IReceiptFinder receiptFinder,
             ILogManager logManager,
             ILocalDataSource<IEnumerable<T>> localDataSource) 
-            : base(collection, dataContract, blockTree, receiptFinder, logManager)
+            : base(collection, dataContract ?? new EmptyDataContract<T>(), blockTree, receiptFinder, logManager)
         {
             _localDataSource = localDataSource ?? throw new ArgumentNullException(nameof(localDataSource));
             _localDataSource.Changed += OnChanged;
@@ -77,20 +77,6 @@ namespace Nethermind.Consensus.AuRa.Contracts.DataStore
         {
             base.Dispose();
             _localDataSource.Changed -= OnChanged;
-        }
-    }
-
-    public class ContractDataStoreWithLocalData<T> : ContractDataStoreWithLocalData<T, IContractDataStoreCollection<T>>
-    {
-        public ContractDataStoreWithLocalData(
-            IContractDataStoreCollection<T> collection, 
-            IDataContract<T> dataContract, 
-            IBlockTree blockTree, 
-            IReceiptFinder receiptFinder,
-            ILogManager logManager,
-            ILocalDataSource<IEnumerable<T>> localDataSource) 
-            : base(collection, dataContract ?? new EmptyDataContract<T>(), blockTree, receiptFinder, logManager, localDataSource)
-        {
         }
     }
 }

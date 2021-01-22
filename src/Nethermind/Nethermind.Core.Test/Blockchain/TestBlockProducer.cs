@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -25,6 +25,7 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Specs;
 using Nethermind.State;
 
 namespace Nethermind.Core.Test.Blockchain
@@ -49,6 +50,7 @@ namespace Nethermind.Core.Test.Blockchain
                 stateProvider,
                 timestamper,
                 FollowOtherMiners.Instance,
+                MainnetSpecProvider.Instance,
                 logManager,
                 "test producer")
         {

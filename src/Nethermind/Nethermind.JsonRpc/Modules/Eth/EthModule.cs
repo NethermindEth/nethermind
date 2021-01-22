@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -449,7 +449,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             return ResultWrapper<BlockForRpc>.Success(block == null ? null : new BlockForRpc(block, returnFullTransactionObjects));
         }
 
-        public ResultWrapper<TransactionForRpc> eth_getTransactionByHash(Keccak transactionHash)
+        public Task<ResultWrapper<TransactionForRpc>> eth_getTransactionByHash(Keccak transactionHash)
         {
             _txPoolBridge.TryGetPendingTransaction(transactionHash, out Transaction transaction);
             TxReceipt receipt = null; // note that if transaction is pending then for sure no receipt is known
@@ -458,14 +458,14 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 (receipt, transaction) = _blockchainBridge.GetTransaction(transactionHash);
                 if (transaction == null)
                 {
-                    return ResultWrapper<TransactionForRpc>.Success(null);
+                    return Task.FromResult(ResultWrapper<TransactionForRpc>.Success(null));
                 }
             }
 
             RecoverTxSenderIfNeeded(transaction);
             TransactionForRpc transactionModel = new TransactionForRpc(receipt?.BlockHash, receipt?.BlockNumber, receipt?.Index, transaction);
             if (_logger.IsTrace) _logger.Trace($"eth_getTransactionByHash request {transactionHash}, result: {transactionModel.Hash}");
-            return ResultWrapper<TransactionForRpc>.Success(transactionModel);
+            return Task.FromResult(ResultWrapper<TransactionForRpc>.Success(transactionModel));
         }
 
         public ResultWrapper<TransactionForRpc[]> eth_pendingTransactions()

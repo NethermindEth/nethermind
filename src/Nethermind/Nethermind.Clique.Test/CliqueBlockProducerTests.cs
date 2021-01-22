@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -42,9 +42,9 @@ using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.State.Repositories;
 using Nethermind.Db.Blooms;
+using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Storages;
-using Nethermind.Wallet;
 using NUnit.Framework;
 using BlockTree = Nethermind.Blockchain.BlockTree;
 
@@ -103,11 +103,12 @@ namespace Nethermind.Clique.Test
 
                 ISpecProvider specProvider = RinkebySpecProvider.Instance;
 
-                StateReader stateReader = new StateReader(stateDb, codeDb, nodeLogManager);
-                StateProvider stateProvider = new StateProvider(stateDb, codeDb, nodeLogManager);
+                var trieStore = new TrieStore(stateDb, nodeLogManager);
+                StateReader stateReader = new StateReader(trieStore, codeDb, nodeLogManager);
+                StateProvider stateProvider = new StateProvider(trieStore, codeDb, nodeLogManager);
                 stateProvider.CreateAccount(TestItem.PrivateKeyD.Address, 100.Ether());
                 stateProvider.Commit(GoerliSpecProvider.Instance.GenesisSpec);
-                stateProvider.CommitTree();
+                stateProvider.CommitTree(0);
 
                 TxPool.TxPool txPool = new TxPool.TxPool(new InMemoryTxStorage(), _ethereumEcdsa, GoerliSpecProvider.Instance, new TxPoolConfig(), stateProvider, _logManager);
                 _pools[privateKey] = txPool;
@@ -127,18 +128,43 @@ namespace Nethermind.Clique.Test
                 _genesis.Header.StateRoot = _genesis3Validators.Header.StateRoot = stateProvider.StateRoot;
                 _genesis.Header.Hash = _genesis.Header.CalculateHash();
                 _genesis3Validators.Header.Hash = _genesis3Validators.Header.CalculateHash();
-
-                StorageProvider storageProvider = new StorageProvider(stateDb, stateProvider, nodeLogManager);
+                
+                StorageProvider storageProvider = new StorageProvider(trieStore, stateProvider, nodeLogManager);
                 TransactionProcessor transactionProcessor = new TransactionProcessor(GoerliSpecProvider.Instance, stateProvider, storageProvider, new VirtualMachine(stateProvider, storageProvider, blockhashProvider, specProvider, nodeLogManager), nodeLogManager);
-                BlockProcessor blockProcessor = new BlockProcessor(GoerliSpecProvider.Instance, Always.Valid, NoBlockRewards.Instance, transactionProcessor, stateDb, codeDb, stateProvider, storageProvider, txPool, NullReceiptStorage.Instance, nodeLogManager);
+
+                BlockProcessor blockProcessor = new BlockProcessor(
+                    GoerliSpecProvider.Instance,
+                    Always.Valid,
+                    NoBlockRewards.Instance,
+                    transactionProcessor,
+                    stateProvider,
+                    storageProvider,
+                    txPool,
+                    NullReceiptStorage.Instance,
+                    NullWitnessCollector.Instance,
+                    nodeLogManager);
+
                 BlockchainProcessor processor = new BlockchainProcessor(blockTree, blockProcessor, new AuthorRecoveryStep(snapshotManager), nodeLogManager, BlockchainProcessor.Options.NoReceipts);
                 processor.Start();
 
-                StateProvider minerStateProvider = new StateProvider(stateDb, codeDb, nodeLogManager);
-                StorageProvider minerStorageProvider = new StorageProvider(stateDb, minerStateProvider, nodeLogManager);
+                var minerTrieStore = new ReadOnlyTrieStore(trieStore);
+                StateProvider minerStateProvider = new StateProvider(minerTrieStore, codeDb, nodeLogManager);
+                StorageProvider minerStorageProvider = new StorageProvider(minerTrieStore, minerStateProvider, nodeLogManager);
                 VirtualMachine minerVirtualMachine = new VirtualMachine(minerStateProvider, minerStorageProvider, blockhashProvider, specProvider, nodeLogManager);
                 TransactionProcessor minerTransactionProcessor = new TransactionProcessor(GoerliSpecProvider.Instance, minerStateProvider, minerStorageProvider, minerVirtualMachine, nodeLogManager);
-                BlockProcessor minerBlockProcessor = new BlockProcessor(GoerliSpecProvider.Instance, Always.Valid, NoBlockRewards.Instance, minerTransactionProcessor, stateDb, codeDb, minerStateProvider, minerStorageProvider, txPool, NullReceiptStorage.Instance,  nodeLogManager);
+
+                BlockProcessor minerBlockProcessor = new BlockProcessor(
+                    GoerliSpecProvider.Instance,
+                    Always.Valid,
+                    NoBlockRewards.Instance,
+                    minerTransactionProcessor,
+                    minerStateProvider,
+                    minerStorageProvider,
+                    txPool,
+                    NullReceiptStorage.Instance,
+                    NullWitnessCollector.Instance,
+                    nodeLogManager);
+
                 BlockchainProcessor minerProcessor = new BlockchainProcessor(blockTree, minerBlockProcessor, new AuthorRecoveryStep(snapshotManager), nodeLogManager, BlockchainProcessor.Options.NoReceipts);
 
                 if (withGenesisAlreadyProcessed)
@@ -156,7 +182,8 @@ namespace Nethermind.Clique.Test
                     new CryptoRandom(),
                     snapshotManager,
                     cliqueSealer,
-                    new TargetAdjustedGasLimitCalculator(GoerliSpecProvider.Instance, new MiningConfig()), 
+                    new TargetAdjustedGasLimitCalculator(GoerliSpecProvider.Instance, new MiningConfig()),
+                    MainnetSpecProvider.Instance, 
                     _cliqueConfig,
                     nodeLogManager);
                 blockProducer.Start();
@@ -182,7 +209,7 @@ namespace Nethermind.Clique.Test
                 UInt256 difficulty = new UInt256(1);
                 long number = 0L;
                 int gasLimit = 4700000;
-                UInt256 timestamp = _timestamper.EpochSeconds - _cliqueConfig.BlockPeriod;
+                UInt256 timestamp = _timestamper.UnixTime.Seconds - _cliqueConfig.BlockPeriod;
                 string extraDataHex = "0x2249276d20646f6e652077616974696e672e2e2e20666f7220626c6f636b2066";
                 extraDataHex += TestItem.PrivateKeyA.Address.ToString(false).Replace("0x", string.Empty);
                 extraDataHex += TestItem.PrivateKeyB.Address.ToString(false).Replace("0x", string.Empty);

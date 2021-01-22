@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -22,10 +22,8 @@ namespace Nethermind.Evm
     {
         public static long CalculateCost(int byteCodeLength, IReleaseSpec spec)
         {
-            if (spec.IsEip170Enabled && byteCodeLength > spec.MaxCodeSize)
-            {
+            if (spec.LimitCodeSize  && byteCodeLength > spec.MaxCodeSize)
                 return long.MaxValue;
-            }
 
             return GasCostOf.CodeDeposit * byteCodeLength;
         }

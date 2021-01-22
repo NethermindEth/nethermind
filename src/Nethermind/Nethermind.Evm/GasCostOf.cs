@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -25,8 +25,6 @@ namespace Nethermind.Evm
         public const long High = 10;
         public const long ExtCode = 20;
         public const long ExtCodeEip150 = 700;
-        public const long ExtCodeSize = 20;
-        public const long ExtCodeSizeEip150 = 700;
         public const long Balance = 20;
         public const long BalanceEip150 = 400;
         public const long BalanceEip1884 = 700;
@@ -65,5 +63,12 @@ namespace Nethermind.Evm
         public const long ExtCodeHash = 400;
         public const long ExtCodeHashEip1884 = 700;
         public const long SelfBalance = 5;
+        
+        public const long ColdSLoad = 2100; // eip-2929
+        public const long ColdAccountAccess = 2600; // eip-2929
+        public const long WarmStateRead = 100; // eip-2929
+        
+        public const long AccessAccountListEntry = 2400; // eip-2930
+        public const long AccessStorageListEntry = 1900; // eip-2930
     }
 }

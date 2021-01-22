@@ -48,6 +48,7 @@ using NSubstitute;
 using NUnit.Framework;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Trie.Pruning;
 
 namespace Nethermind.DataMarketplace.Test
 {
@@ -112,12 +113,13 @@ namespace Nethermind.DataMarketplace.Test
             IReleaseSpec spec = _releaseSpec;
             ISpecProvider specProvider = new SingleReleaseSpecProvider(spec, 99);
             StateDb stateDb = new StateDb();
-            _state = new StateProvider(stateDb, new StateDb(), _logManager);
-            StorageProvider storageProvider = new StorageProvider(stateDb, _state, _logManager);
+            TrieStore trieStore = new TrieStore(stateDb, _logManager);
+            _state = new StateProvider(trieStore, new StateDb(), _logManager);
+            StorageProvider storageProvider = new StorageProvider(trieStore, _state, _logManager);
             _state.CreateAccount(_consumerAccount, 1000.Ether());
             _state.CreateAccount(_providerAccount, 1.Ether());
             _state.Commit(spec);
-            _state.CommitTree();
+            _state.CommitTree(0);
 
             VirtualMachine machine = new VirtualMachine(_state, storageProvider, Substitute.For<IBlockhashProvider>(),
                 specProvider, _logManager);
@@ -172,7 +174,7 @@ namespace Nethermind.DataMarketplace.Test
                 _receiptsTracer = new BlockReceiptsTracer();
                 _processor = processor;
                 _tx = Build.A.Transaction.SignedAndResolved(new EthereumEcdsa(ChainId.Mainnet, LimboLogs.Instance), TestItem.PrivateKeyA).TestObject;
-                _headBlock = Build.A.Block.WithNumber(1).WithTransactions(Enumerable.Repeat(_tx, 100).ToArray()).TestObject;
+                _headBlock = Build.A.Block.WithNumber(1).WithTransactions(MuirGlacier.Instance, Enumerable.Repeat(_tx, 100).ToArray()).TestObject;
 
                 _receiptsTracer.SetOtherTracer(GethTracer);
                 _receiptsTracer.StartNewBlockTrace(_headBlock);
@@ -227,7 +229,7 @@ namespace Nethermind.DataMarketplace.Test
             
             private BlockReceiptsTracer _receiptsTracer;
 
-            private int _txIndex = 0;
+            private int _txIndex;
 
             public ValueTask<Keccak> SendTransaction(Transaction tx, TxHandlingOptions txHandlingOptions)
             {

@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -36,6 +36,7 @@ using Nethermind.Int256;
 using Nethermind.KeyStore;
 using Nethermind.Specs;
 using Nethermind.Synchronization;
+using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
 using Newtonsoft.Json;
@@ -114,6 +115,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             
             ReadOnlyTxProcessingEnv processingEnv = new ReadOnlyTxProcessingEnv(
                 new ReadOnlyDbProvider(DbProvider, false),
+                new TrieStore(DbProvider.StateDb, LimboLogs.Instance),
                 new ReadOnlyBlockTree(BlockTree),
                 SpecProvider,
                 LimboLogs.Instance);

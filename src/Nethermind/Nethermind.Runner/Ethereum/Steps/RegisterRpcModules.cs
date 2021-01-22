@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -91,7 +91,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             ISyncConfig syncConfig = _api.Config<ISyncConfig>();
             
             // lets add threads to support parallel eth_getLogs
-            ThreadPool.GetMinThreads(out var workerThreads, out var completionPortThreads);
+            ThreadPool.GetMinThreads(out int workerThreads, out int completionPortThreads);
             ThreadPool.SetMinThreads(workerThreads + Environment.ProcessorCount, completionPortThreads + Environment.ProcessorCount);
             
             EthModuleFactory ethModuleFactory = new EthModuleFactory(
@@ -110,7 +110,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             if (_api.BlockValidator == null) throw new StepDependencyException(nameof(_api.BlockValidator));
             if (_api.RewardCalculatorSource == null) throw new StepDependencyException(nameof(_api.RewardCalculatorSource));
             
-            ProofModuleFactory proofModuleFactory = new ProofModuleFactory(_api.DbProvider, _api.BlockTree, _api.BlockPreprocessor, _api.ReceiptFinder, _api.SpecProvider, _api.LogManager);
+            ProofModuleFactory proofModuleFactory = new ProofModuleFactory(_api.DbProvider, _api.BlockTree, _api.TrieStore, _api.BlockPreprocessor, _api.ReceiptFinder, _api.SpecProvider, _api.LogManager);
             _api.RpcModuleProvider.Register(new BoundedModulePool<IProofModule>(proofModuleFactory, 2, rpcConfig.Timeout));
 
             DebugModuleFactory debugModuleFactory = new DebugModuleFactory(
@@ -121,7 +121,8 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.BlockPreprocessor, 
                 _api.RewardCalculatorSource, 
                 _api.ReceiptStorage,
-                new ReceiptMigration(_api), 
+                new ReceiptMigration(_api),
+                _api.TrieStore, 
                 _api.ConfigProvider, 
                 _api.SpecProvider, 
                 _api.LogManager);
@@ -130,12 +131,14 @@ namespace Nethermind.Runner.Ethereum.Steps
             TraceModuleFactory traceModuleFactory = new TraceModuleFactory(
                 _api.DbProvider,
                 _api.BlockTree,
+                _api.ReadOnlyTrieStore,
                 rpcConfig,
                 _api.BlockPreprocessor,
                 _api.RewardCalculatorSource, 
                 _api.ReceiptStorage,
                 _api.SpecProvider,
                 _api.LogManager);
+
             _api.RpcModuleProvider.Register(new BoundedModulePool<ITraceModule>(traceModuleFactory, _cpuCount, rpcConfig.Timeout));
             
             if (_api.EthereumEcdsa == null) throw new StepDependencyException(nameof(_api.EthereumEcdsa));

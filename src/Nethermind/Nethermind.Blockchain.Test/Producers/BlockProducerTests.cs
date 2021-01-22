@@ -29,6 +29,7 @@ using Nethermind.Consensus.Ethash;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
@@ -57,6 +58,8 @@ namespace Nethermind.Blockchain.Test.Producers
                 Substitute.For<IBlockProcessingQueue>(),
                 testRpc.TxPool,
                 testRpc.Timestamper, 
+                testRpc.SpecProvider,
+                new MiningConfig(),
                 LimboLogs.Instance);
             await AssertIsProducingBlocks(blockProducer);
         }
@@ -89,7 +92,8 @@ namespace Nethermind.Blockchain.Test.Producers
                 Substitute.For<IBlockProcessingQueue>(),
                 testRpc.State,
                 Substitute.For<IGasLimitCalculator>(),
-                testRpc.Timestamper, 
+                testRpc.Timestamper,
+                testRpc.SpecProvider, 
                 LimboLogs.Instance,
                 Substitute.For<IDifficultyCalculator>());
             await AssertIsProducingBlocks(blockProducer);
@@ -112,6 +116,7 @@ namespace Nethermind.Blockchain.Test.Producers
                 Substitute.For<IReportingValidator>(),
                 new AuRaConfig(),
                 Substitute.For<IGasLimitCalculator>(),
+                Substitute.For<ISpecProvider>(),
                 LimboLogs.Instance);
             await AssertIsProducingBlocks(blockProducer);
         }
@@ -130,6 +135,7 @@ namespace Nethermind.Blockchain.Test.Producers
                 Substitute.For<ISnapshotManager>(),
                 Substitute.For<ISealer>(),
                 Substitute.For<IGasLimitCalculator>(),
+                Substitute.For<ISpecProvider>(),
                 new CliqueConfig(),
                 LimboLogs.Instance);
             await AssertIsProducingBlocks(blockProducer);

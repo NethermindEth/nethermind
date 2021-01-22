@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Text;
 using Nethermind.Core.Crypto;
@@ -27,8 +28,16 @@ namespace Nethermind.Core
     {
         public const int BaseTxGasCost = 21000;
 
+        /// <summary>
+        /// EIP-2718 transaction type
+        /// </summary>
+        public byte TransactionType { get; set; }
         public UInt256 Nonce { get; set; }
         public UInt256 GasPrice { get; set; }
+        public UInt256 GasPremium => GasPrice; 
+        public UInt256 FeeCap { get; set; }
+        public bool IsEip1559 => FeeCap > UInt256.Zero;
+        public bool IsLegacy => !IsEip1559;
         public long GasLimit { get; set; }
         public Address? To { get; set; }
         public UInt256 Value { get; set; }
@@ -42,6 +51,8 @@ namespace Nethermind.Core
         public Keccak? Hash { get; set; }
         public PublicKey? DeliveredBy { get; set; } // tks: this is added so we do not send the pending tx back to original sources, not used yet
         public UInt256 Timestamp { get; set; }
+        public HashSet<Address> AccountAccessList { get; set; } // eip2930
+        public HashSet<StorageCell> StorageAccessList { get; set; } // eip2930
         
         /// <summary>
         /// In-memory only property, representing order of transactions going to TxPool.

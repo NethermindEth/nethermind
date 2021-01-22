@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -72,7 +72,8 @@ namespace Nethermind.Runner.Ethereum.Steps
                         api.ChainSpec.Parameters.TransactionPermissionContract,
                         api.ChainSpec.Parameters.TransactionPermissionContractTransition ?? 0, 
                         readOnlyTxProcessorSource, 
-                        api.TransactionPermissionContractVersions),
+                        api.TransactionPermissionContractVersions,
+                        api.LogManager),
                     api.TxFilterCache,
                     api.ChainHeadStateProvider,
                     api.LogManager);
@@ -120,13 +121,13 @@ namespace Nethermind.Runner.Ethereum.Steps
             return (txPriorityContract, api.TxPriorityContractLocalDataSource);
         }
 
-        public static DictionaryContractDataStore<TxPriorityContract.Destination, TxPriorityContract.DestinationSortedListContractDataStoreCollection>? CreateMinGasPricesDataStore(
+        public static DictionaryContractDataStore<TxPriorityContract.Destination>? CreateMinGasPricesDataStore(
             AuRaNethermindApi api, 
             TxPriorityContract? txPriorityContract, 
             TxPriorityContract.LocalDataSource? localDataSource)
         {
             return txPriorityContract != null || localDataSource != null
-                ? new DictionaryContractDataStore<TxPriorityContract.Destination, TxPriorityContract.DestinationSortedListContractDataStoreCollection>(
+                ? new DictionaryContractDataStore<TxPriorityContract.Destination>(
                     new TxPriorityContract.DestinationSortedListContractDataStoreCollection(),
                     txPriorityContract?.MinGasPrices,
                     api.BlockTree,

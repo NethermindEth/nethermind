@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -34,7 +34,7 @@ namespace Nethermind.Blockchain
             _wrapped = wrapped;
         }
 
-        public int ChainId => _wrapped.ChainId;
+        public long ChainId => _wrapped.ChainId;
         public BlockHeader Genesis => _wrapped.Genesis;
         public BlockHeader BestSuggestedHeader => _wrapped.BestSuggestedHeader;
         public BlockHeader LowestInsertedHeader => _wrapped.LowestInsertedHeader;
@@ -105,6 +105,12 @@ namespace Nethermind.Blockchain
         public bool WasProcessed(long number, Keccak blockHash) => _wrapped.WasProcessed(number, blockHash);
 
         public event EventHandler<BlockEventArgs> NewBestSuggestedBlock
+        {
+            add { }
+            remove { }
+        }
+
+        public event EventHandler<BlockEventArgs> NewSuggestedBlock
         {
             add { }
             remove { }

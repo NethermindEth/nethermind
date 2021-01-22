@@ -131,7 +131,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc
 
         public async Task<ResultWrapper<PagedResult<DepositDetailsForRpc>>> ndm_getDeposits(GetDeposits? query)
         {
-            uint timestamp = (uint) _timestamper.EpochSeconds;
+            uint timestamp = (uint) _timestamper.UnixTime.Seconds;
             PagedResult<DepositDetails> deposits = await _consumerService.GetDepositsAsync(query ?? new GetDeposits
             {
                 Results = int.MaxValue
@@ -143,7 +143,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc
 
         public async Task<ResultWrapper<DepositDetailsForRpc>> ndm_getDeposit(Keccak depositId)
         {
-            uint timestamp = (uint) _timestamper.EpochSeconds;
+            uint timestamp = (uint) _timestamper.UnixTime.Seconds;
             DepositDetails? deposit = await _consumerService.GetDepositAsync(depositId);
 
             return deposit is null
@@ -277,20 +277,20 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc
 
         public async Task<ResultWrapper<bool>> ndm_setGasPrice(string gasPriceOrType)
         {
-            await _gasPriceService.SetAsync(gasPriceOrType);
+            await _gasPriceService.SetGasPriceOrTypeAsync(gasPriceOrType);
 
             return ResultWrapper<bool>.Success(true);
         }
 
         public async Task<ResultWrapper<bool>> ndm_setRefundGasPrice(UInt256 gasPrice)
         {
-            await _gasPriceService.SetRefundAsync(gasPrice);
+            await _gasPriceService.SetRefundGasPriceAsync(gasPrice);
 
             return ResultWrapper<bool>.Success(true);
         }
 
         public async Task<ResultWrapper<UInt256>> ndm_getRefundGasPrice()
-            => ResultWrapper<UInt256>.Success(await _gasPriceService.GetCurrentRefundAsync());
+            => ResultWrapper<UInt256>.Success(await _gasPriceService.GetCurrentRefundGasPriceAsync());
         
         public async Task<ResultWrapper<UpdatedTransactionInfoForRpc>> ndm_updateDepositGasPrice(Keccak depositId,
             UInt256 gasPrice)

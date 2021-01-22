@@ -116,7 +116,7 @@ namespace Nethermind.DataMarketplace.Consumers.Shared.Services
             Keccak? transactionHash = await _transactionService.UpdateGasPriceAsync(currentHash, gasPrice);
             if (_logger.IsInfo) _logger.Info($"Received transaction hash: '{transactionHash}' for deposit with id: '{depositId}' after updating gas price.");
             deposit!.AddTransaction(TransactionInfo.SpeedUp(transactionHash, deposit!.Deposit.Value, gasPrice, gasLimit,
-                _timestamper.EpochSeconds));
+                _timestamper.UnixTime.Seconds));
             await _depositRepository.UpdateAsync(deposit!);
             if (_logger.IsInfo) _logger.Info($"Updated gas price for deposit with id: '{depositId}', transaction hash: '{transactionHash}'.");
 
@@ -166,7 +166,7 @@ namespace Nethermind.DataMarketplace.Consumers.Shared.Services
             Keccak transactionHash = await _transactionService.UpdateGasPriceAsync(currentHash, gasPrice);
             if (_logger.IsInfo) _logger.Info($"Received transaction hash: '{transactionHash}' for deposit with id: '{depositId}' after updating gas price for refund claim.");
             deposit.AddClaimedRefundTransaction(TransactionInfo.SpeedUp(transactionHash, 0, gasPrice, gasLimit,
-                _timestamper.EpochSeconds));
+                _timestamper.UnixTime.Seconds));
             await _depositRepository.UpdateAsync(deposit);
             if (_logger.IsInfo) _logger.Info($"Updated gas price for refund claim for deposit with id: '{depositId}', transaction hash: '{transactionHash}'.");
 
@@ -208,7 +208,7 @@ namespace Nethermind.DataMarketplace.Consumers.Shared.Services
             CanceledTransactionInfo transaction = await _transactionService.CancelAsync(deposit!.Transaction.Hash);
             if (_logger.IsWarn) _logger.Warn($"Canceled transaction for deposit with id: '{depositId}', transaction hash: '{transaction.Hash}'.");
             TransactionInfo cancellingTransaction = TransactionInfo.Cancellation(transaction.Hash, transaction.GasPrice,
-                transaction.GasLimit, _timestamper.EpochSeconds);
+                transaction.GasLimit, _timestamper.UnixTime.Seconds);
             deposit!.AddTransaction(cancellingTransaction);
             await _depositRepository.UpdateAsync(deposit);
 
@@ -252,7 +252,7 @@ namespace Nethermind.DataMarketplace.Consumers.Shared.Services
             CanceledTransactionInfo transaction = await _transactionService.CancelAsync(currentHash);
             if (_logger.IsWarn) _logger.Warn($"Canceled transaction for deposit with id: '{depositId}', transaction hash: '{transaction.Hash}'.");
             TransactionInfo cancellingTransaction = TransactionInfo.Cancellation(transaction.Hash, transaction.GasPrice,
-                transaction.GasLimit, _timestamper.EpochSeconds);
+                transaction.GasLimit, _timestamper.UnixTime.Seconds);
             deposit.AddClaimedRefundTransaction(cancellingTransaction);
             await _depositRepository.UpdateAsync(deposit);
 

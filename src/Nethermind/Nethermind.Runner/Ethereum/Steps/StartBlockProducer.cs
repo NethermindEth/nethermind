@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -27,6 +27,7 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Db;
+using Nethermind.State;
 using Nethermind.Logging;
 
 namespace Nethermind.Runner.Ethereum.Steps
@@ -34,7 +35,7 @@ namespace Nethermind.Runner.Ethereum.Steps
     [RunnerStepDependencies(typeof(StartBlockProcessor), typeof(SetupKeyStore), typeof(ReviewBlockTree))]
     public class StartBlockProducer : IStep
     {
-        protected readonly IApiWithBlockchain _api;
+        protected IApiWithBlockchain _api;
         private BlockProducerContext? _blockProducerContext;
 
         public StartBlockProducer(INethermindApi api)
@@ -82,9 +83,10 @@ namespace Nethermind.Runner.Ethereum.Steps
                 ISyncConfig syncConfig = _api.Config<ISyncConfig>();
                 ReadOnlyDbProvider dbProvider = new ReadOnlyDbProvider(_api.DbProvider, false);
                 ReadOnlyBlockTree blockTree = new ReadOnlyBlockTree(_api.BlockTree);
-                ReadOnlyTxProcessingEnv txProcessingEnv = new ReadOnlyTxProcessingEnv(
-                    dbProvider, blockTree, _api.SpecProvider, _api.LogManager);
 
+                ReadOnlyTxProcessingEnv txProcessingEnv =
+                    new ReadOnlyTxProcessingEnv(dbProvider, _api.ReadOnlyTrieStore, blockTree, _api.SpecProvider, _api.LogManager);
+                
                 ReadOnlyTxProcessorSource txProcessorSource =
                     new ReadOnlyTxProcessorSource(txProcessingEnv);
 
@@ -146,12 +148,11 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.BlockValidator,
                 _api.RewardCalculatorSource.Get(readOnlyTxProcessingEnv.TransactionProcessor),
                 readOnlyTxProcessingEnv.TransactionProcessor,
-                readOnlyDbProvider.StateDb,
-                readOnlyDbProvider.CodeDb,
                 readOnlyTxProcessingEnv.StateProvider,
                 readOnlyTxProcessingEnv.StorageProvider,
                 _api.TxPool,
                 _api.ReceiptStorage,
+                NullWitnessCollector.Instance,
                 _api.LogManager);
         }
     }

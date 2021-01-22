@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -23,6 +23,7 @@ using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Evm;
+using Nethermind.Logging;
 
 namespace Nethermind.Consensus.AuRa.Contracts
 {
@@ -32,13 +33,15 @@ namespace Nethermind.Consensus.AuRa.Contracts
             Address contractAddress,
             long activation,
             IReadOnlyTransactionProcessorSource readOnlyTransactionProcessorSource, 
-            ICache<Keccak, UInt256> cache)
+            ICache<Keccak, UInt256> cache,
+            ILogManager logManager)
             : base(
                 CreateAllVersions(abiEncoder,
                     contractAddress,
                     readOnlyTransactionProcessorSource),
                 cache,
-                activation)
+                activation,
+                logManager)
         {
         }
         

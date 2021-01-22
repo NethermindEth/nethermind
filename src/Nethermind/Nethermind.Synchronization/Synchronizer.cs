@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -33,8 +33,10 @@ using Nethermind.Synchronization.FastBlocks;
 using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
+using Nethermind.Synchronization.Peers.AllocationStrategies;
 using Nethermind.Synchronization.Reporting;
 using Nethermind.Synchronization.StateSync;
+using Nethermind.Synchronization.Witness;
 
 namespace Nethermind.Synchronization
 {
@@ -118,7 +120,55 @@ namespace Nethermind.Synchronization
             if (_syncConfig.FastSync && _syncConfig.BeamSync || _syncConfig.BeamSyncFixMode)
             {
                 StartBeamSyncComponents();
+
+                if (_syncConfig.WitnessProtocolEnabled)
+                {
+                    StartWitnessSyncComponents();
+                }
             }
+        }
+
+        private void StartWitnessSyncComponents()
+        {
+            BeamSyncDbProvider? beamSyncDbProvider = _dbProvider as BeamSyncDbProvider;
+            
+            if (beamSyncDbProvider == null)
+            {
+                throw new InvalidOperationException("Corrupted types when initializing beam sync components " +
+                                                    $"received {_dbProvider.GetType().FullName}");
+            }
+            
+            WitnessStateSyncFeed witnessStateSyncFeed = new WitnessStateSyncFeed(beamSyncDbProvider.BeamTempDb, _logManager);
+            StateSyncDispatcher witnessStateSyncDispatcher = new StateSyncDispatcher(
+                witnessStateSyncFeed!, _syncPeerPool, new WitnessStateSyncAllocationStrategyFactory(), _logManager);
+            
+            WitnessBlockSyncFeed witnessBlockSyncFeed = new WitnessBlockSyncFeed(_blockTree, witnessStateSyncFeed, _syncMode, _logManager);
+            WitnessBlockSyncDispatcher blockSyncDispatcher = 
+                new WitnessBlockSyncDispatcher(witnessBlockSyncFeed!, _syncPeerPool, new WitnessBlockSyncAllocationStrategyFactory(), _logManager);
+
+            blockSyncDispatcher.Start(_syncCancellation.Token).ContinueWith(t =>
+            {
+                if (t.IsFaulted)
+                {
+                    if (_logger.IsError) _logger.Error("Witness block sync failed", t.Exception);
+                }
+                else
+                {
+                    if (_logger.IsInfo) _logger.Info("Witness block sync completed.");
+                }
+            });
+            
+            witnessStateSyncDispatcher.Start(_syncCancellation.Token).ContinueWith(t =>
+            {
+                if (t.IsFaulted)
+                {
+                    if (_logger.IsError) _logger.Error("Witness state sync failed", t.Exception);
+                }
+                else
+                {
+                    if (_logger.IsInfo) _logger.Info("Witness state sync completed.");
+                }
+            });
         }
 
         private void StartBeamSyncComponents()
@@ -178,7 +228,7 @@ namespace Nethermind.Synchronization
 
         private void StartStateSyncComponents()
         {
-            _stateSyncFeed = new StateSyncFeed(_dbProvider.CodeDb, _dbProvider.StateDb, _dbProvider.BeamStateDb, _syncMode, _blockTree, _logManager);
+            _stateSyncFeed = new StateSyncFeed(_dbProvider.CodeDb, _dbProvider.StateDb, _dbProvider.BeamTempDb, _syncMode, _blockTree, _logManager);
             StateSyncDispatcher stateSyncDispatcher = new StateSyncDispatcher(_stateSyncFeed!, _syncPeerPool, new StateSyncAllocationStrategyFactory(), _logManager);
             Task syncDispatcherTask = stateSyncDispatcher.Start(_syncCancellation.Token).ContinueWith(t =>
             {
@@ -215,7 +265,7 @@ namespace Nethermind.Synchronization
             {
                 if (_syncConfig.DownloadBodiesInFastSync)
                 {
-                    _bodiesFeed = new BodiesSyncFeed(_syncMode, _blockTree, _syncPeerPool, _syncConfig, _syncReport, _logManager);
+                    _bodiesFeed = new BodiesSyncFeed(_syncMode, _blockTree, _syncPeerPool, _syncConfig, _syncReport, _specProvider, _logManager);
                     BodiesSyncDispatcher bodiesDispatcher = new BodiesSyncDispatcher(_bodiesFeed!, _syncPeerPool, fastFactory, _logManager);
                     Task bodiesTask = bodiesDispatcher.Start(_syncCancellation.Token).ContinueWith(t =>
                     {

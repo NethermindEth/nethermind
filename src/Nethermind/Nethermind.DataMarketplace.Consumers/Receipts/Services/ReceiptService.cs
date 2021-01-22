@@ -93,7 +93,7 @@ namespace Nethermind.DataMarketplace.Consumers.Receipts.Services
             }
 
             var receiptId = Keccak.Compute(Rlp.Encode(Rlp.Encode(depositId), Rlp.Encode(request.Number),
-                Rlp.Encode(_timestamper.EpochSeconds)).Bytes);
+                Rlp.Encode(_timestamper.UnixTime.Seconds)).Bytes);
             if (!_receiptRequestValidator.IsValid(request, session.UnpaidUnits, session.ConsumedUnits,
                 deposit.Deposit.Units))
             {
@@ -101,7 +101,7 @@ namespace Nethermind.DataMarketplace.Consumers.Receipts.Services
                 var receipt = new DataDeliveryReceipt(StatusCodes.InvalidReceiptRequestRange,
                     session.ConsumedUnits, session.UnpaidUnits, new Signature(1, 1, 27));
                 await _receiptRepository.AddAsync(new DataDeliveryReceiptDetails(receiptId, session.Id,
-                    session.DataAssetId, _nodePublicKey, request, receipt, _timestamper.EpochSeconds, false));
+                    session.DataAssetId, _nodePublicKey, request, receipt, _timestamper.UnixTime.Seconds, false));
                 await _sessionRepository.UpdateAsync(session);
                 providerPeer.SendDataDeliveryReceipt(depositId, receipt);
                 return;
@@ -118,7 +118,7 @@ namespace Nethermind.DataMarketplace.Consumers.Receipts.Services
                 var receipt = new DataDeliveryReceipt(StatusCodes.InvalidReceiptAddress,
                     session.ConsumedUnits, session.UnpaidUnits, new Signature(1, 1, 27));
                 await _receiptRepository.AddAsync(new DataDeliveryReceiptDetails(receiptId, session.Id,
-                    session.DataAssetId, _nodePublicKey, request, receipt, _timestamper.EpochSeconds, false));
+                    session.DataAssetId, _nodePublicKey, request, receipt, _timestamper.UnixTime.Seconds, false));
                 await _sessionRepository.UpdateAsync(session);
                 providerPeer.SendDataDeliveryReceipt(depositId, receipt);
                 return;
@@ -149,7 +149,7 @@ namespace Nethermind.DataMarketplace.Consumers.Receipts.Services
             var deliveryReceipt = new DataDeliveryReceipt(StatusCodes.Ok, session.ConsumedUnits,
                 session.UnpaidUnits, signature);
             await _receiptRepository.AddAsync(new DataDeliveryReceiptDetails(receiptId, session.Id,
-                session.DataAssetId, _nodePublicKey, request, deliveryReceipt, _timestamper.EpochSeconds, false));
+                session.DataAssetId, _nodePublicKey, request, deliveryReceipt, _timestamper.UnixTime.Seconds, false));
             providerPeer.SendDataDeliveryReceipt(depositId, deliveryReceipt);
             if (_logger.IsInfo) _logger.Info($"Sent data delivery receipt for deposit: '{depositId}', range: [{request.UnitsRange.From}, {request.UnitsRange.To}].");
         }

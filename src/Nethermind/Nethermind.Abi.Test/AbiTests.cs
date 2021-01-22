@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -380,7 +380,7 @@ namespace Nethermind.Abi.Test
         public void Test_packed(AbiEncodingStyle encodingStyle)
         {
             Keccak assetId = Keccak.Compute("assetId");
-            uint expiryTime = (uint) Timestamper.Default.EpochSeconds + 86000;
+            uint expiryTime = (uint) Timestamper.Default.UnixTime.Seconds + 86000;
             UInt256 value = 1.Ether();
             uint units = 10U;
             byte[] salt = new byte[16];

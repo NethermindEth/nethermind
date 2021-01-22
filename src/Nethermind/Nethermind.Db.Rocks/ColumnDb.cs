@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -17,6 +17,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Nethermind.Core;
 using RocksDbSharp;
 
 namespace Nethermind.Db.Rocks
@@ -34,8 +35,8 @@ namespace Nethermind.Db.Rocks
             _columnFamily = _rocksDb.GetColumnFamily(name);
             Name = name;
         }
-        
-        public void Dispose() { }
+
+        public void Dispose() { GC.SuppressFinalize(this); }
 
         public string Name { get; }
 
@@ -49,32 +50,19 @@ namespace Nethermind.Db.Rocks
             set
             {
                 UpdateWriteMetrics();
-                if (_mainDb.CurrentBatch != null)
+                if (value == null)
                 {
-                    if (value == null)
-                    {
-                        _mainDb.CurrentBatch.Delete(key, _columnFamily);
-                    }
-                    else
-                    {
-                        _mainDb.CurrentBatch.Put(key, value, _columnFamily);
-                    }
+                    _rocksDb.Remove(key, _columnFamily, _mainDb.WriteOptions);
                 }
                 else
                 {
-                    if (value == null)
-                    {
-                        _rocksDb.Remove(key, _columnFamily, _mainDb.WriteOptions);
-                    }
-                    else
-                    {
-                        _rocksDb.Put(key, value, _columnFamily, _mainDb.WriteOptions);
-                    }
+                    _rocksDb.Put(key, value, _columnFamily, _mainDb.WriteOptions);
                 }
             }
         }
 
-        public KeyValuePair<byte[], byte[]>[] this[byte[][] keys] => _rocksDb.MultiGet(keys, keys.Select(k => _columnFamily).ToArray());
+        public KeyValuePair<byte[], byte[]>[] this[byte[][] keys] =>
+            _rocksDb.MultiGet(keys, keys.Select(k => _columnFamily).ToArray());
 
         public IEnumerable<KeyValuePair<byte[], byte[]>> GetAll(bool ordered = false)
         {
@@ -88,39 +76,69 @@ namespace Nethermind.Db.Rocks
             return _mainDb.GetAllValuesCore(iterator);
         }
 
-        public void StartBatch()
+        public IBatch StartBatch()
         {
-            _mainDb.StartBatch();
+            return new ColumnsDbBatch(this, (DbOnTheRocks.RocksDbBatch)_mainDb.StartBatch());
         }
 
-        public void CommitBatch()
+        private class ColumnsDbBatch : IBatch
         {
-            _mainDb.CommitBatch();
+            private readonly ColumnDb _columnDb;
+            private readonly DbOnTheRocks.RocksDbBatch _underlyingBatch;
+
+            public ColumnsDbBatch(ColumnDb columnDb, DbOnTheRocks.RocksDbBatch underlyingBatch)
+            {
+                _columnDb = columnDb;
+                _underlyingBatch = underlyingBatch;
+            }
+
+            public void Dispose()
+            {
+                _underlyingBatch.Dispose();
+            }
+
+            public byte[]? this[byte[] key]
+            {
+                get => _underlyingBatch[key];
+                set
+                {
+                    if (value == null)
+                    {
+                        _underlyingBatch._rocksBatch.Delete(key, _columnDb._columnFamily);
+                    }
+                    else
+                    {
+                        _underlyingBatch._rocksBatch.Put(key, value, _columnDb._columnFamily);
+                    }
+                }
+            }
         }
 
         public void Remove(byte[] key)
         {
+            // TODO: this does not participate in batching?
             _rocksDb.Remove(key, _columnFamily, _mainDb.WriteOptions);
         }
 
         public bool KeyExists(byte[] key) => _rocksDb.Get(key, _columnFamily) != null;
-        
+
         public IDb Innermost => _mainDb.Innermost;
+
         public void Flush()
         {
             _mainDb.Flush();
         }
-        
+
         /// <summary>
         /// Not sure how to handle delete of the columns DB
         /// </summary>
         /// <exception cref="NotSupportedException"></exception>
-        public void Clear() { throw new NotSupportedException();}
+        public void Clear() { throw new NotSupportedException(); }
 
         private void UpdateWriteMetrics() => _mainDb.UpdateWriteMetrics();
 
         private void UpdateReadMetrics() => _mainDb.UpdateReadMetrics();
-        
+
         public Span<byte> GetSpan(byte[] key) => _rocksDb.GetSpan(key, _columnFamily);
 
         public void DangerousReleaseMemory(in Span<byte> span)

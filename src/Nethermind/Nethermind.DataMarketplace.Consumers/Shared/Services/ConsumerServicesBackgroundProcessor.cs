@@ -89,7 +89,7 @@ namespace Nethermind.DataMarketplace.Consumers.Shared.Services
             _logger = logManager.GetClassLogger();
             _ethPriceService.UpdateAsync();
             _daiPriceService.UpdateAsync();
-            _gasPriceService.UpdateAsync();
+            _gasPriceService.UpdateGasPriceAsync();
             _depositTimerPeriod = depositTimer;
         }
 
@@ -178,7 +178,7 @@ namespace Nethermind.DataMarketplace.Consumers.Shared.Services
             await _consumerNotifier.SendEthUsdPriceAsync(_ethPriceService.UsdPrice, _ethPriceService.UpdatedAt);
             await _daiPriceService.UpdateAsync();
             await _consumerNotifier.SendDaiUsdPriceAsync(_daiPriceService.UsdPrice, _daiPriceService.UpdatedAt);
-            await _gasPriceService.UpdateAsync();
+            await _gasPriceService.UpdateGasPriceAsync();
 
             if (_gasPriceService.Types != null)
             {

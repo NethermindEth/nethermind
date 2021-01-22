@@ -87,7 +87,7 @@ namespace Nethermind.DataMarketplace.Consumers.DataRequests.Services
                 return DataRequestResult.DepositUnconfirmed;
             }
 
-            if (deposit.IsExpired((uint) _timestamper.EpochSeconds))
+            if (deposit.IsExpired((uint) _timestamper.UnixTime.Seconds))
             {
                 if (_logger.IsWarn) _logger.Warn($"Deposit with id: '{depositId}' is expired.'");
 

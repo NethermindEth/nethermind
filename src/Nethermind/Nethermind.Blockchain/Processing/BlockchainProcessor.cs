@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -404,9 +404,11 @@ namespace Nethermind.Blockchain.Processing
             {
                 foreach (Block block in processingBranch.Blocks)
                 {
+                    _loopCancellationSource?.Token.ThrowIfCancellationRequested();
+
                     if (block.Hash != null && _blockTree.WasProcessed(block.Number, block.Hash))
                     {
-                        if (_logger.IsInfo) _logger.Info($"Rerunning block after reorg: {block.ToString(Block.Format.FullHashAndNumber)}");
+                        if (_logger.IsInfo) _logger.Info($"Rerunning block after reorg or pruning: {block.ToString(Block.Format.FullHashAndNumber)}");
                     }
 
                     blocksToProcess.Add(block);
@@ -473,7 +475,12 @@ namespace Nethermind.Blockchain.Processing
                 {
                     break;
                 }
-            } while (!_blockTree.IsMainChain(branchingPoint.Hash));
+                // TODO: there is no test for the second condition
+                // generally if we finish fast sync at block, e.g. 8 and then have 6 blocks processed and close Neth
+                // then on restart we would find 14 as the branch head (since 14 is on the main chain)
+                // we need to dig deeper to go all the way to the false (reorg boundary) head
+                // otherwise some nodes would be missing
+            } while (!_blockTree.IsMainChain(branchingPoint.Hash) || branchingPoint.Number > (_blockTree.Head?.Header.Number ?? 0));
 
             if (branchingPoint != null && branchingPoint.Hash != _blockTree.Head?.Hash)
             {

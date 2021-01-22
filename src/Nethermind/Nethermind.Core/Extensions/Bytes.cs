@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -122,9 +122,19 @@ namespace Nethermind.Core.Extensions
 
         public static bool IsZero(this byte[] bytes)
         {
+            return IsZero((ReadOnlySpan<byte>)bytes);
+        }
+        
+        public static bool IsZero(this Span<byte> bytes)
+        {
+            return IsZero((ReadOnlySpan<byte>)bytes);
+        }
+        
+        public static bool IsZero(this ReadOnlySpan<byte> bytes)
+        {
             if (bytes.Length == 32)
             {
-                return bytes[31] == 0 && bytes.AsSpan().SequenceEqual(Zero32);
+                return bytes[31] == 0 && bytes.SequenceEqual(Zero32);
             }
 
             for (int i = 0; i < bytes.Length / 2; i++)

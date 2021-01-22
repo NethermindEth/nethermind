@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -31,7 +31,7 @@ namespace Nethermind.Specs
 
         public long? DaoBlockNumber { get; } = null;
 
-        public int ChainId => Core.ChainId.Mainnet;
+        public long ChainId => Core.ChainId.Mainnet;
         public Keccak GenesisHash => KnownHashes.MainnetGenesis;
         public long[] TransitionBlocks { get; } = {0};
 

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -140,7 +140,7 @@ namespace Nethermind.DataMarketplace.Tools.Refunder
                 await dbInitializer.InitAsync();
                 DepositDetailsRocksRepository depositsRepo = new DepositDetailsRocksRepository(dbProvider.GetDb<IDb>(ConsumerNdmDbNames.Deposits), new DepositDetailsDecoder());
                 // var deposits = await depositsRepo.BrowseAsync(new GetDeposits());
-                var deposits = await depositsRepo.BrowseAsync(new GetDeposits { CurrentBlockTimestamp = Timestamper.Default.EpochSecondsLong, EligibleToRefund = true });
+                var deposits = await depositsRepo.BrowseAsync(new GetDeposits { CurrentBlockTimestamp = Timestamper.Default.UnixTime.SecondsLong, EligibleToRefund = true });
                 return deposits;
             }
         }

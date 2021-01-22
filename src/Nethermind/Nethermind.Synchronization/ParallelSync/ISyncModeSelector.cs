@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -27,5 +27,14 @@ namespace Nethermind.Synchronization.ParallelSync
         event EventHandler<SyncModeChangedEventArgs> Changing;
         
         event EventHandler<SyncModeChangedEventArgs> Changed;
+
+        int FastSyncLag { get; }
+    }
+    
+    public class SyncModeSelectorConstants
+    {
+        public const int BeamSyncFastSyncLag = 2;
+        
+        public const int NotBeamSyncFastSyncLag = 32;
     }
 }
