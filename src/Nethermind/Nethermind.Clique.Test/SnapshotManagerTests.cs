@@ -146,15 +146,6 @@ namespace Nethermind.Clique.Test
             return header;
         }
 
-        [Test]
-        public void GetLastSignersCount_returns_expected_results()
-        {
-            SnapshotManager snapshotManager = new SnapshotManager(CliqueConfig.Default, _snapshotDb, _blockTree, NullEthereumEcdsa.Instance, LimboLogs.Instance);
-            Block genesis = CliqueTests.GetRinkebyGenesis();
-            Snapshot snapshot = snapshotManager.GetOrCreateSnapshot(0, genesis.Hash);
-            Assert.AreEqual(3, snapshotManager.GetLastSignersCount());
-        }
-
         private void MineBlock(BlockTree tree, Block block)
         {
             tree.SuggestBlock(block);
