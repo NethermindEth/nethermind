@@ -80,7 +80,6 @@ namespace Nethermind.Runner.Ethereum.Steps
         {
             BlockProducerContext Create()
             {
-                ISyncConfig syncConfig = _api.Config<ISyncConfig>();
                 ReadOnlyDbProvider dbProvider = new ReadOnlyDbProvider(_api.DbProvider, false);
                 ReadOnlyBlockTree blockTree = new ReadOnlyBlockTree(_api.BlockTree);
 
