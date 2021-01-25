@@ -17,6 +17,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Security.Claims;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.DataMarketplace.Core.Domain;
@@ -200,26 +201,18 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Domain
             => Claimable && !(EarlyRefundTicket is null) && (depositTimestamp + EarlyRefundTicket.ClaimableAfter <= currentBlockTimestamp);
 
         public bool CanClaimRefund(ulong currentBlockTimestamp)
-            => Claimable && (currentBlockTimestamp >= Deposit.ExpiryTime) &&
-               (ConfirmationTimestamp + Deposit.Units + DataAsset.Rules.Expiry.Value <= currentBlockTimestamp);
+            => Claimable && (currentBlockTimestamp >= Deposit.ExpiryTime);
 
         public UInt256 GetTimeLeftToClaimRefund(ulong currentBlockTimestamp)
         {
-            if (!Claimable)
-            {
-                return 0;
-            }
+            UInt256 timeLeftToClaimRefund = Deposit.ExpiryTime - currentBlockTimestamp;
 
-            UInt256 timeLeftToClaimRefund = (ConfirmationTimestamp + Deposit.Units + DataAsset.Rules.Expiry.Value) - currentBlockTimestamp;
-
-            if (timeLeftToClaimRefund > 0)
+            if (Claimable && timeLeftToClaimRefund > 0)
             {
                 return timeLeftToClaimRefund;
             }
 
-            ulong expiryTimeLeftToClaimRefund = (Deposit.ExpiryTime - currentBlockTimestamp);
-            
-            return expiryTimeLeftToClaimRefund > 0 ? expiryTimeLeftToClaimRefund : (UInt256) 0;
+            return 0;
         }
 
         private bool Claimable => Confirmed && !Rejected && !Cancelled && !RefundClaimed && !RefundCancelled;
