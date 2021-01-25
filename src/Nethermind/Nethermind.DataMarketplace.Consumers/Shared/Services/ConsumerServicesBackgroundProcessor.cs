@@ -166,16 +166,10 @@ namespace Nethermind.DataMarketplace.Consumers.Shared.Services
             });
 
             await TryConfirmDepositsAsync(depositsToConfirm.Items);
-            PagedResult<DepositDetails> depositsToRefundResult = await _depositManager.BrowseAsync(new GetDeposits
-            {
-                EligibleToRefund = true,
-                CurrentBlockTimestamp = _currentBlockTimestamp,
-                Results = int.MaxValue
-            });
 
-            var depositsToRefund = depositsToRefundResult.Items.Where(d => d.ConsumedUnits < d.Deposit.Units);
-
+            IEnumerable<DepositDetails> depositsToRefund = await GetDepositsToRefundAsync();
             await TryClaimRefundsAsync(depositsToRefund);
+
             await _ethPriceService.UpdateAsync();
             await _consumerNotifier.SendEthUsdPriceAsync(_ethPriceService.UsdPrice, _ethPriceService.UpdatedAt);
             await _daiPriceService.UpdateAsync();
@@ -186,6 +180,18 @@ namespace Nethermind.DataMarketplace.Consumers.Shared.Services
             {
                 await _consumerNotifier.SendGasPriceAsync(_gasPriceService.Types);
             }
+        }
+
+        private async Task<IEnumerable<DepositDetails>> GetDepositsToRefundAsync()
+        {
+            PagedResult<DepositDetails> depositsToRefundResult = await _depositManager.BrowseAsync(new GetDeposits
+            {
+                EligibleToRefund = true,
+                CurrentBlockTimestamp = _currentBlockTimestamp,
+                Results = int.MaxValue
+            });
+
+            return depositsToRefundResult.Items.Where(d => d.ConsumedUnits < d.Deposit.Units);
         }
 
         private async Task TryConfirmDepositsAsync(IReadOnlyList<DepositDetails> deposits)
