@@ -58,6 +58,8 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Domain
         public TransactionInfo? ClaimedRefundTransaction { get; private set; }
         public bool RefundCancelled { get; private set; }
         public bool RefundClaimed { get; private set; }
+
+        // Consumed units are set by DepositUnitsCalculator - not readable from DB
         public uint ConsumedUnits { get; private set; }
         public string? Kyc { get; private set; }
         public uint Confirmations { get; private set; }

@@ -258,7 +258,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure
                         daiPriceService,
                         _api.GasPriceService,
                         _api.MainBlockProcessor,
-                        depositRepository,
+                        depositManager,
                         consumerNotifier,
                         logManager,
                         useDepositTimer,
