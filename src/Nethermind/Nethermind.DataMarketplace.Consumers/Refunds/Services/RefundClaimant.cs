@@ -105,13 +105,13 @@ namespace Nethermind.DataMarketplace.Consumers.Refunds.Services
         private void DisplayRefundInfo(DepositDetails deposit, ulong now)
         {
             var timeLeftToClaimRefund = deposit.GetTimeLeftToClaimRefund(now);
-            if (timeLeftToClaimRefund > 0 && _logger.IsInfo)
+            if (timeLeftToClaimRefund > 0)
             {
-                _logger.Info($"Time left to claim a refund: {timeLeftToClaimRefund} seconds.");
+                if (_logger.IsInfo) _logger.Info($"Time left to claim a refund: {timeLeftToClaimRefund} seconds.");
             }
-            else if (timeLeftToClaimRefund == 0 && _logger.IsInfo)
+            else
             {
-                _logger.Info("Deposit is not claimable.");
+                if (_logger.IsInfo) _logger.Info("Deposit is not claimable.");
             }
         }
 
