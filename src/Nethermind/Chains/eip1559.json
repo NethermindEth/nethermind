@@ -5,9 +5,6 @@
     "Ethash": {
       "params": {
         "minimumDifficulty": "0x",
-        "difficultyBoundDivisor": "0x1",
-        "fixedDifficulty": "0x7d0",
-        "durationLimit": "0xd",
         "blockReward": {
           "0x0": "0x1BC16D674EC80000"
         },
@@ -50,9 +47,8 @@
   },
   "genesis": {
     "author": "0x0000000000000000000000000000000000000000",
-    "difficulty": "0x400",
-    "extraData": "0x000000000000000000000000000000000000000000000000000000000000000036267c845cc42b57ccb869d655e5d5fb620cc69a0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
-    "gasLimit": "0x1fffffffffffff",
+    "difficulty": "0x2000000",
+    "gasLimit": "0xDFFFF6B9ACA00",
     "parentHash": "0x0000000000000000000000000000000000000000000000000000000000000000",
     "seal": {
       "ethereum": {
