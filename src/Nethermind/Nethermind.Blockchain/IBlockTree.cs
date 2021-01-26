@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -30,7 +30,7 @@ namespace Nethermind.Blockchain
         /// <summary>
         /// Chain ID that identifies the chain among the public and private chains (different IDs for mainnet, ETH classic, etc.)
         /// </summary>
-        int ChainId { get; }
+        long ChainId { get; }
         
         /// <summary>
         /// Genesis block or <value>null</value> if genesis has not been processed yet
@@ -135,6 +135,7 @@ namespace Nethermind.Blockchain
         void DeleteInvalidBlock(Block invalidBlock);
 
         event EventHandler<BlockEventArgs> NewBestSuggestedBlock;
+        event EventHandler<BlockEventArgs> NewSuggestedBlock;
         event EventHandler<BlockReplacementEventArgs> BlockAddedToMain;
         event EventHandler<BlockEventArgs> NewHeadBlock;
 

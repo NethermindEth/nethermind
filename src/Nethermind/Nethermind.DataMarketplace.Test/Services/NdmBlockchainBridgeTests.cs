@@ -215,7 +215,7 @@ namespace Nethermind.DataMarketplace.Test.Services
             var hash = TestItem.KeccakA;
             _txSender.SendTransaction(transaction, TxHandlingOptions.PersistentBroadcast | TxHandlingOptions.ManagedNonce).Returns(hash);
             var result = await _ndmBridge.SendOwnTransactionAsync(transaction);
-            _txSender.Received().SendTransaction(transaction, TxHandlingOptions.PersistentBroadcast | TxHandlingOptions.ManagedNonce);
+            await _txSender.Received().SendTransaction(transaction, TxHandlingOptions.PersistentBroadcast | TxHandlingOptions.ManagedNonce);
             result.Should().Be(hash);
         }
     }

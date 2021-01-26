@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -21,6 +21,7 @@ using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
+using Nethermind.Int256;
 using Nethermind.Logging;
 
 namespace Nethermind.Blockchain.Validators
@@ -82,8 +83,7 @@ namespace Nethermind.Blockchain.Validators
             {
                 if (header.Number == 0)
                 {
-                    var isGenesisValid = ValidateGenesis(header);
-                    ;
+                    bool isGenesisValid = ValidateGenesis(header);
                     if (!isGenesisValid)
                     {
                         if (_logger.IsWarn) _logger.Warn($"Invalid genesis block header ({header.Hash})");
@@ -113,7 +113,7 @@ namespace Nethermind.Blockchain.Validators
                 if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - seal parameters incorrect");
             }
 
-            bool gasUsedBelowLimit = header.GasUsed <= header.GasLimit;
+            bool gasUsedBelowLimit = header.GasUsed <= header.GetGasTarget1559(spec) * 2 + header.GetGasTargetLegacy(spec);
             if (!gasUsedBelowLimit)
             {
                 if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - gas used above gas limit");
@@ -136,6 +136,14 @@ namespace Nethermind.Blockchain.Validators
 
             if (_logger.IsTrace) _logger.Trace($"Validating block {header.ToString(BlockHeader.Format.Short)}, extraData {header.ExtraData.ToHexString(true)}");
 
+            bool baseFeeIsCorrect = true;
+            
+            UInt256 expectedBaseFee = BlockHeader.CalculateBaseFee(parent, spec);
+            if (spec.IsEip1559Enabled)
+            {
+                baseFeeIsCorrect = expectedBaseFee == header.BaseFee;
+            }
+
             return
                 totalDifficultyCorrect &&
                 gasUsedBelowLimit &&
@@ -145,13 +153,14 @@ namespace Nethermind.Blockchain.Validators
                 timestampMoreThanAtParent &&
                 numberIsParentPlusOne &&
                 hashAsExpected &&
-                extraDataValid;
+                extraDataValid &&
+                baseFeeIsCorrect;
         }
 
         protected virtual bool ValidateGasLimitRange(BlockHeader header, BlockHeader parent, IReleaseSpec spec)
         {
             long maxGasLimitDifference = parent.GasLimit / spec.GasLimitBoundDivisor;
-            
+
             bool gasLimitNotTooHigh = header.GasLimit <= parent.GasLimit + maxGasLimitDifference;
             if (!gasLimitNotTooHigh)
             {

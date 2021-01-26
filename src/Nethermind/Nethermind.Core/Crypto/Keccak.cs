@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -64,7 +64,12 @@ namespace Nethermind.Core.Crypto
     {
         public const int Size = 32;
 
-        public int MemorySize => MemorySizes.ArrayOverhead + Size;
+        public const int MemorySize =
+            MemorySizes.SmallObjectOverhead +
+            MemorySizes.RefSize +
+            MemorySizes.ArrayOverhead +
+            Size - 
+            MemorySizes.SmallObjectFreeDataSize;
 
         public Keccak(string hexString)
             : this(Core.Extensions.Bytes.FromHexString(hexString)) { }

@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -20,6 +20,8 @@ namespace Nethermind.Trie
 {
     public static class MemoryAllowance
     {
-        public static ulong TrieNodeCacheMemory { get; set; } = 128.MB();
+        public static long TrieNodeCacheMemory { get; set; } = 128.MB();
+
+        public static int TrieNodeCacheCount => (int)TrieNodeCacheMemory / PatriciaTree.OneNodeAvgMemoryEstimate;
     }
 }

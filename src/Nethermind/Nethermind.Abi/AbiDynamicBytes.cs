@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -49,7 +49,9 @@ namespace Nethermind.Abi
         {
             if (arg is byte[] input)
             {
-                int paddingSize = (1 + input.Length / PaddingMultiple) * PaddingMultiple;
+                int remainder = input.Length % PaddingMultiple;
+                int paddingSize = input.Length + (remainder == 0 ? 0 : (PaddingMultiple - remainder));
+
                 byte[] lengthEncoded = UInt256.Encode(new BigInteger(input.Length), packed);
                 return Bytes.Concat(lengthEncoded, packed ? input : input.PadRight(paddingSize));
             }

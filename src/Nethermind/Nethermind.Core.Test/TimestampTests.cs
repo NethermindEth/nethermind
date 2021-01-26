@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -30,8 +30,8 @@ namespace Nethermind.Core.Test
         {
             var utcNow = DateTime.UtcNow;
             ITimestamper timestamper = new Timestamper(utcNow);
-            var epochSeconds = timestamper.EpochSeconds;
-            var epochMilliseconds = timestamper.EpochMilliseconds;
+            var epochSeconds = timestamper.UnixTime.Seconds;
+            var epochMilliseconds = timestamper.UnixTime.Milliseconds;
             var unixUtcUntilNowSeconds = (ulong) utcNow.Subtract(Jan1St1970).TotalSeconds;
             var unixUtcUntilNowMilliseconds = (ulong) utcNow.Subtract(Jan1St1970).TotalMilliseconds;
 

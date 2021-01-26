@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -20,8 +20,8 @@ namespace Nethermind.State.Repositories
 {
     public interface IChainLevelInfoRepository
     {
-        void Delete(long number, BatchWrite batch = null);
-        void PersistLevel(long number, ChainLevelInfo level, BatchWrite batch = null);
+        void Delete(long number, BatchWrite? batch = null);
+        void PersistLevel(long number, ChainLevelInfo level, BatchWrite? batch = null);
         BatchWrite StartBatch();
         ChainLevelInfo LoadLevel(long number);
     }

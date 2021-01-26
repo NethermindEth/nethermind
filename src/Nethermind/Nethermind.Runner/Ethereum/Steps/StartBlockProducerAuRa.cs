@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -45,12 +45,12 @@ namespace Nethermind.Runner.Ethereum.Steps
     [RunnerStepDependencies(typeof(InitializeNetwork), typeof(SetupKeyStore))]
     public class StartBlockProducerAuRa : StartBlockProducer
     {
-        private readonly AuRaNethermindApi _api;
+        private new readonly AuRaNethermindApi _api;
         private INethermindApi NethermindApi => _api;
         
-        private readonly IAuraConfig _auraConfig;
+        private readonly IAuraConfig? _auraConfig;
         private IAuRaValidator? _validator;
-        private DictionaryContractDataStore<TxPriorityContract.Destination, TxPriorityContract.DestinationSortedListContractDataStoreCollection>? _minGasPricesContractDataStore;
+        private DictionaryContractDataStore<TxPriorityContract.Destination>? _minGasPricesContractDataStore;
         private TxPriorityContract? _txPriorityContract;
         private TxPriorityContract.LocalDataSource? _localDataSource;
         private ITxFilter? _txPermissionFilter;
@@ -83,6 +83,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.ReportingValidator,
                 _auraConfig,
                 CreateGasLimitCalculator(producerContext.ReadOnlyTxProcessorSource),
+                _api.SpecProvider,
                 _api.LogManager);
         }
 
@@ -129,8 +130,6 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.BlockValidator,
                 _api.RewardCalculatorSource.Get(readOnlyTxProcessingEnv.TransactionProcessor),
                 readOnlyTxProcessingEnv.TransactionProcessor,
-                readOnlyDbProvider.StateDb,
-                readOnlyDbProvider.CodeDb,
                 readOnlyTxProcessingEnv.StateProvider,
                 readOnlyTxProcessingEnv.StorageProvider,
                 NullTxPool.Instance, 
@@ -148,7 +147,7 @@ namespace Nethermind.Runner.Ethereum.Steps
         {
             // We need special one for TxPriority as its following Head separately with events and we want rules from Head, not produced block
             ReadOnlyTxProcessorSource readOnlyTxProcessorSourceForTxPriority = 
-                new ReadOnlyTxProcessorSource(_api.DbProvider, _api.BlockTree, _api.SpecProvider, _api.LogManager);
+                new ReadOnlyTxProcessorSource(_api.DbProvider, _api.ReadOnlyTrieStore, _api.BlockTree, _api.SpecProvider, _api.LogManager);
             
             (_txPriorityContract, _localDataSource) = TxFilterBuilders.CreateTxPrioritySources(_auraConfig, _api, readOnlyTxProcessorSourceForTxPriority);
 
@@ -157,7 +156,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _minGasPricesContractDataStore = TxFilterBuilders.CreateMinGasPricesDataStore(_api, _txPriorityContract, _localDataSource)!;
                 _api.DisposeStack.Push(_minGasPricesContractDataStore);                
 
-                ContractDataStore<Address, IContractDataStoreCollection<Address>> whitelistContractDataStore = new ContractDataStoreWithLocalData<Address>(
+                ContractDataStore<Address> whitelistContractDataStore = new ContractDataStoreWithLocalData<Address>(
                     new HashSetContractDataStoreCollection<Address>(),
                     _txPriorityContract?.SendersWhitelist,
                     _api.BlockTree,
@@ -165,8 +164,8 @@ namespace Nethermind.Runner.Ethereum.Steps
                     _api.LogManager,
                     _localDataSource?.GetWhitelistLocalDataSource() ?? new EmptyLocalDataSource<IEnumerable<Address>>());
 
-                DictionaryContractDataStore<TxPriorityContract.Destination, TxPriorityContract.DestinationSortedListContractDataStoreCollection> prioritiesContractDataStore =
-                    new DictionaryContractDataStore<TxPriorityContract.Destination, TxPriorityContract.DestinationSortedListContractDataStoreCollection>(
+                DictionaryContractDataStore<TxPriorityContract.Destination> prioritiesContractDataStore =
+                    new DictionaryContractDataStore<TxPriorityContract.Destination>(
                         new TxPriorityContract.DestinationSortedListContractDataStoreCollection(),
                         _txPriorityContract?.Priorities,
                         _api.BlockTree,
@@ -205,20 +204,20 @@ namespace Nethermind.Runner.Ethereum.Steps
                 return false;
             }
 
-            bool CheckAddRandomnessTransactions(IList<ITxSource> list, IDictionary<long, Address> randomnessContractAddress, ISigner signer)
+            bool CheckAddRandomnessTransactions(IList<ITxSource> list, IDictionary<long, Address>? randomnessContractAddress, ISigner signer)
             {
                 IList<IRandomContract> GetRandomContracts(
                     IDictionary<long, Address> randomnessContractAddressPerBlock,
                     IAbiEncoder abiEncoder,
                     IReadOnlyTransactionProcessorSource txProcessorSource,
-                    ISigner signer) =>
+                    ISigner signerLocal) =>
                     randomnessContractAddressPerBlock
                         .Select(kvp => new RandomContract(
                             abiEncoder,
                             kvp.Value,
                             txProcessorSource,
                             kvp.Key,
-                            signer))
+                            signerLocal))
                         .ToArray<IRandomContract>();
 
                 if (randomnessContractAddress?.Any() == true)

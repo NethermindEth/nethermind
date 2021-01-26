@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -25,21 +25,30 @@ namespace Nethermind.Native
     {
         private static OsPlatform GetPlatform()
         {
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux) && RuntimeInformation.OSArchitecture.ToString() == "Arm")
+            {
+                return OsPlatform.LinuxArm;
+            }
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux) && RuntimeInformation.OSArchitecture.ToString() == "Arm64")
+            {
+                return OsPlatform.LinuxArm64;
+            }
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX) && RuntimeInformation.OSArchitecture.ToString() == "Arm64")
+            {
+                return OsPlatform.MacArm64;
+            }
             if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
             {
                 return OsPlatform.Windows;
             }
-
             if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
             {
                 return OsPlatform.Linux;
             }
-
             if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
             {
                 return OsPlatform.Mac;
             }
-            
             if (RuntimeInformation.IsOSPlatform(OSPlatform.FreeBSD))
             {
                 return OsPlatform.Linux;
@@ -56,6 +65,9 @@ namespace Nethermind.Native
                 OsPlatform.Linux => $"runtimes/linux-x64/native/lib{libraryName}.so",
                 OsPlatform.Mac => $"runtimes/osx-x64/native/lib{libraryName}.dylib",
                 OsPlatform.Windows => $"runtimes\\win-x64\\native\\{libraryName}.dll",
+                OsPlatform.LinuxArm => $"runtimes/linux-arm/native/lib{libraryName}.so",
+                OsPlatform.LinuxArm64 => $"runtimes/linux-arm64/native/lib{libraryName}.so",
+                OsPlatform.MacArm64 => $"runtimes/osx-arm64/native/lib{libraryName}.dylib",
                 _ => throw new NotSupportedException($"Platform support missing: {platform}")
             };
             

@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -37,6 +37,7 @@ using NUnit.Framework;
 using System.Threading;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Processing;
+using Nethermind.Trie.Pruning;
 using System.Threading.Tasks;
 
 namespace Nethermind.Facade.Test
@@ -71,6 +72,7 @@ namespace Nethermind.Facade.Test
 
             ReadOnlyTxProcessingEnv processingEnv = new ReadOnlyTxProcessingEnv(
                 new ReadOnlyDbProvider(_dbProvider, false),
+                new TrieStore(_dbProvider.StateDb, LimboLogs.Instance), 
                 new ReadOnlyBlockTree(_blockTree),
                 _specProvider,
                 LimboLogs.Instance);
@@ -115,7 +117,7 @@ namespace Nethermind.Facade.Test
             IEnumerable<Transaction> transactions = Enumerable.Range(0, 10)
                 .Select(i => Build.A.Transaction.WithNonce((UInt256) i).TestObject);
             var block = Build.A.Block
-                .WithTransactions(transactions.ToArray())
+                .WithTransactions(_specProvider.GetSpec(0), transactions.ToArray())
                 .TestObject;
             _blockTree.FindBlock(TestItem.KeccakB, Arg.Any<BlockTreeLookupOptions>()).Returns(block);
             _receiptStorage.FindBlockHash(TestItem.KeccakA).Returns(TestItem.KeccakB);
@@ -139,7 +141,7 @@ namespace Nethermind.Facade.Test
 
             _transactionProcessor.Received().CallAndRestore(
                 tx,
-                Arg.Is<BlockHeader>(bh => bh.Number == 11 && bh.Timestamp == ((ITimestamper) _timestamper).EpochSeconds),
+                Arg.Is<BlockHeader>(bh => bh.Number == 11 && bh.Timestamp == ((ITimestamper) _timestamper).UnixTime.Seconds),
                 Arg.Is<CancellationTxTracer>(t => t.InnerTracer is EstimateGasTracer));
         }
 
@@ -167,6 +169,7 @@ namespace Nethermind.Facade.Test
         {
             ReadOnlyTxProcessingEnv processingEnv = new ReadOnlyTxProcessingEnv(
                 new ReadOnlyDbProvider(_dbProvider, false),
+                new ReadOnlyTrieStore(new TrieStore(_dbProvider.StateDb, LimboLogs.Instance)), 
                 new ReadOnlyBlockTree(_blockTree),
                 _specProvider,
                 LimboLogs.Instance);
@@ -204,6 +207,7 @@ namespace Nethermind.Facade.Test
         {
             ReadOnlyTxProcessingEnv processingEnv = new ReadOnlyTxProcessingEnv(
                 new ReadOnlyDbProvider(_dbProvider, false),
+                new ReadOnlyTrieStore(new TrieStore(_dbProvider.StateDb, LimboLogs.Instance)), 
                 new ReadOnlyBlockTree(_blockTree),
                 _specProvider,
                 LimboLogs.Instance);

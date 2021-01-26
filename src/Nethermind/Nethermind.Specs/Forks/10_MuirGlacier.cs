@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -25,9 +25,7 @@ namespace Nethermind.Specs.Forks
     {
         private static IReleaseSpec _instance;
 
-        private MuirGlacier()
-        {
-        }
+        private MuirGlacier() { }
 
         public static IReleaseSpec Instance => LazyInitializer.EnsureInitialized(ref _instance, () => new MuirGlacier());
 
@@ -38,6 +36,7 @@ namespace Nethermind.Specs.Forks
         public UInt256 BlockReward { get; } = UInt256.Parse("2000000000000000000");
         public long DifficultyBombDelay => 9000000L;
         public long DifficultyBoundDivisor => 0x0800;
+        public long? FixedDifficulty => null;
         public int MaximumUncleCount => 2;
         public bool IsTimeAdjustmentPostOlympic => true;
         public bool IsEip2Enabled => true;
@@ -69,6 +68,12 @@ namespace Nethermind.Specs.Forks
         public bool IsEip2200Enabled => true;
         public bool IsEip2315Enabled => false;
         public bool IsEip2537Enabled => false;
+        public bool IsEip2929Enabled => false;
+        public bool IsEip2930Enabled => false;
+        public bool IsEip2718Enabled => false;
         public bool IsEip158IgnoredAccount(Address address) => false;
+        public bool IsEip1559Enabled => false;
+        public long Eip1559TransitionBlock => long.MaxValue;
+        public long Eip1559MigrationDuration => 0;
     }
 }

@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -35,7 +35,7 @@ namespace Nethermind.Specs.ChainSpecStyle
         /// </summary>
         public string DataDir { get; set; }
         
-        public int ChainId { get; set; }
+        public long ChainId { get; set; }
 
         public NetworkNode[] Bootnodes { get; set; }
         
@@ -52,7 +52,9 @@ namespace Nethermind.Specs.ChainSpecStyle
         public ChainParameters Parameters { get; set; }
 
         public Dictionary<Address, ChainSpecAllocation> Allocations { get; set; }
-
+        
+        public long? FixedDifficulty { get; set; }
+        
         public long? DaoForkBlockNumber { get; set; }
 
         public long? HomesteadBlockNumber { get; set; }

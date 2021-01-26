@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -19,6 +19,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
+using Nethermind.Core;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Db
@@ -114,12 +115,9 @@ namespace Nethermind.Db
 
         public IEnumerable<byte[]> GetAllValues(bool ordered = false) => Values;
 
-        public void StartBatch()
+        public IBatch StartBatch()
         {
-        }
-
-        public void CommitBatch()
-        {
+            return this.LikeABatch();
         }
 
         public ICollection<byte[]> Keys => _db.Keys;

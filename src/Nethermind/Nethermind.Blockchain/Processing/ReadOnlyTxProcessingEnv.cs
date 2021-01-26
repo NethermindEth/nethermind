@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -19,6 +19,7 @@ using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Logging;
 using Nethermind.State;
+using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Blockchain.Processing
 {
@@ -33,20 +34,22 @@ namespace Nethermind.Blockchain.Processing
 
         private IBlockhashProvider BlockhashProvider;
         private IVirtualMachine VirtualMachine;
-
+        
         public ReadOnlyTxProcessingEnv(
             IReadOnlyDbProvider readOnlyDbProvider,
+            ITrieNodeResolver trieStore,
             ReadOnlyBlockTree readOnlyBlockTree,
             ISpecProvider specProvider,
             ILogManager logManager)
         {
+            // TODO: reuse cache for state -> now when the trie is not reusing cache any more
             DbProvider = readOnlyDbProvider;
-            ISnapshotableDb stateDb = readOnlyDbProvider.StateDb;
-            IDb codeDb = readOnlyDbProvider.CodeDb;
-
-            StateReader = new StateReader(stateDb, codeDb, logManager);
-            StateProvider = new StateProvider(stateDb, codeDb, logManager);
-            StorageProvider = new StorageProvider(stateDb, StateProvider, logManager);
+            ISnapshotableDb codeDb = readOnlyDbProvider.CodeDb;
+            
+            ReadOnlyTrieStore readOnlyTrieStore = new ReadOnlyTrieStore(trieStore);
+            StateReader = new StateReader(readOnlyTrieStore, codeDb, logManager);
+            StateProvider = new StateProvider(readOnlyTrieStore, codeDb, logManager);
+            StorageProvider = new StorageProvider(readOnlyTrieStore, StateProvider, logManager);
 
             BlockTree = readOnlyBlockTree;
             BlockhashProvider = new BlockhashProvider(BlockTree, logManager);

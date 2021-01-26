@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -54,7 +54,7 @@ namespace Nethermind.Core
         public const int DefaultGethPrivateChain = 1337;
         public const int Stureby = 314158;
 
-        public static string GetChainName(int chainId)
+        public static string GetChainName(long chainId)
         {
             switch (chainId)
             {

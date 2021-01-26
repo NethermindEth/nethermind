@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -15,9 +15,13 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using FluentAssertions;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test
@@ -34,11 +38,11 @@ namespace Nethermind.Core.Test
             header.Beneficiary = new Address("0x8888f1f195afa192cfee860698584c030f4c9db1");
             header.Difficulty = Bytes.FromHexString("0x020000").ToUInt256();
             header.ExtraData = Array.Empty<byte>();
-            header.GasLimit = (long)Bytes.FromHexString("0x2fefba").ToUnsignedBigInteger();
-            header.GasUsed = (long)Bytes.FromHexString("0x5208").ToUnsignedBigInteger();
+            header.GasLimit = (long) Bytes.FromHexString("0x2fefba").ToUnsignedBigInteger();
+            header.GasUsedLegacy = (long) Bytes.FromHexString("0x5208").ToUnsignedBigInteger();
             header.MixHash = new Keccak(Bytes.FromHexString("0x00be1f287e0911ea2f070b3650a1a0346535895b6c919d7e992a0c255a83fc8b"));
-            header.Nonce = (ulong)Bytes.FromHexString("0xa0ddc06c6d7b9f48").ToUnsignedBigInteger();
-            header.Number = (long)Bytes.FromHexString("0x01").ToUInt256();
+            header.Nonce = (ulong) Bytes.FromHexString("0xa0ddc06c6d7b9f48").ToUnsignedBigInteger();
+            header.Number = (long) Bytes.FromHexString("0x01").ToUInt256();
             header.ParentHash = new Keccak(Bytes.FromHexString("0x5a39ed1020c04d4d84539975b893a4e7c53eab6c2965db8bc3468093a31bc5ae"));
             header.ReceiptsRoot = new Keccak(Bytes.FromHexString("0x056b23fbba480696b65fe5a59b8f2148a1299103c4f57df839233af2cf4ca2d2"));
             header.StateRoot = new Keccak(Bytes.FromHexString("0x5c2e5a51a79da58791cdfe572bcfa3dfe9c860bf7fad7d9738a1aace56ef9332"));
@@ -58,11 +62,11 @@ namespace Nethermind.Core.Test
             header.Beneficiary = new Address("0x8888f1f195afa192cfee860698584c030f4c9db1");
             header.Difficulty = Bytes.FromHexString("0x020080").ToUInt256();
             header.ExtraData = Array.Empty<byte>();
-            header.GasLimit = (long)Bytes.FromHexString("0x2fefba").ToUnsignedBigInteger();
-            header.GasUsed = (long)Bytes.FromHexString("0x5208").ToUnsignedBigInteger();
+            header.GasLimit = (long) Bytes.FromHexString("0x2fefba").ToUnsignedBigInteger();
+            header.GasUsedLegacy = (long) Bytes.FromHexString("0x5208").ToUnsignedBigInteger();
             header.MixHash = new Keccak(Bytes.FromHexString("0x615bbf44eb133eab3cb24d5766ae9617d9e45ee00e7a5667db30672b47d22149"));
-            header.Nonce = (ulong)Bytes.FromHexString("0x4c4f3d3e055cb264").ToUnsignedBigInteger();
-            header.Number = (long)Bytes.FromHexString("0x03").ToUInt256();
+            header.Nonce = (ulong) Bytes.FromHexString("0x4c4f3d3e055cb264").ToUnsignedBigInteger();
+            header.Number = (long) Bytes.FromHexString("0x03").ToUInt256();
             header.ParentHash = new Keccak(Bytes.FromHexString("0xde1457da701ef916533750d46c124e9ae50b974410bd590fbcf4c935a4d19465"));
             header.ReceiptsRoot = new Keccak(Bytes.FromHexString("0x056b23fbba480696b65fe5a59b8f2148a1299103c4f57df839233af2cf4ca2d2"));
             header.StateRoot = new Keccak(Bytes.FromHexString("0xfb4084a7f8b57e370fefe24a3da3aaea6c4dd8b6f6251916c32440336035160b"));
@@ -83,6 +87,37 @@ namespace Nethermind.Core.Test
             header.Beneficiary = author;
 
             Assert.AreEqual(author, header.GasBeneficiary);
+        }
+
+        [Test]
+        public void Gas_target_is_using_the_gas_limit_field()
+        {
+            BlockHeader blockHeader = Build.A.BlockHeader.TestObject;
+            blockHeader.GasTarget = 1;
+            blockHeader.GasLimit = 123;
+            blockHeader.GasTarget.Should().Be(123);
+            blockHeader.GasTarget = 456;
+            blockHeader.GasLimit.Should().Be(456);
+        }
+        
+        [TestCase(1000, 1000, 0, 0)]
+        [TestCase(1000, 1000, 999, 0)]
+        [TestCase(1000, 1000, 1000, 50)]
+        [TestCase(1000, 1000, 1020, 51)]
+        [TestCase(1000, 1000, 1500, 75)]
+        [TestCase(1000, 1000, 2000, 100)]
+        [TestCase(1000, 1000, 2001, 100)]
+        public void Eip_1559_targets_are_correctly_calculated(long transition, long duration, long block, long percentageIn1559)
+        {
+            IReleaseSpec releaseSpec = Substitute.For<IReleaseSpec>();
+            releaseSpec.Eip1559TransitionBlock.Returns(transition);
+            releaseSpec.Eip1559MigrationDuration.Returns(duration);
+            
+            BlockHeader blockHeader = Build.A.BlockHeader.TestObject;
+            blockHeader.Number = block;
+            blockHeader.GasTarget = 100;
+            blockHeader.GetGasTarget1559(releaseSpec).Should().Be(percentageIn1559);
+            blockHeader.GetGasTargetLegacy(releaseSpec).Should().Be(100 - percentageIn1559);
         }
     }
 }

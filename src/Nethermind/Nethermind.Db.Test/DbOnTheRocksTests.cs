@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -83,10 +83,10 @@ namespace Nethermind.Db.Test
             {
                 DbName = dbName,
                 DbPath = dbPath,
-                BlockCacheSize = 1.KiB(),
+                BlockCacheSize = (ulong)1.KiB(),
                 CacheIndexAndFilterBlocks = false,
                 WriteBufferNumber = 4,
-                WriteBufferSize = 1.KiB()
+                WriteBufferSize = (ulong)1.KiB()
             };
         }
     }

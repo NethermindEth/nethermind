@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -17,6 +17,8 @@
 using System.Collections.Generic;
 using System.Linq;
 using FluentAssertions;
+using Nethermind.Core.Test;
+using Nethermind.Logging;
 using Nethermind.Specs;
 using NUnit.Framework;
 
@@ -243,6 +245,14 @@ namespace Nethermind.Evm.Test
 
         private const string InvalidOpCodeErrorMessage = "BadInstruction";
 
+        private ILogManager _logManager;
+        
+        protected override ILogManager GetLogManager()
+        {
+            _logManager ??= new OneLoggerLogManager(new NUnitLogger(LogLevel.Trace));
+            return _logManager;
+        }
+
         [TestCase(0)]
         [TestCase(MainnetSpecProvider.HomesteadBlockNumber)]
         [TestCase(MainnetSpecProvider.SpuriousDragonBlockNumber)]
@@ -256,9 +266,11 @@ namespace Nethermind.Evm.Test
         [TestCase(long.MaxValue)]
         public void Test(long blockNumber)
         {
+            ILogger logger = _logManager.GetClassLogger();
             var validOpcodes = _validOpcodes[blockNumber];
             for (int i = 0; i <= byte.MaxValue; i++)
             {
+                logger.Info($"============ Testing opcode {i}==================");
                 byte[] code = Prepare.EvmCode
                     .Op((byte) i)
                     .Done;

@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -31,6 +31,7 @@ namespace Nethermind.Specs.ChainSpecStyle
         public long MinGasLimit { get; set; }
         public Keccak ForkCanonHash { get; set; }
         public long? ForkBlock { get; set; }
+        public long? Eip7Transition { get; set; }
         public long? Eip150Transition { get; set; }
         public long? Eip152Transition { get; set; }
         public long? Eip160Transition { get; set; }
@@ -53,6 +54,9 @@ namespace Nethermind.Specs.ChainSpecStyle
         public long? Eip1884Transition { get; set; }
         public long? Eip2028Transition { get; set; }
         public long? Eip2200Transition { get; set; }
+        public long? Eip1559Transition { get; set; }
+        public long? Eip1559MigrationDuration { get; set; }
+        public long? Eip2929Transition { get; set; }
         
         /// <summary>
         ///  Transaction permission managing contract address.

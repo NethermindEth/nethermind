@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -29,15 +29,17 @@ namespace Nethermind.Network.Test
         [Test]
         public void Save_and_load()
         {
-            using var tempPath = TempPath.GetTempFile(SimpleFilePublicKeyDb.DbFileName);
+            using TempPath tempPath = TempPath.GetTempFile(SimpleFilePublicKeyDb.DbFileName);
             tempPath.Dispose();
-
-            SimpleFilePublicKeyDb filePublicKeyDb = new SimpleFilePublicKeyDb("Test", Path.GetTempPath(), LimboLogs.Instance);
-            filePublicKeyDb[TestItem.PublicKeyA.Bytes] = new byte[] {1, 2, 3};
-            filePublicKeyDb[TestItem.PublicKeyB.Bytes] = new byte[] {4, 5, 6};
-            filePublicKeyDb[TestItem.PublicKeyC.Bytes] = new byte[] {1, 2, 3};
-            filePublicKeyDb.CommitBatch();
             
+            SimpleFilePublicKeyDb filePublicKeyDb = new SimpleFilePublicKeyDb("Test", Path.GetTempPath(), LimboLogs.Instance);
+            using (filePublicKeyDb.StartBatch())
+            {
+                filePublicKeyDb[TestItem.PublicKeyA.Bytes] = new byte[] {1, 2, 3};
+                filePublicKeyDb[TestItem.PublicKeyB.Bytes] = new byte[] {4, 5, 6};
+                filePublicKeyDb[TestItem.PublicKeyC.Bytes] = new byte[] {1, 2, 3};
+            }
+
             SimpleFilePublicKeyDb copy = new SimpleFilePublicKeyDb("Test", Path.GetTempPath(), LimboLogs.Instance);
             Assert.AreEqual(3, copy.Keys.Count);
         }

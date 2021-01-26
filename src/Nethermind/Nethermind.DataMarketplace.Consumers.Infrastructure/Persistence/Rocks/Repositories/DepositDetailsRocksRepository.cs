@@ -76,9 +76,9 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Rocks.
             if (query.OnlyPending)
             {
                 filteredDeposits = filteredDeposits.Where(d => !d.Rejected && !d.RefundClaimed &&
-                                                               d.Transaction?.State == TransactionState.Pending ||
+                                                               (d.Transaction?.State == TransactionState.Pending ||
                                                                d.ClaimedRefundTransaction?.State ==
-                                                               TransactionState.Pending);
+                                                               TransactionState.Pending));
             }
 
             if (query.OnlyUnconfirmed)

@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -68,6 +68,8 @@ namespace Nethermind.Synchronization.Test.ParallelSync
             public static BlockHeader FutureHead { get; set; } = Build.A.Block.WithDifficulty(1).WithTotalDifficulty(Pivot.TotalDifficulty + 2048 + 128).WithNumber(Pivot.Number + 2048 + 128).TestObject.Header;
 
             public static BlockHeader SlightlyFutureHead { get; set; } = Build.A.Block.WithDifficulty(1).WithTotalDifficulty(Pivot.TotalDifficulty + 2048 + 4).WithNumber(Pivot.Number + 2048 + 4).TestObject.Header;
+
+            public static BlockHeader SlightlyFutureHeadWithFastSyncLag { get; set; } = Build.A.Block.WithDifficulty(1).WithTotalDifficulty(Pivot.TotalDifficulty + 2048 + 4).WithNumber(ChainHead.Number +  SyncModeSelectorConstants.NotBeamSyncFastSyncLag + 1).TestObject.Header;
 
             public static BlockHeader MaliciousPrePivot { get; set; } = Build.A.Block.WithDifficulty(1).WithTotalDifficulty((UInt256) 1000000).WithNumber(512).TestObject.Header;
 
@@ -222,6 +224,23 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                             SyncProgressResolver.FindBestProcessedBlock().Returns(ChainHead.Number - FastSyncCatchUpHeightDelta + 1);
                             SyncProgressResolver.IsFastBlocksFinished().Returns(FastBlocksState.FinishedReceipts);
                             SyncProgressResolver.ChainDifficulty.Returns(ChainHead.TotalDifficulty ?? 0);
+                            return "fully syncing";
+                        }
+                    );
+                    return this;
+                }
+
+                public ScenarioBuilder IfPeersMovedForwardBeforeThisNodeProcessedFirstFullBlock()
+                {
+                    _syncProgressSetups.Add(
+                        () =>
+                        {
+                            SyncProgressResolver.FindBestHeader().Returns(ChainHead.Number);
+                            SyncProgressResolver.FindBestFullBlock().Returns(ChainHead.Number);
+                            SyncProgressResolver.FindBestFullState().Returns(ChainHead.Number - 2);
+                            SyncProgressResolver.FindBestProcessedBlock().Returns(0);
+                            SyncProgressResolver.IsFastBlocksFinished().Returns(FastBlocksState.None);
+                            SyncProgressResolver.ChainDifficulty.Returns((ChainHead.TotalDifficulty ?? 0) + (UInt256)2);
                             return "fully syncing";
                         }
                     );
@@ -544,6 +563,12 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                     return this;
                 }
 
+                public ScenarioBuilder AndPeersMovedSlightlyForwardWithFastSyncLag()
+                {
+                    AddPeeringSetup("peers moved slightly forward", AddPeer(SlightlyFutureHeadWithFastSyncLag));
+                    return this;
+                }
+
                 public ScenarioBuilder PeersFromDesirableBranchAreKnown()
                 {
                     AddPeeringSetup("better branch", AddPeer(NewBetterBranchWithLowerNumber));
@@ -710,6 +735,8 @@ namespace Nethermind.Synchronization.Test.ParallelSync
 
                     SetDefaults();
 
+                    if (_syncProgressSetups.Count == 0 || _peeringSetups.Count == 0 || _configActions.Count == 0)
+                        throw new ArgumentException($"Invalid test configuration. _syncProgressSetups.Count {_syncProgressSetups.Count}, _peeringSetups.Count {_peeringSetups.Count}, _configActions.Count {_configActions.Count}");
                     foreach (Func<string> syncProgressSetup in _syncProgressSetups)
                     {
                         foreach (Func<string> peeringSetup in _peeringSetups)
@@ -1192,6 +1219,65 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                 .AndGoodPeersAreKnown()
                 .WhenBeamSyncIsConfigured()
                 .TheSyncModeShouldBe(SyncMode.StateNodes | SyncMode.Beam);
+        }
+
+        [Test]
+        public void Does_not_move_back_to_state_sync_mistakenly_when_in_full_sync_because_of_thinking_that_it_needs_to_catch_up()
+        {
+            Scenario.GoesLikeThis()
+                .IfPeersMovedForwardBeforeThisNodeProcessedFirstFullBlock()
+                .AndPeersMovedSlightlyForwardWithFastSyncLag()
+                .WhenFastSyncWithFastBlocksIsConfigured()
+                .TheSyncModeShouldBe(SyncMode.Full | SyncMode.FastHeaders);
+        }
+        
+        [Test]
+        public void Switch_correctly_from_full_sync_to_state_nodes_catch_up()
+        {
+            ISyncProgressResolver syncProgressResolver = Substitute.For<ISyncProgressResolver>();
+            syncProgressResolver.FindBestHeader().Returns(Scenario.ChainHead.Number);
+            syncProgressResolver.FindBestFullBlock().Returns(Scenario.ChainHead.Number);
+            syncProgressResolver.FindBestFullState().Returns(Scenario.ChainHead.Number - SyncModeSelectorConstants.NotBeamSyncFastSyncLag);
+            syncProgressResolver.FindBestProcessedBlock().Returns(0);
+            syncProgressResolver.IsFastBlocksFinished().Returns(FastBlocksState.FinishedReceipts);
+            syncProgressResolver.ChainDifficulty.Returns(UInt256.Zero);
+
+            List<ISyncPeer> syncPeers = new List<ISyncPeer>();
+
+            BlockHeader header = Scenario.ChainHead;
+            ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
+            syncPeer.HeadHash.Returns(header.Hash);
+            syncPeer.HeadNumber.Returns(header.Number);
+            syncPeer.TotalDifficulty.Returns(header.TotalDifficulty ?? 0);
+            syncPeer.IsInitialized.Returns(true);
+            syncPeer.ClientId.Returns("nethermind");
+            
+            syncPeers.Add(syncPeer);
+            ISyncPeerPool syncPeerPool = Substitute.For<ISyncPeerPool>();
+            IEnumerable<PeerInfo> peerInfos = syncPeers.Select(p => new PeerInfo(p));
+            syncPeerPool.InitializedPeers.Returns(peerInfos);
+            syncPeerPool.AllPeers.Returns(peerInfos);
+
+            ISyncConfig syncConfig = new SyncConfig() {FastSyncCatchUpHeightDelta = 2};
+            syncConfig.FastSync = true;
+            
+            MultiSyncModeSelector selector = new MultiSyncModeSelector(syncProgressResolver, syncPeerPool, syncConfig, LimboLogs.Instance);
+            selector.DisableTimer();
+            syncProgressResolver.FindBestProcessedBlock().Returns(Scenario.ChainHead.Number);
+            selector.Update();
+            selector.Current.Should().Be(SyncMode.Full);
+
+            for (uint i = 0; i < syncConfig.FastSyncCatchUpHeightDelta + 1; i++)
+            {
+                long number = header.Number + i;
+                syncPeer.HeadNumber.Returns(number);
+                syncPeer.TotalDifficulty.Returns(header.TotalDifficulty.Value + i);
+                syncProgressResolver.FindBestHeader().Returns(number);
+                syncProgressResolver.FindBestFullBlock().Returns(number);
+                selector.Update();
+            }
+
+            selector.Current.Should().Be(SyncMode.StateNodes);
         }
     }
     

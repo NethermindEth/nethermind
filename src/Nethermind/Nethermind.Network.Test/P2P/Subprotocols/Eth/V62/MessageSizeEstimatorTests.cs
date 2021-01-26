@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -20,6 +20,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62;
+using Nethermind.Specs.Forks;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
@@ -29,7 +30,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
 {
-    [TestFixture]
+    [TestFixture, Parallelizable(ParallelScope.All)]
     public class MessageSizeEstimatorTests
     {
         [Test]
@@ -48,7 +49,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         [Test]
         public void Estimate_block_size()
         {
-            var block = Build.A.Block.WithTransactions(100).TestObject;
+            var block = Build.A.Block.WithTransactions(100, MuirGlacier.Instance).TestObject;
             MessageSizeEstimator.EstimateSize(block).Should().Be(10512);
         }
         

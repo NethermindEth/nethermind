@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -18,8 +18,9 @@ namespace Nethermind.Monitoring.Config
 {
     public class MetricsConfig : IMetricsConfig
     {
+        public int? ExposePort { get; set; } = null;
         public bool Enabled { get; set; } = false;
-        public string PushGatewayUrl {get; set; } =  "http://localhost:9091/metrics";
+        public string PushGatewayUrl {get; set; } = "http://localhost:9091/metrics";
         public int IntervalSeconds {get; set; } = 5;
         public string NodeName { get; set;} = "Nethermind";
     }

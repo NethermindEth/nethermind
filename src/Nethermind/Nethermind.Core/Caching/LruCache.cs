@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -21,9 +21,6 @@ using Nethermind.Core.Extensions;
 
 namespace Nethermind.Core.Caching
 {
-    /// <summary>
-    /// A custom array based LRU cache.
-    /// </summary>
     /// <remarks>
     /// The array based solution is preferred to lower the overall memory management overhead. The <see cref="LinkedListNode{T}"/> based approach is very costly.
     /// </remarks>
@@ -45,6 +42,7 @@ namespace Nethermind.Core.Caching
             public TKey Key;
         }
 
+        [MethodImpl(MethodImplOptions.Synchronized)]
         public void Clear()
         {
             _cacheMap?.Clear();
@@ -52,6 +50,7 @@ namespace Nethermind.Core.Caching
             _head = Node.Null;
         }
 
+        [MethodImpl(MethodImplOptions.Synchronized)]
         public LruCache(int maxCapacity, int startCapacity, string name)
         {
             _maxCapacity = maxCapacity;
@@ -149,6 +148,7 @@ namespace Nethermind.Core.Caching
         public void Delete(TKey key)
         {
             if (_cacheMap.Remove(key, out int node))
+
             {
                 int elementToFree = _cacheMap.Count;
 
@@ -255,15 +255,33 @@ namespace Nethermind.Core.Caching
             node.Prev = @new;
         }
 
-        public int MemorySize => CalculateMemorySize(0, _cacheMap.Count);
+        public long MemorySize => CalculateMemorySize(0, _cacheMap.Count);
 
-        public static int CalculateMemorySize(int keyPlusValueSize, int currentItemsCount)
+        public static long CalculateMemorySize(int keyPlusValueSize, int currentItemsCount)
         {
             // it may actually be different if the initial capacity not equal to max (depending on the dictionary growth path)
 
             const int preInit = 48 /* LinkedList */ + 80 /* Dictionary */ + 24;
             int postInit = 52 /* lazy init of two internal dictionary arrays + dictionary size times (entry size + int) */ + MemorySizes.FindNextPrime(currentItemsCount) * 28 + currentItemsCount * 80 /* LinkedListNode and CacheItem times items count */;
             return MemorySizes.Align(preInit + postInit + keyPlusValueSize * currentItemsCount);
+        }
+
+        [MethodImpl(MethodImplOptions.Synchronized)]
+        public void ForEach(Action<TValue> action)
+        {
+            int next = _head;
+            int start = next;
+            while (next != Node.Null)
+            {
+                Node node = _list[next];
+                action(node.Value);
+                next = node.Next;
+
+                if (next == start)
+                {
+                    break;
+                }
+            }
         }
     }
 }
