@@ -60,7 +60,7 @@ namespace Nethermind.Blockchain.Test.Services
                 yield return new BlockProcessorIntervalHint()
                 {
                     ChainSpec = new ChainSpec() {SealEngineType = SealEngineType.Ethash },
-                    ExpectedProcessingHint = 60
+                    ExpectedProcessingHint = 180
                 };
                 yield return new BlockProcessorIntervalHint()
                 {
