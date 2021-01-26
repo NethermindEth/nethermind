@@ -82,8 +82,8 @@ namespace Nethermind.DataMarketplace.Consumers.Shared.Services
             _daiPriceService = daiPriceService;
             _gasPriceService = gasPriceService;
             _blockProcessor = blockProcessor;
-            _depositRepository = depositRepository;
             _consumerNotifier = consumerNotifier;
+            _depositRepository = depositRepository;
             _useDepositTimer = useDepositTimer;
             _ethJsonRpcClientProxy = ethJsonRpcClientProxy;
             _logger = logManager.GetClassLogger();
@@ -166,6 +166,7 @@ namespace Nethermind.DataMarketplace.Consumers.Shared.Services
             });
 
             await TryConfirmDepositsAsync(depositsToConfirm.Items);
+
             PagedResult<DepositDetails> depositsToRefund = await _depositRepository.BrowseAsync(new GetDeposits
             {
                 EligibleToRefund = true,
@@ -174,6 +175,7 @@ namespace Nethermind.DataMarketplace.Consumers.Shared.Services
             });
 
             await TryClaimRefundsAsync(depositsToRefund.Items);
+
             await _ethPriceService.UpdateAsync();
             await _consumerNotifier.SendEthUsdPriceAsync(_ethPriceService.UsdPrice, _ethPriceService.UpdatedAt);
             await _daiPriceService.UpdateAsync();

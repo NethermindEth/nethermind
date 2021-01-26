@@ -81,6 +81,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Deposits
             IProviderRepository providerRepository = new ProviderInMemoryRepository(depositsInMemoryDb);
             IConsumerNotifier notifier = new ConsumerNotifier(Substitute.For<INdmNotifier>());
             DataAssetService dataAssetService = new DataAssetService(providerRepository, notifier, LimboLogs.Instance);
+            IDepositUnitsCalculator depositUnitsCalculator = Substitute.For<IDepositUnitsCalculator>();
             INdmPeer peer = Substitute.For<INdmPeer>();
             peer.NodeId.Returns(TestItem.PublicKeyB);
             peer.ProviderAddress.Returns(_providerAddress);
@@ -94,7 +95,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Deposits
             ProviderService providerService = new ProviderService(providerRepository, notifier, LimboLogs.Instance);
             providerService.Add(peer);
 
-            _depositManager = new DepositManager(depositService, unitsCalculator, dataAssetService, _kycVerifier, providerService, new AbiEncoder(), new CryptoRandom(), _wallet, Substitute.For<IGasPriceService>(), new DepositDetailsInMemoryRepository(depositsInMemoryDb), Timestamper.Default, LimboLogs.Instance, 6, false);
+            _depositManager = new DepositManager(depositService, unitsCalculator, dataAssetService, _kycVerifier, providerService, new AbiEncoder(), new CryptoRandom(), _wallet, Substitute.For<IGasPriceService>(), new DepositDetailsInMemoryRepository(depositsInMemoryDb, depositUnitsCalculator), Timestamper.Default, LimboLogs.Instance, 6, false);
         }
 
         [Test]
