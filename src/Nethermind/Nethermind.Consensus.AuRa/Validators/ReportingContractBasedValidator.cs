@@ -139,7 +139,7 @@ namespace Nethermind.Consensus.AuRa.Validators
                             var posdao = IsPosdao(blockNumber);
                             var txSender = posdao ? _posdaoTxSender : _nonPosdaoTxSender;
                             SendTransaction(reportType, txSender, transaction);
-                            if (_logger.IsWarn) _logger.Warn($"Reported {reportType} validator {validator} misbehaviour (cause: {cause}) at block {blockNumber}");
+                            if (_logger.IsWarn) _logger.Warn($"Reported {reportType} validator {validator} misbehaviour (cause: {cause}) at block {blockNumber} with transaction {transaction.Hash}.");
                             if (reportType == ReportType.Malicious)
                             {
                                 Metrics.ReportedMaliciousMisbehaviour++;
