@@ -28,8 +28,8 @@ namespace Nethermind.GitBook
 
         public void CreateCodeBlock(StringBuilder docBuilder, string code)
         {
-            string codeBlock = $"```text \n {code} \n ```";
-            docBuilder.AppendLine(code);
+            string codeBlock = $"```bash\n{code}\n```";
+            docBuilder.AppendLine(codeBlock);
         }
     }
 }
