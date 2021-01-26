@@ -16,7 +16,6 @@
 // 
 
 using System.Collections.Generic;
-using System.Threading.Tasks;
 using Nethermind.JsonRpc;
 using NSubstitute;
 using NUnit.Framework;
@@ -26,7 +25,7 @@ namespace Nethermind.HealthChecks.Test
     public class HealthModuleTests
     {
         [Test]
-        public async Task NodeStatus_returns_expected_results()
+        public void NodeStatus_returns_expected_results()
         {
             INodeHealthService nodeHealthService = Substitute.For<INodeHealthService>();
             nodeHealthService.CheckHealth().Returns(new CheckHealthResult()
@@ -38,7 +37,7 @@ namespace Nethermind.HealthChecks.Test
                 }
             });
             IHealthModule healthModule = new HealthModule(nodeHealthService);
-            ResultWrapper<NodeStatusResult> nodeStatus = await healthModule.health_nodeStatus();
+            ResultWrapper<NodeStatusResult> nodeStatus = healthModule.health_nodeStatus();
             Assert.AreEqual(false, nodeStatus.Data.Healthy);
             Assert.AreEqual("Still syncing", nodeStatus.Data.Messages[0]);
         }

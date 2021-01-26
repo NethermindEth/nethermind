@@ -24,14 +24,24 @@ namespace Nethermind.Blockchain
         public static ulong? InfinityHint = null;
         
         public const int EthashStandardProcessingPeriod = 15;
+        
+        public const int EthashProcessingSafetyMultiplier = 12;
 
         public const int ProducingSafetyMultiplier = 2;
     }
     
     public interface IHealthHintService
     {
-        ulong? MaxIntervalForProcessingBlocksHint();
+        /// <summary>
+        /// Get processing time assumption based on the network.
+        /// </summary>
+        /// <returns><value>null</value> if we cannot assume processing interval, otherwise returns the number of seconds for maximum time without processed block</returns>
+        ulong? MaxSecondsIntervalForProcessingBlocksHint();
         
-        ulong? MaxIntervalForProducingBlocksHint();
+        /// <summary>
+        /// Get producing time assumption based on the network.
+        /// </summary>
+        /// <returns><value>null</value> if we cannot assume producing interval, otherwise returns the number of seconds for maximum time without produced block</returns>
+        ulong? MaxSecondsIntervalForProducingBlocksHint();
     }
 }

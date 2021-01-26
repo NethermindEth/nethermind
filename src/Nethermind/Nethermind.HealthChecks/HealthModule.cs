@@ -37,9 +37,9 @@ namespace Nethermind.HealthChecks
             _nodeHealthService = nodeHealthService;
         }
 
-        public async Task<ResultWrapper<NodeStatusResult>> health_nodeStatus()
+        public ResultWrapper<NodeStatusResult> health_nodeStatus()
         {
-            CheckHealthResult checkHealthResult = await _nodeHealthService.CheckHealth();
+            CheckHealthResult checkHealthResult = _nodeHealthService.CheckHealth();
             string[] messages = checkHealthResult.Messages.Select(x => x.Message).ToArray();
             NodeStatusResult result = new NodeStatusResult() {Healthy = checkHealthResult.Healthy, Messages = messages};
             return ResultWrapper<NodeStatusResult>.Success(result);

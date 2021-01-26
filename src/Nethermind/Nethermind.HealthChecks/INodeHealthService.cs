@@ -15,12 +15,10 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System.Threading.Tasks;
-
 namespace Nethermind.HealthChecks
 {
     public interface INodeHealthService
     {
-        Task<CheckHealthResult> CheckHealth();
+        CheckHealthResult CheckHealth();
     }
 }

@@ -29,18 +29,18 @@ namespace Nethermind.Blockchain.Services
             _chainSpec = chainSpec;
         }
         
-        public ulong? MaxIntervalForProcessingBlocksHint()
+        public ulong? MaxSecondsIntervalForProcessingBlocksHint()
         {
             ulong? blockProcessorHint;
             if (_chainSpec.SealEngineType == SealEngineType.Ethash)
-                blockProcessorHint = HealthHintConstants.EthashStandardProcessingPeriod * HealthHintConstants.ProcessingSafetyMultiplier;
+                blockProcessorHint = HealthHintConstants.EthashStandardProcessingPeriod * HealthHintConstants.EthashProcessingSafetyMultiplier;
             else
                 blockProcessorHint = HealthHintConstants.InfinityHint;
                
             return blockProcessorHint;
         }
 
-        public ulong? MaxIntervalForProducingBlocksHint()
+        public ulong? MaxSecondsIntervalForProducingBlocksHint()
         {
             return HealthHintConstants.InfinityHint;
         }

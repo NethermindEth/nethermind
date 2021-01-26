@@ -34,12 +34,12 @@ namespace Nethermind.Consensus.AuRa.Services
             _validatorStore = validatorStore;
         }
         
-        public ulong? MaxIntervalForProcessingBlocksHint()
+        public ulong? MaxSecondsIntervalForProcessingBlocksHint()
         {
             return TimeToNextStep() * HealthHintConstants.ProcessingSafetyMultiplier;
         }
 
-        public ulong? MaxIntervalForProducingBlocksHint()
+        public ulong? MaxSecondsIntervalForProducingBlocksHint()
         {
             return (ulong)Math.Max(_validatorStore.GetValidators().Length, 1) * TimeToNextStep() * HealthHintConstants.ProducingSafetyMultiplier;
         }

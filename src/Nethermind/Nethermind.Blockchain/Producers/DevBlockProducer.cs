@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -39,6 +39,7 @@ namespace Nethermind.Blockchain.Producers
         private readonly SemaphoreSlim _newBlockLock = new SemaphoreSlim(1, 1);
         private readonly Timer _timer;
         private readonly TimeSpan _timeout = TimeSpan.FromMilliseconds(200);
+        private bool _isRunning = false;
 
         public DevBlockProducer(
             ITxSource txSource,
@@ -67,6 +68,7 @@ namespace Nethermind.Blockchain.Producers
             _miningConfig = miningConfig ?? throw new ArgumentNullException(nameof(miningConfig));
             _timer = new Timer(_timeout.TotalMilliseconds);
             _timer.Elapsed += TimerOnElapsed;
+            _timer.AutoReset = false;
         }
 
         private void TimerOnElapsed(object sender, ElapsedEventArgs e)
@@ -77,10 +79,13 @@ namespace Nethermind.Blockchain.Producers
             {
                 OnNewPendingTxAsync(new TxEventArgs(tx));
             }
+
+            _timer.Enabled = true;
         }
 
         public override void Start()
         {
+            _isRunning = true;
             _txPool.NewPending += OnNewPendingTx;
             BlockTree.NewHeadBlock += OnNewHeadBlock;
             _timer.Start();
@@ -89,6 +94,7 @@ namespace Nethermind.Blockchain.Producers
 
         public override async Task StopAsync()
         {
+            _isRunning = false;
             _txPool.NewPending -= OnNewPendingTx;
             _timer.Stop();
             BlockTree.NewHeadBlock -= OnNewHeadBlock;
@@ -116,7 +122,7 @@ namespace Nethermind.Blockchain.Producers
 
         protected override bool IsRunning()
         {
-            return _timer != null && _timer.Enabled;
+            return _timer != null && _isRunning;
         }
 
         private void OnNewPendingTx(object sender, TxEventArgs e)

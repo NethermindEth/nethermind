@@ -35,8 +35,8 @@ namespace Nethermind.Clique.Test
             ISnapshotManager snapshotManager = Substitute.For<ISnapshotManager>();
             snapshotManager.GetLastSignersCount().Returns(test.ValidatorsCount);
             IHealthHintService healthHintService = new CliqueHealthHintService(snapshotManager, test.ChainSpec);
-            ulong? actualProcessing = healthHintService.MaxIntervalForProcessingBlocksHint();
-            ulong? actualProducing = healthHintService.MaxIntervalForProducingBlocksHint();
+            ulong? actualProcessing = healthHintService.MaxSecondsIntervalForProcessingBlocksHint();
+            ulong? actualProducing = healthHintService.MaxSecondsIntervalForProducingBlocksHint();
             Assert.AreEqual(test.ExpectedProcessingHint, actualProcessing);
             Assert.AreEqual(test.ExpectedProducingHint, actualProducing);
         }

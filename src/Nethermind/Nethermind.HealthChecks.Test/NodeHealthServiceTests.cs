@@ -17,14 +17,13 @@
 
 using System.Collections.Generic;
 using System.Linq;
-using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Consensus;
-using Nethermind.JsonRpc;
-using Nethermind.JsonRpc.Modules;
-using Nethermind.JsonRpc.Modules.Eth;
-using Nethermind.JsonRpc.Modules.Net;
+using Nethermind.Core;
+using Nethermind.Core.Test.Builders;
+using Nethermind.Synchronization;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -33,24 +32,32 @@ namespace Nethermind.HealthChecks.Test
     public class NodeHealthServiceTests
     {
         [Test]
-        public async Task CheckHealth_returns_expectedresults([ValueSource(nameof(CheckHealthTestCases))] CheckHealthTest test)
+        public void CheckHealth_returns_expected_results([ValueSource(nameof(CheckHealthTestCases))] CheckHealthTest test)
         {
-            IRpcModuleProvider rpcModuleProvider = Substitute.For<IRpcModuleProvider>();
-            IEthModule ethModule = Substitute.For<IEthModule>();
-            INetModule netModule = Substitute.For<INetModule>();
+            IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+            ISyncServer syncServer = Substitute.For<ISyncServer>();
             IBlockchainProcessor blockchainProcessor = Substitute.For<IBlockchainProcessor>();
             IBlockProducer blockProducer = Substitute.For<IBlockProducer>();
             IHealthHintService healthHintService = Substitute.For<IHealthHintService>();
             blockchainProcessor.IsProcessingBlocks(Arg.Any<ulong?>()).Returns(test.IsProcessingBlocks);
             blockProducer.IsProducingBlocks(Arg.Any<ulong?>()).Returns(test.IsProducingBlocks);
-            netModule.net_peerCount().Returns(ResultWrapper<long>.Success(test.PeerCount));
-            ethModule.eth_syncing().Returns(ResultWrapper<SyncingResult>.Success(new SyncingResult() {IsSyncing = test.IsSyncing}));
+            syncServer.GetPeerCount().Returns(test.PeerCount);
             
-            rpcModuleProvider.Rent("eth_syncing", false).Returns(ethModule);
-            rpcModuleProvider.Rent("net_peerCount", false).Returns(netModule);
+            BlockHeaderBuilder GetBlockHeader(int blockNumber) => Build.A.BlockHeader.WithNumber(blockNumber);
+            blockFinder.Head.Returns(new Block(GetBlockHeader(4).TestObject));
+            if (test.IsSyncing)
+            {
+                blockFinder.FindBestSuggestedHeader().Returns(GetBlockHeader(15).TestObject);
+            }
+            else
+            {
+                blockFinder.FindBestSuggestedHeader().Returns(GetBlockHeader(2).TestObject);
+            }
+            
+
             NodeHealthService nodeHealthService =
-                new NodeHealthService(rpcModuleProvider, blockchainProcessor, blockProducer, new HealthChecksConfig(),  healthHintService, test.IsMining);
-            CheckHealthResult result = await nodeHealthService.CheckHealth();
+                new NodeHealthService(syncServer, blockFinder, blockchainProcessor, blockProducer, new HealthChecksConfig(),  healthHintService, test.IsMining);
+            CheckHealthResult result = nodeHealthService.CheckHealth();
             Assert.AreEqual(test.ExpectedHealthy, result.Healthy);
             Assert.AreEqual(test.ExpectedMessage, FormatMessages(result.Messages.Select(x => x.Message)));
             Assert.AreEqual(test.ExpectedLongMessage, FormatMessages(result.Messages.Select(x => x.LongMessage)));
@@ -110,7 +117,7 @@ namespace Nethermind.HealthChecks.Test
                     PeerCount = 7,
                     ExpectedHealthy = false,
                     ExpectedMessage = "Still syncing. Peers: 7.",
-                    ExpectedLongMessage = $"The node is still syncing, CurrentBlock: 0, HighestBlock: 0. Peers: 7."
+                    ExpectedLongMessage = $"The node is still syncing, CurrentBlock: 4, HighestBlock: 15. Peers: 7."
                 };
                 yield return new CheckHealthTest()
                 {
@@ -132,7 +139,7 @@ namespace Nethermind.HealthChecks.Test
                     PeerCount = 4,
                     ExpectedHealthy = true,
                     ExpectedMessage = "Still syncing. Peers: 4.",
-                    ExpectedLongMessage = $"The node is still syncing, CurrentBlock: 0, HighestBlock: 0. Peers: 4."
+                    ExpectedLongMessage = $"The node is still syncing, CurrentBlock: 4, HighestBlock: 15. Peers: 4."
                 };
                 yield return new CheckHealthTest()
                 {
@@ -144,7 +151,7 @@ namespace Nethermind.HealthChecks.Test
                     PeerCount = 0,
                     ExpectedHealthy = false,
                     ExpectedMessage = "Still syncing. Node is not connected to any peers.",
-                    ExpectedLongMessage = "The node is still syncing, CurrentBlock: 0, HighestBlock: 0. Node is not connected to any peers."
+                    ExpectedLongMessage = "The node is still syncing, CurrentBlock: 4, HighestBlock: 15. Node is not connected to any peers."
                 };
                 yield return new CheckHealthTest()
                 {

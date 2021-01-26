@@ -31,12 +31,12 @@ namespace Nethermind.Consensus.Clique
             _snapshotManager = snapshotManager;
             _chainSpec = chainSpec;
         }
-        public ulong? MaxIntervalForProcessingBlocksHint()
+        public ulong? MaxSecondsIntervalForProcessingBlocksHint()
         {
             return _chainSpec.Clique.Period * HealthHintConstants.ProcessingSafetyMultiplier;
         }
 
-        public ulong? MaxIntervalForProducingBlocksHint()
+        public ulong? MaxSecondsIntervalForProducingBlocksHint()
         {
             return Math.Max(_snapshotManager.GetLastSignersCount(), 1) * _chainSpec.Clique.Period *
                 HealthHintConstants.ProducingSafetyMultiplier;

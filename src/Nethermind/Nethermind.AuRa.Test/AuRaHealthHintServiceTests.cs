@@ -41,8 +41,8 @@ namespace Nethermind.AuRa.Test
             IValidatorStore validatorStore = Substitute.For<IValidatorStore>();
             validatorStore.GetValidators().Returns(new Address[test.ValidatorsCount]);
             IHealthHintService healthHintService = new AuraHealthHintService(stepCalculator, validatorStore);
-            ulong? actualProcessing = healthHintService.MaxIntervalForProcessingBlocksHint();
-            ulong? actualProducing = healthHintService.MaxIntervalForProducingBlocksHint();
+            ulong? actualProcessing = healthHintService.MaxSecondsIntervalForProcessingBlocksHint();
+            ulong? actualProducing = healthHintService.MaxSecondsIntervalForProducingBlocksHint();
             Assert.AreEqual(test.ExpectedProcessingHint, actualProcessing);
             Assert.AreEqual(test.ExpectedProducingHint, actualProducing);
         }

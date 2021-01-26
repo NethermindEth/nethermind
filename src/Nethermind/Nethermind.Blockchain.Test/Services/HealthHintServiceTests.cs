@@ -31,8 +31,8 @@ namespace Nethermind.Blockchain.Test.Services
             BlockProcessorIntervalHint test)
         {
             IHealthHintService healthHintService = new HealthHintService(test.ChainSpec);
-            ulong? actualProcessing = healthHintService.MaxIntervalForProcessingBlocksHint();
-            ulong? actualProducing = healthHintService.MaxIntervalForProducingBlocksHint();
+            ulong? actualProcessing = healthHintService.MaxSecondsIntervalForProcessingBlocksHint();
+            ulong? actualProducing = healthHintService.MaxSecondsIntervalForProducingBlocksHint();
             Assert.AreEqual(test.ExpectedProcessingHint, actualProcessing);
             Assert.AreEqual(test.ExpectedProducingHint, actualProducing);
         }
