@@ -36,10 +36,11 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Rocks.
         private readonly IRlpDecoder<DepositDetails> _rlpDecoder;
         private readonly IDepositUnitsCalculator _depositUnitsCalculator;
 
-        public DepositDetailsRocksRepository(IDb database, IRlpDecoder<DepositDetails> rlpDecoder)
+        public DepositDetailsRocksRepository(IDb database, IRlpDecoder<DepositDetails> rlpDecoder, IDepositUnitsCalculator depositUnitsCalculator)
         {
             _database = database;
             _rlpDecoder = rlpDecoder;
+            _depositUnitsCalculator = depositUnitsCalculator;
         }
 
         public async Task<DepositDetails?> GetAsync(Keccak id)

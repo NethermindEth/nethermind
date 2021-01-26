@@ -126,6 +126,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure
             IProviderRepository providerRepository;
             IReceiptRepository receiptRepository;
             IConsumerSessionRepository sessionRepository;
+            IDepositUnitsCalculator depositUnitsCalculator;
             switch (ndmConfig.Persistence?.ToLowerInvariant())
             {
                 case "mongo":
@@ -134,35 +135,39 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure
                     {
                         throw new ApplicationException("Failed to initialize Mongo DB.");
                     }
-
-                    depositRepository = new DepositDetailsMongoRepository(database);
+                    
+                    sessionRepository = new ConsumerSessionMongoRepository(database);
+                    depositUnitsCalculator = new DepositUnitsCalculator(sessionRepository, _api.Timestamper);
+                    depositRepository = new DepositDetailsMongoRepository(database, depositUnitsCalculator);
                     depositApprovalRepository = new ConsumerDepositApprovalMongoRepository(database);
                     providerRepository = new ProviderMongoRepository(database);
                     receiptRepository = new ReceiptMongoRepository(database, "consumerReceipts");
-                    sessionRepository = new ConsumerSessionMongoRepository(database);
                     break;
                 case "memory":
                     if (logger.IsWarn) logger.Warn("*** NDM is using in memory database ***");
                     DepositsInMemoryDb depositsDatabase = new DepositsInMemoryDb();
-                    depositRepository = new DepositDetailsInMemoryRepository(depositsDatabase);
+                    sessionRepository = new ConsumerSessionInMemoryRepository();
+                    depositUnitsCalculator = new DepositUnitsCalculator(sessionRepository, _api.Timestamper);
+                    depositRepository = new DepositDetailsInMemoryRepository(depositsDatabase, depositUnitsCalculator);
                     depositApprovalRepository = new ConsumerDepositApprovalInMemoryRepository();
                     providerRepository = new ProviderInMemoryRepository(depositsDatabase);
                     receiptRepository = new ReceiptInMemoryRepository();
-                    sessionRepository = new ConsumerSessionInMemoryRepository();
                     break;
                 default:
                     var dbInitializer = new ConsumerNdmDbInitializer(_api.DbProvider, ndmConfig, _api.RocksDbFactory, _api.MemDbFactory);
                     await dbInitializer.InitAsync();
+                    sessionRepository = new ConsumerSessionRocksRepository(_api.Db<IDb>(ConsumerNdmDbNames.ConsumerSessions),
+                        sessionRlpDecoder);
+                    depositUnitsCalculator = new DepositUnitsCalculator(sessionRepository, _api.Timestamper);
                     depositRepository = new DepositDetailsRocksRepository(_api.Db<IDb>(ConsumerNdmDbNames.Deposits),
-                        depositDetailsRlpDecoder);
+                        depositDetailsRlpDecoder, depositUnitsCalculator);
                     depositApprovalRepository = new ConsumerDepositApprovalRocksRepository(
                         _api.Db<IDb>(ConsumerNdmDbNames.ConsumerDepositApprovals), depositApprovalRlpDecoder);
                     providerRepository = new ProviderRocksRepository(_api.Db<IDb>(ConsumerNdmDbNames.Deposits),
                         depositDetailsRlpDecoder);
                     receiptRepository = new ReceiptRocksRepository(_api.Db<IDb>(ConsumerNdmDbNames.ConsumerReceipts),
                         receiptRlpDecoder);
-                    sessionRepository = new ConsumerSessionRocksRepository(_api.Db<IDb>(ConsumerNdmDbNames.ConsumerSessions),
-                        sessionRlpDecoder);
+
                     break;
             }
 
@@ -192,7 +197,6 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure
 
             DataRequestFactory dataRequestFactory = new DataRequestFactory(wallet, nodePublicKey);
             TransactionVerifier transactionVerifier = new TransactionVerifier(blockchainBridge, requiredBlockConfirmations);
-            DepositUnitsCalculator depositUnitsCalculator = new DepositUnitsCalculator(sessionRepository, timestamper);
             DepositProvider depositProvider = new DepositProvider(depositRepository, depositUnitsCalculator, logManager);
             KycVerifier kycVerifier = new KycVerifier(depositApprovalRepository, logManager);
             ConsumerNotifier consumerNotifier = new ConsumerNotifier(ndmNotifier);

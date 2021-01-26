@@ -68,10 +68,11 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Shared
             IEthPriceService ethPriceService = Substitute.For<IEthPriceService>();
             IDaiPriceService daiPriceService = Substitute.For<IDaiPriceService>();
             IGasPriceService gasPriceService = Substitute.For<IGasPriceService>();
+            IDepositUnitsCalculator depositUnitsCalculator = Substitute.For<IDepositUnitsCalculator>();
             _depositRepository = Substitute.For<IDepositDetailsRepository>();
             _blockProcessor = Substitute.For<IBlockProcessor>();
             _consumerNotifier = Substitute.For<IConsumerNotifier>();
-            IDepositDetailsRepository repository = new DepositDetailsInMemoryRepository(new DepositsInMemoryDb());
+            IDepositDetailsRepository repository = new DepositDetailsInMemoryRepository(new DepositsInMemoryDb(), depositUnitsCalculator);
             repository.AddAsync(_details);
             _processor = new ConsumerServicesBackgroundProcessor(_accountService, _refundClaimant, depositConfirmationService, ethPriceService, daiPriceService, gasPriceService, _blockProcessor, _depositRepository, _consumerNotifier, LimboLogs.Instance);
         }
