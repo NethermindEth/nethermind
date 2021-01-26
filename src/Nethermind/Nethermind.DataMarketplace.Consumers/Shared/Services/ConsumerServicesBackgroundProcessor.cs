@@ -42,7 +42,7 @@ namespace Nethermind.DataMarketplace.Consumers.Shared.Services
 {
     public class ConsumerServicesBackgroundProcessor : IConsumerServicesBackgroundProcessor, IDisposable
     {
-        private readonly IDepositManager _depositManager;
+        private readonly IDepositDetailsRepository _depositRepository;
         private readonly IConsumerNotifier _consumerNotifier;
         private readonly bool _useDepositTimer;
         private readonly IEthJsonRpcClientProxy? _ethJsonRpcClientProxy;
@@ -68,7 +68,7 @@ namespace Nethermind.DataMarketplace.Consumers.Shared.Services
             IDaiPriceService daiPriceService,
             IGasPriceService gasPriceService,
             IBlockProcessor blockProcessor,
-            IDepositManager depositManager,
+            IDepositDetailsRepository depositRepository,
             IConsumerNotifier consumerNotifier,
             ILogManager logManager,
             bool useDepositTimer = false,
@@ -83,7 +83,7 @@ namespace Nethermind.DataMarketplace.Consumers.Shared.Services
             _gasPriceService = gasPriceService;
             _blockProcessor = blockProcessor;
             _consumerNotifier = consumerNotifier;
-            _depositManager = depositManager;
+            _depositRepository = depositRepository;
             _useDepositTimer = useDepositTimer;
             _ethJsonRpcClientProxy = ethJsonRpcClientProxy;
             _logger = logManager.GetClassLogger();
@@ -158,7 +158,7 @@ namespace Nethermind.DataMarketplace.Consumers.Shared.Services
             Interlocked.Exchange(ref _currentBlockNumber, number);
             Interlocked.Exchange(ref _currentBlockTimestamp, timestamp);
             await _consumerNotifier.SendBlockProcessedAsync(number);
-            PagedResult<DepositDetails> depositsToConfirm = await _depositManager.BrowseAsync(new GetDeposits
+            PagedResult<DepositDetails> depositsToConfirm = await _depositRepository.BrowseAsync(new GetDeposits
             {
                 OnlyUnconfirmed = true,
                 OnlyNotRejected = true,
@@ -167,8 +167,14 @@ namespace Nethermind.DataMarketplace.Consumers.Shared.Services
 
             await TryConfirmDepositsAsync(depositsToConfirm.Items);
 
-            IEnumerable<DepositDetails> depositsToRefund = await GetDepositsToRefundAsync();
-            await TryClaimRefundsAsync(depositsToRefund);
+            PagedResult<DepositDetails> depositsToRefund = await _depositRepository.BrowseAsync(new GetDeposits
+            {
+                EligibleToRefund = true,
+                CurrentBlockTimestamp = _currentBlockTimestamp,
+                Results = int.MaxValue
+            });
+
+            await TryClaimRefundsAsync(depositsToRefund.Items);
 
             await _ethPriceService.UpdateAsync();
             await _consumerNotifier.SendEthUsdPriceAsync(_ethPriceService.UsdPrice, _ethPriceService.UpdatedAt);
@@ -180,18 +186,6 @@ namespace Nethermind.DataMarketplace.Consumers.Shared.Services
             {
                 await _consumerNotifier.SendGasPriceAsync(_gasPriceService.Types);
             }
-        }
-
-        private async Task<IEnumerable<DepositDetails>> GetDepositsToRefundAsync()
-        {
-            PagedResult<DepositDetails> depositsToRefundResult = await _depositManager.BrowseAsync(new GetDeposits
-            {
-                EligibleToRefund = true,
-                CurrentBlockTimestamp = _currentBlockTimestamp,
-                Results = int.MaxValue
-            });
-
-            return depositsToRefundResult.Items.Where(d => d.ConsumedUnits < d.Deposit.Units);
         }
 
         private async Task TryConfirmDepositsAsync(IReadOnlyList<DepositDetails> deposits)
@@ -208,7 +202,7 @@ namespace Nethermind.DataMarketplace.Consumers.Shared.Services
             }
         }
 
-        private async Task TryClaimRefundsAsync(IEnumerable<DepositDetails> deposits)
+        private async Task TryClaimRefundsAsync(IReadOnlyList<DepositDetails> deposits)
         {
             if (!deposits.Any())
             {
@@ -216,7 +210,7 @@ namespace Nethermind.DataMarketplace.Consumers.Shared.Services
                 return;
             }
 
-            if (_logger.IsInfo) _logger.Info($"Found {deposits.Count()} claimable refunds.");
+            if (_logger.IsInfo) _logger.Info($"Found {deposits.Count} claimable refunds.");
 
             foreach (DepositDetails deposit in deposits)
             {

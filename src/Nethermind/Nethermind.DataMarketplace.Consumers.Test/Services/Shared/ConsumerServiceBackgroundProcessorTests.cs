@@ -17,7 +17,6 @@
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
-using Nethermind.Blockchain;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -29,7 +28,6 @@ using Nethermind.DataMarketplace.Consumers.Deposits.Repositories;
 using Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.InMemory.Databases;
 using Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.InMemory.Repositories;
 using Nethermind.DataMarketplace.Consumers.Notifiers;
-using Nethermind.DataMarketplace.Consumers.Notifiers.Services;
 using Nethermind.DataMarketplace.Consumers.Refunds;
 using Nethermind.DataMarketplace.Consumers.Shared;
 using Nethermind.DataMarketplace.Consumers.Shared.Services;
@@ -51,7 +49,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Shared
         private Deposit _deposit;
         private Address _providerAddress = TestItem.AddressA;
         private DepositDetails _details;
-        private IDepositManager _depositManager;
+        private IDepositDetailsRepository _depositRepository;
         IConsumerNotifier _consumerNotifier;
         IAccountService _accountService;
         IRefundClaimant _refundClaimant;
@@ -70,12 +68,12 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Shared
             IEthPriceService ethPriceService = Substitute.For<IEthPriceService>();
             IDaiPriceService daiPriceService = Substitute.For<IDaiPriceService>();
             IGasPriceService gasPriceService = Substitute.For<IGasPriceService>();
-            _depositManager = Substitute.For<IDepositManager>();
+            _depositRepository = Substitute.For<IDepositDetailsRepository>();
             _blockProcessor = Substitute.For<IBlockProcessor>();
             _consumerNotifier = Substitute.For<IConsumerNotifier>();
             IDepositDetailsRepository repository = new DepositDetailsInMemoryRepository(new DepositsInMemoryDb());
             repository.AddAsync(_details);
-            _processor = new ConsumerServicesBackgroundProcessor(_accountService, _refundClaimant, depositConfirmationService, ethPriceService, daiPriceService, gasPriceService, _blockProcessor, _depositManager, _consumerNotifier, LimboLogs.Instance);
+            _processor = new ConsumerServicesBackgroundProcessor(_accountService, _refundClaimant, depositConfirmationService, ethPriceService, daiPriceService, gasPriceService, _blockProcessor, _depositRepository, _consumerNotifier, LimboLogs.Instance);
         }
 
         [TearDown]
@@ -124,10 +122,8 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Shared
                 1, 
                 1);
 
-            _depositManager.BrowseAsync(Arg.Any<GetDeposits>()).Returns(Task.FromResult(refundsResult));
-
+            _depositRepository.BrowseAsync(Arg.Any<GetDeposits>()).Returns(Task.FromResult(refundsResult));
             _blockProcessor.BlockProcessed += Raise.EventWith(new BlockProcessedEventArgs(blockProccesed, Array.Empty<TxReceipt>()));
-
             _consumerNotifier.Received().SendClaimedEarlyRefundAsync(Arg.Any<Keccak>(), Arg.Any<string>(), Arg.Any<Keccak>());
         }
 
@@ -151,10 +147,8 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Shared
                 1, 
                 1);
 
-            _depositManager.BrowseAsync(Arg.Any<GetDeposits>()).Returns(Task.FromResult(refundsResult));
-
+            _depositRepository.BrowseAsync(Arg.Any<GetDeposits>()).Returns(Task.FromResult(refundsResult));
             _blockProcessor.BlockProcessed += Raise.EventWith(new BlockProcessedEventArgs(blockProccesed, Array.Empty<TxReceipt>()));
-
             _consumerNotifier.DidNotReceive().SendClaimedRefundAsync(Arg.Any<Keccak>(), Arg.Any<string>(), Arg.Any<Keccak>());
         }
     }
