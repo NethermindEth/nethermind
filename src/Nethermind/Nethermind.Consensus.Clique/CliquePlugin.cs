@@ -24,6 +24,7 @@ using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Producers;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Rewards;
+using Nethermind.Blockchain.Services;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Db;
@@ -62,6 +63,8 @@ namespace Nethermind.Consensus.Clique
                 getFromApi.BlockTree!,
                 getFromApi.EthereumEcdsa!,
                 getFromApi.LogManager);
+            
+            setInApi.HealthHintService = new CliqueHealthHintService(_snapshotManager, getFromApi.ChainSpec);
 
             setInApi.SealValidator = new CliqueSealValidator(
                 _cliqueConfig,
@@ -82,7 +85,7 @@ namespace Nethermind.Consensus.Clique
             }
 
             var (getFromApi, setInApi) = _nethermindApi!.ForProducer;
-
+            
             _miningConfig = getFromApi.Config<IMiningConfig>();
             if (!_miningConfig.Enabled)
             {

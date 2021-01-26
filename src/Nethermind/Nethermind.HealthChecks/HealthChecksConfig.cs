@@ -27,5 +27,9 @@ namespace Nethermind.HealthChecks
         public string WebhooksPayload { get; set; } = "{\"attachments\":[{\"color\":\"#FFCC00\",\"pretext\":\"Health Check Status :warning:\",\"fields\":[{\"title\":\"Details\",\"value\":\"More details available at `/healthchecks-ui`\",\"short\":false},{\"title\":\"Description\",\"value\":\"`[[DESCRIPTIONS]]`\",\"short\":false}]}]}";
         public string WebhooksRestorePayload { get; set; } = "{\"attachments\":[{\"color\":\"#36a64f\",\"pretext\":\"Health Check Status :+1:\",\"fields\":[{\"title\":\"Details\",\"value\":\"`More details available at /healthchecks-ui`\",\"short\":false},{\"title\":\"description\",\"value\":\"The HealthCheck `[[LIVENESS]]` is recovered. All is up and running\",\"short\":false}]}]}";
         public bool UIEnabled { get; set; } = false;
+        
+        public ulong? MaxIntervalWithoutProcessedBlock { get; set; }
+        
+        public ulong? MaxIntervalWithoutProducedBlock { get; set; }
     }
 }

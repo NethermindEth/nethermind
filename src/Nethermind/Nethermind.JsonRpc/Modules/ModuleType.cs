@@ -38,7 +38,8 @@ namespace Nethermind.JsonRpc.Modules
         Web3,
         Baseline,
         Vault,
-        Deposit
+        Deposit,
+        Health
     }
 
     public class RpcModuleAttribute : Attribute

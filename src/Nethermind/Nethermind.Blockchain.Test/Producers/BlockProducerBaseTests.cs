@@ -61,6 +61,8 @@ namespace Nethermind.Blockchain.Test.Producers
             {
                 return PrepareBlock(header);
             }
+
+            protected override bool IsRunning() => true;
         }
         
         [Test]

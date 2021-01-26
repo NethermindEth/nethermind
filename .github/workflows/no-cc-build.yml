@@ -108,6 +108,9 @@ jobs:
     - name: Installing macOS packages
       if: matrix.os == 'macOS-latest'
       run: brew install gmp && brew install snappy && brew install lz4 && brew install zstd
+    - name: Nethermind.HealthChecks.Test
+      run: |
+        dotnet test -c Release src/Nethermind/Nethermind.HealthChecks.Test
     - name: Nethermind.HonestValidator.Test
       run: |
         dotnet test -c Release src/Nethermind/Nethermind.HonestValidator.Test

@@ -59,6 +59,7 @@ namespace Nethermind.Consensus.Clique
 
         private readonly CancellationTokenSource _cancellationTokenSource = new CancellationTokenSource();
         private readonly System.Timers.Timer _timer = new System.Timers.Timer();
+        private DateTime _lastProducedBlock;
 
         public CliqueBlockProducer(
             ITxSource txSource,
@@ -230,6 +231,7 @@ namespace Nethermind.Consensus.Clique
 
         private void ConsumeSignal()
         {
+            _lastProducedBlock = DateTime.UtcNow;
             foreach (Block signal in _signalsQueue.GetConsumingEnumerable(_cancellationTokenSource.Token))
             {
                 Block parentBlock = signal;
@@ -272,6 +274,7 @@ namespace Nethermind.Consensus.Clique
                                 if (_logger.IsInfo)
                                     _logger.Info($"Sealed block {t.Result.ToString(Block.Format.HashNumberDiffAndTx)}");
                                 _scheduledBlock = t.Result;
+                                _lastProducedBlock = DateTime.UtcNow;
                                 Metrics.BlocksSealed++;
                             }
                             else
@@ -310,6 +313,16 @@ namespace Nethermind.Consensus.Clique
             _blockTree.NewHeadBlock -= BlockTreeOnNewHeadBlock;
             _cancellationTokenSource?.Cancel();
             await (_producerTask ?? Task.CompletedTask);
+        }
+
+        bool IBlockProducer.IsProducingBlocks(ulong? maxProducingInterval)
+        {
+            if (_producerTask == null || _producerTask.IsCompleted)
+                return false;
+            if (maxProducingInterval != null)
+                return _lastProducedBlock.AddSeconds(maxProducingInterval.Value) > DateTime.UtcNow;
+            else
+                return true;
         }
 
         private Keccak? _recentNotAllowedParent;

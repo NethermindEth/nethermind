@@ -50,9 +50,9 @@ namespace Nethermind.Blockchain.Processing
         private CancellationTokenSource _loopCancellationSource;
         private Task _recoveryTask;
         private Task _processorTask;
+        private DateTime _lastProcessedBlock;
 
         private int _currentRecoveryQueueSize;
-
         /// <summary>
         /// 
         /// </summary>
@@ -78,8 +78,14 @@ namespace Nethermind.Blockchain.Processing
             {
                 _blockTree.NewBestSuggestedBlock += OnNewBestBlock;
             }
+            _blockTree.NewHeadBlock += OnNewHeadBlock;
 
             _stats = new ProcessingStats(_logger);
+        }
+
+        private void OnNewHeadBlock(object? sender, BlockEventArgs e)
+        {
+            _lastProcessedBlock = DateTime.UtcNow;;
         }
 
         private void OnNewBestBlock(object sender, BlockEventArgs blockEventArgs)
@@ -182,6 +188,7 @@ namespace Nethermind.Blockchain.Processing
         private void RunRecoveryLoop()
         {
             if (_logger.IsDebug) _logger.Debug($"Starting recovery loop - {_blockQueue.Count} blocks waiting in the queue.");
+            _lastProcessedBlock = DateTime.UtcNow;
             foreach (BlockRef blockRef in _recoveryQueue.GetConsumingEnumerable(_loopCancellationSource.Token))
             {
                 if (blockRef.Resolve(_blockTree))
@@ -315,6 +322,17 @@ namespace Nethermind.Blockchain.Processing
             }
 
             return lastProcessed;
+        }
+
+        public bool IsProcessingBlocks(ulong? maxProcessingInterval)
+        {
+            if (_processorTask == null || _recoveryTask == null || _processorTask.IsCompleted || _recoveryTask.IsCompleted)
+                return false;
+            
+            if (maxProcessingInterval != null)
+                return _lastProcessedBlock.AddSeconds(maxProcessingInterval.Value) > DateTime.UtcNow;
+            else // user does not setup interval and we cannot set interval time based on chainspec
+                return true;
         }
 
         private void TraceFailingBranch(ProcessingBranch processingBranch, ProcessingOptions options, IBlockTracer blockTracer)
@@ -521,6 +539,7 @@ namespace Nethermind.Blockchain.Processing
             _recoveryTask?.Dispose();
             _processorTask?.Dispose();
             _blockTree.NewBestSuggestedBlock -= OnNewBestBlock;
+            _blockTree.NewHeadBlock -= OnNewHeadBlock;
         }
 
         private readonly struct ProcessingBranch

@@ -23,6 +23,7 @@ using Nethermind.Api.Extensions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Producers;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Db;
@@ -61,7 +62,6 @@ namespace Nethermind.Runner.Ethereum.Steps
         protected virtual void BuildProducer()
         {
             if (_api.ChainSpec == null) throw new StepDependencyException(nameof(_api.ChainSpec));
-            
             IConsensusPlugin? consensusPlugin = _api.Plugins
                 .OfType<IConsensusPlugin>()
                 .SingleOrDefault(cp => cp.SealEngineType == _api.SealEngineType);

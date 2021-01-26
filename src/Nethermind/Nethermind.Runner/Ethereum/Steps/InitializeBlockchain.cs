@@ -22,6 +22,7 @@ using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Processing;
+using Nethermind.Blockchain.Services;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
@@ -238,6 +239,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             // TODO: possibly hide it (but need to confirm that NDM does not really need it)
             var filterStore = setApi.FilterStore = new FilterStore();
             setApi.FilterManager = new FilterManager(filterStore, mainBlockProcessor, txPool, getApi.LogManager);
+            setApi.HealthHintService = CreateHealthHintService();
             return Task.CompletedTask;
         }
         
@@ -246,6 +248,10 @@ namespace Nethermind.Runner.Ethereum.Steps
             _api.LogManager.GetClassLogger().Warn($"Saving reorg boundary {e.BlockNumber}");
             (_api.BlockTree as BlockTree)!.SavePruningReorganizationBoundary(e.BlockNumber);
         }
+        
+        protected virtual IHealthHintService CreateHealthHintService() =>
+            new HealthHintService(_api.ChainSpec);
+
 
         protected virtual TxPool.TxPool CreateTxPool(PersistentTxStorage txStorage) =>
             new TxPool.TxPool(
