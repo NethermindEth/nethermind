@@ -255,7 +255,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure.Persistence
             IDb db = new MemDb();
             IDepositUnitsCalculator depositUnitsCalculator = Substitute.For<IDepositUnitsCalculator>();
             DepositDetailsRocksRepository repository = new DepositDetailsRocksRepository(db, new DepositDetailsDecoder(), depositUnitsCalculator);
-            Assert.Throws<ArgumentNullException>(() => repository.BrowseAsync(null));
+            Assert.ThrowsAsync<ArgumentNullException>(() => repository.BrowseAsync(null));
         }
     }
 }
