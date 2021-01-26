@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -210,7 +210,7 @@ namespace Nethermind.Runner.Ethereum.Steps
         {
             if (txPriorityContract != null || localDataSource != null)
             {
-                ContractDataStore<Address, IContractDataStoreCollection<Address>> whitelistContractDataStore = new ContractDataStoreWithLocalData<Address>(
+                ContractDataStore<Address> whitelistContractDataStore = new ContractDataStoreWithLocalData<Address>(
                     new HashSetContractDataStoreCollection<Address>(),
                     txPriorityContract?.SendersWhitelist,
                     _api.BlockTree,
@@ -218,8 +218,8 @@ namespace Nethermind.Runner.Ethereum.Steps
                     _api.LogManager,
                     localDataSource?.GetWhitelistLocalDataSource() ?? new EmptyLocalDataSource<IEnumerable<Address>>());
 
-                DictionaryContractDataStore<TxPriorityContract.Destination, TxPriorityContract.DestinationSortedListContractDataStoreCollection> prioritiesContractDataStore =
-                    new DictionaryContractDataStore<TxPriorityContract.Destination, TxPriorityContract.DestinationSortedListContractDataStoreCollection>(
+                DictionaryContractDataStore<TxPriorityContract.Destination> prioritiesContractDataStore =
+                    new DictionaryContractDataStore<TxPriorityContract.Destination>(
                         new TxPriorityContract.DestinationSortedListContractDataStoreCollection(),
                         txPriorityContract?.Priorities,
                         _api.BlockTree,

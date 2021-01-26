@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -50,7 +50,7 @@ namespace Nethermind.Runner.Ethereum.Steps
         
         private readonly IAuraConfig? _auraConfig;
         private IAuRaValidator? _validator;
-        private DictionaryContractDataStore<TxPriorityContract.Destination, TxPriorityContract.DestinationSortedListContractDataStoreCollection>? _minGasPricesContractDataStore;
+        private DictionaryContractDataStore<TxPriorityContract.Destination>? _minGasPricesContractDataStore;
         private TxPriorityContract? _txPriorityContract;
         private TxPriorityContract.LocalDataSource? _localDataSource;
         private ITxFilter? _txPermissionFilter;
@@ -156,7 +156,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _minGasPricesContractDataStore = TxFilterBuilders.CreateMinGasPricesDataStore(_api, _txPriorityContract, _localDataSource)!;
                 _api.DisposeStack.Push(_minGasPricesContractDataStore);                
 
-                ContractDataStore<Address, IContractDataStoreCollection<Address>> whitelistContractDataStore = new ContractDataStoreWithLocalData<Address>(
+                ContractDataStore<Address> whitelistContractDataStore = new ContractDataStoreWithLocalData<Address>(
                     new HashSetContractDataStoreCollection<Address>(),
                     _txPriorityContract?.SendersWhitelist,
                     _api.BlockTree,
@@ -164,8 +164,8 @@ namespace Nethermind.Runner.Ethereum.Steps
                     _api.LogManager,
                     _localDataSource?.GetWhitelistLocalDataSource() ?? new EmptyLocalDataSource<IEnumerable<Address>>());
 
-                DictionaryContractDataStore<TxPriorityContract.Destination, TxPriorityContract.DestinationSortedListContractDataStoreCollection> prioritiesContractDataStore =
-                    new DictionaryContractDataStore<TxPriorityContract.Destination, TxPriorityContract.DestinationSortedListContractDataStoreCollection>(
+                DictionaryContractDataStore<TxPriorityContract.Destination> prioritiesContractDataStore =
+                    new DictionaryContractDataStore<TxPriorityContract.Destination>(
                         new TxPriorityContract.DestinationSortedListContractDataStoreCollection(),
                         _txPriorityContract?.Priorities,
                         _api.BlockTree,

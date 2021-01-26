@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -29,6 +29,7 @@ namespace Nethermind.Specs
         public UInt256 BlockReward { get; set; }
         public long DifficultyBombDelay { get; set; }
         public long DifficultyBoundDivisor { get; set; }
+        public long? FixedDifficulty { get; set; }
         public int MaximumUncleCount { get; set; }
         public bool IsTimeAdjustmentPostOlympic { get; set; }
         public bool IsEip2Enabled { get; set; }
@@ -64,7 +65,11 @@ namespace Nethermind.Specs
         public bool IsEip2930Enabled => false;
         public bool IsEip2718Enabled => false;
         public bool IsEip158IgnoredAccount(Address address) => address == Address.SystemUser;
+        public bool IsEip1559Enabled { get; set; }
         public bool ValidateChainId { get; set; }
         public bool ValidateReceipts { get; set; }
+        
+        public long Eip1559TransitionBlock { get; set; }
+        public long Eip1559MigrationDuration { get; set; }
     }
 }

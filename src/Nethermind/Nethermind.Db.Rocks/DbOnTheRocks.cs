@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -29,10 +29,14 @@ namespace Nethermind.Db.Rocks
 {
     public abstract class DbOnTheRocks : IDbWithSpan
     {
-        private static readonly ConcurrentDictionary<string, RocksDb> DbsByPath = new ConcurrentDictionary<string, RocksDb>();
+        private static readonly ConcurrentDictionary<string, RocksDb> DbsByPath =
+            new ConcurrentDictionary<string, RocksDb>();
+
         private bool _isDisposed;
+
+        private HashSet<IBatch> _currentBatches = new HashSet<IBatch>();
+        
         internal readonly RocksDb Db;
-        internal WriteBatch CurrentBatch { get; private set; }
         internal WriteOptions WriteOptions { get; private set; }
 
         public abstract string Name { get; protected set; }
@@ -42,7 +46,7 @@ namespace Nethermind.Db.Rocks
         private long _maxThisDbSize;
 
         private static int _cacheInitialized;
-        
+
         protected static IntPtr _cache;
 
         private readonly RocksDbSettings _settings;
@@ -56,14 +60,16 @@ namespace Nethermind.Db.Rocks
             }
         }
 
-        public DbOnTheRocks(string basePath, RocksDbSettings rocksDbSettings, IDbConfig dbConfig, ILogManager logManager, ColumnFamilies columnFamilies = null, bool deleteOnStart = false)
+        public DbOnTheRocks(string basePath, RocksDbSettings rocksDbSettings, IDbConfig dbConfig,
+            ILogManager logManager, ColumnFamilies columnFamilies = null, bool deleteOnStart = false)
         {
             Name = rocksDbSettings.DbName;
             _settings = rocksDbSettings;
             Db = Init(basePath, rocksDbSettings.DbPath, dbConfig, logManager, columnFamilies, deleteOnStart);
         }
 
-        private RocksDb Init(string basePath, string dbPath, IDbConfig dbConfig, ILogManager logManager, ColumnFamilies columnFamilies = null, bool deleteOnStart = false)
+        private RocksDb Init(string basePath, string dbPath, IDbConfig dbConfig, ILogManager logManager,
+            ColumnFamilies columnFamilies = null, bool deleteOnStart = false)
         {
             static RocksDb Open(string path, (DbOptions Options, ColumnFamilies Families) db)
             {
@@ -90,18 +96,23 @@ namespace Nethermind.Db.Rocks
                 InitCache(dbConfig);
 
                 // ReSharper disable once VirtualMemberCallInConstructor
-                if (_logger.IsDebug) _logger.Debug($"Loading DB {Name.PadRight(13)} from {_fullPath} with max memory footprint of {_maxThisDbSize / 1000 / 1000}MB");
+                if (_logger.IsDebug)
+                    _logger.Debug(
+                        $"Loading DB {Name.PadRight(13)} from {_fullPath} with max memory footprint of {_maxThisDbSize / 1000 / 1000}MB");
                 return DbsByPath.GetOrAdd(_fullPath, Open, (options, columnFamilies));
             }
             catch (DllNotFoundException e) when (e.Message.Contains("libdl"))
             {
-                throw new ApplicationException($"Unable to load 'libdl' necessary to init the RocksDB database. Please run{Environment.NewLine}" +
-                                               $"sudo apt-get update && sudo apt-get install libsnappy-dev libc6-dev libc6 unzip{Environment.NewLine}" +
-                                               "or similar depending on your distribution.");
+                throw new ApplicationException(
+                    $"Unable to load 'libdl' necessary to init the RocksDB database. Please run{Environment.NewLine}" +
+                    $"sudo apt-get update && sudo apt-get install libsnappy-dev libc6-dev libc6 unzip{Environment.NewLine}" +
+                    "or similar depending on your distribution.");
             }
             catch (RocksDbException x) when (x.Message.Contains("LOCK"))
             {
-                if (_logger.IsWarn) _logger.Warn("If your database did not close properly you need to call 'find -type f -name '*LOCK*' -delete' from the databse folder");
+                if (_logger.IsWarn)
+                    _logger.Warn(
+                        "If your database did not close properly you need to call 'find -type f -name '*LOCK*' -delete' from the databse folder");
                 throw;
             }
         }
@@ -129,10 +140,13 @@ namespace Nethermind.Db.Rocks
 
         protected static T ReadConfig<T>(IDbConfig dbConfig, string propertyName, string tableName)
         {
-            string prefixed = string.Concat(tableName == "State" ? string.Empty : string.Concat(tableName, "Db"), propertyName);
+            string prefixed = string.Concat(tableName == "State" ? string.Empty : string.Concat(tableName, "Db"),
+                propertyName);
             try
             {
-                return (T) dbConfig.GetType().GetProperty(prefixed, BindingFlags.IgnoreCase | BindingFlags.Public | BindingFlags.Instance)?.GetValue(dbConfig);
+                return (T)dbConfig.GetType()
+                    .GetProperty(prefixed, BindingFlags.IgnoreCase | BindingFlags.Public | BindingFlags.Instance)
+                    ?.GetValue(dbConfig);
             }
             catch (Exception e)
             {
@@ -154,14 +168,15 @@ namespace Nethermind.Db.Rocks
             ulong blockCacheSize = GetBlockCacheSize(dbConfig);
 
             tableOptions.SetBlockCache(_cache);
-            
+
             // IntPtr cache = RocksDbSharp.Native.Instance.rocksdb_cache_create_lru(new UIntPtr(blockCacheSize));
             // tableOptions.SetBlockCache(cache);
 
             DbOptions options = new DbOptions();
             options.SetCreateIfMissing(true);
             options.SetAdviseRandomOnOpen(true);
-            options.OptimizeForPointLookup(blockCacheSize); // I guess this should be the one option controlled by the DB size property - bind it to LRU cache size
+            options.OptimizeForPointLookup(
+                blockCacheSize); // I guess this should be the one option controlled by the DB size property - bind it to LRU cache size
             //options.SetCompression(CompressionTypeEnum.rocksdb_snappy_compression);
             //options.SetLevelCompactionDynamicLevelBytes(true);
 
@@ -184,9 +199,11 @@ namespace Nethermind.Db.Rocks
 
             lock (DbsByPath)
             {
-                _maxThisDbSize += (long) writeBufferSize * writeBufferNumber;
+                _maxThisDbSize += (long)writeBufferSize * writeBufferNumber;
                 Interlocked.Add(ref _maxRocksSize, _maxThisDbSize);
-                if (_logger.IsDebug) _logger.Debug($"Expected max memory footprint of {Name} DB is {_maxThisDbSize / 1000 / 1000}MB ({writeBufferNumber} * {writeBufferSize / 1000 / 1000}MB + {blockCacheSize / 1000 / 1000}MB)");
+                if (_logger.IsDebug)
+                    _logger.Debug(
+                        $"Expected max memory footprint of {Name} DB is {_maxThisDbSize / 1000 / 1000}MB ({writeBufferNumber} * {writeBufferSize / 1000 / 1000}MB + {blockCacheSize / 1000 / 1000}MB)");
                 if (_logger.IsDebug) _logger.Debug($"Total max DB footprint so far is {_maxRocksSize / 1000 / 1000}MB");
                 ThisNodeInfo.AddInfo("Mem est DB   :", $"{_maxRocksSize / 1000 / 1000}MB".PadLeft(8));
             }
@@ -195,11 +212,13 @@ namespace Nethermind.Db.Rocks
 
             options.SetMaxBackgroundFlushes(Environment.ProcessorCount);
             options.IncreaseParallelism(Environment.ProcessorCount);
-            options.SetRecycleLogFileNum(dbConfig.RecycleLogFileNum); // potential optimization for reusing allocated log files
+            options.SetRecycleLogFileNum(dbConfig
+                .RecycleLogFileNum); // potential optimization for reusing allocated log files
 
 //            options.SetLevelCompactionDynamicLevelBytes(true); // only switch on on empty DBs
             WriteOptions = new WriteOptions();
-            WriteOptions.SetSync(dbConfig.WriteAheadLogSync); // potential fix for corruption on hard process termination, may cause performance degradation
+            WriteOptions.SetSync(dbConfig
+                .WriteAheadLogSync); // potential fix for corruption on hard process termination, may cause performance degradation
 
             return options;
         }
@@ -241,7 +260,7 @@ namespace Nethermind.Db.Rocks
                 {
                     throw new ObjectDisposedException($"Attempted to read form a disposed database {Name}");
                 }
-                
+
                 UpdateReadMetrics();
                 return Db.Get(key);
             }
@@ -251,29 +270,15 @@ namespace Nethermind.Db.Rocks
                 {
                     throw new ObjectDisposedException($"Attempted to write to a disposed database {Name}");
                 }
-                
+
                 UpdateWriteMetrics();
-                if (CurrentBatch != null)
+                if (value == null)
                 {
-                    if (value == null)
-                    {
-                        CurrentBatch.Delete(key);
-                    }
-                    else
-                    {
-                        CurrentBatch.Put(key, value);
-                    }
+                    Db.Remove(key, null, WriteOptions);
                 }
                 else
                 {
-                    if (value == null)
-                    {
-                        Db.Remove(key, null, WriteOptions);
-                    }
-                    else
-                    {
-                        Db.Put(key, value, null, WriteOptions);
-                    }
+                    Db.Put(key, value, null, WriteOptions);
                 }
             }
         }
@@ -286,7 +291,7 @@ namespace Nethermind.Db.Rocks
             {
                 throw new ObjectDisposedException($"Attempted to read form a disposed database {Name}");
             }
-            
+
             UpdateReadMetrics();
             return Db.GetSpan(key);
         }
@@ -302,7 +307,7 @@ namespace Nethermind.Db.Rocks
             {
                 throw new ObjectDisposedException($"Attempted to delete form a disposed database {Name}");
             }
-            
+
             Db.Remove(key, null, WriteOptions);
         }
 
@@ -312,7 +317,7 @@ namespace Nethermind.Db.Rocks
             {
                 throw new ObjectDisposedException($"Attempted to create an iterator on a disposed database {Name}");
             }
-            
+
             Iterator iterator = CreateIterator(ordered);
             return GetAllCore(iterator);
         }
@@ -330,7 +335,7 @@ namespace Nethermind.Db.Rocks
             {
                 throw new ObjectDisposedException($"Attempted to read form a disposed database {Name}");
             }
-            
+
             Iterator iterator = CreateIterator(ordered);
             return GetAllValuesCore(iterator);
         }
@@ -353,7 +358,7 @@ namespace Nethermind.Db.Rocks
             {
                 throw new ObjectDisposedException($"Attempted to read form a disposed database {Name}");
             }
-            
+
             iterator.SeekToFirst();
             while (iterator.Valid())
             {
@@ -374,7 +379,7 @@ namespace Nethermind.Db.Rocks
             {
                 throw new ObjectDisposedException($"Attempted to read form a disposed database {Name}");
             }
-            
+
             // seems it has no performance impact
             return Db.Get(key) != null;
 //            return _db.Get(key, 32, _keyExistsBuffer, 0, 0, null, null) != -1;
@@ -382,26 +387,59 @@ namespace Nethermind.Db.Rocks
 
         public IDb Innermost => this;
 
-        public void StartBatch()
+        public IBatch StartBatch()
         {
-            if (_isDisposed)
-            {
-                throw new ObjectDisposedException($"Attempted to create a batch on a disposed database {Name}");
-            }
-            
-            CurrentBatch = new WriteBatch();
+            IBatch batch = new RocksDbBatch(this);
+            _currentBatches.Add(batch);
+            return batch;
         }
 
-        public void CommitBatch()
+        internal class RocksDbBatch : IBatch
         {
-            if (_isDisposed)
+            private readonly DbOnTheRocks _dbOnTheRocks;
+
+            internal readonly WriteBatch _rocksBatch;
+
+            public RocksDbBatch(DbOnTheRocks dbOnTheRocks)
             {
-                throw new ObjectDisposedException($"Attempted to commit a batch on a disposed database {Name}");
+                _dbOnTheRocks = dbOnTheRocks;
+
+                if (_dbOnTheRocks._isDisposed)
+                {
+                    throw new ObjectDisposedException($"Attempted to create a batch on a disposed database {_dbOnTheRocks.Name}");
+                }
+
+                _rocksBatch = new WriteBatch();
             }
-            
-            Db.Write(CurrentBatch, WriteOptions);
-            CurrentBatch.Dispose();
-            CurrentBatch = null;
+
+            public void Dispose()
+            {
+                if (_dbOnTheRocks._isDisposed)
+                {
+                    throw new ObjectDisposedException($"Attempted to commit a batch on a disposed database {_dbOnTheRocks.Name}");
+                }
+
+                _dbOnTheRocks.Db.Write(_rocksBatch, _dbOnTheRocks.WriteOptions);
+                _dbOnTheRocks._currentBatches.Remove(this);
+                _rocksBatch.Dispose();
+                GC.SuppressFinalize(this);
+            }
+
+            public byte[]? this[byte[] key]
+            {
+                get => _dbOnTheRocks[key];
+                set
+                {
+                    if (value == null)
+                    {
+                        _rocksBatch.Delete(key);
+                    }
+                    else
+                    {
+                        _rocksBatch.Put(key, value);
+                    }
+                }
+            }
         }
 
         public void Flush()
@@ -410,7 +448,7 @@ namespace Nethermind.Db.Rocks
             {
                 throw new ObjectDisposedException($"Attempted to flush a disposed database {Name}");
             }
-            
+
             RocksDbSharp.Native.Instance.rocksdb_flush(Db.Handle, FlushOptions.DefaultFlushOptions.Handle);
         }
 
@@ -422,7 +460,9 @@ namespace Nethermind.Db.Rocks
             }
             catch (Exception e)
             {
-                if(_logger.IsWarn) _logger.Warn($"This is not a problem but I could not delete the pending tx database on startup. {e.Message}");
+                if (_logger.IsWarn)
+                    _logger.Warn(
+                        $"This is not a problem but I could not delete the pending tx database on startup. {e.Message}");
             }
         }
 
@@ -450,20 +490,23 @@ namespace Nethermind.Db.Rocks
         private void ReleaseUnmanagedResources()
         {
             Db?.Dispose();
-            CurrentBatch?.Dispose();
+            foreach (IBatch batch in _currentBatches)
+            {
+                batch.Dispose();
+            }
         }
 
         private void Dispose(bool disposing)
         {
             _logger.Info($"Disposing DB {Name}");
-            
+
             if (disposing)
             {
                 Flush();
             }
 
             _isDisposed = true;
-            
+
             ReleaseUnmanagedResources();
             if (disposing)
             {

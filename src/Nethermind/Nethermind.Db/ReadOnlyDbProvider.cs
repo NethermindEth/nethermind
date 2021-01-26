@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -17,6 +17,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.IO;
 
 namespace Nethermind.Db
 {
@@ -53,7 +54,7 @@ namespace Nethermind.Db
             }
         }
 
-        public IDb BeamStateDb { get; } = new MemDb();
+        public IDb BeamTempDb { get; } = new MemDb();
 
         public DbModeHint DbMode => _wrappedProvider.DbMode;
 
@@ -66,17 +67,25 @@ namespace Nethermind.Db
                 readonlyDb.Restore(-1);
             }
             
-            BeamStateDb.Clear();
+            BeamTempDb.Clear();
         }
 
-        public T GetDb<T>(string dbName) where T : IDb
+        public T GetDb<T>(string dbName) where T : class, IDb
         {
             if (!_registeredDbs.ContainsKey(dbName))
             {
                 throw new ArgumentException($"{dbName} database has not been registered in {nameof(ReadOnlyDbProvider)}.");
             }
 
-            return (T)_registeredDbs[dbName];
+            _registeredDbs.TryGetValue(dbName, out IReadOnlyDb? found);
+            T result = found as T;
+            if (result == null && found != null)
+            {
+                throw new IOException(
+                    $"An attempt was made to resolve DB {dbName} as {typeof(T)} while its type is {found.GetType()}.");
+            }
+
+            return result;
         }
 
         private void RegisterReadOnlyDb<T>(string dbName, T db) where T : IDb
@@ -85,7 +94,7 @@ namespace Nethermind.Db
             _registeredDbs.TryAdd(dbName, readonlyDb);
         }
 
-        public void RegisterDb<T>(string dbName, T db) where T : IDb
+        public void RegisterDb<T>(string dbName, T db) where T : class, IDb
         {
             _wrappedProvider.RegisterDb(dbName, db);
             RegisterReadOnlyDb(dbName, db);

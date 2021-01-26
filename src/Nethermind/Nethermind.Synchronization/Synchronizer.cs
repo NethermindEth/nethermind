@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -138,7 +138,7 @@ namespace Nethermind.Synchronization
                                                     $"received {_dbProvider.GetType().FullName}");
             }
             
-            WitnessStateSyncFeed witnessStateSyncFeed = new WitnessStateSyncFeed(beamSyncDbProvider.BeamStateDb, _logManager);
+            WitnessStateSyncFeed witnessStateSyncFeed = new WitnessStateSyncFeed(beamSyncDbProvider.BeamTempDb, _logManager);
             StateSyncDispatcher witnessStateSyncDispatcher = new StateSyncDispatcher(
                 witnessStateSyncFeed!, _syncPeerPool, new WitnessStateSyncAllocationStrategyFactory(), _logManager);
             
@@ -228,7 +228,7 @@ namespace Nethermind.Synchronization
 
         private void StartStateSyncComponents()
         {
-            _stateSyncFeed = new StateSyncFeed(_dbProvider.CodeDb, _dbProvider.StateDb, _dbProvider.BeamStateDb, _syncMode, _blockTree, _logManager);
+            _stateSyncFeed = new StateSyncFeed(_dbProvider.CodeDb, _dbProvider.StateDb, _dbProvider.BeamTempDb, _syncMode, _blockTree, _logManager);
             StateSyncDispatcher stateSyncDispatcher = new StateSyncDispatcher(_stateSyncFeed!, _syncPeerPool, new StateSyncAllocationStrategyFactory(), _logManager);
             Task syncDispatcherTask = stateSyncDispatcher.Start(_syncCancellation.Token).ContinueWith(t =>
             {

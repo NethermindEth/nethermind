@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -19,6 +19,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
@@ -261,12 +262,9 @@ namespace Nethermind.Synchronization.BeamSync
             throw new NotSupportedException();
         }
 
-        public void StartBatch()
+        public IBatch StartBatch()
         {
-        }
-
-        public void CommitBatch()
-        {
+            return this.LikeABatch();
         }
 
         public void Remove(byte[] key)

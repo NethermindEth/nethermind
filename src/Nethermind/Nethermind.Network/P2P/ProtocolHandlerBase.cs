@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -65,7 +65,7 @@ namespace Nethermind.Network.P2P
             Interlocked.Increment(ref Counter);
             if (Logger.IsTrace) Logger.Trace($"{Counter} Sending {typeof(T).Name}");
             if(NetworkDiagTracer.IsEnabled)
-                NetworkDiagTracer.ReportOutgoingMessage(Session.Node.Address, Name, message.ToString());
+                NetworkDiagTracer.ReportOutgoingMessage(Session.Node?.Address, Name, message.ToString());
             Session.DeliverMessage(message);
         }
 

@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -311,7 +311,8 @@ namespace Nethermind.Blockchain.Processing
                 TotalDifficulty = bh.TotalDifficulty,
                 AuRaStep = bh.AuRaStep,
                 AuRaSignature = bh.AuRaSignature,
-                ReceiptsRoot = bh.ReceiptsRoot
+                ReceiptsRoot = bh.ReceiptsRoot,
+                BaseFee = bh.BaseFee
             };
 
             return new Block(header, suggestedBlock.Transactions, suggestedBlock.Ommers);

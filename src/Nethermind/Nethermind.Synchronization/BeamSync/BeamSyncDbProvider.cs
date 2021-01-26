@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -17,6 +17,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.IO;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -27,19 +28,24 @@ namespace Nethermind.Synchronization.BeamSync
 {
     public class BeamSyncDbProvider : IDbProvider
     {
-        private readonly ConcurrentDictionary<string, IDb> _registeredDbs = new ConcurrentDictionary<string, IDb>(StringComparer.InvariantCultureIgnoreCase);
+        private readonly ConcurrentDictionary<string, IDb> _registeredDbs = new (StringComparer.InvariantCultureIgnoreCase);
         private readonly IDbProvider _otherProvider;
-        private BeamSyncDb _stateDb;
-        private BeamSyncDb _codeDb;
+        private readonly BeamSyncDb _stateDb;
+        private readonly BeamSyncDb _codeDb;
+        private readonly MemDb _beamTempDb = new (); // holds items that have been beam synced but cannot be persisted yet
         public ISyncFeed<StateSyncBatch?> BeamSyncFeed { get; }
         
         public BeamSyncDbProvider(ISyncModeSelector syncModeSelector, IDbProvider otherProvider, ISyncConfig syncConfig, ILogManager logManager)
         {
             _otherProvider = otherProvider ?? throw new ArgumentNullException(nameof(otherProvider));
-            _codeDb = new BeamSyncDb(otherProvider.CodeDb.Innermost, otherProvider.BeamStateDb, syncModeSelector, logManager, syncConfig.BeamSyncContextTimeout, syncConfig.BeamSyncPreProcessorTimeout);
-            _stateDb = new BeamSyncDb(otherProvider.StateDb.Innermost, otherProvider.BeamStateDb, syncModeSelector, logManager, syncConfig.BeamSyncContextTimeout, syncConfig.BeamSyncPreProcessorTimeout);
+            _codeDb = new BeamSyncDb(otherProvider.CodeDb.Innermost, BeamTempDb, syncModeSelector, logManager, syncConfig.BeamSyncContextTimeout, syncConfig.BeamSyncPreProcessorTimeout);
+            _stateDb = new BeamSyncDb(otherProvider.StateDb.Innermost, BeamTempDb, syncModeSelector, logManager, syncConfig.BeamSyncContextTimeout, syncConfig.BeamSyncPreProcessorTimeout);
+            
+            // we first take out the innermost B from the current state DBs
+            // then we wrap them inside a BeamSyncDB that is capable of going to the network to retrieve nodes
             BeamSyncFeed = new CompositeStateSyncFeed<StateSyncBatch?>(logManager, _codeDb, _stateDb);
-
+ 
+            // then we wrap the beam sync DB back in a StateDb to make it snapshottable
             _registeredDbs.TryAdd(DbNames.Code, new StateDb(_codeDb)); // TODO: PRUNING - not state really
             _registeredDbs.TryAdd(DbNames.State, new StateDb(_stateDb)); // TODO: PRUNING - not state really
         }
@@ -49,7 +55,8 @@ namespace Nethermind.Synchronization.BeamSync
             _stateDb.VerifiedModeEnabled = true;
             _codeDb.VerifiedModeEnabled = true;
         }
-        public IDb BeamStateDb => _otherProvider.BeamStateDb;
+
+        public IDb BeamTempDb => _beamTempDb;
 
         public DbModeHint DbMode => _otherProvider.DbMode;
 
@@ -57,8 +64,8 @@ namespace Nethermind.Synchronization.BeamSync
         {
             get
             {
-                Dictionary<string, IDb > localDictionary = new Dictionary<string, IDb>();
-                foreach (var (key, value) in _otherProvider.RegisteredDbs)
+                Dictionary<string, IDb > localDictionary = new ();
+                foreach (var (key, _) in _otherProvider.RegisteredDbs)
                 {
                     if (_registeredDbs.ContainsKey(key))
                     {
@@ -75,21 +82,41 @@ namespace Nethermind.Synchronization.BeamSync
             }   
         }
 
-        public void Dispose()
+        public T GetDb<T>(string dbName) where T : class, IDb
         {
+            T? result;
+            if (string.Equals(DbNames.Code, dbName, StringComparison.InvariantCultureIgnoreCase) ||
+                string.Equals(DbNames.State, dbName, StringComparison.InvariantCultureIgnoreCase))
+            {
+                _registeredDbs.TryGetValue(dbName, out IDb? found);
+                result = found as T;
+                if (result == null && found != null)
+                {
+                    throw new IOException(
+                        $"An attempt was made to resolve DB {dbName} as {typeof(T)} while its type is {found.GetType()}.");
+                }
+            }
+            else
+            {
+                result = _otherProvider.GetDb<T>(dbName);    
+            }
+
+            if (result == null)
+            {
+                throw new IOException($"Database {dbName} cannot be found.");
+            }
+            
+            return result;
         }
 
-        public T GetDb<T>(string dbName) where T : IDb
-        {
-            if (string.Equals(DbNames.Code, dbName, StringComparison.OrdinalIgnoreCase) || string.Equals(DbNames.State, dbName, StringComparison.OrdinalIgnoreCase))
-                return (T)_registeredDbs[dbName];
-
-            return _otherProvider.GetDb<T>(dbName);
-        }
-
-        public void RegisterDb<T>(string dbName, T db) where T : IDb
+        public void RegisterDb<T>(string dbName, T db) where T : class, IDb
         {
             _otherProvider.RegisterDb<T>(dbName, db);
+        }
+        
+        public void Dispose()
+        {
+            GC.SuppressFinalize(this);
         }
     }
 }

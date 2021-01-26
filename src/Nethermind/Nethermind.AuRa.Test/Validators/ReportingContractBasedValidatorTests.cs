@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -161,21 +161,21 @@ namespace Nethermind.AuRa.Test.Validators
             context.ReportingValidatorContract.ReportMalicious(Arg.Any<Address>(), Arg.Any<UInt256>(), Arg.Any<byte[]>()).Returns(transaction);
             
             context.Validator.ReportBenign(MaliciousMinerAddress, 100, IReportingValidator.BenignCause.FutureBlock); // sent
-            context.Validator.ReportBenign(MaliciousMinerAddress, 100, IReportingValidator.BenignCause.IncorrectProposer); // sent
+            context.Validator.ReportBenign(MaliciousMinerAddress, 100, IReportingValidator.BenignCause.IncorrectProposer); // ignored
             context.Validator.ReportBenign(MaliciousMinerAddress, 100, IReportingValidator.BenignCause.FutureBlock); // ignored
             context.Validator.ReportBenign(MaliciousMinerAddress, 100, IReportingValidator.BenignCause.IncorrectProposer); // ignored
             context.Validator.ReportMalicious(MaliciousMinerAddress, 100, Bytes.Empty, IReportingValidator.MaliciousCause.DuplicateStep); // sent
             context.Validator.ReportMalicious(MaliciousMinerAddress, 100, Bytes.Empty, IReportingValidator.MaliciousCause.DuplicateStep); // ignored
-            context.Validator.ReportMalicious(MaliciousMinerAddress, 100, Bytes.Empty, IReportingValidator.MaliciousCause.SiblingBlocksInSameStep); // sent
+            context.Validator.ReportMalicious(MaliciousMinerAddress, 100, Bytes.Empty, IReportingValidator.MaliciousCause.SiblingBlocksInSameStep); // ignored
             context.Validator.ReportMalicious(MaliciousMinerAddress, 100, Bytes.Empty, IReportingValidator.MaliciousCause.SiblingBlocksInSameStep); // ignored
             context.Validator.ReportBenign(TestItem.AddressC, 100, IReportingValidator.BenignCause.FutureBlock); // sent 
             context.Validator.ReportBenign(TestItem.AddressC, 100, IReportingValidator.BenignCause.FutureBlock); // ignored
             context.Validator.ReportBenign(MaliciousMinerAddress, 101, IReportingValidator.BenignCause.FutureBlock); //sent
-            context.Validator.ReportBenign(MaliciousMinerAddress, 101, IReportingValidator.BenignCause.IncorrectProposer); //sent
+            context.Validator.ReportBenign(MaliciousMinerAddress, 101, IReportingValidator.BenignCause.IncorrectProposer); //ignored
             context.Validator.ReportBenign(MaliciousMinerAddress, 101, IReportingValidator.BenignCause.FutureBlock); //ignored
             context.Validator.ReportBenign(MaliciousMinerAddress, 101, IReportingValidator.BenignCause.IncorrectProposer); //ignored
             
-            context.TxSender.Received(7).SendTransaction(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>());            
+            context.TxSender.Received(4).SendTransaction(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>());            
         }
         
         public class TestContext

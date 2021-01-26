@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -19,6 +19,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Threading;
 using Nethermind.Core;
+using Nethermind.Core.Caching;
 
 namespace Nethermind.Consensus.AuRa.Validators
 {
@@ -28,21 +29,15 @@ namespace Nethermind.Consensus.AuRa.Validators
         {
             internal LinkedList<PersistentReport> PersistentReports { get; } = new LinkedList<PersistentReport>();
             
-            private long _lastReportedBlockNumber;
-            private readonly ConcurrentDictionary<(Address Validator, ReportType ReportType, long BlockNumber, object Cause), bool> _lastBlockReports = 
-                new ConcurrentDictionary<(Address Validator, ReportType ReportType, long BlockNumber, object cause), bool>(); 
+            private readonly LruCache<(Address Validator, ReportType ReportType, long BlockNumber), bool> _lastBlockReports = 
+                new LruCache<(Address Validator, ReportType ReportType, long BlockNumber), bool>(MaxQueuedReports, "ReportCache"); 
         
-            internal bool AlreadyReported(ReportType reportType, Address validator, in long blockNumber, object cause)
+            internal bool AlreadyReported(ReportType reportType, Address validator, in long blockNumber)
             {
-                var lastReportedBlockNumber = Interlocked.Exchange(ref _lastReportedBlockNumber, blockNumber);
-                (Address Validator, ReportType ReportType, long BlockNumber, object Cause) key = (validator, reportType, blockNumber, cause);
-                
-                if (lastReportedBlockNumber != blockNumber)
-                {
-                    _lastBlockReports.Clear();
-                }
-                
-                return !_lastBlockReports.TryAdd(key, true);
+                (Address Validator, ReportType ReportType, long BlockNumber) key = (validator, reportType, blockNumber);
+                bool alreadyReported = _lastBlockReports.TryGet(key, out _);
+                _lastBlockReports.Set(key, true);
+                return alreadyReported;
             }
         }
     }

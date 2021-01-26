@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -16,6 +16,7 @@
 
 using System;
 using System.Collections.Generic;
+using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Resettables;
 
@@ -76,16 +77,11 @@ namespace Nethermind.Db
 
         public IEnumerable<byte[]> GetAllValues(bool ordered = false) => _db.GetAllValues();
 
-        public void StartBatch()
+        public IBatch StartBatch()
         {
-            _db.StartBatch();
+            return _db.StartBatch();
         }
-
-        public void CommitBatch()
-        {
-            _db.CommitBatch();
-        }
-
+        
         public void Remove(byte[] key)
         {
             throw new NotSupportedException("Data should never be deleted from the state DB");
@@ -124,15 +120,13 @@ namespace Nethermind.Db
         {
             if (_currentPosition == -1) return;
 
-            _db.StartBatch();
+            using IBatch batch = _db.StartBatch();
             for (int i = 0; i <= _currentPosition; i++)
             {
                 Change change = _changes[_currentPosition - i];
                 _db[change.Key] = change.Value;
             }
-            
-            _db.CommitBatch();
-            
+
             Resettable<Change>.Reset(ref _changes, ref _capacity, ref _currentPosition, StartCapacity);
             _pendingChanges.Reset();
         }

@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -34,6 +34,10 @@ namespace Nethermind.Core
         public byte TransactionType { get; set; }
         public UInt256 Nonce { get; set; }
         public UInt256 GasPrice { get; set; }
+        public UInt256 GasPremium => GasPrice; 
+        public UInt256 FeeCap { get; set; }
+        public bool IsEip1559 => FeeCap > UInt256.Zero;
+        public bool IsLegacy => !IsEip1559;
         public long GasLimit { get; set; }
         public Address? To { get; set; }
         public UInt256 Value { get; set; }

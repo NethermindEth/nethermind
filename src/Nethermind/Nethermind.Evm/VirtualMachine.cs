@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -1740,7 +1740,8 @@ namespace Nethermind.Evm
                             EndInstructionTraceError(EvmExceptionType.OutOfGas);
                             return CallResult.OutOfGasException;
                         }
-                        else if (spec.UseNetGasMetering)
+                        
+                        if (spec.UseNetGasMeteringWithAStipendFix)
                         {
                             if (_txTracer.IsTracingRefunds) _txTracer.ReportExtraGasPressure(GasCostOf.CallStipend - spec.GetNetMeteredSStoreCost() + 1);
                             if (gasAvailable <= GasCostOf.CallStipend)

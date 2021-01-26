@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -44,7 +44,7 @@ namespace Nethermind.State.Witnesses
             _witnessCollector = witnessCollector ?? throw new ArgumentNullException(nameof(witnessCollector));
         }
 
-        public byte[] this[byte[] key]
+        public byte[]? this[byte[] key]
         {
             get
             {
@@ -59,14 +59,9 @@ namespace Nethermind.State.Witnesses
             set => _wrapped[key] = value;
         }
 
-        public void StartBatch()
+        public IBatch StartBatch()
         {
-            _wrapped.StartBatch();
-        }
-
-        public void CommitBatch()
-        {
-            _wrapped.CommitBatch();
+            return _wrapped.StartBatch();
         }
 
         public void Touch(byte[] key)

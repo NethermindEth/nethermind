@@ -57,6 +57,7 @@ namespace Nethermind.DataMarketplace.Consumers.Refunds.Services
             ulong now = _timestamper.UnixTime.Seconds;
             if (!deposit.CanClaimRefund(now))
             {
+                DisplayRefundInfo(deposit, now);
                 return RefundClaimStatus.Empty;
             }
             
@@ -69,9 +70,10 @@ namespace Nethermind.DataMarketplace.Consumers.Refunds.Services
             now = (ulong) latestBlock.Timestamp;
             if (!deposit.CanClaimRefund(now))
             {
+                DisplayRefundInfo(deposit, now);
                 return RefundClaimStatus.Empty;
             }
-            
+
             Keccak depositId = deposit.Deposit.Id;
             Keccak? transactionHash = deposit.ClaimedRefundTransaction?.Hash;
             if (transactionHash is null)
@@ -98,6 +100,19 @@ namespace Nethermind.DataMarketplace.Consumers.Refunds.Services
             return confirmed
                 ? RefundClaimStatus.Confirmed(transactionHash)
                 : RefundClaimStatus.Unconfirmed(transactionHash);
+        }
+
+        private void DisplayRefundInfo(DepositDetails deposit, ulong now)
+        {
+            var timeLeftToClaimRefund = deposit.GetTimeLeftToClaimRefund(now);
+            if (timeLeftToClaimRefund > 0)
+            {
+                if (_logger.IsInfo) _logger.Info($"Time left to claim a refund: {timeLeftToClaimRefund} seconds.");
+            }
+            else
+            {
+                if (_logger.IsInfo) _logger.Info("Deposit is not claimable.");
+            }
         }
 
         public async Task<RefundClaimStatus> TryClaimEarlyRefundAsync(DepositDetails deposit, Address refundTo)

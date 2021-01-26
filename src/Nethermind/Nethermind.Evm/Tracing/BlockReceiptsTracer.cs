@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -81,6 +81,11 @@ namespace Nethermind.Evm.Tracing
 
         private TxReceipt BuildReceipt(Address recipient, long spentGas, byte statusCode, LogEntry[] logEntries, Keccak stateRoot = null)
         {
+            if (statusCode != 1)
+            {
+                
+            }
+            
             Transaction transaction = _block.Transactions[_currentIndex];
             TxReceipt txReceipt = new TxReceipt();
             txReceipt.Logs = logEntries;

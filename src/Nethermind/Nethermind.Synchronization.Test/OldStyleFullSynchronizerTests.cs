@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -66,7 +66,7 @@ namespace Nethermind.Synchronization.Test
                 _blockTree,
                 _receiptStorage,
                 _stateDb,
-                dbProvider.BeamStateDb,
+                dbProvider.BeamTempDb,
                 new TrieStore(_stateDb, LimboLogs.Instance),  
                 syncConfig,
                 LimboLogs.Instance);

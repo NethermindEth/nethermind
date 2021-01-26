@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -58,7 +58,10 @@ namespace Nethermind.Synchronization
         private readonly IWitnessRepository _witnessRepository;
         private readonly CanonicalHashTrie? _cht;
         private object _dummyValue = new object();
-        private ICache<Keccak, object> _recentlySuggested = new LruCache<Keccak, object>(128, 128, "recently suggested blocks");
+
+        private ICache<Keccak, object> _recentlySuggested =
+            new LruCache<Keccak, object>(128, 128, "recently suggested blocks");
+
         private long _pivotNumber;
         private Keccak _pivotHash;
         private BlockHeader? _pivotHeader;
@@ -181,7 +184,8 @@ namespace Nethermind.Synchronization
 
         private void ValidateSeal(Block block, ISyncPeer syncPeer)
         {
-            if (_logger.IsTrace) _logger.Trace($"Validating seal of {block.ToString(Block.Format.Short)}) from {syncPeer:c}");
+            if (_logger.IsTrace)
+                _logger.Trace($"Validating seal of {block.ToString(Block.Format.Short)}) from {syncPeer:c}");
 
             // We hint validation range mostly to help ethash to cache epochs.
             // It is important that we only do that here, after we ensured that the block is
@@ -200,7 +204,9 @@ namespace Nethermind.Synchronization
         {
             if ((block.TotalDifficulty ?? 0) > syncPeer.TotalDifficulty)
             {
-                if (_logger.IsTrace) _logger.Trace($"ADD NEW BLOCK Updating header of {syncPeer} from {syncPeer.HeadNumber} {syncPeer.TotalDifficulty} to {block.Number} {block.TotalDifficulty}");
+                if (_logger.IsTrace)
+                    _logger.Trace(
+                        $"ADD NEW BLOCK Updating header of {syncPeer} from {syncPeer.HeadNumber} {syncPeer.TotalDifficulty} to {block.Number} {block.TotalDifficulty}");
                 syncPeer.HeadNumber = block.Number;
                 syncPeer.HeadHash = block.Hash;
                 syncPeer.TotalDifficulty = block.TotalDifficulty ?? syncPeer.TotalDifficulty;
@@ -284,7 +290,7 @@ namespace Nethermind.Synchronization
             {
                 sb.Append($", with difficulty {block.Difficulty}/{block.TotalDifficulty}");
             }
-            
+
             _logger.Info(sb.ToString());
         }
 
@@ -292,7 +298,9 @@ namespace Nethermind.Synchronization
         {
             if (number > syncPeer.HeadNumber)
             {
-                if (_logger.IsTrace) _logger.Trace($"HINT Updating header of {syncPeer} from {syncPeer.HeadNumber} {syncPeer.TotalDifficulty} to {number}");
+                if (_logger.IsTrace)
+                    _logger.Trace(
+                        $"HINT Updating header of {syncPeer} from {syncPeer.HeadNumber} {syncPeer.TotalDifficulty} to {number}");
                 syncPeer.HeadNumber = number;
                 syncPeer.HeadHash = hash;
 
@@ -320,7 +328,8 @@ namespace Nethermind.Synchronization
             return _blockTree.FindHeaders(hash, numberOfBlocks, skip, reverse);
         }
 
-        public byte[]?[] GetNodeData(IList<Keccak> keys, NodeDataType includedTypes = NodeDataType.State | NodeDataType.Code)
+        public byte[]?[] GetNodeData(IList<Keccak> keys,
+            NodeDataType includedTypes = NodeDataType.State | NodeDataType.Code)
         {
             byte[]?[] values = new byte[keys.Count][];
             for (int i = 0; i < keys.Count; i++)
@@ -364,9 +373,11 @@ namespace Nethermind.Synchronization
                     {
                         throw new InvalidAsynchronousStateException("CHT reference is null when building CHT.");
                     }
-                    
+
                     // Note: The spec says this should be 2048, but I don't think we'd ever want it to be higher than the max reorg depth we allow.
-                    long maxSection = CanonicalHashTrie.GetSectionFromBlockNo(_blockTree.FindLatestHeader().Number - Sync.MaxReorgLength);
+                    long maxSection =
+                        CanonicalHashTrie.GetSectionFromBlockNo(_blockTree.FindLatestHeader().Number -
+                                                                Sync.MaxReorgLength);
                     long maxKnownSection = _cht.GetMaxSectionIndex();
 
                     for (long section = (maxKnownSection + 1); section <= maxSection; section++)
@@ -400,7 +411,8 @@ namespace Nethermind.Synchronization
             }
             catch (Exception)
             {
-                _logger.Debug("Could not handle a request for block by number since multiple blocks are available at the level and none is marked as canonical. (a fix is coming)");
+                _logger.Debug(
+                    "Could not handle a request for block by number since multiple blocks are available at the level and none is marked as canonical. (a fix is coming)");
             }
 
             return null;
@@ -411,38 +423,51 @@ namespace Nethermind.Synchronization
         [Todo(Improve.Refactor, "This may not be desired if the other node is just syncing now too")]
         private void OnNewHeadBlock(object? sender, BlockEventArgs blockEventArgs)
         {
-            Block block = blockEventArgs.Block;
-            if (_blockTree.BestKnownNumber > block.Number) return;
-
-            int peerCount = _pool.PeerCount;
-            double broadcastRatio = Math.Sqrt(peerCount) / peerCount;
-
-            int counter = 0;
-            foreach (PeerInfo peerInfo in _pool.AllPeers)
+            Task.Run(() =>
             {
-                if (peerInfo.TotalDifficulty < (block.TotalDifficulty ?? UInt256.Zero))
+                Block block = blockEventArgs.Block;
+                if (_blockTree.BestKnownNumber > block.Number) return;
+
+                int peerCount = _pool.PeerCount;
+                double broadcastRatio = Math.Sqrt(peerCount) / peerCount;
+
+                int counter = 0;
+                foreach (PeerInfo peerInfo in _pool.AllPeers)
                 {
-                    if (_broadcastRandomizer.NextDouble() < broadcastRatio)
+                    if (peerInfo.TotalDifficulty < (block.TotalDifficulty ?? UInt256.Zero))
                     {
-                        peerInfo.SyncPeer.NotifyOfNewBlock(block, SendBlockPriority.High);
-                        counter++;
-                    }
-                    else
-                    {
-                        peerInfo.SyncPeer.NotifyOfNewBlock(block, SendBlockPriority.Low);
+                        if (_broadcastRandomizer.NextDouble() < broadcastRatio)
+                        {
+                            peerInfo.SyncPeer.NotifyOfNewBlock(block, SendBlockPriority.High);
+                            counter++;
+                        }
+                        else
+                        {
+                            peerInfo.SyncPeer.NotifyOfNewBlock(block, SendBlockPriority.Low);
+                        }
                     }
                 }
-            }
 
-            if (counter > 0)
-            {
-                if (_logger.IsDebug) _logger.Debug($"Broadcasting block {block.ToString(Block.Format.Short)} to {counter} peers.");
-            }
+                if (counter > 0)
+                {
+                    if (_logger.IsDebug)
+                        _logger.Debug(
+                            $"Broadcasting block {block.ToString(Block.Format.Short)} to {counter} peers.");
+                }
 
-            if ((block.Number - Sync.MaxReorgLength) % CanonicalHashTrie.SectionSize == 0)
-            {
-                _ = BuildCHT();
-            }
+                if ((block.Number - Sync.MaxReorgLength) % CanonicalHashTrie.SectionSize == 0)
+                {
+                    _ = BuildCHT();
+                }
+            }).ContinueWith(
+                t =>
+                    t.Exception?.Handle(ex =>
+                    {
+                        _logger.Error(ex.Message, ex);
+                        return true;
+                    })
+                , TaskContinuationOptions.OnlyOnFaulted
+            );
         }
 
         public void Dispose()

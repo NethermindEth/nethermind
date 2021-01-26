@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -132,7 +132,7 @@ namespace Nethermind.AuRa.Test.Contract
                 ReceiptFinder = receiptsFinder,
                 ContractDataStore = keyComparer == null
                     ? (IContractDataStore<T>)new ContractDataStoreWithLocalData<T>(new HashSetContractDataStoreCollection<T>(), dataContract, blockTree, receiptsFinder, LimboLogs.Instance, localDataSource)
-                    : new DictionaryContractDataStore<T, SortedListContractDataStoreCollection<T>>(new SortedListContractDataStoreCollection<T>(keyComparer, valueComparer), dataContract, blockTree, receiptsFinder, LimboLogs.Instance, localDataSource)
+                    : new DictionaryContractDataStore<T>(new SortedListContractDataStoreCollection<T>(keyComparer, valueComparer), dataContract, blockTree, receiptsFinder, LimboLogs.Instance, localDataSource)
             };
         }
         

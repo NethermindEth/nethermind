@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -98,7 +98,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             {
                 NetworkDiagTracer.Start();
             }
-            
+
             Environment.SetEnvironmentVariable("io.netty.allocator.maxOrder", _networkConfig.NettyArenaOrder.ToString());
 
             var cht = new CanonicalHashTrie(_api.DbProvider!.ChtDb);
@@ -111,7 +111,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.BlockTree!,
                 _api.ReceiptStorage!,
                 _api.DbProvider.StateDb,
-                _api.DbProvider.BeamStateDb,
+                _api.DbProvider.BeamTempDb,
                 _api.ReadOnlyTrieStore!,
                 _syncConfig,
                 _api.LogManager);
@@ -217,7 +217,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             {
                 throw new InvalidOperationException("Cannot initialize network without knowing own enode");
             }
-            
+
             ThisNodeInfo.AddInfo("Ethereum     :", $"tcp://{_api.Enode.HostIp}:{_api.Enode.Port}");
             ThisNodeInfo.AddInfo("Version      :", $"{ClientVersion.Description.Replace("Nethermind/v", string.Empty)}");
             ThisNodeInfo.AddInfo("This node    :", $"{_api.Enode.Info}");

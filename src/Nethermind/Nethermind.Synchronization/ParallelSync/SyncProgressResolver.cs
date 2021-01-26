@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -38,7 +38,7 @@ namespace Nethermind.Synchronization.ParallelSync
         private readonly IBlockTree _blockTree;
         private readonly IReceiptStorage _receiptStorage;
         private readonly IDb _stateDb;
-        private readonly IDb _beamStateDb;
+        private readonly IDb? _beamStateDb;
         private readonly ITrieNodeResolver _trieNodeResolver;
         private readonly ISyncConfig _syncConfig;
 
@@ -52,7 +52,7 @@ namespace Nethermind.Synchronization.ParallelSync
             IBlockTree blockTree,
             IReceiptStorage receiptStorage,
             IDb stateDb,
-            IDb beamStateDb,
+            IDb? beamStateDb,
             ITrieNodeResolver trieNodeResolver,
             ISyncConfig syncConfig,
             ILogManager logManager)
@@ -61,7 +61,7 @@ namespace Nethermind.Synchronization.ParallelSync
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
             _stateDb = stateDb ?? throw new ArgumentNullException(nameof(stateDb));
-            _beamStateDb = beamStateDb ?? throw new ArgumentNullException(nameof(beamStateDb));
+            _beamStateDb = beamStateDb;
             _trieNodeResolver = trieNodeResolver ?? throw new ArgumentNullException(nameof(trieNodeResolver));
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
 
@@ -104,7 +104,7 @@ namespace Nethermind.Synchronization.ParallelSync
                 return true;
             }
 
-            return _beamStateDb.Innermost.Get(stateRoot) != null;
+            return _beamStateDb?.Innermost.Get(stateRoot) != null;
         }
 
         public long FindBestFullState()

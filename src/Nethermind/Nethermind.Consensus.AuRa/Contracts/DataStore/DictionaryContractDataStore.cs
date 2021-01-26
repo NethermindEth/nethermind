@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -26,12 +26,12 @@ using Nethermind.Logging;
 
 namespace Nethermind.Consensus.AuRa.Contracts.DataStore
 {
-    public class DictionaryContractDataStore<T, TCollection> : IDictionaryContractDataStore<T>, IDisposable where TCollection : DictionaryBasedContractDataStoreCollection<T>
+    public class DictionaryContractDataStore<T> : IDictionaryContractDataStore<T>, IDisposable
     {
-        public ContractDataStore<T, TCollection> ContractDataStore { get; private set; }
+        public ContractDataStore<T> ContractDataStore { get; private set; }
 
         public DictionaryContractDataStore(
-            TCollection collection,
+            IDictionaryContractDataStoreCollection<T> collection,
             IDataContract<T> dataContract,
             IBlockTree blockTree, 
             IReceiptFinder receiptFinder,
@@ -41,7 +41,7 @@ namespace Nethermind.Consensus.AuRa.Contracts.DataStore
         }
 
         public DictionaryContractDataStore(
-            TCollection collection,
+            IDictionaryContractDataStoreCollection<T> collection,
             IDataContract<T> dataContract,
             IBlockTree blockTree, 
             IReceiptFinder receiptFinder,
@@ -53,22 +53,22 @@ namespace Nethermind.Consensus.AuRa.Contracts.DataStore
         {
         }
         
-        private static ContractDataStore<T, TCollection> CreateContractDataStore(
-            TCollection collection, 
+        private static ContractDataStore<T> CreateContractDataStore(
+            IDictionaryContractDataStoreCollection<T> collection, 
             IDataContract<T> dataContract, 
             IBlockTree blockTree, 
             IReceiptFinder receiptFinder,
             ILogManager logManager) => 
-            new ContractDataStore<T, TCollection>(collection, dataContract, blockTree, receiptFinder, logManager);
+            new ContractDataStore<T>(collection, dataContract, blockTree, receiptFinder, logManager);
 
-        private static ContractDataStoreWithLocalData<T, TCollection> CreateContractDataStoreWithLocalData(
-            TCollection collection, 
+        private static ContractDataStoreWithLocalData<T> CreateContractDataStoreWithLocalData(
+            IDictionaryContractDataStoreCollection<T> collection, 
             IDataContract<T> dataContract, 
             IBlockTree blockTree, 
             IReceiptFinder receiptFinder,
             ILogManager logManager,
             ILocalDataSource<IEnumerable<T>> localDataSource) => 
-            new ContractDataStoreWithLocalData<T, TCollection>(
+            new ContractDataStoreWithLocalData<T>(
                 collection, 
                 dataContract ?? new EmptyDataContract<T>(), 
                 blockTree,
@@ -76,7 +76,7 @@ namespace Nethermind.Consensus.AuRa.Contracts.DataStore
                 logManager, 
                 localDataSource);
 
-        private DictionaryContractDataStore(ContractDataStore<T, TCollection> contractDataStore)
+        private DictionaryContractDataStore(ContractDataStore<T> contractDataStore)
         {
             ContractDataStore = contractDataStore;
         }
@@ -84,7 +84,8 @@ namespace Nethermind.Consensus.AuRa.Contracts.DataStore
         public bool TryGetValue(BlockHeader header, T key, out T value)
         {
             GetItemsFromContractAtBlock(header);
-            return ContractDataStore.Collection.TryGetValue(key, out value);
+            IDictionaryContractDataStoreCollection<T> collection = ((IDictionaryContractDataStoreCollection<T>)(ContractDataStore.Collection));
+            return collection.TryGetValue(key, out value);
         }
 
         public IEnumerable<T> GetItemsFromContractAtBlock(BlockHeader blockHeader) => ContractDataStore.GetItemsFromContractAtBlock(blockHeader);

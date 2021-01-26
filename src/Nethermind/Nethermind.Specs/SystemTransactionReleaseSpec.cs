@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -42,6 +42,8 @@ namespace Nethermind.Specs
         public long DifficultyBombDelay => _spec.DifficultyBombDelay;
 
         public long DifficultyBoundDivisor => _spec.DifficultyBoundDivisor;
+        
+        public long? FixedDifficulty => _spec.FixedDifficulty;
 
         public int MaximumUncleCount => _spec.MaximumUncleCount;
 
@@ -105,6 +107,8 @@ namespace Nethermind.Specs
         
         public bool IsEip2537Enabled => _spec.IsEip2315Enabled;
         
+        public bool IsEip1559Enabled => _spec.IsEip1559Enabled;
+
         public bool IsEip2929Enabled => _spec.IsEip2929Enabled;
         
         public bool IsEip2930Enabled => _spec.IsEip2930Enabled;
@@ -115,5 +119,9 @@ namespace Nethermind.Specs
         {
             return _spec.IsEip158IgnoredAccount(address);
         }
+
+        public long Eip1559TransitionBlock => _spec.Eip1559TransitionBlock;
+        
+        public long Eip1559MigrationDuration => _spec.Eip1559MigrationDuration;
     }
 }

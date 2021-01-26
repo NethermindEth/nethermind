@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -111,6 +111,10 @@ namespace Nethermind.Runner.Ethereum.Steps
                     Persist.EveryBlock,
                     getApi.LogManager);
             }
+            
+            getApi.DisposeStack.Push(trieStore);
+            trieStore.ReorgBoundaryReached += ReorgBoundaryReached;
+            var readOnlyTrieStore = setApi.ReadOnlyTrieStore = new ReadOnlyTrieStore(trieStore);
 
             IStateProvider stateProvider = setApi.StateProvider = new StateProvider(
                 trieStore,
@@ -120,14 +124,10 @@ namespace Nethermind.Runner.Ethereum.Steps
             ReadOnlyDbProvider readOnly = new ReadOnlyDbProvider(getApi.DbProvider, false);
             
             PersistentTxStorage txStorage = new PersistentTxStorage(getApi.DbProvider.PendingTxsDb);
-            IStateReader stateReader = setApi.StateReader = new StateReader(_api.ReadOnlyTrieStore, readOnly.GetDb<ISnapshotableDb>(DbNames.Code), _api.LogManager);
+            IStateReader stateReader = setApi.StateReader = new StateReader(readOnlyTrieStore, readOnly.GetDb<ISnapshotableDb>(DbNames.Code), getApi.LogManager);
             
             setApi.ChainHeadStateProvider = new ChainHeadReadOnlyStateProvider(getApi.BlockTree, stateReader);
             Account.AccountStartNonce = getApi.ChainSpec.Parameters.AccountStartNonce;
-
-            getApi.DisposeStack.Push(trieStore);
-            setApi.ReadOnlyTrieStore = new ReadOnlyTrieStore(_api.TrieStore);
-            trieStore.ReorgBoundaryReached += ReorgBoundaryReached;
 
             stateProvider.StateRoot = getApi.BlockTree!.Head?.StateRoot ?? Keccak.EmptyTreeHash;
 

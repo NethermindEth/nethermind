@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -30,6 +30,7 @@ using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.AuRa.Transactions;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
+using Nethermind.Core.Caching;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm;
 using Nethermind.Logging;
@@ -52,7 +53,7 @@ namespace Nethermind.Consensus.AuRa.Validators
         private readonly Cache _cache;
         private readonly ITxSender _nonPosdaoTxSender;
         private readonly ILogger _logger;
-        
+
         public ReportingContractBasedValidator(
             ContractBasedValidator contractValidator,
             IReportingValidatorContract reportingValidatorContract,
@@ -119,7 +120,7 @@ namespace Nethermind.Consensus.AuRa.Validators
         {
             try
             {
-                if (_cache.AlreadyReported(reportType, validator, blockNumber, cause))
+                if (_cache.AlreadyReported(reportType, validator, blockNumber))
                 {
                     if (_logger.IsDebug) _logger.Debug($"Skipping report of {validator} at {blockNumber} with {cause} as its already reported.");
                 }
@@ -139,7 +140,7 @@ namespace Nethermind.Consensus.AuRa.Validators
                             var posdao = IsPosdao(blockNumber);
                             var txSender = posdao ? _posdaoTxSender : _nonPosdaoTxSender;
                             SendTransaction(reportType, txSender, transaction);
-                            if (_logger.IsWarn) _logger.Warn($"Reported {reportType} validator {validator} misbehaviour (cause: {cause}) at block {blockNumber}");
+                            if (_logger.IsWarn) _logger.Warn($"Reported {reportType} validator {validator} misbehaviour (cause: {cause}) at block {blockNumber} with transaction {transaction.Hash}.");
                             if (reportType == ReportType.Malicious)
                             {
                                 Metrics.ReportedMaliciousMisbehaviour++;

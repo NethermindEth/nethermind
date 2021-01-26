@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -182,9 +182,9 @@ namespace Nethermind.Clique.Test
                     new CryptoRandom(),
                     snapshotManager,
                     cliqueSealer,
-                    new TargetAdjustedGasLimitCalculator(GoerliSpecProvider.Instance, new MiningConfig()), 
-                    _cliqueConfig,
+                    new TargetAdjustedGasLimitCalculator(GoerliSpecProvider.Instance, new MiningConfig()),
                     MainnetSpecProvider.Instance, 
+                    _cliqueConfig,
                     nodeLogManager);
                 blockProducer.Start();
 

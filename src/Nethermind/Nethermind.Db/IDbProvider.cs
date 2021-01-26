@@ -45,12 +45,12 @@ namespace Nethermind.Db
         public IDb ChtDb => GetDb<IDb>(DbNames.CHT);
         
         // Beam Sync (StateDB like)
-        IDb BeamStateDb { get; }
+        IDb? BeamTempDb { get; }
         IDb WitnessDb => GetDb<IDb>(DbNames.Witness);
 
-        T GetDb<T>(string dbName) where T : IDb;
+        T GetDb<T>(string dbName) where T : class, IDb;
 
-        void RegisterDb<T>(string dbName, T db) where T : IDb;
+        void RegisterDb<T>(string dbName, T db) where T : class, IDb;
 
         IDictionary<string, IDb> RegisteredDbs { get; }
     }

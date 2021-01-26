@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -97,9 +97,11 @@ namespace Nethermind.Specs.ChainSpecStyle
                 releaseSpec.MinGasLimit = _chainSpec.Parameters.MinGasLimit;
                 releaseSpec.GasLimitBoundDivisor = _chainSpec.Parameters.GasLimitBoundDivisor;
                 releaseSpec.DifficultyBoundDivisor = _chainSpec.Ethash?.DifficultyBoundDivisor ?? 1;
+                releaseSpec.FixedDifficulty = _chainSpec.Ethash?.FixedDifficulty;
                 releaseSpec.MaxCodeSize = _chainSpec.Parameters.MaxCodeSizeTransition > releaseStartBlock ? long.MaxValue : _chainSpec.Parameters.MaxCodeSize;
                 releaseSpec.IsEip2Enabled = (_chainSpec.Ethash?.HomesteadTransition ?? 0) <= releaseStartBlock;
-                releaseSpec.IsEip7Enabled = (_chainSpec.Ethash?.HomesteadTransition ?? 0) <= releaseStartBlock;
+                releaseSpec.IsEip7Enabled = (_chainSpec.Ethash?.HomesteadTransition ?? 0) <= releaseStartBlock ||
+                                            (_chainSpec.Parameters.Eip7Transition ?? long.MaxValue) <= releaseStartBlock;
                 releaseSpec.IsEip100Enabled = (_chainSpec.Ethash?.Eip100bTransition ?? 0) <= releaseStartBlock;
                 releaseSpec.IsEip140Enabled = (_chainSpec.Parameters.Eip140Transition ?? 0) <= releaseStartBlock;
                 releaseSpec.IsEip145Enabled = (_chainSpec.Parameters.Eip145Transition ?? 0) <= releaseStartBlock;
@@ -125,10 +127,13 @@ namespace Nethermind.Specs.ChainSpecStyle
                 releaseSpec.IsEip1884Enabled = (_chainSpec.Parameters.Eip1884Transition ?? long.MaxValue) <= releaseStartBlock;
                 releaseSpec.IsEip2028Enabled = (_chainSpec.Parameters.Eip2028Transition ?? long.MaxValue) <= releaseStartBlock;
                 releaseSpec.IsEip2200Enabled = (_chainSpec.Parameters.Eip2200Transition ?? long.MaxValue) <= releaseStartBlock || (_chainSpec.Parameters.Eip1706Transition ?? long.MaxValue) <= releaseStartBlock && releaseSpec.IsEip1283Enabled;
+                releaseSpec.IsEip1559Enabled = (_chainSpec.Parameters.Eip1559Transition ?? long.MaxValue) <= releaseStartBlock;
+                releaseSpec.Eip1559TransitionBlock = _chainSpec.Parameters.Eip1559Transition ?? long.MaxValue;
+                releaseSpec.Eip1559MigrationDuration = _chainSpec.Parameters.Eip1559MigrationDuration ?? 0;
                 releaseSpec.IsEip2929Enabled = (_chainSpec.Parameters.Eip2929Transition ?? long.MaxValue) <= releaseStartBlock;
                 releaseSpec.ValidateChainId = (_chainSpec.Parameters.ValidateChainIdTransition ?? 0) <= releaseStartBlock; 
                 releaseSpec.ValidateReceipts = ((_chainSpec.Parameters.ValidateReceiptsTransition > 0) ? Math.Max(_chainSpec.Parameters.ValidateReceiptsTransition ?? 0, _chainSpec.Parameters.Eip658Transition ?? 0) : 0) <= releaseStartBlock;
-                
+
                 if (_chainSpec.Ethash != null)
                 {
                     foreach (KeyValuePair<long,UInt256> blockReward in _chainSpec.Ethash.BlockRewards ?? Enumerable.Empty<KeyValuePair<long, UInt256>>())

@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -30,6 +30,7 @@ namespace Nethermind.Core.Specs
         UInt256 BlockReward { get; }
         long DifficultyBombDelay { get; }
         long DifficultyBoundDivisor { get; }
+        long? FixedDifficulty { get; }
         int MaximumUncleCount { get; }
         
         /// <summary>
@@ -224,6 +225,11 @@ namespace Nethermind.Core.Specs
         bool IsEip158IgnoredAccount(Address address);
 
         /// <summary>
+        /// Gas target and base fee, and fee burning.
+        /// </summary>
+        bool IsEip1559Enabled { get; }
+        
+        /// <summary>
         /// Should transactions be validated against chainId.
         /// </summary>
         /// <remarks>Backward compatibility for early Kovan blocks.</remarks>
@@ -235,6 +241,10 @@ namespace Nethermind.Core.Specs
         /// <remarks>Backward compatibility for early Kovan blocks.</remarks>
         bool ValidateReceipts => true;
         
+        public long Eip1559TransitionBlock { get; }
+        
+        public long Eip1559MigrationDuration { get; }
+
         // STATE related 
         public bool ClearEmptyAccountWhenTouched => IsEip158Enabled;
         
@@ -286,6 +296,8 @@ namespace Nethermind.Core.Specs
         public bool UseIstanbulNetGasMetering => IsEip2200Enabled;
         
         public bool UseNetGasMetering => UseConstantinopleNetGasMetering | UseIstanbulNetGasMetering;
+
+        public bool UseNetGasMeteringWithAStipendFix => UseIstanbulNetGasMetering;
         
         public bool Use63Over64Rule => UseShanghaiDDosProtection;
         
