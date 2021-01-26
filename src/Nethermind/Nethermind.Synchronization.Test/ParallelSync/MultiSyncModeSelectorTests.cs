@@ -69,7 +69,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
 
             public static BlockHeader SlightlyFutureHead { get; set; } = Build.A.Block.WithDifficulty(1).WithTotalDifficulty(Pivot.TotalDifficulty + 2048 + 4).WithNumber(Pivot.Number + 2048 + 4).TestObject.Header;
 
-            public static BlockHeader SlightlyFutureHeadWithFastSyncLag { get; set; } = Build.A.Block.WithDifficulty(1).WithTotalDifficulty(Pivot.TotalDifficulty + 2048 + 4).WithNumber(ChainHead.Number +  SyncModeSelectorConstants.NotBeamSyncFastSyncLag + 1).TestObject.Header;
+            public static BlockHeader SlightlyFutureHeadWithFastSyncLag { get; set; } = Build.A.Block.WithDifficulty(1).WithTotalDifficulty(Pivot.TotalDifficulty + 2048 + 4).WithNumber(ChainHead.Number +  MultiSyncModeSelector.FastSyncLag + 1).TestObject.Header;
 
             public static BlockHeader MaliciousPrePivot { get; set; } = Build.A.Block.WithDifficulty(1).WithTotalDifficulty((UInt256) 1000000).WithNumber(512).TestObject.Header;
 
@@ -1237,7 +1237,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
             ISyncProgressResolver syncProgressResolver = Substitute.For<ISyncProgressResolver>();
             syncProgressResolver.FindBestHeader().Returns(Scenario.ChainHead.Number);
             syncProgressResolver.FindBestFullBlock().Returns(Scenario.ChainHead.Number);
-            syncProgressResolver.FindBestFullState().Returns(Scenario.ChainHead.Number - SyncModeSelectorConstants.NotBeamSyncFastSyncLag);
+            syncProgressResolver.FindBestFullState().Returns(Scenario.ChainHead.Number - MultiSyncModeSelector.FastSyncLag);
             syncProgressResolver.FindBestProcessedBlock().Returns(0);
             syncProgressResolver.IsFastBlocksFinished().Returns(FastBlocksState.FinishedReceipts);
             syncProgressResolver.ChainDifficulty.Returns(UInt256.Zero);
