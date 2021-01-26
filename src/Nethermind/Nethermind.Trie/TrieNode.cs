@@ -313,13 +313,11 @@ namespace Nethermind.Trie
             /* nodes that are descendants of other nodes are stored inline
              * if their serialized length is less than Keccak length
              * */
-            if (FullRlp.Length < 32 && !isRoot)
+            if (FullRlp.Length >= 32 || isRoot)
             {
-                return;
+                Metrics.TreeNodeHashCalculations++;
+                Keccak = Keccak.Compute(FullRlp);
             }
-
-            Metrics.TreeNodeHashCalculations++;
-            Keccak = Keccak.Compute(FullRlp);
         }
 
         internal byte[] RlpEncode(ITrieNodeResolver tree)
@@ -403,6 +401,27 @@ namespace Nethermind.Trie
              */
             childIndex = IsExtension ? childIndex + 1 : childIndex;
             object childOrRef = ResolveChild(tree, childIndex);
+            
+            // TODO: fix this
+            /*
+             * 2021-01-26 01:58:10.7317|ERROR|35|Block producer could not produce block on top of 4169862 (0x021f9c...115707) System.ArgumentNullException: Value cannot be null. (Parameter 'hash')
+   at Nethermind.Trie.Pruning.TrieStore.FindCachedOrUnknown(Keccak hash, Boolean addToCacheWhenNotFound) in /root/src/nethermind/src/Nethermind/Nethermind.Trie/Pruning/TrieStore.cs:line 285
+   at Nethermind.Trie.TrieNode.GetChild(ITrieNodeResolver tree, Int32 childIndex) in /root/src/nethermind/src/Nethermind/Nethermind.Trie/TrieNode.cs:line 406
+   at Nethermind.Trie.PatriciaTree.TraverseExtension(TrieNode node, TraverseContext traverseContext) in /root/src/nethermind/src/Nethermind/Nethermind.Trie/PatriciaTree.cs:line 841
+   at Nethermind.Trie.PatriciaTree.TraverseNode(TrieNode node, TraverseContext traverseContext) in /root/src/nethermind/src/Nethermind/Nethermind.Trie/PatriciaTree.cs:line 433
+   at Nethermind.Trie.PatriciaTree.TraverseBranch(TrieNode node, TraverseContext traverseContext) in /root/src/nethermind/src/Nethermind/Nethermind.Trie/PatriciaTree.cs:line 662
+   at Nethermind.Trie.PatriciaTree.TraverseNode(TrieNode node, TraverseContext traverseContext) in /root/src/nethermind/src/Nethermind/Nethermind.Trie/PatriciaTree.cs:line 433
+   at Nethermind.Trie.PatriciaTree.TraverseBranch(TrieNode node, TraverseContext traverseContext) in /root/src/nethermind/src/Nethermind/Nethermind.Trie/PatriciaTree.cs:line 662
+   at Nethermind.Trie.PatriciaTree.TraverseNode(TrieNode node, TraverseContext traverseContext) in /root/src/nethermind/src/Nethermind/Nethermind.Trie/PatriciaTree.cs:line 433
+   at Nethermind.Trie.PatriciaTree.TraverseBranch(TrieNode node, TraverseContext traverseContext) in /root/src/nethermind/src/Nethermind/Nethermind.Trie/PatriciaTree.cs:line 662
+   at Nethermind.Trie.PatriciaTree.TraverseNode(TrieNode node, TraverseContext traverseContext) in /root/src/nethermind/src/Nethermind/Nethermind.Trie/PatriciaTree.cs:line 433
+   at Nethermind.Trie.PatriciaTree.TraverseBranch(TrieNode node, TraverseContext traverseContext) in /root/src/nethermind/src/Nethermind/Nethermind.Trie/PatriciaTree.cs:line 662
+   at Nethermind.Trie.PatriciaTree.TraverseNode(TrieNode node, TraverseContext traverseContext) in /root/src/nethermind/src/Nethermind/Nethermind.Trie/PatriciaTree.cs:line 433
+   at Nethermind.Trie.PatriciaTree.Run(Span`1 updatePath, Int32 nibblesCount, Byte[] updateValue, Boolean isUpdate, Boolean ignoreMissingDelete, Keccak startRootHash) in /root/src/nethermind/src/Nethermind/Nethermind.Trie/PatriciaTree.cs:line 402
+   at Nethermind.Trie.PatriciaTree.Get(Span`1 rawKey, Keccak rootHash) in /root/src/nethermind/src/Nethermind/Nethermind.Trie/PatriciaTree.cs:line 326
+   at Nethermind.State.StorageProvider.LoadFromTree(StorageCell storageCell) in /root/src/nethermind/src/Nethermind/Nethermind.State/StorageProvider.cs:line 363
+             */
+            
             TrieNode? child = ReferenceEquals(childOrRef, _nullNode) || ReferenceEquals(childOrRef, null) 
                 ? null
                 : childOrRef is TrieNode childNode
