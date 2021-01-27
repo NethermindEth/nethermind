@@ -63,10 +63,6 @@ namespace Nethermind.Consensus.AuRa.Contracts
                     versionNumber = UInt256.One;
                     _versionsCache.Set(blockHeader.Hash, versionNumber);
                 }
-                catch (Exception ex)
-                {
-                    if (_logger.IsError) _logger.Error("Failed to get contract version", ex);
-                }
             }
 
             return ResolveVersion(versionNumber);
