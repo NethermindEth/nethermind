@@ -19,6 +19,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.Versioning;
+using Nethermind.Abi;
 using Nethermind.Blockchain.Contracts;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
@@ -56,11 +57,11 @@ namespace Nethermind.Consensus.AuRa.Contracts
                     versionNumber = _versionSelectorContract.ContractVersion(blockHeader);
                     _versionsCache.Set(blockHeader.Hash, versionNumber);
                 }
-                catch (Exception ex)
+                catch (AbiException ex)
                 {
-                    if (_logger.IsError) _logger.Error("Failed to get contract version", ex);
+                    if (_logger.IsWarn) _logger.Warn($"The contract version set to 1: {ex}");
                     versionNumber = UInt256.One;
-                    _versionsCache.Set(blockHeader.Hash, versionNumber); // ToDo Consult with Łukasz and remove
+                    _versionsCache.Set(blockHeader.Hash, versionNumber);
                 }
             }
 
