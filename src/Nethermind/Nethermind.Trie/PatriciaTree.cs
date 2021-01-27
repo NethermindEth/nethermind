@@ -156,14 +156,8 @@ namespace Nethermind.Trie
             if (RootRef != null && RootRef.IsDirty)
             {
                 Commit(new NodeCommitInfo(RootRef));
-                while (!_currentCommit.IsEmpty)
+                while (_currentCommit.TryDequeue(out NodeCommitInfo node))
                 {
-                    if (!_currentCommit.TryDequeue(out NodeCommitInfo node))
-                    {
-                        throw new InvalidAsynchronousStateException(
-                            $"Threading issue at {nameof(_currentCommit)} - should not happen unless we use static objects somewhere here.");
-                    }
-
                     if (_logger.IsTrace) _logger.Trace($"Committing {node} in {blockNumber}");
                     TrieStore.CommitNode(blockNumber, node);
                 }
@@ -288,7 +282,7 @@ namespace Nethermind.Trie
             node.ResolveKey(TrieStore, nodeCommitInfo.IsRoot);
             node.Seal();
 
-            if (node.FullRlp != null && node.FullRlp.Length >= 32)
+            if (node.FullRlp?.Length >= 32)
             {
                 NodeCache.Set(node.Keccak, node.FullRlp);
                 _currentCommit.Enqueue(nodeCommitInfo);

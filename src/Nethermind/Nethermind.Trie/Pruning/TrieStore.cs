@@ -253,7 +253,6 @@ namespace Nethermind.Trie.Pruning
         }
 
         public bool IsNodeCached(Keccak hash) => _dirtyNodesCache.ContainsKey(hash);
-        // || _persistedNodesCache.Contains(hash);
 
         public TrieNode FindCachedOrUnknown(Keccak hash, bool addToCacheWhenNotFound = true)
         {
@@ -269,7 +268,7 @@ namespace Nethermind.Trie.Pruning
 
             bool isMissing = true;
             TrieNode? trieNode = null;
-            // isMissing = !_persistedNodesCache.TryGet(hash, out trieNode);
+
             // ReSharper disable once ConditionIsAlwaysTrueOrFalse
             if (isMissing)
             {
@@ -280,17 +279,15 @@ namespace Nethermind.Trie.Pruning
             {
                 if (_logger.IsTrace) _logger.Trace($"Creating new node {trieNode}");
                 trieNode = new TrieNode(NodeType.Unknown, hash);
-                if (trieNode.Keccak is null)
-                {
-                    throw new InvalidOperationException($"Adding node with null hash {trieNode}");
-                }
 
                 if (addToCacheWhenNotFound)
                 {
-                    if (_dirtyNodesCache.TryAdd(trieNode.Keccak!, trieNode))
+                    if (trieNode.Keccak is null)
                     {
-                        MemoryUsedByDirtyCache += trieNode.GetMemorySize(false);
+                        throw new InvalidOperationException($"Adding node with null hash {trieNode}");
                     }
+                    
+                    SaveInCache(trieNode);
                 }
             }
             else
@@ -415,15 +412,7 @@ namespace Nethermind.Trie.Pruning
                             throw new InvalidOperationException($"Persisted {node} {key} != {node.Keccak}");
                         }
                     }
-
-                    // I still keep commented out code with persisted nodes cache.
-                    // It is an idea where the persisted nodes are stored in an LRU cache while
-                    // transient nodes are stored in a normal cache.
-                    // When tested it lead to long persisted nodes reference chains but it was before the
-                    // immediate un-resolve calls were added in the TrieNode class after calling ResolveChild.
-                    // I suggest coming back to this solution, should time allow.
-                    // _persistedNodesCache.Set(key, node);
-
+                    
                     Metrics.PrunedPersistedNodesCount++;
                 }
                 else if (IsNoLongerNeeded(node))
@@ -502,9 +491,6 @@ namespace Nethermind.Trie.Pruning
 
         private ConcurrentDictionary<Keccak, TrieNode> _dirtyNodesCache = new ConcurrentDictionary<Keccak, TrieNode>();
 
-        // private LruCache<Keccak, TrieNode> _persistedNodesCache = new LruCache<Keccak, TrieNode>(
-        // MemoryAllowance.TrieNodeCacheCount, MemoryAllowance.TrieNodeCacheCount, "persisted nodes");
-
         private readonly IPruningStrategy _pruningStrategy;
 
         private readonly IPersistenceStrategy _persistenceStrategy;
@@ -514,8 +500,6 @@ namespace Nethermind.Trie.Pruning
         private ConcurrentQueue<BlockCommitSet> _commitSetQueue = new ConcurrentQueue<BlockCommitSet>();
 
         private long _memoryUsedByDirtyCache;
-
-        // private long _memoryUsedByPersistedCache;
 
         private int _committedNodesCount;
 
@@ -553,19 +537,11 @@ namespace Nethermind.Trie.Pruning
         private void SaveInCache(TrieNode node)
         {
             Debug.Assert(node.Keccak is not null, "Cannot store in cache nodes without resolved key.");
-            _dirtyNodesCache.AddOrUpdate(node.Keccak!, node, (keccak, trieNode) =>
+            if (_dirtyNodesCache.TryAdd(node.Keccak!, node))
             {
-                if (trieNode.Keccak != keccak)
-                {
-                    throw new TrieException(
-                        $"Inconsistent trie node keccak when saving in the dirty node cache - {trieNode.Keccak} vs {keccak}");
-                }
-
-                return node;
-            });
-            
-            MemoryUsedByDirtyCache += node.GetMemorySize(false);
-            Metrics.CachedNodesCount = _dirtyNodesCache.Count;
+                MemoryUsedByDirtyCache += node.GetMemorySize(false);
+                Metrics.CachedNodesCount = _dirtyNodesCache.Count;
+            }
         }
 
         /// <summary>

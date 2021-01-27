@@ -164,7 +164,7 @@ namespace Nethermind.Trie
                 InitData();
                 if (IsLeaf)
                 {
-                    return (byte[]) _data![1];
+                    return (byte[])_data![1];
                 }
 
                 if (!AllowBranchValues)
@@ -186,7 +186,7 @@ namespace Nethermind.Trie
                     }
                 }
 
-                return (byte[]) _data[16];
+                return (byte[])_data[16];
             }
 
             set
@@ -313,13 +313,11 @@ namespace Nethermind.Trie
             /* nodes that are descendants of other nodes are stored inline
              * if their serialized length is less than Keccak length
              * */
-            if (FullRlp.Length < 32 && !isRoot)
+            if (FullRlp.Length >= 32 || isRoot)
             {
-                return;
+                Metrics.TreeNodeHashCalculations++;
+                Keccak = Keccak.Compute(FullRlp);
             }
-
-            Metrics.TreeNodeHashCalculations++;
-            Keccak = Keccak.Compute(FullRlp);
         }
 
         internal byte[] RlpEncode(ITrieNodeResolver tree)
@@ -351,7 +349,8 @@ namespace Nethermind.Trie
         {
             if (!IsBranch)
             {
-                throw new TrieException("An attempt was made to ask about whether a child is null on a non-branch node.");
+                throw new TrieException(
+                    "An attempt was made to ask about whether a child is null on a non-branch node.");
             }
 
             if (_rlpStream != null && _data?[i] == null)
@@ -386,8 +385,8 @@ namespace Nethermind.Trie
             {
                 return false;
             }
-            
-            return ((TrieNode) _data[i])!.IsDirty;
+
+            return ((TrieNode)_data[i])!.IsDirty;
         }
 
         public TrieNode? this[int i]
@@ -403,11 +402,48 @@ namespace Nethermind.Trie
              */
             childIndex = IsExtension ? childIndex + 1 : childIndex;
             object childOrRef = ResolveChild(tree, childIndex);
-            TrieNode? child = ReferenceEquals(childOrRef, _nullNode) || ReferenceEquals(childOrRef, null) 
-                ? null
-                : childOrRef is TrieNode childNode
-                    ? childNode
-                    : tree.FindCachedOrUnknown((childOrRef as Keccak)!);
+
+            TrieNode? child;
+            if (ReferenceEquals(childOrRef, _nullNode) || ReferenceEquals(childOrRef, null))
+            {
+                child = null;
+            }
+            else if (childOrRef is TrieNode childNode)
+            {
+                child = childNode;
+            }
+            else if (childOrRef is Keccak reference)
+            {
+                child = tree.FindCachedOrUnknown(reference);
+            }
+            else
+            {
+                // TODO: fix this
+                /*
+                 * 2021-01-26 01:58:10.7317|ERROR|35|Block producer could not produce block on top of 4169862 (0x021f9c...115707) System.ArgumentNullException: Value cannot be null. (Parameter 'hash')
+       at Nethermind.Trie.Pruning.TrieStore.FindCachedOrUnknown(Keccak hash, Boolean addToCacheWhenNotFound) in /root/src/nethermind/src/Nethermind/Nethermind.Trie/Pruning/TrieStore.cs:line 285
+       at Nethermind.Trie.TrieNode.GetChild(ITrieNodeResolver tree, Int32 childIndex) in /root/src/nethermind/src/Nethermind/Nethermind.Trie/TrieNode.cs:line 406
+       at Nethermind.Trie.PatriciaTree.TraverseExtension(TrieNode node, TraverseContext traverseContext) in /root/src/nethermind/src/Nethermind/Nethermind.Trie/PatriciaTree.cs:line 841
+       at Nethermind.Trie.PatriciaTree.TraverseNode(TrieNode node, TraverseContext traverseContext) in /root/src/nethermind/src/Nethermind/Nethermind.Trie/PatriciaTree.cs:line 433
+       at Nethermind.Trie.PatriciaTree.TraverseBranch(TrieNode node, TraverseContext traverseContext) in /root/src/nethermind/src/Nethermind/Nethermind.Trie/PatriciaTree.cs:line 662
+       at Nethermind.Trie.PatriciaTree.TraverseNode(TrieNode node, TraverseContext traverseContext) in /root/src/nethermind/src/Nethermind/Nethermind.Trie/PatriciaTree.cs:line 433
+       at Nethermind.Trie.PatriciaTree.TraverseBranch(TrieNode node, TraverseContext traverseContext) in /root/src/nethermind/src/Nethermind/Nethermind.Trie/PatriciaTree.cs:line 662
+       at Nethermind.Trie.PatriciaTree.TraverseNode(TrieNode node, TraverseContext traverseContext) in /root/src/nethermind/src/Nethermind/Nethermind.Trie/PatriciaTree.cs:line 433
+       at Nethermind.Trie.PatriciaTree.TraverseBranch(TrieNode node, TraverseContext traverseContext) in /root/src/nethermind/src/Nethermind/Nethermind.Trie/PatriciaTree.cs:line 662
+       at Nethermind.Trie.PatriciaTree.TraverseNode(TrieNode node, TraverseContext traverseContext) in /root/src/nethermind/src/Nethermind/Nethermind.Trie/PatriciaTree.cs:line 433
+       at Nethermind.Trie.PatriciaTree.TraverseBranch(TrieNode node, TraverseContext traverseContext) in /root/src/nethermind/src/Nethermind/Nethermind.Trie/PatriciaTree.cs:line 662
+       at Nethermind.Trie.PatriciaTree.TraverseNode(TrieNode node, TraverseContext traverseContext) in /root/src/nethermind/src/Nethermind/Nethermind.Trie/PatriciaTree.cs:line 433
+       at Nethermind.Trie.PatriciaTree.Run(Span`1 updatePath, Int32 nibblesCount, Byte[] updateValue, Boolean isUpdate, Boolean ignoreMissingDelete, Keccak startRootHash) in /root/src/nethermind/src/Nethermind/Nethermind.Trie/PatriciaTree.cs:line 402
+       at Nethermind.Trie.PatriciaTree.Get(Span`1 rawKey, Keccak rootHash) in /root/src/nethermind/src/Nethermind/Nethermind.Trie/PatriciaTree.cs:line 326
+       at Nethermind.State.StorageProvider.LoadFromTree(StorageCell storageCell) in /root/src/nethermind/src/Nethermind/Nethermind.State/StorageProvider.cs:line 363
+                 */
+                
+                // we expect this to happen as a Trie traversal error (please see the stack trace above)
+                // we need to investigate this case when it happens again
+                bool isKeccakCalculated = Keccak != null && FullRlp != null;
+                bool isKeccakCorrect = isKeccakCalculated && Keccak == Keccak.Compute(FullRlp);
+                throw new TrieException($"Unexpected type found at position {childIndex} of {this} with {nameof(_data)} of length {_data?.Length}. Expected a {nameof(TrieNode)} or {nameof(Keccak)} but found {childOrRef?.GetType()} with a value of {childOrRef}. Keccak calculated? : {isKeccakCalculated}; Keccak correct? : {isKeccakCorrect}");
+            }
 
             // pruning trick so we never store long persisted paths
             if (child?.IsPersisted ?? false)
@@ -506,8 +542,9 @@ namespace Nethermind.Trie
         public override string ToString()
         {
 #if DEBUG
-            return $"[{NodeType}({FullRlp?.Length}){(FullRlp != null && FullRlp?.Length < 32 ? $"{FullRlp.ToHexString()}" : "")}" +
-                   $"|{Id}|{Keccak?.ToShortString()}|{LastSeen}|D:{IsDirty}|S:{IsSealed}|P:{IsPersisted}|";
+            return
+                $"[{NodeType}({FullRlp?.Length}){(FullRlp != null && FullRlp?.Length < 32 ? $"{FullRlp.ToHexString()}" : "")}" +
+                $"|{Id}|{Keccak?.ToShortString()}|{LastSeen}|D:{IsDirty}|S:{IsSealed}|P:{IsPersisted}|";
 #else
             return $"[{NodeType}({FullRlp?.Length})|{Keccak?.ToShortString()}|{LastSeen}|D:{IsDirty}|S:{IsSealed}|P:{IsPersisted}|";
 #endif
@@ -576,7 +613,8 @@ namespace Nethermind.Trie
         /// where A is a <see cref="TrieNode"/> on which the <paramref name="action"/> was invoked.
         /// Note that nodes referenced by hash are not called.
         /// </summary>
-        public void CallRecursively(Action<TrieNode> action, ITrieNodeResolver resolver, bool skipPersisted, ILogger logger)
+        public void CallRecursively(Action<TrieNode> action, ITrieNodeResolver resolver, bool skipPersisted,
+            ILogger logger)
         {
             if (skipPersisted && IsPersisted)
             {
@@ -707,7 +745,8 @@ namespace Nethermind.Trie
                 switch (NodeType)
                 {
                     case NodeType.Unknown:
-                        throw new InvalidOperationException($"Cannot resolve children of an {nameof(NodeType.Unknown)} node");
+                        throw new InvalidOperationException(
+                            $"Cannot resolve children of an {nameof(NodeType.Unknown)} node");
                     case NodeType.Branch:
                         _data = new object[AllowBranchValues ? 17 : 16];
                         break;
