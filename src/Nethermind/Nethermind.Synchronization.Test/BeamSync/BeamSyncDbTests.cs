@@ -258,8 +258,6 @@ namespace Nethermind.Synchronization.Test.BeamSync
                     Interlocked.Increment(ref _needMoreDataInvocations);
                 }
             };
-            
-            PatriciaTree.NodeCache.Clear();
         }
 
         [Test]
