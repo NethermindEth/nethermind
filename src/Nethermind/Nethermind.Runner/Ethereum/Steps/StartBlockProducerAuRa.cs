@@ -260,7 +260,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             if (_txPermissionFilter != null)
             {
                 // we now only need to filter generated transactions here, as regular ones are filtered on TxPoolTxSource filter based on CreateTxSourceFilter method
-                txSource = new FilteredTxSource<GeneratedTransaction>(txSource, _txPermissionFilter);
+                txSource = new FilteredTxSource<GeneratedTransaction>(txSource, _txPermissionFilter, _api.LogManager);
             }
 
             return txSource;
