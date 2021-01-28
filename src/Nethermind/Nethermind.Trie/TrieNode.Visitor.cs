@@ -33,7 +33,7 @@ namespace Nethermind.Trie
         {
             try
             {
-                ResolveNode(nodeResolver, false);
+                ResolveNode(nodeResolver);
             }
             catch (TrieException)
             {
