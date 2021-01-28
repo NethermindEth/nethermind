@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System;
 using System.Collections.Generic;
 using System.IO;
 using Nethermind.Core.Crypto;
@@ -38,25 +39,37 @@ namespace Nethermind.Blockchain
                     Path.Combine(Path.GetTempPath(), name),
                     FileMode.Create,
                     FileAccess.Write);
+            
+            string fileName = string.Empty;
 
-            if (blockTracer is GethLikeBlockTracer gethTracer)
+            try
             {
-                using FileStream diagnosticFile = GetFileStream($"gethStyle_{blockHash}.txt");
-                EthereumJsonSerializer serializer = new EthereumJsonSerializer();
-                IReadOnlyCollection<GethLikeTxTrace> trace = gethTracer.BuildResult();
-                serializer.Serialize(diagnosticFile, trace, true);
-                if (logger.IsInfo)
-                    logger.Info($"Created a Geth-style trace of block {blockHash} in file {diagnosticFile.Name}");
+                if (blockTracer is GethLikeBlockTracer gethTracer)
+                {
+                    fileName = $"gethStyle_{blockHash}.txt";
+                    using FileStream diagnosticFile = GetFileStream(fileName);
+                    EthereumJsonSerializer serializer = new EthereumJsonSerializer();
+                    IReadOnlyCollection<GethLikeTxTrace> trace = gethTracer.BuildResult();
+                    serializer.Serialize(diagnosticFile, trace, true);
+                    if (logger.IsInfo)
+                        logger.Info($"Created a Geth-style trace of block {blockHash} in file {diagnosticFile.Name}");
+                }
+
+                if (blockTracer is ParityLikeBlockTracer parityTracer)
+                {
+                    fileName = $"parityStyle_{blockHash}.txt";
+                    using FileStream diagnosticFile = GetFileStream(fileName);
+                    EthereumJsonSerializer serializer = new EthereumJsonSerializer();
+                    IReadOnlyCollection<ParityLikeTxTrace> trace = parityTracer.BuildResult();
+                    serializer.Serialize(diagnosticFile, trace, true);
+                    if (logger.IsInfo)
+                        logger.Info($"Created a Parity-style trace of block {blockHash} in file {diagnosticFile.Name}");
+                }
             }
-
-            if (blockTracer is ParityLikeBlockTracer parityTracer)
+            catch (IOException e)
             {
-                using FileStream diagnosticFile = GetFileStream($"parityStyle_{blockHash}.txt");
-                EthereumJsonSerializer serializer = new EthereumJsonSerializer();
-                IReadOnlyCollection<ParityLikeTxTrace> trace = parityTracer.BuildResult();
-                serializer.Serialize(diagnosticFile, trace, true);
-                if (logger.IsInfo)
-                    logger.Info($"Created a Parity-style trace of block {blockHash} in file {diagnosticFile.Name}");
+                if (logger.IsError)
+                    logger.Error($"Cannot save trace of block {blockHash} in file {fileName}", e);
             }
         }
     }
