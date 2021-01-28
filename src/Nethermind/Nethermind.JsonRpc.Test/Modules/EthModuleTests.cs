@@ -579,7 +579,6 @@ namespace Nethermind.JsonRpc.Test.Modules
             
             ctx._test.StateDb.Clear();
             ctx._test.TrieStore.ClearCache();
-            // PatriciaTree.NodeCache.Clear();
 
             string serialized = ctx._test.TestEthRpc("eth_call", ctx._test.JsonSerializer.Serialize(transaction), "latest");
             serialized.Should().StartWith("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32002,");
