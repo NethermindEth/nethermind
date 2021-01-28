@@ -77,16 +77,6 @@ namespace Nethermind.Trie.Pruning
             }
         }
 
-        // public long MemoryUsedByPersistedCache
-        // {
-        //     get => _memoryUsedByPersistedCache;
-        //     private set
-        //     {
-        //         Metrics.MemoryUsedByPersistedCache = value;
-        //         _memoryUsedByPersistedCache = value;
-        //     }
-        // }
-
         public int CommittedNodesCount
         {
             get => _committedNodesCount;
@@ -480,7 +470,7 @@ namespace Nethermind.Trie.Pruning
 
         private readonly IKeyValueStoreWithBatching _keyValueStore;
 
-        private ConcurrentDictionary<Keccak, TrieNode> _dirtyNodesCache = new ConcurrentDictionary<Keccak, TrieNode>();
+        private readonly ConcurrentDictionary<Keccak, TrieNode> _dirtyNodesCache = new ();
 
         private readonly IPruningStrategy _pruningStrategy;
 
@@ -488,7 +478,7 @@ namespace Nethermind.Trie.Pruning
 
         private readonly ILogger _logger;
 
-        private ConcurrentQueue<BlockCommitSet> _commitSetQueue = new ConcurrentQueue<BlockCommitSet>();
+        private readonly ConcurrentQueue<BlockCommitSet> _commitSetQueue = new ();
 
         private long _memoryUsedByDirtyCache;
 

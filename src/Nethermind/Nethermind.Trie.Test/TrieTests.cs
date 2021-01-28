@@ -492,7 +492,6 @@ namespace Nethermind.Trie.Test
 
         private static PatriciaTree CreateCheckTree(MemDb memDb, PatriciaTree patriciaTree)
         {
-            PatriciaTree.NodeCache.Clear();
             PatriciaTree checkTree = new PatriciaTree(memDb);
             checkTree.RootHash = patriciaTree.RootHash;
             return checkTree;
@@ -764,7 +763,6 @@ namespace Nethermind.Trie.Test
 
             int verifiedBlocks = 0;
 
-            PatriciaTree.NodeCache.Clear();
             while (rootQueue.TryDequeue(out Keccak currentRoot))
             {
                 try
@@ -946,8 +944,6 @@ namespace Nethermind.Trie.Test
 
             int verifiedBlocks = 0;
 
-            PatriciaTree.NodeCache.Clear();
-
             rootQueue.Clear();
             Stack<Keccak> stackCopy = new Stack<Keccak>();
             while (rootStack.Any())
@@ -1102,8 +1098,6 @@ namespace Nethermind.Trie.Test
             _logger.Info($"DB size: {memDb.Keys.Count}");
 
             int verifiedBlocks = 0;
-
-            PatriciaTree.NodeCache.Clear();
 
             while (rootQueue.TryDequeue(out Keccak currentRoot))
             {
