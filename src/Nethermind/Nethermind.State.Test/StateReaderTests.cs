@@ -148,7 +148,9 @@ namespace Nethermind.Store.Test
         {
             StorageCell storageCell = new StorageCell(_address1, UInt256.One);
             IReleaseSpec spec = MuirGlacier.Instance;
-            TrieStore trieStore = new TrieStore(new MemDb(), Logger);
+
+            MemDb stateDb = new MemDb();
+            TrieStore trieStore = new TrieStore(stateDb, Logger);
             StateProvider provider = new StateProvider(trieStore, new MemDb(), Logger);
             StorageProvider storageProvider = new StorageProvider(trieStore, provider, Logger);
 
@@ -164,8 +166,7 @@ namespace Nethermind.Store.Test
             storageProvider.Set(storageCell, new byte[] {1});
             CommitEverything();
             Keccak stateRoot0 = provider.StateRoot;
-
-            MemDb stateDb = new MemDb();
+            
             StateReader reader =
                 new StateReader(new TrieStore(stateDb, LimboLogs.Instance), Substitute.For<IDb>(), Logger);
             Keccak storageRoot = reader.GetStorageRoot(stateRoot0, _address1);
