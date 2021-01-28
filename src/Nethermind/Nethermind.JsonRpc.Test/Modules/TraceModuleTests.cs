@@ -71,7 +71,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             IEthereumEcdsa ethereumEcdsa = new EthereumEcdsa(specProvider.ChainId, LimboLogs.Instance);
             ITxStorage txStorage = new InMemoryTxStorage();
             _stateDb = new StateDb();
-            ITrieStore trieStore = new ReadOnlyTrieStore(new TrieStore(_stateDb, LimboLogs.Instance));
+            ITrieStore trieStore = new TrieStore(_stateDb, LimboLogs.Instance);
             _stateProvider = new StateProvider(trieStore, new StateDb(), LimboLogs.Instance);
             _stateProvider.CreateAccount(TestItem.AddressA, 1000.Ether());
             _stateProvider.CreateAccount(TestItem.AddressB, 1000.Ether());
@@ -107,7 +107,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 NullWitnessCollector.Instance, 
                 LimboLogs.Instance);
 
-            var signatureRecovery = new RecoverSignatures(ethereumEcdsa, txPool, specProvider, LimboLogs.Instance);
+            RecoverSignatures signatureRecovery = new RecoverSignatures(ethereumEcdsa, txPool, specProvider, LimboLogs.Instance);
             BlockchainProcessor blockchainProcessor = new BlockchainProcessor(blockTree, blockProcessor, signatureRecovery, LimboLogs.Instance, BlockchainProcessor.Options.Default);
             
             blockchainProcessor.Start();
@@ -155,6 +155,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             IReceiptFinder receiptFinder = new FullInfoReceiptFinder(receiptStorage, receiptsRecovery, blockTree);
 
             resetEvent.Wait(2000);
+            
             _traceModule = new TraceModule(receiptFinder, new Tracer(_stateProvider, blockchainProcessor), blockTree, _jsonRpcConfig);
         }
 
