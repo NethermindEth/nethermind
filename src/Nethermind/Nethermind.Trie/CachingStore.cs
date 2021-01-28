@@ -52,7 +52,7 @@ namespace Nethermind.Trie
                 }
                 else
                 {
-                    // TODO: a hack assuming that we cache only on thing, accepted unanimously by Lukasz, Marek, and Tomasz
+                    // TODO: a hack assuming that we cache only one thing, accepted unanimously by Lukasz, Marek, and Tomasz
                     Pruning.Metrics.LoadedFromRlpCacheNodesCount++;
                 }
 
