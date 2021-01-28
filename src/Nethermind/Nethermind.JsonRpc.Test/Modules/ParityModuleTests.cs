@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.Collections.Generic;
 using System.Net;
 using System.Threading.Tasks;
 using FluentAssertions;
@@ -34,7 +35,9 @@ using Nethermind.State;
 using Nethermind.State.Repositories;
 using Nethermind.Db.Blooms;
 using Nethermind.KeyStore;
+using Nethermind.Network;
 using Nethermind.Specs.Forks;
+using Nethermind.Stats.Model;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Storages;
@@ -58,6 +61,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             var specProvider = MainnetSpecProvider.Instance;
             var ethereumEcdsa = new EthereumEcdsa(specProvider.ChainId, logger);
             var txStorage = new InMemoryTxStorage();
+            IPeerManager peerManager = Substitute.For<IPeerManager>();
 
             var txPool = new TxPool.TxPool(txStorage, ethereumEcdsa, specProvider, new TxPoolConfig(),
                 new StateProvider(new TrieStore(new StateDb(), LimboLogs.Instance), new StateDb(), LimboLogs.Instance),  LimboLogs.Instance);
@@ -72,7 +76,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             _signerStore = new Signer(specProvider.ChainId, TestItem.PrivateKeyB, logger);
             _parityModule = new ParityModule(ethereumEcdsa, txPool, blockTree, receiptStorage, new Enode(TestItem.PublicKeyA, IPAddress.Loopback, 8545), 
-                _signerStore, new MemKeyStore(new[] {TestItem.PrivateKeyA}),  logger);
+                _signerStore, new MemKeyStore(new[] {TestItem.PrivateKeyA}),  logger, peerManager);
             
             var blockNumber = 2;
             var pendingTransaction = Build.A.Transaction.Signed(ethereumEcdsa, TestItem.PrivateKeyD, false)

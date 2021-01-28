@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -13,22 +13,26 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using System.Collections.Generic;
-using System.Threading.Tasks;
-using Nethermind.Config;
+using System.Linq;
+using Nethermind.Network;
 
-namespace Nethermind.Network
+namespace Nethermind.JsonRpc.Modules.Parity
 {
-    public interface IPeerManager
+    public class ParityNetPeers
     {
-        void Init();
-        void Start();
-        Task StopAsync();
-        IReadOnlyCollection<Peer> ActivePeers { get; }
-        IReadOnlyCollection<Peer> ConnectedPeers { get; }
-        int MaxActivePeers { get; }
-        void AddPeer(NetworkNode node);
-        bool RemovePeer(NetworkNode node);
+        public int Active { get; set; }
+        public int Connected { get; set; }
+        public int Max { get; set; }
+        public PeerInfo[] Peers { get; set; }
+        
+        public ParityNetPeers(IPeerManager peerManager)
+        {
+            Active = peerManager.ActivePeers.Count;
+            Connected = peerManager.ConnectedPeers.Count;
+            Max = peerManager.MaxActivePeers;
+            Peers = peerManager.ActivePeers.Select(p => new PeerInfo(p)).ToArray();
+        }
     }
 }

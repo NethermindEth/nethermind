@@ -96,8 +96,9 @@ namespace Nethermind.Network
 
         public IReadOnlyCollection<Peer> ActivePeers => _activePeers.Values.ToList().AsReadOnly();
         public IReadOnlyCollection<Peer> CandidatePeers => _peerPool.CandidatePeers.ToList();
+        public IReadOnlyCollection<Peer> ConnectedPeers => _activePeers.Values.Where(IsConnected).ToList().AsReadOnly();
         private int AvailableActivePeersCount => MaxActivePeers - _activePeers.Count;
-        private int MaxActivePeers => _networkConfig.ActivePeersMaxCount + _peerPool.StaticPeerCount;
+        public int MaxActivePeers => _networkConfig.ActivePeersMaxCount + _peerPool.StaticPeerCount;
 
         public void Init()
         {
