@@ -44,7 +44,7 @@ namespace Nethermind.Evm.Test
 
         private IEthereumEcdsa _ethereumEcdsa;
         protected ITransactionProcessor _processor;
-        private ISnapshotableDb _stateDb;
+        private IDb _stateDb;
         protected bool UseBeamSync { get; set; }
 
         protected VirtualMachine Machine { get; private set; }
@@ -75,12 +75,10 @@ namespace Nethermind.Evm.Test
             ILogManager logManager = GetLogManager();
 
             MemDb beamStateDb = new MemDb();
-            ISnapshotableDb beamSyncDb = new StateDb(
-                new BeamSyncDb(new MemDb(), beamStateDb, StaticSelector.Full, logManager));
-            ISnapshotableDb beamSyncCodeDb = new StateDb(new BeamSyncDb(
-                new MemDb(), beamStateDb, StaticSelector.Full, logManager));
-            ISnapshotableDb codeDb = UseBeamSync ? beamSyncCodeDb : new StateDb();
-            _stateDb = UseBeamSync ? beamSyncDb : new StateDb();
+            IDb beamSyncDb = new BeamSyncDb(new MemDb(), beamStateDb, StaticSelector.Full, logManager);
+            IDb beamSyncCodeDb = new BeamSyncDb(new MemDb(), beamStateDb, StaticSelector.Full, logManager);
+            IDb codeDb = UseBeamSync ? beamSyncCodeDb : new MemDb();
+            _stateDb = UseBeamSync ? beamSyncDb : new MemDb();
             var trieStore = new TrieStore(_stateDb, logManager);
             TestState = new StateProvider(trieStore, codeDb, logManager);
             Storage = new StorageProvider(trieStore, TestState, logManager);

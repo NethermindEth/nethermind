@@ -20,7 +20,7 @@ using Nethermind.Core;
 
 namespace Nethermind.Db
 {
-    public class ReadOnlyDb : ISnapshotableDb, IReadOnlyDb, IDbWithSpan
+    public class ReadOnlyDb : IReadOnlyDb, IDbWithSpan
     {
         private readonly MemDb _memDb = new MemDb();
 

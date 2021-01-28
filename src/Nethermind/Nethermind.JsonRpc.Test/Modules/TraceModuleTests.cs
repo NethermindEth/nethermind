@@ -70,9 +70,9 @@ namespace Nethermind.JsonRpc.Test.Modules
             _jsonRpcConfig = new JsonRpcConfig();
             IEthereumEcdsa ethereumEcdsa = new EthereumEcdsa(specProvider.ChainId, LimboLogs.Instance);
             ITxStorage txStorage = new InMemoryTxStorage();
-            _stateDb = new StateDb();
+            _stateDb = new MemDb();
             ITrieStore trieStore = new ReadOnlyTrieStore(new TrieStore(_stateDb, LimboLogs.Instance));
-            _stateProvider = new StateProvider(trieStore, new StateDb(), LimboLogs.Instance);
+            _stateProvider = new StateProvider(trieStore, new MemDb(), LimboLogs.Instance);
             _stateProvider.CreateAccount(TestItem.AddressA, 1000.Ether());
             _stateProvider.CreateAccount(TestItem.AddressB, 1000.Ether());
             _stateProvider.CreateAccount(TestItem.AddressC, 1000.Ether());
@@ -160,7 +160,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
         private ITraceModule _traceModule;
         private IStateProvider _stateProvider;
-        private ISnapshotableDb _stateDb;
+        private MemDb _stateDb;
 
         [Test]
         public void Tx_positions_are_fine()

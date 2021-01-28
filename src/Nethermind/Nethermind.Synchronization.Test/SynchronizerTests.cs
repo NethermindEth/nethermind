@@ -276,7 +276,7 @@ namespace Nethermind.Synchronization.Test
                 _logger = _logManager.GetClassLogger();
                 ISyncConfig syncConfig = synchronizerType == SynchronizerType.Fast ? SyncConfig.WithFastSync : SyncConfig.WithFullSyncOnly;
                 IDbProvider dbProvider = TestMemDbProvider.Init();
-                ISnapshotableDb stateDb = new StateDb(new MemDb());
+                IDb stateDb = new MemDb();
                 IDb codeDb = dbProvider.CodeDb;
                 MemDb blockInfoDb = new MemDb();
                 BlockTree = new BlockTree(new MemDb(), new MemDb(), blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), new SingleReleaseSpecProvider(Constantinople.Instance, 1), NullBloomStorage.Instance, _logManager);

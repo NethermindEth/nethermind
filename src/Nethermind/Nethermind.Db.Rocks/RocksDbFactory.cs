@@ -39,11 +39,6 @@ namespace Nethermind.Db.Rocks
                 _logManager);
         }
 
-        public ISnapshotableDb CreateSnapshotableDb(RocksDbSettings rocksDbSettings)
-        {
-            return new StateDb(CreateDb(rocksDbSettings));
-        }
-
         public IColumnsDb<T> CreateColumnsDb<T>(RocksDbSettings rocksDbSettings)
         {
             return new SimpleColumnRocksDb<T>(_basePath,

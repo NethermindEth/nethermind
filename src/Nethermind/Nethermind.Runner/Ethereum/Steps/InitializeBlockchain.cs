@@ -88,11 +88,9 @@ namespace Nethermind.Runner.Ethereum.Steps
                 : NullWitnessCollector.Instance;
 
             setApi.MainStateDbWithCache = getApi.DbProvider.StateDb
-                .Innermost // TODO: PRUNING what a hack here just to pass the actual DB
                 .Cached(Trie.MemoryAllowance.TrieNodeCacheCount)
                 .WitnessedBy(witnessCollector);
             IKeyValueStore? codeDb = getApi.DbProvider.CodeDb
-                .Innermost // TODO: PRUNING what a hack here just to pass the actual DB
                 .WitnessedBy(witnessCollector);
 
             ITrieStore trieStore;
@@ -125,7 +123,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             ReadOnlyDbProvider readOnly = new ReadOnlyDbProvider(getApi.DbProvider, false);
             
             PersistentTxStorage txStorage = new PersistentTxStorage(getApi.DbProvider.PendingTxsDb);
-            IStateReader stateReader = setApi.StateReader = new StateReader(readOnlyTrieStore, readOnly.GetDb<ISnapshotableDb>(DbNames.Code), getApi.LogManager);
+            IStateReader stateReader = setApi.StateReader = new StateReader(readOnlyTrieStore, readOnly.GetDb<IDb>(DbNames.Code), getApi.LogManager);
             
             setApi.ChainHeadStateProvider = new ChainHeadReadOnlyStateProvider(getApi.BlockTree, stateReader);
             Account.AccountStartNonce = getApi.ChainSpec.Parameters.AccountStartNonce;

@@ -20,8 +20,6 @@ namespace Nethermind.Db
     {
         IDb CreateDb(string dbName);
 
-        ISnapshotableDb CreateSnapshotableDb(string dbName);
-
         IColumnsDb<T> CreateColumnsDb<T>(string dbName);
     }
 
@@ -35,11 +33,6 @@ namespace Nethermind.Db
         public IDb CreateDb(string dbName)
         {
             return new MemDb(dbName);
-        }
-
-        public ISnapshotableDb CreateSnapshotableDb(string dbName)
-        {
-            return new StateDb(new MemDb(dbName));
         }
     }
 }
