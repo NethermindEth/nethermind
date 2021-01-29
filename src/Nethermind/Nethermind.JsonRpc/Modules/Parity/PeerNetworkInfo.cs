@@ -28,11 +28,14 @@ namespace Nethermind.JsonRpc.Modules.Parity
         public PeerNetworkInfo(Peer peer)
         {
             LocalAddress = peer.Node.Host;
-            RemoteAddress = peer.InSession != null ? peer.InSession.State != SessionState.New
-                    ? peer.InSession.RemoteHost : "Handshake"
-                : peer.OutSession != null ? peer.OutSession.State != SessionState.New
-                    ? peer.OutSession.RemoteHost : "Handshake"
+            RemoteAddress = peer.InSession != null ? GetRemoteAdress(peer.InSession)
+                : peer.OutSession != null ? GetRemoteAdress(peer.OutSession)
                 : null;
+        }
+        
+        private string GetRemoteAdress(ISession session)
+        {
+            return session.State != SessionState.New ? session.RemoteHost : "Handshake";
         }
     }
 }
