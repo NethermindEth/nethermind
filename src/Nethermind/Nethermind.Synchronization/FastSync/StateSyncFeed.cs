@@ -710,24 +710,31 @@ namespace Nethermind.Synchronization.FastSync
                     return EmptyBatch!;
                 }
 
-                lock (_handleWatch)
+                bool rootNodeKeyExists;
+                lock (_stateDbLock)
                 {
-                    lock (_stateDbLock)
+                    try
                     {
-                        // if finished downloading
-                        try
-                        {
-                            if (_stateDb.KeyExists(_rootNode))
-                            {
-                                VerifyPostSyncCleanUp();
-                                FinishThisSyncRound();
-                                return EmptyBatch!;
-                            }
-                        }
-                        catch (ObjectDisposedException)
-                        {
-                            return EmptyBatch!;
-                        }
+                        // it finished downloading
+                        rootNodeKeyExists = _stateDb.KeyExists(_rootNode);
+                    }
+                    catch (ObjectDisposedException)
+                    {
+                        return EmptyBatch!;
+                    }
+                }
+
+                if (rootNodeKeyExists)
+                {
+                    try
+                    {
+                        VerifyPostSyncCleanUp();
+                        FinishThisSyncRound();
+                        return EmptyBatch!;
+                    }
+                    catch (ObjectDisposedException)
+                    {
+                        return EmptyBatch!;
                     }
                 }
 
