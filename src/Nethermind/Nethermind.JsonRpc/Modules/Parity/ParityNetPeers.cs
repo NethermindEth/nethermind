@@ -15,25 +15,26 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System.Collections.Generic;
-using System.Linq;
-using Nethermind.Network;
+using Newtonsoft.Json;
 
 namespace Nethermind.JsonRpc.Modules.Parity
 {
     public class ParityNetPeers
     {
+        [JsonProperty("active", Order = 0)]
         public int Active { get; set; }
+        
+        [JsonProperty("connected", Order = 1)]
         public int Connected { get; set; }
+        
+        [JsonProperty("max", Order = 2)]
         public int Max { get; set; }
+        
+        [JsonProperty("peers", Order = 3)]
         public PeerInfo[] Peers { get; set; }
         
-        public ParityNetPeers(IReadOnlyCollection<Peer> activePeers, IReadOnlyCollection<Peer> connectedPeers, int maxActivePeers)
+        public ParityNetPeers()
         {
-            Active = activePeers.Count;
-            Connected = connectedPeers.Count;
-            Max = maxActivePeers;
-            Peers = activePeers.Select(p => new PeerInfo(p)).ToArray();
         }
     }
 }

@@ -15,29 +15,32 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System;
 using System.Collections.Generic;
 using Nethermind.Network;
 using Nethermind.Stats.Model;
+using Newtonsoft.Json;
 
 namespace Nethermind.JsonRpc.Modules.Parity
 {
     public class PeerInfo
     {
+        [JsonProperty("id", Order = 0)]
         public string Id { get; set; }
+        
+        [JsonProperty("name", Order = 1)]
         public string Name { get; set; }
+        
+        [JsonProperty("caps", Order = 2)]
         public List<Capability> Caps { get; set; }
+        
+        [JsonProperty("network", Order = 3)]
         public PeerNetworkInfo Network { get; set; }
-        public string Protocols { get; set; }
+        
+        [JsonProperty("protocols", Order = 4)]
+        public Dictionary<string, EthProtocolInfo> Protocols { get; set; }
         
         public PeerInfo(Peer peer)
         {
-            if (peer.Node == null)
-            {
-                throw new ArgumentException(
-                    $"{nameof(PeerInfo)} cannot be created for a {nameof(Peer)} with an unknown {peer.Node}");
-            }
-            
             Id = peer.InSession?.RemoteNodeId.ToString() ?? peer.OutSession?.RemoteNodeId.ToString();
             Name = peer.Node.ClientId;
             Network = new PeerNetworkInfo(peer);

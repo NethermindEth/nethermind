@@ -15,31 +15,21 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using Nethermind.Network;
-using Nethermind.Network.P2P;
+using Nethermind.Core.Crypto;
+using Nethermind.Int256;
 using Newtonsoft.Json;
 
 namespace Nethermind.JsonRpc.Modules.Parity
 {
-    public class PeerNetworkInfo
+    public class EthProtocolInfo
     {
-        [JsonProperty("localAddress", Order = 0)]
-        public string LocalAddress { get; set; }
+        [JsonProperty("version", Order = 0)]
+        public byte Version { get; set; }
         
-        [JsonProperty("remoteAddress", Order = 1)]
-        public string RemoteAddress { get; set; }
-
-        public PeerNetworkInfo(Peer peer)
-        {
-            LocalAddress = peer.Node.Host;
-            RemoteAddress = peer.InSession != null ? GetRemoteAddress(peer.InSession)
-                : peer.OutSession != null ? GetRemoteAddress(peer.OutSession)
-                : null;
-        }
+        [JsonProperty("difficulty", Order = 1)]
+        public UInt256 Difficulty { get; set; }
         
-        private string GetRemoteAddress(ISession session)
-        {
-            return session.State != SessionState.New ? session.RemoteHost : "Handshake";
-        }
+        [JsonProperty("head", Order = 2)]
+        public Keccak HeadHash { get; set; }
     }
 }
