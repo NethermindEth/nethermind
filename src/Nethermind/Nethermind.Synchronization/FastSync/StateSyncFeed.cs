@@ -715,6 +715,7 @@ namespace Nethermind.Synchronization.FastSync
                 {
                     try
                     {
+                        // it finished downloading
                         rootNodeKeyExists = _stateDb.KeyExists(_rootNode);
                     }
                     catch (ObjectDisposedException)
