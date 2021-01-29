@@ -247,5 +247,31 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Deposits
 
             Assert.Throws<OverflowException>(() => _depositDetails.GetTimeLeftToClaimRefund(30));
         }
+
+        [Test]
+        public void equals_returns_correctly_true()
+        {
+            var depositDetailsClone = _depositDetails;
+            
+            bool equals = depositDetailsClone.Equals(_depositDetails);
+
+            Assert.IsTrue(equals);
+        }
+
+        [Test]
+        public void equals_returns_correctly_false()
+        {
+            var deposit = new Deposit(Keccak.OfAnEmptyString, 10, 10, 10);
+            var depositDetails = new DepositDetails(deposit,
+                                                 _dataAsset,
+                                                 _consumerAddress,
+                                                 pepper: new byte[] { 5, 8, 6}, 
+                                                 timestamp: 50, 
+                                                 transactions: null);
+            
+            bool equals = depositDetails.Equals(_depositDetails);
+
+            Assert.IsFalse(equals);
+        }
     }
 }
