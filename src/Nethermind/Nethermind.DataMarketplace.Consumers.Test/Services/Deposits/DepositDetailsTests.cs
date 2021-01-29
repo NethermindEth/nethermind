@@ -241,14 +241,11 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Deposits
         }
 
         [Test]
-        //BUG HERE 
-        public void returns_0_when_there_is_not_time_left_for_refund_claim()
+        public void should_throw_when_timestamp_is_bigger_than_deposit_timestamp()
         {
             _depositDetails.SetConfirmationTimestamp(5);
 
-            UInt256 timeLeft = _depositDetails.GetTimeLeftToClaimRefund(30);
-
-            Assert.IsTrue(timeLeft == 0);
+            Assert.Throws<OverflowException>(() => _depositDetails.GetTimeLeftToClaimRefund(30));
         }
     }
 }
