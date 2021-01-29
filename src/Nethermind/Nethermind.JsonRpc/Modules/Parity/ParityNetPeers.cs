@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Network;
 
@@ -27,12 +28,12 @@ namespace Nethermind.JsonRpc.Modules.Parity
         public int Max { get; set; }
         public PeerInfo[] Peers { get; set; }
         
-        public ParityNetPeers(IPeerManager peerManager)
+        public ParityNetPeers(IReadOnlyCollection<Peer> activePeers, IReadOnlyCollection<Peer> connectedPeers, int maxActivePeers)
         {
-            Active = peerManager.ActivePeers.Count;
-            Connected = peerManager.ConnectedPeers.Count;
-            Max = peerManager.MaxActivePeers;
-            Peers = peerManager.ActivePeers.Select(p => new PeerInfo(p)).ToArray();
+            Active = activePeers.Count;
+            Connected = connectedPeers.Count;
+            Max = maxActivePeers;
+            Peers = activePeers.Select(p => new PeerInfo(p)).ToArray();
         }
     }
 }

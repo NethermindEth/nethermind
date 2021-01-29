@@ -111,7 +111,13 @@ namespace Nethermind.JsonRpc.Modules.Parity
         }
 
         public ResultWrapper<string> parity_enode() => ResultWrapper<string>.Success(_enode.ToString());
-        
-        public ResultWrapper<ParityNetPeers> parity_netPeers() => ResultWrapper<ParityNetPeers>.Success(new ParityNetPeers(_peerManager));
+
+        public ResultWrapper<ParityNetPeers> parity_netPeers()
+        {
+            IReadOnlyCollection<Peer> activePeers = _peerManager.ActivePeers;
+            IReadOnlyCollection<Peer> connectedPeers = _peerManager.ConnectedPeers;
+            int maxActivePeers = _peerManager.MaxActivePeers;
+            return ResultWrapper<ParityNetPeers>.Success(new ParityNetPeers(activePeers, connectedPeers, maxActivePeers));
+        }
     }
 }
