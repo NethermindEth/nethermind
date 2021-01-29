@@ -239,5 +239,16 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Deposits
 
             Assert.IsTrue(timeLeft == 12); 
         }
+
+        [Test]
+        //BUG HERE 
+        public void returns_0_when_there_is_not_time_left_for_refund_claim()
+        {
+            _depositDetails.SetConfirmationTimestamp(5);
+
+            UInt256 timeLeft = _depositDetails.GetTimeLeftToClaimRefund(30);
+
+            Assert.IsTrue(timeLeft == 0);
+        }
     }
 }
