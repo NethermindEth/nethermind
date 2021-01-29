@@ -5,6 +5,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.DataMarketplace.Consumers.Deposits.Domain;
 using Nethermind.DataMarketplace.Core.Domain;
+using Nethermind.Int256;
 using NUnit.Framework;
 
 namespace Nethermind.DataMarketplace.Consumers.Test.Services.Deposits
@@ -217,6 +218,26 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Deposits
             bool canClaimRefund = _depositDetails.CanClaimRefund(30);
 
             Assert.IsTrue(canClaimRefund);
+        }
+
+        [Test]
+        public void will_not_set_can_claim_refund_when_timestamp_is_lower_than_deposit_timestamp()
+        {
+            _depositDetails.SetConfirmationTimestamp(10);
+
+            bool canClaimRefund = _depositDetails.CanClaimRefund(1);
+
+            Assert.IsFalse(canClaimRefund);
+        }
+
+        [Test]
+        public void returns_time_left_to_claim_refund_correctly()
+        {
+            _depositDetails.SetConfirmationTimestamp(5);
+
+            UInt256 timeLeft = _depositDetails.GetTimeLeftToClaimRefund(8);
+
+            Assert.IsTrue(timeLeft == 12); 
         }
     }
 }
