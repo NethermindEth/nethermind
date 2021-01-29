@@ -364,7 +364,7 @@ namespace Nethermind.Synchronization
         public Task BuildCHT()
         {
             return Task.CompletedTask; // removing LES code
-            
+
             return Task.Run(() =>
             {
                 lock (_chtLock)

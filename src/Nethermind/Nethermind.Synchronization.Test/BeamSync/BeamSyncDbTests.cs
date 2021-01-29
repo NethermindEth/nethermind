@@ -66,8 +66,8 @@ namespace Nethermind.Synchronization.Test.BeamSync
         {
             var memDbProvider = await TestMemDbProvider.InitAsync();
             IDbProvider dbProvider = new BeamSyncDbProvider(StaticSelector.Beam, memDbProvider, new SyncConfig(), LimboLogs.Instance);
-            Assert.IsInstanceOf(typeof(MemDb), dbProvider.StateDb);
-            Assert.IsInstanceOf(typeof(MemDb), dbProvider.CodeDb);
+            Assert.IsInstanceOf(typeof(BeamSyncDb), dbProvider.StateDb);
+            Assert.IsInstanceOf(typeof(BeamSyncDb), dbProvider.CodeDb);
         }
 
         [Test]
