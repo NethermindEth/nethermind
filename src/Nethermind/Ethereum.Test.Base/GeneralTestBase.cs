@@ -68,8 +68,8 @@ namespace Ethereum.Test.Base
             Stopwatch stopwatch = Stopwatch.StartNew();
             Assert.IsNull(test.LoadFailure, "test data loading failure");
 
-            ISnapshotableDb stateDb = new StateDb();
-            ISnapshotableDb codeDb = new StateDb();
+            IDb stateDb = new MemDb();
+            IDb codeDb = new MemDb();
 
             ISpecProvider specProvider = new CustomSpecProvider(1,
                 (0, Frontier.Instance), // TODO: this thing took a lot of time to find after it was removed!, genesis block is always initialized with Frontier
