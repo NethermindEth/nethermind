@@ -194,11 +194,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                 TotalDifficulty = status.TotalDifficulty
             };
 
-            if (status.ChainId == 280)
-            {
-                Logger.Error(status.GenesisHash.ToString());
-            }
-
             HeadHash = status.BestHash;
             TotalDifficulty = status.TotalDifficulty;
             ProtocolInitialized?.Invoke(this, eventArgs);
