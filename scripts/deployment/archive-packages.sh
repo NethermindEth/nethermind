@@ -21,10 +21,15 @@ echo =======================================================
 
 mkdir -p plugins
 mkdir -p $LIN_RELEASE/plugins
+rm -rf $LIN_RELEASE/ndm-plugins
 mkdir -p $OSX_RELEASE/plugins
+rm -rf $OSX_RELEASE/ndm-plugins
 mkdir -p $WIN_RELEASE/plugins
+rm -rf $WIN_RELEASE/ndm-plugins
 mkdir -p $LIN_ARM64_RELEASE/plugins
+rm -rf $LIN_ARM64_RELEASE/ndm-plugins
 mkdir -p $LIN_ARM_RELEASE/plugins
+rm -rf $LIN_ARM_RELEASE/ndm-plugins
 
 cd nethermind/src/Nethermind/
 dotnet build -c Release Nethermind.sln
@@ -34,7 +39,6 @@ dotnet build -c Release
 cd $RELEASE_DIRECTORY/plugins
 
 cp $RELEASE_DIRECTORY/nethermind/src/Nethermind/Nethermind.Analytics/bin/Release/net5.0/Nethermind.Analytics.dll .
-cp $RELEASE_DIRECTORY/nethermind/src/Nethermind/Nethermind.Cli/bin/Release/net5.0/Nethermind.Cli.dll .
 cp $RELEASE_DIRECTORY/nethermind/src/Nethermind/Nethermind.Baseline/bin/Release/net5.0/Nethermind.Baseline.dll .
 cp $RELEASE_DIRECTORY/nethermind/src/Nethermind/Nethermind.Api/bin/Release/net5.0/Nethermind.Api.dll .
 cp $RELEASE_DIRECTORY/nethermind/src/Nethermind/Nethermind.HealthChecks/bin/Release/net5.0/Nethermind.HealthChecks.dll .
@@ -66,12 +70,6 @@ cp $RELEASE_DIRECTORY/plugins/Nethermind.Api.dll $OSX_RELEASE/plugins/
 cp $RELEASE_DIRECTORY/plugins/Nethermind.Api.dll $WIN_RELEASE/plugins/
 cp $RELEASE_DIRECTORY/plugins/Nethermind.Api.dll $LIN_ARM_RELEASE/plugins/
 cp $RELEASE_DIRECTORY/plugins/Nethermind.Api.dll $LIN_ARM64_RELEASE/plugins/
-
-mv $RELEASE_DIRECTORY/$LIN_RELEASE/System.Runtime.dll plugins/System.Runtime.dll
-mv $RELEASE_DIRECTORY/$OSX_RELEASE/System.Runtime.dll plugins/System.Runtime.dll
-mv $RELEASE_DIRECTORY/$WIN_RELEASE/System.Runtime.dll plugins/System.Runtime.dll
-mv $RELEASE_DIRECTORY/$LIN_ARM_RELEASE/System.Runtime.dll plugins/System.Runtime.dll
-mv $RELEASE_DIRECTORY/$LIN_ARM64_RELEASE/System.Runtime.dll plugins/System.Runtime.dll
 
 cd $LIN_RELEASE && zip -r $LIN-$GIT_SHORT_TAG-$GIT_HASH.zip . && cd ..
 cd $OSX_RELEASE && zip -r $OSX-$GIT_SHORT_TAG-$GIT_HASH.zip . && cd ..
