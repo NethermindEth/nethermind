@@ -64,8 +64,8 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
             ISpecProvider specProvider = MainnetSpecProvider.Instance;
             _blockTree = new BlockTree(blocksDb, headersDb, blocksInfoDb, repository, specProvider, NullBloomStorage.Instance, new SyncConfig(), LimboLogs.Instance);
 
-            ISnapshotableDb stateDb = new StateDb();
-            ISnapshotableDb codeDb = new StateDb();
+            MemDb stateDb = new MemDb();
+            MemDb codeDb = new MemDb();
 
             ITrieStore trieStore = new ReadOnlyTrieStore(new TrieStore(stateDb, LimboLogs.Instance));
             StateProvider stateProvider = new StateProvider(trieStore, codeDb, LimboLogs.Instance);

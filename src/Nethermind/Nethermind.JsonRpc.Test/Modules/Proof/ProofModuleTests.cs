@@ -754,8 +754,6 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
             stateProvider.Commit(MainnetSpecProvider.Instance.GenesisSpec, null);
             stateProvider.CommitTree(0);
 
-            _dbProvider.StateDb.Commit();
-
             Keccak root = stateProvider.StateRoot;
 
             Block block = Build.A.Block.WithParent(_blockTree.Head).WithStateRoot(root).TestObject;
@@ -834,7 +832,6 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
             }
 
             stateProvider.CommitTree(0);
-            _dbProvider.StateDb.Commit();
 
             return stateProvider;
         }

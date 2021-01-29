@@ -212,7 +212,7 @@ namespace Nethermind.Trie
         /// <summary>
         /// Highly optimized
         /// </summary>
-        internal void ResolveNode(ITrieNodeResolver tree, bool allowCaching)
+        public void ResolveNode(ITrieNodeResolver tree)
         {
             try
             {
@@ -225,7 +225,7 @@ namespace Nethermind.Trie
                             throw new TrieException("Unable to resolve node without Keccak");
                         }
 
-                        FullRlp = tree.LoadRlp(Keccak, allowCaching);
+                        FullRlp = tree.LoadRlp(Keccak);
                         IsPersisted = true;
 
                         if (FullRlp == null)
@@ -281,7 +281,7 @@ namespace Nethermind.Trie
                 }
                 else
                 {
-                    throw new TrieException($"Unexpected number of items = {numberOfItems} when decoding a node");
+                    throw new TrieException($"Unexpected number of items = {numberOfItems} when decoding a node from RLP ({FullRlp?.ToHexString()})");
                 }
             }
             catch (RlpException rlpException)
@@ -289,12 +289,7 @@ namespace Nethermind.Trie
                 throw new TrieException($"Error when decoding node {Keccak}", rlpException);
             }
         }
-
-        public void ResolveNode(ITrieNodeResolver tree)
-        {
-            ResolveNode(tree, true);
-        }
-
+        
         public void ResolveKey(ITrieNodeResolver tree, bool isRoot)
         {
             if (Keccak != null)

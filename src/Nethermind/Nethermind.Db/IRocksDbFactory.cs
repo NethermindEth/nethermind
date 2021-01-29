@@ -36,9 +36,7 @@ namespace Nethermind.Db
     public interface IRocksDbFactory
     {
         IDb CreateDb(RocksDbSettings rocksDbSettings);
-
-        ISnapshotableDb CreateSnapshotableDb(RocksDbSettings rocksDbSettings);
-
+        
         IColumnsDb<T> CreateColumnsDb<T>(RocksDbSettings rocksDbSettings);
     }
 }

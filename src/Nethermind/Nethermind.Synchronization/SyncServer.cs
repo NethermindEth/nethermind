@@ -52,7 +52,7 @@ namespace Nethermind.Synchronization
         private readonly IReceiptFinder _receiptFinder;
         private readonly IBlockValidator _blockValidator;
         private readonly ISealValidator _sealValidator;
-        private readonly ISnapshotableDb _stateDb;
+        private readonly IDb _stateDb;
         private readonly IDb _codeDb;
         private readonly ISyncConfig _syncConfig;
         private readonly IWitnessRepository _witnessRepository;
@@ -67,7 +67,7 @@ namespace Nethermind.Synchronization
         private BlockHeader? _pivotHeader;
 
         public SyncServer(
-            ISnapshotableDb stateDb,
+            IDb stateDb,
             IDb codeDb,
             IBlockTree blockTree,
             IReceiptFinder receiptFinder,
@@ -364,7 +364,7 @@ namespace Nethermind.Synchronization
         public Task BuildCHT()
         {
             return Task.CompletedTask; // removing LES code
-            
+
             return Task.Run(() =>
             {
                 lock (_chtLock)

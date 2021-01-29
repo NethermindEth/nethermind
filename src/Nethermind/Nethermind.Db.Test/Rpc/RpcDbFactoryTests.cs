@@ -31,19 +31,19 @@ namespace Nethermind.Db.Test.Rpc
         {
             void ValidateDb<T>(params IDb[] dbs) where T : IDb
             {
-                foreach (var db in dbs)
+                foreach (IDb db in dbs)
                 {
                     db.Should().BeAssignableTo<T>(db.Name);
                     db.Innermost.Should().BeAssignableTo<RpcDb>(db.Name);
                 }
             }
             
-            var jsonSerializer = Substitute.For<IJsonSerializer>();
-            var jsonRpcClient = Substitute.For<IJsonRpcClient>();
+            IJsonSerializer jsonSerializer = Substitute.For<IJsonSerializer>();
+            IJsonRpcClient jsonRpcClient = Substitute.For<IJsonRpcClient>();
             IMemDbFactory rpcDbFactory = new RpcDbFactory(new MemDbFactory(), null, jsonSerializer, jsonRpcClient, LimboLogs.Instance);
 
             IDbProvider memDbProvider = new DbProvider(DbModeHint.Mem);
-            var standardDbInitializer = new StandardDbInitializer(memDbProvider, null, rpcDbFactory);
+            StandardDbInitializer standardDbInitializer = new(memDbProvider, null, rpcDbFactory);
             standardDbInitializer.InitStandardDbs(true);
 
             ValidateDb<ReadOnlyDb>(
@@ -54,7 +54,7 @@ namespace Nethermind.Db.Test.Rpc
                 memDbProvider.BlockInfosDb,
                 memDbProvider.PendingTxsDb);
 
-            ValidateDb<StateDb>(
+            ValidateDb<ReadOnlyDb>(
                 memDbProvider.StateDb,
                 memDbProvider.CodeDb);
         }

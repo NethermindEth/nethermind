@@ -44,14 +44,12 @@ namespace Nethermind.Db.Test
         [TestCase(true)]
         public async Task InitializerTests_MemDbProvider(bool useReceipts)
         {
-            using (IDbProvider dbProvider = new DbProvider(DbModeHint.Mem))
-            {
-                var rocksDbFactory = new RocksDbFactory(new DbConfig(), LimboLogs.Instance, Path.Combine(_folderWithDbs, "mem"));
-                var initializer = new StandardDbInitializer(dbProvider, rocksDbFactory, new MemDbFactory());
-                await initializer.InitStandardDbsAsync(useReceipts);
-                var receiptsType = useReceipts ? typeof(MemColumnsDb<ReceiptsColumns>) : typeof(ReadOnlyColumnsDb<ReceiptsColumns>);
-                AssertStandardDbs(dbProvider, typeof(MemDb), typeof(StateDb), receiptsType);
-            }
+            using IDbProvider dbProvider = new DbProvider(DbModeHint.Mem);
+            RocksDbFactory rocksDbFactory = new(new DbConfig(), LimboLogs.Instance, Path.Combine(_folderWithDbs, "mem"));
+            StandardDbInitializer initializer = new(dbProvider, rocksDbFactory, new MemDbFactory());
+            await initializer.InitStandardDbsAsync(useReceipts);
+            Type receiptsType = useReceipts ? typeof(MemColumnsDb<ReceiptsColumns>) : typeof(ReadOnlyColumnsDb<ReceiptsColumns>);
+            AssertStandardDbs(dbProvider, typeof(MemDb), typeof(MemDb), receiptsType);
         }
 
         [TestCase(false)]
@@ -60,11 +58,11 @@ namespace Nethermind.Db.Test
         {
             using (IDbProvider dbProvider = new DbProvider(DbModeHint.Persisted))
             {
-                var rocksDbFactory = new RocksDbFactory(new DbConfig(), LimboLogs.Instance, Path.Combine(_folderWithDbs, $"rocks_{useReceipts}"));
-                var initializer = new StandardDbInitializer(dbProvider, rocksDbFactory, new MemDbFactory());
+                RocksDbFactory rocksDbFactory = new(new DbConfig(), LimboLogs.Instance, Path.Combine(_folderWithDbs, $"rocks_{useReceipts}"));
+                StandardDbInitializer initializer = new(dbProvider, rocksDbFactory, new MemDbFactory());
                 await initializer.InitStandardDbsAsync(useReceipts);
-                var receiptsType = useReceipts ? typeof(SimpleColumnRocksDb<ReceiptsColumns>) : typeof(ReadOnlyColumnsDb<ReceiptsColumns>);
-                AssertStandardDbs(dbProvider, typeof(SimpleRocksDb), typeof(StateDb), receiptsType);
+                Type receiptsType = useReceipts ? typeof(SimpleColumnRocksDb<ReceiptsColumns>) : typeof(ReadOnlyColumnsDb<ReceiptsColumns>);
+                AssertStandardDbs(dbProvider, typeof(SimpleRocksDb), typeof(MemDb), receiptsType);
             }
         }
 
@@ -74,14 +72,14 @@ namespace Nethermind.Db.Test
         {
             using (IDbProvider dbProvider = new DbProvider(DbModeHint.Persisted))
             {
-                var rocksDbFactory = new RocksDbFactory(new DbConfig(), LimboLogs.Instance, Path.Combine(_folderWithDbs, $"readonly_{useReceipts}"));
-                var initializer = new StandardDbInitializer(dbProvider, rocksDbFactory, new MemDbFactory());
+                RocksDbFactory rocksDbFactory = new(new DbConfig(), LimboLogs.Instance, Path.Combine(_folderWithDbs, $"readonly_{useReceipts}"));
+                StandardDbInitializer initializer = new(dbProvider, rocksDbFactory, new MemDbFactory());
                 await initializer.InitStandardDbsAsync(useReceipts);
-                using (var readonlyDbProvider = new ReadOnlyDbProvider(dbProvider, true))
+                using (ReadOnlyDbProvider readonlyDbProvider = new(dbProvider, true))
                 {
-                    var receiptsType = useReceipts ? typeof(SimpleColumnRocksDb<ReceiptsColumns>) : typeof(ReadOnlyColumnsDb<ReceiptsColumns>);
-                    AssertStandardDbs(dbProvider, typeof(SimpleRocksDb), typeof(StateDb), receiptsType);
-                    AssertStandardDbs(readonlyDbProvider, typeof(ReadOnlyDb), typeof(StateDb), typeof(ReadOnlyColumnsDb<ReceiptsColumns>));
+                    Type receiptsType = useReceipts ? typeof(SimpleColumnRocksDb<ReceiptsColumns>) : typeof(ReadOnlyColumnsDb<ReceiptsColumns>);
+                    AssertStandardDbs(dbProvider, typeof(SimpleRocksDb), typeof(MemDb), receiptsType);
+                    AssertStandardDbs(readonlyDbProvider, typeof(ReadOnlyDb), typeof(MemDb), typeof(ReadOnlyColumnsDb<ReceiptsColumns>));
                 }
             }
         }

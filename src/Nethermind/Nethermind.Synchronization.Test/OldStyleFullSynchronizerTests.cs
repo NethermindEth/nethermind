@@ -93,8 +93,8 @@ namespace Nethermind.Synchronization.Test
             await _synchronizer.StopAsync();
         }
 
-        private ISnapshotableDb _stateDb;
-        private ISnapshotableDb _codeDb;
+        private IDb _stateDb;
+        private IDb _codeDb;
         private IDb _receiptsDb;
         private IBlockTree _blockTree;
         private IBlockTree _remoteBlockTree;
@@ -355,7 +355,6 @@ namespace Nethermind.Synchronization.Test
         public void Can_retrieve_node_values()
         {
             _stateDb.Set(TestItem.KeccakA, TestItem.RandomDataA);
-            _stateDb.Commit();
             byte[][] values = _syncServer.GetNodeData(new[] {TestItem.KeccakA, TestItem.KeccakB});
             Assert.AreEqual(2, values.Length, "data.Length");
             Assert.AreEqual(TestItem.RandomDataA, values[0], "data[0]");

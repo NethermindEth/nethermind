@@ -46,8 +46,8 @@ namespace Nethermind.Synchronization.BeamSync
             BeamSyncFeed = new CompositeStateSyncFeed<StateSyncBatch?>(logManager, _codeDb, _stateDb);
  
             // then we wrap the beam sync DB back in a StateDb to make it snapshottable
-            _registeredDbs.TryAdd(DbNames.Code, new StateDb(_codeDb)); // TODO: PRUNING - not state really
-            _registeredDbs.TryAdd(DbNames.State, new StateDb(_stateDb)); // TODO: PRUNING - not state really
+            _registeredDbs.TryAdd(DbNames.Code, _codeDb);
+            _registeredDbs.TryAdd(DbNames.State, _stateDb);
         }
 
         public void EnableVerifiedMode()

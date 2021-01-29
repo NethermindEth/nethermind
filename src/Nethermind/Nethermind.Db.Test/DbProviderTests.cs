@@ -36,20 +36,6 @@ namespace Nethermind.Db.Test
         }
 
         [Test]
-        public void DbProvider_CanRegisterSnapshotableDb()
-        {
-            var memDbFactory = new MemDbFactory();
-            using (var dbProvider = new DbProvider(DbModeHint.Mem))
-            {
-                var memSnapshotableDb = memDbFactory.CreateSnapshotableDb("SnapshotableDb");
-                dbProvider.RegisterDb("SnapshotableDb", memSnapshotableDb);
-                var snapshotableDb = dbProvider.GetDb<ISnapshotableDb>("SnapshotableDb");
-                Assert.AreEqual(memSnapshotableDb, snapshotableDb);
-                Assert.IsTrue(memSnapshotableDb is ISnapshotableDb);
-            }
-        }
-
-        [Test]
         public void DbProvider_CanRegisterColumnsDb()
         {
             using (var dbProvider = new DbProvider(DbModeHint.Mem))

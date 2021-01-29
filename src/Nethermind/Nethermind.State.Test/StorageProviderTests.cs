@@ -62,7 +62,7 @@ namespace Nethermind.Store.Test
 
         private StorageProvider BuildStorageProvider(Context ctx)
         {
-            StorageProvider provider = new StorageProvider(new TrieStore(new StateDb(), LogManager), ctx.StateProvider, LogManager);
+            StorageProvider provider = new StorageProvider(new TrieStore(new MemDb(), LogManager), ctx.StateProvider, LogManager);
             return provider;
         }
 
@@ -245,7 +245,7 @@ namespace Nethermind.Store.Test
             
             public Context()
             {
-                StateProvider = new StateProvider(new TrieStore(new MemDb(), LimboLogs.Instance), Substitute.For<ISnapshotableDb>(), LogManager);
+                StateProvider = new StateProvider(new TrieStore(new MemDb(), LimboLogs.Instance), Substitute.For<IDb>(), LogManager);
                 StateProvider.CreateAccount(Address1, 0);
                 StateProvider.CreateAccount(Address2, 0);
                 StateProvider.Commit(Frontier.Instance);
