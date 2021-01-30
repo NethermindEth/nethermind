@@ -115,7 +115,7 @@ namespace Nethermind.Synchronization.FastSync
                     }
 
                     if (_logger.IsInfo) _logger.Info($"Starting the node data sync from the {bestSuggested.ToString(BlockHeader.Format.Short)} {bestSuggested.StateRoot} root");
-                    ResetStateRoot(bestSuggested.Number, bestSuggested.StateRoot);
+                    ResetStateRoot(bestSuggested.Number, bestSuggested.StateRoot!);
                     Activate();
                 }
             }

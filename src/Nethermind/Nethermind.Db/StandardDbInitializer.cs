@@ -22,9 +22,9 @@ namespace Nethermind.Db
     public class StandardDbInitializer : RocksDbInitializer
     {
         public StandardDbInitializer(
-            IDbProvider dbProvider, 
-            IRocksDbFactory rocksDbFactory, 
-            IMemDbFactory memDbFactory)
+            IDbProvider? dbProvider, 
+            IRocksDbFactory? rocksDbFactory, 
+            IMemDbFactory? memDbFactory)
             : base(dbProvider, rocksDbFactory, memDbFactory)
         {
         }

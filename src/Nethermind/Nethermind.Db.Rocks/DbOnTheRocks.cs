@@ -29,15 +29,18 @@ namespace Nethermind.Db.Rocks
 {
     public abstract class DbOnTheRocks : IDbWithSpan
     {
-        private static readonly ConcurrentDictionary<string, RocksDb> DbsByPath =
-            new ConcurrentDictionary<string, RocksDb>();
+        private ILogger _logger;
+        
+        private string? _fullPath;
+        
+        private static readonly ConcurrentDictionary<string, RocksDb> DbsByPath = new();
 
         private bool _isDisposed;
 
-        private HashSet<IBatch> _currentBatches = new HashSet<IBatch>();
+        private HashSet<IBatch> _currentBatches = new();
         
         internal readonly RocksDb Db;
-        internal WriteOptions WriteOptions { get; private set; }
+        internal WriteOptions? WriteOptions { get; private set; }
 
         public abstract string Name { get; protected set; }
 
@@ -61,19 +64,20 @@ namespace Nethermind.Db.Rocks
         }
 
         public DbOnTheRocks(string basePath, RocksDbSettings rocksDbSettings, IDbConfig dbConfig,
-            ILogManager logManager, ColumnFamilies columnFamilies = null, bool deleteOnStart = false)
+            ILogManager logManager, ColumnFamilies? columnFamilies = null, bool deleteOnStart = false)
         {
-            Name = rocksDbSettings.DbName;
+            _logger = logManager.GetClassLogger();
             _settings = rocksDbSettings;
+            Name = _settings.DbName;
             Db = Init(basePath, rocksDbSettings.DbPath, dbConfig, logManager, columnFamilies, deleteOnStart);
         }
 
-        private RocksDb Init(string basePath, string dbPath, IDbConfig dbConfig, ILogManager logManager,
-            ColumnFamilies columnFamilies = null, bool deleteOnStart = false)
+        private RocksDb Init(string basePath, string dbPath, IDbConfig dbConfig, ILogManager? logManager,
+            ColumnFamilies? columnFamilies = null, bool deleteOnStart = false)
         {
-            static RocksDb Open(string path, (DbOptions Options, ColumnFamilies Families) db)
+            static RocksDb Open(string path, (DbOptions Options, ColumnFamilies? Families) db)
             {
-                (DbOptions options, ColumnFamilies families) = db;
+                (DbOptions options, ColumnFamilies? families) = db;
                 return families == null ? RocksDb.Open(options, path) : RocksDb.Open(options, path, families);
             }
 
@@ -157,7 +161,7 @@ namespace Nethermind.Db.Rocks
         protected virtual DbOptions BuildOptions(IDbConfig dbConfig)
         {
             _maxThisDbSize = 0;
-            BlockBasedTableOptions tableOptions = new BlockBasedTableOptions();
+            BlockBasedTableOptions tableOptions = new();
             tableOptions.SetBlockSize(16 * 1024);
             tableOptions.SetPinL0FilterAndIndexBlocksInCache(true);
             tableOptions.SetCacheIndexAndFilterBlocks(GetCacheIndexAndFilterBlocks(dbConfig));
@@ -252,7 +256,7 @@ namespace Nethermind.Db.Rocks
         }
 
 
-        public byte[] this[byte[] key]
+        public byte[]? this[byte[] key]
         {
             get
             {
@@ -322,9 +326,9 @@ namespace Nethermind.Db.Rocks
             return GetAllCore(iterator);
         }
 
-        protected internal Iterator CreateIterator(bool ordered = false, ColumnFamilyHandle ch = null)
+        protected internal Iterator CreateIterator(bool ordered = false, ColumnFamilyHandle? ch = null)
         {
-            var readOptions = new ReadOptions();
+            ReadOptions? readOptions = new();
             readOptions.SetTailing(!ordered);
             return Db.NewIterator(ch, readOptions);
         }
@@ -368,10 +372,6 @@ namespace Nethermind.Db.Rocks
 
             iterator.Dispose();
         }
-
-
-        private ILogger _logger;
-        private string _fullPath;
 
         public bool KeyExists(byte[] key)
         {
@@ -456,7 +456,7 @@ namespace Nethermind.Db.Rocks
         {
             try
             {
-                Directory.Delete(_fullPath, true);
+                Directory.Delete(_fullPath!, true);
             }
             catch (Exception e)
             {
@@ -510,7 +510,7 @@ namespace Nethermind.Db.Rocks
             ReleaseUnmanagedResources();
             if (disposing)
             {
-                DbsByPath.Remove(_fullPath, out _);
+                DbsByPath.Remove(_fullPath!, out _);
             }
         }
 

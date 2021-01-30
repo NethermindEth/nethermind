@@ -29,6 +29,7 @@ using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
+using Nethermind.Runner.JsonRpc;
 using Nethermind.Runner.Logging;
 using Nethermind.WebSockets;
 using ILogger = Nethermind.Logging.ILogger;

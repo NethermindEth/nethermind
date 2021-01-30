@@ -40,7 +40,7 @@ namespace Nethermind.Db.Rocks
 
         public string Name { get; }
 
-        public byte[] this[byte[] key]
+        public byte[]? this[byte[] key]
         {
             get
             {

@@ -95,7 +95,6 @@ namespace Nethermind.Synchronization.Test
 
         private IDb _stateDb;
         private IDb _codeDb;
-        private IDb _receiptsDb;
         private IBlockTree _blockTree;
         private IBlockTree _remoteBlockTree;
         private IReceiptStorage _receiptStorage;

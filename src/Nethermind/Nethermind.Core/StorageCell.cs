@@ -37,7 +37,7 @@ namespace Nethermind.Core
             return Equals(Address, other.Address) && Index.Equals(other.Index);
         }
 
-        public override bool Equals(object obj)
+        public override bool Equals(object? obj)
         {
             if (ReferenceEquals(null, obj))
             {

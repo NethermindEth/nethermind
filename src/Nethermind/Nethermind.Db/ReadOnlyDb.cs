@@ -22,7 +22,7 @@ namespace Nethermind.Db
 {
     public class ReadOnlyDb : IReadOnlyDb, IDbWithSpan
     {
-        private readonly MemDb _memDb = new MemDb();
+        private readonly MemDb _memDb = new();
 
         private readonly IDb _wrappedDb;
         private readonly bool _createInMemWriteStore;
@@ -40,7 +40,7 @@ namespace Nethermind.Db
 
         public string Name { get; } = "ReadOnlyDb";
 
-        public byte[] this[byte[] key]
+        public byte[]? this[byte[] key]
         {
             get => _memDb[key] ?? _wrappedDb[key];
             set

@@ -35,7 +35,7 @@ namespace Nethermind.Synchronization.BeamSync
         private readonly MemDb _beamTempDb = new (); // holds items that have been beam synced but cannot be persisted yet
         public ISyncFeed<StateSyncBatch?> BeamSyncFeed { get; }
         
-        public BeamSyncDbProvider(ISyncModeSelector syncModeSelector, IDbProvider otherProvider, ISyncConfig syncConfig, ILogManager logManager)
+        public BeamSyncDbProvider(ISyncModeSelector syncModeSelector, IDbProvider? otherProvider, ISyncConfig syncConfig, ILogManager logManager)
         {
             _otherProvider = otherProvider ?? throw new ArgumentNullException(nameof(otherProvider));
             _codeDb = new BeamSyncDb(otherProvider.CodeDb.Innermost, BeamTempDb, syncModeSelector, logManager, syncConfig.BeamSyncContextTimeout, syncConfig.BeamSyncPreProcessorTimeout);
