@@ -16,13 +16,6 @@
 
 namespace Nethermind.Db
 {
-    public interface IMemDbFactory
-    {
-        IDb CreateDb(string dbName);
-
-        IColumnsDb<T> CreateColumnsDb<T>(string dbName);
-    }
-
     public class MemDbFactory : IMemDbFactory
     {
         public IColumnsDb<T> CreateColumnsDb<T>(string dbName)

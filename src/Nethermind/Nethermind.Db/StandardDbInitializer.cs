@@ -22,9 +22,9 @@ namespace Nethermind.Db
     public class StandardDbInitializer : RocksDbInitializer
     {
         public StandardDbInitializer(
-            IDbProvider dbProvider, 
-            IRocksDbFactory rocksDbFactory, 
-            IMemDbFactory memDbFactory)
+            IDbProvider? dbProvider, 
+            IRocksDbFactory? rocksDbFactory, 
+            IMemDbFactory? memDbFactory)
             : base(dbProvider, rocksDbFactory, memDbFactory)
         {
         }
@@ -69,7 +69,7 @@ namespace Nethermind.Db
 
         private RocksDbSettings BuildRocksDbSettings(string dbName, string dbPath, Action updateReadsMetrics, Action updateWriteMetrics)
         {
-            return new RocksDbSettings()
+            return new()
             {
                 DbName = dbName,
                 DbPath = dbPath,

@@ -49,7 +49,7 @@ namespace Nethermind.Db.Test
             StandardDbInitializer initializer = new(dbProvider, rocksDbFactory, new MemDbFactory());
             await initializer.InitStandardDbsAsync(useReceipts);
             Type receiptsType = useReceipts ? typeof(MemColumnsDb<ReceiptsColumns>) : typeof(ReadOnlyColumnsDb<ReceiptsColumns>);
-            AssertStandardDbs(dbProvider, typeof(MemDb), typeof(MemDb), receiptsType);
+            AssertStandardDbs(dbProvider, typeof(MemDb), receiptsType);
         }
 
         [TestCase(false)]
@@ -62,7 +62,7 @@ namespace Nethermind.Db.Test
                 StandardDbInitializer initializer = new(dbProvider, rocksDbFactory, new MemDbFactory());
                 await initializer.InitStandardDbsAsync(useReceipts);
                 Type receiptsType = useReceipts ? typeof(SimpleColumnRocksDb<ReceiptsColumns>) : typeof(ReadOnlyColumnsDb<ReceiptsColumns>);
-                AssertStandardDbs(dbProvider, typeof(SimpleRocksDb), typeof(MemDb), receiptsType);
+                AssertStandardDbs(dbProvider, typeof(SimpleRocksDb), receiptsType);
             }
         }
 
@@ -78,13 +78,13 @@ namespace Nethermind.Db.Test
                 using (ReadOnlyDbProvider readonlyDbProvider = new(dbProvider, true))
                 {
                     Type receiptsType = useReceipts ? typeof(SimpleColumnRocksDb<ReceiptsColumns>) : typeof(ReadOnlyColumnsDb<ReceiptsColumns>);
-                    AssertStandardDbs(dbProvider, typeof(SimpleRocksDb), typeof(MemDb), receiptsType);
-                    AssertStandardDbs(readonlyDbProvider, typeof(ReadOnlyDb), typeof(MemDb), typeof(ReadOnlyColumnsDb<ReceiptsColumns>));
+                    AssertStandardDbs(dbProvider, typeof(SimpleRocksDb), receiptsType);
+                    AssertStandardDbs(readonlyDbProvider, typeof(ReadOnlyDb), typeof(ReadOnlyColumnsDb<ReceiptsColumns>));
                 }
             }
         }
 
-        private void AssertStandardDbs(IDbProvider dbProvider, Type dbType, Type snapshotDbType, Type receiptsDb)
+        private void AssertStandardDbs(IDbProvider dbProvider, Type dbType, Type receiptsDb)
         {
             Assert.IsTrue(dbProvider.BlockInfosDb.GetType() == dbType);
             Assert.IsTrue(dbProvider.BlocksDb.GetType() == dbType);
@@ -93,8 +93,8 @@ namespace Nethermind.Db.Test
             Assert.IsTrue(dbProvider.HeadersDb.GetType() == dbType);
             Assert.IsTrue(dbProvider.PendingTxsDb.GetType() == dbType);
             Assert.IsTrue(dbProvider.ReceiptsDb.GetType() == receiptsDb);
-            Assert.IsTrue(dbProvider.CodeDb.GetType() == snapshotDbType);
-            Assert.IsTrue(dbProvider.StateDb.GetType() == snapshotDbType);
+            Assert.IsTrue(dbProvider.CodeDb.GetType() == dbType);
+            Assert.IsTrue(dbProvider.StateDb.GetType() == dbType);
         }
 
         [OneTimeTearDown]

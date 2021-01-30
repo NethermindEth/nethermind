@@ -49,7 +49,7 @@ namespace Nethermind.Runner.Ethereum.Steps
         private new readonly AuRaNethermindApi _api;
         private INethermindApi NethermindApi => _api;
         
-        private readonly IAuraConfig? _auraConfig;
+        private readonly IAuraConfig _auraConfig;
         private IAuRaValidator? _validator;
         private DictionaryContractDataStore<TxPriorityContract.Destination>? _minGasPricesContractDataStore;
         private TxPriorityContract? _txPriorityContract;
@@ -148,7 +148,7 @@ namespace Nethermind.Runner.Ethereum.Steps
         {
             // We need special one for TxPriority as its following Head separately with events and we want rules from Head, not produced block
             ReadOnlyTxProcessorSource readOnlyTxProcessorSourceForTxPriority = 
-                new ReadOnlyTxProcessorSource(_api.DbProvider, _api.ReadOnlyTrieStore, _api.BlockTree, _api.SpecProvider, _api.LogManager);
+                new(_api.DbProvider, _api.ReadOnlyTrieStore, _api.BlockTree, _api.SpecProvider, _api.LogManager);
             
             (_txPriorityContract, _localDataSource) = TxFilterBuilders.CreateTxPrioritySources(_auraConfig, _api, readOnlyTxProcessorSourceForTxPriority);
 

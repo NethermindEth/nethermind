@@ -1,4 +1,4 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -13,17 +13,15 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-
-using System.Collections.Generic;
+// 
 
 namespace Nethermind.Db
 {
-    public interface IFullDb : IDb
+    public static class DbProviderExtensions
     {
-        ICollection<byte[]> Keys { get; }
-
-        ICollection<byte[]?> Values { get; }
-
-        int Count { get; }
+        public static ReadOnlyDbProvider AsReadOnly(this IDbProvider dbProvider, bool createInMemoryWriteStore)
+        {
+            return new ReadOnlyDbProvider(dbProvider, createInMemoryWriteStore);
+        }
     }
 }

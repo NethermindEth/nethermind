@@ -153,7 +153,7 @@ namespace Nethermind.Runner
                 Console.CancelKeyPress += ConsoleOnCancelKeyPress;
 
                 SetFinalDataDirectory(dataDir.HasValue() ? dataDir.Value() : null, initConfig, keyStoreConfig);
-                NLogManager logManager = new NLogManager(initConfig.LogFileName, initConfig.LogDirectory);
+                NLogManager logManager = new(initConfig.LogFileName, initConfig.LogDirectory);
                 
                 _logger = logManager.GetClassLogger();
                 if (_logger.IsDebug) _logger.Debug($"Nethermind version: {ClientVersion.Description}");
@@ -162,10 +162,10 @@ namespace Nethermind.Runner
                 SetFinalDbPath(dbBasePath.HasValue() ? dbBasePath.Value() : null, initConfig);
                 LogMemoryConfiguration();
 
-                EthereumJsonSerializer serializer = new EthereumJsonSerializer();
+                EthereumJsonSerializer serializer = new();
                 if (_logger.IsDebug) _logger.Debug($"Nethermind config:{Environment.NewLine}{serializer.Serialize(initConfig, true)}{Environment.NewLine}");
 
-                ApiBuilder apiBuilder = new ApiBuilder(configProvider, logManager);
+                ApiBuilder apiBuilder = new(configProvider, logManager);
                 INethermindApi nethermindApi = apiBuilder.Create();
                 foreach (Type pluginType in pluginLoader.PluginTypes)
                 {
@@ -361,7 +361,7 @@ namespace Nethermind.Runner
             }
         }
 
-        private static void ConsoleOnCancelKeyPress(object sender, ConsoleCancelEventArgs e)
+        private static void ConsoleOnCancelKeyPress(object? sender, ConsoleCancelEventArgs e)
         {
             _processCloseCancellationSource.Cancel();
             _cancelKeySource.TrySetResult(null);

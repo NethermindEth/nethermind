@@ -45,10 +45,9 @@ namespace Nethermind.Synchronization.LesSync
         {
         }
 
-        public void Commit(long sectionIndex)
+        public void CommitSectionIndex(long sectionIndex)
         {
             StoreRootHash(sectionIndex);
-            //Commit();
         }
 
         public long GetMaxSectionIndex()

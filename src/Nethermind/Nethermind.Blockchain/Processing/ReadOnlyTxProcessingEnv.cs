@@ -25,16 +25,16 @@ namespace Nethermind.Blockchain.Processing
 {
     public class ReadOnlyTxProcessingEnv
     {
+        private readonly ReadOnlyDb _codeDb;
         public IStateReader StateReader { get; }
         public IStateProvider StateProvider { get; }
         public IStorageProvider StorageProvider { get; }
         public ITransactionProcessor TransactionProcessor { get; set; }
         public IBlockTree BlockTree { get; }
         public IReadOnlyDbProvider DbProvider { get; }
+        public IBlockhashProvider BlockhashProvider { get; }
+        public IVirtualMachine Machine { get; }
 
-        private IBlockhashProvider BlockhashProvider;
-        private IVirtualMachine VirtualMachine;
-        
         public ReadOnlyTxProcessingEnv(
             IReadOnlyDbProvider readOnlyDbProvider,
             ITrieNodeResolver trieStore,
@@ -42,26 +42,27 @@ namespace Nethermind.Blockchain.Processing
             ISpecProvider specProvider,
             ILogManager logManager)
         {
-            // TODO: reuse cache for state -> now when the trie is not reusing cache any more
             DbProvider = readOnlyDbProvider;
-            IDb codeDb = readOnlyDbProvider.CodeDb;
+            _codeDb = readOnlyDbProvider.CodeDb.AsReadOnly(true);
             
-            ReadOnlyTrieStore readOnlyTrieStore = new ReadOnlyTrieStore(trieStore);
-            StateReader = new StateReader(readOnlyTrieStore, codeDb, logManager);
-            StateProvider = new StateProvider(readOnlyTrieStore, codeDb, logManager);
+            ReadOnlyTrieStore readOnlyTrieStore = trieStore.AsReadOnly();
+            StateReader = new StateReader(readOnlyTrieStore, _codeDb, logManager);
+            StateProvider = new StateProvider(readOnlyTrieStore, _codeDb, logManager);
             StorageProvider = new StorageProvider(readOnlyTrieStore, StateProvider, logManager);
 
             BlockTree = readOnlyBlockTree;
             BlockhashProvider = new BlockhashProvider(BlockTree, logManager);
 
-            VirtualMachine = new VirtualMachine(StateProvider, StorageProvider, BlockhashProvider, specProvider, logManager);
-            TransactionProcessor = new TransactionProcessor(specProvider, StateProvider, StorageProvider, VirtualMachine, logManager);
+            Machine = new VirtualMachine(StateProvider, StorageProvider, BlockhashProvider, specProvider, logManager);
+            TransactionProcessor = new TransactionProcessor(specProvider, StateProvider, StorageProvider, Machine, logManager);
         }
 
         public void Reset()
         {
             StateProvider.Reset();
             StorageProvider.Reset();
+            
+            _codeDb.ClearTempChanges();
         }
     }
 }

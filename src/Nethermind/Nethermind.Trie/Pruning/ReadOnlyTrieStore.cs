@@ -20,6 +20,9 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Trie.Pruning
 {
+    /// <summary>
+    /// Safe to be reused for the same wrapped store.
+    /// </summary>
     public class ReadOnlyTrieStore : ITrieStore
     {
         private readonly ITrieNodeResolver _trieStore;

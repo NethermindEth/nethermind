@@ -110,7 +110,6 @@ namespace Nethermind.Blockchain.Producers
             {
                 UInt256 change = new UInt256((ulong)(_random.Next(100) + 50));
                 difficulty = UInt256.Max(1000, UInt256.Max(parent.Difficulty, 1000) / 100 * change);
-                if(Logger.IsInfo) Logger.Info($"Randomized difficulty for the child of {parent.ToString(BlockHeader.Format.Short)} is {difficulty}");
             }
             else
             {
@@ -158,6 +157,13 @@ namespace Nethermind.Blockchain.Producers
         {
             if (_newBlockLock.CurrentCount == 0)
             {
+                if (_miningConfig.RandomizedBlocks)
+                {
+                    if (Logger.IsInfo)
+                        Logger.Info(
+                            $"Randomized difficulty for {e.Block.ToString(Block.Format.Short)} is {e.Block.Difficulty}");
+                }
+
                 _newBlockLock.Release();
             }
         }

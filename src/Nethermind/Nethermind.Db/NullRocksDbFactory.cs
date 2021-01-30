@@ -1,4 +1,4 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -13,31 +13,26 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
 using System;
-using System.Collections.Generic;
-using Nethermind.Core;
 
 namespace Nethermind.Db
 {
-    public interface IDb : IKeyValueStoreWithBatching, IDisposable
+    public class NullRocksDbFactory : IRocksDbFactory
     {
-        string Name { get; }
-        KeyValuePair<byte[],byte[]?>[] this[byte[][] keys] { get; }
-        IEnumerable<KeyValuePair<byte[], byte[]>> GetAll(bool ordered = false);
-        IEnumerable<byte[]> GetAllValues(bool ordered = false);
-        void Remove(byte[] key);
-        bool KeyExists(byte[] key);
+        private NullRocksDbFactory() { }
 
-        /// <summary>
-        /// For nested DB structures returns the innermost one
-        /// </summary>
-        public IDb Innermost { get; }
+        public static NullRocksDbFactory Instance { get; } = new();
 
-        void Flush();
-        
-        void Clear();
+        public IDb CreateDb(RocksDbSettings rocksDbSettings)
+        {
+            throw new InvalidOperationException();
+        }
 
-        public IReadOnlyDb CreateReadOnly(bool createInMemWriteStore) => new ReadOnlyDb(this, createInMemWriteStore);
+        public IColumnsDb<T> CreateColumnsDb<T>(RocksDbSettings rocksDbSettings)
+        {
+            throw new InvalidOperationException();
+        }
     }
 }

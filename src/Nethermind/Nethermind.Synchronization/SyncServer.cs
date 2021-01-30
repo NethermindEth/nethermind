@@ -140,6 +140,11 @@ namespace Nethermind.Synchronization
             {
                 throw new InvalidDataException("Cannot add a block with unknown total difficulty");
             }
+            
+            if (block.Hash == null)
+            {
+                throw new InvalidDataException("Cannot add a block with unknown hash");
+            }
 
             // Now, there are some complexities here.
             // We can have a scenario when a node sends us a block whose parent we do not know.
@@ -213,7 +218,7 @@ namespace Nethermind.Synchronization
             }
         }
 
-        private void SyncBlock(Block block, ISyncPeer syncPeer)
+        private void SyncBlock(Block block, ISyncPeer? syncPeer)
         {
             if (_logger.IsTrace) _logger.Trace($"{block}");
 
@@ -230,7 +235,7 @@ namespace Nethermind.Synchronization
                     if (_logger.IsDebug) _logger.Debug(message);
                     lock (_recentlySuggested)
                     {
-                        _recentlySuggested.Delete(block.Hash);
+                        _recentlySuggested.Delete(block.Hash!);
                     }
 
                     throw new EthSyncException(message);
@@ -365,6 +370,7 @@ namespace Nethermind.Synchronization
         {
             return Task.CompletedTask; // removing LES code
 
+#pragma warning disable 162
             return Task.Run(() =>
             {
                 lock (_chtLock)
@@ -392,6 +398,7 @@ namespace Nethermind.Synchronization
                     }
                 }
             });
+#pragma warning restore 162
         }
 
         public CanonicalHashTrie? GetCHT()

@@ -111,6 +111,11 @@ namespace Nethermind.Runner.Ethereum.Steps.Migrations
 
             private async Task<bool> DownloadReceiptsForBlock(Block block)
             {
+                if (block.Hash == null)
+                {
+                    throw new ArgumentException("Cannot download receipts for a block without a known hash.");
+                }
+                
                 var strategy = new FastBlocksAllocationStrategy(TransferSpeedType.Receipts, block.Number, true);
                 SyncPeerAllocation peer = await _syncPeerPool.Allocate(strategy, AllocationContexts.Receipts);
                 ISyncPeer? currentSyncPeer = peer.Current?.SyncPeer;
@@ -118,7 +123,7 @@ namespace Nethermind.Runner.Ethereum.Steps.Migrations
                 {
                     try
                     {
-                        TxReceipt[][]? receipts = await currentSyncPeer.GetReceipts(new List<Keccak>() {block.Hash}, _cancellationToken);
+                        TxReceipt[][]? receipts = await currentSyncPeer.GetReceipts(new List<Keccak> {block.Hash}, _cancellationToken);
                         TxReceipt[]? txReceipts = receipts?.FirstOrDefault();
                         if (txReceipts != null)
                         {
