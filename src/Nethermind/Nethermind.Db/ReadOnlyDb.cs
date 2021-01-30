@@ -102,32 +102,9 @@ namespace Nethermind.Db
         {
             _memDb.Clear();
         }
-
-        public void Restore(int snapshot)
-        {
-            if (snapshot != -1)
-            {
-                // if this is causing trouble hen you can revert to the version from before 10/02/2020    
-                throw new NotSupportedException();
-            }
-
-            ClearTempChanges();
-        }
-
-        public void Commit()
-        {
-            throw new NotSupportedException();
-        }
-
-        public int TakeSnapshot()
-        {
-            return -1;
-        }
-
+        
         public Span<byte> GetSpan(byte[] key) => this[key].AsSpan();
 
-        public void DangerousReleaseMemory(in Span<byte> span)
-        {
-        }
+        public void DangerousReleaseMemory(in Span<byte> span) { }
     }
 }

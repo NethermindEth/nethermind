@@ -26,6 +26,11 @@ namespace Nethermind.Db
 {
     public static class DbExtensions
     {
+        public static ReadOnlyDb AsReadOnly(this IDb db, bool createInMemoryWriteStore)
+        {
+            return new ReadOnlyDb(db, createInMemoryWriteStore);
+        }
+        
         public static void Set(this IDb db, Keccak key, byte[] value)
          {
              db[key.Bytes] = value;

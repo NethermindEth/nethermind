@@ -14,8 +14,11 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Collections.Generic;
 using System.IO.Abstractions;
+using System.Threading;
+using Microsoft.EntityFrameworkCore.Internal;
 using Nethermind.Abi;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
@@ -77,14 +80,16 @@ namespace Nethermind.Runner.Ethereum.Api
             DisposeStack.Push(CryptoRandom);
         }
 
+        private IReadOnlyDbProvider _readOnlyDbProvider;
+        
         public IBlockchainBridge CreateBlockchainBridge()
         {
             ReadOnlyBlockTree readOnlyTree = new ReadOnlyBlockTree(BlockTree);
-            IReadOnlyDbProvider readOnlyDbProvider = new ReadOnlyDbProvider(DbProvider, false);
-            
+            LazyInitializer.EnsureInitialized(ref _readOnlyDbProvider, () => new ReadOnlyDbProvider(DbProvider, false));
+
             // TODO: reuse the same trie cache here
             ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv = new ReadOnlyTxProcessingEnv(
-                readOnlyDbProvider,
+                _readOnlyDbProvider,
                 TrieStore,
                 readOnlyTree,
                 SpecProvider,

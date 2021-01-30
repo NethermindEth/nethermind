@@ -21,7 +21,6 @@ using System.IO;
 
 namespace Nethermind.Db
 {
-    // TODO: create some nicer DB providers
     public class ReadOnlyDbProvider : IReadOnlyDbProvider
     {
         private readonly IDbProvider _wrappedProvider;
@@ -30,6 +29,8 @@ namespace Nethermind.Db
         
         public ReadOnlyDbProvider(IDbProvider wrappedProvider, bool createInMemoryWriteStore)
         {
+            Console.WriteLine($"Creating {nameof(ReadOnlyDbProvider)}");
+            
             _wrappedProvider = wrappedProvider;
             _createInMemoryWriteStore = createInMemoryWriteStore;
             if (wrappedProvider == null)
@@ -37,9 +38,9 @@ namespace Nethermind.Db
                 throw new ArgumentNullException(nameof(wrappedProvider));
             }
             
-            foreach (var registeredDb in _wrappedProvider.RegisteredDbs)
+            foreach ((string key, IDb value) in _wrappedProvider.RegisteredDbs)
             {
-                RegisterReadOnlyDb(registeredDb.Key, registeredDb.Value);
+                RegisterReadOnlyDb(key, value);
             }
         }
 
@@ -47,7 +48,7 @@ namespace Nethermind.Db
         {
             if (_registeredDbs != null)
             {
-                foreach (var registeredDb in _registeredDbs)
+                foreach (KeyValuePair<string, IReadOnlyDb> registeredDb in _registeredDbs)
                 {
                     registeredDb.Value?.Dispose();
                 }
@@ -62,9 +63,9 @@ namespace Nethermind.Db
         
         public void ClearTempChanges()
         {            
-            foreach(var readonlyDb in _registeredDbs.Values)
+            foreach(IReadOnlyDb readonlyDb in _registeredDbs.Values)
             {
-                readonlyDb.Restore(-1);
+                readonlyDb.ClearTempChanges();
             }
             
             BeamTempDb.Clear();
@@ -90,7 +91,7 @@ namespace Nethermind.Db
 
         private void RegisterReadOnlyDb<T>(string dbName, T db) where T : IDb
         {
-            var readonlyDb = db.CreateReadOnly(_createInMemoryWriteStore);
+            IReadOnlyDb readonlyDb = db.CreateReadOnly(_createInMemoryWriteStore);
             _registeredDbs.TryAdd(dbName, readonlyDb);
         }
 

@@ -16,14 +16,12 @@
 
 using System;
 using System.Collections.Generic;
-using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Rewards;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Blockchain.Validators;
-using Nethermind.Config;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -34,10 +32,10 @@ namespace Nethermind.JsonRpc.Modules.Trace
 {
     public class TraceModuleFactory : ModuleFactoryBase<ITraceModule>
     {
-        private readonly IBlockTree _blockTree;
-        private readonly ITrieNodeResolver _trieStore;
+        private readonly ReadOnlyDbProvider _dbProvider;
+        private readonly ReadOnlyBlockTree _blockTree;
+        private readonly ITrieNodeResolver _trieNodeResolver;
         private readonly IJsonRpcConfig _jsonRpcConfig;
-        private readonly IDbProvider _dbProvider;
         private readonly IReceiptStorage _receiptStorage;
         private readonly ISpecProvider _specProvider;
         private readonly ILogManager _logManager;
@@ -48,7 +46,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
         public TraceModuleFactory(
             IDbProvider dbProvider,
             IBlockTree blockTree,
-            ITrieNodeResolver trieStore,
+            ITrieNodeResolver trieNodeResolver,
             IJsonRpcConfig jsonRpcConfig,
             IBlockPreprocessorStep recoveryStep,
             IRewardCalculatorSource rewardCalculatorSource,
@@ -56,32 +54,42 @@ namespace Nethermind.JsonRpc.Modules.Trace
             ISpecProvider specProvider,
             ILogManager logManager)
         {
-            _dbProvider = dbProvider ?? throw new ArgumentNullException(nameof(dbProvider));
-            _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
-            _trieStore = trieStore ?? throw new ArgumentNullException(nameof(trieStore));
+            _dbProvider = dbProvider.AsReadOnly(false);
+            _blockTree = blockTree.AsReadOnly();
+            _trieNodeResolver = trieNodeResolver.AsReadOnly();
             _jsonRpcConfig = jsonRpcConfig ?? throw new ArgumentNullException(nameof(jsonRpcConfig));
             _recoveryStep = recoveryStep ?? throw new ArgumentNullException(nameof(recoveryStep));
-            _rewardCalculatorSource = rewardCalculatorSource ?? throw new ArgumentNullException(nameof(rewardCalculatorSource));
+            _rewardCalculatorSource =
+                rewardCalculatorSource ?? throw new ArgumentNullException(nameof(rewardCalculatorSource));
             _receiptStorage = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _logger = logManager.GetClassLogger();
         }
-        
+
         public override ITraceModule Create()
         {
-            var readOnlyTree = new ReadOnlyBlockTree(_blockTree);
-            var readOnlyDbProvider = new ReadOnlyDbProvider(_dbProvider, false);
-            var readOnlyTxProcessingEnv = new ReadOnlyTxProcessingEnv(
-                readOnlyDbProvider, new ReadOnlyTrieStore(_trieStore), readOnlyTree, _specProvider, _logManager);
-            var readOnlyChainProcessingEnv = new ReadOnlyChainProcessingEnv(readOnlyTxProcessingEnv, Always.Valid, _recoveryStep, _rewardCalculatorSource.Get(readOnlyTxProcessingEnv.TransactionProcessor), _receiptStorage, readOnlyDbProvider, _specProvider, _logManager);
-            Tracer tracer = new Tracer(readOnlyChainProcessingEnv.StateProvider, readOnlyChainProcessingEnv.ChainProcessor);
-
+            ReadOnlyTxProcessingEnv txProcessingEnv =
+                new(_dbProvider, _trieNodeResolver, _blockTree, _specProvider, _logManager);
             
-            return new TraceModule(_receiptStorage, tracer, readOnlyTree, _jsonRpcConfig);
+            IRewardCalculator rewardCalculator = _rewardCalculatorSource.Get(txProcessingEnv.TransactionProcessor);
+            
+            ReadOnlyChainProcessingEnv chainProcessingEnv = new(
+                txProcessingEnv,
+                Always.Valid,
+                _recoveryStep,
+                rewardCalculator,
+                _receiptStorage,
+                _dbProvider,
+                _specProvider,
+                _logManager);
+            
+            Tracer tracer = new(chainProcessingEnv.StateProvider, chainProcessingEnv.ChainProcessor);
+
+            return new TraceModule(_receiptStorage, tracer, _blockTree, _jsonRpcConfig);
         }
-        
-        public static JsonConverter[] Converters = 
+
+        public static JsonConverter[] Converters =
         {
             new ParityTxTraceFromReplayConverter(),
             new ParityAccountStateChangeConverter(),

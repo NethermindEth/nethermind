@@ -36,10 +36,10 @@ namespace Nethermind.JsonRpc.Modules.Proof
         private readonly IBlockPreprocessorStep _recoveryStep;
         private readonly IReceiptFinder _receiptFinder;
         private readonly ISpecProvider _specProvider;
-        private readonly IDbProvider _dbProvider;
         private readonly ILogManager _logManager;
-        private readonly IBlockTree _blockTree;
-        private readonly ITrieStore _trieStore;
+        private readonly ReadOnlyBlockTree _blockTree;
+        private readonly ReadOnlyDbProvider _dbProvider;
+        private readonly ReadOnlyTrieStore _trieStore;
 
         public ProofModuleFactory(
             IDbProvider dbProvider,
@@ -50,32 +50,31 @@ namespace Nethermind.JsonRpc.Modules.Proof
             ISpecProvider specProvider,
             ILogManager logManager)
         {
+            _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _recoveryStep = recoveryStep ?? throw new ArgumentNullException(nameof(recoveryStep));
             _receiptFinder = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-            _dbProvider = dbProvider ?? throw new ArgumentNullException(nameof(dbProvider));
-            _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
-            _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
-            _trieStore = trieStore ?? throw new ArgumentNullException(nameof(trieStore));
+            _dbProvider = dbProvider.AsReadOnly(false);
+            _blockTree = blockTree.AsReadOnly();
+            _trieStore = trieStore.AsReadOnly();
         }
 
         public override IProofModule Create()
         {
-            ReadOnlyTrieStore readOnlyTrieStore = new ReadOnlyTrieStore(_trieStore);
-            ReadOnlyBlockTree readOnlyTree = new ReadOnlyBlockTree(_blockTree);
-            IReadOnlyDbProvider readOnlyDbProvider = new ReadOnlyDbProvider(_dbProvider, false);
-            ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv = new ReadOnlyTxProcessingEnv(
-                readOnlyDbProvider, readOnlyTrieStore, readOnlyTree, _specProvider, _logManager);
-            ReadOnlyChainProcessingEnv readOnlyChainProcessingEnv = new ReadOnlyChainProcessingEnv(readOnlyTxProcessingEnv, Always.Valid, _recoveryStep, NoBlockRewards.Instance, new InMemoryReceiptStorage(), readOnlyDbProvider, _specProvider, _logManager);
+            ReadOnlyTxProcessingEnv txProcessingEnv = new(
+                _dbProvider, _trieStore, _blockTree, _specProvider, _logManager);
+            
+            ReadOnlyChainProcessingEnv chainProcessingEnv = new(
+                txProcessingEnv, Always.Valid, _recoveryStep, NoBlockRewards.Instance, new InMemoryReceiptStorage(), _dbProvider, _specProvider, _logManager);
 
-            Tracer tracer = new Tracer(
-                readOnlyTxProcessingEnv.StateProvider,
-                readOnlyChainProcessingEnv.ChainProcessor);
+            Tracer tracer = new(
+                txProcessingEnv.StateProvider,
+                chainProcessingEnv.ChainProcessor);
 
             return new ProofModule(tracer, _blockTree, _receiptFinder, _specProvider, _logManager);
         }
 
-        private static readonly List<JsonConverter> _converters = new List<JsonConverter>
+        private static readonly List<JsonConverter> _converters = new()
         {
             new ProofConverter()
         };
