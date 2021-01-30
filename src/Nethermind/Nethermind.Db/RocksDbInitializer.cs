@@ -30,8 +30,8 @@ namespace Nethermind.Db
         public RocksDbInitializer(IDbProvider? dbProvider, IRocksDbFactory? rocksDbFactory, IMemDbFactory? memDbFactory)
         {
             _dbProvider = dbProvider ?? throw new ArgumentNullException(nameof(dbProvider));
-            _rocksDbFactory = rocksDbFactory ?? throw new ArgumentNullException(nameof(rocksDbFactory));
-            _memDbFactory = memDbFactory ?? throw new ArgumentNullException(nameof(memDbFactory));
+            _rocksDbFactory = rocksDbFactory ?? NullRocksDbFactory.Instance;
+            _memDbFactory = memDbFactory ?? NullMemDbFactory.Instance;
         }
 
         protected void RegisterCustomDb(string dbName, Func<IDb> dbFunc)

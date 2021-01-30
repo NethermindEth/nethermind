@@ -69,7 +69,7 @@ namespace Nethermind.Db
 
         private RocksDbSettings BuildRocksDbSettings(string dbName, string dbPath, Action updateReadsMetrics, Action updateWriteMetrics)
         {
-            return new RocksDbSettings()
+            return new()
             {
                 DbName = dbName,
                 DbPath = dbPath,

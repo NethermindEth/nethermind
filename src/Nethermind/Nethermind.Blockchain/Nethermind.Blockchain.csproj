@@ -5,6 +5,7 @@
     <LangVersion>9</LangVersion>
     <Deterministic>true</Deterministic>
     <ProduceReferenceAssembly>true</ProduceReferenceAssembly>
+    <Nullable>annotations</Nullable>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\Nethermind.Abi\Nethermind.Abi.csproj" />

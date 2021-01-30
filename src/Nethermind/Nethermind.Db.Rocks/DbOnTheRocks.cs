@@ -287,7 +287,7 @@ namespace Nethermind.Db.Rocks
             }
         }
 
-        public KeyValuePair<byte[], byte[]>[] this[byte[][] keys] => Db.MultiGet(keys);
+        public KeyValuePair<byte[], byte[]?>[] this[byte[][] keys] => Db.MultiGet(keys);
 
         public Span<byte> GetSpan(byte[] key)
         {
@@ -328,7 +328,7 @@ namespace Nethermind.Db.Rocks
 
         protected internal Iterator CreateIterator(bool ordered = false, ColumnFamilyHandle? ch = null)
         {
-            ReadOptions? readOptions = new();
+            ReadOptions readOptions = new();
             readOptions.SetTailing(!ordered);
             return Db.NewIterator(ch, readOptions);
         }
@@ -489,7 +489,7 @@ namespace Nethermind.Db.Rocks
 
         private void ReleaseUnmanagedResources()
         {
-            Db?.Dispose();
+            Db.Dispose();
             foreach (IBatch batch in _currentBatches)
             {
                 batch.Dispose();
