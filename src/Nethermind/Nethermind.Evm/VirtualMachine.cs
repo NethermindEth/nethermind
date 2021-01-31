@@ -2253,8 +2253,7 @@ namespace Nethermind.Evm
                             0L,
                             0L,
                             vmState.IsStatic,
-                            vmState.AccessedAddresses,
-                            vmState.AccessedStorageCells,
+                            vmState,
                             false,
                             accountExists);
 
@@ -2442,8 +2441,7 @@ namespace Nethermind.Evm
                             (long) outputOffset,
                             (long) outputLength,
                             instruction == Instruction.STATICCALL || vmState.IsStatic,
-                            vmState.AccessedAddresses,
-                            vmState.AccessedStorageCells,
+                            vmState,
                             false,
                             false);
 

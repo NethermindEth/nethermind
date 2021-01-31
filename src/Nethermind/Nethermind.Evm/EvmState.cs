@@ -106,7 +106,7 @@ namespace Nethermind.Evm
         public int ReturnStackHead = 0;
 
         public EvmState(long gasAvailable, ExecutionEnvironment env, ExecutionType executionType, bool isTopLevel, bool isContinuation)
-            : this(gasAvailable, env, executionType, isTopLevel, -1, -1, 0L, 0L, false, null, null, isContinuation, false)
+            : this(gasAvailable, env, executionType, isTopLevel, -1, -1, 0L, 0L, false, null, isContinuation, false)
         {
             GasAvailable = gasAvailable;
             Env = env;
@@ -122,8 +122,7 @@ namespace Nethermind.Evm
             long outputDestination,
             long outputLength,
             bool isStatic,
-            HashSet<Address>? accessedAddresses,
-            HashSet<StorageCell>? accessedStorage,
+            EvmState? stateForAccessLists,
             bool isContinuation,
             bool isCreateOnPreExistingAccount)
         {
@@ -143,7 +142,7 @@ namespace Nethermind.Evm
             IsStatic = isStatic;
             IsContinuation = isContinuation;
             IsCreateOnPreExistingAccount = isCreateOnPreExistingAccount;
-            CopyAccessLists(accessedAddresses, accessedStorage);
+            CopyAccessLists(stateForAccessLists?._accessedAddresses, stateForAccessLists?._accessedStorageKeys);
         }
 
         public Address From
