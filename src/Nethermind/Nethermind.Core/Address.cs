@@ -154,7 +154,7 @@ namespace Nethermind.Core
             return obj.GetType() == GetType() && Equals((Address) obj);
         }
         
-        public override int GetHashCode() => MemoryMarshal.Read<int>(Bytes);
+        public override int GetHashCode() => MemoryMarshal.Read<int>(Bytes.AsSpan(16, 4));
 
         public static bool operator ==(Address? a, Address? b)
         {
