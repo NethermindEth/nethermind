@@ -51,7 +51,7 @@ namespace Nethermind.Core
         {
             unchecked
             {
-                return ((Address != null ? Address.GetHashCode() : 0) * 397) ^ Index.GetHashCode();
+                return (Address.GetHashCode() * 397) ^ Index.GetHashCode();
             }
         }
 
