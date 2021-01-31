@@ -168,9 +168,9 @@ namespace Nethermind.Core.Extensions
             return bytes.ToHexString(true, skipLeadingZeros, false);
         }
 
-        public static long ToLongFromBigEndianByteArrayWithoutLeadingZeros(this byte[] bytes)
+        public static long ToLongFromBigEndianByteArrayWithoutLeadingZeros(this byte[]? bytes)
         {
-            if (bytes == null)
+            if (bytes is null)
             {
                 return 0L;
             }

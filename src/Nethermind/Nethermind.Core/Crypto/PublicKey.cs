@@ -36,11 +36,6 @@ namespace Nethermind.Core.Crypto
         
         public PublicKey(Span<byte> bytes)
         {
-            if (bytes == null)
-            {
-                throw new ArgumentNullException(nameof(bytes));
-            }
-
             if (bytes.Length != LengthInBytes && bytes.Length != PrefixedLengthInBytes)
             {
                 throw new ArgumentException($"{nameof(PublicKey)} should be {LengthInBytes} bytes long",
@@ -60,7 +55,7 @@ namespace Nethermind.Core.Crypto
         {
             get
             {
-                if (_address == null)
+                if (_address is null)
                 {
                     LazyInitializer.EnsureInitialized(ref _address, ComputeAddress);
                 }
@@ -75,7 +70,7 @@ namespace Nethermind.Core.Crypto
         {
             get
             {
-                if (_prefixedBytes == null)
+                if (_prefixedBytes is null)
                 {
                     return LazyInitializer.EnsureInitialized(ref _prefixedBytes,
                         () => Core.Extensions.Bytes.Concat(0x04, Bytes));
@@ -87,7 +82,7 @@ namespace Nethermind.Core.Crypto
 
         public bool Equals(PublicKey? other)
         {
-            if (other == null)
+            if (other is null)
             {
                 return false;
             }

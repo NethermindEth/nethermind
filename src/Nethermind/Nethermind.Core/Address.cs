@@ -88,7 +88,7 @@ namespace Nethermind.Core
 
         public Address(byte[] bytes)
         {
-            if (bytes == null)
+            if (bytes is null)
             {
                 throw new ArgumentNullException(nameof(bytes));
             }
@@ -220,11 +220,6 @@ namespace Nethermind.Core
 
         public AddressStructRef(Span<byte> bytes)
         {
-            if (bytes == null)
-            {
-                throw new ArgumentNullException(nameof(bytes));
-            }
-
             if (bytes.Length != ByteLength)
             {
                 throw new ArgumentException(

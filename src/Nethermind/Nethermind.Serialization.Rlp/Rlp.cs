@@ -99,13 +99,13 @@ namespace Nethermind.Serialization.Rlp
                     var interfaceGenericDefinition = implementedInterface.GetGenericTypeDefinition();
                     if (interfaceGenericDefinition == typeof(IRlpDecoder<>).GetGenericTypeDefinition())
                     {
-                        var constructor = type.GetConstructor(Type.EmptyTypes);
-                        if (constructor == null)
+                        ConstructorInfo? constructor = type.GetConstructor(Type.EmptyTypes);
+                        if (constructor is null)
                         {
                             continue;
                         }
 
-                        var key = implementedInterface.GenericTypeArguments[0];
+                        Type key = implementedInterface.GenericTypeArguments[0];
                         if (!Decoders.ContainsKey(key))
                         {
                             Decoders[key] = (IRlpDecoder) Activator.CreateInstance(type);
@@ -149,7 +149,7 @@ namespace Nethermind.Serialization.Rlp
             throw new RlpException($"{nameof(Rlp)} does not support decoding {typeof(T).Name}");
         }
 
-        public static IRlpDecoder<T> GetDecoder<T>() => Decoders.ContainsKey(typeof(T)) ? (IRlpDecoder<T>) Decoders[typeof(T)] : null;
+        public static IRlpDecoder<T>? GetDecoder<T>() => Decoders.ContainsKey(typeof(T)) ? (IRlpDecoder<T>) Decoders[typeof(T)] : null;
 
         public static T Decode<T>(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
@@ -174,20 +174,20 @@ namespace Nethermind.Serialization.Rlp
             return rlpDecoder != null ? rlpDecoder.Encode(item, behaviors) : throw new RlpException($"{nameof(Rlp)} does not support encoding {typeof(T).Name}");
         }
 
-        public static Rlp Encode<T>(T[] items, RlpBehaviors behaviors = RlpBehaviors.None)
+        public static Rlp Encode<T>(T[]? items, RlpBehaviors behaviors = RlpBehaviors.None)
         {
-            if (items == null)
+            if (items is null)
             {
                 return OfEmptySequence;
             }
 
-            var rlpDecoder = GetDecoder<T>();
-            if (rlpDecoder != null)
+            IRlpDecoder<T> rlpDecoder = GetDecoder<T>();
+            if (rlpDecoder is not null)
             {
                 Rlp[] rlpSequence = new Rlp[items.Length];
                 for (int i = 0; i < items.Length; i++)
                 {
-                    rlpSequence[i] = items[i] == null ? OfEmptySequence : rlpDecoder.Encode(items[i], behaviors);
+                    rlpSequence[i] = items[i] is null ? OfEmptySequence : rlpDecoder.Encode(items[i], behaviors);
                 }
 
                 return Encode(rlpSequence);
@@ -242,7 +242,7 @@ namespace Nethermind.Serialization.Rlp
             sequence[position++] = Encode(transaction.GasLimit);
             sequence[position++] = Encode(transaction.To);
             sequence[position++] = Encode(transaction.Value);
-            sequence[position++] = Encode(transaction.To == null ? transaction.Init : transaction.Data);
+            sequence[position++] = Encode(transaction.To is null ? transaction.Init : transaction.Data);
             if (transaction.IsEip1559)
             {
                 sequence[position++] = Encode(transaction.GasPrice);
@@ -261,14 +261,14 @@ namespace Nethermind.Serialization.Rlp
             else
             {
                 // TODO: below obviously fails when Signature is null
-                sequence[position++] = transaction.Signature == null ? OfEmptyByteArray : Encode(transaction.Signature.V);
+                sequence[position++] = transaction.Signature is null ? OfEmptyByteArray : Encode(transaction.Signature.V);
                 sequence[position++] =
-                    Encode(transaction.Signature == null
+                    Encode(transaction.Signature is null
                         ? null
                         : transaction.Signature.RAsSpan
                             .WithoutLeadingZeros()); // TODO: consider storing R and S differently
                 sequence[position++] =
-                    Encode(transaction.Signature == null
+                    Encode(transaction.Signature is null
                         ? null
                         : transaction.Signature.SAsSpan
                             .WithoutLeadingZeros()); // TODO: consider storing R and S differently
@@ -433,9 +433,9 @@ namespace Nethermind.Serialization.Rlp
             return Encode(Encoding.ASCII.GetBytes(s));
         }
 
-        public static int Encode(Span<byte> buffer, int position, byte[] input)
+        public static int Encode(Span<byte> buffer, int position, byte[]? input)
         {
-            if (input == null || input.Length == 0)
+            if (input is null || input.Length == 0)
             {
                 buffer[position++] = OfEmptyByteArray.Bytes[0];
                 return position;
@@ -498,9 +498,9 @@ namespace Nethermind.Serialization.Rlp
             }
         }
 
-        public static Rlp Encode(byte[] input)
+        public static Rlp Encode(byte[]? input)
         {
-            return Encode(input.AsSpan());
+            return input is null ? OfEmptyByteArray : Encode(input.AsSpan());
         }
 
         public static int SerializeLength(Span<byte> buffer, int position, int value)
@@ -588,9 +588,9 @@ namespace Nethermind.Serialization.Rlp
             };
         }
 
-        public static Rlp Encode(Bloom bloom)
+        public static Rlp Encode(Bloom? bloom)
         {
-            if (bloom == null)
+            if (bloom is null)
             {
                 return OfEmptyByteArray;
             }
@@ -608,9 +608,9 @@ namespace Nethermind.Serialization.Rlp
             return new Rlp(result);
         }
 
-        public static Rlp Encode(Keccak keccak)
+        public static Rlp Encode(Keccak? keccak)
         {
-            if (keccak == null)
+            if (keccak is null)
             {
                 return OfEmptyByteArray;
             }
@@ -631,9 +631,9 @@ namespace Nethermind.Serialization.Rlp
             return new Rlp(result);
         }
 
-        public static Rlp Encode(Address address)
+        public static Rlp Encode(Address? address)
         {
-            if (address == null)
+            if (address is null)
             {
                 return OfEmptyByteArray;
             }
@@ -942,7 +942,7 @@ namespace Nethermind.Serialization.Rlp
                 {
                 }
 
-                public DecodeKeccakRlpException(in int prefix, in int position, in int dataLength) : this(String.Empty)
+                public DecodeKeccakRlpException(in int prefix, in int position, in int dataLength) : this(string.Empty)
                 {
                     _prefix = prefix;
                     _position = position;
@@ -954,7 +954,7 @@ namespace Nethermind.Serialization.Rlp
                 private string ConstructMessage() => $"Unexpected prefix of {_prefix} when decoding {nameof(Keccak)} at position {_position} in the message of length {_dataLength}.";
             }
 
-            public Keccak DecodeKeccak()
+            public Keccak? DecodeKeccak()
             {
                 int prefix = ReadByte();
                 if (prefix == 128)
@@ -1009,7 +1009,7 @@ namespace Nethermind.Serialization.Rlp
             }
 
 
-            public Address DecodeAddress()
+            public Address? DecodeAddress()
             {
                 int prefix = ReadByte();
                 if (prefix == 128)
@@ -1060,7 +1060,7 @@ namespace Nethermind.Serialization.Rlp
                 return bytes.ToUnsignedBigInteger();
             }
 
-            public Bloom DecodeBloom()
+            public Bloom? DecodeBloom()
             {
                 Span<byte> bloomBytes;
 
@@ -1329,7 +1329,7 @@ namespace Nethermind.Serialization.Rlp
             }
         }
 
-        public override bool Equals(object other)
+        public override bool Equals(object? other)
         {
             return Equals(other as Rlp);
         }
@@ -1339,9 +1339,9 @@ namespace Nethermind.Serialization.Rlp
             return Bytes != null ? Bytes.GetSimplifiedHashCode() : 0;
         }
 
-        public bool Equals(Rlp other)
+        public bool Equals(Rlp? other)
         {
-            return null != other && Core.Extensions.Bytes.AreEqual(Bytes, other.Bytes);
+            return other is not null && Core.Extensions.Bytes.AreEqual(Bytes, other.Bytes);
         }
 
         public override string ToString()
@@ -1449,19 +1449,19 @@ namespace Nethermind.Serialization.Rlp
             return 5;
         }
 
-        public static int LengthOf(Keccak item)
+        public static int LengthOf(Keccak? item)
         {
-            return item == null ? 1 : 33;
+            return item is null ? 1 : 33;
         }
 
-        public static int LengthOf(Address item)
+        public static int LengthOf(Address? item)
         {
-            return item == null ? 1 : 21;
+            return item is null ? 1 : 21;
         }
 
-        public static int LengthOf(Bloom bloom)
+        public static int LengthOf(Bloom? bloom)
         {
-            return bloom == null ? 1 : 259;
+            return bloom is null ? 1 : 259;
         }
 
         public static int LengthOfSequence(int contentLength)
@@ -1481,7 +1481,7 @@ namespace Nethermind.Serialization.Rlp
 
         public static int LengthOf(Span<byte> array)
         {
-            if (array == null || array.Length == 0)
+            if (array.Length == 0)
             {
                 return 1;
             }

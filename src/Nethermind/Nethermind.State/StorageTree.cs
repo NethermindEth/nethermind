@@ -69,8 +69,8 @@ namespace Nethermind.State
         public byte[] Get(UInt256 index, Keccak? storageRoot = null)
         {
             Span<byte> key = GetKey(index);
-            byte[] value = Get(key, storageRoot);
-            if (value == null)
+            byte[]? value = Get(key, storageRoot);
+            if (value is null)
             {
                 return new byte[] {0};
             }

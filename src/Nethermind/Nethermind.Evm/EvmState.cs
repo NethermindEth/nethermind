@@ -17,7 +17,6 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.ComponentModel;
 using System.Diagnostics;
 using System.Linq;
 using System.Threading;
@@ -94,12 +93,13 @@ namespace Nethermind.Evm
             }
         }
 
-        public byte[] DataStack;
+        public byte[]? DataStack;
         
-        public int[] ReturnStack;
+        public int[]? ReturnStack;
         
-        private HashSet<Address> _accessedAddresses;
-        private HashSet<StorageCell> _accessedStorageKeys;
+        private HashSet<Address>? _accessedAddresses;
+        
+        private HashSet<StorageCell>? _accessedStorageKeys;
         
         public int DataStackHead = 0;
         
@@ -122,8 +122,8 @@ namespace Nethermind.Evm
             long outputDestination,
             long outputLength,
             bool isStatic,
-            HashSet<Address> accessedAddresses,
-            HashSet<StorageCell> accessedStorage,
+            HashSet<Address>? accessedAddresses,
+            HashSet<StorageCell>? accessedStorage,
             bool isContinuation,
             bool isCreateOnPreExistingAccount)
         {
@@ -185,7 +185,7 @@ namespace Nethermind.Evm
         public bool IsCreateOnPreExistingAccount { get; } // TODO: move to CallEnv
         public int StateSnapshot { get; } // TODO: move to CallEnv
         public int StorageSnapshot { get; } // TODO: move to CallEnv
-        public EvmPooledMemory Memory { get; set; } // TODO: move to CallEnv
+        public EvmPooledMemory? Memory { get; set; } // TODO: move to CallEnv
 
         public HashSet<Address> DestroyList
         {
@@ -199,30 +199,30 @@ namespace Nethermind.Evm
 
         public void Dispose()
         {
-            if (DataStack != null) _stackPool.Value.ReturnStacks(DataStack, ReturnStack);
+            if (DataStack != null) _stackPool.Value.ReturnStacks(DataStack, ReturnStack!);
             Memory?.Dispose();
         }
 
         public void InitStacks()
         {
-            if (DataStack == null)
+            if (DataStack is null)
             {
                 Memory = new EvmPooledMemory();
                 (DataStack, ReturnStack) = _stackPool.Value.RentStacks();
             }
         }
 
-        public bool IsCold(Address address)
+        public bool IsCold(Address? address)
         {
-            return _accessedAddresses == null || !AccessedAddresses.Contains(address);
+            return _accessedAddresses is null || !AccessedAddresses.Contains(address);
         }
         
         public bool IsCold(StorageCell storageCell)
         {
-            return _accessedStorageKeys == null || !AccessedStorageCells.Contains(storageCell);
+            return _accessedStorageKeys is null || !AccessedStorageCells.Contains(storageCell);
         }
 
-        public void WarmUp(ISet<Address> addresses, ISet<StorageCell> storageCells)
+        public void WarmUp(ISet<Address>? addresses, ISet<StorageCell>? storageCells)
         {
             foreach (Address address in addresses ?? Enumerable.Empty<Address>())
             {
@@ -250,7 +250,7 @@ namespace Nethermind.Evm
         {
             parentState.Refund += Refund;
             
-            if (_destroyList != null)
+            if (_destroyList is not null)
             {
                 foreach (Address address in DestroyList)
                 {
@@ -258,7 +258,7 @@ namespace Nethermind.Evm
                 }
             }
 
-            if (_logs != null)
+            if (_logs is not null)
             {
                 for (int i = 0; i < Logs.Count; i++)
                 {
@@ -270,9 +270,9 @@ namespace Nethermind.Evm
             parentState.CopyAccessLists(_accessedAddresses, _accessedStorageKeys);
         }
 
-        private void CopyAccessLists(HashSet<Address> addresses, HashSet<StorageCell> storage)
+        private void CopyAccessLists(HashSet<Address>? addresses, HashSet<StorageCell>? storage)
         {
-            if (addresses != null)
+            if (addresses is not null)
             {
                 foreach (Address address in addresses)
                 {
@@ -280,7 +280,7 @@ namespace Nethermind.Evm
                 }
             }
 
-            if (storage != null)
+            if (storage is not null)
             {
                 foreach (StorageCell storageCell in storage)
                 {
@@ -307,8 +307,8 @@ namespace Nethermind.Evm
 
         private static readonly ThreadLocal<StackPool> _stackPool = new ThreadLocal<StackPool>(() => new StackPool());
         
-        private HashSet<Address> _destroyList;
+        private HashSet<Address>? _destroyList;
         
-        private List<LogEntry> _logs;
+        private List<LogEntry>? _logs;
     }
 }

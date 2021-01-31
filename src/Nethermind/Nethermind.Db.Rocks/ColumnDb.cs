@@ -50,7 +50,7 @@ namespace Nethermind.Db.Rocks
             set
             {
                 UpdateWriteMetrics();
-                if (value == null)
+                if (value is null)
                 {
                     _rocksDb.Remove(key, _columnFamily, _mainDb.WriteOptions);
                 }
@@ -102,7 +102,7 @@ namespace Nethermind.Db.Rocks
                 get => _underlyingBatch[key];
                 set
                 {
-                    if (value == null)
+                    if (value is null)
                     {
                         _underlyingBatch._rocksBatch.Delete(key, _columnDb._columnFamily);
                     }

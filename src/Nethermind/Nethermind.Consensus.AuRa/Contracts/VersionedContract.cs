@@ -46,7 +46,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
             _logger = logManager.GetClassLogger();
         }
 
-        public T ResolveVersion(BlockHeader blockHeader)
+        public T? ResolveVersion(BlockHeader blockHeader)
         {
             this.BlockActivationCheck(blockHeader);
 
@@ -68,7 +68,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
             return ResolveVersion(versionNumber);
         }
 
-        private T ResolveVersion(UInt256 versionNumber) => _versions.TryGetValue(versionNumber, out var contract) ? contract : default;
+        private T? ResolveVersion(UInt256 versionNumber) => _versions.TryGetValue(versionNumber, out var contract) ? contract : default;
 
         public long Activation { get; }
     }

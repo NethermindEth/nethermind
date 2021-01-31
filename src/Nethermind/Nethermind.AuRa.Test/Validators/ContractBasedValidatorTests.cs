@@ -613,7 +613,7 @@ namespace Nethermind.AuRa.Test.Validators
         {
             _initialValidators = initialValidators;
 
-            if (parentHeader == null)
+            if (parentHeader is null)
             {
                 parentHeader = _parentHeader = Build.A.BlockHeader.WithNumber(header.Number - 1).TestObject;
                 _blockTree.FindHeader(header.ParentHash, BlockTreeLookupOptions.None).Returns(_parentHeader);
@@ -679,7 +679,7 @@ namespace Nethermind.AuRa.Test.Validators
             public TxReceipt[] GetReceipts(ValidatorContract validatorContract, Block block, Address contractAddress, IAbiEncoder encoder, Func<Address[], byte[]> dataFunc)
             {
                 var validators = Current.Validators?.FirstOrDefault(v => v.InitializeBlock == block.Number)?.Addresses;
-                if (validators == null)
+                if (validators is null)
                 {
                     return Array.Empty<TxReceipt>();
                 }

@@ -38,7 +38,7 @@ namespace Nethermind.Config
         public static NetworkNode[] ParseNodes(string enodesString, ILogger logger)
         {
             string[] nodeStrings = enodesString?.Split(",", StringSplitOptions.RemoveEmptyEntries);
-            if (nodeStrings == null)
+            if (nodeStrings is null)
             {
                 return Array.Empty<NetworkNode>();
             }

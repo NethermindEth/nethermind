@@ -59,10 +59,10 @@ namespace Nethermind.State
             _tree = new StateTree(trieStore, logManager);
         }
 
-        public void Accept(ITreeVisitor visitor, Keccak stateRoot)
+        public void Accept(ITreeVisitor? visitor, Keccak? stateRoot)
         {
-            if (visitor == null) throw new ArgumentNullException(nameof(visitor));
-            if (stateRoot == null) throw new ArgumentNullException(nameof(stateRoot));
+            if (visitor is null) throw new ArgumentNullException(nameof(visitor));
+            if (stateRoot is null) throw new ArgumentNullException(nameof(stateRoot));
 
             _tree.Accept(visitor, stateRoot, true);
         }
@@ -167,7 +167,7 @@ namespace Nethermind.State
             Account GetThroughCacheCheckExists()
             {
                 Account result = GetThroughCache(address);
-                if (result == null)
+                if (result is null)
                 {
                     if (_logger.IsError) _logger.Error("Updating balance of a non-existing account");
                     throw new InvalidOperationException("Updating balance of a non-existing account");
@@ -291,7 +291,7 @@ namespace Nethermind.State
         public byte[] GetCode(Address address)
         {
             Account? account = GetThroughCache(address);
-            if (account == null)
+            if (account is null)
             {
                 return Array.Empty<byte>();
             }
@@ -407,7 +407,7 @@ namespace Nethermind.State
             }
 
             if (_logger.IsTrace) _logger.Trace($"Committing state changes (at {_currentPosition})");
-            if (_changes[_currentPosition] == null)
+            if (_changes[_currentPosition] is null)
             {
                 throw new InvalidOperationException($"Change at current position {_currentPosition} was null when commiting {nameof(StateProvider)}");
             }
@@ -571,12 +571,12 @@ namespace Nethermind.State
 
                 if (beforeCodeHash != afterCodeHash)
                 {
-                    byte[]? beforeCode = beforeCodeHash == null
+                    byte[]? beforeCode = beforeCodeHash is null
                         ? null
                         : beforeCodeHash == Keccak.OfAnEmptyString
                             ? Array.Empty<byte>()
                             : _codeDb[beforeCodeHash.Bytes];
-                    byte[]? afterCode = afterCodeHash == null
+                    byte[]? afterCode = afterCodeHash is null
                         ? null
                         : afterCodeHash == Keccak.OfAnEmptyString
                             ? Array.Empty<byte>()

@@ -100,9 +100,9 @@ namespace Nethermind.Serialization.Rlp
             return txLength;
         }
 
-        public int GetLength(Block item, RlpBehaviors rlpBehaviors)
+        public int GetLength(Block? item, RlpBehaviors rlpBehaviors)
         {
-            if (item == null)
+            if (item is null)
             {
                 return 1;
             }
@@ -151,9 +151,9 @@ namespace Nethermind.Serialization.Rlp
             return new Block(header, transactions, ommerHeaders);
         }
 
-        public Rlp Encode(Block item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public Rlp Encode(Block? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            if (item == null)
+            if (item is null)
             {
                 return Rlp.OfEmptySequence;
             }
@@ -163,9 +163,9 @@ namespace Nethermind.Serialization.Rlp
             return new Rlp(rlpStream.Data);
         }
         
-        public void Encode(RlpStream stream, Block item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public void Encode(RlpStream stream, Block? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            if (item == null)
+            if (item is null)
             {
                 stream.EncodeNullObject();
                 return;

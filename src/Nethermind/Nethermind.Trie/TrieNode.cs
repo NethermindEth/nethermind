@@ -47,7 +47,7 @@ namespace Nethermind.Trie
 
         public TrieNode(NodeType nodeType, Keccak keccak)
         {
-            if (keccak == null)
+            if (keccak is null)
             {
                 throw new ArgumentNullException(nameof(keccak));
             }
@@ -175,7 +175,7 @@ namespace Nethermind.Trie
 
                 if (_data![16] is null)
                 {
-                    if (_rlpStream == null)
+                    if (_rlpStream is null)
                     {
                         _data[16] = Array.Empty<byte>();
                     }
@@ -218,9 +218,9 @@ namespace Nethermind.Trie
             {
                 if (NodeType == NodeType.Unknown)
                 {
-                    if (FullRlp == null)
+                    if (FullRlp is null)
                     {
-                        if (Keccak == null)
+                        if (Keccak is null)
                         {
                             throw new TrieException("Unable to resolve node without Keccak");
                         }
@@ -228,7 +228,7 @@ namespace Nethermind.Trie
                         FullRlp = tree.LoadRlp(Keccak);
                         IsPersisted = true;
 
-                        if (FullRlp == null)
+                        if (FullRlp is null)
                         {
                             throw new TrieException($"Trie returned a NULL RLP for node {Keccak}");
                         }
@@ -240,7 +240,7 @@ namespace Nethermind.Trie
                 }
 
                 _rlpStream = FullRlp.AsRlpStream();
-                if (_rlpStream == null)
+                if (_rlpStream is null)
                 {
                     throw new InvalidAsynchronousStateException(
                         $"{nameof(_rlpStream)} is null when {nameof(NodeType)} is {NodeType}");
@@ -292,14 +292,14 @@ namespace Nethermind.Trie
         
         public void ResolveKey(ITrieNodeResolver tree, bool isRoot)
         {
-            if (Keccak != null)
+            if (Keccak is not null)
             {
                 // please not it is totally fine to leave the RLP null here
                 // this node will simply act as a ref only node (a ref to some node with unresolved data in the DB)
                 return;
             }
 
-            if (FullRlp == null || IsDirty)
+            if (FullRlp is null || IsDirty)
             {
                 FullRlp = RlpEncode(tree);
                 _rlpStream = FullRlp.AsRlpStream();
@@ -330,7 +330,7 @@ namespace Nethermind.Trie
 
         public Keccak? GetChildHash(int i)
         {
-            if (_rlpStream == null)
+            if (_rlpStream is null)
             {
                 return null;
             }
@@ -348,13 +348,13 @@ namespace Nethermind.Trie
                     "An attempt was made to ask about whether a child is null on a non-branch node.");
             }
 
-            if (_rlpStream != null && _data?[i] == null)
+            if (_rlpStream is not null && _data?[i] is null)
             {
                 SeekChild(i);
                 return _rlpStream!.PeekNextRlpLength() == 1;
             }
 
-            return _data?[i] == null || ReferenceEquals(_data[i], _nullNode);
+            return _data?[i] is null || ReferenceEquals(_data[i], _nullNode);
         }
 
         public long? LastSeen { get; set; }
@@ -366,7 +366,7 @@ namespace Nethermind.Trie
                 i++;
             }
 
-            if (_data?[i] == null)
+            if (_data?[i] is null)
             {
                 return false;
             }
@@ -435,7 +435,7 @@ namespace Nethermind.Trie
                 
                 // we expect this to happen as a Trie traversal error (please see the stack trace above)
                 // we need to investigate this case when it happens again
-                bool isKeccakCalculated = Keccak != null && FullRlp != null;
+                bool isKeccakCalculated = Keccak is not null && FullRlp is not null;
                 bool isKeccakCorrect = isKeccakCalculated && Keccak == Keccak.Compute(FullRlp);
                 throw new TrieException($"Unexpected type found at position {childIndex} of {this} with {nameof(_data)} of length {_data?.Length}. Expected a {nameof(TrieNode)} or {nameof(Keccak)} but found {childOrRef?.GetType()} with a value of {childOrRef}. Keccak calculated? : {isKeccakCalculated}; Keccak correct? : {isKeccakCorrect}");
             }
@@ -451,7 +451,7 @@ namespace Nethermind.Trie
 
         public void ReplaceChildRef(int i, TrieNode child)
         {
-            if (child == null)
+            if (child is null)
             {
                 throw new InvalidOperationException();
             }
@@ -478,7 +478,7 @@ namespace Nethermind.Trie
         public long GetMemorySize(bool recursive)
         {
             int keccakSize =
-                Keccak == null
+                Keccak is null
                     ? MemorySizes.RefSize
                     : MemorySizes.RefSize + Keccak.MemorySize;
             long fullRlpSize =
@@ -499,7 +499,7 @@ namespace Nethermind.Trie
 
             for (int i = 0; i < (_data?.Length ?? 0); i++)
             {
-                if (_data![i] == null)
+                if (_data![i] is null)
                 {
                     continue;
                 }
@@ -538,7 +538,7 @@ namespace Nethermind.Trie
         {
 #if DEBUG
             return
-                $"[{NodeType}({FullRlp?.Length}){(FullRlp != null && FullRlp?.Length < 32 ? $"{FullRlp.ToHexString()}" : "")}" +
+                $"[{NodeType}({FullRlp?.Length}){(FullRlp is not null && FullRlp?.Length < 32 ? $"{FullRlp.ToHexString()}" : "")}" +
                 $"|{Id}|{Keccak?.ToShortString()}|{LastSeen}|D:{IsDirty}|S:{IsSealed}|P:{IsPersisted}|";
 #else
             return $"[{NodeType}({FullRlp?.Length})|{Keccak?.ToShortString()}|{LastSeen}|D:{IsDirty}|S:{IsSealed}|P:{IsPersisted}|";
@@ -555,7 +555,7 @@ namespace Nethermind.Trie
         public TrieNode Clone()
         {
             TrieNode trieNode = new TrieNode(NodeType);
-            if (_data != null)
+            if (_data is not null)
             {
                 trieNode.InitData();
                 for (int i = 0; i < _data.Length; i++)
@@ -564,7 +564,7 @@ namespace Nethermind.Trie
                 }
             }
 
-            if (FullRlp != null)
+            if (FullRlp is not null)
             {
                 trieNode.FullRlp = FullRlp;
                 trieNode._rlpStream = FullRlp.AsRlpStream();
@@ -619,7 +619,7 @@ namespace Nethermind.Trie
 
             if (!IsLeaf)
             {
-                if (_data != null)
+                if (_data is not null)
                 {
                     for (int i = 0; i < _data.Length; i++)
                     {
@@ -661,7 +661,7 @@ namespace Nethermind.Trie
             maxLevelsDeep--;
             if (!IsLeaf)
             {
-                if (_data != null)
+                if (_data is not null)
                 {
                     for (int i = 0; i < _data!.Length; i++)
                     {
@@ -701,7 +701,7 @@ namespace Nethermind.Trie
             bool hasStorage = false;
             if (IsLeaf)
             {
-                if (_storageRoot == null && (Value?.Length ?? 0) > 64) // if not a storage leaf
+                if (_storageRoot is null && (Value?.Length ?? 0) > 64) // if not a storage leaf
                 {
                     Keccak storageRoot = _accountDecoder.DecodeStorageRootOnly(Value.AsRlpStream());
                     if (storageRoot != Keccak.EmptyTreeHash)
@@ -735,7 +735,7 @@ namespace Nethermind.Trie
 
         private void InitData()
         {
-            if (_data == null)
+            if (_data is null)
             {
                 switch (NodeType)
                 {
@@ -754,7 +754,7 @@ namespace Nethermind.Trie
 
         private void SeekChild(int itemToSetOn)
         {
-            if (_rlpStream == null)
+            if (_rlpStream is null)
             {
                 return;
             }
@@ -776,14 +776,14 @@ namespace Nethermind.Trie
         private object? ResolveChild(ITrieNodeResolver tree, int i)
         {
             object? childOrRef;
-            if (_rlpStream == null)
+            if (_rlpStream is null)
             {
                 childOrRef = _data?[i];
             }
             else
             {
                 InitData();
-                if (_data![i] == null)
+                if (_data![i] is null)
                 {
                     SeekChild(i);
                     int prefix = _rlpStream!.ReadByte();

@@ -109,10 +109,10 @@ namespace Nethermind.Evm
             byte[] machineCode = transaction.Init;
             byte[] data = transaction.Data ?? Array.Empty<byte>();
 
-            Address sender = transaction.SenderAddress;
+            Address? sender = transaction.SenderAddress;
             if (_logger.IsTrace) _logger.Trace($"Executing tx {transaction.Hash}");
 
-            if (sender == null)
+            if (sender is null)
             {
                 TraceLogInvalidTx(transaction, "SENDER_NOT_SPECIFIED");
                 QuickFail(transaction, block, txTracer, "sender not specified");
