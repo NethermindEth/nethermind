@@ -86,8 +86,8 @@ namespace Nethermind.State.Witnesses
             }
             else // not cached
             {
-                byte[] witnessData = _keyValueStore[blockHash.Bytes];
-                if (witnessData == null)
+                byte[]? witnessData = _keyValueStore[blockHash.Bytes];
+                if (witnessData is null)
                 {
                     if(_logger.IsTrace) _logger.Trace($"Missing witness for {blockHash}");
                     witness = null;

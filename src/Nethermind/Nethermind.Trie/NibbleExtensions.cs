@@ -46,7 +46,7 @@ namespace Nethermind.Trie
 
         public static Nibble[] FromHexString(string hexString)
         {
-            if (hexString == null)
+            if (hexString is null)
             {
                 throw new ArgumentNullException($"{nameof(hexString)}");
             }

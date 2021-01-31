@@ -62,7 +62,7 @@ namespace Nethermind.Serialization.Json
 
         public static long FromString(string s)
         {
-            if (s == null)
+            if (s is null)
             {
                 throw new JsonException("null cannot be assigned to long");
             }

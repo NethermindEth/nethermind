@@ -147,7 +147,7 @@ namespace Nethermind.State.Proofs
                 {
                     Nibble childIndex = _fullStoragePaths[storageIndex][_pathTraversalIndex];
                     Keccak childHash = node.GetChildHash((byte) childIndex);
-                    if (childHash == null)
+                    if (childHash is null)
                     {
                         AddEmpty(node, trieVisitContext);
                     }

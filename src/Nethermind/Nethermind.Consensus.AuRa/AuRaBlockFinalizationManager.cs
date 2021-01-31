@@ -270,12 +270,12 @@ namespace Nethermind.Consensus.AuRa
         
         public long? GetFinalizationLevel(long level)
         {
-            var block = _blockTree.FindHeader(level, BlockTreeLookupOptions.None);
+            BlockHeader? block = _blockTree.FindHeader(level, BlockTreeLookupOptions.None);
             var validators = new HashSet<Address>();
             var minSealersForFinalization = GetMinSealersForFinalization(level);
 
             // this can only happen when we are fast syncing headers before pivot
-            if (block == null)
+            if (block is null)
             {
                 // in that case check if it has enough blocks to best known to be finalized
                 // as everything before pivot should be finalized
@@ -286,7 +286,7 @@ namespace Nethermind.Consensus.AuRa
                 }
             }
             
-            while (block != null)
+            while (block is not null)
             {
                 validators.Add(block.Beneficiary);
                 if (validators.Count >= minSealersForFinalization)

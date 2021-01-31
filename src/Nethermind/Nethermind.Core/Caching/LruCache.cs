@@ -107,7 +107,7 @@ namespace Nethermind.Core.Caching
         [MethodImpl(MethodImplOptions.Synchronized)]
         public void Set(TKey key, TValue val)
         {
-            if (val == null)
+            if (val is null)
             {
                 Delete(key);
                 return;
