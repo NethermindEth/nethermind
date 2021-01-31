@@ -29,8 +29,8 @@ namespace Nethermind.Core.Crypto
 
         private byte[]? _prefixedBytes;
 
-        public PublicKey(string hexString)
-            : this(Core.Extensions.Bytes.FromHexString(hexString))
+        public PublicKey(string? hexString)
+            : this(Core.Extensions.Bytes.FromHexString(hexString ?? throw new ArgumentNullException(nameof(hexString))))
         {
         }
         
