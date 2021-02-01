@@ -99,6 +99,11 @@ namespace Nethermind.Db.Test
                 Assert.True(expected.AsSpan().SequenceEqual(actual), "Value is different from the expected one for index {0}", j);
                 j++;
             }
+
+            byte[] nonExistent = new byte[MemoryMappedKeyValueStore<TestConfig>.KeyLength];
+            random.NextBytes(nonExistent);
+            
+            Assert.IsFalse(store.TryGet(nonExistent, out _ ));
         }
 
         [Test]
