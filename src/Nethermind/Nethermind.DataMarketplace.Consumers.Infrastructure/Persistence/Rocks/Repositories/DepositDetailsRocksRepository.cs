@@ -105,7 +105,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Rocks.
                 
                 filteredDeposits = filteredDeposits.Where(d => 
                     !d.RefundClaimed && 
-                    // in time deposits, during the refund: units consumed will be always equal to all deposit units, hence we do not whether all units are consumed
+                    // in time deposits, during the refund: units consumed will be always equal to all deposit units, hence we do not check whether all units are consumed
                     ((d.ConsumedUnits < d.Deposit.Units) || d.DataAsset.UnitType == DataAssetUnitType.Time) &&
                     (!(d.EarlyRefundTicket is null) || query.CurrentBlockTimestamp >= d.Deposit.ExpiryTime));
             }
