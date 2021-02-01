@@ -252,6 +252,8 @@ namespace Nethermind.Core.Specs
         public bool LimitCodeSize => IsEip170Enabled;
 
         public bool UseHotAndColdStorage => IsEip2929Enabled;
+        
+        public bool UseTxAccessLists => IsEip2930Enabled;
 
         public bool ModExpEnabled => IsEip198Enabled;
 

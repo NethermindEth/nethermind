@@ -26,6 +26,7 @@ using Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.InMemory.D
 using Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.InMemory.Repositories;
 using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.Wallet;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.DataMarketplace.Consumers.Test.Services.Deposits
@@ -51,7 +52,8 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Deposits
         [Test]
         public void Can_get_a_single_item_report()
         {
-            DepositDetailsInMemoryRepository repository = new DepositDetailsInMemoryRepository(new DepositsInMemoryDb());
+            IDepositUnitsCalculator depositUnitsCalculator = Substitute.For<IDepositUnitsCalculator>();
+            DepositDetailsInMemoryRepository repository = new DepositDetailsInMemoryRepository(new DepositsInMemoryDb(), depositUnitsCalculator);
             repository.AddAsync(_details);
             ConsumerSessionInMemoryRepository sessionInMemoryRepository = new ConsumerSessionInMemoryRepository();
             DepositReportService reportService = new DepositReportService(repository, new DepositUnitsCalculator(sessionInMemoryRepository, Timestamper.Default), new ReceiptInMemoryRepository(), new ConsumerSessionInMemoryRepository(), Timestamper.Default);

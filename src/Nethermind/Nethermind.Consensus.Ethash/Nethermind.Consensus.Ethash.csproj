@@ -2,8 +2,9 @@
   <PropertyGroup>
     <TargetFramework>net5.0</TargetFramework>
     <IsPackable>false</IsPackable>
-    <LangVersion>8.0</LangVersion>
+    <LangVersion>9</LangVersion>
     <OutputType>Library</OutputType>
+    <Nullable>annotations</Nullable>
   </PropertyGroup>
   <ItemGroup>
     <DotNetCliToolReference Include="dotnet-xunit" Version="2.3.1" />

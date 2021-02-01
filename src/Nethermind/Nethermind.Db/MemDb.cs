@@ -31,7 +31,7 @@ namespace Nethermind.Db
         public long ReadsCount { get; private set; }
         public long WritesCount { get; private set; }
 
-        private readonly ConcurrentDictionary<byte[], byte[]> _db;
+        private readonly ConcurrentDictionary<byte[], byte[]?> _db;
 
         public MemDb(string name)
             : this(0, 0)
@@ -52,7 +52,7 @@ namespace Nethermind.Db
 
         public string Name { get; }
 
-        public byte[] this[byte[] key]
+        public byte[]? this[byte[] key]
         {
             get
             {
@@ -111,7 +111,7 @@ namespace Nethermind.Db
             _db.Clear();
         }
 
-        public IEnumerable<KeyValuePair<byte[], byte[]>> GetAll(bool ordered = false) => _db;
+        public IEnumerable<KeyValuePair<byte[], byte[]?>> GetAll(bool ordered = false) => _db;
 
         public IEnumerable<byte[]> GetAllValues(bool ordered = false) => Values;
 

@@ -37,7 +37,7 @@ namespace Nethermind.Store.Test
         public void Can_collect_stats()
         {
             MemDb memDb = new MemDb();
-            ISnapshotableDb stateDb = new StateDb(memDb);
+            IDb stateDb = memDb;
             TrieStore trieStore = new TrieStore(stateDb, new MemoryLimit(0.MB()), Persist.EveryBlock, LimboLogs.Instance);
             StateProvider stateProvider = new StateProvider(trieStore, stateDb, LimboLogs.Instance);
             StorageProvider storageProvider = new StorageProvider(trieStore, stateProvider, LimboLogs.Instance);
@@ -63,9 +63,7 @@ namespace Nethermind.Store.Test
             stateProvider.CommitTree(0);
             storageProvider.CommitTrees(1);
             stateProvider.CommitTree(1);
-            
-            stateDb.Commit();
-            
+
             memDb.Delete(codeHash2); // missing code
             Keccak storageKey = new Keccak("0x345e54154080bfa9e8f20c99d7a0139773926479bc59e5b4f830ad94b6425332");
             memDb.Delete(storageKey); // deletes some storage

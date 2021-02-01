@@ -63,6 +63,11 @@ namespace Nethermind.Blockchain.Processing
             }
         }
 
+        public bool IsProcessingBlocks(ulong? maxProcessingInterval)
+        {
+            return _processor.IsProcessingBlocks(maxProcessingInterval);
+        }
+
         public void Dispose()
         {
             _processor?.Dispose();

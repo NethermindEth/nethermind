@@ -22,6 +22,7 @@ using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Processing;
+using Nethermind.Blockchain.Services;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
@@ -87,11 +88,9 @@ namespace Nethermind.Runner.Ethereum.Steps
                 : NullWitnessCollector.Instance;
 
             setApi.MainStateDbWithCache = getApi.DbProvider.StateDb
-                .Innermost // TODO: PRUNING what a hack here just to pass the actual DB
                 .Cached(Trie.MemoryAllowance.TrieNodeCacheCount)
                 .WitnessedBy(witnessCollector);
-            IKeyValueStore? codeDb = getApi.DbProvider.CodeDb
-                .Innermost // TODO: PRUNING what a hack here just to pass the actual DB
+            IKeyValueStore codeDb = getApi.DbProvider.CodeDb
                 .WitnessedBy(witnessCollector);
 
             ITrieStore trieStore;
@@ -114,17 +113,17 @@ namespace Nethermind.Runner.Ethereum.Steps
             
             getApi.DisposeStack.Push(trieStore);
             trieStore.ReorgBoundaryReached += ReorgBoundaryReached;
-            var readOnlyTrieStore = setApi.ReadOnlyTrieStore = new ReadOnlyTrieStore(trieStore);
+            ITrieStore readOnlyTrieStore = setApi.ReadOnlyTrieStore = new ReadOnlyTrieStore(trieStore);
 
             IStateProvider stateProvider = setApi.StateProvider = new StateProvider(
                 trieStore,
                 codeDb,
                 getApi.LogManager);
 
-            ReadOnlyDbProvider readOnly = new ReadOnlyDbProvider(getApi.DbProvider, false);
+            ReadOnlyDbProvider readOnly = new(getApi.DbProvider, false);
             
-            PersistentTxStorage txStorage = new PersistentTxStorage(getApi.DbProvider.PendingTxsDb);
-            IStateReader stateReader = setApi.StateReader = new StateReader(readOnlyTrieStore, readOnly.GetDb<ISnapshotableDb>(DbNames.Code), getApi.LogManager);
+            PersistentTxStorage txStorage = new(getApi.DbProvider.PendingTxsDb);
+            IStateReader stateReader = setApi.StateReader = new StateReader(readOnlyTrieStore, readOnly.GetDb<IDb>(DbNames.Code), getApi.LogManager);
             
             setApi.ChainHeadStateProvider = new ChainHeadReadOnlyStateProvider(getApi.BlockTree, stateReader);
             Account.AccountStartNonce = getApi.ChainSpec.Parameters.AccountStartNonce;
@@ -134,26 +133,26 @@ namespace Nethermind.Runner.Ethereum.Steps
             if (_api.Config<IInitConfig>().DiagnosticMode == DiagnosticMode.VerifyTrie)
             {
                 logger.Info("Collecting trie stats and verifying that no nodes are missing...");
-                TrieStats stats = _api.StateProvider.CollectStats(getApi.DbProvider.CodeDb, _api.LogManager);
+                TrieStats stats = stateProvider.CollectStats(getApi.DbProvider.CodeDb, _api.LogManager);
                 logger.Info($"Starting from {getApi.BlockTree.Head?.Number} {getApi.BlockTree.Head?.StateRoot}{Environment.NewLine}" + stats);
             }
 
             // Init state if we need system calls before actual processing starts
-            if (getApi.BlockTree!.Head != null)
+            if (getApi.BlockTree!.Head?.StateRoot != null)
             {
                 stateProvider.StateRoot = getApi.BlockTree.Head.StateRoot;
             }
             
-            var txPool = _api.TxPool = CreateTxPool(txStorage);
+            ITxPool txPool = _api.TxPool = CreateTxPool(txStorage);
 
-            var onChainTxWatcher = new OnChainTxWatcher(getApi.BlockTree, txPool, getApi.SpecProvider, _api.LogManager);
+            OnChainTxWatcher onChainTxWatcher = new(getApi.BlockTree, txPool, getApi.SpecProvider, _api.LogManager);
             getApi.DisposeStack.Push(onChainTxWatcher);
 
             _api.BlockPreprocessor.AddFirst(
                 new RecoverSignatures(getApi.EthereumEcdsa, txPool, getApi.SpecProvider, getApi.LogManager));
             
-            var storageProvider = setApi.StorageProvider = new StorageProvider(
-                _api.TrieStore,
+            IStorageProvider storageProvider = setApi.StorageProvider = new StorageProvider(
+                trieStore,
                 stateProvider,
                 getApi.LogManager);
 
@@ -181,12 +180,12 @@ namespace Nethermind.Runner.Ethereum.Steps
             /* validation */
             var headerValidator = setApi.HeaderValidator = CreateHeaderValidator();
 
-            OmmersValidator ommersValidator = new OmmersValidator(
+            OmmersValidator ommersValidator = new(
                 getApi.BlockTree,
                 headerValidator,
                 getApi.LogManager);
 
-            TxValidator txValidator = new TxValidator(getApi.SpecProvider.ChainId);
+            TxValidator txValidator = new(getApi.SpecProvider.ChainId);
             
             var blockValidator = setApi.BlockValidator = new BlockValidator(
                 txValidator,
@@ -198,7 +197,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             setApi.TxPoolInfoProvider = new TxPoolInfoProvider(stateReader, txPool);
             var mainBlockProcessor = setApi.MainBlockProcessor = CreateBlockProcessor();
 
-            BlockchainProcessor blockchainProcessor = new BlockchainProcessor(
+            BlockchainProcessor blockchainProcessor = new(
                 getApi.BlockTree,
                 mainBlockProcessor,
                 _api.BlockPreprocessor,
@@ -214,7 +213,7 @@ namespace Nethermind.Runner.Ethereum.Steps
 
             if (syncConfig.BeamSync)
             {
-                BeamBlockchainProcessor beamBlockchainProcessor = new BeamBlockchainProcessor(
+                BeamBlockchainProcessor beamBlockchainProcessor = new(
                     new ReadOnlyDbProvider(_api.DbProvider, false),
                     getApi.BlockTree,
                     getApi.SpecProvider,
@@ -238,6 +237,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             // TODO: possibly hide it (but need to confirm that NDM does not really need it)
             var filterStore = setApi.FilterStore = new FilterStore();
             setApi.FilterManager = new FilterManager(filterStore, mainBlockProcessor, txPool, getApi.LogManager);
+            setApi.HealthHintService = CreateHealthHintService();
             return Task.CompletedTask;
         }
         
@@ -246,6 +246,10 @@ namespace Nethermind.Runner.Ethereum.Steps
             _api.LogManager.GetClassLogger().Warn($"Saving reorg boundary {e.BlockNumber}");
             (_api.BlockTree as BlockTree)!.SavePruningReorganizationBoundary(e.BlockNumber);
         }
+        
+        protected virtual IHealthHintService CreateHealthHintService() =>
+            new HealthHintService(_api.ChainSpec);
+
 
         protected virtual TxPool.TxPool CreateTxPool(PersistentTxStorage txStorage) =>
             new TxPool.TxPool(

@@ -73,7 +73,7 @@ namespace Nethermind.Stats.Model
             get => _clientId;
             set
             {
-                if (_clientId == null)
+                if (_clientId is null)
                 {
                     _clientId = value;
                     RecognizeClientType();
@@ -180,7 +180,7 @@ namespace Nethermind.Stats.Model
         
         private void RecognizeClientType()
         {
-            if (_clientId == null)
+            if (_clientId is null)
             {
                 ClientType = NodeClientType.Unknown;
             }

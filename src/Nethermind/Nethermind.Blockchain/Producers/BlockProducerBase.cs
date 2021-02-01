@@ -56,6 +56,8 @@ namespace Nethermind.Blockchain.Producers
         private readonly ITimestamper _timestamper;
         private readonly ISpecProvider _spec;
         private readonly ITxSource _txSource;
+        
+        protected DateTime _lastProducedBlock;
         protected ILogger Logger { get; }
 
         protected BlockProducerBase(
@@ -85,6 +87,17 @@ namespace Nethermind.Blockchain.Producers
         public abstract void Start();
 
         public abstract Task StopAsync();
+
+        protected abstract bool IsRunning();
+        public bool IsProducingBlocks(ulong? maxProducingInterval)
+        {
+            if (IsRunning() == false)
+                return false;
+            if (maxProducingInterval != null)
+                return _lastProducedBlock.AddSeconds(maxProducingInterval.Value) > DateTime.UtcNow;
+            else
+                return true;
+        }
 
         private readonly object _newBlockLock = new object();
 
@@ -138,6 +151,7 @@ namespace Nethermind.Blockchain.Producers
                                 if (Logger.IsInfo) Logger.Info($"Sealed block {t.Result.ToString(Block.Format.HashNumberDiffAndTx)}");
                                 BlockTree.SuggestBlock(t.Result);
                                 Metrics.BlocksSealed++;
+                                _lastProducedBlock = DateTime.UtcNow;
                                 return true;
                             }
                             else

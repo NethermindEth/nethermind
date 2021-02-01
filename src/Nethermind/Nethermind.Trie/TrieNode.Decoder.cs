@@ -32,11 +32,11 @@ namespace Nethermind.Trie
     {
         private class TrieNodeDecoder
         {
-            public byte[] Encode(ITrieNodeResolver tree, TrieNode item)
+            public byte[] Encode(ITrieNodeResolver tree, TrieNode? item)
             {
                 Metrics.TreeNodeRlpEncodings++;
 
-                if (item == null)
+                if (item is null)
                 {
                     throw new TrieException("An attempt was made to RLP encode a null node.");
                 }
@@ -64,12 +64,12 @@ namespace Nethermind.Trie
                 
                 nodeRef.ResolveKey(tree, false);
 
-                int contentLength = Rlp.LengthOf(keyBytes) + (nodeRef.Keccak == null ? nodeRef.FullRlp.Length : Rlp.LengthOfKeccakRlp);
+                int contentLength = Rlp.LengthOf(keyBytes) + (nodeRef.Keccak is null ? nodeRef.FullRlp.Length : Rlp.LengthOfKeccakRlp);
                 int totalLength = Rlp.LengthOfSequence(contentLength);
                 RlpStream rlpStream = new RlpStream(totalLength);
                 rlpStream.StartSequence(contentLength);
                 rlpStream.Encode(keyBytes);
-                if (nodeRef.Keccak == null)
+                if (nodeRef.Keccak is null)
                 {
                     // I think it can only happen if we have a short extension to a branch with a short extension as the only child?
                     // so |
@@ -89,7 +89,7 @@ namespace Nethermind.Trie
 
             private static byte[] EncodeLeaf(TrieNode node)
             {
-                if (node.Key == null)
+                if (node.Key is null)
                 {
                     throw new TrieException($"Hex prefix of a leaf node is null at node {node.Keccak}");
                 }
@@ -133,14 +133,14 @@ namespace Nethermind.Trie
                 item.SeekChild(0);
                 for (int i = 0; i < 16; i++)
                 {
-                    if (item._rlpStream != null && item._data![i] == null)
+                    if (item._rlpStream is not null && item._data![i] is null)
                     {
                         (int prefixLength, int contentLength) = item._rlpStream.PeekPrefixAndContentLength();
                         totalLength += prefixLength + contentLength;
                     }
                     else
                     {
-                        if (ReferenceEquals(item._data![i], _nullNode) || item._data[i] == null)
+                        if (ReferenceEquals(item._data![i], _nullNode) || item._data[i] is null)
                         {
                             totalLength++;
                         }
@@ -152,7 +152,7 @@ namespace Nethermind.Trie
                         {
                             TrieNode childNode = (TrieNode) item._data[i];
                             childNode!.ResolveKey(tree, false);
-                            totalLength += childNode.Keccak == null ? childNode.FullRlp!.Length : Rlp.LengthOfKeccakRlp;
+                            totalLength += childNode.Keccak is null ? childNode.FullRlp!.Length : Rlp.LengthOfKeccakRlp;
                         }
                     }
 
@@ -170,7 +170,7 @@ namespace Nethermind.Trie
                 item.SeekChild(0);
                 for (int i = 0; i < 16; i++)
                 {
-                    if (rlpStream != null && item._data![i] == null)
+                    if (rlpStream != null && item._data![i] is null)
                     {
                         int length = rlpStream.PeekNextRlpLength();
                         Span<byte> nextItem = rlpStream.Data.AsSpan().Slice(rlpStream.Position, length);
@@ -181,7 +181,7 @@ namespace Nethermind.Trie
                     else
                     {
                         rlpStream?.SkipItem();
-                        if (ReferenceEquals(item._data![i], _nullNode) || item._data[i] == null)
+                        if (ReferenceEquals(item._data![i], _nullNode) || item._data[i] is null)
                         {
                             destination[position++] = 128;
                         }
@@ -193,7 +193,7 @@ namespace Nethermind.Trie
                         {
                             TrieNode childNode = (TrieNode) item._data[i];
                             childNode!.ResolveKey(tree, false);
-                            if (childNode.Keccak == null)
+                            if (childNode.Keccak is null)
                             {
                                 Span<byte> fullRlp = childNode.FullRlp.AsSpan();
                                 fullRlp.CopyTo(destination.Slice(position, fullRlp.Length));

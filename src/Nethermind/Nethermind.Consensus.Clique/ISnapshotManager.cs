@@ -21,6 +21,7 @@ namespace Nethermind.Consensus.Clique
 {
     public interface ISnapshotManager
     {
+        ulong GetLastSignersCount();
         Snapshot GetOrCreateSnapshot(long number, Keccak hash);
         Address GetBlockSealer(BlockHeader header);
         bool IsValidVote(Snapshot snapshot, Address address, bool authorize);

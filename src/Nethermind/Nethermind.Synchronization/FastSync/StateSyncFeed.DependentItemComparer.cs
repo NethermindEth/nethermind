@@ -43,7 +43,7 @@ namespace Nethermind.Synchronization.FastSync
                 }
             }
 
-            public bool Equals(DependentItem x, DependentItem y)
+            public bool Equals(DependentItem? x, DependentItem? y)
             {
                 return x?.SyncItem.Hash == y?.SyncItem.Hash;
             }

@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -39,6 +39,7 @@ namespace Nethermind.Blockchain.Producers
         private readonly SemaphoreSlim _newBlockLock = new SemaphoreSlim(1, 1);
         private readonly Timer _timer;
         private readonly TimeSpan _timeout = TimeSpan.FromMilliseconds(200);
+        private bool _isRunning = false;
 
         public DevBlockProducer(
             ITxSource txSource,
@@ -67,6 +68,7 @@ namespace Nethermind.Blockchain.Producers
             _miningConfig = miningConfig ?? throw new ArgumentNullException(nameof(miningConfig));
             _timer = new Timer(_timeout.TotalMilliseconds);
             _timer.Elapsed += TimerOnElapsed;
+            _timer.AutoReset = false;
         }
 
         private void TimerOnElapsed(object sender, ElapsedEventArgs e)
@@ -77,17 +79,22 @@ namespace Nethermind.Blockchain.Producers
             {
                 OnNewPendingTxAsync(new TxEventArgs(tx));
             }
+
+            _timer.Enabled = true;
         }
 
         public override void Start()
         {
+            _isRunning = true;
             _txPool.NewPending += OnNewPendingTx;
             BlockTree.NewHeadBlock += OnNewHeadBlock;
             _timer.Start();
+            _lastProducedBlock = DateTime.UtcNow;
         }
 
         public override async Task StopAsync()
         {
+            _isRunning = false;
             _txPool.NewPending -= OnNewPendingTx;
             _timer.Stop();
             BlockTree.NewHeadBlock -= OnNewHeadBlock;
@@ -103,7 +110,6 @@ namespace Nethermind.Blockchain.Producers
             {
                 UInt256 change = new UInt256((ulong)(_random.Next(100) + 50));
                 difficulty = UInt256.Max(1000, UInt256.Max(parent.Difficulty, 1000) / 100 * change);
-                if(Logger.IsInfo) Logger.Info($"Randomized difficulty for the child of {parent.ToString(BlockHeader.Format.Short)} is {difficulty}");
             }
             else
             {
@@ -111,6 +117,11 @@ namespace Nethermind.Blockchain.Producers
             }
 
             return difficulty;
+        }
+
+        protected override bool IsRunning()
+        {
+            return _timer != null && _isRunning;
         }
 
         private void OnNewPendingTx(object sender, TxEventArgs e)
@@ -146,6 +157,13 @@ namespace Nethermind.Blockchain.Producers
         {
             if (_newBlockLock.CurrentCount == 0)
             {
+                if (_miningConfig.RandomizedBlocks)
+                {
+                    if (Logger.IsInfo)
+                        Logger.Info(
+                            $"Randomized difficulty for {e.Block.ToString(Block.Format.Short)} is {e.Block.Difficulty}");
+                }
+
                 _newBlockLock.Release();
             }
         }

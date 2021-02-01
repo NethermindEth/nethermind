@@ -26,7 +26,7 @@ namespace Nethermind.Db.Rocks
             string basePath,
             RocksDbSettings rocksDbSettings,
             IDbConfig dbConfig, 
-            ILogManager logManager = null)
+            ILogManager logManager)
                 : base(basePath, rocksDbSettings, dbConfig, logManager)
         {
         }

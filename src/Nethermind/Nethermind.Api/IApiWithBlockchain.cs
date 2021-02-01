@@ -16,6 +16,7 @@
 // 
 
 #nullable enable
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Rewards;
@@ -44,8 +45,8 @@ namespace Nethermind.Api
         IBlockProducer? BlockProducer { get; set; }
         IBlockValidator? BlockValidator { get; set; }
         IEnode? Enode { get; set; }
-        IFilterStore FilterStore { get; set; }
-        IFilterManager FilterManager { get; set; }
+        IFilterStore? FilterStore { get; set; }
+        IFilterManager? FilterManager { get; set; }
         IHeaderValidator? HeaderValidator { get; set; }
         ITrieStore? ReadOnlyTrieStore { get; set; }
         IRewardCalculatorSource? RewardCalculatorSource { get; set; }
@@ -69,5 +70,6 @@ namespace Nethermind.Api
         ITxPool? TxPool { get; set; }
         ITxPoolInfoProvider? TxPoolInfoProvider { get; set; }
         IWitnessCollector? WitnessCollector { get; set; }
+        IHealthHintService? HealthHintService { get; set; }
     }
 }

@@ -21,6 +21,7 @@ using System.Threading.Tasks;
 using Castle.DynamicProxy.Generators.Emitters.SimpleAST;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Processing;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.AuRa.Config;

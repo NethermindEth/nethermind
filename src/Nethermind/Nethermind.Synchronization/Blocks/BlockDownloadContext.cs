@@ -34,7 +34,7 @@ namespace Nethermind.Synchronization.Blocks
         private readonly bool _downloadReceipts;
         private readonly IReceiptsRecovery _receiptsRecovery;
 
-        public BlockDownloadContext(ISpecProvider specProvider, PeerInfo syncPeer, BlockHeader[] headers, bool downloadReceipts, IReceiptsRecovery receiptsRecovery)
+        public BlockDownloadContext(ISpecProvider specProvider, PeerInfo syncPeer, BlockHeader?[] headers, bool downloadReceipts, IReceiptsRecovery receiptsRecovery)
         {
             _indexMapping = new Dictionary<int, int>();
             _downloadReceipts = downloadReceipts;
@@ -53,21 +53,22 @@ namespace Nethermind.Synchronization.Blocks
             int currentBodyIndex = 0;
             for (int i = 1; i < headers.Length; i++)
             {
-                if (headers[i] == null)
+                BlockHeader? header = headers[i];
+                if (header?.Hash == null)
                 {
                     break;
                 }
 
-                if (headers[i].HasBody)
+                if (header.HasBody)
                 {
-                    Blocks[i - 1] = new Block(headers[i]);
+                    Blocks[i - 1] = new Block(header);
                     _indexMapping.Add(currentBodyIndex, i - 1);
                     currentBodyIndex++;
-                    NonEmptyBlockHashes.Add(headers[i].Hash);
+                    NonEmptyBlockHashes.Add(header.Hash);
                 }
                 else
                 {
-                    Blocks[i - 1] = new Block(headers[i], BlockBody.Empty);
+                    Blocks[i - 1] = new Block(header, BlockBody.Empty);
                 }
             }
         }

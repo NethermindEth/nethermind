@@ -28,6 +28,7 @@ using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.AuRa.Contracts.DataStore;
 using Nethermind.Consensus.AuRa.Rewards;
+using Nethermind.Consensus.AuRa.Services;
 using Nethermind.Consensus.AuRa.Transactions;
 using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Consensus.Transactions;
@@ -48,6 +49,7 @@ namespace Nethermind.Runner.Ethereum.Steps
         private INethermindApi NethermindApi => _api;
         
         private AuRaSealValidator? _sealValidator;
+        private IAuRaStepCalculator? _auRaStepCalculator;
         private readonly IAuraConfig _auraConfig;
         
         public InitializeBlockchainAuRa(AuRaNethermindApi api) : base(api)
@@ -98,6 +100,10 @@ namespace Nethermind.Runner.Ethereum.Steps
 
             return processor;
         }
+        
+        protected override IHealthHintService CreateHealthHintService() =>
+            new AuraHealthHintService(_auRaStepCalculator, _api.ValidatorStore);
+
 
         private IAuRaValidator CreateAuRaValidator(IBlockProcessor processor, ReadOnlyTxProcessorSource readOnlyTxProcessorSource)
         {
@@ -186,6 +192,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             _api.SealValidator = _sealValidator = new AuRaSealValidator(_api.ChainSpec.AuRa, auRaStepCalculator, _api.BlockTree, _api.ValidatorStore, validSealerStrategy, _api.EthereumEcdsa, _api.LogManager);
             _api.RewardCalculatorSource = AuRaRewardCalculator.GetSource(_api.ChainSpec.AuRa, _api.AbiEncoder);
             _api.Sealer = new AuRaSealer(_api.BlockTree, _api.ValidatorStore, auRaStepCalculator, _api.EngineSigner, validSealerStrategy, _api.LogManager);
+            _auRaStepCalculator = auRaStepCalculator;
         }
         
         // private IReadOnlyTransactionProcessorSource GetReadOnlyTransactionProcessorSource() => 

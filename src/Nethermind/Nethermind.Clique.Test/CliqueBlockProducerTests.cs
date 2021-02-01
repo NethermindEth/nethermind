@@ -98,8 +98,8 @@ namespace Nethermind.Clique.Test
                 MemDb headersDb = new MemDb();
                 MemDb blockInfoDb = new MemDb();
                 
-                ISnapshotableDb stateDb = new StateDb();
-                ISnapshotableDb codeDb = new StateDb();
+                MemDb stateDb = new MemDb();
+                MemDb codeDb = new MemDb();
 
                 ISpecProvider specProvider = RinkebySpecProvider.Instance;
 
@@ -242,6 +242,13 @@ namespace Nethermind.Clique.Test
             {
                 if (_logger.IsInfo) _logger.Info($"UNCAST VOTE ON {address}");
                 _producers[nodeId].UncastVote(address);
+                return this;
+            }
+            
+            public On IsProducingBlocks(PrivateKey nodeId, bool expected, ulong? maxInterval)
+            {
+                if (_logger.IsInfo) _logger.Info($"IsProducingBlocks");
+                Assert.AreEqual(expected, ((IBlockProducer)_producers[nodeId]).IsProducingBlocks(maxInterval));
                 return this;
             }
 
@@ -529,6 +536,19 @@ namespace Nethermind.Clique.Test
                 .AssertHeadBlockIs(TestItem.PrivateKeyA, 1L)
                 .StopNode(TestItem.PrivateKeyA);
         }
+        
+        [Test]
+        public async Task IsProducingBlocks_returns_expected_results()
+        {
+            On result = await On.Goerli
+                .CreateNode(TestItem.PrivateKeyA)
+                .ProcessGenesis()
+                .IsProducingBlocks(TestItem.PrivateKeyA, true, null)
+                .StopNode(TestItem.PrivateKeyA);
+                
+            result
+                .IsProducingBlocks(TestItem.PrivateKeyA, false, null);
+        }
 
         [Test]
         public async Task When_producing_blocks_skips_queued_and_bad_transactions()
@@ -559,7 +579,7 @@ namespace Nethermind.Clique.Test
                 .StopNode(TestItem.PrivateKeyA)
                 .ContinueWith(t => t.Result.StopNode(TestItem.PrivateKeyB));
         }
-
+        
         [Test]
         public void Single_validator_can_produce_first_block_in_turn()
         {

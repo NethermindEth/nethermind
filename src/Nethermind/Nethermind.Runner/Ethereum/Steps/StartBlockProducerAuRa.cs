@@ -23,6 +23,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Data;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Producers;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.AuRa.Config;
@@ -48,7 +49,7 @@ namespace Nethermind.Runner.Ethereum.Steps
         private new readonly AuRaNethermindApi _api;
         private INethermindApi NethermindApi => _api;
         
-        private readonly IAuraConfig? _auraConfig;
+        private readonly IAuraConfig _auraConfig;
         private IAuRaValidator? _validator;
         private DictionaryContractDataStore<TxPriorityContract.Destination>? _minGasPricesContractDataStore;
         private TxPriorityContract? _txPriorityContract;
@@ -147,7 +148,7 @@ namespace Nethermind.Runner.Ethereum.Steps
         {
             // We need special one for TxPriority as its following Head separately with events and we want rules from Head, not produced block
             ReadOnlyTxProcessorSource readOnlyTxProcessorSourceForTxPriority = 
-                new ReadOnlyTxProcessorSource(_api.DbProvider, _api.ReadOnlyTrieStore, _api.BlockTree, _api.SpecProvider, _api.LogManager);
+                new(_api.DbProvider, _api.ReadOnlyTrieStore, _api.BlockTree, _api.SpecProvider, _api.LogManager);
             
             (_txPriorityContract, _localDataSource) = TxFilterBuilders.CreateTxPrioritySources(_auraConfig, _api, readOnlyTxProcessorSourceForTxPriority);
 
@@ -259,7 +260,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             if (_txPermissionFilter != null)
             {
                 // we now only need to filter generated transactions here, as regular ones are filtered on TxPoolTxSource filter based on CreateTxSourceFilter method
-                txSource = new FilteredTxSource<GeneratedTransaction>(txSource, _txPermissionFilter);
+                txSource = new FilteredTxSource<GeneratedTransaction>(txSource, _txPermissionFilter, _api.LogManager);
             }
 
             return txSource;

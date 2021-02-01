@@ -54,15 +54,15 @@ namespace Nethermind.Serialization.Rlp
             return account;
         }
 
-        public Rlp Encode(Account item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public Rlp Encode(Account? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            if (item == null)
+            if (item is null)
             {
                 return Rlp.OfEmptySequence;
             }
             
             int contentLength = GetContentLength(item);
-            RlpStream rlpStream = new RlpStream(Rlp.LengthOfSequence(contentLength));
+            RlpStream rlpStream = new(Rlp.LengthOfSequence(contentLength));
             rlpStream.StartSequence(contentLength);
             rlpStream.Encode(item.Nonce);
             rlpStream.Encode(item.Balance);
@@ -71,9 +71,9 @@ namespace Nethermind.Serialization.Rlp
             return new Rlp(rlpStream.Data);
         }
 
-        public int GetLength(Account item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public int GetLength(Account? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            if (item == null)
+            if (item is null)
             {
                 return 1;
             }
@@ -81,9 +81,9 @@ namespace Nethermind.Serialization.Rlp
             return Rlp.LengthOfSequence(GetContentLength(item));
         }
         
-        private int GetContentLength(Account item)
+        private int GetContentLength(Account? item)
         {
-            if (item == null)
+            if (item is null)
             {
                 return 0;
             }
@@ -92,11 +92,6 @@ namespace Nethermind.Serialization.Rlp
             contentLength += Rlp.LengthOf(item.Nonce);
             contentLength += Rlp.LengthOf(item.Balance);
             return contentLength;
-        }
-        
-        public void Encode(MemoryStream stream, Account item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        {
-            throw new NotImplementedException();
         }
     }
 }

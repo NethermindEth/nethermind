@@ -22,14 +22,14 @@ namespace Nethermind.Trie.Pruning
     {
         private NullTrieNodeResolver() { }
         
-        public static NullTrieNodeResolver Instance = new NullTrieNodeResolver();
+        public static readonly NullTrieNodeResolver Instance = new ();
 
         public TrieNode FindCachedOrUnknown(Keccak hash, bool addToCacheWhenNotFound)
         {
-            return new TrieNode(NodeType.Unknown, hash);
+            return new (NodeType.Unknown, hash);
         }
 
-        public byte[]? LoadRlp(Keccak hash, bool allowCaching)
+        public byte[]? LoadRlp(Keccak hash)
         {
             return null;
         }

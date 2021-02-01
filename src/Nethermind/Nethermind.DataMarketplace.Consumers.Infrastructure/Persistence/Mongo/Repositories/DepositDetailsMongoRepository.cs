@@ -19,6 +19,7 @@ using System.Threading.Tasks;
 using MongoDB.Driver;
 using MongoDB.Driver.Linq;
 using Nethermind.Core.Crypto;
+using Nethermind.DataMarketplace.Consumers.Deposits;
 using Nethermind.DataMarketplace.Consumers.Deposits.Domain;
 using Nethermind.DataMarketplace.Consumers.Deposits.Queries;
 using Nethermind.DataMarketplace.Consumers.Deposits.Repositories;
@@ -31,10 +32,12 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Mongo.
     public class DepositDetailsMongoRepository : IDepositDetailsRepository
     {
         private readonly IMongoDatabase _database;
+        private readonly IDepositUnitsCalculator _depositUnitsCalculator;
 
-        public DepositDetailsMongoRepository(IMongoDatabase database)
+        public DepositDetailsMongoRepository(IMongoDatabase database, IDepositUnitsCalculator depositUnitsCalculator)
         {
             _database = database;
+            _depositUnitsCalculator = depositUnitsCalculator;
         }
 
         public Task<DepositDetails?> GetAsync(Keccak id)
@@ -74,7 +77,13 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Mongo.
 
                 if (query.EligibleToRefund)
                 {
-                    filteredDeposits = filteredDeposits.Where(d => !d.RefundClaimed &&
+                    foreach (var deposit in deposits)
+                    {
+                        uint consumedUnits = await _depositUnitsCalculator.GetConsumedAsync(deposit);
+                        deposit.SetConsumedUnits(consumedUnits);
+                    }
+                    
+                    filteredDeposits = filteredDeposits.Where(d => !d.RefundClaimed && (d.ConsumedUnits < d.Deposit.Units) &&
                                                                    (!(d.EarlyRefundTicket is null) ||
                                                                     query.CurrentBlockTimestamp >= d.Deposit.ExpiryTime
                                                                    ));

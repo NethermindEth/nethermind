@@ -36,6 +36,6 @@ namespace Nethermind.Trie.Pruning
         /// <param name="hash"></param>
         /// <param name="allowCaching"></param>
         /// <returns></returns>
-        byte[] LoadRlp(Keccak hash, bool allowCaching);
+        byte[] LoadRlp(Keccak hash);
     }
 }

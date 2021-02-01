@@ -43,7 +43,7 @@ namespace Nethermind.Evm
 
         public bool ValidateJump(int destination, bool isSubroutine)
         {
-            if (_validJumpDestinations == null)
+            if (_validJumpDestinations is null)
             {
                 CalculateJumpDestinations();
             }

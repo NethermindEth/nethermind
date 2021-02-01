@@ -76,8 +76,8 @@ namespace Nethermind.Consensus.AuRa.Transactions
             ITransactionPermissionContract.TxPermissions txPermissions = ITransactionPermissionContract.TxPermissions.None;
             bool shouldCache = true;
             
-            var versionedContract = GetVersionedContract(parentHeader);
-            if (versionedContract == null)
+            ITransactionPermissionContract versionedContract = GetVersionedContract(parentHeader);
+            if (versionedContract is null)
             {
                 if (_logger.IsError) _logger.Error("Unknown version of tx permissions contract is used.");
             }
@@ -91,7 +91,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
                 }
                 catch (AbiException e)
                 {
-                    if (_logger.IsError) _logger.Error($"Error calling tx permissions contract on {parentHeader.ToString(BlockHeader.Format.FullHashAndNumber)} {new StackTrace()}.", e);
+                    if (_logger.IsError) _logger.Error($"Error calling tx permissions contract on {parentHeader.ToString(BlockHeader.Format.FullHashAndNumber)} for tx {tx.ToShortString()} {new StackTrace()}.", e);
                 }
             }
 
@@ -103,7 +103,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
             return txPermissions;
         }
 
-        private ITransactionPermissionContract GetVersionedContract(BlockHeader blockHeader)
+        private ITransactionPermissionContract? GetVersionedContract(BlockHeader blockHeader)
             => _contract.ResolveVersion(blockHeader);
 
         private ITransactionPermissionContract.TxPermissions GetTxType(Transaction tx) =>

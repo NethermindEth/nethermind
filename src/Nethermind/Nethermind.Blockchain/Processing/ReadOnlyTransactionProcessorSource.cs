@@ -29,7 +29,7 @@ namespace Nethermind.Blockchain.Processing
 
         public ReadOnlyTxProcessorSource(IDbProvider dbProvider, ITrieStore trieStore, IBlockTree blockTree, ISpecProvider specProvider, ILogManager logManager)
         {
-            var readDbs = new ReadOnlyDbProvider(dbProvider, false);
+            ReadOnlyDbProvider readDbs = new(dbProvider, false);
             _environment = new ReadOnlyTxProcessingEnv(readDbs, trieStore, new ReadOnlyBlockTree(blockTree), specProvider, logManager);
         }
 

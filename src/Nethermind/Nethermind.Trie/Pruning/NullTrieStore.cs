@@ -23,7 +23,7 @@ namespace Nethermind.Trie.Pruning
     {
         private NullTrieStore() { }
 
-        public static NullTrieStore Instance { get; } = new NullTrieStore();
+        public static NullTrieStore Instance { get; } = new ();
 
         public void CommitNode(long blockNumber, NodeCommitInfo nodeCommitInfo) { }
 
@@ -39,10 +39,10 @@ namespace Nethermind.Trie.Pruning
 
         public TrieNode FindCachedOrUnknown(Keccak hash, bool addToCacheWhenNotFound)
         {
-            return new TrieNode(NodeType.Unknown, hash);
+            return new (NodeType.Unknown, hash);
         }
 
-        public byte[] LoadRlp(Keccak hash, bool allowCaching)
+        public byte[] LoadRlp(Keccak hash)
         {
             return Array.Empty<byte>();
         }

@@ -19,13 +19,13 @@ using Nethermind.Logging;
 
 namespace Nethermind.Db.Rocks
 {
-    public class SimpleColumnRocksDb<T> : ColumnsDb<T>
+    public class SimpleColumnRocksDb<T> : ColumnsDb<T> where T : notnull
     {
         public SimpleColumnRocksDb(
             string basePath,
             RocksDbSettings rocksDbSettings,
             IDbConfig dbConfig,
-            ILogManager logManager = null)
+            ILogManager logManager)
                 : base(basePath, rocksDbSettings, dbConfig, logManager)
         {
         }

@@ -94,9 +94,12 @@ namespace Nethermind.Blockchain.Producers
             LoopCancellationTokenSource?.Cancel();
             await (_producerTask ?? Task.CompletedTask);
         }
+
+        protected override bool IsRunning() => _producerTask != null && _producerTask.IsCompleted == false;
         
         protected virtual async ValueTask ProducerLoop()
         {
+            _lastProducedBlock = DateTime.UtcNow;
             while (!LoopCancellationTokenSource.IsCancellationRequested)
             {
                 if (_canProduce == 1 && BlockProcessingQueue.IsEmpty)

@@ -38,6 +38,7 @@ using Nethermind.Specs.Forks;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Storages;
+using NSubstitute;
 using NUnit.Framework;
 using BlockTree = Nethermind.Blockchain.BlockTree;
 
@@ -59,7 +60,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             var txStorage = new InMemoryTxStorage();
 
             var txPool = new TxPool.TxPool(txStorage, ethereumEcdsa, specProvider, new TxPoolConfig(),
-                new StateProvider(new TrieStore(new StateDb(), LimboLogs.Instance), new StateDb(), LimboLogs.Instance),  LimboLogs.Instance);
+                new StateProvider(new TrieStore(new MemDb(), LimboLogs.Instance), new MemDb(), LimboLogs.Instance),  LimboLogs.Instance);
 
             IDb blockDb = new MemDb();
             IDb headerDb = new MemDb();

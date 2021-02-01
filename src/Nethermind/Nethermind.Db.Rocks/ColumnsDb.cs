@@ -23,7 +23,7 @@ using RocksDbSharp;
 
 namespace Nethermind.Db.Rocks
 {
-    public abstract class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T>
+    public abstract class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : notnull
     {
         private readonly IDictionary<T, IDbWithSpan> _columnDbs = new Dictionary<T, IDbWithSpan>();
         
@@ -33,9 +33,9 @@ namespace Nethermind.Db.Rocks
             Name = settings.DbName;
             keys = GetEnumKeys(keys);
 
-            foreach (var key in keys)
+            foreach (T key in keys)
             {
-                _columnDbs[key] = new ColumnDb(Db, this, key.ToString()); 
+                _columnDbs[key] = new ColumnDb(Db, this, key.ToString()!); 
             }
         }
 
@@ -55,11 +55,11 @@ namespace Nethermind.Db.Rocks
         {
             InitCache(dbConfig);
             
-            var result = new ColumnFamilies();
-            var blockCacheSize = ReadConfig<ulong>(dbConfig, nameof(dbConfig.BlockCacheSize), name);
-            foreach (var key in keys)
+            ColumnFamilies result = new();
+            ulong blockCacheSize = ReadConfig<ulong>(dbConfig, nameof(dbConfig.BlockCacheSize), name);
+            foreach (T key in keys)
             {
-                var columnFamilyOptions = new ColumnFamilyOptions();
+                ColumnFamilyOptions columnFamilyOptions = new();
                 columnFamilyOptions.OptimizeForPointLookup(blockCacheSize);
                 columnFamilyOptions.SetBlockBasedTableFactory(
                     new BlockBasedTableOptions()

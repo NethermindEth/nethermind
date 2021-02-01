@@ -19,6 +19,9 @@ using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
+using Nethermind.Blockchain;
+using Nethermind.JsonRpc.Modules;
+using Nethermind.Logging;
 using Nethermind.JsonRpc;
 
 namespace Nethermind.HealthChecks
@@ -27,6 +30,8 @@ namespace Nethermind.HealthChecks
     {
         private INethermindApi _api;
         private IHealthChecksConfig _healthChecksConfig;
+        private INodeHealthService _nodeHealthService;
+        private ILogger _logger;
         private IJsonRpcConfig _jsonRpcConfig;
 
         public void Dispose()
@@ -45,6 +50,8 @@ namespace Nethermind.HealthChecks
             _healthChecksConfig = _api.Config<IHealthChecksConfig>();
             _jsonRpcConfig = _api.Config<IJsonRpcConfig>();
 
+            _logger = api.LogManager.GetClassLogger();
+            
             return Task.CompletedTask;
         }
 
@@ -53,12 +60,12 @@ namespace Nethermind.HealthChecks
             service.AddHealthChecks()
                 .AddTypeActivatedCheck<NodeHealthCheck>(
                     "node-health", 
-                    args: new object[] { _api.RpcModuleProvider });
+                    args: new object[] { _nodeHealthService });
             if (_healthChecksConfig.UIEnabled)
             {
                 service.AddHealthChecksUI(setup =>
                 {
-                    setup.AddHealthCheckEndpoint("health", BuildEndpointForUI());
+                    setup.AddHealthCheckEndpoint("health", BuildEndpointForUi());
                     setup.SetEvaluationTimeInSeconds(_healthChecksConfig.PollingInterval);
                     setup.SetHeaderText("Nethermind Node Health");
                     if (_healthChecksConfig.WebhooksEnabled) 
@@ -76,10 +83,19 @@ namespace Nethermind.HealthChecks
 
         public Task InitRpcModules()
         {
+            if (_healthChecksConfig.Enabled)
+            {
+                IInitConfig initConfig = _api.Config<IInitConfig>();
+                _nodeHealthService = new NodeHealthService(_api.SyncServer, new ReadOnlyBlockTree(_api.BlockTree), _api.BlockchainProcessor, _api.BlockProducer, _healthChecksConfig, _api.HealthHintService, initConfig.IsMining);
+                HealthModule healthModule = new HealthModule(_nodeHealthService);
+                _api.RpcModuleProvider!.Register(new SingletonModulePool<IHealthModule>(healthModule, true));
+                if (_logger.IsInfo) _logger.Info("Health RPC Module has been enabled");
+            }
+
             return Task.CompletedTask;
         }
 
-        private string BuildEndpointForUI()
+        private string BuildEndpointForUi()
         {
             string host = _jsonRpcConfig.Host.Replace("0.0.0.0", "localhost");
             host = host.Replace("[::]", "localhost");

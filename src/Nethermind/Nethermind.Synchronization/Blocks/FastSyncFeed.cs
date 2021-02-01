@@ -32,7 +32,7 @@ namespace Nethermind.Synchronization.Blocks
             : base(syncModeSelector)
         {
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
-            _blocksRequest = new BlocksRequest(BuildOptions(), syncModeSelector.FastSyncLag);
+            _blocksRequest = new BlocksRequest(BuildOptions(), MultiSyncModeSelector.FastSyncLag);
         }
 
         protected override SyncMode ActivationSyncModes { get; } = SyncMode.FastSync;

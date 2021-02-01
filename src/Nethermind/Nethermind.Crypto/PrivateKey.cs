@@ -40,7 +40,7 @@ namespace Nethermind.Crypto
 
         public PrivateKey(byte[] keyBytes)
         {
-            if (keyBytes == null)
+            if (keyBytes is null)
             {
                 throw new ArgumentNullException(nameof(keyBytes));
             }

@@ -41,8 +41,8 @@ namespace Nethermind.TxPool
             var queuedTransactions = new Dictionary<Address, IDictionary<ulong, Transaction>>();
             foreach (var group in groupedTransactions)
             {
-                var address = group.Key;
-                if (address == null)
+                Address? address = group.Key;
+                if (address is null)
                 {
                     continue;
                 }

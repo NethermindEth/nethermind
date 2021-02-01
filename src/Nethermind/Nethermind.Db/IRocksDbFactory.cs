@@ -14,31 +14,12 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System;
-
 namespace Nethermind.Db
 {
-    public class RocksDbSettings
-    {
-        public string DbName { get; set; }
-
-        public string DbPath { get; set; }
-
-        public Action UpdateReadMetrics { get; set; }
-        public Action UpdateWriteMetrics { get; set; }
-
-        public ulong? WriteBufferSize { get; set; }
-        public uint? WriteBufferNumber { get; set; }
-        public ulong? BlockCacheSize { get; set; }
-        public bool? CacheIndexAndFilterBlocks { get; set; }
-    }
-
     public interface IRocksDbFactory
     {
         IDb CreateDb(RocksDbSettings rocksDbSettings);
-
-        ISnapshotableDb CreateSnapshotableDb(RocksDbSettings rocksDbSettings);
-
+        
         IColumnsDb<T> CreateColumnsDb<T>(RocksDbSettings rocksDbSettings);
     }
 }

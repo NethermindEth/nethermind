@@ -21,6 +21,7 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Producers;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Consensus.Transactions;
