@@ -108,7 +108,7 @@ namespace Nethermind.Core
         public UInt256? TotalDifficulty { get; set; }
         public byte[]? AuRaSignature { get; set; }
         public long? AuRaStep { get; set; }
-        public UInt256? BaseFee { get; set; }
+        public UInt256 BaseFee { get; set; }
 
         public bool HasBody => OmmersHash != Keccak.OfAnEmptySequenceRlp || TxRoot != Keccak.EmptyTreeHash;
         public SealEngineType SealEngineType { get; set; } = SealEngineType.Ethash;
@@ -164,12 +164,12 @@ namespace Nethermind.Core
         
         private static readonly UInt256 BaseFeeMaxChangeDenominator = 8;
         
-        public static UInt256? CalculateBaseFee(BlockHeader parent, IReleaseSpec spec)
+        public static UInt256 CalculateBaseFee(BlockHeader parent, IReleaseSpec spec)
         {
-            UInt256? expectedBaseFee = null;
+            UInt256 expectedBaseFee = UInt256.Zero;
             if (spec.IsEip1559Enabled)
             {
-                UInt256 parentBaseFee = parent.BaseFee ?? UInt256.Zero;
+                UInt256 parentBaseFee = parent.BaseFee;
                 long gasDelta;
                 UInt256 feeDelta;
                 long gasTarget = parent.GetGasTarget1559(spec);

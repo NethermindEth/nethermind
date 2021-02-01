@@ -23,7 +23,7 @@ namespace Nethermind.Serialization.Rlp
     public class HeaderDecoder : IRlpValueDecoder<BlockHeader>, IRlpDecoder<BlockHeader>
     {
         // TODO: need to take a decision on whether to make the whole RLP spec specific?
-        // This would help with EIP155 as well and could generally setup proper coders automatically, hmm
+        // This would help with EIP1559 as well and could generally setup proper coders automatically, hmm
         // but then RLP would have to be passed into so many places
         public static long Eip1559TransitionBlock = long.MaxValue;
         
@@ -204,7 +204,7 @@ namespace Nethermind.Serialization.Rlp
 
             if (header.Number >= Eip1559TransitionBlock)
             {
-                rlpStream.Encode(header.BaseFee ?? UInt256.Zero);
+                rlpStream.Encode(header.BaseFee);
             }
         }
 
@@ -243,7 +243,7 @@ namespace Nethermind.Serialization.Rlp
                                 + Rlp.LengthOf(item.GasUsed)
                                 + Rlp.LengthOf(item.Timestamp)
                                 + Rlp.LengthOf(item.ExtraData)
-                                + (item.Number < Eip1559TransitionBlock ? 0 : Rlp.LengthOf(item.BaseFee.Value));
+                                + (item.Number < Eip1559TransitionBlock ? 0 : Rlp.LengthOf(item.BaseFee));
 
             if (notForSealing)
             {

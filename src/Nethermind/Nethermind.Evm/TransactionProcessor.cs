@@ -94,7 +94,7 @@ namespace Nethermind.Evm
             UInt256 value = transaction.Value;
 
             UInt256 feeCap = transaction.IsEip1559 ? transaction.FeeCap : transaction.GasPrice;
-            UInt256 baseFee = block.BaseFee ?? UInt256.Zero;
+            UInt256 baseFee = block.BaseFee;
             if (baseFee > feeCap)
             {
                 TraceLogInvalidTx(transaction, "MINER_PREMIUM_IS_NEGATIVE");
