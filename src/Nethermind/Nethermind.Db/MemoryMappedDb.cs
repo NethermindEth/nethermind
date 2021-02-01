@@ -77,7 +77,7 @@ namespace Nethermind.Db
 
         public void Remove(byte[] key) => _store.Delete(key);
 
-        private byte[] Get(byte[] key) => _store.TryGet(key, out MemoryMappedKeyValueStore.Slice value) ? value.ToArray() : null;
+        private byte[] Get(byte[] key) => _store.TryGet(key, out Span<byte> value) ? value.ToArray() : null;
 
         public bool KeyExists(byte[] key) => _store.TryGet(key, out _);
 
@@ -135,7 +135,7 @@ namespace Nethermind.Db
 
         public void Clear() { }
 
-        public Span<byte> GetSpan(byte[] key) => _store.TryGet(key, out MemoryMappedKeyValueStore.Slice slice) ? slice.Span : Span<byte>.Empty;
+        public Span<byte> GetSpan(byte[] key) => _store.TryGet(key, out Span<byte> span) ? span: Span<byte>.Empty;
 
         public void DangerousReleaseMemory(in Span<byte> span) { }
     }
