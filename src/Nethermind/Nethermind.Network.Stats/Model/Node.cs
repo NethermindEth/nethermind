@@ -15,9 +15,11 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections.Generic;
 using System.Net;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
+using Nethermind.Int256;
 
 namespace Nethermind.Stats.Model
 {
@@ -84,6 +86,10 @@ namespace Nethermind.Stats.Model
         public NodeClientType ClientType { get; private set; } = NodeClientType.Unknown;
         
         public string EthDetails { get; set; }
+        public byte EthProtocolVersion { get; set; }
+        public UInt256 Difficulty { get; set; }
+        public Keccak HeadHash { get; set; }
+        public List<Capability> AgreedCapabilities { get; set; }
         public long CurrentReputation { get; set; }
 
         public Node(PublicKey id, IPEndPoint address)

@@ -267,6 +267,8 @@ namespace Nethermind.Network
 
         private void InitP2PProtocol(ISession session, P2PProtocolHandler handler)
         {
+            session.Node.EthProtocolVersion = handler.ProtocolVersion;
+            session.Node.AgreedCapabilities = handler.AgreedCapabilities;
             handler.ProtocolInitialized += (sender, args) =>
             {
                 P2PProtocolInitializedEventArgs typedArgs = (P2PProtocolInitializedEventArgs) args;
@@ -302,6 +304,9 @@ namespace Nethermind.Network
         private void InitSyncPeerProtocol(ISession session, SyncPeerProtocolHandlerBase handler)
         {
             session.Node.EthDetails = handler.Name;
+            session.Node.EthProtocolVersion = handler.ProtocolVersion;
+            session.Node.Difficulty = handler.TotalDifficulty;
+            session.Node.HeadHash = handler.HeadHash;
             handler.ProtocolInitialized += (sender, args) =>
             {
                 if (!RunBasicChecks(session, handler.ProtocolCode, handler.ProtocolVersion)) return;

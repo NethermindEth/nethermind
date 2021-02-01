@@ -15,8 +15,8 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using Nethermind.Core.Crypto;
 using Nethermind.Int256;
+using Nethermind.Network;
 using Newtonsoft.Json;
 
 namespace Nethermind.JsonRpc.Modules.Parity
@@ -30,6 +30,13 @@ namespace Nethermind.JsonRpc.Modules.Parity
         public UInt256 Difficulty { get; set; }
         
         [JsonProperty("head", Order = 2)]
-        public Keccak HeadHash { get; set; }
+        public string HeadHash { get; set; }
+
+        public EthProtocolInfo(Peer peer)
+        {
+            Version = peer.InSession?.Node.EthProtocolVersion ?? peer.OutSession?.Node.EthProtocolVersion ?? 0;
+            Difficulty = peer.InSession?.Node.Difficulty ?? peer.OutSession?.Node.Difficulty ?? 0;
+            HeadHash = peer.InSession?.Node.HeadHash?.ToString() ?? peer.OutSession?.Node.HeadHash?.ToString();
+        }
     }
 }

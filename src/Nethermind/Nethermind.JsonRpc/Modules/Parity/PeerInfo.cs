@@ -44,6 +44,11 @@ namespace Nethermind.JsonRpc.Modules.Parity
             Id = peer.InSession?.RemoteNodeId.ToString() ?? peer.OutSession?.RemoteNodeId.ToString();
             Name = peer.Node.ClientId;
             Network = new PeerNetworkInfo(peer);
+
+            Caps = peer.InSession?.Node.AgreedCapabilities ?? peer.OutSession?.Node.AgreedCapabilities;
+          
+            Protocols = new Dictionary<string, EthProtocolInfo>();
+            Protocols.Add("eth", new EthProtocolInfo(peer));
         }
     }
 }
