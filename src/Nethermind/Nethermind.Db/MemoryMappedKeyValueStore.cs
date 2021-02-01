@@ -11,16 +11,8 @@ using System.Threading;
 namespace Nethermind.Db
 {
     /// <summary>
-    /// A memory mapped map. It keeps the data in a concurrent dictionary, trying to flush them as soon as possible.
+    /// A memory mapped map.
     /// </summary>
-    /// <remarks>
-    /// A single log entry consists of:
-    /// - 8 bytes header (ulong)
-    ///  - 2 high bytes for the length of value
-    ///  - 6 low bytes for the jumps address
-    /// - 32 bytes of Keccak
-    /// - N bytes of the value (aligned to 8 byte boundary)
-    /// </remarks>
     public class MemoryMappedKeyValueStore<TConfig> : IDisposable
         where TConfig : struct, IMemoryMappedStoreConfig
     {
@@ -49,7 +41,6 @@ namespace Nethermind.Db
         /// Configures the key value store to store data in a specific directory with a specific page size. The store will generate files big as 16MB * pageSize, which for 4k gives 64 GBs of a single file.
         /// </summary>
         /// <param name="directoryPath">The path where the database files will be located. Both jump table and the log files are included in there.</param>
-        /// <param name="pageSize">The size of the page that stores values prefixed with the same </param>
         public MemoryMappedKeyValueStore(string directoryPath)
         {
             _dir = directoryPath;
@@ -119,10 +110,10 @@ namespace Nethermind.Db
 
         Map CreateFile(int fileNumber)
         {
-            return InitializeMap(Path.Combine(_dir, $"{fileNumber:D5}"), _fileSize);
+            return InitializeMap(Path.Combine(_dir, $"{fileNumber:D5}"), _fileSize, true);
         }
 
-        Map InitializeMap(string file, long size)
+        Map InitializeMap(string file, long size, bool clear = false)
         {
             FileStream stream = File.Open(file, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.Read);
             if (stream.Length == 0)
@@ -139,7 +130,7 @@ namespace Nethermind.Db
             string justNumber = new FileInfo(file).Name;
             int.TryParse(justNumber, out int number);
             Map map = new(stream, mmf, file, number);
-            map.Initialize();
+            map.Initialize(clear);
 
             return map;
         }
@@ -155,10 +146,7 @@ namespace Nethermind.Db
                     return; // this batch is already committed
                 }
 
-                Map
-                    map = _maps[
-                        _mapCount -
-                        1]; // use last map for writing. This could result in using files in an suboptimal way as there might be some pages that were not filled totally.
+                Map map = _maps[_mapCount - 1]; // use last map for writing. This could result in using files in an suboptimal way as there might be some pages that were not filled totally.
 
                 HashSet<Map> dirty = new();
 
@@ -286,12 +274,30 @@ namespace Nethermind.Db
             /// <summary>
             /// Initializes the accessor by scanning its content and setting the offset properly.
             /// </summary>
-            public unsafe void Initialize()
+            public unsafe void Initialize(bool clear)
             {
-                // scan to find last written
                 byte* ptr = null;
                 _accessor.SafeMemoryMappedViewHandle.AcquirePointer(ref ptr);
                 _pointer = new IntPtr(ptr);
+
+                if (clear)
+                {
+                    // clear in 1gb chunks
+                    const int gb = 1024 * 1024 * 1024;
+                    byte* start = ptr;
+                    
+                    long length = _file.Length;
+                    while (length > gb)
+                    {
+                        new Span<byte>(start, gb).Clear();
+                        start += gb;
+                        length -= gb;
+                    }
+
+                    new Span<byte>(start, (int) length).Clear();
+
+                    Flush();
+                }
             }
 
             public void Flush()
@@ -336,7 +342,7 @@ namespace Nethermind.Db
             {
                 int prefix = default(TConfig).PrefixByteCount;
                 int pageSize = default(TConfig).PageSize;
-                
+
                 int neededBytes = key.Length + value.Length - prefix + ValuePrefixCountBytesCount;
 
                 ref long header = ref Unsafe.AsRef<long>(_payload);
@@ -417,6 +423,12 @@ namespace Nethermind.Db
                 if (key.Length != KeyLength)
                 {
                     throw new ArgumentException($"The key should be {KeyLength} long", nameof(key));
+                }
+
+                int maxSize = default(TConfig).PageSize / 2;
+                if (value.Length > maxSize)
+                {
+                    throw new ArgumentException($"The value length {value.Length} breaches the max size of {maxSize} bytes, which is over a half page long.", nameof(value));
                 }
 
                 _pairs.Add((key, value));
