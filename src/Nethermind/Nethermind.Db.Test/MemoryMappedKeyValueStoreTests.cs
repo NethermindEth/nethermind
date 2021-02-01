@@ -39,6 +39,8 @@ namespace Nethermind.Db.Test
             {
                 Directory.Delete(TestWorkDirectory, true);
             }
+
+            Console.WriteLine("Working directory {0}", TestWorkDirectory);
         }
 
         [Test]
@@ -49,24 +51,22 @@ namespace Nethermind.Db.Test
             const int minLength = 32;
             const int maxLength = 50;
 
-            Console.WriteLine("Working directory {0}", TestContext.CurrentContext.WorkDirectory);
-
-            using MemoryMappedKeyValueStore store = new(TestWorkDirectory, 256);
+            using MemoryMappedKeyValueStore<TestConfig> store = new(TestWorkDirectory);
             store.Initialize();
 
             Random random = new(size);
 
             List<(byte[] key, byte[] value)> pairs = new();
 
-            MemoryMappedKeyValueStore.IWriteBatch batch = store.StartBatch();
+            MemoryMappedKeyValueStore<TestConfig>.IWriteBatch batch = store.StartBatch();
             int batchCount = 0;
-            
+
             for (int i = 0; i < size; i++)
             {
                 int length = random.Next(minLength, maxLength);
 
                 byte[] value = new byte[length];
-                byte[] key = new byte[MemoryMappedKeyValueStore.KeyLength];
+                byte[] key = new byte[MemoryMappedKeyValueStore<TestConfig>.KeyLength];
 
                 value.AsSpan().Fill((byte)i);
 
@@ -95,7 +95,7 @@ namespace Nethermind.Db.Test
             foreach ((byte[] key, byte[] expected) in pairs)
             {
                 Assert.True(store.TryGet(key, out Span<byte> actual), "Key was not found");
-                Assert.AreEqual(expected.Length, actual.Length, "Value lengths are different for value index {0}",  j);
+                Assert.AreEqual(expected.Length, actual.Length, "Value lengths are different for value index {0}", j);
                 Assert.True(expected.AsSpan().SequenceEqual(actual), "Value is different from the expected one for index {0}", j);
                 j++;
             }
@@ -104,10 +104,10 @@ namespace Nethermind.Db.Test
         [Test]
         public void Deletes()
         {
-            using MemoryMappedKeyValueStore store = new(TestWorkDirectory, 16 * 1024);
+            using MemoryMappedKeyValueStore<TestConfig> store = new(TestWorkDirectory);
             store.Initialize();
 
-            byte[] key = new byte[MemoryMappedKeyValueStore.KeyLength];
+            byte[] key = new byte[MemoryMappedKeyValueStore<TestConfig>.KeyLength];
             key.AsSpan().Fill(13);
 
             byte[] value = { 47 };
@@ -123,6 +123,12 @@ namespace Nethermind.Db.Test
             SpinWait.SpinUntil(() => store.HasNoEntriesToFlush);
 
             Assert.False(store.TryGet(key, out _));
+        }
+
+        struct TestConfig : IMemoryMappedStoreConfig
+        {
+            public int PrefixByteCount => 2;
+            public int PageSize => 16 * 1024;
         }
     }
 }

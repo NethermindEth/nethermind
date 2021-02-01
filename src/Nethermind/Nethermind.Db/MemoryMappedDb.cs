@@ -21,12 +21,13 @@ using Nethermind.Core;
 
 namespace Nethermind.Db
 {
-    public class MemoryMappedDb : IDbWithSpan
+    public class MemoryMappedDb<TConfig> : IDbWithSpan
+        where TConfig : struct, IMemoryMappedStoreConfig
     {
-        private readonly MemoryMappedKeyValueStore _store;
+        private readonly MemoryMappedKeyValueStore<TConfig> _store;
         private bool _isDisposed;
 
-        public MemoryMappedDb(string name, MemoryMappedKeyValueStore store)
+        public MemoryMappedDb(string name, MemoryMappedKeyValueStore<TConfig> store)
         {
             _store = store;
             Name = name;
@@ -87,11 +88,11 @@ namespace Nethermind.Db
 
         internal class MemoryMappedBatch : IBatch
         {
-            private readonly MemoryMappedDb _db;
+            private readonly MemoryMappedDb<TConfig> _db;
 
-            internal readonly MemoryMappedKeyValueStore.IWriteBatch _batch;
+            internal readonly MemoryMappedKeyValueStore<TConfig>.IWriteBatch _batch;
 
-            public MemoryMappedBatch(MemoryMappedDb db)
+            public MemoryMappedBatch(MemoryMappedDb<TConfig> db)
             {
                 _db = db;
 

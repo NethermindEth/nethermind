@@ -33,18 +33,18 @@ namespace Nethermind.Db.Rocks
         }
 
         public IDb CreateDb(RocksDbSettings rocksDbSettings)
-        { 
-            return new SimpleRocksDb(_basePath, 
+        {
+            return new SimpleRocksDb(_basePath,
                 rocksDbSettings,
-                _dbConfig, 
+                _dbConfig,
                 _logManager);
         }
 
         public IDb CreateMemoryMappedDb(RocksDbSettings rocksDbSettings)
         {
-            MemoryMappedKeyValueStore store = new(Path.Combine(_basePath, rocksDbSettings.DbName), pageSize: 4096);
+            MemoryMappedKeyValueStore<Config3BytesPrefix4KbPage> store = new(Path.Combine(_basePath, rocksDbSettings.DbName));
             store.Initialize();
-            return new MemoryMappedDb(rocksDbSettings.DbPath, store);
+            return new MemoryMappedDb<Config3BytesPrefix4KbPage>(rocksDbSettings.DbPath, store);
         }
 
         public IColumnsDb<T> CreateColumnsDb<T>(RocksDbSettings rocksDbSettings) where T : notnull
@@ -53,6 +53,12 @@ namespace Nethermind.Db.Rocks
                 rocksDbSettings,
                 _dbConfig,
                 _logManager);
+        }
+
+        struct Config3BytesPrefix4KbPage : IMemoryMappedStoreConfig
+        {
+            public int PrefixByteCount => 3;
+            public int PageSize => 4 * 1024;
         }
     }
 }

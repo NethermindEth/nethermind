@@ -21,18 +21,16 @@ namespace Nethermind.Db
     /// - 32 bytes of Keccak
     /// - N bytes of the value (aligned to 8 byte boundary)
     /// </remarks>
-    public class MemoryMappedKeyValueStore : IDisposable
+    public class MemoryMappedKeyValueStore<TConfig> : IDisposable
+        where TConfig : struct, IMemoryMappedStoreConfig
     {
         public const int KeyLength = KeccakLength;
         const int MaxNumberOfFiles = 2048;
-
-        const int PrefixBytesCount = 3;
 
         const int KeccakLength = 32;
         const int BitsInByte = 8;
 
         readonly string _dir;
-        private readonly int _pageSize;
         private readonly long _fileSize;
         readonly List<MemoryMappedFile> _files = new();
 
@@ -52,11 +50,11 @@ namespace Nethermind.Db
         /// </summary>
         /// <param name="directoryPath">The path where the database files will be located. Both jump table and the log files are included in there.</param>
         /// <param name="pageSize">The size of the page that stores values prefixed with the same </param>
-        public MemoryMappedKeyValueStore(string directoryPath, int pageSize = 4 * 1024)
+        public MemoryMappedKeyValueStore(string directoryPath)
         {
             _dir = directoryPath;
-            _pageSize = pageSize;
-            _fileSize = (1L << (PrefixBytesCount * 8)) * pageSize;
+            TConfig cfg = default;
+            _fileSize = (1L << (cfg.PrefixByteCount * 8)) * cfg.PageSize;
         }
 
         public void Initialize()
@@ -140,7 +138,7 @@ namespace Nethermind.Db
 
             string justNumber = new FileInfo(file).Name;
             int.TryParse(justNumber, out int number);
-            Map map = new(stream, mmf, file, number, _pageSize);
+            Map map = new(stream, mmf, file, number);
             map.Initialize();
 
             return map;
@@ -200,7 +198,7 @@ namespace Nethermind.Db
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static int GetPageNumber(Span<byte> key) => (int)(BinaryPrimitives.ReadUInt32LittleEndian(key) >> ((sizeof(uint) - PrefixBytesCount) * BitsInByte));
+        private static int GetPageNumber(Span<byte> key) => (int)(BinaryPrimitives.ReadUInt32LittleEndian(key) >> ((sizeof(uint) - default(TConfig).PrefixByteCount) * BitsInByte));
 
         public void Delete(byte[] key)
         {
@@ -218,7 +216,7 @@ namespace Nethermind.Db
 
         public bool TryGet(byte[] key, out Span<byte> value)
         {
-            Span<byte> keySuffix = key.AsSpan(PrefixBytesCount);
+            Span<byte> keySuffix = key.AsSpan(default(TConfig).PrefixByteCount);
 
             int pageNumber = GetPageNumber(key);
 
@@ -263,11 +261,10 @@ namespace Nethermind.Db
 
             IntPtr _pointer;
 
-            public Map(FileStream file, MemoryMappedFile mmf, string path, int number, int pageSize)
+            public Map(FileStream file, MemoryMappedFile mmf, string path, int number)
             {
                 _file = file;
                 _mmf = mmf;
-                _pageSize = pageSize;
                 _accessor = mmf.CreateViewAccessor();
                 Path = path;
                 Number = number;
@@ -304,7 +301,7 @@ namespace Nethermind.Db
                 _file.Flush(true);
             }
 
-            public unsafe Page GetPage(int pageNo) => new(((byte*)_pointer.ToPointer()) + (pageNo * _pageSize), _pageSize);
+            public unsafe Page GetPage(int pageNo) => new(((byte*)_pointer.ToPointer()) + (pageNo * _pageSize));
         }
 
         /// <summary>
@@ -315,7 +312,7 @@ namespace Nethermind.Db
         /// The current implementation uses the following structure:
         /// - 8 bytes - header, used to write how many bytes were written to the page
         /// - entries consisting of:
-        ///   - <see cref="SuffixLength"/> bytes for the key
+        ///   - <see cref="s_suffixLength"/> bytes for the key
         ///   - <see cref="ValuePrefixCountBytesCount"/> for the value prefix
         ///   - N bytes for the actual value
         /// </remarks>
@@ -325,31 +322,32 @@ namespace Nethermind.Db
             // 1. scans could be faster if keys were stored at the beginning of the page and values at the end. This would allow to scan through the keys without getting prefixes and dealing with complex jump arithmetic
 
             const int ValuePrefixCountBytesCount = sizeof(short);
-            const int SuffixLength = KeyLength - PrefixBytesCount;
+            static readonly int s_suffixLength = KeyLength - default(TConfig).PrefixByteCount;
             const int PageHeaderSize = 8;
 
             private readonly byte* _payload;
-            private readonly int _pageSize;
 
-            public Page(byte* payload, int pageSize)
+            public Page(byte* payload)
             {
                 _payload = payload;
-                _pageSize = pageSize;
             }
 
             public bool TryWrite(byte[] key, byte[] value)
             {
-                int neededBytes = key.Length + value.Length - PrefixBytesCount + ValuePrefixCountBytesCount;
+                int prefix = default(TConfig).PrefixByteCount;
+                int pageSize = default(TConfig).PageSize;
+                
+                int neededBytes = key.Length + value.Length - prefix + ValuePrefixCountBytesCount;
 
                 ref long header = ref Unsafe.AsRef<long>(_payload);
 
-                if (_pageSize - header - PageHeaderSize >= neededBytes)
+                if (pageSize - header - PageHeaderSize >= neededBytes)
                 {
-                    Span<byte> destination = new(_payload + header + PageHeaderSize, _pageSize - PageHeaderSize);
+                    Span<byte> destination = new(_payload + header + PageHeaderSize, pageSize - PageHeaderSize);
 
                     // key first, beside first PrefixBytesCount bytes
-                    key.AsSpan(PrefixBytesCount).CopyTo(destination);
-                    destination = destination.Slice(KeyLength - PrefixBytesCount);
+                    key.AsSpan(prefix).CopyTo(destination);
+                    destination = destination.Slice(KeyLength - prefix);
 
                     // value length as short
                     BinaryPrimitives.WriteInt16LittleEndian(destination, (short)value.Length);
@@ -375,15 +373,15 @@ namespace Nethermind.Db
 
                 while (!bytes.IsEmpty)
                 {
-                    short valueLength = BinaryPrimitives.ReadInt16LittleEndian(bytes.Slice(SuffixLength));
+                    short valueLength = BinaryPrimitives.ReadInt16LittleEndian(bytes.Slice(s_suffixLength));
                     if (bytes.StartsWith(keySuffix))
                     {
-                        value = bytes.Slice(SuffixLength + ValuePrefixCountBytesCount, valueLength);
+                        value = bytes.Slice(s_suffixLength + ValuePrefixCountBytesCount, valueLength);
                         return true;
                     }
 
                     // jump over the value to the next
-                    bytes = bytes.Slice(SuffixLength + ValuePrefixCountBytesCount + valueLength);
+                    bytes = bytes.Slice(s_suffixLength + ValuePrefixCountBytesCount + valueLength);
                 }
 
                 value = default;
@@ -402,14 +400,14 @@ namespace Nethermind.Db
 
         class WriteBatch : IWriteBatch
         {
-            private readonly MemoryMappedKeyValueStore _store;
+            private readonly MemoryMappedKeyValueStore<TConfig> _store;
 
             private static readonly byte[] s_empty = new byte[0];
             public bool _isCommitted;
 
             private List<(byte[], byte[])> _pairs = new();
 
-            public WriteBatch(MemoryMappedKeyValueStore store)
+            public WriteBatch(MemoryMappedKeyValueStore<TConfig> store)
             {
                 _store = store;
             }
@@ -441,5 +439,18 @@ namespace Nethermind.Db
             {
             }
         }
+    }
+
+    public interface IMemoryMappedStoreConfig
+    {
+        /// <summary>
+        /// The number of bytes used for the prefix. Should be either 1, 2 or 3. The more, the better spread.
+        /// </summary>
+        public int PrefixByteCount { get; }
+        
+        /// <summary>
+        /// The page size. Preferably big and aligned to 2^N.
+        /// </summary>
+        public int PageSize { get; }
     }
 }
