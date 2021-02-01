@@ -27,13 +27,13 @@ namespace Nethermind.Db
         const int MaxNumberOfFiles = 2048;
 
         const int PrefixBytesCount = 3;
-        const int PageHeaderSize = 8;
-        
+
         const int KeccakLength = 32;
+        const int BitsInByte = 8;
 
         readonly string _dir;
         private readonly int _pageSize;
-        private readonly int _fileSize;
+        private readonly long _fileSize;
         readonly List<MemoryMappedFile> _files = new();
 
         private readonly HashSet<Map> _dirtyMaps = new();
@@ -54,7 +54,7 @@ namespace Nethermind.Db
         {
             _dir = directoryPath;
             _pageSize = pageSize;
-            _fileSize = (1 << (PrefixBytesCount * 8)) * pageSize;
+            _fileSize = (1L << (PrefixBytesCount * 8)) * pageSize;
         }
 
         public void Initialize()
@@ -78,7 +78,7 @@ namespace Nethermind.Db
             else
             {
                 // first file
-                Map map = CreateFile(1);
+                Map map = CreateFile(0);
                 _maps[map.Number] = map;
                 _mapCount = 1;
             }
@@ -121,7 +121,7 @@ namespace Nethermind.Db
             return InitializeMap(Path.Combine(_dir, $"{fileNumber:D5}"), _fileSize);
         }
 
-        Map InitializeMap(string file, int size)
+        Map InitializeMap(string file, long size)
         {
             FileStream stream = File.Open(file, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.Read);
             if (stream.Length == 0)
@@ -137,7 +137,7 @@ namespace Nethermind.Db
 
             string justNumber = new FileInfo(file).Name;
             int.TryParse(justNumber, out int number);
-            Map map = new Map(stream, mmf, file, number, _pageSize);
+            Map map = new(stream, mmf, file, number, _pageSize);
             map.Initialize();
 
             return map;
@@ -154,13 +154,14 @@ namespace Nethermind.Db
                     return; // this batch is already committed
                 }
 
+                Map map = _maps[_mapCount - 1]; // use last map for writing. This could result in using files in an suboptimal way as there might be some pages that were not filled totally.
+
                 while (_batches.TryPeek(out WriteBatch commit))
                 {
                     foreach ((byte[] key, byte[] value) in commit.Pairs)
                     {
-                        Map map = _maps[_mapCount - 1]; // use last map for writing. This could result in using files in an suboptimal way as there might be some pages that were not filled totally.
                         int pageNo = GetPageNumber(key);
-                        
+
                         Page page = map.GetPage(pageNo);
                         if (page.TryWrite(key, value))
                         {
@@ -168,10 +169,10 @@ namespace Nethermind.Db
                         }
                         else
                         {
-                            new Map()
-                            
-                            // new page needed, throw for now 
-                            throw new NotImplementedException();
+                            _maps[_mapCount] = map = CreateFile(_mapCount);
+                            _mapCount = _mapCount + 1;
+
+                            map.GetPage(pageNo).TryWrite(key, value);
                         }
                     }
 
@@ -182,7 +183,7 @@ namespace Nethermind.Db
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static int GetPageNumber(Span<byte> key) => (int) (BinaryPrimitives.ReadUInt32LittleEndian(key) >> (sizeof(uint) - PrefixBytesCount));
+        private static int GetPageNumber(Span<byte> key) => (int)(BinaryPrimitives.ReadUInt32LittleEndian(key) >> ((sizeof(uint) - PrefixBytesCount) * BitsInByte));
 
         public void Delete(byte[] key)
         {
@@ -201,10 +202,10 @@ namespace Nethermind.Db
         public bool TryGet(byte[] key, out Span<byte> value)
         {
             Span<byte> keySuffix = key.AsSpan(PrefixBytesCount);
-            
+
             int pageNumber = GetPageNumber(key);
-            
-            for (int i = _mapCount -1; i >= 0; i--)
+
+            for (int i = _mapCount - 1; i >= 0; i--)
             {
                 Page page = _maps[i].GetPage(pageNumber);
                 if (page.TryGet(keySuffix, out value))
@@ -308,7 +309,8 @@ namespace Nethermind.Db
 
             const int ValuePrefixCountBytesCount = sizeof(short);
             const int SuffixLength = KeyLength - PrefixBytesCount;
-            
+            const int PageHeaderSize = 8;
+
             private readonly byte* _payload;
             private readonly int _pageSize;
 
@@ -324,7 +326,7 @@ namespace Nethermind.Db
 
                 ref long header = ref Unsafe.AsRef<long>(_payload);
 
-                if (_pageSize - header >= neededBytes)
+                if (_pageSize - header - PageHeaderSize >= neededBytes)
                 {
                     Span<byte> destination = new(_payload + header + PageHeaderSize, _pageSize - PageHeaderSize);
 
@@ -352,7 +354,7 @@ namespace Nethermind.Db
             {
                 long used = Volatile.Read(ref Unsafe.AsRef<long>(_payload));
 
-                Span<byte> bytes = new(_payload + PageHeaderSize, (int) used);
+                Span<byte> bytes = new(_payload + PageHeaderSize, (int)used);
 
                 while (!bytes.IsEmpty)
                 {

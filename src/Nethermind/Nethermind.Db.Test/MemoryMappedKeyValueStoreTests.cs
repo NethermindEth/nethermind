@@ -27,39 +27,36 @@ namespace Nethermind.Db.Test
     [Explicit("Disk IO ")]
     public class MemoryMappedKeyValueStoreTests
     {
+        private static string TestWorkDirectory => Path.Combine(TestContext.CurrentContext.WorkDirectory, TestContext.CurrentContext.Test.Name);
+
         [SetUp]
         public void SetUp()
         {
             // lazy IO makes these tests hard on shared file names. Let's sleep it through.
             Thread.Sleep(TimeSpan.FromSeconds(5));
-            
-            string dir = TestContext.CurrentContext.WorkDirectory;
-            foreach (string file in Directory.GetFiles(dir, MemoryMappedKeyValueStore.Prefix + "*"))
-            {
-                File.Delete(file);
-            }
 
-            string jumps = Path.Combine(dir, MemoryMappedKeyValueStore.JumpsFileName);
-            if (File.Exists(jumps))
+            if (Directory.Exists(TestWorkDirectory))
             {
-                File.Delete(jumps);
+                Directory.Delete(TestWorkDirectory, true);
             }
         }
 
-        [TestCase(1000_000, 10000)]
-        public void Test(int size, int batchSize)
+        [Test]
+        public void Test()
         {
-            const int minLength = 50;
-            const int maxLength = 500;
+            const int size = 1000;
+            const int batchSize = 10;
+            const int minLength = 32;
+            const int maxLength = 50;
 
             Console.WriteLine("Working directory {0}", TestContext.CurrentContext.WorkDirectory);
 
-            using MemoryMappedKeyValueStore store = new MemoryMappedKeyValueStore(TestContext.CurrentContext.WorkDirectory);
+            using MemoryMappedKeyValueStore store = new(TestWorkDirectory, 256);
             store.Initialize();
 
-            Random random = new Random(size);
+            Random random = new(size);
 
-            List<(byte[] key, byte[] value)> pairs = new List<(byte[] key, byte[] value)>();
+            List<(byte[] key, byte[] value)> pairs = new();
 
             MemoryMappedKeyValueStore.IWriteBatch batch = store.StartBatch();
             int batchCount = 0;
@@ -97,11 +94,9 @@ namespace Nethermind.Db.Test
             int j = 0;
             foreach ((byte[] key, byte[] expected) in pairs)
             {
-                Assert.True(store.TryGet(key, out MemoryMappedKeyValueStore.Slice actual), "Key was not found");
-                Assert.AreEqual(expected.Length, actual.Span.Length, "Value lengths are different for value index {0}",
-                    j);
-                Assert.True(expected.AsSpan().SequenceEqual(actual.Span),
-                    "Value is different from the expected one for index {0}", j);
+                Assert.True(store.TryGet(key, out Span<byte> actual), "Key was not found");
+                Assert.AreEqual(expected.Length, actual.Length, "Value lengths are different for value index {0}",  j);
+                Assert.True(expected.AsSpan().SequenceEqual(actual), "Value is different from the expected one for index {0}", j);
                 j++;
             }
         }
@@ -109,13 +104,13 @@ namespace Nethermind.Db.Test
         [Test]
         public void Deletes()
         {
-            using MemoryMappedKeyValueStore store = new MemoryMappedKeyValueStore(TestContext.CurrentContext.WorkDirectory, 16 * 1024);
+            using MemoryMappedKeyValueStore store = new(TestWorkDirectory, 16 * 1024);
             store.Initialize();
 
             byte[] key = new byte[MemoryMappedKeyValueStore.KeyLength];
             key.AsSpan().Fill(13);
 
-            byte[] value = new byte[] { 47 };
+            byte[] value = { 47 };
 
             store.Set(key, value);
 
