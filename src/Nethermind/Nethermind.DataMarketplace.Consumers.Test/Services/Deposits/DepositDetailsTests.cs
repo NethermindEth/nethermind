@@ -245,7 +245,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Deposits
         {
             _depositDetails.SetConfirmationTimestamp(5);
 
-            var timeLeft = _depositDetails.GetTimeLeftToClaimRefund(30));
+            var timeLeft = _depositDetails.GetTimeLeftToClaimRefund(30);
 
             Assert.IsTrue(timeLeft == 0);
         }
