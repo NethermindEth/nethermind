@@ -30,6 +30,11 @@ namespace Nethermind.Db
             throw new InvalidOperationException();
         }
 
+        public IDb CreateMemoryMappedDb(RocksDbSettings rocksDbSettings)
+        {
+            throw new InvalidOperationException();
+        }
+
         public IColumnsDb<T> CreateColumnsDb<T>(RocksDbSettings rocksDbSettings)
         {
             throw new InvalidOperationException();

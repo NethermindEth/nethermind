@@ -55,6 +55,11 @@ namespace Nethermind.Db
             AddRegisterAction(settings, () => _rocksDbFactory.CreateColumnsDb<T>(settings), () => _memDbFactory.CreateColumnsDb<T>(settings.DbName));
         }
 
+        protected void RegisterMemoryMappedDb(RocksDbSettings settings)
+        {
+            AddRegisterAction(settings, () => _rocksDbFactory.CreateMemoryMappedDb(settings), () => _memDbFactory.CreateDb(settings.DbName));
+        }
+
         private void AddRegisterAction(RocksDbSettings settings, Func<IDb> rocksDbCreation, Func<IDb> memDbCreation)
         {
             var action = new Action(() =>

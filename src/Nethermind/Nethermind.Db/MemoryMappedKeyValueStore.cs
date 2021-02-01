@@ -7,7 +7,6 @@ using System.IO.MemoryMappedFiles;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
-using System.Threading.Channels;
 
 namespace Nethermind.Db
 {
@@ -49,7 +48,7 @@ namespace Nethermind.Db
         private volatile bool _runFlusher;
 
         /// <summary>
-        /// Configures the key value store.
+        /// Configures the key value store to store data in a specific directory with a specific page size. The store will generate files big as 16MB * pageSize, which for 4k gives 64 GBs of a single file.
         /// </summary>
         /// <param name="directoryPath">The path where the database files will be located. Both jump table and the log files are included in there.</param>
         /// <param name="pageSize">The size of the page that stores values prefixed with the same </param>
