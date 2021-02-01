@@ -128,7 +128,7 @@ namespace Nethermind.Db.Test
         struct TestConfig : IMemoryMappedStoreConfig
         {
             public int PrefixByteCount => 2;
-            public int PageSize => 16 * 1024;
+            public int PageSize => 32 * 1024;
         }
     }
 }
