@@ -107,6 +107,15 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure.Persistence
                     null,
                     0,
                     6));
+
+                    var expiredDeposit = new DepositDetails(deposit,
+                                                            dataAsset, 
+                                                            TestItem.AddressD, 
+                                                            Array.Empty<byte>(),
+                                                            1000,
+                                                            Array.Empty<TransactionInfo>());
+                    
+                    _cases.Add(expiredDeposit);
             }
         }
 
@@ -166,14 +175,15 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure.Persistence
         {
             IDb db = new MemDb();
             IDepositUnitsCalculator depositUnitsCalculator = Substitute.For<IDepositUnitsCalculator>();
+            depositUnitsCalculator.GetConsumedAsync(Arg.Is<DepositDetails>(d => d.Timestamp == 1000)).Returns(Task.FromResult((uint) 200));
             DepositDetailsRocksRepository repository = new DepositDetailsRocksRepository(db, new DepositDetailsDecoder(), depositUnitsCalculator);
             foreach (DepositDetails details in _cases)
             {
                 await repository.AddAsync(details);
             }
 
-            PagedResult<DepositDetails> result = await repository.BrowseAsync(new GetDeposits {EligibleToRefund = true});
-            result.Items.Should().HaveCount(0);
+            PagedResult<DepositDetails> result = await repository.BrowseAsync(new GetDeposits {EligibleToRefund = true, CurrentBlockTimestamp = 200});
+            result.Items.Should().HaveCount(1);
         }
 
         [Test]
