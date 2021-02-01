@@ -7,6 +7,7 @@ using System.IO.MemoryMappedFiles;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
+using System.Threading.Channels;
 
 namespace Nethermind.Db
 {
@@ -41,6 +42,8 @@ namespace Nethermind.Db
         private volatile int _mapCount;
 
         private readonly ConcurrentQueue<WriteBatch> _batches = new();
+
+        private readonly AutoResetEvent _wait = new(false);
 
         private Thread _flusher;
         private volatile bool _runFlusher;
@@ -90,28 +93,29 @@ namespace Nethermind.Db
 
         private void RunFlusher()
         {
-            void Flush()
+            void FlushAllDirtyPages()
             {
-                lock (_batches)
+                // use lock just to find dirty pages, flush asynchronously
+                Map[] toFlush;
+                lock (_dirtyMaps)
                 {
-                    foreach (Map dirtyMap in _dirtyMaps)
-                    {
-                        dirtyMap.Flush();
-                    }
-
+                    toFlush = _dirtyMaps.ToArray();
                     _dirtyMaps.Clear();
+                }
+
+                foreach (Map map in toFlush)
+                {
+                    map.Flush();
                 }
             }
 
-            TimeSpan flushPeriod = TimeSpan.FromSeconds(5);
-
             while (_runFlusher)
             {
-                Thread.Sleep(flushPeriod);
-                Flush();
+                _wait.WaitOne(TimeSpan.FromSeconds(1));
+                FlushAllDirtyPages();
             }
 
-            Flush();
+            FlushAllDirtyPages();
         }
 
         public bool HasNoEntriesToFlush => _batches.IsEmpty;
@@ -154,7 +158,12 @@ namespace Nethermind.Db
                     return; // this batch is already committed
                 }
 
-                Map map = _maps[_mapCount - 1]; // use last map for writing. This could result in using files in an suboptimal way as there might be some pages that were not filled totally.
+                Map
+                    map = _maps[
+                        _mapCount -
+                        1]; // use last map for writing. This could result in using files in an suboptimal way as there might be some pages that were not filled totally.
+
+                HashSet<Map> dirty = new();
 
                 while (_batches.TryPeek(out WriteBatch commit))
                 {
@@ -163,21 +172,30 @@ namespace Nethermind.Db
                         int pageNo = GetPageNumber(key);
 
                         Page page = map.GetPage(pageNo);
-                        if (page.TryWrite(key, value))
-                        {
-                            _dirtyMaps.Add(map);
-                        }
-                        else
+                        if (!page.TryWrite(key, value))
                         {
                             _maps[_mapCount] = map = CreateFile(_mapCount);
                             _mapCount = _mapCount + 1;
 
                             map.GetPage(pageNo).TryWrite(key, value);
                         }
+
+                        dirty.Add(map);
                     }
 
                     _batches.TryDequeue(out _); // dequeue the current that was Peeked at the beginning
-                    commit._isCommitted = true;// mark this as committed
+                    commit._isCommitted = true; // mark this as committed
+                }
+
+                if (dirty.Count > 0)
+                {
+                    // mark as dirty
+                    lock (_dirtyMaps)
+                    {
+                        _dirtyMaps.UnionWith(dirty);
+                    }
+
+                    _wait.Set();
                 }
             }
         }
