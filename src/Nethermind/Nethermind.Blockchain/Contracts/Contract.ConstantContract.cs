@@ -16,6 +16,7 @@
 // 
 
 using System;
+using Nethermind.Abi;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm;
@@ -27,87 +28,97 @@ namespace Nethermind.Blockchain.Contracts
         /// <summary>
         /// Gets constant version of the contract. Allowing to call contract methods without state modification.
         /// </summary>
-        /// <param name="readOnlyTransactionProcessorSource">Source of readonly <see cref="ITransactionProcessor"/> to call transactions.</param>
+        /// <param name="readOnlyTxProcessorSource">Source of readonly <see cref="ITransactionProcessor"/> to call transactions.</param>
         /// <returns>Constant version of the contract.</returns>
-        protected ConstantContract GetConstant(IReadOnlyTransactionProcessorSource readOnlyTransactionProcessorSource) =>
-            new ConstantContract(this, readOnlyTransactionProcessorSource);
-
+        protected ConstantContract GetConstant(IReadOnlyTxProcessorSource readOnlyTxProcessorSource) =>
+            new ConstantContract(this, readOnlyTxProcessorSource);
+        
         /// <summary>
         /// Constant version of the contract. Allows to call contract methods without state modification.
         /// </summary>
-        public class ConstantContract
+        protected class ConstantContract
         {
             private readonly Contract _contract;
-            private readonly IReadOnlyTransactionProcessorSource _readOnlyTransactionProcessorSource;
-            public const long DefaultConstantContractGasLimit = 50_000_000L;
+            private readonly IReadOnlyTxProcessorSource _readOnlyTxProcessorSource;
+            private const long DefaultConstantContractGasLimit = 50_000_000L;
             
-            public ConstantContract(Contract contract, IReadOnlyTransactionProcessorSource readOnlyTransactionProcessorSource)
+            public ConstantContract(
+                Contract contract, 
+                IReadOnlyTxProcessorSource readOnlyTxProcessorSource)
             {
                 _contract = contract;
-                _readOnlyTransactionProcessorSource = readOnlyTransactionProcessorSource ?? throw new ArgumentNullException(nameof(readOnlyTransactionProcessorSource));
+                _readOnlyTxProcessorSource = readOnlyTxProcessorSource ?? throw new ArgumentNullException(nameof(readOnlyTxProcessorSource));
             }
-
-            private byte[] Call(BlockHeader parentHeader, string functionName, Transaction transaction)
+            
+            public object[] Call(CallInfo callInfo)
             {
-                lock (_readOnlyTransactionProcessorSource)
+                lock (_readOnlyTxProcessorSource)
                 {
-                    using var readOnlyTransactionProcessor = _readOnlyTransactionProcessorSource.Get(GetState(parentHeader));
-                    return _contract.CallCore(readOnlyTransactionProcessor, parentHeader, functionName, transaction, true);
+                    using var readOnlyTransactionProcessor = _readOnlyTxProcessorSource.Get(GetState(callInfo.ParentHeader));
+                    return CallRaw(callInfo, readOnlyTransactionProcessor);
                 }
             }
 
-            private object[] Call(BlockHeader parentHeader, string functionName, Address sender, params object[] arguments)
+            protected virtual object[] CallRaw(CallInfo callInfo, IReadOnlyTransactionProcessor readOnlyTransactionProcessor)
             {
-                return CallRaw(parentHeader, functionName, sender, arguments);
+                var transaction = GenerateTransaction(callInfo);
+                if (readOnlyTransactionProcessor.IsContractDeployed(_contract.ContractAddress))
+                {                    
+                    var result = CallCore(callInfo, readOnlyTransactionProcessor, transaction);
+                    return callInfo.Result = _contract.DecodeReturnData(callInfo.FunctionName, result);
+                }
+                else if (callInfo.MissingContractResult != null)
+                {
+                    return callInfo.MissingContractResult;
+                }
+                else
+                {
+                    
+                    throw new AbiException($"Missing contract on address {_contract.ContractAddress} when calling function {callInfo.FunctionName}.");
+                }
             }
 
-            /// <summary>
-            /// 
-            /// </summary>
-            /// <param name="parentHeader"></param>
-            /// <param name="functionName"></param>
-            /// <param name="sender"></param>
-            /// <param name="arguments"></param>
-            /// <typeparam name="T"></typeparam>
-            /// <returns></returns>
-            public T Call<T>(BlockHeader parentHeader, string functionName, Address sender, params object[] arguments)
+            public T Call<T>(CallInfo callInfo) => (T)Call(callInfo)[0];
+            
+            public (T1, T2) Call<T1, T2>(CallInfo callInfo)
             {
-                return (T) Call(parentHeader, functionName, sender, arguments)[0];
-            }
-
-            /// <summary>
-            /// 
-            /// </summary>
-            /// <param name="parentHeader"></param>
-            /// <param name="functionName"></param>
-            /// <param name="sender"></param>
-            /// <param name="arguments"></param>
-            /// <typeparam name="T1"></typeparam>
-            /// <typeparam name="T2"></typeparam>
-            /// <returns></returns>
-            public (T1, T2) Call<T1, T2>(BlockHeader parentHeader, string functionName, Address sender,params object[] arguments)
-            {
-                var objects = Call(parentHeader, functionName, sender, arguments);
+                var objects = Call(callInfo);
                 return ((T1) objects[0], (T2) objects[1]);
             }
 
-            /// <summary>
-            /// 
-            /// </summary>
-            /// <param name="parentHeader"></param>
-            /// <param name="functionName"></param>
-            /// <param name="sender"></param>
-            /// <param name="arguments"></param>
-            /// <returns></returns>
-            public object[] CallRaw(BlockHeader parentHeader, string functionName, Address sender, params object[] arguments)
-            {
-                var transaction = _contract.GenerateTransaction<SystemTransaction>(functionName, sender, DefaultConstantContractGasLimit, parentHeader, arguments);
-                var result = Call(parentHeader, functionName, transaction);
-                var objects = _contract.DecodeReturnData(functionName, result);
-                return objects;
-            }
-            
+            private byte[] CallCore(CallInfo callInfo, IReadOnlyTransactionProcessor readOnlyTransactionProcessor, Transaction transaction) => 
+                _contract.CallCore(readOnlyTransactionProcessor, callInfo.ParentHeader, callInfo.FunctionName, transaction, true);
+
+            private Transaction GenerateTransaction(CallInfo callInfo) => 
+                _contract.GenerateTransaction<SystemTransaction>(callInfo.FunctionName, callInfo.Sender, DefaultConstantContractGasLimit, callInfo.ParentHeader, callInfo.Arguments);
+
             private Keccak GetState(BlockHeader parentHeader) => parentHeader?.StateRoot ?? Keccak.EmptyTreeHash;
+
+            public T Call<T>(BlockHeader parentHeader, string functionName, Address sender, params object[] arguments) => 
+                Call<T>(new CallInfo(parentHeader, functionName, sender, arguments));
+            
+            public (T1, T2) Call<T1, T2>(BlockHeader parentHeader, string functionName, Address sender, params object[] arguments) => 
+                Call<T1,T2>(new CallInfo(parentHeader, functionName, sender, arguments));
+
+            public class CallInfo
+            {
+                public BlockHeader ParentHeader { get; }
+                public string FunctionName { get; }
+                public Address Sender { get; }
+                public object[] Arguments { get; }
+                public object[]? Result { get; internal set; }
+                public object[]? MissingContractResult { get; set; }
+                
+                public CallInfo(BlockHeader parentHeader, string functionName, Address sender, params object[] arguments)
+                {
+                    ParentHeader = parentHeader;
+                    FunctionName = functionName;
+                    Sender = sender;
+                    Arguments = arguments;
+                }
+
+                public bool IsDefaultResult => ReferenceEquals(Result, MissingContractResult);
+            }
         }
     }
 }

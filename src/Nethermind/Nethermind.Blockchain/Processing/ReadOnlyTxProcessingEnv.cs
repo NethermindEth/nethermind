@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Evm;
@@ -23,7 +24,7 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Blockchain.Processing
 {
-    public class ReadOnlyTxProcessingEnv
+    public class ReadOnlyTxProcessingEnv : IReadOnlyTxProcessorSource
     {
         private readonly ReadOnlyDb _codeDb;
         public IStateReader StateReader { get; }
@@ -36,8 +37,18 @@ namespace Nethermind.Blockchain.Processing
         public IVirtualMachine Machine { get; }
 
         public ReadOnlyTxProcessingEnv(
-            IReadOnlyDbProvider readOnlyDbProvider,
+            IDbProvider dbProvider,
             ITrieNodeResolver trieStore,
+            IBlockTree blockTree,
+            ISpecProvider specProvider,
+            ILogManager logManager) 
+            : this(dbProvider.AsReadOnly(false), trieStore.AsReadOnly(), blockTree.AsReadOnly(), specProvider, logManager)
+        {
+        }
+
+        public ReadOnlyTxProcessingEnv(
+            IReadOnlyDbProvider readOnlyDbProvider,
+            ReadOnlyTrieStore readOnlyTrieStore,
             ReadOnlyBlockTree readOnlyBlockTree,
             ISpecProvider specProvider,
             ILogManager logManager)
@@ -45,7 +56,6 @@ namespace Nethermind.Blockchain.Processing
             DbProvider = readOnlyDbProvider;
             _codeDb = readOnlyDbProvider.CodeDb.AsReadOnly(true);
             
-            ReadOnlyTrieStore readOnlyTrieStore = trieStore.AsReadOnly();
             StateReader = new StateReader(readOnlyTrieStore, _codeDb, logManager);
             StateProvider = new StateProvider(readOnlyTrieStore, _codeDb, logManager);
             StorageProvider = new StorageProvider(readOnlyTrieStore, StateProvider, logManager);
@@ -64,5 +74,7 @@ namespace Nethermind.Blockchain.Processing
             
             _codeDb.ClearTempChanges();
         }
+
+        public IReadOnlyTransactionProcessor Get(Keccak stateRoot) => new ReadOnlyTransactionProcessor(TransactionProcessor, StateProvider, StorageProvider, stateRoot);
     }
 }

@@ -114,7 +114,7 @@ namespace Nethermind.AuRa.Test.Transactions
             protected override BlockProcessor CreateBlockProcessor()
             {
                 AbiEncoder abiEncoder = new AbiEncoder();
-                ReadOnlyTxProcessorSource readOnlyTransactionProcessorSource = new ReadOnlyTxProcessorSource(
+                ReadOnlyTxProcessingEnv readOnlyTransactionProcessorSource = new ReadOnlyTxProcessingEnv(
                     DbProvider,
                     new ReadOnlyTrieStore(new TrieStore(DbProvider.StateDb, LimboLogs.Instance)),
                     BlockTree, SpecProvider,
