@@ -23,7 +23,7 @@ namespace Nethermind.Serialization.Rlp
     public class HeaderDecoder : IRlpValueDecoder<BlockHeader>, IRlpDecoder<BlockHeader>
     {
         // TODO: need to take a decision on whether to make the whole RLP spec specific?
-        // This would help with EIP155 as well and could generally setup proper coders automatically, hmm
+        // This would help with EIP1559 as well and could generally setup proper coders automatically, hmm
         // but then RLP would have to be passed into so many places
         public static long Eip1559TransitionBlock = long.MaxValue;
         

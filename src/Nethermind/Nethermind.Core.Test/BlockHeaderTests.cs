@@ -21,6 +21,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
+using Nethermind.Int256;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -118,6 +119,40 @@ namespace Nethermind.Core.Test
             blockHeader.GasTarget = 100;
             blockHeader.GetGasTarget1559(releaseSpec).Should().Be(percentageIn1559);
             blockHeader.GetGasTargetLegacy(releaseSpec).Should().Be(100 - percentageIn1559);
+        }
+        
+           
+        [Test]
+        public void Eip_1559_CalculateBaseFee_should_returns_zero_when_eip1559_not_enabled()
+        {
+            IReleaseSpec releaseSpec = Substitute.For<IReleaseSpec>();
+            releaseSpec.IsEip1559Enabled.Returns(false);
+            
+            BlockHeader blockHeader = Build.A.BlockHeader.TestObject;
+            blockHeader.Number = 2001;
+            blockHeader.GasTarget = 100;
+            UInt256 baseFee = BlockHeader.CalculateBaseFee(blockHeader, releaseSpec);
+            Assert.AreEqual(UInt256.Zero, baseFee);
+        }
+        
+        [TestCase(100, 100, 88, 0)]
+        [TestCase(100, 300, 267, 10)]
+        [TestCase(500, 200, 185, 200)]
+        [TestCase(500, 0, 0, 200)]
+        [TestCase(21, 23, 23, 21)]
+        [TestCase(21, 23, 61, 300)]
+        public void Eip_1559_CalculateBaseFee(long gasTarget, long baseFee, long expectedBaseFee, long gasUsed)
+        {
+            IReleaseSpec releaseSpec = Substitute.For<IReleaseSpec>();
+            releaseSpec.IsEip1559Enabled.Returns(true);
+            
+            BlockHeader blockHeader = Build.A.BlockHeader.TestObject;
+            blockHeader.Number = 2001;
+            blockHeader.GasTarget = gasTarget;
+            blockHeader.BaseFee = (UInt256)baseFee;
+            blockHeader.GasUsedEip1559 = gasUsed;
+            UInt256 actualBaseFee = BlockHeader.CalculateBaseFee(blockHeader, releaseSpec);
+            Assert.AreEqual((UInt256)expectedBaseFee, actualBaseFee);
         }
     }
 }
