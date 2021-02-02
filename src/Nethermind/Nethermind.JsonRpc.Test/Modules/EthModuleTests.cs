@@ -34,7 +34,6 @@ using Nethermind.JsonRpc.Data;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Trie;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
