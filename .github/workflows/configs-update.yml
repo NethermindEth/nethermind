@@ -1,10 +1,10 @@
 name: Fast Sync Auto Update
 
-on:
-  repository_dispatch:
-    types: update_configs
+# on:
+#   repository_dispatch:
+#     types: update_configs
 
-
+on: push
 jobs:
   configs-updating:
     name: Updating Fast Sync Settings
@@ -15,10 +15,6 @@ jobs:
           ref: master
       - name: Installing dependencies
         run: |
-          sudo apt update
-          sudo apt-get install software-properties-common
-          sudo apt install python3.7
-          sudo apt-get install python3-pip
           pip3 install setuptools
           pip3 install emoji
       - name: Updating config files
