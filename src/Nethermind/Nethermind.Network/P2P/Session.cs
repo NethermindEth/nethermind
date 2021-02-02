@@ -255,6 +255,11 @@ namespace Nethermind.Network.P2P
             }
         }
 
+        public bool TryGetProtocolHandler(string protocolCode, out IProtocolHandler handler)
+        {
+            return _protocols.TryGetValue(protocolCode, out handler);
+        }
+
         public void Init(byte p2PVersion, IChannelHandlerContext context, IPacketSender packetSender)
         {
             if (_logger.IsTrace) _logger.Trace($"{nameof(Init)} called on {this}");

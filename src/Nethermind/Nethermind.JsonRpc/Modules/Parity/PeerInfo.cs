@@ -16,6 +16,7 @@
 // 
 
 using System.Collections.Generic;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Network;
 using Nethermind.Network.P2P;
 using Nethermind.Stats.Model;
@@ -32,7 +33,7 @@ namespace Nethermind.JsonRpc.Modules.Parity
         public string Name { get; set; }
         
         [JsonProperty("caps", Order = 2)]
-        public List<Capability> Caps { get; set; }
+        public List<string> Caps { get; set; }
         
         [JsonProperty("network", Order = 3)]
         public PeerNetworkInfo Network { get; set; }
@@ -43,22 +44,47 @@ namespace Nethermind.JsonRpc.Modules.Parity
         public PeerInfo(Peer peer)
         {
             ISession session = peer.InSession ?? peer.OutSession;
-            Id = session.RemoteNodeId.ToString();
-            Name = peer.Node.ClientId;
-            Caps = session.Node.AgreedCapabilities;
+            PeerNetworkInfo peerNetworkInfo = new PeerNetworkInfo();
+            EthProtocolInfo ethProtocolInfo = new EthProtocolInfo();
+            List<Capability> capabilities = new List<Capability>();
+            Caps = new List<string>();
 
-            Network = new PeerNetworkInfo()
+            if (peer.Node != null)
             {
-                LocalAddress = peer.Node.Host,
-                RemoteAddress = session.State != SessionState.New ? session.RemoteHost : "Handshake"
-            };
+                Name = peer.Node.ClientId;
+                peerNetworkInfo.LocalAddress = peer.Node.Host;
+            }
+            
+            if (session != null)
+            {
+                Id = session.RemoteNodeId.ToString();
+                peerNetworkInfo.RemoteAddress = session.State != SessionState.New ? session.RemoteHost : "Handshake";
+                
+                if (session.TryGetProtocolHandler(Protocol.Eth, out var handler))
+                {
+                    ethProtocolInfo.Version = handler.ProtocolVersion;
+                    if (handler is ISyncPeer syncPeer)
+                    {
+                        ethProtocolInfo.Difficulty = syncPeer.TotalDifficulty;
+                        ethProtocolInfo.HeadHash = syncPeer.HeadHash;
+                    }
+                }
+                
+                if (session.TryGetProtocolHandler(Protocol.P2P, out var p2PHandler))
+                {
+                    if (p2PHandler is P2PProtocolHandler p2PProtocolHandler)
+                    {
+                        capabilities = p2PProtocolHandler.AgreedCapabilities;
+                    }
+                }
+            }
 
-            EthProtocolInfo ethProtocolInfo = new EthProtocolInfo()
+            foreach (Capability capability in capabilities)
             {
-                Version = session.Node.EthProtocolVersion,
-                Difficulty = session.Node.Difficulty,
-                HeadHash = session.Node.HeadHash
-            };
+                Caps.Add(capability.ProtocolCode + "/" + capability.Version);
+            }
+            
+            Network = peerNetworkInfo;
             
             Protocols = new Dictionary<string, EthProtocolInfo>();
             Protocols.Add("eth", ethProtocolInfo);
