@@ -337,6 +337,21 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure.Persistence
         }
 
         [Test]
+        public async Task eligable_to_refund_will_not_return_when_unit_deposit_is_expired_but_was_already_claimed()
+        {
+            var depositDetails = CreateDeposit(DataAssetUnitType.Unit);
+
+            depositDetails.SetRefundClaimed();
+
+            await repository.AddAsync(depositDetails);
+
+            depositUnitsCalculator.GetConsumedAsync(depositDetails).Returns(Task.FromResult((uint)50));
+
+            PagedResult<DepositDetails> result = await repository.BrowseAsync(new GetDeposits { EligibleToRefund = true, CurrentBlockTimestamp = 150 });
+            Assert.IsTrue(result.Items.Count == 0);
+        }
+
+        [Test]
         public async Task eligable_to_refund_will_not_return_when_time_deposit_has_early_refund_ticket_set_but_was_already_claimed()
         {
             var depositDetails = CreateDeposit(DataAssetUnitType.Time);
@@ -350,6 +365,20 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure.Persistence
             depositUnitsCalculator.GetConsumedAsync(depositDetails).Returns(Task.FromResult((uint)50));
 
             PagedResult<DepositDetails> result = await repository.BrowseAsync(new GetDeposits { EligibleToRefund = true, CurrentBlockTimestamp = 100 });
+            Assert.IsTrue(result.Items.Count == 0);
+        }
+        [Test]
+        public async Task eligable_to_refund_will_not_return_when_time_deposit_is_expired_but_was_already_claimed()
+        {
+            var depositDetails = CreateDeposit(DataAssetUnitType.Time);
+
+            depositDetails.SetRefundClaimed();
+
+            await repository.AddAsync(depositDetails);
+
+            depositUnitsCalculator.GetConsumedAsync(depositDetails).Returns(Task.FromResult((uint)50));
+
+            PagedResult<DepositDetails> result = await repository.BrowseAsync(new GetDeposits { EligibleToRefund = true, CurrentBlockTimestamp = 150 });
             Assert.IsTrue(result.Items.Count == 0);
         }
 
