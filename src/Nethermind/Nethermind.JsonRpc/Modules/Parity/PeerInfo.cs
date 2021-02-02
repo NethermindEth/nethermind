@@ -17,6 +17,7 @@
 
 using System.Collections.Generic;
 using Nethermind.Network;
+using Nethermind.Network.P2P;
 using Nethermind.Stats.Model;
 using Newtonsoft.Json;
 
@@ -41,14 +42,26 @@ namespace Nethermind.JsonRpc.Modules.Parity
         
         public PeerInfo(Peer peer)
         {
-            Id = peer.InSession?.RemoteNodeId.ToString() ?? peer.OutSession?.RemoteNodeId.ToString();
+            ISession session = peer.InSession ?? peer.OutSession;
+            Id = session.RemoteNodeId.ToString();
             Name = peer.Node.ClientId;
-            Network = new PeerNetworkInfo(peer);
+            Caps = session.Node.AgreedCapabilities;
 
-            Caps = peer.InSession?.Node.AgreedCapabilities ?? peer.OutSession?.Node.AgreedCapabilities;
-          
+            Network = new PeerNetworkInfo()
+            {
+                LocalAddress = peer.Node.Host,
+                RemoteAddress = session.State != SessionState.New ? session.RemoteHost : "Handshake"
+            };
+
+            EthProtocolInfo ethProtocolInfo = new EthProtocolInfo()
+            {
+                Version = session.Node.EthProtocolVersion,
+                Difficulty = session.Node.Difficulty,
+                HeadHash = session.Node.HeadHash
+            };
+            
             Protocols = new Dictionary<string, EthProtocolInfo>();
-            Protocols.Add("eth", new EthProtocolInfo(peer));
+            Protocols.Add("eth", ethProtocolInfo);
         }
     }
 }

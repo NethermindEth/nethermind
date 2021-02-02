@@ -15,8 +15,6 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using Nethermind.Network;
-using Nethermind.Network.P2P;
 using Newtonsoft.Json;
 
 namespace Nethermind.JsonRpc.Modules.Parity
@@ -28,18 +26,5 @@ namespace Nethermind.JsonRpc.Modules.Parity
         
         [JsonProperty("remoteAddress", Order = 1)]
         public string RemoteAddress { get; set; }
-
-        public PeerNetworkInfo(Peer peer)
-        {
-            LocalAddress = peer.Node.Host;
-            RemoteAddress = peer.InSession != null ? GetRemoteAddress(peer.InSession)
-                : peer.OutSession != null ? GetRemoteAddress(peer.OutSession)
-                : null;
-        }
-        
-        private string GetRemoteAddress(ISession session)
-        {
-            return session.State != SessionState.New ? session.RemoteHost : "Handshake";
-        }
     }
 }
