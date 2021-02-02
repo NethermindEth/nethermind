@@ -56,7 +56,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure.Persistence
                 DataAssetRulesDecoder.Init();
                 DataAssetProviderDecoder.Init();
                 EarlyRefundTicketDecoder.Init();
-                
+
                 Deposit deposit = new Deposit(TestItem.KeccakA, 100, 100, 100);
                 DataAssetProvider provider = new DataAssetProvider(TestItem.AddressA, "provider");
                 DataAsset dataAsset = new DataAsset(TestItem.KeccakA, "data_asset", "desc", 1, DataAssetUnitType.Time, 1000, 10000, new DataAssetRules(new DataAssetRule(1), null), provider, null, QueryType.Stream, DataAssetState.Published, null, false, null);
@@ -97,7 +97,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure.Persistence
                     null,
                     0,
                     6));
-                
+
                 _cases.Add(new DepositDetails(
                     deposit,
                     dataAsset,
@@ -141,7 +141,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure.Persistence
             DepositDetails retrieved = await repository.GetAsync(details.Id);
             retrieved.Should().BeEquivalentTo(details);
         }
-        
+
         [Test]
         public async Task Get_null()
         {
@@ -169,25 +169,25 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure.Persistence
         [Test]
         public async Task Browse_by_eligible_to_refund()
         {
-            depositUnitsCalculator.GetConsumedAsync(Arg.Is<DepositDetails>(d => d.Timestamp == 1000)).Returns(Task.FromResult((uint) 200));
+            depositUnitsCalculator.GetConsumedAsync(Arg.Is<DepositDetails>(d => d.Timestamp == 1000)).Returns(Task.FromResult((uint)200));
             foreach (DepositDetails details in _cases)
             {
                 await repository.AddAsync(details);
             }
 
-            PagedResult<DepositDetails> result = await repository.BrowseAsync(new GetDeposits {EligibleToRefund = true, CurrentBlockTimestamp = 200});
+            PagedResult<DepositDetails> result = await repository.BrowseAsync(new GetDeposits { EligibleToRefund = true, CurrentBlockTimestamp = 200 });
             result.Items.Should().HaveCount(1);
         }
 
         [Test]
         public async Task eligable_to_refund_will_not_return_when_deposit_is_consumed()
         {
-            var deposit = new Deposit(Keccak.Zero, units: 100, expiryTime: 100, value: 10);   
+            var deposit = new Deposit(Keccak.Zero, units: 100, expiryTime: 100, value: 10);
 
-            var dataAsset = new DataAsset(Keccak.OfAnEmptyString, 
-                                        name: "TestAsset", 
-                                        description: "Test", 
-                                        unitPrice: 10, 
+            var dataAsset = new DataAsset(Keccak.OfAnEmptyString,
+                                        name: "TestAsset",
+                                        description: "Test",
+                                        unitPrice: 10,
                                         unitType: DataAssetUnitType.Unit,
                                         minUnits: 1,
                                         maxUnits: 100,
@@ -195,7 +195,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure.Persistence
                                         provider: new DataAssetProvider(TestItem.AddressA, "provider"));
 
             var depositDetails = new DepositDetails(deposit,
-                                                    dataAsset, 
+                                                    dataAsset,
                                                     consumer: TestItem.AddressB,
                                                     pepper: Array.Empty<byte>(),
                                                     timestamp: 50,
@@ -210,14 +210,14 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure.Persistence
         }
 
         [Test]
-        public async Task eligable_to_refund_will_return_when_deposit_is_not_consumed()
+        public async Task eligable_to_refund_will_not_return_when_deposit_is_not_consumed()
         {
-            var deposit = new Deposit(Keccak.Zero, units: 100, expiryTime: 100, value: 10);   
+            var deposit = new Deposit(Keccak.Zero, units: 100, expiryTime: 100, value: 10);
 
-            var dataAsset = new DataAsset(Keccak.OfAnEmptyString, 
-                                        name: "TestAsset", 
-                                        description: "Test", 
-                                        unitPrice: 10, 
+            var dataAsset = new DataAsset(Keccak.OfAnEmptyString,
+                                        name: "TestAsset",
+                                        description: "Test",
+                                        unitPrice: 10,
                                         unitType: DataAssetUnitType.Unit,
                                         minUnits: 1,
                                         maxUnits: 100,
@@ -225,7 +225,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure.Persistence
                                         provider: new DataAssetProvider(TestItem.AddressA, "provider"));
 
             var depositDetails = new DepositDetails(deposit,
-                                                    dataAsset, 
+                                                    dataAsset,
                                                     consumer: TestItem.AddressB,
                                                     pepper: Array.Empty<byte>(),
                                                     timestamp: 50,
@@ -238,7 +238,68 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure.Persistence
             PagedResult<DepositDetails> result = await repository.BrowseAsync(new GetDeposits { EligibleToRefund = true });
             Assert.IsTrue(result.Items.Count == 0);
         }
-        
+
+        [Test]
+        public async Task eligable_to_refund_will_return_when_time_deposit_is_consumed_and_timestamp_is_equals_to_asset_expiry()
+        {
+            var deposit = new Deposit(Keccak.Zero, units: 100, expiryTime: 100, value: 10);
+
+            var dataAsset = new DataAsset(Keccak.OfAnEmptyString,
+                                        name: "TestAsset",
+                                        description: "Test",
+                                        unitPrice: 10,
+                                        unitType: DataAssetUnitType.Time,
+                                        minUnits: 1,
+                                        maxUnits: 100,
+                                        rules: new DataAssetRules(new DataAssetRule(1)),
+                                        provider: new DataAssetProvider(TestItem.AddressA, "provider"));
+
+            var depositDetails = new DepositDetails(deposit,
+                                                    dataAsset,
+                                                    consumer: TestItem.AddressB,
+                                                    pepper: Array.Empty<byte>(),
+                                                    timestamp: 50,
+                                                    transactions: Array.Empty<TransactionInfo>());
+
+            await repository.AddAsync(depositDetails);
+
+            depositUnitsCalculator.GetConsumedAsync(depositDetails).Returns(Task.FromResult((uint)100));
+
+            PagedResult<DepositDetails> result = await repository.BrowseAsync(new GetDeposits { EligibleToRefund = true, CurrentBlockTimestamp = 100 });
+            Assert.IsTrue(result.Items.Count == 1);
+        }
+
+        [Test]
+        public async Task eligable_to_refund_will_not_return_when_time_deposit_is_consumed_and_timestamp_is_less_than_asset_expiry()
+        {
+            var deposit = new Deposit(Keccak.Zero, units: 100, expiryTime: 100, value: 10);
+
+            var dataAsset = new DataAsset(Keccak.OfAnEmptyString,
+                                        name: "TestAsset",
+                                        description: "Test",
+                                        unitPrice: 10,
+                                        unitType: DataAssetUnitType.Time,
+                                        minUnits: 1,
+                                        maxUnits: 100,
+                                        rules: new DataAssetRules(new DataAssetRule(1)),
+                                        provider: new DataAssetProvider(TestItem.AddressA, "provider"));
+
+            var depositDetails = new DepositDetails(deposit,
+                                                    dataAsset,
+                                                    consumer: TestItem.AddressB,
+                                                    pepper: Array.Empty<byte>(),
+                                                    timestamp: 50,
+                                                    transactions: Array.Empty<TransactionInfo>());
+
+            await repository.AddAsync(depositDetails);
+
+            depositUnitsCalculator.GetConsumedAsync(depositDetails).Returns(Task.FromResult((uint)100));
+
+            PagedResult<DepositDetails> result = await repository.BrowseAsync(new GetDeposits { EligibleToRefund = true, CurrentBlockTimestamp = 99 });
+            Assert.IsTrue(result.Items.Count == 0);
+        }
+
+
         [Test]
         public async Task Browse_pending_only()
         {
@@ -247,10 +308,10 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure.Persistence
                 await repository.AddAsync(details);
             }
 
-            PagedResult<DepositDetails> result = await repository.BrowseAsync(new GetDeposits {OnlyPending = true});
+            PagedResult<DepositDetails> result = await repository.BrowseAsync(new GetDeposits { OnlyPending = true });
             result.Items.Should().HaveCount(0);
         }
-        
+
         [Test]
         public async Task Browse_not_rejected_only()
         {
@@ -259,10 +320,10 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure.Persistence
                 await repository.AddAsync(details);
             }
 
-            PagedResult<DepositDetails> result = await repository.BrowseAsync(new GetDeposits {OnlyNotRejected = true});
+            PagedResult<DepositDetails> result = await repository.BrowseAsync(new GetDeposits { OnlyNotRejected = true });
             result.Items.Should().HaveCount(1);
         }
-        
+
         [Test]
         public async Task Browse_unconfirmed_only()
         {
@@ -271,7 +332,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure.Persistence
                 await repository.AddAsync(details);
             }
 
-            PagedResult<DepositDetails> result = await repository.BrowseAsync(new GetDeposits {OnlyUnconfirmed = true});
+            PagedResult<DepositDetails> result = await repository.BrowseAsync(new GetDeposits { OnlyUnconfirmed = true });
             result.Items.Should().HaveCount(01);
         }
 
@@ -296,7 +357,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure.Persistence
             PagedResult<DepositDetails> result = await repository.BrowseAsync(new GetDeposits());
             result.Items.Should().HaveCount(0);
         }
-        
+
         [Test]
         public void Null_query_throws()
         {
