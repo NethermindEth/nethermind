@@ -20,6 +20,6 @@ namespace Nethermind.Db
     {
         IDb CreateDb(RocksDbSettings rocksDbSettings);
         
-        IColumnsDb<T> CreateColumnsDb<T>(RocksDbSettings rocksDbSettings);
+        IColumnsDb<T> CreateColumnsDb<T>(RocksDbSettings rocksDbSettings) where T : notnull;
     }
 }
