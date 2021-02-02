@@ -19,7 +19,6 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.DataMarketplace.Consumers.Deposits;
 using Nethermind.DataMarketplace.Consumers.Deposits.Domain;
@@ -37,6 +36,15 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure.Persistence
     [TestFixture]
     public class DepositDetailsRocksRepositoryTests
     {
+        private DepositDetailsRocksRepository repository;
+        private IDepositUnitsCalculator depositUnitsCalculator;
+        private static List<DepositDetails> _cases;
+
+        public static IEnumerable<DepositDetails> TestCaseSource()
+        {
+            return _cases;
+        }
+
         static DepositDetailsRocksRepositoryTests()
         {
             if (_cases == null)
@@ -108,30 +116,27 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure.Persistence
                     0,
                     6));
 
-                    var expiredDeposit = new DepositDetails(deposit,
-                                                            dataAsset, 
-                                                            TestItem.AddressD, 
-                                                            Array.Empty<byte>(),
-                                                            1000,
-                                                            Array.Empty<TransactionInfo>());
-                    
-                    _cases.Add(expiredDeposit);
+                _cases.Add(new DepositDetails(
+                    deposit,
+                    dataAsset,
+                    TestItem.AddressD,
+                    Array.Empty<byte>(),
+                    1000,
+                    Array.Empty<TransactionInfo>()));
             }
         }
 
-        private static List<DepositDetails> _cases;
-
-        public static IEnumerable<DepositDetails> TestCaseSource()
+        [SetUp]
+        public void SetUp()
         {
-            return _cases;
+            IDb db = new MemDb();
+            depositUnitsCalculator = Substitute.For<IDepositUnitsCalculator>();
+            repository = new DepositDetailsRocksRepository(db, new DepositDetailsDecoder(), depositUnitsCalculator);
         }
 
         [TestCaseSource(nameof(TestCaseSource))]
         public async Task Add_get(DepositDetails details)
         {
-            IDb db = new MemDb();
-            IDepositUnitsCalculator depositUnitsCalculator = Substitute.For<IDepositUnitsCalculator>();
-            DepositDetailsRocksRepository repository = new DepositDetailsRocksRepository(db, new DepositDetailsDecoder(), depositUnitsCalculator);
             await repository.AddAsync(details);
             DepositDetails retrieved = await repository.GetAsync(details.Id);
             retrieved.Should().BeEquivalentTo(details);
@@ -140,9 +145,6 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure.Persistence
         [Test]
         public async Task Get_null()
         {
-            IDb db = new MemDb();
-            IDepositUnitsCalculator depositUnitsCalculator = Substitute.For<IDepositUnitsCalculator>();
-            DepositDetailsRocksRepository repository = new DepositDetailsRocksRepository(db, new DepositDetailsDecoder(), depositUnitsCalculator);
             DepositDetails retrieved = await repository.GetAsync(Keccak.Zero);
             retrieved.Should().BeNull();
         }
@@ -150,9 +152,6 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure.Persistence
         [TestCaseSource(nameof(TestCaseSource))]
         public async Task Update_get(DepositDetails details)
         {
-            IDb db = new MemDb();
-            IDepositUnitsCalculator depositUnitsCalculator = Substitute.For<IDepositUnitsCalculator>();
-            DepositDetailsRocksRepository repository = new DepositDetailsRocksRepository(db, new DepositDetailsDecoder(), depositUnitsCalculator);
             await repository.UpdateAsync(details);
             DepositDetails retrieved = await repository.GetAsync(details.Id);
             retrieved.Should().BeEquivalentTo(details);
@@ -161,9 +160,6 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure.Persistence
         [TestCaseSource(nameof(TestCaseSource))]
         public async Task Add_update_get(DepositDetails details)
         {
-            IDb db = new MemDb();
-            IDepositUnitsCalculator depositUnitsCalculator = Substitute.For<IDepositUnitsCalculator>();
-            DepositDetailsRocksRepository repository = new DepositDetailsRocksRepository(db, new DepositDetailsDecoder(), depositUnitsCalculator);
             await repository.AddAsync(_cases[0]);
             await repository.UpdateAsync(details);
             DepositDetails retrieved = await repository.GetAsync(details.Id);
@@ -173,10 +169,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure.Persistence
         [Test]
         public async Task Browse_by_eligible_to_refund()
         {
-            IDb db = new MemDb();
-            IDepositUnitsCalculator depositUnitsCalculator = Substitute.For<IDepositUnitsCalculator>();
             depositUnitsCalculator.GetConsumedAsync(Arg.Is<DepositDetails>(d => d.Timestamp == 1000)).Returns(Task.FromResult((uint) 200));
-            DepositDetailsRocksRepository repository = new DepositDetailsRocksRepository(db, new DepositDetailsDecoder(), depositUnitsCalculator);
             foreach (DepositDetails details in _cases)
             {
                 await repository.AddAsync(details);
@@ -189,9 +182,6 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure.Persistence
         [Test]
         public async Task Browse_pending_only()
         {
-            IDb db = new MemDb();
-            IDepositUnitsCalculator depositUnitsCalculator = Substitute.For<IDepositUnitsCalculator>();
-            DepositDetailsRocksRepository repository = new DepositDetailsRocksRepository(db, new DepositDetailsDecoder(), depositUnitsCalculator);
             foreach (DepositDetails details in _cases)
             {
                 await repository.AddAsync(details);
@@ -204,9 +194,6 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure.Persistence
         [Test]
         public async Task Browse_not_rejected_only()
         {
-            IDb db = new MemDb();
-            IDepositUnitsCalculator depositUnitsCalculator = Substitute.For<IDepositUnitsCalculator>();
-            DepositDetailsRocksRepository repository = new DepositDetailsRocksRepository(db, new DepositDetailsDecoder(), depositUnitsCalculator);
             foreach (DepositDetails details in _cases)
             {
                 await repository.AddAsync(details);
@@ -219,9 +206,6 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure.Persistence
         [Test]
         public async Task Browse_unconfirmed_only()
         {
-            IDb db = new MemDb();
-            IDepositUnitsCalculator depositUnitsCalculator = Substitute.For<IDepositUnitsCalculator>();
-            DepositDetailsRocksRepository repository = new DepositDetailsRocksRepository(db, new DepositDetailsDecoder(), depositUnitsCalculator);
             foreach (DepositDetails details in _cases)
             {
                 await repository.AddAsync(details);
@@ -234,9 +218,6 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure.Persistence
         [Test]
         public async Task Browse_empty()
         {
-            IDb db = new MemDb();
-            IDepositUnitsCalculator depositUnitsCalculator = Substitute.For<IDepositUnitsCalculator>();
-            DepositDetailsRocksRepository repository = new DepositDetailsRocksRepository(db, new DepositDetailsDecoder(), depositUnitsCalculator);
             foreach (DepositDetails details in _cases)
             {
                 await repository.AddAsync(details);
@@ -252,9 +233,6 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure.Persistence
         [Test]
         public async Task Browse_empty_database()
         {
-            IDb db = new MemDb();
-            IDepositUnitsCalculator depositUnitsCalculator = Substitute.For<IDepositUnitsCalculator>();
-            DepositDetailsRocksRepository repository = new DepositDetailsRocksRepository(db, new DepositDetailsDecoder(), depositUnitsCalculator);
             PagedResult<DepositDetails> result = await repository.BrowseAsync(new GetDeposits());
             result.Items.Should().HaveCount(0);
         }
@@ -262,9 +240,6 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure.Persistence
         [Test]
         public void Null_query_throws()
         {
-            IDb db = new MemDb();
-            IDepositUnitsCalculator depositUnitsCalculator = Substitute.For<IDepositUnitsCalculator>();
-            DepositDetailsRocksRepository repository = new DepositDetailsRocksRepository(db, new DepositDetailsDecoder(), depositUnitsCalculator);
             Assert.ThrowsAsync<ArgumentNullException>(() => repository.BrowseAsync(null));
         }
     }
