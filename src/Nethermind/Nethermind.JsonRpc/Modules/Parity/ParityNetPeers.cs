@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -13,22 +13,28 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using System.Collections.Generic;
-using System.Threading.Tasks;
-using Nethermind.Config;
+using Newtonsoft.Json;
 
-namespace Nethermind.Network
+namespace Nethermind.JsonRpc.Modules.Parity
 {
-    public interface IPeerManager
+    public class ParityNetPeers
     {
-        void Init();
-        void Start();
-        Task StopAsync();
-        IReadOnlyCollection<Peer> ActivePeers { get; }
-        IReadOnlyCollection<Peer> ConnectedPeers { get; }
-        int MaxActivePeers { get; }
-        void AddPeer(NetworkNode node);
-        bool RemovePeer(NetworkNode node);
+        [JsonProperty("active", Order = 0)]
+        public int Active { get; set; }
+        
+        [JsonProperty("connected", Order = 1)]
+        public int Connected { get; set; }
+        
+        [JsonProperty("max", Order = 2)]
+        public int Max { get; set; }
+        
+        [JsonProperty("peers", Order = 3)]
+        public PeerInfo[] Peers { get; set; }
+        
+        public ParityNetPeers()
+        {
+        }
     }
 }

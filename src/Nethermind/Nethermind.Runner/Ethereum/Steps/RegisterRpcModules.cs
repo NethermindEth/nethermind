@@ -72,6 +72,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             if (_api.SpecProvider == null) throw new StepDependencyException(nameof(_api.SpecProvider));
             if (_api.TxSender == null) throw new StepDependencyException(nameof(_api.TxSender));
             if (_api.StateReader == null) throw new StepDependencyException(nameof(_api.StateReader));
+            if (_api.PeerManager == null) throw new StepDependencyException(nameof(_api.PeerManager));
 
             if (jsonRpcConfig.Enabled)
             {
@@ -181,7 +182,8 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.Enode,
                 _api.EngineSignerStore,
                 _api.KeyStore,
-                _api.LogManager);
+                _api.LogManager,
+                _api.PeerManager);
             _api.RpcModuleProvider.Register(new SingletonModulePool<IParityModule>(parityModule, true));
 
             Web3Module web3Module = new Web3Module(_api.LogManager);

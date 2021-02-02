@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.Collections.Generic;
 using System.Net;
 using System.Threading.Tasks;
 using FluentAssertions;
@@ -34,7 +35,10 @@ using Nethermind.State;
 using Nethermind.State.Repositories;
 using Nethermind.Db.Blooms;
 using Nethermind.KeyStore;
+using Nethermind.Network;
+using Nethermind.Network.P2P;
 using Nethermind.Specs.Forks;
+using Nethermind.Stats.Model;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Storages;
@@ -58,6 +62,15 @@ namespace Nethermind.JsonRpc.Test.Modules
             var specProvider = MainnetSpecProvider.Instance;
             var ethereumEcdsa = new EthereumEcdsa(specProvider.ChainId, logger);
             var txStorage = new InMemoryTxStorage();
+            
+            Peer peerA = SetUpPeerA();
+            Peer peerB = SetUpPeerB();
+            Peer peerC = SetUpPeerC();
+            IPeerManager peerManager = Substitute.For<IPeerManager>();
+            peerManager.ActivePeers.Returns(new List<Peer> {peerA, peerB, peerC});
+            peerManager.ConnectedPeers.Returns(new List<Peer> {peerA, peerB, peerA, peerC, peerB});
+            peerManager.MaxActivePeers.Returns(15);
+
 
             var txPool = new TxPool.TxPool(txStorage, ethereumEcdsa, specProvider, new TxPoolConfig(),
                 new StateProvider(new TrieStore(new MemDb(), LimboLogs.Instance), new MemDb(), LimboLogs.Instance),  LimboLogs.Instance);
@@ -72,7 +85,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             _signerStore = new Signer(specProvider.ChainId, TestItem.PrivateKeyB, logger);
             _parityModule = new ParityModule(ethereumEcdsa, txPool, blockTree, receiptStorage, new Enode(TestItem.PublicKeyA, IPAddress.Loopback, 8545), 
-                _signerStore, new MemKeyStore(new[] {TestItem.PrivateKeyA}),  logger);
+                _signerStore, new MemKeyStore(new[] {TestItem.PrivateKeyA}),  logger, peerManager);
             
             var blockNumber = 2;
             var pendingTransaction = Build.A.Transaction.Signed(ethereumEcdsa, TestItem.PrivateKeyD, false)
@@ -120,6 +133,40 @@ namespace Nethermind.JsonRpc.Test.Modules
                 GasUsedTotal = 2000,
                 Logs = logEntries
             });
+        }
+        
+        private static Peer SetUpPeerA()
+        {
+            Node node = new Node("127.0.0.1", 30303, true);
+            node.ClientId = "Geth/v1.9.21-stable/linux-amd64/go1.15.2";
+            
+            Peer peer = new Peer(node);
+            peer.InSession = null;
+            peer.OutSession = Substitute.For<ISession>();
+            peer.OutSession.RemoteNodeId.Returns(TestItem.PublicKeyA);
+            
+            return peer;
+        }
+        
+        private static Peer SetUpPeerB()
+        {
+            Node node = new Node("95.217.106.25", 22222, true);
+            node.ClientId = "Geth/v1.9.26-unstable/linux-amd64/go1.15.6";
+
+            Peer peer = new Peer(node);
+            peer.InSession = null;
+            peer.OutSession = null;
+            
+            return peer;
+        }
+        
+        private static Peer SetUpPeerC()
+        {
+            Peer peer = new Peer(null);
+            peer.InSession = Substitute.For<ISession>();
+            peer.InSession.RemoteNodeId.Returns(TestItem.PublicKeyB);
+            
+            return peer;
         }
 
         [Test]
@@ -176,6 +223,14 @@ namespace Nethermind.JsonRpc.Test.Modules
             serialized.Should().Be(expectedResult);
             _signerStore.Address.Should().Be(Address.Zero);
             _signerStore.CanSign.Should().BeFalse();
+        }
+
+        [Test]
+        public void parity_netPeers()
+        {
+            string serialized = RpcTest.TestSerializedRequest(_parityModule, "parity_netPeers");
+            var expectedResult = "{\"jsonrpc\":\"2.0\",\"result\":{\"active\":3,\"connected\":5,\"max\":15,\"peers\":[{\"id\":\"" + TestItem.PublicKeyA + "\",\"name\":\"Geth/v1.9.21-stable/linux-amd64/go1.15.2\",\"caps\":[],\"network\":{\"localAddress\":\"127.0.0.1\",\"remoteAddress\":\"Handshake\"},\"protocols\":{\"eth\":{\"version\":0,\"difficulty\":\"0x0\"}}},{\"name\":\"Geth/v1.9.26-unstable/linux-amd64/go1.15.6\",\"caps\":[],\"network\":{\"localAddress\":\"95.217.106.25\"},\"protocols\":{\"eth\":{\"version\":0,\"difficulty\":\"0x0\"}}},{\"id\":\"" + TestItem.PublicKeyB + "\",\"caps\":[],\"network\":{\"remoteAddress\":\"Handshake\"},\"protocols\":{\"eth\":{\"version\":0,\"difficulty\":\"0x0\"}}}]},\"id\":67}";
+            Assert.AreEqual(expectedResult, serialized);
         }
     }
 }

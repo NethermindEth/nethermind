@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -13,22 +13,23 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using System.Collections.Generic;
-using System.Threading.Tasks;
-using Nethermind.Config;
+using Nethermind.Core.Crypto;
+using Nethermind.Int256;
+using Newtonsoft.Json;
 
-namespace Nethermind.Network
+namespace Nethermind.JsonRpc.Modules.Parity
 {
-    public interface IPeerManager
+    public class EthProtocolInfo
     {
-        void Init();
-        void Start();
-        Task StopAsync();
-        IReadOnlyCollection<Peer> ActivePeers { get; }
-        IReadOnlyCollection<Peer> ConnectedPeers { get; }
-        int MaxActivePeers { get; }
-        void AddPeer(NetworkNode node);
-        bool RemovePeer(NetworkNode node);
+        [JsonProperty("version", Order = 0)]
+        public byte Version { get; set; }
+        
+        [JsonProperty("difficulty", Order = 1)]
+        public UInt256 Difficulty { get; set; }
+        
+        [JsonProperty("head", Order = 2)]
+        public Keccak HeadHash { get; set; }
     }
 }
