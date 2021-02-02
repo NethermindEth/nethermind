@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System;
 using Nethermind.Abi;
 using Nethermind.Blockchain.Contracts;
 using Nethermind.Core;
@@ -32,7 +33,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
             IAbiEncoder abiEncoder,
             IRegisterContract registerContract,
             string registryKey,
-            AbiDefinition abiDefinition = null) 
+            AbiDefinition? abiDefinition = null) 
             : base(abiEncoder, Address.Zero, abiDefinition)
         {
             _registerContract = registerContract;
@@ -45,7 +46,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
             return GenerateTransaction<T>(transactionData, sender, contractAddress, gasLimit);
         }
 
-        private Address GetContractAddress(BlockHeader header)
+        private Address GetContractAddress(BlockHeader? header)
         {
             bool needUpdate = false;
             lock (_currentHashAddress)
@@ -56,17 +57,16 @@ namespace Nethermind.Consensus.AuRa.Contracts
             if (needUpdate)
             {
                 Address contractAddress = _registerContract.GetAddress(header, _registryKey);
-                if (contractAddress == Address.Zero)
+
+                if (contractAddress != IRegisterContract.MissingAddressResult)
                 {
-                    throw new AbiException($"Contract {GetType().Name} is not configured in Register Contract under key {_registryKey}.");
+                    lock (_currentHashAddress)
+                    {
+                        ContractAddress = contractAddress;
+                        _currentHashAddress = header.Hash!;
+                    }
                 }
 
-                lock (_currentHashAddress)
-                {
-                    ContractAddress = contractAddress;
-                    _currentHashAddress = header.Hash;
-                }
-                
                 return contractAddress;
             }
 

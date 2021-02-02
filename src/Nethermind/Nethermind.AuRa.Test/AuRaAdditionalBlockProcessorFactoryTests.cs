@@ -49,7 +49,7 @@ namespace Nethermind.AuRa.Test
             var factory = new AuRaValidatorFactory(Substitute.For<IStateProvider>(),
                 Substitute.For<IAbiEncoder>(), 
                 Substitute.For<ITransactionProcessor>(),
-                Substitute.For<IReadOnlyTransactionProcessorSource>(),
+                Substitute.For<IReadOnlyTxProcessorSource>(),
                 Substitute.For<IBlockTree>(),
                 Substitute.For<IReceiptStorage>(),
                 Substitute.For<IValidatorStore>(),

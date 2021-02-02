@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System;
 using Nethermind.Abi;
 using Nethermind.Blockchain.Contracts;
 using Nethermind.Core;
@@ -25,6 +26,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
 {
     public interface IRegisterContract
     {
+        static readonly Address MissingAddressResult = Address.Zero;
         Address GetAddress(BlockHeader header, string key);
     }
 
@@ -33,6 +35,8 @@ namespace Nethermind.Consensus.AuRa.Contracts
     /// </summary>
     public class RegisterContract : Contract, IRegisterContract
     {
+        private static readonly object[] MissingGetAddressResult = {IRegisterContract.MissingAddressResult};
+
         /// <summary>
         /// Category of domain name service addresses
         /// </summary>
@@ -42,13 +46,14 @@ namespace Nethermind.Consensus.AuRa.Contracts
         public RegisterContract(
             IAbiEncoder abiEncoder, 
             Address contractAddress,
-            IReadOnlyTransactionProcessorSource readOnlyTransactionProcessorSource) 
+            IReadOnlyTxProcessorSource readOnlyTxProcessorSource) 
             : base(abiEncoder, contractAddress)
         {
-            Constant = GetConstant(readOnlyTransactionProcessorSource);
+            Constant = GetConstant(readOnlyTxProcessorSource);
         }
 
-        public Address GetAddress(BlockHeader header, string key) => 
-            Constant.Call<Address>(header, nameof(GetAddress), Address.Zero, Keccak.Compute(key).Bytes, DnsAddressRecord); // 2 arguments: name and key (category)
+        public Address GetAddress(BlockHeader header, string key) =>
+            // 2 arguments: name and key (category)
+            Constant.Call<Address>(new ConstantContract.CallInfo(header, nameof(GetAddress), Address.Zero, Keccak.Compute(key).Bytes, DnsAddressRecord) {MissingContractResult = MissingGetAddressResult});
     }
 }

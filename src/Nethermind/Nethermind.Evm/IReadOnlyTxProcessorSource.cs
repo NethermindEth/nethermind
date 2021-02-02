@@ -18,7 +18,7 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Evm
 {
-    public interface IReadOnlyTransactionProcessorSource
+    public interface IReadOnlyTxProcessorSource
     {
         IReadOnlyTransactionProcessor Get(Keccak stateRoot);
     }
