@@ -86,6 +86,52 @@ configs = {
         "url": "https://core.poa.network",
         "blockReduced": 8192,
         "multiplierRequirement": 10000
+    },
+    # pruning sections
+    "mainnet_pruned": {
+        "url": "api.etherscan.io",
+        "blockReduced": 8192,
+        "multiplierRequirement": 10000 
+    },
+    "goerli_pruned": {
+        "url": "api-goerli.etherscan.io",
+        "blockReduced": 8192,
+        "multiplierRequirement": 30000 
+    },
+    "ropsten_pruned": {
+        "url": "api-ropsten.etherscan.io",
+        "blockReduced": 8192,
+        "multiplierRequirement": 10000
+    },
+    "rinkeby_pruned": {
+        "url": "api-rinkeby.etherscan.io",
+        "blockReduced": 8192,
+        "multiplierRequirement": 30000
+    },
+    "poacore_pruned": {
+        "url": "https://core.poa.network",
+        "blockReduced": 8192,
+        "multiplierRequirement": 10000
+    },
+    "xdai_pruned": {
+        "url": "https://dai.poa.network",
+        "blockReduced": 8192,
+        "multiplierRequirement": 10000
+    },
+    "sokol_pruned": {
+        "url": "https://sokol.poa.network",
+        "blockReduced": 8192,
+        "multiplierRequirement": 10000
+    },
+    "energyweb_pruned": {
+        "url": "https://rpc.energyweb.org",
+        "blockReduced": 8192,
+        "multiplierRequirement": 10000
+    },
+    "volta_pruned": {
+        "url": "https://volta-rpc.energyweb.org",
+        "blockReduced": 8192,
+        "multiplierRequirement": 10000
     }
 }
 
