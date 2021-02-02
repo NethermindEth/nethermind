@@ -11,7 +11,7 @@ jobs:
     env: 
       USER: ${{ github.event.issue.user.login }}
       AUTHOR_ASSOCIATION: ${{ github.event.issue.author_association }}
-      ISSUE_URL: ${{ github.event.issue.url }}
+      ISSUE_URL: ${{ github.event.issue.html_url }}
       ISSUE_TITLE: ${{ github.event.issue.title }}
     steps:
     - name: Alert Nethermind Team
@@ -19,8 +19,13 @@ jobs:
       run: |
         MESSAGE="An issue ${{ env.ISSUE_TITLE }} has been created by a user: ${{ env.USER }}" 
         MESSAGE_FORMATTED=$(echo $MESSAGE | tr -d '"')
-        curl -X POST https://api.eu.opsgenie.com/v2/alerts -H "Content-Type: application/json" -H "Authorization: GenieKey ${{ secrets.OPSGENIE_KEY }}" -d '{
+        composeMessage() {
+        cat <<EOF
+        {
           "message": "$MESSAGE_FORMATTED",
           "description":"Github issue URL: ${{ env.ISSUE_URL }}",
           "tags": ["GithubIssues"]
-        }'
+        }
+        EOF
+        }
+        curl -X POST https://api.eu.opsgenie.com/v2/alerts -H "Content-Type: application/json" -H "Authorization: GenieKey ${{ secrets.OPSGENIE_KEY }}" -d "$(composeMessage)"
