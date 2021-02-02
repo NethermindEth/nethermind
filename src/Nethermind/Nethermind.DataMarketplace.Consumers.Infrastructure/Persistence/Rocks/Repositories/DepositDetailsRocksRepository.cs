@@ -97,16 +97,17 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Rocks.
 
             if (query.EligibleToRefund)
             {
-
                 foreach (var deposit in deposits)
                 {
                     uint consumedUnits = await _depositUnitsCalculator.GetConsumedAsync(deposit);
                     deposit.SetConsumedUnits(consumedUnits);
                 }
-
-                filteredDeposits = filteredDeposits.Where(d => !d.RefundClaimed && (d.ConsumedUnits < d.Deposit.Units) &&
-                                                               (!(d.EarlyRefundTicket is null) ||
-                                                                query.CurrentBlockTimestamp >= d.Deposit.ExpiryTime));
+                
+                filteredDeposits = filteredDeposits.Where(d =>
+                    !d.RefundClaimed &&
+                    // in time deposits, during the refund: units consumed will be always equal to all deposit units, hence we do not check whether all units are consumed
+                    ((d.ConsumedUnits < d.Deposit.Units) || d.DataAsset.UnitType == DataAssetUnitType.Time) &&
+                    (!(d.EarlyRefundTicket is null) || query.CurrentBlockTimestamp >= d.Deposit.ExpiryTime));
             }
 
             return filteredDeposits.OrderByDescending(d => d.Timestamp).ToArray().Paginate(query);
