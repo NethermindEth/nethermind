@@ -1,10 +1,9 @@
 name: Fast Sync Auto Update
 
-# on:
-#   repository_dispatch:
-#     types: update_configs
+on:
+  repository_dispatch:
+    types: update_configs
 
-on: push
 jobs:
   configs-updating:
     name: Updating Fast Sync Settings
@@ -21,7 +20,7 @@ jobs:
         run: |
           python3 scripts/syncSettings.py ${{ secrets.ETHERSCAN }}
       - name: Create Pull Request
-        uses: peter-evans/create-pull-request@v3.5.0
+        uses: peter-evans/create-pull-request@v3.7.0
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           commit-message: Updating Fast Sync config files
@@ -41,10 +40,8 @@ jobs:
             [1]: https://github.com/peter-evans/create-pull-request
           title: "Update Fast Sync configuration in Nethermind repository"
           labels: configs
-          author-name: github-actions[bot]
-          author-email: 41898282+github-actions[bot]@users.noreply.github.com
-          committer-name: GitHub
-          committer-email: noreply@github.com
+          author: ${{ github.actor }} <${{ github.actor }}@users.noreply.github.com>
+          committer: GitHub <noreply@github.com>
           branch: configs-update
           branch-suffix: short-commit-hash
           base: master
