@@ -13,13 +13,23 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-namespace Nethermind.Db
+using Nethermind.Core.Crypto;
+using Nethermind.Int256;
+using Newtonsoft.Json;
+
+namespace Nethermind.JsonRpc.Modules.Parity
 {
-    public interface IRocksDbFactory
+    public class EthProtocolInfo
     {
-        IDb CreateDb(RocksDbSettings rocksDbSettings);
+        [JsonProperty("version", Order = 0)]
+        public byte Version { get; set; }
         
-        IColumnsDb<T> CreateColumnsDb<T>(RocksDbSettings rocksDbSettings) where T : notnull;
+        [JsonProperty("difficulty", Order = 1)]
+        public UInt256 Difficulty { get; set; }
+        
+        [JsonProperty("head", Order = 2)]
+        public Keccak HeadHash { get; set; }
     }
 }

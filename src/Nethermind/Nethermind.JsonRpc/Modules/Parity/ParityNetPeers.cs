@@ -13,13 +13,28 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-namespace Nethermind.Db
+using Newtonsoft.Json;
+
+namespace Nethermind.JsonRpc.Modules.Parity
 {
-    public interface IRocksDbFactory
+    public class ParityNetPeers
     {
-        IDb CreateDb(RocksDbSettings rocksDbSettings);
+        [JsonProperty("active", Order = 0)]
+        public int Active { get; set; }
         
-        IColumnsDb<T> CreateColumnsDb<T>(RocksDbSettings rocksDbSettings) where T : notnull;
+        [JsonProperty("connected", Order = 1)]
+        public int Connected { get; set; }
+        
+        [JsonProperty("max", Order = 2)]
+        public int Max { get; set; }
+        
+        [JsonProperty("peers", Order = 3)]
+        public PeerInfo[] Peers { get; set; }
+        
+        public ParityNetPeers()
+        {
+        }
     }
 }

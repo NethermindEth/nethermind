@@ -49,7 +49,9 @@ namespace Nethermind.Network.P2P
         IPingSender PingSender { get; set; }
         
         void AddProtocolHandler(IProtocolHandler handler);
-        
+
+        bool TryGetProtocolHandler(string protocolCode, out IProtocolHandler handler);
+
         void Init(byte p2PVersion, IChannelHandlerContext context, IPacketSender packetSender);
 
         /// <summary>

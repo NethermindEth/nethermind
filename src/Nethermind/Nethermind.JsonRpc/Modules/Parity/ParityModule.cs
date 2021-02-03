@@ -28,6 +28,7 @@ using Nethermind.KeyStore;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.TxPool;
+using Nethermind.Network;
 
 namespace Nethermind.JsonRpc.Modules.Parity
 {
@@ -40,6 +41,8 @@ namespace Nethermind.JsonRpc.Modules.Parity
         private readonly IEnode _enode;
         private readonly ISignerStore _signerStore;
         private readonly IKeyStore _keyStore;
+        private readonly IPeerManager _peerManager;
+        private ParityNetPeers _parityNetPeers;
 
         public ParityModule(
             IEcdsa ecdsa,
@@ -49,7 +52,8 @@ namespace Nethermind.JsonRpc.Modules.Parity
             IEnode enode,
             ISignerStore signerStore,
             IKeyStore keyStore,
-            ILogManager logManager)
+            ILogManager logManager,
+            IPeerManager peerManager)
         {
             _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
             _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
@@ -58,6 +62,7 @@ namespace Nethermind.JsonRpc.Modules.Parity
             _enode = enode ?? throw new ArgumentNullException(nameof(enode));
             _signerStore = signerStore ?? throw new ArgumentNullException(nameof(signerStore));
             _keyStore = keyStore ?? throw new ArgumentNullException(nameof(keyStore));
+            _peerManager = peerManager ?? throw new ArgumentNullException(nameof(peerManager));
         }
 
         public ResultWrapper<ParityTransaction[]> parity_pendingTransactions()
@@ -107,5 +112,15 @@ namespace Nethermind.JsonRpc.Modules.Parity
         }
 
         public ResultWrapper<string> parity_enode() => ResultWrapper<string>.Success(_enode.ToString());
+
+        public ResultWrapper<ParityNetPeers> parity_netPeers()
+        {
+            _parityNetPeers = new ParityNetPeers();
+            _parityNetPeers.Active = _peerManager.ActivePeers.Count;
+            _parityNetPeers.Connected = _peerManager.ConnectedPeers.Count;
+            _parityNetPeers.Max = _peerManager.MaxActivePeers;
+            _parityNetPeers.Peers = _peerManager.ActivePeers.Select(p => new PeerInfo(p)).ToArray();
+            return ResultWrapper<ParityNetPeers>.Success(_parityNetPeers);
+        }
     }
 }
