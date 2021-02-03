@@ -40,7 +40,7 @@ using Nethermind.Runner.Ethereum.Steps.Migrations;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
-    [RunnerStepDependencies(typeof(InitializeNetwork), typeof(SetupKeyStore), typeof(InitializeBlockchain), typeof(InitializePlugins))]
+    [RunnerStepDependencies(typeof(InitializeNetwork), typeof(SetupKeyStore), typeof(InitializeBlockchain), typeof(InitializePlugins), typeof(StartBlockProducer))]
     public class RegisterRpcModules : IStep
     {
         private readonly INethermindApi _api;
