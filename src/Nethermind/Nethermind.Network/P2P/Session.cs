@@ -135,17 +135,21 @@ namespace Nethermind.Network.P2P
             {
                 return;
             }
-
-            protocol.AddSupportedCapability(capability);
+            if (protocol is IP2PProtocolHandler p2PProtocol)
+            {
+                p2PProtocol.AddSupportedCapability(capability);
+            }
         }
 
         public bool HasAvailableCapability(Capability capability)
             => _protocols.TryGetValue(Protocol.P2P, out IProtocolHandler protocol)
-               && protocol.HasAvailableCapability(capability);
+               && protocol is IP2PProtocolHandler p2PProtocol
+               && p2PProtocol.HasAvailableCapability(capability);
 
         public bool HasAgreedCapability(Capability capability)
             => _protocols.TryGetValue(Protocol.P2P, out IProtocolHandler protocol)
-               && protocol.HasAgreedCapability(capability);
+               && protocol is IP2PProtocolHandler p2PProtocol
+               && p2PProtocol.HasAgreedCapability(capability);
 
         public IPingSender PingSender { get; set; }
 

@@ -103,16 +103,6 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         }
 
         [Test]
-        public void Capabilities_are_implemented_badly()
-        {
-            // capabilities handling should not even be handled on this level
-            // so the behaviour is whatever it is
-            _handler.AddSupportedCapability(new Capability("silly", 1));
-            _handler.HasAgreedCapability(new Capability("eth", 62)).Should().BeFalse();
-            _handler.HasAvailableCapability(new Capability("eth", 62)).Should().BeFalse();
-        }
-
-        [Test]
         public void Can_broadcast_a_block()
         {
             Block block = Build.A.Block.WithTotalDifficulty(1L).TestObject;

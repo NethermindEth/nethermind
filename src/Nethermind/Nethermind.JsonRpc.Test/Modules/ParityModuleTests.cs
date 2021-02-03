@@ -20,6 +20,7 @@ using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Core;
@@ -52,7 +53,9 @@ namespace Nethermind.JsonRpc.Test.Modules
     [TestFixture]
     public class ParityModuleTests
     {
-        private IParityModule _parityModule;
+        private IParityModule _parityModuleA;
+        private IParityModule _parityModuleB;
+        private IParityModule _parityModuleC;
         private Signer _signerStore;
 
         [SetUp]
@@ -63,15 +66,20 @@ namespace Nethermind.JsonRpc.Test.Modules
             var ethereumEcdsa = new EthereumEcdsa(specProvider.ChainId, logger);
             var txStorage = new InMemoryTxStorage();
             
-            Peer peerA = SetUpPeerA();
-            Peer peerB = SetUpPeerB();
-            Peer peerC = SetUpPeerC();
-            IPeerManager peerManager = Substitute.For<IPeerManager>();
-            peerManager.ActivePeers.Returns(new List<Peer> {peerA, peerB, peerC});
-            peerManager.ConnectedPeers.Returns(new List<Peer> {peerA, peerB, peerA, peerC, peerB});
-            peerManager.MaxActivePeers.Returns(15);
+            Peer peerA = SetUpPeerA();      //standard case
+            Peer peerB = SetUpPeerB();      //Session is null
+            Peer peerC = SetUpPeerC();      //Node is null, Caps are empty
+            IPeerManager peerManagerA = Substitute.For<IPeerManager>();
+            peerManagerA.ActivePeers.Returns(new List<Peer> {peerA, peerB, peerC});
+            peerManagerA.ConnectedPeers.Returns(new List<Peer> {peerA, peerB, peerA, peerC, peerB});
+            peerManagerA.MaxActivePeers.Returns(15);
+            
+            IPeerManager peerManagerB = Substitute.For<IPeerManager>();
+            peerManagerB.ActivePeers.Returns(new List<Peer>{});
+            peerManagerB.ConnectedPeers.Returns(new List<Peer> {peerA});
 
-
+            IPeerManager peerManagerC = Substitute.For<IPeerManager>();
+            
             var txPool = new TxPool.TxPool(txStorage, ethereumEcdsa, specProvider, new TxPoolConfig(),
                 new StateProvider(new TrieStore(new StateDb(), LimboLogs.Instance), new StateDb(), LimboLogs.Instance),  LimboLogs.Instance);
 
@@ -84,8 +92,12 @@ namespace Nethermind.JsonRpc.Test.Modules
             IReceiptStorage receiptStorage = new InMemoryReceiptStorage();
 
             _signerStore = new Signer(specProvider.ChainId, TestItem.PrivateKeyB, logger);
-            _parityModule = new ParityModule(ethereumEcdsa, txPool, blockTree, receiptStorage, new Enode(TestItem.PublicKeyA, IPAddress.Loopback, 8545), 
-                _signerStore, new MemKeyStore(new[] {TestItem.PrivateKeyA}),  logger, peerManager);
+            _parityModuleA = new ParityModule(ethereumEcdsa, txPool, blockTree, receiptStorage, new Enode(TestItem.PublicKeyA, IPAddress.Loopback, 8545), 
+                _signerStore, new MemKeyStore(new[] {TestItem.PrivateKeyA}),  logger, peerManagerA);
+            _parityModuleB = new ParityModule(ethereumEcdsa, txPool, blockTree, receiptStorage, new Enode(TestItem.PublicKeyA, IPAddress.Loopback, 8545), 
+                _signerStore, new MemKeyStore(new[] {TestItem.PrivateKeyA}),  logger, peerManagerB);
+            _parityModuleC = new ParityModule(ethereumEcdsa, txPool, blockTree, receiptStorage, new Enode(TestItem.PublicKeyA, IPAddress.Loopback, 8545), 
+                _signerStore, new MemKeyStore(new[] {TestItem.PrivateKeyA}),  logger, peerManagerC);
             
             var blockNumber = 2;
             var pendingTransaction = Build.A.Transaction.Signed(ethereumEcdsa, TestItem.PrivateKeyD, false)
@@ -145,6 +157,34 @@ namespace Nethermind.JsonRpc.Test.Modules
             peer.OutSession = Substitute.For<ISession>();
             peer.OutSession.RemoteNodeId.Returns(TestItem.PublicKeyA);
             
+            var protocolHandler = Substitute.For<IProtocolHandler, ISyncPeer>();
+            peer.OutSession.TryGetProtocolHandler(Protocol.Eth, out Arg.Any<IProtocolHandler>()).Returns(x =>
+            {
+                x[1] = protocolHandler;
+                return true;
+            });
+
+            byte version = 65;
+            protocolHandler.ProtocolVersion.Returns(version);
+            if (protocolHandler is ISyncPeer syncPeer)
+            {
+                UInt256 difficulty = 0x5ea4ed;
+                syncPeer.TotalDifficulty.Returns(difficulty);
+                syncPeer.HeadHash.Returns(TestItem.KeccakA);
+            }
+
+            var p2PProtocolHandler = Substitute.For<IProtocolHandler, IP2PProtocolHandler>();
+            peer.OutSession.TryGetProtocolHandler(Protocol.P2P, out Arg.Any<IProtocolHandler>()).Returns(x =>
+            {
+                x[1] = p2PProtocolHandler;
+                return true;
+            });
+            
+             if (p2PProtocolHandler is IP2PProtocolHandler p2PHandler)
+             {
+                 p2PHandler.AgreedCapabilities.Returns(new List<Capability>{new Capability("eth", 65), new Capability("eth", 64)});
+             }
+            
             return peer;
         }
         
@@ -166,6 +206,18 @@ namespace Nethermind.JsonRpc.Test.Modules
             peer.InSession = Substitute.For<ISession>();
             peer.InSession.RemoteNodeId.Returns(TestItem.PublicKeyB);
             
+            var p2PProtocolHandler = Substitute.For<IProtocolHandler, IP2PProtocolHandler>();
+            peer.InSession.TryGetProtocolHandler(Protocol.P2P, out Arg.Any<IProtocolHandler>()).Returns(x =>
+            {
+                x[1] = p2PProtocolHandler;
+                return true;
+            });
+            
+            if (p2PProtocolHandler is IP2PProtocolHandler p2PHandler)
+            {
+                p2PHandler.AgreedCapabilities.Returns(new List<Capability>{});
+            }
+            
             return peer;
         }
 
@@ -173,7 +225,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         public async Task parity_pendingTransactions()
         {
             await Task.Delay(100);
-            string serialized = RpcTest.TestSerializedRequest(_parityModule, "parity_pendingTransactions");
+            string serialized = RpcTest.TestSerializedRequest(_parityModuleA, "parity_pendingTransactions");
             var expectedResult = "{\"jsonrpc\":\"2.0\",\"result\":[{\"hash\":\"0xd4720d1b81c70ed4478553a213a83bd2bf6988291677f5d05c6aae0b287f947e\",\"nonce\":\"0x0\",\"blockHash\":null,\"blockNumber\":null,\"transactionIndex\":null,\"from\":\"0x0000000000000000000000000000000000000002\",\"to\":\"0x0000000000000000000000000000000000000000\",\"value\":\"0x1\",\"gasPrice\":\"0x1\",\"gas\":\"0x5208\",\"input\":\"0x\",\"raw\":\"0xf85f8001825208940000000000000000000000000000000000000000018025a0ef2effb79771cbe42fc7f9cc79440b2a334eedad6e528ea45c2040789def4803a0515bdfe298808be2e07879faaeacd0ad17f3b13305b9f971647bbd5d5b584642\",\"creates\":null,\"publicKey\":\"0x15a1cc027cfd2b970c8aa2b3b22dfad04d29171109f6502d5fb5bde18afe86dddd44b9f8d561577527f096860ee03f571cc7f481ea9a14cb48cc7c20c964373a\",\"chainId\":1,\"condition\":null,\"r\":\"0xef2effb79771cbe42fc7f9cc79440b2a334eedad6e528ea45c2040789def4803\",\"s\":\"0x515bdfe298808be2e07879faaeacd0ad17f3b13305b9f971647bbd5d5b584642\",\"v\":\"0x25\",\"standardV\":\"0x0\"}],\"id\":67}";
             Assert.AreEqual(expectedResult, serialized);
         }
@@ -181,7 +233,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public void parity_getBlockReceipts()
         {
-            string serialized = RpcTest.TestSerializedRequest(_parityModule, "parity_getBlockReceipts", "latest");
+            string serialized = RpcTest.TestSerializedRequest(_parityModuleA, "parity_getBlockReceipts", "latest");
             var expectedResult = "{\"jsonrpc\":\"2.0\",\"result\":[{\"transactionHash\":\"0x026217c3c4eb1f0e9e899553759b6e909b965a789c6136d256674718617c8142\",\"transactionIndex\":\"0x1\",\"blockHash\":\"0x7adb9df3043091c79726047c0c46a9d59f65bc8e988b96d5e60c60b07befc3b7\",\"blockNumber\":\"0x1\",\"cumulativeGasUsed\":\"0x7d0\",\"gasUsed\":\"0x3e8\",\"from\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"to\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"contractAddress\":\"0x76e68a8696537e4141926f3e528733af9e237d69\",\"logs\":[{\"removed\":false,\"logIndex\":\"0x0\",\"transactionIndex\":\"0x1\",\"transactionHash\":\"0x026217c3c4eb1f0e9e899553759b6e909b965a789c6136d256674718617c8142\",\"blockHash\":\"0x7adb9df3043091c79726047c0c46a9d59f65bc8e988b96d5e60c60b07befc3b7\",\"blockNumber\":\"0x1\",\"address\":\"0x0000000000000000000000000000000000000000\",\"data\":\"0x\",\"topics\":[\"0x0000000000000000000000000000000000000000000000000000000000000000\"]}],\"logsBloom\":\"0x00000000000000000080000000000000000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000000000000000800000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000000000\",\"status\":\"0x0\"}],\"id\":67}";
             Assert.AreEqual(expectedResult, serialized);
         }
@@ -189,7 +241,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public void parity_enode()
         {
-            string serialized = RpcTest.TestSerializedRequest(_parityModule, "parity_enode");
+            string serialized = RpcTest.TestSerializedRequest(_parityModuleA, "parity_enode");
             var expectedResult = "{\"jsonrpc\":\"2.0\",\"result\":\"enode://a49ac7010c2e0a444dfeeabadbafa4856ba4a2d732acb86d20c577b3b365fdaeb0a70ce47f890cf2f9fca562a7ed784f76eb870a2c75c0f2ab476a70ccb67e92@127.0.0.1:8545\",\"id\":67}";
             Assert.AreEqual(expectedResult, serialized);
         }
@@ -197,7 +249,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public void parity_setEngineSigner()
         {
-            string serialized = RpcTest.TestSerializedRequest(_parityModule, "parity_setEngineSigner", TestItem.AddressA.ToString(), "password");
+            string serialized = RpcTest.TestSerializedRequest(_parityModuleA, "parity_setEngineSigner", TestItem.AddressA.ToString(), "password");
             var expectedResult = "{\"jsonrpc\":\"2.0\",\"result\":true,\"id\":67}";
             Assert.AreEqual(expectedResult, serialized);
             _signerStore.Address.Should().Be(TestItem.AddressA);
@@ -207,7 +259,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public void parity_setEngineSignerSecret()
         {
-            string serialized = RpcTest.TestSerializedRequest(_parityModule, "parity_setEngineSignerSecret", TestItem.PrivateKeyA.ToString());
+            string serialized = RpcTest.TestSerializedRequest(_parityModuleA, "parity_setEngineSignerSecret", TestItem.PrivateKeyA.ToString());
             var expectedResult = "{\"jsonrpc\":\"2.0\",\"result\":true,\"id\":67}";
             Assert.AreEqual(expectedResult, serialized);
             _signerStore.Address.Should().Be(TestItem.AddressA);
@@ -217,8 +269,8 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public void parity_clearEngineSigner()
         {
-            RpcTest.TestSerializedRequest(_parityModule, "parity_setEngineSigner", TestItem.AddressA.ToString(), "password");
-            string serialized = RpcTest.TestSerializedRequest(_parityModule, "parity_clearEngineSigner");
+            RpcTest.TestSerializedRequest(_parityModuleA, "parity_setEngineSigner", TestItem.AddressA.ToString(), "password");
+            string serialized = RpcTest.TestSerializedRequest(_parityModuleA, "parity_clearEngineSigner");
             var expectedResult = "{\"jsonrpc\":\"2.0\",\"result\":true,\"id\":67}";
             serialized.Should().Be(expectedResult);
             _signerStore.Address.Should().Be(Address.Zero);
@@ -226,10 +278,26 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
 
         [Test]
-        public void parity_netPeers()
+        public void parity_netPeers_standard_case()
         {
-            string serialized = RpcTest.TestSerializedRequest(_parityModule, "parity_netPeers");
-            var expectedResult = "{\"jsonrpc\":\"2.0\",\"result\":{\"active\":3,\"connected\":5,\"max\":15,\"peers\":[{\"id\":\"" + TestItem.PublicKeyA + "\",\"name\":\"Geth/v1.9.21-stable/linux-amd64/go1.15.2\",\"caps\":[],\"network\":{\"localAddress\":\"127.0.0.1\",\"remoteAddress\":\"Handshake\"},\"protocols\":{\"eth\":{\"version\":0,\"difficulty\":\"0x0\"}}},{\"name\":\"Geth/v1.9.26-unstable/linux-amd64/go1.15.6\",\"caps\":[],\"network\":{\"localAddress\":\"95.217.106.25\"},\"protocols\":{\"eth\":{\"version\":0,\"difficulty\":\"0x0\"}}},{\"id\":\"" + TestItem.PublicKeyB + "\",\"caps\":[],\"network\":{\"remoteAddress\":\"Handshake\"},\"protocols\":{\"eth\":{\"version\":0,\"difficulty\":\"0x0\"}}}]},\"id\":67}";
+            string serialized = RpcTest.TestSerializedRequest(_parityModuleA, "parity_netPeers");
+            var expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"result\":{\"active\":3,\"connected\":5,\"max\":15,\"peers\":[{\"id\":\"", TestItem.PublicKeyA, "\",\"name\":\"Geth/v1.9.21-stable/linux-amd64/go1.15.2\",\"caps\":[\"eth/65\",\"eth/64\"],\"network\":{\"localAddress\":\"127.0.0.1\",\"remoteAddress\":\"Handshake\"},\"protocols\":{\"eth\":{\"version\":65,\"difficulty\":\"0x5ea4ed\",\"head\":\"", TestItem.KeccakA, "\"}}},{\"name\":\"Geth/v1.9.26-unstable/linux-amd64/go1.15.6\",\"caps\":[],\"network\":{\"localAddress\":\"95.217.106.25\"},\"protocols\":{\"eth\":{\"version\":0,\"difficulty\":\"0x0\"}}},{\"id\":\"", TestItem.PublicKeyB, "\",\"caps\":[],\"network\":{\"remoteAddress\":\"Handshake\"},\"protocols\":{\"eth\":{\"version\":0,\"difficulty\":\"0x0\"}}}]},\"id\":67}");
+            Assert.AreEqual(expectedResult, serialized);
+        }
+
+        [Test]
+        public void parity_netPeers_empty_ActivePeers()
+        {
+            string serialized = RpcTest.TestSerializedRequest(_parityModuleB, "parity_netPeers");
+            var expectedResult = "{\"jsonrpc\":\"2.0\",\"result\":{\"active\":0,\"connected\":1,\"max\":0,\"peers\":[]},\"id\":67}";
+            Assert.AreEqual(expectedResult, serialized);
+        }
+        
+        [Test]
+        public void parity_netPeers_null_ActivePeers()
+        {
+            string serialized = RpcTest.TestSerializedRequest(_parityModuleC, "parity_netPeers");
+            var expectedResult = "{\"jsonrpc\":\"2.0\",\"result\":{\"active\":0,\"connected\":0,\"max\":0,\"peers\":[]},\"id\":67}";
             Assert.AreEqual(expectedResult, serialized);
         }
     }

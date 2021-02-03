@@ -30,11 +30,14 @@ using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.P2P
 {
-    public class P2PProtocolHandler : ProtocolHandlerBase, IPingSender
+    public class P2PProtocolHandler : ProtocolHandlerBase, IPingSender, IP2PProtocolHandler
     {
         private TaskCompletionSource<Packet> _pongCompletionSource;
         private readonly INodeStatsManager _nodeStatsManager;
         private bool _sentHello;
+        private List<Capability> AgreedCapabilitiesList { get; }
+        private List<Capability> AvailableCapabilitiesList { get; set; }
+
 
         public P2PProtocolHandler(
             ISession session,
@@ -46,18 +49,18 @@ namespace Nethermind.Network.P2P
             _nodeStatsManager = nodeStatsManager ?? throw new ArgumentNullException(nameof(nodeStatsManager));
             LocalNodeId = localNodeId;
             ListenPort = session.LocalPort;
-            AgreedCapabilities = new List<Capability>();
-            AvailableCapabilities = new List<Capability>();
+            AgreedCapabilitiesList = new List<Capability>();
+            AvailableCapabilitiesList = new List<Capability>();
         }
 
-        public List<Capability> AgreedCapabilities { get; }
-        public List<Capability> AvailableCapabilities { get; private set; }
+        public IReadOnlyList<Capability> AgreedCapabilities { get { return AgreedCapabilitiesList; } }
+        public IReadOnlyList<Capability> AvailableCapabilities { get { return AvailableCapabilitiesList; } }
         public int ListenPort { get; }
         public PublicKey LocalNodeId { get; }
         public string RemoteClientId { get; private set; }
-        public override bool HasAvailableCapability(Capability capability) => AvailableCapabilities.Contains(capability);
-        public override bool HasAgreedCapability(Capability capability) => AgreedCapabilities.Contains(capability);
-        public override void AddSupportedCapability(Capability capability)
+        public bool HasAvailableCapability(Capability capability) => AvailableCapabilitiesList.Contains(capability);
+        public bool HasAgreedCapability(Capability capability) => AgreedCapabilitiesList.Contains(capability);
+        public void AddSupportedCapability(Capability capability)
         {
             if (SupportedCapabilities.Contains(capability))
             {
@@ -104,7 +107,7 @@ namespace Nethermind.Network.P2P
                     HandleHello(Deserialize<HelloMessage>(msg.Data));
                     
                     foreach (Capability capability in
-                        AgreedCapabilities.GroupBy(c => c.ProtocolCode).Select(c => c.OrderBy(v => v.Version).Last()))
+                        AgreedCapabilitiesList.GroupBy(c => c.ProtocolCode).Select(c => c.OrderBy(v => v.Version).Last()))
                     {
                         if (Logger.IsTrace) Logger.Trace($"{Session} Starting protocolHandler for {capability.ProtocolCode} v{capability.Version} on {Session.RemotePort}");
                         SubprotocolRequested?.Invoke(this, new ProtocolEventArgs(capability.ProtocolCode, capability.Version));
@@ -143,7 +146,7 @@ namespace Nethermind.Network.P2P
                 {
                     AddCapabilityMessage message = Deserialize<AddCapabilityMessage>(msg.Data);
                     Capability capability = message.Capability;
-                    AgreedCapabilities.Add(message.Capability);
+                    AgreedCapabilitiesList.Add(message.Capability);
                     SupportedCapabilities.Add(message.Capability);
                     if (Logger.IsTrace)
                         Logger.Trace($"{Session.RemoteNodeId} Starting handler for {capability} on {Session.RemotePort}");
@@ -194,14 +197,14 @@ namespace Nethermind.Network.P2P
             _protocolVersion = hello.P2PVersion;
 
             List<Capability> capabilities = hello.Capabilities;
-            AvailableCapabilities = new List<Capability>(capabilities);
+            AvailableCapabilitiesList = new List<Capability>(capabilities);
             foreach (Capability theirCapability in capabilities)
             {
                 if (SupportedCapabilities.Contains(theirCapability))
                 {
                     if (Logger.IsTrace)
                         Logger.Trace($"{Session.RemoteNodeId} Agreed on {theirCapability.ProtocolCode} v{theirCapability.Version}");
-                    AgreedCapabilities.Add(theirCapability);
+                    AgreedCapabilitiesList.Add(theirCapability);
                 }
                 else
                 {
