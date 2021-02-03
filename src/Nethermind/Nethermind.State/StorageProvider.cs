@@ -185,7 +185,7 @@ namespace Nethermind.State
 
             if (_logger.IsTrace) _logger.Trace("Committing storage changes");
 
-            if (_changes[_currentPosition] == null)
+            if (_changes[_currentPosition] is null)
             {
                 throw new InvalidOperationException($"Change at current position {_currentPosition} was null when commiting {nameof(StorageProvider)}");
             }

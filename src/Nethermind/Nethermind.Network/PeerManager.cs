@@ -132,7 +132,7 @@ namespace Nethermind.Network
             if (removed)
             {
                 peer.IsAwaitingConnection = false;
-                _activePeers.TryRemove(peer.Node.Id, out Peer activePeer);
+                _activePeers.TryRemove(peer.Node.Id, out Peer _);
             }
 
             return removed;

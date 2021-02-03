@@ -37,8 +37,8 @@ namespace Nethermind.Blockchain.Filters
             Addresses = addresses;
         }
         
-        public Address Address { get; set; }
-        public HashSet<Address> Addresses { get; set; }
+        public Address? Address { get; set; }
+        public HashSet<Address>? Addresses { get; set; }
         private Core.Bloom.BloomExtract[] AddressesBloomExtracts => _addressesBloomIndexes ??= CalculateBloomExtracts();
         private Core.Bloom.BloomExtract AddressBloomExtract => _addressBloomExtract ??= Core.Bloom.GetExtract(Address);
 

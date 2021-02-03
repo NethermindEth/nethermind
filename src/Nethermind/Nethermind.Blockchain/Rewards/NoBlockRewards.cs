@@ -24,9 +24,9 @@ namespace Nethermind.Blockchain.Rewards
     {   
         private NoBlockRewards() { }
 
-        public static NoBlockRewards Instance { get; } = new NoBlockRewards();
+        public static NoBlockRewards Instance { get; } = new();
 
-        private static BlockReward[] _noRewards = Array.Empty<BlockReward>();
+        private static readonly BlockReward[] _noRewards = Array.Empty<BlockReward>();
 
         public BlockReward[] CalculateRewards(Block block) => _noRewards;
 

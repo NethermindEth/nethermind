@@ -80,7 +80,7 @@ namespace Nethermind.Synchronization.FastBlocks
         private long HeadersInQueue => _dependencies.Sum(hd => hd.Value.Response?.Length ?? 0);
         
         private ulong MemoryInQueue => (ulong)_dependencies
-            .Sum(d => d.Value.Response.Sum(h =>
+            .Sum(d => (d.Value.Response ?? Array.Empty<BlockHeader>()).Sum(h =>
                 // ReSharper disable once ConvertClosureToMethodGroup
                 MemorySizeEstimator.EstimateSize(h)));
 
@@ -304,11 +304,11 @@ namespace Nethermind.Synchronization.FastBlocks
 
         private static HeadersSyncBatch BuildDependentBatch(HeadersSyncBatch batch, long addedLast, long addedEarliest)
         {
-            HeadersSyncBatch dependentBatch = new HeadersSyncBatch();
+            HeadersSyncBatch dependentBatch = new();
             dependentBatch.StartNumber = batch.StartNumber;
             dependentBatch.RequestSize = (int) (addedLast - addedEarliest + 1);
             dependentBatch.MinNumber = batch.MinNumber;
-            dependentBatch.Response = batch.Response
+            dependentBatch.Response = batch.Response!
                 .Skip((int) (addedEarliest - batch.StartNumber))
                 .Take((int) (addedLast - addedEarliest + 1)).ToArray();
             dependentBatch.ResponseSourcePeer = batch.ResponseSourcePeer;
@@ -533,7 +533,7 @@ namespace Nethermind.Synchronization.FastBlocks
             if (insertOutcome == AddBlockResult.Added || insertOutcome == AddBlockResult.AlreadyKnown)
             {
                 ulong nextHeaderDiff = 0;
-                _nextHeaderHash = header.ParentHash;
+                _nextHeaderHash = header.ParentHash!;
                 if (_expectedDifficultyOverride?.TryGetValue(header.Number, out nextHeaderDiff) == true)
                 {
                     _nextHeaderDiff = nextHeaderDiff;

@@ -38,18 +38,18 @@ namespace Nethermind.Consensus.AuRa.Contracts
             IAbiEncoder abiEncoder, 
             Address contractAddress,
             long transitionBlock,
-            IReadOnlyTransactionProcessorSource readOnlyTransactionProcessorSource) 
+            IReadOnlyTxProcessorSource readOnlyTxProcessorSource) 
             : base(abiEncoder, contractAddress)
         {
             Activation = transitionBlock;
-            Constant = GetConstant(readOnlyTransactionProcessorSource);
+            Constant = GetConstant(readOnlyTxProcessorSource);
         }
 
         public UInt256? BlockGasLimit(BlockHeader parentHeader)
         {
             this.BlockActivationCheck(parentHeader);
             var function = nameof(BlockGasLimit);
-            var returnData = Constant.CallRaw(parentHeader, function, Address.Zero);
+            var returnData = Constant.Call(new ConstantContract.CallInfo(parentHeader, function, Address.Zero));
             return (returnData?.Length ?? 0) == 0 ? (UInt256?) null : (UInt256) returnData[0];
         }
     }

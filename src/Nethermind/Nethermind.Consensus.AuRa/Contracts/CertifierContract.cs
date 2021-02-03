@@ -29,6 +29,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
 
     public class CertifierContract : RegisterBasedContract, ICertifierContract
     {
+        private static readonly object[] MissingCertifiedResult = {false};
         private const string ServiceTransactionContractRegistryName = "service_transaction_checker";
         
         private ConstantContract Constant { get; }
@@ -36,13 +37,13 @@ namespace Nethermind.Consensus.AuRa.Contracts
         public CertifierContract(
             IAbiEncoder abiEncoder,
             IRegisterContract registerContract,
-            IReadOnlyTransactionProcessorSource readOnlyTransactionProcessorSource) 
+            IReadOnlyTxProcessorSource readOnlyTransactionProcessorSource) 
             : base(abiEncoder, registerContract, ServiceTransactionContractRegistryName)
         {
             Constant = GetConstant(readOnlyTransactionProcessorSource);
         }
 
-        public bool Certified(BlockHeader parentHeader, Address sender) => 
-            Constant.Call<bool>(parentHeader, nameof(Certified), Address.Zero, sender);
+        public bool Certified(BlockHeader parentHeader, Address sender) =>
+            Constant.Call<bool>(new ConstantContract.CallInfo(parentHeader, nameof(Certified), Address.Zero, sender) {MissingContractResult = MissingCertifiedResult});
     }
 }

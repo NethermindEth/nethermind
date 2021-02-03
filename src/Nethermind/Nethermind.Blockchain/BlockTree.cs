@@ -154,7 +154,7 @@ namespace Nethermind.Blockchain
                 DeleteBlocks(new Keccak(deletePointer));
             }
 
-            ChainLevelInfo genesisLevel = LoadLevel(0, true);
+            ChainLevelInfo? genesisLevel = LoadLevel(0, true);
             if (genesisLevel != null)
             {
                 if (genesisLevel.BlockInfos.Length != 1)
@@ -1218,7 +1218,7 @@ namespace Nethermind.Blockchain
             return null;
         }
 
-        private ChainLevelInfo LoadLevel(long number, bool forceLoad = true)
+        private ChainLevelInfo? LoadLevel(long number, bool forceLoad = true)
         {
             if (number > BestKnownNumber && !forceLoad)
             {

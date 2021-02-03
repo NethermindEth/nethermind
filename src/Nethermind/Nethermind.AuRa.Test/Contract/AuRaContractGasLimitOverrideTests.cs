@@ -95,9 +95,9 @@ namespace Nethermind.AuRa.Test.Contract
             {
                 var blockGasLimitContractTransition = ChainSpec.AuRa.BlockGasLimitContractTransitions.First();
                 var gasLimitContract = new BlockGasLimitContract(new AbiEncoder(), blockGasLimitContractTransition.Value, blockGasLimitContractTransition.Key,
-                    new ReadOnlyTxProcessorSource(
+                    new ReadOnlyTxProcessingEnv(
                         DbProvider,
-                        new ReadOnlyTrieStore(new TrieStore(DbProvider.StateDb, LimboLogs.Instance)),
+                        new TrieStore(DbProvider.StateDb, LimboLogs.Instance),
                         BlockTree, SpecProvider, LimboLogs.Instance));
                 
                 GasLimitOverrideCache = new AuRaContractGasLimitOverride.Cache();

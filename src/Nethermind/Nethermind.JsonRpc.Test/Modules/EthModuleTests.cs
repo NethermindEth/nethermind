@@ -34,7 +34,6 @@ using Nethermind.JsonRpc.Data;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Trie;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
@@ -579,7 +578,6 @@ namespace Nethermind.JsonRpc.Test.Modules
             
             ctx._test.StateDb.Clear();
             ctx._test.TrieStore.ClearCache();
-            PatriciaTree.NodeCache.Clear();
 
             string serialized = ctx._test.TestEthRpc("eth_call", ctx._test.JsonSerializer.Serialize(transaction), "latest");
             serialized.Should().StartWith("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32002,");

@@ -35,7 +35,7 @@ namespace Nethermind.Synchronization.BeamSync
         private readonly MemDb _beamTempDb = new (); // holds items that have been beam synced but cannot be persisted yet
         public ISyncFeed<StateSyncBatch?> BeamSyncFeed { get; }
         
-        public BeamSyncDbProvider(ISyncModeSelector syncModeSelector, IDbProvider otherProvider, ISyncConfig syncConfig, ILogManager logManager)
+        public BeamSyncDbProvider(ISyncModeSelector syncModeSelector, IDbProvider? otherProvider, ISyncConfig syncConfig, ILogManager logManager)
         {
             _otherProvider = otherProvider ?? throw new ArgumentNullException(nameof(otherProvider));
             _codeDb = new BeamSyncDb(otherProvider.CodeDb.Innermost, BeamTempDb, syncModeSelector, logManager, syncConfig.BeamSyncContextTimeout, syncConfig.BeamSyncPreProcessorTimeout);
@@ -46,8 +46,8 @@ namespace Nethermind.Synchronization.BeamSync
             BeamSyncFeed = new CompositeStateSyncFeed<StateSyncBatch?>(logManager, _codeDb, _stateDb);
  
             // then we wrap the beam sync DB back in a StateDb to make it snapshottable
-            _registeredDbs.TryAdd(DbNames.Code, new StateDb(_codeDb)); // TODO: PRUNING - not state really
-            _registeredDbs.TryAdd(DbNames.State, new StateDb(_stateDb)); // TODO: PRUNING - not state really
+            _registeredDbs.TryAdd(DbNames.Code, _codeDb);
+            _registeredDbs.TryAdd(DbNames.State, _stateDb);
         }
 
         public void EnableVerifiedMode()

@@ -19,7 +19,7 @@ using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 
-namespace Nethermind.Runner
+namespace Nethermind.Runner.JsonRpc
 {
     public class Bootstrap
     {
@@ -36,10 +36,10 @@ namespace Nethermind.Runner
 
         public void RegisterJsonRpcServices(IServiceCollection services)
         {
-            services.AddSingleton(JsonRpcService);
-            services.AddSingleton(LogManager);
-            services.AddSingleton(JsonSerializer);
-            services.AddSingleton(JsonRpcLocalStats);
+            services.AddSingleton(JsonRpcService!);
+            services.AddSingleton(LogManager!);
+            services.AddSingleton(JsonSerializer!);
+            services.AddSingleton(JsonRpcLocalStats!);
         }
     }
 }

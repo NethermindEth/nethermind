@@ -45,10 +45,10 @@ namespace Nethermind.Api
         IBlockProducer? BlockProducer { get; set; }
         IBlockValidator? BlockValidator { get; set; }
         IEnode? Enode { get; set; }
-        IFilterStore FilterStore { get; set; }
-        IFilterManager FilterManager { get; set; }
+        IFilterStore? FilterStore { get; set; }
+        IFilterManager? FilterManager { get; set; }
         IHeaderValidator? HeaderValidator { get; set; }
-        ITrieStore? ReadOnlyTrieStore { get; set; }
+        ReadOnlyTrieStore? ReadOnlyTrieStore { get; set; }
         IRewardCalculatorSource? RewardCalculatorSource { get; set; }
         ISealer? Sealer { get; set; }
         ISealValidator? SealValidator { get; set; }

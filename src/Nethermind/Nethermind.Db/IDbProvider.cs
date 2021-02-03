@@ -28,8 +28,8 @@ namespace Nethermind.Db
     public interface IDbProvider : IDisposable
     {
         DbModeHint DbMode { get; }
-        public ISnapshotableDb StateDb => GetDb<ISnapshotableDb>(DbNames.State);
-        public ISnapshotableDb CodeDb => GetDb<ISnapshotableDb>(DbNames.Code);
+        public IDb StateDb => GetDb<IDb>(DbNames.State);
+        public IDb CodeDb => GetDb<IDb>(DbNames.Code);
         public IColumnsDb<ReceiptsColumns> ReceiptsDb => GetDb<IColumnsDb<ReceiptsColumns>>(DbNames.Receipts);
         public IDb BlocksDb => GetDb<IDb>(DbNames.Blocks);
         public IDb HeadersDb => GetDb<IDb>(DbNames.Headers);

@@ -19,6 +19,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Security.Authentication;
 using System.Text;
+using HealthChecks.UI.Client;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.Hosting;
@@ -29,26 +30,31 @@ using Microsoft.Extensions.Hosting;
 using Nethermind.Api;
 using Nethermind.Config;
 using Nethermind.Core.Extensions;
+using Nethermind.HealthChecks;
 using Nethermind.JsonRpc;
+using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.WebSockets;
 using Newtonsoft.Json;
-using HealthChecks.UI.Client;
-using Nethermind.HealthChecks;
-using Nethermind.Logging;
 
-namespace Nethermind.Runner
+namespace Nethermind.Runner.JsonRpc
 {
     public class Startup
     {
         private IJsonSerializer _jsonSerializer = CreateJsonSerializer();
         
-        private static EthereumJsonSerializer CreateJsonSerializer() => new EthereumJsonSerializer();
+        private static EthereumJsonSerializer CreateJsonSerializer() => new();
 
         public void ConfigureServices(IServiceCollection services)
         {
-            var sp = services.BuildServiceProvider();
-            IConfigProvider configProvider = sp.GetService<IConfigProvider>();
+            // ReSharper disable once ASP0000
+            ServiceProvider sp = services.BuildServiceProvider()!;
+            IConfigProvider? configProvider = sp.GetService<IConfigProvider>();
+            if (configProvider == null)
+            {
+                throw new ApplicationException($"{nameof(IConfigProvider)} could not be resolved");
+            }
+            
             IJsonRpcConfig jsonRpcConfig = configProvider.GetConfig<IJsonRpcConfig>();
 
             services.Configure<KestrelServerOptions>(options => {
@@ -86,15 +92,19 @@ namespace Nethermind.Runner
             app.UseCors("Cors");
             app.UseRouting();
 
-            IConfigProvider configProvider = app.ApplicationServices.GetService<IConfigProvider>();
-            ILogManager logManager = app.ApplicationServices.GetService<ILogManager>();
+            IConfigProvider? configProvider = app.ApplicationServices.GetService<IConfigProvider>();
+            if (configProvider == null)
+            {
+                throw new ApplicationException($"{nameof(IConfigProvider)} has not been loaded properly");
+            }
+            
+            ILogManager? logManager = app.ApplicationServices.GetService<ILogManager>() ?? NullLogManager.Instance;
             ILogger logger = logManager.GetClassLogger();
             IInitConfig initConfig = configProvider.GetConfig<IInitConfig>();
             IJsonRpcConfig jsonRpcConfig = configProvider.GetConfig<IJsonRpcConfig>();
             IHealthChecksConfig healthChecksConfig = configProvider.GetConfig<IHealthChecksConfig>();
             if (initConfig.WebSocketsEnabled)
             {
-                WebSocketOptions opt = new WebSocketOptions();
                 app.UseWebSockets(new WebSocketOptions());
                 app.UseWhen(ctx => ctx.WebSockets.IsWebSocketRequest 
                                    && ctx.Connection.LocalPort == jsonRpcConfig.WebSocketsPort,

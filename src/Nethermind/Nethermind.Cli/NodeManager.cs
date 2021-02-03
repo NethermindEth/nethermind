@@ -78,7 +78,7 @@ namespace Nethermind.Cli
             
             try
             {
-                if (_currentClient == null)
+                if (_currentClient is null)
                 {
                     _cliConsole.WriteErrorLine("[INTERNAL ERROR] JSON RPC client not set.");
                 }
@@ -91,7 +91,7 @@ namespace Nethermind.Cli
                     decimal totalMicroseconds = stopwatch.ElapsedTicks * (1_000_000m / Stopwatch.Frequency);
                     Colorful.Console.WriteLine($"Request complete in {totalMicroseconds}μs");
                     string? resultString = result?.ToString();
-                    if (resultString == "0x" || resultString == null)
+                    if (resultString == "0x" || resultString is null)
                     {
                         returnValue = JsValue.Null;
                     }

@@ -81,7 +81,7 @@ namespace Nethermind.Network
                 foreach (IIPSource s in GetIPSources())
                 {
                     (bool success, IPAddress ip) = await s.TryGetIP();
-                    if (success && !ip.IsInternal())
+                    if (success)
                     {
                         ThisNodeInfo.AddInfo("External IP  :", $"{ip}");
                         return ip;

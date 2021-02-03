@@ -67,7 +67,6 @@ namespace Nethermind.Runner.Ethereum.Steps
     {
         private const string DiscoveryNodesDbPath = "discoveryNodes";
         private const string PeersDbPath = "peers";
-        private const string ChtDbPath = "canonicalHashTrie";
 
         protected readonly IApiWithNetwork _api;
         private readonly ILogger _logger;
@@ -301,6 +300,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 discoveryConfig,
                 _api.LogManager);
 
+            // ToDo: DiscoveryDB is register outside dbProvider - bad
             SimpleFilePublicKeyDb discoveryDb = new SimpleFilePublicKeyDb("DiscoveryDB", DiscoveryNodesDbPath.GetApplicationResourcePath(_api.Config<IInitConfig>().BaseDbPath), _api.LogManager);
             NetworkStorage discoveryStorage = new NetworkStorage(
                 discoveryDb,
@@ -403,6 +403,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             _api.StaticNodesManager = new StaticNodesManager(initConfig.StaticNodesPath, _api.LogManager);
             await _api.StaticNodesManager.InitAsync();
 
+            // ToDo: PeersDB is register outside dbProvider - bad
             var dbName = "PeersDB";
             IFullDb peersDb = initConfig.DiagnosticMode == DiagnosticMode.MemDb
                 ? (IFullDb) new MemDb(dbName)

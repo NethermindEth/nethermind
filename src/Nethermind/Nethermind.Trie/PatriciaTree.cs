@@ -39,10 +39,7 @@ namespace Nethermind.Trie
 
         public const int OneNodeAvgMemoryEstimate = 384;
 
-        public static readonly ICache<Keccak, byte[]> NodeCache =
-            new LruCache<Keccak, byte[]>(MemoryAllowance.TrieNodeCacheCount, MemoryAllowance.TrieNodeCacheCount, "trie nodes");
-
-            /// <summary>
+        /// <summary>
         ///     0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421
         /// </summary>
         public static readonly Keccak EmptyTreeHash = Keccak.EmptyTreeHash;
@@ -156,14 +153,8 @@ namespace Nethermind.Trie
             if (RootRef != null && RootRef.IsDirty)
             {
                 Commit(new NodeCommitInfo(RootRef));
-                while (!_currentCommit.IsEmpty)
+                while (_currentCommit.TryDequeue(out NodeCommitInfo node))
                 {
-                    if (!_currentCommit.TryDequeue(out NodeCommitInfo node))
-                    {
-                        throw new InvalidAsynchronousStateException(
-                            $"Threading issue at {nameof(_currentCommit)} - should not happen unless we use static objects somewhere here.");
-                    }
-
                     if (_logger.IsTrace) _logger.Trace($"Committing {node} in {blockNumber}");
                     TrieStore.CommitNode(blockNumber, node);
                 }
@@ -288,9 +279,8 @@ namespace Nethermind.Trie
             node.ResolveKey(TrieStore, nodeCommitInfo.IsRoot);
             node.Seal();
 
-            if (node.FullRlp != null && node.FullRlp.Length >= 32)
+            if (node.FullRlp?.Length >= 32)
             {
-                NodeCache.Set(node.Keccak, node.FullRlp);
                 _currentCommit.Enqueue(nodeCommitInfo);
             }
             else
@@ -1013,8 +1003,7 @@ namespace Nethermind.Trie
                 rootRef = RootHash == rootHash ? RootRef : TrieStore.FindCachedOrUnknown(rootHash);
                 try
                 {
-                    // not allowing caching just for test scenarios when we use multiple trees
-                    rootRef!.ResolveNode(TrieStore, false);
+                    rootRef!.ResolveNode(TrieStore);
                 }
                 catch (TrieException)
                 {

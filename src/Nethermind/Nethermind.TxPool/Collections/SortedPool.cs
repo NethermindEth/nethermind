@@ -177,7 +177,7 @@ namespace Nethermind.TxPool.Collections
         /// </summary>
         protected virtual bool CanInsert(TKey key, TValue value)
         {
-            if (value == null)
+            if (value is null)
             {
                 throw new ArgumentNullException();
             }
