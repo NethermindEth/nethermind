@@ -90,8 +90,8 @@ namespace Nethermind.Synchronization.Test
             ISealValidator sealValidator = sealOk ? Always.Valid : Always.Invalid;
             IBlockValidator blockValidator = validationOk ? Always.Valid : Always.Invalid;
             ctx.SyncServer = new SyncServer(
-                new StateDb(),
-                new StateDb(),
+                new MemDb(),
+                new MemDb(),
                 localBlockTree,
                 NullReceiptStorage.Instance,
                 blockValidator,
@@ -131,8 +131,8 @@ namespace Nethermind.Synchronization.Test
             BlockTree localBlockTree = Build.A.BlockTree().OfChainLength(9).TestObject;
 
             ctx.SyncServer = new SyncServer(
-                new StateDb(),
-                new StateDb(),
+                new MemDb(),
+                new MemDb(),
                 localBlockTree,
                 NullReceiptStorage.Instance,
                 Always.Valid,
@@ -171,8 +171,8 @@ namespace Nethermind.Synchronization.Test
                 LimboLogs.Instance);
 
             ctx.SyncServer = new SyncServer(
-                new StateDb(),
-                new StateDb(),
+                new MemDb(),
+                new MemDb(),
                 localBlockTree,
                 NullReceiptStorage.Instance,
                 blockValidator,
@@ -202,8 +202,8 @@ namespace Nethermind.Synchronization.Test
 
             ISealValidator sealValidator = Substitute.For<ISealValidator>();
             ctx.SyncServer = new SyncServer(
-                new StateDb(),
-                new StateDb(),
+                new MemDb(),
+                new MemDb(),
                 localBlockTree,
                 NullReceiptStorage.Instance,
                 Always.Valid,
@@ -232,8 +232,8 @@ namespace Nethermind.Synchronization.Test
                 BlockTree = Substitute.For<IBlockTree>();
                 StaticSelector selector = StaticSelector.Full;
                 SyncServer = new SyncServer(
-                    new StateDb(),
-                    new StateDb(),
+                    new MemDb(),
+                    new MemDb(),
                     BlockTree,
                     NullReceiptStorage.Instance,
                     Always.Valid,

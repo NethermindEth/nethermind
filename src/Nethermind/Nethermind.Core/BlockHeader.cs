@@ -169,6 +169,7 @@ namespace Nethermind.Core
             UInt256 expectedBaseFee = UInt256.Zero;
             if (spec.IsEip1559Enabled)
             {
+                UInt256 parentBaseFee = parent.BaseFee;
                 long gasDelta;
                 UInt256 feeDelta;
                 long gasTarget = parent.GetGasTarget1559(spec);
@@ -194,15 +195,15 @@ namespace Nethermind.Core
                 {
                     gasDelta = parent.GasUsed - gasTarget;
                     feeDelta = UInt256.Max(
-                        parent.BaseFee * (UInt256) gasDelta / (UInt256) gasTarget / BaseFeeMaxChangeDenominator,
+                        parentBaseFee * (UInt256) gasDelta / (UInt256) gasTarget / BaseFeeMaxChangeDenominator,
                         UInt256.One);
-                    expectedBaseFee = parent.BaseFee + feeDelta;
+                    expectedBaseFee = parentBaseFee + feeDelta;
                 }
                 else
                 {
                     gasDelta = gasTarget - parent.GasUsed;
-                    feeDelta = parent.BaseFee * (UInt256) gasDelta / (UInt256) gasTarget / BaseFeeMaxChangeDenominator;
-                    expectedBaseFee = parent.BaseFee - feeDelta;
+                    feeDelta = parentBaseFee * (UInt256) gasDelta / (UInt256) gasTarget / BaseFeeMaxChangeDenominator;
+                    expectedBaseFee = parentBaseFee - feeDelta;
                 }
 
                 if (spec.Eip1559TransitionBlock == parent.Number + 1)

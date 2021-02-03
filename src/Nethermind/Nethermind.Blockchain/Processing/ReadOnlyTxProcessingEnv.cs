@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Evm;
@@ -23,45 +24,57 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Blockchain.Processing
 {
-    public class ReadOnlyTxProcessingEnv
+    public class ReadOnlyTxProcessingEnv : IReadOnlyTxProcessorSource
     {
+        private readonly ReadOnlyDb _codeDb;
         public IStateReader StateReader { get; }
         public IStateProvider StateProvider { get; }
         public IStorageProvider StorageProvider { get; }
         public ITransactionProcessor TransactionProcessor { get; set; }
         public IBlockTree BlockTree { get; }
         public IReadOnlyDbProvider DbProvider { get; }
+        public IBlockhashProvider BlockhashProvider { get; }
+        public IVirtualMachine Machine { get; }
 
-        private IBlockhashProvider BlockhashProvider;
-        private IVirtualMachine VirtualMachine;
-        
+        public ReadOnlyTxProcessingEnv(
+            IDbProvider dbProvider,
+            ITrieNodeResolver trieStore,
+            IBlockTree blockTree,
+            ISpecProvider specProvider,
+            ILogManager logManager) 
+            : this(dbProvider.AsReadOnly(false), trieStore.AsReadOnly(), blockTree.AsReadOnly(), specProvider, logManager)
+        {
+        }
+
         public ReadOnlyTxProcessingEnv(
             IReadOnlyDbProvider readOnlyDbProvider,
-            ITrieNodeResolver trieStore,
+            ReadOnlyTrieStore readOnlyTrieStore,
             ReadOnlyBlockTree readOnlyBlockTree,
             ISpecProvider specProvider,
             ILogManager logManager)
         {
-            // TODO: reuse cache for state -> now when the trie is not reusing cache any more
             DbProvider = readOnlyDbProvider;
-            ISnapshotableDb codeDb = readOnlyDbProvider.CodeDb;
+            _codeDb = readOnlyDbProvider.CodeDb.AsReadOnly(true);
             
-            ReadOnlyTrieStore readOnlyTrieStore = new ReadOnlyTrieStore(trieStore);
-            StateReader = new StateReader(readOnlyTrieStore, codeDb, logManager);
-            StateProvider = new StateProvider(readOnlyTrieStore, codeDb, logManager);
+            StateReader = new StateReader(readOnlyTrieStore, _codeDb, logManager);
+            StateProvider = new StateProvider(readOnlyTrieStore, _codeDb, logManager);
             StorageProvider = new StorageProvider(readOnlyTrieStore, StateProvider, logManager);
 
             BlockTree = readOnlyBlockTree;
             BlockhashProvider = new BlockhashProvider(BlockTree, logManager);
 
-            VirtualMachine = new VirtualMachine(StateProvider, StorageProvider, BlockhashProvider, specProvider, logManager);
-            TransactionProcessor = new TransactionProcessor(specProvider, StateProvider, StorageProvider, VirtualMachine, logManager);
+            Machine = new VirtualMachine(StateProvider, StorageProvider, BlockhashProvider, specProvider, logManager);
+            TransactionProcessor = new TransactionProcessor(specProvider, StateProvider, StorageProvider, Machine, logManager);
         }
 
         public void Reset()
         {
             StateProvider.Reset();
             StorageProvider.Reset();
+            
+            _codeDb.ClearTempChanges();
         }
+
+        public IReadOnlyTransactionProcessor Build(Keccak stateRoot) => new ReadOnlyTransactionProcessor(TransactionProcessor, StateProvider, StorageProvider, stateRoot);
     }
 }

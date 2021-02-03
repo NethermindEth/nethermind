@@ -46,8 +46,8 @@ namespace Nethermind.State
         [DebuggerStepThrough]
         public Account? Get(Address address, Keccak? rootHash = null)
         {
-            byte[] bytes = Get(ValueKeccak.Compute(address.Bytes).BytesAsSpan, rootHash);
-            if (bytes == null)
+            byte[]? bytes = Get(ValueKeccak.Compute(address.Bytes).BytesAsSpan, rootHash);
+            if (bytes is null)
             {
                 return null;
             }
@@ -58,8 +58,8 @@ namespace Nethermind.State
         [DebuggerStepThrough]
         internal Account? Get(Keccak keccak) // for testing
         {
-            byte[] bytes = Get(keccak.Bytes);
-            if (bytes == null)
+            byte[]? bytes = Get(keccak.Bytes);
+            if (bytes is null)
             {
                 return null;
             }
@@ -72,13 +72,13 @@ namespace Nethermind.State
         public void Set(Address address, Account? account)
         {
             ValueKeccak keccak = ValueKeccak.Compute(address.Bytes);
-            Set(keccak.BytesAsSpan, account == null ? null : account.IsTotallyEmpty ? EmptyAccountRlp : Rlp.Encode(account));
+            Set(keccak.BytesAsSpan, account is null ? null : account.IsTotallyEmpty ? EmptyAccountRlp : Rlp.Encode(account));
         }
         
         [DebuggerStepThrough]
         internal void Set(Keccak keccak, Account? account) // for testing
         {
-            Set(keccak.Bytes, account == null ? null : account.IsTotallyEmpty ? EmptyAccountRlp : Rlp.Encode(account));
+            Set(keccak.Bytes, account is null ? null : account.IsTotallyEmpty ? EmptyAccountRlp : Rlp.Encode(account));
         }
     }
 }

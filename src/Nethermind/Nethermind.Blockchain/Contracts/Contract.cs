@@ -36,7 +36,7 @@ namespace Nethermind.Blockchain.Contracts
     /// There are 3 main ways a node can interact with contract:
     /// 1. It can <see cref="GenerateTransaction{T}(string,Nethermind.Core.Address,object[])"/> that will be added to a block.
     /// 2. It can <see cref="CallableContract.Call(Nethermind.Core.BlockHeader,string,Nethermind.Core.Address,object[])"/> contract and modify current state of execution.
-    /// 3. It can <see cref="ConstantContract.Call{T}"/> constant contract. This by design doesn't modify current state. It is designed as read-only operation that will allow the node to make decisions how it should operate.
+    /// 3. It can <see cref="ConstantContract.Call{T}(Nethermind.Core.BlockHeader,string,Nethermind.Core.Address,object[])"/> constant contract. This by design doesn't modify current state. It is designed as read-only operation that will allow the node to make decisions how it should operate.
     /// </remarks>
     public abstract partial class Contract
     {
@@ -55,7 +55,7 @@ namespace Nethermind.Blockchain.Contracts
         /// <param name="abiEncoder">Binary interface encoder/decoder.</param>
         /// <param name="contractAddress">Address where contract is deployed.</param>
         /// <param name="abiDefinition">Binary definition of contract.</param>
-        protected Contract(IAbiEncoder abiEncoder, Address contractAddress, AbiDefinition abiDefinition = null)
+        protected Contract(IAbiEncoder abiEncoder, Address contractAddress, AbiDefinition? abiDefinition = null)
         {
             AbiEncoder = abiEncoder ?? throw new ArgumentNullException(nameof(abiEncoder));
             ContractAddress = contractAddress ?? throw new ArgumentNullException(nameof(contractAddress));

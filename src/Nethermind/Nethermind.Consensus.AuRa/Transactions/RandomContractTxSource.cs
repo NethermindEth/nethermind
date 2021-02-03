@@ -30,6 +30,7 @@ using Nethermind.Evm;
 using Nethermind.HashLib;
 using Nethermind.Logging;
 using Nethermind.State;
+using Org.BouncyCastle.Crypto;
 
 namespace Nethermind.Consensus.AuRa.Transactions
 {
@@ -40,7 +41,8 @@ namespace Nethermind.Consensus.AuRa.Transactions
     public class RandomContractTxSource : ITxSource
     {
         private readonly IEciesCipher _eciesCipher;
-        private readonly ProtectedPrivateKey _cryptoKey;
+        private readonly ISigner _signer;
+        private readonly ProtectedPrivateKey _previousCryptoKey;
         private readonly IList<IRandomContract> _contracts;
         private readonly ICryptoRandom _random;
         private readonly ILogger _logger;
@@ -48,13 +50,15 @@ namespace Nethermind.Consensus.AuRa.Transactions
         public RandomContractTxSource(
             IList<IRandomContract> contracts,
             IEciesCipher eciesCipher,
-            ProtectedPrivateKey cryptoKey, 
+            ISigner signer,
+            ProtectedPrivateKey previousCryptoKey, // this is for backwards-compability when upgrading validator node 
             ICryptoRandom cryptoRandom,
             ILogManager logManager)
         {
             _contracts = contracts ?? throw new ArgumentNullException(nameof(contracts));
             _eciesCipher = eciesCipher ?? throw new ArgumentNullException(nameof(eciesCipher));
-            _cryptoKey = cryptoKey ?? throw new ArgumentNullException(nameof(cryptoKey));
+            _signer = signer ?? throw new ArgumentNullException(nameof(signer));
+            _previousCryptoKey = previousCryptoKey ?? throw new ArgumentNullException(nameof(previousCryptoKey));
             _random = cryptoRandom ?? throw new ArgumentNullException(nameof(cryptoRandom));
             _logger = logManager?.GetClassLogger<RandomContractTxSource>() ?? throw new ArgumentNullException(nameof(logManager));
         }
@@ -83,15 +87,28 @@ namespace Nethermind.Consensus.AuRa.Transactions
                         byte[] bytes = new byte[32];
                         _random.GenerateRandomBytes(bytes);
                         var hash = Keccak.Compute(bytes);
-                        var cipher = _eciesCipher.Encrypt(_cryptoKey.PublicKey, bytes);
+                        var cipher = _eciesCipher.Encrypt(_signer.Key.PublicKey, bytes);
                         Metrics.CommitHashTransaction++;
                         return contract.CommitHash(hash, cipher);
                     }
                     case IRandomContract.Phase.Reveal:
                     {
                         var (hash, cipher) = contract.GetCommitAndCipher(parent, round);
-                        using PrivateKey privateKey = _cryptoKey.Unprotect();
-                        byte[] bytes = _eciesCipher.Decrypt(privateKey, cipher).Item2;
+                        byte[] bytes;
+                        try
+                        {
+                            using PrivateKey privateKey = _signer.Key.Unprotect();
+                            bytes = _eciesCipher.Decrypt(privateKey, cipher).Item2;
+                        }
+                        catch (InvalidCipherTextException)
+                        {
+                            // Before we used node key here, now we want to use signer key. So we can move signer to other node.
+                            // But we need to fallback to node key here when we upgrade version.
+                            // This is temporary code after all validators are upgraded we can remove it.
+                            using PrivateKey privateKey = _previousCryptoKey.Unprotect();
+                            bytes = _eciesCipher.Decrypt(privateKey, cipher).Item2;
+                        }
+
                         if (bytes?.Length != 32)
                         {
                             // This can only happen if there is a bug in the smart contract, or if the entire network goes awry.

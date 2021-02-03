@@ -58,7 +58,7 @@ namespace Nethermind.Blockchain.Test.TxPools
             _noTxStorage = NullTxStorage.Instance;
             _inMemoryTxStorage = new InMemoryTxStorage();
             _persistentTxStorage = new PersistentTxStorage(new MemDb());
-            _stateProvider = new StateProvider(new TrieStore(new StateDb(), _logManager), new StateDb(), _logManager);
+            _stateProvider = new StateProvider(new TrieStore(new MemDb(), _logManager), new MemDb(), _logManager);
         }
 
         [Test]

@@ -67,9 +67,11 @@ namespace Nethermind.Consensus
             return default;
         }
 
-        public void SetSigner(PrivateKey key)
+        public ProtectedPrivateKey Key { get; }
+
+        public void SetSigner(PrivateKey? key)
         {
-            SetSigner(key == null ? null : new ProtectedPrivateKey(key));
+            SetSigner(key is null ? null : new ProtectedPrivateKey(key));
         }
 
         public void SetSigner(ProtectedPrivateKey key)

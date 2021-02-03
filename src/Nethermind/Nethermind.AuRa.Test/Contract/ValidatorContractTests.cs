@@ -38,7 +38,7 @@ namespace Nethermind.AuRa.Test.Contract
         private Block _block;
         private readonly Address _contractAddress = Address.FromNumber(long.MaxValue);
         private IReadOnlyTransactionProcessor _transactionProcessor;
-        private IReadOnlyTransactionProcessorSource _readOnlyTransactionProcessorSource;
+        private IReadOnlyTxProcessorSource _readOnlyTxProcessorSource;
         private IStateProvider _stateProvider;
 
         [SetUp]
@@ -46,8 +46,8 @@ namespace Nethermind.AuRa.Test.Contract
         {
             _block = new Block(Build.A.BlockHeader.TestObject, new BlockBody());
             _transactionProcessor = Substitute.For<IReadOnlyTransactionProcessor>();
-            _readOnlyTransactionProcessorSource = Substitute.For<IReadOnlyTransactionProcessorSource>();
-            _readOnlyTransactionProcessorSource.Get(TestItem.KeccakA).Returns(_transactionProcessor);
+            _readOnlyTxProcessorSource = Substitute.For<IReadOnlyTxProcessorSource>();
+            _readOnlyTxProcessorSource.Build(TestItem.KeccakA).Returns(_transactionProcessor);
             _stateProvider = Substitute.For<IStateProvider>();
             _stateProvider.StateRoot.Returns(TestItem.KeccakA);
         }
@@ -61,7 +61,7 @@ namespace Nethermind.AuRa.Test.Contract
                     null, 
                     _contractAddress, 
                     _stateProvider, 
-                    _readOnlyTransactionProcessorSource, 
+                    _readOnlyTxProcessorSource, 
                     new Signer(0, TestItem.PrivateKeyD, LimboLogs.Instance));
             action.Should().Throw<ArgumentNullException>();
         }
@@ -75,7 +75,7 @@ namespace Nethermind.AuRa.Test.Contract
                     new AbiEncoder(),
                     null,
                     _stateProvider,
-                    _readOnlyTransactionProcessorSource,
+                    _readOnlyTxProcessorSource,
                     new Signer(0, TestItem.PrivateKeyD, LimboLogs.Instance));
             action.Should().Throw<ArgumentNullException>();
         }
@@ -101,7 +101,7 @@ namespace Nethermind.AuRa.Test.Contract
                 new AbiEncoder(),
                 _contractAddress,
                 _stateProvider,
-                _readOnlyTransactionProcessorSource,
+                _readOnlyTxProcessorSource,
                 new Signer(0, TestItem.PrivateKeyD, LimboLogs.Instance));
             
             contract.FinalizeChange(_block.Header);

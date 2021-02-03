@@ -93,8 +93,8 @@ namespace Ethereum.Test.Base
             TestContext.Write($"Running {test.Name} at {DateTime.UtcNow:HH:mm:ss.ffffff}");
             Assert.IsNull(test.LoadFailure, "test data loading failure");
 
-            ISnapshotableDb stateDb = new StateDb();
-            ISnapshotableDb codeDb = new StateDb();
+            IDb stateDb = new MemDb();
+            IDb codeDb = new MemDb();
 
             ISpecProvider specProvider;
             if (test.NetworkAfterTransition != null)

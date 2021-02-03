@@ -53,12 +53,12 @@ namespace Nethermind.Core.Extensions
         {
             public override int Compare(byte[]? x, byte[]? y)
             {
-                if (x == null)
+                if (x is null)
                 {
-                    return y == null ? 0 : 1;
+                    return y is null ? 0 : 1;
                 }
 
-                if (y == null)
+                if (y is null)
                 {
                     return -1;
                 }
@@ -114,6 +114,7 @@ namespace Nethermind.Core.Extensions
             return (b & 2) == 2 ? 2 : b;
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static bool AreEqual(Span<byte> a1, Span<byte> a2)
         {
             // this works for nulls
@@ -687,9 +688,9 @@ namespace Nethermind.Core.Extensions
         }
 
         [DebuggerStepThrough]
-        public static byte[] FromHexStringOld(string hexString)
+        public static byte[] FromHexStringOld(string? hexString)
         {
-            if (hexString == null)
+            if (hexString is null)
             {
                 throw new ArgumentNullException($"{nameof(hexString)}");
             }

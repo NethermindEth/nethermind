@@ -20,6 +20,9 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Trie.Pruning
 {
+    /// <summary>
+    /// Safe to be reused for the same wrapped store.
+    /// </summary>
     public class ReadOnlyTrieStore : ITrieStore
     {
         private readonly ITrieNodeResolver _trieStore;
@@ -34,9 +37,9 @@ namespace Nethermind.Trie.Pruning
             return _trieStore.FindCachedOrUnknown(hash, false);
         }
 
-        public byte[] LoadRlp(Keccak hash, bool allowCaching)
+        public byte[] LoadRlp(Keccak hash)
         {
-            return _trieStore.LoadRlp(hash, allowCaching);
+            return _trieStore.LoadRlp(hash);
         }
 
         public void CommitNode(long blockNumber, NodeCommitInfo nodeCommitInfo) { }

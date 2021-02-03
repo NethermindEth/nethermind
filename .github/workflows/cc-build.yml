@@ -9,7 +9,7 @@ jobs:
   neth-tests-cc:
     name: Nethermind Tests CC
     env:
-      EXCLUDE_TEST_PROJECTS: '/p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*%2c[Nethermind.Core.Test]*%2c[Nethermind.Blockchain.Test]*%2c[Nethermind.DataMarketplace.Test]*%2c[Ethereum.Test.Base]*%2c[Nethermind.JsonRpc.Test]*"'
+      EXCLUDE_TEST_PROJECTS: '/p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*%2c[Nethermind.Core.Test]*%2c[Nethermind.Blockchain.Test]*%2c[Nethermind.DataMarketplace.Test]*%2c[Ethereum.Test.Base]*%2c[Nethermind.JsonRpc.Test]*%2c[Nethermind.Config.Test]*"'
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v2.3.3

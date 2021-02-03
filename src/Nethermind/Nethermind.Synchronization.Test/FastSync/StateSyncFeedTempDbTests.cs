@@ -45,8 +45,8 @@ namespace Nethermind.Synchronization.Test.FastSync
         [Ignore("Temporarily disabled temp DB as it was causing trouble")]
         public async Task Can_read_dependent_items_from_state_db_while_waiting_for_dependencies()
         {
-            StateDb codeDb = new StateDb();
-            StateDb stateDB = new StateDb();
+            MemDb codeDb = new MemDb();
+            MemDb stateDB = new MemDb();
             MemDb tempDb = new MemDb();
             
             SyncConfig syncConfig = new SyncConfig();

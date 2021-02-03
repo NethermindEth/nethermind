@@ -2,11 +2,11 @@
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>net5.0</TargetFramework>
-    <LangVersion>8.0</LangVersion>
+    <LangVersion>9</LangVersion>
     <ServerGarbageCollection>true</ServerGarbageCollection>
     <ConcurrentGarbageCollection>true</ConcurrentGarbageCollection>
     <TargetLatestRuntimePatch>true</TargetLatestRuntimePatch>
-    <Nullable>enable</Nullable>
+    <Nullable>annotations</Nullable>
     <UseAppHost>true</UseAppHost>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
@@ -21,7 +21,7 @@
     <PackageReference Include="Microsoft.Extensions.CommandLineUtils" Version="1.1.1" />
     <PackageReference Include="Microsoft.Extensions.Logging" Version="5.0.0" />
     <PackageReference Include="NLog.Targets.Seq" Version="1.2.0" />
-    <PackageReference Include="NLog" Version="4.7.6" />
+    <PackageReference Include="NLog" Version="4.7.7" />
     <PackageReference Include="Seq.Api" Version="2020.5.0" />
     <PackageReference Include="System.IO.Abstractions" Version="13.2.9" />
     <PackageReference Include="YamlDotNet" Version="9.1.4" />

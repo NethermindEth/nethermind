@@ -25,7 +25,7 @@ namespace Nethermind.Serialization.Json
     {
         public override void WriteJson(JsonWriter writer, Keccak value, JsonSerializer serializer)
         {
-            if (value == null)
+            if (value is null)
             {
                 writer.WriteNull();
             }

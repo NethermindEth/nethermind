@@ -25,6 +25,9 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Blockchain
 {
+    /// <summary>
+    /// Safe to be reused for all classes reading the same wrapped block tree.
+    /// </summary>
     public class ReadOnlyBlockTree : IBlockTree
     {
         private readonly IBlockTree _wrapped;

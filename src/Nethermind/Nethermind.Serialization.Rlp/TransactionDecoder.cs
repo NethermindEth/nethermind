@@ -157,7 +157,7 @@ namespace Nethermind.Serialization.Rlp
                 transaction.GasLimit = decoderContext.DecodeLong();
                 transaction.To = decoderContext.DecodeAddress();
                 transaction.Value = decoderContext.DecodeUInt256();
-                if (transaction.To == null)
+                if (transaction.To is null)
                 {
                     transaction.Init = decoderContext.DecodeByteArray();
                 }

@@ -66,6 +66,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             var ethereumEcdsa = new EthereumEcdsa(specProvider.ChainId, logger);
             var txStorage = new InMemoryTxStorage();
             
+
             Peer peerA = SetUpPeerA();      //standard case
             Peer peerB = SetUpPeerB();      //Session is null
             Peer peerC = SetUpPeerC();      //Node is null, Caps are empty
@@ -81,7 +82,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             IPeerManager peerManagerC = Substitute.For<IPeerManager>();
             
             var txPool = new TxPool.TxPool(txStorage, ethereumEcdsa, specProvider, new TxPoolConfig(),
-                new StateProvider(new TrieStore(new StateDb(), LimboLogs.Instance), new StateDb(), LimboLogs.Instance),  LimboLogs.Instance);
+                new StateProvider(new TrieStore(new MemDb(), LimboLogs.Instance), new MemDb(), LimboLogs.Instance),  LimboLogs.Instance);
 
             IDb blockDb = new MemDb();
             IDb headerDb = new MemDb();
@@ -217,7 +218,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             {
                 p2PHandler.AgreedCapabilities.Returns(new List<Capability>{});
             }
-            
+
             return peer;
         }
 

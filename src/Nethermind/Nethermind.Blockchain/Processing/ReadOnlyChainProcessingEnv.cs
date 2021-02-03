@@ -26,10 +26,14 @@ using Nethermind.TxPool;
 
 namespace Nethermind.Blockchain.Processing
 {
+    /// <summary>
+    /// Not thread safe.
+    /// </summary>
     public class ReadOnlyChainProcessingEnv : IDisposable
     {
         private readonly ReadOnlyTxProcessingEnv _txEnv;
-        private BlockchainProcessor _blockProcessingQueue;
+        
+        private readonly BlockchainProcessor _blockProcessingQueue;
         public IBlockProcessor BlockProcessor { get; }
         public IBlockchainProcessor ChainProcessor { get; }
         public IBlockProcessingQueue BlockProcessingQueue { get; }

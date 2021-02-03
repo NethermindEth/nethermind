@@ -68,7 +68,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
             }
             catch (AbiException e)
             {
-                if (parentHeader.Number != 0 && _logger.IsError) _logger.Error($"Call to certifier contract failed on block {parentHeader.ToString(BlockHeader.Format.FullHashAndNumber)} {new StackTrace()}.", e);
+                if (_logger.IsError) _logger.Error($"Call to certifier contract failed on block {parentHeader.ToString(BlockHeader.Format.FullHashAndNumber)}.", e);
                 return false;
             }
         }

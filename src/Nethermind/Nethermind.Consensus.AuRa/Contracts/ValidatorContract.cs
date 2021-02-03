@@ -75,13 +75,13 @@ namespace Nethermind.Consensus.AuRa.Contracts
             IAbiEncoder abiEncoder, 
             Address contractAddress, 
             IStateProvider stateProvider,
-            IReadOnlyTransactionProcessorSource readOnlyTransactionProcessorSource,
+            IReadOnlyTxProcessorSource readOnlyTxProcessorSource,
             ISigner signer) 
             : base(transactionProcessor, abiEncoder, contractAddress)
         {
             _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
             _signer = signer ?? throw new ArgumentNullException(nameof(signer));
-            Constant = GetConstant(readOnlyTransactionProcessorSource);
+            Constant = GetConstant(readOnlyTxProcessorSource);
         }
 
         /// <summary>

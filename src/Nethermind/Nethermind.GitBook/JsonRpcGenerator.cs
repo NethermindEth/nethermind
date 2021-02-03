@@ -55,7 +55,7 @@ namespace Nethermind.GitBook
             StringBuilder docBuilder = new StringBuilder();
 
             string moduleName = rpcType.Name.Substring(1).Replace("Module", "");
-            MethodInfo[] moduleMethods = rpcType.GetMethods();//GetMethods(BindingFlags.Public | BindingFlags.Instance);
+            MethodInfo[] moduleMethods = rpcType.GetMethods().OrderBy(m => m.Name).ToArray();
             List<Type> rpcTypesToDescribe;
 
             docBuilder.AppendLine(@$"# {moduleName}");

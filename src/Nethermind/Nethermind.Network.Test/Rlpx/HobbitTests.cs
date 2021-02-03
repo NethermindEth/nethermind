@@ -210,25 +210,21 @@ namespace Nethermind.Network.Test.Rlpx
             InternalLoggerFactory.DefaultFactory.AddProvider(new ConsoleLoggerProvider(new ConsoleLoggerOptionsMonitor(
                 new ConsoleLoggerOptions
                 {
-                    Format = ConsoleLoggerFormat.Default,
+                    FormatterName = ConsoleFormatterNames.Simple,
                     LogToStandardErrorThreshold = LogLevel.Warning
                 })));
             ResourceLeakDetector.Level = ResourceLeakDetector.DetectionLevel.Paranoid;
-            IChannelHandler decoder = inbound == StackType.Zero
-                ? new ZeroFrameDecoder(_frameCipherB, _macProcessorB, LimboLogs.Instance)
-                : throw new NotSupportedException();
 
-            IChannelHandler merger = inbound == StackType.Zero
-                ? new ZeroFrameMerger(LimboLogs.Instance)
-                : throw new NotSupportedException();
-            
-            IChannelHandler encoder = outbound == StackType.Zero
-                ? new ZeroFrameEncoder(_frameCipherA, _macProcessorA, LimboLogs.Instance)
-                : throw new NotSupportedException();
-            
-            IFramingAware splitter = outbound == StackType.Zero
-                ? new ZeroPacketSplitter(LimboLogs.Instance)
-                : throw new NotSupportedException();
+            if (inbound != StackType.Zero ||
+                outbound != StackType.Zero)
+            {
+                throw new NotSupportedException();
+            }
+
+            IChannelHandler decoder = new ZeroFrameDecoder(_frameCipherB, _macProcessorB, LimboLogs.Instance);
+            IChannelHandler merger = new ZeroFrameMerger(LimboLogs.Instance);
+            IChannelHandler encoder = new ZeroFrameEncoder(_frameCipherA, _macProcessorA, LimboLogs.Instance);
+            IFramingAware splitter = new ZeroPacketSplitter(LimboLogs.Instance);
 
             Assert.AreEqual(Frame.DefaultMaxFrameSize, splitter.MaxFrameSize, "default max frame size");
             

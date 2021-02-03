@@ -81,7 +81,7 @@ namespace Nethermind.Synchronization.FastSync
 
         public StateSyncFeed(
             IDb codeDb,
-            ISnapshotableDb stateDb,
+            IDb stateDb,
             IDb? tempDb,
             ISyncModeSelector syncModeSelector,
             IBlockTree blockTree,
@@ -115,7 +115,7 @@ namespace Nethermind.Synchronization.FastSync
                     }
 
                     if (_logger.IsInfo) _logger.Info($"Starting the node data sync from the {bestSuggested.ToString(BlockHeader.Format.Short)} {bestSuggested.StateRoot} root");
-                    ResetStateRoot(bestSuggested.Number, bestSuggested.StateRoot);
+                    ResetStateRoot(bestSuggested.Number, bestSuggested.StateRoot!);
                     Activate();
                 }
             }
@@ -710,17 +710,27 @@ namespace Nethermind.Synchronization.FastSync
                     return EmptyBatch!;
                 }
 
+                bool rootNodeKeyExists;
                 lock (_stateDbLock)
                 {
-                    // if finished downloading
                     try
                     {
-                        if (_stateDb.KeyExists(_rootNode))
-                        {
-                            VerifyPostSyncCleanUp();
-                            FinishThisSyncRound();
-                            return EmptyBatch!;
-                        }
+                        // it finished downloading
+                        rootNodeKeyExists = _stateDb.KeyExists(_rootNode);
+                    }
+                    catch (ObjectDisposedException)
+                    {
+                        return EmptyBatch!;
+                    }
+                }
+
+                if (rootNodeKeyExists)
+                {
+                    try
+                    {
+                        VerifyPostSyncCleanUp();
+                        FinishThisSyncRound();
+                        return EmptyBatch!;
                     }
                     catch (ObjectDisposedException)
                     {

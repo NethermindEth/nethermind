@@ -41,12 +41,10 @@ namespace Nethermind.Synchronization.Test.BeamSync
     {
         private BeamSyncDb _stateBeamLocal;
         private BeamSyncDb _codeBeamLocal;
-        private ISnapshotableDb _stateLocal;
-        private ISnapshotableDb _codeLocal;
         private StateReader _stateReader;
         private int _needMoreDataInvocations;
         private StateTree _remoteStateTrie;
-        private StateDb _remoteState;
+        private IDb _remoteState;
         private IDb _remoteCode;
         public static (string Name, Action<StateTree, ITrieStore, IDb> Action)[] Scenarios => TrieScenarios.Scenarios;
 
@@ -68,9 +66,8 @@ namespace Nethermind.Synchronization.Test.BeamSync
         {
             var memDbProvider = await TestMemDbProvider.InitAsync();
             IDbProvider dbProvider = new BeamSyncDbProvider(StaticSelector.Beam, memDbProvider, new SyncConfig(), LimboLogs.Instance);
-            // has to be state DB on the outside
-            Assert.IsInstanceOf(typeof(StateDb), dbProvider.StateDb);
-            Assert.IsInstanceOf(typeof(StateDb), dbProvider.CodeDb);
+            Assert.IsInstanceOf(typeof(BeamSyncDb), dbProvider.StateDb);
+            Assert.IsInstanceOf(typeof(BeamSyncDb), dbProvider.CodeDb);
         }
 
         [Test]
@@ -237,7 +234,7 @@ namespace Nethermind.Synchronization.Test.BeamSync
         private void Setup((string Name, Action<StateTree, ITrieStore, IDb> SetupTree) scenario)
         {
             TrieScenarios.InitOnce();
-            _remoteState = new StateDb(new MemDb());
+            _remoteState = new MemDb();
             TrieStore remoteTrieStore = new TrieStore(_remoteState.Innermost, LimboLogs.Instance);
             _remoteCode = new MemDb();
             _remoteStateTrie = new StateTree(remoteTrieStore, LimboLogs.Instance);
@@ -247,8 +244,6 @@ namespace Nethermind.Synchronization.Test.BeamSync
             MemDb beamStateDb = new MemDb();
             _stateBeamLocal = new BeamSyncDb(new MemDb(), beamStateDb, StaticSelector.Beam, LimboLogs.Instance);
             _codeBeamLocal = new BeamSyncDb(new MemDb(), beamStateDb, StaticSelector.Beam, LimboLogs.Instance);
-            _stateLocal = new StateDb(_stateBeamLocal);
-            _codeLocal = new StateDb(_codeBeamLocal);
 
             _stateReader = new StateReader(new TrieStore(_stateBeamLocal, LimboLogs.Instance), _codeBeamLocal.Innermost, LimboLogs.Instance);
             _stateBeamLocal.StateChanged += (sender, args) =>
@@ -258,8 +253,6 @@ namespace Nethermind.Synchronization.Test.BeamSync
                     Interlocked.Increment(ref _needMoreDataInvocations);
                 }
             };
-            
-            PatriciaTree.NodeCache.Clear();
         }
 
         [Test]

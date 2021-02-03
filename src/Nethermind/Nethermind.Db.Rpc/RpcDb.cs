@@ -46,13 +46,6 @@ namespace Nethermind.Db.Rpc
         public void Dispose()
         {
             _logger.Info($"Disposing RPC DB {Name}");
-            if (_recordDb is StateDb stateDb)
-            {
-                {
-                    stateDb.Commit(); stateDb.Commit();
-                }
-            }
-
             _recordDb.Dispose();
         }
 

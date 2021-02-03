@@ -133,7 +133,7 @@ namespace Nethermind.Network.Test
             if (firstDirection == ConnectionDirection.In)
             {
                 ctx.RlpxPeer.CreateIncoming(session1);
-                ctx.RlpxPeer.ConnectAsync(session1.Node);
+                await ctx.RlpxPeer.ConnectAsync(session1.Node);
                 if(session1.State < SessionState.HandshakeComplete) session1.Handshake(session1.Node.Id);
                 (ctx.PeerManager.ActivePeers.First().OutSession?.IsClosing ?? true).Should().Be(shouldLose);
                 (ctx.PeerManager.ActivePeers.First().InSession?.IsClosing ?? true).Should().Be(!shouldLose);
@@ -141,7 +141,7 @@ namespace Nethermind.Network.Test
             else
             {
                 ctx.RlpxPeer.SessionCreated += HandshakeOnCreate;
-                ctx.RlpxPeer.ConnectAsync(session1.Node);
+                await ctx.RlpxPeer.ConnectAsync(session1.Node);
                 ctx.RlpxPeer.SessionCreated -= HandshakeOnCreate;
                 ctx.RlpxPeer.CreateIncoming(session1);
                 (ctx.PeerManager.ActivePeers.First().OutSession?.IsClosing ?? true).Should().Be(!shouldLose);

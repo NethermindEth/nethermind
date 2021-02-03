@@ -23,7 +23,7 @@ namespace Nethermind.Db
     public interface IDb : IKeyValueStoreWithBatching, IDisposable
     {
         string Name { get; }
-        KeyValuePair<byte[],byte[]>[] this[byte[][] keys] { get; }
+        KeyValuePair<byte[],byte[]?>[] this[byte[][] keys] { get; }
         IEnumerable<KeyValuePair<byte[], byte[]>> GetAll(bool ordered = false);
         IEnumerable<byte[]> GetAllValues(bool ordered = false);
         void Remove(byte[] key);
@@ -39,21 +39,5 @@ namespace Nethermind.Db
         void Clear();
 
         public IReadOnlyDb CreateReadOnly(bool createInMemWriteStore) => new ReadOnlyDb(this, createInMemWriteStore);
-    }
-
-    public interface IReadOnlyDb : IDb
-    {
-        void Restore(int snapshot);
-    }
-
-    public interface IDbWithSpan : IDb
-    {
-        /// <summary>
-        /// 
-        /// </summary>
-        /// <param name="key"></param>
-        /// <returns>Can return null or empty Span on missing key</returns>
-        Span<byte> GetSpan(byte[] key);
-        void DangerousReleaseMemory(in Span<byte> span);
     }
 }

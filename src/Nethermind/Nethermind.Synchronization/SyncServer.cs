@@ -52,7 +52,7 @@ namespace Nethermind.Synchronization
         private readonly IReceiptFinder _receiptFinder;
         private readonly IBlockValidator _blockValidator;
         private readonly ISealValidator _sealValidator;
-        private readonly ISnapshotableDb _stateDb;
+        private readonly IDb _stateDb;
         private readonly IDb _codeDb;
         private readonly ISyncConfig _syncConfig;
         private readonly IWitnessRepository _witnessRepository;
@@ -67,7 +67,7 @@ namespace Nethermind.Synchronization
         private BlockHeader? _pivotHeader;
 
         public SyncServer(
-            ISnapshotableDb stateDb,
+            IDb stateDb,
             IDb codeDb,
             IBlockTree blockTree,
             IReceiptFinder receiptFinder,
@@ -139,6 +139,11 @@ namespace Nethermind.Synchronization
             if (block.TotalDifficulty == null)
             {
                 throw new InvalidDataException("Cannot add a block with unknown total difficulty");
+            }
+            
+            if (block.Hash == null)
+            {
+                throw new InvalidDataException("Cannot add a block with unknown hash");
             }
 
             // Now, there are some complexities here.
@@ -213,7 +218,7 @@ namespace Nethermind.Synchronization
             }
         }
 
-        private void SyncBlock(Block block, ISyncPeer syncPeer)
+        private void SyncBlock(Block block, ISyncPeer? syncPeer)
         {
             if (_logger.IsTrace) _logger.Trace($"{block}");
 
@@ -230,7 +235,7 @@ namespace Nethermind.Synchronization
                     if (_logger.IsDebug) _logger.Debug(message);
                     lock (_recentlySuggested)
                     {
-                        _recentlySuggested.Delete(block.Hash);
+                        _recentlySuggested.Delete(block.Hash!);
                     }
 
                     throw new EthSyncException(message);
@@ -364,7 +369,8 @@ namespace Nethermind.Synchronization
         public Task BuildCHT()
         {
             return Task.CompletedTask; // removing LES code
-            
+
+#pragma warning disable 162
             return Task.Run(() =>
             {
                 lock (_chtLock)
@@ -392,6 +398,7 @@ namespace Nethermind.Synchronization
                     }
                 }
             });
+#pragma warning restore 162
         }
 
         public CanonicalHashTrie? GetCHT()
