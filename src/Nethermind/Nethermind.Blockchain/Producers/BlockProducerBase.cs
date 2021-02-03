@@ -91,6 +91,7 @@ namespace Nethermind.Blockchain.Producers
         protected abstract bool IsRunning();
         public bool IsProducingBlocks(ulong? maxProducingInterval)
         {
+            if (Logger.IsTrace) Logger.Trace($"Checking IsProducingBlocks: maxProducingInterval {maxProducingInterval}, _lastProducedBlock {_lastProducedBlock}, IsRunning() {IsRunning()}");
             if (IsRunning() == false)
                 return false;
             if (maxProducingInterval != null)

@@ -33,6 +33,7 @@ namespace Nethermind.Blockchain.Producers
         private const int ChainNotYetProcessedMillisecondsDelay = 100;
         private readonly string _name;
         private Task _producerTask;
+        private bool _isRunning = false;
         
         protected CancellationTokenSource LoopCancellationTokenSource { get; } = new CancellationTokenSource();
         protected int _canProduce = 0;
@@ -68,6 +69,7 @@ namespace Nethermind.Blockchain.Producers
         {
             BlockProcessingQueue.ProcessingQueueEmpty += OnBlockProcessorQueueEmpty;
             BlockTree.NewBestSuggestedBlock += BlockTreeOnNewBestSuggestedBlock;
+            _isRunning = true;
             
             _producerTask = Task.Run(ProducerLoop, LoopCancellationTokenSource.Token).ContinueWith(t =>
             {
@@ -90,12 +92,13 @@ namespace Nethermind.Blockchain.Producers
         {
             BlockProcessingQueue.ProcessingQueueEmpty -= OnBlockProcessorQueueEmpty;
             BlockTree.NewBestSuggestedBlock -= BlockTreeOnNewBestSuggestedBlock;
+            _isRunning = false;
             
             LoopCancellationTokenSource?.Cancel();
             await (_producerTask ?? Task.CompletedTask);
         }
 
-        protected override bool IsRunning() => _producerTask != null && _producerTask.IsCompleted == false;
+        protected override bool IsRunning() => _producerTask != null && _isRunning;
         
         protected virtual async ValueTask ProducerLoop()
         {
