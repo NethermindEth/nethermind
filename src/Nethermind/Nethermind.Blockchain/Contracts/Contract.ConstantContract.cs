@@ -54,7 +54,7 @@ namespace Nethermind.Blockchain.Contracts
             {
                 lock (_readOnlyTxProcessorSource)
                 {
-                    using var readOnlyTransactionProcessor = _readOnlyTxProcessorSource.Get(GetState(callInfo.ParentHeader));
+                    using var readOnlyTransactionProcessor = _readOnlyTxProcessorSource.Build(GetState(callInfo.ParentHeader));
                     return CallRaw(callInfo, readOnlyTransactionProcessor);
                 }
             }

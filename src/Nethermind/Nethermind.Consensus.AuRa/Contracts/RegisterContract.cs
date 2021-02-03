@@ -26,7 +26,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
 {
     public interface IRegisterContract
     {
-        static readonly Address MissingAddressResult = Address.Zero;
+        bool TryGetAddress(BlockHeader header, string key, out Address address);
         Address GetAddress(BlockHeader header, string key);
     }
 
@@ -35,8 +35,9 @@ namespace Nethermind.Consensus.AuRa.Contracts
     /// </summary>
     public class RegisterContract : Contract, IRegisterContract
     {
-        private static readonly object[] MissingGetAddressResult = {IRegisterContract.MissingAddressResult};
-
+        private static Address MissingAddress = Address.Zero;
+        private static readonly object[] MissingGetAddressResult = {MissingAddress};
+        
         /// <summary>
         /// Category of domain name service addresses
         /// </summary>
@@ -52,8 +53,23 @@ namespace Nethermind.Consensus.AuRa.Contracts
             Constant = GetConstant(readOnlyTxProcessorSource);
         }
 
+        public bool TryGetAddress(BlockHeader header, string key, out Address address)
+        {
+            try
+            {
+                address = GetAddress(header, key);
+                return !ReferenceEquals(address, MissingAddress);
+            }
+            catch (AbiException)
+            {
+                address = MissingAddress;
+                return false;
+            }
+        }
+
         public Address GetAddress(BlockHeader header, string key) =>
             // 2 arguments: name and key (category)
-            Constant.Call<Address>(new ConstantContract.CallInfo(header, nameof(GetAddress), Address.Zero, Keccak.Compute(key).Bytes, DnsAddressRecord) {MissingContractResult = MissingGetAddressResult});
+            Constant.Call<Address>(
+                new ConstantContract.CallInfo(header, nameof(GetAddress), Address.Zero, Keccak.Compute(key).Bytes, DnsAddressRecord) {MissingContractResult = MissingGetAddressResult});
     }
 }

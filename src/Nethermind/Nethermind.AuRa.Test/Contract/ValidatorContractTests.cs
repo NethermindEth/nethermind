@@ -47,7 +47,7 @@ namespace Nethermind.AuRa.Test.Contract
             _block = new Block(Build.A.BlockHeader.TestObject, new BlockBody());
             _transactionProcessor = Substitute.For<IReadOnlyTransactionProcessor>();
             _readOnlyTxProcessorSource = Substitute.For<IReadOnlyTxProcessorSource>();
-            _readOnlyTxProcessorSource.Get(TestItem.KeccakA).Returns(_transactionProcessor);
+            _readOnlyTxProcessorSource.Build(TestItem.KeccakA).Returns(_transactionProcessor);
             _stateProvider = Substitute.For<IStateProvider>();
             _stateProvider.StateRoot.Returns(TestItem.KeccakA);
         }
