@@ -48,7 +48,7 @@ namespace Nethermind.GitBook
             StringBuilder docBuilder = new StringBuilder();
 
             string moduleName = cliType.Name.Replace("CliModule", "");
-            MethodInfo[] moduleMethods = cliType.GetMethods(BindingFlags.Public | BindingFlags.Instance);
+            MethodInfo[] moduleMethods = cliType.GetMethods(BindingFlags.Public | BindingFlags.Instance).OrderBy(m => m.Name).ToArray();
             List<Type> cliTypesToDescribe;
 
             docBuilder.AppendLine(@$"# {moduleName}");
