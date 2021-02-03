@@ -75,6 +75,6 @@ namespace Nethermind.Blockchain.Processing
             _codeDb.ClearTempChanges();
         }
 
-        public IReadOnlyTransactionProcessor Get(Keccak stateRoot) => new ReadOnlyTransactionProcessor(TransactionProcessor, StateProvider, StorageProvider, stateRoot);
+        public IReadOnlyTransactionProcessor Build(Keccak stateRoot) => new ReadOnlyTransactionProcessor(TransactionProcessor, StateProvider, StorageProvider, stateRoot);
     }
 }

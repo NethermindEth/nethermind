@@ -56,9 +56,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
             
             if (needUpdate)
             {
-                Address contractAddress = _registerContract.GetAddress(header, _registryKey);
-
-                if (contractAddress != IRegisterContract.MissingAddressResult)
+                if (_registerContract.TryGetAddress(header, _registryKey, out Address contractAddress))
                 {
                     lock (_currentHashAddress)
                     {

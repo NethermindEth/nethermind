@@ -20,6 +20,6 @@ namespace Nethermind.Evm
 {
     public interface IReadOnlyTxProcessorSource
     {
-        IReadOnlyTransactionProcessor Get(Keccak stateRoot);
+        IReadOnlyTransactionProcessor Build(Keccak stateRoot);
     }
 }
