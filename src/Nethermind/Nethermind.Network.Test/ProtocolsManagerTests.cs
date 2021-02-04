@@ -120,7 +120,7 @@ namespace Nethermind.Network.Test
             public Context CreateIncomingSession()
             {
                 IChannel channel = Substitute.For<IChannel>();
-                _currentSession = new Session(_localPort,  LimboLogs.Instance, channel);
+                _currentSession = new Session(_localPort, channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
                 _pipeline.Get<ZeroNettyP2PHandler>().Returns(new ZeroNettyP2PHandler(_currentSession, LimboLogs.Instance));
                 _localPeer.SessionCreated += Raise.EventWith(new object(), new SessionEventArgs(_currentSession));
                 return this;
@@ -129,7 +129,7 @@ namespace Nethermind.Network.Test
             public Context CreateOutgoingSession()
             {
                 IChannel channel = Substitute.For<IChannel>();
-                _currentSession = new Session(_localPort, LimboLogs.Instance, channel, new Node(TestItem.PublicKeyB, _remoteHost, _remotePort) {AddedToDiscovery = true});
+                _currentSession = new Session(_localPort, new Node(TestItem.PublicKeyB, _remoteHost, _remotePort) {AddedToDiscovery = true}, channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
                 _pipeline.Get<ZeroNettyP2PHandler>().Returns(new ZeroNettyP2PHandler(_currentSession, LimboLogs.Instance));
                 _localPeer.SessionCreated += Raise.EventWith(new object(), new SessionEventArgs(_currentSession));
                 return this;

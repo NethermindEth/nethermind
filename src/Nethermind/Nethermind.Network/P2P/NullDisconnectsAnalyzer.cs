@@ -1,4 +1,4 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -15,10 +15,19 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-namespace Nethermind.Core
+using Nethermind.Stats.Model;
+
+namespace Nethermind.Network.P2P
 {
-    public interface IKeyValueStoreWithBatching : IKeyValueStore
+    public class NullDisconnectsAnalyzer : IDisconnectsAnalyzer
     {
-        IBatch StartBatch();
+        private NullDisconnectsAnalyzer() { }
+
+        public static IDisconnectsAnalyzer Instance { get; } = new NullDisconnectsAnalyzer();
+
+        public void ReportDisconnect(DisconnectReason reason, DisconnectType type, string details)
+        {
+            throw new System.NotImplementedException();
+        }
     }
 }
