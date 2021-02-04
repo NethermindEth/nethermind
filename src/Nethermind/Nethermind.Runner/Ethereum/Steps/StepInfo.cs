@@ -47,7 +47,7 @@ namespace Nethermind.Runner.Ethereum.Steps
 
         public override string ToString()
         {
-            return $"{StepType.Name} : {StepBaseType.Name}";
+            return $"{StepType.Name} : {StepBaseType.Name} ({Stage})";
         }
     }
 }
