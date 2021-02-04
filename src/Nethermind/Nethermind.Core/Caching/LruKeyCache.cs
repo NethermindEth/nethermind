@@ -103,6 +103,12 @@ namespace Nethermind.Core.Caching
             // TODO: some potential null ref issue here?
             
             LinkedListNode<TKey>? node = _lruList.First;
+            if (node is null)
+            {
+                throw new InvalidOperationException(
+                    $"{nameof(LruKeyCache<TKey>)} called {nameof(Replace)} when empty.");
+            }
+            
             _lruList.RemoveFirst();
             _cacheMap.Remove(node.Value);
 

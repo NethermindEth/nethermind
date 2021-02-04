@@ -23,12 +23,12 @@ namespace Nethermind.Network
     {
         public int Compare(Peer x, Peer y)
         {
-            if (x == null)
+            if (x is null)
             {
-                return y == null ? 0 : 1;
+                return y is null ? 0 : 1;
             }
 
-            if (y == null)
+            if (y is null)
             {
                 return -1;
             }

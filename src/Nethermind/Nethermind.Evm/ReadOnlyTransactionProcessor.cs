@@ -48,6 +48,8 @@ namespace Nethermind.Evm
             _transactionProcessor.CallAndRestore(transaction, block, txTracer);
         }
 
+        public bool IsContractDeployed(Address address) => _stateProvider.IsContract(address);
+
         public void Dispose()
         {
             _stateProvider.StateRoot = _stateBefore;

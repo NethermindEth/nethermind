@@ -41,9 +41,9 @@ namespace Nethermind.Runner.Ethereum.Steps
            Rlp.RegisterDecoders(Assembly.GetAssembly(typeof(NetworkNodeDecoder)));
 
            // TODO: create an RLP that handles all of this?
-           foreach (long transitionBlock in _api.SpecProvider.TransitionBlocks)
+           foreach (long transitionBlock in _api.SpecProvider?.TransitionBlocks ?? ArraySegment<long>.Empty)
            {
-               if (_api.SpecProvider.GetSpec(transitionBlock).IsEip1559Enabled)
+               if (_api.SpecProvider?.GetSpec(transitionBlock).IsEip1559Enabled ?? false)
                {
                    HeaderDecoder.Eip1559TransitionBlock = transitionBlock;
                    break;

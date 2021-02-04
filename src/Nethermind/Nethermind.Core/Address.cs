@@ -88,7 +88,7 @@ namespace Nethermind.Core
 
         public Address(byte[] bytes)
         {
-            if (bytes == null)
+            if (bytes is null)
             {
                 throw new ArgumentNullException(nameof(bytes));
             }
@@ -154,7 +154,7 @@ namespace Nethermind.Core
             return obj.GetType() == GetType() && Equals((Address) obj);
         }
         
-        public override int GetHashCode() => MemoryMarshal.Read<int>(Bytes);
+        public override int GetHashCode() => MemoryMarshal.Read<int>(Bytes.AsSpan(16, 4));
 
         public static bool operator ==(Address? a, Address? b)
         {
@@ -220,11 +220,6 @@ namespace Nethermind.Core
 
         public AddressStructRef(Span<byte> bytes)
         {
-            if (bytes == null)
-            {
-                throw new ArgumentNullException(nameof(bytes));
-            }
-
             if (bytes.Length != ByteLength)
             {
                 throw new ArgumentException(

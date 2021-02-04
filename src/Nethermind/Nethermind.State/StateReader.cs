@@ -90,7 +90,7 @@ namespace Nethermind.State
         public byte[] GetCode(Keccak stateRoot, Address address)
         {
             Account? account = GetState(stateRoot, address);
-            if (account == null)
+            if (account is null)
             {
                 return Array.Empty<byte>();
             }

@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -27,22 +28,23 @@ namespace Nethermind.Db
         {
         }
 
-        private static NullDb _instance;
+        private static NullDb? _instance;
+        
         public static NullDb Instance => LazyInitializer.EnsureInitialized(ref _instance, () => new NullDb());
 
         public string Name { get; } = "NullDb";
 
-        public byte[] this[byte[] key]
+        public byte[]? this[byte[] key]
         {
             get => null;
-            set => throw new System.NotSupportedException();
+            set => throw new NotSupportedException();
         }
 
         public KeyValuePair<byte[], byte[]>[] this[byte[][] keys] => keys.Select(k => new KeyValuePair<byte[], byte[]>(k, null)).ToArray(); 
 
         public void Remove(byte[] key)
         {
-            throw new System.NotSupportedException();
+            throw new NotSupportedException();
         }
 
         public bool KeyExists(byte[] key)
@@ -60,11 +62,8 @@ namespace Nethermind.Db
 
         public IBatch StartBatch()
         {
-            throw new System.NotSupportedException();
+            throw new NotSupportedException();
         }
-
-        public ICollection<byte[]> Keys { get; }
-        public ICollection<byte[]> Values { get; }
 
         public void Dispose()
         {

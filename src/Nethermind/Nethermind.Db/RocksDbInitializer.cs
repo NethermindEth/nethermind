@@ -25,35 +25,29 @@ namespace Nethermind.Db
         private readonly IDbProvider _dbProvider;
         private readonly IRocksDbFactory _rocksDbFactory;
         private readonly IMemDbFactory _memDbFactory;
-        private List<Action> _registrations = new List<Action>();
+        private readonly List<Action> _registrations = new();
 
-        public RocksDbInitializer(IDbProvider dbProvider, IRocksDbFactory rocksDbFactory, IMemDbFactory memDbFactory)
+        public RocksDbInitializer(IDbProvider? dbProvider, IRocksDbFactory? rocksDbFactory, IMemDbFactory? memDbFactory)
         {
-            _dbProvider = dbProvider;
-            _rocksDbFactory = rocksDbFactory;
-            _memDbFactory = memDbFactory;
+            _dbProvider = dbProvider ?? throw new ArgumentNullException(nameof(dbProvider));
+            _rocksDbFactory = rocksDbFactory ?? NullRocksDbFactory.Instance;
+            _memDbFactory = memDbFactory ?? NullMemDbFactory.Instance;
         }
 
         protected void RegisterCustomDb(string dbName, Func<IDb> dbFunc)
         {
-            var action = new Action(() =>
+            void Action()
             {
-                var db = dbFunc();
-
+                IDb db = dbFunc();
                 _dbProvider.RegisterDb(dbName, db);
-            });
+            }
 
-            _registrations.Add(action);
+            _registrations.Add(Action);
         }
 
         protected void RegisterDb(RocksDbSettings settings)
         {
             AddRegisterAction(settings, () => _rocksDbFactory.CreateDb(settings), () => _memDbFactory.CreateDb(settings.DbName));
-        }
-
-        protected void RegisterSnapshotableDb(RocksDbSettings settings)
-        {
-            AddRegisterAction(settings, () => _rocksDbFactory.CreateSnapshotableDb(settings), () => _memDbFactory.CreateSnapshotableDb(settings.DbName));
         }
 
         protected void RegisterColumnsDb<T>(RocksDbSettings settings)
@@ -87,7 +81,7 @@ namespace Nethermind.Db
 
         protected async Task InitAllAsync()
         {
-            var allInitializers = new HashSet<Task>();
+            HashSet<Task> allInitializers = new();
             foreach (var registration in _registrations)
             {
                 allInitializers.Add(Task.Run(() => registration.Invoke()));

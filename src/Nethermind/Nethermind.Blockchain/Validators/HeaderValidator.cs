@@ -137,10 +137,10 @@ namespace Nethermind.Blockchain.Validators
             if (_logger.IsTrace) _logger.Trace($"Validating block {header.ToString(BlockHeader.Format.Short)}, extraData {header.ExtraData.ToHexString(true)}");
 
             bool baseFeeIsCorrect = true;
-            
-            UInt256 expectedBaseFee = BlockHeader.CalculateBaseFee(parent, spec);
+
             if (spec.IsEip1559Enabled)
             {
+                UInt256? expectedBaseFee = BlockHeader.CalculateBaseFee(parent, spec);
                 baseFeeIsCorrect = expectedBaseFee == header.BaseFee;
             }
 

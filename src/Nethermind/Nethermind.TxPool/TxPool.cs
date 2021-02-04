@@ -214,7 +214,7 @@ namespace Nethermind.TxPool
 
         public AddTxResult AddTransaction(Transaction tx, TxHandlingOptions handlingOptions)
         {
-            if (tx.Hash == null)
+            if (tx.Hash is null)
             {
                 throw new ArgumentException($"{nameof(tx.Hash)} not set on {nameof(Transaction)}");
             }
@@ -313,10 +313,10 @@ namespace Nethermind.TxPool
              * We need to investigate what these txs are and why the sender address is resolved to null.
              * Then we need to decide whether we really want to broadcast them.
              */
-            if (tx.SenderAddress == null)
+            if (tx.SenderAddress is null)
             {
                 tx.SenderAddress = _ecdsa.RecoverAddress(tx);
-                if (tx.SenderAddress == null)
+                if (tx.SenderAddress is null)
                 {
                     if (_logger.IsTrace) _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, no sender.");
                     return AddTxResult.PotentiallyUseless;

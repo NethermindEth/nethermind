@@ -53,7 +53,7 @@ namespace Nethermind.Crypto
 
         public string ToString(bool withZeroX)
         {
-            if (Bytes == null)
+            if (Bytes is null)
             {
                 return "Keccak<uninitialized>";
             }
@@ -68,7 +68,7 @@ namespace Nethermind.Crypto
 
         public static Keccak512 Compute(byte[] input)
         {
-            if (input == null || input.Length == 0)
+            if (input is null || input.Length == 0)
             {
                 return OfAnEmptyString;
             }
@@ -80,12 +80,12 @@ namespace Nethermind.Crypto
         
         public static uint[] ComputeToUInts(byte[] input)
         {
-            if (input == null || input.Length == 0)
+            if (input is null || input.Length == 0)
             {
                 throw new NotSupportedException();
             }
 
-            if (_hash == null) // avoid allocating Init func
+            if (_hash is null) // avoid allocating Init func
             {
                 LazyInitializer.EnsureInitialized(ref _hash, Init);
             }
@@ -95,12 +95,12 @@ namespace Nethermind.Crypto
 
         public static uint[] ComputeUIntsToUInts(Span<uint> input)
         {
-            if (input == null || input.Length == 0)
+            if (input.Length == 0)
             {
                 throw new NotSupportedException();
             }
 
-            if (_hash == null)
+            if (_hash is null)
             {
                 LazyInitializer.EnsureInitialized(ref _hash, Init);
             }
@@ -110,12 +110,12 @@ namespace Nethermind.Crypto
         
         public static void ComputeUIntsToUInts(Span<uint> input, Span<uint> output)
         {
-            if (input == null || input.Length == 0)
+            if (input.Length == 0)
             {
                 throw new NotSupportedException();
             }
 
-            if (_hash == null)
+            if (_hash is null)
             {
                 LazyInitializer.EnsureInitialized(ref _hash, Init);
             }
@@ -130,7 +130,7 @@ namespace Nethermind.Crypto
         
         private static Keccak512 InternalCompute(byte[] input)
         {
-            if (_hash == null)
+            if (_hash is null)
             {
                 LazyInitializer.EnsureInitialized(ref _hash, Init);
             }

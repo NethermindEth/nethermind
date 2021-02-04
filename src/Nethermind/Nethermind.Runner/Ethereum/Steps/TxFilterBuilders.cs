@@ -38,7 +38,7 @@ namespace Nethermind.Runner.Ethereum.Steps
         private static ITxFilter CreateBaseAuRaTxFilter(
             IMiningConfig miningConfig,
             AuRaNethermindApi api,
-            IReadOnlyTransactionProcessorSource readOnlyTxProcessorSource,
+            IReadOnlyTxProcessorSource readOnlyTxProcessorSource,
             IDictionaryContractDataStore<TxPriorityContract.Destination>? minGasPricesContractDataStore)
         {
             ITxFilter gasPriceTxFilter = CreateStandardTxFilter(miningConfig);
@@ -59,7 +59,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             return gasPriceTxFilter;
         }
         
-        public static ITxFilter? CreateTxPermissionFilter(AuRaNethermindApi api, IReadOnlyTransactionProcessorSource readOnlyTxProcessorSource)
+        public static ITxFilter? CreateTxPermissionFilter(AuRaNethermindApi api, IReadOnlyTxProcessorSource readOnlyTxProcessorSource)
         {
             if (api.ChainSpec == null) throw new StepDependencyException(nameof(api.ChainSpec));
             
@@ -75,7 +75,6 @@ namespace Nethermind.Runner.Ethereum.Steps
                         api.TransactionPermissionContractVersions,
                         api.LogManager),
                     api.TxFilterCache,
-                    api.ChainHeadStateProvider,
                     api.LogManager);
                 
                 return txPermissionFilter;
@@ -87,7 +86,7 @@ namespace Nethermind.Runner.Ethereum.Steps
         public static ITxFilter CreateAuRaTxFilter(
             IMiningConfig miningConfig,
             AuRaNethermindApi api,
-            IReadOnlyTransactionProcessorSource readOnlyTxProcessorSource,
+            IReadOnlyTxProcessorSource readOnlyTxProcessorSource,
             IDictionaryContractDataStore<TxPriorityContract.Destination>? minGasPricesContractDataStore)
         {
             ITxFilter baseAuRaTxFilter = CreateBaseAuRaTxFilter(miningConfig, api, readOnlyTxProcessorSource, minGasPricesContractDataStore);
@@ -100,7 +99,7 @@ namespace Nethermind.Runner.Ethereum.Steps
         public static (TxPriorityContract? Contract, TxPriorityContract.LocalDataSource? DataSource) CreateTxPrioritySources(
             IAuraConfig config, 
             AuRaNethermindApi api,
-            IReadOnlyTransactionProcessorSource readOnlyTxProcessorSource)
+            IReadOnlyTxProcessorSource readOnlyTxProcessorSource)
         {
             Address.TryParse(config.TxPriorityContractAddress, out Address? txPriorityContractAddress);
             bool usesTxPriorityContract = txPriorityContractAddress != null;

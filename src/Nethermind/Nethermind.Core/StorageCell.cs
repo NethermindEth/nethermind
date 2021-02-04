@@ -34,15 +34,16 @@ namespace Nethermind.Core
 
         public bool Equals(StorageCell other)
         {
-            return Equals(Address, other.Address) && Index.Equals(other.Index);
+            return Index.Equals(other.Index) && Address.Equals(other.Address);
         }
 
-        public override bool Equals(object obj)
+        public override bool Equals(object? obj)
         {
             if (ReferenceEquals(null, obj))
             {
                 return false;
             }
+            
             return obj is StorageCell address && Equals(address);
         }
 
@@ -50,7 +51,7 @@ namespace Nethermind.Core
         {
             unchecked
             {
-                return ((Address != null ? Address.GetHashCode() : 0) * 397) ^ Index.GetHashCode();
+                return (Address.GetHashCode() * 397) ^ Index.GetHashCode();
             }
         }
 

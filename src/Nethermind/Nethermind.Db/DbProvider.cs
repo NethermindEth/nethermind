@@ -23,7 +23,8 @@ namespace Nethermind.Db
 {
     public class DbProvider : IDbProvider
     {
-        private readonly ConcurrentDictionary<string, IDb> _registeredDbs = new ConcurrentDictionary<string, IDb>(StringComparer.InvariantCultureIgnoreCase);
+        private readonly ConcurrentDictionary<string, IDb> _registeredDbs =
+            new(StringComparer.InvariantCultureIgnoreCase);
 
         public DbProvider(DbModeHint dbMode)
         {
@@ -38,25 +39,20 @@ namespace Nethermind.Db
 
         public void Dispose()
         {
-            if (_registeredDbs != null)
+            foreach (KeyValuePair<string, IDb> registeredDb in _registeredDbs)
             {
-                foreach (var registeredDb in _registeredDbs)
-                {
-                    registeredDb.Value?.Dispose();
-                }
+                registeredDb.Value?.Dispose();
             }
         }
 
         public T GetDb<T>(string dbName) where T : class, IDb
         {
-            if (!_registeredDbs.ContainsKey(dbName))
+            if (!_registeredDbs.TryGetValue(dbName, out IDb? found))
             {
                 throw new ArgumentException($"{dbName} database has not been registered in {nameof(DbProvider)}.");
             }
 
-            _registeredDbs.TryGetValue(dbName, out IDb? found);
-            T result = found as T;
-            if (result == null && found != null)
+            if (!(found is T result))
             {
                 throw new IOException(
                     $"An attempt was made to resolve DB {dbName} as {typeof(T)} while its type is {found.GetType()}.");

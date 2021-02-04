@@ -42,7 +42,7 @@ namespace Nethermind.Consensus.Ethash
 
         public async Task<Block> SealBlock(Block processed, CancellationToken cancellationToken)
         {
-            Block block = await MineAsync(cancellationToken, processed, null).ContinueWith(t =>
+            Block? block = await MineAsync(cancellationToken, processed, null).ContinueWith(t =>
             {
                 if (t.IsFaulted)
                 {
@@ -53,7 +53,7 @@ namespace Nethermind.Consensus.Ethash
                 return t.Result;
             }, cancellationToken);
 
-            if (block == null)
+            if (block is null)
             {
                 throw new SealEngineException($"{nameof(SealBlock)} failed");
             }

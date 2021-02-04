@@ -207,7 +207,15 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Domain
 
         public UInt256 GetTimeLeftToClaimRefund(ulong currentBlockTimestamp)
         {
-            UInt256 timeLeftToClaimRefund = Deposit.ExpiryTime - currentBlockTimestamp;
+            UInt256 timeLeftToClaimRefund;
+            try
+            {
+                timeLeftToClaimRefund = checked(Deposit.ExpiryTime - currentBlockTimestamp);
+            }
+            catch(OverflowException)
+            {
+                timeLeftToClaimRefund = 0;
+            }
 
             if (Claimable && timeLeftToClaimRefund > 0)
             {

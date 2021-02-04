@@ -253,7 +253,7 @@ namespace Nethermind.Trie.Test.Pruning
             memDb[Keccak.Zero.Bytes] = new byte[] {1, 2, 3};
 
             TrieStore trieStore = new TrieStore(memDb, _logManager);
-            trieStore.LoadRlp(Keccak.Zero, false).Should().NotBeNull();
+            trieStore.LoadRlp(Keccak.Zero).Should().NotBeNull();
         }
 
         [Test]

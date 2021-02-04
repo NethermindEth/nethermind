@@ -40,7 +40,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
         /// <param name="parentHeader"></param>
         /// <param name="tx"></param>
         /// <returns><see cref="TxPermissions"/>Set of allowed transactions types and <see cref="bool"/> If `true` is returned, the same permissions will be applied from the same sender without calling this contract again.</returns>
-        (TxPermissions Permissions, bool ShouldCache) AllowedTxTypes(BlockHeader parentHeader, Transaction tx);
+        (TxPermissions Permissions, bool ShouldCache, bool ContractExists) AllowedTxTypes(BlockHeader parentHeader, Transaction tx);
 
         [Flags]
         public enum TxPermissions : uint
@@ -94,17 +94,62 @@ namespace Nethermind.Consensus.AuRa.Contracts
         /// <param name="parentHeader"></param>
         /// <param name="tx"></param>
         /// <returns><see cref="ITransactionPermissionContract.TxPermissions"/>Set of allowed transactions types and <see cref="bool"/> If `true` is returned, the same permissions will be applied from the same sender without calling this contract again.</returns>
-        public abstract (ITransactionPermissionContract.TxPermissions Permissions, bool ShouldCache) AllowedTxTypes(BlockHeader parentHeader, Transaction tx);
+        public (ITransactionPermissionContract.TxPermissions Permissions, bool ShouldCache, bool ContractExists) AllowedTxTypes(BlockHeader parentHeader, Transaction tx)
+        {
+            object[] parameters = GetAllowedTxTypesParameters(tx);
+            PermissionConstantContract.PermissionCallInfo callInfo = new(parentHeader, nameof(AllowedTxTypes), Address.Zero, parameters, tx.To ?? Address.Zero);
+            (ITransactionPermissionContract.TxPermissions, bool) result = CallAllowedTxTypes(callInfo);
+            return (result.Item1, result.Item2, callInfo.ToIsContract);
+        }
 
-        protected ConstantContract Constant { get; }
+        protected virtual (ITransactionPermissionContract.TxPermissions, bool) CallAllowedTxTypes(PermissionConstantContract.PermissionCallInfo callInfo) => 
+            Constant.Call<ITransactionPermissionContract.TxPermissions, bool>(callInfo);
+
+        protected abstract object[] GetAllowedTxTypesParameters(Transaction tx);
+        
+        protected PermissionConstantContract Constant { get; }
 
         protected TransactionPermissionContract(
             IAbiEncoder abiEncoder,
             Address contractAddress,
-            IReadOnlyTransactionProcessorSource readOnlyTransactionProcessorSource)
+            IReadOnlyTxProcessorSource readOnlyTxProcessorSource)
             : base(abiEncoder, contractAddress)
         {
-            Constant = GetConstant(readOnlyTransactionProcessorSource);
+            Constant = new PermissionConstantContract(this, readOnlyTxProcessorSource);
+        }
+        
+        protected class PermissionConstantContract : ConstantContract
+        {
+            public PermissionConstantContract(Contract contract, IReadOnlyTxProcessorSource readOnlyTxProcessorSource) : base(contract, readOnlyTxProcessorSource)
+            {
+            }
+
+            protected override object[] CallRaw(CallInfo callInfo, IReadOnlyTransactionProcessor readOnlyTransactionProcessor)
+            {
+                if (callInfo is PermissionCallInfo transactionPermissionCallInfo)
+                {
+                    transactionPermissionCallInfo.ToIsContract = readOnlyTransactionProcessor.IsContractDeployed(transactionPermissionCallInfo.To);
+                }
+
+                return base.CallRaw(callInfo, readOnlyTransactionProcessor);
+            }
+
+            public class PermissionCallInfo : CallInfo
+            {
+                public Address To { get; }
+                public bool ToIsContract { get; set; }
+
+                public PermissionCallInfo(
+                    BlockHeader parentHeader,
+                    string functionName,
+                    Address sender,
+                    object[] arguments, 
+                    Address to) 
+                    : base(parentHeader, functionName, sender, arguments)
+                {
+                    To = to;
+                }
+            }
         }
     }
 }

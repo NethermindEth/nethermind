@@ -34,10 +34,8 @@ using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
-using Nethermind.Core.Test.Blockchain;
 using System.Security;
 using Nethermind.Core.Extensions;
-using Nethermind.Specs.Forks;
 using Nethermind.JsonRpc.Test.Modules;
 using System.Threading.Tasks;
 using System.Threading;
@@ -50,8 +48,8 @@ namespace Nethermind.Blockchain.Test
         [Test]
         public void Prepared_block_contains_author_field()
         {
-            ISnapshotableDb stateDb = new StateDb();
-            ISnapshotableDb codeDb = new StateDb();
+            IDb stateDb = new MemDb();
+            IDb codeDb = new MemDb();
             TrieStore trieStore = new TrieStore(stateDb, LimboLogs.Instance);
             IStateProvider stateProvider = new StateProvider(trieStore, codeDb, LimboLogs.Instance);
             ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
@@ -81,8 +79,8 @@ namespace Nethermind.Blockchain.Test
         [Test]
         public void Can_store_a_witness()
         {
-            ISnapshotableDb stateDb = new StateDb();
-            ISnapshotableDb codeDb = new StateDb();
+            IDb stateDb = new MemDb();
+            IDb codeDb = new MemDb();
             var trieStore = new TrieStore(stateDb, LimboLogs.Instance);
             
             IStateProvider stateProvider = new StateProvider(trieStore, codeDb, LimboLogs.Instance);
@@ -114,8 +112,8 @@ namespace Nethermind.Blockchain.Test
         [Test]
         public void Recovers_state_on_cancel()
         {
-            ISnapshotableDb stateDb = new StateDb();
-            ISnapshotableDb codeDb = new StateDb();
+            IDb stateDb = new MemDb();
+            IDb codeDb = new MemDb();
             TrieStore trieStore = new TrieStore(stateDb, LimboLogs.Instance);
             IStateProvider stateProvider = new StateProvider(trieStore, codeDb, LimboLogs.Instance);
             ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();

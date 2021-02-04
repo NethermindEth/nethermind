@@ -26,19 +26,19 @@ namespace Nethermind.Blockchain.Find
         
         Keccak GenesisHash { get; }
         
-        Keccak PendingHash { get; }
+        Keccak? PendingHash { get; }
         
-        Block Head { get; }
+        Block? Head { get; }
         
-        Block FindBlock(Keccak blockHash, BlockTreeLookupOptions options);
+        Block? FindBlock(Keccak blockHash, BlockTreeLookupOptions options);
         
-        Block FindBlock(long blockNumber, BlockTreeLookupOptions options);
+        Block? FindBlock(long blockNumber, BlockTreeLookupOptions options);
         
-        BlockHeader FindHeader(Keccak blockHash, BlockTreeLookupOptions options);
+        BlockHeader? FindHeader(Keccak blockHash, BlockTreeLookupOptions options);
         
-        BlockHeader FindHeader(long blockNumber, BlockTreeLookupOptions options);
+        BlockHeader? FindHeader(long blockNumber, BlockTreeLookupOptions options);
         
-        Keccak FindBlockHash(long blockNumber);
+        Keccak? FindBlockHash(long blockNumber);
         
         /// <summary>
         /// Checks if the block is currently in the canonical chain

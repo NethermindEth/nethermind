@@ -42,21 +42,24 @@ namespace Nethermind.Runner.Ethereum.Steps
             if (grpcConfig.Enabled)
             {
                 ILogger logger = _api.LogManager.GetClassLogger();
-                GrpcServer grpcServer = new GrpcServer(_api.EthereumJsonSerializer, _api.LogManager);
-                var grpcRunner = new GrpcRunner(grpcServer, grpcConfig, _api.LogManager);
+                GrpcServer grpcServer = new(_api.EthereumJsonSerializer, _api.LogManager);
+                GrpcRunner grpcRunner = new(grpcServer, grpcConfig, _api.LogManager);
                 await grpcRunner.Start(cancellationToken).ContinueWith(x =>
                 {
                     if (x.IsFaulted && logger.IsError)
                         logger.Error("Error during GRPC runner start", x.Exception);
-                });
+                }, cancellationToken);
             
                 _api.GrpcServer = grpcServer;
                 
-                GrpcPublisher grpcPublisher = new GrpcPublisher(_api.GrpcServer);
+                GrpcPublisher grpcPublisher = new(_api.GrpcServer);
                 _api.Publishers.Add(grpcPublisher);
                 
                 _api.DisposeStack.Push(grpcPublisher);
+                
+#pragma warning disable 4014
                 _api.DisposeStack.Push(new Reactive.AnonymousDisposable(() => grpcRunner.StopAsync())); // do not await
+#pragma warning restore 4014
             }
         }
     }

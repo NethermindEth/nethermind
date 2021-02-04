@@ -22,6 +22,7 @@ using Nethermind.Core;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.WebSockets;
 using Nethermind.Logging;
+using Nethermind.Runner.JsonRpc;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
@@ -73,7 +74,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 Bootstrap.Instance.LogManager = _api.LogManager;
                 Bootstrap.Instance.JsonSerializer = _api.EthereumJsonSerializer;
                 Bootstrap.Instance.JsonRpcLocalStats = jsonRpcLocalStats;
-                var jsonRpcRunner = new JsonRpcRunner(
+                JsonRpcRunner? jsonRpcRunner = new(
                     jsonRpcProcessor,
                     _api.WebSocketsManager!,
                     _api.ConfigProvider,
@@ -84,9 +85,11 @@ namespace Nethermind.Runner.Ethereum.Steps
                 {
                     if (x.IsFaulted && logger.IsError)
                         logger.Error("Error during jsonRpc runner start", x.Exception);
-                });
+                }, cancellationToken);
 
+#pragma warning disable 4014
                 _api.DisposeStack.Push(new Reactive.AnonymousDisposable(() => jsonRpcRunner.StopAsync())); // do not await
+#pragma warning restore 4014
             }
             else
             {

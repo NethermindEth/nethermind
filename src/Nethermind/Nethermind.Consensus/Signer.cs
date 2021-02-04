@@ -29,8 +29,8 @@ namespace Nethermind.Consensus
     public class Signer : ISigner, ISignerStore
     {
         private readonly long _chainId;
-        private ProtectedPrivateKey _key;
-        private ILogger _logger;
+        private ProtectedPrivateKey? _key;
+        private readonly ILogger _logger;
 
         public Address Address => _key?.Address ?? Address.Zero;
 
@@ -67,12 +67,14 @@ namespace Nethermind.Consensus
             return default;
         }
 
-        public void SetSigner(PrivateKey key)
+        public ProtectedPrivateKey Key => _key; 
+
+        public void SetSigner(PrivateKey? key)
         {
-            SetSigner(key == null ? null : new ProtectedPrivateKey(key));
+            SetSigner(key is null ? null : new ProtectedPrivateKey(key));
         }
 
-        public void SetSigner(ProtectedPrivateKey key)
+        public void SetSigner(ProtectedPrivateKey? key)
         {
             _key = key;
             if (_logger.IsInfo) _logger.Info(

@@ -56,7 +56,7 @@ namespace Nethermind.Core.Test.Blockchain
         public IStorageProvider Storage { get; set; }
         public IReceiptStorage ReceiptStorage { get; set; }
         public ITxPool TxPool { get; set; }
-        public ISnapshotableDb CodeDb => DbProvider.CodeDb;
+        public IDb CodeDb => DbProvider.CodeDb;
         public IBlockProcessor BlockProcessor { get; set; }
         public IBlockchainProcessor BlockchainProcessor { get; set; }
         
@@ -65,7 +65,7 @@ namespace Nethermind.Core.Test.Blockchain
         public IBlockFinder BlockFinder { get; set; }
         public IJsonSerializer JsonSerializer { get; set; }
         public IStateProvider State { get; set; }
-        public ISnapshotableDb StateDb => DbProvider.StateDb;
+        public IDb StateDb => DbProvider.StateDb;
         public TrieStore TrieStore { get; set; }
         public TestBlockProducer BlockProducer { get; private set; }
         public IDbProvider DbProvider { get; set; }

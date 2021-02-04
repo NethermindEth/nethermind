@@ -98,8 +98,8 @@ namespace Nethermind.Clique.Test
                 MemDb headersDb = new MemDb();
                 MemDb blockInfoDb = new MemDb();
                 
-                ISnapshotableDb stateDb = new StateDb();
-                ISnapshotableDb codeDb = new StateDb();
+                MemDb stateDb = new MemDb();
+                MemDb codeDb = new MemDb();
 
                 ISpecProvider specProvider = RinkebySpecProvider.Instance;
 

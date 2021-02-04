@@ -38,16 +38,16 @@ namespace Nethermind.Blockchain.Processing
         }
 
         public bool IsInDb { get; set; }
-        public Keccak BlockHash { get; set; }
-        public Block Block { get; set; }
+        public Keccak? BlockHash { get; set; }
+        public Block? Block { get; set; }
         public ProcessingOptions ProcessingOptions { get; }
         
         public bool Resolve(IBlockTree blockTree)
         {
             if (IsInDb)
             {
-                Block block = blockTree.FindBlock(BlockHash, BlockTreeLookupOptions.None);
-                if (block == null)
+                Block? block = blockTree.FindBlock(BlockHash!, BlockTreeLookupOptions.None);
+                if (block is null)
                 {
                     return false;
                 }

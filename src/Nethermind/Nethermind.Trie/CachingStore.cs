@@ -39,21 +39,21 @@ namespace Nethermind.Trie
             _cache = new LruCache<byte[], byte[]>(maxCapacity, "RLP Cache");
         }
 
-        private LruCache<byte[], byte[]> _cache;
+        private readonly LruCache<byte[], byte[]> _cache;
 
-        public byte[] this[byte[] key]
+        public byte[]? this[byte[] key]
         {
             get
             {
-                byte[] value;
-                if (_cache.Contains(key))
-                {
-                    value = _cache.Get(key);
-                }
-                else
+                if (!_cache.TryGet(key, out byte[] value))
                 {
                     value = _wrappedStore[key];
                     _cache.Set(key, value);
+                }
+                else
+                {
+                    // TODO: a hack assuming that we cache only one thing, accepted unanimously by Lukasz, Marek, and Tomasz
+                    Pruning.Metrics.LoadedFromRlpCacheNodesCount++;
                 }
 
                 return value;

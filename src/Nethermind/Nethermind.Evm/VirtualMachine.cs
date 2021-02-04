@@ -2199,7 +2199,12 @@ namespace Nethermind.Evm
                         Address contractAddress = instruction == Instruction.CREATE
                             ? ContractAddress.From(env.ExecutingAccount, _state.GetNonce(env.ExecutingAccount))
                             : ContractAddress.From(env.ExecutingAccount, salt, initCode);
-                        vmState.WarmUp(contractAddress); // EIP-2929 assumes that warm-up cost is included in the costs of CREATE and CREATE2
+
+                        if (spec.UseHotAndColdStorage)
+                        {
+                            // EIP-2929 assumes that warm-up cost is included in the costs of CREATE and CREATE2
+                            vmState.WarmUp(contractAddress);
+                        }
 
                         _state.IncrementNonce(env.ExecutingAccount);
 
@@ -2248,8 +2253,7 @@ namespace Nethermind.Evm
                             0L,
                             0L,
                             vmState.IsStatic,
-                            vmState.AccessedAddresses,
-                            vmState.AccessedStorageCells,
+                            vmState,
                             false,
                             accountExists);
 
@@ -2437,8 +2441,7 @@ namespace Nethermind.Evm
                             (long) outputOffset,
                             (long) outputLength,
                             instruction == Instruction.STATICCALL || vmState.IsStatic,
-                            vmState.AccessedAddresses,
-                            vmState.AccessedStorageCells,
+                            vmState,
                             false,
                             false);
 
