@@ -17,12 +17,14 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Crypto;
 using Nethermind.TxPool;
 
 namespace Nethermind.Consensus
 {
     public interface ISigner : ITxSigner
     {
+        ProtectedPrivateKey Key { get; }
         Address Address { get; }
         Signature Sign(Keccak message);
         bool CanSign { get; }

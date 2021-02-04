@@ -30,7 +30,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
     public class CertifierContract : RegisterBasedContract, ICertifierContract
     {
         private static readonly object[] MissingCertifiedResult = {false};
-        private const string ServiceTransactionContractRegistryName = "service_transaction_checker";
+        internal const string ServiceTransactionContractRegistryName = "service_transaction_checker";
         
         private ConstantContract Constant { get; }
         

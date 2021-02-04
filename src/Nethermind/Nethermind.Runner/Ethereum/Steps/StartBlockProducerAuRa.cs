@@ -228,6 +228,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                             readOnlyTxProcessorSource,
                             signer),
                         new EciesCipher(_api.CryptoRandom),
+                        signer,
                         _api.NodeKey,
                         _api.CryptoRandom,
                         _api.LogManager);

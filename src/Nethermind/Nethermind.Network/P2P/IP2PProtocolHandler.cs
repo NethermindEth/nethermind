@@ -13,17 +13,19 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using System;
+using System.Collections.Generic;
+using Nethermind.Stats.Model;
 
-namespace Nethermind.Consensus.AuRa
+namespace Nethermind.Network.P2P
 {
-    public interface IAuRaStepCalculator
+    public interface IP2PProtocolHandler : IProtocolHandler
     {
-        long CurrentStep { get; }
-        TimeSpan TimeToNextStep { get; }
-        TimeSpan TimeToStep(long step);
-        
-        long CurrentStepDuration { get; }
+        public IReadOnlyList<Capability> AgreedCapabilities { get; }
+        public IReadOnlyList<Capability> AvailableCapabilities { get; }
+        bool HasAvailableCapability(Capability capability);
+        bool HasAgreedCapability(Capability capability);
+        void AddSupportedCapability(Capability capability);
     }
 }
