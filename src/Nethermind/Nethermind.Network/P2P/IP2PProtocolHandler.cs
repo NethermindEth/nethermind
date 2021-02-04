@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -13,23 +13,19 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using System;
-using Nethermind.Network.Rlpx;
+using System.Collections.Generic;
 using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.P2P
 {
-    public interface IProtocolHandler : IDisposable
+    public interface IP2PProtocolHandler : IProtocolHandler
     {
-        string Name { get; }
-        byte ProtocolVersion { get; }
-        string ProtocolCode { get; }
-        int MessageIdSpaceSize { get; }
-        void Init();
-        void HandleMessage(Packet message);
-        void DisconnectProtocol(DisconnectReason disconnectReason, string details);
-        event EventHandler<ProtocolInitializedEventArgs> ProtocolInitialized;
-        event EventHandler<ProtocolEventArgs> SubprotocolRequested;
+        public IReadOnlyList<Capability> AgreedCapabilities { get; }
+        public IReadOnlyList<Capability> AvailableCapabilities { get; }
+        bool HasAvailableCapability(Capability capability);
+        bool HasAgreedCapability(Capability capability);
+        void AddSupportedCapability(Capability capability);
     }
 }

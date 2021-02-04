@@ -71,13 +71,6 @@ namespace Nethermind.DataMarketplace.Subprotocols
         public override string ProtocolCode => Protocol.Ndm;
         public override int MessageIdSpaceSize => 0x1F;
 
-        public override bool HasAvailableCapability(Capability capability) => false;
-        public override bool HasAgreedCapability(Capability capability) => false;
-
-        public override void AddSupportedCapability(Capability capability)
-        {
-        }
-
         public override event EventHandler<ProtocolInitializedEventArgs>? ProtocolInitialized;
 
         public override event EventHandler<ProtocolEventArgs> SubprotocolRequested
