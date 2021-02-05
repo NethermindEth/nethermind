@@ -62,7 +62,6 @@ namespace Nethermind.Network.P2P
         
         protected void Send<T>(T message) where T : P2PMessage
         {
-            Console.WriteLine($"SENDING {message.GetType()}");
             Interlocked.Increment(ref Counter);
             if (Logger.IsTrace) Logger.Trace($"{Counter} Sending {typeof(T).Name}");
             if(NetworkDiagTracer.IsEnabled)

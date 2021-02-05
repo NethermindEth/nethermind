@@ -37,9 +37,9 @@ namespace Nethermind.Network.P2P
 
         private readonly ConcurrentDictionary<DisconnectCategory, int> _disconnectsA = new();
         private readonly ConcurrentDictionary<DisconnectCategory, int> _disconnectsB = new();
-        
+
         private ConcurrentDictionary<DisconnectCategory, int> _disconnects;
-        
+
         private int _disconnectCount = 0;
 
         private readonly struct DisconnectCategory
@@ -49,12 +49,12 @@ namespace Nethermind.Network.P2P
                 Reason = reason;
                 Type = type;
             }
-            
+
             public DisconnectReason Reason { get; }
-            
+
             public DisconnectType Type { get; }
         }
-        
+
         public DisconnectsAnalyzer(ILogManager? logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
@@ -65,7 +65,7 @@ namespace Nethermind.Network.P2P
             _timer.AutoReset = false;
             _timer.Start();
         }
-        
+
         public DisconnectsAnalyzer WithIntervalOverride(int interval)
         {
             _timer.Interval = interval;
@@ -88,9 +88,9 @@ namespace Nethermind.Network.P2P
                     + key.Reason.ToString().PadRight(24)
                     + value.ToString().PadLeft(4));
             }
-            
+
             localCopy.Clear();
-            
+
             _logger.Info(_builder.ToString());
             _builder.Clear();
             _timer.Enabled = true;
@@ -98,8 +98,6 @@ namespace Nethermind.Network.P2P
 
         public void ReportDisconnect(DisconnectReason reason, DisconnectType type, string? details)
         {
-            DisconnectMetrics.Update(type, reason);
-            
             Interlocked.Increment(ref _disconnectCount);
             _disconnects.AddOrUpdate(new DisconnectCategory(reason, type), _ => 1, (_, i) => i + 1);
 

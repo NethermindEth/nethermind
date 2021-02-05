@@ -106,13 +106,32 @@ namespace Nethermind.Serialization.Rlp
 
             Span<byte> transactionSequence = decoderContext.PeekNextItem();
 
-            int transactionLength = decoderContext.ReadSequenceLength();
-            int lastCheck = decoderContext.Position + transactionLength;
-
-            bool isEip1559 = decoderContext.ReadNumberOfItemsRemaining(lastCheck) == 9;
-
             Transaction transaction = new();
-            if (isEip1559)
+            if (!decoderContext.IsSequenceNext())
+            {
+                decoderContext.SkipLength();
+                transaction.Type = (TxType)decoderContext.ReadByte();
+            }
+
+            int transactionLength = decoderContext.PeekNextRlpLength();
+            int lastCheck = decoderContext.Position + transactionLength;
+            decoderContext.SkipLength();
+            int numberOfSequenceFields = decoderContext.ReadNumberOfItemsRemaining(lastCheck);
+
+            bool isEip1559 = numberOfSequenceFields == 11;
+            
+            if (transaction.Type == TxType.AccessList)
+            {
+                transaction.ChainId = decoderContext.DecodeLong();
+                transaction.Nonce = decoderContext.DecodeUInt256();
+                transaction.GasPrice = decoderContext.DecodeUInt256();
+                transaction.GasLimit = decoderContext.DecodeLong();
+                transaction.To = decoderContext.DecodeAddress();
+                transaction.AccessList = _accessListDecoder.Decode(ref decoderContext, rlpBehaviors);
+                transaction.Value = decoderContext.DecodeUInt256();
+                transaction.Data = decoderContext.DecodeByteArray();
+            }
+            else if (!isEip1559)
             {
                 transaction.Nonce = decoderContext.DecodeUInt256();
                 transaction.GasPrice = decoderContext.DecodeUInt256();
@@ -135,7 +154,7 @@ namespace Nethermind.Serialization.Rlp
 
             if (decoderContext.Position < lastCheck)
             {
-                DecodeSignature(decoderContext, rlpBehaviors, transaction, transactionSequence);
+                DecodeSignature(ref decoderContext, rlpBehaviors, transaction, transactionSequence);
             }
 
             if ((rlpBehaviors & RlpBehaviors.AllowExtraData) != RlpBehaviors.AllowExtraData)
@@ -208,7 +227,7 @@ namespace Nethermind.Serialization.Rlp
 
         // TODO: luk to fix this copy paste
         private static void DecodeSignature(
-            Rlp.ValueDecoderContext decoderContext,
+            ref Rlp.ValueDecoderContext decoderContext,
             RlpBehaviors rlpBehaviors,
             Transaction transaction,
             Span<byte> transactionSequence)

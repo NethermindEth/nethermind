@@ -16,16 +16,12 @@
 
 using System;
 using System.Collections.Generic;
-using System.Collections.Immutable;
-using System.Runtime.CompilerServices;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 
 namespace Nethermind.Serialization.Rlp
 {
-    public class AccessListDecoder : IRlpStreamDecoder<AccessList?>
+    public class AccessListDecoder : IRlpStreamDecoder<AccessList?>, IRlpValueDecoder<AccessList?>
     {
         private readonly HashSet<UInt256> _emptyStorages = new();
 
@@ -146,6 +142,56 @@ namespace Nethermind.Serialization.Rlp
             }
 
             return Rlp.GetSequenceRlpLength(GetContentLength(item, rlpBehaviors));
+        }
+
+        public Rlp Encode(AccessList? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        {
+            throw new NotImplementedException();
+        }
+
+        public AccessList? Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        {
+            if (decoderContext.IsNextItemNull())
+            {
+                decoderContext.ReadByte();
+                return null;
+            }
+
+            int length = decoderContext.PeekNextRlpLength();
+            int check = decoderContext.Position + length;
+            decoderContext.SkipLength();
+            Dictionary<Address, IReadOnlySet<UInt256>> data = new();
+            while (decoderContext.Position < check)
+            {
+                decoderContext.SkipLength();
+                Address address = decoderContext.DecodeAddress();
+                if (address == null)
+                {
+                    throw new RlpException("Invalid tx access list format - address is null");
+                }
+
+                HashSet<UInt256> storages = _emptyStorages;
+                if (decoderContext.Position < check)
+                {
+                    int storageCheck = decoderContext.Position + decoderContext.PeekNextRlpLength();
+                    decoderContext.SkipLength();
+                    storages = new HashSet<UInt256>();
+                    while (decoderContext.Position < storageCheck)
+                    {
+                        UInt256 index = decoderContext.DecodeUInt256();
+                        storages.Add(index);
+                    }
+                }
+
+                data[address] = storages;
+            }
+
+            if ((rlpBehaviors & RlpBehaviors.AllowExtraData) != RlpBehaviors.AllowExtraData)
+            {
+                decoderContext.Check(check);
+            }
+
+            return new AccessList(data);
         }
     }
 }
