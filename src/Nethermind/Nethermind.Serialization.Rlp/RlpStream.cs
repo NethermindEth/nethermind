@@ -770,7 +770,7 @@ namespace Nethermind.Serialization.Rlp
 
         public bool IsNextItemNull()
         {
-            return PeekByte() == 192;
+            return PeekByte() == Rlp.NullObjectByte;
         }
 
         public bool DecodeBool()

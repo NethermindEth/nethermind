@@ -266,13 +266,19 @@ namespace Nethermind.Serialization.Rlp
             stream.StartSequence(contentLength);
             if (item.Type == TxType.AccessList)
             {
-                
+                // throw new NotImplementedException();
+                stream.Encode(1); // chain ID? how -> need to add to tx
             }
             
             stream.Encode(item.Nonce);
             stream.Encode(item.IsEip1559 ? 0 : item.GasPrice);
             stream.Encode(item.GasLimit);
             stream.Encode(item.To);
+            if (item.Type == TxType.AccessList)
+            {
+                _accessListDecoder.Encode(stream, item.AccessList, rlpBehaviors);
+            }
+            
             stream.Encode(item.Value);
             stream.Encode(item.Data);
             if (item.IsEip1559)
@@ -285,7 +291,7 @@ namespace Nethermind.Serialization.Rlp
             stream.Encode(item.Signature == null ? null : item.Signature.SAsSpan.WithoutLeadingZeros());
         }
 
-        private static int GetContentLength(Transaction item, bool forSigning, bool isEip155Enabled = false, int chainId = 0)
+        private int GetContentLength(Transaction item, bool forSigning, bool isEip155Enabled = false, int chainId = 0)
         {
             int contentLength = Rlp.LengthOf(item.Nonce)
                                 + Rlp.LengthOf(item.GasPrice)
@@ -296,7 +302,7 @@ namespace Nethermind.Serialization.Rlp
 
             if (item.Type == TxType.AccessList)
             {
-                throw new NotImplementedException();
+                contentLength += _accessListDecoder.GetLength(item.AccessList, RlpBehaviors.None);
             }
             
             if (item.IsEip1559)

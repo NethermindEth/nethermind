@@ -110,7 +110,7 @@ namespace Nethermind.Serialization.Rlp
             return Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors).Total);
         }
 
-        public Block Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public Block? Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (decoderContext.IsNextItemNull())
             {
@@ -125,7 +125,7 @@ namespace Nethermind.Serialization.Rlp
 
             int transactionsSequenceLength = decoderContext.ReadSequenceLength();
             int transactionsCheck = decoderContext.Position + transactionsSequenceLength;
-            List<Transaction> transactions = new List<Transaction>();
+            List<Transaction> transactions = new();
             while (decoderContext.Position < transactionsCheck)
             {
                 transactions.Add(Rlp.Decode<Transaction>(ref decoderContext));

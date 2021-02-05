@@ -34,7 +34,7 @@ namespace Nethermind.Evm.Test
             [Test]
             public void non_zero_transaction_data_cost_should_be_16()
             {
-                var transaction = new Transaction {Data = new byte[] {1}};
+                var transaction = new Transaction {Data = new byte[] {1}, To = Address.Zero};
                 var cost = IntrinsicGasCalculator.Calculate(transaction, Spec);
                 cost.Should().Be(GasCostOf.Transaction + GasCostOf.TxDataNonZeroEip2028);
             }
@@ -42,7 +42,7 @@ namespace Nethermind.Evm.Test
             [Test]
             public void zero_transaction_data_cost_should_be_4()
             {
-                var transaction = new Transaction {Data = new byte[] {0}};
+                var transaction = new Transaction {Data = new byte[] {0}, To = Address.Zero};
                 var cost = IntrinsicGasCalculator.Calculate(transaction, Spec);
                 cost.Should().Be(GasCostOf.Transaction + GasCostOf.TxDataZero);
             }
@@ -56,7 +56,7 @@ namespace Nethermind.Evm.Test
             [Test]
             public void non_zero_transaction_data_cost_should_be_68()
             {
-                var transaction = new Transaction {Data = new byte[] {1}};
+                var transaction = new Transaction {Data = new byte[] {1}, To = Address.Zero};
                 var cost = IntrinsicGasCalculator.Calculate(transaction, Spec);
                 cost.Should().Be(GasCostOf.Transaction + GasCostOf.TxDataNonZero);
             }
@@ -64,7 +64,7 @@ namespace Nethermind.Evm.Test
             [Test]
             public void zero_transaction_data_cost_should_be_4()
             {
-                var transaction = new Transaction {Data = new byte[] {0}};
+                var transaction = new Transaction {Data = new byte[] {0}, To = Address.Zero};
                 var cost = IntrinsicGasCalculator.Calculate(transaction, Spec);
                 cost.Should().Be(GasCostOf.Transaction + GasCostOf.TxDataZero);
             }

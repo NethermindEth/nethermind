@@ -17,6 +17,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -27,7 +28,7 @@ namespace Nethermind.Serialization.Rlp
     public class AccessListDecoder : IRlpStreamDecoder<AccessList?>
     {
         private readonly HashSet<UInt256> _emptyStorages = new();
-        
+
         public AccessList? Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (rlpStream.IsNextItemNull())
@@ -38,47 +39,27 @@ namespace Nethermind.Serialization.Rlp
 
             int length = rlpStream.PeekNextRlpLength();
             int check = rlpStream.Position + length;
+            rlpStream.SkipLength();
             Dictionary<Address, IReadOnlySet<UInt256>> data = new();
-            while (rlpStream.Position <= check)
+            while (rlpStream.Position < check)
             {
-                int lengthOfNextAddress = rlpStream.PeekNextRlpLength();
-                if (lengthOfNextAddress == 1)
-                {
-                    break;
-                }
-
                 rlpStream.SkipLength();
                 Address address = rlpStream.DecodeAddress();
                 if (address == null)
                 {
                     throw new RlpException("Invalid tx access list format - address is null");
                 }
-                
-                rlpStream.SkipLength();
 
                 HashSet<UInt256> storages = _emptyStorages;
                 if (rlpStream.Position < check)
                 {
+                    int storageCheck = rlpStream.Position + rlpStream.PeekNextRlpLength();
+                    rlpStream.SkipLength();
                     storages = new HashSet<UInt256>();
-                }
-                
-                while (rlpStream.Position < check)
-                {
-                    int lengthOfNextItemInStorage = rlpStream.PeekNextRlpLength();
-                    if (lengthOfNextItemInStorage == Rlp.LengthOfKeccakRlp)
+                    while (rlpStream.Position < storageCheck)
                     {
                         UInt256 index = rlpStream.DecodeUInt256();
                         storages.Add(index);
-                    }
-                    else if (lengthOfNextItemInStorage == 1)
-                    {
-                        rlpStream.ReadByte();
-                        break;
-                        // ?
-                    }
-                    else
-                    {
-                        break;
                     }
                 }
 
@@ -99,8 +80,24 @@ namespace Nethermind.Serialization.Rlp
             {
                 stream.WriteByte(Rlp.NullObjectByte);
             }
-            
-            
+            else
+            {
+                int contentLength = GetContentLength(item, rlpBehaviors);
+                stream.StartSequence(contentLength);
+
+                foreach ((Address address, IReadOnlySet<UInt256> indexes) in item.Data)
+                {
+                    int oneItemContentLength = GetOneItemContentLength(indexes);
+                    stream.StartSequence(oneItemContentLength);
+                    stream.Encode(address);
+                    int indexesContentLength = GetIndexesContentLength(indexes);
+                    stream.StartSequence(indexesContentLength);
+                    foreach (UInt256 index in indexes)
+                    {
+                        stream.Encode(index);
+                    }
+                }
+            }
         }
 
         private static int GetContentLength(AccessList? item, RlpBehaviors rlpBehaviors)
@@ -109,8 +106,36 @@ namespace Nethermind.Serialization.Rlp
             {
                 return 0;
             }
-            
-            throw new NotImplementedException();
+
+            int contentLength = 0;
+
+            foreach ((_, IReadOnlySet<UInt256> indexes) in item.Data)
+            {
+                int oneItemContentLength = GetOneItemContentLength(indexes);
+                contentLength += Rlp.LengthOfSequence(oneItemContentLength);
+            }
+
+            return contentLength;
+        }
+
+        private static int GetOneItemContentLength(IReadOnlySet<UInt256> indexes)
+        {
+            int oneItemContentLength = 0;
+            oneItemContentLength += Rlp.LengthOfAddressRlp;
+            int indexesContentLength = GetIndexesContentLength(indexes);
+            oneItemContentLength += Rlp.LengthOfSequence(indexesContentLength);
+            return oneItemContentLength;
+        }
+
+        private static int GetIndexesContentLength(IReadOnlySet<UInt256> indexes)
+        {
+            int indexesContentLength = 0;
+            foreach (UInt256 index in indexes)
+            {
+                indexesContentLength += Rlp.LengthOf(index);
+            }
+
+            return indexesContentLength;
         }
 
         public int GetLength(AccessList? item, RlpBehaviors rlpBehaviors)
@@ -119,8 +144,8 @@ namespace Nethermind.Serialization.Rlp
             {
                 return 0;
             }
-            
-            throw new NotImplementedException();
+
+            return Rlp.GetSequenceRlpLength(GetContentLength(item, rlpBehaviors));
         }
     }
 }

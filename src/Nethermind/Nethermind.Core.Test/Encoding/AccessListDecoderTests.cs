@@ -16,6 +16,8 @@
 
 using System.Collections.Generic;
 using FluentAssertions;
+using Nethermind.Core.Test.Builders;
+using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
@@ -29,6 +31,23 @@ namespace Nethermind.Core.Test.Encoding
         public static IEnumerable<AccessList> TestCaseSource()
         {
             yield return null;
+
+            HashSet<UInt256> indexes = new HashSet<UInt256>();
+            Dictionary<Address, IReadOnlySet<UInt256>> data = new Dictionary<Address, IReadOnlySet<UInt256>>();
+            // yield return new AccessList(data);
+            
+            data.Add(Address.Zero, indexes);
+            yield return new AccessList(data);
+            
+            indexes.Add(1);
+            data.Add(TestItem.AddressA, indexes);
+            yield return new AccessList(data);
+            
+            indexes.Add(2);
+            yield return new AccessList(data);
+            
+            data.Add(TestItem.AddressB, indexes);
+            yield return new AccessList(data);
         }
         
         [TestCaseSource(nameof(TestCaseSource))]
