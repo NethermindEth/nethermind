@@ -42,12 +42,11 @@ namespace Nethermind.Core
         public Address? To { get; set; }
         public UInt256 Value { get; set; }
         public byte[]? Data { get; set; }
-        public byte[]? Init { get; set; }
         public Address? SenderAddress { get; set; }
         public Signature? Signature { get; set; }
         public bool IsSigned => Signature != null;
-        public bool IsContractCreation => Init != null;
-        public bool IsMessageCall => Data != null;
+        public bool IsContractCreation => To == null;
+        public bool IsMessageCall => To != null;
         public Keccak? Hash { get; set; }
         public PublicKey? DeliveredBy { get; set; } // tks: this is added so we do not send the pending tx back to original sources, not used yet
         public UInt256 Timestamp { get; set; }
@@ -61,7 +60,7 @@ namespace Nethermind.Core
         public ulong PoolIndex { get; set; }
 
         public string ToShortString() => 
-            $"[TX: hash {Hash} from {SenderAddress} to {To} with data {Data?.ToHexString() ?? Init?.ToHexString()}, gas price {GasPrice} and limit {GasLimit}, nonce {Nonce}]";
+            $"[TX: hash {Hash} from {SenderAddress} to {To} with data {Data?.ToHexString()}, gas price {GasPrice} and limit {GasLimit}, nonce {Nonce}]";
 
         public string ToString(string indent)
         {
@@ -74,7 +73,6 @@ namespace Nethermind.Core
             builder.AppendLine($"{indent}Nonce:     {Nonce}");
             builder.AppendLine($"{indent}Value:     {Value}");
             builder.AppendLine($"{indent}Data:      {(Data ?? new byte[0]).ToHexString()}");
-            builder.AppendLine($"{indent}Init:      {(Init ?? new byte[0]).ToHexString()}");
             builder.AppendLine($"{indent}Signature: {(Signature?.Bytes ?? new byte[0]).ToHexString()}");
             builder.AppendLine($"{indent}V:         {Signature?.V ?? -1}");
             builder.AppendLine($"{indent}ChainId:   {Signature?.ChainId ?? -1}");

@@ -33,13 +33,6 @@ namespace Nethermind.Evm
                     result += transaction.Data[i] == 0 ? GasCostOf.TxDataZero : txDataNonZeroGasCost;
                 }
             }
-            else if (transaction.Init != null)
-            {
-                for (int i = 0; i < transaction.Init.Length; i++)
-                {
-                    result += transaction.Init[i] == 0 ? GasCostOf.TxDataZero : txDataNonZeroGasCost;
-                }
-            }
 
             if (transaction.IsContractCreation && releaseSpec.IsEip2Enabled)
             {

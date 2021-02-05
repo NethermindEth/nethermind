@@ -76,7 +76,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
             Metrics.Eth65GetPooledTransactionsReceived++;
 
             Stopwatch stopwatch = Stopwatch.StartNew();
-            List<Transaction> txs = new List<Transaction>();
+            List<Transaction> txs = new();
             int responseSize = Math.Min(256, msg.Hashes.Count);
             for (int i = 0; i < responseSize; i++)
             {
@@ -102,7 +102,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
             else
             {
                 Counter++;
-                NewPooledTransactionHashesMessage msg = new NewPooledTransactionHashesMessage(new[] {transaction.Hash});
+                NewPooledTransactionHashesMessage msg = new(new[] {transaction.Hash});
                 Send(msg);
             }
         }

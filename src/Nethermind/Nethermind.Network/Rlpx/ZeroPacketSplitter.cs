@@ -49,6 +49,7 @@ namespace Nethermind.Network.Rlpx
             Interlocked.Increment(ref _contextId);
 
             int packetType = input.ReadByte();
+
             int packetTypeSize = packetType >= 128 ? 2 : 1;
             int totalPayloadSize = packetTypeSize + input.ReadableBytes;
 
@@ -75,25 +76,25 @@ namespace Nethermind.Network.Rlpx
 
                 if (framesCount == 1)
                 {
-                    // // commented out after Trinity reported #2052
-                    // // not 100% sure they are right but they may be 
-                    // // 193|128 is an RLP encoded array with one element that is zero
-                    // /*3*/
-                    // output.WriteByte(193);
-                    // /*4*/
-                    // output.WriteByte(128);
-                    // /*5-16*/
-                    // output.WriteZero(11);
-                    
-                    // 194|128 is an RLP encoded array with two elements that are zero
+                    // commented out after Trinity reported #2052
+                    // not 100% sure they are right but they may be 
+                    // 193|128 is an RLP encoded array with one element that is zero
                     /*3*/
-                    output.WriteByte(194);
+                    output.WriteByte(193);
                     /*4*/
                     output.WriteByte(128);
-                    /*5*/
-                    output.WriteByte(128);
-                    /*6-16*/
-                    output.WriteZero(10);
+                    /*5-16*/
+                    output.WriteZero(11);
+                    
+                    // // 194|128 is an RLP encoded array with two elements that are zero
+                    // /*3*/
+                    // output.WriteByte(194);
+                    // /*4*/
+                    // output.WriteByte(128);
+                    // /*5*/
+                    // output.WriteByte(128);
+                    // /*6-16*/
+                    // output.WriteZero(10);
                 }
                 else
                 {

@@ -63,7 +63,8 @@ namespace Nethermind.Core.Crypto
         {
             if (v < VOffset)
             {
-                throw new ArgumentException(nameof(v));
+                v += 26;
+                // throw new ArgumentException(nameof(v));
             }
 
             r.CopyTo(Bytes.AsSpan().Slice(32 - r.Length, r.Length));

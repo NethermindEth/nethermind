@@ -191,7 +191,7 @@ namespace Nethermind.Evm.Test
                 .WithData(Array.Empty<byte>())
                 .WithGasLimit(gasLimit)
                 .WithGasPrice(1)
-                .WithInit(code)
+                .WithData(code)
                 .SignedAndResolved(_ethereumEcdsa, senderRecipientAndMiner.SenderKey)
                 .TestObject;
 

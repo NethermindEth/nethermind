@@ -555,7 +555,7 @@ namespace Nethermind.Serialization.Rlp
 
             return contentLength;
         }
-
+        
         private int DeserializeLength(int lengthOfLength)
         {
             int result;

@@ -75,7 +75,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         [Test]
         public void Estimate_tx_with_init_size()
         {
-            Transaction tx = Build.A.Transaction.WithInit(new byte[7]).TestObject;
+            Transaction tx = Build.A.Transaction.WithData(new byte[7]).TestObject;
             MessageSizeEstimator.EstimateSize(tx).Should().Be(107);
         }
         

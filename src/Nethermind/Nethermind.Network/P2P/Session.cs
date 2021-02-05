@@ -439,7 +439,7 @@ namespace Nethermind.Network.P2P
                 State = SessionState.Disconnecting;
             }
 
-            DisconnectMetrics.Update(disconnectType, disconnectReason);
+            _disconnectsAnalyzer.ReportDisconnect(disconnectReason, disconnectType, details);
 
             if (NetworkDiagTracer.IsEnabled && RemoteHost != null)
                 NetworkDiagTracer.ReportDisconnect(Node.Address, $"{disconnectType} {disconnectReason} {details}");

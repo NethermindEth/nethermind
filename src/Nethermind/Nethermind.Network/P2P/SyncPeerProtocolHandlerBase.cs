@@ -87,10 +87,10 @@ namespace Nethermind.Network.P2P
         {
             if (blockHashes.Count == 0)
             {
-                return new BlockBody[0];
+                return Array.Empty<BlockBody>();
             }
 
-            GetBlockBodiesMessage bodiesMsg = new GetBlockBodiesMessage(blockHashes);
+            GetBlockBodiesMessage bodiesMsg = new(blockHashes);
 
             BlockBody[] blocks = await SendRequest(bodiesMsg, token);
             return blocks;
@@ -105,13 +105,13 @@ namespace Nethermind.Network.P2P
                 Logger.Trace($"Blockhashes count: {message.BlockHashes.Count}");
             }
 
-            Request<GetBlockBodiesMessage, BlockBody[]> request = new Request<GetBlockBodiesMessage, BlockBody[]>(message);
+            Request<GetBlockBodiesMessage, BlockBody[]> request = new(message);
             _bodiesRequests.Send(request);
 
             // Logger.Warn($"Sending bodies request of length {request.Message.BlockHashes.Count} to {this}");
 
             Task<BlockBody[]> task = request.CompletionSource.Task;
-            using CancellationTokenSource delayCancellation = new CancellationTokenSource();
+            using CancellationTokenSource delayCancellation = new();
             using CancellationTokenSource compositeCancellation = CancellationTokenSource.CreateLinkedTokenSource(token, delayCancellation.Token);
             Task firstTask = await Task.WhenAny(task, Task.Delay(Timeouts.Eth, compositeCancellation.Token));
             if (firstTask.IsCanceled)
@@ -144,7 +144,7 @@ namespace Nethermind.Network.P2P
                 return Array.Empty<BlockHeader>();
             }
 
-            GetBlockHeadersMessage msg = new GetBlockHeadersMessage();
+            GetBlockHeadersMessage msg = new();
             msg.MaxHeaders = maxBlocks;
             msg.Reverse = 0;
             msg.Skip = skip;
@@ -166,11 +166,11 @@ namespace Nethermind.Network.P2P
                 Logger.Trace($"  Max headers: {message.MaxHeaders}");
             }
 
-            Request<GetBlockHeadersMessage, BlockHeader[]> request = new Request<GetBlockHeadersMessage, BlockHeader[]>(message);
+            Request<GetBlockHeadersMessage, BlockHeader[]> request = new(message);
             _headersRequests.Send(request);
 
             Task<BlockHeader[]> task = request.CompletionSource.Task;
-            using CancellationTokenSource delayCancellation = new CancellationTokenSource();
+            using CancellationTokenSource delayCancellation = new();
             using CancellationTokenSource compositeCancellation = CancellationTokenSource.CreateLinkedTokenSource(token, delayCancellation.Token);
             Task firstTask = await Task.WhenAny(task, Task.Delay(Timeouts.Eth, compositeCancellation.Token));
             if (firstTask.IsCanceled)
@@ -195,7 +195,7 @@ namespace Nethermind.Network.P2P
 
         async Task<BlockHeader> ISyncPeer.GetHeadBlockHeader(Keccak hash, CancellationToken token)
         {
-            GetBlockHeadersMessage msg = new GetBlockHeadersMessage();
+            GetBlockHeadersMessage msg = new();
             msg.StartBlockHash = hash ?? _remoteHeadBlockHash;
             msg.MaxHeaders = 1;
             msg.Reverse = 0;
@@ -224,13 +224,13 @@ namespace Nethermind.Network.P2P
                 throw new InvalidOperationException("Trying to send a transaction with null hash");
             }
 
-            TransactionsMessage msg = new TransactionsMessage(new[] {transaction});
+            TransactionsMessage msg = new(new[] {transaction});
             Send(msg);
         }
 
         public override void HandleMessage(Packet message)
         {
-            ZeroPacket zeroPacket = new ZeroPacket(message);
+            ZeroPacket zeroPacket = new(message);
             HandleMessage(zeroPacket);
             zeroPacket.Release();
         }
@@ -402,15 +402,10 @@ namespace Nethermind.Network.P2P
             return headers;
         }
 
-        internal void SetWitHandler(WitProtocolHandler witProtocolHandler)
-        {
-            _witProtocolHandler = witProtocolHandler;
-        }
-        
         #region Cleanup
 
         private int _isDisposed;
-        private WitProtocolHandler _witProtocolHandler;
+        
         protected abstract void OnDisposed();
 
         public override void DisconnectProtocol(DisconnectReason disconnectReason, string details)
@@ -446,7 +441,7 @@ namespace Nethermind.Network.P2P
 
         #region IPeerWithSatelliteProtocol
 
-        private IDictionary<string, object> _protocolHandlers;
+        private IDictionary<string, object>? _protocolHandlers;
         private IDictionary<string, object> ProtocolHandlers => _protocolHandlers ??= new Dictionary<string, object>();
 
         public void RegisterSatelliteProtocol<T>(string protocol, T protocolHandler) where T : class
@@ -454,7 +449,7 @@ namespace Nethermind.Network.P2P
             ProtocolHandlers[protocol] = protocolHandler;
         }
 
-        public bool TryGetSatelliteProtocol<T>(string protocol, out T protocolHandler) where T : class
+        public bool TryGetSatelliteProtocol<T>(string protocol, out T? protocolHandler) where T : class
         {
             if (ProtocolHandlers.TryGetValue(protocol, out object handler))
             {

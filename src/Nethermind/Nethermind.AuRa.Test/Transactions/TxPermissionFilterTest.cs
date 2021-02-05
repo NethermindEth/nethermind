@@ -81,7 +81,7 @@ namespace Nethermind.AuRa.Test.Transactions
                     transactionBuilder.To(test.To);
                     break;
                 case ITransactionPermissionContract.TxPermissions.Create:
-                    transactionBuilder.WithInit(Bytes.Zero32);
+                    transactionBuilder.WithData(Bytes.Zero32);
                     break;
             }
             

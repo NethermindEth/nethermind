@@ -60,7 +60,7 @@ namespace Nethermind.Network.P2P
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _disconnects = _disconnectsA;
 
-            _timer = new Timer(30000);
+            _timer = new Timer(10000);
             _timer.Elapsed += TimerOnElapsed;
             _timer.AutoReset = false;
             _timer.Start();
@@ -82,7 +82,11 @@ namespace Nethermind.Network.P2P
             _builder.AppendLine("Disconnect reasons:");
             foreach ((DisconnectCategory key, int value) in localCopy)
             {
-                _builder.AppendLine($"{key.Type} {key.Reason}:".PadRight(40) + value.ToString().PadLeft(4));
+                _builder.AppendLine(
+                    "  "
+                    + key.Type.ToString().PadRight(8)
+                    + key.Reason.ToString().PadRight(24)
+                    + value.ToString().PadLeft(4));
             }
             
             localCopy.Clear();
@@ -94,8 +98,15 @@ namespace Nethermind.Network.P2P
 
         public void ReportDisconnect(DisconnectReason reason, DisconnectType type, string? details)
         {
+            DisconnectMetrics.Update(type, reason);
+            
             Interlocked.Increment(ref _disconnectCount);
             _disconnects.AddOrUpdate(new DisconnectCategory(reason, type), _ => 1, (_, i) => i + 1);
+
+            if (type == DisconnectType.Local && details != null)
+            {
+                _logger.Warn(details);
+            }
         }
     }
 }

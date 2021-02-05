@@ -106,8 +106,8 @@ namespace Nethermind.Evm
             UInt256 gasPrice = premiumPerGas + baseFee;
 
             long gasLimit = transaction.GasLimit;
-            byte[] machineCode = transaction.Init;
-            byte[] data = transaction.Data ?? Array.Empty<byte>();
+            byte[] machineCode = transaction.IsContractCreation ? transaction.Data : null;
+            byte[] data = transaction.IsMessageCall ? transaction.Data : Array.Empty<byte>();
 
             Address? sender = transaction.SenderAddress;
             if (_logger.IsTrace) _logger.Trace($"Executing tx {transaction.Hash}");

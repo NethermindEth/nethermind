@@ -59,7 +59,6 @@ namespace Nethermind.AuRa.Test.Contract
                     SpecProvider,
                     State,
                     Storage,
-                    DbProvider,
                     TxProcessor)
                 .Load();
     }

@@ -57,9 +57,6 @@ namespace Nethermind.Blockchain.Validators
                    transaction.GasLimit >= _intrinsicGasCalculator.Calculate(transaction, releaseSpec) &&
                    /* if it is a call or a transfer then we require the 'To' field to have a value
                       while for an init it will be empty */
-                   (transaction.To != null || transaction.Init != null) &&
-                   /* can be a simple transfer, a call, or an init but not both an init and a call */
-                   !(transaction.Data != null && transaction.Init != null) &&
                    ValidateSignature(transaction.Signature, releaseSpec);
         }
         

@@ -242,7 +242,7 @@ namespace Nethermind.Serialization.Rlp
             sequence[position++] = Encode(transaction.GasLimit);
             sequence[position++] = Encode(transaction.To);
             sequence[position++] = Encode(transaction.Value);
-            sequence[position++] = Encode(transaction.To is null ? transaction.Init : transaction.Data);
+            sequence[position++] = Encode(transaction.Data);
             if (transaction.IsEip1559)
             {
                 sequence[position++] = Encode(transaction.GasPrice);
@@ -1474,7 +1474,7 @@ namespace Nethermind.Serialization.Rlp
             return 1 + LengthOfLength(contentLength) + contentLength;
         }
 
-        public static int LengthOf(byte[] array)
+        public static int LengthOf(byte[]? array)
         {
             return LengthOf(array.AsSpan());
         }
