@@ -39,10 +39,14 @@ namespace Nethermind.Serialization.Rlp
         public const int LengthOfAddressRlp = 21;
 
         internal const int DebugMessageContentLength = 2048;
+        
+        public const byte EmptyArrayByte = 128;
 
-        public static readonly Rlp OfEmptyByteArray = new Rlp(128);
+        public const byte NullObjectByte = 192;
 
-        public static readonly Rlp OfEmptySequence = new Rlp(192);
+        public static readonly Rlp OfEmptyByteArray = new(EmptyArrayByte);
+
+        public static readonly Rlp OfEmptySequence = new(NullObjectByte);
 
         internal static readonly Rlp OfEmptyTreeHash = Encode(Keccak.EmptyTreeHash.Bytes); // use bytes to avoid stack overflow
 

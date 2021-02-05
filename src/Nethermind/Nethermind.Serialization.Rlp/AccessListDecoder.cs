@@ -23,7 +23,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.Serialization.Rlp
 {
-    public class AccessListDecoder : IRlpDecoder<AccessList>
+    public class AccessListDecoder : IRlpStreamDecoder<AccessList?>
     {
         public AccessList? Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
@@ -85,19 +85,31 @@ namespace Nethermind.Serialization.Rlp
             return accessList;
         }
 
-        public void Encode(RlpStream stream, AccessList item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public void Encode(RlpStream stream, AccessList? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
+            if (item == null)
+            {
+                stream.WriteByte(Rlp.NullObjectByte);
+            }
+        }
+
+        private static int GetContentLength(AccessList? item, RlpBehaviors rlpBehaviors)
+        {
+            if (item is null)
+            {
+                return 0;
+            }
+            
             throw new NotImplementedException();
         }
 
-        private static int GetContentLength(Transaction item, bool forSigning, bool isEip155Enabled = false,
-            int chainId = 0)
+        public int GetLength(AccessList? item, RlpBehaviors rlpBehaviors)
         {
-            throw new NotImplementedException();
-        }
-
-        public int GetLength(AccessList item, RlpBehaviors rlpBehaviors)
-        {
+            if (item is null)
+            {
+                return 0;
+            }
+            
             throw new NotImplementedException();
         }
     }
