@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.IO.MemoryMappedFiles;
@@ -26,10 +25,8 @@ namespace Nethermind.Db
         readonly int _pageSize;
         readonly List<MemoryMappedFile> _files = new();
 
-        readonly Map[] _maps = new Map[MaxNumberOfFiles];
+        readonly Map?[] _maps = new Map[MaxNumberOfFiles];
         private volatile int _mapCount;
-
-        private readonly ConcurrentQueue<WriteBatch> _batches = new();
 
         private Thread _flusher;
         private volatile bool _runFlusher;
@@ -80,7 +77,7 @@ namespace Nethermind.Db
         {
             bool TryFlushDirtyMaps()
             {
-                Queue<Map> toFlush = new(_maps.Where((map, index) => index < _mapCount && map.ShouldFlush));
+                Queue<Map> toFlush = new(_maps.Where(map => map?.ShouldFlush == true));
                 if (toFlush.Count == 0)
                 {
                     return false;
@@ -114,7 +111,7 @@ namespace Nethermind.Db
             TryFlushDirtyMaps();
         }
 
-        public bool HasNoEntriesToFlush => _batches.IsEmpty;
+        public bool HasNoEntriesToFlush => _maps.Any(map => map?.ShouldFlush == true);
 
         Map CreateFile(int fileNumber)
         {
@@ -143,80 +140,64 @@ namespace Nethermind.Db
             return map;
         }
 
+        [MethodImpl(MethodImplOptions.Synchronized)]
         private void Commit(WriteBatch batch)
         {
-            _batches.Enqueue(batch);
+            HashSet<Map> locks = new();
 
-            lock (_batches)
+            foreach ((byte[] key, byte[] value) in batch.Pairs)
             {
-                if (batch._isCommitted)
+                // from the oldest, to the newest, try write
+                int i = 0;
+                for (; i < _mapCount; i++)
                 {
-                    return; // this batch is already committed
-                }
+                    Map map = _maps[i];
 
-                HashSet<Map> locks = new();
-
-                while (_batches.TryPeek(out WriteBatch commit))
-                {
-                    foreach ((byte[] key, byte[] value) in commit.Pairs)
+                    if (!map.CanWrite(key, value))
                     {
-                        // from the oldest, to the newest, try write
-                        int i = 0;
-                        for (; i < _mapCount; i++)
-                        {
-                            Map map = _maps[i];
-                            
-                            if (!map.CanWrite(key, value))
-                            {
-                                // no place, spin again
-                                continue;
-                            }
-                            
-                            if (!locks.Contains(map))
-                            {
-                                // TODO: recovery and possibly skip map
-                                if (Monitor.TryEnter(map))
-                                {
-                                    locks.Add(map);
-                                }
-                                else
-                                {
-                                    // no lock taken, move to next
-                                    continue;
-                                }
-                            }
-                            
-                            // lock taken, try write and break on success
-                            if (map.TryWrite(key, value))
-                            {
-                                break;
-                            }
-                        }
-                        
-                        if (i == _mapCount)
-                        {
-                            Map map = _maps[_mapCount] = CreateFile(_mapCount);
-                            _mapCount = _mapCount + 1;
+                        // no place, spin again
+                        continue;
+                    }
 
-                            Monitor.Enter(map);
+                    if (!locks.Contains(map))
+                    {
+                        // TODO: recovery and possibly skip map
+                        if (Monitor.TryEnter(map))
+                        {
                             locks.Add(map);
-
-                            map.TryWrite(key, value);
+                        }
+                        else
+                        {
+                            // no lock taken, move to next
+                            continue;
                         }
                     }
 
-                    _batches.TryDequeue(out _); // dequeue the current that was Peeked at the beginning
-                    commit._isCommitted = true; // mark this as committed
+                    // lock taken, try write and break on success
+                    if (map.TryWrite(key, value))
+                    {
+                        break;
+                    }
                 }
 
-                // release the locks
-                foreach (Map @lock in locks)
+                if (i == _mapCount)
                 {
-                    Monitor.Exit(@lock);
+                    Map map = _maps[_mapCount] = CreateFile(_mapCount);
+                    _mapCount = _mapCount + 1;
+
+                    Monitor.Enter(map);
+                    locks.Add(map);
+
+                    map.TryWrite(key, value);
                 }
             }
-        }
 
+            // release the locks
+            foreach (Map @lock in locks)
+            {
+                Monitor.Exit(@lock);
+            }
+        }
       
         public void Delete(byte[] key)
         {
@@ -534,7 +515,6 @@ namespace Nethermind.Db
             private readonly MemoryMappedKeyValueStore _store;
 
             private static readonly byte[] s_empty = new byte[0];
-            public bool _isCommitted;
 
             private List<(byte[], byte[])> _pairs = new();
 
