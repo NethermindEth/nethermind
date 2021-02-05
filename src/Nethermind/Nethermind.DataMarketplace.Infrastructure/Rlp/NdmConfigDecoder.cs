@@ -21,7 +21,7 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.DataMarketplace.Infrastructure.Rlp
 {
-    public class NdmConfigDecoder : IRlpDecoder<NdmConfig>
+    public class NdmConfigDecoder : IRlpNdmDecoder<NdmConfig>
     {
         public static void Init()
         {
@@ -110,6 +110,11 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
             {
                 throw new RlpException($"{nameof(NdmConfig)} cannot be deserialized from", e);
             }
+        }
+
+        public void Encode(RlpStream stream, NdmConfig item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        {
+            throw new NotImplementedException();
         }
 
         public Serialization.Rlp.Rlp Encode(NdmConfig item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)

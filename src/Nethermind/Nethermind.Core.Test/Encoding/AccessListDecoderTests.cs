@@ -28,36 +28,55 @@ namespace Nethermind.Core.Test.Encoding
     {
         private readonly AccessListDecoder _decoder = new AccessListDecoder();
         
-        public static IEnumerable<AccessList> TestCaseSource()
+        public static IEnumerable<(string, AccessList)> TestCaseSource()
         {
-            yield return null;
+            yield return ("null", null);
 
             HashSet<UInt256> indexes = new HashSet<UInt256>();
             Dictionary<Address, IReadOnlySet<UInt256>> data = new Dictionary<Address, IReadOnlySet<UInt256>>();
-            // yield return new AccessList(data);
-            
-            data.Add(Address.Zero, indexes);
-            yield return new AccessList(data);
-            
-            indexes.Add(1);
+            // yield return ("empty", new AccessList(data)); <-- null and empty are equivalent here
+            //
+            indexes = new HashSet<UInt256>();
+            data = new Dictionary<Address, IReadOnlySet<UInt256>>();
             data.Add(TestItem.AddressA, indexes);
-            yield return new AccessList(data);
+            yield return ("no storage", new AccessList(data));
             
-            indexes.Add(2);
-            yield return new AccessList(data);
-            
+            indexes = new HashSet<UInt256>();
+            data = new Dictionary<Address, IReadOnlySet<UInt256>>();
+            data.Add(TestItem.AddressA, indexes);
             data.Add(TestItem.AddressB, indexes);
-            yield return new AccessList(data);
+            yield return ("no storage 2", new AccessList(data));
+            
+            indexes = new HashSet<UInt256>();
+            data = new Dictionary<Address, IReadOnlySet<UInt256>>();
+            data.Add(TestItem.AddressA, indexes);
+            indexes.Add(1);
+            yield return ("1-1", new AccessList(data));
+            
+            indexes = new HashSet<UInt256>();
+            data = new Dictionary<Address, IReadOnlySet<UInt256>>();
+            data.Add(TestItem.AddressA, indexes);
+            indexes.Add(1);
+            indexes.Add(2);
+            yield return ("1-2", new AccessList(data));
+            
+            indexes = new HashSet<UInt256>();
+            data = new Dictionary<Address, IReadOnlySet<UInt256>>();
+            indexes.Add(1);
+            indexes.Add(2);
+            data.Add(TestItem.AddressA, indexes);
+            data.Add(TestItem.AddressB, indexes);
+            yield return ("2-2", new AccessList(data));
         }
         
         [TestCaseSource(nameof(TestCaseSource))]
-        public void Roundtrip(AccessList accessList)
+        public void Roundtrip((string TestName, AccessList AccessList) testCase)
         {
             RlpStream rlpStream = new RlpStream(10000);
-            _decoder.Encode(rlpStream, accessList, RlpBehaviors.UseTransactionTypes);
+            _decoder.Encode(rlpStream, testCase.AccessList, RlpBehaviors.UseTransactionTypes);
             rlpStream.Position = 0;
             AccessList decoded = _decoder.Decode(rlpStream, RlpBehaviors.UseTransactionTypes);
-            decoded.Should().BeEquivalentTo(accessList);
+            decoded.Should().BeEquivalentTo(testCase.AccessList, testCase.TestName);
         }
     }
 }

@@ -62,7 +62,7 @@ namespace Nethermind.DataMarketplace.Tools.Refunder
                 {
                     Console.WriteLine();
                     Console.WriteLine("***************************************");
-                    TransactionDecoder decoder = new TransactionDecoder();
+                    TxDecoder decoder = new TxDecoder();
                     Rlp txRlp = decoder.Encode(transaction);
                     Console.WriteLine(txRlp.Bytes.ToHexString());
                     Console.WriteLine("***************************************");

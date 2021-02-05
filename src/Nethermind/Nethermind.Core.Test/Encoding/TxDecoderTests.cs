@@ -35,6 +35,7 @@ namespace Nethermind.Core.Test.Encoding
         {
             yield return (Build.A.Transaction.SignedAndResolved().TestObject, "basic");
             yield return (Build.A.Transaction
+                .WithData(new byte[]{1,2,3})
                 .WithType(TxType.AccessList)
                 .WithAccessList(
                     new AccessList(

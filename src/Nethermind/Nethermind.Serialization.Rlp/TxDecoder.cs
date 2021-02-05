@@ -21,10 +21,11 @@ using Nethermind.Core.Extensions;
 
 namespace Nethermind.Serialization.Rlp
 {
-    public class TxDecoder : IRlpStreamDecoder<Transaction>, IRlpValueDecoder<Transaction>, IRlpObjectDecoder<SystemTransaction>, IRlpObjectDecoder<GeneratedTransaction>
+    public class TxDecoder : IRlpStreamDecoder<Transaction>, IRlpValueDecoder<Transaction>,
+        IRlpObjectDecoder<SystemTransaction>, IRlpObjectDecoder<GeneratedTransaction>
     {
         private readonly AccessListDecoder _accessListDecoder = new();
-        
+
         public Transaction? Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (rlpStream.IsNextItemNull())
@@ -42,8 +43,9 @@ namespace Nethermind.Serialization.Rlp
                 transaction.Type = (TxType)rlpStream.ReadByte();
             }
 
-            int transactionLength = rlpStream.ReadSequenceLength();
+            int transactionLength = rlpStream.PeekNextRlpLength();
             int lastCheck = rlpStream.Position + transactionLength;
+            rlpStream.SkipLength();
             int numberOfSequenceFields = rlpStream.ReadNumberOfItemsRemaining(lastCheck);
 
             bool isEip1559 = numberOfSequenceFields == 11;
@@ -56,12 +58,9 @@ namespace Nethermind.Serialization.Rlp
                 transaction.GasPrice = rlpStream.DecodeUInt256();
                 transaction.GasLimit = rlpStream.DecodeLong();
                 transaction.To = rlpStream.DecodeAddress();
+                transaction.AccessList = _accessListDecoder.Decode(rlpStream, rlpBehaviors);
                 transaction.Value = rlpStream.DecodeUInt256();
                 transaction.Data = rlpStream.DecodeByteArray();
-                int length = rlpStream.PeekNextRlpLength();
-                int check = rlpStream.Position + length;
-                rlpStream.SkipLength();
-                transaction.AccessList = _accessListDecoder.Decode(rlpStream, rlpBehaviors);
             }
             else if (!isEip1559)
             {
@@ -86,58 +85,7 @@ namespace Nethermind.Serialization.Rlp
 
             if (rlpStream.Position < lastCheck)
             {
-                ReadOnlySpan<byte> vBytes = rlpStream.DecodeByteArraySpan();
-                ReadOnlySpan<byte> rBytes = rlpStream.DecodeByteArraySpan();
-                ReadOnlySpan<byte> sBytes = rlpStream.DecodeByteArraySpan();
-
-                bool allowUnsigned = (rlpBehaviors & RlpBehaviors.AllowUnsigned) == RlpBehaviors.AllowUnsigned;
-                bool isSignatureOk = true;
-                string signatureError = null;
-                if (vBytes == null || rBytes == null || sBytes == null)
-                {
-                    isSignatureOk = false;
-                    signatureError = "VRS null when decoding Transaction";
-                }
-                else if (rBytes.Length == 0 || sBytes.Length == 0)
-                {
-                    isSignatureOk = false;
-                    signatureError = "VRS is 0 length when decoding Transaction";
-                }
-                else if (rBytes[0] == 0 || sBytes[0] == 0)
-                {
-                    isSignatureOk = false;
-                    signatureError = "VRS starting with 0";
-                }
-                else if (rBytes.Length > 32 || sBytes.Length > 32)
-                {
-                    isSignatureOk = false;
-                    signatureError = "R and S lengths expected to be less or equal 32";
-                }
-                else if (rBytes.SequenceEqual(Bytes.Zero32) && sBytes.SequenceEqual(Bytes.Zero32))
-                {
-                    isSignatureOk = false;
-                    signatureError = "Both 'r' and 's' are zero when decoding a transaction.";
-                }
-
-                if (isSignatureOk)
-                {
-                    ulong v = vBytes.ReadEthUInt64();
-                    if (v < Signature.VOffset)
-                    {
-                        v += Signature.VOffset;
-                    }
-                    
-                    Signature signature = new(rBytes, sBytes, v);
-                    transaction.Signature = signature;
-                    transaction.Hash = Keccak.Compute(transactionSequence);
-                }
-                else
-                {
-                    if (!allowUnsigned)
-                    {
-                        throw new RlpException(signatureError);
-                    }
-                }
+                DecodeSignature(rlpStream, rlpBehaviors, transaction, transactionSequence);
             }
 
             if ((rlpBehaviors & RlpBehaviors.AllowExtraData) != RlpBehaviors.AllowExtraData)
@@ -148,7 +96,8 @@ namespace Nethermind.Serialization.Rlp
             return transaction;
         }
 
-        public Transaction? Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public Transaction? Decode(ref Rlp.ValueDecoderContext decoderContext,
+            RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (decoderContext.IsNextItemNull())
             {
@@ -187,53 +136,7 @@ namespace Nethermind.Serialization.Rlp
 
             if (decoderContext.Position < lastCheck)
             {
-                Span<byte> vBytes = decoderContext.DecodeByteArraySpan();
-                Span<byte> rBytes = decoderContext.DecodeByteArraySpan();
-                Span<byte> sBytes = decoderContext.DecodeByteArraySpan();
-
-                bool allowUnsigned = (rlpBehaviors & RlpBehaviors.AllowUnsigned) == RlpBehaviors.AllowUnsigned;
-                bool isSignatureOk = true;
-                string signatureError = null;
-                if (vBytes == null || rBytes == null || sBytes == null)
-                {
-                    isSignatureOk = false;
-                    signatureError = "VRS null when decoding Transaction";
-                }
-                else if (vBytes.Length == 0 || rBytes.Length == 0 || sBytes.Length == 0)
-                {
-                    isSignatureOk = false;
-                    signatureError = "VRS is 0 length when decoding Transaction";
-                }
-                else if (vBytes[0] == 0 || rBytes[0] == 0 || sBytes[0] == 0)
-                {
-                    isSignatureOk = false;
-                    signatureError = "VRS starting with 0";
-                }
-                else if (rBytes.Length > 32 || sBytes.Length > 32)
-                {
-                    isSignatureOk = false;
-                    signatureError = "R and S lengths expected to be less or equal 32";
-                }
-                else if (rBytes.SequenceEqual(Bytes.Zero32) && sBytes.SequenceEqual(Bytes.Zero32))
-                {
-                    isSignatureOk = false;
-                    signatureError = "Both 'r' and 's' are zero when decoding a transaction.";
-                }
-
-                if (isSignatureOk)
-                {
-                    ulong v = vBytes.ReadEthUInt64();
-                    Signature signature = new (rBytes, sBytes, v);
-                    transaction.Signature = signature;
-                    transaction.Hash = Keccak.Compute(transactionSequence);
-                }
-                else
-                {
-                    if (!allowUnsigned)
-                    {
-                        throw new RlpException(signatureError);
-                    }
-                }
+                DecodeSignature(decoderContext, rlpBehaviors, transaction, transactionSequence);
             }
 
             if ((rlpBehaviors & RlpBehaviors.AllowExtraData) != RlpBehaviors.AllowExtraData)
@@ -242,6 +145,122 @@ namespace Nethermind.Serialization.Rlp
             }
 
             return transaction;
+        }
+
+        private static void DecodeSignature(
+            RlpStream rlpStream,
+            RlpBehaviors rlpBehaviors,
+            Transaction transaction,
+            Span<byte> transactionSequence)
+        {
+            ReadOnlySpan<byte> vBytes = rlpStream.DecodeByteArraySpan();
+            ReadOnlySpan<byte> rBytes = rlpStream.DecodeByteArraySpan();
+            ReadOnlySpan<byte> sBytes = rlpStream.DecodeByteArraySpan();
+
+            bool allowUnsigned = (rlpBehaviors & RlpBehaviors.AllowUnsigned) == RlpBehaviors.AllowUnsigned;
+            bool isSignatureOk = true;
+            string signatureError = null;
+            if (vBytes == null || rBytes == null || sBytes == null)
+            {
+                isSignatureOk = false;
+                signatureError = "VRS null when decoding Transaction";
+            }
+            else if (rBytes.Length == 0 || sBytes.Length == 0)
+            {
+                isSignatureOk = false;
+                signatureError = "VRS is 0 length when decoding Transaction";
+            }
+            else if (rBytes[0] == 0 || sBytes[0] == 0)
+            {
+                isSignatureOk = false;
+                signatureError = "VRS starting with 0";
+            }
+            else if (rBytes.Length > 32 || sBytes.Length > 32)
+            {
+                isSignatureOk = false;
+                signatureError = "R and S lengths expected to be less or equal 32";
+            }
+            else if (rBytes.SequenceEqual(Bytes.Zero32) && sBytes.SequenceEqual(Bytes.Zero32))
+            {
+                isSignatureOk = false;
+                signatureError = "Both 'r' and 's' are zero when decoding a transaction.";
+            }
+
+            if (isSignatureOk)
+            {
+                ulong v = vBytes.ReadEthUInt64();
+                if (v < Signature.VOffset)
+                {
+                    v += Signature.VOffset;
+                }
+
+                Signature signature = new(rBytes, sBytes, v);
+                transaction.Signature = signature;
+                transaction.Hash = Keccak.Compute(transactionSequence);
+            }
+            else
+            {
+                if (!allowUnsigned)
+                {
+                    throw new RlpException(signatureError);
+                }
+            }
+        }
+
+        // TODO: luk to fix this copy paste
+        private static void DecodeSignature(
+            Rlp.ValueDecoderContext decoderContext,
+            RlpBehaviors rlpBehaviors,
+            Transaction transaction,
+            Span<byte> transactionSequence)
+        {
+            Span<byte> vBytes = decoderContext.DecodeByteArraySpan();
+            Span<byte> rBytes = decoderContext.DecodeByteArraySpan();
+            Span<byte> sBytes = decoderContext.DecodeByteArraySpan();
+
+            bool allowUnsigned = (rlpBehaviors & RlpBehaviors.AllowUnsigned) == RlpBehaviors.AllowUnsigned;
+            bool isSignatureOk = true;
+            string signatureError = null;
+            if (vBytes == null || rBytes == null || sBytes == null)
+            {
+                isSignatureOk = false;
+                signatureError = "VRS null when decoding Transaction";
+            }
+            else if (vBytes.Length == 0 || rBytes.Length == 0 || sBytes.Length == 0)
+            {
+                isSignatureOk = false;
+                signatureError = "VRS is 0 length when decoding Transaction";
+            }
+            else if (rBytes[0] == 0 || sBytes[0] == 0)
+            {
+                isSignatureOk = false;
+                signatureError = "VRS starting with 0";
+            }
+            else if (rBytes.Length > 32 || sBytes.Length > 32)
+            {
+                isSignatureOk = false;
+                signatureError = "R and S lengths expected to be less or equal 32";
+            }
+            else if (rBytes.SequenceEqual(Bytes.Zero32) && sBytes.SequenceEqual(Bytes.Zero32))
+            {
+                isSignatureOk = false;
+                signatureError = "Both 'r' and 's' are zero when decoding a transaction.";
+            }
+
+            if (isSignatureOk)
+            {
+                ulong v = vBytes.ReadEthUInt64();
+                Signature signature = new(rBytes, sBytes, v);
+                transaction.Signature = signature;
+                transaction.Hash = Keccak.Compute(transactionSequence);
+            }
+            else
+            {
+                if (!allowUnsigned)
+                {
+                    throw new RlpException(signatureError);
+                }
+            }
         }
 
         public Rlp Encode(Transaction item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -255,21 +274,21 @@ namespace Nethermind.Serialization.Rlp
         {
             int contentLength = GetContentLength(item, false);
             int sequenceLength = Rlp.GetSequenceRlpLength(contentLength);
-            
+
             if ((rlpBehaviors & RlpBehaviors.UseTransactionTypes) != 0)
             {
                 int arrayLength = Rlp.GetByteArrayRlpLength(sequenceLength + 1, false);
                 stream.StartByteArray(arrayLength, false);
                 stream.WriteByte((byte)item.Type);
             }
-            
+
             stream.StartSequence(contentLength);
             if (item.Type == TxType.AccessList)
             {
                 // throw new NotImplementedException();
                 stream.Encode(1); // chain ID? how -> need to add to tx
             }
-            
+
             stream.Encode(item.Nonce);
             stream.Encode(item.IsEip1559 ? 0 : item.GasPrice);
             stream.Encode(item.GasLimit);
@@ -278,7 +297,7 @@ namespace Nethermind.Serialization.Rlp
             {
                 _accessListDecoder.Encode(stream, item.AccessList, rlpBehaviors);
             }
-            
+
             stream.Encode(item.Value);
             stream.Encode(item.Data);
             if (item.IsEip1559)
@@ -286,6 +305,7 @@ namespace Nethermind.Serialization.Rlp
                 stream.Encode(item.GasPrice);
                 stream.Encode(item.FeeCap);
             }
+
             stream.Encode(item.Signature?.V ?? 0);
             stream.Encode(item.Signature == null ? null : item.Signature.RAsSpan.WithoutLeadingZeros());
             stream.Encode(item.Signature == null ? null : item.Signature.SAsSpan.WithoutLeadingZeros());
@@ -304,7 +324,7 @@ namespace Nethermind.Serialization.Rlp
             {
                 contentLength += _accessListDecoder.GetLength(item.AccessList, RlpBehaviors.None);
             }
-            
+
             if (item.IsEip1559)
             {
                 contentLength += Rlp.LengthOf(item.FeeCap);
@@ -323,8 +343,10 @@ namespace Nethermind.Serialization.Rlp
             else
             {
                 contentLength += item.Signature == null ? 1 : Rlp.LengthOf(item.Signature.V);
-                contentLength += Rlp.LengthOf(item.Signature == null ? null : item.Signature.RAsSpan.WithoutLeadingZeros());
-                contentLength += Rlp.LengthOf(item.Signature == null ? null : item.Signature.SAsSpan.WithoutLeadingZeros());
+                contentLength +=
+                    Rlp.LengthOf(item.Signature == null ? null : item.Signature.RAsSpan.WithoutLeadingZeros());
+                contentLength +=
+                    Rlp.LengthOf(item.Signature == null ? null : item.Signature.SAsSpan.WithoutLeadingZeros());
             }
 
             return contentLength;
@@ -335,11 +357,11 @@ namespace Nethermind.Serialization.Rlp
             if ((rlpBehaviors & RlpBehaviors.UseTransactionTypes) != 0)
             {
                 int typeLength = (rlpBehaviors & RlpBehaviors.UseTransactionTypes) != 0 ? 1 : 0;
-                return Rlp.GetSequenceRlpLength(typeLength + Rlp.GetSequenceRlpLength(GetContentLength(item, false)));    
+                return Rlp.GetSequenceRlpLength(typeLength + Rlp.GetSequenceRlpLength(GetContentLength(item, false)));
             }
             else
             {
-                return Rlp.GetSequenceRlpLength(GetContentLength(item, false));    
+                return Rlp.GetSequenceRlpLength(GetContentLength(item, false));
             }
         }
 

@@ -22,7 +22,7 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.DataMarketplace.Infrastructure.Rlp
 {
-    public class TransactionInfoDecoder : IRlpDecoder<TransactionInfo>
+    public class TransactionInfoDecoder : IRlpNdmDecoder<TransactionInfo>
     {
         public static void Init()
         {
@@ -53,6 +53,11 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
             {
                 throw new RlpException($"{nameof(TransactionInfo)} could not be decoded", e);
             }
+        }
+
+        public void Encode(RlpStream stream, TransactionInfo item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        {
+            throw new NotImplementedException();
         }
 
         public Serialization.Rlp.Rlp Encode(TransactionInfo item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)

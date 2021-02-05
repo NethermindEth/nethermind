@@ -86,7 +86,6 @@ namespace Nethermind.DataMarketplace.Core.Services
                 transaction.GasPrice = gasPrice;
                 transaction.GasLimit = gasLimit;
                 transaction.Data = null;
-                transaction.Init = null;
                 transaction.Value = 0;
                 if (_logger.IsInfo) _logger.Info($"Canceling transaction with hash: '{transactionHash}', gas price: {gasPrice} wei ({multiplier}% of original transaction).");
             });

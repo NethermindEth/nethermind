@@ -25,6 +25,7 @@ using Nethermind.DataMarketplace.Consumers.Deposits.Queries;
 using Nethermind.DataMarketplace.Consumers.Deposits.Repositories;
 using Nethermind.DataMarketplace.Core;
 using Nethermind.DataMarketplace.Core.Domain;
+using Nethermind.DataMarketplace.Infrastructure.Rlp;
 using Nethermind.Db;
 using Nethermind.Serialization.Rlp;
 
@@ -33,10 +34,10 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Rocks.
     public class DepositDetailsRocksRepository : IDepositDetailsRepository
     {
         private readonly IDb _database;
-        private readonly IRlpDecoder<DepositDetails> _rlpDecoder;
+        private readonly IRlpNdmDecoder<DepositDetails> _rlpDecoder;
         private readonly IDepositUnitsCalculator _depositUnitsCalculator;
 
-        public DepositDetailsRocksRepository(IDb database, IRlpDecoder<DepositDetails> rlpDecoder, IDepositUnitsCalculator depositUnitsCalculator)
+        public DepositDetailsRocksRepository(IDb database, IRlpNdmDecoder<DepositDetails> rlpDecoder, IDepositUnitsCalculator depositUnitsCalculator)
         {
             _database = database;
             _rlpDecoder = rlpDecoder;
