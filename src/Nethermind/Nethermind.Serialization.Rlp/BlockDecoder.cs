@@ -22,7 +22,7 @@ namespace Nethermind.Serialization.Rlp
     public class BlockDecoder : IRlpDecoder<Block>, IRlpValueDecoder<Block>
     {
         private HeaderDecoder _headerDecoder = new HeaderDecoder();
-        private TransactionDecoder _txDecoder = new TransactionDecoder();
+        private TxDecoder _txDecoder = new TxDecoder();
         
         public Block Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {

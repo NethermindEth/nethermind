@@ -31,6 +31,7 @@ namespace Nethermind.Specs.Forks
 
         public static IReleaseSpec Instance => LazyInitializer.EnsureInitialized(ref _instance, () => new SpuriousDragon());
 
+        public string Name => "Spurious Dragon";
         public long MaximumExtraDataSize => 32;
         public long MaxCodeSize => 24576;
         public long MinGasLimit => 5000;

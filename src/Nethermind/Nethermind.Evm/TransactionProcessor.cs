@@ -31,7 +31,6 @@ namespace Nethermind.Evm
 {
     public class TransactionProcessor : ITransactionProcessor
     {
-        private readonly IntrinsicGasCalculator _intrinsicGasCalculator = new IntrinsicGasCalculator();
         private readonly ILogger _logger;
         private readonly IStateProvider _stateProvider;
         private readonly IStorageProvider _storageProvider;
@@ -119,7 +118,7 @@ namespace Nethermind.Evm
                 return;
             }
 
-            long intrinsicGas = _intrinsicGasCalculator.Calculate(transaction, spec);
+            long intrinsicGas = IntrinsicGasCalculator.Calculate(transaction, spec);
             if (_logger.IsTrace) _logger.Trace($"Intrinsic gas calculated for {transaction.Hash}: " + intrinsicGas);
 
             if (notSystemTransaction)
@@ -243,7 +242,7 @@ namespace Nethermind.Evm
                 {
                     if (spec.UseTxAccessLists)
                     {
-                        state.WarmUp(transaction.AccountAccessList, transaction.StorageAccessList); // eip-2930
+                        state.WarmUp(transaction.AccessList); // eip-2930
                     }
 
                     if (spec.UseHotAndColdStorage)

@@ -49,7 +49,7 @@ namespace Nethermind.Wallet
         {
             Keccak hash = Keccak.Compute(Rlp.Encode(tx, true, true, chainId).Bytes);
             tx.Signature = @this.Sign(hash, tx.SenderAddress);
-            tx.Signature.V = tx.Signature.V + 8 + 2 * chainId;
+            tx.Signature.V = tx.Signature.V + 8 + 2 * (ulong)chainId;
         }
     }
 }

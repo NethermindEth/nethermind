@@ -26,14 +26,6 @@ namespace Nethermind.Evm.Test
     [TestFixture]
     public class Eip2028Tests : VirtualMachineTestsBase
     {
-        private IntrinsicGasCalculator _gasCalculator;
-
-        public override void Setup()
-        {
-            base.Setup();
-            _gasCalculator = new IntrinsicGasCalculator();
-        }
-
         private class AfterIstanbul : Eip2028Tests
         {
             protected override long BlockNumber => MainnetSpecProvider.IstanbulBlockNumber;
@@ -43,7 +35,7 @@ namespace Nethermind.Evm.Test
             public void non_zero_transaction_data_cost_should_be_16()
             {
                 var transaction = new Transaction {Data = new byte[] {1}};
-                var cost = _gasCalculator.Calculate(transaction, Spec);
+                var cost = IntrinsicGasCalculator.Calculate(transaction, Spec);
                 cost.Should().Be(GasCostOf.Transaction + GasCostOf.TxDataNonZeroEip2028);
             }
 
@@ -51,7 +43,7 @@ namespace Nethermind.Evm.Test
             public void zero_transaction_data_cost_should_be_4()
             {
                 var transaction = new Transaction {Data = new byte[] {0}};
-                var cost = _gasCalculator.Calculate(transaction, Spec);
+                var cost = IntrinsicGasCalculator.Calculate(transaction, Spec);
                 cost.Should().Be(GasCostOf.Transaction + GasCostOf.TxDataZero);
             }
         }
@@ -65,7 +57,7 @@ namespace Nethermind.Evm.Test
             public void non_zero_transaction_data_cost_should_be_68()
             {
                 var transaction = new Transaction {Data = new byte[] {1}};
-                var cost = _gasCalculator.Calculate(transaction, Spec);
+                var cost = IntrinsicGasCalculator.Calculate(transaction, Spec);
                 cost.Should().Be(GasCostOf.Transaction + GasCostOf.TxDataNonZero);
             }
 
@@ -73,7 +65,7 @@ namespace Nethermind.Evm.Test
             public void zero_transaction_data_cost_should_be_4()
             {
                 var transaction = new Transaction {Data = new byte[] {0}};
-                var cost = _gasCalculator.Calculate(transaction, Spec);
+                var cost = IntrinsicGasCalculator.Calculate(transaction, Spec);
                 cost.Should().Be(GasCostOf.Transaction + GasCostOf.TxDataZero);
             }
         }

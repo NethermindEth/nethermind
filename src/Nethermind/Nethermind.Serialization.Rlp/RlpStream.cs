@@ -29,7 +29,7 @@ namespace Nethermind.Serialization.Rlp
     {
         private static HeaderDecoder _headerDecoder = new HeaderDecoder();
         private static BlockDecoder _blockDecoder = new BlockDecoder();
-        private static TransactionDecoder _txDecoder = new TransactionDecoder();
+        private static TxDecoder _txDecoder = new TxDecoder();
         private static ReceiptMessageDecoder _receiptDecoder = new ReceiptMessageDecoder();
         private static LogEntryDecoder _logEntryDecoder = new LogEntryDecoder();
 
@@ -76,6 +76,33 @@ namespace Nethermind.Serialization.Rlp
         public void Encode(LogEntry value)
         {
             _logEntryDecoder.Encode(this, value);
+        }
+
+        public void StartByteArray(int contentLength, bool firstByteLessThan128)
+        {
+            switch (contentLength)
+            {
+                case 0:
+                    WriteByte(EmptyArrayByte);
+                    break;
+                case 1 when firstByteLessThan128:
+                    // the single byte of content will be written without any prefix
+                    break;
+                case < 56:
+                {
+                    byte smallPrefix = (byte) (contentLength + 128);
+                    WriteByte(smallPrefix);
+                    break;
+                }
+                default:
+                {
+                    int lengthOfLength = Rlp.LengthOfLength(contentLength);
+                    byte prefix = (byte) (183 + lengthOfLength);
+                    WriteByte(prefix);
+                    WriteEncodedLength(contentLength);
+                    break;
+                }
+            }
         }
 
         public void StartSequence(int contentLength)
@@ -147,7 +174,7 @@ namespace Nethermind.Serialization.Rlp
             return PeekByte() >= 192;
         }
 
-        public void Encode(Keccak keccak)
+        public void Encode(Keccak? keccak)
         {
             if (keccak == null)
             {
@@ -168,7 +195,7 @@ namespace Nethermind.Serialization.Rlp
             }
         }
 
-        public void Encode(Address address)
+        public void Encode(Address? address)
         {
             if (address == null)
             {
@@ -181,7 +208,7 @@ namespace Nethermind.Serialization.Rlp
             }
         }
 
-        public void Encode(Rlp rlp)
+        public void Encode(Rlp? rlp)
         {
             if (rlp == null)
             {
@@ -193,7 +220,7 @@ namespace Nethermind.Serialization.Rlp
             }
         }
 
-        public void Encode(Bloom bloom)
+        public void Encode(Bloom? bloom)
         {
             if (ReferenceEquals(bloom, Bloom.Empty))
             {
@@ -626,7 +653,7 @@ namespace Nethermind.Serialization.Rlp
             }
         }
 
-        public Keccak DecodeKeccak()
+        public Keccak? DecodeKeccak()
         {
             int prefix = ReadByte();
             if (prefix == 128)
@@ -653,7 +680,7 @@ namespace Nethermind.Serialization.Rlp
             return new Keccak(keccakSpan.ToArray());
         }
 
-        public Address DecodeAddress()
+        public Address? DecodeAddress()
         {
             int prefix = ReadByte();
             if (prefix == 128)
@@ -705,7 +732,7 @@ namespace Nethermind.Serialization.Rlp
             return bytes.ToUnsignedBigInteger();
         }
 
-        public Bloom DecodeBloom()
+        public Bloom? DecodeBloom()
         {
             ReadOnlySpan<byte> bloomBytes;
 

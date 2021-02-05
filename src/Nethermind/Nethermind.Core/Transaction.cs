@@ -31,7 +31,7 @@ namespace Nethermind.Core
         /// <summary>
         /// EIP-2718 transaction type
         /// </summary>
-        public byte TransactionType { get; set; }
+        public TxType Type { get; set; }
         public UInt256 Nonce { get; set; }
         public UInt256 GasPrice { get; set; }
         public UInt256 GasPremium => GasPrice; 
@@ -50,8 +50,8 @@ namespace Nethermind.Core
         public Keccak? Hash { get; set; }
         public PublicKey? DeliveredBy { get; set; } // tks: this is added so we do not send the pending tx back to original sources, not used yet
         public UInt256 Timestamp { get; set; }
-        public HashSet<Address>? AccountAccessList { get; set; } // eip2930
-        public HashSet<StorageCell>? StorageAccessList { get; set; } // eip2930
+
+        public AccessList? AccessList { get; set; } // eip2930
         
         /// <summary>
         /// In-memory only property, representing order of transactions going to TxPool.
@@ -74,8 +74,8 @@ namespace Nethermind.Core
             builder.AppendLine($"{indent}Value:     {Value}");
             builder.AppendLine($"{indent}Data:      {(Data ?? new byte[0]).ToHexString()}");
             builder.AppendLine($"{indent}Signature: {(Signature?.Bytes ?? new byte[0]).ToHexString()}");
-            builder.AppendLine($"{indent}V:         {Signature?.V ?? -1}");
-            builder.AppendLine($"{indent}ChainId:   {Signature?.ChainId ?? -1}");
+            builder.AppendLine($"{indent}V:         {Signature?.V}");
+            builder.AppendLine($"{indent}ChainId:   {Signature?.ChainId}");
             builder.AppendLine($"{indent}Timestamp: {Timestamp}");
             return builder.ToString();
         }

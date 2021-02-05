@@ -31,6 +31,7 @@ namespace Nethermind.Specs.Forks
 
         public static IReleaseSpec Instance => LazyInitializer.EnsureInitialized(ref _instance, () => new Dao());
 
+        public string Name => "DAO";
         public long MaximumExtraDataSize => 32;
         public long MaxCodeSize => long.MaxValue;
         public long MinGasLimit => 5000;

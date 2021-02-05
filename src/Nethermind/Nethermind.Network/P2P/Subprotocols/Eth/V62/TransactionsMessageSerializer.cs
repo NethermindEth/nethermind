@@ -22,7 +22,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 {
     public class TransactionsMessageSerializer : IZeroMessageSerializer<TransactionsMessage>
     {
-        private TransactionDecoder _decoder = new TransactionDecoder();
+        private TxDecoder _decoder = new TxDecoder();
         
         public void Serialize(IByteBuffer byteBuffer, TransactionsMessage message)
         {

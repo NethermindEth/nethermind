@@ -23,9 +23,9 @@ using Nethermind.Int256;
 
 namespace Nethermind.Serialization.Rlp
 {
-    public class TransactionDecoder : IRlpDecoder<Transaction>, IRlpValueDecoder<Transaction>, IRlpDecoder<SystemTransaction>, IRlpDecoder<GeneratedTransaction>
+    public class TxDecoder : IRlpDecoder<Transaction>, IRlpValueDecoder<Transaction>, IRlpDecoder<SystemTransaction>, IRlpDecoder<GeneratedTransaction>
     {
-        public Transaction Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public Transaction? Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (rlpStream.IsNextItemNull())
             {
@@ -33,13 +33,13 @@ namespace Nethermind.Serialization.Rlp
                 return null;
             }
 
-            var transactionSequence = rlpStream.PeekNextItem();
+            Span<byte> transactionSequence = rlpStream.PeekNextItem();
 
-            int transactionType = 0;
+            Transaction transaction = new();
             if (!rlpStream.IsSequenceNext())
             {
                 rlpStream.SkipLength();
-                transactionType = rlpStream.ReadByte();
+                transaction.Type = (TxType)rlpStream.ReadByte();
             }
 
             int transactionLength = rlpStream.ReadSequenceLength();
@@ -48,11 +48,8 @@ namespace Nethermind.Serialization.Rlp
 
             bool isEip1559 = numberOfSequenceFields == 11;
 
-            Transaction transaction = new();
-            // now should create different type decoders
-
             long chainId = 0;
-            if (transactionType == 1)
+            if (transaction.Type == TxType.AccessList)
             {
                 chainId = rlpStream.DecodeLong();
                 transaction.Nonce = rlpStream.DecodeUInt256();
@@ -65,8 +62,11 @@ namespace Nethermind.Serialization.Rlp
                 int check = rlpStream.Position + length;
                 rlpStream.SkipLength();
 
-                transaction.AccountAccessList = new HashSet<Address>();
-                transaction.StorageAccessList = new HashSet<StorageCell>();
+                HashSet<Address> accounts = new();
+                HashSet<StorageCell> storageCells = new();
+                AccessList accessList = new(accounts, storageCells);
+                transaction.AccessList = accessList;
+                
                 while (rlpStream.Position <= check)
                 {
                     int lengthOfNextAddress = rlpStream.PeekNextRlpLength();
@@ -77,7 +77,12 @@ namespace Nethermind.Serialization.Rlp
                     
                     rlpStream.SkipLength();
                     Address address = rlpStream.DecodeAddress();
-                    transaction.AccountAccessList.Add(address);
+                    if (address == null)
+                    {
+                        throw new RlpException("Invalid tx access list format - address is null");
+                    }
+                    
+                    accounts.Add(address);
                     rlpStream.SkipLength();
                     while (rlpStream.Position < check)
                     {
@@ -86,7 +91,7 @@ namespace Nethermind.Serialization.Rlp
                         {
                             UInt256 index = rlpStream.DecodeUInt256();
                             StorageCell storageCell = new(address, index);
-                            transaction.StorageAccessList.Add(storageCell);
+                            storageCells.Add(storageCell);
                         }
                         else if (lengthOfNextItemInStorage == 1)
                         {
@@ -159,8 +164,13 @@ namespace Nethermind.Serialization.Rlp
 
                 if (isSignatureOk)
                 {
-                    int v = vBytes.ReadEthInt32();
-                    Signature signature = new Signature(rBytes, sBytes, v);
+                    ulong v = vBytes.ReadEthUInt64();
+                    if (v < Signature.VOffset)
+                    {
+                        v += Signature.VOffset;
+                    }
+                    
+                    Signature signature = new(rBytes, sBytes, v);
                     transaction.Signature = signature;
                     transaction.Hash = Keccak.Compute(transactionSequence);
                 }
@@ -181,7 +191,7 @@ namespace Nethermind.Serialization.Rlp
             return transaction;
         }
 
-        public Transaction Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public Transaction? Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (decoderContext.IsNextItemNull())
             {
@@ -189,7 +199,7 @@ namespace Nethermind.Serialization.Rlp
                 return null;
             }
 
-            var transactionSequence = decoderContext.PeekNextItem();
+            Span<byte> transactionSequence = decoderContext.PeekNextItem();
 
             int transactionLength = decoderContext.ReadSequenceLength();
             int lastCheck = decoderContext.Position + transactionLength;
@@ -255,8 +265,8 @@ namespace Nethermind.Serialization.Rlp
 
                 if (isSignatureOk)
                 {
-                    int v = vBytes.ReadEthInt32();
-                    Signature signature = new Signature(rBytes, sBytes, v);
+                    ulong v = vBytes.ReadEthUInt64();
+                    Signature signature = new (rBytes, sBytes, v);
                     transaction.Signature = signature;
                     transaction.Hash = Keccak.Compute(transactionSequence);
                 }
@@ -279,25 +289,29 @@ namespace Nethermind.Serialization.Rlp
 
         public Rlp Encode(Transaction item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            RlpStream rlpStream = new RlpStream(GetLength(item, rlpBehaviors));
+            RlpStream rlpStream = new(GetLength(item, rlpBehaviors));
             Encode(rlpStream, item, rlpBehaviors);
             return new Rlp(rlpStream.Data);
         }
 
         public void Encode(RlpStream stream, Transaction item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            if (item.IsEip1559)
+            int contentLength = GetContentLength(item, false);
+            int sequenceLength = Rlp.GetSequenceRlpLength(contentLength);
+            
+            if ((rlpBehaviors & RlpBehaviors.UseTransactionTypes) != 0)
+            {
+                int arrayLength = Rlp.GetByteArrayRlpLength(sequenceLength + 1, false);
+                stream.StartByteArray(arrayLength, false);
+                stream.WriteByte((byte)item.Type);
+            }
+            
+            stream.StartSequence(contentLength);
+            if (item.Type == TxType.AccessList)
             {
                 
             }
             
-            int contentLength = GetContentLength(item, false);
-            if ((rlpBehaviors & RlpBehaviors.UseTransactionTypes) != 0)
-            {
-                stream.WriteByte(item.TransactionType);
-            }
-
-            stream.StartSequence(contentLength);
             stream.Encode(item.Nonce);
             stream.Encode(item.IsEip1559 ? 0 : item.GasPrice);
             stream.Encode(item.GasLimit);
@@ -323,6 +337,11 @@ namespace Nethermind.Serialization.Rlp
                                 + Rlp.LengthOf(item.Value)
                                 + Rlp.LengthOf(item.Data);
 
+            if (item.Type == TxType.AccessList)
+            {
+                throw new NotImplementedException();
+            }
+            
             if (item.IsEip1559)
             {
                 contentLength += Rlp.LengthOf(item.FeeCap);
@@ -348,9 +367,11 @@ namespace Nethermind.Serialization.Rlp
             return contentLength;
         }
 
-        public int GetLength(Transaction item, RlpBehaviors rlpBehaviors) =>
-            ((rlpBehaviors & RlpBehaviors.UseTransactionTypes) != 0 ? 1 : 0) +
-            Rlp.GetSequenceRlpLength(GetContentLength(item, false));
+        public int GetLength(Transaction item, RlpBehaviors rlpBehaviors)
+        {
+            int typeLength = (rlpBehaviors & RlpBehaviors.UseTransactionTypes) != 0 ? 1 : 0;
+            return Rlp.GetSequenceRlpLength(typeLength + Rlp.GetSequenceRlpLength(GetContentLength(item, false)));
+        }
 
         Rlp IRlpDecoder<GeneratedTransaction>.Encode(GeneratedTransaction item, RlpBehaviors rlpBehaviors) =>
             Encode(item, rlpBehaviors);

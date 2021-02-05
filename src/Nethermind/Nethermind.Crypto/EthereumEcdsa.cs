@@ -53,7 +53,7 @@ namespace Nethermind.Crypto
             tx.Signature = Sign(privateKey, hash);
             if (isEip155Enabled)
             {
-                tx.Signature.V = tx.Signature.V + 8 + 2 * _chainIdValue;
+                tx.Signature.V = tx.Signature.V + 8 + 2 * (ulong)_chainIdValue;
             }
 
             if(_logger.IsDebug) _logger.Debug($"Transaction {tx.SenderAddress} -> {tx.To} ({tx.Value}) signed");
@@ -80,7 +80,7 @@ namespace Nethermind.Crypto
         public Address RecoverAddress(Transaction tx, bool useTxChainId = false)
         {
             useTxChainId &= tx.Signature.ChainId.HasValue;
-            bool applyEip155 = useTxChainId || tx.Signature.V == _chainIdValue * 2 + 35 || tx.Signature.V == _chainIdValue * 2 + 36;
+            bool applyEip155 = useTxChainId || tx.Signature.V == (ulong)_chainIdValue * 2 + 35ul || tx.Signature.V == (ulong)_chainIdValue * 2 + 36ul;
             var chainId = useTxChainId ? tx.Signature.ChainId.Value : _chainIdValue;
             Keccak hash = Keccak.Compute(Rlp.Encode(tx, true, applyEip155, chainId).Bytes);
             return RecoverAddress(tx.Signature, hash);

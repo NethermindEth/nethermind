@@ -29,6 +29,8 @@ namespace Nethermind.Specs
             _spec = spec;
         }
 
+        public string Name => "System";
+        
         public long MaximumExtraDataSize => _spec.MaximumExtraDataSize;
 
         public long MaxCodeSize => _spec.MaxCodeSize;

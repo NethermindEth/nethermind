@@ -23,6 +23,7 @@ namespace Nethermind.Core.Specs
     /// </summary>
     public interface IReleaseSpec
     {
+        public string Name { get; }
         long MaximumExtraDataSize { get; }
         long MaxCodeSize { get; }
         long MinGasLimit { get; }

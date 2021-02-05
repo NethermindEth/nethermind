@@ -221,14 +221,14 @@ namespace Nethermind.Evm
             return _accessedStorageKeys is null || !AccessedStorageCells.Contains(storageCell);
         }
 
-        public void WarmUp(ISet<Address>? addresses, ISet<StorageCell>? storageCells)
+        public void WarmUp(AccessList? accessList)
         {
-            foreach (Address address in addresses ?? Enumerable.Empty<Address>())
+            foreach (Address address in accessList?.Addresses ?? Enumerable.Empty<Address>())
             {
                 WarmUp(address);
             }
                     
-            foreach (StorageCell storageCell in storageCells ?? Enumerable.Empty<StorageCell>())
+            foreach (StorageCell storageCell in accessList?.StorageCells ?? Enumerable.Empty<StorageCell>())
             {
                 WarmUp(storageCell);
             }

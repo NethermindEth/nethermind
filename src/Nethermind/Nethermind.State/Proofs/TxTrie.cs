@@ -27,7 +27,7 @@ namespace Nethermind.State.Proofs
     public class TxTrie : PatriciaTree
     {
         private readonly bool _allowProofs;
-        private static TransactionDecoder _txDecoder = new TransactionDecoder();
+        private static TxDecoder _txDecoder = new TxDecoder();
 
         public TxTrie(Transaction[] txs, IReleaseSpec releaseSpec, bool allowProofs = false)
             : base(allowProofs ? (IDb) new MemDb() : NullDb.Instance, EmptyTreeHash, false, false, NullLogManager.Instance)

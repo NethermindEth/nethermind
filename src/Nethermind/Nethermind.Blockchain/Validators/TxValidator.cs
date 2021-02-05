@@ -27,13 +27,10 @@ namespace Nethermind.Blockchain.Validators
 {
     public class TxValidator : ITxValidator
     {
-        private readonly IntrinsicGasCalculator _intrinsicGasCalculator;
         private readonly long _chainIdValue;
 
         public TxValidator(long chainId)
         {
-            _intrinsicGasCalculator = new IntrinsicGasCalculator();
-            
             if (chainId < 0)
             {
                 throw new ArgumentException("Unexpected negative value", nameof(chainId));
@@ -41,7 +38,6 @@ namespace Nethermind.Blockchain.Validators
 
             _chainIdValue = chainId;
         }
-        
 
         /* Full and correct validation is only possible in the context of a specific block
            as we cannot generalize correctness of the transaction without knowing the EIPs implemented
@@ -54,7 +50,7 @@ namespace Nethermind.Blockchain.Validators
         {
             return 
                    /* This is unnecessarily calculated twice - at validation and execution times. */
-                   transaction.GasLimit >= _intrinsicGasCalculator.Calculate(transaction, releaseSpec) &&
+                   transaction.GasLimit >= IntrinsicGasCalculator.Calculate(transaction, releaseSpec) &&
                    /* if it is a call or a transfer then we require the 'To' field to have a value
                       while for an init it will be empty */
                    ValidateSignature(transaction.Signature, releaseSpec);

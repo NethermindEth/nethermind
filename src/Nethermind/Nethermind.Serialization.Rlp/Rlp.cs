@@ -665,6 +665,29 @@ namespace Nethermind.Serialization.Rlp
 
             return totalLength;
         }
+        
+        public static int GetByteArrayRlpLength(int contentLength, bool firstByteLessThan128)
+        {
+            int result;
+            switch (contentLength)
+            {
+                case 0:
+                case 1 when firstByteLessThan128:
+                    result = 1;
+                    break;
+                case < 56:
+                    result = 1 + contentLength;
+                    break;
+                default:
+                {
+                    int lengthOfLength = Rlp.LengthOfLength(contentLength);
+                    result = 1 + lengthOfLength + contentLength;
+                    break;
+                }
+            }
+
+            return result;
+        }
 
         public static int StartSequence(byte[] buffer, int position, int sequenceLength)
         {

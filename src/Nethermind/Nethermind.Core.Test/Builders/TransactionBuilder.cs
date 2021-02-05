@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections.Generic;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Int256;
@@ -92,6 +93,12 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
         
+        public TransactionBuilder<T> WithAccessList(AccessList accessList)
+        {
+            TestObjectInternal.AccessList = accessList;
+            return this;
+        }
+        
         public TransactionBuilder<T> WithSenderAddress(Address address)
         {
             TestObjectInternal.SenderAddress = address;
@@ -149,6 +156,12 @@ namespace Nethermind.Core.Test.Builders
             {
                 TestObjectInternal.Hash = TestObjectInternal.CalculateHash();
             }
+        }
+
+        public TransactionBuilder<T> WithType(TxType txType)
+        {
+            TestObjectInternal.Type = txType;
+            return this;
         }
     }
 }

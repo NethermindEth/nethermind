@@ -14,14 +14,15 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.IO;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 
 namespace Nethermind.Evm
 {
-    public class IntrinsicGasCalculator
+    public static class IntrinsicGasCalculator
     {
-        public long Calculate(Transaction transaction, IReleaseSpec releaseSpec)
+        public static long Calculate(Transaction transaction, IReleaseSpec releaseSpec)
         {
             long result = GasCostOf.Transaction;
             long txDataNonZeroGasCost = releaseSpec.IsEip2028Enabled ? GasCostOf.TxDataNonZeroEip2028 : GasCostOf.TxDataNonZero;
@@ -39,8 +40,19 @@ namespace Nethermind.Evm
                 result += GasCostOf.TxCreate;
             }
 
-            result += transaction.AccountAccessList?.Count ?? 0 * GasCostOf.AccessAccountListEntry;
-            result += transaction.StorageAccessList?.Count ?? 0 * GasCostOf.AccessStorageListEntry;
+            if (transaction.AccessList != null)
+            {
+                if (releaseSpec.UseTxAccessLists)
+                {
+                    result += transaction.AccessList.Addresses.Count * GasCostOf.AccessAccountListEntry;
+                    result += transaction.AccessList.StorageCells.Count * GasCostOf.AccessStorageListEntry;       
+                }
+                else
+                {
+                    throw new InvalidDataException(
+                        $"Transaction with an access list received within the context of {releaseSpec.Name}");
+                }
+            }
 
             return result;
         }
