@@ -49,11 +49,10 @@ namespace Nethermind.Serialization.Rlp
             int numberOfSequenceFields = rlpStream.ReadNumberOfItemsRemaining(lastCheck);
 
             bool isEip1559 = numberOfSequenceFields == 11;
-
-            long chainId = 0;
+            
             if (transaction.Type == TxType.AccessList)
             {
-                chainId = rlpStream.DecodeLong();
+                transaction.ChainId = rlpStream.DecodeLong();
                 transaction.Nonce = rlpStream.DecodeUInt256();
                 transaction.GasPrice = rlpStream.DecodeUInt256();
                 transaction.GasLimit = rlpStream.DecodeLong();
@@ -112,7 +111,7 @@ namespace Nethermind.Serialization.Rlp
 
             bool isEip1559 = decoderContext.ReadNumberOfItemsRemaining(lastCheck) == 9;
 
-            Transaction transaction = new Transaction();
+            Transaction transaction = new();
             if (isEip1559)
             {
                 transaction.Nonce = decoderContext.DecodeUInt256();
@@ -286,7 +285,7 @@ namespace Nethermind.Serialization.Rlp
             if (item.Type == TxType.AccessList)
             {
                 // throw new NotImplementedException();
-                stream.Encode(1); // chain ID? how -> need to add to tx
+                stream.Encode(item.ChainId); // chain ID? how -> need to add to tx
             }
 
             stream.Encode(item.Nonce);
@@ -322,6 +321,7 @@ namespace Nethermind.Serialization.Rlp
 
             if (item.Type == TxType.AccessList)
             {
+                contentLength += Rlp.LengthOf(item.ChainId);
                 contentLength += _accessListDecoder.GetLength(item.AccessList, RlpBehaviors.None);
             }
 

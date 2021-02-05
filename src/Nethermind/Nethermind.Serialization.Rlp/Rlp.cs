@@ -692,7 +692,7 @@ namespace Nethermind.Serialization.Rlp
                     break;
                 default:
                 {
-                    int lengthOfLength = Rlp.LengthOfLength(contentLength);
+                    int lengthOfLength = LengthOfLength(contentLength);
                     result = 1 + lengthOfLength + contentLength;
                     break;
                 }
