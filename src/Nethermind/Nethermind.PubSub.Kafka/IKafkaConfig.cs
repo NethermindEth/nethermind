@@ -18,6 +18,7 @@ using Nethermind.Config;
 
 namespace Nethermind.PubSub.Kafka
 {
+    [ConfigCategory(HiddenFromDocs = true)]
     public interface IKafkaConfig : IConfig
     {
         [ConfigItem(Description = "If 'true' then it enables the Kafka producer which can be configured to stream the transactions data.", DefaultValue = "false")]
