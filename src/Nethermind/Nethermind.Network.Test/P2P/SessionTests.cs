@@ -536,7 +536,7 @@ namespace Nethermind.Network.Test.P2P
         [Test]
         public void Updates_local_and_remote_metrics_on_disconnects()
         {
-            Session session = new Session(30312, new Node("127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+            Session session = new Session(30312, new Node("127.0.0.1", 8545), _channel, new DisconnectsAnalyzer(LimboLogs.Instance), LimboLogs.Instance);
             session.Handshake(TestItem.PublicKeyA);
             session.Init(5, _channelHandlerContext, _packetSender);
             IProtocolHandler p2p = BuildHandler("p2p", 10);
@@ -550,7 +550,7 @@ namespace Nethermind.Network.Test.P2P
             Assert.AreEqual(beforeLocal + 1, afterLocal);
             Assert.AreEqual(beforeRemote, afterRemote);
 
-            session = new Session(30312, new Node("127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+            session = new Session(30312, new Node("127.0.0.1", 8545), _channel, new DisconnectsAnalyzer(LimboLogs.Instance), LimboLogs.Instance);
             session.Handshake(TestItem.PublicKeyA);
             session.Init(5, _channelHandlerContext, _packetSender);
             p2p = BuildHandler("p2p", 10);

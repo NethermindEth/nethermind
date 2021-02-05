@@ -360,11 +360,16 @@ namespace Nethermind.Serialization.Rlp
         /// </summary>
         /// <param name="value"></param>
         /// <returns></returns>
-        public static Rlp Encode(ulong value)
+        public static Rlp EncodeNonce(ulong value)
         {
             Span<byte> bytes = stackalloc byte[8];
             BinaryPrimitives.WriteUInt64BigEndian(bytes, value);
             return Encode(bytes);
+        }
+        
+        public static Rlp Encode(ulong value)
+        {
+            return Encode((long)value);
         }
 
         public static Rlp Encode(long value)
@@ -1402,7 +1407,7 @@ namespace Nethermind.Serialization.Rlp
             return 5;
         }
 
-        public static int LengthOf(ulong _)
+        public static int LengthOfNonce(ulong _)
         {
             return 9;
         }

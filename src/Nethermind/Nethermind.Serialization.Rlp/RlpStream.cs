@@ -389,9 +389,14 @@ namespace Nethermind.Serialization.Rlp
             Encode(new BigInteger(value), 8);
         }
 
-        public void Encode(ulong value)
+        public void EncodeNonce(ulong value)
         {
             Encode((UInt256)value, 8);
+        }
+        
+        public void Encode(ulong value)
+        {
+            Encode((UInt256)value);
         }
 
         public void Encode(UInt256 value, int length = -1)

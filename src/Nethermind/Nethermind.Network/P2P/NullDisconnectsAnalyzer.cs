@@ -25,9 +25,6 @@ namespace Nethermind.Network.P2P
 
         public static IDisconnectsAnalyzer Instance { get; } = new NullDisconnectsAnalyzer();
 
-        public void ReportDisconnect(DisconnectReason reason, DisconnectType type, string details)
-        {
-            throw new System.NotImplementedException();
-        }
+        public void ReportDisconnect(DisconnectReason reason, DisconnectType type, string details) { }
     }
 }

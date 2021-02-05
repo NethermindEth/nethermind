@@ -27,7 +27,7 @@ namespace Nethermind.Serialization.Rlp
         // but then RLP would have to be passed into so many places
         public static long Eip1559TransitionBlock = long.MaxValue;
         
-        public BlockHeader Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public BlockHeader? Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (decoderContext.IsNextItemNull())
             {
@@ -162,7 +162,7 @@ namespace Nethermind.Serialization.Rlp
             return blockHeader;
         }
 
-        public void Encode(RlpStream rlpStream, BlockHeader header, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public void Encode(RlpStream rlpStream, BlockHeader? header, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (header == null)
             {
@@ -198,7 +198,7 @@ namespace Nethermind.Serialization.Rlp
                 else
                 {
 	                rlpStream.Encode(header.MixHash);
-    	            rlpStream.Encode(header.Nonce);
+    	            rlpStream.EncodeNonce(header.Nonce);
                 }
             }
 
@@ -208,7 +208,7 @@ namespace Nethermind.Serialization.Rlp
             }
         }
 
-        public Rlp Encode(BlockHeader item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public Rlp Encode(BlockHeader? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item == null)
             {
@@ -257,7 +257,7 @@ namespace Nethermind.Serialization.Rlp
                 else
                 {
                     contentLength += Rlp.LengthOf(item.MixHash);
-                    contentLength += Rlp.LengthOf(item.Nonce);
+                    contentLength += Rlp.LengthOfNonce(item.Nonce);
                 }
             }
 

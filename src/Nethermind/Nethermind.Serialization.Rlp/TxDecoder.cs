@@ -332,8 +332,15 @@ namespace Nethermind.Serialization.Rlp
 
         public int GetLength(Transaction item, RlpBehaviors rlpBehaviors)
         {
-            int typeLength = (rlpBehaviors & RlpBehaviors.UseTransactionTypes) != 0 ? 1 : 0;
-            return Rlp.GetSequenceRlpLength(typeLength + Rlp.GetSequenceRlpLength(GetContentLength(item, false)));
+            if ((rlpBehaviors & RlpBehaviors.UseTransactionTypes) != 0)
+            {
+                int typeLength = (rlpBehaviors & RlpBehaviors.UseTransactionTypes) != 0 ? 1 : 0;
+                return Rlp.GetSequenceRlpLength(typeLength + Rlp.GetSequenceRlpLength(GetContentLength(item, false)));    
+            }
+            else
+            {
+                return Rlp.GetSequenceRlpLength(GetContentLength(item, false));    
+            }
         }
 
         Rlp IRlpObjectDecoder<GeneratedTransaction>.Encode(GeneratedTransaction item, RlpBehaviors rlpBehaviors) =>

@@ -19,9 +19,9 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Consensus.AuRa.Validators
 {
-    internal class ValidatorInfoDecoder : IRlpDecoder<ValidatorInfo>
+    internal class ValidatorInfoDecoder : IRlpStreamDecoder<ValidatorInfo>, IRlpObjectDecoder<ValidatorInfo>
     {
-        public ValidatorInfo Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public ValidatorInfo? Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (rlpStream.IsNextItemNull())
             {
@@ -48,19 +48,19 @@ namespace Nethermind.Consensus.AuRa.Validators
             return new ValidatorInfo(finalizingBlockNumber, previousFinalizingBlockNumber, addresses);
         }
 
-        public Rlp Encode(ValidatorInfo item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public Rlp Encode(ValidatorInfo? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item == null)
             {
                 return Rlp.OfEmptySequence;
             }
 
-            RlpStream rlpStream = new RlpStream(GetLength(item, rlpBehaviors));
+            RlpStream rlpStream = new(GetLength(item, rlpBehaviors));
             Encode(rlpStream, item, rlpBehaviors);
             return new Rlp(rlpStream.Data);
         }
 
-        public void Encode(RlpStream stream, ValidatorInfo item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public void Encode(RlpStream stream, ValidatorInfo? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item == null)
             {
@@ -79,11 +79,11 @@ namespace Nethermind.Consensus.AuRa.Validators
             }
         }
 
-        public int GetLength(ValidatorInfo item, RlpBehaviors rlpBehaviors) => item == null ? 1 : Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors).Total);
+        public int GetLength(ValidatorInfo? item, RlpBehaviors rlpBehaviors) => item == null ? 1 : Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors).Total);
 
         private static (int Total, int Validators) GetContentLength(ValidatorInfo item, RlpBehaviors rlpBehaviors)
         {
-            var validatorsLength = Rlp.LengthOfAddressRlp * item.Validators.Length;
+            int validatorsLength = Rlp.LengthOfAddressRlp * item.Validators.Length;
             return (Rlp.LengthOf(item.FinalizingBlockNumber) + Rlp.LengthOf(item.PreviousFinalizingBlockNumber) + Rlp.GetSequenceRlpLength(validatorsLength), validatorsLength);
         }
     }

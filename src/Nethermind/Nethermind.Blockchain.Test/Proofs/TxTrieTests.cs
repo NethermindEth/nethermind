@@ -48,7 +48,7 @@ namespace Nethermind.Blockchain.Test.Proofs
 
             if (_releaseSpec == Berlin.Instance)
             {
-                Assert.AreEqual("0xcf00543cc76e3cf2dd2f52f4359a4cf686ed34e264f782bdf2f95993cc9f3902",
+                Assert.AreEqual("0xfd889d96318d7e0ab32ca4d7808db5e590c09ce1f7b83fbd3a4949809953fa7a",
                     txTrie.RootHash.ToString());
             }
             else
