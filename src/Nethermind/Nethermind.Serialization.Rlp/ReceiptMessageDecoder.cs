@@ -20,7 +20,7 @@ using Nethermind.Core.Extensions;
 
 namespace Nethermind.Serialization.Rlp
 {
-    public class ReceiptMessageDecoder : IRlpDecoder<TxReceipt>
+    public class ReceiptMessageDecoder : IRlpStreamDecoder<TxReceipt>
     {
         static ReceiptMessageDecoder()
         {

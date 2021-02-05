@@ -31,7 +31,7 @@ namespace Nethermind.Serialization.Rlp
         private static BlockDecoder _blockDecoder = new BlockDecoder();
         private static TxDecoder _txDecoder = new TxDecoder();
         private static ReceiptMessageDecoder _receiptDecoder = new ReceiptMessageDecoder();
-        private static LogEntryDecoder _logEntryDecoder = new LogEntryDecoder();
+        private static LogEntryDecoder _logEntryDecoder = LogEntryDecoder.Instance;
 
         protected RlpStream()
         {

@@ -15,16 +15,16 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Int256;
 
 namespace Nethermind.Serialization.Rlp
 {
-    public class TxDecoder : IRlpDecoder<Transaction>, IRlpValueDecoder<Transaction>, IRlpDecoder<SystemTransaction>, IRlpDecoder<GeneratedTransaction>
+    public class TxDecoder : IRlpStreamDecoder<Transaction>, IRlpValueDecoder<Transaction>, IRlpObjectDecoder<SystemTransaction>, IRlpObjectDecoder<GeneratedTransaction>
     {
+        private readonly AccessListDecoder _accessListDecoder = new();
+        
         public Transaction? Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (rlpStream.IsNextItemNull())
@@ -61,50 +61,7 @@ namespace Nethermind.Serialization.Rlp
                 int length = rlpStream.PeekNextRlpLength();
                 int check = rlpStream.Position + length;
                 rlpStream.SkipLength();
-
-                HashSet<Address> accounts = new();
-                HashSet<StorageCell> storageCells = new();
-                AccessList accessList = new(accounts, storageCells);
-                transaction.AccessList = accessList;
-                
-                while (rlpStream.Position <= check)
-                {
-                    int lengthOfNextAddress = rlpStream.PeekNextRlpLength();
-                    if (lengthOfNextAddress == 1)
-                    {
-                        break;
-                    }
-                    
-                    rlpStream.SkipLength();
-                    Address address = rlpStream.DecodeAddress();
-                    if (address == null)
-                    {
-                        throw new RlpException("Invalid tx access list format - address is null");
-                    }
-                    
-                    accounts.Add(address);
-                    rlpStream.SkipLength();
-                    while (rlpStream.Position < check)
-                    {
-                        int lengthOfNextItemInStorage = rlpStream.PeekNextRlpLength();
-                        if (lengthOfNextItemInStorage == Rlp.LengthOfKeccakRlp)
-                        {
-                            UInt256 index = rlpStream.DecodeUInt256();
-                            StorageCell storageCell = new(address, index);
-                            storageCells.Add(storageCell);
-                        }
-                        else if (lengthOfNextItemInStorage == 1)
-                        {
-                            rlpStream.ReadByte();
-                            break;
-                            // ?
-                        }
-                        else
-                        {
-                            break;
-                        }
-                    }
-                }
+                transaction.AccessList = _accessListDecoder.Decode(rlpStream, rlpBehaviors);
             }
             else if (!isEip1559)
             {
@@ -373,26 +330,16 @@ namespace Nethermind.Serialization.Rlp
             return Rlp.GetSequenceRlpLength(typeLength + Rlp.GetSequenceRlpLength(GetContentLength(item, false)));
         }
 
-        Rlp IRlpDecoder<GeneratedTransaction>.Encode(GeneratedTransaction item, RlpBehaviors rlpBehaviors) =>
+        Rlp IRlpObjectDecoder<GeneratedTransaction>.Encode(GeneratedTransaction item, RlpBehaviors rlpBehaviors) =>
             Encode(item, rlpBehaviors);
 
         int IRlpDecoder<GeneratedTransaction>.GetLength(GeneratedTransaction item, RlpBehaviors rlpBehaviors) =>
             GetLength(item, rlpBehaviors);
 
-        Rlp IRlpDecoder<SystemTransaction>.Encode(SystemTransaction item, RlpBehaviors rlpBehaviors) =>
+        Rlp IRlpObjectDecoder<SystemTransaction>.Encode(SystemTransaction item, RlpBehaviors rlpBehaviors) =>
             Encode(item, rlpBehaviors);
 
         int IRlpDecoder<SystemTransaction>.GetLength(SystemTransaction item, RlpBehaviors rlpBehaviors) =>
             GetLength(item, rlpBehaviors);
-
-        SystemTransaction IRlpDecoder<SystemTransaction>.Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors)
-        {
-            throw new NotSupportedException();
-        }
-
-        GeneratedTransaction IRlpDecoder<GeneratedTransaction>.Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors)
-        {
-            throw new NotSupportedException();
-        }
     }
 }

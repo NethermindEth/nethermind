@@ -19,12 +19,12 @@ using Nethermind.Core;
 
 namespace Nethermind.Serialization.Rlp
 {
-    public class BlockDecoder : IRlpDecoder<Block>, IRlpValueDecoder<Block>
+    public class BlockDecoder : IRlpValueDecoder<Block>, IRlpStreamDecoder<Block>
     {
-        private HeaderDecoder _headerDecoder = new HeaderDecoder();
-        private TxDecoder _txDecoder = new TxDecoder();
+        private readonly HeaderDecoder _headerDecoder = new();
+        private readonly TxDecoder _txDecoder = new();
         
-        public Block Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public Block? Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (rlpStream.IsNextItemNull())
             {
@@ -158,7 +158,7 @@ namespace Nethermind.Serialization.Rlp
                 return Rlp.OfEmptySequence;
             }
             
-            RlpStream rlpStream = new RlpStream(GetLength(item, rlpBehaviors));
+            RlpStream rlpStream = new(GetLength(item, rlpBehaviors));
             Encode(rlpStream, item, rlpBehaviors);
             return new Rlp(rlpStream.Data);
         }

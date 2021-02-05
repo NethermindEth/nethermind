@@ -46,6 +46,7 @@ namespace Nethermind.Core.Test.Specs.ChainSpecStyle
             PropertyInfo[] propertyInfos = typeof(IReleaseSpec).GetProperties(BindingFlags.Public | BindingFlags.Instance);
             foreach (PropertyInfo propertyInfo in propertyInfos.Where(pi =>
                 pi.Name != "MaximumExtraDataSize"
+                && pi.Name != "Name"
                 && pi.Name != "Registrar"
                 && pi.Name != "BlockReward"
                 && pi.Name != "DifficultyBombDelay"
@@ -104,7 +105,7 @@ namespace Nethermind.Core.Test.Specs.ChainSpecStyle
             foreach (long blockNumber in blockNumbers)
             {
                 PropertyInfo[] propertyInfos = typeof(IReleaseSpec).GetProperties(BindingFlags.Public | BindingFlags.Instance);
-                foreach (PropertyInfo propertyInfo in propertyInfos)
+                foreach (PropertyInfo propertyInfo in propertyInfos.Where(p => p.Name != "Name"))
                 {
                     object a = propertyInfo.GetValue(oldSpec.GetSpec(blockNumber));
                     object b = propertyInfo.GetValue(newSpec.GetSpec(blockNumber));

@@ -60,8 +60,8 @@ namespace Nethermind.Blockchain
         private readonly IDb _blockInfoDb;
 
         private ICache<long, HashSet<Keccak>> _invalidBlocks = new LruCache<long, HashSet<Keccak>>(128, 128, "invalid blocks");
-        private readonly BlockDecoder _blockDecoder = new BlockDecoder();
-        private readonly HeaderDecoder _headerDecoder = new HeaderDecoder();
+        private readonly BlockDecoder _blockDecoder = new();
+        private readonly HeaderDecoder _headerDecoder = new();
         private readonly ILogger _logger;
         private readonly ISpecProvider _specProvider;
         private readonly IBloomStorage _bloomStorage;
@@ -1247,7 +1247,7 @@ namespace Nethermind.Blockchain
         public Keccak GenesisHash => Genesis?.Hash;
         public Keccak PendingHash => Head?.Hash;
 
-        public Block FindBlock(Keccak blockHash, BlockTreeLookupOptions options)
+        public Block? FindBlock(Keccak blockHash, BlockTreeLookupOptions options)
         {
             if (blockHash == null || blockHash == Keccak.Zero)
             {

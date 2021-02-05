@@ -133,7 +133,7 @@ namespace Nethermind.Serialization.Rlp
 
         public static T[] DecodeArray<T>(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            var rlpDecoder = GetDecoder<T>();
+            var rlpDecoder = GetStreamDecoder<T>();
             if (rlpDecoder != null)
             {
                 int checkPosition = rlpStream.ReadSequenceLength() + rlpStream.Position;
@@ -149,19 +149,22 @@ namespace Nethermind.Serialization.Rlp
             throw new RlpException($"{nameof(Rlp)} does not support decoding {typeof(T).Name}");
         }
 
-        public static IRlpDecoder<T>? GetDecoder<T>() => Decoders.ContainsKey(typeof(T)) ? (IRlpDecoder<T>) Decoders[typeof(T)] : null;
+        public static IRlpValueDecoder<T>? GetValueDecoder<T>() => Decoders.ContainsKey(typeof(T)) ? Decoders[typeof(T)] as IRlpValueDecoder<T> : null;
+        public static IRlpStreamDecoder<T>? GetStreamDecoder<T>() => Decoders.ContainsKey(typeof(T)) ? Decoders[typeof(T)]  as IRlpStreamDecoder<T>: null;
+        public static IRlpObjectDecoder<T>? GetObjectDecoder<T>() => Decoders.ContainsKey(typeof(T)) ? Decoders[typeof(T)]  as IRlpObjectDecoder<T>: null;
+        public static IRlpDecoder<T>? GetDecoder<T>() => Decoders.ContainsKey(typeof(T)) ? Decoders[typeof(T)]  as IRlpDecoder<T>: null;
 
         public static T Decode<T>(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            var rlpDecoder = GetDecoder<T>();
+            IRlpStreamDecoder<T>? rlpDecoder = GetStreamDecoder<T>();
             return rlpDecoder != null ? rlpDecoder.Decode(rlpStream, rlpBehaviors) : throw new RlpException($"{nameof(Rlp)} does not support decoding {typeof(T).Name}");
         }
 
         public static T Decode<T>(ref ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            return GetDecoder<T>() is IRlpValueDecoder<T> rlpDecoder ? rlpDecoder.Decode(ref decoderContext, rlpBehaviors) : throw new RlpException($"{nameof(Rlp)} does not support decoding {typeof(T).Name}");
+            IRlpValueDecoder<T>? rlpDecoder = GetValueDecoder<T>();
+            return rlpDecoder != null ? rlpDecoder.Decode(ref decoderContext, rlpBehaviors) : throw new RlpException($"{nameof(Rlp)} does not support decoding {typeof(T).Name}");
         }
-
 
         public static Rlp Encode<T>(T item, RlpBehaviors behaviors = RlpBehaviors.None)
         {
@@ -170,7 +173,7 @@ namespace Nethermind.Serialization.Rlp
                 return Encode(new[] {rlp});
             }
 
-            var rlpDecoder = GetDecoder<T>();
+            IRlpObjectDecoder<T>? rlpDecoder = GetObjectDecoder<T>();
             return rlpDecoder != null ? rlpDecoder.Encode(item, behaviors) : throw new RlpException($"{nameof(Rlp)} does not support encoding {typeof(T).Name}");
         }
 
@@ -181,7 +184,7 @@ namespace Nethermind.Serialization.Rlp
                 return OfEmptySequence;
             }
 
-            IRlpDecoder<T> rlpDecoder = GetDecoder<T>();
+            IRlpObjectDecoder<T> rlpDecoder = GetObjectDecoder<T>();
             if (rlpDecoder is not null)
             {
                 Rlp[] rlpSequence = new Rlp[items.Length];
@@ -955,7 +958,7 @@ namespace Nethermind.Serialization.Rlp
                 private readonly int _prefix;
                 private readonly int _position;
                 private readonly int _dataLength;
-                private string _message;
+                private string? _message;
 
                 public DecodeKeccakRlpException(string message, Exception inner) : base(message, inner)
                 {
@@ -1556,7 +1559,7 @@ namespace Nethermind.Serialization.Rlp
 
         public static int LengthOf(LogEntry item)
         {
-            var rlpDecoder = GetDecoder<LogEntry>();
+            IRlpDecoder<LogEntry>? rlpDecoder = GetDecoder<LogEntry>();
             return rlpDecoder?.GetLength(item, RlpBehaviors.None) ?? throw new RlpException($"{nameof(Rlp)} does not support length of {nameof(LogEntry)}");
         }
     }

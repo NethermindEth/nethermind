@@ -20,7 +20,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.Serialization.Rlp
 {
-    public class HeaderDecoder : IRlpValueDecoder<BlockHeader>, IRlpDecoder<BlockHeader>
+    public class HeaderDecoder : IRlpValueDecoder<BlockHeader>, IRlpStreamDecoder<BlockHeader>
     {
         // TODO: need to take a decision on whether to make the whole RLP spec specific?
         // This would help with EIP1559 as well and could generally setup proper coders automatically, hmm
