@@ -19,6 +19,7 @@ using System.Collections.Generic;
 using FluentAssertions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
@@ -37,8 +38,10 @@ namespace Nethermind.Core.Test.Encoding
                 .WithType(TxType.AccessList)
                 .WithAccessList(
                     new AccessList(
-                        new HashSet<Address> {Address.Zero},
-                        new HashSet<StorageCell> {new StorageCell(Address.Zero, 1)}))
+                        new Dictionary<Address, IReadOnlySet<UInt256>>
+                        {
+                            {Address.Zero, new HashSet<UInt256> {(UInt256)1}}
+                        }))
                 .SignedAndResolved().TestObject, "accessL list");
         }
 

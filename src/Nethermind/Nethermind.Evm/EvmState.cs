@@ -21,6 +21,7 @@ using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using Nethermind.Core;
+using Nethermind.Int256;
 
 namespace Nethermind.Evm
 {
@@ -223,14 +224,16 @@ namespace Nethermind.Evm
 
         public void WarmUp(AccessList? accessList)
         {
-            foreach (Address address in accessList?.Addresses ?? Enumerable.Empty<Address>())
+            if (accessList != null)
             {
-                WarmUp(address);
-            }
-                    
-            foreach (StorageCell storageCell in accessList?.StorageCells ?? Enumerable.Empty<StorageCell>())
-            {
-                WarmUp(storageCell);
+                foreach ((Address address, IReadOnlySet<UInt256> storages) in accessList.Data)
+                {
+                    WarmUp(address);
+                    foreach (UInt256 storage in storages)
+                    {
+                        WarmUp(new StorageCell(address, storage));
+                    }
+                }
             }
         }
 

@@ -16,6 +16,7 @@
 // 
 
 using System.Collections.Generic;
+using System.Collections.Immutable;
 using System.IO;
 using FluentAssertions;
 using Nethermind.Core;
@@ -40,7 +41,6 @@ namespace Nethermind.Evm.Test
         {
             yield return (0, 0, 0);
             yield return (1, 0, 2400);
-            yield return (0, 1, 1900);
             yield return (1, 1, 4300);
             yield return (2, 2, 8600);
         }
@@ -63,19 +63,27 @@ namespace Nethermind.Evm.Test
         [TestCaseSource(nameof(AccessTestCaseSource))]
         public void Intrinsic_cost_is_calculated_properly((int Addresses, int Storages, long Cost) testCase)
         {
-            HashSet<Address> addresses = new();
-            for (int i = 0; i < testCase.Addresses; i++)
-            {
-                addresses.Add(TestItem.Addresses[i]);
-            }
+            Dictionary<Address, IReadOnlySet<UInt256>> data = new();
+            HashSet<UInt256> storages = new();
             
-            HashSet<StorageCell> storageCells = new();
             for (int i = 0; i < testCase.Storages; i++)
             {
-                storageCells.Add(new StorageCell(TestItem.Addresses[i], (UInt256)i));
+                storages.Add((UInt256)i);
+            }
+            
+            for (int i = 0; i < testCase.Addresses; i++)
+            {
+                if (i == 0)
+                {
+                    data[TestItem.Addresses[i]] = storages;
+                }
+                else
+                {
+                    data[TestItem.Addresses[i]] = ImmutableHashSet<UInt256>.Empty;
+                }
             }
 
-            AccessList accessList = new(addresses, storageCells);
+            AccessList accessList = new(data);
             Transaction tx = Build.A.Transaction.SignedAndResolved().WithAccessList(accessList).TestObject;
             void Test(IReleaseSpec spec, bool supportsAccessLists)
             {

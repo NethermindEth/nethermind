@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.IO;
+using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 
@@ -44,8 +45,8 @@ namespace Nethermind.Evm
             {
                 if (releaseSpec.UseTxAccessLists)
                 {
-                    result += transaction.AccessList.Addresses.Count * GasCostOf.AccessAccountListEntry;
-                    result += transaction.AccessList.StorageCells.Count * GasCostOf.AccessStorageListEntry;       
+                    result += transaction.AccessList.Data.Count * GasCostOf.AccessAccountListEntry;
+                    result += transaction.AccessList.Data.Sum(d => d.Value.Count) * GasCostOf.AccessStorageListEntry;       
                 }
                 else
                 {

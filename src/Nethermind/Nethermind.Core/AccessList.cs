@@ -16,18 +16,17 @@
 // 
 
 using System.Collections.Generic;
+using Nethermind.Int256;
 
 namespace Nethermind.Core
 {
     public class AccessList
     {
-        public AccessList(IReadOnlySet<Address> addresses, IReadOnlySet<StorageCell> storageCells)
+        public AccessList(IReadOnlyDictionary<Address, IReadOnlySet<UInt256>> data)
         {
-            Addresses = addresses;
-            StorageCells = storageCells;
+            Data = data;
         }
-        
-        public IReadOnlySet<Address> Addresses { get; }
-        public IReadOnlySet<StorageCell> StorageCells { get; }
+
+        public IReadOnlyDictionary<Address, IReadOnlySet<UInt256>> Data { get; }
     }
 }
