@@ -189,8 +189,8 @@ namespace Nethermind.Specs.ChainSpecStyle
         {
             AuRaParameters.Validator LoadValidator(ChainSpecJson.AuRaValidatorJson validatorJson, int level = 0)
             {
-                var validatorType = validatorJson.GetValidatorType();
-                var validator = new AuRaParameters.Validator() {ValidatorType = validatorType};
+                AuRaParameters.ValidatorType validatorType = validatorJson.GetValidatorType();
+                AuRaParameters.Validator validator = new() {ValidatorType = validatorType};
                 switch (validator.ValidatorType)
                 {
                     case AuRaParameters.ValidatorType.List:
@@ -294,20 +294,20 @@ namespace Nethermind.Specs.ChainSpecStyle
                 return;
             }
 
-            var nonce = chainSpecJson.Genesis.Seal.Ethereum?.Nonce ?? 0;
-            var mixHash = chainSpecJson.Genesis.Seal.Ethereum?.MixHash ?? Keccak.Zero;
+            UInt256 nonce = chainSpecJson.Genesis.Seal.Ethereum?.Nonce ?? 0;
+            Keccak mixHash = chainSpecJson.Genesis.Seal.Ethereum?.MixHash ?? Keccak.Zero;
 
-            var auRaSignature = chainSpecJson.Genesis.Seal.AuthorityRound?.Signature;
-            var step = chainSpecJson.Genesis.Seal.AuthorityRound?.Step;
+            byte[] auRaSignature = chainSpecJson.Genesis.Seal.AuthorityRound?.Signature;
+            long? step = chainSpecJson.Genesis.Seal.AuthorityRound?.Step;
 
-            var parentHash = chainSpecJson.Genesis.ParentHash ?? Keccak.Zero;
-            var timestamp = chainSpecJson.Genesis.Timestamp;
-            var difficulty = chainSpecJson.Genesis.Difficulty;
-            var extraData = chainSpecJson.Genesis.ExtraData ?? Array.Empty<byte>();
-            var gasLimit = chainSpecJson.Genesis.GasLimit;
-            var beneficiary = chainSpecJson.Genesis.Author ?? Address.Zero;
+            Keccak parentHash = chainSpecJson.Genesis.ParentHash ?? Keccak.Zero;
+            UInt256 timestamp = chainSpecJson.Genesis.Timestamp;
+            UInt256 difficulty = chainSpecJson.Genesis.Difficulty;
+            byte[] extraData = chainSpecJson.Genesis.ExtraData ?? Array.Empty<byte>();
+            UInt256 gasLimit = chainSpecJson.Genesis.GasLimit;
+            Address beneficiary = chainSpecJson.Genesis.Author ?? Address.Zero;
 
-            BlockHeader genesisHeader = new BlockHeader(
+            BlockHeader genesisHeader = new(
                 parentHash,
                 Keccak.OfAnEmptySequenceRlp,
                 beneficiary,
