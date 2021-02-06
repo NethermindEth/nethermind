@@ -434,7 +434,7 @@ namespace Nethermind.Consensus.Clique
 
             var selectedTxs = _txSource.GetTransactions(parentBlock.Header, header.GasLimit);
             Block block = new Block(header, selectedTxs, Array.Empty<BlockHeader>());
-            header.TxRoot = new TxTrie(block.Transactions, _specProvider.GetSpec(block.Number)).RootHash;
+            header.TxRoot = new TxTrie(block.Transactions).RootHash;
             block.Header.Author = _sealer.Address;
             return block;
         }

@@ -28,8 +28,6 @@ namespace Nethermind.Serialization.Rlp
         Storage = 4,
         Eip658Receipts = 8,
         AllowUnsigned = 16,
-        Eip1559 = 32,
-        UseTransactionTypes = 64,
-        All = AllowExtraData | ForSealing | Storage | Eip658Receipts | AllowUnsigned | Eip1559 | UseTransactionTypes
+        All = AllowExtraData | ForSealing | Storage | Eip658Receipts | AllowUnsigned
     }
 }

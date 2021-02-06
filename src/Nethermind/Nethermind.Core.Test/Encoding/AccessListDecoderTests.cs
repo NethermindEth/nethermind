@@ -16,9 +16,11 @@
 
 using System.Collections.Generic;
 using FluentAssertions;
+using Nethermind.Core.Eip2930;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Serialization.Rlp.Eip2930;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test.Encoding
@@ -73,9 +75,20 @@ namespace Nethermind.Core.Test.Encoding
         public void Roundtrip((string TestName, AccessList AccessList) testCase)
         {
             RlpStream rlpStream = new RlpStream(10000);
-            _decoder.Encode(rlpStream, testCase.AccessList, RlpBehaviors.UseTransactionTypes);
+            _decoder.Encode(rlpStream, testCase.AccessList);
             rlpStream.Position = 0;
-            AccessList decoded = _decoder.Decode(rlpStream, RlpBehaviors.UseTransactionTypes);
+            AccessList decoded = _decoder.Decode(rlpStream);
+            decoded.Should().BeEquivalentTo(testCase.AccessList, testCase.TestName);
+        }
+        
+        [TestCaseSource(nameof(TestCaseSource))]
+        public void Roundtrip_value((string TestName, AccessList AccessList) testCase)
+        {
+            RlpStream rlpStream = new RlpStream(10000);
+            _decoder.Encode(rlpStream, testCase.AccessList);
+            rlpStream.Position = 0;
+            Rlp.ValueDecoderContext ctx = rlpStream.Data.AsRlpValueContext();
+            AccessList decoded = _decoder.Decode(ref ctx);
             decoded.Should().BeEquivalentTo(testCase.AccessList, testCase.TestName);
         }
     }

@@ -44,7 +44,7 @@ namespace Nethermind.Blockchain.Test.Proofs
             Block block = Build.A.Block.WithTransactions(
                 _releaseSpec,
                  Build.A.Transaction.TestObject).TestObject;
-            TxTrie txTrie = new TxTrie(block.Transactions, _releaseSpec);
+            TxTrie txTrie = new TxTrie(block.Transactions);
 
             if (_releaseSpec == Berlin.Instance)
             {
@@ -62,7 +62,7 @@ namespace Nethermind.Blockchain.Test.Proofs
         public void Can_collect_proof_trie_case_1()
         {
             Block block = Build.A.Block.WithTransactions(_releaseSpec, Build.A.Transaction.TestObject).TestObject;
-            TxTrie txTrie = new TxTrie(block.Transactions, _releaseSpec, true);
+            TxTrie txTrie = new TxTrie(block.Transactions, true);
             byte[][] proof = txTrie.BuildProof(0);
             
             txTrie.UpdateRootHash();
@@ -75,7 +75,7 @@ namespace Nethermind.Blockchain.Test.Proofs
             Block block = Build.A.Block.WithTransactions(
                 _releaseSpec,
                 Build.A.Transaction.TestObject, Build.A.Transaction.TestObject).TestObject;
-            TxTrie txTrie = new TxTrie(block.Transactions, _releaseSpec, true);
+            TxTrie txTrie = new TxTrie(block.Transactions, true);
             byte[][] proof = txTrie.BuildProof(0);
             Assert.AreEqual(2, proof.Length);
             
@@ -89,7 +89,7 @@ namespace Nethermind.Blockchain.Test.Proofs
             Block block = Build.A.Block.WithTransactions(
                 _releaseSpec,
                 Enumerable.Repeat(Build.A.Transaction.TestObject, 1000).ToArray()).TestObject;
-            TxTrie txTrie = new TxTrie(block.Transactions, _releaseSpec, true);
+            TxTrie txTrie = new TxTrie(block.Transactions, true);
 
             txTrie.UpdateRootHash();
             for (int i = 0; i < 1000; i++)

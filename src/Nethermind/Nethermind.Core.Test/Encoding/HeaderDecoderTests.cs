@@ -110,7 +110,7 @@ namespace Nethermind.Core.Test.Encoding
             {
                 HeaderDecoder.Eip1559TransitionBlock = 0;
                 BlockHeader header = Build.A.BlockHeader.WithBaseFee(123).TestObject;
-                Rlp rlp = Rlp.Encode(header, RlpBehaviors.Eip1559);
+                Rlp rlp = Rlp.Encode(header);
                 BlockHeader blockHeader = Rlp.Decode<BlockHeader>(rlp);
                 blockHeader.BaseFee.Should().Be(123);
             }

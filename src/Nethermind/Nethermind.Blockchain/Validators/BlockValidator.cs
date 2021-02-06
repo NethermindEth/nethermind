@@ -99,7 +99,7 @@ namespace Nethermind.Blockchain.Validators
                 return false;
             }
 
-            Keccak txRoot = new TxTrie(block.Transactions, spec).RootHash;
+            Keccak txRoot = new TxTrie(block.Transactions).RootHash;
             if (txRoot != block.Header.TxRoot)
             {
                 if (_logger.IsDebug) _logger.Debug($"Invalid block ({block.ToString(Block.Format.FullHashAndNumber)}) tx root {txRoot} != stated tx root {block.Header.TxRoot}");

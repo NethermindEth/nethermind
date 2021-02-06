@@ -20,6 +20,7 @@ using System.Collections.Immutable;
 using System.IO;
 using FluentAssertions;
 using Nethermind.Core;
+using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
