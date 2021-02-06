@@ -28,7 +28,7 @@ namespace Nethermind.Consensus
 {
     public class Signer : ISigner, ISignerStore
     {
-        private readonly long _chainId;
+        private readonly ulong _chainId;
         private ProtectedPrivateKey? _key;
         private readonly ILogger _logger;
 
@@ -36,14 +36,14 @@ namespace Nethermind.Consensus
 
         public bool CanSign => _key != null;
 
-        public Signer(long chainId, PrivateKey key, ILogManager logManager)
+        public Signer(ulong chainId, PrivateKey key, ILogManager logManager)
         {
             _chainId = chainId;
             _logger = logManager?.GetClassLogger<Signer>() ?? throw new ArgumentNullException(nameof(logManager));
             SetSigner(key);
         }
         
-        public Signer(long chainId, ProtectedPrivateKey key, ILogManager logManager)
+        public Signer(ulong chainId, ProtectedPrivateKey key, ILogManager logManager)
         {
             _chainId = chainId;
             _logger = logManager?.GetClassLogger<Signer>() ?? throw new ArgumentNullException(nameof(logManager));
@@ -54,8 +54,8 @@ namespace Nethermind.Consensus
         {
             if (!CanSign) throw new InvalidOperationException("Cannot sign without provided key.");
             
-            using var key = _key.Unprotect();
-            var rs = Proxy.SignCompact(message.Bytes, key.KeyBytes, out int v);
+            using PrivateKey key = _key!.Unprotect();
+            byte[] rs = Proxy.SignCompact(message.Bytes, key.KeyBytes, out int v);
             return new Signature(rs, v);
         }
 
@@ -63,7 +63,7 @@ namespace Nethermind.Consensus
         {
             Keccak hash = Keccak.Compute(Rlp.Encode(tx, true, true, _chainId).Bytes);
             tx.Signature = Sign(hash);
-            tx.Signature.V = tx.Signature.V + 8 + 2 * (ulong)_chainId;
+            tx.Signature.V = tx.Signature.V + 8 + 2 * _chainId;
             return default;
         }
 

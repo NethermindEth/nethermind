@@ -24,9 +24,9 @@ namespace Nethermind.Wallet
     public class WalletTxSigner : ITxSigner
     {
         private readonly IWallet _wallet;
-        private readonly long _chainId;
+        private readonly ulong _chainId;
 
-        public WalletTxSigner(IWallet wallet, long chainId)
+        public WalletTxSigner(IWallet wallet, ulong chainId)
         {
             _wallet = wallet;
             _chainId = chainId;

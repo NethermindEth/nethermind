@@ -56,7 +56,7 @@ namespace Nethermind.Serialization.Rlp
             if (transaction.Type == TxType.AccessList)
             {
                 // for now EIP-1559 is not EIP-2718
-                transaction.ChainId = rlpStream.DecodeLong();
+                transaction.ChainId = rlpStream.DecodeULong();
             }
             else
             {
@@ -125,7 +125,7 @@ namespace Nethermind.Serialization.Rlp
             if (transaction.Type == TxType.AccessList)
             {
                 // for now EIP-1559 is not EIP-2718
-                transaction.ChainId = decoderContext.DecodeLong();
+                transaction.ChainId = decoderContext.DecodeULong();
             }
             else
             {

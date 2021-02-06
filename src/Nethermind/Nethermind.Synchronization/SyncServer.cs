@@ -98,7 +98,7 @@ namespace Nethermind.Synchronization
             _pivotHash = new Keccak(_syncConfig.PivotHash ?? Keccak.Zero.ToString());
         }
 
-        public long ChainId => _blockTree.ChainId;
+        public ulong ChainId => _blockTree.ChainId;
         public BlockHeader Genesis => _blockTree.Genesis;
 
         public BlockHeader? Head

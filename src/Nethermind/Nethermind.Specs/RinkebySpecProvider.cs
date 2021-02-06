@@ -79,7 +79,7 @@ namespace Nethermind.Specs
         public const long IstanbulBlockNumber  = 5435345;
         public const long BerlinBlockNumber  = long.MaxValue - 1;
 
-        public long ChainId => 4;
+        public ulong ChainId => 4;
 
         public long[] TransitionBlocks { get; } =
         {

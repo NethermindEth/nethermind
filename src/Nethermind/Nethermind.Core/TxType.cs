@@ -20,6 +20,6 @@ namespace Nethermind.Core
     public enum TxType : byte
     {
         Legacy = 0,
-        AccessList = 1,
+        AccessList = 1
     }
 }

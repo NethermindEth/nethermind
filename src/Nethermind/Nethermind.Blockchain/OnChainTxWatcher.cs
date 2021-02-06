@@ -31,7 +31,7 @@ namespace Nethermind.Blockchain
         private readonly ISpecProvider _specProvider;
         private readonly ILogger _logger;
 
-        public OnChainTxWatcher(IBlockTree blockTree, ITxPool txPool, ISpecProvider specProvider, ILogManager logManager)
+        public OnChainTxWatcher(IBlockTree blockTree, ITxPool txPool, ISpecProvider? specProvider, ILogManager logManager)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
@@ -53,7 +53,7 @@ namespace Nethermind.Blockchain
                 });
         }
 
-        private void ProcessBlock(Block block, Block previousBlock)
+        private void ProcessBlock(Block block, Block? previousBlock)
         {
             for (int i = 0; i < block.Transactions?.Length; i++)
             {
@@ -61,7 +61,7 @@ namespace Nethermind.Blockchain
             }
             
             // the hash will only be the same during perf test runs / modified DB states
-            if (previousBlock != null)
+            if (previousBlock is not null)
             {
                 bool isEip155Enabled = _specProvider.GetSpec(previousBlock.Number).IsEip155Enabled;
                 for (int i = 0; i < previousBlock.Transactions?.Length; i++)

@@ -16,6 +16,7 @@
 
 using System;
 using System.Globalization;
+using System.IO;
 using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -31,13 +32,18 @@ namespace Nethermind.Crypto
     /// </summary>
     public class EthereumEcdsa : Ecdsa, IEthereumEcdsa
     {
-        public static readonly BigInteger MaxLowS = BigInteger.Parse("7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF5D576E7357A4501DDFE92F46681B20A0", NumberStyles.HexNumber);
-        public static readonly BigInteger LowSTransform = BigInteger.Parse("00FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141", NumberStyles.HexNumber);
+        public static readonly BigInteger MaxLowS =
+            BigInteger.Parse("7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF5D576E7357A4501DDFE92F46681B20A0",
+                NumberStyles.HexNumber);
 
-        private readonly long _chainIdValue;
+        public static readonly BigInteger LowSTransform =
+            BigInteger.Parse("00FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141",
+                NumberStyles.HexNumber);
+
+        private readonly ulong _chainIdValue;
         private readonly ILogger _logger;
 
-        public EthereumEcdsa(long chainId, ILogManager logManager)
+        public EthereumEcdsa(ulong chainId, ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _chainIdValue = chainId;
@@ -45,10 +51,10 @@ namespace Nethermind.Crypto
 
         public void Sign(PrivateKey privateKey, Transaction tx, bool isEip155Enabled)
         {
-            if(_logger.IsDebug)
+            if (_logger.IsDebug)
                 _logger.Debug(
                     $"Signing transaction {tx.SenderAddress} -> {tx.To} ({tx.Value}) with data of length {tx.Data?.Length}");
-            
+
             Keccak hash = Keccak.Compute(Rlp.Encode(tx, true, isEip155Enabled, _chainIdValue).Bytes);
             tx.Signature = Sign(privateKey, hash);
             if (isEip155Enabled)
@@ -56,7 +62,7 @@ namespace Nethermind.Crypto
                 tx.Signature.V = tx.Signature.V + 8 + 2 * (ulong)_chainIdValue;
             }
 
-            if(_logger.IsDebug) _logger.Debug($"Transaction {tx.SenderAddress} -> {tx.To} ({tx.Value}) signed");
+            if (_logger.IsDebug) _logger.Debug($"Transaction {tx.SenderAddress} -> {tx.To} ({tx.Value}) signed");
         }
 
         /// <summary>
@@ -75,13 +81,36 @@ namespace Nethermind.Crypto
         /// 
         /// </summary>
         /// <param name="tx"></param>
-        /// <param name="useTxChainId"></param>
+        /// <param name="useSignatureChainId"></param>
         /// <returns></returns>
-        public Address RecoverAddress(Transaction tx, bool useTxChainId = false)
+        public Address RecoverAddress(Transaction tx, bool useSignatureChainId = false)
         {
-            useTxChainId &= tx.Signature.ChainId.HasValue;
-            bool applyEip155 = useTxChainId || tx.Signature.V == (ulong)_chainIdValue * 2 + 35ul || tx.Signature.V == (ulong)_chainIdValue * 2 + 36ul;
-            var chainId = useTxChainId ? tx.Signature.ChainId.Value : _chainIdValue;
+            if (tx.Signature == null)
+            {
+                throw new InvalidDataException("Cannot recover sender address from a transaction without a signature.");
+            }
+            
+            useSignatureChainId &= tx.Signature.ChainId.HasValue;
+
+            // feels like it is the same check twice
+            bool applyEip155 = useSignatureChainId
+                               || tx.Signature.V == _chainIdValue * 2 + 35ul
+                               || tx.Signature.V == _chainIdValue * 2 + 36ul;
+
+            ulong chainId;
+            switch (tx.Type)
+            {
+                case TxType.Legacy when useSignatureChainId:
+                    chainId = tx.Signature.ChainId.Value;
+                    break;
+                case TxType.Legacy:
+                    chainId = _chainIdValue;
+                    break;
+                default:
+                    chainId = tx.ChainId;
+                    break;
+            }
+
             Keccak hash = Keccak.Compute(Rlp.Encode(tx, true, applyEip155, chainId).Bytes);
             return RecoverAddress(tx.Signature, hash);
         }
@@ -90,16 +119,17 @@ namespace Nethermind.Crypto
         {
             return RecoverAddress(signature.BytesWithRecovery, message);
         }
-        
+
         public Address RecoverAddress(Span<byte> signatureBytes, Keccak message)
         {
             Span<byte> publicKey = stackalloc byte[65];
-            bool success = Proxy.RecoverKeyFromCompact(publicKey, message.Bytes, signatureBytes.Slice(0, 64), signatureBytes[64], false);
+            bool success = Proxy.RecoverKeyFromCompact(publicKey, message.Bytes, signatureBytes.Slice(0, 64),
+                signatureBytes[64], false);
             if (!success)
             {
                 return null;
             }
-            
+
             return PublicKey.ComputeAddress(publicKey.Slice(1, 64));
         }
     }

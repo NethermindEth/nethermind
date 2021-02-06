@@ -14,7 +14,6 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System;
 using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -27,15 +26,10 @@ namespace Nethermind.Blockchain.Validators
 {
     public class TxValidator : ITxValidator
     {
-        private readonly long _chainIdValue;
+        private readonly ulong _chainIdValue;
 
-        public TxValidator(long chainId)
+        public TxValidator(ulong chainId)
         {
-            if (chainId < 0)
-            {
-                throw new ArgumentException("Unexpected negative value", nameof(chainId));
-            }
-
             _chainIdValue = chainId;
         }
 

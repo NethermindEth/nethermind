@@ -947,6 +947,40 @@ namespace Nethermind.Serialization.Rlp
             return result;
         }
 
+        public ulong DecodeULong()
+        {
+            int prefix = ReadByte();
+            if (prefix < 128)
+            {
+                return (ulong)prefix;
+            }
+
+            if (prefix == 128)
+            {
+                return 0;
+            }
+
+            int length = prefix - 128;
+            if (length > 8)
+            {
+                throw new RlpException($"Unexpected length of long value: {length}");
+            }
+
+            ulong result = 0;
+            for (int i = 8; i > 0; i--)
+            {
+                result = result << 8;
+                if (i <= length)
+                {
+                    result = result | PeekByte(length - i);
+                }
+            }
+
+            SkipBytes(length);
+
+            return result;
+        }
+
         public ulong DecodeUlong()
         {
             ReadOnlySpan<byte> bytes = DecodeByteArraySpan();

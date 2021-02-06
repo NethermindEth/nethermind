@@ -91,7 +91,7 @@ namespace Nethermind.Blockchain
         }
 
         public long BestKnownNumber { get; private set; }
-        public long ChainId => _specProvider.ChainId;
+        public ulong ChainId => _specProvider.ChainId;
 
         private int _canAcceptNewBlocksCounter;
         public bool CanAcceptNewBlocks => _canAcceptNewBlocksCounter == 0;

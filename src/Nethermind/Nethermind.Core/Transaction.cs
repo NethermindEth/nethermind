@@ -29,7 +29,7 @@ namespace Nethermind.Core
     {
         public const int BaseTxGasCost = 21000;
 
-        public long ChainId { get; set; }
+        public ulong ChainId { get; set; }
         
         /// <summary>
         /// EIP-2718 transaction type

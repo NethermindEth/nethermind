@@ -189,7 +189,7 @@ namespace Nethermind.Specs.ChainSpecStyle
 
         public long? DaoBlockNumber => _chainSpec.DaoForkBlockNumber;
 
-        public long ChainId => _chainSpec.ChainId;
+        public ulong ChainId => _chainSpec.ChainId;
         public long[] TransitionBlocks { get; private set; }
     };
 }

@@ -31,7 +31,6 @@ using Nethermind.Evm.Precompiles.Snarks.Shamatar;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.State;
-using Nethermind.Trie;
 
 [assembly: InternalsVisibleTo("Nethermind.Evm.Test")]
 
@@ -91,7 +90,7 @@ namespace Nethermind.Evm
             _storage = storageProvider ?? throw new ArgumentNullException(nameof(storageProvider));
             _blockhashProvider = blockhashProvider ?? throw new ArgumentNullException(nameof(blockhashProvider));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-            _chainId = specProvider.ChainId.ToBigEndianByteArray();
+            _chainId = ((UInt256)specProvider.ChainId).ToBigEndian();
             InitializePrecompiledContracts();
         }
 

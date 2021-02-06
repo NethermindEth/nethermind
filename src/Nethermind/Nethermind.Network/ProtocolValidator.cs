@@ -34,9 +34,9 @@ namespace Nethermind.Network
         private readonly IBlockTree _blockTree;
         private ILogger _logger;
 
-        public ProtocolValidator(INodeStatsManager nodeStatsManager, IBlockTree blockTree, ILogManager logManager)
+        public ProtocolValidator(INodeStatsManager nodeStatsManager, IBlockTree blockTree, ILogManager? logManager)
         {
-            _logger = logManager?.GetClassLogger<ProtocolValidator>();
+            _logger = logManager?.GetClassLogger<ProtocolValidator>() ?? throw new ArgumentNullException(nameof(logManager));
             _nodeStatsManager = nodeStatsManager ?? throw new ArgumentNullException(nameof(nodeStatsManager));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
         }
@@ -71,7 +71,7 @@ namespace Nethermind.Network
                     SyncPeerProtocolInitializedEventArgs syncPeerArgs = (SyncPeerProtocolInitializedEventArgs) eventArgs;
                     if (!ValidateChainId(syncPeerArgs.ChainId))
                     {
-                        if (_logger.IsTrace) _logger.Trace($"Initiating disconnect with peer: {session.RemoteNodeId}, different chainId: {ChainId.GetChainName((int) syncPeerArgs.ChainId)}, our chainId: {ChainId.GetChainName(_blockTree.ChainId)}");
+                        if (_logger.IsTrace) _logger.Trace($"Initiating disconnect with peer: {session.RemoteNodeId}, different chainId: {ChainId.GetChainName(syncPeerArgs.ChainId)}, our chainId: {ChainId.GetChainName(_blockTree.ChainId)}");
                         _nodeStatsManager.ReportFailedValidation(session.Node, CompatibilityValidationType.ChainId);
                         Disconnect(session, DisconnectReason.UselessPeer, $"invalid chain id - {syncPeerArgs.ChainId}");
                         if (session.Node.IsStatic && _logger.IsWarn) _logger.Warn($"Disconnected an invalid static node: {session.Node.Host}:{session.Node.Port}, reason: {DisconnectReason.UselessPeer} (invalid chain id - {syncPeerArgs.ChainId})");
@@ -115,7 +115,7 @@ namespace Nethermind.Network
                     x.Version == 65));
         }
 
-        private bool ValidateChainId(long chainId)
+        private bool ValidateChainId(ulong chainId)
         {
             return chainId == _blockTree.ChainId;
         }

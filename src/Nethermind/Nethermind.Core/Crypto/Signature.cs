@@ -92,7 +92,7 @@ namespace Nethermind.Core.Crypto
         public byte[] Bytes { get; } = new byte[64];
         public ulong V { get; set; }
 
-        public int? ChainId => V < 35 ? null : (int?) (V + (V % 2) - 36) / 2;
+        public ulong? ChainId => V < 35 ? null : (ulong?) (V + (V % 2) - 36) / 2;
 
         public byte RecoveryId => V <= VOffset + 1 ? (byte) (V - VOffset) : (byte) (1 - V % 2);
 

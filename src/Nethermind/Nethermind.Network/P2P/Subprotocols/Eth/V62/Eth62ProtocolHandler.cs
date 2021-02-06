@@ -174,9 +174,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 
             ReceivedProtocolInitMsg(status);
 
-            SyncPeerProtocolInitializedEventArgs eventArgs = new SyncPeerProtocolInitializedEventArgs(this)
+            SyncPeerProtocolInitializedEventArgs eventArgs = new(this)
             {
-                ChainId = (long) status.ChainId,
+                ChainId = (ulong)status.ChainId,
                 BestHash = status.BestHash,
                 GenesisHash = status.GenesisHash,
                 Protocol = status.Protocol,
@@ -201,7 +201,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                 _floodController.Report(result == AddTxResult.Added);
 
                 if (Logger.IsTrace) Logger.Trace(
-                    $"{Node:c} sent {tx.Hash} tx and it was {result} (chain ID = {tx.Signature.ChainId})");
+                    $"{Node:c} sent {tx.Hash} tx and it was {result} (chain ID = {tx.Signature?.ChainId})");
             }
         }
 

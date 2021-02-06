@@ -234,7 +234,7 @@ namespace Nethermind.Serialization.Rlp
             Transaction transaction,
             bool forSigning,
             bool isEip155Enabled = false,
-            long chainId = 0)
+            ulong chainId = 0)
         {
             int extraItems = transaction.IsEip1559 ? 2 : 0;
             if (!forSigning || (isEip155Enabled && chainId != 0))
@@ -1349,6 +1349,40 @@ namespace Nethermind.Serialization.Rlp
                 }
 
                 long result = 0;
+                for (int i = 8; i > 0; i--)
+                {
+                    result = result << 8;
+                    if (i <= length)
+                    {
+                        result = result | PeekByte(length - i);
+                    }
+                }
+
+                SkipBytes(length);
+
+                return result;
+            }
+            
+            public ulong DecodeULong()
+            {
+                int prefix = ReadByte();
+                if (prefix < 128)
+                {
+                    return (ulong)prefix;
+                }
+
+                if (prefix == 128)
+                {
+                    return 0;
+                }
+
+                int length = prefix - 128;
+                if (length > 8)
+                {
+                    throw new RlpException($"Unexpected length of long value: {length}");
+                }
+
+                ulong result = 0ul;
                 for (int i = 8; i > 0; i--)
                 {
                     result = result << 8;

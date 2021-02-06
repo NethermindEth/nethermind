@@ -43,7 +43,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             _wallet = wallet;
         }
 
-        public ResultWrapper<long> eth_chainId()
+        public ResultWrapper<ulong> eth_chainId()
         {
             throw new NotSupportedException();
         }
@@ -138,12 +138,12 @@ namespace Nethermind.JsonRpc.Modules.Eth
             var transaction = rpcTx.ToTransactionWithDefaults();
             if (transaction.Signature is null)
             {
-                var chainIdResult = await _proxy.eth_chainId();
-                var chainId = chainIdResult?.IsValid == true ? (int) chainIdResult.Result : 0;
-                var nonceResult =
+                RpcResult<UInt256> chainIdResult = await _proxy.eth_chainId();
+                ulong chainId = chainIdResult?.IsValid == true ? (ulong)chainIdResult.Result : 0;
+                RpcResult<UInt256?> nonceResult =
                     await _proxy.eth_getTransactionCount(transaction.SenderAddress, BlockParameterModel.Pending);
                 transaction.Nonce = nonceResult?.IsValid == true ? nonceResult.Result ?? UInt256.Zero : UInt256.Zero;
-                _wallet.Sign(transaction, chainId);
+                WalletExtensions.Sign(_wallet, transaction, chainId);
             }
 
             return ResultWrapper<Keccak>.From(await _proxy.eth_sendRawTransaction(Rlp.Encode(transaction).Bytes));
