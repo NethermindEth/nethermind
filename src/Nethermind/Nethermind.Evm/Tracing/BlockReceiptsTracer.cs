@@ -81,13 +81,8 @@ namespace Nethermind.Evm.Tracing
 
         private TxReceipt BuildReceipt(Address recipient, long spentGas, byte statusCode, LogEntry[] logEntries, Keccak stateRoot = null)
         {
-            if (statusCode != 1)
-            {
-                
-            }
-            
             Transaction transaction = _block.Transactions[_currentIndex];
-            TxReceipt txReceipt = new TxReceipt();
+            TxReceipt txReceipt = new();
             txReceipt.Logs = logEntries;
             if (logEntries.Length > 0)
             {
@@ -96,7 +91,8 @@ namespace Nethermind.Evm.Tracing
                     _block.Header.Bloom = new Bloom();
                 }
             }
-            
+
+            txReceipt.TxType = transaction.Type; 
             txReceipt.Bloom = logEntries.Length == 0 ? Bloom.Empty : new Bloom(logEntries, _block.Bloom);
             txReceipt.GasUsedTotal = _block.GasUsed;
             txReceipt.StatusCode = statusCode;

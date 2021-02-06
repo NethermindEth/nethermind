@@ -16,6 +16,7 @@
 
 using System;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -47,6 +48,12 @@ namespace Nethermind.State.Proofs
                     releaseSpec.IsEip658Enabled
                         ? RlpBehaviors.Eip658Receipts
                         : RlpBehaviors.None);
+                
+                if (txReceipts[i].TxType != TxType.Legacy)
+                {
+                    receiptRlp = Bytes.Concat((byte)txReceipts[i].TxType, receiptRlp);
+                }
+                
                 Set(Rlp.Encode(i).Bytes, receiptRlp);
             }
 

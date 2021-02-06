@@ -295,7 +295,7 @@ namespace Nethermind.Serialization.Rlp.Eip2930
         {
             if (accessList is null)
             {
-                return 0;
+                return 1;
             }
 
             int contentLength = GetContentLength(accessList);

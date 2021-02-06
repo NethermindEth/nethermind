@@ -127,5 +127,11 @@ namespace Nethermind.Core.Test.Encoding
                 decoded!.Data.Should().BeEquivalentTo(testCase.AccessList.Data, testCase.TestName);
             }
         }
+        
+        [Test]
+        public void Get_length_returns_1_for_null()
+        {
+            _decoder.GetLength(null, RlpBehaviors.None).Should().Be(1);
+        }
     }
 }

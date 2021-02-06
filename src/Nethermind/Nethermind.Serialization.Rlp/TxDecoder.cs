@@ -259,12 +259,16 @@ namespace Nethermind.Serialization.Rlp
 
             if (item.Type != TxType.Legacy)
             {
-                stream.StartByteArray(sequenceLength + 1, false);
+                if ((rlpBehaviors & RlpBehaviors.ForTxRoot) == RlpBehaviors.None)
+                {
+                    stream.StartByteArray(sequenceLength + 1, false);
+                }
+                
                 stream.WriteByte((byte)item.Type);
             }
 
             stream.StartSequence(contentLength);
-            if (item.Type == TxType.AccessList) stream.Encode(item.ChainId!.Value);
+            if (item.Type != TxType.Legacy) stream.Encode(item.ChainId!.Value);
             stream.Encode(item.Nonce);
             stream.Encode(item.IsEip1559 ? 0 : item.GasPrice);
             stream.Encode(item.GasLimit);
@@ -339,8 +343,11 @@ namespace Nethermind.Serialization.Rlp
             int txContentLength = GetContentLength(tx, false);
             int txPayloadLength = Rlp.GetSequenceRlpLength(txContentLength);
 
+            bool isForTxRoot = (rlpBehaviors & RlpBehaviors.ForTxRoot) == RlpBehaviors.ForTxRoot;
             int result = tx.Type != TxType.Legacy
-                ? Rlp.GetSequenceRlpLength(1 + txPayloadLength) // Rlp(TransactionType || TransactionPayload)
+                ? isForTxRoot
+                    ? (1 + txPayloadLength)
+                    : Rlp.GetSequenceRlpLength(1 + txPayloadLength) // Rlp(TransactionType || TransactionPayload)
                 : txPayloadLength;
             return result;
         }
