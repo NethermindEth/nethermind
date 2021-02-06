@@ -29,7 +29,7 @@ namespace Nethermind.Core.Test.Encoding
     public class AccessListDecoderTests
     {
         private readonly AccessListDecoder _decoder = new AccessListDecoder();
-        
+
         public static IEnumerable<(string, AccessList)> TestCaseSource()
         {
             yield return ("null", null);
@@ -42,26 +42,26 @@ namespace Nethermind.Core.Test.Encoding
             data = new Dictionary<Address, IReadOnlySet<UInt256>>();
             data.Add(TestItem.AddressA, indexes);
             yield return ("no storage", new AccessList(data));
-            
+
             indexes = new HashSet<UInt256>();
             data = new Dictionary<Address, IReadOnlySet<UInt256>>();
             data.Add(TestItem.AddressA, indexes);
             data.Add(TestItem.AddressB, indexes);
             yield return ("no storage 2", new AccessList(data));
-            
+
             indexes = new HashSet<UInt256>();
             data = new Dictionary<Address, IReadOnlySet<UInt256>>();
             data.Add(TestItem.AddressA, indexes);
             indexes.Add(1);
             yield return ("1-1", new AccessList(data));
-            
+
             indexes = new HashSet<UInt256>();
             data = new Dictionary<Address, IReadOnlySet<UInt256>>();
             data.Add(TestItem.AddressA, indexes);
             indexes.Add(1);
             indexes.Add(2);
             yield return ("1-2", new AccessList(data));
-            
+
             indexes = new HashSet<UInt256>();
             data = new Dictionary<Address, IReadOnlySet<UInt256>>();
             indexes.Add(1);
@@ -69,8 +69,30 @@ namespace Nethermind.Core.Test.Encoding
             data.Add(TestItem.AddressA, indexes);
             data.Add(TestItem.AddressB, indexes);
             yield return ("2-2", new AccessList(data));
+
+            indexes = new HashSet<UInt256>();
+            var indexes2 = new HashSet<UInt256>();
+            data = new Dictionary<Address, IReadOnlySet<UInt256>>();
+            indexes.Add(1);
+            indexes2.Add(2);
+            data.Add(TestItem.AddressA, indexes);
+            data.Add(TestItem.AddressB, indexes2);
+            AccessList accessList = new AccessList(data,
+                new Queue<object>(new List<object> {TestItem.AddressA, (UInt256)1, TestItem.AddressB, (UInt256)2}));
+            yield return ("with order queue", accessList);
+            
+            indexes = new HashSet<UInt256>();
+            indexes2 = new HashSet<UInt256>();
+            data = new Dictionary<Address, IReadOnlySet<UInt256>>();
+            indexes.Add(1);
+            indexes2.Add(2);
+            data.Add(TestItem.AddressA, indexes);
+            data.Add(TestItem.AddressB, indexes2);
+            accessList = new AccessList(data,
+                new Queue<object>(new List<object> {TestItem.AddressA, (UInt256)1, (UInt256)1, TestItem.AddressB, (UInt256)2, TestItem.AddressB, (UInt256)2}));
+            yield return ("with order queue and duplicates", accessList);
         }
-        
+
         [TestCaseSource(nameof(TestCaseSource))]
         public void Roundtrip((string TestName, AccessList AccessList) testCase)
         {
@@ -78,9 +100,16 @@ namespace Nethermind.Core.Test.Encoding
             _decoder.Encode(rlpStream, testCase.AccessList);
             rlpStream.Position = 0;
             AccessList decoded = _decoder.Decode(rlpStream);
-            decoded.Should().BeEquivalentTo(testCase.AccessList, testCase.TestName);
+            if (testCase.AccessList is null)
+            {
+                decoded.Should().BeNull();
+            }
+            else
+            {
+                decoded!.Data.Should().BeEquivalentTo(testCase.AccessList.Data, testCase.TestName);
+            }
         }
-        
+
         [TestCaseSource(nameof(TestCaseSource))]
         public void Roundtrip_value((string TestName, AccessList AccessList) testCase)
         {
@@ -89,7 +118,14 @@ namespace Nethermind.Core.Test.Encoding
             rlpStream.Position = 0;
             Rlp.ValueDecoderContext ctx = rlpStream.Data.AsRlpValueContext();
             AccessList decoded = _decoder.Decode(ref ctx);
-            decoded.Should().BeEquivalentTo(testCase.AccessList, testCase.TestName);
+            if (testCase.AccessList is null)
+            {
+                decoded.Should().BeNull();
+            }
+            else
+            {
+                decoded!.Data.Should().BeEquivalentTo(testCase.AccessList.Data, testCase.TestName);
+            }
         }
     }
 }

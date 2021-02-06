@@ -51,12 +51,16 @@ namespace Nethermind.Serialization.Rlp
             int lastCheck = rlpStream.Position + transactionLength;
             rlpStream.SkipLength();
             int numberOfSequenceFields = rlpStream.ReadNumberOfItemsRemaining(lastCheck);
-            
-            bool isEip1559 = numberOfSequenceFields == 11;
 
-            if (transaction.Type != TxType.Legacy)
+            bool isEip1559 = false;
+            if (transaction.Type == TxType.AccessList)
             {
+                // for now EIP-1559 is not EIP-2718
                 transaction.ChainId = rlpStream.DecodeLong();
+            }
+            else
+            {
+                isEip1559 = numberOfSequenceFields == 11;
             }
 
             transaction.Nonce = rlpStream.DecodeUInt256();
@@ -91,6 +95,9 @@ namespace Nethermind.Serialization.Rlp
             return transaction;
         }
 
+        // b9018201f9017e86796f6c6f763304843b9aca00829ab0948a8eafb1cf62bfbeb1741769dae1a9dd479961928080f90111f859940000000000000000000000000000000000001337f842a00000000000000000000000000000000000000000000000000000000000000000a00000000000000000000000000000000000000133700000000000000000000000f859940000000000000000000000000000000000001337f842a00000000000000000000000000000000000000000000000000000000000000000a00000000000000000000000000000000000000133700000000000000000000000f859940000000000000000000000000000000000001337f842a00000000000000000000000000000000000000000000000000000000000000000a0000000000000000000000000000000000000013370000000000000000000000080a09e41e382c76d2913521d7191ecced4a1a16fe0f3e5e22d83d50dd58adbe409e1a07c0e036eff80f9ca192ac26d533fc49c280d90c8b62e90c1a1457b50e51e6144
+        // b8__ca01f8__c786796f6c6f763304843b9aca00829ab0948a8eafb1cf62bfbeb1741769dae1a9dd479961928080f8__5bf859940000000000000000000000000000000000001337f842a00000000000000000000000000000000000000000000000000000000000000000a00000000000000000000000000000000000000133700000000000000000000000f859940000000000000000000000000000000000001337f842a00000000000000000000000000000000000000000000000000000000000000000a00000000000000000000000000000000000000133700000000000000000000000f859940000000000000000000000000000000000001337f842a00000000000000000000000000000000000000000000000000000000000000000a0000000000000000000000000000000000000013370000000000000000000000080a09e41e382c76d2913521d7191ecced4a1a16fe0f3e5e22d83d50dd58adbe409e1a07c0e036eff80f9ca192ac26d533fc49c280d90c8b62e90c1a1457b50e51e6144000000
+        
         public Transaction? Decode(ref Rlp.ValueDecoderContext decoderContext,
             RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
@@ -114,11 +121,15 @@ namespace Nethermind.Serialization.Rlp
             decoderContext.SkipLength();
             int numberOfSequenceFields = decoderContext.ReadNumberOfItemsRemaining(lastCheck);
 
-            bool isEip1559 = numberOfSequenceFields == 11;
-
-            if (transaction.Type != TxType.Legacy)
+            bool isEip1559 = false;
+            if (transaction.Type == TxType.AccessList)
             {
+                // for now EIP-1559 is not EIP-2718
                 transaction.ChainId = decoderContext.DecodeLong();
+            }
+            else
+            {
+                isEip1559 = numberOfSequenceFields == 11;
             }
 
             transaction.Nonce = decoderContext.DecodeUInt256();

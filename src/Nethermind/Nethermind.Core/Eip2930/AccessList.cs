@@ -16,6 +16,7 @@
 // 
 
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using Nethermind.Int256;
 
 namespace Nethermind.Core.Eip2930
@@ -34,7 +35,7 @@ namespace Nethermind.Core.Eip2930
         /// <summary>
         /// Only used for access lists generated outside of Nethermind
         /// </summary>
-        public Queue<object>? OrderQueue { get; }
+        public IReadOnlyCollection<object>? OrderQueue { get; }
         
         /// <summary>
         /// Has no duplicate entries (allows for more efficient serialization / deserialization)

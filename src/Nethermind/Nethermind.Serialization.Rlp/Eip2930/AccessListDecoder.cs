@@ -25,8 +25,6 @@ namespace Nethermind.Serialization.Rlp.Eip2930
 {
     public class AccessListDecoder : IRlpStreamDecoder<AccessList?>, IRlpValueDecoder<AccessList?>
     {
-        private readonly HashSet<UInt256> _emptyStorages = new();
-
         /// <summary>
         /// We pay a high code quality tax for the performance optimization on RLP.
         /// Adding more RLP decoders is costly (time wise) but the path taken saves a lot of allocations and GC.
@@ -45,30 +43,29 @@ namespace Nethermind.Serialization.Rlp.Eip2930
             int length = rlpStream.PeekNextRlpLength();
             int check = rlpStream.Position + length;
             rlpStream.SkipLength();
-            Dictionary<Address, IReadOnlySet<UInt256>> data = new();
+
+            AccessListBuilder accessListBuilder = new();
             while (rlpStream.Position < check)
             {
                 rlpStream.SkipLength();
-                Address? address = rlpStream.DecodeAddress();
-                if (address is null)
+                Address address = rlpStream.DecodeAddress();
+                if (address == null)
                 {
                     throw new RlpException("Invalid tx access list format - address is null");
                 }
 
-                HashSet<UInt256> storages = _emptyStorages;
+                accessListBuilder.AddAddress(address);
+
                 if (rlpStream.Position < check)
                 {
                     int storageCheck = rlpStream.Position + rlpStream.PeekNextRlpLength();
                     rlpStream.SkipLength();
-                    storages = new HashSet<UInt256>();
                     while (rlpStream.Position < storageCheck)
                     {
                         UInt256 index = rlpStream.DecodeUInt256();
-                        storages.Add(index);
+                        accessListBuilder.AddStorage(index);
                     }
                 }
-
-                data[address] = storages;
             }
 
             if ((rlpBehaviors & RlpBehaviors.AllowExtraData) != RlpBehaviors.AllowExtraData)
@@ -76,7 +73,7 @@ namespace Nethermind.Serialization.Rlp.Eip2930
                 rlpStream.Check(check);
             }
 
-            return new AccessList(data);
+            return accessListBuilder.ToAccessList();
         }
 
         /// <summary>
@@ -158,6 +155,7 @@ namespace Nethermind.Serialization.Rlp.Eip2930
                 if (!item.IsNormalized)
                 {
                     AccessListItem? currentItem = default;
+
                     void SerializeCurrent()
                     {
                         if (currentItem is not null)
@@ -167,7 +165,7 @@ namespace Nethermind.Serialization.Rlp.Eip2930
                         }
                     }
 
-                    while (item.OrderQueue!.TryDequeue(out object accessListEntry))
+                    foreach (object accessListEntry in item.OrderQueue!)
                     {
                         if (accessListEntry is Address address)
                         {
@@ -184,7 +182,7 @@ namespace Nethermind.Serialization.Rlp.Eip2930
                             }
 
                             currentItem.Value.Indexes.Add((UInt256)accessListEntry);
-                        }
+                        }   
                     }
 
                     // serialize the last element
@@ -207,7 +205,7 @@ namespace Nethermind.Serialization.Rlp.Eip2930
             RlpStream stream,
             Address address,
             IEnumerable<UInt256> indexes,
-            int indexesCount) 
+            int indexesCount)
         {
             // {} brackets applied to show the content structure
             // Address
@@ -239,19 +237,55 @@ namespace Nethermind.Serialization.Rlp.Eip2930
             {
                 IndexesContentLength = indexesCount * Rlp.LengthOfKeccakRlp;
                 ContentLength = Rlp.LengthOfSequence(IndexesContentLength) + Rlp.LengthOfAddressRlp;
+                SequenceLength = Rlp.LengthOfSequence(ContentLength);
             }
 
             public int IndexesContentLength { get; }
 
             public int ContentLength { get; }
+
+            public int SequenceLength { get; }
         }
 
         private static int GetContentLength(AccessList accessList)
         {
             int contentLength = 0;
-            foreach ((_, IReadOnlySet<UInt256> indexes) in accessList.Data)
+            if (accessList.IsNormalized)
             {
-                contentLength += new AccessItemLengths(indexes.Count).ContentLength;
+                foreach ((_, IReadOnlySet<UInt256> indexes) in accessList.Data)
+                {
+                    contentLength += new AccessItemLengths(indexes.Count).SequenceLength;
+                }
+            }
+            else
+            {
+                IReadOnlyCollection<object> orderQueue = accessList.OrderQueue;
+                bool isOpen = false;
+                int indexCounter = 0;
+                foreach (object accessListEntry in orderQueue)
+                {
+                    if (accessListEntry is Address)
+                    {
+                        if (isOpen)
+                        {
+                            contentLength += new AccessItemLengths(indexCounter).SequenceLength;
+                            indexCounter = 0;
+                        }
+                        else
+                        {
+                            isOpen = true;
+                        }
+                    }
+                    else
+                    {
+                        indexCounter++;
+                    }   
+                }
+
+                if (isOpen)
+                {
+                    contentLength += new AccessItemLengths(indexCounter).SequenceLength;
+                }
             }
 
             return contentLength;
