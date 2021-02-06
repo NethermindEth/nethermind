@@ -39,7 +39,7 @@ namespace Nethermind.Network.P2P
         private Node? _node;
         private readonly IChannel _channel;
         private readonly IDisconnectsAnalyzer _disconnectsAnalyzer;
-        private IChannelHandlerContext _context;
+        private IChannelHandlerContext? _context;
 
         public Session(
             int localPort,
