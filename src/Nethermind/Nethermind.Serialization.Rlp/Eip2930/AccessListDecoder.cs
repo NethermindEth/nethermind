@@ -304,7 +304,9 @@ namespace Nethermind.Serialization.Rlp.Eip2930
 
         public Rlp Encode(AccessList? accessList, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            throw new NotSupportedException();
+            RlpStream rlpStream = new(GetLength(accessList, rlpBehaviors));
+            Encode(rlpStream, accessList, rlpBehaviors);
+            return new Rlp(rlpStream.Data);
         }
     }
 }

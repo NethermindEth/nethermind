@@ -70,6 +70,12 @@ namespace Nethermind.Core.Test.Builders
             TestObjectInternal.To = null;
             return this;
         }
+        
+        public TransactionBuilder<T> WithChainId(ulong chainId)
+        {
+            TestObjectInternal.ChainId = chainId;
+            return this;
+        }
 
         public TransactionBuilder<T> WithGasPrice(UInt256 gasPrice)
         {
@@ -104,6 +110,7 @@ namespace Nethermind.Core.Test.Builders
         public TransactionBuilder<T> WithAccessList(AccessList accessList)
         {
             TestObjectInternal.AccessList = accessList;
+            TestObjectInternal.ChainId = TestObjectInternal.Signature?.ChainId ?? TestObjectInternal.ChainId;
             return this;
         }
         
@@ -145,7 +152,7 @@ namespace Nethermind.Core.Test.Builders
         
         public TransactionBuilder<T> SignedAndResolved()
         {
-            EthereumEcdsa ecdsa = new EthereumEcdsa(ChainId.Mainnet, LimboLogs.Instance);
+            EthereumEcdsa ecdsa = new EthereumEcdsa(TestObjectInternal.ChainId ?? ChainId.Mainnet, LimboLogs.Instance);
             ecdsa.Sign(TestItem.IgnoredPrivateKey, TestObjectInternal, true);
             TestObjectInternal.SenderAddress = TestItem.IgnoredPrivateKey.Address;
             return this;

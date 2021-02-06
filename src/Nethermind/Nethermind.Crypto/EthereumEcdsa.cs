@@ -20,6 +20,7 @@ using System.IO;
 using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Secp256k1;
 using Nethermind.Serialization.Rlp;
@@ -55,11 +56,18 @@ namespace Nethermind.Crypto
                 _logger.Debug(
                     $"Signing transaction {tx.SenderAddress} -> {tx.To} ({tx.Value}) with data of length {tx.Data?.Length}");
 
+            //Keccak hash = Keccak.Compute(Bytes.Concat((byte)tx.Type, Rlp.Encode(tx, true, isEip155Enabled, _chainIdValue).Bytes));
             Keccak hash = Keccak.Compute(Rlp.Encode(tx, true, isEip155Enabled, _chainIdValue).Bytes);
             tx.Signature = Sign(privateKey, hash);
-            if (isEip155Enabled)
+
+            if (tx.Type != TxType.Legacy)
             {
-                tx.Signature.V = tx.Signature.V + 8 + 2 * (ulong)_chainIdValue;
+                tx.ChainId = _chainIdValue;
+            }
+
+            if (tx.Type == TxType.Legacy && isEip155Enabled)
+            {
+                tx.Signature.V = tx.Signature.V + 8 + 2 * _chainIdValue;
             }
 
             if (_logger.IsDebug) _logger.Debug($"Transaction {tx.SenderAddress} -> {tx.To} ({tx.Value}) signed");
@@ -89,7 +97,7 @@ namespace Nethermind.Crypto
             {
                 throw new InvalidDataException("Cannot recover sender address from a transaction without a signature.");
             }
-            
+
             useSignatureChainId &= tx.Signature.ChainId.HasValue;
 
             // feels like it is the same check twice
@@ -107,7 +115,7 @@ namespace Nethermind.Crypto
                     chainId = _chainIdValue;
                     break;
                 default:
-                    chainId = tx.ChainId;
+                    chainId = tx.ChainId!.Value;
                     break;
             }
 

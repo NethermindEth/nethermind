@@ -172,7 +172,7 @@ namespace Nethermind.Serialization.Rlp
             ReadOnlySpan<byte> vBytes = rlpStream.DecodeByteArraySpan();
             ReadOnlySpan<byte> rBytes = rlpStream.DecodeByteArraySpan();
             ReadOnlySpan<byte> sBytes = rlpStream.DecodeByteArraySpan();
-            ApplySignatureAndHash(transaction, vBytes, rBytes, sBytes, rlpBehaviors);
+            ApplySignature(transaction, vBytes, rBytes, sBytes, rlpBehaviors);
         }
         
         private static void DecodeSignature(
@@ -183,10 +183,10 @@ namespace Nethermind.Serialization.Rlp
             ReadOnlySpan<byte> vBytes = decoderContext.DecodeByteArraySpan();
             ReadOnlySpan<byte> rBytes = decoderContext.DecodeByteArraySpan();
             ReadOnlySpan<byte> sBytes = decoderContext.DecodeByteArraySpan();
-            ApplySignatureAndHash(transaction, vBytes, rBytes, sBytes, rlpBehaviors);
+            ApplySignature(transaction, vBytes, rBytes, sBytes, rlpBehaviors);
         }
 
-        private static void ApplySignatureAndHash(
+        private static void ApplySignature(
             Transaction transaction,
             ReadOnlySpan<byte> vBytes,
             ReadOnlySpan<byte> rBytes,
@@ -229,7 +229,7 @@ namespace Nethermind.Serialization.Rlp
                 {
                     v += Signature.VOffset;
                 }
-
+                
                 Signature signature = new(rBytes, sBytes, v);
                 transaction.Signature = signature;
             }
@@ -264,7 +264,7 @@ namespace Nethermind.Serialization.Rlp
             }
 
             stream.StartSequence(contentLength);
-            if (item.Type == TxType.AccessList) stream.Encode(item.ChainId);
+            if (item.Type == TxType.AccessList) stream.Encode(item.ChainId!.Value);
             stream.Encode(item.Nonce);
             stream.Encode(item.IsEip1559 ? 0 : item.GasPrice);
             stream.Encode(item.GasLimit);
@@ -301,7 +301,7 @@ namespace Nethermind.Serialization.Rlp
 
             if (item.Type == TxType.AccessList)
             {
-                contentLength += Rlp.LengthOf(item.ChainId);
+                contentLength += Rlp.LengthOf(item.ChainId!.Value);
                 contentLength += _accessListDecoder.GetLength(item.AccessList, RlpBehaviors.None);
             }
 

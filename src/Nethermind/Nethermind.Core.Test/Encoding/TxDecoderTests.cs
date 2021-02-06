@@ -40,13 +40,14 @@ namespace Nethermind.Core.Test.Encoding
             yield return (Build.A.Transaction
                 .WithData(new byte[] {1, 2, 3})
                 .WithType(TxType.AccessList)
+                .WithChainId(1)
                 .WithAccessList(
                     new AccessList(
                         new Dictionary<Address, IReadOnlySet<UInt256>>
                         {
                             {Address.Zero, new HashSet<UInt256> {(UInt256)1}}
-                        }))
-                .SignedAndResolved().TestObject, "accessL list");
+                        }, new Queue<object>(new List<object>{Address.Zero, (UInt256)1})))
+                .SignedAndResolved().TestObject, "access list");
         }
 
         [TestCaseSource(nameof(TestCaseSource))]

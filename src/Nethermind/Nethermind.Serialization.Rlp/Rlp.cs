@@ -236,20 +236,42 @@ namespace Nethermind.Serialization.Rlp
             bool isEip155Enabled = false,
             ulong chainId = 0)
         {
-            int extraItems = transaction.IsEip1559 ? 2 : 0;
-            if (!forSigning || (isEip155Enabled && chainId != 0))
+            bool includeSigChainIdHack = isEip155Enabled && chainId != 0 && transaction.Type == TxType.Legacy;
+            int extraItems = transaction.IsEip1559 ? 2 : 0; // 2 extra gas fields for eip-1559
+            if (!forSigning || includeSigChainIdHack)
             {
-                extraItems += 3;
+                extraItems += 3; // sig fields
+            }
+
+            if (transaction.Type != TxType.Legacy)
+            {
+                extraItems += forSigning ? 3 : 2; // type + chainID + accessList : chainID + accessList
             }
 
             Rlp[] sequence = new Rlp[6 + extraItems];
             int position = 0;
+
+            if (transaction.Type != TxType.Legacy)
+            {
+                if (forSigning)
+                {
+                    sequence[position++] = Encode((byte)transaction.Type);
+                }
+                
+                sequence[position++] = Encode(transaction.ChainId!.Value);
+            }
+
             sequence[position++] = Encode(transaction.Nonce);
             sequence[position++] = Encode(transaction.IsEip1559 ? 0 : transaction.GasPrice);
             sequence[position++] = Encode(transaction.GasLimit);
             sequence[position++] = Encode(transaction.To);
             sequence[position++] = Encode(transaction.Value);
             sequence[position++] = Encode(transaction.Data);
+            if (transaction.Type == TxType.AccessList)
+            {
+                sequence[position++] = Encode(transaction.AccessList);    
+            }
+            
             if (transaction.IsEip1559)
             {
                 sequence[position++] = Encode(transaction.GasPrice);
@@ -258,7 +280,7 @@ namespace Nethermind.Serialization.Rlp
 
             if (forSigning)
             {
-                if (isEip155Enabled && chainId != 0)
+                if (includeSigChainIdHack)
                 {
                     sequence[position++] = Encode(chainId);
                     sequence[position++] = OfEmptyByteArray;
@@ -267,18 +289,19 @@ namespace Nethermind.Serialization.Rlp
             }
             else
             {
-                // TODO: below obviously fails when Signature is null
-                sequence[position++] = transaction.Signature is null ? OfEmptyByteArray : Encode(transaction.Signature.V);
-                sequence[position++] =
-                    Encode(transaction.Signature is null
-                        ? null
-                        : transaction.Signature.RAsSpan
-                            .WithoutLeadingZeros()); // TODO: consider storing R and S differently
-                sequence[position++] =
-                    Encode(transaction.Signature is null
-                        ? null
-                        : transaction.Signature.SAsSpan
-                            .WithoutLeadingZeros()); // TODO: consider storing R and S differently
+                Signature signature = transaction.Signature;
+                if (signature is null)
+                {
+                    sequence[position++] = OfEmptyByteArray;
+                    sequence[position++] = OfEmptyByteArray;
+                    sequence[position++] = OfEmptyByteArray;
+                }
+                else
+                {
+                    sequence[position++] = Encode(signature.V);
+                    sequence[position++] = Encode(signature.RAsSpan.WithoutLeadingZeros());
+                    sequence[position++] = Encode(signature.SAsSpan.WithoutLeadingZeros());   
+                }
             }
             
             Debug.Assert(position == 6 + extraItems);
