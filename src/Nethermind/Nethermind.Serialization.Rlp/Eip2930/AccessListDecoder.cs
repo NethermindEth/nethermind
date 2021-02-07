@@ -14,7 +14,6 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System;
 using System.Collections.Generic;
 using System.IO;
 using Nethermind.Core;
@@ -262,7 +261,7 @@ namespace Nethermind.Serialization.Rlp.Eip2930
                 IReadOnlyCollection<object> orderQueue = accessList.OrderQueue;
                 bool isOpen = false;
                 int indexCounter = 0;
-                foreach (object accessListEntry in orderQueue)
+                foreach (object accessListEntry in orderQueue!)
                 {
                     if (accessListEntry is Address)
                     {
