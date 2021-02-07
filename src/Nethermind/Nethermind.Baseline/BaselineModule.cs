@@ -580,9 +580,9 @@ namespace Nethermind.Baseline
 
         private async Task<Keccak> DeployBytecode(Address address, string contractType, byte[] bytecode)
         {
-            Transaction tx = new Transaction();
+            Transaction tx = new();
             tx.Value = 0;
-            tx.Init = bytecode;
+            tx.Data = bytecode;
             tx.GasLimit = 1000000;
             tx.GasPrice = 20.GWei();
             tx.SenderAddress = address;
@@ -698,11 +698,11 @@ namespace Nethermind.Baseline
             {
                 if (_stateReader.GetCode(_blockFinder.Head.StateRoot, trackedTree).Length != 0)
                 {
-                    ShaBaselineTree tree = new ShaBaselineTree(_baselineDb, _metadataBaselineDb, trackedTree.Bytes, TruncationLength, _logger);
+                    ShaBaselineTree tree = new(_baselineDb, _metadataBaselineDb, trackedTree.Bytes, TruncationLength, _logger);
                     treeAdded = _baselineTrees.TryAdd(trackedTree, tree);
                     if (treeAdded)
                     {
-                        BaselineTreeTracker? tracker = new BaselineTreeTracker(trackedTree, tree, _blockProcessor, _baselineTreeHelper, _blockFinder, _logger);
+                        BaselineTreeTracker? tracker = new(trackedTree, tree, _blockProcessor, _baselineTreeHelper, _blockFinder, _logger);
                         _disposableStack.Push(tracker);
                     }
                 }
@@ -717,7 +717,7 @@ namespace Nethermind.Baseline
             return treeAdded;
         }
         
-        private ConcurrentDictionary<Address, bool> _trackingOverrides = new ConcurrentDictionary<Address, bool>();
+        private ConcurrentDictionary<Address, bool> _trackingOverrides = new();
         
         private bool TryRemoveTree(Address trackedTree)
         {

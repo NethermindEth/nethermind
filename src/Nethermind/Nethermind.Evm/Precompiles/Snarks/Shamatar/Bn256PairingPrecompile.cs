@@ -47,7 +47,7 @@ namespace Nethermind.Evm.Precompiles.Snarks.Shamatar
             return (releaseSpec.IsEip1108Enabled ? 34000L : 80000L) * (inputData.Length / PairSize);
         }
 
-        public (byte[], bool) Run(byte[] inputData)
+        public (byte[], bool) Run(byte[] inputData, IReleaseSpec releaseSpec)
         {
             Metrics.Bn256PairingPrecompile++;
             inputData ??= Array.Empty<byte>();

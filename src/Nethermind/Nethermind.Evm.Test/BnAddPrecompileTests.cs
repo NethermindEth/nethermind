@@ -17,6 +17,7 @@
 
 using Nethermind.Core.Extensions;
 using Nethermind.Evm.Precompiles;
+using Nethermind.Specs.Forks;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test
@@ -44,7 +45,7 @@ namespace Nethermind.Evm.Test
             for (int i = 0; i < inputs.Length; i++)
             {
                 IPrecompile shamatar = Precompiles.Snarks.Shamatar.Bn256AddPrecompile.Instance;
-                (byte[], bool) resultShamatar = shamatar.Run(inputs[i]);
+                (byte[], bool) resultShamatar = shamatar.Run(inputs[i], MuirGlacier.Instance);
             }
         }
     }

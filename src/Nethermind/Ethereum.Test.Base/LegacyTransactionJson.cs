@@ -31,6 +31,6 @@ namespace Ethereum.Test.Base
         public UInt256 Value { get; set; }
         public byte[] R { get; set; }
         public byte[] S { get; set; }
-        public long V { get; set; }
+        public ulong V { get; set; }
     }
 }

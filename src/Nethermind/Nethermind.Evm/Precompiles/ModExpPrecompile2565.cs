@@ -61,7 +61,7 @@ namespace Nethermind.Evm.Precompiles
                 int baseLength = (int)new UInt256(extendedInput.Slice(0, 32), true);
                 int expLength = (int)new UInt256(extendedInput.Slice(32, 32), true);
                 int modulusLength = (int)new UInt256(extendedInput.Slice(64, 32), true);
-                UInt256 exp = new UInt256(extendedInput.Slice(96 + baseLength, expLength), true);
+                UInt256 exp = new(extendedInput.Slice(96 + baseLength, expLength), true);
 
                 UInt256 complexity = MultComplexity(baseLength, modulusLength);
                 UInt256 iterationCount = CalculateIterationCount(expLength, exp);
@@ -73,7 +73,7 @@ namespace Nethermind.Evm.Precompiles
             }
         }
 
-        public (byte[], bool) Run(byte[] inputData)
+        public (byte[], bool) Run(byte[] inputData, IReleaseSpec releaseSpec)
         {
             Metrics.ModExpPrecompile++;
 
@@ -107,7 +107,7 @@ namespace Nethermind.Evm.Precompiles
         private UInt256 MultComplexity(int baseLength, int modulusLength)
         {
             int maxLength = Math.Max(baseLength, modulusLength);
-            UInt256 words = (UInt256)(maxLength / 8 + maxLength % 8 == 0 ? 0 : 1);
+            UInt256 words = maxLength / 8 + maxLength % 8 == 0 ? 0 : 1;
             return words * words;
         }
 

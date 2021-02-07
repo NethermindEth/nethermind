@@ -40,7 +40,7 @@ namespace Nethermind.Evm.Precompiles.Snarks.Shamatar
             return 0L;
         }
 
-        public unsafe (byte[], bool) Run(byte[] inputData)
+        public unsafe (byte[], bool) Run(byte[] inputData, IReleaseSpec releaseSpec)
         {
             Metrics.Bn256AddPrecompile++;
             Span<byte> inputDataSpan = stackalloc byte[128];
