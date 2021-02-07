@@ -58,7 +58,7 @@ namespace Nethermind.Network.Test.P2P
             ctx.DisconnectsAnalyzer.ReportDisconnect(DisconnectReason.TooManyPeers, DisconnectType.Local, null);
             ctx.DisconnectsAnalyzer.ReportDisconnect(DisconnectReason.TooManyPeers, DisconnectType.Local, null);
             Thread.Sleep(15);
-            ctx.TestLogger.LogList.Any(l => l.Contains("2")).Should().BeTrue(string.Join(", ", ctx.TestLogger.LogList));
+            ctx.TestLogger.LogList.Any(l => l.Contains("Local")).Should().BeTrue(string.Join(", ", ctx.TestLogger.LogList));
         }
         
         [Test]
@@ -82,7 +82,7 @@ namespace Nethermind.Network.Test.P2P
             ctx.DisconnectsAnalyzer.ReportDisconnect(DisconnectReason.TooManyPeers, DisconnectType.Local, null);
             Thread.Sleep(15);
             
-            ctx.TestLogger.LogList.ToArray().All(l => !l.Contains("2")).Should().BeTrue(string.Join(", ", ctx.TestLogger.LogList));
+            ctx.TestLogger.LogList.ToArray().All(l => !l.Contains("TooManyPers")).Should().BeTrue(string.Join(", ", ctx.TestLogger.LogList));
         }
     }
 }
