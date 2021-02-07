@@ -22,9 +22,9 @@ namespace Nethermind.JsonRpc
 {
     public class JsonRpcResponse : IDisposable
     {
-        private Action _disposableAction;
+        private Action? _disposableAction;
 
-        public JsonRpcResponse(Action disposableAction = null)
+        public JsonRpcResponse(Action? disposableAction = null)
         {
             _disposableAction = disposableAction;
         }
@@ -34,7 +34,7 @@ namespace Nethermind.JsonRpc
 
         [JsonConverter(typeof(IdConverter))]
         [JsonProperty(PropertyName = "id", Order = 2, NullValueHandling = NullValueHandling.Include)]
-        public object Id { get; set; }
+        public object? Id { get; set; }
 
         public void Dispose()
         {
@@ -46,9 +46,9 @@ namespace Nethermind.JsonRpc
     public class JsonRpcSuccessResponse : JsonRpcResponse
     {
         [JsonProperty(PropertyName = "result", NullValueHandling = NullValueHandling.Include, Order = 1)]
-        public object Result { get; set; }
+        public object? Result { get; set; }
 
-        public JsonRpcSuccessResponse(Action disposableAction = null) : base(disposableAction)
+        public JsonRpcSuccessResponse(Action? disposableAction = null) : base(disposableAction)
         {
         }
     }
@@ -56,9 +56,9 @@ namespace Nethermind.JsonRpc
     public class JsonRpcErrorResponse : JsonRpcResponse
     {
         [JsonProperty(PropertyName = "error", NullValueHandling = NullValueHandling.Include, Order = 1)]
-        public Error Error { get; set; }
+        public Error? Error { get; set; }
 
-        public JsonRpcErrorResponse(Action disposableAction = null) : base(disposableAction)
+        public JsonRpcErrorResponse(Action? disposableAction = null) : base(disposableAction)
         {
         }
     }

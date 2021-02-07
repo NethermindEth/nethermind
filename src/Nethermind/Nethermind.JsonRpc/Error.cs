@@ -24,9 +24,9 @@ namespace Nethermind.JsonRpc
         public int Code { get; set; }
         
         [JsonProperty(PropertyName = "message", Order = 1)]
-        public string Message { get; set; }
+        public string? Message { get; set; }
         
         [JsonProperty(PropertyName = "data", Order = 2)]
-        public object Data { get; set; }
+        public object? Data { get; set; }
     }
 }
