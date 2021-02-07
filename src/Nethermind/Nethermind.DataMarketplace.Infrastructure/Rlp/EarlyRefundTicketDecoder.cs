@@ -21,7 +21,7 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.DataMarketplace.Infrastructure.Rlp
 {
-    public class EarlyRefundTicketDecoder : IRlpDecoder<EarlyRefundTicket?>
+    public class EarlyRefundTicketDecoder : IRlpObjectDecoder<EarlyRefundTicket?>
     {
         public static void Init()
         {
