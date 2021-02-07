@@ -15,23 +15,30 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
 using DotNetty.Buffers;
 using DotNetty.Codecs;
+using DotNetty.Common;
 using DotNetty.Common.Concurrency;
+using DotNetty.Common.Internal.Logging;
 using DotNetty.Handlers.Logging;
 using DotNetty.Transport.Bootstrapping;
 using DotNetty.Transport.Channels;
 using DotNetty.Transport.Channels.Sockets;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Console;
+using Microsoft.Extensions.Options;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Network.P2P;
 using Nethermind.Network.Rlpx.Handshake;
 using Nethermind.Stats.Model;
+using ILogger = Nethermind.Logging.ILogger;
 using LogLevel = DotNetty.Handlers.Logging.LogLevel;
 
 namespace Nethermind.Network.Rlpx
@@ -61,8 +68,21 @@ namespace Nethermind.Network.Rlpx
             IDisconnectsAnalyzer disconnectsAnalyzer,
             ILogManager logManager)
         {
-//            InternalLoggerFactory.DefaultFactory.AddProvider(new ConsoleLoggerProvider((s, level) => level > LogLevel.Warning, false));
-//            ResourceLeakDetector.Level = ResourceLeakDetector.DetectionLevel.Paranoid;
+            // .NET Core definitely got the easy logging setup right :D
+            // ResourceLeakDetector.Level = ResourceLeakDetector.DetectionLevel.Paranoid;
+            // ConfigureNamedOptions<ConsoleLoggerOptions> configureNamedOptions = new("", null);
+            // OptionsFactory<ConsoleLoggerOptions> optionsFactory = new(
+            //     new []{ configureNamedOptions },
+            //     Enumerable.Empty<IPostConfigureOptions<ConsoleLoggerOptions>>());
+            // OptionsMonitor<ConsoleLoggerOptions> optionsMonitor = new(
+            //     optionsFactory,
+            //     Enumerable.Empty<IOptionsChangeTokenSource<ConsoleLoggerOptions>>(),
+            //     new OptionsCache<ConsoleLoggerOptions>());
+            // LoggerFactory loggerFactory = new(
+            //     new[] { new ConsoleLoggerProvider(optionsMonitor) },
+            //     new LoggerFilterOptions { MinLevel = Microsoft.Extensions.Logging.LogLevel.Warning });
+            // InternalLoggerFactory.DefaultFactory = loggerFactory;
+            
             _group = new SingleThreadEventLoop();
             _serializationService = serializationService ?? throw new ArgumentNullException(nameof(serializationService));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
