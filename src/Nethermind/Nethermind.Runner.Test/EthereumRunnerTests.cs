@@ -50,28 +50,29 @@ namespace Nethermind.Runner.Test
     [TestFixture, Parallelizable(ParallelScope.All)]
     public class EthereumRunnerTests
     {
-        private static readonly IList<ConfigProvider> _cachedProviders = new List<ConfigProvider>();
-
-        [OneTimeSetUp]
-        public void Setup()
+        private static readonly Lazy<IList<ConfigProvider>> _cachedProviders = new (InitOnce);
+        
+        public static IList<ConfigProvider> InitOnce()
         {
             // by pre-caching configs providers we make the tests do lot less work
-            
+            List<ConfigProvider> result = new ();
             Parallel.ForEach(Directory.GetFiles("configs"), configFile =>
             {
                 var configProvider = new ConfigProvider();
                 configProvider.AddSource(new JsonConfigSource(configFile));
-                _cachedProviders.Add(configProvider);
+                result.Add(configProvider);
             });
+
+            return result;
         }
 
         public static IEnumerable ChainSpecRunnerTests
         {
             get
             {
-                for (var index = 0; index < _cachedProviders.Count; index++)
+                for (var index = 0; index < _cachedProviders.Value.Count; index++)
                 {
-                    yield return new TestCaseData(_cachedProviders[index], index);
+                    yield return new TestCaseData(_cachedProviders.Value[index], index);
                 }
             }
         }
