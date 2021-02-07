@@ -45,6 +45,11 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
             return new DataAssetRule(value);
         }
 
+        public void Encode(RlpStream stream, DataAssetRule? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        {
+            throw new System.NotImplementedException();
+        }
+
         public Serialization.Rlp.Rlp Encode(DataAssetRule? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item == null)
