@@ -21,7 +21,7 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.DataMarketplace.Infrastructure.Rlp
 {
-    public class EarlyRefundTicketDecoder : IRlpObjectDecoder<EarlyRefundTicket?>
+    public class EarlyRefundTicketDecoder : IRlpNdmDecoder<EarlyRefundTicket?>
     {
         public static void Init()
         {
@@ -47,6 +47,11 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
             Signature signature = SignatureDecoder.DecodeSignature(rlpStream);
 
             return new EarlyRefundTicket(depositId, claimableAfter, signature);
+        }
+
+        public void Encode(RlpStream stream, EarlyRefundTicket? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        {
+            throw new System.NotImplementedException();
         }
 
         public Serialization.Rlp.Rlp Encode(EarlyRefundTicket? item,
