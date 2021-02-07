@@ -23,6 +23,7 @@ using System.Linq;
 using BenchmarkDotNet.Attributes;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm.Precompiles;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.Precompiles.Benchmark
 {
@@ -31,45 +32,60 @@ namespace Nethermind.Precompiles.Benchmark
     [SuppressMessage("ReSharper", "UnusedAutoPropertyAccessor.Global")]
     public abstract class PrecompileBenchmarkBase
     {
-        protected abstract IPrecompile[] Precompiles { get; }
+        protected abstract IEnumerable<IPrecompile> Precompiles { get; }
 
         protected abstract string InputsDirectory { get; }
-        
+
         public readonly struct Param
         {
             public IPrecompile Precompile { get; }
 
-            public Param(IPrecompile precompile, byte[] bytes)
+            public Param(IPrecompile precompile, string name, byte[] bytes, byte[]? expected)
             {
                 Precompile = precompile ?? throw new ArgumentNullException(nameof(precompile));
                 Bytes = bytes;
+                Name = name;
+                ExpectedResult = expected;
             }
-            
+
             public byte[] Bytes { get; }
+
+            public byte[]? ExpectedResult { get; }
+
+            public string Name { get; }
 
             public override string ToString()
             {
-                return $"b[{Bytes.Length.ToString().PadLeft(4, '0')}] {Precompile.GetType().Name.Substring(0, 3)}";
+                return Name;
             }
         }
-        
-        public IEnumerable<Param> Inputs 
+
+        public IEnumerable<Param> Inputs
         {
             get
             {
                 foreach (IPrecompile precompile in Precompiles)
                 {
-                    List<byte[]> inputs = new List<byte[]>();
-                    foreach (var file in Directory.GetFiles($"{InputsDirectory}/current", "*.csv", SearchOption.TopDirectoryOnly))
+                    List<Param> inputs = new List<Param>();
+                    foreach (string file in Directory.GetFiles($"{InputsDirectory}/current", "*.csv", SearchOption.TopDirectoryOnly))
                     {
                         // take only first line from each file
                         inputs.AddRange(File.ReadAllLines(file)
-                            .Select(LineToTestInput).Take(1).ToArray());
+                            .Select(LineToTestInput).Take(1).ToArray()
+                            .Select(i => new Param(precompile, file, i, null)));
                     }
-                
-                    foreach (var input in inputs.OrderBy(i => i.Length))
+
+                    foreach (string file in Directory.GetFiles($"{InputsDirectory}/current", "*.json", SearchOption.TopDirectoryOnly))
                     {
-                        yield return new Param(precompile, input);
+                        EthereumJsonSerializer jsonSerializer = new EthereumJsonSerializer();
+                        var jsonInputs = jsonSerializer.Deserialize<JsonInput[]>(File.ReadAllText(file));
+                        var parameters = jsonInputs.Select(i => new Param(precompile, i.Name, i.Input, i.Expected));
+                        inputs.AddRange(parameters);
+                    }
+
+                    foreach (Param param in inputs.OrderBy(i => i.Name))
+                    {
+                        yield return param;
                     }
                 }
             }
