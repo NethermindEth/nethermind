@@ -37,15 +37,16 @@ namespace Nethermind.Evm.Test
         {
             yield return (Build.A.Transaction.SignedAndResolved().TestObject, 21000, "empty");
         }
-        
-        public static IEnumerable<(int Addresses, int Storages, long Cost)> AccessTestCaseSource()
+
+        public static IEnumerable<(List<object> orderQueue, long Cost)> AccessTestCaseSource()
         {
-            yield return (0, 0, 0);
-            yield return (1, 0, 2400);
-            yield return (1, 1, 4300);
-            yield return (2, 2, 8600);
+            yield return (new List<object> { }, 0);
+            yield return (new List<object> {Address.Zero}, 2400);
+            yield return (new List<object> {Address.Zero, (UInt256)1}, 4300);
+            yield return (new List<object> {Address.Zero, (UInt256)1, TestItem.AddressA, (UInt256)1}, 8600);
+            yield return (new List<object> {Address.Zero, (UInt256)1, Address.Zero, (UInt256)1}, 8600);
         }
-        
+
         public static IEnumerable<(byte[] Data, int OldCost, int NewCost)> DataTestCaseSource()
         {
             yield return (new byte[] {0}, 4, 4);
@@ -60,32 +61,26 @@ namespace Nethermind.Evm.Test
         {
             IntrinsicGasCalculator.Calculate(testCase.Tx, Berlin.Instance).Should().Be(testCase.Cost);
         }
-        
+
         [TestCaseSource(nameof(AccessTestCaseSource))]
-        public void Intrinsic_cost_is_calculated_properly((int Addresses, int Storages, long Cost) testCase)
+        public void Intrinsic_cost_is_calculated_properly((List<object> orderQueue, long Cost) testCase)
         {
-            Dictionary<Address, IReadOnlySet<UInt256>> data = new();
-            HashSet<UInt256> storages = new();
-            
-            for (int i = 0; i < testCase.Storages; i++)
+            AccessListBuilder accessListBuilder = new();
+            foreach (object o in testCase.orderQueue)
             {
-                storages.Add((UInt256)i);
-            }
-            
-            for (int i = 0; i < testCase.Addresses; i++)
-            {
-                if (i == 0)
+                if (o is Address address)
                 {
-                    data[TestItem.Addresses[i]] = storages;
+                    accessListBuilder.AddAddress(address);
                 }
-                else
+                else if (o is UInt256 index)
                 {
-                    data[TestItem.Addresses[i]] = ImmutableHashSet<UInt256>.Empty;
+                    accessListBuilder.AddStorage(index);
                 }
             }
 
-            AccessList accessList = new(data);
+            AccessList accessList = accessListBuilder.ToAccessList();
             Transaction tx = Build.A.Transaction.SignedAndResolved().WithAccessList(accessList).TestObject;
+
             void Test(IReleaseSpec spec, bool supportsAccessLists)
             {
                 if (!supportsAccessLists)
@@ -109,15 +104,17 @@ namespace Nethermind.Evm.Test
             Test(MuirGlacier.Instance, false);
             Test(Berlin.Instance, true);
         }
-        
+
         [TestCaseSource(nameof(DataTestCaseSource))]
         public void Intrinsic_cost_of_data_is_calculated_properly((byte[] Data, int OldCost, int NewCost) testCase)
         {
             Transaction tx = Build.A.Transaction.SignedAndResolved().WithData(testCase.Data).TestObject;
+
             void Test(IReleaseSpec spec, bool isAfterRepricing)
             {
                 IntrinsicGasCalculator.Calculate(tx, spec).Should()
-                    .Be(21000 + (isAfterRepricing ? testCase.NewCost : testCase.OldCost), spec.Name, testCase.Data.ToHexString());
+                    .Be(21000 + (isAfterRepricing ? testCase.NewCost : testCase.OldCost), spec.Name,
+                        testCase.Data.ToHexString());
             }
 
             Test(Homestead.Instance, false);

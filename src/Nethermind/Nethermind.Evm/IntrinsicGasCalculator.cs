@@ -17,6 +17,7 @@
 using System.IO;
 using System.Linq;
 using Nethermind.Core;
+using Nethermind.Core.Eip2930;
 using Nethermind.Core.Specs;
 
 namespace Nethermind.Evm
@@ -26,27 +27,67 @@ namespace Nethermind.Evm
         public static long Calculate(Transaction transaction, IReleaseSpec releaseSpec)
         {
             long result = GasCostOf.Transaction;
-            long txDataNonZeroGasCost = releaseSpec.IsEip2028Enabled ? GasCostOf.TxDataNonZeroEip2028 : GasCostOf.TxDataNonZero;
+            result += DataCost(transaction, releaseSpec);
+            result += CreateCost(transaction, releaseSpec);
+            result += AccessListCost(transaction, releaseSpec);
+            return result;
+        }
 
+        private static long CreateCost(Transaction transaction, IReleaseSpec releaseSpec)
+        {
+            long createCost = 0;
+            if (transaction.IsContractCreation && releaseSpec.IsEip2Enabled)
+            {
+                createCost += GasCostOf.TxCreate;
+            }
+
+            return createCost;
+        }
+
+        private static long DataCost(Transaction transaction, IReleaseSpec releaseSpec)
+        {
+            long txDataNonZeroGasCost =
+                releaseSpec.IsEip2028Enabled ? GasCostOf.TxDataNonZeroEip2028 : GasCostOf.TxDataNonZero;
+            long dataCost = 0;
             if (transaction.Data != null)
             {
                 for (int i = 0; i < transaction.Data.Length; i++)
                 {
-                    result += transaction.Data[i] == 0 ? GasCostOf.TxDataZero : txDataNonZeroGasCost;
+                    dataCost += transaction.Data[i] == 0 ? GasCostOf.TxDataZero : txDataNonZeroGasCost;
                 }
             }
 
-            if (transaction.IsContractCreation && releaseSpec.IsEip2Enabled)
-            {
-                result += GasCostOf.TxCreate;
-            }
+            return dataCost;
+        }
 
-            if (transaction.AccessList != null)
+        private static long AccessListCost(Transaction transaction, IReleaseSpec releaseSpec)
+        {
+            long accessListCost = 0;
+            if (transaction.AccessList is not null)
             {
+                AccessList accessList = transaction.AccessList;
                 if (releaseSpec.UseTxAccessLists)
                 {
-                    result += transaction.AccessList.Data.Count * GasCostOf.AccessAccountListEntry;
-                    result += transaction.AccessList.Data.Sum(d => d.Value.Count) * GasCostOf.AccessStorageListEntry;       
+                    if (accessList.IsNormalized)
+                    {
+                        accessListCost += accessList.Data.Count * GasCostOf.AccessAccountListEntry;
+                        accessListCost += accessList.Data.Sum(d => d.Value.Count) *
+                                          GasCostOf.AccessStorageListEntry;
+                    }
+                    else
+                    {
+                        foreach (object o in accessList.OrderQueue!)
+                        {
+                            if (o is Address)
+                            {
+                                accessListCost += GasCostOf.AccessAccountListEntry;
+                            }
+                            else
+                            {
+                                accessListCost += GasCostOf.AccessStorageListEntry;
+                            }
+                        }
+                    }
                 }
                 else
                 {
@@ -55,7 +96,7 @@ namespace Nethermind.Evm
                 }
             }
 
-            return result;
+            return accessListCost;
         }
     }
 }

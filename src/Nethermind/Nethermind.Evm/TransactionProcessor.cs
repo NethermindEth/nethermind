@@ -31,6 +31,7 @@ namespace Nethermind.Evm
 {
     public class TransactionProcessor : ITransactionProcessor
     {
+        private readonly EthereumEcdsa _ecdsa;
         private readonly ILogger _logger;
         private readonly IStateProvider _stateProvider;
         private readonly IStorageProvider _storageProvider;
@@ -75,8 +76,6 @@ namespace Nethermind.Evm
             Keccak stateRoot = _specProvider.GetSpec(block.Number).IsEip658Enabled ? null : _stateProvider.StateRoot;
             if (txTracer.IsTracingReceipt) txTracer.MarkAsFailed(recipient, tx.GasLimit, Array.Empty<byte>(), reason ?? "invalid", stateRoot);
         }
-
-        private EthereumEcdsa _ecdsa;
 
         private void Execute(Transaction transaction, BlockHeader block, ITxTracer txTracer, bool isCall)
         {
@@ -225,7 +224,7 @@ namespace Nethermind.Evm
                     }
                 }
                 
-                ExecutionEnvironment env = new ExecutionEnvironment();
+                ExecutionEnvironment env = new();
                 env.Value = value;
                 env.TransferValue = value;
                 env.Sender = sender;

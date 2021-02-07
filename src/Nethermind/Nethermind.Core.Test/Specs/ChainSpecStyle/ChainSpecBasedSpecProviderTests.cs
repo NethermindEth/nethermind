@@ -302,6 +302,12 @@ namespace Nethermind.Core.Test.Specs.ChainSpecStyle
                     Eip1884Transition = 18840L,
                     Eip2028Transition = 20280L,
                     Eip2200Transition = 22000L,
+                    Eip2315Transition = 23150L,
+                    Eip2537Transition = 25370L,
+                    Eip2565Transition = 25650L,
+                    Eip2718Transition = 27180L,
+                    Eip2929Transition = 29290L,
+                    Eip2930Transition = 29300L,
                     Eip1283ReenableTransition = 23000L,
                     ValidateChainIdTransition = 24000L,
                     ValidateReceiptsTransition = 24000L
@@ -1180,6 +1186,40 @@ namespace Nethermind.Core.Test.Specs.ChainSpecStyle
             Assert.AreEqual(true, underTest.IsEip2200Enabled);
             Assert.AreEqual(true, underTest.ValidateChainId);
             Assert.AreEqual(true, underTest.ValidateReceipts);
+            
+            underTest = provider.GetSpec(29290L);
+            Assert.AreEqual(underTest.MaxCodeSize, maxCodeSize);
+            Assert.AreEqual(true, underTest.IsEip2Enabled);
+            Assert.AreEqual(true, underTest.IsEip7Enabled);
+            Assert.AreEqual(true, underTest.IsEip100Enabled);
+            Assert.AreEqual(true, underTest.IsEip140Enabled);
+            Assert.AreEqual(true, underTest.IsEip145Enabled);
+            Assert.AreEqual(true, underTest.IsEip150Enabled);
+            Assert.AreEqual(true, underTest.IsEip152Enabled);
+            Assert.AreEqual(true, underTest.IsEip155Enabled);
+            Assert.AreEqual(true, underTest.IsEip158Enabled);
+            Assert.AreEqual(true, underTest.IsEip160Enabled);
+            Assert.AreEqual(true, underTest.IsEip170Enabled);
+            Assert.AreEqual(true, underTest.IsEip196Enabled);
+            Assert.AreEqual(true, underTest.IsEip197Enabled);
+            Assert.AreEqual(true, underTest.IsEip198Enabled);
+            Assert.AreEqual(true, underTest.IsEip211Enabled);
+            Assert.AreEqual(true, underTest.IsEip214Enabled);
+            Assert.AreEqual(true, underTest.IsEip649Enabled);
+            Assert.AreEqual(true, underTest.IsEip658Enabled);
+            Assert.AreEqual(true, underTest.IsEip1014Enabled);
+            Assert.AreEqual(true, underTest.IsEip1052Enabled);
+            Assert.AreEqual(true, underTest.IsEip1108Enabled);
+            Assert.AreEqual(true, underTest.IsEip1234Enabled);
+            Assert.AreEqual(true, underTest.IsEip1283Enabled);
+            Assert.AreEqual(true, underTest.IsEip1344Enabled);
+            Assert.AreEqual(true, underTest.IsEip1884Enabled);
+            Assert.AreEqual(true, underTest.IsEip2028Enabled);
+            Assert.AreEqual(true, underTest.IsEip2200Enabled);
+            Assert.AreEqual(true, underTest.ValidateChainId);
+            Assert.AreEqual(true, underTest.ValidateReceipts);
+            Assert.AreEqual(true, underTest.IsEip2929Enabled);
+            Assert.AreEqual(false, underTest.IsEip2930Enabled);
         }
     }
 }

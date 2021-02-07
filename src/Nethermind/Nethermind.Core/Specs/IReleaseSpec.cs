@@ -203,6 +203,11 @@ namespace Nethermind.Core.Specs
         bool IsEip2537Enabled { get; }
         
         /// <summary>
+        /// Berlin MODEXP precompiles
+        /// </summary>
+        bool IsEip2565Enabled { get; }
+        
+        /// <summary>
         /// Berlin transaction type
         /// </summary>
         bool IsEip2718Enabled { get; }
