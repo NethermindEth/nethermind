@@ -50,17 +50,17 @@ namespace Nethermind.Runner.Test
     [TestFixture, Parallelizable(ParallelScope.All)]
     public class EthereumRunnerTests
     {
-        private static readonly Lazy<IList<ConfigProvider>> _cachedProviders = new (InitOnce);
+        private static readonly Lazy<IList<(string, ConfigProvider)>> _cachedProviders = new (InitOnce);
         
-        public static IList<ConfigProvider> InitOnce()
+        public static IList<(string, ConfigProvider)> InitOnce()
         {
             // by pre-caching configs providers we make the tests do lot less work
-            List<ConfigProvider> result = new ();
+            List<(string, ConfigProvider)> result = new ();
             Parallel.ForEach(Directory.GetFiles("configs"), configFile =>
             {
                 var configProvider = new ConfigProvider();
                 configProvider.AddSource(new JsonConfigSource(configFile));
-                result.Add(configProvider);
+                result.Add((configFile, configProvider));
             });
 
             return result;
@@ -79,28 +79,28 @@ namespace Nethermind.Runner.Test
 
         [TestCaseSource(nameof(ChainSpecRunnerTests))]
         [Timeout(300000)] // just to make sure we are not on infinite loop on steps because of incorrect dependencies
-        public async Task Smoke(ConfigProvider configProvider, int testIndex)
+        public async Task Smoke((string file, ConfigProvider configProvider) testCase, int testIndex)
         {
-            if (configProvider == null)
+            if (testCase.configProvider == null)
             {
                 // some weird thing, not worth investigating
                 return;
             }
             
-            await SmokeTest(configProvider, testIndex, 30330);
+            await SmokeTest(testCase.configProvider, testIndex, 30330);
         }
         
         [TestCaseSource(nameof(ChainSpecRunnerTests))]
         [Timeout(30000)] // just to make sure we are not on infinite loop on steps because of incorrect dependencies
-        public async Task Smoke_cancel(ConfigProvider configProvider, int testIndex)
+        public async Task Smoke_cancel((string file, ConfigProvider configProvider) testCase, int testIndex)
         {
-            if (configProvider == null)
+            if (testCase.configProvider == null)
             {
                 // some weird thing, not worth investigating
                 return;
             }
             
-            await SmokeTest(configProvider, testIndex, 30430, true);
+            await SmokeTest(testCase.configProvider, testIndex, 30430, true);
         }
 
         private static async Task SmokeTest(ConfigProvider configProvider, int testIndex, int basePort, bool cancel = false)
