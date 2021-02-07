@@ -18,6 +18,7 @@ using System.Threading.Tasks;
 using Nethermind.Core.Crypto;
 using Nethermind.DataMarketplace.Core.Configs;
 using Nethermind.DataMarketplace.Core.Repositories;
+using Nethermind.DataMarketplace.Infrastructure.Rlp;
 using Nethermind.Db;
 using Nethermind.Serialization.Rlp;
 
@@ -26,9 +27,9 @@ namespace Nethermind.DataMarketplace.Infrastructure.Persistence.Rocks.Repositori
     public class ConfigRocksRepository : IConfigRepository
     {
         private readonly IDb _database;
-        private readonly IRlpDecoder<NdmConfig> _rlpDecoder;
+        private readonly IRlpNdmDecoder<NdmConfig> _rlpDecoder;
 
-        public ConfigRocksRepository(IDb database, IRlpDecoder<NdmConfig> rlpDecoder)
+        public ConfigRocksRepository(IDb database, IRlpNdmDecoder<NdmConfig> rlpDecoder)
         {
             _database = database;
             _rlpDecoder = rlpDecoder;

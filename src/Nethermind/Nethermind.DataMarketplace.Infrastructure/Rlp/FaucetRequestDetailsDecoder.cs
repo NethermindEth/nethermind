@@ -23,7 +23,7 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.DataMarketplace.Infrastructure.Rlp
 {
-    public class FaucetRequestDetailsDecoder : IRlpDecoder<FaucetRequestDetails>
+    public class FaucetRequestDetailsDecoder : IRlpNdmDecoder<FaucetRequestDetails>
     {
         public static void Init()
         {
@@ -51,6 +51,11 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
             Keccak transactionHash = rlpStream.DecodeKeccak();
 
             return new FaucetRequestDetails(host, address, value, date, transactionHash);
+        }
+
+        public void Encode(RlpStream stream, FaucetRequestDetails item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        {
+            throw new NotImplementedException();
         }
 
         public Serialization.Rlp.Rlp Encode(FaucetRequestDetails item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)

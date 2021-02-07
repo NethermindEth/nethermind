@@ -47,7 +47,7 @@ namespace Nethermind.Evm.Precompiles.Bls.Shamatar
 
         private const int ItemSize = 160;
         
-        public (byte[], bool) Run(byte[] inputData)
+        public (byte[], bool) Run(byte[] inputData, IReleaseSpec releaseSpec)
         {
             inputData ??= Array.Empty<byte>();
             if (inputData.Length % ItemSize > 0 || inputData.Length == 0)

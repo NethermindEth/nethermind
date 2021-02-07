@@ -14,7 +14,6 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System;
 using FluentAssertions;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core.Crypto;
@@ -32,12 +31,6 @@ namespace Nethermind.Blockchain.Test.Validators
         [SetUp]
         public void Setup()
         {
-        }
-        
-        [Test]
-        public void Chain_id_has_to_be_non_negative()
-        {
-            Assert.Throws<ArgumentException>(() => _ = new TxValidator(-1));
         }
 
         [Test]

@@ -18,11 +18,12 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.DataMarketplace.Consumers.Sessions.Domain;
 using Nethermind.DataMarketplace.Core.Domain;
+using Nethermind.DataMarketplace.Infrastructure.Rlp;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rlp
 {
-    public class ConsumerSessionDecoder : IRlpDecoder<ConsumerSession>
+    public class ConsumerSessionDecoder : IRlpNdmDecoder<ConsumerSession>
     {
         public static void Init()
         {
@@ -60,6 +61,11 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rlp
             return new ConsumerSession(id, depositId, dataAssetId, consumerAddress, consumerNodeId, providerAddress,
                 providerNodeId, state, startUnitsFromProvider, startUnitsFromConsumer, startTimestamp, finishTimestamp,
                 consumedUnits, unpaidUnits, paidUnits, settledUnits, consumedUnitsFromProvider, dataAvailability);
+        }
+
+        public void Encode(RlpStream stream, ConsumerSession item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        {
+            throw new System.NotImplementedException();
         }
 
         public Serialization.Rlp.Rlp Encode(ConsumerSession item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)

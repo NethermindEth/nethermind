@@ -45,7 +45,7 @@ namespace Nethermind.Core.Test.Encoding
             LogEntry logEntry = new LogEntry(TestItem.AddressA, new byte[] {1, 2, 3}, new[] {TestItem.KeccakA, TestItem.KeccakB});
             Rlp rlp = Rlp.Encode(logEntry);
             Rlp.ValueDecoderContext valueDecoderContext = new Rlp.ValueDecoderContext(rlp.Bytes);
-            LogEntryDecoder.Instance.DecodeStructRef(ref valueDecoderContext, RlpBehaviors.None, out var decoded);
+            LogEntryDecoder.DecodeStructRef(ref valueDecoderContext, RlpBehaviors.None, out var decoded);
 
             Assert.That(Bytes.AreEqual(logEntry.Data, decoded.Data), "data");
             Assert.That(logEntry.LoggersAddress == decoded.LoggersAddress, "address");
@@ -70,7 +70,7 @@ namespace Nethermind.Core.Test.Encoding
         public void Can_do_roundtrip_rlp_stream()
         {
             LogEntry logEntry = new LogEntry(TestItem.AddressA, new byte[] {1, 2, 3}, new[] {TestItem.KeccakA, TestItem.KeccakB});
-            LogEntryDecoder decoder = new LogEntryDecoder();
+            LogEntryDecoder decoder = LogEntryDecoder.Instance;
 
             Rlp encoded = decoder.Encode(logEntry);
             LogEntry deserialized = decoder.Decode(new RlpStream(encoded.Bytes));
@@ -84,7 +84,7 @@ namespace Nethermind.Core.Test.Encoding
         public void Rlp_stream_and_standard_have_same_results()
         {
             LogEntry logEntry = new LogEntry(TestItem.AddressA, new byte[] {1, 2, 3}, new[] {TestItem.KeccakA, TestItem.KeccakB});
-            LogEntryDecoder decoder = new LogEntryDecoder();
+            LogEntryDecoder decoder = LogEntryDecoder.Instance;
 
             Rlp rlpStreamResult = decoder.Encode(logEntry);
 

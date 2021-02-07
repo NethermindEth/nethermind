@@ -18,11 +18,12 @@ using System.Linq;
 using Nethermind.Core;
 using Nethermind.DataMarketplace.Consumers.Deposits.Domain;
 using Nethermind.DataMarketplace.Core.Domain;
+using Nethermind.DataMarketplace.Infrastructure.Rlp;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rlp
 {
-    public class DepositDetailsDecoder : IRlpDecoder<DepositDetails>
+    public class DepositDetailsDecoder : IRlpNdmDecoder<DepositDetails>
     {
         public static void Init()
         {
@@ -57,6 +58,11 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rlp
             return new DepositDetails(deposit, dataAsset, consumer, pepper, timestamp, transactions,
                 confirmationTimestamp, rejected, cancelled, earlyRefundTicket, claimedRefundTransactions,
                 refundClaimed, refundCancelled, kyc, confirmations, requiredConfirmations);
+        }
+
+        public void Encode(RlpStream stream, DepositDetails item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        {
+            throw new System.NotImplementedException();
         }
 
         public Serialization.Rlp.Rlp Encode(DepositDetails item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)

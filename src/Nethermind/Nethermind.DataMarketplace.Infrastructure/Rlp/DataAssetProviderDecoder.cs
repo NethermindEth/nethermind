@@ -21,7 +21,7 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.DataMarketplace.Infrastructure.Rlp
 {
-    public class DataAssetProviderDecoder : IRlpDecoder<DataAssetProvider>
+    public class DataAssetProviderDecoder : IRlpNdmDecoder<DataAssetProvider>
     {
         public static void Init()
         {
@@ -47,6 +47,11 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
             {
                 throw new RlpException($"{nameof(DataAssetProvider)} cannot be deserialized from", e);
             }
+        }
+
+        public void Encode(RlpStream stream, DataAssetProvider item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        {
+            throw new NotImplementedException();
         }
 
         public Serialization.Rlp.Rlp Encode(DataAssetProvider item,

@@ -22,7 +22,7 @@ namespace Nethermind.Stats.Model
     public class SyncPeerNodeDetails
     {
         public byte ProtocolVersion { get; set; }
-        public long ChainId { get; set; }
+        public ulong ChainId { get; set; }
         public BigInteger TotalDifficulty { get; set; }
         public Keccak BestHash { get; set; }
         public Keccak GenesisHash { get; set; }

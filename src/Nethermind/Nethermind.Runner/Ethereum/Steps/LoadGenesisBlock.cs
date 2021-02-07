@@ -74,16 +74,15 @@ namespace Nethermind.Runner.Ethereum.Steps
             if (_api.DbProvider == null) throw new StepDependencyException(nameof(_api.DbProvider));
             if (_api.TransactionProcessor == null) throw new StepDependencyException(nameof(_api.TransactionProcessor));
 
-            var genesis = new GenesisLoader(
+            Block genesis = new GenesisLoader(
                 _api.ChainSpec,
                 _api.SpecProvider,
                 _api.StateProvider,
                 _api.StorageProvider,
-                _api.DbProvider,
                 _api.TransactionProcessor)
                 .Load();
 
-            ManualResetEventSlim genesisProcessedEvent = new ManualResetEventSlim(false);
+            ManualResetEventSlim genesisProcessedEvent = new(false);
 
             bool genesisLoaded = false;
             void GenesisProcessed(object? sender, BlockEventArgs args)
@@ -121,7 +120,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             }
             else
             {
-                if (_logger.IsDebug) _logger.Debug($"Genesis hash :  {_api.BlockTree.Genesis.Hash}");
+                if (_logger.IsDebug) _logger.Info($"Genesis hash :  {_api.BlockTree.Genesis.Hash}");
             }
             
             ThisNodeInfo.AddInfo("Genesis hash :", $"{_api.BlockTree.Genesis.Hash}");

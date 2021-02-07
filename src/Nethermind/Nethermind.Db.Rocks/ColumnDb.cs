@@ -61,7 +61,7 @@ namespace Nethermind.Db.Rocks
             }
         }
 
-        public KeyValuePair<byte[], byte[]>[] this[byte[][] keys] =>
+        public KeyValuePair<byte[], byte[]?>[] this[byte[][] keys] =>
             _rocksDb.MultiGet(keys, keys.Select(k => _columnFamily).ToArray());
 
         public IEnumerable<KeyValuePair<byte[], byte[]>> GetAll(bool ordered = false)

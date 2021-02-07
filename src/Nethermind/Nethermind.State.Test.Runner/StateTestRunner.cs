@@ -66,11 +66,9 @@ namespace Nethermind.State.Test.Runner
             Console.Error.WriteLine(_serializer.Serialize(txTrace.State));
         }
 
-        private IntrinsicGasCalculator _calculator = new IntrinsicGasCalculator();
-        
         public IEnumerable<EthereumTestResult> RunTests()
         {
-            List<EthereumTestResult> results = new List<EthereumTestResult>();
+            List<EthereumTestResult> results = new();
             IEnumerable<GeneralStateTest> tests = (IEnumerable<GeneralStateTest>)_testsSource.LoadTests();
             foreach (GeneralStateTest test in tests)
             {
@@ -82,7 +80,7 @@ namespace Nethermind.State.Test.Runner
 
                 if (_whenTrace != WhenTrace.Never && !(result?.Pass ?? false))
                 {
-                    StateTestTxTracer txTracer = new StateTestTxTracer();
+                    StateTestTxTracer txTracer = new();
                     txTracer.IsTracingMemory = _traceMemory;
                     txTracer.IsTracingStack = _traceStack;
                     result = RunTest(test, txTracer);
@@ -90,7 +88,7 @@ namespace Nethermind.State.Test.Runner
                     var txTrace = txTracer.BuildResult();
                     txTrace.Result.Time = result.TimeInMs;
                     txTrace.State.StateRoot = result.StateRoot;
-                    txTrace.Result.GasUsed -= _calculator.Calculate(test.Transaction, test.Fork);
+                    txTrace.Result.GasUsed -= IntrinsicGasCalculator.Calculate(test.Transaction, test.Fork);
                     WriteErr(txTrace);    
                 }
                 

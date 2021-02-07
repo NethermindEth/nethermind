@@ -37,7 +37,7 @@ namespace Nethermind.Blockchain
             _wrapped = wrapped;
         }
 
-        public long ChainId => _wrapped.ChainId;
+        public ulong ChainId => _wrapped.ChainId;
         public BlockHeader Genesis => _wrapped.Genesis;
         public BlockHeader BestSuggestedHeader => _wrapped.BestSuggestedHeader;
         public BlockHeader LowestInsertedHeader => _wrapped.LowestInsertedHeader;

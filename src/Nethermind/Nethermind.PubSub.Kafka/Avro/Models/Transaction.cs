@@ -24,7 +24,7 @@ namespace Nethermind.PubSub.Kafka.Avro.Models
 		private string _toAddr;
 		private int _transactionIndex;
 		private string _weiValue;
-		private long _v;
+		private ulong _v;
 		private string _r;
 		private string _s;
 		public virtual Schema Schema
@@ -155,7 +155,7 @@ namespace Nethermind.PubSub.Kafka.Avro.Models
 				this._weiValue = value;
 			}
 		}
-		public long v
+		public ulong v
 		{
 			get
 			{
@@ -224,7 +224,7 @@ namespace Nethermind.PubSub.Kafka.Avro.Models
 			case 8: this.toAddr = (System.String)fieldValue; break;
 			case 9: this.transactionIndex = (System.Int32)fieldValue; break;
 			case 10: this.weiValue = (System.String)fieldValue; break;
-			case 11: this.v = (System.Int32)fieldValue; break;
+			case 11: this.v = (System.UInt64)fieldValue; break;
 			case 12: this.r = (System.String)fieldValue; break;
 			case 13: this.s = (System.String)fieldValue; break;
 			default: throw new AvroRuntimeException("Bad index " + fieldPos + " in Put()");

@@ -62,18 +62,18 @@ namespace Nethermind.Runner.Ethereum.Steps
             const string api = "no";
             const string client = "0.1.1";
             const bool canUpdateHistory = false;
-            string node = ClientVersion.Description ?? string.Empty;
+            string node = ClientVersion.Description;
             int port = networkConfig.P2PPort;
             string network = _get.SpecProvider.ChainId.ToString();
             string protocol = "eth/65";
             
-            EthStatsClient ethStatsClient = new EthStatsClient(
+            EthStatsClient ethStatsClient = new(
                 ethStatsConfig.Server,
                 reconnectionInterval,
                 sender,
                 _get.LogManager);
             
-            EthStatsIntegration ethStatsIntegration = new EthStatsIntegration(
+            EthStatsIntegration ethStatsIntegration = new(
                 ethStatsConfig.Name,
                 node,
                 port,

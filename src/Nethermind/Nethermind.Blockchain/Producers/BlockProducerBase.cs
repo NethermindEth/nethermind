@@ -217,7 +217,7 @@ namespace Nethermind.Blockchain.Producers
 
             var transactions = _txSource.GetTransactions(parent, header.GasLimit);
             Block block = new Block(header, transactions, Array.Empty<BlockHeader>());
-            header.TxRoot = new TxTrie(block.Transactions, _spec.GetSpec(block.Number)).RootHash;
+            header.TxRoot = new TxTrie(block.Transactions).RootHash;
             return block;
         }
 

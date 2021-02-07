@@ -43,7 +43,7 @@ namespace Nethermind.Crypto
             throw new InvalidOperationException($"{nameof(NullEthereumEcdsa)} does not expect any calls");
         }
 
-        public Address RecoverAddress(Transaction tx, bool useTxChainId = false)
+        public Address RecoverAddress(Transaction tx, bool useSignatureChainId = false)
         {
             throw new InvalidOperationException($"{nameof(NullEthereumEcdsa)} does not expect any calls");
         }

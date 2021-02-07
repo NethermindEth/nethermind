@@ -24,7 +24,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
     {
         public void Serialize(IByteBuffer byteBuffer, NewBlockHashesMessage message)
         {
-            NettyRlpStream nettyRlpStream = new NettyRlpStream(byteBuffer);
+            NettyRlpStream nettyRlpStream = new(byteBuffer);
 
             int contentLength = 0;
             for (int i = 0; i < message.BlockHashes.Length; i++)
@@ -50,7 +50,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 
         public NewBlockHashesMessage Deserialize(IByteBuffer byteBuffer)
         {
-            NettyRlpStream rlpStream = new NettyRlpStream(byteBuffer);
+            NettyRlpStream rlpStream = new(byteBuffer);
             return Deserialize(rlpStream);
         }
         

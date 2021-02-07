@@ -100,7 +100,7 @@ namespace Nethermind.JsonRpc.Test
         public void Case_sensitivity_test()
         {
             IEthModule ethModule = Substitute.For<IEthModule>();
-            ethModule.eth_chainId().ReturnsForAnyArgs(ResultWrapper<long>.Success(1));
+            ethModule.eth_chainId().ReturnsForAnyArgs(ResultWrapper<ulong>.Success(1ul));
             TestRequest(ethModule, "eth_chainID").Should().BeOfType<JsonRpcErrorResponse>();
             TestRequest(ethModule, "eth_chainId").Should().BeOfType<JsonRpcSuccessResponse>();
         }

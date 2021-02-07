@@ -25,6 +25,7 @@ using Nethermind.DataMarketplace.Consumers.Sessions.Queries;
 using Nethermind.DataMarketplace.Consumers.Sessions.Repositories;
 using Nethermind.DataMarketplace.Core;
 using Nethermind.DataMarketplace.Core.Domain;
+using Nethermind.DataMarketplace.Infrastructure.Rlp;
 using Nethermind.Db;
 using Nethermind.Serialization.Rlp;
 
@@ -33,9 +34,9 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Rocks.
     public class ConsumerSessionRocksRepository : IConsumerSessionRepository
     {
         private readonly IDb _database;
-        private readonly IRlpDecoder<ConsumerSession> _rlpDecoder;
+        private readonly IRlpNdmDecoder<ConsumerSession> _rlpDecoder;
 
-        public ConsumerSessionRocksRepository(IDb database, IRlpDecoder<ConsumerSession> rlpDecoder)
+        public ConsumerSessionRocksRepository(IDb database, IRlpNdmDecoder<ConsumerSession> rlpDecoder)
         {
             _database = database;
             _rlpDecoder = rlpDecoder;

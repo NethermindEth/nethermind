@@ -79,7 +79,7 @@ namespace Nethermind.DataMarketplace.Consumers.Refunds.Services
             transaction.GasPrice = gasPrice;
             transaction.Nonce = await _blockchainBridge.GetNonceAsync(onBehalfOf);
             
-            _wallet.Sign(transaction, (int)await _blockchainBridge.GetNetworkIdAsync());
+            _wallet.Sign(transaction, await _blockchainBridge.GetNetworkIdAsync());
 
             if (_logger.IsInfo)
             {
@@ -106,7 +106,7 @@ namespace Nethermind.DataMarketplace.Consumers.Refunds.Services
             transaction.GasPrice = gasPrice;
             transaction.Nonce = await _blockchainBridge.GetNonceAsync(onBehalfOf);
             
-            _wallet.Sign(transaction, (int)await _blockchainBridge.GetNetworkIdAsync());
+            _wallet.Sign(transaction, await _blockchainBridge.GetNetworkIdAsync());
 
             if (_logger.IsInfo)
             {

@@ -35,11 +35,11 @@ namespace Nethermind.Synchronization.FastBlocks
 {
     public class HeadersSyncFeed : SyncFeed<HeadersSyncBatch?>
     {
-        private readonly IDictionary<long, IDictionary<long, ulong>> _historicalOverrides = new Dictionary<long, IDictionary<long, ulong>>()
+        private readonly IDictionary<ulong, IDictionary<long, ulong>> _historicalOverrides = new Dictionary<ulong, IDictionary<long, ulong>>()
         {
             // Kovan has some wrong difficulty in early blocks before using proper AuRa difficulty calculation
             // In order to support that we need to support another pivot
-            { ChainId.Kovan, new Dictionary<long, ulong>() { {148240, 19430113280} } }
+            { ChainId.Kovan, new Dictionary<long, ulong> { {148240, 19430113280} } }
         };
         
         private readonly ILogger _logger;
@@ -62,17 +62,17 @@ namespace Nethermind.Synchronization.FastBlocks
         /// <summary>
         /// Requests awaiting to be sent - these are results of partial or invalid responses being queued again 
         /// </summary>
-        private readonly ConcurrentQueue<HeadersSyncBatch> _pending = new ConcurrentQueue<HeadersSyncBatch>();
+        private readonly ConcurrentQueue<HeadersSyncBatch> _pending = new();
 
         /// <summary>
         /// Requests sent to peers for which responses have not been received yet  
         /// </summary>
-        private readonly ConcurrentDictionary<HeadersSyncBatch, object> _sent = new ConcurrentDictionary<HeadersSyncBatch, object>();
+        private readonly ConcurrentDictionary<HeadersSyncBatch, object> _sent = new();
 
         /// <summary>
         /// Responses received from peers but waiting in a queue for some other requests to be handled first
         /// </summary>
-        private readonly ConcurrentDictionary<long, HeadersSyncBatch> _dependencies = new ConcurrentDictionary<long, HeadersSyncBatch>();
+        private readonly ConcurrentDictionary<long, HeadersSyncBatch> _dependencies = new();
 
         private bool AllHeadersDownloaded => (_blockTree.LowestInsertedHeader?.Number ?? long.MaxValue) == 1;
         private bool AnyHeaderDownloaded => _blockTree.LowestInsertedHeader != null;
@@ -85,11 +85,11 @@ namespace Nethermind.Synchronization.FastBlocks
                 MemorySizeEstimator.EstimateSize(h)));
 
         public HeadersSyncFeed(
-            IBlockTree blockTree,
-            ISyncPeerPool syncPeerPool,
-            ISyncConfig syncConfig,
-            ISyncReport syncReport,
-            ILogManager logManager)
+            IBlockTree? blockTree,
+            ISyncPeerPool? syncPeerPool,
+            ISyncConfig? syncConfig,
+            ISyncReport? syncReport,
+            ILogManager? logManager)
         {
             _syncPeerPool = syncPeerPool ?? throw new ArgumentNullException(nameof(syncPeerPool));
             _syncReport = syncReport ?? throw new ArgumentNullException(nameof(syncReport));
@@ -168,7 +168,7 @@ namespace Nethermind.Synchronization.FastBlocks
             long? lowest = _blockTree.LowestInsertedHeader?.Number;
             while (lowest.HasValue && _dependencies.TryRemove(lowest.Value - 1, out HeadersSyncBatch? dependentBatch))
             {
-                InsertHeaders(dependentBatch);
+                InsertHeaders(dependentBatch!);
                 lowest = _blockTree.LowestInsertedHeader?.Number;
             }
         }
@@ -179,14 +179,14 @@ namespace Nethermind.Synchronization.FastBlocks
 
             if (_pending.TryDequeue(out HeadersSyncBatch? batch))
             {
-                batch.MarkRetry();
+                batch!.MarkRetry();
             }
             else if (ShouldBuildANewBatch())
             {
                 batch = BuildNewBatch();
             }
 
-            if (batch != null)
+            if (batch is not null)
             {
                 _sent.TryAdd(batch, _dummyObject);
                 if (batch.StartNumber >= (_blockTree.LowestInsertedHeader?.Number ?? 0) - FastBlocksPriorities.ForHeaders)
@@ -202,7 +202,7 @@ namespace Nethermind.Synchronization.FastBlocks
 
         private HeadersSyncBatch BuildNewBatch()
         {
-            HeadersSyncBatch batch = new HeadersSyncBatch();
+            HeadersSyncBatch batch = new();
             batch.MinNumber = _lowestRequestedHeaderNumber - 1;
             batch.StartNumber = Math.Max(0, _lowestRequestedHeaderNumber - _headersRequestSize);
             batch.RequestSize = (int) Math.Min(_lowestRequestedHeaderNumber, _headersRequestSize);
@@ -217,8 +217,8 @@ namespace Nethermind.Synchronization.FastBlocks
             {
                 lock (_handlerLock)
                 {
-                    ConcurrentDictionary<long, string> all = new ConcurrentDictionary<long, string>();
-                    StringBuilder builder = new StringBuilder();
+                    ConcurrentDictionary<long, string> all = new();
+                    StringBuilder builder = new();
                     builder.AppendLine($"SENT {_sent.Count} PENDING {_pending.Count} DEPENDENCIES {_dependencies.Count}");
                     foreach (var headerDependency in _dependencies)
                     {
@@ -342,8 +342,8 @@ namespace Nethermind.Synchronization.FastBlocks
             int skippedAtTheEnd = 0;
             for (int i = batch.Response.Length - 1; i >= 0; i--)
             {
-                BlockHeader header = batch.Response[i];
-                if (header == null)
+                BlockHeader? header = batch.Response[i];
+                if (header is null)
                 {
                     skippedAtTheEnd++;
                     continue;
@@ -414,8 +414,8 @@ namespace Nethermind.Synchronization.FastBlocks
 
                         for (int j = 0; j < batch.Response.Length; j++)
                         {
-                            BlockHeader current = batch.Response[j];
-                            if (batch.Response[j] != null)
+                            BlockHeader? current = batch.Response[j];
+                            if (current != null)
                             {
                                 addedEarliest = Math.Min(addedEarliest, current.Number);
                                 addedLast = Math.Max(addedLast, current.Number);

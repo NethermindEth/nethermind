@@ -23,9 +23,9 @@ namespace Nethermind.Crypto
 {
     public class OptimizedKdf
     {
-        private static ThreadLocal<SHA256> _sha256 = new ThreadLocal<SHA256>(SHA256.Create);
+        private static readonly ThreadLocal<SHA256> _sha256 = new(SHA256.Create);
 
-        private static ThreadLocal<byte[]> _dataToHash = new ThreadLocal<byte[]>(BuildDataToHash);
+        private static readonly ThreadLocal<byte[]> _dataToHash = new(BuildDataToHash);
 
         private static byte[] BuildDataToHash()
         {

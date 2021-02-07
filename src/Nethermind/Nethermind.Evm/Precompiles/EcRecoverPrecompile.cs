@@ -48,7 +48,7 @@ namespace Nethermind.Evm.Precompiles
         
         private readonly byte[] _zero31 = new byte[31];
         
-        public (byte[], bool) Run(byte[] inputData)
+        public (byte[], bool) Run(byte[] inputData, IReleaseSpec releaseSpec)
         {
             Metrics.EcRecoverPrecompile++;
 

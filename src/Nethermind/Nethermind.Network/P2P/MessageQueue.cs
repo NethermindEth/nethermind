@@ -25,9 +25,9 @@ namespace Nethermind.Network.P2P
     {
         private bool _isClosed;
         private readonly Action<TMsg> _send;
-        private Request<TMsg, TData> _currentRequest;
+        private Request<TMsg, TData>? _currentRequest;
         
-        private Queue<Request<TMsg, TData>> _requestQueue = new Queue<Request<TMsg, TData>>();
+        private readonly Queue<Request<TMsg, TData>> _requestQueue = new();
 
         public MessageQueue(Action<TMsg> send)
         {
@@ -69,7 +69,7 @@ namespace Nethermind.Network.P2P
                 _currentRequest.CompletionSource.SetResult(data);
                 if (_requestQueue.TryDequeue(out _currentRequest))
                 {
-                    _currentRequest.StartMeasuringTime();
+                    _currentRequest!.StartMeasuringTime();
                     _send(_currentRequest.Message);
                 }
             }

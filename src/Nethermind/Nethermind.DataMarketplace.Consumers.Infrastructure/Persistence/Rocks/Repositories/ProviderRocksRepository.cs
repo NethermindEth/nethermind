@@ -21,6 +21,7 @@ using Nethermind.DataMarketplace.Consumers.DataAssets.Domain;
 using Nethermind.DataMarketplace.Consumers.Deposits.Domain;
 using Nethermind.DataMarketplace.Consumers.Providers.Domain;
 using Nethermind.DataMarketplace.Consumers.Providers.Repositories;
+using Nethermind.DataMarketplace.Infrastructure.Rlp;
 using Nethermind.Db;
 using Nethermind.Serialization.Rlp;
 
@@ -29,9 +30,9 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Rocks.
     public class ProviderRocksRepository : IProviderRepository
     {
         private readonly IDb _database;
-        private readonly IRlpDecoder<DepositDetails> _rlpDecoder;
+        private readonly IRlpNdmDecoder<DepositDetails> _rlpDecoder;
 
-        public ProviderRocksRepository(IDb database, IRlpDecoder<DepositDetails> rlpDecoder)
+        public ProviderRocksRepository(IDb database, IRlpNdmDecoder<DepositDetails> rlpDecoder)
         {
             _database = database;
             _rlpDecoder = rlpDecoder;

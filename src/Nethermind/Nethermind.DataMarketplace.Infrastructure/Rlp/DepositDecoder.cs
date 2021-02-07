@@ -21,7 +21,7 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.DataMarketplace.Infrastructure.Rlp
 {
-    public class DepositDecoder : IRlpDecoder<Deposit>
+    public class DepositDecoder : IRlpNdmDecoder<Deposit>
     {
         public static void Init()
         {
@@ -43,6 +43,11 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
             UInt256 value = rlpStream.DecodeUInt256();
 
             return new Deposit(id, units, expiryTime, value);
+        }
+
+        public void Encode(RlpStream stream, Deposit item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        {
+            throw new System.NotImplementedException();
         }
 
         public Serialization.Rlp.Rlp Encode(Deposit item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)

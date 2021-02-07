@@ -19,7 +19,7 @@ using Nethermind.Core;
 
 namespace Nethermind.Serialization.Rlp
 {
-    public class BlockInfoDecoder : IRlpDecoder<BlockInfo>, IRlpValueDecoder<BlockInfo>
+    public class BlockInfoDecoder : IRlpStreamDecoder<BlockInfo>, IRlpValueDecoder<BlockInfo>
     {
         private readonly bool _chainWithFinalization;
 
@@ -59,6 +59,11 @@ namespace Nethermind.Serialization.Rlp
             }
 
             return blockInfo;
+        }
+
+        public void Encode(RlpStream stream, BlockInfo item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        {
+            throw new NotImplementedException();
         }
 
         public Rlp Encode(BlockInfo item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)

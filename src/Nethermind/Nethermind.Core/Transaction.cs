@@ -18,6 +18,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Text;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 
@@ -27,32 +28,32 @@ namespace Nethermind.Core
     public class Transaction
     {
         public const int BaseTxGasCost = 21000;
-
+        
+        public ulong? ChainId { get; set; }
+        
         /// <summary>
         /// EIP-2718 transaction type
         /// </summary>
-        public byte TransactionType { get; set; }
+        public TxType Type { get; set; }
         public UInt256 Nonce { get; set; }
         public UInt256 GasPrice { get; set; }
         public UInt256 GasPremium => GasPrice; 
         public UInt256 FeeCap { get; set; }
         public bool IsEip1559 => FeeCap > UInt256.Zero;
-        public bool IsLegacy => !IsEip1559;
         public long GasLimit { get; set; }
         public Address? To { get; set; }
         public UInt256 Value { get; set; }
         public byte[]? Data { get; set; }
-        public byte[]? Init { get; set; }
         public Address? SenderAddress { get; set; }
         public Signature? Signature { get; set; }
         public bool IsSigned => Signature != null;
-        public bool IsContractCreation => Init != null;
-        public bool IsMessageCall => Data != null;
+        public bool IsContractCreation => To == null;
+        public bool IsMessageCall => To != null;
         public Keccak? Hash { get; set; }
         public PublicKey? DeliveredBy { get; set; } // tks: this is added so we do not send the pending tx back to original sources, not used yet
         public UInt256 Timestamp { get; set; }
-        public HashSet<Address>? AccountAccessList { get; set; } // eip2930
-        public HashSet<StorageCell>? StorageAccessList { get; set; } // eip2930
+
+        public AccessList? AccessList { get; set; } // eip2930
         
         /// <summary>
         /// In-memory only property, representing order of transactions going to TxPool.
@@ -61,7 +62,7 @@ namespace Nethermind.Core
         public ulong PoolIndex { get; set; }
 
         public string ToShortString() => 
-            $"[TX: hash {Hash} from {SenderAddress} to {To} with data {Data?.ToHexString() ?? Init?.ToHexString()}, gas price {GasPrice} and limit {GasLimit}, nonce {Nonce}]";
+            $"[TX: hash {Hash} from {SenderAddress} to {To} with data {Data?.ToHexString()}, gas price {GasPrice} and limit {GasLimit}, nonce {Nonce}]";
 
         public string ToString(string indent)
         {
@@ -74,10 +75,9 @@ namespace Nethermind.Core
             builder.AppendLine($"{indent}Nonce:     {Nonce}");
             builder.AppendLine($"{indent}Value:     {Value}");
             builder.AppendLine($"{indent}Data:      {(Data ?? new byte[0]).ToHexString()}");
-            builder.AppendLine($"{indent}Init:      {(Init ?? new byte[0]).ToHexString()}");
             builder.AppendLine($"{indent}Signature: {(Signature?.Bytes ?? new byte[0]).ToHexString()}");
-            builder.AppendLine($"{indent}V:         {Signature?.V ?? -1}");
-            builder.AppendLine($"{indent}ChainId:   {Signature?.ChainId ?? -1}");
+            builder.AppendLine($"{indent}V:         {Signature?.V}");
+            builder.AppendLine($"{indent}ChainId:   {Signature?.ChainId}");
             builder.AppendLine($"{indent}Timestamp: {Timestamp}");
             return builder.ToString();
         }

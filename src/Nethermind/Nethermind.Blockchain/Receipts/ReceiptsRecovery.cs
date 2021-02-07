@@ -27,7 +27,7 @@ namespace Nethermind.Blockchain.Receipts
         private readonly IEthereumEcdsa _ecdsa;
         private readonly ISpecProvider _specProvider;
 
-        public ReceiptsRecovery(IEthereumEcdsa ecdsa, ISpecProvider specProvider)
+        public ReceiptsRecovery(IEthereumEcdsa? ecdsa, ISpecProvider? specProvider)
         {
             _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));

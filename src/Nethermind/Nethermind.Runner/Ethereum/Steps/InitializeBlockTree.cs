@@ -73,7 +73,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             ISignerStore signerStore = NullSigner.Instance;
             if (_get.Config<IMiningConfig>().Enabled)
             {
-                Signer signerAndStore = new Signer(_get.SpecProvider!.ChainId, _get.OriginalSignerKey, _get.LogManager);
+                Signer signerAndStore = new(_get.SpecProvider!.ChainId, _get.OriginalSignerKey, _get.LogManager);
                 signer = signerAndStore;
                 signerStore = signerAndStore;
             }
@@ -81,12 +81,12 @@ namespace Nethermind.Runner.Ethereum.Steps
             _set.EngineSigner = signer;
             _set.EngineSignerStore = signerStore;
 
-            ReceiptsRecovery receiptsRecovery = new ReceiptsRecovery(_get.EthereumEcdsa, _get.SpecProvider);
+            ReceiptsRecovery receiptsRecovery = new(_get.EthereumEcdsa, _get.SpecProvider);
             IReceiptStorage? receiptStorage = _set.ReceiptStorage
                 = initConfig.StoreReceipts ? (IReceiptStorage?) new PersistentReceiptStorage(_get.DbProvider.ReceiptsDb, _get.SpecProvider, receiptsRecovery) : NullReceiptStorage.Instance;
             IReceiptFinder? receiptFinder = _set.ReceiptFinder = new FullInfoReceiptFinder(receiptStorage, receiptsRecovery, blockTree);
             
-            LogFinder logFinder = new LogFinder(
+            LogFinder logFinder = new(
                 blockTree,
                 receiptFinder,
                 bloomStorage,

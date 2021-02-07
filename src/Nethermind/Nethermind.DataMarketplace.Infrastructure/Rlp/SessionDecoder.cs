@@ -21,7 +21,7 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.DataMarketplace.Infrastructure.Rlp
 {
-    public class SessionDecoder : IRlpDecoder<Session>
+    public class SessionDecoder : IRlpNdmDecoder<Session>
     {
         public static void Init()
         {
@@ -56,6 +56,11 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
             return new Session(id, depositId, dataAssetId, consumerAddress, consumerNodeId, providerAddress,
                 providerNodeId, state,  startUnitsFromConsumer, startUnitsFromProvider, startTimestamp, finishTimestamp,
                 consumedUnits, unpaidUnits, paidUnits, settledUnits);
+        }
+
+        public void Encode(RlpStream stream, Session item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        {
+            throw new System.NotImplementedException();
         }
 
         public Serialization.Rlp.Rlp Encode(Session item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)

@@ -38,7 +38,7 @@ namespace Nethermind.Serialization.Rlp
                 throw new RlpException("R and S lengths expected to be less or equal 32");
             }
 
-            int v = vBytes.ReadEthInt32();
+            ulong v = vBytes.ReadEthUInt64();
 
             if (rBytes.SequenceEqual(Bytes.Zero32) && sBytes.SequenceEqual(Bytes.Zero32))
             {

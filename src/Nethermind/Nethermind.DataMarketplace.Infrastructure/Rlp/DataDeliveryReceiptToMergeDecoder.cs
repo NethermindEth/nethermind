@@ -21,7 +21,7 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.DataMarketplace.Infrastructure.Rlp
 {
-    public class DataDeliveryReceiptToMergeDecoder : IRlpDecoder<DataDeliveryReceiptToMerge>
+    public class DataDeliveryReceiptToMergeDecoder : IRlpNdmDecoder<DataDeliveryReceiptToMerge>
     {
         public static void Init()
         {
@@ -42,6 +42,11 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
             Signature signature = SignatureDecoder.DecodeSignature(rlpStream);
 
             return new DataDeliveryReceiptToMerge(unitsRange, signature);
+        }
+
+        public void Encode(RlpStream stream, DataDeliveryReceiptToMerge item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        {
+            throw new System.NotImplementedException();
         }
 
         public Serialization.Rlp.Rlp Encode(DataDeliveryReceiptToMerge item,

@@ -16,15 +16,9 @@
 
 using System;
 using System.Collections.Generic;
-using System.Numerics;
 using BenchmarkDotNet.Attributes;
-using Nethermind.Core;
-using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
-using Nethermind.Core.Specs;
-using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm.Tracing;
-using Nethermind.Logging;
+using Nethermind.Int256;
 
 namespace Nethermind.Evm.Benchmark
 {

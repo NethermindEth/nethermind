@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.Tracing;
@@ -39,6 +40,20 @@ namespace Nethermind.Evm.Test.Tracing
             tracer.MarkAsSuccess(TestItem.AddressA, 100, new byte[0], new LogEntry[0], TestItem.KeccakF);
             
             Assert.AreEqual(TestItem.KeccakF, tracer.TxReceipts[0].PostTransactionState);
+        }
+        
+        [Test]
+        public void Sets_tx_type()
+        {
+            Block block = Build.A.Block.WithTransactions(MuirGlacier.Instance, Build.A.Transaction.WithChainId(1).WithType(TxType.AccessList).TestObject).TestObject;
+            
+            BlockReceiptsTracer tracer = new();
+            tracer.SetOtherTracer(NullBlockTracer.Instance);
+            tracer.StartNewBlockTrace(block);
+            tracer.StartNewTxTrace(block.Transactions[0].Hash);
+            tracer.MarkAsSuccess(TestItem.AddressA, 100, new byte[0], new LogEntry[0]);
+
+            tracer.TxReceipts[0].TxType.Should().Be(TxType.AccessList);
         }
         
         [Test]

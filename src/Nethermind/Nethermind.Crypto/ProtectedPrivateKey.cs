@@ -27,7 +27,7 @@ namespace Nethermind.Crypto
             PublicKey = privateKey.PublicKey;
         }
 
-        protected override PrivateKey CreateUnprotected(byte[] data) => new PrivateKey(data);
+        protected override PrivateKey CreateUnprotected(byte[] data) => new(data);
         
         public PublicKey PublicKey { get; }
         

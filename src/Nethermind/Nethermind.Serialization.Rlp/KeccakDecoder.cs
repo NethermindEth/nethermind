@@ -20,9 +20,9 @@ namespace Nethermind.Serialization.Rlp
 {
     public class KeccakDecoder : IRlpValueDecoder<Keccak>
     {
-        public static readonly KeccakDecoder Instance = new KeccakDecoder();
+        public static readonly KeccakDecoder Instance = new();
         
-        public Keccak Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => decoderContext.DecodeKeccak();
+        public Keccak? Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => decoderContext.DecodeKeccak();
 
         public Rlp Encode(Keccak item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => Rlp.Encode(item);
 

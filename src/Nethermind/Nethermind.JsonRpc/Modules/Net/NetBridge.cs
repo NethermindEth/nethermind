@@ -36,7 +36,7 @@ namespace Nethermind.JsonRpc.Modules.Net
 
         public Address LocalAddress => _localNode.Address;
         public string LocalEnode => _localNode.Info;
-        public long NetworkId => _syncServer.ChainId;
+        public ulong NetworkId => _syncServer.ChainId;
         public int PeerCount => _syncServer.GetPeerCount();
     }
 }
