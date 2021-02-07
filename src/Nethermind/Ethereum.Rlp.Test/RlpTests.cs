@@ -128,16 +128,17 @@ namespace Ethereum.Rlp.Test
             Assert.AreEqual(expected, Nethermind.Serialization.Rlp.Rlp.Encode(1).Bytes, "int");
             Assert.AreEqual(expected, Nethermind.Serialization.Rlp.Rlp.Encode(1U).Bytes, "uint bytes");
             Assert.AreEqual(expected, Nethermind.Serialization.Rlp.Rlp.Encode(1L).Bytes, "long bytes");
+            Assert.AreEqual(expected, Nethermind.Serialization.Rlp.Rlp.Encode(1UL).Bytes, "ulong bytes");
 
-            byte[] expectedUlong = new byte[] {136, 0, 0, 0, 0, 0, 0, 0, 1};
-            Assert.AreEqual(expectedUlong, Nethermind.Serialization.Rlp.Rlp.Encode(1UL).Bytes, "ulong bytes");
+            byte[] expectedNonce = new byte[] {136, 0, 0, 0, 0, 0, 0, 0, 1};
+            Assert.AreEqual(expectedNonce, Nethermind.Serialization.Rlp.Rlp.EncodeNonce(1UL).Bytes, "nonce bytes");
         }
 
         [Test]
         public void TestNonce()
         {
             byte[] expected = {136, 0, 0, 0, 0, 0, 0, 0, 42};
-            Assert.AreEqual(expected, Nethermind.Serialization.Rlp.Rlp.Encode(42UL).Bytes);
+            Assert.AreEqual(expected, Nethermind.Serialization.Rlp.Rlp.EncodeNonce(42UL).Bytes);
         }
         
         //[Ignore("placeholder for various rlp tests")]
