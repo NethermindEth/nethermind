@@ -15,23 +15,17 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
 using DotNetty.Buffers;
 using DotNetty.Codecs;
-using DotNetty.Common;
 using DotNetty.Common.Concurrency;
-using DotNetty.Common.Internal.Logging;
 using DotNetty.Handlers.Logging;
 using DotNetty.Transport.Bootstrapping;
 using DotNetty.Transport.Channels;
 using DotNetty.Transport.Channels.Sockets;
-using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Logging.Console;
-using Microsoft.Extensions.Options;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
@@ -45,7 +39,7 @@ namespace Nethermind.Network.Rlpx
 {
     public class RlpxPeer : IRlpxPeer
     {
-        private IChannel _bootstrapChannel;
+        private IChannel? _bootstrapChannel;
         private IEventLoopGroup _bossGroup;
         private IEventLoopGroup _workerGroup;
 
@@ -242,13 +236,13 @@ namespace Nethermind.Network.Rlpx
         public async Task Shutdown()
         {
 //            InternalLoggerFactory.DefaultFactory.AddProvider(new ConsoleLoggerProvider((s, level) => true, false));
-            await _bootstrapChannel.CloseAsync().ContinueWith(t =>
+            await (_bootstrapChannel?.CloseAsync().ContinueWith(t =>
             {
                 if (t.IsFaulted)
                 {
                     _logger.Error($"{nameof(Shutdown)} failed", t.Exception);
                 }
-            });
+            }) ?? Task.CompletedTask);
 
             if (_logger.IsDebug) _logger.Debug("Closed _bootstrapChannel");
 
