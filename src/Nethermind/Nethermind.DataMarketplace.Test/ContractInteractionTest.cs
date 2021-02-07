@@ -256,7 +256,7 @@ namespace Nethermind.DataMarketplace.Test
                 throw new NotImplementedException();
             }
 
-            public long GetChainId()
+            public ulong GetChainId()
             {
                 return 1;
             }
