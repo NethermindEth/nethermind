@@ -144,9 +144,9 @@ namespace Nethermind.Runner.Test
 
                 INethermindApi nethermindApi = new ApiBuilder(configProvider, TestLogManager.Instance).Create();
                 nethermindApi.RpcModuleProvider = new RpcModuleProvider(new FileSystem(), new JsonRpcConfig(), TestLogManager.Instance);
-                EthereumRunner runner = new EthereumRunner(nethermindApi);
+                EthereumRunner runner = new(nethermindApi);
 
-                using CancellationTokenSource cts = new CancellationTokenSource();
+                using CancellationTokenSource cts = new();
                 
                 try
                 {
@@ -191,7 +191,8 @@ namespace Nethermind.Runner.Test
                 {
                     if (exception != null)
                     {
-                        await TestContext.Error.WriteLineAsync(e.ToString());
+                        // just swallow this exception as otherwise this is recognized as a pattern byt GitHub
+                        // await TestContext.Error.WriteLineAsync(e.ToString());
                     }
                     else
                     {
