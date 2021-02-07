@@ -30,7 +30,7 @@ namespace Nethermind.State.Proofs
         private readonly bool _allowProofs;
         private static readonly ReceiptMessageDecoder Decoder = new ReceiptMessageDecoder();
         
-        public ReceiptTrie(IReleaseSpec releaseSpec, TxReceipt[] txReceipts, bool allowProofs = false)
+        public ReceiptTrie(IReleaseSpec releaseSpec, TxReceipt?[] txReceipts, bool allowProofs = false)
             : base(allowProofs ? (IDb) new MemDb() : NullDb.Instance, EmptyTreeHash, false, false, NullLogManager.Instance)
         {
             _allowProofs = allowProofs;
@@ -44,14 +44,15 @@ namespace Nethermind.State.Proofs
             // a temporary trie would be a trie that exists to create a state root only and then be disposed of
             for (int i = 0; i < txReceipts.Length; i++)
             {
-                byte[] receiptRlp = Decoder.EncodeNew(txReceipts[i],
+                TxReceipt? currentReceipt = txReceipts[i];
+                byte[] receiptRlp = Decoder.EncodeNew(currentReceipt,
                     releaseSpec.IsEip658Enabled
                         ? RlpBehaviors.Eip658Receipts
                         : RlpBehaviors.None);
                 
-                if (txReceipts[i].TxType != TxType.Legacy)
+                if (currentReceipt is not null && currentReceipt.TxType != TxType.Legacy)
                 {
-                    receiptRlp = Bytes.Concat((byte)txReceipts[i].TxType, receiptRlp);
+                    receiptRlp = Bytes.Concat((byte)currentReceipt.TxType, receiptRlp);
                 }
                 
                 Set(Rlp.Encode(i).Bytes, receiptRlp);
