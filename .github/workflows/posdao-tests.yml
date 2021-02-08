@@ -57,16 +57,12 @@ jobs:
       run: |
         cd posdao-test-setup
         npm run stop-test-setup
-        for i in {0..6}
-        do
-          cd data/node$i
-          zip log.zip log
-          cd ../../
-        done
+        zip -r node-logs.zip data/node0/log data/node1/log data/node2/log \
+          data/node3/log data/node4/log data/node5/log data/node6/log
     - uses: actions/upload-artifact@master
       if: ${{ failure() }}
       name: Upload post-failure nodes logs
       with:
         name: posdao-tests-failure-logs
         path: |
-          posdao-test-setup/data/node?/log.zip
+          posdao-test-setup/node-logs.zip
