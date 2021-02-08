@@ -52,10 +52,21 @@ jobs:
       run: |
         cd posdao-test-setup
         npm run all-nethermind-no-watcher
+    - name: Stopping and compressing logs
+      if: ${{ failure() }}
+      run: |
+        cd posdao-test-setup
+        npm run stop-test-setup
+        for i in {0..6}
+        do
+          cd data/node$i
+          zip log.zip log
+          cd ../../
+        done
     - uses: actions/upload-artifact@master
       if: ${{ failure() }}
       name: Upload post-failure nodes logs
       with:
         name: posdao-tests-failure-logs
         path: |
-          posdao-test-setup/data/node?/log
+          posdao-test-setup/data/node?/log.zip
