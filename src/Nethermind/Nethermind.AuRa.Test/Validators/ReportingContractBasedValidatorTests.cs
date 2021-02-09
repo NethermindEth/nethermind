@@ -85,7 +85,7 @@ namespace Nethermind.AuRa.Test.Validators
             var block = Build.A.Block.WithNumber(blockNumber).TestObject;
 
             context.ContractBasedValidator.ValidatorContract
-                .ShouldValidatorReport(NodeAddress, MaliciousMinerAddress, Arg.Any<UInt256>(), Arg.Is<BlockHeader>(h =>  h.Number == blockNumber - 1))
+                .ShouldValidatorReport(Arg.Is<BlockHeader>(h =>  h.Number == blockNumber - 1), NodeAddress, MaliciousMinerAddress, Arg.Any<UInt256>())
                 .Returns(0 < validatorsToReport, Enumerable.Range(1, 15).Select(i => i < validatorsToReport).ToArray());
             
             context.ContractBasedValidator.BlockTree.FindHeader(Arg.Any<Keccak>(), BlockTreeLookupOptions.None)
@@ -106,13 +106,14 @@ namespace Nethermind.AuRa.Test.Validators
         }
         
         [Test]
-        public void Adds_transactions_to_block([Values(0, 5, 15)] int validatorsToReport, [Values(0, 2)] long parentBlockNumber, [Values(false, true)] bool emitInitChangeCallable)
+        public void Adds_transactions_to_block([Values(0, 5, 15)] int validatorsToReport, [Values(0, 2, 10, 20)] long parentBlockNumber, [Values(false, true)] bool emitInitChangeCallable)
         {
             var context = new TestContext(true);
             var proof = TestItem.KeccakA.Bytes;
             var transaction = Build.A.Transaction.TestObject;
             context.ContractBasedValidator.Validators = new[] {MaliciousMinerAddress, NodeAddress};
-            for (ulong i = 5; i < 20; i++)
+            ulong startReportBlockNumber = 5;
+            for (ulong i = startReportBlockNumber; i < startReportBlockNumber + (ulong)validatorsToReport; i++)
             {
                 context.ReportingValidatorContract.ReportMalicious(MaliciousMinerAddress, i, proof).Returns(transaction);
                 context.Validator.ReportMalicious(MaliciousMinerAddress, (long) i, proof, IReportingValidator.MaliciousCause.DuplicateStep);
@@ -121,7 +122,7 @@ namespace Nethermind.AuRa.Test.Validators
             var parent = Build.A.BlockHeader.WithNumber(parentBlockNumber).TestObject;
             bool isPosDao = parentBlockNumber + 1 >= context.PosdaoTransition;
             context.ContractBasedValidator.ValidatorContract
-                .ShouldValidatorReport(NodeAddress, MaliciousMinerAddress, Arg.Any<UInt256>(), parent)
+                .ShouldValidatorReport(parent, NodeAddress, MaliciousMinerAddress, Arg.Any<UInt256>())
                 .Returns(0 < validatorsToReport, Enumerable.Range(1, 15).Select(i => i < validatorsToReport).ToArray());
 
             var initChangeTransaction = Build.A.Transaction.TestObject;
@@ -130,7 +131,8 @@ namespace Nethermind.AuRa.Test.Validators
             context.ContractBasedValidator.ValidatorContract.EmitInitiateChange().Returns(initChangeTransaction);
 
             var transactions = context.Validator.GetTransactions(parent, 3000000).ToArray();
-            transactions.Should().HaveCount(Math.Min(ReportingContractBasedValidator.MaxReportsPerBlock, isPosDao ? validatorsToReport : 0) +  (initChangeTransactionAdded ? 1 : 0));
+            int addedMaliciousTransactions = (int)Math.Min(validatorsToReport, Math.Max(0, parentBlockNumber - (long)startReportBlockNumber));
+            transactions.Should().HaveCount(Math.Min(ReportingContractBasedValidator.MaxReportsPerBlock, isPosDao ? addedMaliciousTransactions : 0) +  (initChangeTransactionAdded ? 1 : 0));
             if (initChangeTransactionAdded)
             {
                 transactions.First().Should().Be(initChangeTransaction);
