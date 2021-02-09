@@ -50,7 +50,7 @@ namespace Nethermind.DataMarketplace.Consumers.Refunds.Services
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
-        public ulong GasLimit { get; } = 90000;
+        public ulong GasLimit { get; } = 55000;
 
         public async Task SetEarlyRefundTicketAsync(EarlyRefundTicket ticket, RefundReason reason)
         {

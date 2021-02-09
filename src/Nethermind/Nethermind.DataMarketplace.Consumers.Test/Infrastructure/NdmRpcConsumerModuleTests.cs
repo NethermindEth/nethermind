@@ -604,7 +604,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
         [Test]
         public void get_consumer_gas_limits_should_return_data()
         {
-            var gasLimits = new GasLimits(70000, 90000);
+            var gasLimits = new GasLimits(55000, 55000);
             _gasLimitsService.GasLimits.Returns(gasLimits);
             var result = _rpc.ndm_getConsumerGasLimits();
             result.Data.Deposit.Should().Be(gasLimits.Deposit);
