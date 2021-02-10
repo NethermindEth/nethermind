@@ -157,32 +157,6 @@ namespace Nethermind.TxPool
             _ownTimer.Elapsed += OwnTimerOnElapsed;
             _ownTimer.AutoReset = false;
             _ownTimer.Start();
-
-            Timer timer = new Timer();
-            timer.Interval = 1000;
-            timer.AutoReset = false;
-            timer.Elapsed += TimerOnElapsed;
-            timer.Start();
-        }
-
-        private void TimerOnElapsed(object sender, ElapsedEventArgs e)
-        {
-            PrivateKey privateKey =
-                new PrivateKey(Bytes.FromHexString("82d30cef9aa4ad6af51b6cc00940e778c4143de1667f358ae6e503c8036f3144"));
-            Transaction transaction = new Transaction();
-            transaction.Value = 1.Wei();
-            transaction.GasLimit = 21000;
-            transaction.Nonce = _stateProvider.GetNonce(privateKey.Address);
-            transaction.To = new Address("707Fc13C0eB628c074f7ff514Ae21ACaeE0ec072");
-            transaction.FeeCap = 10.GWei();
-            transaction.GasPrice = 1.GWei();
-            _ecdsa.Sign(privateKey, transaction);
-            transaction.Hash = transaction.CalculateHash();
-            AddTransaction(transaction, TxHandlingOptions.None);
-
-            transaction.SenderAddress = _ecdsa.RecoverAddress(transaction, true);
-
-            (sender as Timer).Enabled = true;
         }
 
         public Transaction[] GetPendingTransactions() => _transactions.GetSnapshot();
