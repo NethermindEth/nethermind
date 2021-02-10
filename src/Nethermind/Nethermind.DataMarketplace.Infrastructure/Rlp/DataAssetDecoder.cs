@@ -69,7 +69,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
             throw new NotImplementedException();
         }
 
-        public Serialization.Rlp.Rlp Encode(DataAsset item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public Serialization.Rlp.Rlp Encode(DataAsset? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item == null)
             {

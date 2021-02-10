@@ -53,7 +53,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
             throw new System.NotImplementedException();
         }
 
-        public Serialization.Rlp.Rlp Encode(DepositApproval item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public Serialization.Rlp.Rlp Encode(DepositApproval? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item == null)
             {
