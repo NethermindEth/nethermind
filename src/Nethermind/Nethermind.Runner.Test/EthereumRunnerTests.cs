@@ -196,7 +196,7 @@ namespace Nethermind.Runner.Test
                     }
                     else
                     {
-                        throw;
+                        throw new AggregateException($"Error while deleting {tempPath}", e);
                     }
                 }
             }
