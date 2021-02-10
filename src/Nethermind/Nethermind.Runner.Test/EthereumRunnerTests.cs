@@ -61,6 +61,7 @@ namespace Nethermind.Runner.Test
             {
                 var configProvider = new ConfigProvider();
                 configProvider.AddSource(new JsonConfigSource(configFile));
+                configProvider.Initialize();
                 result.Enqueue((configFile, configProvider));
             });
 
@@ -196,7 +197,7 @@ namespace Nethermind.Runner.Test
                     }
                     else
                     {
-                        throw new AggregateException($"Error while deleting {tempPath}", e);
+                        throw;
                     }
                 }
             }
