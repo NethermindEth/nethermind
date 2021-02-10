@@ -266,9 +266,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         [Test]
         public void Can_handle_new_block_hashes()
         {
-            NewBlockHashesMessage msg = new NewBlockHashesMessage();
-            msg.BlockHashes = new (Keccak, long)[] {(Keccak.Zero, 1), (Keccak.Zero, 2)};
-
+            NewBlockHashesMessage msg = new NewBlockHashesMessage((Keccak.Zero, 1), (Keccak.Zero, 2));
             HandleIncomingStatusMessage();
             HandleZeroMessage(msg, Eth62MessageCode.NewBlockHashes);
         }

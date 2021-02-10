@@ -22,7 +22,7 @@ namespace Nethermind.Crypto
 {
     public static class Ripemd
     {
-        private static ThreadLocal<IHash> _ripemd160 = new ThreadLocal<IHash>();
+        private static readonly ThreadLocal<IHash> _ripemd160 = new();
 
         private static void InitIfNeeded()
         {

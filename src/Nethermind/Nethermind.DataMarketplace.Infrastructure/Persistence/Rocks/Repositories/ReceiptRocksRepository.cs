@@ -21,6 +21,7 @@ using System.Threading.Tasks;
 using Nethermind.Core.Crypto;
 using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.DataMarketplace.Core.Repositories;
+using Nethermind.DataMarketplace.Infrastructure.Rlp;
 using Nethermind.Db;
 using Nethermind.Serialization.Rlp;
 
@@ -29,9 +30,9 @@ namespace Nethermind.DataMarketplace.Infrastructure.Persistence.Rocks.Repositori
     public class ReceiptRocksRepository : IReceiptRepository
     {
         private readonly IDb _database;
-        private readonly IRlpDecoder<DataDeliveryReceiptDetails> _rlpDecoder;
+        private readonly IRlpNdmDecoder<DataDeliveryReceiptDetails> _rlpDecoder;
 
-        public ReceiptRocksRepository(IDb database, IRlpDecoder<DataDeliveryReceiptDetails> rlpDecoder)
+        public ReceiptRocksRepository(IDb database, IRlpNdmDecoder<DataDeliveryReceiptDetails> rlpDecoder)
         {
             _database = database;
             _rlpDecoder = rlpDecoder;

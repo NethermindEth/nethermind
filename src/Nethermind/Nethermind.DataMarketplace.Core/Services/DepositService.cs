@@ -44,7 +44,7 @@ namespace Nethermind.DataMarketplace.Core.Services
             _contractAddress = contractAddress ?? throw new ArgumentNullException(nameof(contractAddress));
         }
         
-        public ulong GasLimit { get; } = 70000;
+        public ulong GasLimit { get; } = 55000;
         
         public async Task<UInt256> ReadDepositBalanceAsync(Address onBehalfOf, Keccak depositId)
         {
@@ -102,7 +102,7 @@ namespace Nethermind.DataMarketplace.Core.Services
                 Nonce = nonce
             };
             // check  
-            _wallet.Sign(transaction, (int)await _blockchainBridge.GetNetworkIdAsync());
+            _wallet.Sign(transaction, await _blockchainBridge.GetNetworkIdAsync());
 
             return await _blockchainBridge.SendOwnTransactionAsync(transaction);
         }

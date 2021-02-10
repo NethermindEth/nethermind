@@ -39,7 +39,7 @@ namespace Nethermind.Evm.Precompiles
             return 3L * EvmPooledMemory.Div32Ceiling((ulong)inputData.Length);
         }
 
-        public (byte[], bool) Run(byte[] inputData)
+        public (byte[], bool) Run(byte[] inputData, IReleaseSpec releaseSpec)
         {
             return (inputData, true);
         }

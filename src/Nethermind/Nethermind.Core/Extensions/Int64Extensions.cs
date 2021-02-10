@@ -150,6 +150,18 @@ namespace Nethermind.Core.Extensions
             BinaryPrimitives.WriteInt64BigEndian(bytes, value);
             return bytes.ToHexString(true, skipLeadingZeros, false);
         }
+        
+        public static string ToHexString(this ulong value, bool skipLeadingZeros)
+        {
+            if (value == UInt256.Zero)
+            {
+                return "0x";
+            }
+
+            byte[] bytes = new byte[8];
+            BinaryPrimitives.WriteUInt64BigEndian(bytes, value);
+            return bytes.ToHexString(true, skipLeadingZeros, false);
+        }
 
         public static string ToHexString(this UInt256 value, bool skipLeadingZeros)
         {

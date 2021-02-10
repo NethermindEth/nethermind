@@ -43,7 +43,7 @@ namespace Nethermind.JsonRpc.Modules.Parity
         [JsonProperty(NullValueHandling = NullValueHandling.Include)]
         public Address Creates { get; set; }
         public PublicKey PublicKey { get; set; }
-        public int? ChainId { get; set; }
+        public ulong? ChainId { get; set; }
         [JsonProperty(NullValueHandling = NullValueHandling.Include)]
         public object Condition { get; set; }
         public byte[] R { get; set; }
@@ -69,7 +69,7 @@ namespace Nethermind.JsonRpc.Modules.Parity
             GasPrice = transaction.GasPrice;
             Gas = transaction.GasLimit;
             Raw = raw;
-            Input = transaction.Data ?? transaction.Init;
+            Input = transaction.Data;
             PublicKey = publicKey;
             ChainId = transaction.Signature.ChainId;
             R = transaction.Signature.R;

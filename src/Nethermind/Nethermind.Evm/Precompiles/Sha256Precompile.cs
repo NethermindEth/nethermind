@@ -54,7 +54,7 @@ namespace Nethermind.Evm.Precompiles
             return 12L * EvmPooledMemory.Div32Ceiling((ulong) inputData.Length);
         }
 
-        public (byte[], bool) Run(byte[] inputData)
+        public (byte[], bool) Run(byte[] inputData, IReleaseSpec releaseSpec)
         {
             Metrics.Sha256Precompile++;
             InitIfNeeded();

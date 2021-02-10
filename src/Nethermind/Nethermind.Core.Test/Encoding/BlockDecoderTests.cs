@@ -51,7 +51,7 @@ namespace Nethermind.Core.Test.Encoding
         public void Can_do_roundtrip_null([Values(true, false)] bool valueDecoder)
         {
             BlockDecoder decoder = new BlockDecoder();
-            Rlp result = decoder.Encode((Block) null);
+            Rlp result = decoder.Encode(null);
             Block decoded = valueDecoder ? Rlp.Decode<Block>(result.Bytes.AsSpan()) : Rlp.Decode<Block>(result);
             Assert.IsNull(decoded);
         }
@@ -63,8 +63,8 @@ namespace Nethermind.Core.Test.Encoding
         {
             BlockDecoder decoder = new BlockDecoder();
 
-            var bytes = Bytes.FromHexString(regression5644);
-            var valueDecoderContext = new Rlp.ValueDecoderContext(bytes);
+            byte[] bytes = Bytes.FromHexString(regression5644);
+            Rlp.ValueDecoderContext valueDecoderContext = new Rlp.ValueDecoderContext(bytes);
             Block decoded = valueDecoder ? decoder.Decode(ref valueDecoderContext) : decoder.Decode(new RlpStream(bytes));
             Rlp encoded = decoder.Encode(decoded);
             Assert.AreEqual(encoded.Bytes.ToHexString(), encoded.Bytes.ToHexString());
@@ -77,7 +77,7 @@ namespace Nethermind.Core.Test.Encoding
             foreach (Block block in _scenarios)
             {
                 Rlp encoded = decoder.Encode(block);
-                var valueDecoderContext = new Rlp.ValueDecoderContext(encoded.Bytes);
+                Rlp.ValueDecoderContext valueDecoderContext = new Rlp.ValueDecoderContext(encoded.Bytes);
                 Block decoded = valueDecoder ? decoder.Decode(ref valueDecoderContext) : decoder.Decode(new RlpStream(encoded.Bytes));
                 Rlp encoded2 = decoder.Encode(decoded);
                 Assert.AreEqual(encoded.Bytes.ToHexString(), encoded2.Bytes.ToHexString());

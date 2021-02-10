@@ -49,7 +49,7 @@ namespace Nethermind.Crypto
             //    }
             //}
 
-            Signature signature = new Signature(signatureBytes, recoveryId);
+            Signature signature = new(signatureBytes, recoveryId);
 
 #if DEBUG
             PublicKey address = RecoverPublicKey(signature, message);
@@ -62,7 +62,7 @@ namespace Nethermind.Crypto
             return signature;
         }
 
-        public PublicKey RecoverPublicKey(Signature signature, Keccak message)
+        public PublicKey? RecoverPublicKey(Signature signature, Keccak message)
         {
             Span<byte> publicKey = stackalloc byte[65];
             bool success = Proxy.RecoverKeyFromCompact(publicKey, message.Bytes, signature.Bytes, signature.RecoveryId, false);

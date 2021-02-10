@@ -19,6 +19,7 @@ using Nethermind.Config;
 
 namespace Nethermind.Analytics
 {
+    [ConfigCategory(HiddenFromDocs = true)]
     public interface IAnalyticsConfig : IConfig
     {
         [ConfigItem(Description = "If 'false' then no analytics plugins will be loaded", DefaultValue = "false")]

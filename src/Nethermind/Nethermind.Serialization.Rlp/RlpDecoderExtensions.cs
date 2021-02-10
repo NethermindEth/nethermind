@@ -18,7 +18,7 @@ namespace Nethermind.Serialization.Rlp
 {
     public static class RlpDecoderExtensions
     {
-        public static T[] DecodeArray<T>(this IRlpDecoder<T> decoder, RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public static T[] DecodeArray<T>(this IRlpStreamDecoder<T> decoder, RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             int checkPosition = rlpStream.ReadSequenceLength() + rlpStream.Position;
             T[] result = new T[rlpStream.ReadNumberOfItemsRemaining(checkPosition)];
@@ -42,7 +42,7 @@ namespace Nethermind.Serialization.Rlp
             return result;
         }
         
-        public static Rlp Encode<T>(this IRlpDecoder<T> decoder, T[] items, RlpBehaviors behaviors = RlpBehaviors.None)
+        public static Rlp Encode<T>(this IRlpObjectDecoder<T> decoder, T?[]? items, RlpBehaviors behaviors = RlpBehaviors.None)
         {
             if (items == null)
             {

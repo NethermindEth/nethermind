@@ -45,8 +45,7 @@ namespace Nethermind.Evm.Test
             Rlp rlp = BuildHeader();
 
             Transaction tx = Build.A.Transaction.WithData(rlp.Bytes).TestObject;
-            IntrinsicGasCalculator calculator = new IntrinsicGasCalculator();
-            long gasCost = calculator.Calculate(tx, Spec);
+            long gasCost = IntrinsicGasCalculator.Calculate(tx, Spec);
             gasCost.Should().BeLessThan(21000 + 9600);
         }
 
@@ -56,8 +55,7 @@ namespace Nethermind.Evm.Test
             Rlp rlp = BuildHeader();
 
             Transaction tx = Build.A.Transaction.WithData(rlp.Bytes).TestObject;
-            IntrinsicGasCalculator calculator = new IntrinsicGasCalculator();
-            long gasCost = calculator.Calculate(tx, Spec);
+            long gasCost = IntrinsicGasCalculator.Calculate(tx, Spec);
             gasCost.Should().BeLessThan(21000 + 9600);
 
             var bytecode =
@@ -74,7 +72,7 @@ namespace Nethermind.Evm.Test
             (Block block, Transaction transaction) = PrepareTx(
                 BlockNumber, 1000000, bytecode, rlp.Bytes, 0);
 
-            CallOutputTracer callOutputTracer = new CallOutputTracer();
+            CallOutputTracer callOutputTracer = new();
             _processor.Execute(transaction, block.Header, callOutputTracer);
             long minorCostsEstimate = 100;
             long keccakCostEstimate = 30 + 512 / 6;

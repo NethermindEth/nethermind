@@ -46,7 +46,7 @@ namespace Nethermind.Evm.Precompiles.Bls.Shamatar
             return 23000L * (inputData.Length / PairSize);
         }
 
-        public (byte[], bool) Run(byte[] inputData)
+        public (byte[], bool) Run(byte[] inputData, IReleaseSpec releaseSpec)
         {
             inputData ??= Array.Empty<byte>();
             if (inputData.Length % PairSize > 0 || inputData.Length == 0)

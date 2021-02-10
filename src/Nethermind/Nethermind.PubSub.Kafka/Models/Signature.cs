@@ -19,7 +19,7 @@ namespace Nethermind.PubSub.Kafka.Models
     public class Signature
     {
         public byte[] Bytes { get; set; }
-        public long V { get; set; }
+        public ulong V { get; set; }
         public byte RecoveryId { get; set; }
         public byte[] R { get; set; }
         public byte[] S { get; set; }

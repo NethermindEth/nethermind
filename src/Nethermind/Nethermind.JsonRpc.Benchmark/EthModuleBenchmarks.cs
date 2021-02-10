@@ -15,7 +15,6 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using BenchmarkDotNet.Attributes;
-using Jint.Native;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
@@ -38,7 +37,6 @@ using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.State.Repositories;
 using Nethermind.Db.Blooms;
-using Nethermind.Facade.Transactions;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
 using BlockTree = Nethermind.Blockchain.BlockTree;
@@ -55,8 +53,9 @@ namespace Nethermind.JsonRpc.Benchmark
         [GlobalSetup]
         public void GlobalSetup()
         {
-            ISnapshotableDb codeDb = new StateDb();
-            ISnapshotableDb stateDb = new StateDb();
+            var dbProvider = new MemDbProvider();
+            ISnapshotableDb codeDb = dbProvider.CodeDb;
+            ISnapshotableDb stateDb = dbProvider.StateDb;
             IDb blockInfoDb = new MemDb(10, 5);
 
             ISpecProvider specProvider = MainnetSpecProvider.Instance;
@@ -70,7 +69,7 @@ namespace Nethermind.JsonRpc.Benchmark
             StateReader stateReader = new StateReader(stateDb, codeDb, LimboLogs.Instance);
             
             ChainLevelInfoRepository chainLevelInfoRepository = new ChainLevelInfoRepository(blockInfoDb);
-            BlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), blockInfoDb, chainLevelInfoRepository, specProvider, NullTxPool.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
+            BlockTree blockTree = new BlockTree(dbProvider, chainLevelInfoRepository, specProvider, NullTxPool.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
             _blockhashProvider = new BlockhashProvider(blockTree, LimboLogs.Instance);
             _virtualMachine = new VirtualMachine(stateProvider, storageProvider, _blockhashProvider, specProvider, LimboLogs.Instance);
 
@@ -86,10 +85,15 @@ namespace Nethermind.JsonRpc.Benchmark
             BlockProcessor blockProcessor = new BlockProcessor(specProvider, Always.Valid, new RewardCalculator(specProvider), transactionProcessor,
                 stateDb, codeDb, stateProvider, storageProvider, NullTxPool.Instance, NullReceiptStorage.Instance, LimboLogs.Instance);
 
+            EthereumEcdsa ecdsa = new EthereumEcdsa(specProvider.ChainId, LimboLogs.Instance);
             BlockchainProcessor blockchainProcessor = new BlockchainProcessor(
                 blockTree,
                 blockProcessor,
-                new TxSignaturesRecoveryStep(new EthereumEcdsa(specProvider.ChainId, LimboLogs.Instance), NullTxPool.Instance, LimboLogs.Instance),
+                new TxSignaturesRecoveryStep(
+                    ecdsa,
+                    NullTxPool.Instance,
+                    specProvider,
+                    LimboLogs.Instance),
                 LimboLogs.Instance,
                 BlockchainProcessor.Options.NoReceipts);
 
@@ -98,26 +102,38 @@ namespace Nethermind.JsonRpc.Benchmark
             
             IBloomStorage bloomStorage = new BloomStorage(new BloomConfig(), new MemDb(), new InMemoryDictionaryFileStoreFactory());
 
-            BlockchainBridge bridge = new BlockchainBridge(
-                stateReader,
-                stateProvider,
-                storageProvider,
+            LogFinder logFinder = new LogFinder(
                 blockTree,
+                new InMemoryReceiptStorage(),
+                bloomStorage,
+                LimboLogs.Instance,
+                new ReceiptsRecovery(ecdsa, specProvider));
+            
+            BlockchainBridge bridge = new BlockchainBridge(
+                new ReadOnlyTxProcessingEnv(
+                    new ReadOnlyDbProvider(dbProvider, false),
+                    new ReadOnlyBlockTree(blockTree),
+                    specProvider,
+                    LimboLogs.Instance),
                 NullTxPool.Instance,
                 NullReceiptStorage.Instance,
                 NullFilterStore.Instance,
-                NullFilterManager.Instance, 
-                new DevWallet(new WalletConfig(), LimboLogs.Instance), 
-                transactionProcessor, 
-                new EthereumEcdsa(ChainId.Mainnet, LimboLogs.Instance),
-                bloomStorage,
+                NullFilterManager.Instance,
+                ecdsa,
                 Timestamper.Default,
-                LimboLogs.Instance,
+                logFinder,
+                false,
                 false);
             
-            TxPoolBridge txPoolBridge = new TxPoolBridge(NullTxPool.Instance, new WalletTxSigner(NullWallet.Instance, specProvider.ChainId), Timestamper.Default);
-            
-            _ethModule = new EthModule(new JsonRpcConfig(), bridge, txPoolBridge, LimboLogs.Instance);
+            _ethModule = new EthModule(
+                new JsonRpcConfig(),
+                bridge,
+                blockTree,
+                stateReader,
+                NullTxPool.Instance,
+                NullTxSender.Instance,
+                NullWallet.Instance,
+                LimboLogs.Instance);
         }
 
         [Benchmark]

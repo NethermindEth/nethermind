@@ -53,8 +53,8 @@ namespace Nethermind.AuRa.Test.Transactions
         private static readonly ITransactionPermissionContract.TxPermissions[] TxTypes = new[]
         {
             ITransactionPermissionContract.TxPermissions.Basic,
-            ITransactionPermissionContract.TxPermissions.Create,
             ITransactionPermissionContract.TxPermissions.Call,
+            ITransactionPermissionContract.TxPermissions.Create,
         };
 
         public static IEnumerable<TestCaseData> V1Tests()
@@ -81,7 +81,7 @@ namespace Nethermind.AuRa.Test.Transactions
                     transactionBuilder.To(test.To);
                     break;
                 case ITransactionPermissionContract.TxPermissions.Create:
-                    transactionBuilder.WithInit(Bytes.Zero32);
+                    transactionBuilder.WithCode(Bytes.Zero32);
                     break;
             }
             
@@ -110,7 +110,7 @@ namespace Nethermind.AuRa.Test.Transactions
                 new Test() {SenderKey = GetPrivateKey(7), ContractPermissions = ITransactionPermissionContract.TxPermissions.None, Cache = true},
                 new Test() {SenderKey = GetPrivateKey(7), ContractPermissions = ITransactionPermissionContract.TxPermissions.None, Cache = true, Value = 0},
                 new Test() {SenderKey = GetPrivateKey(7), ContractPermissions = ITransactionPermissionContract.TxPermissions.None, Cache = true, ToKey = GetPrivateKey(6)},
-                new Test() {SenderKey = GetPrivateKey(7), ContractPermissions = ITransactionPermissionContract.TxPermissions.All, Cache = false, ToKey = GetPrivateKey(6), Value = 0},
+                new Test() {SenderKey = GetPrivateKey(7), ContractPermissions = ITransactionPermissionContract.TxPermissions.Basic | ITransactionPermissionContract.TxPermissions.Call, Cache = false, ToKey = GetPrivateKey(6), Value = 0},
             };
 
             return GetTestCases(tests, nameof(V2), CreateV2Transaction);
@@ -133,12 +133,20 @@ namespace Nethermind.AuRa.Test.Transactions
                     break;
                 }
                 case ITransactionPermissionContract.TxPermissions.Call:
-                    if (test.Number == 6 && test.To == GetPrivateKey(7).Address)
+                    if (test.Number == 6)
                     {
                         transactionBuilder.To(_contractAddress);
                         test.Cache = true;
                     }
 
+                    break;
+                case ITransactionPermissionContract.TxPermissions.Create:
+                    if (test.Number == 6 || test.Number == 7)
+                    {
+                        test.Cache = true;
+                    }
+                    
+                    transactionBuilder.To(null);
                     break;
             }
 

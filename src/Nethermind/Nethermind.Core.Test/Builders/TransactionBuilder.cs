@@ -15,7 +15,9 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections.Generic;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Eip2930;
 using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -58,18 +60,23 @@ namespace Nethermind.Core.Test.Builders
         
         public TransactionBuilder<T> WithData(byte[] data)
         {
-            TestObjectInternal.Init = null;
             TestObjectInternal.Data = data;
             return this;
         }
         
-        public TransactionBuilder<T> WithInit(byte[] initCode)
+        public TransactionBuilder<T> WithCode(byte[] data)
         {
-            TestObjectInternal.Data = null;
-            TestObjectInternal.Init = initCode;
+            TestObjectInternal.Data = data;
+            TestObjectInternal.To = null;
             return this;
         }
         
+        public TransactionBuilder<T> WithChainId(ulong chainId)
+        {
+            TestObjectInternal.ChainId = chainId;
+            return this;
+        }
+
         public TransactionBuilder<T> WithGasPrice(UInt256 gasPrice)
         {
             TestObjectInternal.GasPrice = gasPrice;
@@ -97,6 +104,13 @@ namespace Nethermind.Core.Test.Builders
         public TransactionBuilder<T> WithValue(int value)
         {
             TestObjectInternal.Value = (UInt256) value;
+            return this;
+        }
+        
+        public TransactionBuilder<T> WithAccessList(AccessList accessList)
+        {
+            TestObjectInternal.AccessList = accessList;
+            TestObjectInternal.ChainId = TestObjectInternal.Signature?.ChainId ?? TestObjectInternal.ChainId;
             return this;
         }
         
@@ -138,7 +152,7 @@ namespace Nethermind.Core.Test.Builders
         
         public TransactionBuilder<T> SignedAndResolved()
         {
-            EthereumEcdsa ecdsa = new EthereumEcdsa(ChainId.Mainnet, LimboLogs.Instance);
+            EthereumEcdsa ecdsa = new EthereumEcdsa(TestObjectInternal.ChainId ?? ChainId.Mainnet, LimboLogs.Instance);
             ecdsa.Sign(TestItem.IgnoredPrivateKey, TestObjectInternal, true);
             TestObjectInternal.SenderAddress = TestItem.IgnoredPrivateKey.Address;
             return this;
@@ -157,6 +171,12 @@ namespace Nethermind.Core.Test.Builders
             {
                 TestObjectInternal.Hash = TestObjectInternal.CalculateHash();
             }
+        }
+
+        public TransactionBuilder<T> WithType(TxType txType)
+        {
+            TestObjectInternal.Type = txType;
+            return this;
         }
     }
 }

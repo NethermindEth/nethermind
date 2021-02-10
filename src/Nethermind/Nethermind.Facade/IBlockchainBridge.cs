@@ -35,7 +35,7 @@ namespace Nethermind.Facade
         (TxReceipt Receipt, Transaction Transaction) GetTransaction(Keccak txHash);
         BlockchainBridge.CallOutput Call(BlockHeader blockHeader, Transaction transaction, CancellationToken cancellationToken);
         BlockchainBridge.CallOutput EstimateGas(BlockHeader header, Transaction tx, CancellationToken cancellationToken);
-        long GetChainId();
+        ulong GetChainId();
 
         int NewBlockFilter();
         int NewPendingTransactionFilter();

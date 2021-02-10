@@ -26,7 +26,7 @@ namespace Nethermind.Synchronization.FastSync
             RequestedNodes = requestedNodes;
         }
         
-        public StateSyncItem[] RequestedNodes { get; }
+        public StateSyncItem[]? RequestedNodes { get; }
         
         public byte[][]? Responses { get; set; }
 
@@ -34,7 +34,7 @@ namespace Nethermind.Synchronization.FastSync
 
         public override string ToString()
         {
-            return $"{RequestedNodes.Length} state sync requests with {Responses?.Length ?? 0} responses";
+            return $"{RequestedNodes?.Length ?? 0} state sync requests with {Responses?.Length ?? 0} responses";
         }
     }
 }

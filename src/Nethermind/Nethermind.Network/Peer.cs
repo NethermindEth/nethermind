@@ -46,12 +46,12 @@ namespace Nethermind.Network
         /// <summary>
         /// An incoming session to the Node which can be in one of many states.
         /// </summary>
-        public ISession InSession { get; set; }
+        public ISession? InSession { get; set; }
         
         /// <summary>
         /// An outgoing session to the Node which can be in one of many states.
         /// </summary>
-        public ISession OutSession { get; set; }
+        public ISession? OutSession { get; set; }
 
         public override string ToString()
         {

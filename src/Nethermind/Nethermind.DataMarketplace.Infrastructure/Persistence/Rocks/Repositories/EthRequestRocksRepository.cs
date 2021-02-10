@@ -19,6 +19,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.DataMarketplace.Core.Repositories;
+using Nethermind.DataMarketplace.Infrastructure.Rlp;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
@@ -28,9 +29,9 @@ namespace Nethermind.DataMarketplace.Infrastructure.Persistence.Rocks.Repositori
     public class EthRequestRocksRepository : IEthRequestRepository
     {
         private readonly IDb _database;
-        private readonly IRlpDecoder<EthRequest> _rlpDecoder;
+        private readonly IRlpNdmDecoder<EthRequest> _rlpDecoder;
 
-        public EthRequestRocksRepository(IDb database, IRlpDecoder<EthRequest> rlpDecoder)
+        public EthRequestRocksRepository(IDb database, IRlpNdmDecoder<EthRequest> rlpDecoder)
         {
             _database = database;
             _rlpDecoder = rlpDecoder;

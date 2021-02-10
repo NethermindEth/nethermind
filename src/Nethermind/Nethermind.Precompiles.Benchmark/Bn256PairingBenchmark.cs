@@ -1,4 +1,5 @@
-﻿using BenchmarkDotNet.Attributes;
+﻿using System.Collections.Generic;
+using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Jobs;
 using Nethermind.Evm.Precompiles;
 
@@ -12,7 +13,7 @@ namespace Nethermind.Precompiles.Benchmark
     // [NativeMemoryProfiler]
     public class Bn256PairingBenchmark : PrecompileBenchmarkBase
     {
-        protected override IPrecompile[] Precompiles => new[]
+        protected override IEnumerable<IPrecompile> Precompiles => new[]
         {
             Evm.Precompiles.Snarks.Shamatar.Bn256PairingPrecompile.Instance
         };

@@ -28,7 +28,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
-using Nethermind.Network.P2P.Subprotocols.Eth;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63;
 using Nethermind.Network.Rlpx;
@@ -62,6 +61,14 @@ namespace Nethermind.Network.Test.Rlpx
 
             _frame = new byte[16 + 16 + 16 + 16];
             _frame[2] = 16; // size   
+            
+            InternalLoggerFactory.DefaultFactory.AddProvider(new ConsoleLoggerProvider(new ConsoleLoggerOptionsMonitor(
+                new ConsoleLoggerOptions
+                {
+                    FormatterName = ConsoleFormatterNames.Simple,
+                    LogToStandardErrorThreshold = LogLevel.Trace
+                })));
+            ResourceLeakDetector.Level = ResourceLeakDetector.DetectionLevel.Paranoid;
         }
 
         [TestCase(StackType.Zero, StackType.Zero, true)]
@@ -189,6 +196,7 @@ namespace Nethermind.Network.Test.Rlpx
                     ZeroPacket decodedPacket = embeddedChannel.ReadInbound<ZeroPacket>();
                     Assert.AreEqual(packet.Data.ToHexString(), decodedPacket.Content.ReadAllHex());
                     Assert.AreEqual(packet.PacketType, decodedPacket.PacketType);
+                    decodedPacket.Release();
                 }
                 else // allocating
                 {
@@ -207,14 +215,6 @@ namespace Nethermind.Network.Test.Rlpx
         
         private EmbeddedChannel BuildEmbeddedChannel(StackType inbound, StackType outbound, bool framingEnabled = true)
         {
-            InternalLoggerFactory.DefaultFactory.AddProvider(new ConsoleLoggerProvider(new ConsoleLoggerOptionsMonitor(
-                new ConsoleLoggerOptions
-                {
-                    FormatterName = ConsoleFormatterNames.Simple,
-                    LogToStandardErrorThreshold = LogLevel.Warning
-                })));
-            ResourceLeakDetector.Level = ResourceLeakDetector.DetectionLevel.Paranoid;
-
             if (inbound != StackType.Zero ||
                 outbound != StackType.Zero)
             {

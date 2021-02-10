@@ -139,7 +139,7 @@ namespace Nethermind.DataMarketplace.Test
             Transaction deployContract = new Transaction();
             deployContract.SenderAddress = _providerAccount;
             deployContract.GasLimit = 4000000;
-            deployContract.Init = initCode;
+            deployContract.Data = initCode;
             deployContract.Nonce = _bridge.GetNonce(_providerAccount);
             Keccak txHash = await _bridge.SendTransaction(deployContract, TxHandlingOptions.None);
             _bridge.IncrementNonce(_providerAccount);
@@ -256,7 +256,7 @@ namespace Nethermind.DataMarketplace.Test
                 throw new NotImplementedException();
             }
 
-            public long GetChainId()
+            public ulong GetChainId()
             {
                 return 1;
             }

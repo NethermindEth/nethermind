@@ -29,6 +29,7 @@ namespace Nethermind.Specs.Forks
 
         public static IReleaseSpec Instance => LazyInitializer.EnsureInitialized(ref _instance, () => new MuirGlacier());
 
+        public string Name => "Muir Glacier";
         public long MaximumExtraDataSize => 32;
         public long MaxCodeSize => 24576;
         public long MinGasLimit => 5000;
@@ -68,6 +69,7 @@ namespace Nethermind.Specs.Forks
         public bool IsEip2200Enabled => true;
         public bool IsEip2315Enabled => false;
         public bool IsEip2537Enabled => false;
+        public bool IsEip2565Enabled => false;
         public bool IsEip2929Enabled => false;
         public bool IsEip2930Enabled => false;
         public bool IsEip2718Enabled => false;

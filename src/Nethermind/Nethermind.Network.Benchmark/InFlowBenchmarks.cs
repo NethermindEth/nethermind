@@ -24,7 +24,6 @@ using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
-using Nethermind.Network.P2P.Subprotocols.Eth;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Test;

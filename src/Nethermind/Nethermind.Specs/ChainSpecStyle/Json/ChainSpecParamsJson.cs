@@ -26,7 +26,7 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
     [SuppressMessage("ReSharper", "InconsistentNaming")]
     internal class ChainSpecParamsJson
     {
-        public long NetworkId { get; set; }
+        public ulong NetworkId { get; set; }
         
         [JsonProperty(PropertyName = "registrar")]
         public Address EnsRegistrar { get; set; }
@@ -96,6 +96,17 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
         public long? Eip1559Transition { get; set; }
         
         public long? Eip1559MigrationDuration { get; set; }
+        
+        public long? Eip2315Transition { get; set; }
+        
+        public long? Eip2537Transition { get; set; }
+        public long? Eip2565Transition { get; set; }
+        
+        public long? Eip2718Transition { get; set; }
+        
+        public long? Eip2929Transition { get; set; }
+        
+        public long? Eip2930Transition { get; set; }
         
         public Address TransactionPermissionContract { get; set; }
 

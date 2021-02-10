@@ -23,6 +23,7 @@ namespace Nethermind.Core.Specs
     /// </summary>
     public interface IReleaseSpec
     {
+        public string Name { get; }
         long MaximumExtraDataSize { get; }
         long MaxCodeSize { get; }
         long MinGasLimit { get; }
@@ -200,6 +201,11 @@ namespace Nethermind.Core.Specs
         /// Berlin BLS crypto precompiles
         /// </summary>
         bool IsEip2537Enabled { get; }
+        
+        /// <summary>
+        /// Berlin MODEXP precompiles
+        /// </summary>
+        bool IsEip2565Enabled { get; }
         
         /// <summary>
         /// Berlin transaction type

@@ -294,11 +294,10 @@ namespace Nethermind.Evm.Test
 
             long gasLimit = 100000;
 
-            Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, _isEip155Enabled).WithInit(initByteCode).WithGasLimit(gasLimit).TestObject;
+            Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, _isEip155Enabled).WithCode(initByteCode).WithGasLimit(gasLimit).TestObject;
             Block block = Build.A.Block.WithNumber(MainnetSpecProvider.MuirGlacierBlockNumber).WithTransactions(MuirGlacier.Instance, tx).WithGasLimit(2 * gasLimit).TestObject;
 
-            IntrinsicGasCalculator gasCalculator = new();
-            long intrinsic = gasCalculator.Calculate(tx, MuirGlacier.Instance);
+            long intrinsic = IntrinsicGasCalculator.Calculate(tx, MuirGlacier.Instance);
 
             GethLikeTxTracer gethTracer = new(GethTraceOptions.Default);
             _transactionProcessor.CallAndRestore(tx, block.Header, gethTracer);
@@ -329,12 +328,11 @@ namespace Nethermind.Evm.Test
 
             long gasLimit = 100000;
 
-            Transaction initTx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, _isEip155Enabled).WithInit(initByteCode).WithGasLimit(gasLimit).TestObject;
-            Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, _isEip155Enabled).WithInit(byteCode).WithGasLimit(gasLimit).WithNonce(1).TestObject;
+            Transaction initTx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, _isEip155Enabled).WithCode(initByteCode).WithGasLimit(gasLimit).TestObject;
+            Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, _isEip155Enabled).WithCode(byteCode).WithGasLimit(gasLimit).WithNonce(1).TestObject;
             Block block = Build.A.Block.WithNumber(MainnetSpecProvider.MuirGlacierBlockNumber).WithTransactions(MuirGlacier.Instance, tx).WithGasLimit(2 * gasLimit).TestObject;
 
-            IntrinsicGasCalculator gasCalculator = new();
-            long intrinsic = gasCalculator.Calculate(tx, MuirGlacier.Instance);
+            long intrinsic = IntrinsicGasCalculator.Calculate(tx, MuirGlacier.Instance);
 
             _transactionProcessor.Execute(initTx, block.Header, NullTxTracer.Instance);
 
@@ -393,11 +391,10 @@ namespace Nethermind.Evm.Test
 
             long gasLimit = 100000;
 
-            Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, _isEip155Enabled).WithInit(initByteCode).WithGasLimit(gasLimit).TestObject;
+            Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, _isEip155Enabled).WithCode(initByteCode).WithGasLimit(gasLimit).TestObject;
             Block block = Build.A.Block.WithNumber(MainnetSpecProvider.MuirGlacierBlockNumber).WithTransactions(MuirGlacier.Instance, tx).WithGasLimit(2 * gasLimit).TestObject;
 
-            IntrinsicGasCalculator gasCalculator = new();
-            long intrinsic = gasCalculator.Calculate(tx, MuirGlacier.Instance);
+            long intrinsic = IntrinsicGasCalculator.Calculate(tx, MuirGlacier.Instance);
 
             GethLikeTxTracer gethTracer = new(GethTraceOptions.Default);
             _transactionProcessor.CallAndRestore(tx, block.Header, gethTracer);
@@ -432,11 +429,10 @@ namespace Nethermind.Evm.Test
 
             long gasLimit = 200000;
 
-            Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, _isEip155Enabled).WithInit(initByteCode).WithGasLimit(gasLimit).TestObject;
+            Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, _isEip155Enabled).WithCode(initByteCode).WithGasLimit(gasLimit).TestObject;
             Block block = Build.A.Block.WithNumber(MainnetSpecProvider.MuirGlacierBlockNumber).WithTransactions(MuirGlacier.Instance, tx).WithGasLimit(2 * gasLimit).TestObject;
 
-            IntrinsicGasCalculator gasCalculator = new();
-            long intrinsic = gasCalculator.Calculate(tx, MuirGlacier.Instance);
+            long intrinsic = IntrinsicGasCalculator.Calculate(tx, MuirGlacier.Instance);
 
             GethLikeTxTracer gethTracer = new(GethTraceOptions.Default);
             _transactionProcessor.CallAndRestore(tx, block.Header, gethTracer);
@@ -468,12 +464,11 @@ namespace Nethermind.Evm.Test
 
             long gasLimit = 100000;
 
-            Transaction initTx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, _isEip155Enabled).WithInit(initByteCode).WithGasLimit(gasLimit).TestObject;
-            Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, _isEip155Enabled).WithInit(byteCode).WithGasLimit(gasLimit).WithNonce(1).TestObject;
+            Transaction initTx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, _isEip155Enabled).WithCode(initByteCode).WithGasLimit(gasLimit).TestObject;
+            Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, _isEip155Enabled).WithCode(byteCode).WithGasLimit(gasLimit).WithNonce(1).TestObject;
             Block block = Build.A.Block.WithNumber(MainnetSpecProvider.MuirGlacierBlockNumber).WithTransactions(MuirGlacier.Instance, tx).WithGasLimit(2 * gasLimit).TestObject;
 
-            IntrinsicGasCalculator gasCalculator = new();
-            long intrinsic = gasCalculator.Calculate(tx, MuirGlacier.Instance);
+            long intrinsic = IntrinsicGasCalculator.Calculate(tx, MuirGlacier.Instance);
 
             _transactionProcessor.Execute(initTx, block.Header, NullTxTracer.Instance);
 

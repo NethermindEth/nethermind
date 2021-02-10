@@ -23,7 +23,7 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network
 {
-    public class NetworkNodeDecoder : IRlpDecoder<NetworkNode>
+    public class NetworkNodeDecoder : IRlpStreamDecoder<NetworkNode>, IRlpObjectDecoder<NetworkNode>
     {
         static NetworkNodeDecoder()
         {
@@ -50,6 +50,11 @@ namespace Nethermind.Network
 
             NetworkNode networkNode = new NetworkNode(publicKey, ip != string.Empty ? ip : null, port, reputation);
             return networkNode;
+        }
+
+        public void Encode(RlpStream stream, NetworkNode item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        {
+            throw new NotImplementedException();
         }
 
         public Rlp Encode(NetworkNode item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)

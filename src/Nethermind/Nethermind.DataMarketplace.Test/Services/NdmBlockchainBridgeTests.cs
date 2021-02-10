@@ -161,7 +161,7 @@ namespace Nethermind.DataMarketplace.Test.Services
         [Test]
         public async Task get_network_id_should_invoke_blockchain_bridge_get_network_id()
         {
-            const int networkId = 1;
+            const ulong networkId = 1;
             _blockchainBridge.GetChainId().Returns(networkId);
             var result = await _ndmBridge.GetNetworkIdAsync();
             _blockchainBridge.Received().GetChainId();

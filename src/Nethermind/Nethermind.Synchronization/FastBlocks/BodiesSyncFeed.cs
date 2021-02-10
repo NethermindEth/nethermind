@@ -152,7 +152,7 @@ namespace Nethermind.Synchronization.FastBlocks
         private bool TryPrepareBlock(BlockInfo blockInfo, BlockBody blockBody, out Block? block)
         {
             BlockHeader header = _blockTree.FindHeader(blockInfo.BlockHash);
-            bool txRootIsValid = new TxTrie(blockBody.Transactions, _specProvider.GetSpec(header.Number)).RootHash == header.TxRoot;
+            bool txRootIsValid = new TxTrie(blockBody.Transactions).RootHash == header.TxRoot;
             bool ommersHashIsValid = OmmersHash.Calculate(blockBody.Ommers) == header.OmmersHash;
             if (txRootIsValid && ommersHashIsValid)
             {

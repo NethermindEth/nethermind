@@ -21,6 +21,7 @@ using FluentAssertions;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.Precompiles.Bls.Shamatar;
+using Nethermind.Specs.Forks;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test
@@ -34,7 +35,7 @@ namespace Nethermind.Evm.Test
             foreach (var (input, expectedResult) in Inputs)
             {
                 IPrecompile precompile = PairingPrecompile.Instance;
-                (byte[] output, bool success) = precompile.Run(input);
+                (byte[] output, bool success) = precompile.Run(input, MuirGlacier.Instance);
 
                 Console.WriteLine(Bytes.AreEqual(output, expectedResult));
                 output.Should().BeEquivalentTo(expectedResult);

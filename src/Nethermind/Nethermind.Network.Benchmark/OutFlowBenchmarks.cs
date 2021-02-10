@@ -23,8 +23,6 @@ using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
-using Nethermind.Network.P2P;
-using Nethermind.Network.P2P.Subprotocols.Eth;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Test;
@@ -48,7 +46,6 @@ namespace Nethermind.Network.Benchmarks
         private TestZeroEncoder _zeroEncoder;
         private TestZeroSnappy _zeroSnappyEncoder;
         private NewBlockMessage _newBlockMessage;
-        private PacketSender _packetSender;
         private MessageSerializationService _serializationService;
 
         [GlobalSetup]
@@ -83,11 +80,10 @@ namespace Nethermind.Network.Benchmarks
             _newBlockMessage.Block = _block;
             _serializationService = new MessageSerializationService();
             _serializationService.Register(_newBlockMessageSerializer);
-            _packetSender = new PacketSender(_serializationService, LimboLogs.Instance);
             ResourceLeakDetector.Level = ResourceLeakDetector.DetectionLevel.Paranoid;
         }
 
-        private class TestZeroEncoder : Rlpx.ZeroFrameEncoder
+        private class TestZeroEncoder : ZeroFrameEncoder
         {
             public void Encode(IByteBuffer message, IByteBuffer buffer)
             {
@@ -100,7 +96,7 @@ namespace Nethermind.Network.Benchmarks
             }
         }
 
-        private class TestZeroSplitter : Rlpx.ZeroPacketSplitter
+        private class TestZeroSplitter : ZeroPacketSplitter
         {
             public TestZeroSplitter()
                 : base(LimboLogs.Instance)

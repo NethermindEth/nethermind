@@ -14,7 +14,6 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System;
 using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -27,21 +26,12 @@ namespace Nethermind.Blockchain.Validators
 {
     public class TxValidator : ITxValidator
     {
-        private readonly IntrinsicGasCalculator _intrinsicGasCalculator;
-        private readonly long _chainIdValue;
+        private readonly ulong _chainIdValue;
 
-        public TxValidator(long chainId)
+        public TxValidator(ulong chainId)
         {
-            _intrinsicGasCalculator = new IntrinsicGasCalculator();
-            
-            if (chainId < 0)
-            {
-                throw new ArgumentException("Unexpected negative value", nameof(chainId));
-            }
-
             _chainIdValue = chainId;
         }
-        
 
         /* Full and correct validation is only possible in the context of a specific block
            as we cannot generalize correctness of the transaction without knowing the EIPs implemented
@@ -54,12 +44,9 @@ namespace Nethermind.Blockchain.Validators
         {
             return 
                    /* This is unnecessarily calculated twice - at validation and execution times. */
-                   transaction.GasLimit >= _intrinsicGasCalculator.Calculate(transaction, releaseSpec) &&
+                   transaction.GasLimit >= IntrinsicGasCalculator.Calculate(transaction, releaseSpec) &&
                    /* if it is a call or a transfer then we require the 'To' field to have a value
                       while for an init it will be empty */
-                   (transaction.To != null || transaction.Init != null) &&
-                   /* can be a simple transfer, a call, or an init but not both an init and a call */
-                   !(transaction.Data != null && transaction.Init != null) &&
                    ValidateSignature(transaction.Signature, releaseSpec);
         }
         

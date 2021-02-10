@@ -33,7 +33,7 @@ namespace Nethermind.Crypto
         private DateTime _timestamp;
         private byte[] _encryptedData;
 
-        public ProtectedData(byte[] data, ICryptoRandom random = null, ITimestamper timestamper = null)
+        public ProtectedData(byte[] data, ICryptoRandom? random = null, ITimestamper? timestamper = null)
         {
             _random = random ?? new CryptoRandom();
             _timestamper = timestamper ?? Timestamper.Default;

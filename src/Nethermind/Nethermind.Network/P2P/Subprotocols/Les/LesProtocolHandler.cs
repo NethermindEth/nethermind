@@ -196,9 +196,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Les
             _remoteHeadBlockHash = status.BestHash;
 
             ReceivedProtocolInitMsg(status);
-            SyncPeerProtocolInitializedEventArgs eventArgs = new SyncPeerProtocolInitializedEventArgs(this)
+            SyncPeerProtocolInitializedEventArgs eventArgs = new(this)
             {
-                ChainId = (long) status.ChainId,
+                ChainId = (ulong)status.ChainId,
                 BestHash = status.BestHash,
                 GenesisHash = status.GenesisHash,
                 Protocol = status.Protocol,
