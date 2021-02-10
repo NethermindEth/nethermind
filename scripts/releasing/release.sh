@@ -4,7 +4,7 @@ echo "Launching Release Process"
 echo "====================================="
 START=`date +%s`
 DOCKER_IMAGE="nethermind/nethermind"
-WEBHOOK_URL="{{ Place for Slack WebHook}}"
+WEBHOOK_URL="{{ Place for Slack WebHook }}"
 
 function send_message_to_slack () {
     END=`date +%s`

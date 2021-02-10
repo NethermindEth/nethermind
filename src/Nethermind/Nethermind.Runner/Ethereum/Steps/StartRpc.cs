@@ -44,14 +44,14 @@ namespace Nethermind.Runner.Ethereum.Steps
             if (jsonRpcConfig.Enabled)
             {
                 IInitConfig initConfig = _api.Config<IInitConfig>();
-                JsonRpcLocalStats jsonRpcLocalStats = new JsonRpcLocalStats(
+                JsonRpcLocalStats jsonRpcLocalStats = new(
                     _api.Timestamper,
                     jsonRpcConfig,
                     _api.LogManager);
 
-                JsonRpcService jsonRpcService = new JsonRpcService(_api.RpcModuleProvider, _api.LogManager);
+                JsonRpcService jsonRpcService = new(_api.RpcModuleProvider, _api.LogManager);
 
-                JsonRpcProcessor jsonRpcProcessor = new JsonRpcProcessor(
+                JsonRpcProcessor jsonRpcProcessor = new(
                     jsonRpcService,
                     _api.EthereumJsonSerializer,
                     jsonRpcConfig,

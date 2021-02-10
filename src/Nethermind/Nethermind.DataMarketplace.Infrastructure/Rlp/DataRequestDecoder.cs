@@ -23,7 +23,7 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.DataMarketplace.Infrastructure.Rlp
 {
-    public class DataRequestDecoder : IRlpDecoder<DataRequest>
+    public class DataRequestDecoder : IRlpNdmDecoder<DataRequest>
     {
         public static void Init()
         {
@@ -49,6 +49,11 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
             Signature signature = SignatureDecoder.DecodeSignature(rlpStream);
 
             return new DataRequest(assetId, units, value, expiryTime, salt, provider, consumer, signature);
+        }
+
+        public void Encode(RlpStream stream, DataRequest item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        {
+            throw new System.NotImplementedException();
         }
 
         public Serialization.Rlp.Rlp Encode(DataRequest item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)

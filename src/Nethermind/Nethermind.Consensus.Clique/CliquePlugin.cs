@@ -29,6 +29,7 @@ using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.JsonRpc.Modules;
+using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.Clique
@@ -98,8 +99,8 @@ namespace Nethermind.Consensus.Clique
                 _snapshotManager!,
                 getFromApi.LogManager);
 
-            ReadOnlyDbProvider readOnlyDbProvider = new ReadOnlyDbProvider(getFromApi.DbProvider, false);
-            ReadOnlyBlockTree readOnlyBlockTree = new ReadOnlyBlockTree(getFromApi.BlockTree);
+            ReadOnlyDbProvider readOnlyDbProvider = getFromApi.DbProvider.AsReadOnly(false);
+            ReadOnlyBlockTree readOnlyBlockTree = getFromApi.BlockTree.AsReadOnly();
 
             ReadOnlyTxProcessingEnv producerEnv = new ReadOnlyTxProcessingEnv(
                 readOnlyDbProvider,

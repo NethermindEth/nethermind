@@ -40,7 +40,7 @@ namespace Nethermind.Specs
 
         public long? DaoBlockNumber { get; } = null;
 
-        public long ChainId => 2;
+        public ulong ChainId => 2;
         public long[] TransitionBlocks { get; } = {0};
     }
 }

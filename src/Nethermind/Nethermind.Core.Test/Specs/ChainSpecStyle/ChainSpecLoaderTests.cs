@@ -333,6 +333,7 @@ namespace Nethermind.Core.Test.Specs.ChainSpecStyle
         [Test]
         public void Can_load_posdao_with_openethereum_pricing_transitions()
         {
+            // TODO: modexp 2565
             string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "Specs/posdao.json");
             ChainSpec chainSpec = LoadChainSpec(path);
             chainSpec.Parameters.Eip152Transition.Should().Be(15);

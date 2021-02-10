@@ -25,14 +25,14 @@ namespace Nethermind.Specs
     {
         private readonly (long BlockNumber, IReleaseSpec Release)[] _transitions;
 
-        public long ChainId { get; }
+        public ulong ChainId { get; }
         public long[] TransitionBlocks { get; }
 
         public CustomSpecProvider(params (long BlockNumber, IReleaseSpec Release)[] transitions) : this(0, transitions)
         {
         }
 
-        public CustomSpecProvider(int chainId, params (long BlockNumber, IReleaseSpec Release)[] transitions)
+        public CustomSpecProvider(ulong chainId, params (long BlockNumber, IReleaseSpec Release)[] transitions)
         {
             ChainId = chainId;
             

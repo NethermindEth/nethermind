@@ -72,7 +72,7 @@ namespace Nethermind.Facade.Test
 
             ReadOnlyTxProcessingEnv processingEnv = new ReadOnlyTxProcessingEnv(
                 new ReadOnlyDbProvider(_dbProvider, false),
-                new TrieStore(_dbProvider.StateDb, LimboLogs.Instance), 
+                new TrieStore(_dbProvider.StateDb, LimboLogs.Instance).AsReadOnly(), 
                 new ReadOnlyBlockTree(_blockTree),
                 _specProvider,
                 LimboLogs.Instance);
@@ -133,7 +133,7 @@ namespace Nethermind.Facade.Test
             _timestamper.Add(TimeSpan.FromDays(123));
             BlockHeader header = Build.A.BlockHeader.WithNumber(10).TestObject;
             Transaction tx = new Transaction();
-            tx.Init = new byte[0];
+            tx.Data = new byte[0];
             tx.GasLimit = Transaction.BaseTxGasCost;
 
             var gas = _blockchainBridge.EstimateGas(header, tx, default);

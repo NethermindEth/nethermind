@@ -29,6 +29,6 @@ namespace Nethermind.JsonRpc.Modules.Admin
         [JsonProperty("head", Order = 2)]
         public Keccak HeadHash { get; set; }
         [JsonProperty("network", Order = 3)]
-        public long ChainId { get; set; }
+        public ulong ChainId { get; set; }
     }
 }

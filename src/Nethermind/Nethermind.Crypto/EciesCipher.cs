@@ -43,7 +43,7 @@ namespace Nethermind.Crypto
 
         public (bool, byte[]) Decrypt(PrivateKey privateKey, byte[] cipherText, byte[] macData = null)
         {
-            using MemoryStream inputStream = new MemoryStream(cipherText);
+            using MemoryStream inputStream = new(cipherText);
             int ephemBytesLength = 2 * ((BouncyCrypto.DomainParameters.Curve.FieldSize + 7) / 8) + 1;
 
             byte[] ephemBytes = new byte[ephemBytesLength];
@@ -69,14 +69,14 @@ namespace Nethermind.Crypto
             IIesEngine iesEngine = MakeIesEngine(true, recipientPublicKey, ephemeralPrivateKey, iv);
 
             byte[] cipher = iesEngine.ProcessBlock(plainText, 0, plainText.Length, macData);
-            using MemoryStream memoryStream = new MemoryStream();
+            using MemoryStream memoryStream = new();
             memoryStream.Write(ephemeralPrivateKey.PublicKey.PrefixedBytes, 0, ephemeralPrivateKey.PublicKey.PrefixedBytes.Length);
             memoryStream.Write(iv, 0, iv.Length);
             memoryStream.Write(cipher, 0, cipher.Length);
             return memoryStream.ToArray();
         }
         
-        private OptimizedKdf _optimizedKdf = new OptimizedKdf();
+        private OptimizedKdf _optimizedKdf = new();
 
         private byte[] Decrypt(PublicKey ephemeralPublicKey, PrivateKey privateKey, byte[] iv, byte[] ciphertextBody, byte[] macData)
         {
@@ -88,15 +88,15 @@ namespace Nethermind.Crypto
         
         private IIesEngine MakeIesEngine(bool isEncrypt, PublicKey publicKey, PrivateKey privateKey, byte[] iv)
         {
-            AesEngine aesFastEngine = new AesEngine();
+            AesEngine aesFastEngine = new();
 
-            EthereumIesEngine iesEngine = new EthereumIesEngine(
+            EthereumIesEngine iesEngine = new(
                 new HMac(new Sha256Digest()),
                 new Sha256Digest(),
                 new BufferedBlockCipher(new SicBlockCipher(aesFastEngine)));
 
             
-            ParametersWithIV parametersWithIV = new ParametersWithIV(_iesParameters, iv);
+            ParametersWithIV parametersWithIV = new(_iesParameters, iv);
             byte[] secret = Proxy.EcdhSerialized(publicKey.Bytes, privateKey.KeyBytes);
             iesEngine.Init(isEncrypt, _optimizedKdf.Derive(secret), parametersWithIV);
             return iesEngine;

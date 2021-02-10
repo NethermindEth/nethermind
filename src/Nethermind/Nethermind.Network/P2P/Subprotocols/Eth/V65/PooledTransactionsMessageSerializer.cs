@@ -15,14 +15,14 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using DotNetty.Buffers;
+using Nethermind.Core;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
 {
     public class PooledTransactionsMessageSerializer : IZeroMessageSerializer<PooledTransactionsMessage>
     {
-        private TransactionsMessageSerializer _txsMessageDeserializer
-            = new TransactionsMessageSerializer();
+        private readonly TransactionsMessageSerializer _txsMessageDeserializer = new();
         
         public void Serialize(IByteBuffer byteBuffer, PooledTransactionsMessage message)
         {
@@ -31,8 +31,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
 
         public PooledTransactionsMessage Deserialize(IByteBuffer byteBuffer)
         {
-            NettyRlpStream rlpStream = new NettyRlpStream(byteBuffer);
-            var txs = _txsMessageDeserializer.DeserializeTxs(rlpStream);
+            NettyRlpStream rlpStream = new(byteBuffer);
+            Transaction[] txs = _txsMessageDeserializer.DeserializeTxs(rlpStream);
             return new PooledTransactionsMessage(txs);
         }
     }

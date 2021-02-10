@@ -17,6 +17,7 @@
 
 using Nethermind.Core.Extensions;
 using Nethermind.Evm.Precompiles;
+using Nethermind.Specs.Forks;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test
@@ -75,7 +76,7 @@ namespace Nethermind.Evm.Test
             {
                 byte[] cloned = inputs[i].Clone() as byte[];
                 IPrecompile shamatar = Precompiles.Snarks.Shamatar.Bn256PairingPrecompile.Instance;
-                (byte[], bool) resultShamatar = shamatar.Run(cloned);
+                (byte[], bool) resultShamatar = shamatar.Run(cloned, MuirGlacier.Instance);
             }
         }
     }

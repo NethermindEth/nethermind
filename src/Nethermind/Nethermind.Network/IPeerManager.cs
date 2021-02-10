@@ -26,6 +26,8 @@ namespace Nethermind.Network
         void Start();
         Task StopAsync();
         IReadOnlyCollection<Peer> ActivePeers { get; }
+        IReadOnlyCollection<Peer> ConnectedPeers { get; }
+        int MaxActivePeers { get; }
         void AddPeer(NetworkNode node);
         bool RemovePeer(NetworkNode node);
     }

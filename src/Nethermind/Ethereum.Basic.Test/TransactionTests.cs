@@ -57,7 +57,7 @@ namespace Ethereum.Basic.Test
             Assert.AreEqual(test.Value, decodedUnsigned.Value, "value");
             Assert.AreEqual(test.GasPrice, decodedUnsigned.GasPrice, "gasPrice");
             Assert.AreEqual(test.StartGas, decodedUnsigned.GasLimit, "gasLimit");
-            Assert.AreEqual(test.Data, decodedUnsigned.Data ?? decodedUnsigned.Init, "data");
+            Assert.AreEqual(test.Data, decodedUnsigned.Data, "data");
             Assert.AreEqual(test.To, decodedUnsigned.To, "to");
             Assert.AreEqual(test.Nonce, decodedUnsigned.Nonce, "nonce");
 
@@ -74,10 +74,10 @@ namespace Ethereum.Basic.Test
                 throw new Exception("S is wrong");
             }
 
-            long vToCompare = decodedUnsigned.Signature.V;
+            ulong vToCompare = decodedUnsigned.Signature.V;
             if (otherS == decodedSigned.Signature.S.ToUnsignedBigInteger())
             {
-                vToCompare = vToCompare == 27 ? 28 : 27;
+                vToCompare = vToCompare == 27ul ? 28ul : 27ul;
             }
 
             Assert.AreEqual(decodedSigned.Signature.V, vToCompare, "V");

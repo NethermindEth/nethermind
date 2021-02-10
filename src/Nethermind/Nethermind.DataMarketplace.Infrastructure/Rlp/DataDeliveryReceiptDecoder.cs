@@ -22,7 +22,7 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.DataMarketplace.Infrastructure.Rlp
 {
-    public class DataDeliveryReceiptDecoder : IRlpDecoder<DataDeliveryReceipt>
+    public class DataDeliveryReceiptDecoder : IRlpNdmDecoder<DataDeliveryReceipt>
     {
         public static void Init()
         {
@@ -50,6 +50,11 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
             {
                 throw new RlpException($"{nameof(DataDeliveryReceiptDecoder)} could not be decoded", e);
             }
+        }
+
+        public void Encode(RlpStream stream, DataDeliveryReceipt item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        {
+            throw new NotImplementedException();
         }
 
         public Serialization.Rlp.Rlp Encode(DataDeliveryReceipt item,

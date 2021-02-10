@@ -83,7 +83,7 @@ namespace Nethermind.Specs
         public const long MuirGlacierBlockNumber = 9200000;
         public const long BerlinBlockNumber = long.MaxValue - 1;
 
-        public long ChainId => 1;
+        public ulong ChainId => 1ul;
 
         public long[] TransitionBlocks { get; } =
         {

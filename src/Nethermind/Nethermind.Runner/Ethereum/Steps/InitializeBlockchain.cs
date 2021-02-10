@@ -113,7 +113,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             
             getApi.DisposeStack.Push(trieStore);
             trieStore.ReorgBoundaryReached += ReorgBoundaryReached;
-            ITrieStore readOnlyTrieStore = setApi.ReadOnlyTrieStore = new ReadOnlyTrieStore(trieStore);
+            ITrieStore readOnlyTrieStore = setApi.ReadOnlyTrieStore = trieStore.AsReadOnly();
 
             IStateProvider stateProvider = setApi.StateProvider = new StateProvider(
                 trieStore,
@@ -229,9 +229,9 @@ namespace Nethermind.Runner.Ethereum.Steps
 
             // TODO: can take the tx sender from plugin here maybe
             ITxSigner txSigner = new WalletTxSigner(getApi.Wallet, getApi.SpecProvider.ChainId);
-            TxSealer standardSealer = new TxSealer(txSigner, getApi.Timestamper);
+            TxSealer standardSealer = new(txSigner, getApi.Timestamper);
             NonceReservingTxSealer nonceReservingTxSealer =
-                new NonceReservingTxSealer(txSigner, getApi.Timestamper, txPool);
+                new(txSigner, getApi.Timestamper, txPool);
             setApi.TxSender = new TxPoolSender(txPool, nonceReservingTxSealer, standardSealer);
 
             // TODO: possibly hide it (but need to confirm that NDM does not really need it)

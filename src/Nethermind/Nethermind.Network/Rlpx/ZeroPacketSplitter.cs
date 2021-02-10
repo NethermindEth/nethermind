@@ -49,6 +49,7 @@ namespace Nethermind.Network.Rlpx
             Interlocked.Increment(ref _contextId);
 
             int packetType = input.ReadByte();
+
             int packetTypeSize = packetType >= 128 ? 2 : 1;
             int totalPayloadSize = packetTypeSize + input.ReadableBytes;
 

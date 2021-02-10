@@ -51,6 +51,7 @@ using Nethermind.Logging;
 using Nethermind.Monitoring;
 using Nethermind.Network;
 using Nethermind.Network.Discovery;
+using Nethermind.Network.P2P;
 using Nethermind.Network.Rlpx;
 using Nethermind.PubSub;
 using Nethermind.Serialization.Json;
@@ -187,6 +188,11 @@ namespace Nethermind.DataMarketplace.Infrastructure
             set => _nethermindApi.MemDbFactory = value;
         }
 
+        public IDisconnectsAnalyzer? DisconnectsAnalyzer
+        {
+            get => _nethermindApi.DisconnectsAnalyzer;
+            set => _nethermindApi.DisconnectsAnalyzer = value;
+        }
 
         public IDiscoveryApp? DiscoveryApp
         {
@@ -440,7 +446,7 @@ namespace Nethermind.DataMarketplace.Infrastructure
             set => _nethermindApi.TrieStore = value;
         }
         
-        public ITrieStore? ReadOnlyTrieStore
+        public ReadOnlyTrieStore? ReadOnlyTrieStore
         {
             get => _nethermindApi.ReadOnlyTrieStore;
             set => _nethermindApi.ReadOnlyTrieStore = value;

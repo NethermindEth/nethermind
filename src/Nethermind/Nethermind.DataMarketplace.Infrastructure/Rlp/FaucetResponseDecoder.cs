@@ -19,7 +19,7 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.DataMarketplace.Infrastructure.Rlp
 {
-    public class FaucetResponseDecoder : IRlpDecoder<FaucetResponse>
+    public class FaucetResponseDecoder : IRlpNdmDecoder<FaucetResponse>
     {
         public static void Init()
         {
@@ -39,6 +39,11 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
             FaucetRequestDetails request = Serialization.Rlp.Rlp.Decode<FaucetRequestDetails>(rlpStream);
 
             return new FaucetResponse(status, request);
+        }
+
+        public void Encode(RlpStream stream, FaucetResponse item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        {
+            throw new System.NotImplementedException();
         }
 
         public Serialization.Rlp.Rlp Encode(FaucetResponse item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)

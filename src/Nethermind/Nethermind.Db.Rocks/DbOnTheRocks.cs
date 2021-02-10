@@ -37,9 +37,9 @@ namespace Nethermind.Db.Rocks
 
         private bool _isDisposed;
 
-        private HashSet<IBatch> _currentBatches = new();
+        private readonly HashSet<IBatch> _currentBatches = new();
         
-        internal readonly RocksDb Db;
+        internal readonly RocksDb? Db;
         internal WriteOptions? WriteOptions { get; private set; }
 
         public abstract string Name { get; protected set; }
@@ -489,7 +489,7 @@ namespace Nethermind.Db.Rocks
 
         private void ReleaseUnmanagedResources()
         {
-            Db.Dispose();
+            Db?.Dispose();
             foreach (IBatch batch in _currentBatches)
             {
                 batch.Dispose();

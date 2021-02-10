@@ -45,30 +45,38 @@ namespace Nethermind.GitBook
                 }
             }
 
-            // ToFix: algorithm above is not creating .md file for IEthStatsConfig. Below added manually
+            // ToFix: algorithm above is not creating .md files for some modules. Below added manually
              configModules.Add(Assembly.Load("Nethermind.EthStats").GetTypes()
+                 .Where(t => typeof(IConfig).IsAssignableFrom(t))
+                 .First(t => t.IsInterface && t != typeof(IConfig)));
+             
+             configModules.Add(Assembly.Load("Nethermind.HealthChecks").GetTypes()
+                 .Where(t => typeof(IConfig).IsAssignableFrom(t))
+                 .First(t => t.IsInterface && t != typeof(IConfig)));
+             
+             configModules.Add(Assembly.Load("Nethermind.Seq").GetTypes()
                  .Where(t => typeof(IConfig).IsAssignableFrom(t))
                  .First(t => t.IsInterface && t != typeof(IConfig)));
             
             return configModules;
         }
         
-        private void GenerateDocFileContent(Type metricsType, string docsDir)
+        private void GenerateDocFileContent(Type configType, string docsDir)
         {
-            Attribute attribute = metricsType.GetCustomAttribute(typeof(ConfigCategoryAttribute));
+            Attribute attribute = configType.GetCustomAttribute(typeof(ConfigCategoryAttribute));
             if(((ConfigCategoryAttribute)attribute)?.HiddenFromDocs ?? false) return;
             
             StringBuilder docBuilder = new StringBuilder();
-            string moduleName = metricsType.Name.Substring(1).Replace("Config", "");
+            string moduleName = configType.Name.Substring(1).Replace("Config", "");
 
-            PropertyInfo[] moduleProperties = metricsType.GetProperties().OrderBy(p => p.Name).ToArray();
+            PropertyInfo[] moduleProperties = configType.GetProperties().OrderBy(p => p.Name).ToArray();
 
             docBuilder.AppendLine(@$"# {moduleName}");
             moduleName = moduleName.ToLower();
             docBuilder.AppendLine();
             docBuilder.AppendLine($"{((ConfigCategoryAttribute)attribute)?.Description ?? ""}");
             docBuilder.AppendLine();
-            docBuilder.AppendLine("| Metric Name | Description | Default |");
+            docBuilder.AppendLine("| Property Name | Description | Default |");
             docBuilder.AppendLine("| :--- | :--- | ---: |");
 
             if (moduleProperties.Length == 0) return;

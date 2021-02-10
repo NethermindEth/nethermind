@@ -25,8 +25,8 @@ namespace Nethermind.JsonRpc.Data
     public class TransactionForRpc
     {
         public TransactionForRpc(Transaction transaction) : this(null, null, null, transaction) { }
-        
-        public TransactionForRpc(Keccak blockHash, long? blockNumber, int? txIndex, Transaction transaction)
+
+        public TransactionForRpc(Keccak? blockHash, long? blockNumber, int? txIndex, Transaction transaction)
         {
             Hash = transaction.Hash;
             Nonce = transaction.Nonce;
@@ -38,10 +38,15 @@ namespace Nethermind.JsonRpc.Data
             Value = transaction.Value;
             GasPrice = transaction.GasPrice;
             Gas = transaction.GasLimit;
-            Input = Data = transaction.Data ?? transaction.Init;
-            R = transaction.Signature?.R;
-            S = transaction.Signature?.S;
-            V = (UInt256?) transaction.Signature?.V;
+            Input = Data = transaction.Data;
+
+            Signature? signature = transaction.Signature;
+            if (signature != null)
+            {
+                R = new UInt256(signature.R, true);
+                S = new UInt256(signature.S, true);
+                V = (UInt256?)signature.V;
+            }
         }
 
         // ReSharper disable once UnusedMember.Global
@@ -49,72 +54,61 @@ namespace Nethermind.JsonRpc.Data
         {
         }
 
-        public Keccak Hash { get; set; }
+        public Keccak? Hash { get; set; }
         public UInt256? Nonce { get; set; }
-        
+
         [JsonProperty(NullValueHandling = NullValueHandling.Include)]
-        public Keccak BlockHash { get; set; }
-        
+        public Keccak? BlockHash { get; set; }
+
         [JsonProperty(NullValueHandling = NullValueHandling.Include)]
         public long? BlockNumber { get; set; }
-        
+
         [JsonProperty(NullValueHandling = NullValueHandling.Include)]
         public long? TransactionIndex { get; set; }
-        public Address From { get; set; }
-        
+
+        public Address? From { get; set; }
+
         [JsonProperty(NullValueHandling = NullValueHandling.Include)]
-        public Address To { get; set; }
+        public Address? To { get; set; }
+
         public UInt256? Value { get; set; }
         public UInt256? GasPrice { get; set; }
         public long? Gas { get; set; }
-        public byte[] Data { get; set; }
-        
+        public byte[]? Data { get; set; }
+
         [JsonProperty(NullValueHandling = NullValueHandling.Include)]
-        public byte[] Input { get; set; }
+        public byte[]? Input { get; set; }
+
         public UInt256? V { get; set; }
 
-        public byte[] S { get; set; }
+        public UInt256? S { get; set; }
 
-        public byte[] R { get; set; }
+        public UInt256? R { get; set; }
 
         public Transaction ToTransactionWithDefaults()
         {
-            Transaction tx = new Transaction();
+            Transaction tx = new();
             tx.GasLimit = Gas ?? 90000;
             tx.GasPrice = GasPrice ?? 20.GWei();
             tx.Nonce = (ulong)(Nonce ?? 0); // here pick the last nonce?
             tx.To = To;
             tx.SenderAddress = From;
             tx.Value = Value ?? 0;
-            if (tx.To == null)
-            {
-                tx.Init = Data ?? Input;
-            }
-            else
-            {
-                tx.Data = Data ?? Input;
-            }
+            tx.Data = Data ?? Input;
 
             return tx;
         }
-        
+
         public Transaction ToTransaction()
         {
-            Transaction tx = new Transaction();
+            Transaction tx = new();
             tx.GasLimit = Gas ?? 0;
             tx.GasPrice = GasPrice ?? 0;
             tx.Nonce = (ulong)(Nonce ?? 0); // here pick the last nonce?
             tx.To = To;
             tx.SenderAddress = From;
             tx.Value = Value ?? 0;
-            if (tx.To == null)
-            {
-                tx.Init = Data ?? Input;
-            }
-            else
-            {
-                tx.Data = Data ?? Input;
-            }
+            tx.Data = Data ?? Input;
 
             return tx;
         }

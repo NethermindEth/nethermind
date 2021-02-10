@@ -29,9 +29,6 @@ namespace Nethermind.Network.P2P
         void Init();
         void HandleMessage(Packet message);
         void DisconnectProtocol(DisconnectReason disconnectReason, string details);
-        bool HasAvailableCapability(Capability capability);
-        bool HasAgreedCapability(Capability capability);
-        void AddSupportedCapability(Capability capability);
         event EventHandler<ProtocolInitializedEventArgs> ProtocolInitialized;
         event EventHandler<ProtocolEventArgs> SubprotocolRequested;
     }

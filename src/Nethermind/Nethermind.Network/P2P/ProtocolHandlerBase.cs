@@ -123,12 +123,6 @@ namespace Nethermind.Network.P2P
 
         public abstract void DisconnectProtocol(DisconnectReason disconnectReason, string details);
 
-        public abstract bool HasAvailableCapability(Capability capability);
-
-        public abstract bool HasAgreedCapability(Capability capability);
-
-        public abstract void AddSupportedCapability(Capability capability);
-
         public abstract event EventHandler<ProtocolInitializedEventArgs> ProtocolInitialized;
         
         public abstract event EventHandler<ProtocolEventArgs> SubprotocolRequested;

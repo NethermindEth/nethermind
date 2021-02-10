@@ -27,6 +27,6 @@ namespace Nethermind.Evm.Precompiles
 
         long DataGasCost(byte[] inputData, IReleaseSpec releaseSpec);
 
-        (byte[], bool) Run(byte[] inputData);
+        (byte[], bool) Run(byte[] inputData, IReleaseSpec releaseSpec);
     }
 }

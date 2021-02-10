@@ -40,5 +40,8 @@ namespace Nethermind.JsonRpc.Modules.Parity
 
         [JsonRpcMethod(Description = "", IsImplemented = true)]
         ResultWrapper<bool> parity_clearEngineSigner();
+        
+        [JsonRpcMethod(Description = "Returns connected peers. Peers with non-empty protocols have completed handshake.", IsImplemented = true)]
+        ResultWrapper<ParityNetPeers> parity_netPeers();
     }
 }

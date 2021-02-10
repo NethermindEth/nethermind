@@ -153,7 +153,7 @@ namespace Nethermind.Synchronization.Blocks
                 }
 
                 if (_logger.IsDebug) _logger.Debug($"Headers request {currentNumber}+{headersToRequest} to peer {bestPeer} with {bestPeer.HeadNumber} blocks. Got {currentNumber} and asking for {headersToRequest} more.");
-                BlockHeader[] headers = await RequestHeaders(bestPeer, cancellation, currentNumber, headersToRequest);
+                BlockHeader?[] headers = await RequestHeaders(bestPeer, cancellation, currentNumber, headersToRequest);
 
                 BlockHeader? startingPoint = headers[0] == null ? null : _blockTree.FindHeader(headers[0].Hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
                 if (startingPoint == null)
@@ -185,7 +185,7 @@ namespace Nethermind.Synchronization.Blocks
                         break;
                     }
 
-                    BlockHeader currentHeader = headers[i];
+                    BlockHeader? currentHeader = headers[i];
                     if (currentHeader == null)
                     {
                         if (headersSynced - headersSyncedInPreviousRequests > 0)
@@ -267,7 +267,7 @@ namespace Nethermind.Synchronization.Blocks
 
                 if (cancellation.IsCancellationRequested) return blocksSynced; // check before every heavy operation
                 BlockHeader[] headers = await RequestHeaders(bestPeer, cancellation, currentNumber, headersToRequest);
-                BlockDownloadContext context = new BlockDownloadContext(_specProvider, bestPeer, headers, downloadReceipts, receiptsRecovery);
+                BlockDownloadContext context = new(_specProvider, bestPeer, headers, downloadReceipts, receiptsRecovery);
 
                 if (cancellation.IsCancellationRequested) return blocksSynced; // check before every heavy operation
                 await RequestBodies(bestPeer, cancellation, context);

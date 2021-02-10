@@ -19,8 +19,6 @@ namespace Nethermind.Core
 {
     public interface IKeyValueStoreWithBatching : IKeyValueStore
     {
-        byte[]? this[byte[] key] { get; set; }
-        
         IBatch StartBatch();
     }
 }

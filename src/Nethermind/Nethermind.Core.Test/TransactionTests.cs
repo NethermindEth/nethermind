@@ -22,21 +22,19 @@ namespace Nethermind.Core.Test
     public class TransactionTests
     {
         [Test]
-        public void When_init_empty_and_data_not_empty_then_is_message_call()
+        public void When_to_not_empty_then_is_message_call()
         {
             Transaction transaction = new Transaction();
-            transaction.Init = null;
-            transaction.Data = new byte[0];
+            transaction.To = Address.Zero;
             Assert.True(transaction.IsMessageCall, nameof(Transaction.IsMessageCall));
             Assert.False(transaction.IsContractCreation, nameof(Transaction.IsContractCreation));
         }
 
         [Test]
-        public void When_init_not_empty_and_data_empty_then_is_message_call()
+        public void When_to_empty_then_is_message_call()
         {
             Transaction transaction = new Transaction();
-            transaction.Init = new byte[0];
-            transaction.Data = null;
+            transaction.To = null;
             Assert.False(transaction.IsMessageCall, nameof(Transaction.IsMessageCall));
             Assert.True(transaction.IsContractCreation, nameof(Transaction.IsContractCreation));
         }

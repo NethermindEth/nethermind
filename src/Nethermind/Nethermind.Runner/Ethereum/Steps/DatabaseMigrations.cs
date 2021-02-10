@@ -23,7 +23,7 @@ using Nethermind.Runner.Ethereum.Steps.Migrations;
 namespace Nethermind.Runner.Ethereum.Steps
 {
     [RunnerStepDependencies(typeof(InitRlp), typeof(InitDatabase), typeof(InitializeBlockchain), typeof(InitializeNetwork), typeof(ResetDatabaseMigrations))]
-    public class DatabaseMigrations : IStep
+    public sealed class DatabaseMigrations : IStep
     {
         private readonly IApiWithNetwork _api;
 

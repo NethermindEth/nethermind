@@ -24,7 +24,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
     {
         protected Keccak[] DeserializeHashes(IByteBuffer byteBuffer)
         {
-            NettyRlpStream nettyRlpStream = new NettyRlpStream(byteBuffer);
+            NettyRlpStream nettyRlpStream = new(byteBuffer);
             return DeserializeHashes(nettyRlpStream);
         }
 

@@ -31,7 +31,7 @@ namespace Nethermind.Specs
 
         public long? DaoBlockNumber { get; } = null;
 
-        public long ChainId => Core.ChainId.Mainnet;
+        public ulong ChainId => Core.ChainId.Mainnet;
         public Keccak GenesisHash => KnownHashes.MainnetGenesis;
         public long[] TransitionBlocks { get; } = {0};
 

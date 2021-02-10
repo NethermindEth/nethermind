@@ -62,6 +62,9 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Chains", "Chains", "{D75E83
 		Chains\kovan.json = Chains\kovan.json
 		Chains\eip1559.json = Chains\eip1559.json
 		Chains\wit.json = Chains\wit.json
+		Chains\yolo_v3.json = Chains\yolo_v3.json
+		Chains\xdai1559.json = Chains\xdai1559.json
+		Chains\yolo_v2.json = Chains\yolo_v2.json
 	EndProjectSection
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.State.Test", "Nethermind.State.Test\Nethermind.State.Test.csproj", "{0A927E80-884F-4F41-BC5E-1825D32726DB}"
@@ -536,7 +539,7 @@ Global
 		{5CCA7D86-2D47-4464-970F-27A3604FC5A5} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
 		{99ABC9F6-C0DE-4579-8AFB-B42CDE0E840F} = {94CF4207-DA03-4D26-AAA2-284475A6DF1E}
 		{A06EBCB5-D56A-47D9-ACC2-B1A27F74E94B} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
-		{7CD8E337-B91C-46FE-8098-18448501AB04} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}	
+		{7CD8E337-B91C-46FE-8098-18448501AB04} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
 		{09A68405-C911-4827-A705-931F45E26EFD} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution

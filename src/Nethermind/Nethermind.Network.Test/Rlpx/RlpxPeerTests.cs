@@ -14,12 +14,12 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System;
 using System.Net;
 using System.Net.Sockets;
 using System.Threading.Tasks;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
+using Nethermind.Network.P2P;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Rlpx.Handshake;
 using NSubstitute;
@@ -34,7 +34,13 @@ namespace Nethermind.Network.Test.Rlpx
         [Test]
         public async Task Start_stop()
         {
-            RlpxPeer peer = new RlpxPeer(Substitute.For<IMessageSerializationService>(), TestItem.PublicKeyA, GegAvailableLocalPort(), Substitute.For<IHandshakeService>(), LimboLogs.Instance, Substitute.For<ISessionMonitor>());
+            RlpxPeer peer = new RlpxPeer(
+                Substitute.For<IMessageSerializationService>(),
+                TestItem.PublicKeyA, GegAvailableLocalPort(),
+                Substitute.For<IHandshakeService>(),
+                Substitute.For<ISessionMonitor>(),
+                NullDisconnectsAnalyzer.Instance,
+                LimboLogs.Instance);
             await peer.Init();
             await peer.Shutdown();
         }

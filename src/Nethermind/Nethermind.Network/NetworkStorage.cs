@@ -34,7 +34,7 @@ namespace Nethermind.Network
         private long _updateCounter;
         private long _removeCounter;
 
-        public NetworkStorage(IFullDb fullDb, ILogManager logManager)
+        public NetworkStorage(IFullDb? fullDb, ILogManager? logManager)
         {
             _fullDb = fullDb ?? throw new ArgumentNullException(nameof(fullDb));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
@@ -50,9 +50,14 @@ namespace Nethermind.Network
 
         public NetworkNode[] GetPersistedNodes()
         {
-            List<NetworkNode> nodes = new List<NetworkNode>();
-            foreach (byte[] nodeRlp in _fullDb.Values)
+            List<NetworkNode> nodes = new();
+            foreach (byte[]? nodeRlp in _fullDb.Values)
             {
+                if (nodeRlp == null)
+                {
+                    continue;
+                }
+                
                 try
                 {
                     nodes.Add(GetNode(nodeRlp));
@@ -86,7 +91,7 @@ namespace Nethermind.Network
             _removeCounter++;
         }
 
-        private IBatch _currentBatch;
+        private IBatch? _currentBatch;
         
         public void StartBatch()
         {
@@ -110,7 +115,7 @@ namespace Nethermind.Network
             return _updateCounter > 0 || _removeCounter > 0;
         }
 
-        private NetworkNode GetNode(byte[] networkNodeRaw)
+        private static NetworkNode GetNode(byte[] networkNodeRaw)
         {
             NetworkNode persistedNode = Rlp.Decode<NetworkNode>(networkNodeRaw);
             return persistedNode;
@@ -118,7 +123,7 @@ namespace Nethermind.Network
 
         private void LogDbContent(IEnumerable<byte[]> values)
         {
-            StringBuilder sb = new StringBuilder();
+            StringBuilder sb = new();
             sb.AppendLine($"[{_fullDb.Name}]");
             foreach (byte[] value in values)
             {

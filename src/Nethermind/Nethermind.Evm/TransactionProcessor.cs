@@ -31,7 +31,7 @@ namespace Nethermind.Evm
 {
     public class TransactionProcessor : ITransactionProcessor
     {
-        private readonly IntrinsicGasCalculator _intrinsicGasCalculator = new IntrinsicGasCalculator();
+        private readonly EthereumEcdsa _ecdsa;
         private readonly ILogger _logger;
         private readonly IStateProvider _stateProvider;
         private readonly IStorageProvider _storageProvider;
@@ -77,10 +77,13 @@ namespace Nethermind.Evm
             if (txTracer.IsTracingReceipt) txTracer.MarkAsFailed(recipient, tx.GasLimit, Array.Empty<byte>(), reason ?? "invalid", stateRoot);
         }
 
-        private EthereumEcdsa _ecdsa;
-
         private void Execute(Transaction transaction, BlockHeader block, ITxTracer txTracer, bool isCall)
         {
+            if (block.Number == 5962)
+            {
+                int a = 1;
+            }
+            
             bool notSystemTransaction = !transaction.IsSystem();
             bool wasSenderAccountCreatedInsideACall = false;
             
@@ -94,7 +97,7 @@ namespace Nethermind.Evm
             UInt256 value = transaction.Value;
 
             UInt256 feeCap = transaction.IsEip1559 ? transaction.FeeCap : transaction.GasPrice;
-            UInt256 baseFee = transaction.IsEip1559 ? block.BaseFee : UInt256.Zero;
+            UInt256 baseFee = block.BaseFee;
             if (baseFee > feeCap)
             {
                 TraceLogInvalidTx(transaction, "MINER_PREMIUM_IS_NEGATIVE");
@@ -106,8 +109,8 @@ namespace Nethermind.Evm
             UInt256 gasPrice = premiumPerGas + baseFee;
 
             long gasLimit = transaction.GasLimit;
-            byte[] machineCode = transaction.Init;
-            byte[] data = transaction.Data ?? Array.Empty<byte>();
+            byte[] machineCode = transaction.IsContractCreation ? transaction.Data : null;
+            byte[] data = transaction.IsMessageCall ? transaction.Data : Array.Empty<byte>();
 
             Address? sender = transaction.SenderAddress;
             if (_logger.IsTrace) _logger.Trace($"Executing tx {transaction.Hash}");
@@ -119,7 +122,7 @@ namespace Nethermind.Evm
                 return;
             }
 
-            long intrinsicGas = _intrinsicGasCalculator.Calculate(transaction, spec);
+            long intrinsicGas = IntrinsicGasCalculator.Calculate(transaction, spec);
             if (_logger.IsTrace) _logger.Trace($"Intrinsic gas calculated for {transaction.Hash}: " + intrinsicGas);
 
             if (notSystemTransaction)
@@ -226,7 +229,7 @@ namespace Nethermind.Evm
                     }
                 }
                 
-                ExecutionEnvironment env = new ExecutionEnvironment();
+                ExecutionEnvironment env = new();
                 env.Value = value;
                 env.TransferValue = value;
                 env.Sender = sender;
@@ -243,7 +246,7 @@ namespace Nethermind.Evm
                 {
                     if (spec.UseTxAccessLists)
                     {
-                        state.WarmUp(transaction.AccountAccessList, transaction.StorageAccessList); // eip-2930
+                        state.WarmUp(transaction.AccessList); // eip-2930
                     }
 
                     if (spec.UseHotAndColdStorage)

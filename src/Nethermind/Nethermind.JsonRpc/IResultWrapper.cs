@@ -20,7 +20,7 @@ namespace Nethermind.JsonRpc
 {
     public interface IResultWrapper
     {
-        Result GetResult();
+        Result? GetResult();
         
         object GetData();
         

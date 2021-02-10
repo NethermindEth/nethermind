@@ -23,7 +23,7 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.DataMarketplace.Infrastructure.Rlp
 {
-    public class EthRequestDecoder : IRlpDecoder<EthRequest>
+    public class EthRequestDecoder : IRlpNdmDecoder<EthRequest>
     {
         public static void Init()
         {
@@ -53,6 +53,11 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
             {
                 throw new RlpException($"{nameof(EthRequest)} cannot be deserialized from", e);
             }
+        }
+
+        public void Encode(RlpStream stream, EthRequest item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        {
+            throw new NotImplementedException();
         }
 
         public Serialization.Rlp.Rlp Encode(EthRequest item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)

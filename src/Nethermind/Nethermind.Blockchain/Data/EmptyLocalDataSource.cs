@@ -22,6 +22,11 @@ namespace Nethermind.Blockchain.Data
     public class EmptyLocalDataSource<T> : ILocalDataSource<T>
     {
         public T Data { get; } = default;
-        public event EventHandler Changed;
+
+        public event EventHandler Changed
+        {
+            add { }
+            remove { }
+        }
     }
 }

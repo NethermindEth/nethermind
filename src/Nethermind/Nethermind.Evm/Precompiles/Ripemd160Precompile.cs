@@ -47,7 +47,7 @@ namespace Nethermind.Evm.Precompiles
             return 120L * EvmPooledMemory.Div32Ceiling((ulong)inputData.Length);
         }
 
-        public (byte[], bool) Run(byte[] inputData)
+        public (byte[], bool) Run(byte[] inputData, IReleaseSpec releaseSpec)
         {
             Metrics.Ripemd160Precompile++;
             

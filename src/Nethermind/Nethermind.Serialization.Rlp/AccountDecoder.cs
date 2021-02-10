@@ -22,7 +22,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.Serialization.Rlp
 {
-    public class AccountDecoder : IRlpDecoder<Account>
+    public class AccountDecoder : IRlpObjectDecoder<Account?>
     {
         public (Keccak CodeHash, Keccak StorageRoot) DecodeHashesOnly(RlpStream rlpStream)
         {
@@ -43,14 +43,19 @@ namespace Nethermind.Serialization.Rlp
             return storageRoot;
         }
         
-        public Account Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public Account? Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            rlpStream.ReadSequenceLength();
+            int length = rlpStream.ReadSequenceLength();
+            if (length == 1)
+            {
+                return null;
+            }
+            
             UInt256 nonce = rlpStream.DecodeUInt256();
             UInt256 balance = rlpStream.DecodeUInt256();
             Keccak storageRoot = rlpStream.DecodeKeccak();
             Keccak codeHash = rlpStream.DecodeKeccak();
-            Account account = new Account(nonce, balance, storageRoot, codeHash);
+            Account account = new(nonce, balance, storageRoot, codeHash);
             return account;
         }
 

@@ -52,7 +52,7 @@ namespace Nethermind.Evm.Precompiles
             return rounds;
         }
 
-        public (byte[], bool) Run(byte[] inputData)
+        public (byte[], bool) Run(byte[] inputData, IReleaseSpec releaseSpec)
         {
             if (inputData.Length != RequiredInputLength)
             {
