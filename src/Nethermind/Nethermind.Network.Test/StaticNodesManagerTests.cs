@@ -38,7 +38,7 @@ namespace Nethermind.Network.Test
         [SetUp]
         public void Setup()
         {
-            var path = "test-static-nodes.json";
+            var path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "test-static-nodes.json");
             var logManager = LimboLogs.Instance;
             _staticNodesManager = new StaticNodesManager(path, logManager);
         }
