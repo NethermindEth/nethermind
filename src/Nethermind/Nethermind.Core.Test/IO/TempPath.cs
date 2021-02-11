@@ -49,5 +49,7 @@ namespace Nethermind.Core.Test.IO
                 Directory.Delete(Path, true);
             }
         }
+
+        public override string ToString() => Path;
     }
 }

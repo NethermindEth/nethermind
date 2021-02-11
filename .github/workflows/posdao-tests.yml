@@ -58,7 +58,7 @@ jobs:
         cd posdao-test-setup
         npm run stop-test-setup
         zip -r node-logs.zip data/node0/log data/node1/log data/node2/log \
-          data/node3/log data/node4/log data/node5/log data/node6/log
+          data/node3/log data/node4/log data/node5/log data/node6/log data/node1/checkRandomSeed.log
     - uses: actions/upload-artifact@master
       if: ${{ failure() }}
       name: Upload post-failure nodes logs
