@@ -85,7 +85,6 @@ namespace Nethermind.Core.Test.Blockchain
 
         protected override async ValueTask ProducerLoop()
         {
-            _lastProducedBlock = DateTime.UtcNow;
             while (true)
             {
                 await _newBlockArrived.WaitAsync(LoopCancellationTokenSource.Token);

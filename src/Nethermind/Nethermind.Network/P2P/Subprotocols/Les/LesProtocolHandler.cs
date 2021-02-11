@@ -114,6 +114,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Les
             remove { }
         }
 
+        public override void AddSupportedCapability(Capability capability) { }
+
         bool _statusReceived;
         public override void HandleMessage(ZeroPacket message)
         {
@@ -277,6 +279,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Les
             }
             proofNodes.AddRange(cht.BuildProof(request.Key, request.SectionIndex, request.FromLevel));
         }
+
+        public override bool HasAgreedCapability(Capability capability) => false;
+
+        public override bool HasAvailableCapability(Capability capability) => false;
 
         private BlockHeader _lastSentBlock;
 

@@ -64,15 +64,6 @@ namespace Nethermind.Consensus.AuRa
             
         }
 
-        public long CurrentStepDuration
-        {
-            get
-            {
-                UnixTime epoch = _timestamper.UnixTime;
-                return GetStepInfo(epoch.SecondsLong).StepDuration;
-            }
-        }
-
         private long TimeToNextStepInTicks
         {
             get

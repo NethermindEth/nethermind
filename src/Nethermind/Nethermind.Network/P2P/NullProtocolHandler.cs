@@ -48,6 +48,21 @@ namespace Nethermind.Network.P2P
         {
         }
 
+        public bool HasAvailableCapability(Capability capability)
+        {
+            return false;
+        }
+
+        public bool HasAgreedCapability(Capability capability)
+        {
+            return false;
+        }
+
+        public void AddSupportedCapability(Capability capability)
+        {
+            throw new NotSupportedException();
+        }
+
         public event EventHandler<ProtocolInitializedEventArgs> ProtocolInitialized {
             add { }
             remove { }

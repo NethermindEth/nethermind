@@ -54,6 +54,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Wit
         
         protected override TimeSpan InitTimeout => Timeouts.Eth;
 
+        public override bool HasAvailableCapability(Capability capability) => false;
+
+        public override bool HasAgreedCapability(Capability capability) => false;
+
+        public override void AddSupportedCapability(Capability capability) { }
+
         public override event EventHandler<ProtocolInitializedEventArgs> ProtocolInitialized;
 
         public override event EventHandler<ProtocolEventArgs> SubprotocolRequested

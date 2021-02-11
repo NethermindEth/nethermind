@@ -36,17 +36,17 @@ namespace Nethermind.Consensus.AuRa.Services
         
         public ulong? MaxSecondsIntervalForProcessingBlocksHint()
         {
-            return CurrentStepDuration() * HealthHintConstants.ProcessingSafetyMultiplier;
+            return TimeToNextStep() * HealthHintConstants.ProcessingSafetyMultiplier;
         }
 
         public ulong? MaxSecondsIntervalForProducingBlocksHint()
         {
-            return (ulong)Math.Max(_validatorStore.GetValidators().Length, 1) * CurrentStepDuration() * HealthHintConstants.ProducingSafetyMultiplier;
+            return (ulong)Math.Max(_validatorStore.GetValidators().Length, 1) * TimeToNextStep() * HealthHintConstants.ProducingSafetyMultiplier;
         }
 
-        private uint CurrentStepDuration()
+        private uint TimeToNextStep()
         {
-            return Math.Max((uint)_auRaStepCalculator.CurrentStepDuration, 1);
+            return Math.Max((uint)_auRaStepCalculator.TimeToNextStep.TotalSeconds, 1);
         }
     }
 }

@@ -37,6 +37,7 @@ namespace Nethermind.AuRa.Test
         {
             ManualTimestamper manualTimestamper = new ManualTimestamper(DateTime.Now);
             AuRaStepCalculator stepCalculator = new AuRaStepCalculator(new Dictionary<long, long>() {{0, test.StepDuration}}, manualTimestamper, LimboLogs.Instance);
+            manualTimestamper.Add(stepCalculator.TimeToNextStep);
             IValidatorStore validatorStore = Substitute.For<IValidatorStore>();
             validatorStore.GetValidators().Returns(new Address[test.ValidatorsCount]);
             IHealthHintService healthHintService = new AuraHealthHintService(stepCalculator, validatorStore);
@@ -90,13 +91,6 @@ namespace Nethermind.AuRa.Test
                     ValidatorsCount = 10,
                     ExpectedProcessingHint = 16,
                     ExpectedProducingHint = 80
-                };
-                yield return new BlockProcessorIntervalHint()
-                {
-                    StepDuration = 6,
-                    ValidatorsCount = 12,
-                    ExpectedProcessingHint = 24,
-                    ExpectedProducingHint = 144
                 };
             }
         }

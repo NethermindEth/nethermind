@@ -42,6 +42,7 @@ namespace Nethermind.JsonRpc.Modules.Parity
         private readonly ISignerStore _signerStore;
         private readonly IKeyStore _keyStore;
         private readonly IPeerManager _peerManager;
+        private ParityNetPeers _parityNetPeers;
 
         public ParityModule(
             IEcdsa ecdsa,
@@ -114,12 +115,12 @@ namespace Nethermind.JsonRpc.Modules.Parity
 
         public ResultWrapper<ParityNetPeers> parity_netPeers()
         {
-            ParityNetPeers parityNetPeers = new ParityNetPeers();
-            parityNetPeers.Active = _peerManager.ActivePeers.Count;
-            parityNetPeers.Connected = _peerManager.ConnectedPeers.Count;
-            parityNetPeers.Max = _peerManager.MaxActivePeers;
-            parityNetPeers.Peers = _peerManager.ActivePeers.Select(p => new PeerInfo(p)).ToArray();
-            return ResultWrapper<ParityNetPeers>.Success(parityNetPeers);
+            _parityNetPeers = new ParityNetPeers();
+            _parityNetPeers.Active = _peerManager.ActivePeers.Count;
+            _parityNetPeers.Connected = _peerManager.ConnectedPeers.Count;
+            _parityNetPeers.Max = _peerManager.MaxActivePeers;
+            _parityNetPeers.Peers = _peerManager.ActivePeers.Select(p => new PeerInfo(p)).ToArray();
+            return ResultWrapper<ParityNetPeers>.Success(_parityNetPeers);
         }
     }
 }
