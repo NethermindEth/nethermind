@@ -3,6 +3,7 @@ name: RocksDB Build
 on:
   repository_dispatch:
     types: rocksdb_build
+  workflow_dispatch:
 
 jobs:
   rocksb-building:
@@ -44,7 +45,7 @@ jobs:
         latestTag=$(git describe --tags `git rev-list --tags --max-count=1`)
         git checkout $latestTag
         TAG="${latestTag:1}"
-        make shared_lib
+        PORTABLE=1 make -j8 shared_lib
         strip librocksdb.so.${TAG}
         mv librocksdb.so.${TAG} librocksdb.so
     - uses: actions/upload-artifact@v1
@@ -75,7 +76,7 @@ jobs:
         git checkout $latestTag
         TAG="${latestTag:1}"
         sed -i.bak '14s/CXXFLAGS += ${EXTRA_CXXFLAGS}/CXXFLAGS += -w/' Makefile
-        make shared_lib
+        PORTABLE=1 make -j8 shared_lib
         mv librocksdb.${TAG}.dylib librocksdb.dylib
     - uses: actions/upload-artifact@v1
       name: Uploading Darwin artifact
