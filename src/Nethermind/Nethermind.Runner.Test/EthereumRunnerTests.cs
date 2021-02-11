@@ -61,6 +61,7 @@ namespace Nethermind.Runner.Test
             {
                 var configProvider = new ConfigProvider();
                 configProvider.AddSource(new JsonConfigSource(configFile));
+                configProvider.Initialize();
                 result.Enqueue((configFile, configProvider));
             });
 
