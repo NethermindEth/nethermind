@@ -147,7 +147,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             PersonalModule personalModule = new PersonalModule(
                 _api.EthereumEcdsa,
                 _api.Wallet,
-                _api.LogManager);
+                _api.KeyStore);
             _api.RpcModuleProvider.Register(new SingletonModulePool<IPersonalModule>(personalModule, true));
             
             if (_api.PeerManager == null) throw new StepDependencyException(nameof(_api.PeerManager));

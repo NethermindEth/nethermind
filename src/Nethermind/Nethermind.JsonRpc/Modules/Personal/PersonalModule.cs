@@ -21,6 +21,7 @@ using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.JsonRpc.Data;
+using Nethermind.KeyStore;
 using Nethermind.Logging;
 using Nethermind.Wallet;
 
@@ -31,17 +32,22 @@ namespace Nethermind.JsonRpc.Modules.Personal
         private Encoding _messageEncoding = Encoding.UTF8;
         private readonly IEcdsa _ecdsa;
         private readonly IWallet _wallet;
+        private readonly IKeyStore _keyStore;
 
-        public PersonalModule(IEcdsa ecdsa, IWallet wallet, ILogManager logManager)
+        public PersonalModule(IEcdsa ecdsa, IWallet wallet, IKeyStore keyStore)
         {
             _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
             _wallet = wallet ?? throw new ArgumentNullException(nameof(wallet));
+            _keyStore = keyStore;
         }
 
-        public ResultWrapper<Address> personal_importRawKey(byte keyData, string passphrase)
-        {
-            throw new NotImplementedException();
-        }
+         [RequiresSecurityReview("Consider removing any operations that allow to provide passphrase in JSON RPC")]
+         public ResultWrapper<Address> personal_importRawKey(byte[] keyData, string passphrase)
+         {
+             PrivateKey privateKey = new PrivateKey(keyData);
+             _keyStore.StoreKey(privateKey, passphrase.Secure());
+             return ResultWrapper<Address>.Success(privateKey.Address);
+         }
 
         public ResultWrapper<Address[]> personal_listAccounts()
         {
