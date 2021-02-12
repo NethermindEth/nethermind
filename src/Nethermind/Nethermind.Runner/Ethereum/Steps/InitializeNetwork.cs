@@ -36,6 +36,7 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V63;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Rlpx.Handshake;
 using Nethermind.Network.StaticNodes;
+using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.LesSync;
 using Nethermind.Synchronization.ParallelSync;
@@ -436,6 +437,12 @@ namespace Nethermind.Runner.Ethereum.Steps
                 peerStorage,
                 _api.SpecProvider,
                 _api.LogManager);
+            
+            if (_syncConfig.WitnessProtocolEnabled)
+            {
+                _api.ProtocolsManager.AddSupportedCapability(new Capability(Protocol.Wit, 0));
+            }
+            
             _api.ProtocolValidator = protocolValidator;
 
             foreach (var plugin in _api.Plugins)
