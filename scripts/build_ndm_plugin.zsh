@@ -1,15 +1,12 @@
-#!/bin/zsh
-#Remember that in order for this script to run you need to specify vars NETHERMIND_PATH and NDM_PATH
+#!/bin/bash
 
 #exit when any command fails
 set -e
 
-BIN_PATH="bin/Debug/netcoreapp3.1/"
-#set it to your Nethermind path 
-NETHERMIND_PATH="${HOME}/nethermind/src/Nethermind/"
-#set it to your ndm path
-NDM_PATH="${HOME}/ndm/src/"
-NETHERMIND_RUNNER_BIN_PATH="${NETHERMIND_PATH}Nethermind.Runner/${BIN_PATH}plugins"
+BIN_PATH="bin/Debug/net5.0/"
+NETHERMIND_PATH="${HOME}/work/nethermind/src/Nethermind/"
+NDM_PATH="${HOME}/work/ndm/src/"
+NETHERMIND_RUNNER_BIN_PATH="${NETHERMIND_PATH}Nethermind.Runner/bin/Debug/net5.0/plugins/"
 NDM_INFRASTRUCTURE_PATH="${NETHERMIND_PATH}Nethermind.DataMarketplace.Infrastructure/"
 NDM_CHANNELS_PATH="${NETHERMIND_PATH}Nethermind.DataMarketplace.Channels/"
 NDM_CHANNELS_GRPC_PATH="${NETHERMIND_PATH}Nethermind.DataMarketplace.Channels.Grpc/"
@@ -22,9 +19,6 @@ NDM_REFUNDER_PATH="${NETHERMIND_PATH}Nethermind.DataMarketplace.Tools.Refunder/"
 NDM_CONSUMERS_TESTS_PATH="${NETHERMIND_PATH}Nethermind.DataMarketplace.Consumers.Test/"
 NDM_PROVIDERS_TESTS_PATH="${NDM_PATH}Nethermind.DataMarketplace.Providers.Test/"
 NDM_TESTS_PATH="${NETHERMIND_PATH}Nethermind.DataMarketplace.Test/"
-
-#cd $NETHERMIND_RUNNER_BIN_PATH
-#rm -rf * 
 
 cd $NETHERMIND_PATH
 dotnet build Nethermind.sln 
@@ -82,3 +76,11 @@ cp -v ./MongoDB.Libmongocrypt.dll $NETHERMIND_RUNNER_BIN_PATH
 cd $NDM_CONSUMERS_TESTS_PATH
 cd $BIN_PATH
 cp -v ./SharpCompress.dll $NETHERMIND_RUNNER_BIN_PATH
+
+cd $NDM_PROVIDERS_TESTS_PATH
+cd $BIN_PATH
+cp -v ./YamlDotNet.dll $NETHERMIND_RUNNER_BIN_PATH
+
+cd $NDM_TESTS_PATH
+cd $BIN_PATH
+cp -v ./Polly.dll $NETHERMIND_RUNNER_BIN_PATH
