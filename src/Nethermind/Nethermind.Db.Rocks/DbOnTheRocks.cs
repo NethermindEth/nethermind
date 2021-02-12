@@ -498,19 +498,22 @@ namespace Nethermind.Db.Rocks
 
         private void Dispose(bool disposing)
         {
-            _logger.Info($"Disposing DB {Name}");
-
-            if (disposing)
+            if (!_isDisposed)
             {
-                Flush();
-            }
+                _logger.Info($"Disposing DB {Name}");
 
-            _isDisposed = true;
+                if (disposing)
+                {
+                    Flush();
+                }
 
-            ReleaseUnmanagedResources();
-            if (disposing)
-            {
-                DbsByPath.Remove(_fullPath!, out _);
+                _isDisposed = true;
+
+                ReleaseUnmanagedResources();
+                if (disposing)
+                {
+                    DbsByPath.Remove(_fullPath!, out _);
+                }
             }
         }
 
