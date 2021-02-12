@@ -29,4 +29,8 @@ LABEL git_commit=$GIT_COMMIT
 EXPOSE 8545
 EXPOSE 30303
 
+VOLUME /nethermind/nethermind_db
+VOLUME /nethermind/logs
+VOLUME /nethermind/keystore
+
 ENTRYPOINT ["./Nethermind.Runner"]
