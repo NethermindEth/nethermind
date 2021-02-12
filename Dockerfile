@@ -30,5 +30,7 @@ EXPOSE 8545
 EXPOSE 30303
 
 VOLUME /nethermind/nethermind_db
+VOLUME /nethermind/logs
+VOLUME /nethermind/keystore
 
 ENTRYPOINT ["./Nethermind.Runner"]
