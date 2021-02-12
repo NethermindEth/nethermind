@@ -49,7 +49,7 @@ namespace Nethermind.WebSockets
                     if (context.Request.Path.HasValue)
                     {
                         var path = context.Request.Path.Value;
-                        moduleName = path.Split("/").LastOrDefault();
+                        moduleName = path.Split("/", StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).FirstOrDefault();
                     }
 
                     module = webSocketsManager.GetModule(moduleName);
