@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -15,6 +15,8 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using BenchmarkDotNet.Configs;
+using BenchmarkDotNet.Environments;
+using BenchmarkDotNet.Jobs;
 using BenchmarkDotNet.Running;
 
 namespace Nethermind.Evm.Benchmark
@@ -22,19 +24,8 @@ namespace Nethermind.Evm.Benchmark
     static class Program
     {
         static void Main(string[] args)
-#if DEBUG
-            => BenchmarkSwitcher.FromAssembly(typeof(Program).Assembly).Run(args, new DebugInProcessConfig());
-#else
-{
-            BenchmarkRunner.Run<StaticCallBenchmarks>();
-            // BenchmarkRunner.Run<EvmBenchmarks>(
-            //     DefaultConfig.Instance.With(
-            //         Job.Default.With(CoreRuntime.Core30).With(
-            //             new[] {new EnvironmentVariable("NETH.BENCHMARK.BYTECODE", args.Any() ? args[0] : "0x")})));
-            // BenchmarkRunner.Run<EvmPushUIntBenchmarks>();
-            // BenchmarkRunner.Run<EvmPopIntBenchmarks>();
-            // BenchmarkRunner.Run<EvmPushSignedIntBenchmarks>();
-        }
-#endif
+        {
+            BenchmarkSwitcher.FromAssembly(typeof(Program).Assembly).Run(args, DefaultConfig.Instance);
+        }   
     }
 }
