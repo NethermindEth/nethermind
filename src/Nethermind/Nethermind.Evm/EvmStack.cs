@@ -17,6 +17,8 @@
 using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
@@ -46,7 +48,7 @@ namespace Nethermind.Evm
         private Span<byte> _bytes;
 
         private ITxTracer _tracer;
-        
+
         public void PushBytes(in Span<byte> value)
         {
             if (_tracer.IsTracingInstructions) _tracer.ReportStackPush(value);
@@ -106,8 +108,8 @@ namespace Nethermind.Evm
             }
         }
 
-        private static readonly byte[] OneStackItem = {1};
-        
+        private static readonly byte[] OneStackItem = { 1 };
+
         public void PushOne()
         {
             if (_tracer.IsTracingInstructions) _tracer.ReportStackPush(OneStackItem);
@@ -124,8 +126,8 @@ namespace Nethermind.Evm
             }
         }
 
-        private static readonly byte[] ZeroStackItem = {0};
-        
+        private static readonly byte[] ZeroStackItem = { 0 };
+
         public void PushZero()
         {
             if (_tracer.IsTracingInstructions)
@@ -159,10 +161,34 @@ namespace Nethermind.Evm
             }
         }
 
+        /// <summary>
+        /// Pushes an Uint256 written in big endian.
+        /// </summary>
+        /// <remarks>
+        /// This method is a counterpart to <see cref="PopUInt256"/> and uses the same, raw data approach to write data back.
+        /// </remarks>
         public void PushUInt256(in UInt256 value)
         {
             Span<byte> word = _bytes.Slice(Head * 32, 32);
-            value.ToBigEndian(word);
+            ref byte bytes = ref word[0];
+
+            ulong u3 = value.u3;
+            ulong u2 = value.u2;
+            ulong u1 = value.u1;
+            ulong u0 = value.u0;
+
+            if (BitConverter.IsLittleEndian)
+            {
+                u3 = BinaryPrimitives.ReverseEndianness(u3);
+                u2 = BinaryPrimitives.ReverseEndianness(u2);
+                u1 = BinaryPrimitives.ReverseEndianness(u1);
+                u0 = BinaryPrimitives.ReverseEndianness(u0);
+            }
+
+            Unsafe.WriteUnaligned(ref bytes, u3);
+            Unsafe.WriteUnaligned(ref Unsafe.Add(ref bytes, sizeof(ulong)), u2);
+            Unsafe.WriteUnaligned(ref Unsafe.Add(ref bytes, 2 * sizeof(ulong)), u1);
+            Unsafe.WriteUnaligned(ref Unsafe.Add(ref bytes, 3 * sizeof(ulong)), u0);
 
             if (_tracer.IsTracingInstructions) _tracer.ReportStackPush(word);
 
@@ -175,7 +201,7 @@ namespace Nethermind.Evm
 
         public void PushSignedInt256(in Int256.Int256 value)
         {
-            PushUInt256((UInt256) value);
+            PushUInt256((UInt256)value);
         }
 
         public void PopLimbo()
@@ -189,12 +215,36 @@ namespace Nethermind.Evm
 
         public void PopSignedInt256(out Int256.Int256 result)
         {
-            result = new Int256.Int256(PopBytes(), true);
+            PopUInt256(out UInt256 value);
+            result = new Int256.Int256(value);
         }
 
+        /// <summary>
+        /// Pops an Uint256 written in big endian.
+        /// </summary>
+        /// <remarks>
+        /// This method does its own calculations to create the <paramref name="result"/>. It knows that 32 bytes were popped with <see cref="PopBytesByRef"/>. It doesn't have to check the size of span or slice it.
+        /// All it does is <see cref="Unsafe.ReadUnaligned{T}(ref byte)"/> and then reverse endianness if needed. Then it creates <paramref name="result"/>.
+        /// </remarks>
+        /// <param name="result">The returned value.</param>
         public void PopUInt256(out UInt256 result)
         {
-            result = new UInt256(PopBytes(), true);
+            ref byte bytes = ref PopBytesByRef();
+
+            ulong u3 = Unsafe.ReadUnaligned<ulong>(ref bytes);
+            ulong u2 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, sizeof(ulong)));
+            ulong u1 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 2 * sizeof(ulong)));
+            ulong u0 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 3 * sizeof(ulong)));
+
+            if (BitConverter.IsLittleEndian)
+            {
+                u3 = BinaryPrimitives.ReverseEndianness(u3);
+                u2 = BinaryPrimitives.ReverseEndianness(u2);
+                u1 = BinaryPrimitives.ReverseEndianness(u1);
+                u0 = BinaryPrimitives.ReverseEndianness(u0);
+            }
+
+            result = new UInt256(u0, u1, u2, u3);
         }
 
         public Address PopAddress()
@@ -206,6 +256,17 @@ namespace Nethermind.Evm
             }
 
             return new Address(_bytes.Slice(Head * 32 + 12, 20).ToArray());
+        }
+
+        private ref byte PopBytesByRef()
+        {
+            if (Head-- == 0)
+            {
+                Metrics.EvmExceptions++;
+                throw new EvmStackUnderflowException();
+            }
+
+            return ref _bytes[Head * 32];
         }
 
         // ReSharper disable once ImplicitlyCapturedClosure
@@ -268,7 +329,7 @@ namespace Nethermind.Evm
                 throw new EvmStackOverflowException();
             }
         }
-        
+
         public void EnsureDepth(int depth)
         {
             if (Head < depth)
@@ -277,7 +338,7 @@ namespace Nethermind.Evm
                 throw new EvmStackUnderflowException();
             }
         }
-        
+
         public void Swap(int depth)
         {
             Span<byte> buffer = stackalloc byte[32];
