@@ -54,7 +54,7 @@ namespace Nethermind.Crypto
                 return (false, null);
             }
             
-            Span<byte> ephemBytes = cipherText.Slice(0, ephemBytesLength);
+            Span<byte> ephemBytes = cipherText.AsSpan().Slice(0, ephemBytesLength);
             byte[] iv = cipherText.Slice(ephemBytesLength, KeySize / 8);
             byte[] cipherBody = cipherText.Slice(ephemBytesLength + KeySize / 8);
 
