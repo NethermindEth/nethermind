@@ -14,6 +14,8 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.Collections;
+using System.Collections.Generic;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
@@ -26,7 +28,21 @@ namespace Nethermind.Core.Test.Crypto
 {
     [TestFixture]
     public class EthereumEcdsaTests
-    {   
+    {
+        public static IEnumerable<(string, Transaction)> TestCaseSources()
+        {
+            yield return ("legacy", Build.A.Transaction.SignedAndResolved().TestObject);
+            yield return ("access list", Build.A.Transaction.WithChainId(1).WithType(TxType.AccessList).SignedAndResolved().TestObject);
+        }
+
+        [TestCaseSource(nameof(TestCaseSources))]
+        public void Signature_verify_test((string Name, Transaction Tx) testCase)
+        {
+            EthereumEcdsa ecdsa = new EthereumEcdsa(ChainId.Ropsten, LimboLogs.Instance);
+            ecdsa.Verify(testCase.Tx.SenderAddress!, testCase.Tx);
+        }
+
+        
         [TestCase(true)]
         [TestCase(false)]
         public void Signature_test_ropsten(bool eip155)
