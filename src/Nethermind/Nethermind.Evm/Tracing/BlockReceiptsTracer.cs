@@ -25,7 +25,7 @@ namespace Nethermind.Evm.Tracing
 {
     public class BlockReceiptsTracer : IBlockTracer,  ITxTracer
     {
-        private Block _block;
+        private Block? _block;
         public bool IsTracingReceipt => true;
         public bool IsTracingActions => _currentTxTracer.IsTracingActions;
         public bool IsTracingOpLevelStorage => _currentTxTracer.IsTracingOpLevelStorage;
@@ -35,6 +35,7 @@ namespace Nethermind.Evm.Tracing
         public bool IsTracingCode => _currentTxTracer.IsTracingCode;
         public bool IsTracingStack => _currentTxTracer.IsTracingStack;
         public bool IsTracingState => _currentTxTracer.IsTracingState;
+        public bool IsTracingStorage => _currentTxTracer.IsTracingStorage;
         
         public bool IsTracingBlockHash => _currentTxTracer.IsTracingBlockHash;
 
@@ -239,9 +240,9 @@ namespace Nethermind.Evm.Tracing
             _currentTxTracer.SetOperationMemory(memoryTrace);
         }
 
-        private ITxTracer _currentTxTracer;
+        private ITxTracer? _currentTxTracer;
         private int _currentIndex;
-        public TxReceipt[] TxReceipts { get; private set; }
+        public TxReceipt[]? TxReceipts { get; private set; }
 
         public bool IsTracingRewards => _otherTracer.IsTracingRewards;
 

@@ -322,12 +322,12 @@ namespace Nethermind.Blockchain.Processing
         private void ApplyMinerRewards(Block block, IBlockTracer tracer)
         {
             if (_logger.IsTrace) _logger.Trace("Applying miner rewards:");
-            var rewards = _rewardCalculator.CalculateRewards(block);
+            BlockReward[] rewards = _rewardCalculator.CalculateRewards(block);
             for (int i = 0; i < rewards.Length; i++)
             {
                 BlockReward reward = rewards[i];
 
-                ITxTracer txTracer = null;
+                ITxTracer txTracer = NullTxTracer.Instance;
                 if (tracer.IsTracingRewards)
                 {
                     // we need this tracer to be able to track any potential miner account creation
@@ -340,7 +340,7 @@ namespace Nethermind.Blockchain.Processing
                 {
                     tracer.EndTxTrace();
                     tracer.ReportReward(reward.Address, reward.RewardType.ToLowerString(), reward.Value);
-                    if (txTracer?.IsTracingState ?? false)
+                    if (txTracer.IsTracingState)
                     {
                         _stateProvider.Commit(_specProvider.GetSpec(block.Number), txTracer);
                     }

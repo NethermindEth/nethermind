@@ -54,19 +54,15 @@ namespace Nethermind.Evm.Tracing
         /// EVM stack tracing after each operation
         /// </summary>
         bool IsTracingStack { get; }
-        /// <summary>
-        /// State changes at commit stage
-        /// </summary>
-        bool IsTracingState { get; }
 
         /// <summary>
         /// Traces blockhash calls
         /// </summary>
         bool IsTracingBlockHash { get; }
 
-        void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak stateRoot = null);
+        void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak? stateRoot = null);
 
-        void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Keccak stateRoot = null);
+        void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Keccak? stateRoot = null);
 
         void StartOperation(int depth, long gas, Instruction opcode, int pc);
 

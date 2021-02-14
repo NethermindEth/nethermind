@@ -27,31 +27,30 @@ namespace Nethermind.State
 {
     public class StorageProvider : IStorageProvider
     {
-        private ResettableDictionary<StorageCell, Stack<int>> _intraBlockCache = new ResettableDictionary<StorageCell, Stack<int>>();
+        private readonly ResettableDictionary<StorageCell, Stack<int>> _intraBlockCache = new();
 
         /// <summary>
         /// EIP-1283
         /// </summary>
-        private ResettableDictionary<StorageCell, byte[]> _originalValues = new ResettableDictionary<StorageCell, byte[]>();
+        private readonly ResettableDictionary<StorageCell, byte[]> _originalValues = new();
 
-        private ResettableHashSet<StorageCell> _committedThisRound = new ResettableHashSet<StorageCell>();
+        private readonly ResettableHashSet<StorageCell> _committedThisRound = new();
 
         private readonly ILogger _logger;
         
-        private readonly IKeyValueStore _stateDb;
         private readonly ITrieStore _trieStore;
 
         private readonly IStateProvider _stateProvider;
         private readonly ILogManager _logManager;
 
-        private ResettableDictionary<Address, StorageTree> _storages = new ResettableDictionary<Address, StorageTree>();
+        private readonly ResettableDictionary<Address, StorageTree> _storages = new();
 
         private const int StartCapacity = Resettable.StartCapacity;
         private int _capacity = StartCapacity;
         private Change?[] _changes = new Change[StartCapacity];
         private int _currentPosition = -1;
         
-        public StorageProvider(ITrieStore trieStore, IStateProvider stateProvider, ILogManager logManager)
+        public StorageProvider(ITrieStore? trieStore, IStateProvider? stateProvider, ILogManager? logManager)
         {
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _logger = logManager.GetClassLogger<StorageProvider>() ?? throw new ArgumentNullException(nameof(logManager));
@@ -152,12 +151,12 @@ namespace Nethermind.State
 
         public void Commit()
         {
-            Commit(null);
+            Commit(NullStorageTracer.Instance);
         }
 
-        private static byte[] _zeroValue = {0};
+        private static readonly byte[] _zeroValue = {0};
 
-        private struct ChangeTrace
+        private readonly struct ChangeTrace
         {
             public ChangeTrace(byte[]? before, byte[]? after)
             {
@@ -175,7 +174,7 @@ namespace Nethermind.State
             public byte[] After { get; }
         }
 
-        public void Commit(IStorageTracer? tracer)
+        public void Commit(IStorageTracer tracer)
         {
             if (_currentPosition == -1)
             {
@@ -195,9 +194,9 @@ namespace Nethermind.State
                 throw new InvalidOperationException($"Change after current position ({_currentPosition} + 1) was not null when commiting {nameof(StorageProvider)}");
             }
 
-            HashSet<Address> toUpdateRoots = new HashSet<Address>();
+            HashSet<Address> toUpdateRoots = new();
 
-            bool isTracing = tracer != null;
+            bool isTracing = tracer.IsTracingStorage;
             Dictionary<StorageCell, ChangeTrace>? trace = null;
             if (isTracing)
             {
@@ -291,7 +290,7 @@ namespace Nethermind.State
             }
         }
 
-        private void ReportChanges(IStorageTracer tracer, Dictionary<StorageCell, ChangeTrace> trace)
+        private static void ReportChanges(IStorageTracer tracer, Dictionary<StorageCell, ChangeTrace> trace)
         {
             foreach ((StorageCell address, ChangeTrace change) in trace)
             {

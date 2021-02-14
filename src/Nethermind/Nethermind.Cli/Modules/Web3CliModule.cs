@@ -28,10 +28,10 @@ namespace Nethermind.Cli.Modules
         }
 
         [CliProperty("web3", "clientVersion")]
-        public string ClientVersion() => NodeManager.Post<string>("web3_clientVersion").Result;
+        public string? ClientVersion() => NodeManager.Post<string>("web3_clientVersion").Result;
 
         [CliFunction("web3", "sha3")]
-        public string Sha3(string data) => NodeManager.Post<string>("web3_sha3", data).Result;
+        public string? Sha3(string data) => NodeManager.Post<string>("web3_sha3", data).Result;
         
         [CliFunction("web3", "toDecimal")]
         public JsValue ToDecimal(string hex) => Engine.Execute(hex);

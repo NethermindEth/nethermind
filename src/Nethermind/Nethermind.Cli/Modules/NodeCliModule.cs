@@ -72,7 +72,7 @@ namespace Nethermind.Cli.Modules
         }
         
         [CliProperty("node", "enode")]
-        public string Enode()
+        public string? Enode()
         {
             return NodeManager.Post<string>("net_localEnode").Result;
         }

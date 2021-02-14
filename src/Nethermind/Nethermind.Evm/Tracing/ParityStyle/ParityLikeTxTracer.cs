@@ -20,29 +20,28 @@ using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
-using Nethermind.State;
 
 namespace Nethermind.Evm.Tracing.ParityStyle
 {
     public class ParityLikeTxTracer : ITxTracer
     {
-        private readonly Transaction _tx;
+        private readonly Transaction? _tx;
         private readonly ParityTraceTypes _parityTraceTypes;
         private readonly ParityLikeTxTrace _trace;
         
-        private readonly Stack<ParityTraceAction> _actionStack = new Stack<ParityTraceAction>();
-        private ParityTraceAction _currentAction;
+        private readonly Stack<ParityTraceAction> _actionStack = new();
+        private ParityTraceAction? _currentAction;
         
-        private ParityVmOperationTrace _currentOperation;
-        private readonly List<byte[]> _currentPushList = new List<byte[]>();
+        private ParityVmOperationTrace? _currentOperation;
+        private readonly List<byte[]> _currentPushList = new();
         
-        private readonly Stack<(ParityVmTrace VmTrace, List<ParityVmOperationTrace> Ops)> _vmTraceStack = new Stack<(ParityVmTrace VmTrace, List<ParityVmOperationTrace> Ops)>();
+        private readonly Stack<(ParityVmTrace VmTrace, List<ParityVmOperationTrace> Ops)> _vmTraceStack = new();
         private (ParityVmTrace VmTrace, List<ParityVmOperationTrace> Ops) _currentVmTrace;
         
         private bool _treatGasParityStyle; // strange cost calculation from parity
         private bool _gasAlreadySetForCurrentOp; // workaround for jump destination errors
 
-        public ParityLikeTxTracer(Block block, Transaction tx, ParityTraceTypes parityTraceTypes)
+        public ParityLikeTxTracer(Block block, Transaction? tx, ParityTraceTypes parityTraceTypes)
         {
             _parityTraceTypes = parityTraceTypes;
 
@@ -50,14 +49,15 @@ namespace Nethermind.Evm.Tracing.ParityStyle
             _trace = new ParityLikeTxTrace
             {
                 TransactionHash = tx?.Hash, 
-                TransactionPosition = tx == null ? (int?)null : Array.IndexOf(block.Transactions, tx), 
+                TransactionPosition = tx == null ? (int?)null : Array.IndexOf(block.Transactions!, tx), 
                 BlockNumber = block.Number, 
-                BlockHash = block.Hash
+                BlockHash = block.Hash!
             };
 
             if ((_parityTraceTypes & ParityTraceTypes.StateDiff) != 0)
             {
                 IsTracingState = true;
+                IsTracingStorage = true;
                 _trace.StateChanges = new Dictionary<Address, ParityAccountStateChange>();
             }
 
@@ -85,6 +85,7 @@ namespace Nethermind.Evm.Tracing.ParityStyle
         public bool IsTracingCode { get; }
         public bool IsTracingStack => false;
         public bool IsTracingState { get; }
+        public bool IsTracingStorage { get; }
         public bool IsTracingBlockHash => false;
         
         private static string GetCallType(ExecutionType executionType)
@@ -133,7 +134,7 @@ namespace Nethermind.Evm.Tracing.ParityStyle
             }
         }
         
-        private static string GetErrorDescription(EvmExceptionType evmExceptionType)
+        private static string? GetErrorDescription(EvmExceptionType evmExceptionType)
         {
             switch (evmExceptionType)
             {
@@ -273,7 +274,7 @@ namespace Nethermind.Evm.Tracing.ParityStyle
 
         public void StartOperation(int depth, long gas, Instruction opcode, int pc)
         {
-            ParityVmOperationTrace operationTrace = new ParityVmOperationTrace();
+            ParityVmOperationTrace operationTrace = new();
             _gasAlreadySetForCurrentOp = false;
             operationTrace.Pc = pc;
             operationTrace.Cost = gas;
@@ -340,6 +341,11 @@ namespace Nethermind.Evm.Tracing.ParityStyle
 
         public void ReportBalanceChange(Address address, UInt256? before, UInt256? after)
         {
+            if (_trace.StateChanges is null)
+            {
+                throw new InvalidOperationException($"{nameof(ParityLikeTxTracer)} did not expect state change report.");
+            }
+            
             if (!_trace.StateChanges.ContainsKey(address))
             {
                 _trace.StateChanges[address] = new ParityAccountStateChange();
@@ -354,6 +360,11 @@ namespace Nethermind.Evm.Tracing.ParityStyle
 
         public void ReportCodeChange(Address address, byte[] before, byte[] after)
         {
+            if (_trace.StateChanges is null)
+            {
+                throw new InvalidOperationException($"{nameof(ParityLikeTxTracer)} did not expect state change report.");
+            }
+            
             if (!_trace.StateChanges.ContainsKey(address))
             {
                 _trace.StateChanges[address] = new ParityAccountStateChange();
@@ -402,9 +413,13 @@ namespace Nethermind.Evm.Tracing.ParityStyle
             storage[storageCell.Index] = new ParityStateChange<byte[]>(before, after);
         }
 
+        public void ReportStorageRead(StorageCell storageCell)
+        {
+        }
+
         public void ReportAction(long gas, UInt256 value, Address @from, Address to, byte[] input, ExecutionType callType, bool isPrecompileCall = false)
         {
-            ParityTraceAction action = new ParityTraceAction();
+            ParityTraceAction action = new();
             action.IsPrecompiled = isPrecompileCall;
             action.IncludeInTrace = !isPrecompileCall || callType == ExecutionType.Transaction;
             action.From = @from;
@@ -432,7 +447,7 @@ namespace Nethermind.Evm.Tracing.ParityStyle
 
         public void ReportSelfDestruct(Address address, UInt256 balance, Address refundAddress)
         {
-            ParityTraceAction action = new ParityTraceAction();
+            ParityTraceAction action = new();
             action.From = address;
             action.To = refundAddress;
             action.Value = balance;
@@ -443,8 +458,14 @@ namespace Nethermind.Evm.Tracing.ParityStyle
             PopAction();
         }
 
-        public void ReportActionEnd(long gas, byte[] output)
+        public void ReportActionEnd(long gas, byte[]? output)
         {
+            if (_currentAction.Result is null)
+            {
+                throw new InvalidOperationException(
+                    $"{nameof(ReportActionEnd)} called when result is not yet prepared.");
+            }
+            
             _currentAction.Result.Output = output ?? Array.Empty<byte>();
             _currentAction.Result.GasUsed = _currentAction.Gas - gas;
             PopAction();
@@ -459,6 +480,12 @@ namespace Nethermind.Evm.Tracing.ParityStyle
 
         public void ReportActionEnd(long gas, Address deploymentAddress, byte[] deployedCode)
         {
+            if (_currentAction.Result is null)
+            {
+                throw new InvalidOperationException(
+                    $"{nameof(ReportActionEnd)} called when result is not yet prepared.");
+            }
+            
             _currentAction.Result.Address = deploymentAddress;
             _currentAction.Result.Code = deployedCode;
             _currentAction.Result.GasUsed = _currentAction.Gas - gas;

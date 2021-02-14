@@ -30,7 +30,6 @@ using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.State.Repositories;
-using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -128,7 +127,7 @@ namespace Nethermind.Blockchain.Test.Validators
         [Test]
         public void When_gas_used_above_gas_limit()
         {
-            _block.Header.GasUsedLegacy = _parentBlock.Header.GasLimit + 1;
+            _block.Header.GasUsed = _parentBlock.Header.GasLimit + 1;
             _block.Header.SealEngineType = SealEngineType.None;
             _block.Header.Hash = _block.CalculateHash();
             

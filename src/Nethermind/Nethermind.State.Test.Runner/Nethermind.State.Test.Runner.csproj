@@ -4,6 +4,7 @@
         <OutputType>Exe</OutputType>
         <TargetFramework>net5.0</TargetFramework>
         <AssemblyName>nethtest</AssemblyName>
+        <Nullable>annotations</Nullable>
     </PropertyGroup>
 
     <ItemGroup>

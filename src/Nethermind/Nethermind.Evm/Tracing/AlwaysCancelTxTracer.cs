@@ -20,7 +20,6 @@ using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
-using Nethermind.State;
 
 namespace Nethermind.Evm.Tracing
 {
@@ -51,6 +50,7 @@ namespace Nethermind.Evm.Tracing
         public bool IsTracingCode => true;
         public bool IsTracingStack => true;
         public bool IsTracingState => true;
+        public bool IsTracingStorage => true;
         public bool IsTracingBlockHash => true;
 
         public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak stateRoot = null) => throw new OperationCanceledException(ErrorMessage);
@@ -87,6 +87,8 @@ namespace Nethermind.Evm.Tracing
         public void ReportAccountRead(Address address) => throw new OperationCanceledException(ErrorMessage);
 
         public void ReportStorageChange(StorageCell storageCell, byte[] before, byte[] after) => throw new OperationCanceledException(ErrorMessage);
+        
+        public void ReportStorageRead(StorageCell storageCell) => throw new OperationCanceledException(ErrorMessage);
 
         public void ReportAction(long gas, UInt256 value, Address @from, Address to, byte[] input, ExecutionType callType, bool isPrecompileCall = false) => throw new OperationCanceledException(ErrorMessage);
 

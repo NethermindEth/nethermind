@@ -248,8 +248,6 @@ namespace Nethermind.Core.Specs
         bool ValidateReceipts => true;
         
         public long Eip1559TransitionBlock { get; }
-        
-        public long Eip1559MigrationDuration { get; }
 
         // STATE related 
         public bool ClearEmptyAccountWhenTouched => IsEip158Enabled;

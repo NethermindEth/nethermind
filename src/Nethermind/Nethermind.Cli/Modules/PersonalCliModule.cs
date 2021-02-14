@@ -28,7 +28,7 @@ namespace Nethermind.Cli.Modules
         }
 
         [CliFunction("personal", "newAccount")]
-        public string NewAccount(string password)
+        public string? NewAccount(string password)
         {
             return NodeManager.Post<string>($"personal_newAccount", password).Result;
         }
