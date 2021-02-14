@@ -96,7 +96,7 @@ namespace Nethermind.Crypto
 
         private PublicKey ComputePublicKey()
         {
-            return new PublicKey(Proxy.GetPublicKey(KeyBytes, false));
+            return new(Proxy.GetPublicKey(KeyBytes, false));
         }
 
         public override string ToString()

@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Serialization.Rlp;
@@ -44,12 +45,12 @@ namespace Nethermind.Network.Rlpx.Handshake
         public AuthEip8Message Deserialize(byte[] data)
         {
             RlpStream rlpStream = data.AsRlpStream();
-            AuthEip8Message authMessage = new AuthEip8Message();
+            AuthEip8Message authMessage = new();
             rlpStream.ReadSequenceLength();
-            byte[] sigAllBytes = rlpStream.DecodeByteArray();
-            Signature signature = new Signature(sigAllBytes.Slice(0, 64), sigAllBytes[64]); // since Signature class is Ethereum style it expects V as the 64th byte, hence we use RecoveryID constructor
+            ReadOnlySpan<byte> sigAllBytes = rlpStream.DecodeByteArraySpan();
+            Signature signature = new(sigAllBytes.Slice(0, 64), sigAllBytes[64]); // since Signature class is Ethereum style it expects V as the 65th byte, hence we use RecoveryID constructor
             authMessage.Signature = signature;
-            authMessage.PublicKey = new PublicKey(rlpStream.DecodeByteArray());
+            authMessage.PublicKey = new PublicKey(rlpStream.DecodeByteArraySpan());
             authMessage.Nonce = rlpStream.DecodeByteArray();
             int version = rlpStream.DecodeInt();
             return authMessage;
