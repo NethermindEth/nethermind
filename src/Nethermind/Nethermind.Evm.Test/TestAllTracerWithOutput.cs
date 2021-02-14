@@ -21,7 +21,6 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
-using Nethermind.State;
 
 namespace Nethermind.Evm.Test
 {
@@ -36,6 +35,7 @@ namespace Nethermind.Evm.Test
         public bool IsTracingCode => true;
         public bool IsTracingStack => true;
         public bool IsTracingState => true;
+        public bool IsTracingStorage => true;
         public bool IsTracingBlockHash => true;
 
         public byte[] ReturnValue { get; set; }
@@ -122,6 +122,10 @@ namespace Nethermind.Evm.Test
         }
 
         public void ReportStorageChange(StorageCell storageCell, byte[] before, byte[] after)
+        {
+        }
+
+        public void ReportStorageRead(StorageCell storageCell)
         {
         }
 

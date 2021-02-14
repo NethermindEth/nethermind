@@ -34,6 +34,7 @@ namespace Nethermind.Evm.Tracing
         public bool IsTracingCode => false;
         public bool IsTracingStack => false;
         public bool IsTracingState => false;
+        public bool IsTracingStorage => false;
         public bool IsTracingBlockHash => false;
 
         public byte[] ReturnValue { get; set; }
@@ -137,6 +138,11 @@ namespace Nethermind.Evm.Tracing
         public void ReportStorageChange(StorageCell storageCell, byte[] before, byte[] after)
         {
             throw new NotSupportedException();
+        }
+
+        public void ReportStorageRead(StorageCell storageCell)
+        {
+            throw new NotImplementedException();
         }
 
         public void ReportAction(long gas, UInt256 value, Address from, Address to, byte[] input, ExecutionType callType, bool isPrecompileCall = false)

@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.IO;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -38,7 +39,12 @@ namespace Nethermind.Evm
         private readonly ISpecProvider _specProvider;
         private readonly IVirtualMachine _virtualMachine;
 
-        public TransactionProcessor(ISpecProvider specProvider, IStateProvider stateProvider, IStorageProvider storageProvider, IVirtualMachine virtualMachine, ILogManager logManager)
+        public TransactionProcessor(
+            ISpecProvider? specProvider,
+            IStateProvider? stateProvider,
+            IStorageProvider? storageProvider,
+            IVirtualMachine? virtualMachine,
+            ILogManager? logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
@@ -58,7 +64,7 @@ namespace Nethermind.Evm
             Execute(transaction, block, txTracer, false);
         }
 
-        private void QuickFail(Transaction tx, BlockHeader block, ITxTracer txTracer, string reason)
+        private void QuickFail(Transaction tx, BlockHeader block, ITxTracer txTracer, string? reason)
         {
             if (tx.IsEip1559)
             {
@@ -69,21 +75,19 @@ namespace Nethermind.Evm
                 block.GasUsedLegacy += tx.GasLimit;
             }
             
-            Address recipient = tx.To ?? ContractAddress.From(tx.SenderAddress, _stateProvider.GetNonce(tx.SenderAddress));
+            Address recipient = tx.To ?? ContractAddress.From(
+                tx.SenderAddress ?? Address.Zero,
+                _stateProvider.GetNonce(tx.SenderAddress ?? Address.Zero));
             
             // TODO: this is possibly an unnecessary calculation inside EIP-658
             _stateProvider.RecalculateStateRoot();
-            Keccak stateRoot = _specProvider.GetSpec(block.Number).IsEip658Enabled ? null : _stateProvider.StateRoot;
-            if (txTracer.IsTracingReceipt) txTracer.MarkAsFailed(recipient, tx.GasLimit, Array.Empty<byte>(), reason ?? "invalid", stateRoot);
+            Keccak? stateRoot = _specProvider.GetSpec(block.Number).IsEip658Enabled ? null : _stateProvider.StateRoot;
+            if (txTracer.IsTracingReceipt)
+                txTracer.MarkAsFailed(recipient, tx.GasLimit, Array.Empty<byte>(), reason ?? "invalid", stateRoot);
         }
 
         private void Execute(Transaction transaction, BlockHeader block, ITxTracer txTracer, bool isCall)
         {
-            if (block.Number == 5962)
-            {
-                int a = 1;
-            }
-            
             bool notSystemTransaction = !transaction.IsSystem();
             bool wasSenderAccountCreatedInsideACall = false;
             
@@ -92,8 +96,7 @@ namespace Nethermind.Evm
             {
                 spec = new SystemTransactionReleaseSpec(spec);
             }
-
-            Address recipient = transaction.To;
+            
             UInt256 value = transaction.Value;
 
             UInt256 feeCap = transaction.IsEip1559 ? transaction.FeeCap : transaction.GasPrice;
@@ -134,9 +137,6 @@ namespace Nethermind.Evm
                     return;
                 }
 
-                // if (!isCall &&
-                //     (transaction.IsEip1559 && gasLimit > 2 * block.GetGasTarget1559(spec) - block.GasUsedEip1559 ||
-                //      transaction.IsLegacy && gasLimit > block.GetGasTargetLegacy(spec) - block.GasUsedLegacy))
                 if (!isCall && gasLimit > Math.Max(block.GasLimit, 2 * block.GasLimit) - block.GasUsed)
                 {
                     TraceLogInvalidTx(transaction,
@@ -168,6 +168,12 @@ namespace Nethermind.Evm
                         _stateProvider.CreateAccount(sender, UInt256.Zero);
                     }
                 }
+                
+                if (sender is null)
+                {
+                    throw new InvalidDataException(
+                        $"Failed to recover sender address on tx {transaction.Hash} when previously recovered sender account did not exist.");
+                }
             }
 
             if (notSystemTransaction)
@@ -193,7 +199,7 @@ namespace Nethermind.Evm
             UInt256 senderReservedGasPayment = isCall ? UInt256.Zero : (ulong) gasLimit * gasPrice;
             
             _stateProvider.SubtractFromBalance(sender, senderReservedGasPayment, spec);
-            _stateProvider.Commit(spec, txTracer.IsTracingState ? txTracer : null);
+            _stateProvider.Commit(spec, txTracer.IsTracingState ? txTracer : NullTxTracer.Instance);
 
             long unspentGas = gasLimit - intrinsicGas;
             long spentGas = gasLimit;
@@ -205,12 +211,14 @@ namespace Nethermind.Evm
             byte statusCode = StatusCode.Failure;
             TransactionSubstate substate = null;
 
+            Address? recipientOrNull = null;
             try
             {
+                Address recipient;
                 if (transaction.IsContractCreation)
                 {
                     recipient = transaction.IsSystem() 
-                        ? transaction.SenderAddress
+                        ? sender
                         : ContractAddress.From(sender, _stateProvider.GetNonce(sender) - 1);
 
                     if (_stateProvider.AccountExists(recipient))
@@ -228,21 +236,30 @@ namespace Nethermind.Evm
                         _stateProvider.UpdateStorageRoot(recipient, Keccak.EmptyTreeHash);
                     }
                 }
+                else
+                {
+                    recipient = transaction.To!;
+                }
+
+                if (recipient == null)
+                {
+                    throw new InvalidDataException("Recipient has not been resolved properly before tx execution");
+                }
+
+                recipientOrNull = recipient;
                 
                 ExecutionEnvironment env = new();
+                env.TxExecutionContext = new TxExecutionContext(block, transaction);
                 env.Value = value;
                 env.TransferValue = value;
                 env.Sender = sender;
                 env.CodeSource = recipient;
                 env.ExecutingAccount = recipient;
-                env.CurrentBlock = block;
-                env.GasPrice = gasPrice;
                 env.InputData = data ?? Array.Empty<byte>();
                 env.CodeInfo = machineCode == null ? _virtualMachine.GetCachedCodeInfo(recipient, spec) : new CodeInfo(machineCode);
-                env.Originator = sender;
 
                 ExecutionType executionType = transaction.IsContractCreation ? ExecutionType.Create : ExecutionType.Call;
-                using (EvmState state = new EvmState(unspentGas, env, executionType, true, false))
+                using (EvmState state = new(unspentGas, env, executionType, true, false))
                 {
                     if (spec.UseTxAccessLists)
                     {
@@ -325,8 +342,8 @@ namespace Nethermind.Evm
 
             if (!isCall)
             {
-                _storageProvider.Commit(txTracer.IsTracingState ? txTracer : null);
-                _stateProvider.Commit(spec, txTracer.IsTracingState ? txTracer : null);
+                _storageProvider.Commit(txTracer.IsTracingState ? txTracer : NullStorageTracer.Instance);
+                _stateProvider.Commit(spec, txTracer.IsTracingState ? txTracer : NullStateTracer.Instance);
             }
             else
             {
@@ -373,11 +390,11 @@ namespace Nethermind.Evm
 
                 if (statusCode == StatusCode.Failure)
                 {
-                    txTracer.MarkAsFailed(recipient, spentGas, (substate?.ShouldRevert ?? false) ? substate.Output : Array.Empty<byte>(), substate?.Error, stateRoot);
+                    txTracer.MarkAsFailed(recipientOrNull, spentGas, (substate?.ShouldRevert ?? false) ? substate.Output : Array.Empty<byte>(), substate?.Error, stateRoot);
                 }
                 else
                 {
-                    txTracer.MarkAsSuccess(recipient, spentGas, substate.Output, substate.Logs.Any() ? substate.Logs.ToArray() : Array.Empty<LogEntry>(), stateRoot);
+                    txTracer.MarkAsSuccess(recipientOrNull, spentGas, substate.Output, substate.Logs.Any() ? substate.Logs.ToArray() : Array.Empty<LogEntry>(), stateRoot);
                 }
             }
         }

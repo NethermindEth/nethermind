@@ -100,28 +100,7 @@ namespace Nethermind.Core.Test
             blockHeader.GasTarget = 456;
             blockHeader.GasLimit.Should().Be(456);
         }
-        
-        [TestCase(1000, 1000, 0, 0)]
-        [TestCase(1000, 1000, 999, 0)]
-        [TestCase(1000, 1000, 1000, 50)]
-        [TestCase(1000, 1000, 1020, 51)]
-        [TestCase(1000, 1000, 1500, 75)]
-        [TestCase(1000, 1000, 2000, 100)]
-        [TestCase(1000, 1000, 2001, 100)]
-        public void Eip_1559_targets_are_correctly_calculated(long transition, long duration, long block, long percentageIn1559)
-        {
-            IReleaseSpec releaseSpec = Substitute.For<IReleaseSpec>();
-            releaseSpec.Eip1559TransitionBlock.Returns(transition);
-            releaseSpec.Eip1559MigrationDuration.Returns(duration);
-            
-            BlockHeader blockHeader = Build.A.BlockHeader.TestObject;
-            blockHeader.Number = block;
-            blockHeader.GasTarget = 100;
-            blockHeader.GetGasTarget1559(releaseSpec).Should().Be(percentageIn1559);
-            blockHeader.GetGasTargetLegacy(releaseSpec).Should().Be(100 - percentageIn1559);
-        }
-        
-           
+
         [Test]
         public void Eip_1559_CalculateBaseFee_should_returns_zero_when_eip1559_not_enabled()
         {

@@ -88,19 +88,19 @@ namespace Nethermind.Cli.Modules
         }
 
         [CliFunction("debug", "config")]
-        public string GetConfigValue(string category, string name)
+        public string? GetConfigValue(string category, string name)
         {
             return NodeManager.Post<string>("debug_getConfigValue", category, name).Result;
         }
 
         [CliFunction("debug", "getBlockRlpByHash")]
-        public string GetBlockRlpByHash(string hash)
+        public string? GetBlockRlpByHash(string hash)
         {
             return NodeManager.Post<string>("debug_getBlockRlpByHash", CliParseHash(hash)).Result;
         }
 
         [CliFunction("debug", "getBlockRlp")]
-        public string GetBlockRlp(long number)
+        public string? GetBlockRlp(long number)
         {
             return NodeManager.Post<string>("debug_getBlockRlp", number).Result;
         }

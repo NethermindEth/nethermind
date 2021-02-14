@@ -751,7 +751,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
             storageProvider.Commit();
             storageProvider.CommitTrees(0);
 
-            stateProvider.Commit(MainnetSpecProvider.Instance.GenesisSpec, null);
+            stateProvider.Commit(MainnetSpecProvider.Instance.GenesisSpec, NullStateTracer.Instance);
             stateProvider.CommitTree(0);
 
             Keccak root = stateProvider.StateRoot;
@@ -839,7 +839,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
         private void AddAccount(StateProvider stateProvider, Address account, UInt256 initialBalance)
         {
             stateProvider.CreateAccount(account, initialBalance);
-            stateProvider.Commit(MuirGlacier.Instance, null);
+            stateProvider.Commit(MuirGlacier.Instance, NullStateTracer.Instance);
         }
 
         private void AddCode(StateProvider stateProvider, Address account, byte[] code)
@@ -847,7 +847,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
             Keccak codeHash = stateProvider.UpdateCode(code);
             stateProvider.UpdateCodeHash(account, codeHash, MuirGlacier.Instance);
 
-            stateProvider.Commit(MainnetSpecProvider.Instance.GenesisSpec, null);
+            stateProvider.Commit(MainnetSpecProvider.Instance.GenesisSpec, NullStateTracer.Instance);
         }
     }
 }

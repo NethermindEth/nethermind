@@ -91,7 +91,7 @@ namespace Nethermind.Crypto
         /// <param name="tx"></param>
         /// <param name="useSignatureChainId"></param>
         /// <returns></returns>
-        public Address RecoverAddress(Transaction tx, bool useSignatureChainId = false)
+        public Address? RecoverAddress(Transaction tx, bool useSignatureChainId = false)
         {
             if (tx.Signature == null)
             {
@@ -123,22 +123,22 @@ namespace Nethermind.Crypto
             return RecoverAddress(tx.Signature, hash);
         }
 
-        public Address RecoverAddress(Signature signature, Keccak message)
+        public Address? RecoverAddress(Signature signature, Keccak message)
         {
             return RecoverAddress(signature.BytesWithRecovery, message);
         }
 
-        public Address RecoverAddress(Span<byte> signatureBytes, Keccak message)
+        public Address? RecoverAddress(Span<byte> signatureBytes, Keccak message)
         {
             Span<byte> publicKey = stackalloc byte[65];
-            bool success = Proxy.RecoverKeyFromCompact(publicKey, message.Bytes, signatureBytes.Slice(0, 64),
-                signatureBytes[64], false);
-            if (!success)
-            {
-                return null;
-            }
-
-            return PublicKey.ComputeAddress(publicKey.Slice(1, 64));
+            bool success = Proxy.RecoverKeyFromCompact(
+                publicKey,
+                message.Bytes,
+                signatureBytes.Slice(0, 64),
+                signatureBytes[64],
+                false);
+            
+            return !success ? null : PublicKey.ComputeAddress(publicKey.Slice(1, 64));
         }
     }
 }

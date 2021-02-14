@@ -18,7 +18,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Linq;
+using System.IO;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Eip2930;
@@ -162,7 +162,7 @@ namespace Nethermind.Evm
                     case ExecutionType.DelegateCall:
                         return Env.ExecutingAccount;
                     case ExecutionType.Transaction:
-                        return Env.Originator;
+                        return Env.TxExecutionContext.Tx.SenderAddress ?? throw new InvalidDataException("TX sender unknown");
                     default:
                         throw new ArgumentOutOfRangeException();
                 }
@@ -308,7 +308,7 @@ namespace Nethermind.Evm
             get { return LazyInitializer.EnsureInitialized(ref _accessedStorageKeys, () => new HashSet<StorageCell>()); }
         }
 
-        private static readonly ThreadLocal<StackPool> _stackPool = new ThreadLocal<StackPool>(() => new StackPool());
+        private static readonly ThreadLocal<StackPool> _stackPool = new(() => new StackPool());
         
         private HashSet<Address>? _destroyList;
         

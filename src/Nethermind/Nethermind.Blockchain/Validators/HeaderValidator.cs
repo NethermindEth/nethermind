@@ -36,7 +36,7 @@ namespace Nethermind.Blockchain.Validators
         private readonly ILogger _logger;
         private readonly IBlockTree _blockTree;
 
-        public HeaderValidator(IBlockTree blockTree, ISealValidator sealValidator, ISpecProvider specProvider, ILogManager logManager)
+        public HeaderValidator(IBlockTree? blockTree, ISealValidator? sealValidator, ISpecProvider? specProvider, ILogManager? logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
@@ -63,7 +63,7 @@ namespace Nethermind.Blockchain.Validators
         /// <param name="parent">BlockHeader which is the parent of <paramref name="header"/></param>
         /// <param name="isOmmer"><value>True</value> if uncle block, otherwise <value>False</value></param>
         /// <returns></returns>
-        public bool Validate(BlockHeader header, BlockHeader parent, bool isOmmer = false)
+        public bool Validate(BlockHeader header, BlockHeader? parent, bool isOmmer = false)
         {
             bool hashAsExpected = ValidateHash(header);
 
@@ -113,7 +113,7 @@ namespace Nethermind.Blockchain.Validators
                 if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - seal parameters incorrect");
             }
 
-            bool gasUsedBelowLimit = header.GasUsed <= header.GetGasTarget1559(spec) * 2 + header.GetGasTargetLegacy(spec);
+            bool gasUsedBelowLimit = header.GasUsed <= header.GasLimit;
             if (!gasUsedBelowLimit)
             {
                 if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - gas used above gas limit");

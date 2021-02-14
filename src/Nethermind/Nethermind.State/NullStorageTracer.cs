@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -13,15 +13,26 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using System.Threading.Tasks;
+using System;
+using Nethermind.Core;
 
-namespace Nethermind.JsonRpc.Client
+namespace Nethermind.State
 {
-    public interface IJsonRpcClient
+    public class NullStorageTracer : IStorageTracer
     {
-        Task<string?> Post(string method, params object?[] parameters);
+        private NullStorageTracer() { }
+
+        public static IStorageTracer Instance { get; } = new NullStorageTracer();
         
-        Task<T?> Post<T>(string method, params object?[] parameters);
+        private const string ErrorMessage = "Null tracer should never receive any calls.";
+        
+        public bool IsTracingStorage => false;
+        public void ReportStorageChange(StorageCell storageCell, byte[] before, byte[] after)
+            => throw new InvalidOperationException(ErrorMessage);
+
+        public void ReportStorageRead(StorageCell storageCell)
+            => throw new InvalidOperationException(ErrorMessage);
     }
 }

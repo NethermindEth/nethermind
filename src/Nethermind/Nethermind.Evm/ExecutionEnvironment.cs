@@ -22,14 +22,14 @@ namespace Nethermind.Evm
     public struct ExecutionEnvironment
     {
         /// <summary>
+        /// Transaction originator
+        /// </summary>
+        public TxExecutionContext TxExecutionContext { get; set; }
+        
+        /// <summary>
         /// Currently executing account (in DELEGATECALL this will be equal to caller).
         /// </summary>
         public Address ExecutingAccount { get; set; }
-
-        /// <summary>
-        /// Transaction originator
-        /// </summary>
-        public Address Originator { get; set; } // TODO: move to TxEnv
 
         /// <summary>
         /// Caller
@@ -40,11 +40,6 @@ namespace Nethermind.Evm
         /// Bytecode source (account address).
         /// </summary>
         public Address CodeSource { get; set; }
-
-        /// <summary>
-        /// Gas price information from the transaction environment.
-        /// </summary>
-        public UInt256 GasPrice { get; set; } // TODO: move to TxEnv
 
         /// <summary>
         /// Parameters / arguments of the current call.
@@ -68,11 +63,6 @@ namespace Nethermind.Evm
         /// </summary>
         public CodeInfo CodeInfo { get; set; }
 
-        /// <summary>
-        /// Block within which the current transaction is executed.
-        /// </summary>
-        public BlockHeader CurrentBlock { get; set; } // TODO: move to TxEnv
-        
         /// <example>If we call TX -> DELEGATECALL -> CALL -> STATICCALL then the call depth would be 3.</example>
         public int CallDepth { get; set; }
     }
