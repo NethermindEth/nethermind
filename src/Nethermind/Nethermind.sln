@@ -62,9 +62,8 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Chains", "Chains", "{D75E83
 		Chains\kovan.json = Chains\kovan.json
 		Chains\eip1559.json = Chains\eip1559.json
 		Chains\wit.json = Chains\wit.json
-		Chains\yolo_v3.json = Chains\yolo_v3.json
 		Chains\xdai1559.json = Chains\xdai1559.json
-		Chains\yolo_v2.json = Chains\yolo_v2.json
+		Chains\yolo_v3x.json = Chains\yolo_v3x.json
 	EndProjectSection
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.State.Test", "Nethermind.State.Test\Nethermind.State.Test.csproj", "{0A927E80-884F-4F41-BC5E-1825D32726DB}"

@@ -20,7 +20,6 @@ using System.IO;
 using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Secp256k1;
 using Nethermind.Serialization.Rlp;
@@ -57,6 +56,7 @@ namespace Nethermind.Crypto
                     $"Signing transaction {tx.SenderAddress} -> {tx.To} ({tx.Value}) with data of length {tx.Data?.Length}");
 
             //Keccak hash = Keccak.Compute(Bytes.Concat((byte)tx.Type, Rlp.Encode(tx, true, isEip155Enabled, _chainIdValue).Bytes));
+            
             Keccak hash = Keccak.Compute(Rlp.Encode(tx, true, isEip155Enabled, _chainIdValue).Bytes);
             tx.Signature = Sign(privateKey, hash);
 
@@ -81,8 +81,8 @@ namespace Nethermind.Crypto
         /// <returns></returns>
         public bool Verify(Address sender, Transaction tx)
         {
-            Address recovered = RecoverAddress(tx);
-            return recovered.Equals(sender);
+            Address? recovered = RecoverAddress(tx);
+            return recovered?.Equals(sender) ?? false;
         }
 
         /// <summary>

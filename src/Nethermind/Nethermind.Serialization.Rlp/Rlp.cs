@@ -245,7 +245,7 @@ namespace Nethermind.Serialization.Rlp
 
             if (transaction.Type != TxType.Legacy)
             {
-                extraItems += forSigning ? 3 : 2; // type + chainID + accessList : chainID + accessList
+                extraItems += 2; // chainID + accessList
             }
 
             Rlp[] sequence = new Rlp[6 + extraItems];
@@ -253,11 +253,6 @@ namespace Nethermind.Serialization.Rlp
 
             if (transaction.Type != TxType.Legacy)
             {
-                if (forSigning)
-                {
-                    sequence[position++] = Encode((byte)transaction.Type);
-                }
-                
                 sequence[position++] = Encode(transaction.ChainId!.Value);
             }
 
@@ -306,7 +301,13 @@ namespace Nethermind.Serialization.Rlp
             
             Debug.Assert(position == 6 + extraItems);
 
-            return Encode(sequence);
+            Rlp result = Encode(sequence);
+            if (transaction.Type != TxType.Legacy)
+            {
+                result = new Rlp(Core.Extensions.Bytes.Concat((byte)transaction.Type, Encode(sequence).Bytes));
+            }
+
+            return result;
         }
 
         public static Rlp Encode(UInt256? value)
