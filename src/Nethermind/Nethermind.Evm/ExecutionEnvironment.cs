@@ -34,12 +34,12 @@ namespace Nethermind.Evm
         /// <summary>
         /// Caller
         /// </summary>
-        public Address Sender { get; set; }
+        public Address Caller { get; set; }
         
         /// <summary>
         /// Bytecode source (account address).
         /// </summary>
-        public Address CodeSource { get; set; }
+        public Address? CodeSource { get; set; }
 
         /// <summary>
         /// Parameters / arguments of the current call.

@@ -16,18 +16,21 @@
 // 
 
 using Nethermind.Core;
+using Nethermind.Int256;
 
 namespace Nethermind.Evm
 {
     public readonly struct TxExecutionContext
     {
         public BlockHeader Header { get; }
-        public Transaction Tx { get; }
-
-        public TxExecutionContext(BlockHeader blockHeader, Transaction tx)
+        public Address Origin { get; }
+        public UInt256 GasPrice { get; }
+        
+        public TxExecutionContext(BlockHeader blockHeader, Address origin, UInt256 gasPrice)
         {
             Header = blockHeader;
-            Tx = tx;
+            Origin = origin;
+            GasPrice = gasPrice;
         }
     }
 }

@@ -108,10 +108,10 @@ namespace Nethermind.Evm
             byte[] machineCode = transaction.IsContractCreation ? transaction.Data : null;
             byte[] data = transaction.IsMessageCall ? transaction.Data : Array.Empty<byte>();
 
-            Address? sender = transaction.SenderAddress;
+            Address? caller = transaction.SenderAddress;
             if (_logger.IsTrace) _logger.Trace($"Executing tx {transaction.Hash}");
 
-            if (sender is null)
+            if (caller is null)
             {
                 TraceLogInvalidTx(transaction, "SENDER_NOT_SPECIFIED");
                 QuickFail(transaction, block, txTracer, "sender not specified");
@@ -139,7 +139,7 @@ namespace Nethermind.Evm
                 }
             }
 
-            if (!_stateProvider.AccountExists(sender))
+            if (!_stateProvider.AccountExists(caller))
             {
                 // hacky fix for the potential recovery issue
                 if (transaction.Signature != null)
@@ -147,22 +147,22 @@ namespace Nethermind.Evm
                     transaction.SenderAddress = _ecdsa.RecoverAddress(transaction, !spec.ValidateChainId);
                 }
 
-                if (sender != transaction.SenderAddress)
+                if (caller != transaction.SenderAddress)
                 {
-                    if (_logger.IsWarn) _logger.Warn($"TX recovery issue fixed - tx was coming with sender {sender} and the now it recovers to {transaction.SenderAddress}");
-                    sender = transaction.SenderAddress;
+                    if (_logger.IsWarn) _logger.Warn($"TX recovery issue fixed - tx was coming with sender {caller} and the now it recovers to {transaction.SenderAddress}");
+                    caller = transaction.SenderAddress;
                 }
                 else
                 {
-                    TraceLogInvalidTx(transaction, $"SENDER_ACCOUNT_DOES_NOT_EXIST {sender}");
+                    TraceLogInvalidTx(transaction, $"SENDER_ACCOUNT_DOES_NOT_EXIST {caller}");
                     if (isCall || gasPrice == UInt256.Zero)
                     {
                         wasSenderAccountCreatedInsideACall = isCall;
-                        _stateProvider.CreateAccount(sender, UInt256.Zero);
+                        _stateProvider.CreateAccount(caller, UInt256.Zero);
                     }
                 }
                 
-                if (sender is null)
+                if (caller is null)
                 {
                     throw new InvalidDataException(
                         $"Failed to recover sender address on tx {transaction.Hash} when previously recovered sender account did not exist.");
@@ -171,27 +171,27 @@ namespace Nethermind.Evm
 
             if (notSystemTransaction)
             {
-                UInt256 senderBalance = _stateProvider.GetBalance(sender);
+                UInt256 senderBalance = _stateProvider.GetBalance(caller);
                 if (!isCall && (ulong) intrinsicGas * gasPrice + value > senderBalance)
                 {
-                    TraceLogInvalidTx(transaction, $"INSUFFICIENT_SENDER_BALANCE: ({sender})_BALANCE = {senderBalance}");
+                    TraceLogInvalidTx(transaction, $"INSUFFICIENT_SENDER_BALANCE: ({caller})_BALANCE = {senderBalance}");
                     QuickFail(transaction, block, txTracer, "insufficient sender balance");
                     return;
                 }
 
-                if (transaction.Nonce != _stateProvider.GetNonce(sender))
+                if (transaction.Nonce != _stateProvider.GetNonce(caller))
                 {
-                    TraceLogInvalidTx(transaction, $"WRONG_TRANSACTION_NONCE: {transaction.Nonce} (expected {_stateProvider.GetNonce(sender)})");
+                    TraceLogInvalidTx(transaction, $"WRONG_TRANSACTION_NONCE: {transaction.Nonce} (expected {_stateProvider.GetNonce(caller)})");
                     QuickFail(transaction, block, txTracer, "wrong transaction nonce");
                     return;
                 }
 
-                _stateProvider.IncrementNonce(sender);
+                _stateProvider.IncrementNonce(caller);
             }
 
             UInt256 senderReservedGasPayment = isCall ? UInt256.Zero : (ulong) gasLimit * gasPrice;
             
-            _stateProvider.SubtractFromBalance(sender, senderReservedGasPayment, spec);
+            _stateProvider.SubtractFromBalance(caller, senderReservedGasPayment, spec);
             _stateProvider.Commit(spec, txTracer.IsTracingState ? txTracer : NullTxTracer.Instance);
 
             long unspentGas = gasLimit - intrinsicGas;
@@ -200,7 +200,7 @@ namespace Nethermind.Evm
             int stateSnapshot = _stateProvider.TakeSnapshot();
             int storageSnapshot = _storageProvider.TakeSnapshot();
 
-            _stateProvider.SubtractFromBalance(sender, value, spec);
+            _stateProvider.SubtractFromBalance(caller, value, spec);
             byte statusCode = StatusCode.Failure;
             TransactionSubstate substate = null;
 
@@ -211,8 +211,8 @@ namespace Nethermind.Evm
                 if (transaction.IsContractCreation)
                 {
                     recipient = transaction.IsSystem() 
-                        ? sender
-                        : ContractAddress.From(sender, _stateProvider.GetNonce(sender) - 1);
+                        ? caller
+                        : ContractAddress.From(caller, _stateProvider.GetNonce(caller) - 1);
 
                     if (_stateProvider.AccountExists(recipient))
                     {
@@ -242,10 +242,10 @@ namespace Nethermind.Evm
                 recipientOrNull = recipient;
                 
                 ExecutionEnvironment env = new();
-                env.TxExecutionContext = new TxExecutionContext(block, transaction);
+                env.TxExecutionContext = new TxExecutionContext(block, caller, transaction.GasPrice);
                 env.Value = value;
                 env.TransferValue = value;
-                env.Sender = sender;
+                env.Caller = caller;
                 env.CodeSource = recipient;
                 env.ExecutingAccount = recipient;
                 env.InputData = data ?? Array.Empty<byte>();
@@ -261,7 +261,7 @@ namespace Nethermind.Evm
 
                     if (spec.UseHotAndColdStorage)
                     {
-                        state.WarmUp(sender); // eip-2929
+                        state.WarmUp(caller); // eip-2929
                         state.WarmUp(recipient); // eip-2929
                     }
 
@@ -306,7 +306,7 @@ namespace Nethermind.Evm
                     statusCode = StatusCode.Success;
                 }
 
-                spentGas = Refund(gasLimit, unspentGas, substate, sender, gasPrice, spec);
+                spentGas = Refund(gasLimit, unspentGas, substate, caller, gasPrice, spec);
             }
             catch (Exception ex) when (ex is EvmException || ex is OverflowException) // TODO: OverflowException? still needed? hope not
             {
@@ -345,14 +345,14 @@ namespace Nethermind.Evm
                 
                 if (wasSenderAccountCreatedInsideACall)
                 {
-                    _stateProvider.DeleteAccount(sender);
+                    _stateProvider.DeleteAccount(caller);
                 }
                 else
                 {
-                    _stateProvider.AddToBalance(sender, senderReservedGasPayment, spec);
+                    _stateProvider.AddToBalance(caller, senderReservedGasPayment, spec);
                     if (notSystemTransaction)
                     {
-                        _stateProvider.DecrementNonce(sender);
+                        _stateProvider.DecrementNonce(caller);
                     }
                 }
                 

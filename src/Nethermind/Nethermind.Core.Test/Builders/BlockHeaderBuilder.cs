@@ -149,7 +149,7 @@ namespace Nethermind.Core.Test.Builders
 
         public BlockHeaderBuilder WithGasUsed(long gasUsed)
         {
-            TestObjectInternal.GasUsedLegacy = gasUsed;
+            TestObjectInternal.GasUsed = gasUsed;
             return this;
         }
 

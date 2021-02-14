@@ -1332,7 +1332,7 @@ namespace Nethermind.Evm
                             return CallResult.OutOfGasException;
                         }
 
-                        stack.PushBytes(env.Sender.Bytes);
+                        stack.PushBytes(env.Caller.Bytes);
                         break;
                     }
                     case Instruction.CALLVALUE:
@@ -1355,7 +1355,7 @@ namespace Nethermind.Evm
                             return CallResult.OutOfGasException;
                         }
 
-                        stack.PushBytes(txCtx.Tx.SenderAddress.Bytes);
+                        stack.PushBytes(txCtx.Origin.Bytes);
                         break;
                     }
                     case Instruction.CALLDATALOAD:
@@ -1440,7 +1440,7 @@ namespace Nethermind.Evm
                             return CallResult.OutOfGasException;
                         }
 
-                        UInt256 gasPrice = txCtx.Tx.GasPrice;
+                        UInt256 gasPrice = txCtx.GasPrice;
                         stack.PushUInt256(in gasPrice);
                         break;
                     }
@@ -2269,7 +2269,7 @@ namespace Nethermind.Evm
                         ExecutionEnvironment callEnv = new();
                         callEnv.TxExecutionContext = env.TxExecutionContext;
                         callEnv.CallDepth = env.CallDepth + 1;
-                        callEnv.Sender = env.ExecutingAccount;
+                        callEnv.Caller = env.ExecutingAccount;
                         callEnv.ExecutingAccount = contractAddress;
                         callEnv.CodeSource = null;
                         callEnv.CodeInfo = new CodeInfo(initCode.ToArray());
@@ -2356,16 +2356,16 @@ namespace Nethermind.Evm
                             return CallResult.StaticCallViolationException;
                         }
 
-                        Address sender = instruction == Instruction.DELEGATECALL ? env.Sender : env.ExecutingAccount;
+                        Address caller = instruction == Instruction.DELEGATECALL ? env.Caller : env.ExecutingAccount;
                         Address target = instruction == Instruction.CALL || instruction == Instruction.STATICCALL ? codeSource : env.ExecutingAccount;
 
                         if (isTrace)
                         {
-                            _logger.Trace($"Tx sender {sender}");
-                            _logger.Trace($"Tx code source {codeSource}");
-                            _logger.Trace($"Tx target {target}");
-                            _logger.Trace($"Tx value {callValue}");
-                            _logger.Trace($"Tx transfer value {transferValue}");
+                            _logger.Trace($"caller {caller}");
+                            _logger.Trace($"code source {codeSource}");
+                            _logger.Trace($"target {target}");
+                            _logger.Trace($"value {callValue}");
+                            _logger.Trace($"transfer value {transferValue}");
                         }
 
                         long gasExtra = 0L;
@@ -2441,12 +2441,12 @@ namespace Nethermind.Evm
 
                         int stateSnapshot = _state.TakeSnapshot();
                         int storageSnapshot = _storage.TakeSnapshot();
-                        _state.SubtractFromBalance(sender, transferValue, spec);
+                        _state.SubtractFromBalance(caller, transferValue, spec);
 
                         ExecutionEnvironment callEnv = new();
                         callEnv.TxExecutionContext = env.TxExecutionContext;
                         callEnv.CallDepth = env.CallDepth + 1;
-                        callEnv.Sender = sender;
+                        callEnv.Caller = caller;
                         callEnv.CodeSource = codeSource;
                         callEnv.ExecutingAccount = target;
                         callEnv.TransferValue = transferValue;
@@ -2851,7 +2851,7 @@ namespace Nethermind.Evm
                 ExceptionType = exceptionType;
             }
 
-            public EvmState StateToExecute { get; }
+            public EvmState? StateToExecute { get; }
             public byte[] Output { get; }
             public EvmExceptionType ExceptionType { get; }
             public bool ShouldRevert { get; }

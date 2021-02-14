@@ -39,7 +39,7 @@ namespace Nethermind.Core.Test
             header.Difficulty = Bytes.FromHexString("0x020000").ToUInt256();
             header.ExtraData = Array.Empty<byte>();
             header.GasLimit = (long) Bytes.FromHexString("0x2fefba").ToUnsignedBigInteger();
-            header.GasUsedLegacy = (long) Bytes.FromHexString("0x5208").ToUnsignedBigInteger();
+            header.GasUsed = (long) Bytes.FromHexString("0x5208").ToUnsignedBigInteger();
             header.MixHash = new Keccak(Bytes.FromHexString("0x00be1f287e0911ea2f070b3650a1a0346535895b6c919d7e992a0c255a83fc8b"));
             header.Nonce = (ulong) Bytes.FromHexString("0xa0ddc06c6d7b9f48").ToUnsignedBigInteger();
             header.Number = (long) Bytes.FromHexString("0x01").ToUInt256();
@@ -63,7 +63,7 @@ namespace Nethermind.Core.Test
             header.Difficulty = Bytes.FromHexString("0x020080").ToUInt256();
             header.ExtraData = Array.Empty<byte>();
             header.GasLimit = (long) Bytes.FromHexString("0x2fefba").ToUnsignedBigInteger();
-            header.GasUsedLegacy = (long) Bytes.FromHexString("0x5208").ToUnsignedBigInteger();
+            header.GasUsed = (long) Bytes.FromHexString("0x5208").ToUnsignedBigInteger();
             header.MixHash = new Keccak(Bytes.FromHexString("0x615bbf44eb133eab3cb24d5766ae9617d9e45ee00e7a5667db30672b47d22149"));
             header.Nonce = (ulong) Bytes.FromHexString("0x4c4f3d3e055cb264").ToUnsignedBigInteger();
             header.Number = (long) Bytes.FromHexString("0x03").ToUInt256();
@@ -117,7 +117,7 @@ namespace Nethermind.Core.Test
             blockHeader.Number = 2001;
             blockHeader.GasLimit = gasTarget;
             blockHeader.BaseFee = (UInt256)baseFee;
-            blockHeader.GasUsedEip1559 = gasUsed;
+            blockHeader.GasUsed = gasUsed;
             UInt256 actualBaseFee = BlockHeader.CalculateBaseFee(blockHeader, releaseSpec);
             Assert.AreEqual((UInt256)expectedBaseFee, actualBaseFee);
         }
