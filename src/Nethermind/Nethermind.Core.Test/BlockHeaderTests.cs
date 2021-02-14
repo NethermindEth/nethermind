@@ -15,7 +15,6 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using FluentAssertions;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -91,17 +90,6 @@ namespace Nethermind.Core.Test
         }
 
         [Test]
-        public void Gas_target_is_using_the_gas_limit_field()
-        {
-            BlockHeader blockHeader = Build.A.BlockHeader.TestObject;
-            blockHeader.GasTarget = 1;
-            blockHeader.GasLimit = 123;
-            blockHeader.GasTarget.Should().Be(123);
-            blockHeader.GasTarget = 456;
-            blockHeader.GasLimit.Should().Be(456);
-        }
-
-        [Test]
         public void Eip_1559_CalculateBaseFee_should_returns_zero_when_eip1559_not_enabled()
         {
             IReleaseSpec releaseSpec = Substitute.For<IReleaseSpec>();
@@ -109,7 +97,7 @@ namespace Nethermind.Core.Test
             
             BlockHeader blockHeader = Build.A.BlockHeader.TestObject;
             blockHeader.Number = 2001;
-            blockHeader.GasTarget = 100;
+            blockHeader.GasLimit = 100;
             UInt256 baseFee = BlockHeader.CalculateBaseFee(blockHeader, releaseSpec);
             Assert.AreEqual(UInt256.Zero, baseFee);
         }
@@ -127,7 +115,7 @@ namespace Nethermind.Core.Test
             
             BlockHeader blockHeader = Build.A.BlockHeader.TestObject;
             blockHeader.Number = 2001;
-            blockHeader.GasTarget = gasTarget;
+            blockHeader.GasLimit = gasTarget;
             blockHeader.BaseFee = (UInt256)baseFee;
             blockHeader.GasUsedEip1559 = gasUsed;
             UInt256 actualBaseFee = BlockHeader.CalculateBaseFee(blockHeader, releaseSpec);

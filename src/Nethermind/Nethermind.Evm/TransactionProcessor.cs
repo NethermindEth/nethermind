@@ -66,14 +66,7 @@ namespace Nethermind.Evm
 
         private void QuickFail(Transaction tx, BlockHeader block, ITxTracer txTracer, string? reason)
         {
-            if (tx.IsEip1559)
-            {
-                block.GasUsedEip1559 += tx.GasLimit;
-            }
-            else
-            {
-                block.GasUsedLegacy += tx.GasLimit;
-            }
+            block.GasUsed += tx.GasLimit;
             
             Address recipient = tx.To ?? ContractAddress.From(
                 tx.SenderAddress ?? Address.Zero,
@@ -137,10 +130,10 @@ namespace Nethermind.Evm
                     return;
                 }
 
-                if (!isCall && gasLimit > Math.Max(block.GasLimit, 2 * block.GasLimit) - block.GasUsed)
+                if (!isCall && gasLimit > block.GetActualGasLimit(spec) - block.GasUsed)
                 {
                     TraceLogInvalidTx(transaction,
-                        $"BLOCK_GAS_LIMIT_EXCEEDED {gasLimit} > {block.GasLimit} - {block.GasUsed}");
+                        $"BLOCK_GAS_LIMIT_EXCEEDED {gasLimit} > {block.GetActualGasLimit(spec)} - {block.GasUsed}");
                     QuickFail(transaction, block, txTracer, "block gas limit exceeded");
                     return;
                 }
@@ -368,14 +361,7 @@ namespace Nethermind.Evm
 
             if (!isCall && notSystemTransaction)
             {
-                if (transaction.IsEip1559)
-                {
-                    block.GasUsedEip1559 += spentGas;
-                }
-                else
-                {
-                    block.GasUsedLegacy += spentGas;
-                }
+                block.GasUsed += spentGas;
             }
 
             if (txTracer.IsTracingReceipt)

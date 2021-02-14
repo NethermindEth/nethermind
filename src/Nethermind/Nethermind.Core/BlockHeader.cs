@@ -64,17 +64,14 @@ namespace Nethermind.Core
         public Bloom? Bloom { get; set; }
         public UInt256 Difficulty { get; set; }
         public long Number { get; set; }
-        public long GasUsedLegacy { get; set; }
-        public long GasUsedEip1559 { get; set; }
-        public long GasUsed => GasUsedEip1559 + GasUsedLegacy;
-        public long GasLimit { get; set; }
+        public long GasUsed { get; set; }
+        public long GasLimit { get; set; } // TODO: does gas limit become the target or limit now?
 
-        public long GasTarget // just rename the field but the meaning changes
+        public long GetActualGasLimit(IReleaseSpec spec)
         {
-            get => GasLimit;
-            set => GasLimit = value;
+            return spec.IsEip1559Enabled ? GasLimit * 2 : GasLimit;
         }
-        
+
         public UInt256 Timestamp { get; set; }
         public DateTime TimestampDate => DateTimeOffset.FromUnixTimeSeconds((long) Timestamp).LocalDateTime;
         public byte[] ExtraData { get; set; } = Array.Empty<byte>();
@@ -148,7 +145,7 @@ namespace Nethermind.Core
                 UInt256 parentBaseFee = parent.BaseFee;
                 long gasDelta;
                 UInt256 feeDelta;
-                long parentGasTarget = parent.GasTarget;
+                long parentGasTarget = parent.GasLimit;
 
                 // # check if the base fee is correct
                 //   if parent_gas_used == parent_gas_target:

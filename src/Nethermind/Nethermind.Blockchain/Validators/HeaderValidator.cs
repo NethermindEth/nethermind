@@ -113,7 +113,7 @@ namespace Nethermind.Blockchain.Validators
                 if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - seal parameters incorrect");
             }
 
-            bool gasUsedBelowLimit = header.GasUsed <= header.GasLimit;
+            bool gasUsedBelowLimit = header.GasUsed <= header.GetActualGasLimit(spec);
             if (!gasUsedBelowLimit)
             {
                 if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - gas used above gas limit");
