@@ -21,8 +21,9 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
-using Nethermind.Int256;
 using Nethermind.Evm.Tracing;
+using Nethermind.Int256;
+using static System.Runtime.CompilerServices.Unsafe;
 
 namespace Nethermind.Evm
 {
@@ -185,10 +186,10 @@ namespace Nethermind.Evm
                 u0 = BinaryPrimitives.ReverseEndianness(u0);
             }
 
-            Unsafe.WriteUnaligned(ref bytes, u3);
-            Unsafe.WriteUnaligned(ref Unsafe.Add(ref bytes, sizeof(ulong)), u2);
-            Unsafe.WriteUnaligned(ref Unsafe.Add(ref bytes, 2 * sizeof(ulong)), u1);
-            Unsafe.WriteUnaligned(ref Unsafe.Add(ref bytes, 3 * sizeof(ulong)), u0);
+            WriteUnaligned(ref bytes, u3);
+            WriteUnaligned(ref Add(ref bytes, sizeof(ulong)), u2);
+            WriteUnaligned(ref Add(ref bytes, 2 * sizeof(ulong)), u1);
+            WriteUnaligned(ref Add(ref bytes, 3 * sizeof(ulong)), u0);
 
             if (_tracer.IsTracingInstructions) _tracer.ReportStackPush(word);
 
@@ -229,12 +230,18 @@ namespace Nethermind.Evm
         /// <param name="result">The returned value.</param>
         public void PopUInt256(out UInt256 result)
         {
-            ref byte bytes = ref PopBytesByRef();
+            if (Head-- == 0)
+            {
+                Metrics.EvmExceptions++;
+                throw new EvmStackUnderflowException();
+            }
 
-            ulong u3 = Unsafe.ReadUnaligned<ulong>(ref bytes);
-            ulong u2 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, sizeof(ulong)));
-            ulong u1 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 2 * sizeof(ulong)));
-            ulong u0 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 3 * sizeof(ulong)));
+            ref byte bytes = ref Add(ref MemoryMarshal.GetReference(_bytes), Head * 32);
+
+            ulong u3 = ReadUnaligned<ulong>(ref bytes);
+            ulong u2 = ReadUnaligned<ulong>(ref Add(ref bytes, sizeof(ulong)));
+            ulong u1 = ReadUnaligned<ulong>(ref Add(ref bytes, 2 * sizeof(ulong)));
+            ulong u0 = ReadUnaligned<ulong>(ref Add(ref bytes, 3 * sizeof(ulong)));
 
             if (BitConverter.IsLittleEndian)
             {
@@ -256,17 +263,6 @@ namespace Nethermind.Evm
             }
 
             return new Address(_bytes.Slice(Head * 32 + 12, 20).ToArray());
-        }
-
-        private ref byte PopBytesByRef()
-        {
-            if (Head-- == 0)
-            {
-                Metrics.EvmExceptions++;
-                throw new EvmStackUnderflowException();
-            }
-
-            return ref _bytes[Head * 32];
         }
 
         // ReSharper disable once ImplicitlyCapturedClosure
@@ -314,7 +310,11 @@ namespace Nethermind.Evm
         {
             EnsureDepth(depth);
 
-            _bytes.Slice((Head - depth) * 32, 32).CopyTo(_bytes.Slice(Head * 32, 32));
+            ref byte source = ref _bytes[(Head - depth) * 32];
+            ref byte destination = ref _bytes[Head * 32];
+
+            WriteUnaligned(ref destination, ReadUnaligned<Word>(ref source));
+            
             if (_tracer.IsTracingInstructions)
             {
                 for (int i = depth; i >= 0; i--)
@@ -341,16 +341,15 @@ namespace Nethermind.Evm
 
         public void Swap(int depth)
         {
-            Span<byte> buffer = stackalloc byte[32];
-
             EnsureDepth(depth);
 
-            Span<byte> bottomSpan = _bytes.Slice((Head - depth) * 32, 32);
-            Span<byte> topSpan = _bytes.Slice((Head - 1) * 32, 32);
+            ref byte bottom = ref _bytes[(Head - depth) * 32];
+            ref byte top = ref _bytes[(Head - 1) * 32];
 
-            bottomSpan.CopyTo(buffer);
-            topSpan.CopyTo(bottomSpan);
-            buffer.CopyTo(topSpan);
+            Word bottomWord = ReadUnaligned<Word>(ref bottom);
+
+            WriteUnaligned(ref bottom, ReadUnaligned<Word>(ref top));
+            WriteUnaligned(ref top, bottomWord);
 
             if (_tracer.IsTracingInstructions)
             {
@@ -371,6 +370,22 @@ namespace Nethermind.Evm
             }
 
             return stackTrace;
+        }
+
+        [StructLayout(LayoutKind.Explicit, Size = 32)]
+        struct Word
+        {
+            [FieldOffset(0)]
+            public ulong u0;
+
+            [FieldOffset(1)]
+            public ulong u1;
+
+            [FieldOffset(2)]
+            public ulong u2;
+
+            [FieldOffset(3)]
+            public ulong u3;
         }
     }
 }
