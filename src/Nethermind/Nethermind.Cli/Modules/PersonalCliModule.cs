@@ -23,17 +23,10 @@ namespace Nethermind.Cli.Modules
     public class PersonalCliModule : CliModuleBase
     {
         [CliFunction("personal", "importRawKey")]
-        public JsValue ImportRawKey(string keyData, string passphrase)
+        public string? ImportRawKey(string keyData, string passphrase)
         {
-            return NodeManager.PostJint($"personal_importRawKey", keyData, passphrase).Result;
+            return NodeManager.Post<string>($"personal_importRawKey", keyData, passphrase).Result;
         }
-        
-        [CliFunction("personal", "getRawTransaction")]
-        public JsValue GetRawTransaction(object tx, string addressHex, string passphrase)
-        {
-            return NodeManager.PostJint($"personal_getRawTransaction", tx, addressHex, passphrase).Result;
-        }
-
 
         [CliProperty("personal", "listAccounts")]
         public JsValue ListAccounts()
