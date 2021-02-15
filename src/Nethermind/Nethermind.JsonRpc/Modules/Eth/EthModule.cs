@@ -287,7 +287,6 @@ namespace Nethermind.JsonRpc.Modules.Eth
             return ResultWrapper<byte[]>.Success(code);
         }
 
-
         public ResultWrapper<byte[]> eth_sign(Address addressData, byte[] message)
         {
             Signature sig;

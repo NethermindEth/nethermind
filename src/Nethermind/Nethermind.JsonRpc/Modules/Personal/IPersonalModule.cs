@@ -23,8 +23,9 @@ namespace Nethermind.JsonRpc.Modules.Personal
     [RpcModule(ModuleType.Personal)]
     public interface IPersonalModule : IModule
     {   
-        [JsonRpcMethod(Description = "", IsImplemented = false)]
-        ResultWrapper<Address> personal_importRawKey(byte keyData, string passphrase);
+        [JsonRpcMethod(Description = "")]
+        ResultWrapper<Address> personal_importRawKey(byte[] keyData, string passphrase);
+
         ResultWrapper<Address[]> personal_listAccounts();
         
         ResultWrapper<bool> personal_lockAccount(Address address);
