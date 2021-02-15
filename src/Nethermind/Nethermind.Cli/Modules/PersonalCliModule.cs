@@ -15,12 +15,26 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using Jint.Native;
+using Nethermind.JsonRpc.Data;
 
 namespace Nethermind.Cli.Modules
 {
     [CliModule("personal")]
     public class PersonalCliModule : CliModuleBase
     {
+        [CliFunction("personal", "importRawKey")]
+        public JsValue ImportRawKey(string keyData, string passphrase)
+        {
+            return NodeManager.PostJint($"personal_importRawKey", keyData, passphrase).Result;
+        }
+        
+        [CliFunction("personal", "getRawTransaction")]
+        public JsValue GetRawTransaction(object tx, string addressHex, string passphrase)
+        {
+            return NodeManager.PostJint($"personal_getRawTransaction", tx, addressHex, passphrase).Result;
+        }
+
+
         [CliProperty("personal", "listAccounts")]
         public JsValue ListAccounts()
         {

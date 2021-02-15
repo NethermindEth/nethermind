@@ -17,12 +17,14 @@
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
 using Nethermind.Specs;
 using Nethermind.Facade;
 using Nethermind.JsonRpc.Modules.Personal;
 using Nethermind.KeyStore;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Wallet;
 using NSubstitute;
 using NUnit.Framework;
@@ -53,6 +55,38 @@ namespace Nethermind.JsonRpc.Test.Modules
             string expectedAccounts = string.Join(',', _wallet.GetAccounts().Select(a => $"\"{a.ToString()}\""));
             Assert.AreEqual($"{{\"jsonrpc\":\"2.0\",\"result\":[{expectedAccounts}],\"id\":67}}", serialized);
         }
+        
+        [Test]
+        public void Personal_import_raw_key()
+        {
+            // string password = "test123";
+            // PrivateKey privateKey = new PrivateKey("1e944a9f9e123e166c65827cd8b0cb32c5d9e5e5d77ecb6f23053a3e8f8c3c1e");
+            // _keyStore.StoreKey(privateKey, password.Secure());
+            // bool result = _wallet.UnlockAccount(privateKey.Address, password.Secure(), null);
+            
+            
+            
+            IPersonalModule module = new PersonalModule(_ecdsa, _wallet, _keyStore);
+            Transaction tx = new Transaction();
+            tx.SenderAddress = new Address("0x707Fc13C0eB628c074f7ff514Ae21ACaeE0ec072");
+            tx.To = new Address("0x9C3ce1CF910acAddC5a2636c3119bDee03E4932C");
+            tx.Value = 10;
+            var txEncoded = Rlp.Encode(tx, RlpBehaviors.None).Bytes.ToHexString();
+            string serialized = RpcTest.TestSerializedRequest(module, "personal_getRawTransaction", txEncoded);
+        }
+        
+        [Test]
+        public void Personal_get_raw_transaction()
+        {
+            IPersonalModule module = new PersonalModule(_ecdsa, _wallet, _keyStore);
+            Transaction tx = new Transaction();
+            tx.SenderAddress = new Address("0x20acaedce1757ef46bd593f87e7685ce9c227ea6");
+            tx.To = new Address("0x9C3ce1CF910acAddC5a2636c3119bDee03E4932C");
+            tx.Value = 10;
+            var txEncoded = Rlp.Encode(tx, RlpBehaviors.None).Bytes.ToHexString();
+            string serialized = RpcTest.TestSerializedRequest(module, "personal_getRawTransaction", txEncoded);
+        }
+        
         
         [Test]
         public void Personal_new_account()

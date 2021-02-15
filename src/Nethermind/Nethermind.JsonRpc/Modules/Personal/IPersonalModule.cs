@@ -25,6 +25,8 @@ namespace Nethermind.JsonRpc.Modules.Personal
     {   
         [JsonRpcMethod(Description = "")]
         ResultWrapper<Address> personal_importRawKey(byte[] keyData, string passphrase);
+
+        ResultWrapper<string> personal_getRawTransaction(Transaction transaction, Address address, string passphrase);
         ResultWrapper<Address[]> personal_listAccounts();
         
         ResultWrapper<bool> personal_lockAccount(Address address);

@@ -19,10 +19,12 @@ using System.Text;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
 using Nethermind.JsonRpc.Data;
 using Nethermind.KeyStore;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Wallet;
 
 namespace Nethermind.JsonRpc.Modules.Personal
@@ -74,6 +76,20 @@ namespace Nethermind.JsonRpc.Modules.Personal
         {
             var notSecuredHere = passphrase.Secure();
             return ResultWrapper<Address>.Success(_wallet.NewAccount(notSecuredHere));
+        }
+        
+        [RequiresSecurityReview("Consider removing any operations that allow to provide passphrase in JSON RPC")]
+        public ResultWrapper<string> personal_getRawTransaction(Transaction transaction, Address address, string passphrase)
+        {
+            var tx = transaction;
+            tx.GasLimit = 1000000;
+            tx.GasPrice = 20.GWei();
+            tx.Nonce = 91763;
+            tx.FeeCap = 1000000;
+            var result = _keyStore.GetKey(address, passphrase.Secure());
+            ((IEthereumEcdsa)_ecdsa).Sign(result.PrivateKey, transaction, true);
+            var encoded = Rlp.Encode(tx, RlpBehaviors.None).Bytes.ToHexString();
+            return ResultWrapper<string>.Success(encoded);
         }
 
         [RequiresSecurityReview("Consider removing any operations that allow to provide passphrase in JSON RPC")]
