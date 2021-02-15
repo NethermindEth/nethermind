@@ -93,6 +93,11 @@ namespace Nethermind.Blockchain.Producers
             {
                 var balance = GetRemainingBalance(balances, transaction.SenderAddress);
                 var transactionPotentialCost = transaction.GasPrice * (ulong) transaction.GasLimit + transaction.Value;
+                /*
+                 * ToDo EIP1559:
+                 *  if (currentblock >= eip1559Transition)
+                 *    transactionPotentialCost = transaction.FeeCap * (ulong) transaction.GasLimit + transaction.Value
+                 */
 
                 if (balance < transactionPotentialCost)
                 {

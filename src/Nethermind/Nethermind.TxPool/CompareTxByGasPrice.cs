@@ -36,6 +36,17 @@ namespace Nethermind.TxPool
             if (ReferenceEquals(null, x)) return -1;
                 
             // then by gas price descending
+            /*
+             * ToDo EIP1559
+             * check eip1559Transition
+             * baseFee? wheret to get?
+             * var xMinerTip =  Min(x.FeeCap - BaseFee, x.GasPremium);
+             * var yMinerTip = Min(y.FeeCap - BaseFee, y.GasPremium);
+             *
+             * if xMinerTip == yMinerTip return 0;
+             * if xMinerTip > yMinerTip return 1;
+             * if xMinerTip < yMinerTip return -1;
+             */
             return y.GasPrice.CompareTo(x.GasPrice);
         }
     }

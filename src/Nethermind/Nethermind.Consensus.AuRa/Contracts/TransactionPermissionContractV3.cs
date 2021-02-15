@@ -44,6 +44,8 @@ namespace Nethermind.Consensus.AuRa.Contracts
             // _value Transaction amount in wei.
             // _gasPrice Gas price in wei for the transaction.
             // _data Transaction data.
+            
+            // ToDo what should we send here instead of tx.GasPrice?
             new object[] {tx.SenderAddress, tx.To ?? Address.Zero, tx.Value, tx.GasPrice, tx.Data ?? Array.Empty<byte>()};
 
         public override UInt256 Version => Three;

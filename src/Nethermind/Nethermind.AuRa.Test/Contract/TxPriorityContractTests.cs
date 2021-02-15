@@ -93,7 +93,8 @@ namespace Nethermind.AuRa.Test.Contract
         }
         
         [Test]
-        public async Task priority_should_return_correctly()
+        public async Task 
+            priority_should_return_correctly()
         {
             using var chain = await TestContractBlockchain.ForTest<TxPermissionContractBlockchainWithBlocks, TxPriorityContractTests>();
             var priorities = chain.TxPriorityContract.Priorities.GetAllItemsFromBlock(chain.BlockTree.Head.Header);
