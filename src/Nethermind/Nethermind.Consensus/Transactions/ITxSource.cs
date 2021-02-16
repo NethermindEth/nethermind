@@ -16,11 +16,12 @@
 
 using System.Collections.Generic;
 using Nethermind.Core;
+using Nethermind.Int256;
 
 namespace Nethermind.Consensus.Transactions
 {
     public interface ITxSource
     {
-        IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit);
+        IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, UInt256 baseFee);
     }
 }

@@ -216,7 +216,7 @@ namespace Nethermind.Blockchain.Producers
             if (Logger.IsDebug) Logger.Debug($"Setting total difficulty to {parent.TotalDifficulty} + {difficulty}.");
             header.BaseFee = BlockHeader.CalculateBaseFee(parent, _spec.GetSpec(header.Number));
 
-            var transactions = _txSource.GetTransactions(parent, header.GasLimit);
+            var transactions = _txSource.GetTransactions(parent, header.GasLimit, header.BaseFee);
             Block block = new Block(header, transactions, Array.Empty<BlockHeader>());
             header.TxRoot = new TxTrie(block.Transactions).RootHash;
             return block;

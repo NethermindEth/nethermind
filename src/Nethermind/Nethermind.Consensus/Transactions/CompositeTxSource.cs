@@ -18,6 +18,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
+using Nethermind.Int256;
 
 namespace Nethermind.Consensus.Transactions
 {
@@ -30,11 +31,11 @@ namespace Nethermind.Consensus.Transactions
             _transactionSources = transactionSources ?? throw new ArgumentNullException(nameof(transactionSources));
         }
 
-        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit)
+        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, UInt256 baseFee)
         {
             for (int i = 0; i < _transactionSources.Length; i++)
             {
-                var transactions = _transactionSources[i].GetTransactions(parent, gasLimit);
+                var transactions = _transactionSources[i].GetTransactions(parent, gasLimit, baseFee);
                 if (transactions != null)
                 {
                     foreach (var tx in transactions)

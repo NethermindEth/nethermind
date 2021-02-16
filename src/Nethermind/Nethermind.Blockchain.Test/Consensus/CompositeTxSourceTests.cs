@@ -50,7 +50,7 @@ namespace Nethermind.Blockchain.Test.Consensus
             ITxSource CreateImmediateTransactionSource(BlockHeader header, Address address, List<Transaction> txs, bool createsTransaction)
             {
                 var immediateTransactionSource = Substitute.For<ITxSource>();
-                immediateTransactionSource.GetTransactions(header, Arg.Any<long>()).Returns(x =>
+                immediateTransactionSource.GetTransactions(header, Arg.Any<long>(), Arg.Any<UInt256>()).Returns(x =>
                 {
                     if (createsTransaction)
                     {
@@ -77,12 +77,12 @@ namespace Nethermind.Blockchain.Test.Consensus
             var immediateTransactionSource3 = CreateImmediateTransactionSource(parentHeader, TestItem.AddressD, expected, true);
             
             var originalTxs = Build.A.Transaction.TestObjectNTimes(5);
-            innerPendingTxSelector.GetTransactions(parentHeader, Arg.Any<long>()).Returns(originalTxs);
+            innerPendingTxSelector.GetTransactions(parentHeader, Arg.Any<long>(), Arg.Any<UInt256>()).Returns(originalTxs);
 
             var compositeTxSource = new CompositeTxSource(
                 immediateTransactionSource1, immediateTransactionSource2, immediateTransactionSource3, innerPendingTxSelector);
             
-            var transactions = compositeTxSource.GetTransactions(parentHeader, gasLimit).ToArray();
+            var transactions = compositeTxSource.GetTransactions(parentHeader, gasLimit, UInt256.Zero).ToArray();
             expected.AddRange(originalTxs);
             
             transactions.Should().BeEquivalentTo(expected);

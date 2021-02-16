@@ -48,7 +48,7 @@ namespace Nethermind.Blockchain.Producers
             _logger = logManager?.GetClassLogger<TxPoolTxSource>() ?? throw new ArgumentNullException(nameof(logManager));
         }
         
-        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit)
+        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, UInt256 baseFee)
         {
             T GetFromState<T>(Func<Keccak, Address, T> stateGetter, Address address, T defaultValue)
             {

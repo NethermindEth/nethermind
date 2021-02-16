@@ -18,6 +18,7 @@
 using System;
 using System.Collections.Generic;
 using Nethermind.Core;
+using Nethermind.Int256;
 
 namespace Nethermind.Consensus.Transactions
 {
@@ -27,7 +28,7 @@ namespace Nethermind.Consensus.Transactions
 
         public static ITxSource Instance { get; } = new EmptyTxSource();
 
-        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit)
+        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, UInt256 baseFee)
         {
             return Array.Empty<Transaction>();
         }

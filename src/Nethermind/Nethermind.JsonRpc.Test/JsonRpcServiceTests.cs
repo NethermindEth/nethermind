@@ -25,6 +25,7 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Config;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
@@ -71,7 +72,8 @@ namespace Nethermind.JsonRpc.Test
         public void GetBlockByNumberTest()
         {
             IEthModule ethModule = Substitute.For<IEthModule>();
-            ethModule.eth_getBlockByNumber(Arg.Any<BlockParameter>(), true).ReturnsForAnyArgs(x => ResultWrapper<BlockForRpc>.Success(new BlockForRpc(Build.A.Block.WithNumber(2).TestObject, true)));
+            ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+            ethModule.eth_getBlockByNumber(Arg.Any<BlockParameter>(), true).ReturnsForAnyArgs(x => ResultWrapper<BlockForRpc>.Success(new BlockForRpc(Build.A.Block.WithNumber(2).TestObject, true, specProvider)));
             JsonRpcSuccessResponse response = TestRequest(ethModule, "eth_getBlockByNumber", "0x1b4", "true") as JsonRpcSuccessResponse;
             Assert.AreEqual(2L, (response?.Result as BlockForRpc)?.Number);
         }
@@ -80,7 +82,8 @@ namespace Nethermind.JsonRpc.Test
         public void Eth_module_populates_size_when_returning_block_data()
         {
             IEthModule ethModule = Substitute.For<IEthModule>();
-            ethModule.eth_getBlockByNumber(Arg.Any<BlockParameter>(), true).ReturnsForAnyArgs(x => ResultWrapper<BlockForRpc>.Success(new BlockForRpc(Build.A.Block.WithNumber(2).TestObject, true)));
+            ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+            ethModule.eth_getBlockByNumber(Arg.Any<BlockParameter>(), true).ReturnsForAnyArgs(x => ResultWrapper<BlockForRpc>.Success(new BlockForRpc(Build.A.Block.WithNumber(2).TestObject, true, specProvider)));
             JsonRpcSuccessResponse response = TestRequest(ethModule, "eth_getBlockByNumber", "0x1b4", "true") as JsonRpcSuccessResponse;
             Assert.AreEqual(513L, (response?.Result as BlockForRpc)?.Size);
         }

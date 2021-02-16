@@ -136,7 +136,8 @@ namespace Nethermind.JsonRpc.Test.Modules
                 TxPool,
                 TxSender,
                 TestWallet,
-                LimboLogs.Instance);
+                LimboLogs.Instance,
+                SpecProvider);
             
             return this;
         }

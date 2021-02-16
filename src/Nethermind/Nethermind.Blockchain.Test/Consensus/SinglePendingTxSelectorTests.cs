@@ -21,6 +21,7 @@ using FluentAssertions;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Int256;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -49,14 +50,14 @@ namespace Nethermind.Blockchain.Test.Consensus
         {
             ITxSource txSource = Substitute.For<ITxSource>();
             SinglePendingTxSelector selector = new SinglePendingTxSelector(txSource);
-            selector.GetTransactions(_anyParent, 1000000).Should().HaveCount(0);
+            selector.GetTransactions(_anyParent, 1000000, UInt256.Zero).Should().HaveCount(0);
         }
 
         [Test]
         public void When_many_transactions_returns_one_with_lowest_nonce_and_highest_timestamp()
         {
             ITxSource txSource = Substitute.For<ITxSource>();
-            txSource.GetTransactions(_anyParent, 1000000).ReturnsForAnyArgs(new []
+            txSource.GetTransactions(_anyParent, 1000000, UInt256.Zero).ReturnsForAnyArgs(new []
             {
                 Build.A.Transaction.WithNonce(6).TestObject,
                 Build.A.Transaction.WithNonce(1).WithTimestamp(7).TestObject,
@@ -65,7 +66,7 @@ namespace Nethermind.Blockchain.Test.Consensus
             });
 
             SinglePendingTxSelector selector = new SinglePendingTxSelector(txSource);
-            var result = selector.GetTransactions(_anyParent, 1000000).ToArray();
+            var result = selector.GetTransactions(_anyParent, 1000000, UInt256.Zero).ToArray();
             result.Should().HaveCount(1);
             result[0].Timestamp.Should().Be(8);
             result[0].Nonce.Should().Be(1);

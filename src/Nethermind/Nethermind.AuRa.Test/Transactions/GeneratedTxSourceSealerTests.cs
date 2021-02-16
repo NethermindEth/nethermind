@@ -55,12 +55,12 @@ namespace Nethermind.AuRa.Test.Transactions
 
             var gasLimit = 200;
             var innerTxSource = Substitute.For<ITxSource>();
-            innerTxSource.GetTransactions(blockHeader, gasLimit).Returns(new[] {tx1, tx2});
+            innerTxSource.GetTransactions(blockHeader, gasLimit, UInt256.Zero).Returns(new[] {tx1, tx2});
             
             TxSealer txSealer = new TxSealer(new Signer((ulong) chainId, Build.A.PrivateKey.TestObject, LimboLogs.Instance), timestamper);
             var transactionFiller = new GeneratedTxSource(innerTxSource, txSealer, stateReader, LimboLogs.Instance);
 
-            var sealedTxs = transactionFiller.GetTransactions(blockHeader, gasLimit).ToArray();
+            var sealedTxs = transactionFiller.GetTransactions(blockHeader, gasLimit, UInt256.Zero).ToArray();
             var sealedTx1 = sealedTxs.First();
             var sealedTx2 = sealedTxs.Skip(1).First();
             

@@ -432,7 +432,7 @@ namespace Nethermind.Consensus.Clique
 
             _stateProvider.StateRoot = parentHeader.StateRoot;
 
-            var selectedTxs = _txSource.GetTransactions(parentBlock.Header, header.GasLimit);
+            var selectedTxs = _txSource.GetTransactions(parentBlock.Header, header.GasLimit, header.BaseFee);
             Block block = new Block(header, selectedTxs, Array.Empty<BlockHeader>());
             header.TxRoot = new TxTrie(block.Transactions).RootHash;
             block.Header.Author = _sealer.Address;

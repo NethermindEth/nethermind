@@ -102,7 +102,8 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.Config<IJsonRpcConfig>(),
                 _api.LogManager,
                 _api.StateReader,
-                _api);
+                _api,
+                _api.SpecProvider);
             _api.RpcModuleProvider.Register(new BoundedModulePool<IEthModule>(ethModuleFactory, _cpuCount, rpcConfig.Timeout));
             
             if (_api.DbProvider == null) throw new StepDependencyException(nameof(_api.DbProvider));

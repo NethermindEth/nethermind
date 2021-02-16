@@ -47,9 +47,9 @@ namespace Nethermind.Consensus.AuRa.Validators
         private readonly LinkedList<PersistentReport> _persistentReports;
         private long _sentReportsInBlock = 0;
         
-        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit)
+        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, UInt256 baseFee)
         {
-            foreach (var transaction in _contractValidator.GetTransactions(parent, gasLimit))
+            foreach (var transaction in _contractValidator.GetTransactions(parent, gasLimit, baseFee))
             {
                 if (gasLimit >= transaction.GasLimit)
                 {

@@ -153,12 +153,12 @@ namespace Nethermind.Consensus.AuRa
                 if (_logger.IsDebug) _logger.Debug($"Transaction sources used when building blocks: {this}");
             }
 
-            public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit)
+            public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, UInt256 baseFee)
             {
                 int index = 0;
                 _senderNonces.Clear();
                 
-                foreach (var tx in _innerSource.GetTransactions(parent, gasLimit))
+                foreach (var tx in _innerSource.GetTransactions(parent, gasLimit, baseFee))
                 {
                     var senderNonce = (tx.SenderAddress, tx.Nonce);
                     if (_senderNonces.TryGetValue(senderNonce, out var prevTx))

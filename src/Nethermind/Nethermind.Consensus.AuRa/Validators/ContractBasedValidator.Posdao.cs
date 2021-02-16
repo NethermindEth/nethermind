@@ -19,6 +19,7 @@ using System.Collections.Generic;
 using Nethermind.Abi;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
+using Nethermind.Int256;
 
 namespace Nethermind.Consensus.AuRa.Validators
 {
@@ -26,7 +27,7 @@ namespace Nethermind.Consensus.AuRa.Validators
     {
         private readonly long _posdaoTransition;
         
-        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit)
+        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, UInt256 baseFee)
         {
             if (ForSealing)
             {
