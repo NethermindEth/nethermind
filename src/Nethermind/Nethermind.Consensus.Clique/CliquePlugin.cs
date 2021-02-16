@@ -136,6 +136,7 @@ namespace Nethermind.Consensus.Clique
             ITxSource txSource = new TxPoolTxSource(
                 getFromApi.TxPool,
                 getFromApi.StateReader,
+                getFromApi.SpecProvider,
                 getFromApi.LogManager,
                 txFilter);
 

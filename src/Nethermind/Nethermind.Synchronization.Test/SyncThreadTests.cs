@@ -334,7 +334,7 @@ namespace Nethermind.Synchronization.Test
 
             BlockchainProcessor devChainProcessor = new(tree, devBlockProcessor, step, logManager,
                 BlockchainProcessor.Options.NoReceipts);
-            TxPoolTxSource transactionSelector = new(txPool, stateReader, logManager);
+            TxPoolTxSource transactionSelector = new(txPool, stateReader, specProvider, logManager);
             DevBlockProducer producer = new(
                 transactionSelector,
                 devChainProcessor,

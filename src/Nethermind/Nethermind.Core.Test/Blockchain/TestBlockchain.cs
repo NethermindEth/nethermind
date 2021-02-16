@@ -167,7 +167,7 @@ namespace Nethermind.Core.Test.Blockchain
 
         protected virtual TxPoolTxSource CreateTxPoolTxSource()
         {
-            return new TxPoolTxSource(TxPool, StateReader, LimboLogs.Instance);
+            return new TxPoolTxSource(TxPool, StateReader, SpecProvider, LimboLogs.Instance);
         }
 
         public BlockBuilder GenesisBlockBuilder { get; set; }

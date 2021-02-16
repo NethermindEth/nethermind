@@ -21,6 +21,7 @@ using FluentAssertions;
 using Nethermind.Blockchain.Producers;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
@@ -120,6 +121,7 @@ namespace Nethermind.Blockchain.Test
             var trieStore = new TrieStore(stateDb, LimboLogs.Instance);
             StateProvider stateProvider = new StateProvider(trieStore, codeDb, LimboLogs.Instance);
             StateReader stateReader = new StateReader(new TrieStore(stateDb, LimboLogs.Instance), codeDb, LimboLogs.Instance);
+            ISpecProvider specProvider = Substitute.For<ISpecProvider>();
 
             void SetAccountStates(IEnumerable<Address> missingAddresses)
             {
@@ -150,7 +152,7 @@ namespace Nethermind.Blockchain.Test
             
             SetAccountStates(testCase.MissingAddresses);
 
-            TxPoolTxSource poolTxSource = new TxPoolTxSource(transactionPool, stateReader, LimboLogs.Instance, new MinGasPriceTxFilter(testCase.MinGasPriceForMining));
+            TxPoolTxSource poolTxSource = new TxPoolTxSource(transactionPool, stateReader, specProvider, LimboLogs.Instance, new MinGasPriceTxFilter(testCase.MinGasPriceForMining));
             
             IEnumerable<Transaction> selectedTransactions = poolTxSource.GetTransactions(Build.A.BlockHeader.WithStateRoot(stateProvider.StateRoot).TestObject, testCase.GasLimit, UInt256.Zero);
             selectedTransactions.Should().BeEquivalentTo(testCase.ExpectedSelectedTransactions, o => o.WithStrictOrdering());

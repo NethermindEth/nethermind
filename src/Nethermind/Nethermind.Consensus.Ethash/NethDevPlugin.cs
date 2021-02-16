@@ -58,7 +58,7 @@ namespace Nethermind.Consensus.Ethash
             var (getFromApi, setInApi) = _nethermindApi!.ForProducer;
             ITxFilter txFilter = new NullTxFilter();
             ITxSource txSource = new TxPoolTxSource(
-                getFromApi.TxPool, getFromApi.StateReader, getFromApi.LogManager, txFilter);
+                getFromApi.TxPool, getFromApi.StateReader, getFromApi.SpecProvider, getFromApi.LogManager, txFilter);
             
             ILogger logger = getFromApi.LogManager.GetClassLogger();
             if (logger.IsWarn) logger.Warn("Starting Neth Dev block producer & sealer");

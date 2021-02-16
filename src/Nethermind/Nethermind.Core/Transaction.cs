@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Text;
@@ -83,6 +84,18 @@ namespace Nethermind.Core
         }
 
         public override string ToString() => ToString(string.Empty);
+
+        public UInt256 GetTransactionPotentialCost(bool eip1559Enabled, UInt256 baseFee)
+        {
+            if (eip1559Enabled)
+            {
+                UInt256 gasPrice = baseFee + GasPremium;
+                gasPrice = gasPrice > FeeCap ? FeeCap : gasPrice;
+                return gasPrice * (ulong)GasLimit + Value;
+            }
+
+            return GasPrice * (ulong)GasLimit + Value;
+        }
     }
 
     /// <summary>

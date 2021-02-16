@@ -184,7 +184,8 @@ namespace Nethermind.Runner.Ethereum.Steps
                     _api.LogManager, 
                     CreateTxSourceFilter(processingEnv, readOnlyTxProcessorSource),
                     whitelistContractDataStore,
-                    prioritiesContractDataStore);
+                    prioritiesContractDataStore,
+                    _api.SpecProvider);
             }
             else
             {

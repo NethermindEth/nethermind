@@ -24,6 +24,7 @@ using Nethermind.Consensus.AuRa.Contracts.DataStore;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
@@ -44,8 +45,9 @@ namespace Nethermind.Consensus.AuRa.Transactions
             ILogManager logManager, 
             ITxFilter txFilter,
             IContractDataStore<Address> sendersWhitelist, // expected HashSet based
-            IDictionaryContractDataStore<TxPriorityContract.Destination> priorities) // expected SortedList based
-            : base(transactionPool, stateReader, logManager, txFilter)
+            IDictionaryContractDataStore<TxPriorityContract.Destination> priorities,
+            ISpecProvider specProvider) // expected SortedList based
+            : base(transactionPool, stateReader, specProvider, logManager, txFilter)
         {
             _sendersWhitelist = sendersWhitelist ?? throw new ArgumentNullException(nameof(sendersWhitelist));
             _priorities = priorities ?? throw new ArgumentNullException(nameof(priorities));

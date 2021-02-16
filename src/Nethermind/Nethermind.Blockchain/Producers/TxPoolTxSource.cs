@@ -22,6 +22,7 @@ using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
@@ -38,9 +39,10 @@ namespace Nethermind.Blockchain.Producers
         private readonly ITxPool _transactionPool;
         private readonly IStateReader _stateReader;
         private readonly ITxFilter _txFilter;
+        private readonly ISpecProvider _specProvider;
         protected readonly ILogger _logger;
 
-        public TxPoolTxSource(ITxPool transactionPool, IStateReader stateReader, ILogManager logManager, ITxFilter txFilter = null)
+        public TxPoolTxSource(ITxPool transactionPool, IStateReader stateReader, ISpecProvider specProvider, ILogManager logManager, ITxFilter txFilter = null)
         {
             _transactionPool = transactionPool ?? throw new ArgumentNullException(nameof(transactionPool));
             _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
@@ -89,15 +91,11 @@ namespace Nethermind.Blockchain.Producers
                 return balance;
             }
 
-            bool HasEnoughFounds(IDictionary<Address, UInt256> balances, Transaction transaction)
+            bool HasEnoughFounds(IDictionary<Address, UInt256> balances, Transaction transaction, BlockHeader parentHeader, UInt256 baseFee)
             {
-                var balance = GetRemainingBalance(balances, transaction.SenderAddress);
-                var transactionPotentialCost = transaction.GasPrice * (ulong) transaction.GasLimit + transaction.Value;
-                /*
-                 * ToDo EIP1559:
-                 *  if (currentblock >= eip1559Transition)
-                 *    transactionPotentialCost = transaction.FeeCap * (ulong) transaction.GasLimit + transaction.Value
-                 */
+                bool isEip1559Enabled = _specProvider.GetSpec(parentHeader.Number + 1).IsEip1559Enabled;
+                UInt256 balance = GetRemainingBalance(balances, transaction.SenderAddress);
+                UInt256 transactionPotentialCost = transaction.GetTransactionPotentialCost(isEip1559Enabled, baseFee);
 
                 if (balance < transactionPotentialCost)
                 {
@@ -165,7 +163,7 @@ namespace Nethermind.Blockchain.Producers
                     continue;
                 }
 
-                if (!HasEnoughFounds(remainingBalance, tx))
+                if (!HasEnoughFounds(remainingBalance, tx, parent, baseFee))
                 {
                     if (_logger.IsDebug) _logger.Debug($"Rejecting (sender balance too low) {tx.ToShortString()}");
                     continue;
