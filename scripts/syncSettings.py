@@ -132,6 +132,27 @@ configs = {
         "url": "https://volta-rpc.energyweb.org",
         "blockReduced": 8192,
         "multiplierRequirement": 10000
+    },
+    # ndm sections
+    "ndm_consumer_mainnet": {
+        "url": "api.etherscan.io",
+        "blockReduced": 8192,
+        "multiplierRequirement": 10000 
+    },
+    "ndm_consumer_xdai": {
+        "url": "https://dai.poa.network",
+        "blockReduced": 8192,
+        "multiplierRequirement": 10000
+    },
+    "ndm_consumer_goerli": {
+        "url": "api-goerli.etherscan.io",
+        "blockReduced": 8192,
+        "multiplierRequirement": 30000 
+    },
+    "ndm_consumer_ropsten": {
+        "url": "api-ropsten.etherscan.io",
+        "blockReduced": 8192,
+        "multiplierRequirement": 10000
     }
 }
 
