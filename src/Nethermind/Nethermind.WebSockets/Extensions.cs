@@ -45,11 +45,10 @@ namespace Nethermind.WebSockets
                 IWebSocketsModule module = null;
                 try
                 {
-                    string moduleName = String.Empty;
+                    string moduleName = string.Empty;
                     if (context.Request.Path.HasValue)
                     {
-                        var path = context.Request.Path.Value;
-                        moduleName = path.Split("/", StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).LastOrDefault();
+                        moduleName = ExtractModuleName(context.Request.Path.Value);
                     }
 
                     module = webSocketsManager.GetModule(moduleName);
@@ -88,6 +87,22 @@ namespace Nethermind.WebSockets
                     }
                 }
             });
+        }
+
+        private static string ExtractModuleName(string path)
+        {
+            // We can have a prefix with WebSocket protocol, which we want to skip
+            const string wss = "wss";
+            const string ws = "ws";
+            
+            string[] parts = path.Split("/", StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            string moduleName = parts.FirstOrDefault();
+            if (moduleName == wss || moduleName == ws)
+            {
+                moduleName = parts.Skip(1).FirstOrDefault();
+            }
+
+            return moduleName;
         }
 
         public const int _maxPooledSize = 1024 * 1024;
