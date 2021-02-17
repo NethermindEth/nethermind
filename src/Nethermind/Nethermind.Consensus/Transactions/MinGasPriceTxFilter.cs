@@ -36,7 +36,8 @@ namespace Nethermind.Consensus.Transactions
 
         public (bool Allowed, string Reason) IsAllowed(Transaction tx, BlockHeader parentHeader)
         {
-            return IsAllowed(tx, parentHeader.Number + 1, _minGasPrice);
+            long number = (parentHeader?.Number ?? 0) + 1;
+            return IsAllowed(tx, number, _minGasPrice);
         }
 
         public (bool Allowed, string Reason) IsAllowed(Transaction tx, long blockNumber, UInt256 minGasPriceFloor)

@@ -17,9 +17,11 @@
 
 using FluentAssertions;
 using Nethermind.Consensus.Transactions;
+using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
+using Nethermind.Specs;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -35,8 +37,13 @@ namespace Nethermind.Mining.Test
         [TestCase(2L, 1L, false)]
         public void Test(long minimum, long actual, bool expectedResult)
         {
-            MinGasPriceTxFilter _filter = new MinGasPriceTxFilter((UInt256)minimum, Substitute.For<ISpecProvider>());
-            var tx = Build.A.Transaction.WithGasPrice((UInt256)actual).TestObject;
+            ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+            specProvider.GetSpec(Arg.Any<long>()).Returns(new ReleaseSpec()
+            {
+                IsEip1559Enabled = false
+            });
+            MinGasPriceTxFilter _filter = new MinGasPriceTxFilter((UInt256)minimum, specProvider);
+            Transaction tx = Build.A.Transaction.WithGasPrice((UInt256)actual).TestObject;
             _filter.IsAllowed(tx, null).Allowed.Should().Be(expectedResult);
         }
     }

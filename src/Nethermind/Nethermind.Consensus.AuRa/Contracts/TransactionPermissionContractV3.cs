@@ -20,6 +20,7 @@ using Nethermind.Abi;
 using Nethermind.Blockchain.Contracts.Json;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Evm;
 
@@ -27,6 +28,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
 {
     public sealed class TransactionPermissionContractV3 : TransactionPermissionContract
     {
+        private readonly ISpecProvider _specProvider;
         private static readonly UInt256 Three = 3;
 
         public TransactionPermissionContractV3(
@@ -35,6 +37,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
             IReadOnlyTxProcessorSource readOnlyTxProcessorSource)
             : base(abiEncoder, contractAddress, readOnlyTxProcessorSource)
         {
+            //_specProvider = specProvider;
         }
         
         
