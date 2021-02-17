@@ -17,7 +17,7 @@
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 
-namespace Nethermind.Blockchain.Validators
+namespace Nethermind.TxPool
 {
     public interface ITxValidator
     {

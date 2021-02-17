@@ -23,6 +23,7 @@ using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Producers;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Rewards;
+using Nethermind.Blockchain.Spec;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Consensus;
@@ -112,18 +113,20 @@ namespace Nethermind.Core.Test.Blockchain
             State.Commit(SpecProvider.GenesisSpec);
             State.CommitTree(0);
 
-            TxPool = new TxPool.TxPool(
-                txStorage,
-                EthereumEcdsa,
-                SpecProvider,
-                new TxPoolConfig(),
-                State,
-                LimboLogs.Instance);
-
             IDb blockDb = new MemDb();
             IDb headerDb = new MemDb();
             IDb blockInfoDb = new MemDb();
             BlockTree = new BlockTree(blockDb, headerDb, blockInfoDb, new ChainLevelInfoRepository(blockDb), SpecProvider, NullBloomStorage.Instance, LimboLogs.Instance);
+            
+            TxPool = new TxPool.TxPool(
+                txStorage,
+                EthereumEcdsa,
+                new HeadChainSpecProvider(SpecProvider, BlockTree),
+                new TxPoolConfig(),
+                State,
+                new TxValidator(SpecProvider.ChainId),
+                LimboLogs.Instance);
+            
             new OnChainTxWatcher(BlockTree, TxPool, SpecProvider, LimboLogs.Instance);
 
             ReceiptStorage = new InMemoryReceiptStorage();

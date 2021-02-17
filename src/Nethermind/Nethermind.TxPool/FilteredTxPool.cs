@@ -36,13 +36,14 @@ namespace Nethermind.TxPool
         public FilteredTxPool(
             ITxStorage txStorage, 
             IEthereumEcdsa ecdsa, 
-            ISpecProvider specProvider, 
+            IHeadChainSpecProvider specProvider, 
             ITxPoolConfig txPoolConfig, 
             IReadOnlyStateProvider stateProvider,
+            ITxValidator txValidator,
             ILogManager logManager, 
             IComparer<Transaction> comparer = null,
             ITxPoolFilter txPoolFilter = null) 
-            : base(txStorage, ecdsa, specProvider, txPoolConfig, stateProvider, logManager, comparer)
+            : base(txStorage, ecdsa, specProvider, txPoolConfig, stateProvider, txValidator, logManager, comparer)
         {
             _txPoolFilter = txPoolFilter;
         }

@@ -46,6 +46,7 @@ using Nethermind.TxPool.Storages;
 using NUnit.Framework;
 using BlockTree = Nethermind.Blockchain.BlockTree;
 using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.Spec;
 using Nethermind.Specs.Forks;
 using Nethermind.Trie.Pruning;
 
@@ -90,10 +91,11 @@ namespace Nethermind.JsonRpc.Test.Modules
             _stateProvider.Commit(specProvider.GenesisSpec);
             _stateProvider.CommitTree(0);
 
-            ITxPool txPool = new TxPool.TxPool(txStorage, ethereumEcdsa, specProvider, new TxPoolConfig(), _stateProvider, LimboLogs.Instance);
             IChainLevelInfoRepository chainLevels = new ChainLevelInfoRepository(dbProvider);
             IBlockTree blockTree = new BlockTree(dbProvider, chainLevels, specProvider, NullBloomStorage.Instance, LimboLogs.Instance);
-
+            ITxPool txPool = new TxPool.TxPool(txStorage, ethereumEcdsa, new HeadChainSpecProvider(specProvider, blockTree), 
+                new TxPoolConfig(), _stateProvider, new TxValidator(specProvider.ChainId), LimboLogs.Instance);
+            
             IReceiptStorage receiptStorage = new InMemoryReceiptStorage();
             VirtualMachine virtualMachine = new VirtualMachine(_stateProvider, storageProvider, new BlockhashProvider(blockTree, LimboLogs.Instance), specProvider, LimboLogs.Instance);
             TransactionProcessor txProcessor = new TransactionProcessor(specProvider, _stateProvider, storageProvider, virtualMachine, LimboLogs.Instance);

@@ -21,6 +21,7 @@ using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Data;
 using Nethermind.Blockchain.Processing;
+using Nethermind.Blockchain.Spec;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa;
@@ -271,9 +272,10 @@ namespace Nethermind.Runner.Ethereum.Steps
             return new FilteredTxPool(
                 txStorage,
                 _api.EthereumEcdsa,
-                _api.SpecProvider,
+                new HeadChainSpecProvider(_api.SpecProvider, _api.BlockTree),
                 NethermindApi.Config<ITxPoolConfig>(),
                 _api.ChainHeadStateProvider,
+                _api.TxValidator,
                 _api.LogManager,
                 CreateTxPoolTxComparer(txPriorityContract, localDataSource),
                 new TxFilterAdapter(_api.BlockTree, txPoolFilter));
