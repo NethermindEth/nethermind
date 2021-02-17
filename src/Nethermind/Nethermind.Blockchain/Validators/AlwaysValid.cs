@@ -18,6 +18,7 @@ using System.Threading;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.TxPool;
 
 namespace Nethermind.Blockchain.Validators
 {

@@ -70,7 +70,7 @@ namespace Nethermind.EthStats.Clients
                         break;
                     default:
                         ThrowIncorrectUrl();
-                        break;;
+                        break;
                 }
                 
                 if (_logger.IsInfo) _logger.Info($"Moved ETH stats to: {websocketUrl}");

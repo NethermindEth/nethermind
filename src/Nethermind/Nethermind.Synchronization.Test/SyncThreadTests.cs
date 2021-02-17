@@ -23,6 +23,7 @@ using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Producers;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Rewards;
+using Nethermind.Blockchain.Spec;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Consensus;
@@ -273,10 +274,10 @@ namespace Nethermind.Synchronization.Test
             InMemoryReceiptStorage receiptStorage = new();
 
             EthereumEcdsa ecdsa = new(specProvider.ChainId, logManager);
-            TxPool.TxPool txPool = new(new InMemoryTxStorage(), ecdsa, specProvider, new TxPoolConfig(), stateProvider,
-                logManager);
             BlockTree tree = new(blockDb, headerDb, blockInfoDb, new ChainLevelInfoRepository(blockInfoDb),
                 specProvider, NullBloomStorage.Instance, logManager);
+            TxPool.TxPool txPool = new(new InMemoryTxStorage(), ecdsa, new ChainHeadSpecProvider(specProvider, tree), 
+                new TxPoolConfig(), stateProvider, new TxValidator(specProvider.ChainId), logManager);
             BlockhashProvider blockhashProvider = new(tree, LimboLogs.Instance);
             VirtualMachine virtualMachine =
                 new(stateProvider, storageProvider, blockhashProvider, specProvider, logManager);

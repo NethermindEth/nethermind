@@ -20,6 +20,7 @@ using FluentAssertions;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Rewards;
+using Nethermind.Blockchain.Spec;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
@@ -59,19 +60,20 @@ namespace Nethermind.Blockchain.Test
             ISpecProvider specProvider = MainnetSpecProvider.Instance;
             IBloomStorage bloomStorage = NullBloomStorage.Instance;
             EthereumEcdsa ecdsa = new EthereumEcdsa(1, LimboLogs.Instance);
-            TxPool.TxPool txPool = new TxPool.TxPool(
-                NullTxStorage.Instance,
-                ecdsa,
-                specProvider,
-                new TxPoolConfig(),
-                stateProvider,
-                LimboLogs.Instance);
             _blockTree = new BlockTree(
                 memDbProvider,
                 chainLevelInfoRepository,
                 specProvider,
                 bloomStorage,
                 new SyncConfig(),
+                LimboLogs.Instance);
+            TxPool.TxPool txPool = new TxPool.TxPool(
+                NullTxStorage.Instance,
+                ecdsa,
+                new ChainHeadSpecProvider(specProvider, _blockTree),
+                new TxPoolConfig(),
+                stateProvider,
+                new TxValidator(specProvider.ChainId),
                 LimboLogs.Instance);
             BlockhashProvider blockhashProvider = new BlockhashProvider(_blockTree, LimboLogs.Instance);
             VirtualMachine virtualMachine = new VirtualMachine(

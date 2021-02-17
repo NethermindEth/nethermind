@@ -21,6 +21,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm;
+using Nethermind.TxPool;
 
 namespace Nethermind.Blockchain.Validators
 {

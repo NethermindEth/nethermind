@@ -23,6 +23,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Services;
+using Nethermind.Blockchain.Spec;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
@@ -143,6 +144,8 @@ namespace Nethermind.Runner.Ethereum.Steps
                 stateProvider.StateRoot = getApi.BlockTree.Head.StateRoot;
             }
             
+            var txValidator = setApi.TxValidator = new TxValidator(getApi.SpecProvider.ChainId);
+            
             ITxPool txPool = _api.TxPool = CreateTxPool(txStorage);
 
             OnChainTxWatcher onChainTxWatcher = new(getApi.BlockTree, txPool, getApi.SpecProvider, _api.LogManager);
@@ -185,8 +188,6 @@ namespace Nethermind.Runner.Ethereum.Steps
                 headerValidator,
                 getApi.LogManager);
 
-            TxValidator txValidator = new(getApi.SpecProvider.ChainId);
-            
             var blockValidator = setApi.BlockValidator = new BlockValidator(
                 txValidator,
                 headerValidator,
@@ -255,9 +256,10 @@ namespace Nethermind.Runner.Ethereum.Steps
             new TxPool.TxPool(
                 txStorage,
                 _api.EthereumEcdsa,
-                _api.SpecProvider,
+                new ChainHeadSpecProvider(_api.SpecProvider, _api.BlockTree),
                 _api.Config<ITxPoolConfig>(),
                 _api.ChainHeadStateProvider,
+                _api.TxValidator,
                 _api.LogManager,
                 CreateTxPoolTxComparer());
 
