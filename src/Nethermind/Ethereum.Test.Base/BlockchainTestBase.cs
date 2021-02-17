@@ -28,6 +28,7 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Rewards;
+using Nethermind.Blockchain.Spec;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Ethash;
@@ -123,11 +124,11 @@ namespace Ethereum.Test.Base
 
             TrieStore trieStore = new TrieStore(stateDb, _logManager);
             IStateProvider stateProvider = new StateProvider(trieStore, codeDb, _logManager);
-            ITxPool transactionPool = new TxPool(NullTxStorage.Instance, ecdsa, specProvider, new TxPoolConfig(), stateProvider, _logManager);
-
-            IReceiptStorage receiptStorage = NullReceiptStorage.Instance;
             var blockInfoDb = new MemDb();
             IBlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), specProvider, NullBloomStorage.Instance,  _logManager);
+            ITxPool transactionPool = new TxPool(NullTxStorage.Instance, ecdsa, new ChainHeadSpecProvider(specProvider, blockTree), new TxPoolConfig(), stateProvider, new TxValidator(specProvider.ChainId), _logManager);
+
+            IReceiptStorage receiptStorage = NullReceiptStorage.Instance;
             IBlockhashProvider blockhashProvider = new BlockhashProvider(blockTree, _logManager);
             ITxValidator txValidator = new TxValidator(ChainId.Mainnet);
             IHeaderValidator headerValidator = new HeaderValidator(blockTree, Sealer, specProvider, _logManager);
