@@ -21,6 +21,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.TxPool;
 
@@ -44,7 +45,6 @@ namespace Nethermind.Consensus.AuRa.Transactions
 
         public ValueTask<Keccak> SendTransaction(Transaction tx, TxHandlingOptions txHandlingOptions)
         {
-            // ToDo 1559 consult with Lukasz
             UInt256 minGasPrice =  CurrentMinGasPrice();
             UInt256 txGasPrice = minGasPrice * _percentDelta / 100;
             tx.GasPrice = UInt256.Max(txGasPrice, _miningConfig.MinGasPrice);

@@ -34,7 +34,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
         {
         }
 
-        protected override object[] GetAllowedTxTypesParameters(Transaction tx) => new object[] {tx.SenderAddress};
+        protected override object[] GetAllowedTxTypesParameters(Transaction tx, BlockHeader parentHeader) => new object[] {tx.SenderAddress};
 
         protected override (ITransactionPermissionContract.TxPermissions, bool) CallAllowedTxTypes(PermissionConstantContract.PermissionCallInfo callInfo) => 
             (Constant.Call<ITransactionPermissionContract.TxPermissions>(callInfo), true);

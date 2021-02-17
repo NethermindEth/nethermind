@@ -68,6 +68,7 @@ namespace Nethermind.Runner.Ethereum.Steps
         public static ITxFilter? CreateTxPermissionFilter(AuRaNethermindApi api, IReadOnlyTxProcessorSource readOnlyTxProcessorSource)
         {
             if (api.ChainSpec == null) throw new StepDependencyException(nameof(api.ChainSpec));
+            if (api.SpecProvider == null) throw new StepDependencyException(nameof(api.SpecProvider));
             
             if (api.ChainSpec.Parameters.TransactionPermissionContract != null)
             {
@@ -79,7 +80,8 @@ namespace Nethermind.Runner.Ethereum.Steps
                         api.ChainSpec.Parameters.TransactionPermissionContractTransition ?? 0, 
                         readOnlyTxProcessorSource, 
                         api.TransactionPermissionContractVersions,
-                        api.LogManager),
+                        api.LogManager,
+                        api.SpecProvider),
                     api.TxFilterCache,
                     api.LogManager);
                 

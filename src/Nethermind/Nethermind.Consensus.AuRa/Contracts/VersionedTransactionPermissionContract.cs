@@ -21,6 +21,7 @@ using Nethermind.Abi;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Evm;
 using Nethermind.Logging;
@@ -34,11 +35,13 @@ namespace Nethermind.Consensus.AuRa.Contracts
             long activation,
             IReadOnlyTxProcessorSource readOnlyTxProcessorSource, 
             ICache<Keccak, UInt256> cache,
-            ILogManager logManager)
+            ILogManager logManager,
+            ISpecProvider specProvider)
             : base(
                 CreateAllVersions(abiEncoder,
                     contractAddress,
-                    readOnlyTxProcessorSource),
+                    readOnlyTxProcessorSource,
+                    specProvider),
                 cache,
                 activation,
                 logManager)
@@ -67,17 +70,20 @@ namespace Nethermind.Consensus.AuRa.Contracts
 
         private static TransactionPermissionContractV3 CreateV3(IAbiEncoder abiEncoder,
             Address contractAddress,
-            IReadOnlyTxProcessorSource readOnlyTxProcessorSource)
+            IReadOnlyTxProcessorSource readOnlyTxProcessorSource,
+            ISpecProvider specProvider)
         {
             return new TransactionPermissionContractV3(
                 abiEncoder,
                 contractAddress,
-                readOnlyTxProcessorSource);
+                readOnlyTxProcessorSource,
+                specProvider);
         }
 
         private static Dictionary<UInt256, ITransactionPermissionContract> CreateAllVersions(IAbiEncoder abiEncoder,
             Address contractAddress,
-            IReadOnlyTxProcessorSource readOnlyTxProcessorSource)
+            IReadOnlyTxProcessorSource readOnlyTxProcessorSource,
+            ISpecProvider specProvider)
         {
             return new Dictionary<UInt256, ITransactionPermissionContract>
             {
@@ -94,7 +100,8 @@ namespace Nethermind.Consensus.AuRa.Contracts
                 {
                     3, CreateV3(abiEncoder,
                         contractAddress,
-                        readOnlyTxProcessorSource)
+                        readOnlyTxProcessorSource,
+                        specProvider)
                 },
             };
         }

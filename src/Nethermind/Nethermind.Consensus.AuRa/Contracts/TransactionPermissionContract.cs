@@ -96,7 +96,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
         /// <returns><see cref="ITransactionPermissionContract.TxPermissions"/>Set of allowed transactions types and <see cref="bool"/> If `true` is returned, the same permissions will be applied from the same sender without calling this contract again.</returns>
         public (ITransactionPermissionContract.TxPermissions Permissions, bool ShouldCache, bool ContractExists) AllowedTxTypes(BlockHeader parentHeader, Transaction tx)
         {
-            object[] parameters = GetAllowedTxTypesParameters(tx);
+            object[] parameters = GetAllowedTxTypesParameters(tx, parentHeader);
             PermissionConstantContract.PermissionCallInfo callInfo = new(parentHeader, nameof(AllowedTxTypes), Address.Zero, parameters, tx.To ?? Address.Zero);
             (ITransactionPermissionContract.TxPermissions, bool) result = CallAllowedTxTypes(callInfo);
             return (result.Item1, result.Item2, callInfo.ToIsContract);
@@ -105,7 +105,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
         protected virtual (ITransactionPermissionContract.TxPermissions, bool) CallAllowedTxTypes(PermissionConstantContract.PermissionCallInfo callInfo) => 
             Constant.Call<ITransactionPermissionContract.TxPermissions, bool>(callInfo);
 
-        protected abstract object[] GetAllowedTxTypesParameters(Transaction tx);
+        protected abstract object[] GetAllowedTxTypesParameters(Transaction tx, BlockHeader parentHeader);
         
         protected PermissionConstantContract Constant { get; }
 

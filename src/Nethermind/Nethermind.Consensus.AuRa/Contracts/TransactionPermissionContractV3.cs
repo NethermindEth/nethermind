@@ -34,22 +34,31 @@ namespace Nethermind.Consensus.AuRa.Contracts
         public TransactionPermissionContractV3(
             IAbiEncoder abiEncoder,
             Address contractAddress,
-            IReadOnlyTxProcessorSource readOnlyTxProcessorSource)
+            IReadOnlyTxProcessorSource readOnlyTxProcessorSource,
+            ISpecProvider specProvider)
             : base(abiEncoder, contractAddress, readOnlyTxProcessorSource)
         {
-            //_specProvider = specProvider;
+            _specProvider = specProvider;
         }
-        
-        
-        protected override object[] GetAllowedTxTypesParameters(Transaction tx) =>
+
+
+        protected override object[] GetAllowedTxTypesParameters(Transaction tx, BlockHeader parentHeader)
+        {
             // _sender Transaction sender address.
             // _to Transaction recipient address. If creating a contract, the `_to` address is zero.
             // _value Transaction amount in wei.
             // _gasPrice Gas price in wei for the transaction.
             // _data Transaction data.
             
-            // ToDo what should we send here instead of tx.GasPrice?
-            new object[] {tx.SenderAddress, tx.To ?? Address.Zero, tx.Value, tx.GasPrice, tx.Data ?? Array.Empty<byte>()};
+            long number = (parentHeader?.Number ?? 0) + 1;
+            bool isEip1559Enabled = _specProvider.GetSpec(number).IsEip1559Enabled;
+            UInt256 gasPrice = isEip1559Enabled ? tx.FeeCap : tx.GasPrice;
+            
+            return new object[]
+            {
+                tx.SenderAddress, tx.To ?? Address.Zero, tx.Value, gasPrice, tx.Data ?? Array.Empty<byte>()
+            };
+        }
 
         public override UInt256 Version => Three;
     }

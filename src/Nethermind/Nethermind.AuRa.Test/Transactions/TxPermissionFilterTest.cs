@@ -32,6 +32,7 @@ using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Int256;
@@ -233,7 +234,8 @@ namespace Nethermind.AuRa.Test.Transactions
                 TestItem.AddressA,
                 5, 
                 Substitute.For<IReadOnlyTxProcessorSource>(), new LruCache<Keccak, UInt256>(100, "TestCache"),
-                LimboLogs.Instance);
+                LimboLogs.Instance,
+                Substitute.For<ISpecProvider>());
             
             var filter = new PermissionBasedTxFilter(transactionPermissionContract, new PermissionBasedTxFilter.Cache(), LimboLogs.Instance);
             return filter.IsAllowed(Build.A.Transaction.WithSenderAddress(TestItem.AddressB).TestObject, Build.A.BlockHeader.WithNumber(blockNumber).TestObject).Allowed;
@@ -248,7 +250,7 @@ namespace Nethermind.AuRa.Test.Transactions
             
             protected override BlockProcessor CreateBlockProcessor()
             {
-                var validator = new AuRaParameters.Validator()
+                AuRaParameters.Validator validator = new()
                 {
                     Addresses = TestItem.Addresses,
                     ValidatorType = AuRaParameters.ValidatorType.List
@@ -257,7 +259,7 @@ namespace Nethermind.AuRa.Test.Transactions
                 TransactionPermissionContractVersions =
                     new LruCache<Keccak, UInt256>(PermissionBasedTxFilter.Cache.MaxCacheSize, nameof(TransactionPermissionContract));
 
-                var trieStore = new ReadOnlyTrieStore(new TrieStore(DbProvider.StateDb, LimboLogs.Instance));
+                ReadOnlyTrieStore trieStore = new(new TrieStore(DbProvider.StateDb, LimboLogs.Instance));
                 IReadOnlyTxProcessorSource txProcessorSource = new ReadOnlyTxProcessingEnv(
                     DbProvider,
                     trieStore,
@@ -265,8 +267,8 @@ namespace Nethermind.AuRa.Test.Transactions
                     SpecProvider,
                     LimboLogs.Instance);
 
-                var transactionPermissionContract = new VersionedTransactionPermissionContract(new AbiEncoder(), _contractAddress, 1,
-                    new ReadOnlyTxProcessingEnv(DbProvider, trieStore, BlockTree, SpecProvider, LimboLogs.Instance), TransactionPermissionContractVersions, LimboLogs.Instance);
+                VersionedTransactionPermissionContract transactionPermissionContract = new(new AbiEncoder(), _contractAddress, 1,
+                    new ReadOnlyTxProcessingEnv(DbProvider, trieStore, BlockTree, SpecProvider, LimboLogs.Instance), TransactionPermissionContractVersions, LimboLogs.Instance, SpecProvider);
 
                 TxPermissionFilterCache = new PermissionBasedTxFilter.Cache();
                 PermissionBasedTxFilter = new PermissionBasedTxFilter(transactionPermissionContract, TxPermissionFilterCache, LimboLogs.Instance);
