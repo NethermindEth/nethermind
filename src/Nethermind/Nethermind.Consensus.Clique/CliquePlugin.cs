@@ -132,7 +132,7 @@ namespace Nethermind.Consensus.Clique
                 readOnlyDbProvider,
                 producerChainProcessor);
 
-            ITxFilter txFilter = new MinGasPriceTxFilter(_miningConfig!.MinGasPrice);
+            ITxFilter txFilter = new MinGasPriceTxFilter(_miningConfig!.MinGasPrice, getFromApi.SpecProvider);
             ITxSource txSource = new TxPoolTxSource(
                 getFromApi.TxPool,
                 getFromApi.StateReader,

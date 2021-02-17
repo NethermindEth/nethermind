@@ -15,6 +15,8 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System.Data.SqlTypes;
+using k8s;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa.Config;
@@ -23,6 +25,7 @@ using Nethermind.Consensus.AuRa.Contracts.DataStore;
 using Nethermind.Consensus.AuRa.Transactions;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -32,20 +35,23 @@ namespace Nethermind.Runner.Ethereum.Steps
 {
     public static class TxFilterBuilders
     {
-        public static ITxFilter CreateStandardTxFilter(IMiningConfig miningConfig)
-            => new MinGasPriceTxFilter(miningConfig.MinGasPrice);
+        public static IMinGasPriceTxFilter CreateStandardMinGasPriceTxFilter(IMiningConfig miningConfig, ISpecProvider specProvider)
+            => new MinGasPriceTxFilter(miningConfig.MinGasPrice, specProvider);
+        public static ITxFilter CreateStandardTxFilter(IMiningConfig miningConfig, ISpecProvider specProvider)
+            => new MinGasPriceTxFilter(miningConfig.MinGasPrice, specProvider);
         
         private static ITxFilter CreateBaseAuRaTxFilter(
             IMiningConfig miningConfig,
             AuRaNethermindApi api,
             IReadOnlyTxProcessorSource readOnlyTxProcessorSource,
-            IDictionaryContractDataStore<TxPriorityContract.Destination>? minGasPricesContractDataStore)
+            IDictionaryContractDataStore<TxPriorityContract.Destination>? minGasPricesContractDataStore,
+            ISpecProvider specProvider)
         {
-            ITxFilter gasPriceTxFilter = CreateStandardTxFilter(miningConfig);
-
+            IMinGasPriceTxFilter minGasPriceTxFilter = CreateStandardMinGasPriceTxFilter(miningConfig, specProvider);
+            ITxFilter gasPriceTxFilter = minGasPriceTxFilter;
             if (minGasPricesContractDataStore != null)
             {
-                gasPriceTxFilter = new MinGasPriceContractTxFilter(gasPriceTxFilter, minGasPricesContractDataStore);
+                gasPriceTxFilter = new MinGasPriceContractTxFilter(minGasPriceTxFilter, minGasPricesContractDataStore);
             }
             
             Address? registrar = api.ChainSpec?.Parameters.Registrar;
@@ -87,9 +93,10 @@ namespace Nethermind.Runner.Ethereum.Steps
             IMiningConfig miningConfig,
             AuRaNethermindApi api,
             IReadOnlyTxProcessorSource readOnlyTxProcessorSource,
-            IDictionaryContractDataStore<TxPriorityContract.Destination>? minGasPricesContractDataStore)
+            IDictionaryContractDataStore<TxPriorityContract.Destination>? minGasPricesContractDataStore,
+            ISpecProvider specProvider)
         {
-            ITxFilter baseAuRaTxFilter = CreateBaseAuRaTxFilter(miningConfig, api, readOnlyTxProcessorSource, minGasPricesContractDataStore);
+            ITxFilter baseAuRaTxFilter = CreateBaseAuRaTxFilter(miningConfig, api, readOnlyTxProcessorSource, minGasPricesContractDataStore, specProvider);
             ITxFilter? txPermissionFilter = CreateTxPermissionFilter(api, readOnlyTxProcessorSource);
             return txPermissionFilter != null
                 ? new CompositeTxFilter(baseAuRaTxFilter, txPermissionFilter) 

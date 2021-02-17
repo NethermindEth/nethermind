@@ -266,7 +266,8 @@ namespace Nethermind.Runner.Ethereum.Steps
                 NethermindApi.Config<IMiningConfig>(),
                 _api,
                 txPoolReadOnlyTransactionProcessorSource,
-                minGasPricesContractDataStore);
+                minGasPricesContractDataStore,
+                _api.SpecProvider);
             
             return new FilteredTxPool(
                 txStorage,

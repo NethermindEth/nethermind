@@ -33,6 +33,7 @@ using Nethermind.Consensus.AuRa.Transactions;
 using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Evm;
@@ -182,7 +183,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                     _api.TxPool,
                     processingEnv.StateReader, 
                     _api.LogManager, 
-                    CreateTxSourceFilter(processingEnv, readOnlyTxProcessorSource),
+                    CreateTxSourceFilter(processingEnv, readOnlyTxProcessorSource, _api.SpecProvider),
                     whitelistContractDataStore,
                     prioritiesContractDataStore,
                     _api.SpecProvider);
@@ -268,12 +269,13 @@ namespace Nethermind.Runner.Ethereum.Steps
             return txSource;
         }
 
-        protected override ITxFilter CreateTxSourceFilter(ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv, IReadOnlyTxProcessorSource readOnlyTxProcessorSource) => 
+        protected override ITxFilter CreateTxSourceFilter(ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv, IReadOnlyTxProcessorSource readOnlyTxProcessorSource, ISpecProvider specProvider) => 
             TxFilterBuilders.CreateAuRaTxFilter(
                 NethermindApi.Config<IMiningConfig>(),
                 _api,
                 readOnlyTxProcessorSource,
-                _minGasPricesContractDataStore);
+                _minGasPricesContractDataStore,
+                specProvider);
 
         private IGasLimitCalculator CreateGasLimitCalculator(IReadOnlyTxProcessorSource readOnlyTxProcessorSource)
         {

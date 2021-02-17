@@ -46,7 +46,7 @@ namespace Nethermind.Blockchain.Producers
         {
             _transactionPool = transactionPool ?? throw new ArgumentNullException(nameof(transactionPool));
             _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
-            _txFilter = txFilter ?? new MinGasPriceTxFilter(UInt256.Zero);
+            _txFilter = txFilter ?? new MinGasPriceTxFilter(UInt256.Zero, specProvider);
             _logger = logManager?.GetClassLogger<TxPoolTxSource>() ?? throw new ArgumentNullException(nameof(logManager));
         }
         

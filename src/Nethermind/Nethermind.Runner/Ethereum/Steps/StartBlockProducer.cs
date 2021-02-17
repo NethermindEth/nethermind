@@ -26,6 +26,7 @@ using Nethermind.Blockchain.Producers;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Transactions;
+using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.State;
@@ -121,12 +122,12 @@ namespace Nethermind.Runner.Ethereum.Steps
 
         protected virtual TxPoolTxSource CreateTxPoolTxSource(ReadOnlyTxProcessingEnv processingEnv, IReadOnlyTxProcessorSource readOnlyTxProcessorSource)
         {
-            ITxFilter txSourceFilter = CreateTxSourceFilter(processingEnv, readOnlyTxProcessorSource);
+            ITxFilter txSourceFilter = CreateTxSourceFilter(processingEnv, readOnlyTxProcessorSource,_api.SpecProvider);
             return new TxPoolTxSource(_api.TxPool, processingEnv.StateReader, _api.SpecProvider, _api.LogManager, txSourceFilter);
         }
 
-        protected virtual ITxFilter CreateTxSourceFilter(ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv, IReadOnlyTxProcessorSource readOnlyTxProcessorSource) =>
-            TxFilterBuilders.CreateStandardTxFilter(_api.Config<IMiningConfig>());
+        protected virtual ITxFilter CreateTxSourceFilter(ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv, IReadOnlyTxProcessorSource readOnlyTxProcessorSource, ISpecProvider specProvider) =>
+            TxFilterBuilders.CreateStandardTxFilter(_api.Config<IMiningConfig>(), specProvider);
 
         protected virtual BlockProcessor CreateBlockProcessor(
             ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv,

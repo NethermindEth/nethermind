@@ -152,7 +152,7 @@ namespace Nethermind.Blockchain.Test
             
             SetAccountStates(testCase.MissingAddresses);
 
-            TxPoolTxSource poolTxSource = new TxPoolTxSource(transactionPool, stateReader, specProvider, LimboLogs.Instance, new MinGasPriceTxFilter(testCase.MinGasPriceForMining));
+            TxPoolTxSource poolTxSource = new TxPoolTxSource(transactionPool, stateReader, specProvider, LimboLogs.Instance, new MinGasPriceTxFilter(testCase.MinGasPriceForMining, specProvider));
             
             IEnumerable<Transaction> selectedTransactions = poolTxSource.GetTransactions(Build.A.BlockHeader.WithStateRoot(stateProvider.StateRoot).TestObject, testCase.GasLimit, UInt256.Zero);
             selectedTransactions.Should().BeEquivalentTo(testCase.ExpectedSelectedTransactions, o => o.WithStrictOrdering());
