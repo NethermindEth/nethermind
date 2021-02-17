@@ -48,6 +48,7 @@ namespace Nethermind.Blockchain.Producers
             _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
             _txFilter = txFilter ?? new MinGasPriceTxFilter(UInt256.Zero, specProvider);
             _logger = logManager?.GetClassLogger<TxPoolTxSource>() ?? throw new ArgumentNullException(nameof(logManager));
+            _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
         }
         
         public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, UInt256 baseFee)
