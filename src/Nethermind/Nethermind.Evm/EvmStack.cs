@@ -372,6 +372,9 @@ namespace Nethermind.Evm
             return stackTrace;
         }
 
+        // This structure has an explicit layout, with size equal to the lenght of the vm word. 
+        // ulong fields are added only to make the compiler copy all of them when copying the struct. This might be not needed, 
+        // but as far as I remember, this was the case with JIT it in the past.
         [StructLayout(LayoutKind.Explicit, Size = 32)]
         struct Word
         {
