@@ -114,7 +114,7 @@ namespace Nethermind.Clique.Test
 
                 BlockTree blockTree = new BlockTree(blocksDb, headersDb, blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), goerliSpecProvider, NullBloomStorage.Instance,  nodeLogManager);
                 
-                TxPool.TxPool txPool = new TxPool.TxPool(new InMemoryTxStorage(), _ethereumEcdsa, new HeadChainSpecProvider(goerliSpecProvider, blockTree),
+                TxPool.TxPool txPool = new TxPool.TxPool(new InMemoryTxStorage(), _ethereumEcdsa, new ChainHeadSpecProvider(goerliSpecProvider, blockTree),
                     new TxPoolConfig(), stateProvider, new TxValidator(goerliSpecProvider.ChainId), _logManager);
                 
                 _pools[privateKey] = txPool;

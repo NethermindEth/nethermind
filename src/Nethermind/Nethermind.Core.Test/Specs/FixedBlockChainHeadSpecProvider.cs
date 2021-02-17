@@ -15,26 +15,27 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System;
-using Nethermind.Blockchain.Find;
 using Nethermind.Core.Specs;
 
-namespace Nethermind.Blockchain.Spec
+namespace Nethermind.Core.Test.Specs
 {
-    public class HeadChainSpecProvider : IHeadChainSpecProvider
+    public class FixedBlockChainHeadSpecProvider : IChainHeadSpecProvider
     {
         private readonly ISpecProvider _specProvider;
-        private readonly IBlockFinder _blockFinder;
+        private readonly long _fixedBlock;
 
-        public HeadChainSpecProvider(ISpecProvider specProvider, IBlockFinder blockFinder)
+        public FixedBlockChainHeadSpecProvider(ISpecProvider specProvider, long fixedBlock = 10_000_000)
         {
-            _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-            _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
+            _specProvider = specProvider;
+            _fixedBlock = fixedBlock;
         }
 
         public IReleaseSpec GenesisSpec => _specProvider.GenesisSpec;
 
-        public IReleaseSpec GetSpec(long blockNumber) => _specProvider.GetSpec(blockNumber);
+        public IReleaseSpec GetSpec(long blockNumber)
+        {
+            return _specProvider.GetSpec(blockNumber);
+        }
 
         public long? DaoBlockNumber => _specProvider.DaoBlockNumber;
 
@@ -42,6 +43,6 @@ namespace Nethermind.Blockchain.Spec
 
         public long[] TransitionBlocks => _specProvider.TransitionBlocks;
         
-        public IReleaseSpec GetSpec() => GetSpec(_blockFinder.FindBestSuggestedHeader()?.Number ?? 0);
+        public IReleaseSpec GetSpec() => GetSpec(_fixedBlock);
     }
 }

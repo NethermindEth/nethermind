@@ -75,7 +75,7 @@ namespace Nethermind.TxPool
 
         private readonly SortedPool<Keccak, Transaction, Address> _transactions;
 
-        private readonly IHeadChainSpecProvider _specProvider;
+        private readonly IChainHeadSpecProvider _specProvider;
         private readonly IReadOnlyStateProvider _stateProvider;
         private readonly ITxValidator _validator;
         private readonly IEthereumEcdsa _ecdsa;
@@ -134,7 +134,7 @@ namespace Nethermind.TxPool
         /// <param name="comparer"></param>
         public TxPool(ITxStorage txStorage,
             IEthereumEcdsa ecdsa,
-            IHeadChainSpecProvider specProvider,
+            IChainHeadSpecProvider specProvider,
             ITxPoolConfig txPoolConfig,
             IReadOnlyStateProvider stateProvider,
             ITxValidator validator,

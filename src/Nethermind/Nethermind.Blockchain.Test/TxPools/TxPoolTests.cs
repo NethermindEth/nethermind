@@ -28,6 +28,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Db;
+using Nethermind.Evm;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
@@ -52,7 +53,8 @@ namespace Nethermind.Blockchain.Test.TxPools
         private ITxStorage _inMemoryTxStorage;
         private ITxStorage _persistentTxStorage;
         private IStateProvider _stateProvider;
-        
+        private IBlockFinder _blockFinder;
+
         [SetUp]
         public void Setup()
         {
@@ -63,6 +65,8 @@ namespace Nethermind.Blockchain.Test.TxPools
             _inMemoryTxStorage = new InMemoryTxStorage();
             _persistentTxStorage = new PersistentTxStorage(new MemDb());
             _stateProvider = new StateProvider(new TrieStore(new MemDb(), _logManager), new MemDb(), _logManager);
+            _blockFinder = Substitute.For<IBlockFinder>();
+            _blockFinder.FindBestSuggestedHeader().Returns(Build.A.BlockHeader.WithNumber(10000000).TestObject);
         }
 
         [Test]
@@ -367,7 +371,7 @@ namespace Nethermind.Blockchain.Test.TxPools
         }
 
         private TxPool.TxPool CreatePool(ITxStorage txStorage)
-            => new TxPool.TxPool(txStorage, _ethereumEcdsa, new HeadChainSpecProvider(_specProvider, Substitute.For<IBlockFinder>()), 
+            => new TxPool.TxPool(txStorage, _ethereumEcdsa, new ChainHeadSpecProvider(_specProvider, _blockFinder), 
                 new TxPoolConfig(), _stateProvider, new TxValidator(_specProvider.ChainId), _logManager);
 
         private ITxPoolPeer GetPeer(PublicKey publicKey)
@@ -422,7 +426,7 @@ namespace Nethermind.Blockchain.Test.TxPools
         }
 
         private Transaction GetTransaction(PrivateKey privateKey, Address to = null, UInt256? nonce = null)
-            => GetTransaction(nonce ?? UInt256.Zero, 1, 1000, to, Array.Empty<byte>(), privateKey);
+            => GetTransaction(nonce ?? UInt256.Zero, GasCostOf.Transaction, 1000, to, Array.Empty<byte>(), privateKey);
 
         private Transaction GetTransaction(UInt256 nonce, long gasLimit, UInt256 gasPrice, Address to, byte[] data,
             PrivateKey privateKey)

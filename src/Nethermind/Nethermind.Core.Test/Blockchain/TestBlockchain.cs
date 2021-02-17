@@ -31,6 +31,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Specs;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Int256;
@@ -112,21 +113,20 @@ namespace Nethermind.Core.Test.Blockchain
 
             State.Commit(SpecProvider.GenesisSpec);
             State.CommitTree(0);
-
-            IDb blockDb = new MemDb();
-            IDb headerDb = new MemDb();
-            IDb blockInfoDb = new MemDb();
-            BlockTree = new BlockTree(blockDb, headerDb, blockInfoDb, new ChainLevelInfoRepository(blockDb), SpecProvider, NullBloomStorage.Instance, LimboLogs.Instance);
             
             TxPool = new TxPool.TxPool(
                 txStorage,
                 EthereumEcdsa,
-                new HeadChainSpecProvider(SpecProvider, BlockTree),
+                new FixedBlockChainHeadSpecProvider(SpecProvider),
                 new TxPoolConfig(),
                 State,
                 new TxValidator(SpecProvider.ChainId),
                 LimboLogs.Instance);
             
+            IDb blockDb = new MemDb();
+            IDb headerDb = new MemDb();
+            IDb blockInfoDb = new MemDb();
+            BlockTree = new BlockTree(blockDb, headerDb, blockInfoDb, new ChainLevelInfoRepository(blockDb), SpecProvider, NullBloomStorage.Instance, LimboLogs.Instance);
             new OnChainTxWatcher(BlockTree, TxPool, SpecProvider, LimboLogs.Instance);
 
             ReceiptStorage = new InMemoryReceiptStorage();

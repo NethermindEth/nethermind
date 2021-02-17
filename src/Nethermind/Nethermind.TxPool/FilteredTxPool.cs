@@ -36,7 +36,7 @@ namespace Nethermind.TxPool
         public FilteredTxPool(
             ITxStorage txStorage, 
             IEthereumEcdsa ecdsa, 
-            IHeadChainSpecProvider specProvider, 
+            IChainHeadSpecProvider specProvider, 
             ITxPoolConfig txPoolConfig, 
             IReadOnlyStateProvider stateProvider,
             ITxValidator txValidator,

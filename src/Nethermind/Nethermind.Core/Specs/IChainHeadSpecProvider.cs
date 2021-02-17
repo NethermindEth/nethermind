@@ -17,7 +17,7 @@
 
 namespace Nethermind.Core.Specs
 {
-    public interface IHeadChainSpecProvider : ISpecProvider
+    public interface IChainHeadSpecProvider : ISpecProvider
     {
         IReleaseSpec GetSpec();
     }

@@ -272,7 +272,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             return new FilteredTxPool(
                 txStorage,
                 _api.EthereumEcdsa,
-                new HeadChainSpecProvider(_api.SpecProvider, _api.BlockTree),
+                new ChainHeadSpecProvider(_api.SpecProvider, _api.BlockTree),
                 NethermindApi.Config<ITxPoolConfig>(),
                 _api.ChainHeadStateProvider,
                 _api.TxValidator,

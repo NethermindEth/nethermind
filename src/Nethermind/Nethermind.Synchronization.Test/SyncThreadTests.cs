@@ -276,7 +276,7 @@ namespace Nethermind.Synchronization.Test
             EthereumEcdsa ecdsa = new(specProvider.ChainId, logManager);
             BlockTree tree = new(blockDb, headerDb, blockInfoDb, new ChainLevelInfoRepository(blockInfoDb),
                 specProvider, NullBloomStorage.Instance, logManager);
-            TxPool.TxPool txPool = new(new InMemoryTxStorage(), ecdsa, new HeadChainSpecProvider(specProvider, tree), 
+            TxPool.TxPool txPool = new(new InMemoryTxStorage(), ecdsa, new ChainHeadSpecProvider(specProvider, tree), 
                 new TxPoolConfig(), stateProvider, new TxValidator(specProvider.ChainId), logManager);
             BlockhashProvider blockhashProvider = new(tree, LimboLogs.Instance);
             VirtualMachine virtualMachine =

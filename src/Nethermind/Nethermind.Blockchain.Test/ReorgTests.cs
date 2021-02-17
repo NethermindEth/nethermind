@@ -70,7 +70,7 @@ namespace Nethermind.Blockchain.Test
             TxPool.TxPool txPool = new TxPool.TxPool(
                 NullTxStorage.Instance,
                 ecdsa,
-                new HeadChainSpecProvider(specProvider, _blockTree),
+                new ChainHeadSpecProvider(specProvider, _blockTree),
                 new TxPoolConfig(),
                 stateProvider,
                 new TxValidator(specProvider.ChainId),
