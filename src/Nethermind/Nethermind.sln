@@ -180,6 +180,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.EthStats.Test", 
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.HealthChecks.Test", "Nethermind.HealthChecks.Test\Nethermind.HealthChecks.Test.csproj", "{09A68405-C911-4827-A705-931F45E26EFD}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Ethash.Test", "Nethermind.Ethash.Test\Nethermind.Ethash.Test.csproj", "{8089024B-6744-4034-8F4A-0FD86C1491E2}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -478,6 +480,10 @@ Global
 		{09A68405-C911-4827-A705-931F45E26EFD}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{09A68405-C911-4827-A705-931F45E26EFD}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{09A68405-C911-4827-A705-931F45E26EFD}.Release|Any CPU.Build.0 = Release|Any CPU
+		{8089024B-6744-4034-8F4A-0FD86C1491E2}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{8089024B-6744-4034-8F4A-0FD86C1491E2}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{8089024B-6744-4034-8F4A-0FD86C1491E2}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{8089024B-6744-4034-8F4A-0FD86C1491E2}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -540,6 +546,7 @@ Global
 		{A06EBCB5-D56A-47D9-ACC2-B1A27F74E94B} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
 		{7CD8E337-B91C-46FE-8098-18448501AB04} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
 		{09A68405-C911-4827-A705-931F45E26EFD} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
+		{8089024B-6744-4034-8F4A-0FD86C1491E2} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

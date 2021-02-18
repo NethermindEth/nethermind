@@ -31,6 +31,7 @@ namespace Nethermind.Consensus.Transactions
         
         public (bool Allowed, string Reason) IsAllowed(Transaction tx, BlockHeader parentHeader)
         {
+           // ToDo 1559 tx.FeeCap >= _minGasPrice && tx.FeeCap >= parentHeader.BaseFee
             return (tx.GasPrice >= _minGasPrice, $"gas price too low {tx.GasPrice} < {_minGasPrice}");
         }
     }
