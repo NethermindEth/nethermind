@@ -90,6 +90,8 @@ namespace Nethermind.Blockchain.Processing
         public Block[] Process(Keccak newBranchStateRoot, List<Block> suggestedBlocks, ProcessingOptions options, IBlockTracer blockTracer)
         {
             if (suggestedBlocks.Count == 0) return Array.Empty<Block>();
+            
+            BlocksProcessing?.Invoke(this, new BlocksProcessingEventArgs(suggestedBlocks));
 
             /* We need to save the snapshot state root before reorganization in case the new branch has invalid blocks.
                In case of invalid blocks on the new branch we will discard the entire branch and come back to 
@@ -156,6 +158,8 @@ namespace Nethermind.Blockchain.Processing
                 throw;
             }
         }
+
+        public event EventHandler<BlocksProcessingEventArgs> BlocksProcessing;
 
         // TODO: move to branch processor
         private void InitBranch(Keccak branchStateRoot, bool incrementReorgMetric = true)
