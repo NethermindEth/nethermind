@@ -61,6 +61,7 @@ namespace Nethermind.Consensus.AuRa
             _validSealerStrategy = validSealerStrategy ?? throw new ArgumentNullException(nameof(validSealerStrategy));
             _twoThirdsMajorityTransition = twoThirdsMajorityTransition;
             _blockProcessor.BlockProcessed += OnBlockProcessed;
+            _blockProcessor.BlocksProcessing += OnBlocksProcessing;
             Initialize();
         }
 
@@ -82,6 +83,40 @@ namespace Nethermind.Consensus.AuRa
             if (hasHead)
             {
                 FinalizeBlocks(_blockTree.Head?.Header);
+            }
+        }
+        
+        private void OnBlocksProcessing(object? sender, BlocksProcessingEventArgs e)
+        {
+            void UnFinalizeBlock(BlockHeader blockHeader, BatchWrite batch)
+            {
+                var (chainLevel, blockInfo) = GetBlockInfo(blockHeader);
+                blockInfo.IsFinalized = false;
+                _chainLevelInfoRepository.PersistLevel(blockHeader.Number, chainLevel, batch);
+            }
+
+            // rerunning block
+            BlockHeader header = e.Blocks.First().Header;
+            if (_blockTree.WasProcessed(header.Number, header.Hash))
+            {
+                using (var batch = _chainLevelInfoRepository.StartBatch())
+                {
+                    // need to un-finalize blocks
+                    var minSealersForFinalization = GetMinSealersForFinalization(header.Number);
+                    for (int i = 1; i < minSealersForFinalization; i++)
+                    {
+                        header = _blockTree.FindParentHeader(header, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+                        if (header != null)
+                        {
+                            UnFinalizeBlock(header, batch);
+                        }
+                    }
+                    
+                    for (int i = 0; i < e.Blocks.Count; i++)
+                    {
+                        UnFinalizeBlock(e.Blocks[i].Header, batch);
+                    }
+                }
             }
         }
 
@@ -107,13 +142,6 @@ namespace Nethermind.Consensus.AuRa
         
         private IReadOnlyList<BlockHeader> GetFinalizedBlocks(BlockHeader block)
         {
-            (ChainLevelInfo parentLevel, BlockInfo parentBlockInfo) GetBlockInfo(BlockHeader blockHeader)
-            {
-                var chainLevelInfo = _chainLevelInfoRepository.LoadLevel(blockHeader.Number);
-                var blockInfo = chainLevelInfo.BlockInfos.First(i => i.BlockHash == blockHeader.Hash);
-                return (chainLevelInfo, blockInfo);
-            }
-
             if (block.Number == _twoThirdsMajorityTransition)
             {
                 if (_logger.IsInfo) _logger.Info($"Block {_twoThirdsMajorityTransition}: Transitioning to 2/3 quorum.");
@@ -186,7 +214,7 @@ namespace Nethermind.Consensus.AuRa
 
                         if (!block.IsGenesis)
                         {
-                            block = _blockTree.FindHeader(block.ParentHash, BlockTreeLookupOptions.None);
+                            block = _blockTree.FindParentHeader(block, BlockTreeLookupOptions.None);
                             (chainLevel, blockInfo) = GetBlockInfo(block);
                         }
                     }
@@ -202,6 +230,13 @@ namespace Nethermind.Consensus.AuRa
             _lastProcessedBlockHash = originalBlock.Hash;
 
             return finalizedBlocks;
+        }
+
+        private (ChainLevelInfo parentLevel, BlockInfo parentBlockInfo) GetBlockInfo(BlockHeader blockHeader)
+        {
+            var chainLevelInfo = _chainLevelInfoRepository.LoadLevel(blockHeader.Number);
+            var blockInfo = chainLevelInfo.BlockInfos.First(i => i.BlockHash == blockHeader.Hash);
+            return (chainLevelInfo, blockInfo);
         }
 
         /* Simple, unoptimized method implementation for reference: 
