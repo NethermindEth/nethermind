@@ -56,7 +56,7 @@ namespace Nethermind.Ethash.Test
         public void CalculateBerlin_should_returns_expected_results()
         {
             ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-            specProvider.GetSpec(Arg.Any<long>()).Returns(Olympic.Instance);
+            specProvider.GetSpec(Arg.Any<long>()).Returns(Berlin.Instance);
             DifficultyCalculator difficultyCalculator = new(specProvider);
             UInt256 result = difficultyCalculator.Calculate(0x55f78f7, 1613570258, 0x602d20d2, 200000, false);
             Assert.AreEqual((UInt256)90186982, result);
