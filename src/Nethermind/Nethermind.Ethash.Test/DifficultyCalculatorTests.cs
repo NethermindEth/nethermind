@@ -17,6 +17,7 @@
 using Nethermind.Consensus.Ethash;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
+using Nethermind.Specs.Forks;
 using NUnit.Framework;
 using NSubstitute;
 
@@ -35,6 +36,27 @@ namespace Nethermind.Ethash.Test
             releaseSpec.IsTimeAdjustmentPostOlympic.Returns(true);
             ISpecProvider specProvider = Substitute.For<ISpecProvider>();
             specProvider.GetSpec(Arg.Any<long>()).Returns(releaseSpec);
+            DifficultyCalculator difficultyCalculator = new(specProvider);
+            UInt256 result = difficultyCalculator.Calculate(0x55f78f7, 1613570258, 0x602d20d2, 200000, false);
+            Assert.AreEqual((UInt256)90186983, result);
+        }
+        
+        
+        [Test]
+        public void CalculateOlympic_should_returns_expected_results()
+        {
+            ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+            specProvider.GetSpec(Arg.Any<long>()).Returns(Olympic.Instance);
+            DifficultyCalculator difficultyCalculator = new(specProvider);
+            UInt256 result = difficultyCalculator.Calculate(0x55f78f7, 1613570258, 0x602d20d2, 200000, false);
+            Assert.AreEqual((UInt256)90186983, result);
+        }
+        
+        [Test]
+        public void CalculateBerlin_should_returns_expected_results()
+        {
+            ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+            specProvider.GetSpec(Arg.Any<long>()).Returns(Olympic.Instance);
             DifficultyCalculator difficultyCalculator = new(specProvider);
             UInt256 result = difficultyCalculator.Calculate(0x55f78f7, 1613570258, 0x602d20d2, 200000, false);
             Assert.AreEqual((UInt256)90186982, result);
