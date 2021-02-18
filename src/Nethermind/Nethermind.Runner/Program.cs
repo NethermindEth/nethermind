@@ -38,7 +38,6 @@ using Nethermind.Runner.Ethereum.Api;
 using Nethermind.Runner.Logging;
 using Nethermind.Seq.Config;
 using Nethermind.Serialization.Json;
-using Nethermind.WebSockets;
 using NLog;
 using NLog.Config;
 using ILogger = Nethermind.Logging.ILogger;
@@ -50,12 +49,12 @@ namespace Nethermind.Runner
         private const string FailureString = "Failure";
         private const string DefaultConfigsDirectory = "configs";
         private const string DefaultConfigFile = "configs/mainnet.cfg";
-        
+
         private static ILogger _logger = SimpleConsoleLogger.Instance;
 
-        private static readonly CancellationTokenSource _processCloseCancellationSource = new CancellationTokenSource();
-        private static readonly TaskCompletionSource<object?> _cancelKeySource = new TaskCompletionSource<object?>();
-        private static readonly TaskCompletionSource<object?> _processExit = new TaskCompletionSource<object?>();
+        private static readonly CancellationTokenSource _processCloseCancellationSource = new();
+        private static readonly TaskCompletionSource<object?> _cancelKeySource = new();
+        private static readonly TaskCompletionSource<object?> _processExit = new();
 
         public static void Main(string[] args)
         {
@@ -94,18 +93,17 @@ namespace Nethermind.Runner
 
             AppDomain.CurrentDomain.ProcessExit += CurrentDomainOnProcessExit;
             IFileSystem fileSystem = new FileSystem(); ;
-            
-            PluginLoader pluginLoader = new PluginLoader(
-                "plugins", fileSystem, typeof(CliquePlugin), typeof(EthashPlugin), typeof(NethDevPlugin));
+
+            PluginLoader pluginLoader = new("plugins", fileSystem, typeof(CliquePlugin), typeof(EthashPlugin), typeof(NethDevPlugin));
             pluginLoader.Load(SimpleConsoleLogManager.Instance);
 
             Type configurationType = typeof(IConfig);
             IEnumerable<Type> configTypes = new TypeDiscovery().FindNethermindTypes(configurationType)
                 .Where(ct => ct.IsInterface);
 
-            CommandLineApplication app = new CommandLineApplication {Name = "Nethermind.Runner"};
-            app.HelpOption("-?|-h|--help");
-            app.VersionOption("-v|--version", () => ClientVersion.Version, () => ClientVersion.Description);
+            CommandLineApplication app = new() { Name = "Nethermind.Runner" };
+            _ = app.HelpOption("-?|-h|--help");
+            _ = app.VersionOption("-v|--version", () => ClientVersion.Version, () => ClientVersion.Description);
 
             GlobalDiagnosticsContext.Set("version", ClientVersion.Version);
 
@@ -136,12 +134,12 @@ namespace Nethermind.Runner
                     ConfigItemAttribute? configItemAttribute = propertyInfo.GetCustomAttribute<ConfigItemAttribute>();
                     if (!(configItemAttribute?.HiddenFromDocs ?? false))
                     {
-                        app.Option($"--{configType.Name.Substring(1).Replace("Config", String.Empty)}.{propertyInfo.Name}", $"{(configItemAttribute == null ? "<missing documentation>" : configItemAttribute.Description + $" (DEFAULT: {configItemAttribute.DefaultValue})" ?? "<missing documentation>")}", CommandOptionType.SingleValue);
+                        _ = app.Option($"--{configType.Name[1..].Replace("Config", string.Empty)}.{propertyInfo.Name}", $"{(configItemAttribute == null ? "<missing documentation>" : configItemAttribute.Description + $" (DEFAULT: {configItemAttribute.DefaultValue})" ?? "<missing documentation>")}", CommandOptionType.SingleValue);
                     }
                 }
             }
 
-            ManualResetEventSlim appClosed = new ManualResetEventSlim(true);
+            ManualResetEventSlim appClosed = new(true);
             app.OnExecute(async () =>
             {
                 appClosed.Reset();
@@ -154,7 +152,7 @@ namespace Nethermind.Runner
 
                 SetFinalDataDirectory(dataDir.HasValue() ? dataDir.Value() : null, initConfig, keyStoreConfig);
                 NLogManager logManager = new(initConfig.LogFileName, initConfig.LogDirectory);
-                
+
                 _logger = logManager.GetClassLogger();
                 if (_logger.IsDebug) _logger.Debug($"Nethermind version: {ClientVersion.Description}");
 
@@ -174,15 +172,15 @@ namespace Nethermind.Runner
                         nethermindApi.Plugins.Add(plugin);
                     }
                 }
-                
-                EthereumRunner ethereumRunner = new EthereumRunner(nethermindApi);
+
+                EthereumRunner ethereumRunner = new(nethermindApi);
                 await ethereumRunner.Start(_processCloseCancellationSource.Token).ContinueWith(x =>
                 {
                     if (x.IsFaulted && _logger.IsError)
                         _logger.Error("Error during ethereum runner start", x.Exception);
                 });
 
-                await Task.WhenAny(_cancelKeySource.Task, _processExit.Task);
+                _ = await Task.WhenAny(_cancelKeySource.Task, _processExit.Task);
 
                 _logger.Info("Closing, please wait until all functions are stopped properly...");
                 await ethereumRunner.StopAsync();
@@ -192,7 +190,7 @@ namespace Nethermind.Runner
                 return 0;
             });
 
-            app.Execute(args);
+            _ = app.Execute(args);
             appClosed.Wait();
         }
 
@@ -234,8 +232,8 @@ namespace Nethermind.Runner
                 NLogConfigurator.ConfigureLogLevels(logLevelOverride);
             }
 
-            ConfigProvider configProvider = new ConfigProvider();
-            Dictionary<string, string> configArgs = new Dictionary<string, string>();
+            ConfigProvider configProvider = new();
+            Dictionary<string, string> configArgs = new();
             foreach (CommandOption commandOption in app.Options)
             {
                 if (commandOption.HasValue())
@@ -258,14 +256,9 @@ namespace Nethermind.Runner
 
             if (!PathUtils.IsExplicitlyRelative(configFilePath))
             {
-                if (configDir == DefaultConfigsDirectory)
-                {
-                    configFilePath = configFilePath.GetApplicationResourcePath();
-                }
-                else
-                {
-                    configFilePath = Path.Combine(configDir, string.Concat(configFilePath));
-                }
+                configFilePath = configDir == DefaultConfigsDirectory
+                    ? configFilePath.GetApplicationResourcePath()
+                    : Path.Combine(configDir, string.Concat(configFilePath));
             }
 
             if (!Path.HasExtension(configFilePath) && !configFilePath.Contains(Path.DirectorySeparatorChar))
@@ -324,8 +317,7 @@ namespace Nethermind.Runner
             if (!string.IsNullOrWhiteSpace(baseDbPath))
             {
                 string newDbPath = initConfig.BaseDbPath.GetApplicationResourcePath(baseDbPath);
-                if (_logger.IsDebug) _logger.Debug(
-                    $"Adding prefix to baseDbPath, new value: {newDbPath}, old value: {initConfig.BaseDbPath}");
+                if (_logger.IsDebug) _logger.Debug($"Adding prefix to baseDbPath, new value: {newDbPath}, old value: {initConfig.BaseDbPath}");
                 initConfig.BaseDbPath = newDbPath;
             }
             else
@@ -342,7 +334,7 @@ namespace Nethermind.Runner
                 string newKeyStorePath = keyStoreConfig.KeyStoreDirectory.GetApplicationResourcePath(dataDir);
                 string newLogDirectory = initConfig.LogDirectory.GetApplicationResourcePath(dataDir);
 
-                if (_logger.IsInfo) 
+                if (_logger.IsInfo)
                 {
                     _logger.Info($"Setting BaseDbPath to: {newDbPath}, from: {initConfig.BaseDbPath}");
                     _logger.Info($"Setting KeyStoreDirectory to: {newKeyStorePath}, from: {keyStoreConfig.KeyStoreDirectory}");
@@ -364,7 +356,7 @@ namespace Nethermind.Runner
         private static void ConsoleOnCancelKeyPress(object? sender, ConsoleCancelEventArgs e)
         {
             _processCloseCancellationSource.Cancel();
-            _cancelKeySource.TrySetResult(null);
+            _ = _cancelKeySource.TrySetResult(null);
             e.Cancel = true;
         }
 
