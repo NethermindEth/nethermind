@@ -45,8 +45,6 @@ namespace Nethermind.Crypto
 
         private static readonly int ephemBytesLength = 2 * ((BouncyCrypto.DomainParameters.Curve.FieldSize + 7) / 8) + 1;
 
-        private static int allocSaved;
-
         public (bool, byte[]) Decrypt(PrivateKey privateKey, byte[] cipherText, byte[]? macData = null)
         {
             if (cipherText[0] != 4) // if not a compressed public key then probably we need to use EIP8
