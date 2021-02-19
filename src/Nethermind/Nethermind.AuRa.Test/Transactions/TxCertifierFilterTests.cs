@@ -50,6 +50,7 @@ namespace Nethermind.AuRa.Test.Transactions
         {
             _certifierContract = Substitute.For<ICertifierContract>();
             _notCertifiedFilter = Substitute.For<ITxFilter>();
+            _specProvider = Substitute.For<ISpecProvider>();
             
             _notCertifiedFilter.IsAllowed(Arg.Any<Transaction>(), Arg.Any<BlockHeader>())
                 .Returns((false, string.Empty));
