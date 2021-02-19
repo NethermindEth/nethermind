@@ -19,6 +19,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Api;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Comparers;
 using Nethermind.Blockchain.Data;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Validators;
@@ -242,7 +243,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.DisposeStack.Push(prioritiesContractDataStore);
                 IComparer<Transaction> txByPermissionComparer = new CompareTxByPermissionOnHead(whitelistContractDataStore, prioritiesContractDataStore, _api.BlockTree);
                 
-                return CompareTxByGasPrice.Instance
+                return new CompareTxBy1559GasPrice(_api.BlockTree, _api.SpecProvider)
                     .ThenBy(txByPermissionComparer)
                     .ThenBy(CompareTxByTimestamp.Instance)
                     .ThenBy(CompareTxByPoolIndex.Instance)
