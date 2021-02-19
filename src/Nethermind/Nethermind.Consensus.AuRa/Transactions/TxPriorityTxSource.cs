@@ -46,17 +46,18 @@ namespace Nethermind.Consensus.AuRa.Transactions
             ITxFilter txFilter,
             IContractDataStore<Address> sendersWhitelist, // expected HashSet based
             IDictionaryContractDataStore<TxPriorityContract.Destination> priorities,
-            ISpecProvider specProvider) // expected SortedList based
-            : base(transactionPool, stateReader, specProvider, logManager, txFilter)
+            ISpecProvider specProvider,
+            ITransactionComparerProvider transactionComparerProvider) // expected SortedList based
+            : base(transactionPool, stateReader, specProvider, transactionComparerProvider, logManager, txFilter)
         {
             _sendersWhitelist = sendersWhitelist ?? throw new ArgumentNullException(nameof(sendersWhitelist));
             _priorities = priorities ?? throw new ArgumentNullException(nameof(priorities));
         }
 
-        protected override IComparer<Transaction> GetComparer(BlockHeader parent)
+        protected override IComparer<Transaction> GetComparer(BlockHeader parent, UInt256 baseFee)
         {
             _comparer = new CompareTxByPermissionOnSpecifiedBlock(_sendersWhitelist, _priorities, parent);
-            return _comparer.ThenBy(base.GetComparer(parent));
+            return _comparer.ThenBy(base.GetComparer(parent, baseFee));
         }
 
         public override string ToString() => $"{nameof(TxPriorityTxSource)}";

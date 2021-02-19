@@ -38,17 +38,19 @@ namespace Nethermind.Blockchain.Producers
     {
         private readonly ITxPool _transactionPool;
         private readonly IStateReader _stateReader;
+        private readonly ITransactionComparerProvider _transactionComparerProvider;
         private readonly ITxFilter _txFilter;
         private readonly ISpecProvider _specProvider;
         protected readonly ILogger _logger;
 
-        public TxPoolTxSource(ITxPool transactionPool, IStateReader stateReader, ISpecProvider specProvider, ILogManager logManager, ITxFilter txFilter = null)
+        public TxPoolTxSource(ITxPool transactionPool, IStateReader stateReader, ISpecProvider specProvider, ITransactionComparerProvider transactionComparerProvider, ILogManager logManager, ITxFilter txFilter = null)
         {
             _transactionPool = transactionPool ?? throw new ArgumentNullException(nameof(transactionPool));
             _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
+            _transactionComparerProvider = transactionComparerProvider ?? throw new ArgumentNullException(nameof(transactionComparerProvider));
             _txFilter = txFilter ?? new MinGasPriceTxFilter(UInt256.Zero, specProvider);
-            _logger = logManager?.GetClassLogger<TxPoolTxSource>() ?? throw new ArgumentNullException(nameof(logManager));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
+            _logger = logManager?.GetClassLogger<TxPoolTxSource>() ?? throw new ArgumentNullException(nameof(logManager));
         }
         
         public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, UInt256 baseFee)
@@ -109,7 +111,7 @@ namespace Nethermind.Blockchain.Producers
             }
 
             IDictionary<Address, Transaction[]> pendingTransactions = _transactionPool.GetPendingTransactionsBySender();
-            IComparer<Transaction> comparer = GetComparer(parent)
+            IComparer<Transaction> comparer = GetComparer(parent, baseFee)
                 .ThenBy(DistinctCompareTx.Instance); // in order to sort properly and not loose transactions we need to differentiate on their identity which provided comparer might not be doing
             
             var transactions = GetOrderedTransactions(pendingTransactions, comparer);
@@ -184,7 +186,8 @@ namespace Nethermind.Blockchain.Producers
         protected virtual IEnumerable<Transaction> GetOrderedTransactions(IDictionary<Address,Transaction[]> pendingTransactions, IComparer<Transaction> comparer) => 
             Order(pendingTransactions, comparer);
 
-        protected virtual IComparer<Transaction> GetComparer(BlockHeader parent) => TxPool.TxPool.DefaultComparer;
+        protected virtual IComparer<Transaction> GetComparer(BlockHeader parent, UInt256 baseFee) 
+            => _transactionComparerProvider.GetBaseFeeSpecifiedComparer(baseFee, parent.Number + 1);
 
         internal static IEnumerable<Transaction> Order(IDictionary<Address,Transaction[]> pendingTransactions, IComparer<Transaction> comparerWithIdentity)
         {

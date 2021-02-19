@@ -1,3 +1,4 @@
+
 //  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
@@ -24,6 +25,7 @@ using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Resettables;
+using Nethermind.Core.Specs;
 using Nethermind.Logging;
 
 namespace Nethermind.Consensus.AuRa.Transactions
@@ -32,14 +34,16 @@ namespace Nethermind.Consensus.AuRa.Transactions
     {
         private readonly ICertifierContract _certifierContract;
         private readonly ITxFilter _notCertifiedFilter;
+        private readonly ISpecProvider _specProvider;
         private readonly ResettableDictionary<Address, bool> _certifiedCache = new ResettableDictionary<Address, bool>(8);
         private readonly ILogger _logger;
         private Keccak _cachedBlock;
 
-        public TxCertifierFilter(ICertifierContract certifierContract, ITxFilter notCertifiedFilter, ILogManager logManager)
+        public TxCertifierFilter(ICertifierContract certifierContract, ITxFilter notCertifiedFilter, ISpecProvider specProvider, ILogManager logManager)
         {
             _certifierContract = certifierContract ?? throw new ArgumentNullException(nameof(certifierContract));
             _notCertifiedFilter = notCertifiedFilter ?? throw new ArgumentNullException(nameof(notCertifiedFilter));
+            _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _logger = logManager?.GetClassLogger<TxCertifierFilter>() ?? throw new ArgumentNullException(nameof(logManager));
         }
         
@@ -48,7 +52,12 @@ namespace Nethermind.Consensus.AuRa.Transactions
 
         private bool IsCertified(Transaction tx, BlockHeader parentHeader)
         {
-            if (!tx.GasPrice.IsZero) // only 0 gas price transactions are system transactions and can be whitelissted
+            bool isEip1559Enabled = _specProvider.GetSpec(parentHeader.Number + 1).IsEip1559Enabled;
+            if (isEip1559Enabled && !tx.GasPremium.IsZero && !tx.FeeCap.IsZero) // only 0 gas price transactions are system transactions and can be whitelissted
+            {
+                return false;
+            }
+            else if (!tx.GasPrice.IsZero)
             {
                 return false;
             }

@@ -258,10 +258,11 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.SpecProvider,
                 _api.Config<ITxPoolConfig>(),
                 _api.ChainHeadStateProvider,
+                _api.TransactionComparerProvider,
                 _api.LogManager,
                 CreateTxPoolTxComparer());
 
-        protected IComparer<Transaction> CreateTxPoolTxComparer() => TxPool.TxPool.DefaultComparer;
+        protected IComparer<Transaction> CreateTxPoolTxComparer() => _api.TransactionComparerProvider.GetDefaultComparer();
 
         protected virtual HeaderValidator CreateHeaderValidator() =>
             new HeaderValidator(

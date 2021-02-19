@@ -18,6 +18,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using FluentAssertions;
+using Nethermind.Blockchain.Comparers;
 using Nethermind.Blockchain.Producers;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
@@ -27,6 +28,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Specs;
 using Nethermind.State;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
@@ -141,7 +143,13 @@ namespace Nethermind.Blockchain.Test
             }
 
             ITxPool transactionPool = Substitute.For<ITxPool>();
-            IComparer<Transaction> comparer = CompareTxByNonce.Instance.ThenBy(TxPool.TxPool.DefaultComparer);
+            IBlockTree blockTree = Substitute.For<IBlockTree>();
+            Block block =  Build.A.Block.WithNumber(0).TestObject;
+            blockTree.Head.Returns(block);
+            specProvider.GetSpec(Arg.Any<long>()).Returns(new ReleaseSpec() {IsEip1559Enabled = false});
+            var transactionComparerProvider = new TransactionComparerProvider(specProvider, blockTree);
+            IComparer<Transaction> defaultComparer = transactionComparerProvider.GetDefaultComparer();
+            IComparer<Transaction> comparer = CompareTxByNonce.Instance.ThenBy(defaultComparer);
             transactionPool.GetPendingTransactionsBySender().Returns(
                 testCase.Transactions
                     .Where(t => t?.SenderAddress != null)
@@ -152,7 +160,7 @@ namespace Nethermind.Blockchain.Test
             
             SetAccountStates(testCase.MissingAddresses);
 
-            TxPoolTxSource poolTxSource = new TxPoolTxSource(transactionPool, stateReader, specProvider, LimboLogs.Instance, new MinGasPriceTxFilter(testCase.MinGasPriceForMining, specProvider));
+            TxPoolTxSource poolTxSource = new TxPoolTxSource(transactionPool, stateReader, specProvider, transactionComparerProvider, LimboLogs.Instance, new MinGasPriceTxFilter(testCase.MinGasPriceForMining, specProvider));
             
             IEnumerable<Transaction> selectedTransactions = poolTxSource.GetTransactions(Build.A.BlockHeader.WithStateRoot(stateProvider.StateRoot).TestObject, testCase.GasLimit, UInt256.Zero);
             selectedTransactions.Should().BeEquivalentTo(testCase.ExpectedSelectedTransactions, o => o.WithStrictOrdering());

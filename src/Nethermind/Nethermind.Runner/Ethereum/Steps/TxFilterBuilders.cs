@@ -59,7 +59,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             {
                 RegisterContract registerContract = new RegisterContract(api.AbiEncoder, registrar, readOnlyTxProcessorSource);
                 CertifierContract certifierContract = new CertifierContract(api.AbiEncoder, registerContract, readOnlyTxProcessorSource);
-                return new TxCertifierFilter(certifierContract, gasPriceTxFilter, api.LogManager);
+                return new TxCertifierFilter(certifierContract, gasPriceTxFilter, specProvider, api.LogManager);
             }
 
             return gasPriceTxFilter;

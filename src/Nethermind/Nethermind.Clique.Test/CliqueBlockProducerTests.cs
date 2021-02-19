@@ -21,6 +21,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Comparers;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Producers;
 using Nethermind.Blockchain.Receipts;
@@ -109,12 +110,14 @@ namespace Nethermind.Clique.Test
                 stateProvider.CreateAccount(TestItem.PrivateKeyD.Address, 100.Ether());
                 stateProvider.Commit(GoerliSpecProvider.Instance.GenesisSpec);
                 stateProvider.CommitTree(0);
-
-                TxPool.TxPool txPool = new TxPool.TxPool(new InMemoryTxStorage(), _ethereumEcdsa, GoerliSpecProvider.Instance, new TxPoolConfig(), stateProvider, _logManager);
-                _pools[privateKey] = txPool;
-
+                
                 BlockTree blockTree = new BlockTree(blocksDb, headersDb, blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), GoerliSpecProvider.Instance, NullBloomStorage.Instance,  nodeLogManager);
                 blockTree.NewHeadBlock += (sender, args) => { _blockEvents[privateKey].Set(); };
+                ITransactionComparerProvider transactionComparerProvider =
+                    new TransactionComparerProvider(specProvider, blockTree);
+
+                 TxPool.TxPool txPool = new TxPool.TxPool(new InMemoryTxStorage(), _ethereumEcdsa, GoerliSpecProvider.Instance, new TxPoolConfig(), stateProvider, transactionComparerProvider, _logManager);
+                _pools[privateKey] = txPool;
 
                 BlockhashProvider blockhashProvider = new BlockhashProvider(blockTree, LimboLogs.Instance);
                 _blockTrees.Add(privateKey, blockTree);
@@ -172,7 +175,7 @@ namespace Nethermind.Clique.Test
                     ProcessGenesis(privateKey);
                 }
 
-                TxPoolTxSource txPoolTxSource = new TxPoolTxSource(txPool, stateReader, specProvider, nodeLogManager);
+                TxPoolTxSource txPoolTxSource = new TxPoolTxSource(txPool, stateReader, specProvider, transactionComparerProvider, nodeLogManager);
                 CliqueBlockProducer blockProducer = new CliqueBlockProducer(
                     txPoolTxSource,
                     minerProcessor,

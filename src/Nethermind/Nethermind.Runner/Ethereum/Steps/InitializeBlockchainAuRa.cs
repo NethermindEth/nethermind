@@ -275,6 +275,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.SpecProvider,
                 NethermindApi.Config<ITxPoolConfig>(),
                 _api.ChainHeadStateProvider,
+                _api.TransactionComparerProvider,
                 _api.LogManager,
                 CreateTxPoolTxComparer(txPriorityContract, localDataSource),
                 new TxFilterAdapter(_api.BlockTree, txPoolFilter));

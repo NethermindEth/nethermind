@@ -26,8 +26,8 @@ namespace Nethermind.TxPool.Collections
 {
     public class TxSortedPool : SortedPool<Keccak, Transaction, Address>
     {
-        public TxSortedPool(int capacity, IComparer<Transaction> comparer = null)
-            : base(capacity, comparer ?? TxPool.DefaultComparer)
+        public TxSortedPool(int capacity, ITransactionComparerProvider transactionComparerProvider, IComparer<Transaction> comparer = null)
+            : base(capacity, comparer ?? transactionComparerProvider.GetDefaultComparer())
         {
         }
 

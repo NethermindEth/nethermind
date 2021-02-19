@@ -19,6 +19,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Comparers;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Producers;
 using Nethermind.Blockchain.Receipts;
@@ -273,10 +274,13 @@ namespace Nethermind.Synchronization.Test
             InMemoryReceiptStorage receiptStorage = new();
 
             EthereumEcdsa ecdsa = new(specProvider.ChainId, logManager);
-            TxPool.TxPool txPool = new(new InMemoryTxStorage(), ecdsa, specProvider, new TxPoolConfig(), stateProvider,
-                logManager);
             BlockTree tree = new(blockDb, headerDb, blockInfoDb, new ChainLevelInfoRepository(blockInfoDb),
                 specProvider, NullBloomStorage.Instance, logManager);
+            ITransactionComparerProvider transactionComparerProvider =
+                new TransactionComparerProvider(specProvider, tree);
+            TxPool.TxPool txPool = new(new InMemoryTxStorage(), ecdsa, specProvider, new TxPoolConfig(), stateProvider, 
+                transactionComparerProvider, logManager);
+
             BlockhashProvider blockhashProvider = new(tree, LimboLogs.Instance);
             VirtualMachine virtualMachine =
                 new(stateProvider, storageProvider, blockhashProvider, specProvider, logManager);
@@ -334,7 +338,7 @@ namespace Nethermind.Synchronization.Test
 
             BlockchainProcessor devChainProcessor = new(tree, devBlockProcessor, step, logManager,
                 BlockchainProcessor.Options.NoReceipts);
-            TxPoolTxSource transactionSelector = new(txPool, stateReader, specProvider, logManager);
+            TxPoolTxSource transactionSelector = new(txPool, stateReader, specProvider, transactionComparerProvider, logManager);
             DevBlockProducer producer = new(
                 transactionSelector,
                 devChainProcessor,

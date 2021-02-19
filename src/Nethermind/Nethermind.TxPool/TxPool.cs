@@ -24,7 +24,6 @@ using System.Timers;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Int256;
@@ -43,12 +42,6 @@ namespace Nethermind.TxPool
     /// </summary>
     public class TxPool : ITxPool, IDisposable
     {
-        public static IComparer<Transaction> DefaultComparer { get; } =
-            CompareTxByGasPrice.Instance
-                .ThenBy(CompareTxByTimestamp.Instance)
-                .ThenBy(CompareTxByPoolIndex.Instance)
-                .ThenBy(CompareTxByGasLimit.Instance);
-
         private readonly object _locker = new object();
 
         private readonly ConcurrentDictionary<Address, AddressNonces> _nonces =
@@ -77,6 +70,7 @@ namespace Nethermind.TxPool
 
         private readonly ISpecProvider _specProvider;
         private readonly IReadOnlyStateProvider _stateProvider;
+        private readonly ITransactionComparerProvider _transactionComparerProvider;
         private readonly IEthereumEcdsa _ecdsa;
         protected readonly ILogger _logger;
 
@@ -128,6 +122,7 @@ namespace Nethermind.TxPool
         /// <param name="specProvider">Used for retrieving information on EIPs that may affect tx signature scheme.</param>
         /// <param name="txPoolConfig"></param>
         /// <param name="stateProvider"></param>
+        /// <param name="transactionComparerProvider"></param>
         /// <param name="logManager"></param>
         /// <param name="comparer"></param>
         public TxPool(ITxStorage txStorage,
@@ -135,6 +130,7 @@ namespace Nethermind.TxPool
             ISpecProvider specProvider,
             ITxPoolConfig txPoolConfig,
             IReadOnlyStateProvider stateProvider,
+            ITransactionComparerProvider transactionComparerProvider,
             ILogManager logManager,
             IComparer<Transaction> comparer = null)
         {
@@ -143,6 +139,7 @@ namespace Nethermind.TxPool
             _txStorage = txStorage ?? throw new ArgumentNullException(nameof(txStorage));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
+            _transactionComparerProvider = transactionComparerProvider ?? throw new ArgumentNullException(nameof(transactionComparerProvider));
 
             MemoryAllowance.MemPoolSize = txPoolConfig.Size;
             ThisNodeInfo.AddInfo("Mem est tx   :",
@@ -150,7 +147,7 @@ namespace Nethermind.TxPool
                     .PadLeft(8));
 
             _transactions =
-                new TxDistinctSortedPool(MemoryAllowance.MemPoolSize, logManager, comparer ?? DefaultComparer);
+                new TxDistinctSortedPool(MemoryAllowance.MemPoolSize, transactionComparerProvider, logManager, comparer ?? _transactionComparerProvider.GetDefaultComparer());
             _peerNotificationThreshold = txPoolConfig.PeerNotificationThreshold;
 
             _ownTimer = new Timer(500);

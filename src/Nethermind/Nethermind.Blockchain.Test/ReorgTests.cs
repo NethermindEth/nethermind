@@ -17,6 +17,7 @@
 
 using System.Threading;
 using FluentAssertions;
+using Nethermind.Blockchain.Comparers;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Rewards;
@@ -65,6 +66,7 @@ namespace Nethermind.Blockchain.Test
                 specProvider,
                 new TxPoolConfig(),
                 stateProvider,
+                new TransactionComparerProvider(specProvider, _blockTree),
                 LimboLogs.Instance);
             _blockTree = new BlockTree(
                 memDbProvider,

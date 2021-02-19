@@ -19,6 +19,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using FluentAssertions;
+using Nethermind.Blockchain.Comparers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -48,6 +49,7 @@ namespace Nethermind.Blockchain.Test.TxPools
         private ITxStorage _inMemoryTxStorage;
         private ITxStorage _persistentTxStorage;
         private IStateProvider _stateProvider;
+        private IBlockTree _blockTree;
         
         [SetUp]
         public void Setup()
@@ -59,6 +61,9 @@ namespace Nethermind.Blockchain.Test.TxPools
             _inMemoryTxStorage = new InMemoryTxStorage();
             _persistentTxStorage = new PersistentTxStorage(new MemDb());
             _stateProvider = new StateProvider(new TrieStore(new MemDb(), _logManager), new MemDb(), _logManager);
+            _blockTree = Substitute.For<IBlockTree>();
+            Block block =  Build.A.Block.WithNumber(0).TestObject;
+            _blockTree.Head.Returns(block);
         }
 
         [Test]
@@ -341,7 +346,7 @@ namespace Nethermind.Blockchain.Test.TxPools
         }
 
         private TxPool.TxPool CreatePool(ITxStorage txStorage)
-            => new TxPool.TxPool(txStorage, _ethereumEcdsa, _specProvider, new TxPoolConfig(), _stateProvider, _logManager);
+            => new TxPool.TxPool(txStorage, _ethereumEcdsa, _specProvider, new TxPoolConfig(), _stateProvider, new TransactionComparerProvider(_specProvider,_blockTree), _logManager);
 
         private ITxPoolPeer GetPeer(PublicKey publicKey)
         {

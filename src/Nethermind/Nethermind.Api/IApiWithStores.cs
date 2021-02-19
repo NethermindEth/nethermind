@@ -22,6 +22,7 @@ using Nethermind.Consensus;
 using Nethermind.Crypto;
 using Nethermind.Db.Blooms;
 using Nethermind.State.Repositories;
+using Nethermind.TxPool;
 using Nethermind.Wallet;
 
 namespace Nethermind.Api
@@ -38,5 +39,6 @@ namespace Nethermind.Api
         IReceiptStorage? ReceiptStorage { get; set; }
         IReceiptFinder? ReceiptFinder { get; set; }
         IWallet? Wallet { get; set; }
+        ITransactionComparerProvider TransactionComparerProvider { get; set; }
     }
 }

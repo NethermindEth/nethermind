@@ -89,8 +89,9 @@ namespace Nethermind.Core
         {
             if (eip1559Enabled)
             {
+                UInt256 feeCap = IsEip1559 ? FeeCap : GasPrice;
                 UInt256 gasPrice = baseFee + GasPremium;
-                gasPrice = gasPrice > FeeCap ? FeeCap : gasPrice;
+                gasPrice = gasPrice > feeCap ? feeCap : gasPrice;
                 return gasPrice * (ulong)GasLimit + Value;
             }
 

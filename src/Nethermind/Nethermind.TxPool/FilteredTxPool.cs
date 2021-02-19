@@ -39,10 +39,11 @@ namespace Nethermind.TxPool
             ISpecProvider specProvider, 
             ITxPoolConfig txPoolConfig, 
             IReadOnlyStateProvider stateProvider,
+            ITransactionComparerProvider transactionComparerProvider,
             ILogManager logManager, 
             IComparer<Transaction> comparer = null,
             ITxPoolFilter txPoolFilter = null) 
-            : base(txStorage, ecdsa, specProvider, txPoolConfig, stateProvider, logManager, comparer)
+            : base(txStorage, ecdsa, specProvider, txPoolConfig, stateProvider, transactionComparerProvider, logManager, comparer)
         {
             _txPoolFilter = txPoolFilter;
         }

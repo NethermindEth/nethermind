@@ -19,6 +19,7 @@ using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Comparers;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Producers;
 using Nethermind.Blockchain.Receipts;
@@ -54,17 +55,24 @@ namespace Nethermind.Consensus.Ethash
             {
                 return Task.CompletedTask;
             }
-            
             var (getFromApi, setInApi) = _nethermindApi!.ForProducer;
+
+            ReadOnlyDbProvider readOnlyDbProvider = getFromApi.DbProvider.AsReadOnly(false);
+            ReadOnlyBlockTree readOnlyBlockTree = getFromApi.BlockTree.AsReadOnly();
+            
+
             ITxFilter txFilter = new NullTxFilter();
             ITxSource txSource = new TxPoolTxSource(
-                getFromApi.TxPool, getFromApi.StateReader, getFromApi.SpecProvider, getFromApi.LogManager, txFilter);
+                getFromApi.TxPool, 
+                getFromApi.StateReader,
+                getFromApi.SpecProvider,
+                new TransactionComparerProvider(getFromApi.SpecProvider, getFromApi.BlockTree),
+                getFromApi.LogManager,
+                txFilter);
             
             ILogger logger = getFromApi.LogManager.GetClassLogger();
             if (logger.IsWarn) logger.Warn("Starting Neth Dev block producer & sealer");
 
-            ReadOnlyDbProvider readOnlyDbProvider = getFromApi.DbProvider.AsReadOnly(false);
-            ReadOnlyBlockTree readOnlyBlockTree = getFromApi.BlockTree.AsReadOnly();
 
             ReadOnlyTxProcessingEnv producerEnv = new ReadOnlyTxProcessingEnv(
                 readOnlyDbProvider,

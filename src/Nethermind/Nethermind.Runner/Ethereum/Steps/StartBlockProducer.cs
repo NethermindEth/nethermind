@@ -123,7 +123,7 @@ namespace Nethermind.Runner.Ethereum.Steps
         protected virtual TxPoolTxSource CreateTxPoolTxSource(ReadOnlyTxProcessingEnv processingEnv, IReadOnlyTxProcessorSource readOnlyTxProcessorSource)
         {
             ITxFilter txSourceFilter = CreateTxSourceFilter(processingEnv, readOnlyTxProcessorSource,_api.SpecProvider);
-            return new TxPoolTxSource(_api.TxPool, processingEnv.StateReader, _api.SpecProvider, _api.LogManager, txSourceFilter);
+            return new TxPoolTxSource(_api.TxPool, processingEnv.StateReader, _api.SpecProvider, _api.TransactionComparerProvider, _api.LogManager, txSourceFilter);
         }
 
         protected virtual ITxFilter CreateTxSourceFilter(ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv, IReadOnlyTxProcessorSource readOnlyTxProcessorSource, ISpecProvider specProvider) =>
