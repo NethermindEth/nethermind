@@ -482,6 +482,12 @@ namespace Nethermind.DataMarketplace.Infrastructure
             set => _nethermindApi.Wallet = value;
         }
 
+        public ITransactionComparerProvider TransactionComparerProvider
+        {
+            get => _nethermindApi.TransactionComparerProvider;
+            set => _nethermindApi.TransactionComparerProvider = value;
+        }
+
         public IWebSocketsManager? WebSocketsManager
         {
             get => _nethermindApi.WebSocketsManager;

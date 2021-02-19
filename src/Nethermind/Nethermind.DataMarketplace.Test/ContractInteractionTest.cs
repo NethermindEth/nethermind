@@ -48,6 +48,7 @@ using NSubstitute;
 using NUnit.Framework;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Blockchain.Comparers;
 using Nethermind.Trie.Pruning;
 
 namespace Nethermind.DataMarketplace.Test
@@ -129,8 +130,12 @@ namespace Nethermind.DataMarketplace.Test
             TxReceipt receipt = await DeployContract(Bytes.FromHexString(ContractData.GetInitCode(_feeAccount)));
             ((NdmConfig) _ndmConfig).ContractAddress = receipt.ContractAddress.ToString();
             _contractAddress = receipt.ContractAddress;
+            IBlockTree blockTree = Substitute.For<IBlockTree>();
+            Block block =  Build.A.Block.WithNumber(0).TestObject;
+            blockTree.Head.Returns(block);
+            var transactionComparerProvider = new TransactionComparerProvider(specProvider, blockTree);
             _txPool = new TxPool.TxPool(new InMemoryTxStorage(),
-                new EthereumEcdsa(specProvider.ChainId, _logManager), specProvider, new TxPoolConfig(), _state, _logManager);
+                new EthereumEcdsa(specProvider.ChainId, _logManager), specProvider, new TxPoolConfig(), _state, transactionComparerProvider, _logManager);
             _ndmBridge = new NdmBlockchainBridge(_bridge, _bridge, _bridge, _bridge);
         }
 
