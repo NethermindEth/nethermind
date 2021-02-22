@@ -190,8 +190,12 @@ namespace Nethermind.Evm
             }
 
             UInt256 senderReservedGasPayment = isCall ? UInt256.Zero : (ulong) gasLimit * gasPrice;
+
+            if (!isCall)
+            {
+                _stateProvider.SubtractFromBalance(caller, senderReservedGasPayment, spec);
+            }
             
-            _stateProvider.SubtractFromBalance(caller, senderReservedGasPayment, spec);
             _stateProvider.Commit(spec, txTracer.IsTracingState ? txTracer : NullTxTracer.Instance);
 
             long unspentGas = gasLimit - intrinsicGas;
@@ -199,8 +203,11 @@ namespace Nethermind.Evm
 
             int stateSnapshot = _stateProvider.TakeSnapshot();
             int storageSnapshot = _storageProvider.TakeSnapshot();
+            if (!isCall)
+            {
+                _stateProvider.SubtractFromBalance(caller, value, spec);
+            }
 
-            _stateProvider.SubtractFromBalance(caller, value, spec);
             byte statusCode = StatusCode.Failure;
             TransactionSubstate substate = null;
 
