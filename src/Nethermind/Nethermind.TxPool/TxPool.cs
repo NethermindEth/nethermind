@@ -20,6 +20,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
+using System.Threading.Tasks;
 using System.Timers;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
@@ -469,10 +470,21 @@ namespace Nethermind.TxPool
 
         private void Notify(ITxPoolPeer peer, Transaction tx, bool isPriority)
         {
-            Metrics.PendingTransactionsSent++;
-            peer.SendNewTransaction(tx, isPriority);
+            Task.Run(() =>
+            {
+                Metrics.PendingTransactionsSent++;
+                peer.SendNewTransaction(tx, isPriority);
 
-            if (_logger.IsTrace) _logger.Trace($"Notified {peer.Enode} about a transaction: {tx.Hash}");
+                if (_logger.IsTrace) _logger.Trace($"Notified {peer.Enode} about a transaction: {tx.Hash}");
+            }).ContinueWith(
+                t =>
+                    t.Exception?.Handle(ex =>
+                    {
+                        _logger.Error($"Failed to notify {peer.Enode} about a transaction: {tx.Hash}", ex);
+                        return true;
+                    })
+                , TaskContinuationOptions.OnlyOnFaulted
+            );
         }
 
         private void NotifyAllPeers(Transaction tx)

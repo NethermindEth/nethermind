@@ -430,9 +430,23 @@ namespace Nethermind.Synchronization
         [Todo(Improve.Refactor, "This may not be desired if the other node is just syncing now too")]
         private void OnNewHeadBlock(object? sender, BlockEventArgs blockEventArgs)
         {
+            void NotifyOfNewBlock(PeerInfo peerInfo, Block broadcastedBlock, SendBlockPriority priority)
+            {
+                Task.Run(() => peerInfo.SyncPeer.NotifyOfNewBlock(broadcastedBlock, priority))
+                    .ContinueWith(
+                        t =>
+                            t.Exception?.Handle(ex =>
+                            {
+                                _logger.Error($"Error while broadcasting block {broadcastedBlock.ToString(Block.Format.Short)} to peer {peerInfo}.", ex);
+                                return true;
+                            })
+                        , TaskContinuationOptions.OnlyOnFaulted
+                    );
+            }
+
+            Block block = blockEventArgs.Block;
             Task.Run(() =>
             {
-                Block block = blockEventArgs.Block;
                 if (_blockTree.BestKnownNumber > block.Number) return;
 
                 int peerCount = _pool.PeerCount;
@@ -445,12 +459,12 @@ namespace Nethermind.Synchronization
                     {
                         if (_broadcastRandomizer.NextDouble() < broadcastRatio)
                         {
-                            peerInfo.SyncPeer.NotifyOfNewBlock(block, SendBlockPriority.High);
+                            NotifyOfNewBlock(peerInfo, block, SendBlockPriority.High);
                             counter++;
                         }
                         else
                         {
-                            peerInfo.SyncPeer.NotifyOfNewBlock(block, SendBlockPriority.Low);
+                            NotifyOfNewBlock(peerInfo, block, SendBlockPriority.Low);
                         }
                     }
                 }
@@ -470,7 +484,7 @@ namespace Nethermind.Synchronization
                 t =>
                     t.Exception?.Handle(ex =>
                     {
-                        _logger.Error(ex.Message, ex);
+                        _logger.Error($"Error while broadcasting block {block.ToString(Block.Format.Short)}.", ex);
                         return true;
                     })
                 , TaskContinuationOptions.OnlyOnFaulted
