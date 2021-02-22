@@ -381,13 +381,13 @@ namespace Nethermind.Evm
             [FieldOffset(0)]
             public ulong u0;
 
-            [FieldOffset(1)]
+            [FieldOffset(8)]
             public ulong u1;
 
-            [FieldOffset(2)]
+            [FieldOffset(16)]
             public ulong u2;
 
-            [FieldOffset(3)]
+            [FieldOffset(24)]
             public ulong u3;
         }
     }
