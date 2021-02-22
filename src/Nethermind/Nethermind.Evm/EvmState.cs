@@ -38,7 +38,7 @@ namespace Nethermind.Evm
                 _maxCallStackDepth = maxCallStackDepth;
             }
 
-            private readonly ConcurrentStack<byte[]> _dataStackPool = new();
+            private readonly ConcurrentStack<Word[]> _dataStackPool = new();
             private readonly ConcurrentStack<int[]> _returnStackPool = new();
 
             private int _dataStackPoolDepth;
@@ -50,15 +50,15 @@ namespace Nethermind.Evm
             /// </summary>
             /// <param name="dataStack"></param>
             /// <param name="returnStack"></param>
-            public void ReturnStacks(byte[] dataStack, int[] returnStack)
+            public void ReturnStacks(Word[] dataStack, int[] returnStack)
             {
                 _dataStackPool.Push(dataStack);
                 _returnStackPool.Push(returnStack);
             }
 
-            private byte[] RentDataStack()
+            private Word[] RentDataStack()
             {
-                if (_dataStackPool.TryPop(out byte[] result))
+                if (_dataStackPool.TryPop(out Word[] result))
                 {
                     return result;
                 }
@@ -69,7 +69,7 @@ namespace Nethermind.Evm
                     throw new Exception();
                 }
 
-                return new byte[(EvmStack.MaxStackSize + EvmStack.RegisterLength) * 32];
+                return new Word[(EvmStack.MaxStackSize + EvmStack.RegisterLength)];
             }
             
             private int[] RentReturnStack()
@@ -88,13 +88,13 @@ namespace Nethermind.Evm
                 return new int[EvmStack.ReturnStackSize];
             }
             
-            public (byte[], int[]) RentStacks()
+            public (Word[], int[]) RentStacks()
             {
                 return (RentDataStack(), RentReturnStack());
             }
         }
 
-        public byte[]? DataStack;
+        public Word[]? DataStack;
         
         public int[]? ReturnStack;
         
