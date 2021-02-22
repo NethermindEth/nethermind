@@ -83,6 +83,8 @@ namespace Nethermind.Evm
         {
             bool notSystemTransaction = !transaction.IsSystem();
             bool wasSenderAccountCreatedInsideACall = false;
+            IBalanceUpdater balanceUpdater = txTracer is CancellationTxTracer && ((CancellationTxTracer)txTracer).InnerTracer is EstimateGasTracer? 
+                  FakeBalanceUpdater.Instance : _stateProvider;
             
             IReleaseSpec spec = _specProvider.GetSpec(block.Number);
             if (!notSystemTransaction)
@@ -190,11 +192,7 @@ namespace Nethermind.Evm
             }
 
             UInt256 senderReservedGasPayment = isCall ? UInt256.Zero : (ulong) gasLimit * gasPrice;
-
-            if (!isCall)
-            {
-                _stateProvider.SubtractFromBalance(caller, senderReservedGasPayment, spec);
-            }
+            balanceUpdater.SubtractFromBalance(caller, senderReservedGasPayment, spec);
             
             _stateProvider.Commit(spec, txTracer.IsTracingState ? txTracer : NullTxTracer.Instance);
 
@@ -203,10 +201,7 @@ namespace Nethermind.Evm
 
             int stateSnapshot = _stateProvider.TakeSnapshot();
             int storageSnapshot = _storageProvider.TakeSnapshot();
-            if (!isCall)
-            {
-                _stateProvider.SubtractFromBalance(caller, value, spec);
-            }
+            balanceUpdater.SubtractFromBalance(caller, value, spec);
 
             byte statusCode = StatusCode.Failure;
             TransactionSubstate substate = null;
@@ -313,7 +308,7 @@ namespace Nethermind.Evm
                     statusCode = StatusCode.Success;
                 }
 
-                spentGas = Refund(gasLimit, unspentGas, substate, caller, gasPrice, spec);
+                spentGas = Refund(gasLimit, unspentGas, substate, caller, gasPrice, spec, balanceUpdater);
             }
             catch (Exception ex) when (ex is EvmException || ex is OverflowException) // TODO: OverflowException? still needed? hope not
             {
@@ -335,7 +330,7 @@ namespace Nethermind.Evm
                     }
                     else
                     {
-                        _stateProvider.AddToBalance(gasBeneficiary, (ulong) spentGas * premiumPerGas, spec);
+                        balanceUpdater.AddToBalance(gasBeneficiary, (ulong) spentGas * premiumPerGas, spec);
                     }
                 }
             }
@@ -356,7 +351,7 @@ namespace Nethermind.Evm
                 }
                 else
                 {
-                    _stateProvider.AddToBalance(caller, senderReservedGasPayment, spec);
+                    balanceUpdater.AddToBalance(caller, senderReservedGasPayment, spec);
                     if (notSystemTransaction)
                     {
                         _stateProvider.DecrementNonce(caller);
@@ -397,7 +392,7 @@ namespace Nethermind.Evm
             if (_logger.IsTrace) _logger.Trace($"Invalid tx {transaction.Hash} ({reason})");
         }
         
-        private long Refund(long gasLimit, long unspentGas, TransactionSubstate substate, Address sender, UInt256 gasPrice, IReleaseSpec spec)
+        private long Refund(long gasLimit, long unspentGas, TransactionSubstate substate, Address sender, UInt256 gasPrice, IReleaseSpec spec, IBalanceUpdater balanceUpdater)
         {
             long spentGas = gasLimit;
             if (!substate.IsError)
@@ -406,7 +401,7 @@ namespace Nethermind.Evm
                 long refund = substate.ShouldRevert ? 0 : RefundHelper.CalculateClaimableRefund(spentGas, substate.Refund + substate.DestroyList.Count * RefundOf.Destroy);
 
                 if (_logger.IsTrace) _logger.Trace("Refunding unused gas of " + unspentGas + " and refund of " + refund);
-                _stateProvider.AddToBalance(sender, (ulong) (unspentGas + refund) * gasPrice, spec);
+                balanceUpdater.AddToBalance(sender, (ulong) (unspentGas + refund) * gasPrice, spec);
                 spentGas -= refund;
             }
 

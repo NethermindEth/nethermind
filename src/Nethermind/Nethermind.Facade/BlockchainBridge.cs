@@ -160,6 +160,7 @@ namespace Nethermind.Facade
         public CallOutput Call(BlockHeader blockHeader, Transaction transaction, CancellationToken cancellationToken)
         {
             CallOutputTracer callOutputTracer = new CallOutputTracer();
+            
             CallAndRestore(blockHeader, blockHeader.Number, blockHeader.Timestamp, transaction,
                 new CancellationTxTracer(callOutputTracer, cancellationToken)
                 {
@@ -179,6 +180,8 @@ namespace Nethermind.Facade
         public CallOutput EstimateGas(BlockHeader header, Transaction tx, CancellationToken cancellationToken)
         {
             EstimateGasTracer estimateGasTracer = new EstimateGasTracer();
+            
+            
             CallAndRestore(
                 header,
                 header.Number + 1,

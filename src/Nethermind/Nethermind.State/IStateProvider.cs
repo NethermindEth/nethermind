@@ -18,11 +18,10 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
-using Nethermind.Trie;
 
 namespace Nethermind.State
 {
-    public interface IStateProvider : IReadOnlyStateProvider
+    public interface IStateProvider : IBalanceUpdater, IReadOnlyStateProvider
     {
         void RecalculateStateRoot();
         
@@ -33,10 +32,6 @@ namespace Nethermind.State
         void CreateAccount(Address address, in UInt256 balance);
 
         void UpdateCodeHash(Address address, Keccak codeHash, IReleaseSpec spec);
-
-        void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec);
-        
-        void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec);
 
         void UpdateStorageRoot(Address address, Keccak storageRoot);
 

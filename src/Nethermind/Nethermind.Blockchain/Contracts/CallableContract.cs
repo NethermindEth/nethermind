@@ -42,7 +42,8 @@ namespace Nethermind.Blockchain.Contracts
             _transactionProcessor = transactionProcessor ?? throw new ArgumentNullException(nameof(transactionProcessor));
         }
 
-        private byte[] Call(BlockHeader header, string functionName, Transaction transaction) => CallCore(_transactionProcessor, header, functionName, transaction);
+        private byte[] Call(BlockHeader header, string functionName, Transaction transaction) => 
+            CallCore(_transactionProcessor, header, functionName, transaction);
 
         /// <summary>
         /// Calls the function in contract, state modification is allowed.
