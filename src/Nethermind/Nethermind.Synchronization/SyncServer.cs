@@ -438,7 +438,7 @@ namespace Nethermind.Synchronization
                 }
                 catch (Exception e)
                 {
-                    _logger.Error($"Error while broadcasting block {broadcastedBlock.ToString(Block.Format.Short)} to peer {peerInfo}.", e);
+                    if (_logger.IsError) _logger.Error($"Error while broadcasting block {broadcastedBlock.ToString(Block.Format.Short)} to peer {peerInfo}.", e);
                 }
             }
 

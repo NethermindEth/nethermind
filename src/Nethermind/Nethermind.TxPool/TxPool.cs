@@ -479,7 +479,7 @@ namespace Nethermind.TxPool
                 t =>
                     t.Exception?.Handle(ex =>
                     {
-                        _logger.Error($"Failed to notify {peer.Enode} about a transaction: {tx.Hash}", ex);
+                        if (_logger.IsError) _logger.Error($"Failed to notify {peer.Enode} about a transaction: {tx.Hash}", ex);
                         return true;
                     })
                 , TaskContinuationOptions.OnlyOnFaulted
