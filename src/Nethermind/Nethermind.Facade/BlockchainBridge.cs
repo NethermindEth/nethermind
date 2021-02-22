@@ -224,7 +224,7 @@ namespace Nethermind.Facade
                     Array.Empty<byte>());
 
                 transaction.Hash = transaction.CalculateHash();
-                _transactionProcessor.CallAndRestore(transaction, callHeader, tracer);
+                _transactionProcessor.CallAndRestore(transaction, callHeader, tracer, true);
             }
             finally
             {

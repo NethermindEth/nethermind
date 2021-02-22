@@ -43,7 +43,7 @@ namespace Nethermind.Evm
             _transactionProcessor.Execute(transaction, block, txTracer);
         }
 
-        public void CallAndRestore(Transaction transaction, BlockHeader block, ITxTracer txTracer)
+        public void CallAndRestore(Transaction transaction, BlockHeader block, ITxTracer txTracer, bool estimateGasCall = false)
         {
             _transactionProcessor.CallAndRestore(transaction, block, txTracer);
         }

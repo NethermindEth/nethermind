@@ -54,9 +54,9 @@ namespace Nethermind.Evm
             _ecdsa = new EthereumEcdsa(specProvider.ChainId, logManager);
         }
 
-        public void CallAndRestore(Transaction transaction, BlockHeader block, ITxTracer txTracer)
+        public void CallAndRestore(Transaction transaction, BlockHeader block, ITxTracer txTracer, bool estimateGasCall = false)
         {
-            Execute(transaction, block, txTracer, true);
+            Execute(transaction, block, txTracer, true, estimateGasCall);
         }
 
         public void Execute(Transaction transaction, BlockHeader block, ITxTracer txTracer)
@@ -79,12 +79,11 @@ namespace Nethermind.Evm
                 txTracer.MarkAsFailed(recipient, tx.GasLimit, Array.Empty<byte>(), reason ?? "invalid", stateRoot);
         }
 
-        private void Execute(Transaction transaction, BlockHeader block, ITxTracer txTracer, bool isCall)
+        private void Execute(Transaction transaction, BlockHeader block, ITxTracer txTracer, bool isCall, bool estimateGasCall = false)
         {
             bool notSystemTransaction = !transaction.IsSystem();
             bool wasSenderAccountCreatedInsideACall = false;
-            IBalanceUpdater balanceUpdater = txTracer is CancellationTxTracer && ((CancellationTxTracer)txTracer).InnerTracer is EstimateGasTracer? 
-                  FakeBalanceUpdater.Instance : _stateProvider;
+            IBalanceUpdater balanceUpdater = estimateGasCall ? FakeBalanceUpdater.Instance : _stateProvider;
             
             IReleaseSpec spec = _specProvider.GetSpec(block.Number);
             if (!notSystemTransaction)
