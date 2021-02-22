@@ -470,52 +470,54 @@ namespace Nethermind.TxPool
 
         private void Notify(ITxPoolPeer peer, Transaction tx, bool isPriority)
         {
-            Task.Run(() =>
+            try
             {
                 peer.SendNewTransaction(tx, isPriority);
                 Metrics.PendingTransactionsSent++;
                 if (_logger.IsTrace) _logger.Trace($"Notified {peer.Enode} about a transaction: {tx.Hash}");
-            }).ContinueWith(
-                t =>
-                    t.Exception?.Handle(ex =>
-                    {
-                        if (_logger.IsError) _logger.Error($"Failed to notify {peer.Enode} about a transaction: {tx.Hash}", ex);
-                        return true;
-                    })
-                , TaskContinuationOptions.OnlyOnFaulted
-            );
+            }
+            catch (Exception e)
+            {
+                if (_logger.IsError) _logger.Error($"Failed to notify {peer.Enode} about a transaction: {tx.Hash}", e);
+            }
         }
 
         private void NotifyAllPeers(Transaction tx)
         {
-            foreach ((_, ITxPoolPeer peer) in _peers)
+            Task.Run(() =>
             {
-                Notify(peer, tx, true);
-            }
+                foreach ((_, ITxPoolPeer peer) in _peers)
+                {
+                    Notify(peer, tx, true);
+                }
+            });
         }
 
         private void NotifySelectedPeers(Transaction tx)
         {
-            foreach ((_, ITxPoolPeer peer) in _peers)
+            Task.Run(() =>
             {
-                if (tx.DeliveredBy == null)
+                foreach ((_, ITxPoolPeer peer) in _peers)
                 {
-                    Notify(peer, tx, true);
-                    continue;
-                }
+                    if (tx.DeliveredBy == null)
+                    {
+                        Notify(peer, tx, true);
+                        continue;
+                    }
 
-                if (tx.DeliveredBy.Equals(peer.Id))
-                {
-                    continue;
-                }
+                    if (tx.DeliveredBy.Equals(peer.Id))
+                    {
+                        continue;
+                    }
 
-                if (_peerNotificationThreshold < Random.Value.Next(1, 100))
-                {
-                    continue;
-                }
+                    if (_peerNotificationThreshold < Random.Value.Next(1, 100))
+                    {
+                        continue;
+                    }
 
-                Notify(peer, tx, 3 < Random.Value.Next(1, 10));
-            }
+                    Notify(peer, tx, 3 < Random.Value.Next(1, 10));
+                }
+            });
         }
 
         private void StoreTx(Transaction tx)
