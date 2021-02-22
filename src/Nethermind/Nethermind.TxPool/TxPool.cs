@@ -472,9 +472,8 @@ namespace Nethermind.TxPool
         {
             Task.Run(() =>
             {
-                Metrics.PendingTransactionsSent++;
                 peer.SendNewTransaction(tx, isPriority);
-
+                Metrics.PendingTransactionsSent++;
                 if (_logger.IsTrace) _logger.Trace($"Notified {peer.Enode} about a transaction: {tx.Hash}");
             }).ContinueWith(
                 t =>
