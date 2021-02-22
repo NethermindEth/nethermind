@@ -432,63 +432,62 @@ namespace Nethermind.Synchronization
         {
             void NotifyOfNewBlock(PeerInfo peerInfo, Block broadcastedBlock, SendBlockPriority priority)
             {
-                Task.Run(() => peerInfo.SyncPeer.NotifyOfNewBlock(broadcastedBlock, priority))
-                    .ContinueWith(
-                        t =>
-                            t.Exception?.Handle(ex =>
-                            {
-                                _logger.Error($"Error while broadcasting block {broadcastedBlock.ToString(Block.Format.Short)} to peer {peerInfo}.", ex);
-                                return true;
-                            })
-                        , TaskContinuationOptions.OnlyOnFaulted
-                    );
+                try
+                {
+                    peerInfo.SyncPeer.NotifyOfNewBlock(broadcastedBlock, priority);
+                }
+                catch (Exception e)
+                {
+                    _logger.Error($"Error while broadcasting block {broadcastedBlock.ToString(Block.Format.Short)} to peer {peerInfo}.", e);
+                }
             }
 
             Block block = blockEventArgs.Block;
-            Task.Run(() =>
+            if ((_blockTree.BestSuggestedHeader?.TotalDifficulty ?? 0) <= block.TotalDifficulty)
             {
-                if (_blockTree.BestKnownNumber > block.Number) return;
-
-                int peerCount = _pool.PeerCount;
-                double broadcastRatio = Math.Sqrt(peerCount) / peerCount;
-
-                int counter = 0;
-                foreach (PeerInfo peerInfo in _pool.AllPeers)
+                Task.Run(() =>
                 {
-                    if (peerInfo.TotalDifficulty < (block.TotalDifficulty ?? UInt256.Zero))
+                    int peerCount = _pool.PeerCount;
+                    double broadcastRatio = Math.Sqrt(peerCount) / peerCount;
+
+                    int counter = 0;
+                    foreach (PeerInfo peerInfo in _pool.AllPeers)
                     {
-                        if (_broadcastRandomizer.NextDouble() < broadcastRatio)
+                        if (peerInfo.TotalDifficulty < (block.TotalDifficulty ?? UInt256.Zero))
                         {
-                            NotifyOfNewBlock(peerInfo, block, SendBlockPriority.High);
-                            counter++;
-                        }
-                        else
-                        {
-                            NotifyOfNewBlock(peerInfo, block, SendBlockPriority.Low);
+                            if (_broadcastRandomizer.NextDouble() < broadcastRatio)
+                            {
+                                NotifyOfNewBlock(peerInfo, block, SendBlockPriority.High);
+                                counter++;
+                            }
+                            else
+                            {
+                                NotifyOfNewBlock(peerInfo, block, SendBlockPriority.Low);
+                            }
                         }
                     }
-                }
 
-                if (counter > 0)
-                {
-                    if (_logger.IsDebug)
-                        _logger.Debug(
-                            $"Broadcasting block {block.ToString(Block.Format.Short)} to {counter} peers.");
-                }
-
-                if ((block.Number - Sync.MaxReorgLength) % CanonicalHashTrie.SectionSize == 0)
-                {
-                    _ = BuildCHT();
-                }
-            }).ContinueWith(
-                t =>
-                    t.Exception?.Handle(ex =>
+                    if (counter > 0)
                     {
-                        _logger.Error($"Error while broadcasting block {block.ToString(Block.Format.Short)}.", ex);
-                        return true;
-                    })
-                , TaskContinuationOptions.OnlyOnFaulted
-            );
+                        if (_logger.IsDebug)
+                            _logger.Debug(
+                                $"Broadcasting block {block.ToString(Block.Format.Short)} to {counter} peers.");
+                    }
+
+                    if ((block.Number - Sync.MaxReorgLength) % CanonicalHashTrie.SectionSize == 0)
+                    {
+                        _ = BuildCHT();
+                    }
+                }).ContinueWith(
+                    t =>
+                        t.Exception?.Handle(ex =>
+                        {
+                            _logger.Error($"Error while broadcasting block {block.ToString(Block.Format.Short)}.", ex);
+                            return true;
+                        })
+                    , TaskContinuationOptions.OnlyOnFaulted
+                );
+            }
         }
 
         public void Dispose()
