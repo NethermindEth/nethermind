@@ -482,7 +482,7 @@ namespace Nethermind.Synchronization
                     t =>
                         t.Exception?.Handle(ex =>
                         {
-                            _logger.Error($"Error while broadcasting block {block.ToString(Block.Format.Short)}.", ex);
+                            if (_logger.IsError) _logger.Error($"Error while broadcasting block {block.ToString(Block.Format.Short)}.", ex);
                             return true;
                         })
                     , TaskContinuationOptions.OnlyOnFaulted
