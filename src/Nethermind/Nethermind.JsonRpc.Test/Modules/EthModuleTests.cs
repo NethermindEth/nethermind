@@ -514,7 +514,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
         
         [Test]
-        public async Task Eth_estimateGas_web3_should_not_throw_insufficient_balance_exception()
+        public async Task Eth_estimateGas_web3_should_sample_not_enough_gas_other_account_with_tx_value()
         {
             using Context ctx = await Context.Create();
             Address someAccount = new Address("0x0001020304050607080910111213141516171819");
