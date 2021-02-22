@@ -206,8 +206,7 @@ namespace Nethermind.State
 
             Account account = GetThroughCacheCheckExists();
 
-            if (
-                isSubtracting && account.Balance < balanceChange)
+            if (isSubtracting && account.Balance < balanceChange)
             {
                 throw new InsufficientBalanceException();
             }
