@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -265,11 +265,23 @@ namespace Nethermind.Evm.Test
         [Test]
         public void Dup1()
         {
-            var receipt = Execute(
-                (byte)Instruction.PUSH1,
-                0,
-                (byte)Instruction.DUP1);
-            Assert.AreEqual(GasCostOf.Transaction + GasCostOf.VeryLow * 2, receipt.GasSpent, "gas");
+            string data = "DE92C51EC07847B49840537ED96EAB2696AAE0B0A5AA4598AAA6CD1CAC0CC4ED".ToLowerInvariant();
+            byte[] code = Prepare.EvmCode
+                .PushData(data)
+                .Op(Instruction.DUP1)
+                .Op(Instruction.POP)
+                .Done;
+            
+            var trace = ExecuteAndTrace(code);
+
+            GethTxTraceEntry entry = trace.Entries[1];
+            Assert.AreEqual("DUP1", entry.Operation, nameof(entry.Operation));
+            Assert.AreEqual(GasCostOf.VeryLow, entry.GasCost, nameof(entry.GasCost));
+
+            var pop = trace.Entries[2];
+            Assert.AreEqual(2, pop.Stack.Count);
+            Assert.AreEqual(data, pop.Stack[0]);
+            Assert.AreEqual(data, pop.Stack[1]);
         }
 
         [Test]
