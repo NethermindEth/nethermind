@@ -142,7 +142,8 @@ namespace Nethermind.Facade.Test
             _transactionProcessor.Received().CallAndRestore(
                 tx,
                 Arg.Is<BlockHeader>(bh => bh.Number == 11 && bh.Timestamp == ((ITimestamper) _timestamper).UnixTime.Seconds),
-                Arg.Is<CancellationTxTracer>(t => t.InnerTracer is EstimateGasTracer));
+                Arg.Is<CancellationTxTracer>(t => t.InnerTracer is EstimateGasTracer),
+                true);
         }
 
         [Test]
@@ -158,7 +159,8 @@ namespace Nethermind.Facade.Test
             _transactionProcessor.Received().CallAndRestore(
                 tx,
                 Arg.Is<BlockHeader>(bh => bh.Number == 10),
-                Arg.Any<ITxTracer>());
+                Arg.Any<ITxTracer>(),
+                true);
         }
 
         [TestCase(true, 0, 8)]

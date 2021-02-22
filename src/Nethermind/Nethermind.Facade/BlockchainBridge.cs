@@ -180,8 +180,7 @@ namespace Nethermind.Facade
         public CallOutput EstimateGas(BlockHeader header, Transaction tx, CancellationToken cancellationToken)
         {
             EstimateGasTracer estimateGasTracer = new EstimateGasTracer();
-            
-            
+
             CallAndRestore(
                 header,
                 header.Number + 1,
