@@ -115,6 +115,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             if (_api.ChainSpec == null) throw new StepDependencyException(nameof(_api.ChainSpec));
             if (_api.BlockTree == null) throw new StepDependencyException(nameof(_api.BlockTree));
             if (_api.EngineSigner == null) throw new StepDependencyException(nameof(_api.EngineSigner));
+            if (_api.SpecProvider == null) throw new StepDependencyException(nameof(_api.SpecProvider));
 
             var chainSpecAuRa = _api.ChainSpec.AuRa;
             
@@ -141,6 +142,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                     NethermindApi.Config<IMiningConfig>(),
                     _api.LogManager,
                     _api.EngineSigner,
+                    _api.SpecProvider,
                     _api.ReportingContractValidatorCache,
                     chainSpecAuRa.PosdaoTransition,
                     false)

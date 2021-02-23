@@ -21,6 +21,7 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Logging;
 using Nethermind.Specs.ChainSpecStyle;
@@ -45,6 +46,7 @@ namespace Nethermind.Consensus.AuRa
         private readonly IMiningConfig _miningConfig;
         private readonly ILogManager _logManager;
         private readonly ISigner _signer;
+        private readonly ISpecProvider _specProvider;
         private readonly ReportingContractBasedValidator.Cache _reportingValidatorCache;
         private readonly long _posdaoTransition;
         private readonly bool _forSealing;
@@ -62,6 +64,7 @@ namespace Nethermind.Consensus.AuRa
             IMiningConfig miningConfig,
             ILogManager logManager,
             ISigner signer,
+            ISpecProvider specProvider,
             ReportingContractBasedValidator.Cache reportingValidatorCache,
             long posdaoTransition,
             bool forSealing = false)
@@ -82,6 +85,7 @@ namespace Nethermind.Consensus.AuRa
             _reportingValidatorCache = reportingValidatorCache;
             _posdaoTransition = posdaoTransition;
             _forSealing = forSealing;
+            _specProvider = specProvider;
         }
 
         public IAuRaValidator CreateValidatorProcessor(AuRaParameters.Validator validator, BlockHeader parentHeader = null, long? startBlock = null)
