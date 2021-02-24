@@ -146,17 +146,18 @@ namespace Nethermind.Blockchain.Test
             IBlockTree blockTree = Substitute.For<IBlockTree>();
             Block block =  Build.A.Block.WithNumber(0).TestObject;
             blockTree.Head.Returns(block);
-            specProvider.GetSpec(Arg.Any<long>()).Returns(new ReleaseSpec() {IsEip1559Enabled = false});
+            IReleaseSpec spec = new ReleaseSpec();
+            specProvider.GetSpec(Arg.Any<long>()).Returns(spec);
             var transactionComparerProvider = new TransactionComparerProvider(specProvider, blockTree);
             IComparer<Transaction> defaultComparer = transactionComparerProvider.GetDefaultComparer();
             IComparer<Transaction> comparer = CompareTxByNonce.Instance.ThenBy(defaultComparer);
-            transactionPool.GetPendingTransactionsBySender().Returns(
-                testCase.Transactions
-                    .Where(t => t?.SenderAddress != null)
-                    .GroupBy(t => t.SenderAddress)
-                    .ToDictionary(
-                    g => g.Key, 
-                    g => g.OrderBy(t => t, comparer).ToArray()));
+            var transactions = testCase.Transactions
+                .Where(t => t?.SenderAddress != null)
+                .GroupBy(t => t.SenderAddress)
+                .ToDictionary(
+                    g => g.Key,
+                    g => g.OrderBy(t => t, comparer).ToArray());
+            transactionPool.GetPendingTransactionsBySender().Returns(transactions);
             
             SetAccountStates(testCase.MissingAddresses);
 
