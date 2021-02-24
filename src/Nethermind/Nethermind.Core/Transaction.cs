@@ -39,8 +39,9 @@ namespace Nethermind.Core
         public UInt256 Nonce { get; set; }
         public UInt256 GasPrice { get; set; }
         public UInt256 GasPremium => GasPrice; 
-        public UInt256 FeeCap { get; set; }
-        public bool IsEip1559 => FeeCap > UInt256.Zero;
+        public UInt256 DecodedFeeCap { get; set; }
+        public UInt256 FeeCap => IsEip1559 ? DecodedFeeCap : GasPrice;
+        public bool IsEip1559 => DecodedFeeCap > UInt256.Zero;
         public long GasLimit { get; set; }
         public Address? To { get; set; }
         public UInt256 Value { get; set; }
@@ -89,9 +90,8 @@ namespace Nethermind.Core
         {
             if (eip1559Enabled)
             {
-                UInt256 feeCap = IsEip1559 ? FeeCap : GasPrice;
                 UInt256 gasPrice = baseFee + GasPremium;
-                gasPrice = gasPrice > feeCap ? feeCap : gasPrice;
+                gasPrice = gasPrice > FeeCap ? FeeCap : gasPrice;
                 return gasPrice * (ulong)GasLimit + Value;
             }
 

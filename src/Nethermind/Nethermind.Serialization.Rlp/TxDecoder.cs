@@ -73,7 +73,7 @@ namespace Nethermind.Serialization.Rlp
             if (isEip1559)
             {
                 transaction.GasPrice = rlpStream.DecodeUInt256();
-                transaction.FeeCap = rlpStream.DecodeUInt256();
+                transaction.DecodedFeeCap = rlpStream.DecodeUInt256();
             }
 
             if (transaction.Type == TxType.AccessList)
@@ -142,7 +142,7 @@ namespace Nethermind.Serialization.Rlp
             if (isEip1559)
             {
                 transaction.GasPrice = decoderContext.DecodeUInt256();
-                transaction.FeeCap = decoderContext.DecodeUInt256();
+                transaction.DecodedFeeCap = decoderContext.DecodeUInt256();
             }
 
             if (transaction.Type == TxType.AccessList)
@@ -276,7 +276,7 @@ namespace Nethermind.Serialization.Rlp
             stream.Encode(item.Value);
             stream.Encode(item.Data);
             if (item.IsEip1559) stream.Encode(item.GasPrice);
-            if (item.IsEip1559) stream.Encode(item.FeeCap);
+            if (item.IsEip1559) stream.Encode(item.DecodedFeeCap);
             if (item.Type == TxType.AccessList) _accessListDecoder.Encode(stream, item.AccessList, rlpBehaviors);
 
             // TODO: move it to a signature decoder
@@ -312,7 +312,7 @@ namespace Nethermind.Serialization.Rlp
             if (item.IsEip1559)
             {
                 contentLength += Rlp.LengthOf(0);
-                contentLength += Rlp.LengthOf(item.FeeCap);
+                contentLength += Rlp.LengthOf(item.DecodedFeeCap);
             }
 
             if (forSigning)

@@ -270,7 +270,7 @@ namespace Nethermind.Serialization.Rlp
             if (transaction.IsEip1559)
             {
                 sequence[position++] = Encode(transaction.GasPrice);
-                sequence[position++] = Encode(transaction.FeeCap);
+                sequence[position++] = Encode(transaction.DecodedFeeCap);
             }
 
             if (forSigning)

@@ -43,7 +43,7 @@ namespace Nethermind.Consensus.Transactions
         public (bool Allowed, string Reason) IsAllowed(Transaction tx, long blockNumber, UInt256 minGasPriceFloor)
         {
             UInt256 gasPrice = tx.GasPrice;
-            if (_specProvider.GetSpec(blockNumber).IsEip1559Enabled && tx.IsEip1559)
+            if (_specProvider.GetSpec(blockNumber).IsEip1559Enabled)
             {
                 gasPrice = tx.FeeCap;
             }

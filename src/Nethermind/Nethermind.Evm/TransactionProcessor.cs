@@ -92,7 +92,7 @@ namespace Nethermind.Evm
             
             UInt256 value = transaction.Value;
 
-            UInt256 feeCap = transaction.IsEip1559 ? transaction.FeeCap : transaction.GasPrice;
+            UInt256 feeCap = transaction.FeeCap;
             UInt256 baseFee = block.BaseFee;
             if (baseFee > feeCap)
             {
