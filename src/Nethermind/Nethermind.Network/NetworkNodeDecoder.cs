@@ -34,7 +34,7 @@ namespace Nethermind.Network
         {
             rlpStream.ReadSequenceLength();
 
-            PublicKey publicKey = new PublicKey(rlpStream.DecodeByteArray());
+            PublicKey publicKey = new(rlpStream.DecodeByteArraySpan());
             string ip = rlpStream.DecodeString();
             int port = (int)rlpStream.DecodeByteArraySpan().ReadEthUInt64();
             rlpStream.SkipItem();

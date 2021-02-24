@@ -155,10 +155,10 @@ namespace Nethermind.Core.Caching
         private void Replace(Keccak key, byte[] value)
         {
             LinkedListNode<LruCacheItem>? node = _lruList.First;
-            
+
             // ReSharper disable once PossibleNullReferenceException
-            MemorySize += MemorySizes.Align(value.Length) - MemorySizes.Align(node?.Value.Value.Length ?? 0);
-            
+            MemorySize += MemorySizes.Align(value.Length) - MemorySizes.Align(node!.Value.Value.Length);
+
             _lruList.RemoveFirst();
             _cacheMap.Remove(node.Value.Key);
 

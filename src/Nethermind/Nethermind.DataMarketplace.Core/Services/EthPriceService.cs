@@ -54,7 +54,7 @@ namespace Nethermind.DataMarketplace.Core.Services
 
             // var results = await _client.GetAsync<Result[]>(Url);
             var results = await _httpClient.GetAsync<Dictionary<string, Result>>(Url);
-            if (!results.ContainsKey("USDT_ETH"))
+            if (results is null || !results.ContainsKey("USDT_ETH"))
             {
                 if (_logger.IsWarn) _logger.Warn($"There was an error when updating ETH price. Latest know value is: {UsdPrice} USD");
                 return;

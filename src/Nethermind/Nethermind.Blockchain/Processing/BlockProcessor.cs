@@ -90,6 +90,8 @@ namespace Nethermind.Blockchain.Processing
         public Block[] Process(Keccak newBranchStateRoot, List<Block> suggestedBlocks, ProcessingOptions options, IBlockTracer blockTracer)
         {
             if (suggestedBlocks.Count == 0) return Array.Empty<Block>();
+            
+            BlocksProcessing?.Invoke(this, new BlocksProcessingEventArgs(suggestedBlocks));
 
             /* We need to save the snapshot state root before reorganization in case the new branch has invalid blocks.
                In case of invalid blocks on the new branch we will discard the entire branch and come back to 
@@ -156,6 +158,8 @@ namespace Nethermind.Blockchain.Processing
                 throw;
             }
         }
+
+        public event EventHandler<BlocksProcessingEventArgs> BlocksProcessing;
 
         // TODO: move to branch processor
         private void InitBranch(Keccak branchStateRoot, bool incrementReorgMetric = true)
@@ -322,12 +326,12 @@ namespace Nethermind.Blockchain.Processing
         private void ApplyMinerRewards(Block block, IBlockTracer tracer)
         {
             if (_logger.IsTrace) _logger.Trace("Applying miner rewards:");
-            var rewards = _rewardCalculator.CalculateRewards(block);
+            BlockReward[] rewards = _rewardCalculator.CalculateRewards(block);
             for (int i = 0; i < rewards.Length; i++)
             {
                 BlockReward reward = rewards[i];
 
-                ITxTracer txTracer = null;
+                ITxTracer txTracer = NullTxTracer.Instance;
                 if (tracer.IsTracingRewards)
                 {
                     // we need this tracer to be able to track any potential miner account creation
@@ -340,7 +344,7 @@ namespace Nethermind.Blockchain.Processing
                 {
                     tracer.EndTxTrace();
                     tracer.ReportReward(reward.Address, reward.RewardType.ToLowerString(), reward.Value);
-                    if (txTracer?.IsTracingState ?? false)
+                    if (txTracer.IsTracingState)
                     {
                         _stateProvider.Commit(_specProvider.GetSpec(block.Number), txTracer);
                     }

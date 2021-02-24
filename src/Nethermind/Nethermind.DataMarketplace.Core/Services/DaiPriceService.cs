@@ -35,7 +35,7 @@ namespace Nethermind.DataMarketplace.Core.Services
             }
 
             var results = await _httpClient.GetAsync<Dictionary<string, Result>>(Url);
-            if (!results.ContainsKey("USDT_DAI"))
+            if (results is null || !results.ContainsKey("USDT_DAI"))
             {
                 if (_logger.IsWarn) _logger.Warn($"There was an error when updating DAI price. Latest know value is: {UsdPrice} USD");
                 return;

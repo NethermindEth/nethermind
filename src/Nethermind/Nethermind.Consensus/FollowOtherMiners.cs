@@ -21,11 +21,9 @@ namespace Nethermind.Consensus
 {
     public class FollowOtherMiners : IGasLimitCalculator
     {
-        private FollowOtherMiners()
-        {
-        }
+        private FollowOtherMiners() { }
 
-        public static FollowOtherMiners Instance { get; } = new FollowOtherMiners();
+        public static FollowOtherMiners Instance { get; } = new();
         
         public long GetGasLimit(BlockHeader parentHeader)
         {

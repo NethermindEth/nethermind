@@ -17,44 +17,50 @@
 using System;
 using System.Collections.Generic;
 using BenchmarkDotNet.Attributes;
+using BenchmarkDotNet.Jobs;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 
 namespace Nethermind.Evm.Benchmark
 {
+    [SimpleJob(RuntimeMoniker.NetCoreApp50)]
     [MemoryDiagnoser]
-    public class EvmPushSignedIntBenchmarks
+    public class EvmStackPopPushBenchmarks
     {
         [ParamsSource(nameof(ValueSource))]
-        // ReSharper disable once UnassignedField.Global
-        // ReSharper disable once MemberCanBePrivate.Global
-        public Int256.Int256 Value;
+        public UInt256 Value;
 
-        // public property
-        public IEnumerable<Int256.Int256> ValueSource => new[]
+        public IEnumerable<UInt256> ValueSource => new[]
         {
-            new Int256.Int256(UInt256.Parse("-125124123718263172357123")),
-            new Int256.Int256(UInt256.Parse("-1")),
-            new Int256.Int256(UInt256.Parse("1")),
-            Int256.Int256.Max,
-            Int256.Int256.MinusOne
+            UInt256.Parse("125124123718263172357123"), 
+            UInt256.Parse("0"), 
+            UInt256.MaxValue
         };
         
-        private byte[] stackBytes;
-        private ITxTracer _tracer = NullTxTracer.Instance;
+        private byte[] _stackBytes;
 
         [GlobalSetup]
         public void GlobalSetup()
         {
-            stackBytes = new byte[(EvmStack.MaxStackSize + EvmStack.RegisterLength) * 1024];
+            _stackBytes = new byte[(EvmStack.MaxStackSize + EvmStack.RegisterLength) * 1024];
         }
 
-        [Benchmark(Baseline = true)]
-        public void Current()
+        [Benchmark]
+        public UInt256 Uint256()
         {
-            EvmStack stack = new EvmStack(stackBytes.AsSpan(), 0, _tracer);
-            stack.PushSignedInt256(in Value);
-            stack.PopLimbo();
+            EvmStack stack = new(_stackBytes.AsSpan(), 0, NullTxTracer.Instance);
+            stack.PushUInt256(in Value);
+            stack.PopUInt256(out UInt256 value);
+            return value;
+        }
+
+        [Benchmark]
+        public Int256.Int256 Int256()
+        {
+            EvmStack stack = new(_stackBytes.AsSpan(), 0, NullTxTracer.Instance);
+            stack.PushSignedInt256(new Int256.Int256(Value));
+            stack.PopSignedInt256(out Int256.Int256 value);
+            return value;
         }
     }
 }

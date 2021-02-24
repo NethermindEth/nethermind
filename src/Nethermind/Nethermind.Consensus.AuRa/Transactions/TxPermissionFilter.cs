@@ -60,7 +60,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
 
         private (ITransactionPermissionContract.TxPermissions Permissions, bool ContractExists) GetPermissions(Transaction tx, BlockHeader parentHeader)
         {
-            var key = (parentHeader.Hash, tx.SenderAddress);
+            var key = (parentHeader.Hash, SenderAddress: tx.SenderAddress);
             return _cache.Permissions.TryGet(key, out var txCachedPermissions) 
                 ? txCachedPermissions 
                 : GetPermissionsFromContract(tx, parentHeader, key);

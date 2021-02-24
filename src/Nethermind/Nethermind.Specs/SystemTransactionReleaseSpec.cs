@@ -124,7 +124,5 @@ namespace Nethermind.Specs
         }
 
         public long Eip1559TransitionBlock => _spec.Eip1559TransitionBlock;
-        
-        public long Eip1559MigrationDuration => _spec.Eip1559MigrationDuration;
     }
 }

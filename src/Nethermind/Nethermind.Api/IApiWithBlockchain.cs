@@ -71,5 +71,6 @@ namespace Nethermind.Api
         ITxPoolInfoProvider? TxPoolInfoProvider { get; set; }
         IWitnessCollector? WitnessCollector { get; set; }
         IHealthHintService? HealthHintService { get; set; }
+        TxValidator? TxValidator { get; set; }
     }
 }

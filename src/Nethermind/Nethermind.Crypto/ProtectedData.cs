@@ -25,8 +25,8 @@ namespace Nethermind.Crypto
     {
         private interface IProtector
         {
-            byte[] Protect(byte[] userData, byte[] optionalEntropy, DataProtectionScope scope);
-            byte[] Unprotect(byte[] encryptedData, byte[] optionalEntropy, DataProtectionScope scope);
+            byte[] Protect(byte[] userData, byte[] optionalEntropy);
+            byte[] Unprotect(byte[] encryptedData, byte[] optionalEntropy);
         }
         
         private static readonly IProtector _protector = CreateProtector();
@@ -36,8 +36,8 @@ namespace Nethermind.Crypto
             return RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? new DpapiWrapper() : (IProtector)new AspNetWrapper();
         }
 
-        protected static byte[] Protect(byte[] userData, byte[] optionalEntropy, DataProtectionScope scope) => _protector.Protect(userData, optionalEntropy, scope);
+        protected static byte[] Protect(byte[] userData, byte[] optionalEntropy) => _protector.Protect(userData, optionalEntropy);
 
-        protected static byte[] Unprotect(byte[] encryptedData, byte[] optionalEntropy, DataProtectionScope scope) => _protector.Unprotect(encryptedData, optionalEntropy, scope);
+        protected static byte[] Unprotect(byte[] encryptedData, byte[] optionalEntropy) => _protector.Unprotect(encryptedData, optionalEntropy);
     }
 }

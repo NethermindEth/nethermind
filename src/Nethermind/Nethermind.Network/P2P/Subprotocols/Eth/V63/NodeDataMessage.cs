@@ -24,11 +24,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
         public override int PacketType { get; } = Eth63MessageCode.NodeData;
         public override string Protocol { get; } = "eth";
 
-        public NodeDataMessage(byte[][] data)
+        public NodeDataMessage(byte[][]? data)
         {
             Data = data ?? Array.Empty<byte[]>();
         }
         
-        public override string ToString() => $"{nameof(NodeDataMessage)}({Data?.Length ?? 0})";
+        public override string ToString() => $"{nameof(NodeDataMessage)}({Data.Length})";
     }
 }

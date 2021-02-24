@@ -26,6 +26,7 @@ using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Producers;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Rewards;
+using Nethermind.Blockchain.Spec;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Clique;
@@ -48,6 +49,7 @@ using Nethermind.TxPool;
 using Nethermind.TxPool.Storages;
 using NUnit.Framework;
 using BlockTree = Nethermind.Blockchain.BlockTree;
+using Nethermind.Core.Test.Specs;
 
 namespace Nethermind.Clique.Test
 {
@@ -108,15 +110,17 @@ namespace Nethermind.Clique.Test
                 StateReader stateReader = new StateReader(trieStore, codeDb, nodeLogManager);
                 StateProvider stateProvider = new StateProvider(trieStore, codeDb, nodeLogManager);
                 stateProvider.CreateAccount(TestItem.PrivateKeyD.Address, 100.Ether());
-                stateProvider.Commit(GoerliSpecProvider.Instance.GenesisSpec);
+                GoerliSpecProvider goerliSpecProvider = GoerliSpecProvider.Instance;
+                stateProvider.Commit(goerliSpecProvider.GenesisSpec);
                 stateProvider.CommitTree(0);
+
+                BlockTree blockTree = new BlockTree(blocksDb, headersDb, blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), goerliSpecProvider, NullBloomStorage.Instance,  nodeLogManager);
                 
-                BlockTree blockTree = new BlockTree(blocksDb, headersDb, blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), GoerliSpecProvider.Instance, NullBloomStorage.Instance,  nodeLogManager);
                 blockTree.NewHeadBlock += (sender, args) => { _blockEvents[privateKey].Set(); };
                 ITransactionComparerProvider transactionComparerProvider =
                     new TransactionComparerProvider(specProvider, blockTree);
 
-                 TxPool.TxPool txPool = new TxPool.TxPool(new InMemoryTxStorage(), _ethereumEcdsa, GoerliSpecProvider.Instance, new TxPoolConfig(), stateProvider, transactionComparerProvider, _logManager);
+                 TxPool.TxPool txPool = new TxPool.TxPool(new InMemoryTxStorage(), _ethereumEcdsa, new FixedBlockChainHeadSpecProvider(GoerliSpecProvider.Instance), new TxPoolConfig(), stateProvider, transactionComparerProvider, new TxValidator(goerliSpecProvider.ChainId), _logManager);
                 _pools[privateKey] = txPool;
 
                 BlockhashProvider blockhashProvider = new BlockhashProvider(blockTree, LimboLogs.Instance);
@@ -133,10 +137,10 @@ namespace Nethermind.Clique.Test
                 _genesis3Validators.Header.Hash = _genesis3Validators.Header.CalculateHash();
                 
                 StorageProvider storageProvider = new StorageProvider(trieStore, stateProvider, nodeLogManager);
-                TransactionProcessor transactionProcessor = new TransactionProcessor(GoerliSpecProvider.Instance, stateProvider, storageProvider, new VirtualMachine(stateProvider, storageProvider, blockhashProvider, specProvider, nodeLogManager), nodeLogManager);
+                TransactionProcessor transactionProcessor = new TransactionProcessor(goerliSpecProvider, stateProvider, storageProvider, new VirtualMachine(stateProvider, storageProvider, blockhashProvider, specProvider, nodeLogManager), nodeLogManager);
 
                 BlockProcessor blockProcessor = new BlockProcessor(
-                    GoerliSpecProvider.Instance,
+                    goerliSpecProvider,
                     Always.Valid,
                     NoBlockRewards.Instance,
                     transactionProcessor,
@@ -154,10 +158,10 @@ namespace Nethermind.Clique.Test
                 StateProvider minerStateProvider = new StateProvider(minerTrieStore, codeDb, nodeLogManager);
                 StorageProvider minerStorageProvider = new StorageProvider(minerTrieStore, minerStateProvider, nodeLogManager);
                 VirtualMachine minerVirtualMachine = new VirtualMachine(minerStateProvider, minerStorageProvider, blockhashProvider, specProvider, nodeLogManager);
-                TransactionProcessor minerTransactionProcessor = new TransactionProcessor(GoerliSpecProvider.Instance, minerStateProvider, minerStorageProvider, minerVirtualMachine, nodeLogManager);
+                TransactionProcessor minerTransactionProcessor = new TransactionProcessor(goerliSpecProvider, minerStateProvider, minerStorageProvider, minerVirtualMachine, nodeLogManager);
 
                 BlockProcessor minerBlockProcessor = new BlockProcessor(
-                    GoerliSpecProvider.Instance,
+                    goerliSpecProvider,
                     Always.Valid,
                     NoBlockRewards.Instance,
                     minerTransactionProcessor,
@@ -185,7 +189,7 @@ namespace Nethermind.Clique.Test
                     new CryptoRandom(),
                     snapshotManager,
                     cliqueSealer,
-                    new TargetAdjustedGasLimitCalculator(GoerliSpecProvider.Instance, new MiningConfig()),
+                    new TargetAdjustedGasLimitCalculator(goerliSpecProvider, new MiningConfig()),
                     MainnetSpecProvider.Instance, 
                     _cliqueConfig,
                     nodeLogManager);

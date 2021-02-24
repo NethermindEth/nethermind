@@ -70,7 +70,7 @@ namespace Nethermind.EthStats.Clients
                         break;
                     default:
                         ThrowIncorrectUrl();
-                        break;;
+                        break;
                 }
                 
                 if (_logger.IsInfo) _logger.Info($"Moved ETH stats to: {websocketUrl}");
@@ -108,11 +108,16 @@ namespace Nethermind.EthStats.Clients
             {
                 await _client.StartOrFail();
             }
-            catch (Exception e)
+            catch (Exception)
             {
                 if (!_client.Url.AbsoluteUri.EndsWith("/api"))
                 {
+                    if(_logger.IsInfo) _logger.Info($"Failed to connect to ethstats at {websocketUrl}. Adding '/api' at the end and trying again.");
                     _client.Url = new Uri(websocketUrl + "/api");
+                }
+                else
+                {
+                    if(_logger.IsWarn) _logger.Warn($"Failed to connect to ethstats at {websocketUrl}. Trying once again."); 
                 }
 
                 await _client.StartOrFail();

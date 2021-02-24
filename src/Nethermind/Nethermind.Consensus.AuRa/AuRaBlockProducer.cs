@@ -160,7 +160,7 @@ namespace Nethermind.Consensus.AuRa
                 
                 foreach (var tx in _innerSource.GetTransactions(parent, gasLimit, baseFee))
                 {
-                    var senderNonce = (tx.SenderAddress, tx.Nonce);
+                    var senderNonce = (SenderAddress: tx.SenderAddress, tx.Nonce);
                     if (_senderNonces.TryGetValue(senderNonce, out var prevTx))
                     {
                         if (_logger.IsError)

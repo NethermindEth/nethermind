@@ -476,6 +476,12 @@ namespace Nethermind.DataMarketplace.Infrastructure
             set => _nethermindApi.HealthHintService = value;
         }
 
+        public TxValidator? TxValidator
+        {
+            get => _nethermindApi.TxValidator; 
+            set => _nethermindApi.TxValidator = value;
+        }
+
         public IWallet? Wallet
         {
             get => _nethermindApi.Wallet;

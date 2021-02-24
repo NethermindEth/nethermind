@@ -7,6 +7,7 @@ on:
 
 jobs:
   neth-tests-cc:
+    if: github.repository_owner == 'NethermindEth'
     name: Nethermind Tests CC
     env:
       EXCLUDE_TEST_PROJECTS: '/p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*%2c[Nethermind.Core.Test]*%2c[Nethermind.Blockchain.Test]*%2c[Nethermind.DataMarketplace.Test]*%2c[Ethereum.Test.Base]*%2c[Nethermind.JsonRpc.Test]*%2c[Nethermind.Config.Test]*"'
@@ -66,6 +67,9 @@ jobs:
     - name: Nethermind.EthStats.Test
       run: |
         dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.EthStats.Test
+    - name: Nethermind.Ethash.Test
+      run: |
+        dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.Ethash.Test
     - name: Nethermind.Evm.Test
       run: |
         dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.Evm.Test

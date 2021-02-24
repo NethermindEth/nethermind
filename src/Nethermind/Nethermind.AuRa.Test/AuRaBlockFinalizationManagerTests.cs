@@ -56,15 +56,6 @@ namespace Nethermind.AuRa.Test
             Rlp.Decoders[typeof(BlockInfo)] = new BlockInfoDecoder(true);
         }
 
-        private void BuildChainLevelTree(params ChainLevelInfo[] levels)
-        {
-            for (var index = 0; index < levels.Length; index++)
-            {
-                var element = levels[index];
-                _chainLevelInfoRepository.LoadLevel(index).Returns(element);
-            }
-        }
-
         [Test]
         public void correctly_initializes_lastFinalizedBlock()
         {
@@ -260,6 +251,42 @@ namespace Nethermind.AuRa.Test
                 _logManager);
 
             return finalizationManager.GetFinalizationLevel(level);
+        }
+        
+        [TestCase(10, 4, 5, false)]
+        [TestCase(10, 4, 5, true)]
+        public void correctly_de_finalizes_blocks_on_block_reprocessing(int chainLength, int rerun, int validatorCount, bool twoThirdsMajorityTransition)
+        {
+            Address[] blockCreators = TestItem.Addresses.Take(validatorCount).ToArray();
+            _validatorStore.GetValidators(Arg.Any<long?>()).Returns(blockCreators);
+            
+            var blockTreeBuilder = Build.A.BlockTree();
+            var finalizationManager = new AuRaBlockFinalizationManager(
+                blockTreeBuilder.TestObject, 
+                blockTreeBuilder.ChainLevelInfoRepository, 
+                _blockProcessor, 
+                _validatorStore, 
+                _validSealerStrategy,
+                _logManager,
+                twoThirdsMajorityTransition ? 0 : long.MaxValue);
+
+            blockTreeBuilder.OfChainLength(chainLength, 0, 0, blockCreators);
+            FinalizeToLevel(chainLength, blockTreeBuilder.ChainLevelInfoRepository);
+
+            List<Block> blocks = Enumerable.Range(1, rerun)
+                .Select(i => blockTreeBuilder.TestObject.FindBlock(chainLength - i, BlockTreeLookupOptions.None))
+                .Reverse()
+                .ToList();
+                
+            _blockProcessor.BlocksProcessing += Raise.EventWith(new BlocksProcessingEventArgs(blocks));
+
+            int majority = (twoThirdsMajorityTransition ? (validatorCount - 1) * 2 / 3 : (validatorCount - 1) / 2) + 1;
+            for (int i = 1; i < rerun + majority; i++)
+            {
+                blockTreeBuilder.ChainLevelInfoRepository.LoadLevel(chainLength - i).MainChainBlock.IsFinalized.Should().BeFalse();
+            }
+
+            blockTreeBuilder.ChainLevelInfoRepository.LoadLevel(chainLength - rerun - majority - 1).MainChainBlock.IsFinalized.Should().BeTrue();
         }
     }
 }

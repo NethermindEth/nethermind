@@ -6,6 +6,7 @@ on:
 
 jobs:
   amd64-alpine-build:
+    if: github.repository_owner == 'NethermindEth'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository

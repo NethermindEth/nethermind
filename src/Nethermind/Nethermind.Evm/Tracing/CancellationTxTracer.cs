@@ -21,7 +21,6 @@ using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
-using Nethermind.State;
 
 namespace Nethermind.Evm.Tracing
 {
@@ -38,6 +37,7 @@ namespace Nethermind.Evm.Tracing
         private bool _isTracingCode;
         private bool _isTracingStack;
         private bool _isTracingState;
+        private bool _isTracingStorage;
         private bool _isTracingBlockHash;
         
         public ITxTracer InnerTracer => _innerTracer;
@@ -51,61 +51,67 @@ namespace Nethermind.Evm.Tracing
         public bool IsTracingReceipt
         {
             get => _isTracingReceipt || _innerTracer.IsTracingReceipt;
-            set => _isTracingReceipt = value;
+            init => _isTracingReceipt = value;
         }
 
         public bool IsTracingActions
         {
             get => _isTracingActions || _innerTracer.IsTracingActions;
-            set => _isTracingActions = value;
+            init => _isTracingActions = value;
         }
 
         public bool IsTracingOpLevelStorage
         {
             get => _isTracingOpLevelStorage || _innerTracer.IsTracingOpLevelStorage;
-            set => _isTracingOpLevelStorage = value;
+            init => _isTracingOpLevelStorage = value;
         }
 
         public bool IsTracingMemory
         {
             get => _isTracingMemory || _innerTracer.IsTracingMemory;
-            set => _isTracingMemory = value;
+            init => _isTracingMemory = value;
         }
 
         public bool IsTracingInstructions
         {
             get => _isTracingInstructions || _innerTracer.IsTracingInstructions;
-            set => _isTracingInstructions = value;
+            init => _isTracingInstructions = value;
         }
 
         public bool IsTracingRefunds
         {
             get => _isTracingRefunds || _innerTracer.IsTracingRefunds;
-            set => _isTracingRefunds = value;
+            init => _isTracingRefunds = value;
         }
 
         public bool IsTracingCode
         {
             get => _isTracingCode || _innerTracer.IsTracingCode;
-            set => _isTracingCode = value;
+            init => _isTracingCode = value;
         }
 
         public bool IsTracingStack
         {
             get => _isTracingStack || _innerTracer.IsTracingStack;
-            set => _isTracingStack = value;
+            init => _isTracingStack = value;
         }
 
         public bool IsTracingState
         {
             get => _isTracingState || _innerTracer.IsTracingState;
-            set => _isTracingState = value;
+            init => _isTracingState = value;
+        }
+        
+        public bool IsTracingStorage
+        {
+            get => _isTracingStorage || _innerTracer.IsTracingStorage;
+            init => _isTracingStorage = value;
         }
 
         public bool IsTracingBlockHash
         {
             get => _isTracingBlockHash || _innerTracer.IsTracingBlockHash;
-            set => _isTracingBlockHash = value;
+            init => _isTracingBlockHash = value;
         }
 
         public void ReportBalanceChange(Address address, UInt256? before, UInt256? after)
@@ -147,7 +153,7 @@ namespace Nethermind.Evm.Tracing
         public void ReportStorageChange(StorageCell storageCell, byte[] before, byte[] after)
         {
             _token.ThrowIfCancellationRequested();
-            if (_innerTracer.IsTracingState)
+            if (_innerTracer.IsTracingStorage)
             {
                 _innerTracer.ReportStorageChange(storageCell, before, after);
             }
@@ -156,13 +162,13 @@ namespace Nethermind.Evm.Tracing
         public void ReportStorageRead(StorageCell storageCell)
         {
             _token.ThrowIfCancellationRequested();
-            if (_innerTracer.IsTracingState)
+            if (_innerTracer.IsTracingStorage)
             {
                 _innerTracer.ReportStorageRead(storageCell);
             }
         }
 
-        public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak stateRoot = null)
+        public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak? stateRoot = null)
         {
             _token.ThrowIfCancellationRequested();
             if (_innerTracer.IsTracingReceipt)
@@ -171,7 +177,7 @@ namespace Nethermind.Evm.Tracing
             }
         }
 
-        public void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Keccak stateRoot = null)
+        public void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Keccak? stateRoot = null)
         {
             _token.ThrowIfCancellationRequested();
             if (_innerTracer.IsTracingReceipt)

@@ -21,13 +21,16 @@ using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Comparers;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Blockchain.Spec;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Blockchain.Validators;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Specs;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Int256;
@@ -78,8 +81,8 @@ namespace Nethermind.JsonRpc.Test.Modules
             IDb blockInfoDb = new MemDb();
             IBlockTree blockTree = new BlockTree(blockDb, headerDb, blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), specProvider, NullBloomStorage.Instance, LimboLogs.Instance);
             
-            var txPool = new TxPool.TxPool(txStorage, ethereumEcdsa, specProvider, new TxPoolConfig(),
-                new StateProvider(new TrieStore(new MemDb(), LimboLogs.Instance), new MemDb(), LimboLogs.Instance), new TransactionComparerProvider(specProvider, blockTree), LimboLogs.Instance);
+            var txPool = new TxPool.TxPool(txStorage, ethereumEcdsa, new FixedBlockChainHeadSpecProvider(specProvider), new TxPoolConfig(),
+                new StateProvider(new TrieStore(new MemDb(), LimboLogs.Instance), new MemDb(), LimboLogs.Instance), new TransactionComparerProvider(specProvider, blockTree), new TxValidator(specProvider.ChainId), LimboLogs.Instance);
             
             new OnChainTxWatcher(blockTree, txPool, specProvider, LimboLogs.Instance);
             
@@ -286,9 +289,11 @@ namespace Nethermind.JsonRpc.Test.Modules
             IDb headerDb = new MemDb();
             IDb blockInfoDb = new MemDb();
             IBlockTree blockTree = new BlockTree(blockDb, headerDb, blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), specProvider, NullBloomStorage.Instance, LimboLogs.Instance);
-            TxPool.TxPool txPool = new TxPool.TxPool(txStorage, ethereumEcdsa, specProvider, new TxPoolConfig(),
-                new StateProvider(new TrieStore(new MemDb(), LimboLogs.Instance), new MemDb(), LimboLogs.Instance), new TransactionComparerProvider(specProvider, blockTree), LimboLogs.Instance);
-            OnChainTxWatcher onChainTxWatcher = new OnChainTxWatcher(blockTree, txPool, specProvider, LimboLogs.Instance);
+            
+            var txPool = new TxPool.TxPool(txStorage, ethereumEcdsa, new ChainHeadSpecProvider(specProvider, blockTree), new TxPoolConfig(),
+                new StateProvider(new TrieStore(new MemDb(), LimboLogs.Instance), new MemDb(), LimboLogs.Instance),  new TransactionComparerProvider(specProvider, blockTree), new TxValidator(specProvider.ChainId), LimboLogs.Instance);
+
+            new OnChainTxWatcher(blockTree, txPool, specProvider, LimboLogs.Instance);
             IReceiptStorage receiptStorage = new InMemoryReceiptStorage();
 
             IPeerManager peerManager = Substitute.For<IPeerManager>();
@@ -310,12 +315,15 @@ namespace Nethermind.JsonRpc.Test.Modules
             var specProvider = MainnetSpecProvider.Instance;
             var ethereumEcdsa = new EthereumEcdsa(specProvider.ChainId, logger);
             var txStorage = new InMemoryTxStorage();
+            
             IDb blockDb = new MemDb();
             IDb headerDb = new MemDb();
             IDb blockInfoDb = new MemDb();
             IBlockTree blockTree = new BlockTree(blockDb, headerDb, blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), specProvider, NullBloomStorage.Instance, LimboLogs.Instance);
-            TxPool.TxPool txPool = new TxPool.TxPool(txStorage, ethereumEcdsa, specProvider, new TxPoolConfig(),
-                new StateProvider(new TrieStore(new MemDb(), LimboLogs.Instance), new MemDb(), LimboLogs.Instance), new TransactionComparerProvider(specProvider, blockTree), LimboLogs.Instance);
+            
+            var txPool = new TxPool.TxPool(txStorage, ethereumEcdsa, new ChainHeadSpecProvider(specProvider, blockTree), new TxPoolConfig(),
+                new StateProvider(new TrieStore(new MemDb(), LimboLogs.Instance), new MemDb(), LimboLogs.Instance), new TransactionComparerProvider(specProvider, blockTree), new TxValidator(specProvider.ChainId), LimboLogs.Instance);
+
             new OnChainTxWatcher(blockTree, txPool, specProvider, LimboLogs.Instance);
             IReceiptStorage receiptStorage = new InMemoryReceiptStorage();
 

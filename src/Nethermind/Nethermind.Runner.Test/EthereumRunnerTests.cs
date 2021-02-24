@@ -188,7 +188,7 @@ namespace Nethermind.Runner.Test
                 {
                     tempPath.Dispose();
                 }
-                catch (Exception e)
+                catch
                 {
                     if (exception != null)
                     {

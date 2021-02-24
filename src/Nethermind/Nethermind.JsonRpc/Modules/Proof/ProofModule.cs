@@ -70,7 +70,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
             }
 
             BlockHeader sourceHeader = searchResult.Object;
-            BlockHeader callHeader = new BlockHeader(
+            BlockHeader callHeader = new(
                 sourceHeader.Hash,
                 Keccak.OfAnEmptySequenceRlp,
                 Address.Zero,

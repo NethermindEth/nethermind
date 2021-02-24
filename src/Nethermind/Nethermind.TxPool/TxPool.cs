@@ -68,8 +68,9 @@ namespace Nethermind.TxPool
 
         private readonly SortedPool<Keccak, Transaction, Address> _transactions;
 
-        private readonly ISpecProvider _specProvider;
+        private readonly IChainHeadSpecProvider _specProvider;
         private readonly IReadOnlyStateProvider _stateProvider;
+        private readonly ITxValidator _validator;
         private readonly ITransactionComparerProvider _transactionComparerProvider;
         private readonly IEthereumEcdsa _ecdsa;
         protected readonly ILogger _logger;
@@ -123,14 +124,16 @@ namespace Nethermind.TxPool
         /// <param name="txPoolConfig"></param>
         /// <param name="stateProvider"></param>
         /// <param name="transactionComparerProvider"></param>
+        /// <param name="validator"></param>
         /// <param name="logManager"></param>
         /// <param name="comparer"></param>
         public TxPool(ITxStorage txStorage,
             IEthereumEcdsa ecdsa,
-            ISpecProvider specProvider,
+            IChainHeadSpecProvider specProvider,
             ITxPoolConfig txPoolConfig,
             IReadOnlyStateProvider stateProvider,
             ITransactionComparerProvider transactionComparerProvider,
+            ITxValidator validator,
             ILogManager logManager,
             IComparer<Transaction> comparer = null)
         {
@@ -140,6 +143,7 @@ namespace Nethermind.TxPool
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
             _transactionComparerProvider = transactionComparerProvider ?? throw new ArgumentNullException(nameof(transactionComparerProvider));
+            _validator = validator ?? throw new ArgumentNullException(nameof(validator));
 
             MemoryAllowance.MemPoolSize = txPoolConfig.Size;
             ThisNodeInfo.AddInfo("Mem est tx   :",
@@ -260,12 +264,12 @@ namespace Nethermind.TxPool
             //                return AddTxResult.OldScheme;
             //            }
 
-            if (tx.Signature.ChainId != null && tx.Signature.ChainId != _specProvider.ChainId)
+            if (!_validator.IsWellFormed(tx, _specProvider.GetSpec()))
             {
-                // It may happen that other nodes send us transactions that were signed for another chain.
+                // It may happen that other nodes send us transactions that were signed for another chain or don't have enough gas.
                 Metrics.PendingTransactionsDiscarded++;
-                if (_logger.IsTrace) _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, wrong chain.");
-                return AddTxResult.InvalidChainId;
+                if (_logger.IsTrace) _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, invalid transaction.");
+                return AddTxResult.Invalid;
             }
 
             /* Note that here we should also test incoming transactions for old nonce.

@@ -50,7 +50,7 @@ namespace Nethermind.State
         
         void Commit(IReleaseSpec releaseSpec);
         
-        void Commit(IReleaseSpec releaseSpec, IStateTracer stateTracer);
+        void Commit(IReleaseSpec releaseSpec, IStateTracer? stateTracer);
         
         void Reset();
 
