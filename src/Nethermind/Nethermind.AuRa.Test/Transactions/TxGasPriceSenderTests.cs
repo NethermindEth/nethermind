@@ -34,7 +34,7 @@ namespace Nethermind.AuRa.Test.Transactions
         {
             get
             {
-                UInt256 scaledDefault = TxGasPriceSender.DefaultGasPrice * 110 / 100;
+                UInt256 scaledDefault = TxGasPriceSenderConstants.DefaultGasPrice * 110 / 100;
                 UInt256 u100 = new UInt256(100);
                 UInt256 u200 = new UInt256(200);
                 UInt256 u300 = new UInt256(300);
@@ -42,7 +42,7 @@ namespace Nethermind.AuRa.Test.Transactions
                 uint scale = 110u;
 
                 yield return new TestCaseData(UInt256.Zero, new UInt256[0], 100u)
-                    .Returns(TxGasPriceSender.DefaultGasPrice)
+                    .Returns(TxGasPriceSenderConstants.DefaultGasPrice)
                     .SetName("Default");
                 
                 yield return new TestCaseData(UInt256.Zero, new UInt256[0], scale)
@@ -82,8 +82,8 @@ namespace Nethermind.AuRa.Test.Transactions
             ITxPool txPool = Substitute.For<ITxPool>();
             txPool.GetPendingTransactions().Returns(
                 txPoolGasPrices.Select(g => Build.A.Transaction.WithGasPrice(g).TestObject).ToArray());
-            MiningConfig miningConfig = new MiningConfig() {MinGasPrice = minMiningGasPrice};
-            var txGasPriceSender = new TxGasPriceSender(txSender, txPool, miningConfig, percentDelta);
+            MiningConfig miningConfig = new() {MinGasPrice = minMiningGasPrice};
+            TxGasPriceSender txGasPriceSender = new(txSender, txPool, miningConfig, percentDelta);
 
             Transaction transaction = Build.A.Transaction.WithGasPrice(0).TestObject;
 

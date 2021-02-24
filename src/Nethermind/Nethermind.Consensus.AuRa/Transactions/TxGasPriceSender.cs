@@ -27,13 +27,12 @@ namespace Nethermind.Consensus.AuRa.Transactions
 {
     public class TxGasPriceSender : ITxSender
     {
-        public static readonly UInt256 DefaultGasPrice = 20_000_000ul;
         private readonly ITxSender _txSender;
         private readonly ITxPool _txPool;
         private readonly IMiningConfig _miningConfig;
         private readonly uint _percentDelta;
 
-        public TxGasPriceSender(ITxSender txSender, ITxPool txPool, IMiningConfig miningConfig, uint percentDelta = 110)
+        public TxGasPriceSender(ITxSender txSender, ITxPool txPool, IMiningConfig miningConfig, uint percentDelta = TxGasPriceSenderConstants.DefaultPercentDelta)
         {
             _txSender = txSender ?? throw new ArgumentNullException(nameof(txSender));
             _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
@@ -53,7 +52,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
             _txPool.GetPendingTransactions()
                 .Select(t => t.GasPrice)
                 .Where(g => g > UInt256.Zero)
-                .DefaultIfEmpty(DefaultGasPrice)
+                .DefaultIfEmpty(TxGasPriceSenderConstants.DefaultGasPrice)
                 .Min();
     }
 }
