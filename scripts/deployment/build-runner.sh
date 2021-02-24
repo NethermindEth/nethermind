@@ -2,7 +2,7 @@
 #exit when any command fails
 set -e
 RUNNER_PATH=$RELEASE_DIRECTORY/nethermind/src/Nethermind/Nethermind.Runner
-ARM_ROCKSDB_PATH=$RELEASE_DIRECTORY/nethermind/scripts/deployment/arm
+ARM_ROCKSDB_PATH=$RELEASE_DIRECTORY/nethermind/scripts/deployment/arm64/runtimes
 PUBLISH_PATH=bin/release/net5.0
 OUT=out
 
