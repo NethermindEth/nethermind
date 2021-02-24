@@ -133,6 +133,7 @@ namespace Nethermind.Consensus.AuRa
                         _miningConfig,
                         _stateProvider,
                         _reportingValidatorCache,
+                        _specProvider,
                         _logManager),
                 
                 AuRaParameters.ValidatorType.Multi => 
