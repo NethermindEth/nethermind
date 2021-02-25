@@ -33,6 +33,7 @@ using Nethermind.Db.Blooms;
 using Nethermind.Evm;
 using Nethermind.Grpc;
 using Nethermind.JsonRpc.Modules;
+using Nethermind.JsonRpc.Modules.Subscribe;
 using Nethermind.KeyStore;
 using Nethermind.Monitoring;
 using Nethermind.Network.Discovery;
@@ -99,6 +100,7 @@ namespace Nethermind.Runner.Test.Ethereum
                 StateProvider = Substitute.For<IStateProvider>(),
                 StateReader = Substitute.For<IStateReader>(),
                 StorageProvider = Substitute.For<IStorageProvider>(),
+                SubscriptionManger = Substitute.For<ISubscriptionManger>(),
                 TransactionProcessor = Substitute.For<ITransactionProcessor>(),
                 TxSender = Substitute.For<ITxSender>(),
                 BlockProcessingQueue = Substitute.For<IBlockProcessingQueue>(),
