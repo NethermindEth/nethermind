@@ -42,7 +42,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
 
         public ValueTask<Keccak> SendTransaction(Transaction tx, TxHandlingOptions txHandlingOptions)
         {
-            UInt256 minGasPremium =  CurrentMinGasPremimum();
+            UInt256 minGasPremium =  CurrentMinGasPremium();
             UInt256 minFeeCap =  CurrentMinFeeCap();
             UInt256 txGasPrice = minGasPremium * _percentDelta / 100;
             tx.GasPrice = UInt256.Max(txGasPrice, _miningConfig.MinGasPrice);
@@ -50,7 +50,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
             return _txSender.SendTransaction(tx, txHandlingOptions);
         }
 
-        private UInt256 CurrentMinGasPremimum() =>
+        private UInt256 CurrentMinGasPremium() =>
             _txPool.GetPendingTransactions()
                 .Select(t => t.GasPrice)
                 .Where(g => g > UInt256.Zero)

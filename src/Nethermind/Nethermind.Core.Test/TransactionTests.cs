@@ -14,6 +14,9 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.Collections.Generic;
+using Nethermind.Int256;
+using Nethermind.Specs.ChainSpecStyle;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test
@@ -37,6 +40,64 @@ namespace Nethermind.Core.Test
             transaction.To = null;
             Assert.False(transaction.IsMessageCall, nameof(Transaction.IsMessageCall));
             Assert.True(transaction.IsContractCreation, nameof(Transaction.IsContractCreation));
+        }
+        
+        [TestCase(1, true)]
+        [TestCase(0, false)]
+        [TestCase(300, true)]
+        public void IsEip1559_returns_expected_results(int decodedFeeCap, bool expectedIsEip1559)
+        {
+            Transaction transaction = new Transaction();
+            transaction.DecodedFeeCap = (uint)decodedFeeCap;
+            Assert.AreEqual(transaction.FeeCap, transaction.DecodedFeeCap);
+            Assert.AreEqual(expectedIsEip1559, transaction.IsEip1559);
+        }
+        
+        [Test]
+        public void GetTransactionPotentialCost_returns_expected_results([ValueSource(nameof(TransactionPotentialCostsTestCases))]
+            TransactionPotentialCosts test)
+        {
+            Transaction transaction = new Transaction();
+            transaction.GasPrice = test.GasPrice;
+            transaction.GasLimit = test.GasLimit;
+            transaction.Value = test.Value;
+            transaction.DecodedFeeCap = test.FeeCap;
+            UInt256 actualResult = transaction.GetTransactionPotentialCost(test.IsEip1559Enabled, test.BaseFee);
+            Assert.AreEqual(test.ExpectedPotentialCostResult, actualResult);
+        }
+        
+        public class TransactionPotentialCosts
+        {
+            public int Lp { get; set; }
+            public UInt256 BaseFee { get; set; }
+            public UInt256 FeeCap { get; set; }
+            public UInt256 GasPrice { get; set; }
+            public long GasLimit { get; set; }
+            public UInt256 Value { get; set; }
+            public bool IsEip1559Enabled { get; set; }
+            public UInt256 ExpectedPotentialCostResult { get; set; }
+            
+            public override string ToString() =>
+                $"Lp: {Lp}, ExpectedPotentialCostResult: {ExpectedPotentialCostResult}";
+        }
+        
+        public static IEnumerable<TransactionPotentialCosts> TransactionPotentialCostsTestCases
+        {
+            get
+            {
+                yield return new TransactionPotentialCosts()
+                {
+                    Lp = 1, GasPrice = 10, ExpectedPotentialCostResult = 0
+                };
+                yield return new TransactionPotentialCosts()
+                {
+                    Lp = 2, GasPrice = 21, GasLimit = 100, ExpectedPotentialCostResult = 2100
+                };
+                yield return new TransactionPotentialCosts()
+                {
+                    Lp = 3, GasPrice = 21, GasLimit = 100, Value = 3, ExpectedPotentialCostResult = 2103
+                };
+            }
         }
     }
 }

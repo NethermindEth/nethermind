@@ -68,11 +68,20 @@ namespace Nethermind.Core
 
         public string ToString(string indent)
         {
-            StringBuilder builder = new StringBuilder();
+            StringBuilder builder = new();
             builder.AppendLine($"{indent}Hash:      {Hash}");
             builder.AppendLine($"{indent}From:      {SenderAddress}");
             builder.AppendLine($"{indent}To:        {To}");
-            builder.AppendLine($"{indent}Gas Price: {GasPrice}");
+            if (IsEip1559)
+            {
+                builder.AppendLine($"{indent}Gas premium: {GasLimit}");
+                builder.AppendLine($"{indent}Fee cap: {FeeCap}");
+            }
+            else
+            {
+                builder.AppendLine($"{indent}Gas Price: {GasPrice}");
+            }
+            
             builder.AppendLine($"{indent}Gas Limit: {GasLimit}");
             builder.AppendLine($"{indent}Nonce:     {Nonce}");
             builder.AppendLine($"{indent}Value:     {Value}");
@@ -81,6 +90,8 @@ namespace Nethermind.Core
             builder.AppendLine($"{indent}V:         {Signature?.V}");
             builder.AppendLine($"{indent}ChainId:   {Signature?.ChainId}");
             builder.AppendLine($"{indent}Timestamp: {Timestamp}");
+            
+
             return builder.ToString();
         }
 
