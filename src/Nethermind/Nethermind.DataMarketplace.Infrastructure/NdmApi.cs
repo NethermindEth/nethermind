@@ -46,6 +46,7 @@ using Nethermind.Facade;
 using Nethermind.Facade.Proxy;
 using Nethermind.Grpc;
 using Nethermind.JsonRpc.Modules;
+using Nethermind.JsonRpc.Modules.Subscribe;
 using Nethermind.KeyStore;
 using Nethermind.Logging;
 using Nethermind.Monitoring;
@@ -376,6 +377,12 @@ namespace Nethermind.DataMarketplace.Infrastructure
         {
             get => _nethermindApi.SyncPeerPool;
             set => _nethermindApi.SyncPeerPool = value;
+        }
+
+        public ISubscriptionManger? SubscriptionManger
+        {
+            get => _nethermindApi.SubscriptionManger;
+            set => _nethermindApi.SubscriptionManger = value;
         }
 
         public ISynchronizer? Synchronizer
