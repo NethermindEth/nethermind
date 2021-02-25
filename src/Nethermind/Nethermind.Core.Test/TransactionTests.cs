@@ -85,6 +85,7 @@ namespace Nethermind.Core.Test
         {
             get
             {
+                /* Legacy transactions before 1559 fork:*/
                 yield return new TransactionPotentialCosts()
                 {
                     Lp = 1, GasPrice = 10, ExpectedPotentialCostResult = 0
@@ -96,6 +97,32 @@ namespace Nethermind.Core.Test
                 yield return new TransactionPotentialCosts()
                 {
                     Lp = 3, GasPrice = 21, GasLimit = 100, Value = 3, ExpectedPotentialCostResult = 2103
+                };
+                
+                /*Legacy after 1559 fork:*/
+                yield return new TransactionPotentialCosts()
+                {
+                    Lp = 4, IsEip1559Enabled = true, GasPrice = 10, GasLimit = 300, Value = 5, ExpectedPotentialCostResult = 3005
+                };
+                yield return new TransactionPotentialCosts()
+                {
+                    Lp = 5, IsEip1559Enabled = true, GasPrice = 10, GasLimit = 300, Value = 5, BaseFee = 200, ExpectedPotentialCostResult = 3005
+                };
+                
+                /* Eip1559 transactions before 1559 fork:*/
+                yield return new TransactionPotentialCosts()
+                {
+                    Lp = 6, GasPrice = 10, GasLimit = 300, FeeCap = 500, Value = 5, ExpectedPotentialCostResult = 3005
+                };
+                yield return new TransactionPotentialCosts()
+                {
+                    Lp = 9, GasPrice = 10, FeeCap = 300, ExpectedPotentialCostResult = 0
+                };
+                
+                /* Eip1559 transactions after 1559 fork:*/
+                yield return new TransactionPotentialCosts()
+                {
+                    Lp = 10, IsEip1559Enabled = true, GasPrice = 10, GasLimit = 300, FeeCap = 5, Value = 5, BaseFee = 200, ExpectedPotentialCostResult = 1505
                 };
             }
         }

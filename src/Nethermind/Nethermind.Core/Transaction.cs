@@ -102,7 +102,7 @@ namespace Nethermind.Core
             if (eip1559Enabled)
             {
                 UInt256 gasPrice = baseFee + GasPremium;
-                gasPrice = gasPrice > FeeCap ? FeeCap : gasPrice;
+                gasPrice = UInt256.Min(gasPrice, FeeCap);
                 return gasPrice * (ulong)GasLimit + Value;
             }
 

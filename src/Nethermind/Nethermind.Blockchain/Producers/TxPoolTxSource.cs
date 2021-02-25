@@ -94,9 +94,8 @@ namespace Nethermind.Blockchain.Producers
                 return balance;
             }
 
-            bool HasEnoughFounds(IDictionary<Address, UInt256> balances, Transaction transaction, BlockHeader parentHeader, UInt256 baseFee)
+            bool HasEnoughFounds(IDictionary<Address, UInt256> balances, Transaction transaction, bool isEip1559Enabled, UInt256 baseFee)
             {
-                bool isEip1559Enabled = _specProvider.GetSpec(parentHeader.Number + 1).IsEip1559Enabled;
                 UInt256 balance = GetRemainingBalance(balances, transaction.SenderAddress);
                 UInt256 transactionPotentialCost = transaction.GetTransactionPotentialCost(isEip1559Enabled, baseFee);
 
@@ -109,6 +108,11 @@ namespace Nethermind.Blockchain.Producers
                 balances[transaction.SenderAddress] = balance - transactionPotentialCost;
                 return true;
             }
+            
+            bool HasCorrectFeeCap(Transaction tx, bool isEip1559Enabled, UInt256 baseFee)
+            {
+                return !isEip1559Enabled || tx.FeeCap >= baseFee + tx.GasPremium;
+            }
 
             IDictionary<Address, Transaction[]> pendingTransactions = _transactionPool.GetPendingTransactionsBySender();
             IComparer<Transaction> comparer = GetComparer(parent, baseFee)
@@ -116,8 +120,8 @@ namespace Nethermind.Blockchain.Producers
             
             var transactions = GetOrderedTransactions(pendingTransactions, comparer);
             IDictionary<Address, UInt256> remainingBalance = new Dictionary<Address, UInt256>();
-            Dictionary<Address, UInt256> nonces = new Dictionary<Address, UInt256>();
-            List<Transaction> selected = new List<Transaction>();
+            Dictionary<Address, UInt256> nonces = new();
+            List<Transaction> selected = new();
             long gasRemaining = gasLimit;
 
             if (_logger.IsDebug) _logger.Debug($"Collecting pending transactions at block gas limit {gasRemaining}.");
@@ -166,11 +170,20 @@ namespace Nethermind.Blockchain.Producers
                     continue;
                 }
 
-                if (!HasEnoughFounds(remainingBalance, tx, parent, baseFee))
+
+                bool isEip1559Enabled = _specProvider.GetSpec(parent.Number + 1).IsEip1559Enabled;
+                if (!HasCorrectFeeCap(tx, isEip1559Enabled, baseFee))
+                {
+                    if (_logger.IsDebug) _logger.Debug($"Rejecting (FeeCap too low) baseFee: {baseFee} {tx.ToShortString()}");
+                    continue;
+                }
+                
+                if (!HasEnoughFounds(remainingBalance, tx, isEip1559Enabled, baseFee))
                 {
                     if (_logger.IsDebug) _logger.Debug($"Rejecting (sender balance too low) {tx.ToShortString()}");
                     continue;
                 }
+                
 
                 selected.Add(tx);
                 if (_logger.IsTrace) _logger.Trace($"Selected {tx.ToShortString()} to be included in block.");
@@ -182,7 +195,7 @@ namespace Nethermind.Blockchain.Producers
 
             return selected;
         }
-
+        
         protected virtual IEnumerable<Transaction> GetOrderedTransactions(IDictionary<Address,Transaction[]> pendingTransactions, IComparer<Transaction> comparer) => 
             Order(pendingTransactions, comparer);
 
