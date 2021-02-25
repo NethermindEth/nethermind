@@ -70,7 +70,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
             }
 
             BlockHeader sourceHeader = searchResult.Object;
-            BlockHeader callHeader = new BlockHeader(
+            BlockHeader callHeader = new(
                 sourceHeader.Hash,
                 Keccak.OfAnEmptySequenceRlp,
                 Address.Zero,
@@ -208,7 +208,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
 
         private byte[][] BuildTxProofs(Transaction[] txs, IReleaseSpec releaseSpec, int index)
         {
-            return new TxTrie(txs, releaseSpec, true).BuildProof(index);
+            return new TxTrie(txs, true).BuildProof(index);
         }
 
         private byte[][] BuildReceiptProofs(long blockNumber, TxReceipt[] receipts, int index)

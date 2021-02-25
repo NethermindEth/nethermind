@@ -19,7 +19,6 @@ using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
-using Nethermind.State;
 
 namespace Nethermind.Evm.Tracing.Proofs
 {
@@ -32,13 +31,13 @@ namespace Nethermind.Evm.Tracing.Proofs
             _treatSystemAccountDifferently = treatSystemAccountDifferently;
         }
         
-        public HashSet<Address> Accounts { get; } = new HashSet<Address>();
+        public HashSet<Address> Accounts { get; } = new();
 
-        public HashSet<StorageCell> Storages { get; } = new HashSet<StorageCell>();
+        public HashSet<StorageCell> Storages { get; } = new();
 
-        public HashSet<Keccak> BlockHashes { get; } = new HashSet<Keccak>();
+        public HashSet<Keccak> BlockHashes { get; } = new();
 
-        public byte[] Output { get; private set; }
+        public byte[]? Output { get; private set; }
 
         public bool IsTracingBlockHash => true;
         public bool IsTracingReceipt => true;
@@ -50,6 +49,7 @@ namespace Nethermind.Evm.Tracing.Proofs
         public bool IsTracingCode => false;
         public bool IsTracingStack => false;
         public bool IsTracingState => true;
+        public bool IsTracingStorage => true;
 
         public void ReportActionEnd(long gas, Address deploymentAddress, byte[] deployedCode)
         {
@@ -91,7 +91,7 @@ namespace Nethermind.Evm.Tracing.Proofs
             Accounts.Add(address);
         }
 
-        public void ReportCodeChange(Address address, byte[] before, byte[] after)
+        public void ReportCodeChange(Address address, byte[]? before, byte[]? after)
         {
             if (_treatSystemAccountDifferently && Address.SystemUser == address && before == null && after == Array.Empty<byte>())
             {
@@ -125,7 +125,7 @@ namespace Nethermind.Evm.Tracing.Proofs
             Storages.Add(storageCell);
         }
 
-        private bool _wasSystemAccountAccessedOnceAlready = false;
+        private bool _wasSystemAccountAccessedOnceAlready;
         
         public void ReportAccountRead(Address address)
         {
@@ -138,12 +138,12 @@ namespace Nethermind.Evm.Tracing.Proofs
             Accounts.Add(address);
         }
 
-        public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak stateRoot = null)
+        public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak? stateRoot = null)
         {
             Output = output;
         }
 
-        public void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Keccak stateRoot = null)
+        public void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Keccak? stateRoot = null)
         {
             Output = output;
         }

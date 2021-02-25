@@ -86,7 +86,6 @@ namespace Nethermind.DataMarketplace.Core.Services
                 transaction.GasPrice = gasPrice;
                 transaction.GasLimit = gasLimit;
                 transaction.Data = null;
-                transaction.Init = null;
                 transaction.Value = 0;
                 if (_logger.IsInfo) _logger.Info($"Canceling transaction with hash: '{transactionHash}', gas price: {gasPrice} wei ({multiplier}% of original transaction).");
             });
@@ -114,7 +113,7 @@ namespace Nethermind.DataMarketplace.Core.Services
             
             var transaction = transactionDetails.Transaction;
             update(transaction);
-            _wallet.Sign(transaction, (int)await _blockchainBridge.GetNetworkIdAsync());
+            _wallet.Sign(transaction, await _blockchainBridge.GetNetworkIdAsync());
             var hash = await _blockchainBridge.SendOwnTransactionAsync(transaction);
             if (hash is null)
             {

@@ -21,12 +21,12 @@ namespace Nethermind.Specs
 {
     public class SingleReleaseSpecProvider : ISpecProvider
     {
-        public long ChainId { get; }
+        public ulong ChainId { get; }
         public long[] TransitionBlocks { get; } = {0};
 
         private readonly IReleaseSpec _releaseSpec;
 
-        public SingleReleaseSpecProvider(IReleaseSpec releaseSpec, long networkId)
+        public SingleReleaseSpecProvider(IReleaseSpec releaseSpec, ulong networkId)
         {
             ChainId = networkId;
             _releaseSpec = releaseSpec;

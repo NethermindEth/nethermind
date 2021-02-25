@@ -28,7 +28,7 @@ namespace Nethermind.Evm.Tracing
         
         void StartNewBlockTrace(Block block);
         
-        ITxTracer StartNewTxTrace(Keccak txHash);
+        ITxTracer StartNewTxTrace(Keccak? txHash);
         
         void EndTxTrace();
     }

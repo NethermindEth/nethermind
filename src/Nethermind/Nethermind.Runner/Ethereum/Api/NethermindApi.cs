@@ -45,6 +45,7 @@ using Nethermind.Logging;
 using Nethermind.Monitoring;
 using Nethermind.Network;
 using Nethermind.Network.Discovery;
+using Nethermind.Network.P2P;
 using Nethermind.Network.Rlpx;
 using Nethermind.PubSub;
 using Nethermind.Serialization.Json;
@@ -126,6 +127,7 @@ namespace Nethermind.Runner.Ethereum.Api
         public IDbProvider? DbProvider { get; set; }
         public IRocksDbFactory? RocksDbFactory { get; set; }
         public IMemDbFactory? MemDbFactory { get; set; }
+        public IDisconnectsAnalyzer? DisconnectsAnalyzer { get; set; }
         public IDiscoveryApp? DiscoveryApp { get; set; }
         public ISigner? EngineSigner { get; set; }
         public ISignerStore? EngineSignerStore { get; set; }
@@ -178,6 +180,7 @@ namespace Nethermind.Runner.Ethereum.Api
         public ITxPool? TxPool { get; set; }
         public ITxPoolInfoProvider? TxPoolInfoProvider { get; set; }
         public IHealthHintService? HealthHintService { get; set; }
+        public TxValidator? TxValidator { get; set; }
         public IWallet? Wallet { get; set; }
         public IWebSocketsManager WebSocketsManager { get; set; } = new WebSocketsManager();
 

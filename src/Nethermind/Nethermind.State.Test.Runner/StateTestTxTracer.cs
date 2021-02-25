@@ -31,7 +31,7 @@ namespace Nethermind.State.Test.Runner
     public class StateTestTxTracer : ITxTracer
     {
         private StateTestTxTraceEntry _traceEntry;
-        private StateTestTxTrace _trace = new StateTestTxTrace();
+        private StateTestTxTrace _trace = new();
         private bool _gasAlreadySetForCurrentOp;
 
         public bool IsTracingReceipt => true;
@@ -42,7 +42,8 @@ namespace Nethermind.State.Test.Runner
         public bool IsTracingRefunds { get; } = false;
         public bool IsTracingCode => false;
         public bool IsTracingStack { get; set; } = true;
-        bool ITxTracer.IsTracingState => false;
+        bool IStateTracer.IsTracingState => false;
+        bool IStorageTracer.IsTracingStorage => false;
         public bool IsTracingBlockHash { get; } = false;
 
         public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak stateRoot = null)
@@ -151,6 +152,11 @@ namespace Nethermind.State.Test.Runner
         public void ReportStorageChange(StorageCell storageAddress, byte[] before, byte[] after)
         {
             throw new NotSupportedException();
+        }
+
+        public void ReportStorageRead(StorageCell storageCell)
+        {
+            throw new NotImplementedException();
         }
 
         public void ReportAction(long gas, UInt256 value, Address @from, Address to, byte[] input, ExecutionType callType, bool isPrecompileCall = false)

@@ -57,7 +57,7 @@ namespace Nethermind.JsonRpc.Modules.Admin
         public string Id { get; set; }
 
         [JsonProperty("ip", Order = 2)]
-        public string Ip { get; set; }
+        public string? Ip { get; set; }
 
         [JsonProperty("listenAddr", Order = 3)]
         public string ListenAddress { get; set; }

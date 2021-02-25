@@ -81,7 +81,7 @@ namespace Nethermind.DataMarketplace.Test.Initializers
             var protocolHandler = Substitute.For<IProtocolHandler, INdmPeer>();
             const string host = "127.0.0.1";
             var node = new Node(host, 8545);
-            var session = new Session(8545, LimboLogs.Instance, Substitute.For<IChannel>(), node);
+            var session = new Session(8545, node, Substitute.For<IChannel>(), NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
             _ethRequestService.FaucetHost.Returns(host);
             _subprotocolFactory.Create(session).Returns(protocolHandler);
             _factory.Create(session);

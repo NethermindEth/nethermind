@@ -21,6 +21,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.Precompiles.Bls.Shamatar;
 using NUnit.Framework;
+using static Nethermind.Specs.Forks.MuirGlacier;
 
 namespace Nethermind.Evm.Test
 {
@@ -33,7 +34,7 @@ namespace Nethermind.Evm.Test
             foreach (var (input, expectedResult) in Inputs)
             {
                 IPrecompile precompile = G2MultiExpPrecompile.Instance;
-                (byte[] output, bool success) = precompile.Run(input);
+                (byte[] output, bool success) = precompile.Run(input, Instance);
                 output.Should().BeEquivalentTo(expectedResult);
                 success.Should().BeTrue();
             }

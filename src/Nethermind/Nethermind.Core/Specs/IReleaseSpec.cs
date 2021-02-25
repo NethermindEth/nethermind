@@ -23,6 +23,7 @@ namespace Nethermind.Core.Specs
     /// </summary>
     public interface IReleaseSpec
     {
+        public string Name { get; }
         long MaximumExtraDataSize { get; }
         long MaxCodeSize { get; }
         long MinGasLimit { get; }
@@ -202,6 +203,11 @@ namespace Nethermind.Core.Specs
         bool IsEip2537Enabled { get; }
         
         /// <summary>
+        /// Berlin MODEXP precompiles
+        /// </summary>
+        bool IsEip2565Enabled { get; }
+        
+        /// <summary>
         /// Berlin transaction type
         /// </summary>
         bool IsEip2718Enabled { get; }
@@ -242,8 +248,6 @@ namespace Nethermind.Core.Specs
         bool ValidateReceipts => true;
         
         public long Eip1559TransitionBlock { get; }
-        
-        public long Eip1559MigrationDuration { get; }
 
         // STATE related 
         public bool ClearEmptyAccountWhenTouched => IsEip158Enabled;

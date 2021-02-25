@@ -121,7 +121,7 @@ namespace Nethermind.Crypto
             return output;
         }
 
-        private byte[] DecryptBlock(byte[] inEnc, int inOff, int inLen, byte[] macData)
+        private byte[] DecryptBlock(byte[] inEnc, int inOff, int inLen, byte[]? macData)
         {
             // Ensure that the length of the input is greater than the MAC in bytes
             if (inLen <= _iesParameters.MacKeySize / 8)

@@ -22,6 +22,7 @@ using Nethermind.JsonRpc.Modules.Subscribe;
 using Nethermind.Monitoring;
 using Nethermind.Network;
 using Nethermind.Network.Discovery;
+using Nethermind.Network.P2P;
 using Nethermind.Network.Rlpx;
 using Nethermind.PubSub;
 using Nethermind.Stats;
@@ -36,6 +37,7 @@ namespace Nethermind.Api
     {
         (IApiWithNetwork GetFromApi, IApiWithNetwork SetInApi) ForNetwork => (this, this);
         
+        IDisconnectsAnalyzer? DisconnectsAnalyzer { get; set; }
         IDiscoveryApp? DiscoveryApp { get; set; }
         IGrpcServer? GrpcServer { get; set; }
         IIPResolver? IpResolver { get; set; }

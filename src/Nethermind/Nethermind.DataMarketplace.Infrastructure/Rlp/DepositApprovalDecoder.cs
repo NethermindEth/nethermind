@@ -21,7 +21,7 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.DataMarketplace.Infrastructure.Rlp
 {
-    public class DepositApprovalDecoder : IRlpDecoder<DepositApproval>
+    public class DepositApprovalDecoder : IRlpNdmDecoder<DepositApproval>
     {
         public static void Init()
         {
@@ -46,6 +46,11 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
             DepositApprovalState state = (DepositApprovalState) rlpStream.DecodeInt();
 
             return new DepositApproval(assetId, assetName, kyc, consumer, provider, timestamp, state);
+        }
+
+        public void Encode(RlpStream stream, DepositApproval item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        {
+            throw new System.NotImplementedException();
         }
 
         public Serialization.Rlp.Rlp Encode(DepositApproval item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)

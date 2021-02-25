@@ -117,6 +117,9 @@ jobs:
     - name: Nethermind.Evm.Test
       run: |
         dotnet test -c Release src/Nethermind/Nethermind.Evm.Test
+    - name: Nethermind.Ethash.Test
+      run: |
+        dotnet test -c Release src/Nethermind/Nethermind.Ethash.Test
     - name: Nethermind.EthStats.Test
       run: |
         dotnet test -c Release src/Nethermind/Nethermind.EthStats.Test

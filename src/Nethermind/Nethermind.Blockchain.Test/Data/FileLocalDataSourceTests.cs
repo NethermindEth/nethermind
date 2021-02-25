@@ -113,6 +113,7 @@ namespace Nethermind.Blockchain.Test.Data
         
         [Test]
         [Retry(10)]
+        [Ignore("Causing repeated pains on GitHub actions.")]
         public async Task retries_loading_file()
         {
             using (var tempFile = TempPath.GetTempFile())

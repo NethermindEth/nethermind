@@ -88,7 +88,7 @@ namespace Ethereum.Test.Base
             );
 
             header.Bloom = new Bloom(Bytes.FromHexString(headerJson.Bloom));
-            header.GasUsedLegacy = (long) Bytes.FromHexString(headerJson.GasUsed).ToUnsignedBigInteger();
+            header.GasUsed = (long) Bytes.FromHexString(headerJson.GasUsed).ToUnsignedBigInteger();
             header.Hash = new Keccak(headerJson.Hash);
             header.MixHash = new Keccak(headerJson.MixHash);
             header.Nonce = (ulong) Bytes.FromHexString(headerJson.Nonce).ToUnsignedBigInteger();
@@ -116,8 +116,7 @@ namespace Ethereum.Test.Base
             transaction.GasPrice = transactionJson.GasPrice;
             transaction.Nonce = transactionJson.Nonce;
             transaction.To = transactionJson.To;
-            transaction.Data = transaction.To == null ? null : transactionJson.Data[postStateJson.Indexes.Data];
-            transaction.Init = transaction.To == null ? transactionJson.Data[postStateJson.Indexes.Data] : null;
+            transaction.Data = transactionJson.Data[postStateJson.Indexes.Data];
             transaction.SenderAddress = new PrivateKey(transactionJson.SecretKey).Address;
             transaction.Signature = new Signature(1, 1, 27);
             transaction.Hash = transaction.CalculateHash();
@@ -132,9 +131,8 @@ namespace Ethereum.Test.Base
             transaction.GasPrice = transactionJson.GasPrice;
             transaction.Nonce = transactionJson.Nonce;
             transaction.To = transactionJson.To;
-            transaction.Data = transaction.To == null ? null : transactionJson.Data;
-            transaction.Init = transaction.To == null ? transactionJson.Data : null;
-            transaction.Signature = new Signature(transactionJson.R, transactionJson.S, (int) transactionJson.V);
+            transaction.Data = transactionJson.Data;
+            transaction.Signature = new Signature(transactionJson.R, transactionJson.S, transactionJson.V);
             transaction.Hash = transaction.CalculateHash();
             return transaction;
         }

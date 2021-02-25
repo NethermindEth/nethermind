@@ -33,6 +33,12 @@ namespace Nethermind.Blockchain.Processing
             return suggestedBlocks.ToArray();
         }
 
+        public event EventHandler<BlocksProcessingEventArgs> BlocksProcessing
+        {
+            add { }
+            remove { }
+        }
+
         public event EventHandler<BlockProcessedEventArgs> BlockProcessed
         {
             add { }

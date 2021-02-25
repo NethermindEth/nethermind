@@ -374,7 +374,7 @@ namespace Nethermind.Core.Crypto
             st[24] = asu;
         }
 
-        public static Span<byte> ComputeHash(Span<byte> input, int size = HASH_SIZE)
+        public static Span<byte> ComputeHash(ReadOnlySpan<byte> input, int size = HASH_SIZE)
         {
             Span<byte> output = new byte[size];
             ComputeHash(input, output);
@@ -388,13 +388,13 @@ namespace Nethermind.Core.Crypto
             return output;
         }
         
-        public static void ComputeHashBytesToSpan(Span<byte> input, Span<byte> output, int size = HASH_SIZE)
+        public static void ComputeHashBytesToSpan(ReadOnlySpan<byte> input, Span<byte> output, int size = HASH_SIZE)
         {
             ComputeHash(input, output);
         }        
 
         // compute a keccak hash (md) of given byte length from "in"
-        public static void ComputeHash(Span<byte> input, Span<byte> output)
+        public static void ComputeHash(ReadOnlySpan<byte> input, Span<byte> output)
         {
             if (output.Length <= 0 || output.Length > STATE_SIZE)
             {

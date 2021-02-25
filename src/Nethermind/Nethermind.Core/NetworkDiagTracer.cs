@@ -34,19 +34,19 @@ namespace Nethermind.Core
 
         public static bool IsEnabled { get; set; }
 
-        private static readonly ConcurrentDictionary<string, ConcurrentQueue<string>> _events = new ConcurrentDictionary<string, ConcurrentQueue<string>>();
+        private static readonly ConcurrentDictionary<string, ConcurrentQueue<string>> _events = new();
 
         public static void Start()
         {
-            Timer timer = new Timer();
+            Timer timer = new();
             timer.Interval = 60000;
-            timer.Elapsed += (sender, args) => DumpEvents(); 
+            timer.Elapsed += (_, _) => DumpEvents(); 
             timer.Start();
         }
 
         private static void DumpEvents()
         {
-            StringBuilder stringBuilder = new StringBuilder();
+            StringBuilder stringBuilder = new();
 
             foreach (KeyValuePair<string, ConcurrentQueue<string>> keyValuePair in _events)
             {

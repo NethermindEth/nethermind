@@ -20,9 +20,8 @@ namespace Nethermind.State
 {
     public interface IStorageTracer
     {
+        bool IsTracingStorage { get; }
         void ReportStorageChange(StorageCell storageCell, byte[] before, byte[] after);
-        void ReportStorageRead(StorageCell storageCell)
-        {
-        }
+        void ReportStorageRead(StorageCell storageCell);
     }
 }

@@ -14,8 +14,10 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.IO;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Secp256k1;
 using Org.BouncyCastle.Crypto;
 using Org.BouncyCastle.Crypto.Digests;
@@ -41,21 +43,18 @@ namespace Nethermind.Crypto
             _keyGenerator = new PrivateKeyGenerator(cryptoRandom);
         }
 
-        public (bool, byte[]) Decrypt(PrivateKey privateKey, byte[] cipherText, byte[] macData = null)
-        {
-            using MemoryStream inputStream = new MemoryStream(cipherText);
-            int ephemBytesLength = 2 * ((BouncyCrypto.DomainParameters.Curve.FieldSize + 7) / 8) + 1;
+        private static readonly int ephemBytesLength = 2 * ((BouncyCrypto.DomainParameters.Curve.FieldSize + 7) / 8) + 1;
 
-            byte[] ephemBytes = new byte[ephemBytesLength];
-            inputStream.Read(ephemBytes, 0, ephemBytesLength);
-            byte[] iv = new byte[KeySize / 8];
-            inputStream.Read(iv, 0, iv.Length);
-            byte[] cipherBody = new byte[inputStream.Length - inputStream.Position];
-            inputStream.Read(cipherBody, 0, cipherBody.Length);
-            if (ephemBytes[0] != 4) // if not a compressed public key then probably we need to use EIP8
+        public (bool, byte[]) Decrypt(PrivateKey privateKey, byte[] cipherText, byte[]? macData = null)
+        {
+            if (cipherText[0] != 4) // if not a compressed public key then probably we need to use EIP8
             {
                 return (false, null);
             }
+            
+            Span<byte> ephemBytes = cipherText.AsSpan().Slice(0, ephemBytesLength);
+            byte[] iv = cipherText.Slice(ephemBytesLength, KeySize / 8);
+            byte[] cipherBody = cipherText.Slice(ephemBytesLength + KeySize / 8);
 
             byte[] plaintext = Decrypt(new PublicKey(ephemBytes), privateKey, iv, cipherBody, macData);
             return (true, plaintext);
@@ -65,18 +64,17 @@ namespace Nethermind.Crypto
         {
             byte[] iv = _cryptoRandom.GenerateRandomBytes(KeySize / 8);
             PrivateKey ephemeralPrivateKey = _keyGenerator.Generate();
-
             IIesEngine iesEngine = MakeIesEngine(true, recipientPublicKey, ephemeralPrivateKey, iv);
-
             byte[] cipher = iesEngine.ProcessBlock(plainText, 0, plainText.Length, macData);
-            using MemoryStream memoryStream = new MemoryStream();
+            
+            using MemoryStream memoryStream = new();
             memoryStream.Write(ephemeralPrivateKey.PublicKey.PrefixedBytes, 0, ephemeralPrivateKey.PublicKey.PrefixedBytes.Length);
             memoryStream.Write(iv, 0, iv.Length);
             memoryStream.Write(cipher, 0, cipher.Length);
             return memoryStream.ToArray();
         }
         
-        private OptimizedKdf _optimizedKdf = new OptimizedKdf();
+        private OptimizedKdf _optimizedKdf = new();
 
         private byte[] Decrypt(PublicKey ephemeralPublicKey, PrivateKey privateKey, byte[] iv, byte[] ciphertextBody, byte[] macData)
         {
@@ -88,15 +86,14 @@ namespace Nethermind.Crypto
         
         private IIesEngine MakeIesEngine(bool isEncrypt, PublicKey publicKey, PrivateKey privateKey, byte[] iv)
         {
-            AesEngine aesFastEngine = new AesEngine();
+            AesEngine aesFastEngine = new();
 
-            EthereumIesEngine iesEngine = new EthereumIesEngine(
+            EthereumIesEngine iesEngine = new(
                 new HMac(new Sha256Digest()),
                 new Sha256Digest(),
                 new BufferedBlockCipher(new SicBlockCipher(aesFastEngine)));
 
-            
-            ParametersWithIV parametersWithIV = new ParametersWithIV(_iesParameters, iv);
+            ParametersWithIV parametersWithIV = new(_iesParameters, iv);
             byte[] secret = Proxy.EcdhSerialized(publicKey.Bytes, privateKey.KeyBytes);
             iesEngine.Init(isEncrypt, _optimizedKdf.Derive(secret), parametersWithIV);
             return iesEngine;

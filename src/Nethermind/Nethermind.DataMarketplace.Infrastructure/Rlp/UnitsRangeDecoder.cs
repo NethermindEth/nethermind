@@ -20,7 +20,7 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.DataMarketplace.Infrastructure.Rlp
 {
-    public class UnitsRangeDecoder : IRlpDecoder<UnitsRange>
+    public class UnitsRangeDecoder : IRlpNdmDecoder<UnitsRange>
     {
         public static void Init()
         {
@@ -46,6 +46,11 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
             {
                 throw new RlpException($"{nameof(UnitsRange)} could not be decoded", e);
             }
+        }
+
+        public void Encode(RlpStream stream, UnitsRange item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        {
+            throw new NotImplementedException();
         }
 
         public Serialization.Rlp.Rlp Encode(UnitsRange item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)

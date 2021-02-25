@@ -31,6 +31,7 @@ namespace Nethermind.Specs.Forks
 
         public static IReleaseSpec Instance => LazyInitializer.EnsureInitialized(ref _instance, () => new TangerineWhistle());
 
+        public string Name => "Tangerine Whistle";
         public long MaximumExtraDataSize => 32;
         public long MaxCodeSize => long.MaxValue;
         public long MinGasLimit => 5000;
@@ -70,6 +71,7 @@ namespace Nethermind.Specs.Forks
         public bool IsEip2200Enabled => false;
         public bool IsEip2315Enabled => false;
         public bool IsEip2537Enabled => false;
+        public bool IsEip2565Enabled => false;
         public bool IsEip2929Enabled => false;
         public bool IsEip2930Enabled => false;
         public bool IsEip2718Enabled => false;

@@ -49,7 +49,7 @@ namespace Nethermind.Blockchain.Receipts
             {
                 if (_decoderContext.Position < _length)
                 {
-                    LogEntryDecoder.Instance.DecodeStructRef(ref _decoderContext, RlpBehaviors.None, out current);
+                    LogEntryDecoder.DecodeStructRef(ref _decoderContext, RlpBehaviors.None, out current);
                     Index++;
                     return true;
                 }

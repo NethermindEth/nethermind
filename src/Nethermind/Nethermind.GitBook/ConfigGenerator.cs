@@ -45,12 +45,16 @@ namespace Nethermind.GitBook
                 }
             }
 
-            // ToFix: algorithm above is not creating .md file for IEthStatsConfig and IHealthChecksConfig. Below added manually
+            // ToFix: algorithm above is not creating .md files for some modules. Below added manually
              configModules.Add(Assembly.Load("Nethermind.EthStats").GetTypes()
                  .Where(t => typeof(IConfig).IsAssignableFrom(t))
                  .First(t => t.IsInterface && t != typeof(IConfig)));
              
              configModules.Add(Assembly.Load("Nethermind.HealthChecks").GetTypes()
+                 .Where(t => typeof(IConfig).IsAssignableFrom(t))
+                 .First(t => t.IsInterface && t != typeof(IConfig)));
+             
+             configModules.Add(Assembly.Load("Nethermind.Seq").GetTypes()
                  .Where(t => typeof(IConfig).IsAssignableFrom(t))
                  .First(t => t.IsInterface && t != typeof(IConfig)));
             

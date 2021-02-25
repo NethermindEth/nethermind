@@ -99,7 +99,7 @@ namespace Nethermind.Core.Test.Builders
         public BlockBuilder WithTransactions(IReleaseSpec releaseSpec, params Transaction[] transactions)
         {
             TestObjectInternal.Body = TestObjectInternal.Body.WithChangedTransactions(transactions);
-            TxTrie trie = new TxTrie(transactions, releaseSpec, false);
+            TxTrie trie = new TxTrie(transactions, false);
             trie.UpdateRootHash();
 
             TestObjectInternal.Header.TxRoot = trie.RootHash;
@@ -208,7 +208,7 @@ namespace Nethermind.Core.Test.Builders
 
         public BlockBuilder WithGasUsed(long gasUsed)
         {
-            TestObjectInternal.Header.GasUsedLegacy = gasUsed;
+            TestObjectInternal.Header.GasUsed = gasUsed;
             return this;
         }
     }

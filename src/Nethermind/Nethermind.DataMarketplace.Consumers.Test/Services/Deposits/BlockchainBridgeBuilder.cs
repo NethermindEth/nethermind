@@ -19,6 +19,8 @@ using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Blockchain.Spec;
+using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
@@ -47,17 +49,19 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Deposits
             var trieStore = new TrieStore(memDbProvider.StateDb, LimboLogs.Instance);
             StateProvider stateProvider = new StateProvider(trieStore, memDbProvider.CodeDb, LimboLogs.Instance);
             IEthereumEcdsa ecdsa = new EthereumEcdsa(ChainId.Mainnet, LimboLogs.Instance);
-            ITxPool txPool = new TxPool.TxPool(new InMemoryTxStorage(), ecdsa, MainnetSpecProvider.Instance, new TxPoolConfig(), stateProvider, LimboLogs.Instance);
             BlockTree blockTree = Build.A.BlockTree().OfChainLength(1).TestObject;
+            MainnetSpecProvider specProvider = MainnetSpecProvider.Instance;
+            ITxPool txPool = new TxPool.TxPool(new InMemoryTxStorage(), ecdsa, new ChainHeadSpecProvider(specProvider, blockTree),
+                new TxPoolConfig(), stateProvider, new TxValidator(specProvider.ChainId), LimboLogs.Instance);
             IWallet wallet = new DevWallet(new WalletConfig(), LimboLogs.Instance);
-            ReceiptsRecovery receiptsRecovery = new ReceiptsRecovery(ecdsa, MainnetSpecProvider.Instance);
+            ReceiptsRecovery receiptsRecovery = new ReceiptsRecovery(ecdsa, specProvider);
             LogFinder logFinder = new LogFinder(blockTree, new InMemoryReceiptStorage(), NullBloomStorage.Instance, LimboLogs.Instance, receiptsRecovery, 1024);
 
             ReadOnlyTxProcessingEnv processingEnv = new ReadOnlyTxProcessingEnv(
                 new ReadOnlyDbProvider(memDbProvider, false),
                 new TrieStore(memDbProvider.StateDb, LimboLogs.Instance),
                 new ReadOnlyBlockTree(blockTree),
-                MainnetSpecProvider.Instance, LimboLogs.Instance);
+                specProvider, LimboLogs.Instance);
             BlockchainBridge blockchainBridge = new BlockchainBridge(
                 processingEnv,
                 txPool,

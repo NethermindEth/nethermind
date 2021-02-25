@@ -26,9 +26,9 @@ namespace Nethermind.Config
 {
     public class ConfigProvider : IConfigProvider
     {
-        private readonly ConcurrentDictionary<Type, object> _instances = new ConcurrentDictionary<Type, object>();
+        private readonly ConcurrentDictionary<Type, object> _instances = new();
         
-        private readonly List<IConfigSource> _configSource = new List<IConfigSource>();
+        private readonly List<IConfigSource> _configSource = new();
 
         public T GetConfig<T>() where T : IConfig
         {

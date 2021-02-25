@@ -26,8 +26,8 @@ namespace Nethermind.Evm.Tracing.GethStyle
 {
     public class GethLikeTxTracer : ITxTracer
     {
-        private GethTxTraceEntry _traceEntry;
-        private readonly GethLikeTxTrace _trace = new GethLikeTxTrace();
+        private GethTxTraceEntry? _traceEntry;
+        private readonly GethLikeTxTrace _trace = new();
 
         public GethLikeTxTracer(GethTraceOptions options) 
         {
@@ -36,6 +36,8 @@ namespace Nethermind.Evm.Tracing.GethStyle
             IsTracingOpLevelStorage = !options.DisableStorage;
         }
         
+        bool IStateTracer.IsTracingState => false;
+        bool IStorageTracer.IsTracingStorage => false;
         public bool IsTracingReceipt => true;
         bool ITxTracer.IsTracingActions => false;
         public bool IsTracingOpLevelStorage { get; }
@@ -44,17 +46,15 @@ namespace Nethermind.Evm.Tracing.GethStyle
         public bool IsTracingRefunds => false;
         public bool IsTracingCode => false;
         public bool IsTracingStack { get; }
-        bool ITxTracer.IsTracingState => false;
-        
         public bool IsTracingBlockHash => false;
         
-        public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak stateRoot = null)
+        public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak? stateRoot = null)
         {
             _trace.ReturnValue = output;
             _trace.Gas = gasSpent;
         }
 
-        public void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Keccak stateRoot = null)
+        public void MarkAsFailed(Address recipient, long gasSpent, byte[]? output, string error, Keccak? stateRoot = null)
         {
             _trace.Failed = true;
             _trace.ReturnValue = output ?? Array.Empty<byte>();
@@ -62,7 +62,7 @@ namespace Nethermind.Evm.Tracing.GethStyle
 
         public void StartOperation(int depth, long gas, Instruction opcode, int pc)
         {
-            var previousTraceEntry = _traceEntry;
+            GethTxTraceEntry previousTraceEntry = _traceEntry;
             _traceEntry = new GethTxTraceEntry();
             _traceEntry.Pc = pc;
             _traceEntry.Operation = Enum.GetName(typeof(Instruction), opcode);
@@ -100,33 +100,22 @@ namespace Nethermind.Evm.Tracing.GethStyle
             _traceEntry.Error = GetErrorDescription(error);
         }
         
-        private string GetErrorDescription(EvmExceptionType evmExceptionType)
+        private string? GetErrorDescription(EvmExceptionType evmExceptionType)
         {
-            switch (evmExceptionType)
+            return evmExceptionType switch
             {
-                case EvmExceptionType.None:
-                    return null;
-                case EvmExceptionType.BadInstruction:
-                    return "BadInstruction";
-                case EvmExceptionType.StackOverflow:
-                    return "StackOverflow";
-                case EvmExceptionType.StackUnderflow:
-                    return "StackUnderflow";
-                case EvmExceptionType.OutOfGas:
-                    return "OutOfGas";
-                case EvmExceptionType.InvalidSubroutineEntry:
-                    return "InvalidSubroutineEntry";
-                case EvmExceptionType.InvalidSubroutineReturn:
-                    return "InvalidSubroutineReturn";
-                case EvmExceptionType.InvalidJumpDestination:
-                    return "BadJumpDestination";
-                case EvmExceptionType.AccessViolation:
-                    return "AccessViolation";
-                case EvmExceptionType.StaticCallViolation:
-                    return "StaticCallViolation";
-                default:
-                    return "Error";
-            }
+                EvmExceptionType.None => null,
+                EvmExceptionType.BadInstruction => "BadInstruction",
+                EvmExceptionType.StackOverflow => "StackOverflow",
+                EvmExceptionType.StackUnderflow => "StackUnderflow",
+                EvmExceptionType.OutOfGas => "OutOfGas",
+                EvmExceptionType.InvalidSubroutineEntry => "InvalidSubroutineEntry",
+                EvmExceptionType.InvalidSubroutineReturn => "InvalidSubroutineReturn",
+                EvmExceptionType.InvalidJumpDestination => "BadJumpDestination",
+                EvmExceptionType.AccessViolation => "AccessViolation",
+                EvmExceptionType.StaticCallViolation => "StaticCallViolation",
+                _ => "Error"
+            };
         }
 
         public void ReportOperationRemainingGas(long gas)
@@ -179,6 +168,11 @@ namespace Nethermind.Evm.Tracing.GethStyle
         }
 
         public void ReportStorageChange(StorageCell storageCell, byte[] before, byte[] after)
+        {
+            throw new NotSupportedException();
+        }
+
+        public void ReportStorageRead(StorageCell storageCell)
         {
             throw new NotSupportedException();
         }

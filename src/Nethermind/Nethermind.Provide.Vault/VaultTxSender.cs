@@ -22,9 +22,9 @@ using System.Net.Http.Headers;
 using System.Numerics;
 using System.Text;
 using System.Threading.Tasks;
-using Ipfs;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.TxPool;
 using Nethermind.Vault.Config;
 using Newtonsoft.Json;
@@ -112,7 +112,7 @@ namespace Nethermind.Vault
         {
             await EnsureAccount();
             ProvideTx provideTx = new ProvideTx();
-            provideTx.Data = "0x" + (tx.Data ?? tx.Init).ToHexString();
+            provideTx.Data = tx.Data?.ToHexString(true);
             provideTx.Description = "From Nethermind with love";
             provideTx.Hash = tx.Hash?.ToString();
             provideTx.AccountId = _accountId;

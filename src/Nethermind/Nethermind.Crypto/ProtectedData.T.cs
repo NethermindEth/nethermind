@@ -33,7 +33,7 @@ namespace Nethermind.Crypto
         private DateTime _timestamp;
         private byte[] _encryptedData;
 
-        public ProtectedData(byte[] data, ICryptoRandom random = null, ITimestamper timestamper = null)
+        public ProtectedData(byte[] data, ICryptoRandom? random = null, ITimestamper? timestamper = null)
         {
             _random = random ?? new CryptoRandom();
             _timestamper = timestamper ?? Timestamper.Default;
@@ -43,13 +43,13 @@ namespace Nethermind.Crypto
         private void Protect(byte[] data)
         {
             _entropy = _random.GenerateRandomBytes(_random.NextInt(EntropyMaxLength - EntropyMinLength) + EntropyMinLength);
-            _encryptedData = Protect(data, _entropy, DataProtectionScope.CurrentUser);
+            _encryptedData = Protect(data, _entropy);
             _timestamp = _timestamper.UtcNow;
         }
 
         public T Unprotect()
         {
-            var data = Unprotect(_encryptedData, _entropy, DataProtectionScope.CurrentUser);
+            var data = Unprotect(_encryptedData, _entropy);
             CheckReProtect(data);
             return CreateUnprotected(data);
         }

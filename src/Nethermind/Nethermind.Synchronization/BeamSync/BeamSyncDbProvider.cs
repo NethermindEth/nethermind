@@ -116,6 +116,10 @@ namespace Nethermind.Synchronization.BeamSync
         
         public void Dispose()
         {
+            _otherProvider.Dispose();
+            _codeDb.Dispose();
+            _stateDb.Dispose();
+            _beamTempDb.Dispose();
             GC.SuppressFinalize(this);
         }
     }

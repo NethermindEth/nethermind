@@ -19,12 +19,16 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using FluentAssertions;
+using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.Spec;
+using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Db;
+using Nethermind.Evm;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
@@ -34,6 +38,7 @@ using Nethermind.TxPool;
 using Nethermind.TxPool.Storages;
 using NSubstitute;
 using NUnit.Framework;
+using Org.BouncyCastle.Math;
 
 namespace Nethermind.Blockchain.Test.TxPools
 {
@@ -48,7 +53,8 @@ namespace Nethermind.Blockchain.Test.TxPools
         private ITxStorage _inMemoryTxStorage;
         private ITxStorage _persistentTxStorage;
         private IStateProvider _stateProvider;
-        
+        private IBlockFinder _blockFinder;
+
         [SetUp]
         public void Setup()
         {
@@ -59,6 +65,8 @@ namespace Nethermind.Blockchain.Test.TxPools
             _inMemoryTxStorage = new InMemoryTxStorage();
             _persistentTxStorage = new PersistentTxStorage(new MemDb());
             _stateProvider = new StateProvider(new TrieStore(new MemDb(), _logManager), new MemDb(), _logManager);
+            _blockFinder = Substitute.For<IBlockFinder>();
+            _blockFinder.FindBestSuggestedHeader().Returns(Build.A.BlockHeader.WithNumber(10000000).TestObject);
         }
 
         [Test]
@@ -98,7 +106,29 @@ namespace Nethermind.Blockchain.Test.TxPools
             Transaction tx = Build.A.Transaction.SignedAndResolved(ecdsa, TestItem.PrivateKeyA).TestObject;
             AddTxResult result = _txPool.AddTransaction(tx, TxHandlingOptions.PersistentBroadcast);
             _txPool.GetPendingTransactions().Length.Should().Be(0);
-            result.Should().Be(AddTxResult.InvalidChainId);
+            result.Should().Be(AddTxResult.Invalid);
+        }
+        
+        [Test]
+        public void should_ignore_transactions_with_insufficient_intrinsic_gas()
+        {
+            _txPool = CreatePool(_noTxStorage);
+            EthereumEcdsa ecdsa = new EthereumEcdsa(ChainId.Mainnet, _logManager);
+            Transaction tx = Build.A.Transaction
+                .WithData(new byte[] 
+                {
+                    127, 243, 106, 181, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 145, 162, 136, 9, 81, 126, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    0, 128, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 188, 120, 128, 96, 158, 141, 79, 126, 233, 131, 209, 47, 215, 166, 85, 190, 220, 187, 180, 115, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    0, 0, 0, 96, 44, 207, 221, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 233, 29, 21, 62, 11, 65, 81, 138, 44, 232, 221, 61, 121,
+                    68, 250, 134, 52, 99, 169, 125, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 183, 211, 17, 226, 235, 85, 242, 246, 138, 148, 64, 218, 56, 231, 152, 146, 16, 185, 160, 94, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 22, 226, 139,
+                    67, 163, 88, 22, 43, 150, 247, 11, 77, 225, 76, 152, 164, 70, 95, 37
+                })
+                .SignedAndResolved()
+                .TestObject;
+
+            AddTxResult result = _txPool.AddTransaction(tx, TxHandlingOptions.PersistentBroadcast);
+            _txPool.GetPendingTransactions().Length.Should().Be(0);
+            result.Should().Be(AddTxResult.Invalid);
         }
 
         [Test]
@@ -341,7 +371,8 @@ namespace Nethermind.Blockchain.Test.TxPools
         }
 
         private TxPool.TxPool CreatePool(ITxStorage txStorage)
-            => new TxPool.TxPool(txStorage, _ethereumEcdsa, _specProvider, new TxPoolConfig(), _stateProvider, _logManager);
+            => new TxPool.TxPool(txStorage, _ethereumEcdsa, new ChainHeadSpecProvider(_specProvider, _blockFinder), 
+                new TxPoolConfig(), _stateProvider, new TxValidator(_specProvider.ChainId), _logManager);
 
         private ITxPoolPeer GetPeer(PublicKey publicKey)
         {
@@ -395,7 +426,7 @@ namespace Nethermind.Blockchain.Test.TxPools
         }
 
         private Transaction GetTransaction(PrivateKey privateKey, Address to = null, UInt256? nonce = null)
-            => GetTransaction(nonce ?? UInt256.Zero, 1, 1000, to, Array.Empty<byte>(), privateKey);
+            => GetTransaction(nonce ?? UInt256.Zero, GasCostOf.Transaction, 1000, to, Array.Empty<byte>(), privateKey);
 
         private Transaction GetTransaction(UInt256 nonce, long gasLimit, UInt256 gasPrice, Address to, byte[] data,
             PrivateKey privateKey)

@@ -86,6 +86,7 @@ namespace Nethermind.Blockchain.Test
                         bool notYet = false;
                         for (int i = 0; i < suggestedBlocks.Count; i++)
                         {
+                            BlocksProcessing?.Invoke(this, new BlocksProcessingEventArgs(suggestedBlocks));
                             Keccak hash = suggestedBlocks[i].Hash;
                             if (!_allowed.Contains(hash))
                             {
@@ -112,6 +113,8 @@ namespace Nethermind.Blockchain.Test
                         }
                     }
                 }
+
+                public event EventHandler<BlocksProcessingEventArgs> BlocksProcessing;
 
                 public event EventHandler<BlockProcessedEventArgs> BlockProcessed;
 

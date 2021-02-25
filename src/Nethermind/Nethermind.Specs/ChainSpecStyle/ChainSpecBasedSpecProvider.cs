@@ -130,7 +130,12 @@ namespace Nethermind.Specs.ChainSpecStyle
                 releaseSpec.IsEip1559Enabled = (_chainSpec.Parameters.Eip1559Transition ?? long.MaxValue) <= releaseStartBlock;
                 releaseSpec.Eip1559TransitionBlock = _chainSpec.Parameters.Eip1559Transition ?? long.MaxValue;
                 releaseSpec.Eip1559MigrationDuration = _chainSpec.Parameters.Eip1559MigrationDuration ?? 0;
+                releaseSpec.IsEip2315Enabled = (_chainSpec.Parameters.Eip2315Transition ?? long.MaxValue) <= releaseStartBlock;
+                releaseSpec.IsEip2537Enabled = (_chainSpec.Parameters.Eip2537Transition ?? long.MaxValue) <= releaseStartBlock;
+                releaseSpec.IsEip2565Enabled = (_chainSpec.Parameters.Eip2565Transition ?? long.MaxValue) <= releaseStartBlock;
+                releaseSpec.IsEip2718Enabled = (_chainSpec.Parameters.Eip2718Transition ?? long.MaxValue) <= releaseStartBlock;
                 releaseSpec.IsEip2929Enabled = (_chainSpec.Parameters.Eip2929Transition ?? long.MaxValue) <= releaseStartBlock;
+                releaseSpec.IsEip2930Enabled = (_chainSpec.Parameters.Eip2930Transition ?? long.MaxValue) <= releaseStartBlock;
                 releaseSpec.ValidateChainId = (_chainSpec.Parameters.ValidateChainIdTransition ?? 0) <= releaseStartBlock; 
                 releaseSpec.ValidateReceipts = ((_chainSpec.Parameters.ValidateReceiptsTransition > 0) ? Math.Max(_chainSpec.Parameters.ValidateReceiptsTransition ?? 0, _chainSpec.Parameters.Eip658Transition ?? 0) : 0) <= releaseStartBlock;
 
@@ -185,7 +190,7 @@ namespace Nethermind.Specs.ChainSpecStyle
 
         public long? DaoBlockNumber => _chainSpec.DaoForkBlockNumber;
 
-        public long ChainId => _chainSpec.ChainId;
+        public ulong ChainId => _chainSpec.ChainId;
         public long[] TransitionBlocks { get; private set; }
     };
 }

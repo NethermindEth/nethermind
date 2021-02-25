@@ -31,6 +31,7 @@ namespace Nethermind.Specs.Forks
 
         public static IReleaseSpec Instance => LazyInitializer.EnsureInitialized(ref _instance, () => new Berlin());
 
+        public string Name => "Berlin";
         public long MaximumExtraDataSize => 32;
         public long MaxCodeSize => 24576;
         public long MinGasLimit => 5000;
@@ -70,6 +71,7 @@ namespace Nethermind.Specs.Forks
         public bool IsEip2200Enabled => true;
         public bool IsEip2315Enabled => true;
         public bool IsEip2537Enabled => true;
+        public bool IsEip2565Enabled => true;
         public bool IsEip2929Enabled => true;
         public bool IsEip2930Enabled => true;
         public bool IsEip2718Enabled => true;

@@ -23,7 +23,7 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network
 {
-    public class NetworkNodeDecoder : IRlpDecoder<NetworkNode>
+    public class NetworkNodeDecoder : IRlpStreamDecoder<NetworkNode>, IRlpObjectDecoder<NetworkNode>
     {
         static NetworkNodeDecoder()
         {
@@ -34,7 +34,7 @@ namespace Nethermind.Network
         {
             rlpStream.ReadSequenceLength();
 
-            PublicKey publicKey = new PublicKey(rlpStream.DecodeByteArray());
+            PublicKey publicKey = new(rlpStream.DecodeByteArraySpan());
             string ip = rlpStream.DecodeString();
             int port = (int)rlpStream.DecodeByteArraySpan().ReadEthUInt64();
             rlpStream.SkipItem();
@@ -50,6 +50,11 @@ namespace Nethermind.Network
 
             NetworkNode networkNode = new NetworkNode(publicKey, ip != string.Empty ? ip : null, port, reputation);
             return networkNode;
+        }
+
+        public void Encode(RlpStream stream, NetworkNode item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        {
+            throw new NotImplementedException();
         }
 
         public Rlp Encode(NetworkNode item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)

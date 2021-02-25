@@ -14,8 +14,8 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Int256;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using NUnit.Framework;
@@ -25,7 +25,7 @@ namespace Nethermind.Evm.Test
     [TestFixture]
     public class Eip1344Tests : VirtualMachineTestsBase
     {
-        private void Test(long chainId)
+        private void Test(ulong chainId)
         {
             var code = Prepare.EvmCode
                 .Op(Instruction.CHAINID)
@@ -36,7 +36,7 @@ namespace Nethermind.Evm.Test
             var setCost = chainId == 0 ? GasCostOf.SStoreNetMeteredEip2200 : GasCostOf.SSet;
             Assert.AreEqual(StatusCode.Success, result.StatusCode);
             AssertGas(result, 21000 + GasCostOf.VeryLow + GasCostOf.Base + setCost);
-            AssertStorage(0, chainId.ToBigEndianByteArray());
+            AssertStorage(0, ((UInt256)chainId).ToBigEndian());
         }
         
         private class Custom0 : Eip1344Tests

@@ -50,7 +50,7 @@ namespace Nethermind.DataMarketplace.Consumers.Refunds.Services
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
-        public ulong GasLimit { get; } = 90000;
+        public ulong GasLimit { get; } = 55000;
 
         public async Task SetEarlyRefundTicketAsync(EarlyRefundTicket ticket, RefundReason reason)
         {
@@ -79,7 +79,7 @@ namespace Nethermind.DataMarketplace.Consumers.Refunds.Services
             transaction.GasPrice = gasPrice;
             transaction.Nonce = await _blockchainBridge.GetNonceAsync(onBehalfOf);
             
-            _wallet.Sign(transaction, (int)await _blockchainBridge.GetNetworkIdAsync());
+            _wallet.Sign(transaction, await _blockchainBridge.GetNetworkIdAsync());
 
             if (_logger.IsInfo)
             {
@@ -106,7 +106,7 @@ namespace Nethermind.DataMarketplace.Consumers.Refunds.Services
             transaction.GasPrice = gasPrice;
             transaction.Nonce = await _blockchainBridge.GetNonceAsync(onBehalfOf);
             
-            _wallet.Sign(transaction, (int)await _blockchainBridge.GetNetworkIdAsync());
+            _wallet.Sign(transaction, await _blockchainBridge.GetNetworkIdAsync());
 
             if (_logger.IsInfo)
             {

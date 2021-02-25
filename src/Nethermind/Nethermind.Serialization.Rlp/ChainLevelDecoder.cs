@@ -20,9 +20,9 @@ using Nethermind.Core;
 
 namespace Nethermind.Serialization.Rlp
 {
-    public class ChainLevelDecoder : IRlpDecoder<ChainLevelInfo>, IRlpValueDecoder<ChainLevelInfo>
+    public class ChainLevelDecoder : IRlpStreamDecoder<ChainLevelInfo>, IRlpValueDecoder<ChainLevelInfo>
     {
-        public ChainLevelInfo Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public ChainLevelInfo? Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (rlpStream.IsNextItemNull())
             {
@@ -32,7 +32,7 @@ namespace Nethermind.Serialization.Rlp
             int lastCheck = rlpStream.ReadSequenceLength() + rlpStream.Position;
             bool hasMainChainBlock = rlpStream.DecodeBool();
 
-            List<BlockInfo> blockInfos = new List<BlockInfo>();
+            List<BlockInfo> blockInfos = new();
 
             rlpStream.ReadSequenceLength();
             while (rlpStream.Position < lastCheck)
@@ -45,11 +45,16 @@ namespace Nethermind.Serialization.Rlp
                 rlpStream.Check(lastCheck);
             }
 
-            ChainLevelInfo info = new ChainLevelInfo(hasMainChainBlock, blockInfos.ToArray());
+            ChainLevelInfo info = new(hasMainChainBlock, blockInfos.ToArray());
             return info;
         }
 
-        public ChainLevelInfo Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public void Encode(RlpStream stream, ChainLevelInfo item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        {
+            throw new NotImplementedException();
+        }
+
+        public ChainLevelInfo? Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (decoderContext.IsNextItemNull())
             {
@@ -59,7 +64,7 @@ namespace Nethermind.Serialization.Rlp
             int lastCheck = decoderContext.ReadSequenceLength() + decoderContext.Position;
             bool hasMainChainBlock = decoderContext.DecodeBool();
 
-            List<BlockInfo> blockInfos = new List<BlockInfo>();
+            List<BlockInfo> blockInfos = new();
 
             decoderContext.ReadSequenceLength();
             while (decoderContext.Position < lastCheck)
@@ -72,11 +77,11 @@ namespace Nethermind.Serialization.Rlp
                 decoderContext.Check(lastCheck);
             }
 
-            ChainLevelInfo info = new ChainLevelInfo(hasMainChainBlock, blockInfos.ToArray());
+            ChainLevelInfo info = new(hasMainChainBlock, blockInfos.ToArray());
             return info;
         }
 
-        public Rlp Encode(ChainLevelInfo item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public Rlp Encode(ChainLevelInfo? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item == null)
             {

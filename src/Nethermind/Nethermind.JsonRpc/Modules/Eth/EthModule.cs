@@ -287,7 +287,6 @@ namespace Nethermind.JsonRpc.Modules.Eth
             return ResultWrapper<byte[]>.Success(code);
         }
 
-
         public ResultWrapper<byte[]> eth_sign(Address addressData, byte[] message)
         {
             Signature sig;
@@ -715,16 +714,16 @@ namespace Nethermind.JsonRpc.Modules.Eth
             return ResultWrapper<AccountProof>.Success(accountProofCollector.BuildResult());
         }
 
-        public ResultWrapper<long> eth_chainId()
+        public ResultWrapper<ulong> eth_chainId()
         {
             try
             {
-                long chainId = _blockchainBridge.GetChainId();
-                return ResultWrapper<long>.Success(chainId);
+                ulong chainId = _blockchainBridge.GetChainId();
+                return ResultWrapper<ulong>.Success(chainId);
             }
             catch (Exception ex)
             {
-                return ResultWrapper<long>.Fail(ex.Message, ErrorCodes.InternalError, 0L);
+                return ResultWrapper<ulong>.Fail(ex.Message, ErrorCodes.InternalError, 0L);
             }
         }
 

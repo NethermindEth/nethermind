@@ -19,7 +19,6 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
-using System.Threading;
 using System.Threading.Tasks;
 using DotNetty.Transport.Channels;
 using FluentAssertions;
@@ -84,8 +83,8 @@ namespace Nethermind.Network.Test
         {
             await using Context ctx = new Context();
             ctx.PeerManager.Init();
-            Session session1 = new Session(30303, LimboLogs.Instance, Substitute.For<IChannel>());
-            Session session2 = new Session(30303, LimboLogs.Instance, Substitute.For<IChannel>());
+            Session session1 = new Session(30303, Substitute.For<IChannel>(), NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+            Session session2 = new Session(30303, Substitute.For<IChannel>(), NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
             session1.RemoteHost = "1.2.3.4";
             session1.RemotePort = 12345;
             session1.RemoteNodeId = TestItem.PublicKeyA;
@@ -107,11 +106,11 @@ namespace Nethermind.Network.Test
             ctx.PeerManager.Init();
             var enode1 = new Enode(enode1String);
             Node node1 = new Node(enode1.PublicKey, new IPEndPoint(enode1.HostIp, enode1.Port));
-            Session session1 = new Session(30303, LimboLogs.Instance, Substitute.For<IChannel>(), node1);
+            Session session1 = new Session(30303, node1, Substitute.For<IChannel>(), NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
             
             var enode2 = new Enode(enode2String);
             Node node2 = new Node(enode2.PublicKey, new IPEndPoint(enode2.HostIp, enode2.Port));            
-            Session session2 = new Session(30303, LimboLogs.Instance, Substitute.For<IChannel>(), node2);
+            Session session2 = new Session(30303, node2, Substitute.For<IChannel>(), NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
             
             ctx.RlpxPeer.CreateIncoming(session1, session2);
             ctx.PeerManager.ActivePeers.Count.Should().Be(2);
@@ -125,7 +124,7 @@ namespace Nethermind.Network.Test
         {
             await using Context ctx = new Context();
             ctx.PeerManager.Init();
-            Session session1 = new Session(30303, LimboLogs.Instance, Substitute.For<IChannel>());
+            Session session1 = new Session(30303, Substitute.For<IChannel>(), NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
             session1.RemoteHost = "1.2.3.4";
             session1.RemotePort = 12345;
             session1.RemoteNodeId = shouldLose ? TestItem.PublicKeyA : TestItem.PublicKeyC;
@@ -539,7 +538,7 @@ namespace Nethermind.Network.Test
                     ConnectAsyncCallsCount++;
                 }
 
-                var session = new Session(30313, LimboLogs.Instance, Substitute.For<IChannel>(), node);
+                var session = new Session(30313, node, Substitute.For<IChannel>(), NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
                 lock (_sessions)
                 {
                     _sessions.Add(session);
@@ -551,7 +550,7 @@ namespace Nethermind.Network.Test
 
             public void CreateRandomIncoming()
             {
-                var session = new Session(30313, LimboLogs.Instance, Substitute.For<IChannel>());
+                var session = new Session(30313, Substitute.For<IChannel>(), NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
                 lock (_sessions)
                 {
                     _sessions.Add(session);
@@ -579,7 +578,7 @@ namespace Nethermind.Network.Test
                 List<Session> incomingSessions = new List<Session>();
                 foreach (Session session in sessions)
                 {
-                    var sessionIn = new Session(30313, LimboLogs.Instance, Substitute.For<IChannel>());
+                    var sessionIn = new Session(30313, Substitute.For<IChannel>(), NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
                     sessionIn.RemoteHost = session.RemoteHost;
                     sessionIn.RemotePort = session.RemotePort;
                     SessionCreated?.Invoke(this, new SessionEventArgs(sessionIn));

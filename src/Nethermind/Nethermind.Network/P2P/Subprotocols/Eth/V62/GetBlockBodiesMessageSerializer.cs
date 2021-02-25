@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using DotNetty.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
@@ -24,7 +25,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
     {
         public void Serialize(IByteBuffer byteBuffer, GetBlockBodiesMessage message)
         {
-            NettyRlpStream nettyRlpStream = new NettyRlpStream(byteBuffer);
+            NettyRlpStream nettyRlpStream = new(byteBuffer);
 
             int contentLength = 0;
             for (int i = 0; i < message.BlockHashes.Count; i++)
@@ -44,7 +45,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 
         public GetBlockBodiesMessage Deserialize(IByteBuffer byteBuffer)
         {
-            NettyRlpStream rlpStream = new NettyRlpStream(byteBuffer);
+            NettyRlpStream rlpStream = new(byteBuffer);
             return Deserialize(rlpStream);
         }
         

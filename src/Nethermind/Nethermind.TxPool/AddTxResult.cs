@@ -20,7 +20,7 @@ namespace Nethermind.TxPool
     {
         AlreadyKnown,
         OldScheme,
-        InvalidChainId,
+        Invalid,
         OldNonce,
         PotentiallyUseless,
         Added,

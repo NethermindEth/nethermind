@@ -44,7 +44,7 @@ namespace Nethermind.Evm.Precompiles.Bls.Shamatar
             return 0L;
         }
 
-        public (byte[], bool) Run(byte[] inputData)
+        public (byte[], bool) Run(byte[] inputData, IReleaseSpec releaseSpec)
         {  
             const int expectedInputLength = 8 * BlsParams.LenFp;
             if (inputData.Length != expectedInputLength)

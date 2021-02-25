@@ -28,10 +28,10 @@ namespace Nethermind.Network.Rlpx
         private readonly ILogger _logger;
         private readonly IFrameCipher _frameCipher;
         private readonly IFrameMacProcessor _frameMacProcessor;
-        private readonly FrameHeaderReader _headerReader = new FrameHeaderReader();
+        private readonly FrameHeaderReader _headerReader = new();
 
-        private byte[] _encryptBuffer = new byte[Frame.BlockSize];
-        private byte[] _macBuffer = new byte[16];
+        private readonly byte[] _encryptBuffer = new byte[Frame.BlockSize];
+        private readonly byte[] _macBuffer = new byte[16];
 
         public ZeroFrameEncoder(IFrameCipher frameCipher, IFrameMacProcessor frameMacProcessor, ILogManager logManager)
         {

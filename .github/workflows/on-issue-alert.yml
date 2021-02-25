@@ -6,6 +6,7 @@ on:
 
 jobs:
   alert-team:
+    if: github.repository_owner == 'NethermindEth'
     name: Alert team about an issue reported by users
     runs-on: ubuntu-latest
     env: 

@@ -30,23 +30,28 @@ namespace Nethermind.Network.P2P
 {
     public class Session : ISession
     {
-        private static ConcurrentDictionary<string, AdaptiveCodeResolver> _resolvers = new ConcurrentDictionary<string, AdaptiveCodeResolver>();
+        private static readonly ConcurrentDictionary<string, AdaptiveCodeResolver> _resolvers = new();
+        private readonly ConcurrentDictionary<string, IProtocolHandler> _protocols = new();
+        
+        private readonly ILogger _logger;
+        private readonly ILogManager _logManager;
 
-        private ILogger _logger;
-        private ILogManager _logManager;
+        private Node? _node;
+        private readonly IChannel _channel;
+        private readonly IDisconnectsAnalyzer _disconnectsAnalyzer;
+        private IChannelHandlerContext? _context;
 
-        private Node _node;
-        private IChannel _channel;
-        private IChannelHandlerContext _context;
-
-        private ConcurrentDictionary<string, IProtocolHandler> _protocols = new ConcurrentDictionary<string, IProtocolHandler>();
-
-        public Session(int localPort, ILogManager logManager, IChannel channel)
+        public Session(
+            int localPort,
+            IChannel channel,
+            IDisconnectsAnalyzer disconnectsAnalyzer,
+            ILogManager logManager)
         {
             Direction = ConnectionDirection.In;
             State = SessionState.New;
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _channel = channel ?? throw new ArgumentNullException(nameof(channel));
+            _disconnectsAnalyzer = disconnectsAnalyzer;
             _logger = logManager.GetClassLogger<Session>();
             RemoteNodeId = null;
             LocalPort = localPort;
@@ -55,18 +60,20 @@ namespace Nethermind.Network.P2P
 
         public Session(
             int localPort,
-            ILogManager logManager,
+            Node remoteNode,
             IChannel channel,
-            Node node)
+            IDisconnectsAnalyzer disconnectsAnalyzer,
+            ILogManager logManager)
         {
             State = SessionState.New;
-            _node = node ?? throw new ArgumentNullException(nameof(node));
+            _node = remoteNode ?? throw new ArgumentNullException(nameof(remoteNode));
             _channel = channel ?? throw new ArgumentNullException(nameof(channel));
+            _disconnectsAnalyzer = disconnectsAnalyzer;
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _logger = logManager.GetClassLogger<Session>();
-            RemoteNodeId = node.Id;
-            RemoteHost = node.Host;
-            RemotePort = node.Port;
+            RemoteNodeId = remoteNode.Id;
+            RemoteHost = remoteNode.Host;
+            RemotePort = remoteNode.Port;
             LocalPort = localPort;
             SessionId = Guid.NewGuid();
             Direction = ConnectionDirection.Out;
@@ -169,7 +176,7 @@ namespace Nethermind.Network.P2P
             }
 
             int dynamicMessageCode = zeroPacket.PacketType;
-            (string protocol, int messageId) = _resolver.ResolveProtocol(zeroPacket.PacketType);
+            (string? protocol, int messageId) = _resolver.ResolveProtocol(zeroPacket.PacketType);
             zeroPacket.Protocol = protocol;
 
             if (_logger.IsTrace)
@@ -432,7 +439,7 @@ namespace Nethermind.Network.P2P
                 State = SessionState.Disconnecting;
             }
 
-            DisconnectMetrics.Update(disconnectType, disconnectReason);
+            _disconnectsAnalyzer.ReportDisconnect(disconnectReason, disconnectType, details);
 
             if (NetworkDiagTracer.IsEnabled && RemoteHost != null)
                 NetworkDiagTracer.ReportDisconnect(Node.Address, $"{disconnectType} {disconnectReason} {details}");

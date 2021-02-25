@@ -26,29 +26,18 @@ namespace Nethermind.Core.Crypto
     {
         public const int VOffset = 27;
         
-        public Signature(byte[] bytes, int recoveryId)
+        public Signature(ReadOnlySpan<byte> bytes, int recoveryId)
         {
             if (bytes.Length != 64)
             {
                 throw new ArgumentException();
             }
 
-            Buffer.BlockCopy(bytes, 0, Bytes, 0, 64);
-            V = recoveryId + VOffset;
+            bytes.CopyTo(Bytes.AsSpan());
+            V = (ulong)recoveryId + VOffset;
         }
 
-        public Signature(byte[] bytes)
-        {
-            if (bytes.Length != 65)
-            {
-                throw new ArgumentException();
-            }
-
-            Buffer.BlockCopy(bytes, 0, Bytes, 0, 64);
-            V = bytes[64];
-        }
-        
-        public Signature(Span<byte> bytes)
+        public Signature(ReadOnlySpan<byte> bytes)
         {
             if (bytes.Length != 65)
             {
@@ -59,7 +48,7 @@ namespace Nethermind.Core.Crypto
             V = bytes[64];
         }
 
-        public Signature(ReadOnlySpan<byte> r, ReadOnlySpan<byte> s, int v)
+        public Signature(ReadOnlySpan<byte> r, ReadOnlySpan<byte> s, ulong v)
         {
             if (v < VOffset)
             {
@@ -71,7 +60,7 @@ namespace Nethermind.Core.Crypto
             V = v;
         }
 
-        public Signature(UInt256 r, UInt256 s, int v)
+        public Signature(UInt256 r, UInt256 s, ulong v)
         {
             if (v < VOffset)
             {
@@ -90,9 +79,9 @@ namespace Nethermind.Core.Crypto
         }
 
         public byte[] Bytes { get; } = new byte[64];
-        public long V { get; set; }
+        public ulong V { get; set; }
 
-        public int? ChainId => V < 35 ? null : (int?) (V + (V % 2) - 36) / 2;
+        public ulong? ChainId => V < 35 ? null : (ulong?) (V + (V % 2) - 36) / 2;
 
         public byte RecoveryId => V <= VOffset + 1 ? (byte) (V - VOffset) : (byte) (1 - V % 2);
 

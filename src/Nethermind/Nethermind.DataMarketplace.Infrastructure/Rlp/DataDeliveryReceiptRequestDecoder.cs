@@ -21,7 +21,7 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.DataMarketplace.Infrastructure.Rlp
 {
-    public class DataDeliveryReceiptRequestDecoder : IRlpDecoder<DataDeliveryReceiptRequest>
+    public class DataDeliveryReceiptRequestDecoder : IRlpNdmDecoder<DataDeliveryReceiptRequest>
     {
         public static void Init()
         {
@@ -45,6 +45,11 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
             var receipts = Serialization.Rlp.Rlp.DecodeArray<DataDeliveryReceiptToMerge>(rlpStream);
 
             return new DataDeliveryReceiptRequest(number, depositId, unitsRange, isSettlement, receipts);
+        }
+
+        public void Encode(RlpStream stream, DataDeliveryReceiptRequest item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        {
+            throw new System.NotImplementedException();
         }
 
         public Serialization.Rlp.Rlp Encode(DataDeliveryReceiptRequest item,

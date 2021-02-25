@@ -53,7 +53,7 @@ namespace Nethermind.Plugin.Baseline
 
 
                 IVaultWallet wallet = new VaultWallet(_vaultService, _vaultConfig.VaultId, _api.LogManager);
-                ITxSigner vaultSigner = new VaultTxSigner(wallet, (int)_api.ChainSpec.ChainId);
+                ITxSigner vaultSigner = new VaultTxSigner(wallet, _api.ChainSpec.ChainId);
 
                 // TODO: change vault to provide, use sealer to set the gas price as well
                 // TODO: need to verify the timing of initializations so the TxSender replacement works fine

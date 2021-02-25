@@ -20,6 +20,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
+using System.Threading.Tasks;
 using System.Timers;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
@@ -75,8 +76,9 @@ namespace Nethermind.TxPool
 
         private readonly SortedPool<Keccak, Transaction, Address> _transactions;
 
-        private readonly ISpecProvider _specProvider;
+        private readonly IChainHeadSpecProvider _specProvider;
         private readonly IReadOnlyStateProvider _stateProvider;
+        private readonly ITxValidator _validator;
         private readonly IEthereumEcdsa _ecdsa;
         protected readonly ILogger _logger;
 
@@ -128,13 +130,15 @@ namespace Nethermind.TxPool
         /// <param name="specProvider">Used for retrieving information on EIPs that may affect tx signature scheme.</param>
         /// <param name="txPoolConfig"></param>
         /// <param name="stateProvider"></param>
+        /// <param name="validator"></param>
         /// <param name="logManager"></param>
         /// <param name="comparer"></param>
         public TxPool(ITxStorage txStorage,
             IEthereumEcdsa ecdsa,
-            ISpecProvider specProvider,
+            IChainHeadSpecProvider specProvider,
             ITxPoolConfig txPoolConfig,
             IReadOnlyStateProvider stateProvider,
+            ITxValidator validator,
             ILogManager logManager,
             IComparer<Transaction> comparer = null)
         {
@@ -143,6 +147,7 @@ namespace Nethermind.TxPool
             _txStorage = txStorage ?? throw new ArgumentNullException(nameof(txStorage));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
+            _validator = validator ?? throw new ArgumentNullException(nameof(validator));
 
             MemoryAllowance.MemPoolSize = txPoolConfig.Size;
             ThisNodeInfo.AddInfo("Mem est tx   :",
@@ -157,32 +162,6 @@ namespace Nethermind.TxPool
             _ownTimer.Elapsed += OwnTimerOnElapsed;
             _ownTimer.AutoReset = false;
             _ownTimer.Start();
-
-            Timer timer = new Timer();
-            timer.Interval = 1000;
-            timer.AutoReset = false;
-            timer.Elapsed += TimerOnElapsed;
-            timer.Start();
-        }
-
-        private void TimerOnElapsed(object sender, ElapsedEventArgs e)
-        {
-            PrivateKey privateKey =
-                new PrivateKey(Bytes.FromHexString("82d30cef9aa4ad6af51b6cc00940e778c4143de1667f358ae6e503c8036f3144"));
-            Transaction transaction = new Transaction();
-            transaction.Value = 1.Wei();
-            transaction.GasLimit = 21000;
-            transaction.Nonce = _stateProvider.GetNonce(privateKey.Address);
-            transaction.To = new Address("707Fc13C0eB628c074f7ff514Ae21ACaeE0ec072");
-            transaction.FeeCap = 10.GWei();
-            transaction.GasPrice = 1.GWei();
-            _ecdsa.Sign(privateKey, transaction);
-            transaction.Hash = transaction.CalculateHash();
-            AddTransaction(transaction, TxHandlingOptions.None);
-
-            transaction.SenderAddress = _ecdsa.RecoverAddress(transaction, true);
-
-            (sender as Timer).Enabled = true;
         }
 
         public Transaction[] GetPendingTransactions() => _transactions.GetSnapshot();
@@ -289,12 +268,12 @@ namespace Nethermind.TxPool
             //                return AddTxResult.OldScheme;
             //            }
 
-            if (tx.Signature.ChainId != null && tx.Signature.ChainId != _specProvider.ChainId)
+            if (!_validator.IsWellFormed(tx, _specProvider.GetSpec()))
             {
-                // It may happen that other nodes send us transactions that were signed for another chain.
+                // It may happen that other nodes send us transactions that were signed for another chain or don't have enough gas.
                 Metrics.PendingTransactionsDiscarded++;
-                if (_logger.IsTrace) _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, wrong chain.");
-                return AddTxResult.InvalidChainId;
+                if (_logger.IsTrace) _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, invalid transaction.");
+                return AddTxResult.Invalid;
             }
 
             /* Note that here we should also test incoming transactions for old nonce.
@@ -485,48 +464,60 @@ namespace Nethermind.TxPool
             _ownTimer?.Dispose();
         }
 
-        public event EventHandler<TxEventArgs> NewDiscovered;
-        public event EventHandler<TxEventArgs> NewPending;
-        public event EventHandler<TxEventArgs> RemovedPending;
+        public event EventHandler<TxEventArgs>? NewDiscovered;
+        public event EventHandler<TxEventArgs>? NewPending;
+        public event EventHandler<TxEventArgs>? RemovedPending;
 
         private void Notify(ITxPoolPeer peer, Transaction tx, bool isPriority)
         {
-            Metrics.PendingTransactionsSent++;
-            peer.SendNewTransaction(tx, isPriority);
-
-            if (_logger.IsTrace) _logger.Trace($"Notified {peer.Enode} about a transaction: {tx.Hash}");
+            try
+            {
+                peer.SendNewTransaction(tx, isPriority);
+                Metrics.PendingTransactionsSent++;
+                if (_logger.IsTrace) _logger.Trace($"Notified {peer.Enode} about a transaction: {tx.Hash}");
+            }
+            catch (Exception e)
+            {
+                if (_logger.IsError) _logger.Error($"Failed to notify {peer.Enode} about a transaction: {tx.Hash}", e);
+            }
         }
 
         private void NotifyAllPeers(Transaction tx)
         {
-            foreach ((_, ITxPoolPeer peer) in _peers)
+            Task.Run(() =>
             {
-                Notify(peer, tx, true);
-            }
+                foreach ((_, ITxPoolPeer peer) in _peers)
+                {
+                    Notify(peer, tx, true);
+                }
+            });
         }
 
         private void NotifySelectedPeers(Transaction tx)
         {
-            foreach ((_, ITxPoolPeer peer) in _peers)
+            Task.Run(() =>
             {
-                if (tx.DeliveredBy == null)
+                foreach ((_, ITxPoolPeer peer) in _peers)
                 {
-                    Notify(peer, tx, true);
-                    continue;
-                }
+                    if (tx.DeliveredBy == null)
+                    {
+                        Notify(peer, tx, true);
+                        continue;
+                    }
 
-                if (tx.DeliveredBy.Equals(peer.Id))
-                {
-                    continue;
-                }
+                    if (tx.DeliveredBy.Equals(peer.Id))
+                    {
+                        continue;
+                    }
 
-                if (_peerNotificationThreshold < Random.Value.Next(1, 100))
-                {
-                    continue;
-                }
+                    if (_peerNotificationThreshold < Random.Value.Next(1, 100))
+                    {
+                        continue;
+                    }
 
-                Notify(peer, tx, 3 < Random.Value.Next(1, 10));
-            }
+                    Notify(peer, tx, 3 < Random.Value.Next(1, 10));
+                }
+            });
         }
 
         private void StoreTx(Transaction tx)

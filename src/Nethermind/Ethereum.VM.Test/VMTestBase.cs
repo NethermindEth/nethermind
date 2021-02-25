@@ -152,7 +152,7 @@ namespace Ethereum.VM.Test
             ExecutionEnvironment environment = new ExecutionEnvironment();
             environment.Value = test.Execution.Value;
             environment.CallDepth = 0;
-            environment.Sender = test.Execution.Caller;
+            environment.Caller = test.Execution.Caller;
             environment.ExecutingAccount = test.Execution.Address;
 
             
@@ -164,13 +164,12 @@ namespace Ethereum.VM.Test
                 test.Environment.CurrentNumber,
                 (long)test.Environment.CurrentGasLimit,
                 test.Environment.CurrentTimestamp, Bytes.Empty);
-            
-            environment.CurrentBlock = header;
 
-            environment.GasPrice = test.Execution.GasPrice;
+            environment.TxExecutionContext = new TxExecutionContext(header, test.Execution.Origin, test.Execution.GasPrice);
+            
             environment.InputData = test.Execution.Data;
             environment.CodeInfo = new CodeInfo(test.Execution.Code);
-            environment.Originator = test.Execution.Origin;
+
 
             foreach (KeyValuePair<Address, AccountState> accountState in test.Pre)
             {

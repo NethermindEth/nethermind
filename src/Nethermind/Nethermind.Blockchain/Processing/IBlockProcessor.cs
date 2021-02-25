@@ -39,6 +39,11 @@ namespace Nethermind.Blockchain.Processing
             List<Block> suggestedBlocks,
             ProcessingOptions processingOptions,
             IBlockTracer blockTracer);
+
+        /// <summary>
+        /// Fired when a branch is being processed.
+        /// </summary>
+        event EventHandler<BlocksProcessingEventArgs> BlocksProcessing;
         
         /// <summary>
         /// Fired after a block has been processed.

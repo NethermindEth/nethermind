@@ -31,10 +31,9 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         {
             TransactionsMessageSerializer serializer = new TransactionsMessageSerializer();
             Transaction transaction = new Transaction();
-            transaction.Data = null;
             transaction.GasLimit = 10;
             transaction.GasPrice = 100;
-            transaction.Init = new byte[] {4, 5, 6};
+            transaction.Data = new byte[] {4, 5, 6};
             transaction.Nonce = 1000;
             transaction.Signature = new Signature(1, 2, 27);
             transaction.To = null;
@@ -54,7 +53,6 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             transaction.Data = new byte[] {1, 2, 3};
             transaction.GasLimit = 10;
             transaction.GasPrice = 100;
-            transaction.Init = null;
             transaction.Nonce = 1000;
             transaction.Signature = new Signature(1, 2, 27);
             transaction.To = TestItem.AddressA;

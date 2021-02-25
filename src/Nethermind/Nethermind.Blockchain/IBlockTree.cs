@@ -30,7 +30,7 @@ namespace Nethermind.Blockchain
         /// <summary>
         /// Chain ID that identifies the chain among the public and private chains (different IDs for mainnet, ETH classic, etc.)
         /// </summary>
-        long ChainId { get; }
+        ulong ChainId { get; }
         
         /// <summary>
         /// Genesis block or <value>null</value> if genesis has not been processed yet
@@ -50,7 +50,7 @@ namespace Nethermind.Blockchain
         /// <summary>
         /// Lowest header added in reverse insert
         /// </summary>
-        BlockHeader LowestInsertedHeader { get; }
+        BlockHeader? LowestInsertedHeader { get; }
 
         /// <summary>
         /// Lowest body added in reverse insert
