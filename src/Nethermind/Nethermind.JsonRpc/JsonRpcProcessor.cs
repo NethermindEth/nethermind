@@ -23,6 +23,7 @@ using System.Text;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Newtonsoft.Json;
@@ -125,7 +126,7 @@ namespace Nethermind.JsonRpc
             }
         }
 
-        public async Task<JsonRpcResult> ProcessAsync(string request)
+        public async Task<JsonRpcResult> ProcessAsync(string request, RpcEndpoint rpcEndpoint = RpcEndpoint.All)
         {
             if (_jsonRpcConfig.RpcRecorderEnabled)
             {
@@ -153,7 +154,7 @@ namespace Nethermind.JsonRpc
                 if (_logger.IsDebug) _logger.Debug($"JSON RPC request {rpcRequest.Model}");
 
                 Metrics.JsonRpcRequests++;
-                JsonRpcResponse response = await _jsonRpcService.SendRequestAsync(rpcRequest.Model);
+                JsonRpcResponse response = await _jsonRpcService.SendRequestAsync(rpcRequest.Model, rpcEndpoint);
                 JsonRpcErrorResponse localErrorResponse = response as JsonRpcErrorResponse;
                 bool isSuccess = localErrorResponse is null;
                 if (!isSuccess)
@@ -187,7 +188,7 @@ namespace Nethermind.JsonRpc
                     singleRequestWatch.Restart();
 
                     Metrics.JsonRpcRequests++;
-                    JsonRpcResponse response = await _jsonRpcService.SendRequestAsync(jsonRpcRequest);
+                    JsonRpcResponse response = await _jsonRpcService.SendRequestAsync(jsonRpcRequest, rpcEndpoint);
                     JsonRpcErrorResponse localErrorResponse = response as JsonRpcErrorResponse;
                     bool isSuccess = localErrorResponse == null;
                     if (!isSuccess)

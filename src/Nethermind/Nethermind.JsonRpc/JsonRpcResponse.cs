@@ -35,6 +35,9 @@ namespace Nethermind.JsonRpc
         [JsonConverter(typeof(IdConverter))]
         [JsonProperty(PropertyName = "id", Order = 2, NullValueHandling = NullValueHandling.Include)]
         public object Id { get; set; }
+        
+        [JsonIgnore]
+        public string MethodName { get; set; }
 
         public void Dispose()
         {

@@ -51,6 +51,7 @@ namespace Nethermind.Core
         public Bloom? Bloom { get; set; }
         public LogEntry[]? Logs { get; set; }
         public string? Error { get; set; }
+        public bool Removed { get; set; } = false;
 
         /// <summary>
         /// Ignores receipt output on RLP serialization.

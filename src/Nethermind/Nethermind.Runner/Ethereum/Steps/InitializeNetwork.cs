@@ -23,6 +23,7 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Crypto;
 using Nethermind.Db;
+using Nethermind.JsonRpc.Modules.Subscribe;
 using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.Config;
@@ -434,6 +435,15 @@ namespace Nethermind.Runner.Ethereum.Steps
             PeerLoader peerLoader = new PeerLoader(_networkConfig, discoveryConfig, _api.NodeStatsManager, peerStorage, _api.LogManager);
             _api.PeerManager = new PeerManager(_api.RlpxPeer, _api.DiscoveryApp, _api.NodeStatsManager, peerStorage, peerLoader, _networkConfig, _api.LogManager, _api.StaticNodesManager);
             _api.PeerManager.Init();
+
+            SubscriptionFactory subscriptionFactory = new SubscriptionFactory(
+                _api.LogManager,
+                _api.BlockTree,
+                _api.TxPool,
+                _api.ReceiptStorage,
+                _api.FilterStore);
+            
+            _api.SubscriptionManger = new SubscriptionManger(subscriptionFactory, _api.LogManager);
         }
     }
 }

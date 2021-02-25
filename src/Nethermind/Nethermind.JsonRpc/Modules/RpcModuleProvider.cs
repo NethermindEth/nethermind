@@ -76,9 +76,9 @@ namespace Nethermind.JsonRpc.Modules
 
             ((List<JsonConverter>) Converters).AddRange(pool.Factory.GetConverters());
 
-            foreach ((string name, (MethodInfo info, bool readOnly)) in GetMethodDict(typeof(T)))
+            foreach ((string name, (MethodInfo info, bool readOnly, RpcEndpoint availability)) in GetMethodDict(typeof(T)))
             {
-                ResolvedMethodInfo resolvedMethodInfo = new ResolvedMethodInfo(moduleType, info, readOnly);
+                ResolvedMethodInfo resolvedMethodInfo = new ResolvedMethodInfo(moduleType, info, readOnly, availability);
                 if (_filter.AcceptMethod(resolvedMethodInfo.ToString()))
                 {
                     _methods[name] = resolvedMethodInfo;
@@ -91,10 +91,12 @@ namespace Nethermind.JsonRpc.Modules
             }
         }
 
-        public ModuleResolution Check(string methodName)
+        public ModuleResolution Check(string methodName, RpcEndpoint rpcEndpoint = RpcEndpoint.All)
         {
             if (!_methods.TryGetValue(methodName, out ResolvedMethodInfo result)) return ModuleResolution.Unknown;
 
+            if ((result.Availability & rpcEndpoint) == RpcEndpoint.None) return ModuleResolution.EndpointDisabled;
+            
             return _enabledModules.Contains(result.ModuleType) ? ModuleResolution.Enabled : ModuleResolution.Disabled;
         }
 
@@ -120,12 +122,16 @@ namespace Nethermind.JsonRpc.Modules
             _pools[result.ModuleType].ReturnModule(module);
         }
 
-        private IDictionary<string, (MethodInfo, bool)> GetMethodDict(Type type)
+        private IDictionary<string, (MethodInfo, bool, RpcEndpoint)> GetMethodDict(Type type)
         {
             var methods = type.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly);
             return methods.ToDictionary(
                 x => x.Name.Trim(),
-                x => (x, x.GetCustomAttribute<JsonRpcMethodAttribute>()?.IsSharable ?? true));
+                x =>
+                {
+                    JsonRpcMethodAttribute? jsonRpcMethodAttribute = x.GetCustomAttribute<JsonRpcMethodAttribute>();
+                    return (x, jsonRpcMethodAttribute?.IsSharable ?? true, jsonRpcMethodAttribute?.Availability ?? RpcEndpoint.All);
+                });
         }
         
         private class ResolvedMethodInfo
@@ -133,16 +139,19 @@ namespace Nethermind.JsonRpc.Modules
             public ResolvedMethodInfo(
                 ModuleType moduleType,
                 MethodInfo methodInfo,
-                bool readOnly)
+                bool readOnly,
+                RpcEndpoint availability)
             {
                 ModuleType = moduleType;
                 MethodInfo = methodInfo;
                 ReadOnly = readOnly;
+                Availability = availability;
             }
             
             public ModuleType ModuleType { get; }
             public MethodInfo MethodInfo { get; }
             public bool ReadOnly { get; }
+            public RpcEndpoint Availability { get; }
 
             public override string ToString()
             {

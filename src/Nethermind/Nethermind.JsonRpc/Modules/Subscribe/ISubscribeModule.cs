@@ -13,14 +13,19 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using System.Threading.Tasks;
-using Nethermind.JsonRpc.Modules;
+using Nethermind.JsonRpc.Modules.Eth;
 
-namespace Nethermind.JsonRpc
+namespace Nethermind.JsonRpc.Modules.Subscribe
 {
-    public interface IJsonRpcProcessor
+    [RpcModule(ModuleType.Subscribe)]
+    public interface ISubscribeModule : IModule
     {
-        Task<JsonRpcResult> ProcessAsync(string request, RpcEndpoint rpcEndpoint);
+        [JsonRpcMethod(Description = "Starts a subscription (on WebSockets) to a particular event. For every event that matches the subscription a JSON-RPC notification with event details and subscription ID will be sent to a client.", IsImplemented = true, Availability = RpcEndpoint.All & ~RpcEndpoint.Http)]
+        ResultWrapper<string> eth_subscribe(string subscriptionName, Filter arguments = null);
+        
+        [JsonRpcMethod(Description = "Unsubscribes from a subscription.", IsImplemented = true, Availability = RpcEndpoint.All & ~RpcEndpoint.Http)]
+        ResultWrapper<bool> eth_unsubscribe(string subscriptionId);
     }
 }

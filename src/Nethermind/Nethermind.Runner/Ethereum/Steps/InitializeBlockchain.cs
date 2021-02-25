@@ -147,6 +147,9 @@ namespace Nethermind.Runner.Ethereum.Steps
 
             OnChainTxWatcher onChainTxWatcher = new(getApi.BlockTree, txPool, getApi.SpecProvider, _api.LogManager);
             getApi.DisposeStack.Push(onChainTxWatcher);
+            
+            OnChainRemoveTxWatcher onChainRemoveTxWatcher = new(getApi.BlockTree, getApi.ReceiptStorage, _api.LogManager);
+            getApi.DisposeStack.Push(onChainRemoveTxWatcher);
 
             _api.BlockPreprocessor.AddFirst(
                 new RecoverSignatures(getApi.EthereumEcdsa, txPool, getApi.SpecProvider, getApi.LogManager));

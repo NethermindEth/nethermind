@@ -67,11 +67,11 @@ namespace Nethermind.JsonRpc
             Converters = converterList.ToArray();
         }
 
-        public async Task<JsonRpcResponse> SendRequestAsync(JsonRpcRequest rpcRequest)
+        public async Task<JsonRpcResponse> SendRequestAsync(JsonRpcRequest rpcRequest, RpcEndpoint rpcEndpoint)
         {
             try
             {
-                (int? errorCode, string errorMessage) = Validate(rpcRequest);
+                (int? errorCode, string errorMessage) = Validate(rpcRequest, rpcEndpoint);
                 if (errorCode.HasValue)
                 {
                     return GetErrorResponse(rpcRequest.Method, errorCode.Value, errorMessage, null, rpcRequest.Id, null);
@@ -213,7 +213,7 @@ namespace Nethermind.JsonRpc
                 return GetErrorResponse(methodName, resultWrapper.GetErrorCode(), resultWrapper.GetResult().Error, resultWrapper.GetData(), request.Id, returnAction);
             }
 
-            return GetSuccessResponse(resultWrapper.GetData(), request.Id, returnAction);
+            return GetSuccessResponse(methodName, resultWrapper.GetData(), request.Id, returnAction);
         }
 
         private object[] DeserializeParameters(ParameterInfo[] expectedParameters, string[] providedParameters, int missingParamsCount)
@@ -280,12 +280,13 @@ namespace Nethermind.JsonRpc
             }
         }
 
-        private JsonRpcResponse GetSuccessResponse(object result, object id, Action disposableAction)
+        private JsonRpcResponse GetSuccessResponse(string methodName, object result, object id, Action disposableAction)
         {
             JsonRpcResponse response = new JsonRpcSuccessResponse(disposableAction)
             {
                 Result = result,
-                Id = id
+                Id = id,
+                MethodName = methodName
             };
 
             return response;
@@ -309,13 +310,14 @@ namespace Nethermind.JsonRpc
                     Message = errorMessage,
                     Data = errorData,
                 },
-                Id = id
+                Id = id,
+                MethodName = methodName
             };
 
             return response;
         }
 
-        private (int? ErrorType, string ErrorMessage) Validate(JsonRpcRequest rpcRequest)
+        private (int? ErrorType, string ErrorMessage) Validate(JsonRpcRequest rpcRequest, RpcEndpoint rpcEndpoint)
         {
             if (rpcRequest == null)
             {
@@ -330,11 +332,12 @@ namespace Nethermind.JsonRpc
 
             methodName = methodName.Trim();
 
-            ModuleResolution result = _rpcModuleProvider.Check(methodName);
+            ModuleResolution result = _rpcModuleProvider.Check(methodName, rpcEndpoint);
             return result switch
             {
                 ModuleResolution.Unknown => ((int?) ErrorCodes.MethodNotFound, $"Method {methodName} is not supported"),
                 ModuleResolution.Disabled => (ErrorCodes.InvalidRequest, $"{methodName} found but the containing module is disabled"),
+                ModuleResolution.EndpointDisabled => (ErrorCodes.InvalidRequest, $"{methodName} found but disabled for {rpcEndpoint}"),
                 _ => (null, null)
             };
         }

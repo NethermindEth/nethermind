@@ -53,7 +53,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         public IReadOnlyCollection<JsonConverter> Converters => _provider.Converters;
         public IReadOnlyCollection<ModuleType> Enabled => _provider.All;
         public IReadOnlyCollection<ModuleType> All => _provider.All;
-        public ModuleResolution Check(string methodName)
+        public ModuleResolution Check(string methodName, RpcEndpoint rpcEndpoint)
         {
             return _provider.Check(methodName);
         }

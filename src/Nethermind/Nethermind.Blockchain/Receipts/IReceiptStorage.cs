@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using Nethermind.Core;
 
 namespace Nethermind.Blockchain.Receipts
@@ -23,5 +24,6 @@ namespace Nethermind.Blockchain.Receipts
         void Insert(Block block, params TxReceipt[] txReceipts);
         long? LowestInsertedReceiptBlockNumber { get; set; }
         long MigratedBlockNumber { get; set; }
+        event EventHandler<ReceiptsEventArgs> ReceiptsInserted;
     }
 }

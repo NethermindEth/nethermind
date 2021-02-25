@@ -39,6 +39,7 @@ using Nethermind.Evm;
 using Nethermind.Facade;
 using Nethermind.Grpc;
 using Nethermind.JsonRpc.Modules;
+using Nethermind.JsonRpc.Modules.Subscribe;
 using Nethermind.KeyStore;
 using Nethermind.Logging;
 using Nethermind.Monitoring;
@@ -159,6 +160,7 @@ namespace Nethermind.Runner.Ethereum.Api
         public ISealValidator? SealValidator { get; set; } = NullSealEngine.Instance;
         public ISessionMonitor? SessionMonitor { get; set; }
         public ISpecProvider? SpecProvider { get; set; }
+        public ISubscriptionManger? SubscriptionManger { get; set; }
         public ISyncModeSelector? SyncModeSelector { get; set; }
         public ISyncPeerPool? SyncPeerPool { get; set; }
         public ISynchronizer? Synchronizer { get; set; }

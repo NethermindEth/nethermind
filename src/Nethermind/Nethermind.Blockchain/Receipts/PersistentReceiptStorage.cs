@@ -225,6 +225,8 @@ namespace Nethermind.Blockchain.Receipts
             RlpBehaviors behaviors = spec.IsEip658Enabled ? RlpBehaviors.Eip658Receipts | RlpBehaviors.Storage : RlpBehaviors.Storage;
             _blocksDb.Set(block.Hash, StorageDecoder.Encode(txReceipts, behaviors).Bytes);
             
+            ReceiptsInserted?.Invoke(this, new ReceiptsEventArgs(block.Header, txReceipts));
+
             for (int i = 0; i < txReceipts.Length; i++)
             {
                 var txHash = block.Transactions[i].Hash;
@@ -266,5 +268,7 @@ namespace Nethermind.Blockchain.Receipts
         {
             _receiptsCache.Clear();
         }
+        
+        public event EventHandler<ReceiptsEventArgs> ReceiptsInserted;
     }
 }

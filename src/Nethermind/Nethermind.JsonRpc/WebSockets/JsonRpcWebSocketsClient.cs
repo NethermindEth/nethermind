@@ -20,18 +20,27 @@ using System.Reflection;
 using System.Text;
 using System.Threading.Tasks;
 using Nethermind.Core.Extensions;
+using Nethermind.JsonRpc.Modules;
+using Nethermind.JsonRpc.Modules.Subscribe;
 using Nethermind.Serialization.Json;
 using Nethermind.WebSockets;
 
 namespace Nethermind.JsonRpc.WebSockets
 {
-    public class JsonRpcWebSocketsClient : IWebSocketsClient
+    public interface IJsonRpcDuplexClient : IDisposable
+    {
+        string Id { get; }
+        Task SendJsonRpcResult(JsonRpcResult result);
+    }
+
+    public class JsonRpcWebSocketsClient : IWebSocketsClient, IJsonRpcDuplexClient
     {
         private readonly IWebSocketsClient _client;
         private readonly JsonRpcProcessor _jsonRpcProcessor;
         private readonly JsonRpcService _jsonRpcService;
         private readonly IJsonSerializer _jsonSerializer;
         private readonly IJsonRpcLocalStats _jsonRpcLocalStats;
+        private readonly ISubscriptionManger _subscriptionManager;
         public string Id => _client.Id;
         public string Client { get; }
 
@@ -39,25 +48,47 @@ namespace Nethermind.JsonRpc.WebSockets
             JsonRpcProcessor jsonRpcProcessor,
             JsonRpcService jsonRpcService, 
             IJsonSerializer jsonSerializer,
-            IJsonRpcLocalStats jsonRpcLocalStats)
+            IJsonRpcLocalStats jsonRpcLocalStats,
+            ISubscriptionManger subscriptionManger)
         {
             _client = client;
             _jsonRpcProcessor = jsonRpcProcessor;
             _jsonRpcService = jsonRpcService;
             _jsonSerializer = jsonSerializer;
             _jsonRpcLocalStats = jsonRpcLocalStats;
+            _subscriptionManager = subscriptionManger;
         }
 
         public async Task ReceiveAsync(Memory<byte> data)
+        {
+            Stopwatch stopwatch = Stopwatch.StartNew();
+            using JsonRpcResult result = await _jsonRpcProcessor.ProcessAsync(Encoding.UTF8.GetString(data.Span), RpcEndpoint.WebSocket);
+
+            await SendJsonRpcResult(result);
+
+            if (result.IsCollection)
+            {
+                for (int i = 0; i < result.Responses.Count; i++)
+                {
+                    TrySetupSubscription(result.Responses[i]);
+                }
+                _jsonRpcLocalStats.ReportCalls(result.Reports);
+                _jsonRpcLocalStats.ReportCall(new RpcReport("# collection serialization #", stopwatch.ElapsedMicroseconds(), true));
+            }
+            else
+            {
+                TrySetupSubscription(result.Response);
+                _jsonRpcLocalStats.ReportCall(result.Report, stopwatch.ElapsedMicroseconds());
+            }
+        }
+
+        public async Task SendJsonRpcResult(JsonRpcResult result)
         {
             string SerializeTimeoutException()
             {
                 JsonRpcErrorResponse error = _jsonRpcService.GetErrorResponse(ErrorCodes.Timeout, "Request was canceled due to enabled timeout.");
                 return _jsonSerializer.Serialize(error);
             }
-
-            Stopwatch stopwatch = Stopwatch.StartNew();
-            using JsonRpcResult result = await _jsonRpcProcessor.ProcessAsync(Encoding.UTF8.GetString(data.Span));
 
             string resultData;
 
@@ -75,18 +106,24 @@ namespace Nethermind.JsonRpc.WebSockets
             }
             
             await SendRawAsync(resultData);
-            
-            if (result.IsCollection)
+        }
+
+        private void TrySetupSubscription(JsonRpcResponse response)
+        {
+            if (string.Equals(response.MethodName, "eth_subscribe", StringComparison.InvariantCulture))
             {
-                _jsonRpcLocalStats.ReportCalls(result.Reports);
-                _jsonRpcLocalStats.ReportCall(new RpcReport("# collection serialization #", stopwatch.ElapsedMicroseconds(), true));
-            }
-            else
-            {
-                _jsonRpcLocalStats.ReportCall(result.Report, stopwatch.ElapsedMicroseconds());
+                if (response is JsonRpcSuccessResponse successResponse)
+                {
+                    _subscriptionManager.BindJsonRpcDuplexClient((string)successResponse.Result, this);
+                }
             }
         }
-        
+
+        public void Dispose()
+        {
+            _subscriptionManager.RemoveSubscriptions(this);
+        }
+
         public Task SendRawAsync(string data) => _client.SendRawAsync(data);
         public Task SendAsync(WebSocketsMessage message) => _client.SendAsync(message);
     }

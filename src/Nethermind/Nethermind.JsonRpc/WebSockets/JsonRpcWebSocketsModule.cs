@@ -18,6 +18,7 @@ using System.Collections.Concurrent;
 using System.Net.WebSockets;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
+using Nethermind.JsonRpc.Modules.Subscribe;
 using Nethermind.Serialization.Json;
 using Nethermind.WebSockets;
 
@@ -32,6 +33,7 @@ namespace Nethermind.JsonRpc.WebSockets
         private readonly JsonRpcService _jsonRpcService;
         private readonly IJsonSerializer _jsonSerializer;
         private readonly IJsonRpcLocalStats _jsonRpcLocalStats;
+        private readonly ISubscriptionManger _subscriptionManager;
 
         public string Name { get; } = "json-rpc";
 
@@ -39,12 +41,14 @@ namespace Nethermind.JsonRpc.WebSockets
             JsonRpcProcessor jsonRpcProcessor,
             JsonRpcService jsonRpcService,
             IJsonSerializer jsonSerializer,
-            IJsonRpcLocalStats jsonRpcLocalStats)
+            IJsonRpcLocalStats jsonRpcLocalStats,
+            ISubscriptionManger subscriptionManager)
         {
             _jsonRpcProcessor = jsonRpcProcessor;
             _jsonRpcService = jsonRpcService;
             _jsonSerializer = jsonSerializer;
             _jsonRpcLocalStats = jsonRpcLocalStats;
+            _subscriptionManager = subscriptionManager;
         }
 
         public IWebSocketsClient CreateClient(WebSocket webSocket, string client)
@@ -54,7 +58,8 @@ namespace Nethermind.JsonRpc.WebSockets
                 _jsonRpcProcessor,
                 _jsonRpcService,
                 _jsonSerializer,
-                _jsonRpcLocalStats);
+                _jsonRpcLocalStats,
+                _subscriptionManager);
             _clients.TryAdd(socketsClient.Id, socketsClient);
 
             return socketsClient;
@@ -69,6 +74,13 @@ namespace Nethermind.JsonRpc.WebSockets
 
         public Task SendAsync(WebSocketsMessage message) => Task.CompletedTask;
 
-        public void RemoveClient(string id) => _clients.TryRemove(id, out _);
+        public void RemoveClient(string id)
+        {
+            if (_clients.TryRemove(id, out var client) 
+                && client is IJsonRpcDuplexClient jsonRpcClient)
+            {
+                jsonRpcClient.Dispose();
+            }
+        }
     }
 }

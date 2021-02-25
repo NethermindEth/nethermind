@@ -15,13 +15,14 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Threading.Tasks;
+using Nethermind.JsonRpc.Modules;
 using Newtonsoft.Json;
 
 namespace Nethermind.JsonRpc
 {
     public interface IJsonRpcService
     {
-        Task<JsonRpcResponse> SendRequestAsync(JsonRpcRequest request);
+        Task<JsonRpcResponse> SendRequestAsync(JsonRpcRequest request, RpcEndpoint rpcEndpoint = RpcEndpoint.All);
         JsonRpcErrorResponse GetErrorResponse(int errorCode, string errorMessage);
         JsonConverter[] Converters { get; }
     }
