@@ -268,7 +268,7 @@ namespace Nethermind.AuRa.Test.Transactions
             transactions = transactionSelect?.Invoke(transactions) ?? transactions;
             expectation = transactionSelect?.Invoke(expectation) ?? expectation;
 
-            IComparer<Transaction> comparer = new CompareTxByPermissionOnSpecifiedBlock(sendersWhitelist, priorities, blockHeader)
+            IComparer<Transaction> comparer = new CompareTxByPriorityOnSpecifiedBlock(sendersWhitelist, priorities, blockHeader)
                 .ThenBy(TxPool.TxPool.DefaultComparer); 
             
 
