@@ -16,7 +16,6 @@
 // 
 
 using System;
-using Nethermind.JsonRpc.WebSockets;
 
 namespace Nethermind.JsonRpc.Modules.Subscribe
 {
@@ -30,6 +29,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         public string Id { get; }
         public abstract SubscriptionType Type { get; }
         public IJsonRpcDuplexClient JsonRpcDuplexClient { get; set; }
+        public abstract void BindEvents();
         public abstract void Dispose();
 
     }

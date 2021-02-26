@@ -15,6 +15,8 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
@@ -32,12 +34,12 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         private readonly LogFilter _filter;
         private readonly ILogger _logger;
 
-        public LogsSubscription(IReceiptStorage receiptStorage, IFilterStore store, IBlockFinder blockFinder, ILogManager logManager, Filter filter = null)
+        public LogsSubscription(IReceiptStorage? receiptStorage, IFilterStore? store, IBlockFinder? blockFinder, ILogManager? logManager, Filter? filter = null)
         {
-            _receiptStorage = receiptStorage;
-            _blockFinder = blockFinder;
-            _logger = logManager.GetClassLogger();
-            IFilterStore filterStore = store;
+            _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
+            _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            IFilterStore filterStore = store ?? throw new ArgumentNullException(nameof(store));
 
             if (filter != null)
             {
@@ -55,11 +57,14 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
                     BlockParameter.Latest);
                 if (_logger.IsTrace) _logger.Trace($"Logs Subscription {Id}: Argument \"filter\" was null and created LogFilter with arguments: FromBlock: BlockParameter.Latest, ToBlock: BlockParameter.Latest");
             }
-            
+        }
+
+        public override void BindEvents()
+        {
             _receiptStorage.ReceiptsInserted += OnReceiptsInserted;
             if(_logger.IsTrace) _logger.Trace($"Logs subscription {Id} will track ReceiptsInserted.");
         }
-
+        
         private void OnReceiptsInserted(object? sender, ReceiptsEventArgs e)
         {
             Task.Run(() =>
@@ -70,16 +75,10 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
                 if (e.BlockHeader.Number >= fromBlock.Number
                     && e.BlockHeader.Number <= toBlock.Number)
                 {
-                    var filterLogsArguments = e.BlockHeader.FindLogsWithReceipts(e.TxReceipts, _filter);
+                    var filterLogs = GetFilterLogs(e);
                     
-                    foreach (var filterLogArguments in filterLogsArguments)
+                    foreach (var filterLog in filterLogs)
                     {
-                        FilterLog filterLog = new FilterLog(
-                            filterLogArguments.LogIndex,
-                            filterLogArguments.TransactionLogIndex,
-                            filterLogArguments.Receipt,
-                            filterLogArguments.Entry);
-                        
                         JsonRpcResult result = GetJsonRpcResult(filterLog);
                         JsonRpcDuplexClient.SendJsonRpcResult(result);
                         if(_logger.IsTrace) _logger.Trace($"Logs subscription {Id} printed new log.");
@@ -99,6 +98,38 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
                     })
                 , TaskContinuationOptions.OnlyOnFaulted
             );
+        }
+
+        private List<FilterLog> GetFilterLogs(ReceiptsEventArgs e)
+        {
+            List<FilterLog> filterLogs = new List<FilterLog>();
+
+            if (_filter.Matches(e.BlockHeader.Bloom))
+            {
+                int logIndex = 0;
+                for (int i = 0; i < e.TxReceipts.Length; i++)
+                {
+                    TxReceipt receipt = e.TxReceipts[i];
+                    if (_filter.Matches(receipt.Bloom))
+                    {
+                        int transactionLogIndex = 0;
+                        for (int j = 0; j < receipt.Logs.Length; j++)
+                        {
+                            var receiptLog = receipt.Logs[j];
+                            if (_filter.Accepts(receiptLog))
+                            {
+                                FilterLog filterLog = new FilterLog(
+                                    logIndex++,
+                                    transactionLogIndex++,
+                                    receipt,
+                                    receiptLog);
+                                filterLogs.Add(filterLog);
+                            }
+                        }
+                    }
+                }
+            }
+            return filterLogs;
         }
 
         private JsonRpcResult GetJsonRpcResult(FilterLog filterLog)

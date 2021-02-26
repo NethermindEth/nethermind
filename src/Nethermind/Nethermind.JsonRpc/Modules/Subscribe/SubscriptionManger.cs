@@ -15,9 +15,9 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System;
 using System.Collections.Concurrent;
 using Nethermind.JsonRpc.Modules.Eth;
-using Nethermind.JsonRpc.WebSockets;
 using Nethermind.Logging;
 
 namespace Nethermind.JsonRpc.Modules.Subscribe
@@ -32,13 +32,13 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         private readonly ConcurrentDictionary<string, ConcurrentBag<Subscription>> _subscriptionsByJsonRpcClient =
             new ConcurrentDictionary<string, ConcurrentBag<Subscription>>();
         
-        public SubscriptionManger(ISubscriptionFactory subscriptionFactory, ILogManager logManager)
+        public SubscriptionManger(ISubscriptionFactory? subscriptionFactory, ILogManager? logManager)
         {
-            _subscriptionFactory = subscriptionFactory;
-            _logger = logManager.GetClassLogger();
+            _subscriptionFactory = subscriptionFactory ?? throw new ArgumentNullException(nameof(subscriptionFactory));
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
-        public string AddSubscription(SubscriptionType subscriptionType, Filter filter = null)
+        public string AddSubscription(SubscriptionType subscriptionType, Filter? filter = null)
         {
             Subscription subscription = _subscriptionFactory.CreateSubscription(subscriptionType, filter);
             if(_subscriptions.TryAdd(subscription.Id, subscription))
@@ -89,6 +89,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
                         if (_logger.IsTrace) _logger.Trace($"Subscription {subscriptionId} added to client's subscriptions bag.");
                         return b;
                     });
+                subscription.BindEvents();
             }
             else if (_logger.IsDebug) _logger.Debug($"Failed trying to find subscription {subscriptionId} in dictionary _subscriptions.");
         }

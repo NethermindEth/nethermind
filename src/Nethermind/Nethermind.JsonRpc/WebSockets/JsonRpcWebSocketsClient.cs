@@ -27,12 +27,6 @@ using Nethermind.WebSockets;
 
 namespace Nethermind.JsonRpc.WebSockets
 {
-    public interface IJsonRpcDuplexClient : IDisposable
-    {
-        string Id { get; }
-        Task SendJsonRpcResult(JsonRpcResult result);
-    }
-
     public class JsonRpcWebSocketsClient : IWebSocketsClient, IJsonRpcDuplexClient
     {
         private readonly IWebSocketsClient _client;

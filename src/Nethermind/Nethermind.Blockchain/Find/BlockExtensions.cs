@@ -125,36 +125,6 @@ namespace Nethermind.Blockchain.Find
             }
         }
 
-        public static IEnumerable<(long LogIndex, long TransactionLogIndex, TxReceipt Receipt, LogEntry Entry)> FindLogsWithReceipts(
-            this BlockHeader blockHeader,
-            TxReceipt[] receipts,
-            LogFilter logFilter,
-            FindOrder receiptFindOrder = FindOrder.Ascending, // iterating forwards, by default we are interested in all items in order of appearance 
-            FindOrder logsFindOrder = FindOrder.Ascending) // iterating forwards, by default we are interested in all items in order of appearance
-        {
-            if (logFilter.Matches(blockHeader.Bloom))
-            {
-                int transactionLogIndex = 0;
-                for (int i = 0; i < receipts.Length; i++)
-                {
-                    TxReceipt receipt = GetItemAt(receipts, i, receiptFindOrder);
-                    if (logFilter.Matches(receipt.Bloom))
-                    {
-                        int logIndex = 0;
-                        for (int j = 0; j < receipt.Logs.Length; j++)
-                        {
-                            var receiptLog = GetItemAt(receipt.Logs, j, logsFindOrder);
-                            if (logFilter.Accepts(receiptLog))
-                            {
-                                yield return (logIndex++, transactionLogIndex, receipt, receiptLog);
-                            }
-                        }
-                        transactionLogIndex++;
-                    }
-                }
-            }
-        }
-
         private static T GetItemAt<T>(T[] items, int index, FindOrder findOrder) =>
             items[findOrder == FindOrder.Ascending ? index : items.Length - index - 1];
     }

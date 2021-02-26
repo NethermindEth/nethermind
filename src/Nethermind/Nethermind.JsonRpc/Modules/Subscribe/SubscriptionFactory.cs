@@ -34,19 +34,19 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         private readonly IFilterStore _filterStore;
 
         public SubscriptionFactory(
-            ILogManager logManager,
-            IBlockTree blockTree,
-            ITxPool txPool,
-            IReceiptStorage receiptStorage,
-            IFilterStore filterStore)
+            ILogManager? logManager,
+            IBlockTree? blockTree,
+            ITxPool? txPool,
+            IReceiptStorage? receiptStorage,
+            IFilterStore? filterStore)
         {
-            _logManager = logManager;
-            _blockTree = blockTree;
-            _txPool = txPool;
-            _receiptStorage = receiptStorage;
-            _filterStore = filterStore;
+            _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
+            _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
+            _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
+            _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
+            _filterStore = filterStore ?? throw new ArgumentNullException(nameof(filterStore));
         }
-        public Subscription CreateSubscription(SubscriptionType subscriptionType, Filter filter = null)
+        public Subscription CreateSubscription(SubscriptionType subscriptionType, Filter? filter = null)
         {
             switch (subscriptionType)
             {

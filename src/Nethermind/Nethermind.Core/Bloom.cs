@@ -31,7 +31,7 @@ namespace Nethermind.Core
             Bytes = new byte[ByteLength];
         }
         
-        public Bloom(Bloom[] blooms)
+        public Bloom(Bloom[] blooms) : this()
         {
             Bytes = new byte[ByteLength];
             for (int i = 0; i < blooms.Length; i++)

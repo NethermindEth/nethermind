@@ -36,7 +36,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             {
                 return ResultWrapper<string>.Success(_subscriptionManger.AddSubscription((SubscriptionType)subscriptionType, arguments));
             }
-            return ResultWrapper<string>.Fail("Wrong subscription type.");
+            return ResultWrapper<string>.Fail($"Wrong subscription type: {subscriptionName}.");
         }
         
 
@@ -45,7 +45,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             bool unsubscribed = _subscriptionManger.RemoveSubscription(subscriptionId);
             return unsubscribed
                 ? ResultWrapper<bool>.Success(true)
-                : ResultWrapper<bool>.Fail("Failed to unsubscribe.");
+                : ResultWrapper<bool>.Fail($"Failed to unsubscribe: {subscriptionId}.");
         }
     }
 }

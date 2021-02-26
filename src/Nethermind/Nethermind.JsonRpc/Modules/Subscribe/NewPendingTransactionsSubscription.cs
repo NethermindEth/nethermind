@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System;
 using System.Threading.Tasks;
 using Nethermind.Logging;
 using Nethermind.TxPool;
@@ -26,11 +27,14 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         private readonly ITxPool _txPool;
         private readonly ILogger _logger;
 
-        public NewPendingTransactionsSubscription(ITxPool txPool, ILogManager logManager)
+        public NewPendingTransactionsSubscription(ITxPool? txPool, ILogManager? logManager)
         {
-            _txPool = txPool;
-            _logger = logManager.GetClassLogger();
-
+            _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+        }
+        
+        public override void BindEvents()
+        {
             _txPool.NewPending += OnNewPending;
             if(_logger.IsTrace) _logger.Trace($"NewPendingTransactions subscription {Id} will track NewPendingTransactions");
         }

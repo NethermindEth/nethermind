@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.JsonRpc.Modules.Eth;
@@ -29,25 +30,28 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         private bool IsSyncing { get; set; }
         private long BestSuggestedNumber { get; set; }
         
-        public SyncingSubscription(IBlockTree blockTree, ILogManager logManager)
+        public SyncingSubscription(IBlockTree? blockTree, ILogManager? logManager)
         {
-            _blockTree = blockTree;
-            _logger = logManager.GetClassLogger();
+            _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             
             IsSyncing = CheckSyncing();
             if(_logger.IsTrace) _logger.Trace($"Syncing subscription {Id}: Syncing status on start is {IsSyncing}");
-            
-            _blockTree.NewBestSuggestedBlock += OnConditionsChange;
-            if(_logger.IsTrace) _logger.Trace($"Syncing subscription {Id} will track NewBestSuggestedBlocks");
-            
-            _blockTree.NewHeadBlock += OnConditionsChange;
-            if(_logger.IsTrace) _logger.Trace($"Syncing subscription {Id} will track NewHeadBlocks");
         }
 
         private bool CheckSyncing()
         {
             BestSuggestedNumber = _blockTree.FindBestSuggestedHeader().Number;
             return BestSuggestedNumber > _blockTree.Head.Number + 8;
+        }
+        
+        public override void BindEvents()
+        {
+            _blockTree.NewBestSuggestedBlock += OnConditionsChange;
+            if(_logger.IsTrace) _logger.Trace($"Syncing subscription {Id} will track NewBestSuggestedBlocks");
+            
+            _blockTree.NewHeadBlock += OnConditionsChange;
+            if(_logger.IsTrace) _logger.Trace($"Syncing subscription {Id} will track NewHeadBlocks");
         }
 
         private void OnConditionsChange(object? sender, BlockEventArgs e)

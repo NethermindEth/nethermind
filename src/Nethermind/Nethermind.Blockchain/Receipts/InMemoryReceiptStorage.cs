@@ -69,13 +69,13 @@ namespace Nethermind.Blockchain.Receipts
         public void Insert(Block block, params TxReceipt[] txReceipts)
         {
             _receipts[block.Hash] = txReceipts;
-            ReceiptsInserted?.Invoke(this, new ReceiptsEventArgs(block.Header, txReceipts));
             for (int i = 0; i < txReceipts.Length; i++)
             {
                 var txReceipt = txReceipts[i];
                 txReceipt.BlockHash = block.Hash;
                 _transactions[txReceipt.TxHash] = txReceipt;
             }
+            ReceiptsInserted?.Invoke(this, new ReceiptsEventArgs(block.Header, txReceipts));
         }
 
         public long? LowestInsertedReceiptBlockNumber { get; set; }

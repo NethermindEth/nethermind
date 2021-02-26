@@ -28,13 +28,4 @@ namespace Nethermind.JsonRpc.Modules
 
         public RpcEndpoint Availability { get; set; } = RpcEndpoint.All;
     }
-    
-    [Flags]
-    public enum RpcEndpoint
-    {
-        None = 0,
-        Http = 1,
-        WebSocket = 2,
-        All = Http | WebSocket
-    }
 }

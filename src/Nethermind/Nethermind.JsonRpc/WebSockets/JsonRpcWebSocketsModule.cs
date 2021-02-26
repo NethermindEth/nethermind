@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Collections.Concurrent;
 using System.Net.WebSockets;
 using System.Threading.Tasks;
@@ -77,9 +78,9 @@ namespace Nethermind.JsonRpc.WebSockets
         public void RemoveClient(string id)
         {
             if (_clients.TryRemove(id, out var client) 
-                && client is IJsonRpcDuplexClient jsonRpcClient)
+                && client is IDisposable disposableClient)
             {
-                jsonRpcClient.Dispose();
+                disposableClient.Dispose();
             }
         }
     }

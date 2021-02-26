@@ -15,16 +15,14 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using Nethermind.JsonRpc.Modules.Eth;
-using Nethermind.JsonRpc.WebSockets;
+using System;
+using System.Threading.Tasks;
 
-namespace Nethermind.JsonRpc.Modules.Subscribe
+namespace Nethermind.JsonRpc
 {
-    public interface ISubscriptionManger
+    public interface IJsonRpcDuplexClient : IDisposable
     {
-        string AddSubscription(SubscriptionType subscriptionType, Filter? filter = null);
-        bool RemoveSubscription(string subscriptionId);
-        void BindJsonRpcDuplexClient(string subscriptionId, IJsonRpcDuplexClient jsonRpcDuplexClient);
-        void RemoveSubscriptions(IJsonRpcDuplexClient jsonRpcDuplexClient);
+        string Id { get; }
+        Task SendJsonRpcResult(JsonRpcResult result);
     }
 }

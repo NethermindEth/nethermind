@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.JsonRpc.Modules.Eth;
@@ -27,11 +28,14 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         private readonly IBlockTree _blockTree;
         private readonly ILogger _logger;
 
-        public NewHeadSubscription(IBlockTree blockTree, ILogManager logManager)
+        public NewHeadSubscription(IBlockTree? blockTree, ILogManager? logManager)
         {
-            _blockTree = blockTree;
-            _logger = logManager.GetClassLogger();
-            
+            _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+        }
+        
+        public override void BindEvents()
+        {
             _blockTree.NewHeadBlock += OnNewHeadBlock;
             if(_logger.IsTrace) _logger.Trace($"NewHeads subscription {Id} will track NewHeadBlocks");
         }
