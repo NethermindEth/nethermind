@@ -151,7 +151,7 @@ namespace Nethermind.Blockchain.Producers
                         _transactionPool.RemoveTransaction(tx.Hash, 0, true);    
                     }
                     
-                    if (tx.Nonce > expectedNonce + 16)
+                    if (tx.Nonce > expectedNonce + _transactionPool.FutureNonceRetention)
                     {
                         _transactionPool.RemoveTransaction(tx.Hash, 0);
                     }

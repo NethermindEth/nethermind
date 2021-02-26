@@ -25,6 +25,7 @@ namespace Nethermind.TxPool
         Added,
         OwnNonceAlreadyUsed,
         Filtered,
-        InsufficientFunds
+        InsufficientFunds,
+        FutureNonce
     }
 }

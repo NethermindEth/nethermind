@@ -157,12 +157,15 @@ namespace Nethermind.TxPool
             _transactions =
                 new TxDistinctSortedPool(MemoryAllowance.MemPoolSize, logManager, comparer ?? DefaultComparer);
             _peerNotificationThreshold = txPoolConfig.PeerNotificationThreshold;
+            FutureNonceRetention = txPoolConfig.FutureNonceRetention;
 
             _ownTimer = new Timer(500);
             _ownTimer.Elapsed += OwnTimerOnElapsed;
             _ownTimer.AutoReset = false;
             _ownTimer.Start();
         }
+
+        public uint FutureNonceRetention { get; private set; }
 
         public Transaction[] GetPendingTransactions() => _transactions.GetSnapshot();
 
@@ -293,6 +296,13 @@ namespace Nethermind.TxPool
                 if (_logger.IsTrace)
                     _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, nonce already used.");
                 return AddTxResult.OldNonce;
+            }
+
+            if (tx.Nonce > currentNonce + FutureNonceRetention)
+            {
+                if (_logger.IsTrace)
+                    _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, nonce in far future.");
+                return AddTxResult.FutureNonce;
             }
 
             bool overflow = UInt256.MultiplyOverflow(tx.GasPrice, (UInt256) tx.GasLimit, out UInt256 cost);
