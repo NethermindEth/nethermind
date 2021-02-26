@@ -31,11 +31,11 @@ namespace Nethermind.TxPool.Collections
     public abstract class SortedPool<TKey, TValue, TGroupKey>
     {
         private readonly int _capacity;
-        private readonly IComparer<TValue> _comparer;
+        private readonly IComparer<TValue> _groupComparer;
         private readonly IDictionary<TGroupKey, ICollection<TValue>> _buckets;
         private readonly DictionarySortedSet<TValue, TKey> _sortedValues;
         private readonly IDictionary<TKey, TValue> _cacheMap;
-        
+
         /// <summary>
         /// Constructor
         /// </summary>
@@ -44,11 +44,12 @@ namespace Nethermind.TxPool.Collections
         protected SortedPool(int capacity, IComparer<TValue> comparer)
         {
             _capacity = capacity;
-            // ReSharper disable once VirtualMemberCallInConstructor
-            _comparer = GetUniqueComparer(comparer ?? throw new ArgumentNullException(nameof(comparer)));
+            // ReSharper disable VirtualMemberCallInConstructor
+            var sortedComparer = GetUniqueComparer(comparer ?? throw new ArgumentNullException(nameof(comparer)));
+            _groupComparer = GetGroupComparer(comparer ?? throw new ArgumentNullException(nameof(comparer)));
             _cacheMap = new Dictionary<TKey, TValue>(); // do not initialize it at the full capacity
             _buckets = new Dictionary<TGroupKey, ICollection<TValue>>();
-            _sortedValues = new DictionarySortedSet<TValue, TKey>(_comparer);
+            _sortedValues = new DictionarySortedSet<TValue, TKey>(sortedComparer);
         }
 
         /// <summary>
@@ -57,6 +58,13 @@ namespace Nethermind.TxPool.Collections
         /// <param name="comparer">Original comparer.</param>
         /// <returns>Identity comparer.</returns>
         protected abstract IComparer<TValue> GetUniqueComparer(IComparer<TValue> comparer);
+        
+        /// <summary>
+        /// Gets comparer for same group.
+        /// </summary>
+        /// <param name="comparer">Original comparer.</param>
+        /// <returns>Group comparer.</returns>
+        protected abstract IComparer<TValue> GetGroupComparer(IComparer<TValue> comparer);
         
         /// <summary>
         /// Maps item to group
@@ -151,7 +159,7 @@ namespace Nethermind.TxPool.Collections
 
                 if (!_buckets.TryGetValue(group, out ICollection<TValue> bucket))
                 {
-                    _buckets[group] = bucket = new SortedSet<TValue>(_comparer);
+                    _buckets[group] = bucket = new SortedSet<TValue>(_groupComparer);
                 }
 
                 InsertCore(key, value, bucket);
