@@ -27,40 +27,56 @@ using NUnit.Framework;
 
 namespace Nethermind.DataMarketplace.Test.Services
 {
-    public class EthPriceServiceTests
+    public class PriceServiceTests
     {
         private IHttpClient _client;
-        private IPriceService _ethPriceService;
-        private ITimestamper _timestamper;
+        private IPriceService _priceService;
+        private TestTimestamper _timestamper;
+        private readonly DateTime _now = DateTime.UtcNow;
 
         [SetUp]
         public void Setup()
         {
             _client = Substitute.For<IHttpClient>();
-            _timestamper = new Timestamper(DateTime.UtcNow);
-            _ethPriceService = new EthPriceService(_client, _timestamper, LimboLogs.Instance);
+            _timestamper = new TestTimestamper(_now);
+            _priceService = new PriceService(_client, _timestamper, LimboLogs.Instance);
         }
 
         [Test]
         public async Task update_async_should_set_usd_price()
         {
             const decimal price = 187;
-            var results = new Dictionary<string, EthPriceService.Result>
+            const string currency = "USDT_ETH";
+            var updatedAt = _timestamper.UtcNow.AddSeconds(1);
+            _timestamper.UtcNow = updatedAt;
+            var results = new Dictionary<string, PriceResult>
             {
                 {
-                    "USDT_ETH",
-                    new EthPriceService.Result
+                    currency,
+                    new PriceResult
                     {
                         PriceUsd = price
                     }
                 }
             };
             
-            _client.GetAsync<Dictionary<string, EthPriceService.Result>>(Arg.Any<string>()).ReturnsForAnyArgs(results);
-            await _ethPriceService.UpdateAsync();
-            _ethPriceService.UsdPrice.Should().Be(price);
-            _ethPriceService.UpdatedAt.Should().Be(_timestamper.UnixTime.Seconds);
-            await _client.ReceivedWithAnyArgs().GetAsync<Dictionary<string, EthPriceService.Result>>(Arg.Any<string>());
+            _client.GetAsync<Dictionary<string, PriceResult>>(Arg.Any<string>()).ReturnsForAnyArgs(results);
+            await _priceService.UpdateAsync(currency);
+            var priceInfo = _priceService.Get(currency);
+            priceInfo.Should().NotBeNull();
+            priceInfo.UsdPrice.Should().Be(price);
+            priceInfo.UpdatedAt.Should().Be(((ITimestamper)_timestamper).UnixTime.Seconds);
+            await _client.ReceivedWithAnyArgs().GetAsync<Dictionary<string, PriceResult>>(Arg.Any<string>());
+        }
+
+        public class TestTimestamper : ITimestamper
+        {
+            public DateTime UtcNow { get; set; }
+
+            public TestTimestamper(DateTime utcNow)
+            {
+                UtcNow = utcNow;
+            }
         }
     }
 }

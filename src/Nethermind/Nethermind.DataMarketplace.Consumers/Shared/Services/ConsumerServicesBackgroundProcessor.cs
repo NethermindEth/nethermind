@@ -49,28 +49,27 @@ namespace Nethermind.DataMarketplace.Consumers.Shared.Services
         private readonly IAccountService _accountService;
         private readonly IRefundClaimant _refundClaimant;
         private readonly IDepositConfirmationService _depositConfirmationService;
-        private readonly IPriceService _ethPriceService;
-        private readonly IPriceService _daiPriceService;
         private readonly IGasPriceService _gasPriceService;
         private readonly IBlockProcessor _blockProcessor;
         private readonly ILogger _logger;
+        private readonly IPriceService _priceService;
 
         private Timer? _depositTimer;
         private uint _depositTimerPeriod;
         private long _currentBlockTimestamp;
         private long _currentBlockNumber;
+        private string[] _currencies = {"USDT_DAI", "USDT_ETH"};
 
         public ConsumerServicesBackgroundProcessor(
             IAccountService accountService,
             IRefundClaimant refundClaimant,
             IDepositConfirmationService depositConfirmationService,
-            IPriceService ethPriceService,
-            IPriceService daiPriceService,
             IGasPriceService gasPriceService,
             IBlockProcessor blockProcessor,
             IDepositDetailsRepository depositRepository,
             IConsumerNotifier consumerNotifier,
             ILogManager logManager,
+            IPriceService priceService,
             bool useDepositTimer = false,
             IEthJsonRpcClientProxy? ethJsonRpcClientProxy = null,
             uint depositTimer = 10000)
@@ -78,19 +77,17 @@ namespace Nethermind.DataMarketplace.Consumers.Shared.Services
             _accountService = accountService;
             _refundClaimant = refundClaimant;
             _depositConfirmationService = depositConfirmationService;
-            _ethPriceService = ethPriceService;
-            _daiPriceService = daiPriceService;
             _gasPriceService = gasPriceService;
             _blockProcessor = blockProcessor;
             _consumerNotifier = consumerNotifier;
+            _priceService = priceService;
             _depositRepository = depositRepository;
             _useDepositTimer = useDepositTimer;
             _ethJsonRpcClientProxy = ethJsonRpcClientProxy;
-            _logger = logManager.GetClassLogger();
-            _ethPriceService.UpdateAsync();
-            _daiPriceService.UpdateAsync();
-            _gasPriceService.UpdateGasPriceAsync();
             _depositTimerPeriod = depositTimer;
+            _logger = logManager.GetClassLogger();
+            _gasPriceService.UpdateGasPriceAsync();
+            _priceService.UpdateAsync(_currencies);
         }
 
         public void Init()
@@ -176,10 +173,19 @@ namespace Nethermind.DataMarketplace.Consumers.Shared.Services
 
             await TryClaimRefundsAsync(depositsToRefund.Items);
 
-            await _ethPriceService.UpdateAsync();
-            await _consumerNotifier.SendEthUsdPriceAsync(_ethPriceService.UsdPrice, _ethPriceService.UpdatedAt);
-            await _daiPriceService.UpdateAsync();
-            await _consumerNotifier.SendDaiUsdPriceAsync(_daiPriceService.UsdPrice, _daiPriceService.UpdatedAt);
+            // await _ethPriceService.UpdateAsync();
+            // await _consumerNotifier.SendEthUsdPriceAsync(_ethPriceService.UsdPrice, _ethPriceService.UpdatedAt);
+            // await _daiPriceService.UpdateAsync();
+            // await _consumerNotifier.SendDaiUsdPriceAsync(_daiPriceService.UsdPrice, _daiPriceService.UpdatedAt);
+            // await _gasPriceService.UpdateGasPriceAsync();
+            
+            await _priceService.UpdateAsync(_currencies);
+            foreach (var currency in _currencies)
+            {
+                var priceInfo = _priceService.Get(currency);
+                await _consumerNotifier.SendUsdPriceAsync(currency, priceInfo.UsdPrice, priceInfo.UpdatedAt);
+
+            }
             await _gasPriceService.UpdateGasPriceAsync();
 
             if (_gasPriceService.Types != null)

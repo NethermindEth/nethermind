@@ -47,38 +47,35 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc
         private readonly IDepositReportService _depositReportService;
         private readonly IJsonRpcNdmConsumerChannel _jsonRpcNdmConsumerChannel;
         private readonly IEthRequestService _ethRequestService;
-        private readonly IPriceService _ethPriceService;
-        private readonly IPriceService _daiPriceService;
         private readonly IGasPriceService _gasPriceService;
         private readonly IConsumerTransactionsService _transactionsService;
         private readonly IConsumerGasLimitsService _gasLimitsService;
         private readonly IWallet _wallet;
         private readonly ITimestamper _timestamper;
+        private readonly IPriceService _priceService;
 
         public NdmRpcConsumerModule(
             IConsumerService consumerService,
             IDepositReportService depositReportService,
             IJsonRpcNdmConsumerChannel jsonRpcNdmConsumerChannel,
             IEthRequestService ethRequestService,
-            IPriceService ethPriceService,
-            IPriceService daiPriceService,
             IGasPriceService gasPriceService,
             IConsumerTransactionsService transactionsService,
             IConsumerGasLimitsService gasLimitsService,
             IWallet personalBridge,
-            ITimestamper timestamper)
+            ITimestamper timestamper,
+            IPriceService priceService)
         {
             _consumerService = consumerService ?? throw new ArgumentNullException(nameof(consumerService));
             _depositReportService = depositReportService ?? throw new ArgumentNullException(nameof(depositReportService));
             _jsonRpcNdmConsumerChannel = jsonRpcNdmConsumerChannel ?? throw new ArgumentNullException(nameof(jsonRpcNdmConsumerChannel));
             _ethRequestService = ethRequestService ?? throw new ArgumentNullException(nameof(ethRequestService));
-            _ethPriceService = ethPriceService ?? throw new ArgumentNullException(nameof(ethPriceService));
-            _daiPriceService = daiPriceService ?? throw new ArgumentNullException(nameof(daiPriceService));
             _gasPriceService = gasPriceService ?? throw new ArgumentNullException(nameof(gasPriceService));
             _transactionsService = transactionsService ?? throw new ArgumentNullException(nameof(transactionsService));
             _gasLimitsService = gasLimitsService ?? throw new ArgumentNullException(nameof(gasLimitsService));
             _wallet = personalBridge ?? throw new ArgumentNullException(nameof(personalBridge));
             _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
+            _priceService = priceService ?? throw new ArgumentNullException(nameof(priceService));
         }
 
         public ResultWrapper<AccountForRpc[]> ndm_listAccounts()
@@ -262,14 +259,22 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc
             return ResultWrapper<bool>.Success(true);
         }
 
-        public ResultWrapper<UsdPriceForRpc> ndm_getEthUsdPrice()
-            => ResultWrapper<UsdPriceForRpc>.Success(new UsdPriceForRpc(_ethPriceService.UsdPrice,
-                _ethPriceService.UpdatedAt));
-        
-        public ResultWrapper<UsdPriceForRpc> ndm_getDaiUsdPrice()
-            => ResultWrapper<UsdPriceForRpc>.Success(new UsdPriceForRpc(_daiPriceService.UsdPrice,
-                _daiPriceService.UpdatedAt));
-        
+        // public ResultWrapper<UsdPriceForRpc> ndm_getEthUsdPrice()
+        //     => ResultWrapper<UsdPriceForRpc>.Success(new UsdPriceForRpc(_ethPriceService.UsdPrice,
+        //         _ethPriceService.UpdatedAt));
+        //
+        // public ResultWrapper<UsdPriceForRpc> ndm_getDaiUsdPrice()
+        //     => ResultWrapper<UsdPriceForRpc>.Success(new UsdPriceForRpc(_daiPriceService.UsdPrice,
+        //         _daiPriceService.UpdatedAt));
+
+        public ResultWrapper<UsdPriceForRpc> ndm_getUsdPrice(string currency)
+        {
+            var priceInfo = _priceService.Get(currency);
+            return priceInfo is null
+                ? ResultWrapper<UsdPriceForRpc>.Fail($"{currency} couldn't be requested.")
+                : ResultWrapper<UsdPriceForRpc>.Success(new UsdPriceForRpc(priceInfo.UsdPrice, priceInfo.UpdatedAt));
+        }
+
         public ResultWrapper<GasPriceTypesForRpc> ndm_getGasPrice()
             => _gasPriceService.Types is null
                 ? ResultWrapper<GasPriceTypesForRpc>.Fail("Gas price couldn't be requested.")
