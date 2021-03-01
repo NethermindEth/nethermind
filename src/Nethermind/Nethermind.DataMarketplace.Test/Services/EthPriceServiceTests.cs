@@ -30,7 +30,7 @@ namespace Nethermind.DataMarketplace.Test.Services
     public class EthPriceServiceTests
     {
         private IHttpClient _client;
-        private IEthPriceService _ethPriceService;
+        private IPriceService _ethPriceService;
         private ITimestamper _timestamper;
 
         [SetUp]

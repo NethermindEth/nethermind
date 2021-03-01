@@ -10,7 +10,7 @@ using Newtonsoft.Json;
 [assembly: InternalsVisibleTo("Nethermind.DataMarketplace.Test")]
 namespace Nethermind.DataMarketplace.Core.Services
 {
-    public class DaiPriceService : IDaiPriceService
+    public class DaiPriceService : IPriceService
     {
         private const string Url = "https://poloniex.com/public?command=returnTicker";
         private readonly IHttpClient _httpClient;

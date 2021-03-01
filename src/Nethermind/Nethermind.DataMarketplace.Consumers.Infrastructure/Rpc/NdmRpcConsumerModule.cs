@@ -47,8 +47,8 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc
         private readonly IDepositReportService _depositReportService;
         private readonly IJsonRpcNdmConsumerChannel _jsonRpcNdmConsumerChannel;
         private readonly IEthRequestService _ethRequestService;
-        private readonly IEthPriceService _ethPriceService;
-        private readonly IDaiPriceService _daiPriceService;
+        private readonly IPriceService _ethPriceService;
+        private readonly IPriceService _daiPriceService;
         private readonly IGasPriceService _gasPriceService;
         private readonly IConsumerTransactionsService _transactionsService;
         private readonly IConsumerGasLimitsService _gasLimitsService;
@@ -60,8 +60,8 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc
             IDepositReportService depositReportService,
             IJsonRpcNdmConsumerChannel jsonRpcNdmConsumerChannel,
             IEthRequestService ethRequestService,
-            IEthPriceService ethPriceService,
-            IDaiPriceService daiPriceService,
+            IPriceService ethPriceService,
+            IPriceService daiPriceService,
             IGasPriceService gasPriceService,
             IConsumerTransactionsService transactionsService,
             IConsumerGasLimitsService gasLimitsService,

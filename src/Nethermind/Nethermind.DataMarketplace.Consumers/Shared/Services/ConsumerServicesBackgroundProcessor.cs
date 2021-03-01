@@ -49,8 +49,8 @@ namespace Nethermind.DataMarketplace.Consumers.Shared.Services
         private readonly IAccountService _accountService;
         private readonly IRefundClaimant _refundClaimant;
         private readonly IDepositConfirmationService _depositConfirmationService;
-        private readonly IEthPriceService _ethPriceService;
-        private readonly IDaiPriceService _daiPriceService;
+        private readonly IPriceService _ethPriceService;
+        private readonly IPriceService _daiPriceService;
         private readonly IGasPriceService _gasPriceService;
         private readonly IBlockProcessor _blockProcessor;
         private readonly ILogger _logger;
@@ -64,8 +64,8 @@ namespace Nethermind.DataMarketplace.Consumers.Shared.Services
             IAccountService accountService,
             IRefundClaimant refundClaimant,
             IDepositConfirmationService depositConfirmationService,
-            IEthPriceService ethPriceService,
-            IDaiPriceService daiPriceService,
+            IPriceService ethPriceService,
+            IPriceService daiPriceService,
             IGasPriceService gasPriceService,
             IBlockProcessor blockProcessor,
             IDepositDetailsRepository depositRepository,

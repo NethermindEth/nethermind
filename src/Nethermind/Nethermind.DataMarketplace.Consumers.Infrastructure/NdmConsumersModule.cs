@@ -72,8 +72,8 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure
         private IDepositReportService depositReportService;
         private IJsonRpcNdmConsumerChannel jsonRpcNdmConsumerChannel;
         private IEthRequestService ethRequestService;
-        private IEthPriceService ethPriceService;
-        private IDaiPriceService daiPriceService;
+        private IPriceService ethPriceService;
+        private IPriceService daiPriceService;
         private IGasPriceService gasPriceService;
         private IConsumerTransactionsService consumerTransactionsService;
         private IConsumerGasLimitsService gasLimitsService;

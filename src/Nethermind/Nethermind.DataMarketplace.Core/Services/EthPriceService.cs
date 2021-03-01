@@ -26,7 +26,7 @@ using Newtonsoft.Json;
 [assembly: InternalsVisibleTo("Nethermind.DataMarketplace.Test")]
 namespace Nethermind.DataMarketplace.Core.Services
 {
-    public class EthPriceService : IEthPriceService
+    public class EthPriceService : IPriceService
     {
         // private const string Url = "https://api.coinmarketcap.com/v1/ticker/ethereum/?convert=USD";
         private const string Url = "https://poloniex.com/public?command=returnTicker";
