@@ -10,6 +10,7 @@ using Nethermind.Logging;
 using Newtonsoft.Json;
 
 [assembly: InternalsVisibleTo("Nethermind.DataMarketplace.Test")]
+[assembly: InternalsVisibleTo("Nethermind.DataMarketplace.Consumers.Test")]
 namespace Nethermind.DataMarketplace.Core.Services
 {
     public class PriceService : IPriceService

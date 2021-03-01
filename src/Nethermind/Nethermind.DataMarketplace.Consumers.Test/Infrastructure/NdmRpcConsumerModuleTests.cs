@@ -17,7 +17,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Numerics;
 using System.Reflection;
 using System.Threading.Tasks;
 using FluentAssertions;
@@ -41,7 +40,7 @@ using Nethermind.DataMarketplace.Core.Services;
 using Nethermind.DataMarketplace.Core.Services.Models;
 using Nethermind.DataMarketplace.Infrastructure.Rpc.Models;
 using Nethermind.Int256;
-using Nethermind.Facade;
+using Nethermind.Facade.Proxy;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Wallet;
@@ -56,14 +55,14 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
         private IDepositReportService _depositReportService;
         private IJsonRpcNdmConsumerChannel _jsonRpcNdmConsumerChannel;
         private IEthRequestService _ethRequestService;
-        private IEthPriceService _ethPriceService;
-        private IDaiPriceService _daiPriceService;
+        private IPriceService _priceService;
         private IGasPriceService _gasPriceService;
         private IConsumerTransactionsService _consumerTransactionsService;
         private IConsumerGasLimitsService _gasLimitsService;
         private IWallet _wallet;
         private INdmRpcConsumerModule _rpc;
         private ITimestamper _timestamper;
+        private IHttpClient _client;
         private const uint DepositExpiryTime = 1546393600;
         private static readonly DateTime Date = new DateTime(2019, 1, 2); //1546383600
 
@@ -74,16 +73,16 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
             _depositReportService = Substitute.For<IDepositReportService>();
             _jsonRpcNdmConsumerChannel = Substitute.For<IJsonRpcNdmConsumerChannel>();
             _ethRequestService = Substitute.For<IEthRequestService>();
-            _ethPriceService = Substitute.For<IEthPriceService>();
-            _daiPriceService = Substitute.For<IDaiPriceService>();
+            _priceService = Substitute.For<IPriceService>();
             _gasPriceService = Substitute.For<IGasPriceService>();
             _gasLimitsService = Substitute.For<IConsumerGasLimitsService>();
             _consumerTransactionsService = Substitute.For<IConsumerTransactionsService>();
             _wallet = Substitute.For<IWallet>();
             _timestamper = new Timestamper(Date);
+            _client = Substitute.For<IHttpClient>();
             _rpc = new NdmRpcConsumerModule(_consumerService, _depositReportService, _jsonRpcNdmConsumerChannel,
-                _ethRequestService, _ethPriceService, _daiPriceService, _gasPriceService, _consumerTransactionsService, _gasLimitsService,
-                _wallet, _timestamper);
+                _ethRequestService, _gasPriceService, _consumerTransactionsService, _gasLimitsService,
+                _wallet, _timestamper, _priceService);
         }
 
         [Test]
@@ -113,13 +112,12 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
                 _depositReportService,
                 _jsonRpcNdmConsumerChannel,
                 _ethRequestService,
-                _ethPriceService,
-                _daiPriceService,
                 _gasPriceService,
                 _consumerTransactionsService,
                 _gasLimitsService,
                 NullWallet.Instance, 
-                _timestamper);
+                _timestamper,
+                _priceService);
             var result = _rpc.ndm_listAccounts();
             result.Data.Should().BeEmpty();
         }
@@ -486,15 +484,32 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
         }
 
         [Test]
-        public void get_eth_usd_price_should_return_amount()
+        public async Task get_eth_usd_price_should_return_amount()
         {
             const decimal price = 187;
             const ulong updatedAt = 123456789;
-            _ethPriceService.UsdPrice.Returns(price);
-            _ethPriceService.UpdatedAt.Returns(updatedAt);
-            var result = _rpc.ndm_getEthUsdPrice();
-            result.Data.Price.Should().Be(price);
-            result.Data.UpdatedAt.Should().Be(updatedAt);
+            const string currency = "USDT_ETH";
+            var results = new Dictionary<string, PriceResult>
+            {
+                {
+                    currency,
+                    new PriceResult
+                    {
+                        PriceUsd = price
+                    }
+                }
+            };
+            _client.GetAsync<Dictionary<string, PriceResult>>(Arg.Any<string>()).ReturnsForAnyArgs(results);
+            await _priceService.UpdateAsync(currency);
+            
+            var priceInfo = _priceService.Get(currency);
+            priceInfo.Should().NotBeNull();
+            
+            priceInfo.UsdPrice.Returns(price);
+            // priceInfo.UpdatedAt.Returns(updatedAt);
+            // var result = _rpc.ndm_getUsdPrice(currency);
+            // result.Data.Price.Should().Be(price);
+            // result.Data.UpdatedAt.Should().Be(updatedAt);
         }
 
         [Test]

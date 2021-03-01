@@ -91,8 +91,9 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Notifiers
         [Test]
         public void Can_send_eth_usd_price()
         {
-            _notifier.SendEthUsdPriceAsync(120.01m, 1);
-            _ndmNotifier.Type.Should().Be("eth_usd_price");
+            const string currency = "USDT_ETH";
+            _notifier.SendUsdPriceAsync(currency, 120.01m, 1);
+            _ndmNotifier.Type.Should().Be("usd_price");
             VerifyDataProperty("price", 120.01m);
             VerifyDataProperty("updatedAt", 1);
         }
