@@ -136,9 +136,9 @@ namespace Nethermind.DataMarketplace.Test
             IBlockTree blockTree = Substitute.For<IBlockTree>();
             Block block =  Build.A.Block.WithNumber(0).TestObject;
             blockTree.Head.Returns(block);
-            var transactionComparerProvider = new TransactionComparerProvider(specProvider, blockTree);
+            TransactionComparerProvider transactionComparerProvider = new TransactionComparerProvider(specProvider, blockTree);
             _txPool = new TxPool.TxPool(new InMemoryTxStorage(),
-                new EthereumEcdsa(specProvider.ChainId, _logManager), new ChainHeadSpecProvider(specProvider, blockTree), new TxPoolConfig(), _state, transactionComparerProvider, new TxValidator(specProvider.ChainId), _logManager);
+                new EthereumEcdsa(specProvider.ChainId, _logManager), new ChainHeadSpecProvider(specProvider, blockTree), new TxPoolConfig(), _state, new TxValidator(specProvider.ChainId), _logManager, transactionComparerProvider.GetDefaultComparer());
             _ndmBridge = new NdmBlockchainBridge(_bridge, _bridge, _bridge, _bridge);
         }
 
