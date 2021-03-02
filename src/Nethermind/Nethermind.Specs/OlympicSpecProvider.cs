@@ -28,15 +28,13 @@ namespace Nethermind.Specs
             return Olympic.Instance;
         }
 
-        public long? DaoBlockNumber { get; } = null;
+        public long? DaoBlockNumber => 0L;
 
-        public ulong ChainId => 3;
+        public ulong ChainId => Core.ChainId.Olympic;
         public long[] TransitionBlocks { get; } = {0};
 
-        private OlympicSpecProvider()
-        {
-        }
+        private OlympicSpecProvider() { }
 
-        public static OlympicSpecProvider Instance = new OlympicSpecProvider();
+        public static readonly OlympicSpecProvider Instance = new();
     }
 }

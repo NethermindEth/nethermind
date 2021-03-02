@@ -21,11 +21,9 @@ namespace Nethermind.Specs
 {
     public class GoerliSpecProvider : ISpecProvider
     {
-        public static readonly GoerliSpecProvider Instance = new GoerliSpecProvider();
+        public static readonly GoerliSpecProvider Instance = new();
 
-        private GoerliSpecProvider()
-        {
-        }
+        private GoerliSpecProvider() { }
 
         public IReleaseSpec GenesisSpec => ConstantinopleFix.Instance;
 
@@ -44,10 +42,10 @@ namespace Nethermind.Specs
             return Berlin.Instance;
         }
 
-        public long? DaoBlockNumber { get; } = null;
-        public static long IstanbulBlockNumber => 0x17D433;
-        public static long BerlinBlockNumber => long.MaxValue - 1;
-        public ulong ChainId => 0x5;
+        public long? DaoBlockNumber => null;
+        public static long IstanbulBlockNumber => 1_561_651;
+        public static long BerlinBlockNumber => 4_460_644;
+        public ulong ChainId => Core.ChainId.Goerli;
 
         public long[] TransitionBlocks { get; } =
         {

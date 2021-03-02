@@ -17,7 +17,7 @@
 
 using Nethermind.Core.Specs;
 
-namespace Nethermind.Core.Test.Specs
+namespace Nethermind.Core.Test
 {
     public class FixedBlockChainHeadSpecProvider : IChainHeadSpecProvider
     {

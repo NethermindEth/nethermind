@@ -38,7 +38,7 @@ namespace Nethermind.Specs
             return SpuriousDragon.Instance;
         }
 
-        public long? DaoBlockNumber { get; } = null;
+        public long? DaoBlockNumber => null;
 
         public ulong ChainId => 2;
         public long[] TransitionBlocks { get; } = {0};
