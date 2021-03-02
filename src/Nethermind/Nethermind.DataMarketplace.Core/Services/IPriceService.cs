@@ -6,7 +6,6 @@ namespace Nethermind.DataMarketplace.Core.Services
     {
         Task UpdateAsync(params string[] currencies);
         PriceInfo? Get(string currency);
-
     }
 
     public class PriceInfo

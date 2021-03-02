@@ -20,7 +20,6 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Timers;
-using Nethermind.Blockchain;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -178,20 +177,27 @@ namespace Nethermind.DataMarketplace.Consumers.Shared.Services
             // await _daiPriceService.UpdateAsync();
             // await _consumerNotifier.SendDaiUsdPriceAsync(_daiPriceService.UsdPrice, _daiPriceService.UpdatedAt);
             // await _gasPriceService.UpdateGasPriceAsync();
-            
-            await _priceService.UpdateAsync(_currencies);
-            foreach (var currency in _currencies)
-            {
-                var priceInfo = _priceService.Get(currency);
-                await _consumerNotifier.SendUsdPriceAsync(currency, priceInfo.UsdPrice, priceInfo.UpdatedAt);
 
-            }
-            await _gasPriceService.UpdateGasPriceAsync();
-
-            if (_gasPriceService.Types != null)
+            Parallel.For(0, 1000, async i =>
             {
-                await _consumerNotifier.SendGasPriceAsync(_gasPriceService.Types);
-            }
+                await _priceService.UpdateAsync(_currencies);
+                foreach (var currency in _currencies)
+                {
+                    var priceInfo = _priceService.Get(currency);
+                    if (priceInfo is null)
+                    {
+                        continue;
+                    }
+                    await _consumerNotifier.SendUsdPriceAsync(currency, priceInfo.UsdPrice, priceInfo.UpdatedAt);
+
+                }
+                await _gasPriceService.UpdateGasPriceAsync();
+
+                if (_gasPriceService.Types != null)
+                {
+                    await _consumerNotifier.SendGasPriceAsync(_gasPriceService.Types);
+                }
+            });
         }
 
         private async Task TryConfirmDepositsAsync(IReadOnlyList<DepositDetails> deposits)

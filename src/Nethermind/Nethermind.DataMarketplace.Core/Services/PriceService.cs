@@ -67,23 +67,6 @@ namespace Nethermind.DataMarketplace.Core.Services
                     (_, p) => new PriceInfo(result.PriceUsd, currentTime));
                 if (_logger.IsInfo) _logger.Info($"Updated {currency} price: {result.PriceUsd} USD, updated at: {currentTime}");
             }
-            //
-            // if (!results.ContainsKey("USDT_DAI"))
-            // {
-            //     return;
-            // }
-            //
-            // bool success = results.TryGetValue("USDT_DAI", out Result? result);
-            // if (!success || result is null || result.PriceUsd <= 0)
-            // {
-            //     if (_logger.IsWarn) _logger.Warn($"There was an error when updating DAI price. Latest know value is: {UsdPrice} USD");
-            //     return;
-            // }
-            //
-            // UpdatedAt = currentTime;
-            // UsdPrice = result.PriceUsd;
-            //
-            // if (_logger.IsInfo) _logger.Info($"Updated DAI price: {UsdPrice} USD, updated at: {UpdatedAt}");
         }
 
         public PriceInfo? Get(string currency) => _prices.TryGetValue(currency, out var price) ? price : null;
