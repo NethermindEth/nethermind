@@ -100,10 +100,13 @@ namespace Nethermind.Consensus.Clique
                 _snapshotManager!,
                 getFromApi.LogManager);
 
+            IPreparingBlockContext preparingBlockContext = new PreparingBlockContext();
             ReadOnlyDbProvider readOnlyDbProvider = getFromApi.DbProvider.AsReadOnly(false);
             ReadOnlyBlockTree readOnlyBlockTree = getFromApi.BlockTree.AsReadOnly();
-
-            ReadOnlyTxProcessingEnv producerEnv = new ReadOnlyTxProcessingEnv(
+            ITransactionComparerProvider transactionComparerProvider =
+                new TransactionComparerProvider(getFromApi.SpecProvider, readOnlyBlockTree);
+            
+                ReadOnlyTxProcessingEnv producerEnv = new ReadOnlyTxProcessingEnv(
                 readOnlyDbProvider,
                 getFromApi.ReadOnlyTrieStore,
                 readOnlyBlockTree,
@@ -138,7 +141,8 @@ namespace Nethermind.Consensus.Clique
                 getFromApi.TxPool,
                 getFromApi.StateReader,
                 getFromApi.SpecProvider,
-                new TransactionComparerProvider(getFromApi.SpecProvider, readOnlyBlockTree),
+                transactionComparerProvider.GetDefaultProducerComparer(preparingBlockContext),
+                preparingBlockContext,
                 getFromApi.LogManager,
                 txFilter);
 
@@ -155,6 +159,7 @@ namespace Nethermind.Consensus.Clique
                 gasLimitCalculator,
                 getFromApi.SpecProvider,
                 _cliqueConfig!,
+                preparingBlockContext,
                 getFromApi.LogManager);
 
             return Task.CompletedTask;

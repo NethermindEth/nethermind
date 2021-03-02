@@ -45,6 +45,7 @@ namespace Nethermind.Consensus.Ethash
             IGasLimitCalculator gasLimitCalculator,
             ITimestamper timestamper,
             ISpecProvider specProvider,
+            IPreparingBlockContext preparingBlockContext,
             ILogManager logManager,
             IDifficultyCalculator difficultyCalculator) 
             : base(
@@ -57,6 +58,7 @@ namespace Nethermind.Consensus.Ethash
                 gasLimitCalculator,
                 timestamper,
                 specProvider,
+                preparingBlockContext,
                 logManager)
         {
             _difficultyCalculator = difficultyCalculator ?? throw new ArgumentNullException(nameof(difficultyCalculator));

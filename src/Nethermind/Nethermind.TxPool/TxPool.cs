@@ -71,7 +71,6 @@ namespace Nethermind.TxPool
         private readonly IChainHeadSpecProvider _specProvider;
         private readonly IReadOnlyStateProvider _stateProvider;
         private readonly ITxValidator _validator;
-        private readonly ITransactionComparerProvider _transactionComparerProvider;
         private readonly IEthereumEcdsa _ecdsa;
         protected readonly ILogger _logger;
 
@@ -132,17 +131,15 @@ namespace Nethermind.TxPool
             IChainHeadSpecProvider specProvider,
             ITxPoolConfig txPoolConfig,
             IReadOnlyStateProvider stateProvider,
-            ITransactionComparerProvider transactionComparerProvider,
             ITxValidator validator,
             ILogManager logManager,
-            IComparer<Transaction> comparer = null)
+            IComparer<Transaction> comparer)
         {
             _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _txStorage = txStorage ?? throw new ArgumentNullException(nameof(txStorage));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
-            _transactionComparerProvider = transactionComparerProvider ?? throw new ArgumentNullException(nameof(transactionComparerProvider));
             _validator = validator ?? throw new ArgumentNullException(nameof(validator));
 
             MemoryAllowance.MemPoolSize = txPoolConfig.Size;
@@ -151,7 +148,7 @@ namespace Nethermind.TxPool
                     .PadLeft(8));
 
             _transactions =
-                new TxDistinctSortedPool(MemoryAllowance.MemPoolSize, transactionComparerProvider, logManager, comparer ?? _transactionComparerProvider.GetDefaultComparer());
+                new TxDistinctSortedPool(MemoryAllowance.MemPoolSize, logManager, comparer);
             _peerNotificationThreshold = txPoolConfig.PeerNotificationThreshold;
 
             _ownTimer = new Timer(500);

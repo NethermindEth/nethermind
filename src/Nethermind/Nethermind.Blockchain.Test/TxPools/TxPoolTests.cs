@@ -377,8 +377,13 @@ namespace Nethermind.Blockchain.Test.TxPools
         }
 
         private TxPool.TxPool CreatePool(ITxStorage txStorage)
-            => new TxPool.TxPool(txStorage, _ethereumEcdsa, new ChainHeadSpecProvider(_specProvider, _blockFinder), 
-                new TxPoolConfig(), _stateProvider, new TransactionComparerProvider(_specProvider, _blockTree), new TxValidator(_specProvider.ChainId), _logManager);
+        {
+            ITransactionComparerProvider transactionComparerProvider =
+                new TransactionComparerProvider(_specProvider, _blockTree);
+            return new TxPool.TxPool(txStorage, _ethereumEcdsa, new ChainHeadSpecProvider(_specProvider, _blockFinder),
+                new TxPoolConfig(), _stateProvider,
+                new TxValidator(_specProvider.ChainId), _logManager, transactionComparerProvider.GetDefaultComparer());
+        }
 
         private ITxPoolPeer GetPeer(PublicKey publicKey)
         {

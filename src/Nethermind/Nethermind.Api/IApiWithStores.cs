@@ -39,6 +39,5 @@ namespace Nethermind.Api
         IReceiptStorage? ReceiptStorage { get; set; }
         IReceiptFinder? ReceiptFinder { get; set; }
         IWallet? Wallet { get; set; }
-        ITransactionComparerProvider TransactionComparerProvider { get; set; }
     }
 }

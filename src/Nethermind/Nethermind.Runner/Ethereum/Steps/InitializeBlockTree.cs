@@ -69,8 +69,6 @@ namespace Nethermind.Runner.Ethereum.Steps
                 bloomStorage,
                 _get.Config<ISyncConfig>(),
                 _get.LogManager);
-            _set.TransactionComparerProvider =
-                new TransactionComparerProvider(_get.SpecProvider, blockTree.AsReadOnly());
             
             ISigner signer = NullSigner.Instance;
             ISignerStore signerStore = NullSigner.Instance;

@@ -43,11 +43,11 @@ namespace Nethermind.AuRa.Test.Transactions
             long gasLimit = long.MaxValue;
             Transaction poolTx = Build.A.Transaction.WithSenderAddress(TestItem.AddressA).TestObject;
             GeneratedTransaction generatedTx = Build.A.GeneratedTransaction.WithSenderAddress(TestItem.AddressB).TestObject;
-            innerSource.GetTransactions(parent, gasLimit, UInt256.Zero).Returns(new[] {poolTx, generatedTx});
+            innerSource.GetTransactions(parent, gasLimit).Returns(new[] {poolTx, generatedTx});
             
             var txSource = new GeneratedTxSource(innerSource, txSealer, stateReader, LimboLogs.Instance);
 
-            txSource.GetTransactions(parent, gasLimit, UInt256.Zero).ToArray();
+            txSource.GetTransactions(parent, gasLimit).ToArray();
             
             txSealer.Received().Seal(generatedTx, TxHandlingOptions.ManagedNonce | TxHandlingOptions.AllowReplacingSignature);
             txSealer.DidNotReceive().Seal(poolTx, Arg.Any<TxHandlingOptions>());

@@ -22,6 +22,6 @@ namespace Nethermind.Consensus.Transactions
 {
     public interface ITxSource
     {
-        IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, UInt256 baseFee);
+        IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit);
     }
 }

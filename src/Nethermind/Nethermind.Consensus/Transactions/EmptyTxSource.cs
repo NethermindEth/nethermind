@@ -28,7 +28,7 @@ namespace Nethermind.Consensus.Transactions
 
         public static ITxSource Instance { get; } = new EmptyTxSource();
 
-        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, UInt256 baseFee)
+        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit)
         {
             return Array.Empty<Transaction>();
         }

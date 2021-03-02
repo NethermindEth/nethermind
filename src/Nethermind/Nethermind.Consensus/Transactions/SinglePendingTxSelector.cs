@@ -31,8 +31,8 @@ namespace Nethermind.Consensus.Transactions
             _innerSource = innerSource ?? throw new ArgumentNullException(nameof(innerSource));
         }
 
-        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, UInt256 baseFee) => 
-            _innerSource.GetTransactions(parent, gasLimit, baseFee)
+        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit) => 
+            _innerSource.GetTransactions(parent, gasLimit)
                 .OrderBy(t => t.Nonce)
                 .ThenByDescending(t => t.Timestamp)
                 .Take(1);

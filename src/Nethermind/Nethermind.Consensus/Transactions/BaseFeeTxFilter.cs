@@ -15,28 +15,36 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System.Collections.Generic;
 using Nethermind.Core;
-using Nethermind.Core.Specs;
 using Nethermind.Int256;
 
-namespace Nethermind.Blockchain.Comparers
+namespace Nethermind.Consensus.Transactions
 {
-    public class CompareTxBy1559GasPriceOnSpecifiedBaseFee : CompareTxBy1559GasPriceBase, IComparer<Transaction>
+    public class BaseFeeTxFilter : ITxFilter
     {
-        private readonly UInt256 _baseFee;
-        private readonly long _blockNumber;
-
-        public CompareTxBy1559GasPriceOnSpecifiedBaseFee(ISpecProvider specProvider, UInt256 baseFee, long blockNumber) 
-            : base(specProvider)
+        private readonly IPreparingBlockContext _preparingBlockContext;
+        
+        public BaseFeeTxFilter(IPreparingBlockContext preparingBlockContext)
         {
-            _baseFee = baseFee;
-            _blockNumber = blockNumber;
+            _preparingBlockContext = preparingBlockContext;
         }
-
-        public int Compare(Transaction? x, Transaction? y)
+        public (bool Allowed, string Reason) IsAllowed(Transaction tx, BlockHeader parentHeader)
         {
-            return Compare(x, y, _baseFee, _blockNumber);
+            throw new System.NotImplementedException();
         }
+    }
+
+    public interface IPreparingBlockContext
+    {
+        public UInt256 BaseFee { get; set; }
+        
+        public long BlockNumber { get; set; }
+    }
+
+    public class PreparingBlockContext : IPreparingBlockContext
+    {
+        public UInt256 BaseFee { get; set; }
+        
+        public long BlockNumber { get; set; }
     }
 }

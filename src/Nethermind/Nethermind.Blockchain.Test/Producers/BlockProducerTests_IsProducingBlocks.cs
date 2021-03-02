@@ -60,6 +60,7 @@ namespace Nethermind.Blockchain.Test.Producers
                 testRpc.Timestamper, 
                 testRpc.SpecProvider,
                 new MiningConfig(),
+                new PreparingBlockContext(),
                 LimboLogs.Instance);
             await AssertIsProducingBlocks(blockProducer);
         }
@@ -75,7 +76,8 @@ namespace Nethermind.Blockchain.Test.Producers
                 Substitute.For<ISealer>(),
                 testRpc.BlockTree,
                 Substitute.For<IBlockProcessingQueue>(),
-                testRpc.Timestamper, 
+                testRpc.Timestamper,
+                new PreparingBlockContext(),
                 LimboLogs.Instance);
             await AssertIsProducingBlocks(blockProducer);
         }
@@ -93,7 +95,8 @@ namespace Nethermind.Blockchain.Test.Producers
                 testRpc.State,
                 Substitute.For<IGasLimitCalculator>(),
                 testRpc.Timestamper,
-                testRpc.SpecProvider, 
+                testRpc.SpecProvider,
+                new PreparingBlockContext(),
                 LimboLogs.Instance,
                 Substitute.For<IDifficultyCalculator>());
             await AssertIsProducingBlocks(blockProducer);
@@ -117,6 +120,7 @@ namespace Nethermind.Blockchain.Test.Producers
                 new AuRaConfig(),
                 Substitute.For<IGasLimitCalculator>(),
                 Substitute.For<ISpecProvider>(),
+                new PreparingBlockContext(),
                 LimboLogs.Instance);
             await AssertIsProducingBlocks(blockProducer);
         }
@@ -137,6 +141,7 @@ namespace Nethermind.Blockchain.Test.Producers
                 Substitute.For<IGasLimitCalculator>(),
                 Substitute.For<ISpecProvider>(),
                 new CliqueConfig(),
+                new PreparingBlockContext(),
                 LimboLogs.Instance);
             await AssertIsProducingBlocks(blockProducer);
         }

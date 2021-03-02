@@ -30,6 +30,7 @@ using Nethermind.Blockchain.Spec;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Clique;
+using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -103,6 +104,7 @@ namespace Nethermind.Clique.Test
                 
                 MemDb stateDb = new MemDb();
                 MemDb codeDb = new MemDb();
+                IPreparingBlockContext preparingBlockContext = new PreparingBlockContext();
 
                 ISpecProvider specProvider = RinkebySpecProvider.Instance;
 
@@ -120,7 +122,7 @@ namespace Nethermind.Clique.Test
                 ITransactionComparerProvider transactionComparerProvider =
                     new TransactionComparerProvider(specProvider, blockTree);
 
-                 TxPool.TxPool txPool = new TxPool.TxPool(new InMemoryTxStorage(), _ethereumEcdsa, new FixedBlockChainHeadSpecProvider(GoerliSpecProvider.Instance), new TxPoolConfig(), stateProvider, transactionComparerProvider, new TxValidator(goerliSpecProvider.ChainId), _logManager);
+                 TxPool.TxPool txPool = new TxPool.TxPool(new InMemoryTxStorage(), _ethereumEcdsa, new FixedBlockChainHeadSpecProvider(GoerliSpecProvider.Instance), new TxPoolConfig(), stateProvider,  new TxValidator(goerliSpecProvider.ChainId), _logManager, transactionComparerProvider.GetDefaultComparer());
                 _pools[privateKey] = txPool;
 
                 BlockhashProvider blockhashProvider = new BlockhashProvider(blockTree, LimboLogs.Instance);
@@ -179,7 +181,7 @@ namespace Nethermind.Clique.Test
                     ProcessGenesis(privateKey);
                 }
 
-                TxPoolTxSource txPoolTxSource = new TxPoolTxSource(txPool, stateReader, specProvider, transactionComparerProvider, nodeLogManager);
+                TxPoolTxSource txPoolTxSource = new TxPoolTxSource(txPool, stateReader, specProvider, transactionComparerProvider.GetDefaultProducerComparer(preparingBlockContext), preparingBlockContext, nodeLogManager);
                 CliqueBlockProducer blockProducer = new CliqueBlockProducer(
                     txPoolTxSource,
                     minerProcessor,
@@ -192,6 +194,7 @@ namespace Nethermind.Clique.Test
                     new TargetAdjustedGasLimitCalculator(goerliSpecProvider, new MiningConfig()),
                     MainnetSpecProvider.Instance, 
                     _cliqueConfig,
+                    preparingBlockContext,
                     nodeLogManager);
                 blockProducer.Start();
 

@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -16,15 +16,16 @@
 // 
 
 using System.Collections.Generic;
+using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Int256;
 
-namespace Nethermind.TxPool
+namespace Nethermind.Blockchain.Comparers
 {
     public interface ITransactionComparerProvider
     {
         IComparer<Transaction> GetDefaultComparer();
 
-        IComparer<Transaction> GetBaseFeeSpecifiedComparer(UInt256 baseFee, long blockNumber);
+        IComparer<Transaction> GetDefaultProducerComparer(IPreparingBlockContext preparingBlockContext);
     }
 }

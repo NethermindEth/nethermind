@@ -91,11 +91,13 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             _stateProvider.Commit(specProvider.GenesisSpec);
             _stateProvider.CommitTree(0);
-
+            
             IChainLevelInfoRepository chainLevels = new ChainLevelInfoRepository(dbProvider);
             IBlockTree blockTree = new BlockTree(dbProvider, chainLevels, specProvider, NullBloomStorage.Instance, LimboLogs.Instance);
+            ITransactionComparerProvider transactionComparerProvider =
+                new TransactionComparerProvider(specProvider, blockTree);
             ITxPool txPool = new TxPool.TxPool(txStorage, ethereumEcdsa, new ChainHeadSpecProvider(specProvider, blockTree), 
-                new TxPoolConfig(), _stateProvider,  new TransactionComparerProvider(specProvider, blockTree), new TxValidator(specProvider.ChainId), LimboLogs.Instance);
+                new TxPoolConfig(), _stateProvider,  new TxValidator(specProvider.ChainId), LimboLogs.Instance, transactionComparerProvider.GetDefaultComparer());
             
             IReceiptStorage receiptStorage = new InMemoryReceiptStorage();
             VirtualMachine virtualMachine = new VirtualMachine(_stateProvider, storageProvider, new BlockhashProvider(blockTree, LimboLogs.Instance), specProvider, LimboLogs.Instance);

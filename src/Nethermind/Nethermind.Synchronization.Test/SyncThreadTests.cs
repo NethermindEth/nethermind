@@ -28,6 +28,7 @@ using Nethermind.Blockchain.Spec;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
@@ -281,7 +282,7 @@ namespace Nethermind.Synchronization.Test
                 new TransactionComparerProvider(specProvider, tree);
 
             TxPool.TxPool txPool = new(new InMemoryTxStorage(), ecdsa, new ChainHeadSpecProvider(specProvider, tree), 
-                new TxPoolConfig(), stateProvider, transactionComparerProvider, new TxValidator(specProvider.ChainId), logManager);
+                new TxPoolConfig(), stateProvider, new TxValidator(specProvider.ChainId), logManager, transactionComparerProvider.GetDefaultComparer());
             BlockhashProvider blockhashProvider = new(tree, LimboLogs.Instance);
             VirtualMachine virtualMachine =
                 new(stateProvider, storageProvider, blockhashProvider, specProvider, logManager);
@@ -337,9 +338,10 @@ namespace Nethermind.Synchronization.Test
                 NullWitnessCollector.Instance,
                 logManager);
 
+            IPreparingBlockContext preparingBlockContext = new PreparingBlockContext();
             BlockchainProcessor devChainProcessor = new(tree, devBlockProcessor, step, logManager,
                 BlockchainProcessor.Options.NoReceipts);
-            TxPoolTxSource transactionSelector = new(txPool, stateReader, specProvider, transactionComparerProvider, logManager);
+            TxPoolTxSource transactionSelector = new(txPool, stateReader, specProvider, transactionComparerProvider.GetDefaultProducerComparer(preparingBlockContext), preparingBlockContext, logManager);
             DevBlockProducer producer = new(
                 transactionSelector,
                 devChainProcessor,
@@ -349,6 +351,7 @@ namespace Nethermind.Synchronization.Test
                 Timestamper.Default,
                 specProvider,
                 new MiningConfig(),
+                preparingBlockContext,
                 logManager);
 
             SyncProgressResolver resolver = new(

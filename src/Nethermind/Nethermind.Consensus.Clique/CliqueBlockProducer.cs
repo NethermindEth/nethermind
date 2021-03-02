@@ -54,6 +54,7 @@ namespace Nethermind.Consensus.Clique
         private readonly ISpecProvider _specProvider;
         private readonly ISnapshotManager _snapshotManager;
         private readonly ICliqueConfig _config;
+        private readonly IPreparingBlockContext _preparingBlockContext;
 
         private readonly ConcurrentDictionary<Address, bool> _proposals = new ConcurrentDictionary<Address, bool>();
 
@@ -73,6 +74,7 @@ namespace Nethermind.Consensus.Clique
             IGasLimitCalculator gasLimitCalculator,
             ISpecProvider? specProvider,
             ICliqueConfig config,
+            IPreparingBlockContext preparingBlockContext,
             ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
@@ -87,6 +89,7 @@ namespace Nethermind.Consensus.Clique
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _snapshotManager = snapshotManager ?? throw new ArgumentNullException(nameof(snapshotManager));
             _config = config ?? throw new ArgumentNullException(nameof(config));
+            _preparingBlockContext = preparingBlockContext;
             _wiggle = new WiggleRandomizer(_cryptoRandom, _snapshotManager);
 
             _timer.AutoReset = false;
@@ -432,7 +435,7 @@ namespace Nethermind.Consensus.Clique
 
             _stateProvider.StateRoot = parentHeader.StateRoot;
 
-            var selectedTxs = _txSource.GetTransactions(parentBlock.Header, header.GasLimit, header.BaseFee);
+            var selectedTxs = _txSource.GetTransactions(parentBlock.Header, header.GasLimit);
             Block block = new Block(header, selectedTxs, Array.Empty<BlockHeader>());
             header.TxRoot = new TxTrie(block.Transactions).RootHash;
             block.Header.Author = _sealer.Address;

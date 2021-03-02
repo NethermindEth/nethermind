@@ -16,9 +16,9 @@
 // 
 
 using System.Collections.Generic;
+using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Int256;
 using Nethermind.TxPool;
 
 namespace Nethermind.Blockchain.Comparers
@@ -27,19 +27,22 @@ namespace Nethermind.Blockchain.Comparers
     {
         private readonly ISpecProvider _specProvider;
         private readonly IBlockTree _blockTree;
+        private readonly IGasPriceTxComparerByBaseFee _gasPriceTxComparerByBaseFee;
         private IComparer<Transaction>? _defaultComparer = null;
 
         public TransactionComparerProvider(ISpecProvider specProvider, IBlockTree blockTree)
         {
             _specProvider = specProvider;
             _blockTree = blockTree;
+            _gasPriceTxComparerByBaseFee = new GasPriceTxComparerByBaseFee(specProvider);
+
         }
 
         public IComparer<Transaction> GetDefaultComparer()
         {
             if (_defaultComparer == null)
             {
-                IComparer<Transaction> gasPriceComparer = new CompareTxBy1559GasPrice(_blockTree, _specProvider);
+                IComparer<Transaction> gasPriceComparer = new GasPriceTxComparer(_blockTree, _gasPriceTxComparerByBaseFee);
                 _defaultComparer = gasPriceComparer
                     .ThenBy(CompareTxByTimestamp.Instance)
                     .ThenBy(CompareTxByPoolIndex.Instance)
@@ -49,10 +52,10 @@ namespace Nethermind.Blockchain.Comparers
             return _defaultComparer;
         }
 
-        public IComparer<Transaction> GetBaseFeeSpecifiedComparer(UInt256 baseFee, long blockNumber)
+        public IComparer<Transaction> GetDefaultProducerComparer(IPreparingBlockContext preparingBlockContext)
         {
             IComparer<Transaction> gasPriceComparer =
-                new CompareTxBy1559GasPriceOnSpecifiedBaseFee(_specProvider, baseFee, blockNumber);
+                new GasPriceTxComparerForProducers(preparingBlockContext, _gasPriceTxComparerByBaseFee);
             return gasPriceComparer
                 .ThenBy(CompareTxByTimestamp.Instance)
                 .ThenBy(CompareTxByPoolIndex.Instance)

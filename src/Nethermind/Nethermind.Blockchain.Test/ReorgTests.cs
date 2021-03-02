@@ -61,6 +61,8 @@ namespace Nethermind.Blockchain.Test
             ISpecProvider specProvider = MainnetSpecProvider.Instance;
             IBloomStorage bloomStorage = NullBloomStorage.Instance;
             EthereumEcdsa ecdsa = new EthereumEcdsa(1, LimboLogs.Instance);
+            ITransactionComparerProvider transactionComparerProvider =
+                new TransactionComparerProvider(specProvider, _blockTree);
             _blockTree = new BlockTree(
                 memDbProvider,
                 chainLevelInfoRepository,
@@ -74,9 +76,9 @@ namespace Nethermind.Blockchain.Test
                 new ChainHeadSpecProvider(specProvider, _blockTree),
                 new TxPoolConfig(),
                 stateProvider,
-                new TransactionComparerProvider(specProvider, _blockTree),
                 new TxValidator(specProvider.ChainId),
-                LimboLogs.Instance);
+                LimboLogs.Instance, 
+                transactionComparerProvider.GetDefaultComparer());
             BlockhashProvider blockhashProvider = new BlockhashProvider(_blockTree, LimboLogs.Instance);
             VirtualMachine virtualMachine = new VirtualMachine(
                 stateProvider,

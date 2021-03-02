@@ -51,6 +51,7 @@ namespace Nethermind.Consensus.AuRa
             IAuraConfig config,
             IGasLimitCalculator gasLimitCalculator,
             ISpecProvider specProvider,
+            IPreparingBlockContext preparingBlockContext,
             ILogManager logManager) 
             : base(
                 new ValidatedTxSource(txSource, logManager),
@@ -62,6 +63,7 @@ namespace Nethermind.Consensus.AuRa
                 timestamper,
                 gasLimitCalculator,
                 specProvider,
+                preparingBlockContext,
                 logManager,
                 "AuRa")
         {
@@ -153,12 +155,12 @@ namespace Nethermind.Consensus.AuRa
                 if (_logger.IsDebug) _logger.Debug($"Transaction sources used when building blocks: {this}");
             }
 
-            public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, UInt256 baseFee)
+            public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit)
             {
                 int index = 0;
                 _senderNonces.Clear();
                 
-                foreach (var tx in _innerSource.GetTransactions(parent, gasLimit, baseFee))
+                foreach (var tx in _innerSource.GetTransactions(parent, gasLimit))
                 {
                     var senderNonce = (SenderAddress: tx.SenderAddress, tx.Nonce);
                     if (_senderNonces.TryGetValue(senderNonce, out var prevTx))

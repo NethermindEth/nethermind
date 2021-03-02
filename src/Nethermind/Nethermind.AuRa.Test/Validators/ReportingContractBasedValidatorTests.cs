@@ -131,7 +131,7 @@ namespace Nethermind.AuRa.Test.Validators
             context.ContractBasedValidator.ValidatorContract.EmitInitiateChangeCallable(parent).Returns(emitInitChangeCallable);
             context.ContractBasedValidator.ValidatorContract.EmitInitiateChange().Returns(initChangeTransaction);
 
-            var transactions = context.Validator.GetTransactions(parent, 3000000, UInt256.Zero).ToArray();
+            var transactions = context.Validator.GetTransactions(parent, 3000000).ToArray();
             int addedMaliciousTransactions = (int)Math.Min(validatorsToReport, Math.Max(0, parentBlockNumber - (long)startReportBlockNumber));
             transactions.Should().HaveCount(Math.Min(ReportingContractBasedValidator.MaxReportsPerBlock, isPosDao ? addedMaliciousTransactions : 0) +  (initChangeTransactionAdded ? 1 : 0));
             if (initChangeTransactionAdded)

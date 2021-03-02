@@ -236,7 +236,7 @@ namespace Nethermind.Consensus.AuRa.Validators
             _currentValidator.GetReportingValidator().TryReportSkipped(header, parent);
         }
 
-        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, UInt256 baseFee) => _currentValidator is ITxSource txSource ? txSource.GetTransactions(parent, gasLimit, baseFee) : Enumerable.Empty<Transaction>();
+        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit) => _currentValidator is ITxSource txSource ? txSource.GetTransactions(parent, gasLimit) : Enumerable.Empty<Transaction>();
         
         public override string ToString() => $"{nameof(MultiValidator)} [ {(_currentValidator is ITxSource txSource ? txSource.ToString() : string.Empty)} ]";
 

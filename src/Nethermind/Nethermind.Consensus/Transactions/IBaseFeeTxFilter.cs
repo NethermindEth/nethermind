@@ -15,23 +15,10 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System.Collections.Generic;
-using Nethermind.Core;
-using Nethermind.Core.Crypto;
-using Nethermind.Logging;
-
-namespace Nethermind.TxPool.Collections
+namespace Nethermind.Consensus.Transactions
 {
-    public class TxDistinctSortedPool : DistinctValueSortedPool<Keccak, Transaction, Address>
+    public interface IBaseFeeTxFilter
     {
-        public TxDistinctSortedPool(int capacity, ILogManager logManager, IComparer<Transaction> comparer) 
-            : base(capacity, comparer, CompetingTransactionEqualityComparer.Instance, logManager)
-        {
-        }
-
-        protected override IComparer<Transaction> GetUniqueComparer(IComparer<Transaction> comparer) =>
-            TxSortedPool.GetPoolUniqueTxComparerByNonce(comparer);
-
-        protected override Address MapToGroup(Transaction value) => TxSortedPool.MapTxToGroup(value);
+        
     }
 }

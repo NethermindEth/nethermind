@@ -36,9 +36,9 @@ namespace Nethermind.Consensus.Transactions
             _logger = logManager?.GetClassLogger<FilteredTxSource<T>>() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
-        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, UInt256 baseFee)
+        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit)
         {
-            foreach (Transaction tx in _innerSource.GetTransactions(parent, gasLimit, baseFee))
+            foreach (Transaction tx in _innerSource.GetTransactions(parent, gasLimit))
             {
                 if (tx is T)
                 {

@@ -13,42 +13,44 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using Nethermind.Core;
-using Nethermind.Int256;
+using Nethermind.Logging;
 
 namespace Nethermind.Consensus.Transactions
 {
-    public class CompositeTxSource : ITxSource
+    public class TxFilterPipeline : ITxFilterPipeline
     {
-        private readonly ITxSource[] _transactionSources;
+        private readonly List<ITxFilter> _filters;
+        private readonly ILogger _logger;
 
-        public CompositeTxSource(params ITxSource[] transactionSources)
+        public TxFilterPipeline(ILogManager logManager)
         {
-            _transactionSources = transactionSources ?? throw new ArgumentNullException(nameof(transactionSources));
-        }
-
-        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit)
-        {
-            for (int i = 0; i < _transactionSources.Length; i++)
-            {
-                var transactions = _transactionSources[i].GetTransactions(parent, gasLimit);
-                if (transactions != null)
-                {
-                    foreach (var tx in transactions)
-                    {
-                        gasLimit -= tx.GasLimit;
-                        yield return tx;
-                    }
-                }
-            }
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _filters = new List<ITxFilter>();
         }
         
-        public override string ToString()
-            => $"{nameof(CompositeTxSource)} [ {(string.Join(", ", _transactionSources.Cast<object>()))} ]";
+        public void AddTxFilter(ITxFilter txFilter)
+        {
+            _filters.Add(txFilter);
+        }
 
+        public bool Execute(Transaction tx, BlockHeader parentHeader)
+        {
+            foreach (ITxFilter filter in _filters)
+            {
+                var result = filter.IsAllowed(tx, parentHeader);
+                if ( !result.Allowed)
+                {
+                    if (_logger.IsDebug) _logger.Debug($"Rejected tx ({result.Reason}) {tx.ToShortString()}");
+                    return false;
+                }
+            }
+
+            return true;
+        }
     }
 }

@@ -27,7 +27,7 @@ namespace Nethermind.Consensus.AuRa.Validators
     {
         private readonly long _posdaoTransition;
         
-        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, UInt256 baseFee)
+        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit)
         {
             if (ForSealing)
             {

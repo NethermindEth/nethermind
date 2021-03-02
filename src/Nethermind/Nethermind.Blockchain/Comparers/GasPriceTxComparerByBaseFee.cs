@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -21,11 +21,16 @@ using Nethermind.Int256;
 
 namespace Nethermind.Blockchain.Comparers
 {
-    public abstract class CompareTxBy1559GasPriceBase
+    public interface IGasPriceTxComparerByBaseFee
+    {
+        int Compare(Transaction? x, Transaction? y, UInt256 baseFee, long blockNumber);
+    }
+    
+    public class GasPriceTxComparerByBaseFee : IGasPriceTxComparerByBaseFee
     {
         private readonly ISpecProvider _specProvider;
 
-        public CompareTxBy1559GasPriceBase(ISpecProvider specProvider)
+        public GasPriceTxComparerByBaseFee(ISpecProvider specProvider)
         {
             _specProvider = specProvider;
         }

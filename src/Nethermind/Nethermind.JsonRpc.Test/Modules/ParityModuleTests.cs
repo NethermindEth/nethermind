@@ -80,9 +80,11 @@ namespace Nethermind.JsonRpc.Test.Modules
             IDb headerDb = new MemDb();
             IDb blockInfoDb = new MemDb();
             IBlockTree blockTree = new BlockTree(blockDb, headerDb, blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), specProvider, NullBloomStorage.Instance, LimboLogs.Instance);
-            
+
+            ITransactionComparerProvider transactionComparerProvider =
+                new TransactionComparerProvider(specProvider, blockTree);
             var txPool = new TxPool.TxPool(txStorage, ethereumEcdsa, new FixedBlockChainHeadSpecProvider(specProvider), new TxPoolConfig(),
-                new StateProvider(new TrieStore(new MemDb(), LimboLogs.Instance), new MemDb(), LimboLogs.Instance), new TransactionComparerProvider(specProvider, blockTree), new TxValidator(specProvider.ChainId), LimboLogs.Instance);
+                new StateProvider(new TrieStore(new MemDb(), LimboLogs.Instance), new MemDb(), LimboLogs.Instance), new TxValidator(specProvider.ChainId), LimboLogs.Instance, transactionComparerProvider.GetDefaultComparer());
             
             new OnChainTxWatcher(blockTree, txPool, specProvider, LimboLogs.Instance);
             
@@ -289,9 +291,11 @@ namespace Nethermind.JsonRpc.Test.Modules
             IDb headerDb = new MemDb();
             IDb blockInfoDb = new MemDb();
             IBlockTree blockTree = new BlockTree(blockDb, headerDb, blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), specProvider, NullBloomStorage.Instance, LimboLogs.Instance);
-            
+
+            ITransactionComparerProvider transactionComparerProvider =
+                new TransactionComparerProvider(specProvider, blockTree);
             var txPool = new TxPool.TxPool(txStorage, ethereumEcdsa, new ChainHeadSpecProvider(specProvider, blockTree), new TxPoolConfig(),
-                new StateProvider(new TrieStore(new MemDb(), LimboLogs.Instance), new MemDb(), LimboLogs.Instance),  new TransactionComparerProvider(specProvider, blockTree), new TxValidator(specProvider.ChainId), LimboLogs.Instance);
+                new StateProvider(new TrieStore(new MemDb(), LimboLogs.Instance), new MemDb(), LimboLogs.Instance),  new TxValidator(specProvider.ChainId), LimboLogs.Instance, transactionComparerProvider.GetDefaultComparer());
 
             new OnChainTxWatcher(blockTree, txPool, specProvider, LimboLogs.Instance);
             IReceiptStorage receiptStorage = new InMemoryReceiptStorage();
@@ -320,9 +324,10 @@ namespace Nethermind.JsonRpc.Test.Modules
             IDb headerDb = new MemDb();
             IDb blockInfoDb = new MemDb();
             IBlockTree blockTree = new BlockTree(blockDb, headerDb, blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), specProvider, NullBloomStorage.Instance, LimboLogs.Instance);
-            
+            ITransactionComparerProvider transactionComparerProvider =
+                new TransactionComparerProvider(specProvider, blockTree);
             var txPool = new TxPool.TxPool(txStorage, ethereumEcdsa, new ChainHeadSpecProvider(specProvider, blockTree), new TxPoolConfig(),
-                new StateProvider(new TrieStore(new MemDb(), LimboLogs.Instance), new MemDb(), LimboLogs.Instance), new TransactionComparerProvider(specProvider, blockTree), new TxValidator(specProvider.ChainId), LimboLogs.Instance);
+                new StateProvider(new TrieStore(new MemDb(), LimboLogs.Instance), new MemDb(), LimboLogs.Instance), new TxValidator(specProvider.ChainId), LimboLogs.Instance, transactionComparerProvider.GetDefaultComparer());
 
             new OnChainTxWatcher(blockTree, txPool, specProvider, LimboLogs.Instance);
             IReceiptStorage receiptStorage = new InMemoryReceiptStorage();

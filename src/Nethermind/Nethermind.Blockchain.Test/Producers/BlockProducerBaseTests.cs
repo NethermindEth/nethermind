@@ -38,8 +38,8 @@ namespace Nethermind.Blockchain.Test.Producers
     {
         private class ProducerUnderTest : BlockProducerBase
         {
-            public ProducerUnderTest(ITxSource txSource, IBlockchainProcessor processor, ISealer sealer, IBlockTree blockTree, IBlockProcessingQueue blockProcessingQueue, IStateProvider stateProvider, IGasLimitCalculator gasLimitCalculator, ITimestamper timestamper, ILogManager logManager)
-                : base(txSource, processor, sealer, blockTree, blockProcessingQueue, stateProvider, gasLimitCalculator, timestamper, MainnetSpecProvider.Instance, logManager)
+            public ProducerUnderTest(ITxSource txSource, IBlockchainProcessor processor, ISealer sealer, IBlockTree blockTree, IBlockProcessingQueue blockProcessingQueue, IStateProvider stateProvider, IGasLimitCalculator gasLimitCalculator, ITimestamper timestamper, IPreparingBlockContext preparingBlockContext, ILogManager logManager)
+                : base(txSource, processor, sealer, blockTree, blockProcessingQueue, stateProvider, gasLimitCalculator, timestamper, MainnetSpecProvider.Instance, preparingBlockContext, logManager)
             {
             }
 
@@ -78,6 +78,7 @@ namespace Nethermind.Blockchain.Test.Producers
                 Substitute.For<IStateProvider>(),
                 Substitute.For<IGasLimitCalculator>(),
                 timestamper,
+                new PreparingBlockContext(),
                 LimboLogs.Instance);
 
             Block block = producerUnderTest.Prepare();
@@ -97,6 +98,7 @@ namespace Nethermind.Blockchain.Test.Producers
                 Substitute.For<IStateProvider>(),
                 Substitute.For<IGasLimitCalculator>(),
                 timestamper,
+                new PreparingBlockContext(),
                 LimboLogs.Instance);
 
             ulong futureTime = UnixTime.FromSeconds(TimeSpan.FromDays(1).TotalSeconds).Seconds;

@@ -72,7 +72,7 @@ namespace Nethermind.AuRa.Test
                 Timestamper = Substitute.For<ITimestamper>();
                 AuRaStepCalculator = Substitute.For<IAuRaStepCalculator>();
                 NodeAddress = TestItem.AddressA;
-            	TransactionSource.GetTransactions(Arg.Any<BlockHeader>(), Arg.Any<long>(),Arg.Any<UInt256>()).Returns(Array.Empty<Transaction>());
+            	TransactionSource.GetTransactions(Arg.Any<BlockHeader>(), Arg.Any<long>()).Returns(Array.Empty<Transaction>());
                 Sealer.CanSeal(Arg.Any<long>(), Arg.Any<Keccak>()).Returns(true);
                 Sealer.SealBlock(Arg.Any<Block>(), Arg.Any<CancellationToken>()).Returns(c => Task.FromResult(c.Arg<Block>()));
                 Sealer.Address.Returns(TestItem.AddressA);
@@ -106,6 +106,7 @@ namespace Nethermind.AuRa.Test
                             auraConfig,
                             FollowOtherMiners.Instance,
                             MainnetSpecProvider.Instance, 
+                            new PreparingBlockContext(),
                             LimboLogs.Instance);
                     }
         }
@@ -167,7 +168,7 @@ namespace Nethermind.AuRa.Test
             var context = new Context();
             AuRaConfig auRaConfig = new AuRaConfig {ForceSealing = false};
             context.InitProducer(auRaConfig);
-            context.TransactionSource.GetTransactions(Arg.Any<BlockHeader>(), Arg.Any<long>(), Arg.Any<UInt256>()).Returns(new[] {Build.A.Transaction.TestObject});
+            context.TransactionSource.GetTransactions(Arg.Any<BlockHeader>(), Arg.Any<long>()).Returns(new[] {Build.A.Transaction.TestObject});
             (await StartStop(context)).ShouldProduceBlocks(Quantity.AtLeastOne());
         }
         

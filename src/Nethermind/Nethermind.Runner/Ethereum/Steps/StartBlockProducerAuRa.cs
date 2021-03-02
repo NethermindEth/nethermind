@@ -48,6 +48,8 @@ namespace Nethermind.Runner.Ethereum.Steps
     public class StartBlockProducerAuRa : StartBlockProducer
     {
         private new readonly AuRaNethermindApi _api;
+        
+        private BlockProducerContext? _blockProducerContext;
         private INethermindApi NethermindApi => _api;
         
         private readonly IAuraConfig _auraConfig;
@@ -56,6 +58,7 @@ namespace Nethermind.Runner.Ethereum.Steps
         private TxPriorityContract? _txPriorityContract;
         private TxPriorityContract.LocalDataSource? _localDataSource;
         private ITxFilter? _txPermissionFilter;
+        private IPreparingBlockContext _preparingBlockContext;
 
         public StartBlockProducerAuRa(AuRaNethermindApi api) : base(api)
         {
@@ -71,6 +74,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             ILogger logger = _api.LogManager.GetClassLogger();
             if (logger.IsWarn) logger.Warn("Starting AuRa block producer & sealer");
 
+            _preparingBlockContext = new PreparingBlockContext();
             IAuRaStepCalculator stepCalculator = new AuRaStepCalculator(_api.ChainSpec.AuRa.StepDuration, _api.Timestamper, _api.LogManager);
             BlockProducerContext producerContext = GetProducerChain();
             _api.BlockProducer = new AuRaBlockProducer(
@@ -86,10 +90,11 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _auraConfig,
                 CreateGasLimitCalculator(producerContext.ReadOnlyTxProcessingEnv),
                 _api.SpecProvider,
+                _preparingBlockContext,
                 _api.LogManager);
         }
 
-        protected override BlockProcessor CreateBlockProcessor(
+        private BlockProcessor CreateBlockProcessor(
             ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv,
             IReadOnlyTxProcessorSource readOnlyTxProcessorSource,
             IReadOnlyDbProvider readOnlyDbProvider)
@@ -147,7 +152,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             };
         }
 
-        protected override TxPoolTxSource CreateTxPoolTxSource(ReadOnlyTxProcessingEnv processingEnv, IReadOnlyTxProcessorSource readOnlyTxProcessorSource)
+        private TxPoolTxSource CreateTxPoolTxSource(ReadOnlyTxProcessingEnv processingEnv, IReadOnlyTxProcessorSource readOnlyTxProcessorSource)
         {
             // We need special one for TxPriority as its following Head separately with events and we want rules from Head, not produced block
             IReadOnlyTxProcessorSource readOnlyTxProcessorSourceForTxPriority = 
@@ -189,15 +194,68 @@ namespace Nethermind.Runner.Ethereum.Steps
                     whitelistContractDataStore,
                     prioritiesContractDataStore,
                     _api.SpecProvider,
-                    _api.TransactionComparerProvider);
+                    _api.TransactionComparerProvider.GetDefaultProducerComparer(_preparingBlockContext),
+                    _preparingBlockContext);
             }
             else
             {
-                return base.CreateTxPoolTxSource(processingEnv, readOnlyTxProcessorSource);
+                return CreateStandardTxPoolTxSourceBase(processingEnv, readOnlyTxProcessorSource);
             }
         }
+        
+        
+        protected BlockProducerContext GetProducerChain()
+        {
+            BlockProducerContext Create()
+            {
+                ReadOnlyDbProvider dbProvider = _api.DbProvider.AsReadOnly(false);
+                ReadOnlyBlockTree blockTree = _api.BlockTree.AsReadOnly();
 
-        protected override ITxSource CreateTxSourceForProducer(ReadOnlyTxProcessingEnv processingEnv, IReadOnlyTxProcessorSource readOnlyTxProcessorSource)
+                ReadOnlyTxProcessingEnv txProcessingEnv =
+                    new ReadOnlyTxProcessingEnv(dbProvider, _api.ReadOnlyTrieStore, blockTree, _api.SpecProvider, _api.LogManager);
+                
+                BlockProcessor blockProcessor =
+                    CreateBlockProcessor(txProcessingEnv, txProcessingEnv, dbProvider);
+
+                IBlockchainProcessor blockchainProcessor =
+                    new BlockchainProcessor(
+                        blockTree,
+                        blockProcessor,
+                        _api.BlockPreprocessor,
+                        _api.LogManager,
+                        BlockchainProcessor.Options.NoReceipts);
+
+                OneTimeChainProcessor chainProcessor = new OneTimeChainProcessor(
+                    dbProvider,
+                    blockchainProcessor);
+
+                return new BlockProducerContext
+                {
+                    ChainProcessor = chainProcessor,
+                    ReadOnlyStateProvider = txProcessingEnv.StateProvider,
+                    TxSource = CreateTxSourceForProducer(txProcessingEnv, txProcessingEnv),
+                    ReadOnlyTxProcessingEnv = txProcessingEnv
+                };
+            }
+
+            return _blockProducerContext ??= Create();
+        }
+
+        protected ITxSource CreateStandardTxSourceForProducer(
+            ReadOnlyTxProcessingEnv processingEnv,
+            IReadOnlyTxProcessorSource readOnlyTxProcessorSource) =>
+            CreateTxPoolTxSource(processingEnv, readOnlyTxProcessorSource);
+
+        protected TxPoolTxSource CreateStandardTxPoolTxSourceBase(ReadOnlyTxProcessingEnv processingEnv, IReadOnlyTxProcessorSource readOnlyTxProcessorSource)
+        {
+            ITxFilter txSourceFilter = CreateTxSourceFilter(processingEnv, readOnlyTxProcessorSource,_api.SpecProvider);
+            return new TxPoolTxSource(_api.TxPool, processingEnv.StateReader, _api.SpecProvider, null /*ToDo*/, _preparingBlockContext, _api.LogManager, txSourceFilter);
+        }
+
+        private ITxFilter CreateTxSourceFilterBase(ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv, IReadOnlyTxProcessorSource readOnlyTxProcessorSource, ISpecProvider specProvider) =>
+            TxFilterBuilders.CreateStandardTxFilter(_api.Config<IMiningConfig>(), specProvider);
+
+        private ITxSource CreateTxSourceForProducer(ReadOnlyTxProcessingEnv processingEnv, IReadOnlyTxProcessorSource readOnlyTxProcessorSource)
         {
             bool CheckAddPosdaoTransactions(IList<ITxSource> list, long auRaPosdaoTransition)
             {
@@ -249,7 +307,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             if (_api.BlockTree == null) throw new StepDependencyException(nameof(_api.BlockTree));
             if (_api.EngineSigner == null) throw new StepDependencyException(nameof(_api.EngineSigner));
 
-            IList<ITxSource> txSources = new List<ITxSource> {base.CreateTxSourceForProducer(processingEnv, readOnlyTxProcessorSource)};
+            IList<ITxSource> txSources = new List<ITxSource> {CreateStandardTxSourceForProducer(processingEnv, readOnlyTxProcessorSource)};
             bool needSigner = false;
 
             needSigner |= CheckAddPosdaoTransactions(txSources, _api.ChainSpec.AuRa.PosdaoTransition);
@@ -272,7 +330,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             return txSource;
         }
 
-        protected override ITxFilter CreateTxSourceFilter(ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv, IReadOnlyTxProcessorSource readOnlyTxProcessorSource, ISpecProvider specProvider) => 
+        private ITxFilter CreateTxSourceFilter(ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv, IReadOnlyTxProcessorSource readOnlyTxProcessorSource, ISpecProvider specProvider) => 
             TxFilterBuilders.CreateAuRaTxFilter(
                 NethermindApi.Config<IMiningConfig>(),
                 _api,

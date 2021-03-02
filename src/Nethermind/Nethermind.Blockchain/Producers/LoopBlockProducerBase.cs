@@ -33,7 +33,7 @@ namespace Nethermind.Blockchain.Producers
         private const int ChainNotYetProcessedMillisecondsDelay = 100;
         private readonly string _name;
         private Task _producerTask;
-        private bool _isRunning = false;
+        private bool _isRunning;
         
         protected CancellationTokenSource LoopCancellationTokenSource { get; } = new CancellationTokenSource();
         protected int _canProduce = 0;
@@ -48,6 +48,7 @@ namespace Nethermind.Blockchain.Producers
             ITimestamper timestamper,
             IGasLimitCalculator gasLimitCalculator,
             ISpecProvider specProvider,
+            IPreparingBlockContext preparingBlockContext,
             ILogManager logManager,
             string name) 
             : base(
@@ -60,6 +61,7 @@ namespace Nethermind.Blockchain.Producers
                 gasLimitCalculator,
                 timestamper,
                 specProvider,
+                preparingBlockContext,
                 logManager)
         {
             _name = name;

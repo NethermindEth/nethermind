@@ -17,21 +17,25 @@
 
 using System.Collections.Generic;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
-using Nethermind.Logging;
+using Nethermind.Core.Specs;
 
-namespace Nethermind.TxPool.Collections
+namespace Nethermind.Blockchain.Comparers
 {
-    public class TxDistinctSortedPool : DistinctValueSortedPool<Keccak, Transaction, Address>
+    public class GasPriceTxComparer : IComparer<Transaction>
     {
-        public TxDistinctSortedPool(int capacity, ILogManager logManager, IComparer<Transaction> comparer) 
-            : base(capacity, comparer, CompetingTransactionEqualityComparer.Instance, logManager)
+        private readonly IBlockTree _blockTree;
+        private readonly IGasPriceTxComparerByBaseFee _gasPriceTxComparerByBaseFee;
+
+        public GasPriceTxComparer(IBlockTree blockTree, IGasPriceTxComparerByBaseFee gasPriceTxComparerByBaseFee)
         {
+            _blockTree = blockTree;
+            _gasPriceTxComparerByBaseFee = gasPriceTxComparerByBaseFee;
         }
-
-        protected override IComparer<Transaction> GetUniqueComparer(IComparer<Transaction> comparer) =>
-            TxSortedPool.GetPoolUniqueTxComparerByNonce(comparer);
-
-        protected override Address MapToGroup(Transaction value) => TxSortedPool.MapTxToGroup(value);
+        
+        public int Compare(Transaction? x, Transaction? y)
+        {
+            Block block = _blockTree.Head;
+            return _gasPriceTxComparerByBaseFee.Compare(x, y, block?.Header.BaseFee ?? 0, block?.Number ?? 0);
+        }
     }
 }

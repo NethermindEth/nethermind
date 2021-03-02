@@ -246,7 +246,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.DisposeStack.Push(prioritiesContractDataStore);
                 IComparer<Transaction> txByPermissionComparer = new CompareTxByPermissionOnHead(whitelistContractDataStore, prioritiesContractDataStore, _api.BlockTree);
                 
-                return new CompareTxBy1559GasPrice(_api.BlockTree, _api.SpecProvider)
+                return new GasPriceTxComparer(_api.BlockTree, new GasPriceTxComparerByBaseFee(_api.SpecProvider))
                     .ThenBy(txByPermissionComparer)
                     .ThenBy(CompareTxByTimestamp.Instance)
                     .ThenBy(CompareTxByPoolIndex.Instance)
@@ -279,7 +279,6 @@ namespace Nethermind.Runner.Ethereum.Steps
                 new ChainHeadSpecProvider(_api.SpecProvider, _api.BlockTree),
                 NethermindApi.Config<ITxPoolConfig>(),
                 _api.ChainHeadStateProvider,
-                _api.TransactionComparerProvider,
                 _api.TxValidator,
                 _api.LogManager,
                 CreateTxPoolTxComparer(txPriorityContract, localDataSource),
