@@ -160,7 +160,7 @@ namespace Nethermind.Facade
         public CallOutput Call(BlockHeader blockHeader, Transaction transaction, CancellationToken cancellationToken)
         {
             CallOutputTracer callOutputTracer = new CallOutputTracer();
-            CallAndRestore(blockHeader, blockHeader.Number, blockHeader.Timestamp, transaction,
+            var tryCallResult = TryCallAndRestore(blockHeader, blockHeader.Number, blockHeader.Timestamp, transaction,
                 new CancellationTxTracer(callOutputTracer, cancellationToken)
                 {
                     IsTracingActions = true, 
@@ -170,7 +170,7 @@ namespace Nethermind.Facade
                 });
             return new CallOutput
             {
-                Error = callOutputTracer.Error,
+                Error = tryCallResult.Success ? callOutputTracer.Error : tryCallResult.Error,
                 GasSpent = callOutputTracer.GasSpent,
                 OutputData = callOutputTracer.ReturnValue
             };
@@ -179,7 +179,7 @@ namespace Nethermind.Facade
         public CallOutput EstimateGas(BlockHeader header, Transaction tx, CancellationToken cancellationToken)
         {
             EstimateGasTracer estimateGasTracer = new EstimateGasTracer();
-            CallAndRestore(
+            var tryCallResult = TryCallAndRestore(
                 header,
                 header.Number + 1,
                 UInt256.Max(header.Timestamp + 1, _timestamper.UnixTime.Seconds),
@@ -187,7 +187,25 @@ namespace Nethermind.Facade
                 estimateGasTracer.WithCancellation(cancellationToken));
             
             long estimate = estimateGasTracer.CalculateEstimate(tx);
-            return new CallOutput {Error = estimateGasTracer.Error, GasSpent = estimate};
+            return new CallOutput {Error = tryCallResult.Success ? estimateGasTracer.Error : tryCallResult.Error, GasSpent = estimate};
+        }
+
+        private (bool Success, string Error) TryCallAndRestore(
+            BlockHeader blockHeader,
+            long number,
+            UInt256 timestamp,
+            Transaction transaction,
+            ITxTracer tracer)
+        {
+            try
+            {
+                CallAndRestore(blockHeader, number, timestamp, transaction, tracer);
+                return (true, string.Empty);
+            }
+            catch (InsufficientBalanceException ex)
+            {
+                return (false, ex.Message);
+            }
         }
 
         private void CallAndRestore(
