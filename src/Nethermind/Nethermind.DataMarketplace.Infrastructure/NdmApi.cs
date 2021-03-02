@@ -379,12 +379,6 @@ namespace Nethermind.DataMarketplace.Infrastructure
             set => _nethermindApi.SyncPeerPool = value;
         }
 
-        public ISubscriptionManger? SubscriptionManger
-        {
-            get => _nethermindApi.SubscriptionManger;
-            set => _nethermindApi.SubscriptionManger = value;
-        }
-
         public ISynchronizer? Synchronizer
         {
             get => _nethermindApi.Synchronizer;

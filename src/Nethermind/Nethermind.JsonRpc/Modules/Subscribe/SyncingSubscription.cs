@@ -37,21 +37,18 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             
             IsSyncing = CheckSyncing();
             if(_logger.IsTrace) _logger.Trace($"Syncing subscription {Id}: Syncing status on start is {IsSyncing}");
+            
+            _blockTree.NewBestSuggestedBlock += OnConditionsChange;
+            if(_logger.IsTrace) _logger.Trace($"Syncing subscription {Id} will track NewBestSuggestedBlocks");
+            
+            _blockTree.NewHeadBlock += OnConditionsChange;
+            if(_logger.IsTrace) _logger.Trace($"Syncing subscription {Id} will track NewHeadBlocks");
         }
 
         private bool CheckSyncing()
         {
             BestSuggestedNumber = _blockTree.FindBestSuggestedHeader().Number;
             return BestSuggestedNumber > _blockTree.Head.Number + 8;
-        }
-        
-        public override void BindEvents()
-        {
-            _blockTree.NewBestSuggestedBlock += OnConditionsChange;
-            if(_logger.IsTrace) _logger.Trace($"Syncing subscription {Id} will track NewBestSuggestedBlocks");
-            
-            _blockTree.NewHeadBlock += OnConditionsChange;
-            if(_logger.IsTrace) _logger.Trace($"Syncing subscription {Id} will track NewHeadBlocks");
         }
 
         private void OnConditionsChange(object? sender, BlockEventArgs e)

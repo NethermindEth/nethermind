@@ -29,8 +29,6 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         public string Id { get; }
         public abstract SubscriptionType Type { get; }
         public IJsonRpcDuplexClient JsonRpcDuplexClient { get; set; }
-        public abstract void BindEvents();
         public abstract void Dispose();
-
     }
 }

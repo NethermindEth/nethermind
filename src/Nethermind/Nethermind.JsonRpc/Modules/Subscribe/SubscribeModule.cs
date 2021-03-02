@@ -34,7 +34,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         {
             if (Enum.TryParse(typeof(SubscriptionType), subscriptionName, true, out var subscriptionType))
             {
-                return ResultWrapper<string>.Success(_subscriptionManger.AddSubscription((SubscriptionType)subscriptionType, arguments));
+                return ResultWrapper<string>.Success(_subscriptionManger.AddSubscription(Context.DuplexClient, (SubscriptionType)subscriptionType, arguments));
             }
             return ResultWrapper<string>.Fail($"Wrong subscription type: {subscriptionName}.");
         }
@@ -42,10 +42,12 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
 
         public ResultWrapper<bool> eth_unsubscribe(string subscriptionId)
         {
-            bool unsubscribed = _subscriptionManger.RemoveSubscription(subscriptionId);
+            bool unsubscribed = _subscriptionManger.RemoveSubscription(Context.DuplexClient, subscriptionId);
             return unsubscribed
                 ? ResultWrapper<bool>.Success(true)
                 : ResultWrapper<bool>.Fail($"Failed to unsubscribe: {subscriptionId}.");
         }
+
+        public JsonRpcContext Context { get; set; }
     }
 }

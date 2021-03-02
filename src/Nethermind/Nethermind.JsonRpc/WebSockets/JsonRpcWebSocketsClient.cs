@@ -34,7 +34,7 @@ namespace Nethermind.JsonRpc.WebSockets
         private readonly JsonRpcService _jsonRpcService;
         private readonly IJsonSerializer _jsonSerializer;
         private readonly IJsonRpcLocalStats _jsonRpcLocalStats;
-        private readonly ISubscriptionManger _subscriptionManager;
+        private readonly JsonRpcContext _jsonRpcContext;
         public string Id => _client.Id;
         public string Client { get; }
 
@@ -42,36 +42,30 @@ namespace Nethermind.JsonRpc.WebSockets
             JsonRpcProcessor jsonRpcProcessor,
             JsonRpcService jsonRpcService, 
             IJsonSerializer jsonSerializer,
-            IJsonRpcLocalStats jsonRpcLocalStats,
-            ISubscriptionManger subscriptionManger)
+            IJsonRpcLocalStats jsonRpcLocalStats)
         {
             _client = client;
             _jsonRpcProcessor = jsonRpcProcessor;
             _jsonRpcService = jsonRpcService;
             _jsonSerializer = jsonSerializer;
             _jsonRpcLocalStats = jsonRpcLocalStats;
-            _subscriptionManager = subscriptionManger;
+            _jsonRpcContext = new JsonRpcContext(RpcEndpoint.WebSocket, this);
         }
 
         public async Task ReceiveAsync(Memory<byte> data)
         {
             Stopwatch stopwatch = Stopwatch.StartNew();
-            using JsonRpcResult result = await _jsonRpcProcessor.ProcessAsync(Encoding.UTF8.GetString(data.Span), RpcEndpoint.WebSocket);
+            using JsonRpcResult result = await _jsonRpcProcessor.ProcessAsync(Encoding.UTF8.GetString(data.Span), _jsonRpcContext);
 
             await SendJsonRpcResult(result);
 
             if (result.IsCollection)
             {
-                for (int i = 0; i < result.Responses.Count; i++)
-                {
-                    TrySetupSubscription(result.Responses[i]);
-                }
                 _jsonRpcLocalStats.ReportCalls(result.Reports);
                 _jsonRpcLocalStats.ReportCall(new RpcReport("# collection serialization #", stopwatch.ElapsedMicroseconds(), true));
             }
             else
             {
-                TrySetupSubscription(result.Response);
                 _jsonRpcLocalStats.ReportCall(result.Report, stopwatch.ElapsedMicroseconds());
             }
         }
@@ -102,20 +96,11 @@ namespace Nethermind.JsonRpc.WebSockets
             await SendRawAsync(resultData);
         }
 
-        private void TrySetupSubscription(JsonRpcResponse response)
-        {
-            if (string.Equals(response.MethodName, "eth_subscribe", StringComparison.InvariantCulture))
-            {
-                if (response is JsonRpcSuccessResponse successResponse)
-                {
-                    _subscriptionManager.BindJsonRpcDuplexClient((string)successResponse.Result, this);
-                }
-            }
-        }
+        public event EventHandler Closed;
 
         public void Dispose()
         {
-            _subscriptionManager.RemoveSubscriptions(this);
+            Closed?.Invoke(this, EventArgs.Empty);
         }
 
         public Task SendRawAsync(string data) => _client.SendRawAsync(data);

@@ -64,7 +64,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
             RegisterRpcModules registerRpcModules = new RegisterRpcModules(context);
             await registerRpcModules.Execute(CancellationToken.None);
 
-            context.RpcModuleProvider.Check("proof_call").Should().Be(ModuleResolution.Enabled);
+            context.RpcModuleProvider.Check("proof_call", RpcEndpoint.Http).Should().Be(ModuleResolution.Enabled);
         }
         
         [Test]

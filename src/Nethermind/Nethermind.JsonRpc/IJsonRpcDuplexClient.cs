@@ -24,5 +24,6 @@ namespace Nethermind.JsonRpc
     {
         string Id { get; }
         Task SendJsonRpcResult(JsonRpcResult result);
+        event EventHandler Closed;
     }
 }

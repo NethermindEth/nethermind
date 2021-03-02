@@ -463,15 +463,6 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.StaticNodesManager);
             
             _api.PeerManager.Init();
-
-            SubscriptionFactory subscriptionFactory = new SubscriptionFactory(
-                _api.LogManager,
-                _api.BlockTree,
-                _api.TxPool,
-                _api.ReceiptStorage,
-                _api.FilterStore);
-            
-            _api.SubscriptionManger = new SubscriptionManger(subscriptionFactory, _api.LogManager);
         }
     }
 }

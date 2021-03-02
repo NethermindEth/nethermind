@@ -100,7 +100,6 @@ namespace Nethermind.Runner.Test.Ethereum
                 StateProvider = Substitute.For<IStateProvider>(),
                 StateReader = Substitute.For<IStateReader>(),
                 StorageProvider = Substitute.For<IStorageProvider>(),
-                SubscriptionManger = Substitute.For<ISubscriptionManger>(),
                 TransactionProcessor = Substitute.For<ITransactionProcessor>(),
                 TxSender = Substitute.For<ITxSender>(),
                 BlockProcessingQueue = Substitute.For<IBlockProcessingQueue>(),

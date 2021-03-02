@@ -13,14 +13,22 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using System.Threading.Tasks;
 using Nethermind.JsonRpc.Modules;
 
 namespace Nethermind.JsonRpc
 {
-    public interface IJsonRpcProcessor
+    public class JsonRpcContext
     {
-        Task<JsonRpcResult> ProcessAsync(string request, JsonRpcContext context);
+        public static readonly JsonRpcContext Http = new JsonRpcContext(RpcEndpoint.Http);
+        public RpcEndpoint RpcEndpoint { get; }
+        public IJsonRpcDuplexClient DuplexClient { get; }
+
+        public JsonRpcContext(RpcEndpoint rpcEndpoint, IJsonRpcDuplexClient duplexClient = null)
+        {
+            RpcEndpoint = rpcEndpoint;
+            DuplexClient = duplexClient;
+        }
     }
 }

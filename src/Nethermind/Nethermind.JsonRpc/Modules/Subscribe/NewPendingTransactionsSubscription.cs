@@ -31,10 +31,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         {
             _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-        }
-        
-        public override void BindEvents()
-        {
+            
             _txPool.NewPending += OnNewPending;
             if(_logger.IsTrace) _logger.Trace($"NewPendingTransactions subscription {Id} will track NewPendingTransactions");
         }

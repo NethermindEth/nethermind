@@ -91,7 +91,7 @@ namespace Nethermind.JsonRpc.Modules
             }
         }
 
-        public ModuleResolution Check(string methodName, RpcEndpoint rpcEndpoint = RpcEndpoint.All)
+        public ModuleResolution Check(string methodName, RpcEndpoint rpcEndpoint)
         {
             if (!_methods.TryGetValue(methodName, out ResolvedMethodInfo result)) return ModuleResolution.Unknown;
 

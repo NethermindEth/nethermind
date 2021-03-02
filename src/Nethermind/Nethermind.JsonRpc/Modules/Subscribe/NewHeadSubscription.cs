@@ -32,14 +32,11 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-        }
-        
-        public override void BindEvents()
-        {
+            
             _blockTree.NewHeadBlock += OnNewHeadBlock;
             if(_logger.IsTrace) _logger.Trace($"NewHeads subscription {Id} will track NewHeadBlocks");
         }
-        
+
         private void OnNewHeadBlock(object? sender, BlockEventArgs e)
         {
             Task.Run(() =>

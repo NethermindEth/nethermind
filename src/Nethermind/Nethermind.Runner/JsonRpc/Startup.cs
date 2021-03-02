@@ -147,7 +147,7 @@ namespace Nethermind.Runner.JsonRpc
                     Stopwatch stopwatch = Stopwatch.StartNew();
                     using StreamReader reader = new StreamReader(ctx.Request.Body, Encoding.UTF8);
                     string request = await reader.ReadToEndAsync();
-                    using JsonRpcResult result = await jsonRpcProcessor.ProcessAsync(request, RpcEndpoint.Http);
+                    using JsonRpcResult result = await jsonRpcProcessor.ProcessAsync(request, JsonRpcContext.Http);
 
                     ctx.Response.ContentType = "application/json";
 

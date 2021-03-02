@@ -57,14 +57,11 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
                     BlockParameter.Latest);
                 if (_logger.IsTrace) _logger.Trace($"Logs Subscription {Id}: Argument \"filter\" was null and created LogFilter with arguments: FromBlock: BlockParameter.Latest, ToBlock: BlockParameter.Latest");
             }
-        }
-
-        public override void BindEvents()
-        {
+            
             _receiptStorage.ReceiptsInserted += OnReceiptsInserted;
             if(_logger.IsTrace) _logger.Trace($"Logs subscription {Id} will track ReceiptsInserted.");
         }
-        
+
         private void OnReceiptsInserted(object? sender, ReceiptsEventArgs e)
         {
             Task.Run(() =>

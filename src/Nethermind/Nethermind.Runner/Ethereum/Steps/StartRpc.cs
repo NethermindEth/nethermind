@@ -65,8 +65,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                         jsonRpcProcessor,
                         jsonRpcService,
                         _api.EthereumJsonSerializer,
-                        jsonRpcLocalStats,
-                        _api.SubscriptionManger);
+                        jsonRpcLocalStats);
 
                     _api.WebSocketsManager!.AddModule(webSocketsModule, true);
                 }

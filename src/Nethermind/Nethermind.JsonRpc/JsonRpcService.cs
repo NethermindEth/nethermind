@@ -67,11 +67,11 @@ namespace Nethermind.JsonRpc
             Converters = converterList.ToArray();
         }
 
-        public async Task<JsonRpcResponse> SendRequestAsync(JsonRpcRequest rpcRequest, RpcEndpoint rpcEndpoint)
+        public async Task<JsonRpcResponse> SendRequestAsync(JsonRpcRequest rpcRequest, JsonRpcContext context)
         {
             try
             {
-                (int? errorCode, string errorMessage) = Validate(rpcRequest, rpcEndpoint);
+                (int? errorCode, string errorMessage) = Validate(rpcRequest, context.RpcEndpoint);
                 if (errorCode.HasValue)
                 {
                     return GetErrorResponse(rpcRequest.Method, errorCode.Value, errorMessage, null, rpcRequest.Id, null);
@@ -79,7 +79,7 @@ namespace Nethermind.JsonRpc
 
                 try
                 {
-                    return await ExecuteRequestAsync(rpcRequest);
+                    return await ExecuteRequestAsync(rpcRequest, context);
                 }
                 catch (TargetInvocationException ex)
                 {
@@ -99,17 +99,18 @@ namespace Nethermind.JsonRpc
             }
         }
 
-        private async Task<JsonRpcResponse> ExecuteRequestAsync(JsonRpcRequest rpcRequest)
+        private async Task<JsonRpcResponse> ExecuteRequestAsync(JsonRpcRequest rpcRequest, JsonRpcContext context)
         {
             string methodName = rpcRequest.Method.Trim();
 
             (MethodInfo MethodInfo, bool ReadOnly) result = _rpcModuleProvider.Resolve(methodName);
             return result.MethodInfo != null 
-                ? await ExecuteAsync(rpcRequest, methodName, result) 
+                ? await ExecuteAsync(rpcRequest, methodName, result, context) 
                 : GetErrorResponse(methodName, ErrorCodes.MethodNotFound, "Method not found", $"{rpcRequest.Method}", rpcRequest.Id, null);
         }
 
-        private async Task<JsonRpcResponse> ExecuteAsync(JsonRpcRequest request, string methodName, (MethodInfo Info, bool ReadOnly) method)
+        private async Task<JsonRpcResponse> ExecuteAsync(JsonRpcRequest request, string methodName,
+            (MethodInfo Info, bool ReadOnly) method, JsonRpcContext context)
         {
             ParameterInfo[] expectedParameters = method.Info.GetParameters();
             string[] providedParameters = request.Params ?? Array.Empty<string>();
@@ -154,6 +155,10 @@ namespace Nethermind.JsonRpc
             //execute method
             IResultWrapper resultWrapper = null;
             IModule module = await _rpcModuleProvider.Rent(methodName, method.ReadOnly);
+            if (module is IContextAwareModule contextAwareModule)
+            {
+                contextAwareModule.Context = context;
+            }
             bool returnImmediately = methodName != "eth_getLogs";
             Action? returnAction = returnImmediately ? (Action) null : () => _rpcModuleProvider.Return(methodName, module);
             try

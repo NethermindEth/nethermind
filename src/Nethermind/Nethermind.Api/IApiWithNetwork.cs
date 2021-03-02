@@ -52,7 +52,6 @@ namespace Nethermind.Api
         IRpcModuleProvider RpcModuleProvider { get; set; }
         ISessionMonitor? SessionMonitor { get; set; }
         IStaticNodesManager? StaticNodesManager { get; set; }
-        ISubscriptionManger? SubscriptionManger { get; set; }
         ISynchronizer? Synchronizer { get; set; }
         ISyncPeerPool? SyncPeerPool { get; set; }
         ISyncServer? SyncServer { get; set; }

@@ -55,7 +55,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         public IReadOnlyCollection<ModuleType> All => _provider.All;
         public ModuleResolution Check(string methodName, RpcEndpoint rpcEndpoint)
         {
-            return _provider.Check(methodName);
+            return _provider.Check(methodName, rpcEndpoint);
         }
 
         public (MethodInfo, bool) Resolve(string methodName)
