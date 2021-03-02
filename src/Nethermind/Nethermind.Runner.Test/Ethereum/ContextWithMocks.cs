@@ -33,7 +33,6 @@ using Nethermind.Db.Blooms;
 using Nethermind.Evm;
 using Nethermind.Grpc;
 using Nethermind.JsonRpc.Modules;
-using Nethermind.JsonRpc.Modules.Subscribe;
 using Nethermind.KeyStore;
 using Nethermind.Monitoring;
 using Nethermind.Network.Discovery;

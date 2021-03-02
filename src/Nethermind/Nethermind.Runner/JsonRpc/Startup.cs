@@ -32,7 +32,6 @@ using Nethermind.Config;
 using Nethermind.Core.Extensions;
 using Nethermind.HealthChecks;
 using Nethermind.JsonRpc;
-using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.WebSockets;

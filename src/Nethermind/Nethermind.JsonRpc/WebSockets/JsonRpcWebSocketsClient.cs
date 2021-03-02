@@ -21,7 +21,6 @@ using System.Text;
 using System.Threading.Tasks;
 using Nethermind.Core.Extensions;
 using Nethermind.JsonRpc.Modules;
-using Nethermind.JsonRpc.Modules.Subscribe;
 using Nethermind.Serialization.Json;
 using Nethermind.WebSockets;
 

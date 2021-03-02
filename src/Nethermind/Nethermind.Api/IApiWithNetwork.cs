@@ -18,7 +18,6 @@
 using System.Collections.Generic;
 using Nethermind.Grpc;
 using Nethermind.JsonRpc.Modules;
-using Nethermind.JsonRpc.Modules.Subscribe;
 using Nethermind.Monitoring;
 using Nethermind.Network;
 using Nethermind.Network.Discovery;

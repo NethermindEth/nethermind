@@ -46,7 +46,6 @@ using Nethermind.Facade;
 using Nethermind.Facade.Proxy;
 using Nethermind.Grpc;
 using Nethermind.JsonRpc.Modules;
-using Nethermind.JsonRpc.Modules.Subscribe;
 using Nethermind.KeyStore;
 using Nethermind.Logging;
 using Nethermind.Monitoring;
