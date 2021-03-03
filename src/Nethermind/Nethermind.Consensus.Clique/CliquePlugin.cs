@@ -29,6 +29,7 @@ using Nethermind.Blockchain.Services;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Db;
+using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
@@ -136,10 +137,9 @@ namespace Nethermind.Consensus.Clique
                 readOnlyDbProvider,
                 producerChainProcessor);
 
-            ITxFilterPipeline txFilterPipeline = new TxFilterPipelineBuilder(_nethermindApi.LogManager)
-                                                    .WithMinGasPriceFilter(_miningConfig, getFromApi.SpecProvider)
-                                                    .WithBaseFeeFilter(preparingBlockContextService, getFromApi.SpecProvider)
-                                                    .Build;
+            ITxFilterPipeline txFilterPipeline =
+                TxFilterPipelineBuilder.CreateStandardFilteringPipeline(_nethermindApi.LogManager,
+                    getFromApi.SpecProvider, preparingBlockContextService);
             
             ITxSource txSource = new TxPoolTxSource(
                 getFromApi.TxPool,

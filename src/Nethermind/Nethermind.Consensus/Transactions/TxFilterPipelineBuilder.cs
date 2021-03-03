@@ -16,6 +16,7 @@
 // 
 
 using Nethermind.Core.Specs;
+using Nethermind.Int256;
 using Nethermind.Logging;
 
 namespace Nethermind.Consensus.Transactions
@@ -23,11 +24,11 @@ namespace Nethermind.Consensus.Transactions
     public class TxFilterPipelineBuilder
     {
         public static ITxFilterPipeline CreateStandardFilteringPipeline(ILogManager logManager,
-            IMiningConfig miningConfig, ISpecProvider specProvider,
+            ISpecProvider specProvider,
             IPreparingBlockContextService preparingBlockContextService)
         {
             return new TxFilterPipelineBuilder(logManager)
-                .WithMinGasPriceFilter(miningConfig, specProvider)
+                .WithMinGasPriceFilter(UInt256.Zero, specProvider)
                 .WithBaseFeeFilter(preparingBlockContextService, specProvider)
                 .Build;
         }
@@ -39,9 +40,9 @@ namespace Nethermind.Consensus.Transactions
             _filterPipeline = new TxFilterPipeline(logManager);
         }
         
-        public TxFilterPipelineBuilder WithMinGasPriceFilter(IMiningConfig miningConfig, ISpecProvider specProvider)
+        public TxFilterPipelineBuilder WithMinGasPriceFilter(UInt256 minGasPrice, ISpecProvider specProvider)
         {
-            _filterPipeline.AddTxFilter(new MinGasPriceTxFilter(miningConfig.MinGasPrice, specProvider));
+            _filterPipeline.AddTxFilter(new MinGasPriceTxFilter(minGasPrice, specProvider));
             return this;
         }
 

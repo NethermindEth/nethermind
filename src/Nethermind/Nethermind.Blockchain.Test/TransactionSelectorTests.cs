@@ -161,11 +161,10 @@ namespace Nethermind.Blockchain.Test
                     g => g.Key,
                     g => g.OrderBy(t => t, comparer).ToArray());
             transactionPool.GetPendingTransactionsBySender().Returns(transactions);
-            ITxFilterPipeline txFilterPipeline = TxFilterPipelineBuilder.CreateStandardFilteringPipeline(LimboLogs.Instance, new MiningConfig()
-                {
-                    MinGasPrice = testCase.MinGasPriceForMining
-                },
-                specProvider, preparingBlockContextService);
+            ITxFilterPipeline txFilterPipeline = new TxFilterPipelineBuilder(LimboLogs.Instance)
+                .WithMinGasPriceFilter(testCase.MinGasPriceForMining, specProvider)
+                .WithBaseFeeFilter(preparingBlockContextService, specProvider)
+                .Build;
             
             SetAccountStates(testCase.MissingAddresses);
 

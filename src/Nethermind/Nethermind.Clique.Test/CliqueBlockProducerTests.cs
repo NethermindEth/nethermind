@@ -181,7 +181,7 @@ namespace Nethermind.Clique.Test
                     ProcessGenesis(privateKey);
                 }
                 
-                ITxFilterPipeline txFilterPipeline = TxFilterPipelineBuilder.CreateStandardFilteringPipeline(nodeLogManager, new MiningConfig(),
+                ITxFilterPipeline txFilterPipeline = TxFilterPipelineBuilder.CreateStandardFilteringPipeline(nodeLogManager, 
                     specProvider, preparingBlockContextService);
                 TxPoolTxSource txPoolTxSource = new TxPoolTxSource(txPool, stateReader, specProvider, transactionComparerProvider.GetDefaultProducerComparer(preparingBlockContextService), preparingBlockContextService, nodeLogManager, txFilterPipeline);
                 CliqueBlockProducer blockProducer = new CliqueBlockProducer(

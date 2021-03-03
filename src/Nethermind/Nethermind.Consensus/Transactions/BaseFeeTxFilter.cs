@@ -24,7 +24,7 @@ namespace Nethermind.Consensus.Transactions
     {
         private readonly IPreparingBlockContextService _preparingBlockContextService;
         private readonly ISpecProvider _specProvider;
-        
+
         public BaseFeeTxFilter(
             IPreparingBlockContextService preparingBlockContextService,
             ISpecProvider specProvider)
@@ -32,13 +32,15 @@ namespace Nethermind.Consensus.Transactions
             _preparingBlockContextService = preparingBlockContextService;
             _specProvider = specProvider;
         }
+
         public (bool Allowed, string Reason) IsAllowed(Transaction tx, BlockHeader parentHeader)
         {
             bool isEip1559Enabled = _specProvider.GetSpec(_preparingBlockContextService.BlockNumber).IsEip1559Enabled;
             bool allowed = !isEip1559Enabled || tx.FeeCap >= _preparingBlockContextService.BaseFee + tx.GasPremium;
-            throw new System.NotImplementedException();
+            return (allowed,
+                allowed
+                    ? string.Empty
+                    : $"FeeCap too low. FeeCap: {tx.FeeCap}, BaseFee: {_preparingBlockContextService.BaseFee}, GasPremium:{tx.GasPremium}, Context block number: {_preparingBlockContextService.BlockNumber}");
         }
     }
-
-
 }

@@ -123,6 +123,7 @@ namespace Nethermind.AuRa.Test.Contract
                 new TxPriorityContract.Destination(TestItem.AddressB, FnSignature2, 4, TxPriorityContract.DestinationSource.Contract, 1),
                 new TxPriorityContract.Destination(TestItem.AddressB, FnSignature, 2, TxPriorityContract.DestinationSource.Contract, 2),
             };
+
             minGasPrices.Should().BeEquivalentTo(expected, o => o.ComparingByMembers<TxPriorityContract.Destination>()
                 .Excluding(su => su.SelectedMemberPath.EndsWith("BlockNumber")));
             
