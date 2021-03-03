@@ -63,7 +63,11 @@ namespace Nethermind.Consensus.Ethash
             ITransactionComparerProvider transactionComparerProvider =
                 new TransactionComparerProvider(getFromApi.SpecProvider, getFromApi.BlockTree);
             IPreparingBlockContextService preparingBlockContextService = new PreparingBlockContextService();
-            ITxFilter txFilter = new NullTxFilter();
+            ITxFilterPipeline txFilterPipeline = new TxFilterPipelineBuilder(_nethermindApi.LogManager)
+                .WithBaseFeeFilter(preparingBlockContextService, getFromApi.SpecProvider)
+                .WithNullTxFilter()
+                .Build;
+            
             ITxSource txSource = new TxPoolTxSource(
                 getFromApi.TxPool, 
                 getFromApi.StateReader,
@@ -71,7 +75,7 @@ namespace Nethermind.Consensus.Ethash
                 transactionComparerProvider.GetDefaultProducerComparer(preparingBlockContextService),
                 preparingBlockContextService,
                 getFromApi.LogManager,
-                txFilter);
+                txFilterPipeline);
             
             ILogger logger = getFromApi.LogManager.GetClassLogger();
             if (logger.IsWarn) logger.Warn("Starting Neth Dev block producer & sealer");

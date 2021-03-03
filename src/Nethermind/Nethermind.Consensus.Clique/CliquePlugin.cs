@@ -136,7 +136,11 @@ namespace Nethermind.Consensus.Clique
                 readOnlyDbProvider,
                 producerChainProcessor);
 
-            ITxFilter txFilter = new MinGasPriceTxFilter(_miningConfig!.MinGasPrice, getFromApi.SpecProvider);
+            ITxFilterPipeline txFilterPipeline = new TxFilterPipelineBuilder(_nethermindApi.LogManager)
+                                                    .WithMinGasPriceFilter(_miningConfig, getFromApi.SpecProvider)
+                                                    .WithBaseFeeFilter(preparingBlockContextService, getFromApi.SpecProvider)
+                                                    .Build;
+            
             ITxSource txSource = new TxPoolTxSource(
                 getFromApi.TxPool,
                 getFromApi.StateReader,
@@ -144,7 +148,7 @@ namespace Nethermind.Consensus.Clique
                 transactionComparerProvider.GetDefaultProducerComparer(preparingBlockContextService),
                 preparingBlockContextService,
                 getFromApi.LogManager,
-                txFilter);
+                txFilterPipeline);
 
             var gasLimitCalculator = new TargetAdjustedGasLimitCalculator(getFromApi.SpecProvider, _miningConfig);
             setInApi.BlockProducer = new CliqueBlockProducer(

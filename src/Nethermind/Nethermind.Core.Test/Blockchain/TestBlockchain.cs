@@ -179,7 +179,9 @@ namespace Nethermind.Core.Test.Blockchain
 
         protected virtual TxPoolTxSource CreateTxPoolTxSource()
         {
-            return new TxPoolTxSource(TxPool, StateReader, SpecProvider, TransactionComparerProvider.GetDefaultComparer(), PreparingBlockContextService, LimboLogs.Instance);
+            ITxFilterPipeline txFilterPipeline = TxFilterPipelineBuilder.CreateStandardFilteringPipeline(LimboLogs.Instance, new MiningConfig(),
+                SpecProvider, PreparingBlockContextService);
+            return new TxPoolTxSource(TxPool, StateReader, SpecProvider, TransactionComparerProvider.GetDefaultComparer(), PreparingBlockContextService, LimboLogs.Instance, txFilterPipeline);
         }
 
         public BlockBuilder GenesisBlockBuilder { get; set; }

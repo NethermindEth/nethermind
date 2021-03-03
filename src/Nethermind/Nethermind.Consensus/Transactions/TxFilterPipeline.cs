@@ -17,6 +17,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Core;
 using Nethermind.Logging;
 
@@ -40,6 +41,11 @@ namespace Nethermind.Consensus.Transactions
 
         public bool Execute(Transaction tx, BlockHeader parentHeader)
         {
+            if (!_filters.Any())
+            {
+                return true;
+            }
+            
             foreach (ITxFilter filter in _filters)
             {
                 var result = filter.IsAllowed(tx, parentHeader);

@@ -22,6 +22,16 @@ namespace Nethermind.Consensus.Transactions
 {
     public class TxFilterPipelineBuilder
     {
+        public static ITxFilterPipeline CreateStandardFilteringPipeline(ILogManager logManager,
+            IMiningConfig miningConfig, ISpecProvider specProvider,
+            IPreparingBlockContextService preparingBlockContextService)
+        {
+            return new TxFilterPipelineBuilder(logManager)
+                .WithMinGasPriceFilter(miningConfig, specProvider)
+                .WithBaseFeeFilter(preparingBlockContextService, specProvider)
+                .Build;
+        }
+        
         private ITxFilterPipeline _filterPipeline;
 
         public TxFilterPipelineBuilder(ILogManager logManager)
@@ -38,6 +48,18 @@ namespace Nethermind.Consensus.Transactions
         public TxFilterPipelineBuilder WithBaseFeeFilter(IPreparingBlockContextService preparingBlockContextService, ISpecProvider specProvider)
         {
             _filterPipeline.AddTxFilter(new BaseFeeTxFilter(preparingBlockContextService, specProvider));
+            return this;
+        }
+        
+        public TxFilterPipelineBuilder WithCustomTxFilter(ITxFilter txFilter)
+        {
+            _filterPipeline.AddTxFilter(txFilter);
+            return this;
+        }
+
+        public TxFilterPipelineBuilder WithNullTxFilter()
+        {
+            _filterPipeline.AddTxFilter(new NullTxFilter());
             return this;
         }
 

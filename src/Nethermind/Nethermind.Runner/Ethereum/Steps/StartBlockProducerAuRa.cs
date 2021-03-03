@@ -185,12 +185,20 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.DisposeStack.Push(whitelistContractDataStore);
                 _api.DisposeStack.Push(prioritiesContractDataStore);
 
+                ITxFilter auraTxFilter =
+                    CreateTxSourceFilter(processingEnv, readOnlyTxProcessorSource, _api.SpecProvider);
+                ITxFilterPipeline txFilterPipeline = new TxFilterPipelineBuilder(_api.LogManager)
+                    .WithCustomTxFilter(auraTxFilter)
+                    .WithBaseFeeFilter(_preparingBlockContextService, _api.SpecProvider)
+                    .WithNullTxFilter()
+                    .Build;
                 
+
                 return new TxPriorityTxSource(
                     _api.TxPool,
                     processingEnv.StateReader, 
                     _api.LogManager, 
-                    CreateTxSourceFilter(processingEnv, readOnlyTxProcessorSource, _api.SpecProvider),
+                    txFilterPipeline,
                     whitelistContractDataStore,
                     prioritiesContractDataStore,
                     _api.SpecProvider,
@@ -249,7 +257,11 @@ namespace Nethermind.Runner.Ethereum.Steps
         private TxPoolTxSource CreateStandardTxPoolTxSource(ReadOnlyTxProcessingEnv processingEnv, IReadOnlyTxProcessorSource readOnlyTxProcessorSource)
         {
             ITxFilter txSourceFilter = CreateTxSourceFilter(processingEnv, readOnlyTxProcessorSource,_api.SpecProvider);
-            return new TxPoolTxSource(_api.TxPool, processingEnv.StateReader, _api.SpecProvider, null /*ToDo*/, _preparingBlockContextService, _api.LogManager, txSourceFilter);
+            ITxFilterPipeline txFilterPipeline = new TxFilterPipelineBuilder(_api.LogManager)
+                .WithCustomTxFilter(txSourceFilter)
+                .WithBaseFeeFilter(_preparingBlockContextService, _api.SpecProvider)
+                .Build;
+            return new TxPoolTxSource(_api.TxPool, processingEnv.StateReader, _api.SpecProvider, null /*ToDo*/, _preparingBlockContextService, _api.LogManager, txFilterPipeline);
         }
 
         private ITxSource CreateTxSourceForProducer(ReadOnlyTxProcessingEnv processingEnv, IReadOnlyTxProcessorSource readOnlyTxProcessorSource)

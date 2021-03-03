@@ -41,17 +41,17 @@ namespace Nethermind.Blockchain.Producers
         private readonly IStateReader _stateReader;
         private readonly IComparer<Transaction> _comparer;
         private readonly IPreparingBlockContextService _preparingBlockContextService;
-        private readonly ITxFilter _txFilter;
+        private readonly ITxFilterPipeline _txFilterPipeline;
         private readonly ISpecProvider _specProvider;
         protected readonly ILogger _logger;
 
-        public TxPoolTxSource(ITxPool transactionPool, IStateReader stateReader, ISpecProvider specProvider, IComparer<Transaction> comparer, IPreparingBlockContextService preparingBlockContextService, ILogManager logManager, ITxFilter txFilter = null)
+        public TxPoolTxSource(ITxPool transactionPool, IStateReader stateReader, ISpecProvider specProvider, IComparer<Transaction> comparer, IPreparingBlockContextService preparingBlockContextService, ILogManager logManager, ITxFilterPipeline txFilterPipeline)
         {
             _transactionPool = transactionPool ?? throw new ArgumentNullException(nameof(transactionPool));
             _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
             _comparer = comparer ?? throw new ArgumentNullException(nameof(comparer));
             _preparingBlockContextService = preparingBlockContextService ?? throw new ArgumentNullException(nameof(preparingBlockContextService));
-            _txFilter = txFilter ?? new MinGasPriceTxFilter(UInt256.Zero, specProvider);
+            _txFilterPipeline = txFilterPipeline ?? throw new ArgumentNullException(nameof(txFilterPipeline));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _logger = logManager?.GetClassLogger<TxPoolTxSource>() ?? throw new ArgumentNullException(nameof(logManager));
         }
@@ -144,10 +144,9 @@ namespace Nethermind.Blockchain.Producers
                     continue;
                 }
 
-                var (allowed, reason) = _txFilter.IsAllowed(tx, parent);
-                if (!allowed)
+                bool success = _txFilterPipeline.Execute(tx, parent);
+                if (!success)
                 {
-                    if (_logger.IsDebug) _logger.Debug($"Rejecting ({reason}) {tx.ToShortString()}");
                     continue;
                 }
 
