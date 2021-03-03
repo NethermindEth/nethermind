@@ -151,6 +151,7 @@ namespace Nethermind.Blockchain.Test
             specProvider.GetSpec(Arg.Any<long>()).Returns(spec);
             var transactionComparerProvider = new TransactionComparerProvider(specProvider, blockTree);
             IPreparingBlockContextService preparingBlockContextService = new PreparingBlockContextService();
+            preparingBlockContextService.SetContext(0,0);
             IComparer<Transaction> defaultComparer = transactionComparerProvider.GetDefaultComparer();
             IComparer<Transaction> comparer = CompareTxByNonce.Instance.ThenBy(defaultComparer);
             var transactions = testCase.Transactions
@@ -165,6 +166,7 @@ namespace Nethermind.Blockchain.Test
 
             TxPoolTxSource poolTxSource = new TxPoolTxSource(transactionPool, stateReader, specProvider, transactionComparerProvider.GetDefaultProducerComparer(preparingBlockContextService), preparingBlockContextService, LimboLogs.Instance, new MinGasPriceTxFilter(testCase.MinGasPriceForMining, specProvider));
             
+
             IEnumerable<Transaction> selectedTransactions = poolTxSource.GetTransactions(Build.A.BlockHeader.WithStateRoot(stateProvider.StateRoot).TestObject, testCase.GasLimit);
             selectedTransactions.Should().BeEquivalentTo(testCase.ExpectedSelectedTransactions, o => o.WithStrictOrdering());
         }
