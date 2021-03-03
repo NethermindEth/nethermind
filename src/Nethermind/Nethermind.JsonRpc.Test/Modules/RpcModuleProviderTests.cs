@@ -47,7 +47,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             jsonRpcConfig.EnabledModules = new string[0];
             _moduleProvider = new RpcModuleProvider(new FileSystem(), jsonRpcConfig, LimboLogs.Instance);
             _moduleProvider.Register(new SingletonModulePool<IProofModule>(Substitute.For<IProofModule>(), false));
-            ModuleResolution resolution = _moduleProvider.Check("proof_call");
+            ModuleResolution resolution = _moduleProvider.Check("proof_call", RpcEndpoint.Http);
             Assert.AreEqual(ModuleResolution.Disabled, resolution);
         }
 
@@ -57,10 +57,10 @@ namespace Nethermind.JsonRpc.Test.Modules
             SingletonModulePool<INetModule> pool = new SingletonModulePool<INetModule>(new NetModule(LimboLogs.Instance, Substitute.For<INetBridge>()), true);
             _moduleProvider.Register(pool);
 
-            _moduleProvider.Check("net_VeRsIoN").Should().Be(ModuleResolution.Unknown);
-            _moduleProvider.Check("net_Version").Should().Be(ModuleResolution.Unknown);
-            _moduleProvider.Check("Net_Version").Should().Be(ModuleResolution.Unknown);
-            _moduleProvider.Check("net_version").Should().Be(ModuleResolution.Enabled);
+            _moduleProvider.Check("net_VeRsIoN", RpcEndpoint.Http).Should().Be(ModuleResolution.Unknown);
+            _moduleProvider.Check("net_Version", RpcEndpoint.Http).Should().Be(ModuleResolution.Unknown);
+            _moduleProvider.Check("Net_Version", RpcEndpoint.Http).Should().Be(ModuleResolution.Unknown);
+            _moduleProvider.Check("net_version", RpcEndpoint.Http).Should().Be(ModuleResolution.Enabled);
         }
 
         [TestCase("eth_.*", ModuleResolution.Unknown)]
@@ -75,7 +75,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             SingletonModulePool<INetModule> pool = new SingletonModulePool<INetModule>(new NetModule(LimboLogs.Instance, Substitute.For<INetBridge>()), true);
             _moduleProvider.Register(pool);
 
-            ModuleResolution resolution = _moduleProvider.Check("net_version");
+            ModuleResolution resolution = _moduleProvider.Check("net_version", RpcEndpoint.Http);
             resolution.Should().Be(expectedResult);
         }
 
@@ -85,7 +85,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             SingletonModulePool<INetModule> pool = new SingletonModulePool<INetModule>(Substitute.For<INetModule>(), true);
             _moduleProvider.Register(pool);
 
-            ModuleResolution resolution = _moduleProvider.Check("unknown_method");
+            ModuleResolution resolution = _moduleProvider.Check("unknown_method", RpcEndpoint.Http);
             Assert.AreEqual(ModuleResolution.Unknown, resolution);
         }
     }

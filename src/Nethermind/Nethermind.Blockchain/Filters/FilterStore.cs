@@ -175,6 +175,11 @@ namespace Nethermind.Blockchain.Filters
                     {
                         Topic = new Keccak(topic)
                     };
+                case Keccak keccak:
+                    return new FilterTopic
+                    {
+                        Topic = keccak
+                    };
             }
 
             var topics = obj as IEnumerable<string>;

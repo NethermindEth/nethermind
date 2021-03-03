@@ -13,14 +13,22 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using System.Threading.Tasks;
-using Nethermind.JsonRpc.Modules;
+using System;
+using Nethermind.Core;
 
-namespace Nethermind.JsonRpc
+namespace Nethermind.Blockchain.Receipts
 {
-    public interface IJsonRpcProcessor
+    public class ReceiptsEventArgs : EventArgs
     {
-        Task<JsonRpcResult> ProcessAsync(string request, JsonRpcContext context);
+        public TxReceipt[] TxReceipts { get; }
+        public BlockHeader BlockHeader { get; }
+
+        public ReceiptsEventArgs(BlockHeader blockHeader, TxReceipt[] txReceipts)
+        {
+            BlockHeader = blockHeader;
+            TxReceipts = txReceipts;
+        }
     }
 }

@@ -13,14 +13,22 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using System.Threading.Tasks;
-using Nethermind.JsonRpc.Modules;
+using System;
 
-namespace Nethermind.JsonRpc
+namespace Nethermind.JsonRpc.Modules.Subscribe
 {
-    public interface IJsonRpcProcessor
+    public abstract class Subscription : IDisposable
     {
-        Task<JsonRpcResult> ProcessAsync(string request, JsonRpcContext context);
+        protected Subscription()
+        {
+            Id = string.Concat("0x", Guid.NewGuid().ToString("N"));
+        }
+
+        public string Id { get; }
+        public abstract SubscriptionType Type { get; }
+        public IJsonRpcDuplexClient JsonRpcDuplexClient { get; set; }
+        public abstract void Dispose();
     }
 }

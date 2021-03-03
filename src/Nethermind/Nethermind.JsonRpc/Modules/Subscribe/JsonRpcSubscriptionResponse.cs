@@ -13,14 +13,18 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using System.Threading.Tasks;
-using Nethermind.JsonRpc.Modules;
+using Newtonsoft.Json;
 
-namespace Nethermind.JsonRpc
+namespace Nethermind.JsonRpc.Modules.Subscribe
 {
-    public interface IJsonRpcProcessor
+    public class JsonRpcSubscriptionResponse : JsonRpcResponse
     {
-        Task<JsonRpcResult> ProcessAsync(string request, JsonRpcContext context);
+        [JsonProperty(PropertyName = "params", Order = 2)]
+        public JsonRpcSubscriptionResult Params { get; set; }
+        
+        [JsonProperty(PropertyName = "method", Order = 1)]
+        public new string MethodName { get; set; }
     }
 }
