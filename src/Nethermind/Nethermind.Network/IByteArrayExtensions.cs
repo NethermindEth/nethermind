@@ -35,7 +35,7 @@ namespace Nethermind.Network
             return bytes.ToHexString();
         }
 
-        public static void MakeSpace(this IByteBuffer output, int length, string reason = null)
+        public static void MakeSpace(this IByteBuffer output, int length)
         {
             if (output.WritableBytes < length)
             {

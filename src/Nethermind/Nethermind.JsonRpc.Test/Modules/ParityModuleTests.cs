@@ -193,7 +193,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         
         private static Peer SetUpPeerC()
         {
-            Peer peer = new Peer(null);
+            Peer peer = new Peer(new Node("127.0.0.1", 10000, false));
             peer.InSession = Substitute.For<ISession>();
             peer.InSession.RemoteNodeId.Returns(TestItem.PublicKeyB);
             
