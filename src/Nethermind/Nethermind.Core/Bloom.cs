@@ -33,7 +33,6 @@ namespace Nethermind.Core
         
         public Bloom(Bloom[] blooms) : this()
         {
-            Bytes = new byte[ByteLength];
             for (int i = 0; i < blooms.Length; i++)
             {
                 Accumulate(blooms[i]);
