@@ -36,6 +36,9 @@ namespace Nethermind.JsonRpc
         [JsonProperty(PropertyName = "id", Order = 2, NullValueHandling = NullValueHandling.Include)]
         public object? Id { get; set; }
 
+        [JsonIgnore]
+        public string MethodName { get; set; }
+
         public void Dispose()
         {
             _disposableAction?.Invoke();

@@ -20,18 +20,20 @@ using System.Reflection;
 using System.Text;
 using System.Threading.Tasks;
 using Nethermind.Core.Extensions;
+using Nethermind.JsonRpc.Modules;
 using Nethermind.Serialization.Json;
 using Nethermind.WebSockets;
 
 namespace Nethermind.JsonRpc.WebSockets
 {
-    public class JsonRpcWebSocketsClient : IWebSocketsClient
+    public class JsonRpcWebSocketsClient : IWebSocketsClient, IJsonRpcDuplexClient
     {
         private readonly IWebSocketsClient _client;
         private readonly JsonRpcProcessor _jsonRpcProcessor;
         private readonly JsonRpcService _jsonRpcService;
         private readonly IJsonSerializer _jsonSerializer;
         private readonly IJsonRpcLocalStats _jsonRpcLocalStats;
+        private readonly JsonRpcContext _jsonRpcContext;
         public string Id => _client.Id;
         public string Client { get; }
 
@@ -46,18 +48,34 @@ namespace Nethermind.JsonRpc.WebSockets
             _jsonRpcService = jsonRpcService;
             _jsonSerializer = jsonSerializer;
             _jsonRpcLocalStats = jsonRpcLocalStats;
+            _jsonRpcContext = new JsonRpcContext(RpcEndpoint.WebSocket, this);
         }
 
         public async Task ReceiveAsync(Memory<byte> data)
+        {
+            Stopwatch stopwatch = Stopwatch.StartNew();
+            using JsonRpcResult result = await _jsonRpcProcessor.ProcessAsync(Encoding.UTF8.GetString(data.Span), _jsonRpcContext);
+
+            await SendJsonRpcResult(result);
+
+            if (result.IsCollection)
+            {
+                _jsonRpcLocalStats.ReportCalls(result.Reports);
+                _jsonRpcLocalStats.ReportCall(new RpcReport("# collection serialization #", stopwatch.ElapsedMicroseconds(), true));
+            }
+            else
+            {
+                _jsonRpcLocalStats.ReportCall(result.Report, stopwatch.ElapsedMicroseconds());
+            }
+        }
+
+        public async Task SendJsonRpcResult(JsonRpcResult result)
         {
             string SerializeTimeoutException()
             {
                 JsonRpcErrorResponse error = _jsonRpcService.GetErrorResponse(ErrorCodes.Timeout, "Request was canceled due to enabled timeout.");
                 return _jsonSerializer.Serialize(error);
             }
-
-            Stopwatch stopwatch = Stopwatch.StartNew();
-            using JsonRpcResult result = await _jsonRpcProcessor.ProcessAsync(Encoding.UTF8.GetString(data.Span));
 
             string resultData;
 
@@ -75,18 +93,15 @@ namespace Nethermind.JsonRpc.WebSockets
             }
             
             await SendRawAsync(resultData);
-            
-            if (result.IsCollection)
-            {
-                _jsonRpcLocalStats.ReportCalls(result.Reports);
-                _jsonRpcLocalStats.ReportCall(new RpcReport("# collection serialization #", stopwatch.ElapsedMicroseconds(), true));
-            }
-            else
-            {
-                _jsonRpcLocalStats.ReportCall(result.Report, stopwatch.ElapsedMicroseconds());
-            }
         }
-        
+
+        public event EventHandler Closed;
+
+        public void Dispose()
+        {
+            Closed?.Invoke(this, EventArgs.Empty);
+        }
+
         public Task SendRawAsync(string data) => _client.SendRawAsync(data);
         public Task SendAsync(WebSocketsMessage message) => _client.SendAsync(message);
     }

@@ -35,6 +35,7 @@ using Nethermind.JsonRpc.Modules.TxPool;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Core;
+using Nethermind.JsonRpc.Modules.Subscribe;
 using Nethermind.JsonRpc.Modules.Web3;
 using Nethermind.Runner.Ethereum.Steps.Migrations;
 
@@ -185,6 +186,18 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.LogManager,
                 _api.PeerManager);
             _api.RpcModuleProvider.Register(new SingletonModulePool<IParityModule>(parityModule, true));
+
+            SubscriptionFactory subscriptionFactory = new SubscriptionFactory(
+                _api.LogManager,
+                _api.BlockTree,
+                _api.TxPool,
+                _api.ReceiptStorage,
+                _api.FilterStore);
+            
+            SubscriptionManger subscriptionManger = new SubscriptionManger(subscriptionFactory, _api.LogManager);
+            
+            SubscribeModule subscribeModule = new SubscribeModule(subscriptionManger);
+            _api.RpcModuleProvider.Register(new SingletonModulePool<ISubscribeModule>(subscribeModule, true));
 
             Web3Module web3Module = new Web3Module(_api.LogManager);
             _api.RpcModuleProvider.Register(new SingletonModulePool<IWeb3Module>(web3Module, true));

@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Collections.Concurrent;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -74,6 +75,7 @@ namespace Nethermind.Blockchain.Receipts
                 txReceipt.BlockHash = block.Hash;
                 _transactions[txReceipt.TxHash] = txReceipt;
             }
+            ReceiptsInserted?.Invoke(this, new ReceiptsEventArgs(block.Header, txReceipts));
         }
 
         public long? LowestInsertedReceiptBlockNumber { get; set; }
@@ -81,5 +83,7 @@ namespace Nethermind.Blockchain.Receipts
         public long MigratedBlockNumber { get; set; }
 
         public int Count => _transactions.Count;
+        
+        public event EventHandler<ReceiptsEventArgs> ReceiptsInserted;
     }
 }
