@@ -63,7 +63,7 @@ namespace Nethermind.HealthChecks
                     args: new object[] { _nodeHealthService });
             if (_healthChecksConfig.UIEnabled)
             {
-                service.AddHealthChecksUI(setupSettings: setup =>
+                service.AddHealthChecksUI(setup =>
                 {
                     setup.AddHealthCheckEndpoint("health", BuildEndpointForUi());
                     setup.SetEvaluationTimeInSeconds(_healthChecksConfig.PollingInterval);
