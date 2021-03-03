@@ -77,7 +77,7 @@ namespace Nethermind.Core.Test.Blockchain
         
         public ITransactionComparerProvider TransactionComparerProvider { get; set; }
         
-        public IPreparingBlockContext PreparingBlockContext { get; set; }
+        public IPreparingBlockContextService PreparingBlockContextService { get; set; }
 
         protected TestBlockchain(SealEngineType sealEngineType)
         {
@@ -125,7 +125,7 @@ namespace Nethermind.Core.Test.Blockchain
             IDb blockInfoDb = new MemDb();
             BlockTree = new BlockTree(blockDb, headerDb, blockInfoDb, new ChainLevelInfoRepository(blockDb), SpecProvider, NullBloomStorage.Instance, LimboLogs.Instance);
             TransactionComparerProvider = new TransactionComparerProvider(specProvider, BlockTree);
-            PreparingBlockContext = new PreparingBlockContext();
+            PreparingBlockContextService = new PreparingBlockContextService();
 
             TxPool = new TxPool.TxPool(
                 txStorage,
@@ -151,7 +151,7 @@ namespace Nethermind.Core.Test.Blockchain
             TxPoolTxSource txPoolTxSource = CreateTxPoolTxSource();
             ISealer sealer = new NethDevSealEngine(TestItem.AddressD);
             IStateProvider producerStateProvider = new StateProvider(new ReadOnlyTrieStore(TrieStore), CodeDb, LimboLogs.Instance);
-            BlockProducer = new TestBlockProducer(txPoolTxSource, chainProcessor, producerStateProvider, sealer, BlockTree, chainProcessor, Timestamper, PreparingBlockContext, LimboLogs.Instance);
+            BlockProducer = new TestBlockProducer(txPoolTxSource, chainProcessor, producerStateProvider, sealer, BlockTree, chainProcessor, Timestamper, PreparingBlockContextService, LimboLogs.Instance);
             BlockProducer.Start();
 
             _resetEvent = new SemaphoreSlim(0);
@@ -179,7 +179,7 @@ namespace Nethermind.Core.Test.Blockchain
 
         protected virtual TxPoolTxSource CreateTxPoolTxSource()
         {
-            return new TxPoolTxSource(TxPool, StateReader, SpecProvider, TransactionComparerProvider.GetDefaultComparer(), PreparingBlockContext, LimboLogs.Instance);
+            return new TxPoolTxSource(TxPool, StateReader, SpecProvider, TransactionComparerProvider.GetDefaultComparer(), PreparingBlockContextService, LimboLogs.Instance);
         }
 
         public BlockBuilder GenesisBlockBuilder { get; set; }

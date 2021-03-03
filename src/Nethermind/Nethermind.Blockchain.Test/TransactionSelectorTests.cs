@@ -20,6 +20,7 @@ using System.Linq;
 using FluentAssertions;
 using Nethermind.Blockchain.Comparers;
 using Nethermind.Blockchain.Producers;
+using Nethermind.Consensus;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -149,7 +150,7 @@ namespace Nethermind.Blockchain.Test
             IReleaseSpec spec = new ReleaseSpec();
             specProvider.GetSpec(Arg.Any<long>()).Returns(spec);
             var transactionComparerProvider = new TransactionComparerProvider(specProvider, blockTree);
-            IPreparingBlockContext preparingBlockContext = new PreparingBlockContext();
+            IPreparingBlockContextService preparingBlockContextService = new PreparingBlockContextService();
             IComparer<Transaction> defaultComparer = transactionComparerProvider.GetDefaultComparer();
             IComparer<Transaction> comparer = CompareTxByNonce.Instance.ThenBy(defaultComparer);
             var transactions = testCase.Transactions
@@ -162,7 +163,7 @@ namespace Nethermind.Blockchain.Test
             
             SetAccountStates(testCase.MissingAddresses);
 
-            TxPoolTxSource poolTxSource = new TxPoolTxSource(transactionPool, stateReader, specProvider, transactionComparerProvider.GetDefaultProducerComparer(preparingBlockContext), preparingBlockContext, LimboLogs.Instance, new MinGasPriceTxFilter(testCase.MinGasPriceForMining, specProvider));
+            TxPoolTxSource poolTxSource = new TxPoolTxSource(transactionPool, stateReader, specProvider, transactionComparerProvider.GetDefaultProducerComparer(preparingBlockContextService), preparingBlockContextService, LimboLogs.Instance, new MinGasPriceTxFilter(testCase.MinGasPriceForMining, specProvider));
             
             IEnumerable<Transaction> selectedTransactions = poolTxSource.GetTransactions(Build.A.BlockHeader.WithStateRoot(stateProvider.StateRoot).TestObject, testCase.GasLimit);
             selectedTransactions.Should().BeEquivalentTo(testCase.ExpectedSelectedTransactions, o => o.WithStrictOrdering());

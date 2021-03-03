@@ -58,7 +58,7 @@ namespace Nethermind.Runner.Ethereum.Steps
         private TxPriorityContract? _txPriorityContract;
         private TxPriorityContract.LocalDataSource? _localDataSource;
         private ITxFilter? _txPermissionFilter;
-        private IPreparingBlockContext _preparingBlockContext;
+        private IPreparingBlockContextService _preparingBlockContextService;
 
         public StartBlockProducerAuRa(AuRaNethermindApi api) : base(api)
         {
@@ -74,7 +74,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             ILogger logger = _api.LogManager.GetClassLogger();
             if (logger.IsWarn) logger.Warn("Starting AuRa block producer & sealer");
 
-            _preparingBlockContext = new PreparingBlockContext();
+            _preparingBlockContextService = new PreparingBlockContextService();
             IAuRaStepCalculator stepCalculator = new AuRaStepCalculator(_api.ChainSpec.AuRa.StepDuration, _api.Timestamper, _api.LogManager);
             BlockProducerContext producerContext = GetProducerChain();
             _api.BlockProducer = new AuRaBlockProducer(
@@ -90,7 +90,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _auraConfig,
                 CreateGasLimitCalculator(producerContext.ReadOnlyTxProcessingEnv),
                 _api.SpecProvider,
-                _preparingBlockContext,
+                _preparingBlockContextService,
                 _api.LogManager);
         }
 
@@ -194,17 +194,17 @@ namespace Nethermind.Runner.Ethereum.Steps
                     whitelistContractDataStore,
                     prioritiesContractDataStore,
                     _api.SpecProvider,
-                    _api.TransactionComparerProvider.GetDefaultProducerComparer(_preparingBlockContext),
-                    _preparingBlockContext);
+                    _api.TransactionComparerProvider.GetDefaultProducerComparer(_preparingBlockContextService),
+                    _preparingBlockContextService);
             }
             else
             {
-                return CreateStandardTxPoolTxSourceBase(processingEnv, readOnlyTxProcessorSource);
+                return CreateStandardTxPoolTxSource(processingEnv, readOnlyTxProcessorSource);
             }
         }
         
         
-        protected BlockProducerContext GetProducerChain()
+        private BlockProducerContext GetProducerChain()
         {
             BlockProducerContext Create()
             {
@@ -241,19 +241,16 @@ namespace Nethermind.Runner.Ethereum.Steps
             return _blockProducerContext ??= Create();
         }
 
-        protected ITxSource CreateStandardTxSourceForProducer(
+        private ITxSource CreateStandardTxSourceForProducer(
             ReadOnlyTxProcessingEnv processingEnv,
             IReadOnlyTxProcessorSource readOnlyTxProcessorSource) =>
             CreateTxPoolTxSource(processingEnv, readOnlyTxProcessorSource);
 
-        protected TxPoolTxSource CreateStandardTxPoolTxSourceBase(ReadOnlyTxProcessingEnv processingEnv, IReadOnlyTxProcessorSource readOnlyTxProcessorSource)
+        private TxPoolTxSource CreateStandardTxPoolTxSource(ReadOnlyTxProcessingEnv processingEnv, IReadOnlyTxProcessorSource readOnlyTxProcessorSource)
         {
             ITxFilter txSourceFilter = CreateTxSourceFilter(processingEnv, readOnlyTxProcessorSource,_api.SpecProvider);
-            return new TxPoolTxSource(_api.TxPool, processingEnv.StateReader, _api.SpecProvider, null /*ToDo*/, _preparingBlockContext, _api.LogManager, txSourceFilter);
+            return new TxPoolTxSource(_api.TxPool, processingEnv.StateReader, _api.SpecProvider, null /*ToDo*/, _preparingBlockContextService, _api.LogManager, txSourceFilter);
         }
-
-        private ITxFilter CreateTxSourceFilterBase(ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv, IReadOnlyTxProcessorSource readOnlyTxProcessorSource, ISpecProvider specProvider) =>
-            TxFilterBuilders.CreateStandardTxFilter(_api.Config<IMiningConfig>(), specProvider);
 
         private ITxSource CreateTxSourceForProducer(ReadOnlyTxProcessingEnv processingEnv, IReadOnlyTxProcessorSource readOnlyTxProcessorSource)
         {

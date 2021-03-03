@@ -16,27 +16,25 @@
 // 
 
 using System.Collections.Generic;
-using Nethermind.Consensus.Transactions;
+using Nethermind.Consensus;
 using Nethermind.Core;
-using Nethermind.Core.Specs;
-using Nethermind.Int256;
 
 namespace Nethermind.Blockchain.Comparers
 {
-    public class GasPriceTxComparerForProducers : IComparer<Transaction>
+    public class GasPriceTxComparerForProducer : IComparer<Transaction>
     {
-        private readonly IPreparingBlockContext _preparingBlockContext;
+        private readonly IPreparingBlockContextService _preparingBlockContextService;
         private readonly IGasPriceTxComparerByBaseFee _gasPriceTxComparerByBaseFee;
 
-        public GasPriceTxComparerForProducers(IPreparingBlockContext preparingBlockContext, IGasPriceTxComparerByBaseFee gasPriceTxComparerByBaseFee)
+        public GasPriceTxComparerForProducer(IPreparingBlockContextService preparingBlockContextService, IGasPriceTxComparerByBaseFee gasPriceTxComparerByBaseFee)
         {
-            _preparingBlockContext = preparingBlockContext;
+            _preparingBlockContextService = preparingBlockContextService;
             _gasPriceTxComparerByBaseFee = gasPriceTxComparerByBaseFee;
         }
 
         public int Compare(Transaction? x, Transaction? y)
         {
-            return _gasPriceTxComparerByBaseFee.Compare(x, y, _preparingBlockContext.BaseFee, _preparingBlockContext.BlockNumber);
+            return _gasPriceTxComparerByBaseFee.Compare(x, y, _preparingBlockContextService.BaseFee, _preparingBlockContextService.BlockNumber);
         }
     }
 }

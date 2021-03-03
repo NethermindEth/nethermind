@@ -47,7 +47,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             IAuRaStepCalculator auRaStepCalculator,
             IReportingValidator reportingValidator,
             IAuraConfig config,
-            IPreparingBlockContext preparingBlockContext,
+            IPreparingBlockContextService preparingBlockContextService,
             ISpecProvider specProvider) 
             : base(
                 transactionSource,
@@ -62,7 +62,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 config,
                 FollowOtherMiners.Instance,
                 specProvider,
-                preparingBlockContext,
+                preparingBlockContextService,
                 logManager)
         {
         }

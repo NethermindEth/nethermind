@@ -15,18 +15,21 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System.Collections.Generic;
-using Nethermind.Consensus;
-using Nethermind.Consensus.Transactions;
-using Nethermind.Core;
+using System;
 using Nethermind.Int256;
 
-namespace Nethermind.Blockchain.Comparers
+namespace Nethermind.Consensus
 {
-    public interface ITransactionComparerProvider
+    public readonly struct PreparingBlockContext
     {
-        IComparer<Transaction> GetDefaultComparer();
-
-        IComparer<Transaction> GetDefaultProducerComparer(IPreparingBlockContextService preparingBlockContextService);
+        public UInt256 BaseFee { get; }
+        
+        public long BlockNumber { get; }
+        
+        public PreparingBlockContext(UInt256 baseFee, long blockNumber)
+        {
+            BaseFee = baseFee;
+            BlockNumber = blockNumber;
+        }
     }
 }

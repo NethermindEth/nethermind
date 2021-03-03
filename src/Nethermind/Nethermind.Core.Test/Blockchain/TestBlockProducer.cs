@@ -40,7 +40,7 @@ namespace Nethermind.Core.Test.Blockchain
             IBlockTree blockTree,
             IBlockProcessingQueue blockProcessingQueue,
             ITimestamper timestamper,
-            IPreparingBlockContext preparingBlockContext,
+            IPreparingBlockContextService preparingBlockContextService,
             ILogManager logManager)
             : base(
                 transactionSource,
@@ -52,7 +52,7 @@ namespace Nethermind.Core.Test.Blockchain
                 timestamper,
                 FollowOtherMiners.Instance,
                 MainnetSpecProvider.Instance,
-                preparingBlockContext,
+                preparingBlockContextService,
                 logManager,
                 "test producer")
         {

@@ -18,6 +18,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using Nethermind.Consensus;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -39,17 +40,17 @@ namespace Nethermind.Blockchain.Producers
         private readonly ITxPool _transactionPool;
         private readonly IStateReader _stateReader;
         private readonly IComparer<Transaction> _comparer;
-        private readonly IPreparingBlockContext _preparingBlockContext;
+        private readonly IPreparingBlockContextService _preparingBlockContextService;
         private readonly ITxFilter _txFilter;
         private readonly ISpecProvider _specProvider;
         protected readonly ILogger _logger;
 
-        public TxPoolTxSource(ITxPool transactionPool, IStateReader stateReader, ISpecProvider specProvider, IComparer<Transaction> comparer, IPreparingBlockContext preparingBlockContext, ILogManager logManager, ITxFilter txFilter = null)
+        public TxPoolTxSource(ITxPool transactionPool, IStateReader stateReader, ISpecProvider specProvider, IComparer<Transaction> comparer, IPreparingBlockContextService preparingBlockContextService, ILogManager logManager, ITxFilter txFilter = null)
         {
             _transactionPool = transactionPool ?? throw new ArgumentNullException(nameof(transactionPool));
             _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
             _comparer = comparer ?? throw new ArgumentNullException(nameof(comparer));
-            _preparingBlockContext = preparingBlockContext ?? throw new ArgumentNullException(nameof(preparingBlockContext));
+            _preparingBlockContextService = preparingBlockContextService ?? throw new ArgumentNullException(nameof(preparingBlockContextService));
             _txFilter = txFilter ?? new MinGasPriceTxFilter(UInt256.Zero, specProvider);
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _logger = logManager?.GetClassLogger<TxPoolTxSource>() ?? throw new ArgumentNullException(nameof(logManager));
@@ -110,17 +111,12 @@ namespace Nethermind.Blockchain.Producers
                 balances[transaction.SenderAddress] = balance - transactionPotentialCost;
                 return true;
             }
-            
-            bool HasCorrectFeeCap(Transaction tx, bool isEip1559Enabled, UInt256 baseFee)
-            {
-                return !isEip1559Enabled || tx.FeeCap >= baseFee + tx.GasPremium;
-            }
 
             IDictionary<Address, Transaction[]> pendingTransactions = _transactionPool.GetPendingTransactionsBySender();
             IComparer<Transaction> comparer = GetComparer(parent)
                 .ThenBy(DistinctCompareTx.Instance); // in order to sort properly and not loose transactions we need to differentiate on their identity which provided comparer might not be doing
             
-            var transactions = GetOrderedTransactions(pendingTransactions, comparer);
+            IEnumerable<Transaction> transactions = GetOrderedTransactions(pendingTransactions, comparer);
             IDictionary<Address, UInt256> remainingBalance = new Dictionary<Address, UInt256>();
             Dictionary<Address, UInt256> nonces = new();
             List<Transaction> selected = new();
@@ -180,7 +176,7 @@ namespace Nethermind.Blockchain.Producers
                 // }
                 
                 bool isEip1559Enabled = _specProvider.GetSpec(parent.Number + 1).IsEip1559Enabled;
-                if (!HasEnoughFounds(remainingBalance, tx, isEip1559Enabled, _preparingBlockContext.BaseFee))
+                if (!HasEnoughFounds(remainingBalance, tx, isEip1559Enabled, _preparingBlockContextService.BaseFee))
                 {
                     if (_logger.IsDebug) _logger.Debug($"Rejecting (sender balance too low) {tx.ToShortString()}");
                     continue;

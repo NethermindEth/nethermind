@@ -62,14 +62,14 @@ namespace Nethermind.Consensus.Ethash
 
             ITransactionComparerProvider transactionComparerProvider =
                 new TransactionComparerProvider(getFromApi.SpecProvider, getFromApi.BlockTree);
-            IPreparingBlockContext preparingBlockContext = new PreparingBlockContext();
+            IPreparingBlockContextService preparingBlockContextService = new PreparingBlockContextService();
             ITxFilter txFilter = new NullTxFilter();
             ITxSource txSource = new TxPoolTxSource(
                 getFromApi.TxPool, 
                 getFromApi.StateReader,
                 getFromApi.SpecProvider,
-                transactionComparerProvider.GetDefaultProducerComparer(preparingBlockContext),
-                preparingBlockContext,
+                transactionComparerProvider.GetDefaultProducerComparer(preparingBlockContextService),
+                preparingBlockContextService,
                 getFromApi.LogManager,
                 txFilter);
             
@@ -113,7 +113,7 @@ namespace Nethermind.Consensus.Ethash
                 getFromApi.Timestamper,
                 getFromApi.SpecProvider,
                 getFromApi.Config<IMiningConfig>(),
-                preparingBlockContext,
+                preparingBlockContextService,
                 getFromApi.LogManager);
                 
             return Task.CompletedTask;

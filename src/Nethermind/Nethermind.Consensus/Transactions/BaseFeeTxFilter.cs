@@ -16,35 +16,29 @@
 // 
 
 using Nethermind.Core;
-using Nethermind.Int256;
+using Nethermind.Core.Specs;
 
 namespace Nethermind.Consensus.Transactions
 {
     public class BaseFeeTxFilter : ITxFilter
     {
-        private readonly IPreparingBlockContext _preparingBlockContext;
+        private readonly IPreparingBlockContextService _preparingBlockContextService;
+        private readonly ISpecProvider _specProvider;
         
-        public BaseFeeTxFilter(IPreparingBlockContext preparingBlockContext)
+        public BaseFeeTxFilter(
+            IPreparingBlockContextService preparingBlockContextService,
+            ISpecProvider specProvider)
         {
-            _preparingBlockContext = preparingBlockContext;
+            _preparingBlockContextService = preparingBlockContextService;
+            _specProvider = specProvider;
         }
         public (bool Allowed, string Reason) IsAllowed(Transaction tx, BlockHeader parentHeader)
         {
+            bool isEip1559Enabled = _specProvider.GetSpec(_preparingBlockContextService.BlockNumber).IsEip1559Enabled;
+            bool allowed = !isEip1559Enabled || tx.FeeCap >= _preparingBlockContextService.BaseFee + tx.GasPremium;
             throw new System.NotImplementedException();
         }
     }
 
-    public interface IPreparingBlockContext
-    {
-        public UInt256 BaseFee { get; set; }
-        
-        public long BlockNumber { get; set; }
-    }
 
-    public class PreparingBlockContext : IPreparingBlockContext
-    {
-        public UInt256 BaseFee { get; set; }
-        
-        public long BlockNumber { get; set; }
-    }
 }

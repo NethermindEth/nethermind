@@ -55,7 +55,7 @@ namespace Nethermind.Blockchain.Producers
         private readonly IGasLimitCalculator _gasLimitCalculator;
         private readonly ITimestamper _timestamper;
         private readonly ISpecProvider _spec;
-        private readonly IPreparingBlockContext _preparingBlockContext;
+        private readonly IPreparingBlockContextService _preparingBlockContextService;
         private readonly ITxSource _txSource;
         
         protected DateTime _lastProducedBlock;
@@ -71,7 +71,7 @@ namespace Nethermind.Blockchain.Producers
             IGasLimitCalculator gasLimitCalculator,
             ITimestamper timestamper,
             ISpecProvider specProvider,
-            IPreparingBlockContext preparingBlockContext,
+            IPreparingBlockContextService preparingBlockContextService,
             ILogManager logManager)
         {
             _txSource = txSource ?? throw new ArgumentNullException(nameof(txSource));
@@ -83,7 +83,7 @@ namespace Nethermind.Blockchain.Producers
             _gasLimitCalculator = gasLimitCalculator ?? throw new ArgumentNullException(nameof(gasLimitCalculator));
             _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
             _spec = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-            _preparingBlockContext = preparingBlockContext;
+            _preparingBlockContextService = preparingBlockContextService;
             Logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
@@ -218,6 +218,7 @@ namespace Nethermind.Blockchain.Producers
 
             if (Logger.IsDebug) Logger.Debug($"Setting total difficulty to {parent.TotalDifficulty} + {difficulty}.");
             header.BaseFee = BlockHeader.CalculateBaseFee(parent, _spec.GetSpec(header.Number));
+            _preparingBlockContextService.SetContext(header.BaseFee, header.Number);
 
             var transactions = _txSource.GetTransactions(parent, header.GasLimit);
             Block block = new Block(header, transactions, Array.Empty<BlockHeader>());

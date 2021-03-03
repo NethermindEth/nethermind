@@ -60,7 +60,7 @@ namespace Nethermind.Blockchain.Test.Producers
                 testRpc.Timestamper, 
                 testRpc.SpecProvider,
                 new MiningConfig(),
-                new PreparingBlockContext(),
+                new PreparingBlockContextService(),
                 LimboLogs.Instance);
             await AssertIsProducingBlocks(blockProducer);
         }
@@ -77,7 +77,7 @@ namespace Nethermind.Blockchain.Test.Producers
                 testRpc.BlockTree,
                 Substitute.For<IBlockProcessingQueue>(),
                 testRpc.Timestamper,
-                new PreparingBlockContext(),
+                new PreparingBlockContextService(),
                 LimboLogs.Instance);
             await AssertIsProducingBlocks(blockProducer);
         }
@@ -96,7 +96,7 @@ namespace Nethermind.Blockchain.Test.Producers
                 Substitute.For<IGasLimitCalculator>(),
                 testRpc.Timestamper,
                 testRpc.SpecProvider,
-                new PreparingBlockContext(),
+                new PreparingBlockContextService(),
                 LimboLogs.Instance,
                 Substitute.For<IDifficultyCalculator>());
             await AssertIsProducingBlocks(blockProducer);
@@ -120,7 +120,7 @@ namespace Nethermind.Blockchain.Test.Producers
                 new AuRaConfig(),
                 Substitute.For<IGasLimitCalculator>(),
                 Substitute.For<ISpecProvider>(),
-                new PreparingBlockContext(),
+                new PreparingBlockContextService(),
                 LimboLogs.Instance);
             await AssertIsProducingBlocks(blockProducer);
         }
@@ -141,7 +141,7 @@ namespace Nethermind.Blockchain.Test.Producers
                 Substitute.For<IGasLimitCalculator>(),
                 Substitute.For<ISpecProvider>(),
                 new CliqueConfig(),
-                new PreparingBlockContext(),
+                new PreparingBlockContextService(),
                 LimboLogs.Instance);
             await AssertIsProducingBlocks(blockProducer);
         }
