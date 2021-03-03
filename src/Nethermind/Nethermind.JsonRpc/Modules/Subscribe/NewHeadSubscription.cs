@@ -45,7 +45,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
                     JsonRpcResult.Single(
                         new JsonRpcSubscriptionResponse()
                         {
-                            MethodName = "eth_subscribe",
+                            MethodName = nameof(ISubscribeModule.eth_subscribe),
                             Params = new JsonRpcSubscriptionResult()
                             {
                                 Result = new BlockForRpc(e.Block, false),

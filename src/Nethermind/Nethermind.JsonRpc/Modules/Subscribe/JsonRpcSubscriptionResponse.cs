@@ -23,5 +23,8 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
     {
         [JsonProperty(PropertyName = "params", Order = 2)]
         public JsonRpcSubscriptionResult Params { get; set; }
+        
+        [JsonProperty(PropertyName = "method", Order = 1)]
+        public new string MethodName { get; set; }
     }
 }
