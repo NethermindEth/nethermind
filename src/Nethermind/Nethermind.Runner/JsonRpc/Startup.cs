@@ -47,9 +47,8 @@ namespace Nethermind.Runner.JsonRpc
 
         public void ConfigureServices(IServiceCollection services)
         {
-            #pragma warning disable ASP0000
+            // ReSharper disable once ASP0000
             ServiceProvider sp = services.BuildServiceProvider()!;
-            #pragma warning restore ASP0000
             IConfigProvider? configProvider = sp.GetService<IConfigProvider>();
             if (configProvider == null)
             {

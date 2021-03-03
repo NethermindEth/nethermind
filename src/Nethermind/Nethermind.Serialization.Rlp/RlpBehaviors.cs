@@ -29,8 +29,6 @@ namespace Nethermind.Serialization.Rlp
         Eip658Receipts = 8,
         AllowUnsigned = 16,
         ForTxRoot = 32,
-#pragma warning disable 0618
         All = AllowExtraData | ForSealing | Storage | Eip658Receipts | AllowUnsigned | ForTxRoot
-#pragma warning restore 0618
     }
 }
