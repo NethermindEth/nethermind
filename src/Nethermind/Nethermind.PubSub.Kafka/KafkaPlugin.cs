@@ -33,9 +33,10 @@ namespace Nethermind.PubSub.Kafka
         private ILogger _logger;
         private INethermindApi _api;
 
-        public void Dispose()
+        public ValueTask DisposeAsync()
         {
             _kafkaPublisher.Dispose();
+            return ValueTask.CompletedTask;
         }
 
         public string Name => "Kafka";

@@ -34,9 +34,7 @@ namespace Nethermind.HealthChecks
         private ILogger _logger;
         private IJsonRpcConfig _jsonRpcConfig;
 
-        public void Dispose()
-        {
-        }
+        public ValueTask DisposeAsync() { return ValueTask.CompletedTask; }
 
         public string Name => "HealthChecks";
 
