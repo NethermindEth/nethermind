@@ -15,18 +15,17 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System;
 using Nethermind.Int256;
 
 namespace Nethermind.Consensus
 {
-    public readonly struct PreparingBlockContext
+    public readonly struct BlockPreparationContext
     {
         public UInt256 BaseFee { get; }
         
         public long BlockNumber { get; }
         
-        public PreparingBlockContext(UInt256 baseFee, long blockNumber)
+        public BlockPreparationContext(UInt256 baseFee, long blockNumber)
         {
             BaseFee = baseFee;
             BlockNumber = blockNumber;

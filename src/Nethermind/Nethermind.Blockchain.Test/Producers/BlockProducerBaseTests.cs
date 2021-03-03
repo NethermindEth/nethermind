@@ -38,8 +38,8 @@ namespace Nethermind.Blockchain.Test.Producers
     {
         private class ProducerUnderTest : BlockProducerBase
         {
-            public ProducerUnderTest(ITxSource txSource, IBlockchainProcessor processor, ISealer sealer, IBlockTree blockTree, IBlockProcessingQueue blockProcessingQueue, IStateProvider stateProvider, IGasLimitCalculator gasLimitCalculator, ITimestamper timestamper, IPreparingBlockContextService preparingBlockContextService, ILogManager logManager)
-                : base(txSource, processor, sealer, blockTree, blockProcessingQueue, stateProvider, gasLimitCalculator, timestamper, MainnetSpecProvider.Instance, preparingBlockContextService, logManager)
+            public ProducerUnderTest(ITxSource txSource, IBlockchainProcessor processor, ISealer sealer, IBlockTree blockTree, IBlockProcessingQueue blockProcessingQueue, IStateProvider stateProvider, IGasLimitCalculator gasLimitCalculator, ITimestamper timestamper, IBlockPreparationContextService blockPreparationContextService, ILogManager logManager)
+                : base(txSource, processor, sealer, blockTree, blockProcessingQueue, stateProvider, gasLimitCalculator, timestamper, MainnetSpecProvider.Instance, blockPreparationContextService, logManager)
             {
             }
 
@@ -78,7 +78,7 @@ namespace Nethermind.Blockchain.Test.Producers
                 Substitute.For<IStateProvider>(),
                 Substitute.For<IGasLimitCalculator>(),
                 timestamper,
-                new PreparingBlockContextService(),
+                new BlockPreparationContextService(),
                 LimboLogs.Instance);
 
             Block block = producerUnderTest.Prepare();
@@ -98,7 +98,7 @@ namespace Nethermind.Blockchain.Test.Producers
                 Substitute.For<IStateProvider>(),
                 Substitute.For<IGasLimitCalculator>(),
                 timestamper,
-                new PreparingBlockContextService(),
+                new BlockPreparationContextService(),
                 LimboLogs.Instance);
 
             ulong futureTime = UnixTime.FromSeconds(TimeSpan.FromDays(1).TotalSeconds).Seconds;

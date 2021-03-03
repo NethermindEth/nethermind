@@ -58,7 +58,7 @@ namespace Nethermind.Runner.Ethereum.Steps
         private TxPriorityContract? _txPriorityContract;
         private TxPriorityContract.LocalDataSource? _localDataSource;
         private ITxFilter? _txPermissionFilter;
-        private IPreparingBlockContextService _preparingBlockContextService;
+        private IBlockPreparationContextService _blockPreparationContextService;
 
         public StartBlockProducerAuRa(AuRaNethermindApi api) : base(api)
         {
@@ -74,7 +74,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             ILogger logger = _api.LogManager.GetClassLogger();
             if (logger.IsWarn) logger.Warn("Starting AuRa block producer & sealer");
 
-            _preparingBlockContextService = new PreparingBlockContextService();
+            _blockPreparationContextService = new BlockPreparationContextService();
             IAuRaStepCalculator stepCalculator = new AuRaStepCalculator(_api.ChainSpec.AuRa.StepDuration, _api.Timestamper, _api.LogManager);
             BlockProducerContext producerContext = GetProducerChain();
             _api.BlockProducer = new AuRaBlockProducer(
@@ -90,7 +90,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _auraConfig,
                 CreateGasLimitCalculator(producerContext.ReadOnlyTxProcessingEnv),
                 _api.SpecProvider,
-                _preparingBlockContextService,
+                _blockPreparationContextService,
                 _api.LogManager);
         }
 
@@ -189,7 +189,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                     CreateTxSourceFilter(processingEnv, readOnlyTxProcessorSource, _api.SpecProvider);
                 ITxFilterPipeline txFilterPipeline = new TxFilterPipelineBuilder(_api.LogManager)
                     .WithCustomTxFilter(auraTxFilter)
-                    .WithBaseFeeFilter(_preparingBlockContextService, _api.SpecProvider)
+                    .WithBaseFeeFilter(_blockPreparationContextService, _api.SpecProvider)
                     .WithNullTxFilter()
                     .Build;
                 
@@ -202,8 +202,8 @@ namespace Nethermind.Runner.Ethereum.Steps
                     whitelistContractDataStore,
                     prioritiesContractDataStore,
                     _api.SpecProvider,
-                    _api.TransactionComparerProvider.GetDefaultProducerComparer(_preparingBlockContextService),
-                    _preparingBlockContextService);
+                    _api.TransactionComparerProvider.GetDefaultProducerComparer(_blockPreparationContextService),
+                    _blockPreparationContextService);
             }
             else
             {
@@ -259,9 +259,9 @@ namespace Nethermind.Runner.Ethereum.Steps
             ITxFilter txSourceFilter = CreateTxSourceFilter(processingEnv, readOnlyTxProcessorSource,_api.SpecProvider);
             ITxFilterPipeline txFilterPipeline = new TxFilterPipelineBuilder(_api.LogManager)
                 .WithCustomTxFilter(txSourceFilter)
-                .WithBaseFeeFilter(_preparingBlockContextService, _api.SpecProvider)
+                .WithBaseFeeFilter(_blockPreparationContextService, _api.SpecProvider)
                 .Build;
-            return new TxPoolTxSource(_api.TxPool, processingEnv.StateReader, _api.SpecProvider, null /*ToDo*/, _preparingBlockContextService, _api.LogManager, txFilterPipeline);
+            return new TxPoolTxSource(_api.TxPool, processingEnv.StateReader, _api.SpecProvider, null /*ToDo*/, _blockPreparationContextService, _api.LogManager, txFilterPipeline);
         }
 
         private ITxSource CreateTxSourceForProducer(ReadOnlyTxProcessingEnv processingEnv, IReadOnlyTxProcessorSource readOnlyTxProcessorSource)

@@ -40,17 +40,17 @@ namespace Nethermind.Blockchain.Producers
         private readonly ITxPool _transactionPool;
         private readonly IStateReader _stateReader;
         private readonly IComparer<Transaction> _comparer;
-        private readonly IPreparingBlockContextService _preparingBlockContextService;
+        private readonly IBlockPreparationContextService _blockPreparationContextService;
         private readonly ITxFilterPipeline _txFilterPipeline;
         private readonly ISpecProvider _specProvider;
         protected readonly ILogger _logger;
 
-        public TxPoolTxSource(ITxPool transactionPool, IStateReader stateReader, ISpecProvider specProvider, IComparer<Transaction> comparer, IPreparingBlockContextService preparingBlockContextService, ILogManager logManager, ITxFilterPipeline txFilterPipeline)
+        public TxPoolTxSource(ITxPool transactionPool, IStateReader stateReader, ISpecProvider specProvider, IComparer<Transaction> comparer, IBlockPreparationContextService blockPreparationContextService, ILogManager logManager, ITxFilterPipeline txFilterPipeline)
         {
             _transactionPool = transactionPool ?? throw new ArgumentNullException(nameof(transactionPool));
             _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
             _comparer = comparer ?? throw new ArgumentNullException(nameof(comparer));
-            _preparingBlockContextService = preparingBlockContextService ?? throw new ArgumentNullException(nameof(preparingBlockContextService));
+            _blockPreparationContextService = blockPreparationContextService ?? throw new ArgumentNullException(nameof(blockPreparationContextService));
             _txFilterPipeline = txFilterPipeline ?? throw new ArgumentNullException(nameof(txFilterPipeline));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _logger = logManager?.GetClassLogger<TxPoolTxSource>() ?? throw new ArgumentNullException(nameof(logManager));
@@ -166,16 +166,9 @@ namespace Nethermind.Blockchain.Producers
                     if (_logger.IsDebug) _logger.Debug($"Rejecting (invalid nonce - expected {expectedNonce}) {tx.ToShortString()}");
                     continue;
                 }
-
-                // ToDo
-                // if (!HasCorrectFeeCap(tx, isEip1559Enabled, baseFee))
-                // {
-                //     if (_logger.IsDebug) _logger.Debug($"Rejecting (FeeCap too low) baseFee: {baseFee} {tx.ToShortString()}");
-                //     continue;
-                // }
                 
                 bool isEip1559Enabled = _specProvider.GetSpec(parent.Number + 1).IsEip1559Enabled;
-                if (!HasEnoughFounds(remainingBalance, tx, isEip1559Enabled, _preparingBlockContextService.BaseFee))
+                if (!HasEnoughFounds(remainingBalance, tx, isEip1559Enabled, _blockPreparationContextService.BaseFee))
                 {
                     if (_logger.IsDebug) _logger.Debug($"Rejecting (sender balance too low) {tx.ToShortString()}");
                     continue;

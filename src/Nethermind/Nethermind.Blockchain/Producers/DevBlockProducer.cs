@@ -51,7 +51,7 @@ namespace Nethermind.Blockchain.Producers
             ITimestamper timestamper,
             ISpecProvider specProvider,
             IMiningConfig miningConfig,
-            IPreparingBlockContextService preparingBlockContextService,
+            IBlockPreparationContextService blockPreparationContextService,
             ILogManager logManager)
             : base(
                 txSource,
@@ -63,7 +63,7 @@ namespace Nethermind.Blockchain.Producers
                 FollowOtherMiners.Instance,
                 timestamper,
                 specProvider,
-                preparingBlockContextService,
+                blockPreparationContextService,
                 logManager)
         {
             _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));

@@ -389,6 +389,7 @@ namespace Nethermind.Blockchain.Test.TxPools
         {
             ITxPoolPeer peer = Substitute.For<ITxPoolPeer>();
             peer.Id.Returns(publicKey);
+            
             return peer;
         }
 

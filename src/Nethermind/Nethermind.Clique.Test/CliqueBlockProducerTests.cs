@@ -104,7 +104,7 @@ namespace Nethermind.Clique.Test
                 
                 MemDb stateDb = new MemDb();
                 MemDb codeDb = new MemDb();
-                IPreparingBlockContextService preparingBlockContextService = new PreparingBlockContextService();
+                IBlockPreparationContextService blockPreparationContextService = new BlockPreparationContextService();
 
                 ISpecProvider specProvider = RinkebySpecProvider.Instance;
 
@@ -182,8 +182,8 @@ namespace Nethermind.Clique.Test
                 }
                 
                 ITxFilterPipeline txFilterPipeline = TxFilterPipelineBuilder.CreateStandardFilteringPipeline(nodeLogManager, 
-                    specProvider, preparingBlockContextService);
-                TxPoolTxSource txPoolTxSource = new TxPoolTxSource(txPool, stateReader, specProvider, transactionComparerProvider.GetDefaultProducerComparer(preparingBlockContextService), preparingBlockContextService, nodeLogManager, txFilterPipeline);
+                    specProvider, blockPreparationContextService);
+                TxPoolTxSource txPoolTxSource = new TxPoolTxSource(txPool, stateReader, specProvider, transactionComparerProvider.GetDefaultProducerComparer(blockPreparationContextService), blockPreparationContextService, nodeLogManager, txFilterPipeline);
                 CliqueBlockProducer blockProducer = new CliqueBlockProducer(
                     txPoolTxSource,
                     minerProcessor,
@@ -196,7 +196,7 @@ namespace Nethermind.Clique.Test
                     new TargetAdjustedGasLimitCalculator(goerliSpecProvider, new MiningConfig()),
                     MainnetSpecProvider.Instance, 
                     _cliqueConfig,
-                    preparingBlockContextService,
+                    blockPreparationContextService,
                     nodeLogManager);
                 blockProducer.Start();
 

@@ -20,7 +20,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.Consensus
 {
-    public interface IPreparingBlockContextService
+    public interface IBlockPreparationContextService
     {
         void SetContext(UInt256 baseFee, long blockNumber);
         public UInt256 BaseFee { get; }
@@ -28,13 +28,13 @@ namespace Nethermind.Consensus
         public long BlockNumber { get; }
     }
 
-    public class PreparingBlockContextService : IPreparingBlockContextService
+    public class BlockPreparationContextService : IBlockPreparationContextService
     {
-        private PreparingBlockContext? _currentContext;
+        private BlockPreparationContext? _currentContext;
         
         public void SetContext(UInt256 baseFee, long blockNumber)
         {
-            _currentContext = new PreparingBlockContext(baseFee, blockNumber);
+            _currentContext = new BlockPreparationContext(baseFee, blockNumber);
         }
 
         public UInt256 BaseFee
@@ -43,7 +43,7 @@ namespace Nethermind.Consensus
             {
                 if (_currentContext == null)
                 {
-                    throw new InvalidOperationException("Cannot use preparing block context, because it wasn't set");
+                    throw new InvalidOperationException("Cannot use block preparation context, because it wasn't set");
                 }
                 
                 return _currentContext.Value.BaseFee;
@@ -56,7 +56,7 @@ namespace Nethermind.Consensus
             {
                 if (_currentContext == null)
                 {
-                    throw new InvalidOperationException("Cannot use preparing block context, because it wasn't set");
+                    throw new InvalidOperationException("Cannot use block preparation context, because it wasn't set");
                 }
                 
                 return _currentContext.Value.BlockNumber;

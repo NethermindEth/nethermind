@@ -23,18 +23,18 @@ namespace Nethermind.Blockchain.Comparers
 {
     public class GasPriceTxComparerForProducer : IComparer<Transaction>
     {
-        private readonly IPreparingBlockContextService _preparingBlockContextService;
+        private readonly IBlockPreparationContextService _blockPreparationContextService;
         private readonly IGasPriceTxComparerByBaseFee _gasPriceTxComparerByBaseFee;
 
-        public GasPriceTxComparerForProducer(IPreparingBlockContextService preparingBlockContextService, IGasPriceTxComparerByBaseFee gasPriceTxComparerByBaseFee)
+        public GasPriceTxComparerForProducer(IBlockPreparationContextService blockPreparationContextService, IGasPriceTxComparerByBaseFee gasPriceTxComparerByBaseFee)
         {
-            _preparingBlockContextService = preparingBlockContextService;
+            _blockPreparationContextService = blockPreparationContextService;
             _gasPriceTxComparerByBaseFee = gasPriceTxComparerByBaseFee;
         }
 
         public int Compare(Transaction? x, Transaction? y)
         {
-            return _gasPriceTxComparerByBaseFee.Compare(x, y, _preparingBlockContextService.BaseFee, _preparingBlockContextService.BlockNumber);
+            return _gasPriceTxComparerByBaseFee.Compare(x, y, _blockPreparationContextService.BaseFee, _blockPreparationContextService.BlockNumber);
         }
     }
 }

@@ -338,12 +338,12 @@ namespace Nethermind.Synchronization.Test
                 NullWitnessCollector.Instance,
                 logManager);
 
-            IPreparingBlockContextService preparingBlockContextService = new PreparingBlockContextService();
+            IBlockPreparationContextService blockPreparationContextService = new BlockPreparationContextService();
             BlockchainProcessor devChainProcessor = new(tree, devBlockProcessor, step, logManager,
                 BlockchainProcessor.Options.NoReceipts);
             ITxFilterPipeline txFilterPipeline = TxFilterPipelineBuilder.CreateStandardFilteringPipeline(LimboLogs.Instance,
-                specProvider, preparingBlockContextService);
-            TxPoolTxSource transactionSelector = new(txPool, stateReader, specProvider, transactionComparerProvider.GetDefaultProducerComparer(preparingBlockContextService), preparingBlockContextService, logManager, txFilterPipeline);
+                specProvider, blockPreparationContextService);
+            TxPoolTxSource transactionSelector = new(txPool, stateReader, specProvider, transactionComparerProvider.GetDefaultProducerComparer(blockPreparationContextService), blockPreparationContextService, logManager, txFilterPipeline);
             DevBlockProducer producer = new(
                 transactionSelector,
                 devChainProcessor,
@@ -353,7 +353,7 @@ namespace Nethermind.Synchronization.Test
                 Timestamper.Default,
                 specProvider,
                 new MiningConfig(),
-                preparingBlockContextService,
+                blockPreparationContextService,
                 logManager);
 
             SyncProgressResolver resolver = new(

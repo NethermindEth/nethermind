@@ -27,6 +27,6 @@ namespace Nethermind.Blockchain.Comparers
     {
         IComparer<Transaction> GetDefaultComparer();
 
-        IComparer<Transaction> GetDefaultProducerComparer(IPreparingBlockContextService preparingBlockContextService);
+        IComparer<Transaction> GetDefaultProducerComparer(IBlockPreparationContextService blockPreparationContextService);
     }
 }

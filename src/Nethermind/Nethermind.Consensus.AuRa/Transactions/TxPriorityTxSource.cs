@@ -48,8 +48,8 @@ namespace Nethermind.Consensus.AuRa.Transactions
             IDictionaryContractDataStore<TxPriorityContract.Destination> priorities,
             ISpecProvider specProvider,
             IComparer<Transaction> comparer,
-            IPreparingBlockContextService preparingBlockContextService) // expected SortedList based
-            : base(transactionPool, stateReader, specProvider, comparer, preparingBlockContextService, logManager, txFilterPipeline)
+            IBlockPreparationContextService blockPreparationContextService) // expected SortedList based
+            : base(transactionPool, stateReader, specProvider, comparer, blockPreparationContextService, logManager, txFilterPipeline)
         {
             _sendersWhitelist = sendersWhitelist ?? throw new ArgumentNullException(nameof(sendersWhitelist));
             _priorities = priorities ?? throw new ArgumentNullException(nameof(priorities));

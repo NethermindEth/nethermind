@@ -150,8 +150,8 @@ namespace Nethermind.Blockchain.Test
             IReleaseSpec spec = new ReleaseSpec();
             specProvider.GetSpec(Arg.Any<long>()).Returns(spec);
             var transactionComparerProvider = new TransactionComparerProvider(specProvider, blockTree);
-            IPreparingBlockContextService preparingBlockContextService = new PreparingBlockContextService();
-            preparingBlockContextService.SetContext(0,0);
+            IBlockPreparationContextService blockPreparationContextService = new BlockPreparationContextService();
+            blockPreparationContextService.SetContext(0,0);
             IComparer<Transaction> defaultComparer = transactionComparerProvider.GetDefaultComparer();
             IComparer<Transaction> comparer = CompareTxByNonce.Instance.ThenBy(defaultComparer);
             var transactions = testCase.Transactions
@@ -163,12 +163,12 @@ namespace Nethermind.Blockchain.Test
             transactionPool.GetPendingTransactionsBySender().Returns(transactions);
             ITxFilterPipeline txFilterPipeline = new TxFilterPipelineBuilder(LimboLogs.Instance)
                 .WithMinGasPriceFilter(testCase.MinGasPriceForMining, specProvider)
-                .WithBaseFeeFilter(preparingBlockContextService, specProvider)
+                .WithBaseFeeFilter(blockPreparationContextService, specProvider)
                 .Build;
             
             SetAccountStates(testCase.MissingAddresses);
 
-            TxPoolTxSource poolTxSource = new TxPoolTxSource(transactionPool, stateReader, specProvider, transactionComparerProvider.GetDefaultProducerComparer(preparingBlockContextService), preparingBlockContextService, LimboLogs.Instance, txFilterPipeline);
+            TxPoolTxSource poolTxSource = new TxPoolTxSource(transactionPool, stateReader, specProvider, transactionComparerProvider.GetDefaultProducerComparer(blockPreparationContextService), blockPreparationContextService, LimboLogs.Instance, txFilterPipeline);
             
 
             IEnumerable<Transaction> selectedTransactions = poolTxSource.GetTransactions(Build.A.BlockHeader.WithStateRoot(stateProvider.StateRoot).TestObject, testCase.GasLimit);
