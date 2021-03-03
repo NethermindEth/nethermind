@@ -69,8 +69,10 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
                 BlockHeader fromBlock = _blockFinder.FindHeader(_filter.FromBlock);
                 BlockHeader toBlock = _blockFinder.FindHeader(_filter.ToBlock, true);
 
-                if (e.BlockHeader.Number >= fromBlock.Number
-                    && e.BlockHeader.Number <= toBlock.Number)
+                bool isAfterFromBlock = e.BlockHeader.Number >= fromBlock.Number;
+                bool isBeforeToBlock = e.BlockHeader.Number <= toBlock.Number || _filter.ToBlock.Equals(BlockParameter.Latest) || _filter.ToBlock.Equals(BlockParameter.Pending);
+
+                if (isAfterFromBlock && isBeforeToBlock)
                 {
                     var filterLogs = GetFilterLogs(e);
                     
