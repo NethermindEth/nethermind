@@ -83,7 +83,7 @@ namespace Nethermind.Specs
         public const long MuirGlacierBlockNumber = 9200000;
         public const long BerlinBlockNumber = long.MaxValue - 1;
 
-        public ulong ChainId => 1ul;
+        public ulong ChainId => Core.ChainId.Mainnet;
 
         public long[] TransitionBlocks { get; } =
         {
@@ -98,10 +98,8 @@ namespace Nethermind.Specs
             BerlinBlockNumber
         };
 
-        private MainnetSpecProvider()
-        {
-        }
+        private MainnetSpecProvider() { }
 
-        public static MainnetSpecProvider Instance = new MainnetSpecProvider();
+        public static readonly MainnetSpecProvider Instance = new();
     }
 }

@@ -68,18 +68,18 @@ namespace Nethermind.Specs
             return Berlin.Instance;
         }
 
-        public long? DaoBlockNumber { get; } = null;
+        public long? DaoBlockNumber => null;
 
         public const long HomesteadBlockNumber  = 1;
         public const long TangerineWhistleBlockNumber  = 2;
         public const long SpuriousDragonBlockNumber  = 3;
-        public const long ByzantiumBlockNumber  = 1035301;
-        public const long ConstantinopleBlockNumber  = 3660663;
-        public const long ConstantinopleFixBlockNumber  = 4321234;
-        public const long IstanbulBlockNumber  = 5435345;
-        public const long BerlinBlockNumber  = long.MaxValue - 1;
+        public const long ByzantiumBlockNumber  = 1_035_301;
+        public const long ConstantinopleBlockNumber  = 3_660_663;
+        public const long ConstantinopleFixBlockNumber  = 4_321_234;
+        public const long IstanbulBlockNumber  = 5_435_345;
+        public const long BerlinBlockNumber  = 8_290_928;
 
-        public ulong ChainId => 4;
+        public ulong ChainId => Core.ChainId.Rinkeby;
 
         public long[] TransitionBlocks { get; } =
         {
@@ -93,10 +93,8 @@ namespace Nethermind.Specs
             BerlinBlockNumber
         };
 
-        private RinkebySpecProvider()
-        {
-        }
+        private RinkebySpecProvider() { }
 
-        public static readonly RinkebySpecProvider Instance = new RinkebySpecProvider();
+        public static readonly RinkebySpecProvider Instance = new();
     }
 }

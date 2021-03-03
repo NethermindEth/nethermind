@@ -19,13 +19,13 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using FluentAssertions;
+using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Serialization.Json;
-using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
 using NUnit.Framework;
 
-namespace Nethermind.Core.Test.Specs.ChainSpecStyle
+namespace Nethermind.Specs.Test.ChainSpecStyle
 {
     [Parallelizable(ParallelScope.All)]
     [TestFixture]

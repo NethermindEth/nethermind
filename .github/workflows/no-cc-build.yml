@@ -129,6 +129,9 @@ jobs:
     - name: Nethermind.Mining.Test
       run: |
         dotnet test -c Release src/Nethermind/Nethermind.Mining.Test
+    - name: Nethermind.Specs.Test
+      run: |
+        dotnet test -c Release src/Nethermind/Nethermind.Specs.Test
   neth-tests4:
     name: Nethermind Tests 4
     runs-on: ${{ matrix.os }}
