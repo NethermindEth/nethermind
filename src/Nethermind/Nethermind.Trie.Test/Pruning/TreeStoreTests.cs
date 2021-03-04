@@ -29,18 +29,17 @@ namespace Nethermind.Trie.Test.Pruning
             TrieStore trieStore = new(new MemDb(), new TestPruningStrategy(true), No.Persistence, _logManager);
             trieStore.MemoryUsedByDirtyCache.Should().Be(0);
         }
-        
+
         [Test]
         public void Memory_with_one_node_is_288()
         {
             TrieNode trieNode = new(NodeType.Leaf, Keccak.Zero); // 56B
-        
+
             TrieStore trieStore = new(new MemDb(), new TestPruningStrategy(true), No.Persistence, _logManager);
             trieStore.CommitNode(1234, new NodeCommitInfo(trieNode));
             trieStore.MemoryUsedByDirtyCache.Should().Be(
                 trieNode.GetMemorySize(false));
         }
-
 
 
         [Test]
@@ -57,35 +56,35 @@ namespace Nethermind.Trie.Test.Pruning
             trieStore.CommitNode(11234, new NodeCommitInfo(trieNode3));
             trieStore.MemoryUsedByDirtyCache.Should().Be(0);
         }
-        
-        [Test]
-        public void Should_always_announce_reorg_boundary_when_pruning_disabled_and_persisting()
-        {
-            TrieNode trieNode = new(NodeType.Leaf, Keccak.Zero);
 
-            int reorgBoundaryCount = 0;
+        [Test]
+        public void Should_always_announce_block_number_when_pruning_disabled_and_persisting()
+        {
+            TrieNode trieNode = new(NodeType.Leaf, Keccak.Zero) {LastSeen = 1};
+
+            long reorgBoundaryCount = 0L;
             TrieStore trieStore = new(new MemDb(), No.Pruning, Archive.Instance, _logManager);
-            trieStore.ReorgBoundaryReached += (_, _) => reorgBoundaryCount++;
+            trieStore.ReorgBoundaryReached += (_, e) => reorgBoundaryCount += e.BlockNumber;
             trieStore.FinishBlockCommit(TrieType.State, 1, trieNode);
             trieStore.FinishBlockCommit(TrieType.State, 2, trieNode);
             trieStore.FinishBlockCommit(TrieType.State, 3, trieNode);
             trieStore.FinishBlockCommit(TrieType.State, 4, trieNode);
-            reorgBoundaryCount.Should().Be(4);
+            reorgBoundaryCount.Should().Be(10L);
         }
-        
+
         [Test]
-        public void Should_never_announce_reorg_boundary_when_pruning_disabled_and_not_persisting()
+        public void Should_always_announce_zero_when_not_persisting()
         {
             TrieNode trieNode = new(NodeType.Leaf, Keccak.Zero);
 
-            int reorgBoundaryCount = 0;
+            long reorgBoundaryCount = 0L;
             TrieStore trieStore = new(new MemDb(), No.Pruning, No.Persistence, _logManager);
-            trieStore.ReorgBoundaryReached += (_, _) => reorgBoundaryCount++;
+            trieStore.ReorgBoundaryReached += (_, e) => reorgBoundaryCount += e.BlockNumber;
             trieStore.FinishBlockCommit(TrieType.State, 1, trieNode);
             trieStore.FinishBlockCommit(TrieType.State, 2, trieNode);
             trieStore.FinishBlockCommit(TrieType.State, 3, trieNode);
             trieStore.FinishBlockCommit(TrieType.State, 4, trieNode);
-            reorgBoundaryCount.Should().Be(0);
+            reorgBoundaryCount.Should().Be(0L);
         }
 
         [Test]
@@ -125,7 +124,7 @@ namespace Nethermind.Trie.Test.Pruning
         {
             TrieNode trieNode1 = new(NodeType.Leaf, TestItem.KeccakA);
             TrieNode trieNode2 = new(NodeType.Leaf, TestItem.KeccakB);
-        
+
             TrieStore trieStore = new(new MemDb(), new TestPruningStrategy(true), No.Persistence, _logManager);
             trieStore.CommitNode(1234, new NodeCommitInfo(trieNode1));
             trieStore.CommitNode(1234, new NodeCommitInfo(trieNode2));
@@ -133,7 +132,7 @@ namespace Nethermind.Trie.Test.Pruning
                 trieNode1.GetMemorySize(false) +
                 trieNode2.GetMemorySize(false));
         }
-        
+
         [Test]
         public void Memory_with_two_times_two_nodes_is_correct()
         {
@@ -141,14 +140,14 @@ namespace Nethermind.Trie.Test.Pruning
             TrieNode trieNode2 = new(NodeType.Leaf, TestItem.KeccakB);
             TrieNode trieNode3 = new(NodeType.Leaf, TestItem.KeccakA);
             TrieNode trieNode4 = new(NodeType.Leaf, TestItem.KeccakB);
-        
+
             TrieStore trieStore = new(new MemDb(), new TestPruningStrategy(true), No.Persistence, _logManager);
             trieStore.CommitNode(1234, new NodeCommitInfo(trieNode1));
             trieStore.CommitNode(1234, new NodeCommitInfo(trieNode2));
             trieStore.FinishBlockCommit(TrieType.State, 1234, trieNode2);
             trieStore.CommitNode(1235, new NodeCommitInfo(trieNode3));
             trieStore.CommitNode(1235, new NodeCommitInfo(trieNode4));
-            
+
             // depending on whether the node gets resolved it gives different values here in debugging and run
             // needs some attention
             trieStore.MemoryUsedByDirtyCache.Should().BeLessOrEqualTo(
@@ -163,13 +162,13 @@ namespace Nethermind.Trie.Test.Pruning
             trieNode1.ResolveKey(null!, true);
             TrieNode trieNode2 = new(NodeType.Leaf, new byte[1]);
             trieNode2.ResolveKey(null!, true);
-        
+
             TrieNode trieNode3 = new(NodeType.Leaf, new byte[2]);
             trieNode3.ResolveKey(null!, true);
-        
+
             TrieNode trieNode4 = new(NodeType.Leaf, new byte[3]);
             trieNode4.ResolveKey(null!, true);
-        
+
             TrieStore trieStore = new(new MemDb(), new MemoryLimit(640), No.Persistence, _logManager);
             trieStore.CommitNode(1234, new NodeCommitInfo(trieNode1));
             trieStore.CommitNode(1234, new NodeCommitInfo(trieNode2));
@@ -192,13 +191,13 @@ namespace Nethermind.Trie.Test.Pruning
             trieNode1.ResolveKey(null!, true);
             TrieNode trieNode2 = new(NodeType.Leaf, new byte[1]);
             trieNode2.ResolveKey(null!, true);
-        
+
             TrieNode trieNode3 = new(NodeType.Leaf, new byte[2]);
             trieNode3.ResolveKey(null!, true);
-        
+
             TrieNode trieNode4 = new(NodeType.Leaf, new byte[3]);
             trieNode4.ResolveKey(null!, true);
-        
+
             TrieStore trieStore = new(new MemDb(), new MemoryLimit(512), No.Persistence, _logManager);
             trieStore.CommitNode(1234, new NodeCommitInfo(trieNode1));
             trieStore.CommitNode(1234, new NodeCommitInfo(trieNode2));
@@ -215,7 +214,6 @@ namespace Nethermind.Trie.Test.Pruning
         [Test]
         public void Dispatcher_will_always_try_to_clear_memory()
         {
-
             TrieStore trieStore = new(new MemDb(), new MemoryLimit(512), No.Persistence, _logManager);
             for (int i = 0; i < 1024; i++)
             {
@@ -225,12 +223,12 @@ namespace Nethermind.Trie.Test.Pruning
                     trieNode.ResolveKey(NullTrieNodeResolver.Instance, true);
                     trieStore.CommitNode(i, new NodeCommitInfo(trieNode));
                 }
-        
+
                 TrieNode fakeRoot = new(NodeType.Leaf, new byte[0]); // 192B
                 fakeRoot.ResolveKey(NullTrieNodeResolver.Instance, true);
                 trieStore.FinishBlockCommit(TrieType.State, i, fakeRoot);
             }
-        
+
             trieStore.MemoryUsedByDirtyCache.Should().BeLessThan(512 * 2);
         }
 
