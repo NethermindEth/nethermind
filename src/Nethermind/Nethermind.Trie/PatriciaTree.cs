@@ -50,7 +50,7 @@ namespace Nethermind.Trie
         /// To save allocations this used to be static but this caused one of the hardest to reproduce issues
         /// when we decided to run some of the tree operations in parallel.
         /// </summary>
-        private readonly Stack<StackedNode> _nodeStack = new Stack<StackedNode>();
+        private readonly Stack<StackedNode> _nodeStack = new();
         
         private readonly ConcurrentQueue<Exception>? _commitExceptions;
 
@@ -97,13 +97,13 @@ namespace Nethermind.Trie
         }
 
         public PatriciaTree(
-            ITrieStore trieStore,
+            ITrieStore? trieStore,
             Keccak rootHash,
             bool parallelBranches,
             bool allowCommits,
-            ILogManager logManager)
+            ILogManager? logManager)
         {
-            _logger = logManager.GetClassLogger<PatriciaTree>() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger<PatriciaTree>() ?? throw new ArgumentNullException(nameof(logManager));
             TrieStore = trieStore ?? throw new ArgumentNullException(nameof(trieStore));
             _parallelBranches = parallelBranches;
             _allowCommits = allowCommits;
@@ -209,7 +209,7 @@ namespace Nethermind.Trie
                 }
                 else
                 {
-                    List<NodeCommitInfo> nodesToCommit = new List<NodeCommitInfo>();
+                    List<NodeCommitInfo> nodesToCommit = new();
                     for (int i = 0; i < 16; i++)
                     {
                         if (node.IsChildDirty(i))
@@ -365,7 +365,7 @@ namespace Nethermind.Trie
 #endif
             
             TraverseContext traverseContext =
-                new TraverseContext(updatePath.Slice(0, nibblesCount), updateValue, isUpdate, ignoreMissingDelete);
+                new(updatePath.Slice(0, nibblesCount), updateValue, isUpdate, ignoreMissingDelete);
 
             // lazy stack cleaning after the previous update
             if (traverseContext.IsUpdate)
@@ -990,7 +990,7 @@ namespace Nethermind.Trie
             if (visitor is null) throw new ArgumentNullException(nameof(visitor));
             if (rootHash is null) throw new ArgumentNullException(nameof(rootHash));
 
-            TrieVisitContext trieVisitContext = new TrieVisitContext();
+            TrieVisitContext trieVisitContext = new();
 
             // hacky but other solutions are not much better, something nicer would require a bit of thinking
             // we introduced a notion of an account on the visit context level which should have no knowledge of account really

@@ -32,8 +32,8 @@ namespace Nethermind.JsonRpc
         private readonly IJsonRpcConfig _jsonRpcConfig;
         private readonly TimeSpan _reportingInterval;
 
-        private ConcurrentDictionary<string, MethodStats> _currentStats = new ConcurrentDictionary<string, MethodStats>();
-        private ConcurrentDictionary<string, MethodStats> _previousStats = new ConcurrentDictionary<string, MethodStats>();
+        private ConcurrentDictionary<string, MethodStats> _currentStats = new();
+        private ConcurrentDictionary<string, MethodStats> _previousStats = new();
         private DateTime _lastReport = DateTime.MinValue;
         private readonly ILogger _logger;
 
@@ -114,13 +114,13 @@ namespace Nethermind.JsonRpc
                                         " avg time | " +
                                         " max time |";
 
-            StringBuilder stringBuilder = new StringBuilder();
+            StringBuilder stringBuilder = new();
             stringBuilder.AppendLine("***** JSON RPC report *****");
-            string divider = new string(Enumerable.Repeat('-', reportHeader.Length).ToArray());
+            string divider = new(Enumerable.Repeat('-', reportHeader.Length).ToArray());
             stringBuilder.AppendLine(divider);
             stringBuilder.AppendLine(reportHeader);
             stringBuilder.AppendLine(divider);
-            MethodStats total = new MethodStats();
+            MethodStats total = new();
             foreach (KeyValuePair<string, MethodStats> methodStats in _previousStats.OrderBy(kv => kv.Key))
             {
                 total.AvgTimeOfSuccesses = total.Successes + methodStats.Value.Successes == 0

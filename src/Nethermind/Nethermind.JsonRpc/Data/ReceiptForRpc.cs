@@ -60,14 +60,14 @@ namespace Nethermind.JsonRpc.Data
         [JsonProperty(NullValueHandling = NullValueHandling.Include)]
         public Address ContractAddress { get; set; }
         public LogEntryForRpc[] Logs { get; set; }
-        public Bloom LogsBloom { get; set; }
+        public Bloom? LogsBloom { get; set; }
         public Keccak Root { get; set; }
         public long Status { get; set; }
         public string Error { get; set; }
 
         public TxReceipt ToReceipt()
         {
-            TxReceipt receipt = new TxReceipt();
+            TxReceipt receipt = new();
             receipt.Bloom = LogsBloom;
             receipt.Error = Error;
             receipt.Index = (int)TransactionIndex;

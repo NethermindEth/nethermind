@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
@@ -47,20 +48,20 @@ namespace Nethermind.Blockchain.Processing
         }
 
         public ReadOnlyTxProcessingEnv(
-            IReadOnlyDbProvider readOnlyDbProvider,
-            ReadOnlyTrieStore readOnlyTrieStore,
-            ReadOnlyBlockTree readOnlyBlockTree,
-            ISpecProvider specProvider,
-            ILogManager logManager)
+            IReadOnlyDbProvider? readOnlyDbProvider,
+            ReadOnlyTrieStore? readOnlyTrieStore,
+            ReadOnlyBlockTree? readOnlyBlockTree,
+            ISpecProvider? specProvider,
+            ILogManager? logManager)
         {
-            DbProvider = readOnlyDbProvider;
+            DbProvider = readOnlyDbProvider ?? throw new ArgumentNullException(nameof(readOnlyDbProvider));
             _codeDb = readOnlyDbProvider.CodeDb.AsReadOnly(true);
             
             StateReader = new StateReader(readOnlyTrieStore, _codeDb, logManager);
             StateProvider = new StateProvider(readOnlyTrieStore, _codeDb, logManager);
             StorageProvider = new StorageProvider(readOnlyTrieStore, StateProvider, logManager);
 
-            BlockTree = readOnlyBlockTree;
+            BlockTree = readOnlyBlockTree ?? throw new ArgumentNullException(nameof(readOnlyBlockTree));
             BlockhashProvider = new BlockhashProvider(BlockTree, logManager);
 
             Machine = new VirtualMachine(StateProvider, StorageProvider, BlockhashProvider, specProvider, logManager);

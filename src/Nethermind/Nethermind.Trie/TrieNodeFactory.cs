@@ -23,7 +23,7 @@ namespace Nethermind.Trie
     {
         public static TrieNode CreateBranch()
         {
-            TrieNode node = new TrieNode(NodeType.Branch);
+            TrieNode node = new(NodeType.Branch);
             return node;
         }
 
@@ -33,7 +33,7 @@ namespace Nethermind.Trie
                 key.IsLeaf,
                 $"{nameof(NodeType.Leaf)} should always be created with a leaf {nameof(HexPrefix)}");
 
-            TrieNode node = new TrieNode(NodeType.Leaf);
+            TrieNode node = new(NodeType.Leaf);
             node.Key = key;
             node.Value = value;
             return node;
@@ -41,7 +41,7 @@ namespace Nethermind.Trie
 
         public static TrieNode CreateExtension(HexPrefix key)
         {
-            TrieNode node = new TrieNode(NodeType.Extension);
+            TrieNode node = new(NodeType.Extension);
             node.Key = key;
             return node;
         }
@@ -52,7 +52,7 @@ namespace Nethermind.Trie
                 key.IsExtension,
                 $"{nameof(NodeType.Extension)} should always be created with an extension {nameof(HexPrefix)}");
 
-            TrieNode node = new TrieNode(NodeType.Extension);
+            TrieNode node = new(NodeType.Extension);
             node.SetChild(0, child);
             node.Key = key;
             return node;

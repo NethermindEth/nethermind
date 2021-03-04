@@ -29,7 +29,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
 {
     public class BlockForRpc
     {
-        private readonly BlockDecoder _blockDecoder = new BlockDecoder();
+        private readonly BlockDecoder _blockDecoder = new();
         private readonly bool _isAuRaBlock;
 
         public BlockForRpc(Block block, bool includeFullTransactionData)

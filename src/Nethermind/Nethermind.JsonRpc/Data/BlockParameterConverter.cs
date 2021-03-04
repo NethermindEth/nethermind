@@ -26,9 +26,9 @@ namespace Nethermind.JsonRpc.Data
 {
     public class BlockParameterConverter : JsonConverter<BlockParameter>
     {
-        private NullableLongConverter _longConverter = new NullableLongConverter();
+        private NullableLongConverter _longConverter = new();
 
-        private KeccakConverter _keccakConverter = new KeccakConverter();
+        private KeccakConverter _keccakConverter = new();
 
         public override void WriteJson(JsonWriter writer, BlockParameter value, JsonSerializer serializer)
         {
@@ -113,7 +113,7 @@ namespace Nethermind.JsonRpc.Data
                     }
                 }
 
-                BlockParameter parameter = new BlockParameter(blockHash, requireCanonical);
+                BlockParameter parameter = new(blockHash, requireCanonical);
                 return parameter;
             }
 

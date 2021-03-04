@@ -40,7 +40,7 @@ namespace Nethermind.Blockchain
         /// <summary>
         /// Best header that has been suggested for processing
         /// </summary>
-        BlockHeader BestSuggestedHeader { get; }
+        BlockHeader? BestSuggestedHeader { get; }
 
         /// <summary>
         /// Best block that has been suggested for processing

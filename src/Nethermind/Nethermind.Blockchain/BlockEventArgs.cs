@@ -21,9 +21,9 @@ namespace Nethermind.Blockchain
 {
     public class BlockEventArgs : EventArgs
     {
-        public Block Block { get; }
+        public Block? Block { get; }
 
-        public BlockEventArgs(Block block)
+        public BlockEventArgs(Block? block)
         {
             Block = block;
         }

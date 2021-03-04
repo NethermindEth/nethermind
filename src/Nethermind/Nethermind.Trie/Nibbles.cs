@@ -43,12 +43,12 @@ namespace Nethermind.Trie
 
         public static implicit operator Nibble(byte nibbleValue)
         {
-            return new Nibble(nibbleValue);
+            return new(nibbleValue);
         }
 
         public static implicit operator Nibble(char hexChar)
         {
-            return new Nibble(hexChar);
+            return new(hexChar);
         }
     }
 }

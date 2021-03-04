@@ -29,9 +29,9 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         private readonly ILogger _logger;
         
         private readonly ConcurrentDictionary<string, Subscription> _subscriptions =
-            new ConcurrentDictionary<string, Subscription>();
+            new();
         private readonly ConcurrentDictionary<string, HashSet<Subscription>> _subscriptionsByJsonRpcClient =
-            new ConcurrentDictionary<string, HashSet<Subscription>>();
+            new();
         
         public SubscriptionManger(ISubscriptionFactory? subscriptionFactory, ILogManager? logManager)
         {

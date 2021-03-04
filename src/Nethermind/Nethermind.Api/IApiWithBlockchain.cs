@@ -19,6 +19,7 @@
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Processing;
+using Nethermind.Blockchain.Producers;
 using Nethermind.Blockchain.Rewards;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Config;
@@ -48,6 +49,7 @@ namespace Nethermind.Api
         IFilterStore? FilterStore { get; set; }
         IFilterManager? FilterManager { get; set; }
         IHeaderValidator? HeaderValidator { get; set; }
+        IManualBlockProductionTrigger ManualBlockProductionTrigger { get; set; }
         ReadOnlyTrieStore? ReadOnlyTrieStore { get; set; }
         IRewardCalculatorSource? RewardCalculatorSource { get; set; }
         ISealer? Sealer { get; set; }

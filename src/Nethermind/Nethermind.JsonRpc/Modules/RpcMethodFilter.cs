@@ -31,10 +31,10 @@ namespace Nethermind.JsonRpc.Modules
     internal class RpcMethodFilter : IRpcMethodFilter
     {
         private readonly ILogger _logger;
-        private readonly HashSet<string> _filters = new HashSet<string>();
+        private readonly HashSet<string> _filters = new();
         
         private readonly ConcurrentDictionary<string, bool> _methodsCache
-            = new ConcurrentDictionary<string, bool>();
+            = new();
 
         public RpcMethodFilter(string filePath, IFileSystem fileSystem, ILogger logger)
         {
