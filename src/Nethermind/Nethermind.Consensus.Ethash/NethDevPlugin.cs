@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
@@ -33,7 +34,8 @@ namespace Nethermind.Consensus.Ethash
 {
     public class NethDevPlugin : IConsensusPlugin
     {
-        private INethermindApi _nethermindApi;
+        private INethermindApi? _nethermindApi;
+
         public void Dispose() { }
 
         public string Name => "NethDev";
@@ -41,7 +43,7 @@ namespace Nethermind.Consensus.Ethash
         public string Description => "NethDev (Spaceneth)";
 
         public string Author => "Nethermind";
-        
+
         public Task Init(INethermindApi nethermindApi)
         {
             _nethermindApi = nethermindApi;
@@ -54,26 +56,26 @@ namespace Nethermind.Consensus.Ethash
             {
                 return Task.CompletedTask;
             }
-            
+
             var (getFromApi, setInApi) = _nethermindApi!.ForProducer;
             ITxFilter txFilter = new NullTxFilter();
             ITxSource txSource = new TxPoolTxSource(
                 getFromApi.TxPool, getFromApi.StateReader, getFromApi.LogManager, txFilter);
-            
+
             ILogger logger = getFromApi.LogManager.GetClassLogger();
             if (logger.IsWarn) logger.Warn("Starting Neth Dev block producer & sealer");
 
             ReadOnlyDbProvider readOnlyDbProvider = getFromApi.DbProvider.AsReadOnly(false);
             ReadOnlyBlockTree readOnlyBlockTree = getFromApi.BlockTree.AsReadOnly();
 
-            ReadOnlyTxProcessingEnv producerEnv = new ReadOnlyTxProcessingEnv(
+            ReadOnlyTxProcessingEnv producerEnv = new(
                 readOnlyDbProvider,
                 getFromApi.ReadOnlyTrieStore,
                 readOnlyBlockTree,
                 getFromApi.SpecProvider,
                 getFromApi.LogManager);
 
-            BlockProcessor producerProcessor = new BlockProcessor(
+            BlockProcessor producerProcessor = new(
                 getFromApi!.SpecProvider,
                 getFromApi!.BlockValidator,
                 NoBlockRewards.Instance,
@@ -93,17 +95,19 @@ namespace Nethermind.Consensus.Ethash
                 BlockchainProcessor.Options.NoReceipts);
             
             setInApi.BlockProducer = new DevBlockProducer(
-                txSource,
+                txSource.ServeTxsOneByOne(),
                 producerChainProcessor,
                 producerEnv.StateProvider,
                 getFromApi.BlockTree,
                 getFromApi.BlockProcessingQueue,
-                getFromApi.TxPool,
+                new BuildBlocksRegularly(TimeSpan.FromMilliseconds(200))
+                    .IfPoolIsNotEmpty(getFromApi.TxPool)
+                    .Or(getFromApi.ManualBlockProductionTrigger),
                 getFromApi.Timestamper,
                 getFromApi.SpecProvider,
                 getFromApi.Config<IMiningConfig>(),
                 getFromApi.LogManager);
-                
+
             return Task.CompletedTask;
         }
 

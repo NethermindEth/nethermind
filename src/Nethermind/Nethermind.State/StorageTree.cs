@@ -46,7 +46,7 @@ namespace Nethermind.State
             }
         }
         
-        public StorageTree(ITrieStore trieStore, Keccak rootHash, ILogManager logManager)
+        public StorageTree(ITrieStore? trieStore, Keccak rootHash, ILogManager? logManager)
             : base(trieStore, rootHash, false, true, logManager)
         {
             TrieType = TrieType.Storage;

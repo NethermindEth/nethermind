@@ -26,14 +26,14 @@ namespace Nethermind.JsonRpc.Modules.Trace
     {
         public static ParityTxTraceFromStore[] FromTxTrace(ParityLikeTxTrace txTrace)
         {
-            List<ParityTxTraceFromStore> results = new List<ParityTxTraceFromStore>();
+            List<ParityTxTraceFromStore> results = new();
             AddActionsRecursively(results, txTrace, txTrace.Action);
             return results.ToArray();
         }
 
         private static void AddActionsRecursively(List<ParityTxTraceFromStore> results, ParityLikeTxTrace txTrace, ParityTraceAction txTraceAction)
         {
-            ParityTxTraceFromStore result = new ParityTxTraceFromStore
+            ParityTxTraceFromStore result = new()
             {
                 Action = txTraceAction,
                 Result = txTraceAction.Result,

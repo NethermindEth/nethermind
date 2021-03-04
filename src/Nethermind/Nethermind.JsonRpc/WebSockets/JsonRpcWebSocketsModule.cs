@@ -27,7 +27,7 @@ namespace Nethermind.JsonRpc.WebSockets
     public class JsonRpcWebSocketsModule : IWebSocketsModule
     {
         private readonly ConcurrentDictionary<string, IWebSocketsClient> _clients =
-            new ConcurrentDictionary<string, IWebSocketsClient>();
+            new();
 
         private readonly JsonRpcProcessor _jsonRpcProcessor;
         private readonly JsonRpcService _jsonRpcService;

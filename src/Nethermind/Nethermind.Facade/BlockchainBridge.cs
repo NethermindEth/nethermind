@@ -159,7 +159,7 @@ namespace Nethermind.Facade
 
         public CallOutput Call(BlockHeader blockHeader, Transaction transaction, CancellationToken cancellationToken)
         {
-            CallOutputTracer callOutputTracer = new CallOutputTracer();
+            CallOutputTracer callOutputTracer = new();
             CallAndRestore(blockHeader, blockHeader.Number, blockHeader.Timestamp, transaction,
                 new CancellationTxTracer(callOutputTracer, cancellationToken)
                 {
@@ -178,7 +178,7 @@ namespace Nethermind.Facade
 
         public CallOutput EstimateGas(BlockHeader header, Transaction tx, CancellationToken cancellationToken)
         {
-            EstimateGasTracer estimateGasTracer = new EstimateGasTracer();
+            EstimateGasTracer estimateGasTracer = new();
             CallAndRestore(
                 header,
                 header.Number + 1,
@@ -210,7 +210,7 @@ namespace Nethermind.Facade
                     transaction.Nonce = GetNonce(_stateProvider.StateRoot, transaction.SenderAddress);
                 }
 
-                BlockHeader callHeader = new BlockHeader(
+                BlockHeader callHeader = new(
                     blockHeader.Hash,
                     Keccak.OfAnEmptySequenceRlp,
                     Address.Zero,

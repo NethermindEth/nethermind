@@ -24,7 +24,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
 {
     public class ParityTxTraceFromReplayConverter : JsonConverter<ParityTxTraceFromReplay>
     {
-        private ParityTraceAddressConverter _traceAddressConverter = new ParityTraceAddressConverter();
+        private ParityTraceAddressConverter _traceAddressConverter = new();
 
         public override void WriteJson(JsonWriter writer, ParityTxTraceFromReplay value, JsonSerializer serializer)
         {

@@ -31,14 +31,6 @@ namespace Nethermind.JsonRpc.Test.Modules
     [TestFixture]
     public class NetModuleTests
     {
-        private INetModule _netModule;
-
-        [SetUp]
-        public void Initialize()
-        {
-            _netModule = new NetModule(LimboLogs.Instance, Substitute.For<INetBridge>());
-        }
-
         [Test]
         public void NetPeerCountSuccessTest()
         {

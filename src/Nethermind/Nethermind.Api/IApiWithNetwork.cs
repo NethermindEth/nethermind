@@ -48,7 +48,7 @@ namespace Nethermind.Api
         IProtocolValidator? ProtocolValidator { get; set; }
         IList<IPublisher> Publishers { get; }
         IRlpxPeer? RlpxPeer { get; set; }
-        IRpcModuleProvider RpcModuleProvider { get; set; }
+        IRpcModuleProvider? RpcModuleProvider { get; set; }
         ISessionMonitor? SessionMonitor { get; set; }
         IStaticNodesManager? StaticNodesManager { get; set; }
         ISynchronizer? Synchronizer { get; set; }

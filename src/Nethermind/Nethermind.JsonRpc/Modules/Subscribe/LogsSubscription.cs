@@ -101,7 +101,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
 
         private List<FilterLog> GetFilterLogs(ReceiptsEventArgs e)
         {
-            List<FilterLog> filterLogs = new List<FilterLog>();
+            List<FilterLog> filterLogs = new();
 
             if (_filter.Matches(e.BlockHeader.Bloom))
             {
@@ -117,7 +117,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
                             var receiptLog = receipt.Logs[j];
                             if (_filter.Accepts(receiptLog))
                             {
-                                FilterLog filterLog = new FilterLog(
+                                FilterLog filterLog = new(
                                     logIndex++,
                                     transactionLogIndex++,
                                     receipt,

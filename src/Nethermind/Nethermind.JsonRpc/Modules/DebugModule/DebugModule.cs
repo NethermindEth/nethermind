@@ -61,7 +61,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
 
         public ResultWrapper<GethLikeTxTrace> debug_traceTransaction(Keccak transactionHash, GethTraceOptions options = null)
         {
-            using CancellationTokenSource cancellationTokenSource = new CancellationTokenSource(_traceTimeout);
+            using CancellationTokenSource cancellationTokenSource = new(_traceTimeout);
             CancellationToken cancellationToken = cancellationTokenSource.Token;
             GethLikeTxTrace transactionTrace = _debugBridge.GetTransactionTrace(transactionHash, cancellationToken, options);
             if (transactionTrace == null)
@@ -75,7 +75,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
 
         public ResultWrapper<GethLikeTxTrace> debug_traceTransactionByBlockhashAndIndex(Keccak blockhash, int index, GethTraceOptions options = null)
         {
-            using CancellationTokenSource cancellationTokenSource = new CancellationTokenSource(_traceTimeout);
+            using CancellationTokenSource cancellationTokenSource = new(_traceTimeout);
             CancellationToken cancellationToken = cancellationTokenSource.Token;
             var transactionTrace = _debugBridge.GetTransactionTrace(blockhash, index, cancellationToken, options);
             if (transactionTrace == null)
@@ -89,7 +89,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
 
         public ResultWrapper<GethLikeTxTrace> debug_traceTransactionByBlockAndIndex(BlockParameter blockParameter, int index, GethTraceOptions options = null)
         {
-            using CancellationTokenSource cancellationTokenSource = new CancellationTokenSource(_traceTimeout);
+            using CancellationTokenSource cancellationTokenSource = new(_traceTimeout);
             CancellationToken cancellationToken = cancellationTokenSource.Token;
             long? blockNo = blockParameter.BlockNumber;
             if (!blockNo.HasValue)
@@ -109,7 +109,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
 
         public ResultWrapper<GethLikeTxTrace> debug_traceTransactionInBlockByHash(byte[] blockRlp, Keccak transactionHash, GethTraceOptions options = null)
         {
-            using CancellationTokenSource cancellationTokenSource = new CancellationTokenSource(_traceTimeout);
+            using CancellationTokenSource cancellationTokenSource = new(_traceTimeout);
             CancellationToken cancellationToken = cancellationTokenSource.Token;
             var transactionTrace = _debugBridge.GetTransactionTrace(new Rlp(blockRlp), transactionHash, cancellationToken, options);
             if (transactionTrace == null)
@@ -122,7 +122,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
         
         public ResultWrapper<GethLikeTxTrace> debug_traceTransactionInBlockByIndex(byte[] blockRlp, int txIndex, GethTraceOptions options = null)
         {
-            using CancellationTokenSource cancellationTokenSource = new CancellationTokenSource(_traceTimeout);
+            using CancellationTokenSource cancellationTokenSource = new(_traceTimeout);
             CancellationToken cancellationToken = cancellationTokenSource.Token;
             var blockTrace = _debugBridge.GetBlockTrace(new Rlp(blockRlp), cancellationToken, options);
             var transactionTrace = blockTrace?.ElementAtOrDefault(txIndex);
@@ -145,7 +145,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
 
         public ResultWrapper<GethLikeTxTrace[]> debug_traceBlock(byte[] blockRlp, GethTraceOptions options = null)
         {
-            using CancellationTokenSource cancellationTokenSource = new CancellationTokenSource(_traceTimeout);
+            using CancellationTokenSource cancellationTokenSource = new(_traceTimeout);
             CancellationToken cancellationToken = cancellationTokenSource.Token;
             var blockTrace = _debugBridge.GetBlockTrace(new Rlp(blockRlp), cancellationToken, options);
             if (blockTrace == null)
@@ -158,7 +158,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
 
         public ResultWrapper<GethLikeTxTrace[]> debug_traceBlockByNumber(UInt256 blockNumber, GethTraceOptions options = null)
         {
-            using CancellationTokenSource cancellationTokenSource = new CancellationTokenSource(_traceTimeout);
+            using CancellationTokenSource cancellationTokenSource = new(_traceTimeout);
             CancellationToken cancellationToken = cancellationTokenSource.Token;
             var blockTrace = _debugBridge.GetBlockTrace((long)blockNumber, cancellationToken, options);
             if (blockTrace == null)
@@ -172,7 +172,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
 
         public ResultWrapper<GethLikeTxTrace[]> debug_traceBlockByHash(Keccak blockHash, GethTraceOptions options = null)
         {
-            using CancellationTokenSource cancellationTokenSource = new CancellationTokenSource(_traceTimeout);
+            using CancellationTokenSource cancellationTokenSource = new(_traceTimeout);
             CancellationToken cancellationToken = cancellationTokenSource.Token;
             GethLikeTxTrace[] gethLikeBlockTrace = _debugBridge.GetBlockTrace(blockHash, cancellationToken, options);
             if (gethLikeBlockTrace == null)
