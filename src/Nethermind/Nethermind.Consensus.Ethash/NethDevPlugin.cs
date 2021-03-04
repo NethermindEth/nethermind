@@ -36,7 +36,7 @@ namespace Nethermind.Consensus.Ethash
     {
         private INethermindApi? _nethermindApi;
 
-        public void Dispose() { }
+        public ValueTask DisposeAsync() { return ValueTask.CompletedTask; }
 
         public string Name => "NethDev";
 

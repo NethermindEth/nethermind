@@ -33,7 +33,7 @@ namespace Nethermind.Analytics
 
         private bool _isOn;
 
-        public void Dispose() { }
+        public ValueTask DisposeAsync() { return ValueTask.CompletedTask; }
 
         public string Name => "Analytics";
 
