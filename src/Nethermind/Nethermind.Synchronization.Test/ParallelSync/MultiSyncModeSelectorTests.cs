@@ -102,13 +102,13 @@ namespace Nethermind.Synchronization.Test.ParallelSync
 
             public class ScenarioBuilder
             {
-                private List<Func<string>> _configActions = new List<Func<string>>();
+                private List<Func<string>> _configActions = new();
 
-                private List<Func<string>> _peeringSetups = new List<Func<string>>();
+                private List<Func<string>> _peeringSetups = new();
 
-                private List<Func<string>> _syncProgressSetups = new List<Func<string>>();
+                private List<Func<string>> _syncProgressSetups = new();
 
-                private List<Action> _overwrites = new List<Action>();
+                private List<Action> _overwrites = new();
 
                 public ISyncPeerPool SyncPeerPool { get; set; }
 
@@ -146,7 +146,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                     SyncConfig.FastSyncCatchUpHeightDelta = FastSyncCatchUpHeightDelta;
                 }
 
-                private List<ISyncPeer> _peers = new List<ISyncPeer>();
+                private List<ISyncPeer> _peers = new();
 
                 private void AddPeeringSetup(string name, params ISyncPeer[] peers)
                 {
@@ -727,7 +727,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                             overwrite.Invoke();
                         }
 
-                        MultiSyncModeSelector selector = new MultiSyncModeSelector(SyncProgressResolver, SyncPeerPool, SyncConfig, LimboLogs.Instance);
+                        MultiSyncModeSelector selector = new(SyncProgressResolver, SyncPeerPool, SyncConfig, LimboLogs.Instance);
                         selector.DisableTimer();
                         selector.Update();
                         selector.Current.Should().Be(syncMode);
@@ -761,7 +761,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
 
             public static ScenarioBuilder GoesLikeThis()
             {
-                return new ScenarioBuilder();
+                return new();
             }
         }
 
@@ -1242,7 +1242,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
             syncProgressResolver.IsFastBlocksFinished().Returns(FastBlocksState.FinishedReceipts);
             syncProgressResolver.ChainDifficulty.Returns(UInt256.Zero);
 
-            List<ISyncPeer> syncPeers = new List<ISyncPeer>();
+            List<ISyncPeer> syncPeers = new();
 
             BlockHeader header = Scenario.ChainHead;
             ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
@@ -1261,7 +1261,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
             ISyncConfig syncConfig = new SyncConfig() {FastSyncCatchUpHeightDelta = 2};
             syncConfig.FastSync = true;
             
-            MultiSyncModeSelector selector = new MultiSyncModeSelector(syncProgressResolver, syncPeerPool, syncConfig, LimboLogs.Instance);
+            MultiSyncModeSelector selector = new(syncProgressResolver, syncPeerPool, syncConfig, LimboLogs.Instance);
             selector.DisableTimer();
             syncProgressResolver.FindBestProcessedBlock().Returns(Scenario.ChainHead.Number);
             selector.Update();
@@ -1308,7 +1308,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
         
         public static FastBlocksFinishedState IsFastBlocksFinished(this ISyncProgressResolver syncProgressResolver)
         {
-            return new FastBlocksFinishedState(syncProgressResolver);
+            return new(syncProgressResolver);
         }
 
         internal class FastBlocksFinishedState
