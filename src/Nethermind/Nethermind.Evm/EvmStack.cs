@@ -23,6 +23,7 @@ using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Evm.Tracing;
+using Newtonsoft.Json.Converters;
 
 namespace Nethermind.Evm
 {
@@ -32,12 +33,12 @@ namespace Nethermind.Evm
         public const int MaxStackSize = 1025;
         public const int ReturnStackSize = 1023;
 
-        public EvmStack(in Span<byte> bytes, in int head, ITxTracer txTracer)
+        public EvmStack(in Span<Word> words, in int head, ITxTracer txTracer)
         {
-            _bytes = bytes;
+            _words = words;
             Head = head;
             _tracer = txTracer;
-            Register = _bytes.Slice(MaxStackSize * 32, 32);
+            Register = MemoryMarshal.CreateSpan(ref Unsafe.As<Word, byte>(ref words[MaxStackSize]), Word.Size);
             Register.Clear();
         }
 
@@ -45,7 +46,7 @@ namespace Nethermind.Evm
 
         public Span<byte> Register;
 
-        private Span<byte> _bytes;
+        private Span<Word> _words;
 
         private ITxTracer _tracer;
 
@@ -53,7 +54,7 @@ namespace Nethermind.Evm
         {
             if (_tracer.IsTracingInstructions) _tracer.ReportStackPush(value);
 
-            Span<byte> word = _bytes.Slice(Head * 32, 32);
+            Span<byte> word = AsSpan(Head);
             if (value.Length != 32)
             {
                 word.Clear();
@@ -75,7 +76,7 @@ namespace Nethermind.Evm
         {
             if (_tracer.IsTracingInstructions) _tracer.ReportStackPush(value);
 
-            Span<byte> word = _bytes.Slice(Head * 32, 32);
+            Span<byte> word = AsSpan(Head);
             if (value.Span.Length != 32)
             {
                 word.Clear();
@@ -97,7 +98,7 @@ namespace Nethermind.Evm
         {
             if (_tracer.IsTracingInstructions) _tracer.ReportStackPush(value);
 
-            Span<byte> word = _bytes.Slice(Head * 32, 32);
+            Span<byte> word = AsSpan(Head);
             word.Clear();
             word[31] = value;
 
@@ -114,8 +115,7 @@ namespace Nethermind.Evm
         {
             if (_tracer.IsTracingInstructions) _tracer.ReportStackPush(OneStackItem);
 
-            int start = Head * 32;
-            Span<byte> word = _bytes.Slice(start, 32);
+            Span<byte> word = AsSpan(Head);
             word.Clear();
             word[31] = 1;
 
@@ -135,7 +135,7 @@ namespace Nethermind.Evm
                 _tracer.ReportStackPush(ZeroStackItem);
             }
 
-            _bytes.Slice(Head * 32, 32).Clear();
+            AsSpan(Head).Clear();
 
             if (++Head >= MaxStackSize)
             {
@@ -144,15 +144,22 @@ namespace Nethermind.Evm
             }
         }
 
-        public void PushUInt32(in int value)
+        public void PushUInt32(int value)
         {
-            Span<byte> word = _bytes.Slice(Head * 32, 28);
-            word.Clear();
+            ref Word word = ref _words[Head];
 
-            Span<byte> intPlace = _bytes.Slice(Head * 32 + 28, 4);
-            BinaryPrimitives.WriteInt32BigEndian(intPlace, value);
+            word = default;
 
-            if (_tracer.IsTracingInstructions) _tracer.ReportStackPush(word);
+            ref byte dest = ref Unsafe.Add(ref Unsafe.As<Word, byte>(ref word), 28);
+
+            if (BitConverter.IsLittleEndian)
+            {
+                value = BinaryPrimitives.ReverseEndianness(value);
+            }
+            
+            Unsafe.WriteUnaligned(ref dest, value);
+            
+            if (_tracer.IsTracingInstructions) _tracer.ReportStackPush(AsSpan(Head));
 
             if (++Head >= MaxStackSize)
             {
@@ -169,7 +176,7 @@ namespace Nethermind.Evm
         /// </remarks>
         public void PushUInt256(in UInt256 value)
         {
-            Span<byte> word = _bytes.Slice(Head * 32, 32);
+            Span<byte> word = AsSpan(Head);
             ref byte bytes = ref word[0];
 
             ulong u3 = value.u3;
@@ -255,7 +262,7 @@ namespace Nethermind.Evm
                 throw new EvmStackUnderflowException();
             }
 
-            return new Address(_bytes.Slice(Head * 32 + 12, 20).ToArray());
+            return new Address(AsSpan(Head).Slice(12).ToArray());
         }
 
         private ref byte PopBytesByRef()
@@ -266,7 +273,7 @@ namespace Nethermind.Evm
                 throw new EvmStackUnderflowException();
             }
 
-            return ref _bytes[Head * 32];
+            return ref Unsafe.As<Word, byte>(ref _words[Head]);
         }
 
         // ReSharper disable once ImplicitlyCapturedClosure
@@ -278,7 +285,7 @@ namespace Nethermind.Evm
                 throw new EvmStackUnderflowException();
             }
 
-            return _bytes.Slice(Head * 32, 32);
+            return AsSpan(Head);
         }
 
         public byte PopByte()
@@ -289,7 +296,7 @@ namespace Nethermind.Evm
                 throw new EvmStackUnderflowException();
             }
 
-            return _bytes[Head * 32 + 31];
+            return Unsafe.Add(ref Unsafe.As<Word, byte>(ref _words[Head]), 31);
         }
 
         public void PushLeftPaddedBytes(Span<byte> value, int paddingLength)
@@ -298,10 +305,10 @@ namespace Nethermind.Evm
 
             if (value.Length != 32)
             {
-                _bytes.Slice(Head * 32, 32).Clear();
+                _words[Head] = default;
             }
 
-            value.CopyTo(_bytes.Slice(Head * 32 + 32 - paddingLength, value.Length));
+            value.CopyTo(AsSpan(Head).Slice(32 - paddingLength, value.Length));
 
             if (++Head >= MaxStackSize)
             {
@@ -314,12 +321,13 @@ namespace Nethermind.Evm
         {
             EnsureDepth(depth);
 
-            _bytes.Slice((Head - depth) * 32, 32).CopyTo(_bytes.Slice(Head * 32, 32));
+            _words[Head] = _words[Head - depth];
+            
             if (_tracer.IsTracingInstructions)
             {
                 for (int i = depth; i >= 0; i--)
                 {
-                    _tracer.ReportStackPush(_bytes.Slice(Head * 32 - i * 32, 32));
+                    _tracer.ReportStackPush(AsSpan(Head - i));
                 }
             }
 
@@ -341,22 +349,20 @@ namespace Nethermind.Evm
 
         public void Swap(int depth)
         {
-            Span<byte> buffer = stackalloc byte[32];
-
             EnsureDepth(depth);
 
-            Span<byte> bottomSpan = _bytes.Slice((Head - depth) * 32, 32);
-            Span<byte> topSpan = _bytes.Slice((Head - 1) * 32, 32);
+            ref Word bottom = ref _words[Head - depth];
+            ref Word top = ref _words[Head - 1];
 
-            bottomSpan.CopyTo(buffer);
-            topSpan.CopyTo(bottomSpan);
-            buffer.CopyTo(topSpan);
+            Word buffer = bottom;
+            bottom = top;
+            top = buffer;
 
             if (_tracer.IsTracingInstructions)
             {
                 for (int i = depth; i > 0; i--)
                 {
-                    _tracer.ReportStackPush(_bytes.Slice(Head * 32 - i * 32, 32));
+                    _tracer.ReportStackPush(AsSpan(Head - i));
                 }
             }
         }
@@ -366,12 +372,15 @@ namespace Nethermind.Evm
             List<string> stackTrace = new List<string>();
             for (int i = 0; i < Head; i++)
             {
-                Span<byte> stackItem = _bytes.Slice(i * 32, 32);
+                Span<byte> stackItem = AsSpan(i);
                 stackTrace.Add(stackItem.ToArray().ToHexString());
             }
 
             return stackTrace;
         }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        Span<byte> AsSpan(int index) => MemoryMarshal.CreateSpan(ref Unsafe.As<Word, byte>(ref _words[index]), Word.Size);
     }
 
     [StructLayout(LayoutKind.Explicit, Size = Size)]
