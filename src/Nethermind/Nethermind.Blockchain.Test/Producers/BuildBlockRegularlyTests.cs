@@ -34,7 +34,7 @@ namespace Nethermind.Blockchain.Test.Producers
             trigger.TriggerBlockProduction += (s, e) => triggered++;
             Thread.Sleep(50);
 
-            triggered.Should().BeInRange(1, 11);
+            triggered.Should().BeInRange(1, 20);
         }
     }
 }
