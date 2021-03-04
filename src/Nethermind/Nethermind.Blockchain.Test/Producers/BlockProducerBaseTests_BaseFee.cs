@@ -1,0 +1,165 @@
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  This file is part of the Nethermind library.
+// 
+//  The Nethermind library is free software: you can redistribute it and/or modify
+//  it under the terms of the GNU Lesser General Public License as published by
+//  the Free Software Foundation, either version 3 of the License, or
+//  (at your option) any later version.
+// 
+//  The Nethermind library is distributed in the hope that it will be useful,
+//  but WITHOUT ANY WARRANTY; without even the implied warranty of
+//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+//  GNU Lesser General Public License for more details.
+// 
+//  You should have received a copy of the GNU Lesser General Public License
+//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
+
+using System.Security;
+using System.Threading.Tasks;
+using Nethermind.Core;
+using Nethermind.Core.Extensions;
+using Nethermind.Core.Test.Builders;
+using Nethermind.Int256;
+using Nethermind.JsonRpc.Test.Modules;
+using Nethermind.Specs;
+using NUnit.Framework;
+
+namespace Nethermind.Blockchain.Test.Producers
+{
+    public partial class BlockProducerBaseTests
+    {
+          public static class BaseFeeTestScenario
+        {
+            public class ScenarioBuilder
+            {
+                private long _eip1559TransitionBlock;
+                private bool _eip1559Enabled;
+                private TestRpcBlockchain _testRpcBlockchain;
+                private Task<ScenarioBuilder> _antecedent;
+                
+                public ScenarioBuilder WithEip1559TransitionBlock(long transitionBlock)
+                {
+                    _eip1559Enabled = true;
+                    _eip1559TransitionBlock = transitionBlock;
+                    return this;
+                }
+
+                private async Task<ScenarioBuilder> CreateTestBlockchainAsync()
+                {
+                    await ExecuteAntecedentIfNeeded();
+                    Address address = TestItem.Addresses[0];
+                    SingleReleaseSpecProvider spec = new SingleReleaseSpecProvider(
+                        new ReleaseSpec()
+                        {
+                            IsEip1559Enabled = _eip1559Enabled, Eip1559TransitionBlock = _eip1559TransitionBlock
+                        }, 1);
+                    BlockBuilder blockBuilder = Core.Test.Builders.Build.A.Block.Genesis.WithGasLimit(10000000000);
+                    _testRpcBlockchain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+                        .WithGenesisBlockBuilder(blockBuilder)
+                        .Build(spec);
+                    _testRpcBlockchain.TestWallet.UnlockAccount(address, new SecureString());
+                    await _testRpcBlockchain.AddFunds(address, 1.Ether());
+                    return this;
+                }
+                
+                public ScenarioBuilder CreateTestBlockchain()
+                {
+                    _antecedent = CreateTestBlockchainAsync();
+                    return this;
+                }
+                
+                public ScenarioBuilder BlocksBeforeTransitionShouldHaveZeroBaseFee()
+                {
+                    _antecedent = BlocksBeforeTransitionShouldHaveZeroBaseFeeAsync();
+                    return this;
+                }
+                
+                public ScenarioBuilder AssertNewBlock(UInt256 expectedBaseFee, params Transaction[] transactions)
+                {
+                    _antecedent = AssertNewBlockAsync(expectedBaseFee, transactions);
+                    return this;
+                }
+                
+                private async Task<ScenarioBuilder> BlocksBeforeTransitionShouldHaveZeroBaseFeeAsync()
+                {
+                    await ExecuteAntecedentIfNeeded();
+                    IBlockTree blockTree = _testRpcBlockchain.BlockTree;
+                    Block? startingBlock = blockTree.Head;
+                    Assert.AreEqual(UInt256.Zero, startingBlock.Header.BaseFee);
+                    for (long i = startingBlock.Number; i < _eip1559TransitionBlock - 1; ++i)
+                    {
+                        await _testRpcBlockchain.AddBlock();
+                        Block? currentBlock = blockTree.Head;
+                        Assert.AreEqual(UInt256.Zero, currentBlock.Header.BaseFee);
+                    }
+
+                    return this;
+                }
+                
+                private async Task<ScenarioBuilder> AssertNewBlockAsync(UInt256 expectedBaseFee, params Transaction[] transactions)
+                {
+                    await ExecuteAntecedentIfNeeded();
+                    await _testRpcBlockchain.AddBlock(transactions);
+                    IBlockTree blockTree = _testRpcBlockchain.BlockTree;
+                    Block? startingBlock = blockTree.Head;
+                    Assert.AreEqual(expectedBaseFee, startingBlock.Header.BaseFee);
+
+                    return this;
+                }
+
+                private async Task ExecuteAntecedentIfNeeded()
+                {
+                    if (_antecedent != null)
+                        await _antecedent;
+                }
+
+                public async Task Finish()
+                {
+                    await ExecuteAntecedentIfNeeded();
+                }
+            }
+            
+            public static ScenarioBuilder GoesLikeThis()
+            {
+                return new ScenarioBuilder();
+            }
+        }
+
+        [Test]
+        public async Task BlockProducer_has_blocks_with_zero_base_fee_before_fork()
+        {
+            BaseFeeTestScenario.ScenarioBuilder scenario = BaseFeeTestScenario.GoesLikeThis()
+                .WithEip1559TransitionBlock(5)
+                .CreateTestBlockchain()
+                .BlocksBeforeTransitionShouldHaveZeroBaseFee();
+            await scenario.Finish();
+        }
+        
+        [Test]
+        public async Task BlockProducer_returns_correct_fork_base_fee()
+        {
+            BaseFeeTestScenario.ScenarioBuilder scenario = BaseFeeTestScenario.GoesLikeThis()
+                .WithEip1559TransitionBlock(7)
+                .CreateTestBlockchain()
+                .BlocksBeforeTransitionShouldHaveZeroBaseFee()
+                .AssertNewBlock(Eip1559Constants.ForkBaseFee);
+            await scenario.Finish();
+        }
+        
+        [Test]
+        public async Task BlockProducer_returns_correctly_decreases_base_fee_on_empty_blocks()
+        {
+            BaseFeeTestScenario.ScenarioBuilder scenario = BaseFeeTestScenario.GoesLikeThis()
+                .WithEip1559TransitionBlock(6)
+                .CreateTestBlockchain()
+                .BlocksBeforeTransitionShouldHaveZeroBaseFee()
+                .AssertNewBlock(Eip1559Constants.ForkBaseFee)
+                .AssertNewBlock(875000000)
+                .AssertNewBlock(765625000)
+                .AssertNewBlock(669921875)
+                .AssertNewBlock(586181641);
+            await scenario.Finish();
+        }
+    }
+}

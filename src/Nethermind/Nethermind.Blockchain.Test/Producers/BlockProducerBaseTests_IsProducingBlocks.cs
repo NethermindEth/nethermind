@@ -44,7 +44,7 @@ using NUnit.Framework;
 namespace Nethermind.Blockchain.Test.Producers
 {
     [Parallelizable(ParallelScope.All)]
-    public class BlockProducerTests
+    public partial class BlockProducerBaseTests
     {
         [Test]
         public async Task DevBlockProducer_IsProducingBlocks_returns_expected_results()

@@ -135,8 +135,6 @@ namespace Nethermind.Core
             FullHashAndNumber
         }
         
-        private static readonly UInt256 BaseFeeMaxChangeDenominator = 8;
-        
         public static UInt256 CalculateBaseFee(BlockHeader parent, IReleaseSpec spec)
         {
             UInt256 expectedBaseFee = UInt256.Zero;
@@ -168,20 +166,20 @@ namespace Nethermind.Core
                 {
                     gasDelta = parent.GasUsed - parentGasTarget;
                     feeDelta = UInt256.Max(
-                        parentBaseFee * (UInt256) gasDelta / (UInt256) parentGasTarget / BaseFeeMaxChangeDenominator,
+                        parentBaseFee * (UInt256) gasDelta / (UInt256) parentGasTarget / Eip1559Constants.BaseFeeMaxChangeDenominator,
                         UInt256.One);
                     expectedBaseFee = parentBaseFee + feeDelta;
                 }
                 else
                 {
                     gasDelta = parentGasTarget - parent.GasUsed;
-                    feeDelta = parentBaseFee * (UInt256) gasDelta / (UInt256) parentGasTarget / BaseFeeMaxChangeDenominator;
+                    feeDelta = parentBaseFee * (UInt256) gasDelta / (UInt256) parentGasTarget / Eip1559Constants.BaseFeeMaxChangeDenominator;
                     expectedBaseFee = parentBaseFee - feeDelta;
                 }
 
                 if (spec.Eip1559TransitionBlock == parent.Number + 1)
                 {
-                    expectedBaseFee = 1.GWei();
+                    expectedBaseFee = Eip1559Constants.ForkBaseFee;
                 }
             }
 
