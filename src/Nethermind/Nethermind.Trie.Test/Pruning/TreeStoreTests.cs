@@ -66,10 +66,13 @@ namespace Nethermind.Trie.Test.Pruning
             TrieStore trieStore = new(new MemDb(), No.Pruning, Archive.Instance, _logManager);
             trieStore.ReorgBoundaryReached += (_, e) => reorgBoundaryCount += e.BlockNumber;
             trieStore.FinishBlockCommit(TrieType.State, 1, trieNode);
+            reorgBoundaryCount.Should().Be(0);
             trieStore.FinishBlockCommit(TrieType.State, 2, trieNode);
+            reorgBoundaryCount.Should().Be(1);
             trieStore.FinishBlockCommit(TrieType.State, 3, trieNode);
+            reorgBoundaryCount.Should().Be(3);
             trieStore.FinishBlockCommit(TrieType.State, 4, trieNode);
-            reorgBoundaryCount.Should().Be(10L);
+            reorgBoundaryCount.Should().Be(6);
         }
 
         [Test]
