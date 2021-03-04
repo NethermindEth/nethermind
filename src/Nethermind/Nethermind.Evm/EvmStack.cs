@@ -373,4 +373,10 @@ namespace Nethermind.Evm
             return stackTrace;
         }
     }
+
+    [StructLayout(LayoutKind.Explicit, Size = Size)]
+    public struct Word
+    {
+        public const int Size = 32;
+    }
 }

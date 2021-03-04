@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -595,7 +595,7 @@ namespace Nethermind.Evm
             }
 
             vmState.InitStacks();
-            EvmStack stack = new(vmState.DataStack.AsSpan(), vmState.DataStackHead, _txTracer);
+            EvmStack stack = new(MemoryMarshal.AsBytes(vmState.DataStack.AsSpan()), vmState.DataStackHead, _txTracer);
             long gasAvailable = vmState.GasAvailable;
             int programCounter = vmState.ProgramCounter;
             Span<byte> code = env.CodeInfo.MachineCode.AsSpan();
