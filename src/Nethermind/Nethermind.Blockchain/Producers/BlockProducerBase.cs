@@ -202,7 +202,7 @@ namespace Nethermind.Blockchain.Producers
         {
             UInt256 timestamp = UInt256.Max(parent.Timestamp + 1, _timestamper.UnixTime.Seconds);
             UInt256 difficulty = CalculateDifficulty(parent, timestamp);
-            BlockHeader header = new BlockHeader(
+            BlockHeader header = new(
                 parent.Hash,
                 Keccak.OfAnEmptySequenceRlp,
                 _sealer.Address,

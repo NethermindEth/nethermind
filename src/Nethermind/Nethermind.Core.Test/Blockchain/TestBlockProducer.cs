@@ -23,6 +23,7 @@ using Nethermind.Blockchain.Producers;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Transactions;
+using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
@@ -41,6 +42,7 @@ namespace Nethermind.Core.Test.Blockchain
             IBlockProcessingQueue blockProcessingQueue,
             ITimestamper timestamper,
             IBlockPreparationContextService blockPreparationContextService,
+            ISpecProvider specProvider,
             ILogManager logManager)
             : base(
                 transactionSource,
@@ -51,7 +53,7 @@ namespace Nethermind.Core.Test.Blockchain
                 stateProvider,
                 timestamper,
                 FollowOtherMiners.Instance,
-                MainnetSpecProvider.Instance,
+                specProvider,
                 blockPreparationContextService,
                 logManager,
                 "test producer")

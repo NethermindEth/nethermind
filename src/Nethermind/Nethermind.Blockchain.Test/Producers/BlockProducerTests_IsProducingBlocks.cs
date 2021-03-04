@@ -78,6 +78,7 @@ namespace Nethermind.Blockchain.Test.Producers
                 Substitute.For<IBlockProcessingQueue>(),
                 testRpc.Timestamper,
                 new BlockPreparationContextService(),
+                testRpc.SpecProvider,
                 LimboLogs.Instance);
             await AssertIsProducingBlocks(blockProducer);
         }

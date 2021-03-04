@@ -16,6 +16,7 @@
 // 
 
 using System;
+using System.Security;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain.Processing;
@@ -23,10 +24,13 @@ using Nethermind.Blockchain.Producers;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
+using Nethermind.JsonRpc.Test.Modules;
 using Nethermind.Logging;
 using Nethermind.Specs;
+using Nethermind.Specs.Forks;
 using Nethermind.State;
 using NSubstitute;
 using NUnit.Framework;
@@ -104,6 +108,21 @@ namespace Nethermind.Blockchain.Test.Producers
             ulong futureTime = UnixTime.FromSeconds(TimeSpan.FromDays(1).TotalSeconds).Seconds;
             Block block = producerUnderTest.Prepare(Build.A.BlockHeader.WithTimestamp(futureTime).TestObject);
             block.Timestamp.Should().BeEquivalentTo(block.Difficulty);
+        }
+
+        [Test]
+        public async Task test()
+        {
+            var address = TestItem.Addresses[0];
+            var spec = new SingleReleaseSpecProvider(new ReleaseSpec() {IsEip1559Enabled = true, Eip1559TransitionBlock = 1 }, 1);
+            var blockBuilder = Core.Test.Builders.Build.A.Block.Genesis.WithGasLimit(10000000000);
+            var testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+                .WithGenesisBlockBuilder(blockBuilder)
+                .Build(spec);
+            testRpc.TestWallet.UnlockAccount(address, new SecureString());
+            await testRpc.AddFunds(address, 1.Ether());
+
+            await testRpc.AddBlock();
         }
     }
 }
