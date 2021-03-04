@@ -33,7 +33,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         private readonly BlockDecoder _blockDecoder = new BlockDecoder();
         private readonly bool _isAuRaBlock;
 
-        public BlockForRpc(Block block, bool includeFullTransactionData, ISpecProvider? specProvider)
+        public BlockForRpc(Block block, bool includeFullTransactionData, ISpecProvider? specProvider = null)
         {
             _isAuRaBlock = block.Header.AuRaSignature != null;
             Author = block.Author ?? block.Beneficiary;

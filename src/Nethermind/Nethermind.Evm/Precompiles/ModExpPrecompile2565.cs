@@ -107,7 +107,7 @@ namespace Nethermind.Evm.Precompiles
         private UInt256 MultComplexity(int baseLength, int modulusLength)
         {
             int maxLength = Math.Max(baseLength, modulusLength);
-            UInt256 words = maxLength / 8 + maxLength % 8 == 0 ? 0 : 1;
+            UInt256 words = maxLength / 8 + maxLength % 8 == 0 ? UInt256.Zero : UInt256.One;
             return words * words;
         }
 

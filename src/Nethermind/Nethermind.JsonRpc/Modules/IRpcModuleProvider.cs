@@ -31,7 +31,7 @@ namespace Nethermind.JsonRpc.Modules
         
         IReadOnlyCollection<ModuleType> All { get; }
 
-        ModuleResolution Check(string methodName);
+        ModuleResolution Check(string methodName, RpcEndpoint rpcEndpoint);
         
         (MethodInfo MethodInfo, bool ReadOnly) Resolve(string methodName);
         

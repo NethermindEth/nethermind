@@ -33,14 +33,22 @@ namespace Nethermind.JsonRpc.Test
         {
             IJsonRpcService service = BuildRpcService(module);
             JsonRpcRequest request = GetJsonRequest(method, parameters);
-            return service.SendRequestAsync(request).Result;
+            return service.SendRequestAsync(request, JsonRpcContext.Http).Result;
         }
         
         public static string TestSerializedRequest<T>(IReadOnlyCollection<JsonConverter> converters, T module, string method, params string[] parameters) where T : class, IModule
         {
             IJsonRpcService service = BuildRpcService(module);
             JsonRpcRequest request = GetJsonRequest(method, parameters);
-            JsonRpcResponse response = service.SendRequestAsync(request).Result;
+            
+            JsonRpcContext context = JsonRpcContext.Http;
+            if (module is IContextAwareModule contextAwareModule
+                && contextAwareModule.Context != null)
+            {
+                context = contextAwareModule.Context;
+            }
+            JsonRpcResponse response = service.SendRequestAsync(request, context).Result;
+            
             EthereumJsonSerializer serializer = new EthereumJsonSerializer();
             foreach (JsonConverter converter in converters)
             {

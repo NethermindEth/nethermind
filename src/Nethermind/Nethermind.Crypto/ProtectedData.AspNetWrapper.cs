@@ -17,7 +17,6 @@
 
 using System;
 using System.IO;
-using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using Microsoft.AspNetCore.DataProtection;
 
@@ -30,21 +29,21 @@ namespace Nethermind.Crypto
             private const string AppName = "Nethermind";
             private const string BaseName = AppName + "_";
 
-            public byte[] Protect(byte[] userData, byte[] optionalEntropy)
+            public byte[] Protect(byte[] userData, byte[] optionalEntropy, DataProtectionScope scope)
             {
-                var protector = GetProtector(optionalEntropy);
+                var protector = GetProtector(scope, optionalEntropy);
                 return protector.Protect(userData);
             }
 
-            public byte[] Unprotect(byte[] encryptedData, byte[] optionalEntropy)
+            public byte[] Unprotect(byte[] encryptedData, byte[] optionalEntropy, DataProtectionScope scope)
             {
-                var protector = GetProtector(optionalEntropy);
+                var protector = GetProtector(scope, optionalEntropy);
                 return protector.Unprotect(encryptedData);
             }
 
-            private IDataProtector GetProtector(byte[] optionalEntropy)
+            private IDataProtector GetProtector(DataProtectionScope scope, byte[] optionalEntropy)
             {
-                if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+                if (scope == DataProtectionScope.CurrentUser)
                 {
                     return GetUserProtector(optionalEntropy);
                 }

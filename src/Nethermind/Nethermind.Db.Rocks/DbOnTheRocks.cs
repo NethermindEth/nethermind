@@ -39,7 +39,7 @@ namespace Nethermind.Db.Rocks
 
         private readonly HashSet<IBatch> _currentBatches = new();
         
-        internal readonly RocksDb Db;
+        internal readonly RocksDb? Db;
         internal WriteOptions? WriteOptions { get; private set; }
 
         public abstract string Name { get; protected set; }
@@ -137,12 +137,12 @@ namespace Nethermind.Db.Rocks
                 Metrics.OtherDbWrites++;
         }
 
-        private T? ReadConfig<T>(IDbConfig dbConfig, string propertyName)
+        private T ReadConfig<T>(IDbConfig dbConfig, string propertyName)
         {
             return ReadConfig<T>(dbConfig, propertyName, Name);
         }
 
-        protected static T? ReadConfig<T>(IDbConfig dbConfig, string propertyName, string tableName)
+        protected static T ReadConfig<T>(IDbConfig dbConfig, string propertyName, string tableName)
         {
             string prefixed = string.Concat(tableName == "State" ? string.Empty : string.Concat(tableName, "Db"),
                 propertyName);
