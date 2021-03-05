@@ -32,8 +32,6 @@
     "eip1884Transition": "0x52efd1",
     "eip2028Transition": "0x52efd1",
     "eip2200Transition": "0x52efd1",
-    "eip2315Transition": "0x7E8270",
-    "eip2537Transition": "0x7E8270",
     "eip2565Transition": "0x7E8270",
     "eip2718Transition": "0x7E8270",
     "eip2929Transition": "0x7E8270",

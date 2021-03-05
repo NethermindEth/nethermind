@@ -30,8 +30,8 @@ namespace Nethermind.Specs.Test
         [TestCase(4_460_644, true)]
         public void Goerli_berlin_eips(long blockNumber, bool isEnabled)
         {
-            _specProvider.GetSpec(blockNumber).IsEip2315Enabled.Should().Be(isEnabled);
-            _specProvider.GetSpec(blockNumber).IsEip2537Enabled.Should().Be(isEnabled);
+            _specProvider.GetSpec(blockNumber).IsEip2315Enabled.Should().Be(false);
+            _specProvider.GetSpec(blockNumber).IsEip2537Enabled.Should().Be(false);
             _specProvider.GetSpec(blockNumber).IsEip2565Enabled.Should().Be(isEnabled);
             _specProvider.GetSpec(blockNumber).IsEip2718Enabled.Should().Be(isEnabled);
             _specProvider.GetSpec(blockNumber).IsEip2929Enabled.Should().Be(isEnabled);
