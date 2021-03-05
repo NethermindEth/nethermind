@@ -36,7 +36,7 @@ namespace Nethermind.Consensus.Transactions
         public (bool Allowed, string Reason) IsAllowed(Transaction tx, BlockHeader parentHeader)
         {
             bool isEip1559Enabled = _specProvider.GetSpec(_blockPreparationContextService.BlockNumber).IsEip1559Enabled;
-            bool allowed = !isEip1559Enabled || tx.FeeCap >= _blockPreparationContextService.BaseFee + tx.GasPremium;
+            bool allowed = !isEip1559Enabled || tx.FeeCap >= _blockPreparationContextService.BaseFee;
             return (allowed,
                 allowed
                     ? string.Empty

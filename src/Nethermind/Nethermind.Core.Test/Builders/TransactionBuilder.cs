@@ -88,6 +88,18 @@ namespace Nethermind.Core.Test.Builders
             TestObjectInternal.GasLimit = gasLimit;
             return this;
         }
+        
+        public TransactionBuilder<T> WithFeeCap(UInt256 feeCap)
+        {
+            TestObjectInternal.DecodedFeeCap = feeCap;
+            return this;
+        }
+        
+        public TransactionBuilder<T> WithGasPremium(UInt256 gasPremium)
+        {
+            TestObjectInternal.GasPrice = gasPremium;
+            return this;
+        }
 
         public TransactionBuilder<T> WithTimestamp(UInt256 timestamp)
         {

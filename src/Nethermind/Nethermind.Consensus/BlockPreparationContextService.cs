@@ -20,14 +20,6 @@ using Nethermind.Int256;
 
 namespace Nethermind.Consensus
 {
-    public interface IBlockPreparationContextService
-    {
-        void SetContext(UInt256 baseFee, long blockNumber);
-        public UInt256 BaseFee { get; }
-        
-        public long BlockNumber { get; }
-    }
-
     public class BlockPreparationContextService : IBlockPreparationContextService
     {
         private BlockPreparationContext? _currentContext;
