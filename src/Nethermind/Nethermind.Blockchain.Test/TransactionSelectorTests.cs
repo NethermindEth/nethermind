@@ -183,7 +183,43 @@ namespace Nethermind.Blockchain.Test
                 baseFeeGreaterThanGasPrice.BaseFee = 1.GWei();
                 yield return new TestCaseData(baseFeeGreaterThanGasPrice).SetName("Legacy transactions: None transactions selected - BaseFee greater than gas price");
                 
-                // ToDo check balance
+                ProperTransactionsSelectedTestCase baseFeeBalanceCheck = new ProperTransactionsSelectedTestCase()
+                {
+                    Eip1559Enabled = true,
+                    BaseFee = 5,
+                    AccountStates = {{TestItem.AddressA, (1000, 1)}},
+                    Transactions =
+                    {
+                        Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithNonce(3)
+                            .WithGasPrice(60).WithGasLimit(10).SignedAndResolved(TestItem.PrivateKeyA).TestObject,
+                        Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithNonce(1)
+                            .WithGasPrice(30).WithGasLimit(10).SignedAndResolved(TestItem.PrivateKeyA).TestObject,
+                        Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithNonce(2)
+                            .WithGasPrice(20).WithGasLimit(10).SignedAndResolved(TestItem.PrivateKeyA).TestObject
+                    },
+                    GasLimit = 10000000
+                };
+                baseFeeBalanceCheck.ExpectedSelectedTransactions.AddRange(
+                    new[] {1, 2 }.Select(i => baseFeeBalanceCheck.Transactions[i]));
+                yield return new TestCaseData(baseFeeBalanceCheck).SetName("Legacy transactions: two transactions selected because of account balance");
+                
+                ProperTransactionsSelectedTestCase balanceCheckWithTxValue = new ProperTransactionsSelectedTestCase()
+                {
+                    Eip1559Enabled = true,
+                    BaseFee = 5,
+                    AccountStates = {{TestItem.AddressA, (300, 1)}},
+                    Transactions =
+                    {
+                        Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithNonce(2)
+                            .WithGasPrice(5).WithGasLimit(10).SignedAndResolved(TestItem.PrivateKeyA).TestObject,
+                        Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithNonce(1)
+                            .WithGasPrice(20).WithGasLimit(10).WithValue(100).SignedAndResolved(TestItem.PrivateKeyA).TestObject
+                    },
+                    GasLimit = 10000000
+                };
+                balanceCheckWithTxValue.ExpectedSelectedTransactions.AddRange(
+                    new[] {1 }.Select(i => balanceCheckWithTxValue.Transactions[i]));
+                yield return new TestCaseData(balanceCheckWithTxValue).SetName("Legacy transactions: one transaction selected because of account balance");
             }
         }
         
@@ -206,6 +242,42 @@ namespace Nethermind.Blockchain.Test
                 ProperTransactionsSelectedTestCase baseFeeGreaterThanGasPrice = ProperTransactionsSelectedTestCase.Eip1559Default;
                 baseFeeGreaterThanGasPrice.BaseFee = 1.GWei();
                 yield return new TestCaseData(baseFeeGreaterThanGasPrice).SetName("EIP1559 transactions: None transactions selected - BaseFee greater than gas price");
+                
+                ProperTransactionsSelectedTestCase balanceCheckWithTxValue = new ProperTransactionsSelectedTestCase()
+                {
+                    Eip1559Enabled = true,
+                    BaseFee = 5,
+                    AccountStates = {{TestItem.AddressA, (400, 1)}},
+                    Transactions =
+                    {
+                        Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithNonce(2)
+                            .WithFeeCap(4).WithGasLimit(10).SignedAndResolved(TestItem.PrivateKeyA).TestObject,
+                        Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithNonce(1)
+                            .WithFeeCap(50).WithGasLimit(10).WithValue(100).SignedAndResolved(TestItem.PrivateKeyA).TestObject
+                    },
+                    GasLimit = 10000000
+                };
+                balanceCheckWithTxValue.ExpectedSelectedTransactions.AddRange(
+                    new[] { 1 }.Select(i => balanceCheckWithTxValue.Transactions[i]));
+                yield return new TestCaseData(balanceCheckWithTxValue).SetName("EIP1559 transactions: one transaction selected because of account balance");
+                
+                ProperTransactionsSelectedTestCase balanceCheckWithGasPremium = new ProperTransactionsSelectedTestCase()
+                {
+                    Eip1559Enabled = true,
+                    BaseFee = 5,
+                    AccountStates = {{TestItem.AddressA, (400, 1)}},
+                    Transactions =
+                    {
+                        Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithNonce(2)
+                            .WithFeeCap(5).WithGasLimit(10).SignedAndResolved(TestItem.PrivateKeyA).TestObject,
+                        Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithNonce(1)
+                            .WithFeeCap(50).WithGasPremium(25).WithGasLimit(10).WithValue(60).SignedAndResolved(TestItem.PrivateKeyA).TestObject
+                    },
+                    GasLimit = 10000000
+                };
+                balanceCheckWithGasPremium.ExpectedSelectedTransactions.AddRange(
+                    new[] { 1 }.Select(i => balanceCheckWithGasPremium.Transactions[i]));
+                yield return new TestCaseData(balanceCheckWithGasPremium).SetName("EIP1559 transactions: one transaction selected because of account balance and miner tip");
             }
         }
 
