@@ -31,6 +31,7 @@ namespace Ethereum.Blockchain.Test
         public void All_categories_are_tested()
         {
             string[] directories = Directory.GetDirectories(AppDomain.CurrentDomain.BaseDirectory)
+                .Union(Directory.GetDirectories(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "VMTests")))
                 .Select(Path.GetFileName)
                 .ToArray();
             Type[] types = GetType().Assembly.GetTypes();
@@ -39,14 +40,14 @@ namespace Ethereum.Blockchain.Test
             {
                 string expectedTypeName = ExpectedTypeName(directory);
                 Type type = types.SingleOrDefault(t => string.Equals(t.Name, expectedTypeName, StringComparison.InvariantCultureIgnoreCase));
-                if(type == null && directory != "stEWASMTests" && directory != "Specs" && directory != "runtimes" && directory != "ref")
+                if(type == null && directory != "stEWASMTests" && directory != "VMTests" && directory != "Specs" && directory != "runtimes" && directory != "ref")
                 {
                     if (new DirectoryInfo(directory).GetFiles().Any(f => f.Name.Contains(".resources.")))
                     {
                         continue;
                     }
                     
-                    missingCategories.Add(directory);
+                    missingCategories.Add(directory + " - " + expectedTypeName);
                 }
             }
 
@@ -73,6 +74,11 @@ namespace Ethereum.Blockchain.Test
                 }
             }
 
+            if (directory.StartsWith("vm"))
+            {
+                return "Vm" + expectedTypeName;    
+            }
+            
             return expectedTypeName;
         }
     }
