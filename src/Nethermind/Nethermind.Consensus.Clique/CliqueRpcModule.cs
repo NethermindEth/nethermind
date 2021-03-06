@@ -156,8 +156,13 @@ namespace Nethermind.Consensus.Clique
             return ResultWrapper<string[]>.Success(GetSignersAnnotated(hash).ToArray());
         }
         
-        public ResultWrapper<Address> clique_getBlockSigner(Keccak hash)
+        public ResultWrapper<Address?> clique_getBlockSigner(Keccak? hash)
         {
+            if (hash is null)
+            {
+                return ResultWrapper<Address>.Fail($"Hash parameter cannot be null");    
+            }
+            
             BlockHeader? header = _blockTree.FindHeader(hash);
             if (header == null)
             {

@@ -23,7 +23,6 @@ using Nethermind.Consensus.Clique;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Db;
@@ -89,6 +88,15 @@ namespace Nethermind.Clique.Test
             blockFinder.FindHeader(Arg.Any<Keccak>()).Returns((BlockHeader)null);
             CliqueRpcModule module = new CliqueRpcModule(Substitute.For<ICliqueBlockProducer>(), snapshotManager, blockFinder);
             module.clique_getBlockSigner(Keccak.Zero).Result.ResultType.Should().Be(ResultType.Failure);
+        }
+        
+        [Test]
+        public void Can_ask_for_block_signer_when_hash_is_null()
+        {
+            ISnapshotManager snapshotManager = Substitute.For<ISnapshotManager>();
+            IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+            CliqueRpcModule module = new CliqueRpcModule(Substitute.For<ICliqueBlockProducer>(), snapshotManager, blockFinder);
+            module.clique_getBlockSigner(null).Result.ResultType.Should().Be(ResultType.Failure);
         }
     }
 }
