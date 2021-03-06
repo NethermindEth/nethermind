@@ -56,7 +56,7 @@ namespace Nethermind.Evm.Test.Tracing
                 .PushData(SampleHexData1)
                 .Done;
 
-            SenderRecipientAndMiner addresses = new SenderRecipientAndMiner();
+            SenderRecipientAndMiner addresses = new();
             addresses.RecipientKey = SenderKey;
             addresses.MinerKey = SenderKey;
             (ProofTxTracer trace, _, _) = ExecuteAndTraceProofCall(addresses, code);
@@ -283,7 +283,7 @@ namespace Nethermind.Evm.Test.Tracing
         protected (ProofTxTracer trace, Block block, Transaction transaction) ExecuteAndTraceProofCall(SenderRecipientAndMiner addresses, params byte[] code)
         {
             (Block block, Transaction transaction) = PrepareTx(BlockNumber, 100000, code, addresses);
-            ProofTxTracer tracer = new ProofTxTracer(_treatSystemAccountDifferently);
+            ProofTxTracer tracer = new(_treatSystemAccountDifferently);
             _processor.Execute(transaction, block.Header, tracer);
             return (tracer, block, transaction);
         }

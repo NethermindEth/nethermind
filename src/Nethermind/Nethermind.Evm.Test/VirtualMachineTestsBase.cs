@@ -51,7 +51,7 @@ namespace Nethermind.Evm.Test
         protected IStateProvider TestState { get; private set; }
         protected IStorageProvider Storage { get; private set; }
 
-        protected static Address Contract { get; } = new Address("0xd75a3a95360e44a3874e691fb48d77855f127069");
+        protected static Address Contract { get; } = new("0xd75a3a95360e44a3874e691fb48d77855f127069");
         protected static Address Sender { get; } = TestItem.AddressA;
         protected static Address Recipient { get; } = TestItem.AddressB;
         protected static Address Miner { get; } = TestItem.AddressD;
@@ -74,7 +74,7 @@ namespace Nethermind.Evm.Test
         {
             ILogManager logManager = GetLogManager();
 
-            MemDb beamStateDb = new MemDb();
+            MemDb beamStateDb = new();
             IDb beamSyncDb = new BeamSyncDb(new MemDb(), beamStateDb, StaticSelector.Full, logManager);
             IDb beamSyncCodeDb = new BeamSyncDb(new MemDb(), beamStateDb, StaticSelector.Full, logManager);
             IDb codeDb = UseBeamSync ? beamSyncCodeDb : new MemDb();
@@ -90,7 +90,7 @@ namespace Nethermind.Evm.Test
 
         protected GethLikeTxTrace ExecuteAndTrace(params byte[] code)
         {
-            GethLikeTxTracer tracer = new GethLikeTxTracer(GethTraceOptions.Default);
+            GethLikeTxTracer tracer = new(GethTraceOptions.Default);
             (var block, var transaction) = PrepareTx(BlockNumber, 100000, code);
             _processor.Execute(transaction, block.Header, tracer);
             return tracer.BuildResult();
@@ -98,7 +98,7 @@ namespace Nethermind.Evm.Test
 
         protected GethLikeTxTrace ExecuteAndTrace(long blockNumber, long gasLimit, params byte[] code)
         {
-            GethLikeTxTracer tracer = new GethLikeTxTracer(GethTraceOptions.Default);
+            GethLikeTxTracer tracer = new(GethTraceOptions.Default);
             (var block, var transaction) = PrepareTx(blockNumber, gasLimit, code);
             _processor.Execute(transaction, block.Header, tracer);
             return tracer.BuildResult();
@@ -107,7 +107,7 @@ namespace Nethermind.Evm.Test
         protected TestAllTracerWithOutput Execute(params byte[] code)
         {
             (var block, var transaction) = PrepareTx(BlockNumber, 100000, code);
-            TestAllTracerWithOutput tracer = new TestAllTracerWithOutput();
+            TestAllTracerWithOutput tracer = new();
             _processor.Execute(transaction, block.Header, tracer);
             return tracer;
         }
@@ -122,7 +122,7 @@ namespace Nethermind.Evm.Test
         protected TestAllTracerWithOutput Execute(long blockNumber, long gasLimit, byte[] code)
         {
             (var block, var transaction) = PrepareTx(blockNumber, gasLimit, code);
-            TestAllTracerWithOutput tracer = new TestAllTracerWithOutput();
+            TestAllTracerWithOutput tracer = new();
             _processor.Execute(transaction, block.Header, tracer);
             return tracer;
         }
