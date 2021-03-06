@@ -86,6 +86,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 ethStatsConfig.Secret,
                 ethStatsClient,
                 sender,
+                _get.TxPool,
                 _get.BlockTree,
                 _get.PeerManager,
                 _get.LogManager);

@@ -27,6 +27,7 @@ using Nethermind.EthStats.Messages;
 using Nethermind.EthStats.Messages.Models;
 using Nethermind.Logging;
 using Nethermind.Network;
+using Nethermind.TxPool;
 using Websocket.Client;
 using Block = Nethermind.Core.Block;
 using Transaction = Nethermind.EthStats.Messages.Models.Transaction;
@@ -47,6 +48,7 @@ namespace Nethermind.EthStats.Integrations
         private readonly string _secret;
         private readonly IEthStatsClient _ethStatsClient;
         private readonly IMessageSender _sender;
+        private readonly ITxPool _txPool;
         private readonly IBlockTree _blockTree;
         private readonly IPeerManager _peerManager;
         private readonly ILogger _logger;
@@ -57,9 +59,23 @@ namespace Nethermind.EthStats.Integrations
         private const int ThrottlingThreshold = 25;
         private const int SendStatsInterval = 1000;
 
-        public EthStatsIntegration(string name, string node, int port, string network, string protocol, string api,
-            string client, string contact, bool canUpdateHistory, string secret, IEthStatsClient ethStatsClient,
-            IMessageSender sender, IBlockTree blockTree, IPeerManager peerManager, ILogManager logManager)
+        public EthStatsIntegration(
+            string name,
+            string node,
+            int port,
+            string network,
+            string protocol,
+            string api,
+            string client,
+            string contact,
+            bool canUpdateHistory,
+            string secret,
+            IEthStatsClient? ethStatsClient,
+            IMessageSender? sender,
+            ITxPool? txPool,
+            IBlockTree? blockTree,
+            IPeerManager? peerManager,
+            ILogManager? logManager)
         {
             _name = name;
             _node = node;
@@ -71,11 +87,12 @@ namespace Nethermind.EthStats.Integrations
             _contact = contact;
             _canUpdateHistory = canUpdateHistory;
             _secret = secret;
-            _ethStatsClient = ethStatsClient;
-            _sender = sender;
-            _blockTree = blockTree;
-            _peerManager = peerManager;
-            _logger = logManager.GetClassLogger();
+            _ethStatsClient = ethStatsClient ?? throw new ArgumentNullException(nameof(ethStatsClient));
+            _sender = sender ?? throw new ArgumentNullException(nameof(sender));
+            _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
+            _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
+            _peerManager = peerManager ?? throw new ArgumentNullException(nameof(peerManager));
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
         public async Task InitAsync()
@@ -150,7 +167,7 @@ namespace Nethermind.EthStats.Integrations
             if (_logger.IsDebug) _logger.Debug("ETH Stats sending 'block', 'pending' messages...");
             _lastBlockProcessedTimestamp = timestamp;
             SendBlockAsync(block);
-            SendPendingAsync(block.Transactions.Length);
+            SendPendingAsync(_txPool.GetPendingTransactionsCount());
         }
 
         public void Dispose()

@@ -25,7 +25,6 @@ using System.Timers;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Int256;
@@ -139,8 +138,8 @@ namespace Nethermind.TxPool
             ITxPoolConfig txPoolConfig,
             IReadOnlyStateProvider stateProvider,
             ITxValidator validator,
-            ILogManager logManager,
-            IComparer<Transaction> comparer = null)
+            ILogManager? logManager,
+            IComparer<Transaction>? comparer = null)
         {
             _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
@@ -165,6 +164,8 @@ namespace Nethermind.TxPool
         }
 
         public Transaction[] GetPendingTransactions() => _transactions.GetSnapshot();
+        
+        public int GetPendingTransactionsCount() => _transactions.Count;
 
         public IDictionary<Address, Transaction[]> GetPendingTransactionsBySender() =>
             _transactions.GetBucketSnapshot();
@@ -212,6 +213,11 @@ namespace Nethermind.TxPool
 
         private AddTxResult AddCore(Transaction tx, bool isPersistentBroadcast)
         {
+            if (tx.Hash is null)
+            {
+                return AddTxResult.Invalid;
+            }
+            
             // !!! do not change it to |=
             bool isKnown = _hashCache.Get(tx.Hash);
 
@@ -229,7 +235,7 @@ namespace Nethermind.TxPool
 
             if (!isKnown)
             {
-                isKnown |= _txStorage.Get(tx.Hash) != null;
+                isKnown |= (_txStorage.Get(tx.Hash) is not null);
             }
 
             if (isKnown)
@@ -253,6 +259,11 @@ namespace Nethermind.TxPool
 
         protected virtual AddTxResult? FilterTransaction(Transaction tx, in bool managedNonce)
         {
+            if (tx.Hash is null)
+            {
+                return AddTxResult.Invalid;
+            }
+            
             if (_fadingOwnTransactions.ContainsKey(tx.Hash))
             {
                 _fadingOwnTransactions.TryRemove(tx.Hash, out (Transaction Tx, long _) fadingTxHolder);
@@ -374,7 +385,12 @@ namespace Nethermind.TxPool
                     // Nonce was correct and will never be used again
                     lock (_locker)
                     {
-                        var address = fadingHolder.Tx.SenderAddress;
+                        Address? address = fadingHolder.Tx.SenderAddress;
+                        if (address is null)
+                        {
+                            continue;
+                        }
+                        
                         if (!_nonces.TryGetValue(address, out AddressNonces addressNonces))
                         {
                             continue;
