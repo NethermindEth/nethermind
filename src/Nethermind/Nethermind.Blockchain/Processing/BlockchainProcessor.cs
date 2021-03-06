@@ -279,6 +279,9 @@ namespace Nethermind.Blockchain.Processing
                                  // so we are okay to process slightly more
                                  // and below is less correct but potentially reporting well
                                  // || totalDifficulty >= (_blockTree.Head?.TotalDifficulty ?? 0)
+                                 // below are some new conditions under test
+                                 || (totalDifficulty == _blockTree.Head?.TotalDifficulty && ((_blockTree.Head?.Hash ?? Keccak.Zero).CompareTo(suggestedBlock.Hash) > 0))
+                                 || (totalDifficulty == _blockTree.Head?.TotalDifficulty && ((_blockTree.Head?.Number ?? 0L).CompareTo(suggestedBlock.Number) > 0))
                                  || (options & ProcessingOptions.ForceProcessing) == ProcessingOptions.ForceProcessing;
 
             if (!shouldProcess)
