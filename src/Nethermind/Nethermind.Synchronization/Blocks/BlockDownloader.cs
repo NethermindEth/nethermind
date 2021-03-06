@@ -458,7 +458,7 @@ namespace Nethermind.Synchronization.Blocks
             }
         }
 
-        private void ValidateBatchConsistencyAndSetParents(PeerInfo bestPeer, BlockHeader[] headers)
+        private void ValidateBatchConsistencyAndSetParents(PeerInfo bestPeer, BlockHeader?[] headers)
         {
             // in the past (version 1.11) and possibly now too Parity was sending non canonical blocks in responses
             // so we need to confirm that the blocks form a valid subchain

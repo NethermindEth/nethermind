@@ -52,7 +52,7 @@ namespace Nethermind.Blockchain.Processing
 #endif
         }
 
-        public void UpdateStats(Block block, int recoveryQueueSize, int blockQueueSize)
+        public void UpdateStats(Block? block, int recoveryQueueSize, int blockQueueSize)
         {
             if (block is null)
             {

@@ -43,13 +43,13 @@ namespace Nethermind.Blockchain.Processing
         private readonly IBlockTree _blockTree;
         private readonly ILogger _logger;
 
-        private readonly BlockingCollection<BlockRef> _recoveryQueue = new BlockingCollection<BlockRef>(new ConcurrentQueue<BlockRef>());
-        private readonly BlockingCollection<BlockRef> _blockQueue = new BlockingCollection<BlockRef>(new ConcurrentQueue<BlockRef>(), MaxProcessingQueueSize);
+        private readonly BlockingCollection<BlockRef> _recoveryQueue = new(new ConcurrentQueue<BlockRef>());
+        private readonly BlockingCollection<BlockRef> _blockQueue = new(new ConcurrentQueue<BlockRef>(), MaxProcessingQueueSize);
         private readonly ProcessingStats _stats;
 
-        private CancellationTokenSource _loopCancellationSource;
-        private Task _recoveryTask;
-        private Task _processorTask;
+        private CancellationTokenSource? _loopCancellationSource;
+        private Task? _recoveryTask;
+        private Task? _processorTask;
         private DateTime _lastProcessedBlock;
 
         private int _currentRecoveryQueueSize;
@@ -62,10 +62,10 @@ namespace Nethermind.Blockchain.Processing
         /// <param name="logManager"></param>
         /// <param name="options"></param>
         public BlockchainProcessor(
-            IBlockTree blockTree,
-            IBlockProcessor blockProcessor,
-            IBlockPreprocessorStep recoveryStep,
-            ILogManager logManager,
+            IBlockTree? blockTree,
+            IBlockProcessor? blockProcessor,
+            IBlockPreprocessorStep? recoveryStep,
+            ILogManager? logManager,
             Options options)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
@@ -96,7 +96,10 @@ namespace Nethermind.Blockchain.Processing
                 options |= ProcessingOptions.StoreReceipts;
             }
 
-            Enqueue(blockEventArgs.Block, options);
+            if (blockEventArgs.Block != null)
+            {
+                Enqueue(blockEventArgs.Block, options);
+            }
         }
 
         public void Enqueue(Block block, ProcessingOptions processingOptions)
@@ -104,7 +107,7 @@ namespace Nethermind.Blockchain.Processing
             if (_logger.IsTrace) _logger.Trace($"Enqueuing a new block {block.ToString(Block.Format.Short)} for processing.");
 
             int currentRecoveryQueueSize = Interlocked.Add(ref _currentRecoveryQueueSize, block.Transactions.Length);
-            BlockRef blockRef = currentRecoveryQueueSize >= SoftMaxRecoveryQueueSizeInTx ? new BlockRef(block.Hash, processingOptions) : new BlockRef(block, processingOptions);
+            BlockRef blockRef = currentRecoveryQueueSize >= SoftMaxRecoveryQueueSizeInTx ? new BlockRef(block.Hash!, processingOptions) : new BlockRef(block, processingOptions);
             if (!_recoveryQueue.IsAddingCompleted)
             {
                 try
@@ -171,17 +174,17 @@ namespace Nethermind.Blockchain.Processing
             if (processRemainingBlocks)
             {
                 _recoveryQueue.CompleteAdding();
-                await _recoveryTask;
+                await (_recoveryTask ?? Task.CompletedTask);
                 _blockQueue.CompleteAdding();
             }
             else
             {
-                _loopCancellationSource.Cancel();
+                _loopCancellationSource?.Cancel();
                 _recoveryQueue.CompleteAdding();
                 _blockQueue.CompleteAdding();
             }
 
-            await Task.WhenAll(_recoveryTask, _processorTask);
+            await Task.WhenAll((_recoveryTask ?? Task.CompletedTask), (_processorTask ?? Task.CompletedTask));
             if (_logger.IsInfo) _logger.Info("Blockchain Processor shutdown complete.. please wait for all components to close");
         }
 
@@ -193,7 +196,7 @@ namespace Nethermind.Blockchain.Processing
             {
                 if (blockRef.Resolve(_blockTree))
                 {
-                    Interlocked.Add(ref _currentRecoveryQueueSize, -blockRef.Block.Transactions.Length);
+                    Interlocked.Add(ref _currentRecoveryQueueSize, -blockRef.Block!.Transactions.Length);
                     if (_logger.IsTrace) _logger.Trace($"Recovering addresses for block {blockRef.BlockHash?.ToString() ?? blockRef.Block.ToString(Block.Format.Short)}.");
                     _recoveryStep.RecoverData(blockRef.Block);
 
@@ -259,11 +262,11 @@ namespace Nethermind.Blockchain.Processing
             }
         }
 
-        public event EventHandler ProcessingQueueEmpty;
+        public event EventHandler? ProcessingQueueEmpty;
 
         int IBlockProcessingQueue.Count => _blockQueue.Count + _recoveryQueue.Count;
 
-        public Block Process(Block suggestedBlock, ProcessingOptions options, IBlockTracer tracer)
+        public Block? Process(Block suggestedBlock, ProcessingOptions options, IBlockTracer tracer)
         {
             if (!RunSimpleChecksAheadOfProcessing(suggestedBlock, options))
             {
@@ -273,16 +276,10 @@ namespace Nethermind.Blockchain.Processing
             UInt256 totalDifficulty = suggestedBlock.TotalDifficulty ?? 0;
             if (_logger.IsTrace) _logger.Trace($"Total difficulty of block {suggestedBlock.ToString(Block.Format.Short)} is {totalDifficulty}");
 
-            bool shouldProcess = suggestedBlock.IsGenesis
-                                 || totalDifficulty > (_blockTree.Head?.TotalDifficulty ?? 0)
-                                 // so above is better and more correct but creates an impression of the node staying behind on stats page
-                                 // so we are okay to process slightly more
-                                 // and below is less correct but potentially reporting well
-                                 // || totalDifficulty >= (_blockTree.Head?.TotalDifficulty ?? 0)
-                                 // below are some new conditions under test
-                                 || (totalDifficulty == _blockTree.Head?.TotalDifficulty && ((_blockTree.Head?.Hash ?? Keccak.Zero).CompareTo(suggestedBlock.Hash) > 0))
-                                 || (totalDifficulty == _blockTree.Head?.TotalDifficulty && ((_blockTree.Head?.Number ?? 0L).CompareTo(suggestedBlock.Number) > 0))
-                                 || (options & ProcessingOptions.ForceProcessing) == ProcessingOptions.ForceProcessing;
+            bool shouldProcess =  
+                suggestedBlock.IsGenesis
+                || _blockTree.IsBetterThanHead(suggestedBlock.Header) 
+                || (options & ProcessingOptions.ForceProcessing) == ProcessingOptions.ForceProcessing;
 
             if (!shouldProcess)
             {
@@ -294,7 +291,7 @@ namespace Nethermind.Blockchain.Processing
             PrepareBlocksToProcess(suggestedBlock, options, processingBranch);
 
             Stopwatch stopwatch = Stopwatch.StartNew();
-            Block[] processedBlocks = ProcessBranch(processingBranch, options, tracer);
+            Block[]? processedBlocks = ProcessBranch(processingBranch, options, tracer);
             stopwatch.Stop();
             if (processedBlocks == null)
             {
@@ -307,7 +304,7 @@ namespace Nethermind.Blockchain.Processing
                 Metrics.LastBlockProcessingTimeInMs = stopwatch.ElapsedMilliseconds;
             }
 
-            Block lastProcessed = null;
+            Block? lastProcessed = null;
             if (processedBlocks.Length > 0)
             {
                 lastProcessed = processedBlocks[^1];
@@ -354,11 +351,11 @@ namespace Nethermind.Blockchain.Processing
             }
         }
 
-        private Block[] ProcessBranch(ProcessingBranch processingBranch,
+        private Block[]? ProcessBranch(ProcessingBranch processingBranch,
             ProcessingOptions options,
             IBlockTracer tracer)
         {
-            Block[] processedBlocks;
+            Block[]? processedBlocks;
             try
             {
                 processedBlocks = _blockProcessor.Process(
@@ -433,7 +430,7 @@ namespace Nethermind.Blockchain.Processing
         private ProcessingBranch PrepareProcessingBranch(Block suggestedBlock, ProcessingOptions options)
         {
             BlockHeader branchingPoint = null;
-            List<Block> blocksToBeAddedToMain = new List<Block>();
+            List<Block> blocksToBeAddedToMain = new();
 
             Block toBeProcessed = suggestedBlock;
             do
@@ -536,8 +533,8 @@ namespace Nethermind.Blockchain.Processing
 
         public void Dispose()
         {
-            _recoveryQueue?.Dispose();
-            _blockQueue?.Dispose();
+            _recoveryQueue.Dispose();
+            _blockQueue.Dispose();
             _loopCancellationSource?.Dispose();
             _recoveryTask?.Dispose();
             _processorTask?.Dispose();
@@ -561,8 +558,8 @@ namespace Nethermind.Blockchain.Processing
 
         public class Options
         {
-            public static Options NoReceipts = new Options {StoreReceiptsByDefault = true};
-            public static Options Default = new Options();
+            public static Options NoReceipts = new() {StoreReceiptsByDefault = true};
+            public static Options Default = new();
 
             public bool StoreReceiptsByDefault { get; set; } = true;
 

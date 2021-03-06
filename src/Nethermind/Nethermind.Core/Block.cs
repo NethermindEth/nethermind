@@ -46,13 +46,13 @@ namespace Nethermind.Core
 
         public BlockHeader Header { get; set; }
 
-        public BlockBody? Body { get; set; }
+        public BlockBody Body { get; set; }
 
         public bool IsGenesis => Header.IsGenesis;
 
-        public Transaction[]? Transactions => Body?.Transactions; // do not add setter here
+        public Transaction[] Transactions => Body.Transactions; // do not add setter here
 
-        public BlockHeader[]? Ommers => Body?.Ommers; // do not add setter here
+        public BlockHeader[] Ommers => Body.Ommers; // do not add setter here
 
         public Keccak? Hash => Header.Hash; // do not add setter here
 
