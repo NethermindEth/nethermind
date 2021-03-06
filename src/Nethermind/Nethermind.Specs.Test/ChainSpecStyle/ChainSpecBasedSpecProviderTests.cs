@@ -38,14 +38,15 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../Chains/rinkeby.json");
             ChainSpec chainSpec = loader.Load(File.ReadAllText(path));
             chainSpec.Parameters.Eip2537Transition.Should().BeNull();
-            
+
             ChainSpecBasedSpecProvider provider = new(chainSpec);
             RinkebySpecProvider rinkeby = RinkebySpecProvider.Instance;
 
             IReleaseSpec oldRinkebySpec = rinkeby.GetSpec(8_290_928);
             IReleaseSpec newRinkebySpec = provider.GetSpec(8_290_928);
 
-            PropertyInfo[] propertyInfos = typeof(IReleaseSpec).GetProperties(BindingFlags.Public | BindingFlags.Instance);
+            PropertyInfo[] propertyInfos =
+                typeof(IReleaseSpec).GetProperties(BindingFlags.Public | BindingFlags.Instance);
             foreach (PropertyInfo propertyInfo in propertyInfos.Where(pi =>
                 pi.Name != "MaximumExtraDataSize"
                 && pi.Name != "Name"
@@ -60,7 +61,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
                 Assert.AreEqual(a, b, propertyInfo.Name);
             }
         }
-        
+
         [Test]
         public void Goerli_loads_properly()
         {
@@ -68,7 +69,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../Chains/goerli.json");
             ChainSpec chainSpec = loader.Load(File.ReadAllText(path));
             chainSpec.Parameters.Eip2537Transition.Should().BeNull();
-            
+
             ChainSpecBasedSpecProvider provider = new(chainSpec);
             GoerliSpecProvider goerli = GoerliSpecProvider.Instance;
 
@@ -82,10 +83,10 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
                 GoerliSpecProvider.BerlinBlockNumber,
                 100000000, // far in the future
             };
-            
-            CompareSpecProperties(goerli, provider, blockNumbersToTest);
-        }
 
+            CompareSpecProviders(goerli, provider, blockNumbersToTest);
+        }
+        
         [Test]
         public void Mainnet_loads_properly()
         {
@@ -93,7 +94,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../Chains/foundation.json");
             ChainSpec chainSpec = loader.Load(File.ReadAllText(path));
             chainSpec.Parameters.Eip2537Transition.Should().BeNull();
-            
+
             ChainSpecBasedSpecProvider provider = new(chainSpec);
             MainnetSpecProvider mainnet = MainnetSpecProvider.Instance;
 
@@ -117,9 +118,9 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
                 MainnetSpecProvider.MuirGlacierBlockNumber,
                 100000000, // far in the future
             };
-            
-            CompareSpecProperties(mainnet, provider, blockNumbersToTest);
-            
+
+            CompareSpecProviders(mainnet, provider, blockNumbersToTest);
+
             Assert.AreEqual(0000000, provider.GetSpec(4369999).DifficultyBombDelay);
             Assert.AreEqual(3000000, provider.GetSpec(4370000).DifficultyBombDelay);
             Assert.AreEqual(3000000, provider.GetSpec(7279999).DifficultyBombDelay);
@@ -130,25 +131,34 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             Assert.AreEqual(9000000, provider.GetSpec(12000000).DifficultyBombDelay);
         }
 
-        private static void CompareSpecProperties(ISpecProvider oldSpec, ISpecProvider newSpec, IEnumerable<long> blockNumbers)
+        private static void CompareSpecProviders(
+            ISpecProvider oldSpecProvider,
+            ISpecProvider newSpecProvider,
+            IEnumerable<long> blockNumbers)
         {
             foreach (long blockNumber in blockNumbers)
             {
-                PropertyInfo[] propertyInfos = typeof(IReleaseSpec).GetProperties(BindingFlags.Public | BindingFlags.Instance);
-                foreach (PropertyInfo propertyInfo in propertyInfos
-                    .Where(p => p.Name != nameof(IReleaseSpec.Name))
-                    .Where(p => !(newSpec.DaoBlockNumber == null && p.Name == nameof(IReleaseSpec.MaximumExtraDataSize)))
-                    .Where(p => !(newSpec.DaoBlockNumber == null && p.Name == nameof(IReleaseSpec.BlockReward)))
-                    .Where(p => !(newSpec.DaoBlockNumber == null && p.Name == nameof(IReleaseSpec.DifficultyBombDelay)))
-                    .Where(p => !(newSpec.DaoBlockNumber == null && p.Name == nameof(IReleaseSpec.DifficultyBoundDivisor))))
-                {
-                    object a = propertyInfo.GetValue(oldSpec.GetSpec(blockNumber));
-                    object b = propertyInfo.GetValue(newSpec.GetSpec(blockNumber));
-
-                    Assert.AreEqual(a, b, blockNumber + "." + propertyInfo.Name);
-                }
+                IReleaseSpec oldSpec = oldSpecProvider.GetSpec(blockNumber);
+                IReleaseSpec newSpec = newSpecProvider.GetSpec(blockNumber);
+                long? daoBlockNumber = newSpecProvider.DaoBlockNumber;
+                bool isMainnet = daoBlockNumber != null;
                 
-                Assert.AreEqual(oldSpec.GetSpec(blockNumber).DifficultyBombDelay, newSpec.GetSpec(blockNumber).DifficultyBombDelay, blockNumber);    
+                CompareSpecs(oldSpec, newSpec, blockNumber, isMainnet);
+            }
+        }
+
+        private static void CompareSpecs(IReleaseSpec oldSpec, IReleaseSpec newSpec, long blockNumber, bool isMainnet)
+        {
+            PropertyInfo[] propertyInfos =
+                typeof(IReleaseSpec).GetProperties(BindingFlags.Public | BindingFlags.Instance);
+            foreach (PropertyInfo propertyInfo in propertyInfos
+                .Where(p => p.Name != nameof(IReleaseSpec.Name))
+                .Where(p => isMainnet || p.Name != nameof(IReleaseSpec.MaximumExtraDataSize))
+                .Where(p => isMainnet || p.Name != nameof(IReleaseSpec.BlockReward))
+                .Where(p => isMainnet || p.Name != nameof(IReleaseSpec.DifficultyBombDelay))
+                .Where(p => isMainnet || p.Name != nameof(IReleaseSpec.DifficultyBoundDivisor)))
+            {
+                Assert.AreEqual(oldSpec, newSpec, blockNumber + "." + propertyInfo.Name);
             }
         }
 
@@ -159,10 +169,10 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../Chains/ropsten.json");
             ChainSpec chainSpec = loader.Load(File.ReadAllText(path));
             chainSpec.Parameters.Eip2537Transition.Should().BeNull();
-            
+
             ChainSpecBasedSpecProvider provider = new(chainSpec);
             RopstenSpecProvider ropsten = RopstenSpecProvider.Instance;
-            
+
             List<long>? blockNumbersToTest = new List<long>
             {
                 0,
@@ -181,8 +191,8 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
                 RopstenSpecProvider.BerlinBlockNumber,
                 120000000, // far in the future
             };
-            
-            CompareSpecProperties(ropsten, provider, blockNumbersToTest);
+
+            CompareSpecProviders(ropsten, provider, blockNumbersToTest);
         }
 
         [Test]
@@ -265,7 +275,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             Assert.AreEqual(maxCodeSize, provider.GetSpec(maxCodeTransition).MaxCodeSize, "at transition");
             Assert.AreEqual(maxCodeSize, provider.GetSpec(maxCodeTransition + 1).MaxCodeSize, "one after");
         }
-        
+
         [Test]
         public void Eip2200_is_set_correctly_directly()
         {
@@ -274,29 +284,45 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             ChainSpecBasedSpecProvider provider = new(chainSpec);
             provider.GetSpec(5).IsEip2200Enabled.Should().BeTrue();
         }
-        
+
         [Test]
         public void Eip2200_is_set_correctly_indirectly()
         {
-            ChainSpec chainSpec = new() {Parameters = new ChainParameters {Eip1706Transition = 5, Eip1283Transition = 5}};
+            ChainSpec chainSpec =
+                new() {Parameters = new ChainParameters {Eip1706Transition = 5, Eip1283Transition = 5}};
 
             ChainSpecBasedSpecProvider provider = new(chainSpec);
             provider.GetSpec(5).IsEip2200Enabled.Should().BeTrue();
         }
-        
+
         [Test]
         public void Eip2200_is_set_correctly_indirectly_after_disabling_eip1283_and_reenabling()
         {
-            ChainSpec chainSpec = new() {Parameters = new ChainParameters {Eip1706Transition = 5, Eip1283Transition = 1, Eip1283DisableTransition = 4, Eip1283ReenableTransition = 5}};
+            ChainSpec chainSpec = new()
+            {
+                Parameters = new ChainParameters
+                {
+                    Eip1706Transition = 5,
+                    Eip1283Transition = 1,
+                    Eip1283DisableTransition = 4,
+                    Eip1283ReenableTransition = 5
+                }
+            };
 
             ChainSpecBasedSpecProvider provider = new(chainSpec);
             provider.GetSpec(5).IsEip2200Enabled.Should().BeTrue();
         }
-        
+
         [Test]
         public void Eip2200_is_not_set_correctly_indirectly_after_disabling_eip1283()
         {
-            ChainSpec chainSpec = new() {Parameters = new ChainParameters {Eip1706Transition = 5, Eip1283Transition = 1, Eip1283DisableTransition = 4}};
+            ChainSpec chainSpec = new()
+            {
+                Parameters = new ChainParameters
+                {
+                    Eip1706Transition = 5, Eip1283Transition = 1, Eip1283DisableTransition = 4
+                }
+            };
 
             ChainSpecBasedSpecProvider provider = new(chainSpec);
             provider.GetSpec(5).IsEip2200Enabled.Should().BeFalse();
@@ -1065,7 +1091,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             Assert.AreEqual(false, underTest.IsEip2200Enabled);
             Assert.AreEqual(false, underTest.ValidateChainId);
             Assert.AreEqual(false, underTest.ValidateReceipts);
-            
+
             underTest = provider.GetSpec(18840L);
             Assert.AreEqual(underTest.MaxCodeSize, maxCodeSize);
             Assert.AreEqual(true, underTest.IsEip2Enabled);
@@ -1161,7 +1187,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             Assert.AreEqual(true, underTest.IsEip2200Enabled);
             Assert.AreEqual(false, underTest.ValidateChainId);
             Assert.AreEqual(false, underTest.ValidateReceipts);
-            
+
             underTest = provider.GetSpec(23000L);
             Assert.AreEqual(underTest.MaxCodeSize, maxCodeSize);
             Assert.AreEqual(true, underTest.IsEip2Enabled);
@@ -1193,7 +1219,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             Assert.AreEqual(true, underTest.IsEip2200Enabled);
             Assert.AreEqual(false, underTest.ValidateChainId);
             Assert.AreEqual(false, underTest.ValidateReceipts);
-            
+
             underTest = provider.GetSpec(24000L);
             Assert.AreEqual(underTest.MaxCodeSize, maxCodeSize);
             Assert.AreEqual(true, underTest.IsEip2Enabled);
@@ -1225,7 +1251,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             Assert.AreEqual(true, underTest.IsEip2200Enabled);
             Assert.AreEqual(true, underTest.ValidateChainId);
             Assert.AreEqual(true, underTest.ValidateReceipts);
-            
+
             underTest = provider.GetSpec(29290L);
             Assert.AreEqual(underTest.MaxCodeSize, maxCodeSize);
             Assert.AreEqual(true, underTest.IsEip2Enabled);

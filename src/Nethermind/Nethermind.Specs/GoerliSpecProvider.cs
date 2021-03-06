@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.Linq;
 using Nethermind.Core.Specs;
 using Nethermind.Specs.Forks;
 
@@ -25,21 +26,25 @@ namespace Nethermind.Specs
 
         private GoerliSpecProvider() { }
 
-        public IReleaseSpec GenesisSpec = ConstantinopleFix.Instance;
+        public IReleaseSpec GenesisSpec { get; } = ConstantinopleFix.Instance;
+        
+        private IReleaseSpec IstanbulNoBomb { get; } = Istanbul.Instance;
+        
+        private IReleaseSpec BerlinNoBomb { get; } = Berlin.Instance;
 
         public IReleaseSpec GetSpec(long blockNumber)
         {
             if (blockNumber < IstanbulBlockNumber)
             {
-                return ConstantinopleFix.Instance;
+                return GenesisSpec;
             }
             
             if (blockNumber < BerlinBlockNumber)
             {
-                return Istanbul.Instance;
+                return IstanbulNoBomb;
             }
 
-            return Berlin.Instance;
+            return BerlinNoBomb;
         }
 
         public long? DaoBlockNumber => null;

@@ -50,12 +50,12 @@ namespace Nethermind.TxPool
                 .ThenBy(CompareTxByPoolIndex.Instance)
                 .ThenBy(CompareTxByGasLimit.Instance);
 
-        private readonly object _locker = new object();
+        private readonly object _locker = new();
 
         private readonly ConcurrentDictionary<Address, AddressNonces> _nonces =
-            new ConcurrentDictionary<Address, AddressNonces>();
+            new();
 
-        private readonly LruKeyCache<Keccak> _hashCache = new LruKeyCache<Keccak>(MemoryAllowance.TxHashCacheSize,
+        private readonly LruKeyCache<Keccak> _hashCache = new(MemoryAllowance.TxHashCacheSize,
             Math.Min(1024 * 16, MemoryAllowance.TxHashCacheSize), "tx hashes");
 
         /// <summary>
@@ -72,7 +72,7 @@ namespace Nethermind.TxPool
         /// Random number generator for peer notification threshold - no need to be securely random.
         /// </summary>
         private static readonly ThreadLocal<Random> Random =
-            new ThreadLocal<Random>(() => new Random(Interlocked.Increment(ref _seed)));
+            new(() => new Random(Interlocked.Increment(ref _seed)));
 
         private readonly SortedPool<Keccak, Transaction, Address> _transactions;
 
@@ -86,14 +86,14 @@ namespace Nethermind.TxPool
         /// Transactions published locally (initiated by this node users).
         /// </summary>
         private readonly ConcurrentDictionary<Keccak, Transaction> _ownTransactions =
-            new ConcurrentDictionary<Keccak, Transaction>();
+            new();
 
         /// <summary>
         /// Own transactions that were already added to the chain but need more confirmations
         /// before being removed from pending entirely.
         /// </summary>
         private readonly ConcurrentDictionary<Keccak, (Transaction tx, long blockNumber)> _fadingOwnTransactions
-            = new ConcurrentDictionary<Keccak, (Transaction tx, long blockNumber)>();
+            = new();
 
         /// <summary>
         /// Long term storage for pending transactions.
@@ -104,7 +104,7 @@ namespace Nethermind.TxPool
         /// Connected peers that can be notified about transactions.
         /// </summary>
         private readonly ConcurrentDictionary<PublicKey, ITxPoolPeer> _peers =
-            new ConcurrentDictionary<PublicKey, ITxPoolPeer>();
+            new();
 
         /// <summary>
         /// Timer for rebroadcasting pending own transactions.
@@ -221,7 +221,10 @@ namespace Nethermind.TxPool
              */
             if (!isKnown)
             {
-                isKnown |= !_transactions.TryInsert(tx.Hash, tx);
+                lock (_locker)
+                {
+                    isKnown |= !_transactions.TryInsert(tx.Hash, tx);
+                }
             }
 
             if (!isKnown)
@@ -344,7 +347,7 @@ namespace Nethermind.TxPool
                     return true;
                 }
 
-                nonce.SetTransactionHash(transaction.Hash);
+                nonce.SetTransactionHash(transaction.Hash!);
             }
 
             return false;
@@ -386,7 +389,7 @@ namespace Nethermind.TxPool
                 }
             }
 
-            ICollection<Transaction> bucket;
+            ICollection<Transaction>? bucket;
             Transaction transaction;
             lock (_locker)
             {
@@ -414,10 +417,10 @@ namespace Nethermind.TxPool
             {
                 lock (_locker)
                 {
-                    Transaction txWithSmallestNonce = bucket.FirstOrDefault();
+                    Transaction? txWithSmallestNonce = bucket.FirstOrDefault();
                     while (txWithSmallestNonce != null && txWithSmallestNonce.Nonce <= transaction.Nonce)
                     {
-                        RemoveTransaction(txWithSmallestNonce.Hash, blockNumber);
+                        RemoveTransaction(txWithSmallestNonce.Hash!, blockNumber);
                         txWithSmallestNonce = bucket.FirstOrDefault();
                     }
                 }
@@ -426,14 +429,17 @@ namespace Nethermind.TxPool
 
         public bool TryGetPendingTransaction(Keccak hash, out Transaction transaction)
         {
-            if (!_transactions.TryGetValue(hash, out transaction))
+            lock (_locker)
             {
-                // commented out as it puts too much pressure on the database
-                // and it not really required in any scenario
-                // * tx recovery usually will fetch from pending
-                // * get tx via RPC usually will fetch from block or from pending
-                // * internal tx pool scenarios are handled directly elsewhere
-                // transaction = _txStorage.Get(hash);
+                if (!_transactions.TryGetValue(hash, out transaction))
+                {
+                    // commented out as it puts too much pressure on the database
+                    // and it not really required in any scenario
+                    // * tx recovery usually will fetch from pending
+                    // * get tx via RPC usually will fetch from block or from pending
+                    // * internal tx pool scenarios are handled directly elsewhere
+                    // transaction = _txStorage.Get(hash);
+                }
             }
 
             return transaction != null;
@@ -461,7 +467,7 @@ namespace Nethermind.TxPool
 
         public void Dispose()
         {
-            _ownTimer?.Dispose();
+            _ownTimer.Dispose();
         }
 
         public event EventHandler<TxEventArgs>? NewDiscovered;
@@ -545,7 +551,7 @@ namespace Nethermind.TxPool
         {
             private Nonce _currentNonce;
 
-            public ConcurrentDictionary<UInt256, Nonce> Nonces { get; } = new ConcurrentDictionary<UInt256, Nonce>();
+            public ConcurrentDictionary<UInt256, Nonce> Nonces { get; } = new();
 
             public AddressNonces(UInt256 startNonce)
             {
@@ -566,7 +572,7 @@ namespace Nethermind.TxPool
         private class Nonce
         {
             public UInt256 Value { get; }
-            public Keccak TransactionHash { get; private set; }
+            public Keccak? TransactionHash { get; private set; }
 
             public Nonce(UInt256 value)
             {
@@ -578,7 +584,7 @@ namespace Nethermind.TxPool
                 TransactionHash = transactionHash;
             }
 
-            public Nonce Increment() => new Nonce(Value + 1);
+            public Nonce Increment() => new(Value + 1);
         }
     }
 }
