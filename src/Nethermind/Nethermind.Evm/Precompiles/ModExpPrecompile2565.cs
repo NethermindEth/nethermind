@@ -58,26 +58,20 @@ namespace Nethermind.Evm.Precompiles
                 inputData.Slice(0, Math.Min(96, inputData.Length))
                     .CopyTo(extendedInput.AsSpan().Slice(0, Math.Min(96, inputData.Length)));
 
-                UInt256 baseLength = new(extendedInput.Slice(0, 32), true);
-                UInt256 expLength = new(extendedInput.Slice(32, 32), true);
-                UInt256 modulusLength = new(extendedInput.Slice(64, 32), true);
+                UInt256 baseLength = new(extendedInput.AsSpan().Slice(0, 32), true);
+                UInt256 expLength = new(extendedInput.AsSpan().Slice(32, 32), true);
+                UInt256 modulusLength = new(extendedInput.AsSpan().Slice(64, 32), true);
 
                 UInt256 complexity = MultComplexity(baseLength, modulusLength);
-
-                UInt256 iterationCount;
-                if (expLength <= 32)
+                UInt256 startIndex = 96 + baseLength;
+                if (expLength > 32)
                 {
-                    UInt256 exp = new(
-                        inputData.SliceWithZeroPaddingEmptyOnError((BigInteger)(96 + baseLength), (int)expLength), true);
-                    iterationCount = CalculateIterationCount(expLength, exp);
+                    startIndex += expLength - 32;
                 }
-                else
-                {
-                    UInt256 startIndex = 96 + baseLength + expLength - 32;
-                    UInt256 exp = new(
-                        inputData.SliceWithZeroPaddingEmptyOnError((BigInteger)startIndex, 32), true);
-                    iterationCount = CalculateIterationCount(expLength, exp);
-                }
+                
+                UInt256 exp = new(
+                    inputData.SliceWithZeroPaddingEmptyOnError((BigInteger)startIndex, 32), true);
+                UInt256 iterationCount = CalculateIterationCount(expLength, exp);
 
                 return Math.Max(200L, (long)(complexity * iterationCount / 3));
             }
@@ -152,13 +146,18 @@ namespace Nethermind.Evm.Precompiles
                     }
                     else
                     {
-                        return 0;
+                        iterationCount = 0;
                     }
                 }
                 else
                 {
-                    iterationCount = 8 * (exponentLength - 32) - 1 +
-                                     (UInt256)((exponent & UInt256.MaxValue).BitLen);
+                    int bitCount = ((exponent & UInt256.MaxValue).BitLen);
+                    if (bitCount > 0)
+                    {
+                        bitCount--;
+                    }
+                    
+                    iterationCount = (8 * (exponentLength - 32) + (UInt256)bitCount);
                 }
 
                 return UInt256.Max(iterationCount, UInt256.One);
