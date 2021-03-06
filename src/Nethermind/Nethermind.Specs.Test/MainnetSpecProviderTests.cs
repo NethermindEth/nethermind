@@ -27,10 +27,10 @@ namespace Nethermind.Specs.Test
         private readonly ISpecProvider _specProvider = MainnetSpecProvider.Instance;
         
         [TestCase(12_243_999, false)]
-        [TestCase(12_244_000, false)]
-        public void Ropsten_berlin_eips(long blockNumber, bool isEnabled)
+        [TestCase(12_244_000, true)]
+        public void Berlin_eips(long blockNumber, bool isEnabled)
         {
-            _specProvider.GetSpec(blockNumber).IsEip2315Enabled.Should().Be(isEnabled);
+            _specProvider.GetSpec(blockNumber).IsEip2315Enabled.Should().Be(false);
             _specProvider.GetSpec(blockNumber).IsEip2537Enabled.Should().Be(false);
             _specProvider.GetSpec(blockNumber).IsEip2565Enabled.Should().Be(isEnabled);
             _specProvider.GetSpec(blockNumber).IsEip2718Enabled.Should().Be(isEnabled);

@@ -28,7 +28,7 @@ namespace Nethermind.Specs.Test
         
         [TestCase(9_812_188, false)]
         [TestCase(9_812_189, true)]
-        public void Ropsten_berlin_eips(long blockNumber, bool isEnabled)
+        public void Berlin_eips(long blockNumber, bool isEnabled)
         {
             _specProvider.GetSpec(blockNumber).IsEip2315Enabled.Should().Be(false);
             _specProvider.GetSpec(blockNumber).IsEip2537Enabled.Should().Be(false);

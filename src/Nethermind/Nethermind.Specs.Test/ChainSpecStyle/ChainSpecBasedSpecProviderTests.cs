@@ -116,19 +116,22 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
                 MainnetSpecProvider.IstanbulBlockNumber,
                 MainnetSpecProvider.MuirGlacierBlockNumber - 1,
                 MainnetSpecProvider.MuirGlacierBlockNumber,
-                100000000, // far in the future
+                MainnetSpecProvider.BerlinBlockNumber,
+                MainnetSpecProvider.BerlinBlockNumber,
+                99000000, // far in the future
             };
 
             CompareSpecProviders(mainnet, provider, blockNumbersToTest);
 
-            Assert.AreEqual(0000000, provider.GetSpec(4369999).DifficultyBombDelay);
-            Assert.AreEqual(3000000, provider.GetSpec(4370000).DifficultyBombDelay);
-            Assert.AreEqual(3000000, provider.GetSpec(7279999).DifficultyBombDelay);
-            Assert.AreEqual(3000000, provider.GetSpec(7279999).DifficultyBombDelay);
-            Assert.AreEqual(5000000, provider.GetSpec(7280000).DifficultyBombDelay);
-            Assert.AreEqual(5000000, provider.GetSpec(9199999).DifficultyBombDelay);
-            Assert.AreEqual(9000000, provider.GetSpec(9200000).DifficultyBombDelay);
-            Assert.AreEqual(9000000, provider.GetSpec(12000000).DifficultyBombDelay);
+            Assert.AreEqual(0_000_000, provider.GetSpec(4_369_999).DifficultyBombDelay);
+            Assert.AreEqual(3_000_000, provider.GetSpec(4_370_000).DifficultyBombDelay);
+            Assert.AreEqual(3_000_000, provider.GetSpec(7_279_999).DifficultyBombDelay);
+            Assert.AreEqual(3_000_000, provider.GetSpec(7_279_999).DifficultyBombDelay);
+            Assert.AreEqual(5_000_000, provider.GetSpec(7_280_000).DifficultyBombDelay);
+            Assert.AreEqual(5_000_000, provider.GetSpec(9_199_999).DifficultyBombDelay);
+            Assert.AreEqual(9_000_000, provider.GetSpec(9_200_000).DifficultyBombDelay);
+            Assert.AreEqual(9_000_000, provider.GetSpec(12_000_000).DifficultyBombDelay);
+            Assert.AreEqual(9_000_000, provider.GetSpec(15_000_000).DifficultyBombDelay);
         }
 
         private static void CompareSpecProviders(
@@ -158,7 +161,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
                 .Where(p => isMainnet || p.Name != nameof(IReleaseSpec.DifficultyBombDelay))
                 .Where(p => isMainnet || p.Name != nameof(IReleaseSpec.DifficultyBoundDivisor)))
             {
-                Assert.AreEqual(oldSpec, newSpec, blockNumber + "." + propertyInfo.Name);
+                Assert.AreEqual(propertyInfo.GetValue(oldSpec), propertyInfo.GetValue(newSpec), blockNumber + "." + propertyInfo.Name);
             }
         }
 

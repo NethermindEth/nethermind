@@ -73,22 +73,23 @@ namespace Nethermind.Specs
             return Berlin.Instance;
         }
 
-        public const long HomesteadBlockNumber = 1150000;
-        public long? DaoBlockNumber => 1920000;
-        public const long TangerineWhistleBlockNumber = 2463000;
-        public const long SpuriousDragonBlockNumber = 2675000;
-        public const long ByzantiumBlockNumber = 4370000;
-        public const long ConstantinopleFixBlockNumber = 7280000;
-        public const long IstanbulBlockNumber = 9069000;
-        public const long MuirGlacierBlockNumber = 9200000;
-        public const long BerlinBlockNumber = long.MaxValue - 1;
+        public const long HomesteadBlockNumber = 1_150_000;
+        public long? DaoBlockNumber => DaoBlockNumberConst;
+        public const long DaoBlockNumberConst = 1_920_000;
+        public const long TangerineWhistleBlockNumber = 2_463_000;
+        public const long SpuriousDragonBlockNumber = 2_675_000;
+        public const long ByzantiumBlockNumber = 4_370_000;
+        public const long ConstantinopleFixBlockNumber = 7_280_000;
+        public const long IstanbulBlockNumber = 9_069_000;
+        public const long MuirGlacierBlockNumber = 9_200_000;
+        public const long BerlinBlockNumber = 12_244_000;
 
         public ulong ChainId => Core.ChainId.Mainnet;
 
         public long[] TransitionBlocks { get; } =
         {
             HomesteadBlockNumber,
-            1920000,
+            DaoBlockNumberConst,
             TangerineWhistleBlockNumber,
             SpuriousDragonBlockNumber,
             ByzantiumBlockNumber,
