@@ -47,7 +47,8 @@ namespace Nethermind.Blockchain
             {new Address("0x4c2ae482593505f0163cdeFc073e81c63CdA4107"), "Nethermind"},
             {new Address("0x22eA9f6b28DB76A7162054c05ed812dEb2f519Cd"), "PegaSys"},
             {new Address("0xe0a2Bd4258D2768837BAa26A28fE71Dc079f84c7"), "Parity"},
-            {new Address("0x9d525e28fe5830ee92d7aa799c4d21590567b595"), "roninkaizen"}
+            {new Address("0x9d525e28fe5830ee92d7aa799c4d21590567b595"), "roninkaizen"},
+            {new Address("0xe0a2bd4258d2768837baa26a28fe71dc079f84c7"), "flashbots"}
         };
 
         public static Dictionary<Address, string> KnownMiners = new Dictionary<Address, string>
