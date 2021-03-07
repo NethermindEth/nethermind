@@ -145,7 +145,7 @@ namespace Nethermind.DataMarketplace.Initializers
                 }
                 else
                 {
-                    Address faucetAddress = new Address(ndmApi.NdmConfig.FaucetAddress);
+                    Address faucetAddress = new(ndmApi.NdmConfig.FaucetAddress);
                     ndmApi.NdmFaucet = new NdmFaucet(
                         ndmApi.BlockchainBridge,
                         ethRequestRepository,
@@ -200,13 +200,13 @@ namespace Nethermind.DataMarketplace.Initializers
                 api.ConsumerAddress,
                 api.Config<INdmConfig>().VerifyP2PSignature);
 
-            ProtocolHandlerFactory protocolHandlerFactory = new ProtocolHandlerFactory(
+            ProtocolHandlerFactory protocolHandlerFactory = new(
                 subprotocolFactory,
                 api.ProtocolValidator,
                 api.EthRequestService,
                 api.LogManager);
 
-            NdmCapabilityConnector capabilityConnector = new NdmCapabilityConnector(
+            NdmCapabilityConnector capabilityConnector = new(
                 api.ProtocolsManager,
                 protocolHandlerFactory,
                 api.AccountService,

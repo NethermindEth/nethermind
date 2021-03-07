@@ -23,6 +23,6 @@ namespace Nethermind.TxPool
 {
     public interface ITxSender
     {
-        ValueTask<Keccak> SendTransaction(Transaction tx, TxHandlingOptions txHandlingOptions);
+        ValueTask<Keccak?> SendTransaction(Transaction tx, TxHandlingOptions txHandlingOptions);
     }
 }
