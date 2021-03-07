@@ -26,9 +26,9 @@ namespace Nethermind.Blockchain.Receipts
     public class InMemoryReceiptStorage : IReceiptStorage
     {
         private readonly bool _allowReceiptIterator;
-        private readonly ConcurrentDictionary<Keccak, TxReceipt[]> _receipts = new ConcurrentDictionary<Keccak, TxReceipt[]>();
+        private readonly ConcurrentDictionary<Keccak, TxReceipt[]> _receipts = new();
         
-        private readonly ConcurrentDictionary<Keccak, TxReceipt> _transactions = new ConcurrentDictionary<Keccak, TxReceipt>();
+        private readonly ConcurrentDictionary<Keccak, TxReceipt> _transactions = new();
 
         public InMemoryReceiptStorage(bool allowReceiptIterator = true)
         {

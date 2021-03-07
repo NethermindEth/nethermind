@@ -26,7 +26,7 @@ namespace Nethermind.TxPool
     /// </summary>
     public class CompetingTransactionEqualityComparer : IEqualityComparer<Transaction>
     {
-        public static readonly CompetingTransactionEqualityComparer Instance = new CompetingTransactionEqualityComparer();
+        public static readonly CompetingTransactionEqualityComparer Instance = new();
         
         private CompetingTransactionEqualityComparer() { }
         

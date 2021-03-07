@@ -1,5 +1,5 @@
 ﻿/*
- * Copyright (c) 2018 Demerzel Solutions Limited
+ * Copyright (c) 2021 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
  * The Nethermind library is free software: you can redistribute it and/or modify
@@ -198,11 +198,11 @@ namespace Ethereum.Test.Base
                 EthereumTestResult result; 
                 if (test.GenesisBlockHeader is null)
                 {
-                    result = new(test.Name, "Genesis block header missing in the test spec.");
+                    result = new EthereumTestResult(test.Name, "Genesis block header missing in the test spec.");
                 }
                 else if(!new Keccak(test.GenesisBlockHeader.Hash).Equals(test.LastBlockHash)) 
                 {
-                    result = new(test.Name, "Genesis hash mismatch");
+                    result = new EthereumTestResult(test.Name, "Genesis hash mismatch");
                 }
                 else
                 {

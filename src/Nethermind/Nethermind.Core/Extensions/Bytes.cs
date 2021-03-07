@@ -312,7 +312,7 @@ namespace Nethermind.Core.Extensions
 
         public static BigInteger ToUnsignedBigInteger(this ReadOnlySpan<byte> bytes)
         {
-            return new BigInteger(bytes, true, true);
+            return new(bytes, true, true);
         }
 
         public static uint ReadEthUInt32(this Span<byte> bytes)
@@ -425,7 +425,7 @@ namespace Nethermind.Core.Extensions
 
         public static UInt256 ToUInt256(this byte[] bytes)
         {
-            return new UInt256(bytes, true);
+            return new(bytes, true);
         }
 
         private static byte Reverse(byte b)
@@ -545,7 +545,7 @@ namespace Nethermind.Core.Extensions
             }
 
             int length = bytes.Length * 2 + (withZeroX ? 2 : 0);
-            StateSmall stateToPass = new StateSmall(bytes, withZeroX);
+            StateSmall stateToPass = new(bytes, withZeroX);
 
             return string.Create(length, stateToPass, (chars, state) =>
             {
@@ -604,7 +604,7 @@ namespace Nethermind.Core.Extensions
                 return withZeroX ? "0x0" : "0";
             }
 
-            State stateToPass = new State(bytes, leadingZerosFirstCheck, withZeroX, withEip55Checksum);
+            State stateToPass = new(bytes, leadingZerosFirstCheck, withZeroX, withEip55Checksum);
             return string.Create(length, stateToPass, (chars, state) =>
             {
                 string? hashHex = null;

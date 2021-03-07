@@ -142,7 +142,7 @@ namespace Nethermind.Consensus.Ethash
 
         private readonly BigInteger _2To256 = BigInteger.Pow(2, 256);
 
-        private static readonly Random Random = new Random();
+        private static readonly Random Random = new();
 
         private static ulong GetRandomNonce()
         {
@@ -153,7 +153,7 @@ namespace Nethermind.Consensus.Ethash
 
         private bool IsLessThanTarget(byte[] result, UInt256 difficulty)
         {
-            UInt256 resultAsInteger = new UInt256(result, true);
+            UInt256 resultAsInteger = new(result, true);
             BigInteger threshold = BigInteger.Divide(_2To256, (BigInteger)difficulty);
             return (BigInteger)resultAsInteger < threshold;
         }
@@ -246,7 +246,7 @@ namespace Nethermind.Consensus.Ethash
             return IsLessThanTarget(result, header.Difficulty);
         }
 
-        private readonly Stopwatch _cacheStopwatch = new Stopwatch();
+        private readonly Stopwatch _cacheStopwatch = new();
 
         private IEthashDataSet BuildCache(uint epoch)
         {
@@ -260,7 +260,7 @@ namespace Nethermind.Consensus.Ethash
             return dataSet;
         }
 
-        private static HeaderDecoder _headerDecoder = new HeaderDecoder();
+        private static HeaderDecoder _headerDecoder = new();
 
         private static Keccak GetTruncatedHash(BlockHeader header)
         {

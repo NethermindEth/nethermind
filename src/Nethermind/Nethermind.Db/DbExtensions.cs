@@ -28,7 +28,7 @@ namespace Nethermind.Db
     {
         public static ReadOnlyDb AsReadOnly(this IDb db, bool createInMemoryWriteStore)
         {
-            return new ReadOnlyDb(db, createInMemoryWriteStore);
+            return new(db, createInMemoryWriteStore);
         }
         
         public static void Set(this IDb db, Keccak key, byte[] value)

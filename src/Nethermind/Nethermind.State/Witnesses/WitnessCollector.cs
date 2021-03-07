@@ -33,7 +33,7 @@ namespace Nethermind.State.Witnesses
     public class WitnessCollector : IWitnessCollector
     {
         private readonly LruCache<Keccak, Keccak[]> _witnessCache
-            = new LruCache<Keccak, Keccak[]>(256, "Witnesses");
+            = new(256, "Witnesses");
         
         public IReadOnlyCollection<Keccak> Collected => _collected;
 
@@ -119,7 +119,7 @@ namespace Nethermind.State.Witnesses
             _keyValueStore[blockHash.Bytes] = null;
         }
 
-        private readonly ResettableHashSet<Keccak> _collected = new ResettableHashSet<Keccak>();
+        private readonly ResettableHashSet<Keccak> _collected = new();
 
         private readonly IKeyValueStore _keyValueStore;
         

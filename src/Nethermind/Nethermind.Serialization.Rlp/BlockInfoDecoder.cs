@@ -41,7 +41,7 @@ namespace Nethermind.Serialization.Rlp
             
             int lastCheck = rlpStream.ReadSequenceLength() + rlpStream.Position;
 
-            BlockInfo blockInfo = new BlockInfo
+            BlockInfo blockInfo = new()
             {
                 BlockHash = rlpStream.DecodeKeccak(),
                 WasProcessed = rlpStream.DecodeBool(),
@@ -101,7 +101,7 @@ namespace Nethermind.Serialization.Rlp
             
             int lastCheck = decoderContext.ReadSequenceLength() + decoderContext.Position;
 
-            BlockInfo blockInfo = new BlockInfo
+            BlockInfo blockInfo = new()
             {
                 BlockHash = decoderContext.DecodeKeccak(),
                 WasProcessed = decoderContext.DecodeBool(),

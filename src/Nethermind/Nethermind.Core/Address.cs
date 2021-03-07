@@ -28,8 +28,8 @@ namespace Nethermind.Core
         private const int HexCharsCount = 2 * ByteLength; // 5a4eab120fb44eb6684e5e32785702ff45ea344d
         private const int PrefixedHexCharsCount = 2 + HexCharsCount; // 0x5a4eab120fb44eb6684e5e32785702ff45ea344d
         
-        public static Address Zero { get; } = new Address(new byte[ByteLength]);
-        public static Address SystemUser { get; } = new Address("0xfffffffffffffffffffffffffffffffffffffffe");
+        public static Address Zero { get; } = new(new byte[ByteLength]);
+        public static Address SystemUser { get; } = new("0xfffffffffffffffffffffffffffffffffffffffe");
         
         public byte[] Bytes { get; }
 
@@ -168,7 +168,7 @@ namespace Nethermind.Core
 
         public static bool operator !=(Address? a, Address? b) => !(a == b);
 
-        public AddressStructRef ToStructRef() => new AddressStructRef(Bytes);
+        public AddressStructRef ToStructRef() => new(Bytes);
         
         public int CompareTo(Address? other) => Bytes.AsSpan().SequenceCompareTo(other?.Bytes);
     }
@@ -279,6 +279,6 @@ namespace Nethermind.Core
 
         public static bool operator !=(AddressStructRef a, AddressStructRef b) => !(a == b);
 
-        public Address ToAddress() => new Address(Bytes.ToArray());
+        public Address ToAddress() => new(Bytes.ToArray());
     }
 }

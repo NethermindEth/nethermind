@@ -36,7 +36,7 @@ namespace Nethermind.Blockchain
             return "?";
         }
 
-        public static Dictionary<Address, string> GoerliValidators = new Dictionary<Address, string>
+        public static Dictionary<Address, string> GoerliValidators = new()
         {
             {new Address("0xa6DD2974B96e959F2c8930024451a30aFEC24203"), "Ethereum Foundation"},
             {new Address("0x000000568b9b5A365eaa767d42e74ED88915C204"), "POA"},
@@ -51,7 +51,7 @@ namespace Nethermind.Blockchain
             {new Address("0x73625f59cadc5009cb458b751b3e7b6b48c06f2c"), "flashbots"}
         };
 
-        public static Dictionary<Address, string> KnownMiners = new Dictionary<Address, string>
+        public static Dictionary<Address, string> KnownMiners = new()
         {
             {new Address("0x002e08000acbbae2155fab7ac01929564949070d"), "2Miners: SOLO"},
             {new Address("0x005e288d713a5fb3d7c9cf1b43810a98688c7223"), "xnpool"},
@@ -76,7 +76,7 @@ namespace Nethermind.Blockchain
             {new Address("0xeea5b82b61424df8020f5fedd81767f2d0d25bfb"), "BTC.com Pool"}
         };
 
-        public static Dictionary<Address, string> RinkebyValidators = new Dictionary<Address, string>
+        public static Dictionary<Address, string> RinkebyValidators = new()
         {
             // Oraclize, AKASHA, Foundation x3, Infura, Augur, Cotton Candy?
             {new Address("0x42eb768f2244c8811c63729a21a3569731535f06"), "?"},

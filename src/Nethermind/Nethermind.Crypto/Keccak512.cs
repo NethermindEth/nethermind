@@ -42,7 +42,7 @@ namespace Nethermind.Crypto
         /// <returns>
         ///     <string>0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000</string>
         /// </returns>
-        public static Keccak512 Zero { get; } = new Keccak512(new byte[Size]);
+        public static Keccak512 Zero { get; } = new(new byte[Size]);
 
         public byte[] Bytes { get; }
 

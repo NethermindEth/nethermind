@@ -37,7 +37,7 @@ namespace Nethermind.Specs.ChainSpecStyle
 
         private void BuildTransitions()
         {
-            SortedSet<long> transitionBlocks = new SortedSet<long>();
+            SortedSet<long> transitionBlocks = new();
             transitionBlocks.Add(0L);
 
             if (_chainSpec.Ethash?.BlockRewards != null)
@@ -90,7 +90,7 @@ namespace Nethermind.Specs.ChainSpecStyle
             int index = 0;
             foreach (long releaseStartBlock in transitionBlocks)
             {
-                ReleaseSpec releaseSpec = new ReleaseSpec();
+                ReleaseSpec releaseSpec = new();
                 releaseSpec.MaximumUncleCount = (int) (releaseStartBlock >= (_chainSpec.AuRa?.MaximumUncleCountTransition ?? long.MaxValue) ? _chainSpec.AuRa?.MaximumUncleCount ?? 2 : 2); 
                 releaseSpec.IsTimeAdjustmentPostOlympic = true; // TODO: this is Duration, review
                 releaseSpec.MaximumExtraDataSize = _chainSpec.Parameters.MaximumExtraDataSize;

@@ -24,7 +24,7 @@ namespace Nethermind.Crypto
     public class CryptoRandom : ICryptoRandom
     {
         private readonly RandomNumberGenerator _secureRandom = new RNGCryptoServiceProvider();
-        private readonly Random _random = new Random();
+        private readonly Random _random = new();
         
         public void GenerateRandomBytes(Span<byte> bytes)
         {

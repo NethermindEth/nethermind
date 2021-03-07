@@ -25,8 +25,8 @@ namespace Nethermind.Evm
 {
     public class TransactionSubstate
     {
-        private static List<Address> _emptyDestroyList = new List<Address>(0);
-        private static List<LogEntry> _emptyLogs = new List<LogEntry>(0);
+        private static List<Address> _emptyDestroyList = new(0);
+        private static List<LogEntry> _emptyLogs = new(0);
 
         private const string SomeError = "error";
         private const string Revert = "revert";

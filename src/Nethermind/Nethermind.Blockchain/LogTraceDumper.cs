@@ -35,7 +35,7 @@ namespace Nethermind.Blockchain
             ILogger logger)
         {
             static FileStream GetFileStream(string name) =>
-                new FileStream(
+                new(
                     Path.Combine(Path.GetTempPath(), name),
                     FileMode.Create,
                     FileAccess.Write);
@@ -48,7 +48,7 @@ namespace Nethermind.Blockchain
                 {
                     fileName = $"gethStyle_{blockHash}.txt";
                     using FileStream diagnosticFile = GetFileStream(fileName);
-                    EthereumJsonSerializer serializer = new EthereumJsonSerializer();
+                    EthereumJsonSerializer serializer = new();
                     IReadOnlyCollection<GethLikeTxTrace> trace = gethTracer.BuildResult();
                     serializer.Serialize(diagnosticFile, trace, true);
                     if (logger.IsInfo)
@@ -59,7 +59,7 @@ namespace Nethermind.Blockchain
                 {
                     fileName = $"parityStyle_{blockHash}.txt";
                     using FileStream diagnosticFile = GetFileStream(fileName);
-                    EthereumJsonSerializer serializer = new EthereumJsonSerializer();
+                    EthereumJsonSerializer serializer = new();
                     IReadOnlyCollection<ParityLikeTxTrace> trace = parityTracer.BuildResult();
                     serializer.Serialize(diagnosticFile, trace, true);
                     if (logger.IsInfo)

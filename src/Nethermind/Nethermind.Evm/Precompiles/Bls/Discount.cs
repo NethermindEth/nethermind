@@ -34,7 +34,7 @@ namespace Nethermind.Evm.Precompiles.Bls
             };
         }
         
-        private static Dictionary<int, int> _discountTable = new Dictionary<int, int>
+        private static Dictionary<int, int> _discountTable = new()
         {
             {1, 1200}, {2, 888}, {3, 764}, {4, 641}, {5, 594}, {6, 547}, {7, 500}, {8, 453},
             {9, 438}, {10, 423}, {11, 408}, {12, 394}, {13, 379}, {14, 364}, {15, 349}, {16, 334},

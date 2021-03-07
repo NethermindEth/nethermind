@@ -115,7 +115,7 @@ namespace Nethermind.Core
 
         private string ToFullString()
         {
-            StringBuilder builder = new StringBuilder();
+            StringBuilder builder = new();
             builder.AppendLine($"Block {Number}");
             builder.AppendLine("  Header:");
             builder.Append($"{Header.ToString("    ")}");

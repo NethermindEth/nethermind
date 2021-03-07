@@ -1,5 +1,5 @@
 ﻿/*
- * Copyright (c) 2018 Demerzel Solutions Limited
+ * Copyright (c) 2021 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
  * The Nethermind library is free software: you can redistribute it and/or modify
@@ -35,7 +35,7 @@ namespace Ethereum.Blockchain.Legacy.Test
         {
             var loader = new TestsSourceLoader(new LoadLegacyGeneralStateTestsStrategy(), "stRevertTest");
             List<GeneralStateTest> tests = (List<GeneralStateTest>)loader.LoadTests();
-            HashSet<string> ignoredTests = new HashSet<string>
+            HashSet<string> ignoredTests = new()
             {
                 "RevertPrecompiledTouch_storage_d0g0v0",
                 "RevertPrecompiledTouch_storage_d3g0v0",

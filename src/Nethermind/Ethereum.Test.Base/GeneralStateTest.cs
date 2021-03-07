@@ -1,5 +1,5 @@
 ﻿/*
- * Copyright (c) 2018 Demerzel Solutions Limited
+ * Copyright (c) 2021 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
  * The Nethermind library is free software: you can redistribute it and/or modify
@@ -17,6 +17,7 @@
  */
 
 using System.Collections.Generic;
+using System.IO;
 using Ethereum.Test.Base.Interfaces;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -45,7 +46,7 @@ namespace Ethereum.Test.Base
         
         public override string ToString()
         {
-            return $"{Category}.{Name}_{ForkName}";
+            return $"{Path.GetFileName(Category)}.{Name}_{ForkName}";
         }
     }
 }

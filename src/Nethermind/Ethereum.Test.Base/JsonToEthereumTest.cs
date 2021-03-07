@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018 Demerzel Solutions Limited
+ * Copyright (c) 2021 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
  * The Nethermind library is free software: you can redistribute it and/or modify
@@ -41,35 +41,22 @@ namespace Ethereum.Test.Base
             network = network.Replace("EIP158", "SpuriousDragon");
             network = network.Replace("DAO", "Dao");
 
-            switch (network)
+            return network switch
             {
-                case "Frontier":
-                    return Frontier.Instance;
-                case "Homestead":
-                    return Homestead.Instance;
-                case "TangerineWhistle":
-                    return TangerineWhistle.Instance;
-                case "SpuriousDragon":
-                    return SpuriousDragon.Instance;
-                case "EIP150":
-                    return TangerineWhistle.Instance;
-                case "EIP158":
-                    return SpuriousDragon.Instance;
-                case "Dao":
-                    return Dao.Instance;
-                case "Constantinople":
-                    return Constantinople.Instance;
-                case "ConstantinopleFix":
-                    return ConstantinopleFix.Instance;
-                case "Byzantium":
-                    return Byzantium.Instance;
-                case "Istanbul":
-                    return Istanbul.Instance;
-                case "Berlin":
-                    return Berlin.Instance;
-                default:
-                    throw new NotSupportedException();
-            }
+                "Frontier" => Frontier.Instance,
+                "Homestead" => Homestead.Instance,
+                "TangerineWhistle" => TangerineWhistle.Instance,
+                "SpuriousDragon" => SpuriousDragon.Instance,
+                "EIP150" => TangerineWhistle.Instance,
+                "EIP158" => SpuriousDragon.Instance,
+                "Dao" => Dao.Instance,
+                "Constantinople" => Constantinople.Instance,
+                "ConstantinopleFix" => ConstantinopleFix.Instance,
+                "Byzantium" => Byzantium.Instance,
+                "Istanbul" => Istanbul.Instance,
+                "Berlin" => Berlin.Instance,
+                _ => throw new NotSupportedException()
+            };
         }
 
         public static BlockHeader Convert(TestBlockHeaderJson? headerJson)
@@ -130,7 +117,7 @@ namespace Ethereum.Test.Base
                 ? transactionJson.AccessLists[index]
                 : transactionJson.AccessList, builder);
             transaction.AccessList = builder.ToAccessList();
-            
+
             return transaction;
         }
 
@@ -186,7 +173,9 @@ namespace Ethereum.Test.Base
                 foreach (PostStateJson stateJson in postStateBySpec.Value)
                 {
                     GeneralStateTest test = new();
-                    test.Name = name + $"_d{stateJson.Indexes.Data}g{stateJson.Indexes.Gas}v{stateJson.Indexes.Value}";
+                    test.Name = Path.GetFileName(name) + $"_d{stateJson.Indexes.Data}g{stateJson.Indexes.Gas}v{stateJson.Indexes.Value}_" +
+                                testJson.Info?.Labels[testIndex.ToString()]?.Replace(":label ", string.Empty);
+
                     test.ForkName = postStateBySpec.Key;
                     test.Fork = ParseSpec(postStateBySpec.Key);
                     test.PreviousHash = testJson.Env.PreviousHash;
@@ -199,6 +188,11 @@ namespace Ethereum.Test.Base
                     test.PostHash = stateJson.Hash;
                     test.Pre = testJson.Pre.ToDictionary(p => new Address(p.Key), p => Convert(p.Value));
                     test.Transaction = Convert(testIndex++, stateJson, testJson.Transaction);
+                    if (!test.Fork.UseTxAccessLists)
+                    {
+                        test.Transaction.AccessList = null;
+                    }
+
                     blockchainTests.Add(test);
                 }
             }

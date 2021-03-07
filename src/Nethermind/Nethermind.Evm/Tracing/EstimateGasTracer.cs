@@ -202,7 +202,7 @@ namespace Nethermind.Evm.Tracing
 
         private bool _isInPrecompile;
 
-        private Stack<GasAndNesting> _currentGasAndNesting = new Stack<GasAndNesting>();
+        private Stack<GasAndNesting> _currentGasAndNesting = new();
 
         public void ReportAction(long gas, UInt256 value, Address @from, Address to, byte[] input, ExecutionType callType, bool isPrecompileCall = false)
         {

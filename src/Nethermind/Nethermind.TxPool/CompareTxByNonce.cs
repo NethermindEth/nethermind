@@ -25,7 +25,7 @@ namespace Nethermind.TxPool
     /// </summary>
     public class CompareTxByNonce : IComparer<Transaction>
     {
-        public static readonly CompareTxByNonce Instance = new CompareTxByNonce();
+        public static readonly CompareTxByNonce Instance = new();
         
         private CompareTxByNonce() { }
 

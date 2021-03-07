@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018 Demerzel Solutions Limited
+ * Copyright (c) 2021 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
  * The Nethermind library is free software: you can redistribute it and/or modify
@@ -27,9 +27,9 @@ namespace Ethereum.Test.Base
     public class FileTestsSource
     {
         private readonly string _fileName;
-        private readonly string _wildcard;
+        private readonly string? _wildcard;
 
-        public FileTestsSource(string fileName, string wildcard = null)
+        public FileTestsSource(string fileName, string? wildcard = null)
         {
             _fileName = fileName ?? throw new ArgumentNullException(nameof(fileName));
             _wildcard = wildcard;

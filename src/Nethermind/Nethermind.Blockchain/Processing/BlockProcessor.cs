@@ -296,7 +296,7 @@ namespace Nethermind.Blockchain.Processing
             if (_logger.IsTrace) _logger.Trace($"{suggestedBlock.Header.ToString(BlockHeader.Format.Full)}");
 
             BlockHeader bh = suggestedBlock.Header;
-            BlockHeader header = new BlockHeader(
+            BlockHeader header = new(
                 bh.ParentHash,
                 bh.OmmersHash,
                 bh.Beneficiary,

@@ -24,13 +24,13 @@ namespace Nethermind.Consensus
 {
     public class NullSigner : ISigner, ISignerStore
     {
-        public static readonly NullSigner Instance = new NullSigner();
+        public static readonly NullSigner Instance = new();
         
         public Address Address { get; } = Address.Zero; // TODO: why zero address 
 
         public ValueTask Sign(Transaction tx) => default;
 
-        public Signature Sign(Keccak message) { return new Signature(new byte[65]); }
+        public Signature Sign(Keccak message) { return new(new byte[65]); }
 
         public bool CanSign { get; } = true; // TODO: why true?
 

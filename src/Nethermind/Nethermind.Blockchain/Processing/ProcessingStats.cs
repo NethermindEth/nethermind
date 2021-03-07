@@ -24,7 +24,7 @@ namespace Nethermind.Blockchain.Processing
     internal class ProcessingStats
     {
         private readonly ILogger _logger;
-        private readonly Stopwatch _processingStopwatch = new Stopwatch();
+        private readonly Stopwatch _processingStopwatch = new();
         private long _lastBlockNumber;
         private long _lastElapsedTicks;
         private decimal _lastTotalMGas;

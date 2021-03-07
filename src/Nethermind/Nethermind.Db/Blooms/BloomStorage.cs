@@ -244,7 +244,7 @@ namespace Nethermind.Db.Blooms
             public readonly byte Level;
             public readonly int LevelElementSize;
             public readonly int LevelMultiplier;
-            public readonly Average Average = new Average();
+            public readonly Average Average = new();
             
             private readonly IFileStore _fileStore;
             private readonly bool _migrationStatistics;
@@ -335,7 +335,7 @@ namespace Nethermind.Db.Blooms
             private readonly long _toBlock;
             private readonly int _maxLevel;
             private long _currentPosition;
-            private readonly Bloom _bloom = new Bloom();
+            private readonly Bloom _bloom = new();
             
             private byte CurrentLevel
             {

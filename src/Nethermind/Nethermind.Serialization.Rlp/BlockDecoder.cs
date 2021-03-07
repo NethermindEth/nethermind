@@ -39,7 +39,7 @@ namespace Nethermind.Serialization.Rlp
 
             int transactionsSequenceLength = rlpStream.ReadSequenceLength();
             int transactionsCheck = rlpStream.Position + transactionsSequenceLength;
-            List<Transaction> transactions = new List<Transaction>();
+            List<Transaction> transactions = new();
             while (rlpStream.Position < transactionsCheck)
             {
                 transactions.Add(Rlp.Decode<Transaction>(rlpStream));
@@ -49,7 +49,7 @@ namespace Nethermind.Serialization.Rlp
 
             int ommersSequenceLength = rlpStream.ReadSequenceLength();
             int ommersCheck = rlpStream.Position + ommersSequenceLength;
-            List<BlockHeader> ommerHeaders = new List<BlockHeader>();
+            List<BlockHeader> ommerHeaders = new();
             while (rlpStream.Position < ommersCheck)
             {
                 ommerHeaders.Add(Rlp.Decode<BlockHeader>(rlpStream, rlpBehaviors));
@@ -135,7 +135,7 @@ namespace Nethermind.Serialization.Rlp
 
             int ommersSequenceLength = decoderContext.ReadSequenceLength();
             int ommersCheck = decoderContext.Position + ommersSequenceLength;
-            List<BlockHeader> ommerHeaders = new List<BlockHeader>();
+            List<BlockHeader> ommerHeaders = new();
             while (decoderContext.Position < ommersCheck)
             {
                 ommerHeaders.Add(Rlp.Decode<BlockHeader>(ref decoderContext, rlpBehaviors));

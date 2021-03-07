@@ -1,5 +1,5 @@
 ﻿/*
- * Copyright (c) 2018 Demerzel Solutions Limited
+ * Copyright (c) 2021 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
  * The Nethermind library is free software: you can redistribute it and/or modify
@@ -17,11 +17,14 @@
  */
 
 using System.Collections.Generic;
+using Newtonsoft.Json;
 
 namespace Ethereum.Test.Base
 {
     public class GeneralStateTestJson
     {
+        [JsonProperty("_info")]
+        public GeneralStateTestInfoJson? Info { get; set; }
         public GeneralStateTestEnvJson? Env { get; set; }
         public Dictionary<string, PostStateJson[]>? Post { get; set; }
         public Dictionary<string, AccountStateJson>? Pre { get; set; }

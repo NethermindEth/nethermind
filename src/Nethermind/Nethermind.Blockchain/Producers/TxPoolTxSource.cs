@@ -195,7 +195,7 @@ namespace Nethermind.Blockchain.Producers
                 // A -> N0_P3, N1_P1, N1_P0, N3_P5...
                 // B -> N4_P4, N5_P3, N6_P3...
                 // We construct [N4_P4 (B), N0_P3 (A)] in sorted order by priority
-                DictionarySortedSet<Transaction, IEnumerator<Transaction>> transactions = new DictionarySortedSet<Transaction, IEnumerator<Transaction>>(comparerWithIdentity);
+                DictionarySortedSet<Transaction, IEnumerator<Transaction>> transactions = new(comparerWithIdentity);
             
                 for (int i = 0; i < bySenderEnumerators.Length; i++)
                 {
