@@ -58,7 +58,7 @@ namespace Ethereum.Test.Base
                 }
                 catch (Exception e)
                 {
-                    testsByName.Add(new BlockchainTest {Name = testFile, LoadFailure = $"Failed to load: {e.Message}"});
+                    testsByName.Add(new BlockchainTest {Name = testFile, LoadFailure = $"Failed to load: {e}"});
                 }
             }
 

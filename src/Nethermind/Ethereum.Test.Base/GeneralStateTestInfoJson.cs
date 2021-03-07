@@ -22,6 +22,6 @@ namespace Ethereum.Test.Base
 {
     public class GeneralStateTestInfoJson
     {
-        public Dictionary<string, string> Labels { get; set; }
+        public Dictionary<string, string>? Labels { get; set; }
     }
 }

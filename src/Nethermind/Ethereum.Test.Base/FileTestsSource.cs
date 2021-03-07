@@ -54,7 +54,7 @@ namespace Ethereum.Test.Base
             }
             catch (Exception e)
             {
-                return Enumerable.Repeat(new GeneralStateTest {Name = _fileName, LoadFailure = $"Failed to load: {e.Message}"}, 1);
+                return Enumerable.Repeat(new GeneralStateTest {Name = _fileName, LoadFailure = $"Failed to load: {e}"}, 1);
             }
         }
         
@@ -78,7 +78,7 @@ namespace Ethereum.Test.Base
             }
             catch (Exception e)
             {
-                return Enumerable.Repeat(new BlockchainTest {Name = _fileName, LoadFailure = $"Failed to load: {e.Message}"}, 1);
+                return Enumerable.Repeat(new BlockchainTest {Name = _fileName, LoadFailure = $"Failed to load: {e}"}, 1);
             }
         }
     }

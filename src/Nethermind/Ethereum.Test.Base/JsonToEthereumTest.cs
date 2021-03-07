@@ -99,7 +99,7 @@ namespace Ethereum.Test.Base
         }
 
 
-        public static Transaction Convert(int index, PostStateJson postStateJson, TransactionJson transactionJson)
+        public static Transaction Convert(PostStateJson postStateJson, TransactionJson transactionJson)
         {
             Transaction transaction = new();
             transaction.Value = transactionJson.Value[postStateJson.Indexes.Value];
@@ -114,7 +114,7 @@ namespace Ethereum.Test.Base
 
             AccessListBuilder builder = new();
             ProcessAccessList(transactionJson.AccessLists is not null
-                ? transactionJson.AccessLists[index]
+                ? transactionJson.AccessLists[postStateJson.Indexes.Data]
                 : transactionJson.AccessList, builder);
             transaction.AccessList = builder.ToAccessList();
 
@@ -167,15 +167,15 @@ namespace Ethereum.Test.Base
             }
 
             List<GeneralStateTest> blockchainTests = new();
-            foreach (var postStateBySpec in testJson.Post)
+            foreach (KeyValuePair<string, PostStateJson[]> postStateBySpec in testJson.Post)
             {
                 int testIndex = 0;
                 foreach (PostStateJson stateJson in postStateBySpec.Value)
                 {
                     GeneralStateTest test = new();
                     test.Name = Path.GetFileName(name) + $"_d{stateJson.Indexes.Data}g{stateJson.Indexes.Gas}v{stateJson.Indexes.Value}_" +
-                                testJson.Info?.Labels[testIndex.ToString()]?.Replace(":label ", string.Empty);
-
+                                testJson.Info?.Labels?[testIndex.ToString()]?.Replace(":label ", string.Empty);
+                    
                     test.ForkName = postStateBySpec.Key;
                     test.Fork = ParseSpec(postStateBySpec.Key);
                     test.PreviousHash = testJson.Env.PreviousHash;
@@ -187,7 +187,7 @@ namespace Ethereum.Test.Base
                     test.PostReceiptsRoot = stateJson.Logs;
                     test.PostHash = stateJson.Hash;
                     test.Pre = testJson.Pre.ToDictionary(p => new Address(p.Key), p => Convert(p.Value));
-                    test.Transaction = Convert(testIndex++, stateJson, testJson.Transaction);
+                    test.Transaction = Convert(stateJson, testJson.Transaction);
                     if (!test.Fork.UseTxAccessLists)
                     {
                         test.Transaction.AccessList = null;
@@ -265,19 +265,19 @@ namespace Ethereum.Test.Base
             }
 
             List<BlockchainTest> testsByName = new();
-            foreach (KeyValuePair<string, BlockchainTestJson> namedTest in testsInFile)
+            foreach ((string testName, BlockchainTestJson testSpec) in testsInFile)
             {
-                string[] transitionInfo = namedTest.Value.Network.Split("At");
+                string[] transitionInfo = testSpec.Network.Split("At");
                 string[] networks = transitionInfo[0].Split("To");
 
-                namedTest.Value.EthereumNetwork = ParseSpec(networks[0]);
+                testSpec.EthereumNetwork = ParseSpec(networks[0]);
                 if (transitionInfo.Length > 1)
                 {
-                    namedTest.Value.TransitionBlockNumber = int.Parse(transitionInfo[1]);
-                    namedTest.Value.EthereumNetworkAfterTransition = ParseSpec(networks[1]);
+                    testSpec.TransitionBlockNumber = int.Parse(transitionInfo[1]);
+                    testSpec.EthereumNetworkAfterTransition = ParseSpec(networks[1]);
                 }
 
-                testsByName.Add(Convert(namedTest.Key, namedTest.Value));
+                testsByName.Add(Convert(testName, testSpec));
             }
 
             return testsByName;

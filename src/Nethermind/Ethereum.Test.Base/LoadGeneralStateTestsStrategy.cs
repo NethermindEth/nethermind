@@ -59,7 +59,7 @@ namespace Ethereum.Test.Base
                 }
                 catch (Exception e)
                 {
-                    testsByName.Add(new GeneralStateTest {Name = testFile, LoadFailure = $"Failed to load: {e.Message}"});
+                    testsByName.Add(new GeneralStateTest {Name = testFile, LoadFailure = $"Failed to load: {e}"});
                 }
             }
 
