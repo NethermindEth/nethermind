@@ -97,10 +97,11 @@ namespace Nethermind.Blockchain.Test.Runner
             long categoryTimeInMs = result.Sum(t => t.TimeInMs);
             _totalMs += result.Sum(t => t.TimeInMs);
 
-            Console.WriteLine($"CATEGORY {categoryTimeInMs}ms, FAILURES {failedTestsInCategory.Length}");
-            Console.WriteLine();
-            Console.WriteLine();
-            Console.WriteLine();
+            if (result.Any())
+            {
+                Console.WriteLine($"CATEGORY {categoryTimeInMs}ms, FAILURES {failedTestsInCategory.Length}");
+                Console.WriteLine();
+            }
         }
 
         private static async Task WrapAndRunDirectoryBlockchainTestsAsync(IBlockchainTestRunner blockchainTestRunner)
@@ -113,10 +114,11 @@ namespace Nethermind.Blockchain.Test.Runner
             long categoryTimeInMs = testResults.Sum(t => t.TimeInMs);
             _totalMs += testResults.Sum(t => t.TimeInMs);
 
-            Console.WriteLine($"CATEGORY {categoryTimeInMs}ms, FAILURES {failedTestsInCategory.Length}");
-            Console.WriteLine();
-            Console.WriteLine();
-            Console.WriteLine();
+            if (testResults.Any())
+            {
+                Console.WriteLine($"CATEGORY {categoryTimeInMs}ms, FAILURES {failedTestsInCategory.Length}");
+                Console.WriteLine();
+            }
         }
 
         private static void RunAllStateTests(string testWildcard, Func<ITestSourceLoader, IStateTestRunner> testRunnerBuilder)

@@ -42,14 +42,15 @@ namespace Nethermind.Evm.Precompiles
         }
 
         /// <summary>
-        /// def calculate_gas_cost(base_length, modulus_length, exponent_length, exponent):
-        /// multiplication_complexity = calculate_multiplication_complexity(base_length, modulus_length)
-        /// iteration_count = calculate_iteration_count(exponent_length, exponent)
-        /// return max(200, math.floor(multiplication_complexity * iteration_count / 3))
+        /// https://github.com/ethereum/EIPs/pull/2892
+        /// ADJUSTED_EXPONENT_LENGTH is defined as follows.
+        /// If length_of_EXPONENT &lt;= 32, and all bits in EXPONENT are 0, return 0
+        /// If length_of_EXPONENT &lt;= 32, then return the index of the highest bit in EXPONENT (eg. 1 -> 0, 2 -> 1, 3 -> 1, 255 -> 7, 256 -> 8).
+        /// If length_of_EXPONENT > 32, then return 8 * (length_of_EXPONENT - 32) plus the index of the highest bit in the first 32 bytes of EXPONENT (eg. if EXPONENT = \x00\x00\x01\x00.....\x00, with one hundred bytes, then the result is 8 * (100 - 32) + 253 = 797). If all of the first 32 bytes of EXPONENT are zero, return exactly 8 * (length_of_EXPONENT - 32).
         /// </summary>
         /// <param name="inputData"></param>
         /// <param name="releaseSpec"></param>
-        /// <returns></returns>
+        /// <returns>Gas cost of the MODEXP operation in the context of EIP2565</returns>
         public long DataGasCost(byte[] inputData, IReleaseSpec releaseSpec)
         {
             try
@@ -122,8 +123,8 @@ namespace Nethermind.Evm.Precompiles
         /// <summary>
         /// def calculate_iteration_count(exponent_length, exponent):
         /// iteration_count = 0
-        /// if exponent_length <= 32 and exponent == 0: iteration_count = 0
-        /// elif exponent_length <= 32: iteration_count = exponent.bit_length() - 1
+        /// if exponent_length &lt;= 32 and exponent == 0: iteration_count = 0
+        /// elif exponent_length &lt;= 32: iteration_count = exponent.bit_length() - 1
         /// elif exponent_length > 32: iteration_count = (8 * (exponent_length - 32)) + ((exponent & (2**256 - 1)).bit_length() - 1)
         /// return max(iteration_count, 1) 
         /// </summary>
@@ -134,16 +135,16 @@ namespace Nethermind.Evm.Precompiles
         {
             try
             {
-                UInt256 iterationCount = UInt256.Zero;
+                UInt256 iterationCount;
                 if (exponentLength <= 32)
                 {
-                    if (exponent != 0)
+                    if (!exponent.IsZero)
                     {
                         iterationCount = (UInt256)(exponent.BitLen - 1);
                     }
                     else
                     {
-                        iterationCount = 0;
+                        iterationCount = UInt256.Zero;
                     }
                 }
                 else
@@ -159,8 +160,7 @@ namespace Nethermind.Evm.Precompiles
 
                 return UInt256.Max(iterationCount, UInt256.One);
             }
-            catch (OverflowException e)
-
+            catch (OverflowException)
             {
                 return UInt256.MaxValue;
             }
