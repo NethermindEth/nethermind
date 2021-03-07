@@ -21,7 +21,7 @@ namespace Nethermind.Core
 {
     public class Account
     {
-        public static Account TotallyEmpty = new Account();
+        public static Account TotallyEmpty = new();
 
         private static UInt256 _accountStartNonce = UInt256.Zero;
         
@@ -91,22 +91,22 @@ namespace Nethermind.Core
 
         public Account WithChangedBalance(UInt256 newBalance)
         {
-            return new Account(Nonce, newBalance, StorageRoot, CodeHash, IsTotallyEmpty && newBalance.IsZero);
+            return new(Nonce, newBalance, StorageRoot, CodeHash, IsTotallyEmpty && newBalance.IsZero);
         }
 
         public Account WithChangedNonce(UInt256 newNonce)
         {
-            return new Account(newNonce, Balance, StorageRoot, CodeHash, IsTotallyEmpty && newNonce == _accountStartNonce);
+            return new(newNonce, Balance, StorageRoot, CodeHash, IsTotallyEmpty && newNonce == _accountStartNonce);
         }
 
         public Account WithChangedStorageRoot(Keccak newStorageRoot)
         {
-            return new Account(Nonce, Balance, newStorageRoot, CodeHash, IsTotallyEmpty && newStorageRoot == Keccak.EmptyTreeHash);
+            return new(Nonce, Balance, newStorageRoot, CodeHash, IsTotallyEmpty && newStorageRoot == Keccak.EmptyTreeHash);
         }
 
         public Account WithChangedCodeHash(Keccak newCodeHash)
         {
-            return new Account(Nonce, Balance, StorageRoot, newCodeHash, IsTotallyEmpty && newCodeHash == Keccak.OfAnEmptyString);
+            return new(Nonce, Balance, StorageRoot, newCodeHash, IsTotallyEmpty && newCodeHash == Keccak.OfAnEmptyString);
         }
     }
 }

@@ -26,7 +26,7 @@ namespace Nethermind.TxPool
         public static ITxSender Instance { get; } = new NullTxSender();
         
         public ValueTask<Keccak> SendTransaction(Transaction tx, TxHandlingOptions txHandlingOptions)
-            => new ValueTask<Keccak>(tx.Hash);
+            => new(tx.Hash);
         
     }
 }

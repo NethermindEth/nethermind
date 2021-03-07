@@ -20,14 +20,14 @@ namespace Nethermind.Serialization.Rlp
 {
     public static class ByteArrayExtensions
     {
-        public static RlpStream AsRlpStream(this byte[] bytes)
+        public static RlpStream AsRlpStream(this byte[]? bytes)
         {
-            return bytes == null ? new RlpStream(Array.Empty<byte>()) : new RlpStream(bytes);
+            return new(bytes ?? Array.Empty<byte>());
         }
 
-        public static Rlp.ValueDecoderContext AsRlpValueContext(this byte[] bytes)
+        public static Rlp.ValueDecoderContext AsRlpValueContext(this byte[]? bytes)
         {
-            return bytes == null ? new Rlp.ValueDecoderContext(Array.Empty<byte>()) : new Rlp.ValueDecoderContext(bytes);
+            return new(bytes ?? Array.Empty<byte>());
         }
 
         public static Rlp.ValueDecoderContext AsRlpValueContext(this Span<byte> span)

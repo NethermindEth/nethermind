@@ -44,7 +44,7 @@ namespace Nethermind.Serialization.Rlp
             }
             
             bool isStorage = (rlpBehaviors & RlpBehaviors.Storage) != 0;
-            TxReceipt txReceipt = new TxReceipt();
+            TxReceipt txReceipt = new();
             rlpStream.ReadSequenceLength();
             byte[] firstItem = rlpStream.DecodeByteArray();
             if (firstItem.Length == 1)
@@ -67,7 +67,7 @@ namespace Nethermind.Serialization.Rlp
             txReceipt.Bloom = rlpStream.DecodeBloom();
 
             int lastCheck = rlpStream.ReadSequenceLength() + rlpStream.Position;
-            List<LogEntry> logEntries = new List<LogEntry>();
+            List<LogEntry> logEntries = new();
 
             while (rlpStream.Position < lastCheck)
             {
@@ -112,7 +112,7 @@ namespace Nethermind.Serialization.Rlp
             }
             
             bool isStorage = (rlpBehaviors & RlpBehaviors.Storage) != 0;
-            TxReceipt txReceipt = new TxReceipt();
+            TxReceipt txReceipt = new();
             decoderContext.ReadSequenceLength();
             byte[] firstItem = decoderContext.DecodeByteArray();
             if (firstItem.Length == 1)
@@ -135,7 +135,7 @@ namespace Nethermind.Serialization.Rlp
             txReceipt.Bloom = decoderContext.DecodeBloom();
 
             int lastCheck = decoderContext.ReadSequenceLength() + decoderContext.Position;
-            List<LogEntry> logEntries = new List<LogEntry>();
+            List<LogEntry> logEntries = new();
 
             while (decoderContext.Position < lastCheck)
             {

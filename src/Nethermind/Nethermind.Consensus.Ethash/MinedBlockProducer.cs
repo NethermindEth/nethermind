@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -31,10 +32,10 @@ namespace Nethermind.Consensus.Ethash
 {
     public class MinedBlockProducer : BlockProducerBase
     {
-        private bool _isRunning = false;
+        private bool _isRunning;
         private readonly IDifficultyCalculator _difficultyCalculator;
-        private readonly object _syncToken = new object();
-        private CancellationTokenSource _cancellationTokenSource = new CancellationTokenSource();
+        private readonly object _syncToken = new();
+        private CancellationTokenSource _cancellationTokenSource = new();
 
         public MinedBlockProducer(ITxSource txSource,
             IBlockchainProcessor processor,
@@ -66,7 +67,7 @@ namespace Nethermind.Consensus.Ethash
         {
             lock (_syncToken)
             {
-                _cancellationTokenSource?.Cancel();
+                _cancellationTokenSource.Cancel();
             }
         }
 
@@ -75,7 +76,7 @@ namespace Nethermind.Consensus.Ethash
             CancellationToken token;
             lock (_syncToken)
             {
-                _cancellationTokenSource?.Cancel();
+                _cancellationTokenSource.Cancel();
                 _cancellationTokenSource = new CancellationTokenSource();
                 token = _cancellationTokenSource.Token;
             }
@@ -98,7 +99,7 @@ namespace Nethermind.Consensus.Ethash
             
             lock (_syncToken)
             {
-                _cancellationTokenSource?.Cancel();
+                _cancellationTokenSource.Cancel();
             }
 
             _isRunning = false;
@@ -109,9 +110,19 @@ namespace Nethermind.Consensus.Ethash
 
         protected override UInt256 CalculateDifficulty(BlockHeader parent, UInt256 timestamp)
         {
-            Block parentBlock = BlockTree.FindBlock(parent.Hash, BlockTreeLookupOptions.None);
+            if (parent.Hash is null)
+            {
+                throw new InvalidDataException("parent.Hash is null when calculating difficulty");
+            }
+            
+            Block? parentBlock = BlockTree.FindBlock(parent.Hash, BlockTreeLookupOptions.None);
+            if (parentBlock is null)
+            {
+                throw new InvalidDataException("parentBlock is null when calculating difficulty");
+            }
+            
             return _difficultyCalculator.Calculate(
-                parent.Difficulty, parent.Timestamp, timestamp, parent.Number + 1, (parentBlock.Ommers?.Length ?? 0) > 0);
+                parent.Difficulty, parent.Timestamp, timestamp, parent.Number + 1, parentBlock.Ommers.Length > 0);
         }
     }
 }

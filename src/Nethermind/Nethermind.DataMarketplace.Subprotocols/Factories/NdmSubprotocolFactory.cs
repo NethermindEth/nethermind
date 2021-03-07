@@ -42,25 +42,35 @@ namespace Nethermind.DataMarketplace.Subprotocols.Factories
         protected readonly INdmFaucet Faucet;
         protected readonly bool VerifySignature;
         protected readonly PublicKey NodeId;
-        protected Address ProviderAddress;
-        protected Address ConsumerAddress;
+        protected Address? ProviderAddress;
+        protected Address? ConsumerAddress;
 
-        public NdmSubprotocolFactory(IMessageSerializationService messageSerializationService,
-            INodeStatsManager nodeStatsManager, ILogManager logManager, IAccountService accountService,
-            IConsumerService consumerService, INdmConsumerChannelManager ndmConsumerChannelManager, IEcdsa ecdsa,
-            IWallet wallet, INdmFaucet faucet, PublicKey nodeId, Address providerAddress, Address consumerAddress,
+        public NdmSubprotocolFactory(
+            IMessageSerializationService? messageSerializationService,
+            INodeStatsManager? nodeStatsManager,
+            ILogManager? logManager,
+            IAccountService? accountService,
+            IConsumerService? consumerService,
+            INdmConsumerChannelManager? ndmConsumerChannelManager,
+            IEcdsa? ecdsa,
+            IWallet? wallet,
+            INdmFaucet? faucet,
+            PublicKey? nodeId,
+            Address? providerAddress,
+            Address? consumerAddress,
             bool verifySignature = true)
         {
-            MessageSerializationService = messageSerializationService;
+            if (nodeStatsManager == null) throw new ArgumentNullException(nameof(nodeStatsManager));
+            MessageSerializationService = messageSerializationService ?? throw new ArgumentNullException(nameof(messageSerializationService));
             NodeStatsManager = nodeStatsManager ?? throw new ArgumentNullException(nameof(nodeStatsManager));
-            LogManager = logManager;
-            AccountService = accountService;
-            ConsumerService = consumerService;
-            NdmConsumerChannelManager = ndmConsumerChannelManager;
-            Ecdsa = ecdsa;
-            Wallet = wallet;
-            Faucet = faucet;
-            NodeId = nodeId;
+            LogManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
+            AccountService = accountService ?? throw new ArgumentNullException(nameof(accountService));
+            ConsumerService = consumerService ?? throw new ArgumentNullException(nameof(consumerService));
+            NdmConsumerChannelManager = ndmConsumerChannelManager ?? throw new ArgumentNullException(nameof(ndmConsumerChannelManager));
+            Ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
+            Wallet = wallet ?? throw new ArgumentNullException(nameof(wallet));
+            Faucet = faucet ?? throw new ArgumentNullException(nameof(faucet));
+            NodeId = nodeId ?? throw new ArgumentNullException(nameof(nodeId));
             ProviderAddress = providerAddress;
             ConsumerAddress = consumerAddress;
             VerifySignature = verifySignature;

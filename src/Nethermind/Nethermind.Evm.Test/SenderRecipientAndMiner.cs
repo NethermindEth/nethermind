@@ -22,7 +22,7 @@ namespace Nethermind.Evm.Test
 {
     public class SenderRecipientAndMiner
     {
-        public static SenderRecipientAndMiner Default = new SenderRecipientAndMiner();
+        public static SenderRecipientAndMiner Default = new();
             
         public SenderRecipientAndMiner()
         {

@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using Nethermind.Core.Crypto;
 using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.DataMarketplace.Subprotocols.Messages;
 using Nethermind.Network;
@@ -29,10 +30,10 @@ namespace Nethermind.DataMarketplace.Subprotocols.Serializers
 
         public DataAssetStateChangedMessage Deserialize(byte[] bytes)
         {
-            var context = bytes.AsRlpStream();
+            RlpStream context = bytes.AsRlpStream();
             context.ReadSequenceLength();
-            var dataAssetId = context.DecodeKeccak();
-            var state = (DataAssetState) context.DecodeInt();
+            Keccak? dataAssetId = context.DecodeKeccak();
+            DataAssetState state = (DataAssetState) context.DecodeInt();
 
             return new DataAssetStateChangedMessage(dataAssetId, state);
         }

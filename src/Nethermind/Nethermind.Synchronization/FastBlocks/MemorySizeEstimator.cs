@@ -59,15 +59,15 @@ namespace Nethermind.Synchronization.FastBlocks
             }
             
             long estimate = 80L;
-            estimate += (blockBody.Transactions?.Length ?? 0) * 8L;
-            estimate += (blockBody.Ommers?.Length ?? 0) * 8L;
+            estimate += blockBody.Transactions.Length * 8L;
+            estimate += blockBody.Ommers.Length * 8L;
             
-            foreach (Transaction transaction in blockBody.Transactions ?? Array.Empty<Transaction>())
+            foreach (Transaction transaction in blockBody.Transactions)
             {
                 estimate += EstimateSize(transaction);
             }
             
-            foreach (BlockHeader header in blockBody.Ommers ?? Array.Empty<BlockHeader>())
+            foreach (BlockHeader header in blockBody.Ommers)
             {
                 estimate += EstimateSize(header);
             }

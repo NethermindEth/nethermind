@@ -75,10 +75,10 @@ namespace Nethermind.Evm.Precompiles
 
         public (byte[], bool) Run(byte[] inputData, IReleaseSpec releaseSpec)
         {
-            if (releaseSpec.IsEip2565Enabled)
-            {
-                return ModExpPrecompile2565.Instance.Run(inputData, releaseSpec);
-            }
+            // if (releaseSpec.IsEip2565Enabled)
+            // {
+            //     return ModExpPrecompile2565.Instance.Run(inputData, releaseSpec);
+            // }
             
             Metrics.ModExpPrecompile++;
             

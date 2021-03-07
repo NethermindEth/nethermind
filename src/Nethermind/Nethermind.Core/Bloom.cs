@@ -22,7 +22,7 @@ namespace Nethermind.Core
 {
     public class Bloom : IEquatable<Bloom>
     {
-        public static readonly Bloom Empty = new Bloom();
+        public static readonly Bloom Empty = new();
         public const int BitLength = 2048;
         public const int ByteLength = BitLength / 8;
         
@@ -213,7 +213,7 @@ namespace Nethermind.Core
             public int Index3 { get; }
         }
 
-        public BloomStructRef ToStructRef() => new BloomStructRef(Bytes);
+        public BloomStructRef ToStructRef() => new(Bytes);
     }
 
     public ref struct BloomStructRef

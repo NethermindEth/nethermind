@@ -250,8 +250,8 @@ namespace Nethermind.Secp256k1
             // TODO: should probably do that only once
             secp256k1_ecdh_hash_function hashFunctionPtr = (void* output, void* x, void* y, IntPtr d) =>
             {
-                Span<byte> outputSpan = new Span<byte>(output, outputLength);
-                Span<byte> xSpan = new Span<byte>(x, 32);
+                Span<byte> outputSpan = new(output, outputLength);
+                Span<byte> xSpan = new(x, 32);
                 if (xSpan.Length < 32)
                 {
                     return 0;

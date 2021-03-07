@@ -811,7 +811,7 @@ namespace Nethermind.Evm
                         }
                         else
                         {
-                            Int256.Int256 signedA = new Int256.Int256(a);
+                            Int256.Int256 signedA = new(a);
                             Int256.Int256.Divide(in signedA, in b, out Int256.Int256 res);
                             stack.PushSignedInt256(in res);
                         }
@@ -1130,8 +1130,8 @@ namespace Nethermind.Evm
 
                         if (_simdOperationsEnabled)
                         {
-                            Vector<byte> aVec = new Vector<byte>(a);
-                            Vector<byte> bVec = new Vector<byte>(b);
+                            Vector<byte> aVec = new(a);
+                            Vector<byte> bVec = new(b);
 
                             Vector.BitwiseAnd(aVec, bVec).CopyTo(stack.Register);
                         }
@@ -1163,8 +1163,8 @@ namespace Nethermind.Evm
 
                         if (_simdOperationsEnabled)
                         {
-                            Vector<byte> aVec = new Vector<byte>(a);
-                            Vector<byte> bVec = new Vector<byte>(b);
+                            Vector<byte> aVec = new(a);
+                            Vector<byte> bVec = new(b);
 
                             Vector.BitwiseOr(aVec, bVec).CopyTo(stack.Register);
                         }
@@ -1196,8 +1196,8 @@ namespace Nethermind.Evm
 
                         if (_simdOperationsEnabled)
                         {
-                            Vector<byte> aVec = new Vector<byte>(a);
-                            Vector<byte> bVec = new Vector<byte>(b);
+                            Vector<byte> aVec = new(a);
+                            Vector<byte> bVec = new(b);
 
                             Vector.Xor(aVec, bVec).CopyTo(stack.Register);
                         }
@@ -1228,7 +1228,7 @@ namespace Nethermind.Evm
 
                         if (_simdOperationsEnabled)
                         {
-                            Vector<byte> aVec = new Vector<byte>(a);
+                            Vector<byte> aVec = new(a);
                             Vector<byte> negVec = Vector.Xor(aVec, new Vector<byte>(BytesMax32));
 
                             negVec.CopyTo(stack.Register);
@@ -2157,7 +2157,7 @@ namespace Nethermind.Evm
                             topics[i] = new Keccak(stack.PopBytes().ToArray());
                         }
 
-                        LogEntry logEntry = new LogEntry(
+                        LogEntry logEntry = new(
                             env.ExecutingAccount,
                             data,
                             topics);
@@ -2815,7 +2815,7 @@ namespace Nethermind.Evm
             {
                 get
                 {
-                    return new CallResult(EvmExceptionType.BadInstruction);
+                    return new(EvmExceptionType.BadInstruction);
                 }
             }
 

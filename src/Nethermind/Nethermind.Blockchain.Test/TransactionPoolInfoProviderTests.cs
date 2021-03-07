@@ -51,8 +51,9 @@ namespace Nethermind.Blockchain.Test
             uint nonce = 3;
             _stateReader.GetNonce(Arg.Any<Keccak>(), _address).Returns(new UInt256(nonce));
             var transactions = GetTransactions();
-            
-            _txPool.GetPendingTransactions().Returns(transactions);
+
+            _txPool.GetPendingTransactionsBySender()
+                .Returns(new Dictionary<Address, Transaction[]> {{_address, transactions}});
             var info = _infoProvider.GetInfo(Build.A.BlockHeader.TestObject);
 
             info.Pending.Count.Should().Be(1);
@@ -76,19 +77,14 @@ namespace Nethermind.Blockchain.Test
 
         private void VerifyNonceAndTransactions(IDictionary<ulong, Transaction> transactionNonce, ulong nonce)
         {
-            transactionNonce[nonce].Nonce.Should().Be(nonce);            
+            transactionNonce[nonce].Nonce.Should().Be(nonce);
         }
 
         private Transaction[] GetTransactions()
             => new[]
             {
-                GetTransaction(1),
-                GetTransaction(2),
-                GetTransaction(3),
-                GetTransaction(4),
-                GetTransaction(5),
-                GetTransaction(8),
-                GetTransaction(9)
+                GetTransaction(1), GetTransaction(2), GetTransaction(3), GetTransaction(4), GetTransaction(5),
+                GetTransaction(8), GetTransaction(9)
             };
 
         private Transaction GetTransaction(UInt256 nonce)

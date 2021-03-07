@@ -17,6 +17,7 @@
 using System;
 using System.Linq;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc;
@@ -29,9 +30,9 @@ namespace Nethermind.Consensus.Clique
 
         private readonly ICliqueBlockProducer? _cliqueBlockProducer;
         private readonly ISnapshotManager _snapshotManager;
-        private readonly IBlockTree _blockTree;
+        private readonly IBlockFinder _blockTree;
 
-        public CliqueRpcModule(ICliqueBlockProducer? cliqueBlockProducer, ISnapshotManager snapshotManager, IBlockTree blockTree)
+        public CliqueRpcModule(ICliqueBlockProducer? cliqueBlockProducer, ISnapshotManager snapshotManager, IBlockFinder blockTree)
         {
             _cliqueBlockProducer = cliqueBlockProducer;
             _snapshotManager = snapshotManager ?? throw new ArgumentNullException(nameof(snapshotManager));
@@ -153,6 +154,23 @@ namespace Nethermind.Consensus.Clique
         public ResultWrapper<string[]> clique_getSignersAtHashAnnotated(Keccak hash)
         {
             return ResultWrapper<string[]>.Success(GetSignersAnnotated(hash).ToArray());
+        }
+        
+        public ResultWrapper<Address?> clique_getBlockSigner(Keccak? hash)
+        {
+            if (hash is null)
+            {
+                return ResultWrapper<Address>.Fail($"Hash parameter cannot be null");    
+            }
+            
+            BlockHeader? header = _blockTree.FindHeader(hash);
+            if (header == null)
+            {
+                return ResultWrapper<Address>.Fail($"Could not find block with hash {hash}");    
+            }
+            
+            header.Author ??= _snapshotManager.GetBlockSealer(header);
+            return ResultWrapper<Address>.Success(header.Author);
         }
 
         public ResultWrapper<bool> clique_propose(Address signer, bool vote)

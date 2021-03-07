@@ -21,7 +21,7 @@ namespace Ethereum.Test.Base
                 testDirs = new[] {testsDirectoryName};
             }
 
-            List<BlockchainTest> testJsons = new List<BlockchainTest>();
+            List<BlockchainTest> testJsons = new();
             foreach (string testDir in testDirs)
             {
                 testJsons.AddRange(LoadTestsFromDirectory(testDir, wildcard));
@@ -40,12 +40,12 @@ namespace Ethereum.Test.Base
 
         private IEnumerable<BlockchainTest> LoadTestsFromDirectory(string testDir, string wildcard)
         {
-            List<BlockchainTest> testsByName = new List<BlockchainTest>();
+            List<BlockchainTest> testsByName = new();
             IEnumerable<string> testFiles = Directory.EnumerateFiles(testDir);
 
             foreach (string testFile in testFiles)
             {
-                FileTestsSource fileTestsSource = new FileTestsSource(testFile, wildcard);
+                FileTestsSource fileTestsSource = new(testFile, wildcard);
                 try
                 {
                     var tests = fileTestsSource.LoadBlockchainTests();
@@ -58,7 +58,7 @@ namespace Ethereum.Test.Base
                 }
                 catch (Exception e)
                 {
-                    testsByName.Add(new BlockchainTest {Name = testFile, LoadFailure = $"Failed to load: {e.Message}"});
+                    testsByName.Add(new BlockchainTest {Name = testFile, LoadFailure = $"Failed to load: {e}"});
                 }
             }
 

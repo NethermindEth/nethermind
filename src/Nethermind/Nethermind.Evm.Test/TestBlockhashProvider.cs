@@ -21,7 +21,7 @@ namespace Nethermind.Evm.Test
 {
     public class TestBlockhashProvider : IBlockhashProvider
     {
-        public static TestBlockhashProvider Instance = new TestBlockhashProvider();
+        public static TestBlockhashProvider Instance = new();
 
         private TestBlockhashProvider()
         {

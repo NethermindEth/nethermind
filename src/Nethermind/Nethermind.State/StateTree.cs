@@ -27,7 +27,7 @@ namespace Nethermind.State
 {
     public class StateTree : PatriciaTree
     {
-        private readonly AccountDecoder _decoder = new AccountDecoder();
+        private readonly AccountDecoder _decoder = new();
         
         [DebuggerStepThrough]
         public StateTree()

@@ -36,7 +36,7 @@ namespace Ethereum.Abi.Test
         {
         }
         
-        private static Dictionary<string, AbiType> _abiTypes = new Dictionary<string, AbiType>
+        private static Dictionary<string, AbiType> _abiTypes = new()
         {
             {"uint256", AbiType.UInt256},
             {"uint32[]", new AbiArray(AbiType.UInt32)},
@@ -74,11 +74,11 @@ namespace Ethereum.Abi.Test
             Dictionary<string, AbiTest> tests = JsonConvert.DeserializeObject<Dictionary<string, AbiTest>>(text);
             foreach ((string testName, AbiTest abiTest) in tests)
             {
-                AbiSignature signature = new AbiSignature(
+                AbiSignature signature = new(
                     testName,
                     abiTest.Types.Select(t => _abiTypes[t]).ToArray());
                 
-                AbiEncoder encoder = new AbiEncoder();
+                AbiEncoder encoder = new();
                 byte[] abi = encoder.Encode(AbiEncodingStyle.None, signature, abiTest.Args.Select(JsonToObject).ToArray());
                 abi.Should().BeEquivalentTo(Bytes.FromHexString(abiTest.Result));
             }

@@ -46,8 +46,8 @@ namespace Nethermind.Network.Test
         [TestCase(9_068_999, "0x668db0af", 9_069_000, "Last Constantinople block")]
         [TestCase(9_069_000, "0x879d6e30", 9_200_000, "First Istanbul block")]
         [TestCase(9_199_999, "0x879d6e30", 9_200_000, "Last Istanbul block")]
-        [TestCase(9_200_000, "0xe029e991", 0, "First Muir Glacier")]
-        [TestCase(9_500_000, "0xe029e991", 0, "Muir Glacier block")]
+        [TestCase(9_200_000, "0xe029e991", 12_244_000, "Last Muir Glacier")]
+        [TestCase(12_244_000, "0x0eb440f6", 0, "First Berlin")]
         public void Fork_id_and_hash_as_expected(long head, string forkHashHex, long next, string description)
         {
             Test(head, KnownHashes.MainnetGenesis, forkHashHex, next, description, MainnetSpecProvider.Instance, "foundation.json");

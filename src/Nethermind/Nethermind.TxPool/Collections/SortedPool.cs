@@ -16,6 +16,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using Nethermind.Core.Collections;
@@ -99,17 +100,20 @@ namespace Nethermind.TxPool.Collections
         /// <param name="bucket">Bucket for same sender transactions.</param>
         /// <returns>If element was removed. False if element was not present in pool.</returns>
         [MethodImpl(MethodImplOptions.Synchronized)]
-        public bool TryRemove(TKey key, out TValue value, out ICollection<TValue> bucket)
+        public bool TryRemove(TKey key, out TValue value, [MaybeNullWhen(false)] out ICollection<TValue>? bucket)
         {
             if (_cacheMap.TryGetValue(key, out value))
             {
                 if (Remove(key, value))
                 {
-                    TGroupKey groupMapping = MapToGroup(value);
-                    if (_buckets.TryGetValue(groupMapping, out bucket))
+                    TGroupKey? groupMapping = MapToGroup(value);
+                    if (groupMapping is not null)
                     {
-                        bucket.Remove(value);
-                        return true;
+                        if (_buckets.TryGetValue(groupMapping, out bucket))
+                        {
+                            bucket!.Remove(value);
+                            return true;
+                        }   
                     }
                 }
 
@@ -120,7 +124,7 @@ namespace Nethermind.TxPool.Collections
             return false;
         }
 
-        public bool TryRemove(TKey key, out TValue value) => TryRemove(key, out value, out _);
+        public bool TryRemove(TKey key, [MaybeNullWhen(false)] out TValue value) => TryRemove(key, out value, out _);
         public bool TryRemove(TKey key) => TryRemove(key, out _, out _);
 
         /// <summary>

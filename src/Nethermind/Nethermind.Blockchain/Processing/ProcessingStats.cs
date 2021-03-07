@@ -24,7 +24,7 @@ namespace Nethermind.Blockchain.Processing
     internal class ProcessingStats
     {
         private readonly ILogger _logger;
-        private readonly Stopwatch _processingStopwatch = new Stopwatch();
+        private readonly Stopwatch _processingStopwatch = new();
         private long _lastBlockNumber;
         private long _lastElapsedTicks;
         private decimal _lastTotalMGas;
@@ -52,7 +52,7 @@ namespace Nethermind.Blockchain.Processing
 #endif
         }
 
-        public void UpdateStats(Block block, int recoveryQueueSize, int blockQueueSize)
+        public void UpdateStats(Block? block, int recoveryQueueSize, int blockQueueSize)
         {
             if (block is null)
             {

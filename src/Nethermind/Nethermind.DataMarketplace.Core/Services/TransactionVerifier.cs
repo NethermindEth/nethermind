@@ -47,6 +47,11 @@ namespace Nethermind.DataMarketplace.Core.Services
                 {
                     break;
                 }
+                
+                if (latestBlock.ParentHash is null)
+                {
+                    break;
+                }
 
                 latestBlock = await _blockchainBridge.FindBlockAsync(latestBlock.ParentHash);
                 if (latestBlock is null)

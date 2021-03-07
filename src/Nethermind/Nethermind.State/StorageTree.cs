@@ -33,7 +33,7 @@ namespace Nethermind.State
 
         private static readonly int CacheSizeInt = (int) CacheSize;
 
-        private static readonly Dictionary<UInt256, byte[]> Cache = new Dictionary<UInt256, byte[]>(CacheSizeInt);
+        private static readonly Dictionary<UInt256, byte[]> Cache = new(CacheSizeInt);
 
         static StorageTree()
         {

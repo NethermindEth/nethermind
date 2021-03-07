@@ -49,7 +49,7 @@ namespace Nethermind.DataMarketplace.Core.Domain
 
         public static FaucetRequestDetails Empty => new FaucetRequestDetails();
 
-        public bool Equals(FaucetRequestDetails other)
+        public bool Equals(FaucetRequestDetails? other)
         {
             if (ReferenceEquals(null, other)) return false;
             if (ReferenceEquals(this, other)) return true;

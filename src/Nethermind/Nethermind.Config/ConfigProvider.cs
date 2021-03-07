@@ -97,11 +97,11 @@ namespace Nethermind.Config
             _configSource.Add(configSource);
         }
         
-        private Dictionary<string, object> Categories { get; set; } = new Dictionary<string, object>(StringComparer.InvariantCultureIgnoreCase);
+        private Dictionary<string, object> Categories { get; set; } = new(StringComparer.InvariantCultureIgnoreCase);
         
-        private readonly Dictionary<Type, Type> _implementations = new Dictionary<Type, Type>();
+        private readonly Dictionary<Type, Type> _implementations = new();
         
-        private readonly TypeDiscovery _typeDiscovery = new TypeDiscovery();
+        private readonly TypeDiscovery _typeDiscovery = new();
         
         public void Initialize()
         {

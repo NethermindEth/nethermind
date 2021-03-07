@@ -24,7 +24,7 @@ namespace Nethermind.DataMarketplace.Core.Domain
         public StatusCodes StatusCode { get; }
         public uint ConsumedUnits { get; }
         public uint UnpaidUnits { get; }
-        public Signature Signature { get; }
+        public Signature? Signature { get; }
 
         public DataDeliveryReceipt(StatusCodes statusCode, uint consumedUnits, uint unpaidUnits, Signature signature)
         {
@@ -34,7 +34,7 @@ namespace Nethermind.DataMarketplace.Core.Domain
             Signature = signature;
         }
 
-        public bool Equals(DataDeliveryReceipt other)
+        public bool Equals(DataDeliveryReceipt? other)
         {
             if (ReferenceEquals(null, other)) return false;
             if (ReferenceEquals(this, other)) return true;

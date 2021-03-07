@@ -25,7 +25,7 @@ namespace Nethermind.TxPool
     /// </summary>
     public class CompareTxByGasLimit : IComparer<Transaction>
     {
-        public static readonly CompareTxByGasLimit Instance = new CompareTxByGasLimit();
+        public static readonly CompareTxByGasLimit Instance = new();
         
         private CompareTxByGasLimit() { }
 

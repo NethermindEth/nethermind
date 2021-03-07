@@ -46,8 +46,8 @@ namespace Nethermind.Blockchain.Test.Data
             }
         }
         
+        [Ignore("flaky")]
         [Test]
-        [Retry(10)]
         public async Task correctly_updates_from_existing_file()
         {
             using (var tempFile = TempPath.GetTempFile())

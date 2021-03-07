@@ -21,7 +21,7 @@ namespace Nethermind.Blockchain.Filters.Topics
 {
     public class AnyTopic : TopicExpression
     {
-        public static readonly AnyTopic Instance = new AnyTopic(); 
+        public static readonly AnyTopic Instance = new(); 
         
         public override bool Accepts(Keccak topic) => true;
         public override bool Accepts(ref KeccakStructRef topic) => true;

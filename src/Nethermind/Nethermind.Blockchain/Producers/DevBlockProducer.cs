@@ -121,13 +121,18 @@ namespace Nethermind.Blockchain.Producers
             return _isRunning;
         }
         
-        protected override bool PreparedBlockCanBeMined(Block block) =>
-            base.PreparedBlockCanBeMined(block) && block?.Transactions?.Length > 0;
+        protected override bool PreparedBlockCanBeMined(Block? block) =>
+            base.PreparedBlockCanBeMined(block) && block?.Transactions.Length > 0;
         
         private void OnNewHeadBlock(object sender, BlockEventArgs e)
         {
             if (_newBlockLock.CurrentCount == 0)
             {
+                if (e.Block == null)
+                {
+                    return;
+                }
+                
                 if (_miningConfig.RandomizedBlocks)
                 {
                     if (Logger.IsInfo)

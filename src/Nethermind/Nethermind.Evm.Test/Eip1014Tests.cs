@@ -206,7 +206,7 @@ namespace Nethermind.Evm.Test
 
             var trace = ExecuteAndTrace(code);
 
-            Address expectedAddress = new Address(resultHex);
+            Address expectedAddress = new(resultHex);
             AssertEip1014(expectedAddress, deployedCode);
 //            Assert.AreEqual(gas, trace.Entries.Single(e => e.Operation == Instruction.CREATE2.ToString()).GasCost);
         }

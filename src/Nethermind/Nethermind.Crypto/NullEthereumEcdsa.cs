@@ -22,7 +22,7 @@ namespace Nethermind.Crypto
 {
     public class NullEthereumEcdsa : IEthereumEcdsa
     {
-        public static NullEthereumEcdsa Instance { get; } = new NullEthereumEcdsa();
+        public static NullEthereumEcdsa Instance { get; } = new();
 
         private NullEthereumEcdsa()
         {

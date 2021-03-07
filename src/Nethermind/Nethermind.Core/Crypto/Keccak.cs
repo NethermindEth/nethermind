@@ -103,7 +103,7 @@ namespace Nethermind.Core.Crypto
         /// <returns>
         ///     <string>0x0000000000000000000000000000000000000000000000000000000000000000</string>
         /// </returns>
-        public static Keccak Zero { get; } = new Keccak(new byte[Size]);
+        public static Keccak Zero { get; } = new(new byte[Size]);
 
         public byte[] Bytes { get; }
 
@@ -147,7 +147,7 @@ namespace Nethermind.Core.Crypto
 
         private static Keccak InternalCompute(byte[] input)
         {
-            return new Keccak(KeccakHash.ComputeHashBytes(input.AsSpan()));
+            return new(KeccakHash.ComputeHashBytes(input.AsSpan()));
         }
 
         [DebuggerStepThrough]
@@ -206,7 +206,7 @@ namespace Nethermind.Core.Crypto
             return !(a == b);
         }
 
-        public KeccakStructRef ToStructRef() => new KeccakStructRef(Bytes);
+        public KeccakStructRef ToStructRef() => new(Bytes);
     }
     
     public ref struct KeccakStructRef
@@ -351,6 +351,6 @@ namespace Nethermind.Core.Crypto
             return !(a == b);
         }
 
-        public Keccak ToKeccak() => new Keccak(Bytes.ToArray());
+        public Keccak ToKeccak() => new(Bytes.ToArray());
     }
 }

@@ -125,7 +125,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
         private static ChainSpec LoadChainSpec(string path)
         {
             var data = File.ReadAllText(path);
-            ChainSpecLoader chainSpecLoader = new ChainSpecLoader(new EthereumJsonSerializer());
+            ChainSpecLoader chainSpecLoader = new(new EthereumJsonSerializer());
             ChainSpec chainSpec = chainSpecLoader.Load(data);
             return chainSpec;
         }

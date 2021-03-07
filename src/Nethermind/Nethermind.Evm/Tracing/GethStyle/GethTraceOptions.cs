@@ -35,6 +35,6 @@ namespace Nethermind.Evm.Tracing.GethStyle
         [JsonProperty("timeout")]
         public string Timeout { get; set; }
         
-        public static GethTraceOptions Default = new GethTraceOptions();
+        public static GethTraceOptions Default = new();
     }
 }
