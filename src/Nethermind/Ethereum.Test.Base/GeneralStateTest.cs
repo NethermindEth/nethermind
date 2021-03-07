@@ -27,22 +27,21 @@ namespace Ethereum.Test.Base
 {
     public class GeneralStateTest : IEthereumTest
     {
-        public string Category { get; set; }
-        public string Name { get; set; }
-        public IReleaseSpec Fork { get; set; }
-        public string ForkName { get; set; }
-        public Address CurrentCoinbase { get; set; }
+        public string? Category { get; set; }
+        public string? Name { get; set; }
+        public IReleaseSpec? Fork { get; set; }
+        public string? ForkName { get; set; }
+        public Address? CurrentCoinbase { get; set; }
         public UInt256 CurrentDifficulty { get; set; }
         public long CurrentGasLimit { get; set; }
         public long CurrentNumber { get; set; }
         public UInt256 CurrentTimestamp { get; set; }
-        public Keccak PreviousHash { get; set; }
+        public Keccak? PreviousHash { get; set; }
         public Dictionary<Address, AccountState> Pre { get; set; }
-        public Keccak PostHash { get; set; }
-        public Keccak PostReceiptsRoot { get; set; }
-        public bool SealEngineUsed { get; set; }    
-        public string LoadFailure { get; set; }
-        public Transaction Transaction { get; set; }
+        public Keccak? PostHash { get; set; }
+        public Keccak? PostReceiptsRoot { get; set; }
+        public string? LoadFailure { get; set; }
+        public Transaction? Transaction { get; set; }
         
         public override string ToString()
         {

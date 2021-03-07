@@ -23,33 +23,33 @@ namespace Ethereum.Test.Base
 {
     public class EthereumTestResult
     {
-        public EthereumTestResult()
+        public EthereumTestResult(string? name, string? fork, bool pass)
+        {
+            Name = name ?? "unnamed";
+            Fork = fork ?? "unknown";
+            Pass = pass;
+        }
+
+        public EthereumTestResult(string? name, string? fork, string loadFailure)
+        {
+            Name = name ?? "unnamed";
+            Fork = fork ?? "unknown";
+            Pass = false;
+            LoadFailure = loadFailure;
+        }
+
+        public EthereumTestResult(string? name, string? loadFailure)
+            : this(name, null, loadFailure)
         {
         }
 
-        public EthereumTestResult(string name, string fork, string loadFailure)
-        { 
-            Pass = false;
-            Name = name;
-            Fork = fork;
-            LoadFailure = loadFailure;
-        }
-        
-        public EthereumTestResult(string name, string loadFailure)
-        {
-            Pass = false; 
-            Name = name; 
-            LoadFailure = loadFailure;
-        }
-        public string LoadFailure { get; set; }
+        public string? LoadFailure { get; set; }
         public string Name { get; set; }
         public bool Pass { get; set; }
         public string Fork { get; set; }
 
-        [JsonIgnore]
-        public int TimeInMs { get; set; }
-        
-        [JsonIgnore]
-        public Keccak StateRoot { get; set; }
+        [JsonIgnore] public int TimeInMs { get; set; }
+
+        [JsonIgnore] public Keccak StateRoot { get; set; } = Keccak.EmptyTreeHash;
     }
 }

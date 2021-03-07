@@ -75,7 +75,7 @@ namespace Ethereum.Test.Base
                 Assert.Fail("Expected genesis spec to be Frontier for blockchain tests");
             }
 
-            TrieStore trieStore = new TrieStore(stateDb, _logManager);
+            TrieStore trieStore = new(stateDb, _logManager);
             IStateProvider stateProvider = new StateProvider(trieStore, codeDb, _logManager);
             IBlockhashProvider blockhashProvider = new TestBlockhashProvider();
             IStorageProvider storageProvider = new StorageProvider(trieStore, stateProvider, _logManager);
@@ -86,7 +86,7 @@ namespace Ethereum.Test.Base
                 specProvider,
                 _logManager);
 
-            TransactionProcessor transactionProcessor = new TransactionProcessor(
+            TransactionProcessor transactionProcessor = new(
                 specProvider,
                 stateProvider,
                 storageProvider,
@@ -95,7 +95,7 @@ namespace Ethereum.Test.Base
 
             InitializeTestState(test, stateProvider, storageProvider, specProvider);
 
-            BlockHeader header = new BlockHeader(test.PreviousHash, Keccak.OfAnEmptySequenceRlp, test.CurrentCoinbase,
+            BlockHeader header = new(test.PreviousHash, Keccak.OfAnEmptySequenceRlp, test.CurrentCoinbase,
                 test.CurrentDifficulty, test.CurrentNumber, test.CurrentGasLimit, test.CurrentTimestamp, new byte[0]);
             header.StateRoot = test.PostHash;
             header.Hash = Keccak.Compute("1");
@@ -114,10 +114,7 @@ namespace Ethereum.Test.Base
             stateProvider.RecalculateStateRoot();
 
             List<string> differences = RunAssertions(test, stateProvider);
-            EthereumTestResult testResult = new EthereumTestResult();
-            testResult.Pass = differences.Count == 0;
-            testResult.Fork = test.ForkName;
-            testResult.Name = test.Name;
+            EthereumTestResult testResult = new(test.Name, test.ForkName, differences.Count == 0);
             testResult.TimeInMs = (int)stopwatch.Elapsed.TotalMilliseconds;
             testResult.StateRoot = stateProvider.StateRoot;
 
@@ -157,7 +154,7 @@ namespace Ethereum.Test.Base
 
         private List<string> RunAssertions(GeneralStateTest test, IStateProvider stateProvider)
         {
-            List<string> differences = new List<string>();
+            List<string> differences = new();
             if (test.PostHash != stateProvider.StateRoot)
             {
                 differences.Add($"STATE ROOT exp: {test.PostHash}, actual: {stateProvider.StateRoot}");

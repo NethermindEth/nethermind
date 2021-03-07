@@ -22,11 +22,11 @@ namespace Ethereum.Test.Base
 {
     public class GeneralStateTestJson
     {
-        public GeneralStateTestEnvJson Env { get; set; }
-        public Dictionary<string, PostStateJson[]> Post { get; set; }
-        public Dictionary<string, AccountStateJson> Pre { get; set; }
-        public string SealEngine { get; set; }
-        public string LoadFailure { get; set; }
-        public TransactionJson Transaction { get; set; }
+        public GeneralStateTestEnvJson? Env { get; set; }
+        public Dictionary<string, PostStateJson[]>? Post { get; set; }
+        public Dictionary<string, AccountStateJson>? Pre { get; set; }
+        public string? SealEngine { get; set; }
+        public string? LoadFailure { get; set; }
+        public TransactionJson? Transaction { get; set; }
     }
 }
