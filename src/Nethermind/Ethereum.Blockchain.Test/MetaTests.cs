@@ -31,7 +31,6 @@ namespace Ethereum.Blockchain.Test
         public void All_categories_are_tested()
         {
             string[] directories = Directory.GetDirectories(AppDomain.CurrentDomain.BaseDirectory)
-                .Union(Directory.GetDirectories(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "VMTests")))
                 .Select(Path.GetFileName)
                 .ToArray();
             Type[] types = GetType().Assembly.GetTypes();
