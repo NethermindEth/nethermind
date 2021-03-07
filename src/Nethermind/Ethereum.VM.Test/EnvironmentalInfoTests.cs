@@ -22,7 +22,6 @@ namespace Ethereum.VM.Test
 {
     public class EnvironmentalInfoTests : VMTestBase
     {
-        [Ignore("Ignoring these as some of them seem to be very wrong, need to confirm")]
         [TestCaseSource(nameof(LoadTests), new object[] { "EnvironmentalInfo" })]
         public void Test(VirtualMachineTest test)
         {
