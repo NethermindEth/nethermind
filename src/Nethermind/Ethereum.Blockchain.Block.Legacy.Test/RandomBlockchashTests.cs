@@ -7,17 +7,16 @@ namespace Ethereum.Blockchain.Block.Legacy.Test
 {
     [TestFixture]
     [Parallelizable(ParallelScope.All)]
-    public class UncleTests : BlockchainTestBase
+    public class RandomBlockhashTests : BlockchainTestBase
     {
         [TestCaseSource(nameof(LoadTests))]
         public async Task Test(BlockchainTest test)
         {
             await RunTest(test);
         }
-
         public static IEnumerable<BlockchainTest> LoadTests()
         {
-            var loader = new TestsSourceLoader(new LoadLegacyBlockchainTestsStrategy(), "bcUncleTest");
+            var loader = new TestsSourceLoader(new LoadLegacyBlockchainTestsStrategy(), "bcRandomBlockhashTest");
             return (IEnumerable<BlockchainTest>)loader.LoadTests();      
         }
     }
