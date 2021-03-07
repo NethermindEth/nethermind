@@ -17,6 +17,7 @@
  */
 
 using System.Collections.Generic;
+using System.Linq;
 using Ethereum.Test.Base;
 using NUnit.Framework;
 
@@ -39,7 +40,7 @@ namespace Ethereum.Blockchain.Legacy.Test
             {
                 "RevertPrecompiledTouch",
             };
-            tests.RemoveAll(t => ignoredTests.Contains(t.Name));
+            tests.RemoveAll(t => ignoredTests.Any(pattern => t.Name.Contains(pattern)));
             return tests;
         }
     }
