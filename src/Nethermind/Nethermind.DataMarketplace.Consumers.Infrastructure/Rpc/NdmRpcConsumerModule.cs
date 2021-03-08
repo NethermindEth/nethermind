@@ -259,14 +259,6 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc
             return ResultWrapper<bool>.Success(true);
         }
 
-        // public ResultWrapper<UsdPriceForRpc> ndm_getEthUsdPrice()
-        //     => ResultWrapper<UsdPriceForRpc>.Success(new UsdPriceForRpc(_ethPriceService.UsdPrice,
-        //         _ethPriceService.UpdatedAt));
-        //
-        // public ResultWrapper<UsdPriceForRpc> ndm_getDaiUsdPrice()
-        //     => ResultWrapper<UsdPriceForRpc>.Success(new UsdPriceForRpc(_daiPriceService.UsdPrice,
-        //         _daiPriceService.UpdatedAt));
-
         public ResultWrapper<UsdPriceForRpc> ndm_getUsdPrice(string currency)
         {
             var priceInfo = _priceService.Get(currency);
