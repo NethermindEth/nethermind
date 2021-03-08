@@ -40,7 +40,6 @@ using Nethermind.DataMarketplace.Core.Services;
 using Nethermind.DataMarketplace.Core.Services.Models;
 using Nethermind.DataMarketplace.Infrastructure.Rpc.Models;
 using Nethermind.Int256;
-using Nethermind.Facade.Proxy;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Wallet;
@@ -62,7 +61,6 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
         private IWallet _wallet;
         private INdmRpcConsumerModule _rpc;
         private ITimestamper _timestamper;
-        private IHttpClient _client;
         private const uint DepositExpiryTime = 1546393600;
         private static readonly DateTime Date = new DateTime(2019, 1, 2); //1546383600
 
@@ -79,7 +77,6 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
             _consumerTransactionsService = Substitute.For<IConsumerTransactionsService>();
             _wallet = Substitute.For<IWallet>();
             _timestamper = new Timestamper(Date);
-            _client = Substitute.For<IHttpClient>();
             _rpc = new NdmRpcConsumerModule(_consumerService, _depositReportService, _jsonRpcNdmConsumerChannel,
                 _ethRequestService, _gasPriceService, _consumerTransactionsService, _gasLimitsService,
                 _wallet, _timestamper, _priceService);
@@ -484,32 +481,14 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
         }
 
         [Test]
-        public async Task get_eth_usd_price_should_return_amount()
+        public void get_eth_usd_price_should_return_amount()
         {
             const decimal price = 187;
             const ulong updatedAt = 123456789;
-            const string currency = "USDT_ETH";
-            var results = new Dictionary<string, PriceResult>
-            {
-                {
-                    currency,
-                    new PriceResult
-                    {
-                        PriceUsd = price
-                    }
-                }
-            };
-            _client.GetAsync<Dictionary<string, PriceResult>>(Arg.Any<string>()).ReturnsForAnyArgs(results);
-            await _priceService.UpdateAsync(currency);
-            
-            var priceInfo = _priceService.Get(currency);
-            priceInfo.Should().NotBeNull();
-            
-            priceInfo.UsdPrice.Returns(price);
-            // priceInfo.UpdatedAt.Returns(updatedAt);
-            // var result = _rpc.ndm_getUsdPrice(currency);
-            // result.Data.Price.Should().Be(price);
-            // result.Data.UpdatedAt.Should().Be(updatedAt);
+            _priceService.Get("USDT_ETH").Returns(new PriceInfo(price, updatedAt));
+            var result = _rpc.ndm_getUsdPrice("USDT_ETH");
+            result.Data.Price.Should().Be(price);
+            result.Data.UpdatedAt.Should().Be(updatedAt);
         }
 
         [Test]
