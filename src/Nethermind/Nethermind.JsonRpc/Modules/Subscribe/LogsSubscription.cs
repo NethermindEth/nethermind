@@ -34,7 +34,8 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         private readonly LogFilter _filter;
         private readonly ILogger _logger;
 
-        public LogsSubscription(IReceiptStorage? receiptStorage, IFilterStore? store, IBlockFinder? blockFinder, ILogManager? logManager, Filter? filter = null)
+        public LogsSubscription(IJsonRpcDuplexClient jsonRpcDuplexClient, IReceiptStorage? receiptStorage, IFilterStore? store, IBlockFinder? blockFinder, ILogManager? logManager, Filter? filter = null) 
+            : base(jsonRpcDuplexClient)
         {
             _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
             _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
@@ -78,7 +79,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
                     
                     foreach (var filterLog in filterLogs)
                     {
-                        JsonRpcResult result = GetJsonRpcResult(filterLog);
+                        JsonRpcResult result = CreateSubscriptionMessage(filterLog);
                         JsonRpcDuplexClient.SendJsonRpcResult(result);
                         if(_logger.IsTrace) _logger.Trace($"Logs subscription {Id} printed new log.");
                     }
@@ -129,22 +130,6 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
                 }
             }
             return filterLogs;
-        }
-
-        private JsonRpcResult GetJsonRpcResult(FilterLog filterLog)
-        {
-            JsonRpcResult result =
-                JsonRpcResult.Single(
-                    new JsonRpcSubscriptionResponse()
-                    {
-                        MethodName = nameof(ISubscribeModule.eth_subscribe),
-                        Params = new JsonRpcSubscriptionResult()
-                        {
-                            Result = filterLog,
-                            Subscription = Id
-                        }
-                    }, default);
-            return result;
         }
 
         public override SubscriptionType Type => SubscriptionType.Logs;

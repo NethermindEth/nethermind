@@ -46,18 +46,18 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
             _filterStore = filterStore ?? throw new ArgumentNullException(nameof(filterStore));
         }
-        public Subscription CreateSubscription(SubscriptionType subscriptionType, Filter? filter = null)
+        public Subscription CreateSubscription(IJsonRpcDuplexClient jsonRpcDuplexClient, SubscriptionType subscriptionType, Filter? filter)
         {
             switch (subscriptionType)
             {
                 case SubscriptionType.NewHeads: 
-                    return new NewHeadSubscription(_blockTree, _logManager);
+                    return new NewHeadSubscription(jsonRpcDuplexClient, _blockTree, _logManager);
                 case SubscriptionType.Logs:
-                    return new LogsSubscription(_receiptStorage, _filterStore, _blockTree, _logManager, filter);
+                    return new LogsSubscription(jsonRpcDuplexClient, _receiptStorage, _filterStore, _blockTree, _logManager, filter);
                 case SubscriptionType.NewPendingTransactions:
-                    return new NewPendingTransactionsSubscription(_txPool, _logManager);
+                    return new NewPendingTransactionsSubscription(jsonRpcDuplexClient, _txPool, _logManager);
                 case SubscriptionType.Syncing:
-                    return new SyncingSubscription(_blockTree, _logManager);
+                    return new SyncingSubscription(jsonRpcDuplexClient, _blockTree, _logManager);
                 default: throw new Exception("Unexpected SubscriptionType.");
             }
         }
