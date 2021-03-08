@@ -49,8 +49,7 @@ namespace Nethermind.DataMarketplace.Test.Services
             _config = new NdmConfig();
             _configManager.GetAsync(ConfigId).Returns(_config);
             _timestamper = new Timestamper(DateTime.UtcNow);
-            _gasPriceService = new GasPriceService(_client, _configManager, ConfigId, _timestamper,
-                LimboLogs.Instance);
+            _gasPriceService = new GasPriceService(_client, _configManager, ConfigId, _timestamper, LimboLogs.Instance);
         }
 
         [Test]
@@ -122,7 +121,7 @@ namespace Nethermind.DataMarketplace.Test.Services
             _gasPriceService.Types.Fastest.Should().Be(GasPriceDetails.Empty);
             _gasPriceService.Types.Custom.Should().Be(new GasPriceDetails(_config.GasPrice, 0));
             _gasPriceService.Types.Type.Should().Be("custom");
-            _gasPriceService.Types.UpdatedAt.Should().Be(0);
+            _gasPriceService.Types.UpdatedAt.Should().Be(_timestamper.UnixTime.Seconds);
             await _configManager.Received().GetAsync(ConfigId);
             await _client.Received().GetAsync<GasPriceService.Result>(Arg.Any<string>());
         }
