@@ -38,12 +38,7 @@ namespace Nethermind.Blockchain.Test
         {
             TestingContext context = new TestingContext();
             IComparer<Transaction> comparer = context.DefaultComparer;
-            Transaction x = Build.A.Transaction.WithSenderAddress(TestItem.AddressA)
-                .WithGasPrice((UInt256)gasPriceX).TestObject;
-            Transaction y = Build.A.Transaction.WithSenderAddress(TestItem.AddressA)
-                .WithGasPrice((UInt256)gasPriceY).TestObject;     
-            int result = comparer.Compare(x, y);
-            Assert.AreEqual(expectedResult, result);
+            AssertLegacyTransactions(comparer, gasPriceX, gasPriceY, expectedResult);
         }
         
         [TestCase(10,10,0)]
@@ -54,17 +49,17 @@ namespace Nethermind.Blockchain.Test
             TestingContext context = new TestingContext();
             IBlockPreparationContextService blockPreparationContextService = new BlockPreparationContextService(LimboLogs.Instance);
             IComparer<Transaction> comparer = context.GetProducerComparer(blockPreparationContextService);
-            Transaction x = Build.A.Transaction.WithSenderAddress(TestItem.AddressA)
-                .WithGasPrice((UInt256)gasPriceX).TestObject;
-            Transaction y = Build.A.Transaction.WithSenderAddress(TestItem.AddressA)
-                .WithGasPrice((UInt256)gasPriceY).TestObject;     
-            int result = comparer.Compare(x, y);
-            Assert.AreEqual(expectedResult, result);
+            AssertLegacyTransactions(comparer, gasPriceX, gasPriceY, expectedResult);
         }
         
+        // head block number before eip 1559 transition
         [TestCase(10,10, 0, 0, 0)]
-        [TestCase(15,10,0,0, -1)]
-        [TestCase(2,3,0, 0,1)]
+        [TestCase(15,10,10,1, -1)]
+        [TestCase(2,3,20, 0,1)]
+        // head block number after eip 1559 transition
+        [TestCase(10,10, 16, 5, 0)]
+        [TestCase(15,10,11,6, -1)]
+        [TestCase(2,3,33, 7,1)]
         public void GasPriceComparer_for_legacy_transactions_1559(int gasPriceX, int gasPriceY, int headBaseFee, long headBlockNumber, int expectedResult)
         {
             long eip1559Transition = 5;
@@ -72,10 +67,75 @@ namespace Nethermind.Blockchain.Test
                 .WithHeadBaseFeeNumber((UInt256)headBaseFee)
                 .WithHeadBlockNumber(headBlockNumber);
             IComparer<Transaction> comparer = context.DefaultComparer;
+            AssertLegacyTransactions(comparer, gasPriceX, gasPriceY, expectedResult);
+        }
+        
+        // head block number before eip 1559 transition
+        [TestCase(10,10, 0, 0, 0)]
+        [TestCase(15,10,10,1, -1)]
+        [TestCase(2,3,20, 0,1)]
+        // head block number after eip 1559 transition
+        [TestCase(10,10, 16, 5, 0)]
+        [TestCase(15,10,11,6, -1)]
+        [TestCase(2,3,33, 7,1)]
+        public void ProducerGasPriceComparer_for_legacy_transactions_1559(int gasPriceX, int gasPriceY, int headBaseFee, long headBlockNumber, int expectedResult)
+        {
+            long eip1559Transition = 5;
+            TestingContext context = new TestingContext(true, eip1559Transition);
+            IBlockPreparationContextService blockPreparationContextService = new BlockPreparationContextService(LimboLogs.Instance);
+            blockPreparationContextService.SetContext((UInt256)headBaseFee, headBlockNumber);
+            IComparer<Transaction> comparer = context.GetProducerComparer(blockPreparationContextService);
+            AssertLegacyTransactions(comparer, gasPriceX, gasPriceY, expectedResult);
+        }
+
+        private void AssertLegacyTransactions(IComparer<Transaction> comparer, int gasPriceX, int gasPriceY, int expectedResult)
+        {
             Transaction x = Build.A.Transaction.WithSenderAddress(TestItem.AddressA)
                 .WithGasPrice((UInt256)gasPriceX).TestObject;
             Transaction y = Build.A.Transaction.WithSenderAddress(TestItem.AddressA)
                 .WithGasPrice((UInt256)gasPriceY).TestObject;
+            int result = comparer.Compare(x, y);
+            Assert.AreEqual(expectedResult, result);
+        }
+        
+        [TestCase(10,5,12, 4, 4, 6, -1)]
+        [TestCase(10,5,12, 4, 10, 6, 1)]
+        [TestCase(10,4,12, 4, 4, 6, 1)]
+        [TestCase(12,4,12, 4, 4, 6, 0)]
+        [TestCase(10,5,12, 4, 4, 3, -1)]
+        [TestCase(10,5,12, 4, 10, 3, -1)]
+        public void GasPriceComparer_for_eip1559_transactions(int feeCapX, int gasPremiumX, int feeCapY, int gasPremiumY, int headBaseFee, long headBlockNumber, int expectedResult)
+        {
+            long eip1559Transition = 5;
+            TestingContext context = new TestingContext(true, eip1559Transition)
+                .WithHeadBaseFeeNumber((UInt256)headBaseFee)
+                .WithHeadBlockNumber(headBlockNumber);
+            IComparer<Transaction> comparer = context.DefaultComparer;
+            Assert1559Transactions(comparer, feeCapX, gasPremiumX, feeCapY, gasPremiumY, expectedResult);
+        }
+        
+        [TestCase(10,5,12, 4, 4, 6, -1)]
+        [TestCase(10,5,12, 4, 10, 6, 1)]
+        [TestCase(10,4,12, 4, 4, 6, 1)]
+        [TestCase(12,4,12, 4, 4, 6, 0)]
+        [TestCase(10,5,12, 4, 4, 3, -1)]
+        [TestCase(10,5,12, 4, 10, 3, -1)]
+        public void ProducerGasPriceComparer_for_eip1559_transactions_1559(int feeCapX, int gasPremiumX, int feeCapY, int gasPremiumY, int headBaseFee, long headBlockNumber, int expectedResult)
+        {
+            long eip1559Transition = 5;
+            TestingContext context = new TestingContext(true, eip1559Transition);
+            IBlockPreparationContextService blockPreparationContextService = new BlockPreparationContextService(LimboLogs.Instance);
+            blockPreparationContextService.SetContext((UInt256)headBaseFee, headBlockNumber);
+            IComparer<Transaction> comparer = context.GetProducerComparer(blockPreparationContextService);
+            Assert1559Transactions(comparer, feeCapX, gasPremiumX, feeCapY, gasPremiumY, expectedResult);
+        }
+        
+        private void Assert1559Transactions(IComparer<Transaction> comparer, int feeCapX, int gasPremiumX, int feeCapY, int gasPremiumY, int expectedResult)
+        {
+            Transaction x = Build.A.Transaction.WithSenderAddress(TestItem.AddressA)
+                .WithFeeCap((UInt256)feeCapX).WithGasPremium((UInt256)gasPremiumX).TestObject;
+            Transaction y = Build.A.Transaction.WithSenderAddress(TestItem.AddressA)
+                .WithFeeCap((UInt256)feeCapY).WithGasPremium((UInt256)gasPremiumY).TestObject;
             int result = comparer.Compare(x, y);
             Assert.AreEqual(expectedResult, result);
         }

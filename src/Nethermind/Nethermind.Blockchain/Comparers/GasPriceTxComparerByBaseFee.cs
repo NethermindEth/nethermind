@@ -46,10 +46,10 @@ namespace Nethermind.Blockchain.Comparers
             {
                 UInt256 xGasPrice = UInt256.Min(x.FeeCap, x.GasPremium + baseFee);
                 UInt256 yGasPrice = UInt256.Min(y.FeeCap, y.GasPremium + baseFee);
-                if (xGasPrice == yGasPrice) return 0;
+                if (xGasPrice < yGasPrice) return 1;
                 if (xGasPrice > yGasPrice) return -1;
 
-                return 1;
+                return y.FeeCap.CompareTo(x.FeeCap);
             }
             
             return y.GasPrice.CompareTo(x.GasPrice);
