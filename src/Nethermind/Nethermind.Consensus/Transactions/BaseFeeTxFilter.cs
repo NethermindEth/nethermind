@@ -17,6 +17,7 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Logging;
 
 namespace Nethermind.Consensus.Transactions
 {
@@ -24,19 +25,27 @@ namespace Nethermind.Consensus.Transactions
     {
         private readonly IBlockPreparationContextService _blockPreparationContextService;
         private readonly ISpecProvider _specProvider;
+        private readonly ILogger _logger;
 
         public BaseFeeTxFilter(
             IBlockPreparationContextService blockPreparationContextService,
-            ISpecProvider specProvider)
+            ISpecProvider specProvider,
+            ILogManager logManager)
         {
             _blockPreparationContextService = blockPreparationContextService;
             _specProvider = specProvider;
+            _logger = logManager.GetClassLogger();
         }
 
         public (bool Allowed, string Reason) IsAllowed(Transaction tx, BlockHeader parentHeader)
         {
+            if (parentHeader.Number + 1 != _blockPreparationContextService.BlockNumber)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Wrong context was set: Context block number: {_blockPreparationContextService.BlockNumber} Parent header: {parentHeader}");
+            }
+            
             bool isEip1559Enabled = _specProvider.GetSpec(_blockPreparationContextService.BlockNumber).IsEip1559Enabled;
-            bool allowed = !isEip1559Enabled || tx.FeeCap >= _blockPreparationContextService.BaseFee;
+            bool allowed =  isEip1559Enabled || tx.FeeCap >= _blockPreparationContextService.BaseFee;
             return (allowed,
                 allowed
                     ? string.Empty
