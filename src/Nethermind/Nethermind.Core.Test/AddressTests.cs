@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using Nethermind.Blockchain;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Specs.Forks;
@@ -181,6 +182,14 @@ namespace Nethermind.Core.Test
         {
             Address address = ContractAddress.From(TestItem.AddressA, (UInt256)nonce);
             Assert.AreEqual(address, new Address(expectedAddress));
+        }
+        
+        [Test]
+        public void There_are_no_duplicates_in_known_addresses()
+        {
+            _ = KnownAddresses.GoerliValidators;
+            _ = KnownAddresses.KnownMiners;
+            _ = KnownAddresses.RinkebyValidators;
         }
     }
 }

@@ -37,7 +37,7 @@ namespace Nethermind.DataMarketplace.Core.Services
         private readonly ConcurrentDictionary<string, bool> _pendingRequests = new ConcurrentDictionary<string, bool>();
         private readonly INdmBlockchainBridge _blockchainBridge;
         private readonly IEthRequestRepository _requestRepository;
-        private readonly Address _faucetAddress;
+        private readonly Address? _faucetAddress;
         private readonly UInt256 _maxValue;
         private readonly UInt256 _dailyRequestsTotalValueWei;
         private readonly bool _enabled;
@@ -47,15 +47,15 @@ namespace Nethermind.DataMarketplace.Core.Services
         private bool _initialized;
 
         public NdmFaucet(
-            INdmBlockchainBridge blockchainBridge,
-            IEthRequestRepository requestRepository,
-            Address faucetAddress,
+            INdmBlockchainBridge? blockchainBridge,
+            IEthRequestRepository? requestRepository,
+            Address? faucetAddress,
             UInt256 maxValue,
             UInt256 dailyRequestsTotalValueEth,
             bool enabled,
-            ITimestamper timestamper,
-            IWallet wallet,
-            ILogManager logManager)
+            ITimestamper? timestamper,
+            IWallet? wallet,
+            ILogManager? logManager)
         {
             _blockchainBridge = blockchainBridge ?? throw new ArgumentNullException(nameof(blockchainBridge));
             _requestRepository = requestRepository ?? throw new ArgumentNullException(nameof(requestRepository));
@@ -89,7 +89,7 @@ namespace Nethermind.DataMarketplace.Core.Services
 
         public bool IsInitialized => _initialized;
 
-        public async Task<FaucetResponse> TryRequestEthAsync(string node, Address address, UInt256 value)
+        public async Task<FaucetResponse> TryRequestEthAsync(string node, Address? address, UInt256 value)
         {
             if (!_enabled)
             {

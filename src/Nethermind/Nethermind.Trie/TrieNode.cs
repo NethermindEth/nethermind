@@ -554,7 +554,7 @@ namespace Nethermind.Trie
 
         public TrieNode Clone()
         {
-            TrieNode trieNode = new TrieNode(NodeType);
+            TrieNode trieNode = new(NodeType);
             if (_data is not null)
             {
                 trieNode.InitData();
@@ -715,11 +715,11 @@ namespace Nethermind.Trie
             return hasStorage;
         }
 
-        private static object _nullNode = new object();
+        private static object _nullNode = new();
 
-        private static TrieNodeDecoder _nodeDecoder = new TrieNodeDecoder();
+        private static TrieNodeDecoder _nodeDecoder = new();
 
-        private static AccountDecoder _accountDecoder = new AccountDecoder();
+        private static AccountDecoder _accountDecoder = new();
 
         private static Action<TrieNode> _markPersisted => tn => tn.IsPersisted = true;
 
@@ -809,7 +809,7 @@ namespace Nethermind.Trie
                         {
                             _rlpStream.Position--;
                             Span<byte> fullRlp = _rlpStream.PeekNextItem();
-                            TrieNode child = new TrieNode(NodeType.Unknown, fullRlp.ToArray());
+                            TrieNode child = new(NodeType.Unknown, fullRlp.ToArray());
                             _data![i] = childOrRef = child;
                             break;
                         }

@@ -503,6 +503,19 @@ namespace Nethermind.Runner.Test
         {
             Test<INetworkConfig, int>(configWildcard, c => c.NettyArenaOrder, 11);
         }
+        
+        [TestCase("^mainnet ^goerli", false)]
+        [TestCase("^beam ^pruned ^goerli.cfg ^mainnet.cfg", false)]
+        [TestCase("mainnet.cfg", true)]
+        [TestCase("mainnet_beam.cfg", true)]
+        [TestCase("mainnet_pruned.cfg", true)]
+        [TestCase("goerli.cfg", true)]
+        [TestCase("goerli_beam.cfg", true)]
+        [TestCase("goerli_pruned.cfg", true)]
+        public void Witness_defaults_are_correct(string configWildcard, bool witnessProtocolEnabled)
+        {
+            Test<ISyncConfig, bool>(configWildcard, c => c.WitnessProtocolEnabled, witnessProtocolEnabled);
+        }
 
         [Test]
         public void No_additional_commas_in_config_files()

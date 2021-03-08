@@ -23,28 +23,28 @@ namespace Nethermind.Facade.Proxy.Models
         public string Type { get; set; }
         public UInt256? Number { get; set; }
 
-        public static BlockParameterModel FromNumber(long number) => new BlockParameterModel
+        public static BlockParameterModel FromNumber(long number) => new()
         {
             Number = (UInt256?) number
         };
 
-        public static BlockParameterModel FromNumber(UInt256 number) => new BlockParameterModel
+        public static BlockParameterModel FromNumber(UInt256 number) => new()
         {
             Number = number
         };
 
-        public static BlockParameterModel Earliest => new BlockParameterModel
+        public static BlockParameterModel Earliest => new()
         {
             Type = "earliest"
         };
 
-        public static BlockParameterModel Latest => new BlockParameterModel
+        public static BlockParameterModel Latest => new()
         {
             Type = "latest"
         };
 
 
-        public static BlockParameterModel Pending => new BlockParameterModel
+        public static BlockParameterModel Pending => new()
         {
             Type = "pending"
         };

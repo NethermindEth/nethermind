@@ -37,11 +37,11 @@ namespace Nethermind.State.Proofs
         private Nibble[] _fullAccountPath;
         private Nibble[][] _fullStoragePaths;
 
-        private List<byte[]> _accountProofItems = new List<byte[]>();
+        private List<byte[]> _accountProofItems = new();
         private List<byte[]>[] _storageProofItems;
 
-        private Dictionary<Keccak, StorageNodeInfo> _storageNodeInfos = new Dictionary<Keccak, StorageNodeInfo>();
-        private HashSet<Keccak> _nodeToVisitFilter = new HashSet<Keccak>();
+        private Dictionary<Keccak, StorageNodeInfo> _storageNodeInfos = new();
+        private HashSet<Keccak> _nodeToVisitFilter = new();
 
         private class StorageNodeInfo
         {
@@ -142,7 +142,7 @@ namespace Nethermind.State.Proofs
 
             if (trieVisitContext.IsStorage)
             {
-                HashSet<int> bumpedIndexes = new HashSet<int>();
+                HashSet<int> bumpedIndexes = new();
                 foreach (int storageIndex in _storageNodeInfos[node.Keccak].StorageIndices)
                 {
                     Nibble childIndex = _fullStoragePaths[storageIndex][_pathTraversalIndex];
@@ -301,7 +301,7 @@ namespace Nethermind.State.Proofs
             return isPathMatched;
         }
 
-        private AccountDecoder _accountDecoder = new AccountDecoder();
+        private AccountDecoder _accountDecoder = new();
 
         public void VisitCode(Keccak codeHash, TrieVisitContext trieVisitContext)
         {

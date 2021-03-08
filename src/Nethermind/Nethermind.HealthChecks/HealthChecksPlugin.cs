@@ -34,9 +34,7 @@ namespace Nethermind.HealthChecks
         private ILogger _logger;
         private IJsonRpcConfig _jsonRpcConfig;
 
-        public void Dispose()
-        {
-        }
+        public ValueTask DisposeAsync() { return ValueTask.CompletedTask; }
 
         public string Name => "HealthChecks";
 
@@ -63,7 +61,7 @@ namespace Nethermind.HealthChecks
                     args: new object[] { _nodeHealthService });
             if (_healthChecksConfig.UIEnabled)
             {
-                service.AddHealthChecksUI(setupSettings: setup =>
+                service.AddHealthChecksUI(setup =>
                 {
                     setup.AddHealthCheckEndpoint("health", BuildEndpointForUi());
                     setup.SetEvaluationTimeInSeconds(_healthChecksConfig.PollingInterval);

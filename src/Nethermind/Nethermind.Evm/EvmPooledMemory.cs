@@ -184,7 +184,7 @@ namespace Nethermind.Evm
         public List<string> GetTrace()
         {
             int traceLocation = 0;
-            List<string> memoryTrace = new List<string>();
+            List<string> memoryTrace = new();
             if (_memory != null)
             {
                 while ((ulong)traceLocation < Size)

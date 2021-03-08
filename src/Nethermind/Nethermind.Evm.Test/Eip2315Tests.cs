@@ -38,8 +38,9 @@ namespace Nethermind.Evm.Test
                 .Done;
 
             var result = Execute(code);
-            result.StatusCode.Should().Be(1);
-            AssertGas(result, GasCostOf.Transaction + 18);
+            // result.StatusCode.Should().Be(1);
+            // AssertGas(result, GasCostOf.Transaction + 18);
+            result.Error.Should().Be(EvmExceptionType.BadInstruction.ToString());
         }
         
         [Test]
@@ -52,8 +53,9 @@ namespace Nethermind.Evm.Test
                 .Done;
 
             var result = Execute(code);
-            result.StatusCode.Should().Be(1);
-            AssertGas(result, GasCostOf.Transaction + 36);
+            // result.StatusCode.Should().Be(1);
+            // AssertGas(result, GasCostOf.Transaction + 36);
+            result.Error.Should().Be(EvmExceptionType.BadInstruction.ToString());
         }
         
         [Test]
@@ -67,7 +69,7 @@ namespace Nethermind.Evm.Test
 
             var result = Execute(code);
             result.StatusCode.Should().Be(0);
-            result.Error.Should().Be(EvmExceptionType.InvalidJumpDestination.ToString());
+            result.Error.Should().Be(EvmExceptionType.BadInstruction.ToString());
         }
         
         [Test]
@@ -81,7 +83,7 @@ namespace Nethermind.Evm.Test
 
             var result = Execute(code);
             result.StatusCode.Should().Be(0);
-            result.Error.Should().Be(EvmExceptionType.InvalidSubroutineReturn.ToString());
+            result.Error.Should().Be(EvmExceptionType.BadInstruction.ToString());
         }
         
         [Test]
@@ -94,8 +96,9 @@ namespace Nethermind.Evm.Test
                 .Done;
 
             var result = Execute(code);
-            result.StatusCode.Should().Be(1);
-            AssertGas(result, GasCostOf.Transaction + 30);
+            // result.StatusCode.Should().Be(1);
+            // AssertGas(result, GasCostOf.Transaction + 30);
+            result.Error.Should().Be(EvmExceptionType.BadInstruction.ToString());
         }
         
         [Test]
@@ -109,7 +112,7 @@ namespace Nethermind.Evm.Test
 
             var result = Execute(code);
             result.StatusCode.Should().Be(0);
-            result.Error.Should().Be(EvmExceptionType.InvalidSubroutineEntry.ToString());
+            result.Error.Should().Be(EvmExceptionType.BadInstruction.ToString());
         }
     }
 }

@@ -60,7 +60,7 @@ namespace Nethermind.Trie
 
         public override string ToString()
         {
-            StringBuilder builder = new StringBuilder();
+            StringBuilder builder = new();
             builder.AppendLine("TRIE STATS");
             builder.AppendLine($"  SIZE {Size} (STATE {StateSize}, CODE {CodeSize}, STORAGE {StorageSize})");
             builder.AppendLine($"  ALL NODES {NodesCount} ({StateBranchCount + StorageBranchCount}|{StateExtensionCount + StorageExtensionCount}|{AccountCount + StorageLeafCount})");

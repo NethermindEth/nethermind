@@ -33,7 +33,7 @@ namespace Nethermind.Evm.Test.Tracing
         {
             Block block = Build.A.Block.WithTransactions(MuirGlacier.Instance, Build.A.Transaction.TestObject).TestObject;
             
-            BlockReceiptsTracer tracer = new BlockReceiptsTracer();
+            BlockReceiptsTracer tracer = new();
             tracer.SetOtherTracer(NullBlockTracer.Instance);
             tracer.StartNewBlockTrace(block);
             tracer.StartNewTxTrace(block.Transactions[0].Hash);
@@ -61,7 +61,7 @@ namespace Nethermind.Evm.Test.Tracing
         {
             Block block = Build.A.Block.WithTransactions(MuirGlacier.Instance, Build.A.Transaction.TestObject).TestObject;
             
-            BlockReceiptsTracer tracer = new BlockReceiptsTracer();
+            BlockReceiptsTracer tracer = new();
             tracer.SetOtherTracer(NullBlockTracer.Instance);
             tracer.StartNewBlockTrace(block);
             tracer.StartNewTxTrace(block.Transactions[0].Hash);
@@ -76,7 +76,7 @@ namespace Nethermind.Evm.Test.Tracing
             Block block = Build.A.Block.WithTransactions(MuirGlacier.Instance, Build.A.Transaction.TestObject).TestObject;
             
             IBlockTracer otherTracer = Substitute.For<IBlockTracer, ITxTracer>();
-            BlockReceiptsTracer tracer = new BlockReceiptsTracer();
+            BlockReceiptsTracer tracer = new();
             tracer.SetOtherTracer(otherTracer);
             tracer.StartNewBlockTrace(block);
             tracer.StartNewTxTrace(block.Transactions[0].Hash);
@@ -91,7 +91,7 @@ namespace Nethermind.Evm.Test.Tracing
             Block block = Build.A.Block.WithTransactions(MuirGlacier.Instance, Build.A.Transaction.TestObject).TestObject;
             
             IBlockTracer otherTracer = Substitute.For<IBlockTracer, ITxTracer>();
-            BlockReceiptsTracer tracer = new BlockReceiptsTracer();
+            BlockReceiptsTracer tracer = new();
             tracer.SetOtherTracer(otherTracer);
             tracer.StartNewBlockTrace(block);
             tracer.StartNewTxTrace(block.Transactions[0].Hash);

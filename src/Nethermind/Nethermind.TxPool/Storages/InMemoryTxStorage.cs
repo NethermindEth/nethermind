@@ -24,7 +24,7 @@ namespace Nethermind.TxPool.Storages
     public class InMemoryTxStorage : ITxStorage
     {
         private readonly ConcurrentDictionary<Keccak, Transaction> _transactions =
-            new ConcurrentDictionary<Keccak, Transaction>();
+            new();
 
         public Transaction Get(Keccak hash)
         {

@@ -25,7 +25,7 @@ namespace Nethermind.TxPool
     /// </summary>
     public class CompareTxByPoolIndex : IComparer<Transaction>
     {
-        public static readonly CompareTxByPoolIndex Instance = new CompareTxByPoolIndex();
+        public static readonly CompareTxByPoolIndex Instance = new();
         
         private CompareTxByPoolIndex() { }
 

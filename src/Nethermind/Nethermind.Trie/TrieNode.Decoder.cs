@@ -66,7 +66,7 @@ namespace Nethermind.Trie
 
                 int contentLength = Rlp.LengthOf(keyBytes) + (nodeRef.Keccak is null ? nodeRef.FullRlp.Length : Rlp.LengthOfKeccakRlp);
                 int totalLength = Rlp.LengthOfSequence(contentLength);
-                RlpStream rlpStream = new RlpStream(totalLength);
+                RlpStream rlpStream = new(totalLength);
                 rlpStream.StartSequence(contentLength);
                 rlpStream.Encode(keyBytes);
                 if (nodeRef.Keccak is null)
@@ -97,7 +97,7 @@ namespace Nethermind.Trie
                 byte[] keyBytes = node.Key.ToBytes();
                 int contentLength = Rlp.LengthOf(keyBytes) + Rlp.LengthOf(node.Value);
                 int totalLength = Rlp.LengthOfSequence(contentLength);
-                RlpStream rlpStream = new RlpStream(totalLength);
+                RlpStream rlpStream = new(totalLength);
                 rlpStream.StartSequence(contentLength);
                 rlpStream.Encode(keyBytes);
                 rlpStream.Encode(node.Value);

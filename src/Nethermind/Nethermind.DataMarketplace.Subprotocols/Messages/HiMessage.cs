@@ -25,12 +25,12 @@ namespace Nethermind.DataMarketplace.Subprotocols.Messages
         public override int PacketType { get; } = NdmMessageCode.Hi;
         public override string Protocol => "ndm";
         public byte ProtocolVersion { get; }
-        public Address ProviderAddress { get; }
-        public Address ConsumerAddress { get; }
+        public Address? ProviderAddress { get; }
+        public Address? ConsumerAddress { get; }
         public PublicKey NodeId { get; }
         public Signature Signature { get; }
 
-        public HiMessage(byte protocolVersion, Address providerAddress, Address consumerAddress, PublicKey nodeId,
+        public HiMessage(byte protocolVersion, Address? providerAddress, Address? consumerAddress, PublicKey nodeId,
             Signature signature)
         {
             ProtocolVersion = protocolVersion;

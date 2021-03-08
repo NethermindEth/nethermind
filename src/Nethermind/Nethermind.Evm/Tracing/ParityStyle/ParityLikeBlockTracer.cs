@@ -40,7 +40,7 @@ namespace Nethermind.Evm.Tracing.ParityStyle
         }
 
         protected override ParityLikeTxTracer OnStart(Keccak txHash) => 
-            new ParityLikeTxTracer(_block, txHash == null ? null : _block.Transactions.Single(t => t.Hash == txHash), _types);
+            new(_block, txHash == null ? null : _block.Transactions.Single(t => t.Hash == txHash), _types);
 
         protected override ParityLikeTxTrace OnEnd(ParityLikeTxTracer txTracer) => txTracer.BuildResult();
 

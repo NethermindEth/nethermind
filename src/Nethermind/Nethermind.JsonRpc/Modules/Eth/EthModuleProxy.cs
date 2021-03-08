@@ -135,7 +135,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
         public async Task<ResultWrapper<Keccak>> eth_sendTransaction(TransactionForRpc rpcTx)
         {
-            var transaction = rpcTx.ToTransactionWithDefaults();
+            Transaction transaction = rpcTx.ToTransactionWithDefaults();
             if (transaction.Signature is null)
             {
                 RpcResult<UInt256> chainIdResult = await _proxy.eth_chainId();
@@ -143,7 +143,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 RpcResult<UInt256?> nonceResult =
                     await _proxy.eth_getTransactionCount(transaction.SenderAddress, BlockParameterModel.Pending);
                 transaction.Nonce = nonceResult?.IsValid == true ? nonceResult.Result ?? UInt256.Zero : UInt256.Zero;
-                WalletExtensions.Sign(_wallet, transaction, chainId);
+                _wallet.Sign(transaction, chainId);
             }
 
             return ResultWrapper<Keccak>.From(await _proxy.eth_sendRawTransaction(Rlp.Encode(transaction).Bytes));
@@ -153,14 +153,14 @@ namespace Nethermind.JsonRpc.Modules.Eth
             => ResultWrapper<Keccak>.From(await _proxy.eth_sendRawTransaction(Rlp.Encode(transaction).Bytes));
 
 
-        public ResultWrapper<string> eth_call(TransactionForRpc transactionCall, BlockParameter blockParameter = null)
+        public ResultWrapper<string> eth_call(TransactionForRpc transactionCall, BlockParameter? blockParameter = null)
         {
             throw new NotSupportedException();
         }
 
         public ResultWrapper<UInt256?> eth_estimateGas(
             TransactionForRpc transactionCall,
-            BlockParameter blockParameter = null)
+            BlockParameter? blockParameter = null)
         {
             throw new NotImplementedException();
         }
@@ -178,8 +178,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
         public async Task<ResultWrapper<TransactionForRpc>> eth_getTransactionByHash(Keccak transactionHash)
         {
-            var result = await _proxy.eth_getTransactionByHash(transactionHash);
-            var transaction = MapTransaction(result.Result);
+            RpcResult<TransactionModel> result = await _proxy.eth_getTransactionByHash(transactionHash);
+            TransactionForRpc? transaction = MapTransaction(result.Result);
             return transaction is null
                 ? ResultWrapper<TransactionForRpc>.Fail("Transaction was not found.")
                 : ResultWrapper<TransactionForRpc>.Success(transaction);
@@ -204,8 +204,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
         public async Task<ResultWrapper<ReceiptForRpc>> eth_getTransactionReceipt(Keccak txHashData)
         {
-            var result = await _proxy.eth_getTransactionReceipt(txHashData);
-            var receipt = MapReceipt(result.Result);
+            RpcResult<ReceiptModel> result = await _proxy.eth_getTransactionReceipt(txHashData);
+            ReceiptForRpc? receipt = MapReceipt(result.Result);
 
             return receipt is null
                 ? ResultWrapper<ReceiptForRpc>.Fail("Receipt was not found.")
@@ -279,7 +279,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             throw new NotSupportedException();
         }
 
-        private static TransactionForRpc MapTransaction(TransactionModel transaction)
+        private static TransactionForRpc? MapTransaction(TransactionModel? transaction)
         {
             if (transaction is null)
             {
@@ -301,7 +301,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             };
         }
 
-        private static ReceiptForRpc MapReceipt(ReceiptModel receipt)
+        private static ReceiptForRpc? MapReceipt(ReceiptModel? receipt)
         {
             if (receipt is null)
             {
@@ -326,7 +326,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         }
 
         private static LogEntryForRpc MapLogEntry(LogModel log)
-            => new LogEntryForRpc
+            => new()
             {
                 Address = log.Address,
                 Data = log.Data,
@@ -339,7 +339,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 TransactionIndex = (long)log.TransactionIndex
             };
 
-        private static BlockParameterModel MapBlockParameter(BlockParameter blockParameter)
+        private static BlockParameterModel? MapBlockParameter(BlockParameter? blockParameter)
         {
             if (blockParameter is null)
             {

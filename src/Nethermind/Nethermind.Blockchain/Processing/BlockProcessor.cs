@@ -54,19 +54,19 @@ namespace Nethermind.Blockchain.Processing
         /// We use a single receipt tracer for all blocks. Internally receipt tracer forwards most of the calls
         /// to any block-specific tracers.
         /// </summary>
-        private BlockReceiptsTracer _receiptsTracer;
+        private readonly BlockReceiptsTracer _receiptsTracer;
 
         public BlockProcessor(
-            ISpecProvider specProvider,
-            IBlockValidator blockValidator,
-            IRewardCalculator rewardCalculator,
-            ITransactionProcessor transactionProcessor,
-            IStateProvider stateProvider,
-            IStorageProvider storageProvider,
-            ITxPool txPool,
-            IReceiptStorage receiptStorage,
-            IWitnessCollector witnessCollector,
-            ILogManager logManager)
+            ISpecProvider? specProvider,
+            IBlockValidator? blockValidator,
+            IRewardCalculator? rewardCalculator,
+            ITransactionProcessor? transactionProcessor,
+            IStateProvider? stateProvider,
+            IStorageProvider? storageProvider,
+            ITxPool? txPool,
+            IReceiptStorage? receiptStorage,
+            IWitnessCollector? witnessCollector,
+            ILogManager? logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
@@ -296,7 +296,7 @@ namespace Nethermind.Blockchain.Processing
             if (_logger.IsTrace) _logger.Trace($"{suggestedBlock.Header.ToString(BlockHeader.Format.Full)}");
 
             BlockHeader bh = suggestedBlock.Header;
-            BlockHeader header = new BlockHeader(
+            BlockHeader header = new(
                 bh.ParentHash,
                 bh.OmmersHash,
                 bh.Beneficiary,

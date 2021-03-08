@@ -32,7 +32,7 @@ namespace Nethermind.DataMarketplace.Core.Services.Models
 
         public static GasPriceDetails Empty => new GasPriceDetails(0, 0);
 
-        public bool Equals(GasPriceDetails other)
+        public bool Equals(GasPriceDetails? other)
         {
             if (ReferenceEquals(null, other)) return false;
             if (ReferenceEquals(this, other)) return true;

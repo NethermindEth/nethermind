@@ -21,7 +21,7 @@ namespace Nethermind.TxPool.Storages
 {
     public class NullTxStorage : ITxStorage
     {
-        public static NullTxStorage Instance => new NullTxStorage();
+        public static NullTxStorage Instance => new();
         
         public Transaction Get(Keccak hash) => null;
 

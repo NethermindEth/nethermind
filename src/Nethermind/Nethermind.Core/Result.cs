@@ -24,9 +24,9 @@ namespace Nethermind.Core
 
         public static Result Fail(string error)
         {
-            return new Result {ResultType = ResultType.Failure, Error = error};
+            return new() {ResultType = ResultType.Failure, Error = error};
         }
 
-        public static Result Success { get; } = new Result {ResultType = ResultType.Success};
+        public static Result Success { get; } = new() {ResultType = ResultType.Success};
     }
 }

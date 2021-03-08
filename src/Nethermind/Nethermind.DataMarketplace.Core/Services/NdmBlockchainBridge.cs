@@ -55,24 +55,24 @@ namespace Nethermind.DataMarketplace.Core.Services
 
         public Task<byte[]> GetCodeAsync(Address address)
         {
-            byte[] code = _stateReader.GetCode(_blockTree.Head.StateRoot, address);
+            byte[] code = _stateReader.GetCode(_blockTree.Head?.StateRoot ?? Keccak.EmptyTreeHash, address);
             return Task.FromResult(code);   
         }
 
         public Task<Block?> FindBlockAsync(Keccak blockHash)
         {
-            return Task.FromResult<Block?>(_blockTree.FindBlock(blockHash));   
+            return Task.FromResult(_blockTree.FindBlock(blockHash));   
         }
 
         public Task<Block?> FindBlockAsync(long blockNumber) =>
-            Task.FromResult<Block?>(_blockTree.FindBlock(blockNumber));
+            Task.FromResult(_blockTree.FindBlock(blockNumber));
 
         public Task<Block?> GetLatestBlockAsync()
         {
             Block head = _blockchainBridge.BeamHead;
-            return head is null
+            return head?.Hash is null
                 ? Task.FromResult<Block?>(null)
-                : Task.FromResult<Block?>(_blockTree.FindBlock(head.Hash));
+                : Task.FromResult(_blockTree.FindBlock(head.Hash));
         }
 
         public Task<UInt256> GetNonceAsync(Address address)

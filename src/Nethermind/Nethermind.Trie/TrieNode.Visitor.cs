@@ -111,7 +111,7 @@ namespace Nethermind.Trie
                         if (account.HasStorage && visitor.ShouldVisit(account.StorageRoot))
                         {
                             trieVisitContext.IsStorage = true;
-                            TrieNode storageRoot = new TrieNode(NodeType.Unknown, account.StorageRoot);
+                            TrieNode storageRoot = new(NodeType.Unknown, account.StorageRoot);
                             trieVisitContext.Level++;
                             trieVisitContext.BranchChildIndex = null;
                             storageRoot.Accept(visitor, nodeResolver, trieVisitContext);

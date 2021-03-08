@@ -28,8 +28,8 @@ namespace Nethermind.PubSub.Kafka.Models
                 {
                     Hash = block.Hash.Bytes,
                     Header = MapBlockHeader(block.Header),
-                    Transactions = block.Transactions?.Select(MapTransaction).ToArray() ?? Array.Empty<Transaction>(),
-                    Ommers = block.Ommers?.Select(MapBlockHeader).ToArray() ?? Array.Empty<BlockHeader>(),
+                    Transactions = block.Transactions.Select(MapTransaction).ToArray(),
+                    Ommers = block.Ommers.Select(MapBlockHeader).ToArray(),
                     ParentHash = block.ParentHash.Bytes,
                     Beneficiary = block.Beneficiary.Bytes,
                     StateRoot = block.StateRoot.Bytes,

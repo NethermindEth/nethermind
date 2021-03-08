@@ -1,5 +1,5 @@
-/*
- * Copyright (c) 2018 Demerzel Solutions Limited
+﻿/*
+ * Copyright (c) 2021 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
  * The Nethermind library is free software: you can redistribute it and/or modify
@@ -23,19 +23,20 @@ using NUnit.Framework;
 
 namespace Ethereum.Blockchain.Block.Test
 {
-    [TestFixture][Parallelizable(ParallelScope.All)]
-    public class SubroutineTests : BlockchainTestBase
+    [TestFixture]
+    [Parallelizable(ParallelScope.All)]
+    public class VmSystemOperationsTests : BlockchainTestBase
     {
         [TestCaseSource(nameof(LoadTests))]
         public async Task Test(BlockchainTest test)
-        {    
+        {
             await RunTest(test);
         }
-        
+
         public static IEnumerable<BlockchainTest> LoadTests()
         {
-            var loader = new TestsSourceLoader(new LoadBlockchainTestsStrategy(), "stSubroutine");
-            return (IEnumerable<BlockchainTest>)loader.LoadTests();
+            var loader = new TestsSourceLoader(new LoadBlockchainTestsStrategy(), "vmSystemOperations");
+        return (IEnumerable<BlockchainTest>)loader.LoadTests();      
         }
     }
 }

@@ -43,7 +43,7 @@ namespace Nethermind.Blockchain
         // there is not much logic in the addressing here
         private const long LowestInsertedBodyNumberDbEntryAddress = 0;
         private static byte[] StateHeadHashDbEntryAddress = new byte[16];
-        internal static Keccak DeletePointerAddressInDb = new Keccak(new BitArray(32 * 8, true).ToBytes());
+        internal static Keccak DeletePointerAddressInDb = new(new BitArray(32 * 8, true).ToBytes());
 
         internal static Keccak HeadAddressInDb = Keccak.Zero;
         
@@ -53,7 +53,7 @@ namespace Nethermind.Blockchain
 
         private const int BestKnownSearchLimit = 256_000_000;
 
-        private readonly object _batchInsertLock = new object();
+        private readonly object _batchInsertLock = new();
 
         private readonly IDb _blockDb;
         private readonly IDb _headerDb;
@@ -421,8 +421,8 @@ namespace Nethermind.Blockchain
             Rlp newRlp = _headerDecoder.Encode(header);
             _headerDb.Set(header.Hash, newRlp.Bytes);
 
-            BlockInfo blockInfo = new BlockInfo(header.Hash, header.TotalDifficulty ?? 0);
-            ChainLevelInfo chainLevel = new ChainLevelInfo(true, blockInfo);
+            BlockInfo blockInfo = new(header.Hash, header.TotalDifficulty ?? 0);
+            ChainLevelInfo chainLevel = new(true, blockInfo);
             _chainLevelInfoRepository.PersistLevel(header.Number, chainLevel);
             _bloomStorage.Store(header.Number, header.Bloom);
 
@@ -530,7 +530,7 @@ namespace Nethermind.Blockchain
                 Rlp newRlp = _headerDecoder.Encode(header);
                 _headerDb.Set(header.Hash, newRlp.Bytes);
 
-                BlockInfo blockInfo = new BlockInfo(header.Hash, header.TotalDifficulty ?? 0);
+                BlockInfo blockInfo = new(header.Hash, header.TotalDifficulty ?? 0);
                 UpdateOrCreateLevel(header.Number, blockInfo, setAsMain == null ? !shouldProcess : setAsMain.Value);
                 NewSuggestedBlock?.Invoke(this, new BlockEventArgs(block));
             }
@@ -1308,7 +1308,7 @@ namespace Nethermind.Blockchain
 
             void SetTotalDifficultyDeep(BlockHeader current)
             {
-                Stack<BlockHeader> stack = new Stack<BlockHeader>();
+                Stack<BlockHeader> stack = new();
                 while (current.TotalDifficulty == null)
                 {
                     (BlockInfo blockInfo, ChainLevelInfo level) = LoadInfo(current.Number, current.Hash, true);
@@ -1327,7 +1327,7 @@ namespace Nethermind.Blockchain
                 while (stack.TryPop(out BlockHeader child))
                 {
                     child.TotalDifficulty = current.TotalDifficulty + child.Difficulty;
-                    BlockInfo blockInfo = new BlockInfo(child.Hash, child.TotalDifficulty.Value);
+                    BlockInfo blockInfo = new(child.Hash, child.TotalDifficulty.Value);
                     UpdateOrCreateLevel(child.Number, blockInfo);
                     if (_logger.IsTrace) _logger.Trace($"Calculated total difficulty for {child} is {child.TotalDifficulty}");
                     current = child;

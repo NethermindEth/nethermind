@@ -1,5 +1,5 @@
 ﻿/*
- * Copyright (c) 2018 Demerzel Solutions Limited
+ * Copyright (c) 2021 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
  * The Nethermind library is free software: you can redistribute it and/or modify
@@ -22,12 +22,12 @@ namespace Ethereum.Test.Base
 {
     public class TestBlockJson
     {
-        public TestBlockHeaderJson BlockHeader { get; set; }
-        public TestBlockHeaderJson[] UncleHeaders { get; set; }
-        public string Rlp { get; set; }
-        public LegacyTransactionJson[] Transactions { get; set; }
+        public TestBlockHeaderJson? BlockHeader { get; set; }
+        public TestBlockHeaderJson[]? UncleHeaders { get; set; }
+        public string? Rlp { get; set; }
+        public LegacyTransactionJson[]? Transactions { get; set; }
         
         [JsonProperty("expectExceptionALL")]
-        public string ExpectedException { get; set; }
+        public string? ExpectedException { get; set; }
     }
 }

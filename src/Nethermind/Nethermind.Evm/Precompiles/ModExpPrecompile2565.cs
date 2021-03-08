@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -42,30 +42,36 @@ namespace Nethermind.Evm.Precompiles
         }
 
         /// <summary>
-        /// def calculate_gas_cost(base_length, modulus_length, exponent_length, exponent):
-        /// multiplication_complexity = calculate_multiplication_complexity(base_length, modulus_length)
-        /// iteration_count = calculate_iteration_count(exponent_length, exponent)
-        /// return max(200, math.floor(multiplication_complexity * iteration_count / 3))
+        /// https://github.com/ethereum/EIPs/pull/2892
+        /// ADJUSTED_EXPONENT_LENGTH is defined as follows.
+        /// If length_of_EXPONENT &lt;= 32, and all bits in EXPONENT are 0, return 0
+        /// If length_of_EXPONENT &lt;= 32, then return the index of the highest bit in EXPONENT (eg. 1 -> 0, 2 -> 1, 3 -> 1, 255 -> 7, 256 -> 8).
+        /// If length_of_EXPONENT > 32, then return 8 * (length_of_EXPONENT - 32) plus the index of the highest bit in the first 32 bytes of EXPONENT (eg. if EXPONENT = \x00\x00\x01\x00.....\x00, with one hundred bytes, then the result is 8 * (100 - 32) + 253 = 797). If all of the first 32 bytes of EXPONENT are zero, return exactly 8 * (length_of_EXPONENT - 32).
         /// </summary>
         /// <param name="inputData"></param>
         /// <param name="releaseSpec"></param>
-        /// <returns></returns>
+        /// <returns>Gas cost of the MODEXP operation in the context of EIP2565</returns>
         public long DataGasCost(byte[] inputData, IReleaseSpec releaseSpec)
         {
             try
             {
-                Span<byte> extendedInput = stackalloc byte[96];
+                byte[] extendedInput = new byte[96];
                 inputData.Slice(0, Math.Min(96, inputData.Length))
-                    .CopyTo(extendedInput.Slice(0, Math.Min(96, inputData.Length)));
+                    .CopyTo(extendedInput.AsSpan().Slice(0, Math.Min(96, inputData.Length)));
 
-                int baseLength = (int)new UInt256(extendedInput.Slice(0, 32), true);
-                int expLength = (int)new UInt256(extendedInput.Slice(32, 32), true);
-                int modulusLength = (int)new UInt256(extendedInput.Slice(64, 32), true);
-                UInt256 exp = new(extendedInput.Slice(96 + baseLength, expLength), true);
+                UInt256 baseLength = new(extendedInput.AsSpan().Slice(0, 32), true);
+                UInt256 expLength = new(extendedInput.AsSpan().Slice(32, 32), true);
+                UInt256 modulusLength = new(extendedInput.AsSpan().Slice(64, 32), true);
 
                 UInt256 complexity = MultComplexity(baseLength, modulusLength);
+
+                UInt256 expLengthUpTo32 = UInt256.Min(32, expLength);
+                UInt256 startIndex = 96 + baseLength; //+ expLength - expLengthUpTo32; // Geth takes head here, why?
+                UInt256 exp = new(
+                    inputData.SliceWithZeroPaddingEmptyOnError((BigInteger)startIndex, (int)expLengthUpTo32), true);
                 UInt256 iterationCount = CalculateIterationCount(expLength, exp);
-                return Math.Max(200L, (long) (complexity * iterationCount / 3));
+
+                return Math.Max(200L, (long)(complexity * iterationCount / 3));
             }
             catch (OverflowException)
             {
@@ -81,11 +87,12 @@ namespace Nethermind.Evm.Precompiles
             inputData.Slice(0, Math.Min(96, inputData.Length))
                 .CopyTo(extendedInput.Slice(0, Math.Min(96, inputData.Length)));
 
-            int baseLength = (int) new UInt256(extendedInput.Slice(0, 32), true);
-            int expLength = (int) new UInt256(extendedInput.Slice(32, 32), true);
-            int modulusLength = (int) new UInt256(extendedInput.Slice(64, 32), true);
+            int baseLength = (int)new UInt256(extendedInput.Slice(0, 32), true);
+            int expLength = (int)new UInt256(extendedInput.Slice(32, 32), true);
+            int modulusLength = (int)new UInt256(extendedInput.Slice(64, 32), true);
 
-            BigInteger modulusInt = inputData.SliceWithZeroPaddingEmptyOnError(96 + baseLength + expLength, modulusLength).ToUnsignedBigInteger();
+            BigInteger modulusInt = inputData
+                .SliceWithZeroPaddingEmptyOnError(96 + baseLength + expLength, modulusLength).ToUnsignedBigInteger();
 
             if (modulusInt.IsZero)
             {
@@ -93,7 +100,8 @@ namespace Nethermind.Evm.Precompiles
             }
 
             BigInteger baseInt = inputData.SliceWithZeroPaddingEmptyOnError(96, baseLength).ToUnsignedBigInteger();
-            BigInteger expInt = inputData.SliceWithZeroPaddingEmptyOnError(96 + baseLength, expLength).ToUnsignedBigInteger();
+            BigInteger expInt = inputData.SliceWithZeroPaddingEmptyOnError(96 + baseLength, expLength)
+                .ToUnsignedBigInteger();
             return (BigInteger.ModPow(baseInt, expInt, modulusInt).ToBigEndianByteArray(modulusLength), true);
         }
 
@@ -104,40 +112,58 @@ namespace Nethermind.Evm.Precompiles
         /// return words**2
         /// </summary>
         /// <returns></returns>
-        private UInt256 MultComplexity(int baseLength, int modulusLength)
+        private static UInt256 MultComplexity(UInt256 baseLength, UInt256 modulusLength)
         {
-            int maxLength = Math.Max(baseLength, modulusLength);
-            UInt256 words = maxLength / 8 + maxLength % 8 == 0 ? 0 : 1;
+            UInt256 maxLength = UInt256.Max(baseLength, modulusLength);
+            UInt256.Mod(maxLength, 8, out UInt256 mod8);
+            UInt256 words = (maxLength / 8) + ((mod8.IsZero) ? UInt256.Zero : UInt256.One);
             return words * words;
         }
 
         /// <summary>
         /// def calculate_iteration_count(exponent_length, exponent):
         /// iteration_count = 0
-        /// if exponent_length <= 32 and exponent == 0: iteration_count = 0
-        /// elif exponent_length <= 32: iteration_count = exponent.bit_length() - 1
+        /// if exponent_length &lt;= 32 and exponent == 0: iteration_count = 0
+        /// elif exponent_length &lt;= 32: iteration_count = exponent.bit_length() - 1
         /// elif exponent_length > 32: iteration_count = (8 * (exponent_length - 32)) + ((exponent & (2**256 - 1)).bit_length() - 1)
         /// return max(iteration_count, 1) 
         /// </summary>
         /// <param name="exponentLength"></param>
         /// <param name="exponent"></param>
         /// <returns></returns>
-        private static UInt256 CalculateIterationCount(int exponentLength, UInt256 exponent)
+        private static UInt256 CalculateIterationCount(UInt256 exponentLength, UInt256 exponent)
         {
-            UInt256 iterationCount = UInt256.Zero;
-            if (exponentLength <= 32)
+            try
             {
-                if (exponent != 0)
+                UInt256 iterationCount;
+                if (exponentLength <= 32)
                 {
-                    iterationCount = (UInt256) (exponent.BitLen - 1);
+                    if (!exponent.IsZero)
+                    {
+                        iterationCount = (UInt256)(exponent.BitLen - 1);
+                    }
+                    else
+                    {
+                        iterationCount = UInt256.Zero;
+                    }
                 }
+                else
+                {
+                    int bitLength = (exponent & UInt256.MaxValue).BitLen;
+                    if (bitLength > 0)
+                    {
+                        bitLength--;
+                    }
+                        
+                    iterationCount = 8 * (exponentLength - 32) + (UInt256)bitLength;
+                }
+
+                return UInt256.Max(iterationCount, UInt256.One);
             }
-            else
+            catch (OverflowException)
             {
-                iterationCount = (UInt256) (8 * (exponentLength - 32)) + (UInt256) ((exponent & UInt256.MaxValue).BitLen - 1);
+                return UInt256.MaxValue;
             }
-            
-            return UInt256.Max(iterationCount, UInt256.One);
         }
     }
 }

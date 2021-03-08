@@ -22,7 +22,7 @@ namespace Nethermind.Blockchain.Find
     // ReSharper disable once InconsistentNaming
     public static class IBlockFinderExtensions
     {
-        public static BlockHeader FindParentHeader(this IBlockFinder finder, BlockHeader header, BlockTreeLookupOptions options)
+        public static BlockHeader? FindParentHeader(this IBlockFinder finder, BlockHeader header, BlockTreeLookupOptions options)
         {
             if (header.MaybeParent == null)
             {
@@ -48,17 +48,17 @@ namespace Nethermind.Blockchain.Find
             return maybeParent; 
         }
 
-        public static Block FindParent(this IBlockFinder finder, Block block, BlockTreeLookupOptions options)
+        public static Block? FindParent(this IBlockFinder finder, Block block, BlockTreeLookupOptions options)
         {
             return finder.FindBlock(block.Header.ParentHash, options);
         }
 
-        public static Block FindParent(this IBlockFinder finder, BlockHeader blockHeader, BlockTreeLookupOptions options)
+        public static Block? FindParent(this IBlockFinder finder, BlockHeader blockHeader, BlockTreeLookupOptions options)
         {
             return finder.FindBlock(blockHeader.ParentHash, options);
         }
 
-        public static Block RetrieveHeadBlock(this IBlockFinder finder)
+        public static Block? RetrieveHeadBlock(this IBlockFinder finder)
         {
             return finder.FindBlock(finder.Head.Hash, BlockTreeLookupOptions.None);
         }

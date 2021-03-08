@@ -16,6 +16,7 @@
 
 using Jint.Native;
 using Nethermind.Cli.Modules;
+using Nethermind.Core;
 
 namespace Nethermind.Cli
 {
@@ -81,7 +82,13 @@ namespace Nethermind.Cli
         {
             return NodeManager.Post<bool>("clique_produceBlock", CliParseHash(parentHash)).Result;
         }
-
+        
+        [CliFunction("clique", "getBlockSigner")]
+        public Address? GetBlockSigner(string hash)
+        {
+            return NodeManager.Post<Address>("clique_getBlockSigner", CliParseHash(hash)).Result;
+        }
+        
         public CliqueCliModule(ICliEngine cliEngine, INodeManager nodeManager) : base(cliEngine, nodeManager)
         {
         }

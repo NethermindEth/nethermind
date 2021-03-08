@@ -26,7 +26,7 @@ namespace Nethermind.Blockchain.Rewards
     {   
         private ZeroWeiRewards() { }
 
-        public static ZeroWeiRewards Instance { get; } = new ZeroWeiRewards();
+        public static ZeroWeiRewards Instance { get; } = new();
 
         public BlockReward[] CalculateRewards(Block block)
         {

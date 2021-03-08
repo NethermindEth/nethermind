@@ -49,8 +49,8 @@ namespace Nethermind.Specs.ChainSpecStyle
         {
             try
             {
-                var chainSpecJson = _serializer.Deserialize<ChainSpecJson>(jsonData);
-                var chainSpec = new ChainSpec();
+                ChainSpecJson chainSpecJson = _serializer.Deserialize<ChainSpecJson>(jsonData);
+                ChainSpec chainSpec = new();
 
                 chainSpec.ChainId = chainSpecJson.Params.NetworkId;
                 chainSpec.Name = chainSpecJson.Name;
@@ -124,7 +124,6 @@ namespace Nethermind.Specs.ChainSpecStyle
                 Eip2028Transition = chainSpecJson.Params.Eip2028Transition,
                 Eip2200Transition = chainSpecJson.Params.Eip2200Transition,
                 Eip1559Transition = chainSpecJson.Params.Eip1559Transition,
-                Eip1559MigrationDuration = chainSpecJson.Params.Eip1559MigrationDuration,
                 Eip2315Transition = chainSpecJson.Params.Eip2315Transition,
                 Eip2537Transition = chainSpecJson.Params.Eip2537Transition,
                 Eip2565Transition = chainSpecJson.Params.Eip2565Transition,
@@ -158,7 +157,7 @@ namespace Nethermind.Specs.ChainSpecStyle
             }
         }
 
-        private void LoadTransitions(ChainSpecJson chainSpecJson, ChainSpec chainSpec)
+        private static void LoadTransitions(ChainSpecJson chainSpecJson, ChainSpec chainSpec)
         {
             if (chainSpecJson.Engine?.Ethash != null)
             {
@@ -183,12 +182,12 @@ namespace Nethermind.Specs.ChainSpecStyle
             chainSpec.MuirGlacierNumber = chainSpec.Ethash?.DifficultyBombDelays.Count > 2 ?
                 chainSpec.Ethash?.DifficultyBombDelays.Keys.ToArray()[2]
                 : null;
-            chainSpec.BerlinBlockNumber = long.MaxValue - 1;
+            chainSpec.BerlinBlockNumber = chainSpec.Parameters.Eip2718Transition ?? (long.MaxValue - 1);
         }
 
-        private void LoadEngine(ChainSpecJson chainSpecJson, ChainSpec chainSpec)
+        private static void LoadEngine(ChainSpecJson chainSpecJson, ChainSpec chainSpec)
         {
-            AuRaParameters.Validator LoadValidator(ChainSpecJson.AuRaValidatorJson validatorJson, int level = 0)
+            static AuRaParameters.Validator LoadValidator(ChainSpecJson.AuRaValidatorJson validatorJson, int level = 0)
             {
                 AuRaParameters.ValidatorType validatorType = validatorJson.GetValidatorType();
                 AuRaParameters.Validator validator = new() {ValidatorType = validatorType};

@@ -36,7 +36,7 @@ namespace Nethermind.Config
 
         public Enode(string enodeString)
         {
-            ArgumentException GetDnsException(string hostName, Exception innerException = null) => new ArgumentException($"{hostName} is not a proper IP address nor it can be resolved by DNS.", innerException);
+            ArgumentException GetDnsException(string hostName, Exception innerException = null) => new($"{hostName} is not a proper IP address nor it can be resolved by DNS.", innerException);
 
             string[] enodeParts = enodeString.Split(':');
             string[] enodeParts2 = enodeParts[1].Split('@');

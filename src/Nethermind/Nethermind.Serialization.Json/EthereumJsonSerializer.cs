@@ -75,13 +75,13 @@ namespace Nethermind.Serialization.Json
 
         public T Deserialize<T>(Stream stream)
         {
-            using StreamReader reader = new StreamReader(stream);
+            using StreamReader reader = new(stream);
             return Deserialize<T>(reader);
         }
         
         public T Deserialize<T>(string json)
         {
-            using StringReader reader = new StringReader(json);
+            using StringReader reader = new(json);
             return Deserialize<T>(reader);
         }
         
@@ -94,8 +94,8 @@ namespace Nethermind.Serialization.Json
 
         public string Serialize<T>(T value, bool indented = false)
         {
-            StringWriter stringWriter = new StringWriter(new StringBuilder(256), CultureInfo.InvariantCulture);
-            using JsonTextWriter jsonTextWriter = new JsonTextWriter(stringWriter);
+            StringWriter stringWriter = new(new StringBuilder(256), CultureInfo.InvariantCulture);
+            using JsonTextWriter jsonTextWriter = new(stringWriter);
             if (indented)
             {
                 jsonTextWriter.Formatting = _internalReadableSerializer.Formatting;
@@ -112,8 +112,8 @@ namespace Nethermind.Serialization.Json
 
         public void Serialize<T>(Stream stream, T value, bool indented = false)
         {
-            using StreamWriter streamWriter = new StreamWriter(stream, leaveOpen: true);
-            using JsonTextWriter jsonTextWriter = new JsonTextWriter(streamWriter);
+            using StreamWriter streamWriter = new(stream, leaveOpen: true);
+            using JsonTextWriter jsonTextWriter = new(streamWriter);
             if (indented)
             {
                 jsonTextWriter.Formatting = _internalReadableSerializer.Formatting;

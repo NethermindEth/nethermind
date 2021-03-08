@@ -15,10 +15,13 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.IO;
+using System.Net;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Api;
 using Nethermind.Config;
+using Nethermind.Core.Test.Builders;
+using Nethermind.DataMarketplace.Channels;
 using Nethermind.DataMarketplace.Consumers.Infrastructure;
 using Nethermind.DataMarketplace.Consumers.Shared;
 using Nethermind.DataMarketplace.Core.Configs;
@@ -64,9 +67,13 @@ namespace Nethermind.DataMarketplace.Test.Initializers
             configProvider.GetConfig<INdmConfig>().Returns(_ndmConfig);
             configProvider.GetConfig<IInitConfig>().Returns(_initConfig);
             nethermindApi.ConfigProvider.Returns(configProvider);
-            
+
             INdmApi ndmApi = new NdmApi(nethermindApi);
+            ndmApi.ConsumerService = Substitute.For<IConsumerService>();
             ndmApi.AccountService = Substitute.For<IAccountService>();
+            ndmApi.NdmConsumerChannelManager = Substitute.For<INdmConsumerChannelManager>();
+            ndmApi.Enode = new Enode(TestItem.PublicKeyA, IPAddress.Any, 30303);
+            
             await _ndmInitializer.InitAsync(ndmApi);
             _ndmInitializer.DbPath.Should().Be(Path.Combine(_initConfig.BaseDbPath, _ndmConfig.DatabasePath));
         }

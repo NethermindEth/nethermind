@@ -69,7 +69,7 @@ namespace Nethermind.HashLib
 
                 public static Keccak256 CreateKeccak256()
                 {
-                    return new HashLib.Crypto.SHA3.Keccak256();
+                    return new();
                 }
 
                 public static IHash CreateKeccak384()
@@ -79,7 +79,7 @@ namespace Nethermind.HashLib
 
                 public static Keccak512 CreateKeccak512()
                 {
-                    return new HashLib.Crypto.SHA3.Keccak512();
+                    return new();
                 }
 
                 /// <summary>

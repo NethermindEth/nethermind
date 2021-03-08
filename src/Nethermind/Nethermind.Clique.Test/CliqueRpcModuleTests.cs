@@ -14,14 +14,15 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using FluentAssertions;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Clique;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Db;
@@ -64,6 +65,38 @@ namespace Nethermind.Clique.Test
             Assert.DoesNotThrow(() => bridge.UncastVote(TestItem.AddressB));
             Assert.DoesNotThrow(() => bridge.CastVote(TestItem.AddressB, false));
             Assert.DoesNotThrow(() => bridge.UncastVote(TestItem.AddressB));
+        }
+        
+        [Test]
+        public void Can_ask_for_block_signer()
+        {
+            ISnapshotManager snapshotManager = Substitute.For<ISnapshotManager>();
+            IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+            BlockHeader header = Build.A.BlockHeader.TestObject;
+            blockFinder.FindHeader(Arg.Any<Keccak>()).Returns(header);
+            snapshotManager.GetBlockSealer(header).Returns(TestItem.AddressA);
+            CliqueRpcModule module = new CliqueRpcModule(Substitute.For<ICliqueBlockProducer>(), snapshotManager, blockFinder);
+            module.clique_getBlockSigner(Keccak.Zero).Result.ResultType.Should().Be(ResultType.Success);
+            module.clique_getBlockSigner(Keccak.Zero).Data.Should().Be(TestItem.AddressA);
+        }
+        
+        [Test]
+        public void Can_ask_for_block_signer_when_block_is_unknown()
+        {
+            ISnapshotManager snapshotManager = Substitute.For<ISnapshotManager>();
+            IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+            blockFinder.FindHeader(Arg.Any<Keccak>()).Returns((BlockHeader)null);
+            CliqueRpcModule module = new CliqueRpcModule(Substitute.For<ICliqueBlockProducer>(), snapshotManager, blockFinder);
+            module.clique_getBlockSigner(Keccak.Zero).Result.ResultType.Should().Be(ResultType.Failure);
+        }
+        
+        [Test]
+        public void Can_ask_for_block_signer_when_hash_is_null()
+        {
+            ISnapshotManager snapshotManager = Substitute.For<ISnapshotManager>();
+            IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+            CliqueRpcModule module = new CliqueRpcModule(Substitute.For<ICliqueBlockProducer>(), snapshotManager, blockFinder);
+            module.clique_getBlockSigner(null).Result.ResultType.Should().Be(ResultType.Failure);
         }
     }
 }

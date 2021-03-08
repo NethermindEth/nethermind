@@ -28,7 +28,7 @@ namespace Nethermind.Specs.ChainSpecStyle
             filePath = filePath.GetApplicationResourcePath();
             if (!File.Exists(filePath))
             {
-                StringBuilder missingChainspecFileMessage = new StringBuilder($"Chainspec file does not exist {filePath}");
+                StringBuilder missingChainspecFileMessage = new($"Chainspec file does not exist {filePath}");
                 try
                 {
                     missingChainspecFileMessage.AppendLine().AppendLine("Did you mean any of these:");

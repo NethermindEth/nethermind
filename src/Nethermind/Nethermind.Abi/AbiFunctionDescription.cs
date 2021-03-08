@@ -46,6 +46,6 @@ namespace Nethermind.Abi
             }
         }
 
-        public AbiEncodingInfo GetReturnInfo() => new AbiEncodingInfo(AbiEncodingStyle.None, _returnSignature ??= new AbiSignature(Name, Outputs.Select(i => i.Type).ToArray()));
+        public AbiEncodingInfo GetReturnInfo() => new(AbiEncodingStyle.None, _returnSignature ??= new AbiSignature(Name, Outputs.Select(i => i.Type).ToArray()));
     }
 }

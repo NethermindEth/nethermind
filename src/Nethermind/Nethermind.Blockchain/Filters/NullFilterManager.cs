@@ -21,7 +21,7 @@ namespace Nethermind.Blockchain.Filters
 {
     public class NullFilterManager : IFilterManager
     {
-        public static NullFilterManager Instance { get; } = new NullFilterManager();
+        public static NullFilterManager Instance { get; } = new();
 
         private NullFilterManager()
         {

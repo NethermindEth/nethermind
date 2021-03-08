@@ -33,7 +33,7 @@ namespace Nethermind.DataMarketplace.Core.Services.Models
             GasLimit = gasLimit;
         }
 
-        public bool Equals(CanceledTransactionInfo other)
+        public bool Equals(CanceledTransactionInfo? other)
         {
             if (ReferenceEquals(null, other)) return false;
             return ReferenceEquals(this, other) || Equals(Hash, other.Hash);

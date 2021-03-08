@@ -22,7 +22,7 @@ namespace Nethermind.JsonRpc.Modules
 {
     public static class BlockFinderExtensions
     {
-        public static SearchResult<BlockHeader> SearchForHeader(this IBlockFinder blockFinder, BlockParameter blockParameter, bool allowNulls = false)
+        public static SearchResult<BlockHeader> SearchForHeader(this IBlockFinder blockFinder, BlockParameter? blockParameter, bool allowNulls = false)
         {
             if (blockFinder.Head == null)
             {
