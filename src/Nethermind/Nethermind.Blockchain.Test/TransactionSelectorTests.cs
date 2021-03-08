@@ -323,7 +323,7 @@ namespace Nethermind.Blockchain.Test
             specProvider.GetSpec(Arg.Any<long>()).Returns(spec);
             TransactionComparerProvider transactionComparerProvider =
                 new TransactionComparerProvider(specProvider, blockTree);
-            IBlockPreparationContextService blockPreparationContextService = new BlockPreparationContextService();
+            IBlockPreparationContextService blockPreparationContextService = new BlockPreparationContextService(LimboLogs.Instance);
             blockPreparationContextService.SetContext(testCase.BaseFee, 0);
             IComparer<Transaction> defaultComparer = transactionComparerProvider.GetDefaultComparer();
             IComparer<Transaction> comparer = CompareTxByNonce.Instance.ThenBy(defaultComparer);

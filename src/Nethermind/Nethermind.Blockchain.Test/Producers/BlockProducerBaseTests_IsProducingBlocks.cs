@@ -60,7 +60,7 @@ namespace Nethermind.Blockchain.Test.Producers
                 testRpc.Timestamper, 
                 testRpc.SpecProvider,
                 new MiningConfig(),
-                new BlockPreparationContextService(),
+                new BlockPreparationContextService(LimboLogs.Instance),
                 LimboLogs.Instance);
             await AssertIsProducingBlocks(blockProducer);
         }
@@ -77,7 +77,7 @@ namespace Nethermind.Blockchain.Test.Producers
                 testRpc.BlockTree,
                 Substitute.For<IBlockProcessingQueue>(),
                 testRpc.Timestamper,
-                new BlockPreparationContextService(),
+                new BlockPreparationContextService(LimboLogs.Instance),
                 testRpc.SpecProvider,
                 LimboLogs.Instance);
             await AssertIsProducingBlocks(blockProducer);
@@ -97,7 +97,7 @@ namespace Nethermind.Blockchain.Test.Producers
                 Substitute.For<IGasLimitCalculator>(),
                 testRpc.Timestamper,
                 testRpc.SpecProvider,
-                new BlockPreparationContextService(),
+                new BlockPreparationContextService(LimboLogs.Instance),
                 LimboLogs.Instance,
                 Substitute.For<IDifficultyCalculator>());
             await AssertIsProducingBlocks(blockProducer);
@@ -121,7 +121,7 @@ namespace Nethermind.Blockchain.Test.Producers
                 new AuRaConfig(),
                 Substitute.For<IGasLimitCalculator>(),
                 Substitute.For<ISpecProvider>(),
-                new BlockPreparationContextService(),
+                new BlockPreparationContextService(LimboLogs.Instance),
                 LimboLogs.Instance);
             await AssertIsProducingBlocks(blockProducer);
         }
@@ -142,7 +142,7 @@ namespace Nethermind.Blockchain.Test.Producers
                 Substitute.For<IGasLimitCalculator>(),
                 Substitute.For<ISpecProvider>(),
                 new CliqueConfig(),
-                new BlockPreparationContextService(),
+                new BlockPreparationContextService(LimboLogs.Instance),
                 LimboLogs.Instance);
             await AssertIsProducingBlocks(blockProducer);
         }

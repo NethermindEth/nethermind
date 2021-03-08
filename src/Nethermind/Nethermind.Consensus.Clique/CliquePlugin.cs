@@ -101,7 +101,7 @@ namespace Nethermind.Consensus.Clique
                 _snapshotManager!,
                 getFromApi.LogManager);
 
-            IBlockPreparationContextService blockPreparationContextService = new BlockPreparationContextService();
+            IBlockPreparationContextService blockPreparationContextService = new BlockPreparationContextService(getFromApi.LogManager);
             ReadOnlyDbProvider readOnlyDbProvider = getFromApi.DbProvider.AsReadOnly(false);
             ReadOnlyBlockTree readOnlyBlockTree = getFromApi.BlockTree.AsReadOnly();
             ITransactionComparerProvider transactionComparerProvider =

@@ -104,7 +104,7 @@ namespace Nethermind.Clique.Test
                 
                 MemDb stateDb = new MemDb();
                 MemDb codeDb = new MemDb();
-                IBlockPreparationContextService blockPreparationContextService = new BlockPreparationContextService();
+                IBlockPreparationContextService blockPreparationContextService = new BlockPreparationContextService(LimboLogs.Instance);
 
                 ISpecProvider specProvider = RinkebySpecProvider.Instance;
 

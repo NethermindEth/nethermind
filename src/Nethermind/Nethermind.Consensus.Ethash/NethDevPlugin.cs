@@ -62,7 +62,7 @@ namespace Nethermind.Consensus.Ethash
 
             ITransactionComparerProvider transactionComparerProvider =
                 new TransactionComparerProvider(getFromApi.SpecProvider, getFromApi.BlockTree);
-            IBlockPreparationContextService blockPreparationContextService = new BlockPreparationContextService();
+            IBlockPreparationContextService blockPreparationContextService = new BlockPreparationContextService(_nethermindApi.LogManager);
             ITxFilterPipeline txFilterPipeline = new TxFilterPipelineBuilder(_nethermindApi.LogManager)
                 .WithBaseFeeFilter(blockPreparationContextService, getFromApi.SpecProvider)
                 .WithNullTxFilter()

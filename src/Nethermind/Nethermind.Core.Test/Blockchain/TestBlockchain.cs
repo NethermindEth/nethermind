@@ -122,7 +122,7 @@ namespace Nethermind.Core.Test.Blockchain
             IDb blockInfoDb = new MemDb();
             BlockTree = new BlockTree(blockDb, headerDb, blockInfoDb, new ChainLevelInfoRepository(blockDb), SpecProvider, NullBloomStorage.Instance, LimboLogs.Instance);
             TransactionComparerProvider = new TransactionComparerProvider(specProvider, BlockTree);
-            BlockPreparationContextService = new BlockPreparationContextService();
+            BlockPreparationContextService = new BlockPreparationContextService(LimboLogs.Instance);
 
             TxPool = new TxPool.TxPool(
                 txStorage,

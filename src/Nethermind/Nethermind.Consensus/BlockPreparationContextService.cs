@@ -15,14 +15,20 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System;
 using Nethermind.Int256;
+using Nethermind.Logging;
 
 namespace Nethermind.Consensus
 {
     public class BlockPreparationContextService : IBlockPreparationContextService
     {
         private BlockPreparationContext? _currentContext;
+        private ILogger _logger;
+
+        public BlockPreparationContextService(ILogManager logManager)
+        {
+            _logger = logManager.GetClassLogger();
+        }
         
         public void SetContext(UInt256 baseFee, long blockNumber)
         {
@@ -35,7 +41,8 @@ namespace Nethermind.Consensus
             {
                 if (_currentContext == null)
                 {
-                    throw new InvalidOperationException("Cannot use block preparation context, because it wasn't set");
+                    if (_logger.IsWarn) _logger.Warn("Cannot use block preparation context, because it wasn't set");
+                    return UInt256.Zero;
                 }
                 
                 return _currentContext.Value.BaseFee;
@@ -48,7 +55,8 @@ namespace Nethermind.Consensus
             {
                 if (_currentContext == null)
                 {
-                    throw new InvalidOperationException("Cannot use block preparation context, because it wasn't set");
+                    if (_logger.IsWarn) _logger.Warn("Cannot use block preparation context, because it wasn't set");
+                    return 0;
                 }
                 
                 return _currentContext.Value.BlockNumber;

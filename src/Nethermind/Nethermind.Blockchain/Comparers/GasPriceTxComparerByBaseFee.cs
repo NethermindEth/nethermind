@@ -41,14 +41,15 @@ namespace Nethermind.Blockchain.Comparers
             if (ReferenceEquals(null, y)) return 1;
             if (ReferenceEquals(null, x)) return -1;
             
+            // then by gas price descending
             if (_specProvider.GetSpec(blockNumber).IsEip1559Enabled)
             {
                 UInt256 xGasPrice = UInt256.Min(x.FeeCap, x.GasPremium + baseFee);
                 UInt256 yGasPrice = UInt256.Min(y.FeeCap, y.GasPremium + baseFee);
                 if (xGasPrice == yGasPrice) return 0;
-                if (xGasPrice > yGasPrice) return 1;
+                if (xGasPrice > yGasPrice) return -1;
 
-                return -1;
+                return 1;
             }
             
             return y.GasPrice.CompareTo(x.GasPrice);

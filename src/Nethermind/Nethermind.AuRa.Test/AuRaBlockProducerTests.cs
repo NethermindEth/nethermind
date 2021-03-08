@@ -106,7 +106,7 @@ namespace Nethermind.AuRa.Test
                             auraConfig,
                             FollowOtherMiners.Instance,
                             MainnetSpecProvider.Instance, 
-                            new BlockPreparationContextService(),
+                            new BlockPreparationContextService(LimboLogs.Instance),
                             LimboLogs.Instance);
                     }
         }

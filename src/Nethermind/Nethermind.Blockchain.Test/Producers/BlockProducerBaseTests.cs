@@ -78,7 +78,7 @@ namespace Nethermind.Blockchain.Test.Producers
                 Substitute.For<IStateProvider>(),
                 Substitute.For<IGasLimitCalculator>(),
                 timestamper,
-                new BlockPreparationContextService(),
+                new BlockPreparationContextService(LimboLogs.Instance),
                 LimboLogs.Instance);
 
             Block block = producerUnderTest.Prepare();
@@ -98,7 +98,7 @@ namespace Nethermind.Blockchain.Test.Producers
                 Substitute.For<IStateProvider>(),
                 Substitute.For<IGasLimitCalculator>(),
                 timestamper,
-                new BlockPreparationContextService(),
+                new BlockPreparationContextService(LimboLogs.Instance),
                 LimboLogs.Instance);
 
             ulong futureTime = UnixTime.FromSeconds(TimeSpan.FromDays(1).TotalSeconds).Seconds;
