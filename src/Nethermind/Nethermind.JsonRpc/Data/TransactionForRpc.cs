@@ -39,6 +39,11 @@ namespace Nethermind.JsonRpc.Data
             GasPrice = transaction.GasPrice;
             Gas = transaction.GasLimit;
             Input = Data = transaction.Data;
+            if (transaction.IsEip1559)
+            {
+                FeeCap = transaction.FeeCap;
+                GasPremium = transaction.GasPremium;
+            }
 
             Signature? signature = transaction.Signature;
             if (signature != null)
@@ -73,6 +78,10 @@ namespace Nethermind.JsonRpc.Data
 
         public UInt256? Value { get; set; }
         public UInt256? GasPrice { get; set; }
+        
+        public UInt256? GasPremium { get; set; }
+        
+        public UInt256? FeeCap { get; set; }
         public long? Gas { get; set; }
         public byte[]? Data { get; set; }
 
@@ -109,6 +118,7 @@ namespace Nethermind.JsonRpc.Data
             tx.SenderAddress = From;
             tx.Value = Value ?? 0;
             tx.Data = Data ?? Input;
+            tx.DecodedFeeCap = FeeCap ?? 0;
 
             return tx;
         }
