@@ -47,7 +47,7 @@ namespace Nethermind.DataMarketplace.Test.Services
         {
             const decimal price = 187;
             const string currency = "USDT_ETH";
-            var updatedAt = _timestamper.UtcNow.AddSeconds(1);
+            var updatedAt = _timestamper.UtcNow.AddSeconds(10);
             _timestamper.UtcNow = updatedAt;
             var results = new Dictionary<string, PriceResult>
             {
