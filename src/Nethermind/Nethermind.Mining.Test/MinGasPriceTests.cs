@@ -46,5 +46,22 @@ namespace Nethermind.Mining.Test
             Transaction tx = Build.A.Transaction.WithGasPrice((UInt256)actual).TestObject;
             _filter.IsAllowed(tx, null).Allowed.Should().Be(expectedResult);
         }
+        
+        [TestCase(0L, 0L, true)]
+        [TestCase(1L, 0L, false)]
+        [TestCase(1L, 1L, true)]
+        [TestCase(1L, 2L, true)]
+        [TestCase(2L, 1L, false)]
+        public void Test1559(long minimum, long actual, bool expectedResult)
+        {
+            ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+            specProvider.GetSpec(Arg.Any<long>()).Returns(new ReleaseSpec()
+            {
+                IsEip1559Enabled = true
+            });
+            MinGasPriceTxFilter _filter = new MinGasPriceTxFilter((UInt256)minimum, specProvider);
+            Transaction tx = Build.A.Transaction.WithFeeCap((UInt256)actual).TestObject;
+            _filter.IsAllowed(tx, null).Allowed.Should().Be(expectedResult);
+        }
     }
 }
