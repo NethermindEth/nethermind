@@ -18,7 +18,6 @@ using System;
 using System.IO;
 using System.Text;
 using System.Threading.Tasks;
-using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;

@@ -172,32 +172,24 @@ namespace Nethermind.DataMarketplace.Consumers.Shared.Services
 
             await TryClaimRefundsAsync(depositsToRefund.Items);
 
-            // await _ethPriceService.UpdateAsync();
-            // await _consumerNotifier.SendEthUsdPriceAsync(_ethPriceService.UsdPrice, _ethPriceService.UpdatedAt);
-            // await _daiPriceService.UpdateAsync();
-            // await _consumerNotifier.SendDaiUsdPriceAsync(_daiPriceService.UsdPrice, _daiPriceService.UpdatedAt);
-            // await _gasPriceService.UpdateGasPriceAsync();
-
-            Parallel.For(0, 1000, async i =>
+            await _priceService.UpdateAsync(_currencies);
+            foreach (var currency in _currencies)
             {
-                await _priceService.UpdateAsync(_currencies);
-                foreach (var currency in _currencies)
+                var priceInfo = _priceService.Get(currency);
+                if (priceInfo is null)
                 {
-                    var priceInfo = _priceService.Get(currency);
-                    if (priceInfo is null)
-                    {
-                        continue;
-                    }
-                    await _consumerNotifier.SendUsdPriceAsync(currency, priceInfo.UsdPrice, priceInfo.UpdatedAt);
-
+                    continue;
                 }
-                await _gasPriceService.UpdateGasPriceAsync();
 
-                if (_gasPriceService.Types != null)
-                {
-                    await _consumerNotifier.SendGasPriceAsync(_gasPriceService.Types);
-                }
-            });
+                await _consumerNotifier.SendUsdPriceAsync(currency, priceInfo.UsdPrice, priceInfo.UpdatedAt);
+            }
+
+            await _gasPriceService.UpdateGasPriceAsync();
+
+            if (_gasPriceService.Types != null)
+            {
+                await _consumerNotifier.SendGasPriceAsync(_gasPriceService.Types);
+            }
         }
 
         private async Task TryConfirmDepositsAsync(IReadOnlyList<DepositDetails> deposits)

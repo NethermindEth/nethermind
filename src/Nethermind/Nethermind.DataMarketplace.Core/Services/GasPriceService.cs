@@ -18,6 +18,7 @@ using System;
 using System.Globalization;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -43,21 +44,19 @@ namespace Nethermind.DataMarketplace.Core.Services
         private readonly ITimestamper _timestamper;
         private readonly ILogger _logger;
         private ulong _updatedAt;
+        private readonly ulong _updateInterval;
 
         public GasPriceTypes? Types { get; private set; }
 
-        public GasPriceService(
-            IHttpClient client,
-            IConfigManager configManager,
-            string configId,
-            ITimestamper timestamper,
-            ILogManager logManager)
+        public GasPriceService(IHttpClient client, IConfigManager configManager, string configId,
+            ITimestamper timestamper, ILogManager logManager, ulong updateInterval = 5)
         {
             _client = client ?? throw new ArgumentNullException(nameof(client));
             _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
             _configId = configId ?? throw new ArgumentNullException(nameof(configId));
             _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _updateInterval = updateInterval;
         }
 
         public async Task<UInt256> GetCurrentGasPriceAsync()
@@ -158,6 +157,12 @@ namespace Nethermind.DataMarketplace.Core.Services
 
         public async Task UpdateGasPriceAsync()
         {
+            var currentTime = _timestamper.UnixTime.Seconds;
+            if (_updatedAt + _updateInterval > currentTime || Interlocked.Exchange(ref _updatedAt, currentTime) == currentTime)
+            {
+                return;
+            }
+            
             NdmConfig? config = await _configManager.GetAsync(_configId);
             if (config == null)
             {
@@ -180,7 +185,6 @@ namespace Nethermind.DataMarketplace.Core.Services
                 ? new GasPriceDetails(config.GasPrice, 0)
                 : GasPriceDetails.Empty;
 
-            _updatedAt = _timestamper.UnixTime.Seconds;
             Types = new GasPriceTypes(new GasPriceDetails(GetGasPriceGwei(result.SafeLow), result.SafeLowWait),
                 new GasPriceDetails(GetGasPriceGwei(result.Average), result.AvgWait),
                 new GasPriceDetails(GetGasPriceGwei(result.Fast), result.FastWait),

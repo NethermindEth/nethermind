@@ -25,7 +25,7 @@ namespace Nethermind.DataMarketplace.Core.Services
         private readonly ulong _updateInterval;
         
         public PriceService(IHttpClient httpClient, ITimestamper timestamper, ILogManager logManager,
-            ulong updateInterval = 1)
+            ulong updateInterval = 5)
         {
             _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
             _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
@@ -51,13 +51,8 @@ namespace Nethermind.DataMarketplace.Core.Services
 
             foreach (var currency in currencies)
             {
-                if (!results.TryGetValue(currency, out var result))
-                {
-                    if (_logger.IsWarn) _logger.Warn($"There was an error when updating {currency} price.");
-                    continue;
-                }
-
-                if (result.PriceUsd <= 0)
+                bool success = results.TryGetValue(currency, out var result);
+                if (!success || result is null || result.PriceUsd <= 0)
                 {
                     if (_logger.IsWarn) _logger.Warn($"There was an error when updating {currency} price.");
                     continue;
