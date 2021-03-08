@@ -34,9 +34,11 @@ namespace Nethermind.Consensus.Transactions
         }
         
         private ITxFilterPipeline _filterPipeline;
+        private readonly ILogManager _logManager;
 
         public TxFilterPipelineBuilder(ILogManager logManager)
         {
+            _logManager = logManager;
             _filterPipeline = new TxFilterPipeline(logManager);
         }
         
@@ -48,7 +50,7 @@ namespace Nethermind.Consensus.Transactions
 
         public TxFilterPipelineBuilder WithBaseFeeFilter(IBlockPreparationContextService blockPreparationContextService, ISpecProvider specProvider)
         {
-            _filterPipeline.AddTxFilter(new BaseFeeTxFilter(blockPreparationContextService, specProvider));
+            _filterPipeline.AddTxFilter(new BaseFeeTxFilter(blockPreparationContextService, specProvider, _logManager));
             return this;
         }
         
