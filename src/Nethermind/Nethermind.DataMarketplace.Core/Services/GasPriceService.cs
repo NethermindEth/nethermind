@@ -18,6 +18,7 @@ using System;
 using System.Globalization;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -43,21 +44,19 @@ namespace Nethermind.DataMarketplace.Core.Services
         private readonly ITimestamper _timestamper;
         private readonly ILogger _logger;
         private ulong _updatedAt;
+        private readonly ulong _updateInterval;
 
         public GasPriceTypes? Types { get; private set; }
 
-        public GasPriceService(
-            IHttpClient client,
-            IConfigManager configManager,
-            string configId,
-            ITimestamper timestamper,
-            ILogManager logManager)
+        public GasPriceService(IHttpClient client, IConfigManager configManager, string configId,
+            ITimestamper timestamper, ILogManager logManager, ulong updateInterval = 5)
         {
             _client = client ?? throw new ArgumentNullException(nameof(client));
             _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
             _configId = configId ?? throw new ArgumentNullException(nameof(configId));
             _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _updateInterval = updateInterval;
         }
 
         public async Task<UInt256> GetCurrentGasPriceAsync()
@@ -158,39 +157,43 @@ namespace Nethermind.DataMarketplace.Core.Services
 
         public async Task UpdateGasPriceAsync()
         {
-            NdmConfig? config = await _configManager.GetAsync(_configId);
-            if (config == null)
+            var currentTime = _timestamper.UnixTime.Seconds;
+            var updatedAt = _updatedAt;
+            if (_updatedAt + _updateInterval <= currentTime && Interlocked.CompareExchange(ref _updatedAt, currentTime, updatedAt) == updatedAt)
             {
-                if (_logger.IsWarn) _logger.Warn("Cannot update gas price because of missing config.");
-                return;
+                NdmConfig? config = await _configManager.GetAsync(_configId);
+                if (config == null)
+                {
+                    if (_logger.IsWarn) _logger.Warn("Cannot update gas price because of missing config.");
+                    return;
+                }
+
+                Result result = await _client.GetAsync<Result>(Url);
+                if (result is null)
+                {
+                    if (_logger.IsWarn) _logger.Warn($"There was an error when fetching the data from ETH Gas Station - using the latest gas price: {config.GasPrice} wei, type: {config.GasPriceType} as {CustomType}.");
+                    Types = new GasPriceTypes(GasPriceDetails.Empty, GasPriceDetails.Empty, GasPriceDetails.Empty,
+                        GasPriceDetails.Empty, new GasPriceDetails(config.GasPrice, 0), CustomType,
+                        _updatedAt);
+                    return;
+                }
+
+                string type = config.GasPriceType;
+                GasPriceDetails custom = type.Equals("custom", StringComparison.InvariantCultureIgnoreCase)
+                    ? new GasPriceDetails(config.GasPrice, 0)
+                    : GasPriceDetails.Empty;
+
+                Types = new GasPriceTypes(new GasPriceDetails(GetGasPriceGwei(result.SafeLow), result.SafeLowWait),
+                    new GasPriceDetails(GetGasPriceGwei(result.Average), result.AvgWait),
+                    new GasPriceDetails(GetGasPriceGwei(result.Fast), result.FastWait),
+                    new GasPriceDetails(GetGasPriceGwei(result.Fastest), result.FastestWait),
+                    custom, type, _updatedAt);
+
+                if (_logger.IsInfo) _logger.Info($"Updated gas price, safeLow: {Types.SafeLow.Price} wei, average: {Types.Average.Price} wei, fast: {Types.Fast.Price} wei, fastest: {Types.Fastest.Price} wei, updated at: {_updatedAt}.");
+
+                // ETH Gas Station returns 10xGwei value.
+                UInt256 GetGasPriceGwei(decimal gasPrice) => ((int) Math.Ceiling(gasPrice / 10)).GWei();
             }
-
-            Result result = await _client.GetAsync<Result>(Url);
-            if (result is null)
-            {
-                if (_logger.IsWarn) _logger.Warn($"There was an error when fetching the data from ETH Gas Station - using the latest gas price: {config.GasPrice} wei, type: {config.GasPriceType} as {CustomType}.");
-                Types = new GasPriceTypes(GasPriceDetails.Empty, GasPriceDetails.Empty, GasPriceDetails.Empty,
-                    GasPriceDetails.Empty, new GasPriceDetails(config.GasPrice, 0), CustomType,
-                    _updatedAt);
-                return;
-            }
-
-            string type = config.GasPriceType;
-            GasPriceDetails custom = type.Equals("custom", StringComparison.InvariantCultureIgnoreCase)
-                ? new GasPriceDetails(config.GasPrice, 0)
-                : GasPriceDetails.Empty;
-
-            _updatedAt = _timestamper.UnixTime.Seconds;
-            Types = new GasPriceTypes(new GasPriceDetails(GetGasPriceGwei(result.SafeLow), result.SafeLowWait),
-                new GasPriceDetails(GetGasPriceGwei(result.Average), result.AvgWait),
-                new GasPriceDetails(GetGasPriceGwei(result.Fast), result.FastWait),
-                new GasPriceDetails(GetGasPriceGwei(result.Fastest), result.FastestWait),
-                custom, type, _updatedAt);
-
-            if (_logger.IsInfo) _logger.Info($"Updated gas price, safeLow: {Types.SafeLow.Price} wei, average: {Types.Average.Price} wei, fast: {Types.Fast.Price} wei, fastest: {Types.Fastest.Price} wei, updated at: {_updatedAt}.");
-
-            // ETH Gas Station returns 10xGwei value.
-            UInt256 GetGasPriceGwei(decimal gasPrice) => ((int) Math.Ceiling(gasPrice / 10)).GWei();
         }
 
         private UInt256 GetForType(string type)
