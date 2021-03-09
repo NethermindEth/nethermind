@@ -45,7 +45,7 @@ namespace Nethermind.Consensus.Transactions
             }
             
             bool isEip1559Enabled = _specProvider.GetSpec(_blockPreparationContextService.BlockNumber).IsEip1559Enabled;
-            bool allowed =  isEip1559Enabled || tx.FeeCap >= _blockPreparationContextService.BaseFee;
+            bool allowed = !isEip1559Enabled || tx.FeeCap >= _blockPreparationContextService.BaseFee;
             return (allowed,
                 allowed
                     ? string.Empty
