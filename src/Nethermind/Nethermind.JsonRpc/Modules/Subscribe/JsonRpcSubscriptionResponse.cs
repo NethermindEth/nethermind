@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using Nethermind.Serialization.Json;
 using Newtonsoft.Json;
 
 namespace Nethermind.JsonRpc.Modules.Subscribe
@@ -23,8 +24,12 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
     {
         [JsonProperty(PropertyName = "params", Order = 2)]
         public JsonRpcSubscriptionResult Params { get; set; }
-        
+
         [JsonProperty(PropertyName = "method", Order = 1)]
-        public new string MethodName { get; set; }
+        public new string MethodName => "eth_subscription";
+        
+        [JsonConverter(typeof(IdConverter))]
+        [JsonProperty(PropertyName = "id", Order = 3, NullValueHandling = NullValueHandling.Ignore)]
+        public new object? Id { get { return base.Id;} set { base.Id = value; } }
     }
 }

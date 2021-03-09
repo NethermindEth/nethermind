@@ -41,9 +41,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
 
         public string AddSubscription(IJsonRpcDuplexClient jsonRpcDuplexClient, SubscriptionType subscriptionType, Filter? filter = null)
         {
-            Subscription subscription = _subscriptionFactory.CreateSubscription(subscriptionType, filter);
-            subscription.JsonRpcDuplexClient = jsonRpcDuplexClient;
-            
+            Subscription subscription = _subscriptionFactory.CreateSubscription(jsonRpcDuplexClient, subscriptionType, filter);
             AddToDictionary(subscription);
             AddOrUpdateClientsBag(subscription);
             
