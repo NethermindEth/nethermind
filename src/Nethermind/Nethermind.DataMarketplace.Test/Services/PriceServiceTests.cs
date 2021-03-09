@@ -33,6 +33,7 @@ namespace Nethermind.DataMarketplace.Test.Services
         private IPriceService _priceService;
         private TestTimestamper _timestamper;
         private readonly DateTime _now = DateTime.UtcNow;
+        private const string Currency = "USDT_ETH";
 
         [SetUp]
         public void Setup()
@@ -46,13 +47,12 @@ namespace Nethermind.DataMarketplace.Test.Services
         public async Task update_async_should_set_usd_price()
         {
             const decimal price = 187;
-            const string currency = "USDT_ETH";
             var updatedAt = _timestamper.UtcNow.AddSeconds(10);
             _timestamper.UtcNow = updatedAt;
             var results = new Dictionary<string, PriceResult>
             {
                 {
-                    currency,
+                    Currency,
                     new PriceResult
                     {
                         PriceUsd = price
@@ -61,15 +61,35 @@ namespace Nethermind.DataMarketplace.Test.Services
             };
             
             _client.GetAsync<Dictionary<string, PriceResult>>(Arg.Any<string>()).ReturnsForAnyArgs(results);
-            await _priceService.UpdateAsync(currency);
-            var priceInfo = _priceService.Get(currency);
+            await _priceService.UpdateAsync(Currency);
+            var priceInfo = _priceService.Get(Currency);
             priceInfo.Should().NotBeNull();
             priceInfo.UsdPrice.Should().Be(price);
             priceInfo.UpdatedAt.Should().Be(((ITimestamper)_timestamper).UnixTime.Seconds);
             await _client.ReceivedWithAnyArgs().GetAsync<Dictionary<string, PriceResult>>(Arg.Any<string>());
         }
 
-        public class TestTimestamper : ITimestamper
+        [Test]
+        public async Task update_async_should_be_call_every_5s()
+        {
+            var updatedAt = _timestamper.UtcNow.AddSeconds(10);
+            _timestamper.UtcNow = updatedAt;
+            Parallel.For(1, 1000, async i =>
+            {
+                if ((i % 10) == 0)
+                {
+                    lock (_timestamper)
+                    {
+                        var updatedAt = _timestamper.UtcNow.AddSeconds(1);
+                        _timestamper.UtcNow = updatedAt;
+                    }
+                }
+                await _priceService.UpdateAsync(Currency);
+            });
+            await _client.Received(20).GetAsync<Dictionary<string, PriceResult>>(Arg.Any<string>());
+        }
+
+        private class TestTimestamper : ITimestamper
         {
             public DateTime UtcNow { get; set; }
 

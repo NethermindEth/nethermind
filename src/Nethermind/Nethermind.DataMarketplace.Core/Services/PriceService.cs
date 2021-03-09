@@ -37,30 +37,29 @@ namespace Nethermind.DataMarketplace.Core.Services
         public async Task UpdateAsync(params string[] currencies)
         {
             var currentTime = _timestamper.UnixTime.Seconds;
-            if (_updatedAt + _updateInterval > currentTime || Interlocked.Exchange(ref _updatedAt, currentTime) == currentTime)
+            var updatedAt = _updatedAt;
+            if (_updatedAt + _updateInterval <= currentTime && Interlocked.CompareExchange(ref _updatedAt, currentTime, updatedAt) == updatedAt)
             {
-                return;
-            }
-
-            var results = await _httpClient.GetAsync<Dictionary<string, PriceResult>>(Url);
-            if (results is null)
-            {
-                if (_logger.IsWarn) _logger.Warn("There was an error when updating price.");
-                return;
-            }
-
-            foreach (var currency in currencies)
-            {
-                bool success = results.TryGetValue(currency, out var result);
-                if (!success || result is null || result.PriceUsd <= 0)
+                var results = await _httpClient.GetAsync<Dictionary<string, PriceResult>>(Url);
+                if (results is null)
                 {
-                    if (_logger.IsWarn) _logger.Warn($"There was an error when updating {currency} price.");
-                    continue;
+                    if (_logger.IsWarn) _logger.Warn("There was an error when updating price.");
+                    return;
                 }
-                
-                _prices.AddOrUpdate(currency, _ => new PriceInfo(result.PriceUsd, currentTime),
-                    (_, p) => new PriceInfo(result.PriceUsd, currentTime));
-                if (_logger.IsInfo) _logger.Info($"Updated {currency} price: {result.PriceUsd} USD, updated at: {currentTime}");
+
+                foreach (var currency in currencies)
+                {
+                    bool success = results.TryGetValue(currency, out var result);
+                    if (!success || result is null || result.PriceUsd <= 0)
+                    {
+                        if (_logger.IsWarn) _logger.Warn($"There was an error when updating {currency} price.");
+                        continue;
+                    }
+
+                    _prices.AddOrUpdate(currency, _ => new PriceInfo(result.PriceUsd, currentTime),
+                        (_, p) => new PriceInfo(result.PriceUsd, currentTime));
+                    if (_logger.IsInfo) _logger.Info($"Updated {currency} price: {result.PriceUsd} USD, updated at: {currentTime}");
+                }
             }
         }
 
