@@ -28,7 +28,8 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         private readonly IBlockTree _blockTree;
         private readonly ILogger _logger;
 
-        public NewHeadSubscription(IBlockTree? blockTree, ILogManager? logManager)
+        public NewHeadSubscription(IJsonRpcDuplexClient jsonRpcDuplexClient, IBlockTree? blockTree, ILogManager? logManager) 
+            : base(jsonRpcDuplexClient)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
@@ -41,17 +42,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         {
             Task.Run(() =>
             {
-                JsonRpcResult result =
-                    JsonRpcResult.Single(
-                        new JsonRpcSubscriptionResponse()
-                        {
-                            MethodName = nameof(ISubscribeModule.eth_subscribe),
-                            Params = new JsonRpcSubscriptionResult()
-                            {
-                                Result = new BlockForRpc(e.Block, false),
-                                Subscription = Id
-                            }
-                        }, default);
+                JsonRpcResult result = CreateSubscriptionMessage(new BlockForRpc(e.Block, false));
 
                 JsonRpcDuplexClient.SendJsonRpcResult(result);
                 if(_logger.IsTrace) _logger.Trace($"NewHeads subscription {Id} printed NewHeadBlock");
@@ -65,7 +56,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
                 , TaskContinuationOptions.OnlyOnFaulted
             );
         }
-        
+
         public override SubscriptionType Type => SubscriptionType.NewHeads;
         
         public override void Dispose()
