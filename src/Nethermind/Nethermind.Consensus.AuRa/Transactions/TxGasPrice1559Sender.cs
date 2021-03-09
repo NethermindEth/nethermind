@@ -42,26 +42,43 @@ namespace Nethermind.Consensus.AuRa.Transactions
 
         public ValueTask<Keccak> SendTransaction(Transaction tx, TxHandlingOptions txHandlingOptions)
         {
-            UInt256 minGasPremium =  CurrentMinGasPremium();
-            UInt256 minFeeCap =  CurrentMinFeeCap();
-            UInt256 txGasPrice = minGasPremium * _percentDelta / 100;
-            tx.GasPrice = UInt256.Max(txGasPrice, _miningConfig.MinGasPrice);
-            tx.DecodedFeeCap = UInt256.Max(minFeeCap, _miningConfig.MinGasPrice);
+            (UInt256 minFeeCap, UInt256 minGasPremium) = CurrentMinGas();
+            UInt256 txFeeCap = minFeeCap * _percentDelta / 100;
+            UInt256 txGasPremium = minGasPremium * _percentDelta / 100;
+            tx.DecodedFeeCap = UInt256.Max(txFeeCap, _miningConfig.MinGasPrice);
+            tx.GasPrice = txGasPremium;
             return _txSender.SendTransaction(tx, txHandlingOptions);
         }
 
-        private UInt256 CurrentMinGasPremium() =>
-            _txPool.GetPendingTransactions()
-                .Select(t => t.GasPrice)
-                .Where(g => g > UInt256.Zero)
-                .DefaultIfEmpty(TxGasPriceSenderConstants.DefaultGasPrice)
-                .Min();
-        
-        private UInt256 CurrentMinFeeCap() =>
-            _txPool.GetPendingTransactions()
-                .Select(t => t.FeeCap)
-                .Where(g => g > UInt256.Zero)
-                .DefaultIfEmpty(TxGasPriceSenderConstants.DefaultGasPrice)
-                .Min();
+        private (UInt256 FeeCap, UInt256 GasPremimum) CurrentMinGas()
+        {
+            UInt256 minFeeCap = UInt256.Zero;
+            UInt256 minGasPremium = UInt256.Zero;
+            Transaction[] transactions = _txPool.GetPendingTransactions();
+            if (transactions.Length == 0)
+            {
+                return (TxGasPriceSenderConstants.DefaultGasPrice, UInt256.Zero);
+            }
+            
+            for (int i = 0; i < transactions.Length; ++i)
+            {
+                Transaction transaction = transactions[i];
+                UInt256 currentFeeCap = transaction.FeeCap;
+                UInt256 currentGasPremium = transaction.GasPremium;
+                if (currentFeeCap != UInt256.Zero)
+                {
+                    if (minFeeCap == UInt256.Zero || (currentFeeCap != UInt256.Zero && minFeeCap > currentFeeCap))
+                        minFeeCap = currentFeeCap;
+                }
+                
+                if (currentGasPremium != UInt256.Zero)
+                {
+                    if (minGasPremium == UInt256.Zero || (minGasPremium != UInt256.Zero && minGasPremium > currentGasPremium))
+                        minGasPremium = currentGasPremium;
+                }
+            }
+
+            return (minFeeCap, minGasPremium);
+        }
     }
 }

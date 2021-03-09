@@ -32,8 +32,6 @@ namespace Nethermind.Runner.Ethereum.Steps
     {
         public static IMinGasPriceTxFilter CreateStandardMinGasPriceTxFilter(IMiningConfig miningConfig, ISpecProvider specProvider)
             => new MinGasPriceTxFilter(miningConfig.MinGasPrice, specProvider);
-        public static ITxFilter CreateStandardTxFilter(IMiningConfig miningConfig, ISpecProvider specProvider)
-            => new MinGasPriceTxFilter(miningConfig.MinGasPrice, specProvider);
         
         private static ITxFilter CreateBaseAuRaTxFilter(
             IMiningConfig miningConfig,

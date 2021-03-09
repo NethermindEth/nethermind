@@ -28,7 +28,7 @@ using NUnit.Framework;
 
 namespace Nethermind.AuRa.Test.Transactions
 {
-    public class TxGasPriceSenderTests
+    public class TxGasPrice1559SenderTests
     {
         public static IEnumerable TestCases
         {
@@ -41,55 +41,55 @@ namespace Nethermind.AuRa.Test.Transactions
                 UInt256 u3_000_000_000 = new(3_000_000_000);
                 uint scale = 110u;
 
-                yield return new TestCaseData(UInt256.Zero, new UInt256[0], 100u)
-                    .Returns(TxGasPriceSenderConstants.DefaultGasPrice)
+                yield return new TestCaseData(UInt256.Zero, new (UInt256, UInt256)[0], 100u)
+                    .Returns((TxGasPriceSenderConstants.DefaultGasPrice, UInt256.Zero))
                     .SetName("Default");
                 
-                yield return new TestCaseData(UInt256.Zero, new UInt256[0], scale)
-                    .Returns(scaledDefault)
+                yield return new TestCaseData(UInt256.Zero, new (UInt256, UInt256)[0], scale)
+                    .Returns((scaledDefault, UInt256.Zero))
                     .SetName("Default scaled");;
                 
-                yield return new TestCaseData(u100, new UInt256[0], scale)
-                    .Returns(scaledDefault)
+                yield return new TestCaseData(u100, new (UInt256, UInt256)[0], scale)
+                    .Returns((scaledDefault, UInt256.Zero))
                     .SetName("Min mined gas price < Default");
                 
-                yield return new TestCaseData(u3_000_000_000, new UInt256[0], scale)
-                    .Returns(u3_000_000_000)
+                yield return new TestCaseData(u3_000_000_000, new (UInt256, UInt256)[0], scale)
+                    .Returns((u3_000_000_000, UInt256.Zero))
                     .SetName("Min mined gas price > Default");
                 
-                yield return new TestCaseData(UInt256.Zero, new[] {u100, u200}, 100u)
-                    .Returns(u100)
+                yield return new TestCaseData(UInt256.Zero, new(UInt256, UInt256)[] {(u100, 10), (u200, 20)}, 100u)
+                    .Returns((u100, (UInt256)10))
                     .SetName("Lowest pool");
                 
-                yield return new TestCaseData(u100, new[] {u200}, 100u)
-                    .Returns(u200)
+                yield return new TestCaseData(u100, new(UInt256, UInt256)[] {(u200, 20)}, 100u)
+                    .Returns((u200, (UInt256)20))
                     .SetName("Lowest pool > Min mined gas price");
                 
-                yield return new TestCaseData(u300, new[] {u100, u200}, 100u)
-                    .Returns(u300)
+                yield return new TestCaseData(u300, new(UInt256, UInt256)[] {(u100, 10), (u200, 20)}, 100u)
+                    .Returns((u300, (UInt256)10))
                     .SetName("Min mined gas price > Highest pool");
                 
-                yield return new TestCaseData(UInt256.Zero, new[] {u100, u200}, scale)
-                    .Returns(u100 * scale / 100u)
+                yield return new TestCaseData(UInt256.Zero, new(UInt256, UInt256)[] {(u100, 10), (u200, 20)}, scale)
+                    .Returns((u100 * scale / 100u, (UInt256)(10 * scale / 100)))
                     .SetName("Lowest pool scaled");
             }
         }
         
         [TestCaseSource(nameof(TestCases))]
-        public UInt256 SendTransaction_sets_correct_gas_price(UInt256 minMiningGasPrice, UInt256[] txPoolGasPrices, uint percentDelta)
+        public (UInt256 FeeCap, UInt256 GasPremium) SendTransaction_sets_correct_gas_price(UInt256 minMiningGasPrice, (UInt256 FeeCap, UInt256 GasPremium)[] txPoolGasPrices, uint percentDelta)
         {
             ITxSender txSender = Substitute.For<ITxSender>();
             ITxPool txPool = Substitute.For<ITxPool>();
             txPool.GetPendingTransactions().Returns(
-                txPoolGasPrices.Select(g => Build.A.Transaction.WithGasPrice(g).TestObject).ToArray());
+                txPoolGasPrices.Select(g => Build.A.Transaction.WithGasPrice(0).WithGasPremium(g.GasPremium).WithFeeCap(g.FeeCap).TestObject).ToArray());
             MiningConfig miningConfig = new() {MinGasPrice = minMiningGasPrice};
-            TxGasPriceSender txGasPriceSender = new(txSender, txPool, miningConfig, percentDelta);
+            TxGasPrice1559Sender txGasPriceSender = new(txSender, txPool, miningConfig, percentDelta);
 
             Transaction transaction = Build.A.Transaction.WithGasPrice(0).TestObject;
 
             txGasPriceSender.SendTransaction(transaction, TxHandlingOptions.None);
 
-            return transaction.GasPrice;
+            return (transaction.FeeCap, transaction.GasPremium);
         }
     }
 }
