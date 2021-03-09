@@ -479,7 +479,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
         
         [Test]
-        public async Task Eth_estimateGas_web3_should_return_insufficient_balance()
+        public async Task Eth_estimateGas_web3_should_return_insufficient_balance_error()
         {
             using Context ctx = await Context.Create();
             Address someAccount = new Address("0x0001020304050607080910111213141516171819");
@@ -491,7 +491,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
         
         [Test]
-        public async Task Eth_call_web3_should_return_insufficient_balance()
+        public async Task Eth_call_web3_should_return_insufficient_balance_error()
         {
             using Context ctx = await Context.Create();
             Address someAccount = new Address("0x0001020304050607080910111213141516171819");
