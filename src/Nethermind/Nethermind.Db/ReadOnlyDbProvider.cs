@@ -25,7 +25,7 @@ namespace Nethermind.Db
     {
         private readonly IDbProvider _wrappedProvider;
         private readonly bool _createInMemoryWriteStore;
-        private readonly ConcurrentDictionary<string, IReadOnlyDb> _registeredDbs = new ConcurrentDictionary<string, IReadOnlyDb>(StringComparer.InvariantCultureIgnoreCase);
+        private readonly ConcurrentDictionary<string, IReadOnlyDb> _registeredDbs = new(StringComparer.InvariantCultureIgnoreCase);
         
         public ReadOnlyDbProvider(IDbProvider? wrappedProvider, bool createInMemoryWriteStore)
         {

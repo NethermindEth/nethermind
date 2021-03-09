@@ -21,7 +21,7 @@ namespace Nethermind.Serialization.Rlp
 {
     public class LogEntryDecoder : IRlpStreamDecoder<LogEntry>, IRlpValueDecoder<LogEntry>
     {
-        public static LogEntryDecoder Instance { get; } = new LogEntryDecoder();
+        public static LogEntryDecoder Instance { get; } = new();
 
         public LogEntry? Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {

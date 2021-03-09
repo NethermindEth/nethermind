@@ -46,7 +46,7 @@ namespace Nethermind.JsonRpc.Modules.Personal
          [RequiresSecurityReview("Consider removing any operations that allow to provide passphrase in JSON RPC")]
          public ResultWrapper<Address> personal_importRawKey(byte[] keyData, string passphrase)
          {
-             PrivateKey privateKey = new PrivateKey(keyData);
+             PrivateKey privateKey = new(keyData);
              _keyStore.StoreKey(privateKey, passphrase.Secure());
              return ResultWrapper<Address>.Success(privateKey.Address);
          }

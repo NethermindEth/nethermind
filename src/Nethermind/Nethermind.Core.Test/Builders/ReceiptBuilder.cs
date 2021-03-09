@@ -51,6 +51,7 @@ namespace Nethermind.Core.Test.Builders
         public ReceiptBuilder WithLogs(params LogEntry[] logs)
         {
             TestObjectInternal.Logs = logs;
+            TestObjectInternal.Bloom = new Bloom(logs);
             return this;
         }
 

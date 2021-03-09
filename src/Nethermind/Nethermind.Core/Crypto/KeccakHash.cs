@@ -99,7 +99,7 @@ namespace Nethermind.Core.Crypto
 
         public static KeccakHash Create(int size = HASH_SIZE)
         {
-            return new KeccakHash(size);
+            return new(size);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]

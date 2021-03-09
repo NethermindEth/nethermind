@@ -15,11 +15,12 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Threading.Tasks;
+using Nethermind.JsonRpc.Modules;
 
 namespace Nethermind.JsonRpc
 {
     public interface IJsonRpcProcessor
     {
-        Task<JsonRpcResult> ProcessAsync(string request);
+        Task<JsonRpcResult> ProcessAsync(string request, JsonRpcContext context);
     }
 }

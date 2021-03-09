@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -14,14 +14,24 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System.Threading.Tasks;
+using System;
+using Nethermind.Blockchain.Producers;
 
-namespace Nethermind.DataMarketplace.Core.Services
+namespace Nethermind.JsonRpc.Modules.Evm
 {
-    public interface IEthPriceService
+    public class EvmModule : IEvmModule
     {
-        Task UpdateAsync();
-        decimal UsdPrice { get; }
-        ulong UpdatedAt { get; }
+        private readonly IManualBlockProductionTrigger _trigger;
+
+        public EvmModule(IManualBlockProductionTrigger? trigger)
+        {
+            _trigger = trigger ?? throw new ArgumentNullException(nameof(trigger));
+        }
+
+        public ResultWrapper<bool> evm_mine()
+        {
+            _trigger.BuildBlock();
+            return ResultWrapper<bool>.Success(true);
+        }
     }
 }

@@ -1,5 +1,5 @@
 ﻿/*
- * Copyright (c) 2018 Demerzel Solutions Limited
+ * Copyright (c) 2021 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
  * The Nethermind library is free software: you can redistribute it and/or modify
@@ -30,10 +30,12 @@ namespace Ethereum.Blockchain.Block.Test
         [Test]
         public void All_categories_are_tested()
         {
-            string[] directories = Directory.GetDirectories(AppDomain.CurrentDomain.BaseDirectory)
+            string[] directories =
+                Directory.GetDirectories(AppDomain.CurrentDomain.BaseDirectory)
                 .Select(Path.GetFileName)
-                .Where(d =>d.StartsWith("bc"))
+                .Where(d =>d.StartsWith("bc") || d.StartsWith("vm"))
                 .ToArray();
+            
             Type[] types = GetType().Assembly.GetTypes();
             List<string> missingCategories = new List<string>();
             foreach (string directory in directories)
@@ -46,7 +48,7 @@ namespace Ethereum.Blockchain.Block.Test
                         continue;
                     }
                     
-                    missingCategories.Add(directory);
+                    missingCategories.Add(directory + " expected " + expectedTypeName);
                 }
             }
 
@@ -60,6 +62,7 @@ namespace Ethereum.Blockchain.Block.Test
 
         private static string ExpectedTypeName(string directory)
         {
+            string prefix = directory.StartsWith("vm") ? "Vm" : "";
             string expectedTypeName = directory.Remove(0, 2);
             if (!expectedTypeName.EndsWith("Tests"))
             {
@@ -73,7 +76,7 @@ namespace Ethereum.Blockchain.Block.Test
                 }
             }
 
-            return expectedTypeName;
+            return prefix + expectedTypeName;
         }
     }
 }

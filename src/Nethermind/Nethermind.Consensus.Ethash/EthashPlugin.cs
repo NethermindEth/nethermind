@@ -27,9 +27,7 @@ namespace Nethermind.Consensus.Ethash
     {
         private INethermindApi _nethermindApi;
 
-        public void Dispose()
-        {
-        }
+        public ValueTask DisposeAsync() { return ValueTask.CompletedTask; }
 
         public string Name => "Ethash";
 
@@ -48,8 +46,8 @@ namespace Nethermind.Consensus.Ethash
             var (getFromApi, setInApi) = _nethermindApi.ForInit;
             setInApi.RewardCalculatorSource = new RewardCalculator(getFromApi.SpecProvider);
             
-            DifficultyCalculator difficultyCalculator = new DifficultyCalculator(getFromApi.SpecProvider);
-            Ethash ethash = new Ethash(getFromApi.LogManager);
+            DifficultyCalculator difficultyCalculator = new(getFromApi.SpecProvider);
+            Ethash ethash = new(getFromApi.LogManager);
             
             setInApi.Sealer = getFromApi.Config<IMiningConfig>().Enabled
                 ? (ISealer) new EthashSealer(ethash, getFromApi.EngineSigner, getFromApi.LogManager)

@@ -67,13 +67,13 @@ namespace Nethermind.Runner.Ethereum
 
             foreach (INethermindPlugin plugin in _api.Plugins)
             {
-                Stop(() => plugin.Dispose(), $"Disposing plugin {plugin.Name}");
+                await Stop(async () => await plugin.DisposeAsync(), $"Disposing plugin {plugin.Name}");
             }
 
             while (_api.DisposeStack.Count != 0)
             {
                 IAsyncDisposable disposable = _api.DisposeStack.Pop();
-                await Stop(() => disposable.DisposeAsync(), $"Disposing {disposable}");
+                await Stop(async () => await disposable.DisposeAsync(), $"Disposing {disposable}");
             }
 
             Stop(() => _api.DbProvider?.Dispose(), "Closing DBs");

@@ -26,7 +26,7 @@ namespace Nethermind.JsonRpc.Modules
         private readonly int _timeout;
         private readonly T _shared;
         private readonly Task<T> _sharedAsTask;
-        private readonly ConcurrentQueue<T> _pool = new ConcurrentQueue<T>();
+        private readonly ConcurrentQueue<T> _pool = new();
         private readonly SemaphoreSlim _semaphore;
 
         public BoundedModulePool(IRpcModuleFactory<T> factory, int exclusiveCapacity, int timeout)

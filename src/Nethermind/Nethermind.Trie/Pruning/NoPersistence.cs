@@ -20,7 +20,7 @@ namespace Nethermind.Trie.Pruning
     {
         private NoPersistence() { }
 
-        public static NoPersistence Instance { get; } = new NoPersistence();
+        public static NoPersistence Instance { get; } = new();
 
         public bool ShouldPersist(long blockNumber)
         {

@@ -40,7 +40,7 @@ namespace Nethermind.Blockchain.Contracts.Json
         /// A - if matched type is array
         /// L - if matched, denotes length of fixed length array 
         /// </remarks>
-        internal static readonly Regex TypeExpression = new Regex(@"^(?<T>u?int(?<M>\d{1,3})?|address|bool|u?fixed((?<M>\d{1,3})x(?<N>\d{1,2}))?|bytes(?<M>\d{1,3})?|function|string|tuple)(?<A>\[(?<L>\d+)?\])?$",
+        internal static readonly Regex TypeExpression = new(@"^(?<T>u?int(?<M>\d{1,3})?|address|bool|u?fixed((?<M>\d{1,3})x(?<N>\d{1,2}))?|bytes(?<M>\d{1,3})?|function|string|tuple)(?<A>\[(?<L>\d+)?\])?$",
             RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
         
         

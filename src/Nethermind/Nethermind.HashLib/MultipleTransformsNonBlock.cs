@@ -22,7 +22,7 @@ namespace Nethermind.HashLib
 {
     internal abstract class MultipleTransformNonBlock : Hash, INonBlockHash
     {
-        private List<ArraySegment<byte>> m_list = new List<ArraySegment<byte>>();
+        private List<ArraySegment<byte>> m_list = new();
 
         public MultipleTransformNonBlock(int a_hash_size, int a_block_size)
             : base(a_hash_size, a_block_size)

@@ -37,7 +37,7 @@ namespace Nethermind.Specs.ChainSpecStyle
 
         private void BuildTransitions()
         {
-            SortedSet<long> transitionBlocks = new SortedSet<long>();
+            SortedSet<long> transitionBlocks = new();
             transitionBlocks.Add(0L);
 
             if (_chainSpec.Ethash?.BlockRewards != null)
@@ -90,7 +90,7 @@ namespace Nethermind.Specs.ChainSpecStyle
             int index = 0;
             foreach (long releaseStartBlock in transitionBlocks)
             {
-                ReleaseSpec releaseSpec = new ReleaseSpec();
+                ReleaseSpec releaseSpec = new();
                 releaseSpec.MaximumUncleCount = (int) (releaseStartBlock >= (_chainSpec.AuRa?.MaximumUncleCountTransition ?? long.MaxValue) ? _chainSpec.AuRa?.MaximumUncleCount ?? 2 : 2); 
                 releaseSpec.IsTimeAdjustmentPostOlympic = true; // TODO: this is Duration, review
                 releaseSpec.MaximumExtraDataSize = _chainSpec.Parameters.MaximumExtraDataSize;
@@ -129,7 +129,6 @@ namespace Nethermind.Specs.ChainSpecStyle
                 releaseSpec.IsEip2200Enabled = (_chainSpec.Parameters.Eip2200Transition ?? long.MaxValue) <= releaseStartBlock || (_chainSpec.Parameters.Eip1706Transition ?? long.MaxValue) <= releaseStartBlock && releaseSpec.IsEip1283Enabled;
                 releaseSpec.IsEip1559Enabled = (_chainSpec.Parameters.Eip1559Transition ?? long.MaxValue) <= releaseStartBlock;
                 releaseSpec.Eip1559TransitionBlock = _chainSpec.Parameters.Eip1559Transition ?? long.MaxValue;
-                releaseSpec.Eip1559MigrationDuration = _chainSpec.Parameters.Eip1559MigrationDuration ?? 0;
                 releaseSpec.IsEip2315Enabled = (_chainSpec.Parameters.Eip2315Transition ?? long.MaxValue) <= releaseStartBlock;
                 releaseSpec.IsEip2537Enabled = (_chainSpec.Parameters.Eip2537Transition ?? long.MaxValue) <= releaseStartBlock;
                 releaseSpec.IsEip2565Enabled = (_chainSpec.Parameters.Eip2565Transition ?? long.MaxValue) <= releaseStartBlock;

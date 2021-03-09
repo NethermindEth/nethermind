@@ -20,10 +20,10 @@ namespace Nethermind.Abi
 {
     public class AbiDefinition
     {
-        private readonly List<AbiFunctionDescription> _constructors = new List<AbiFunctionDescription>();
-        private readonly Dictionary<string, AbiFunctionDescription> _functions = new Dictionary<string, AbiFunctionDescription>();
-        private readonly Dictionary<string, AbiEventDescription> _events = new Dictionary<string, AbiEventDescription>();
-        private readonly List<AbiBaseDescription> _items = new List<AbiBaseDescription>();
+        private readonly List<AbiFunctionDescription> _constructors = new();
+        private readonly Dictionary<string, AbiFunctionDescription> _functions = new();
+        private readonly Dictionary<string, AbiEventDescription> _events = new();
+        private readonly List<AbiBaseDescription> _items = new();
 
         public byte[]? Bytecode { get; private set; }
         public IReadOnlyList<AbiFunctionDescription> Constructors => _constructors;

@@ -34,7 +34,7 @@ namespace Nethermind.Facade.Proxy.Models
         public UInt256 Value { get; set; }
 
         public Transaction ToTransaction()
-            => new Transaction
+            => new()
             {
                 Hash = Hash,
                 Nonce = Nonce,

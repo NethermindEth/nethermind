@@ -433,9 +433,9 @@ namespace Nethermind.HashLib
             }
 
             System.Collections.Concurrent.ConcurrentQueue<byte[]> queue =
-                new System.Collections.Concurrent.ConcurrentQueue<byte[]>();
-            System.Threading.AutoResetEvent data_ready = new System.Threading.AutoResetEvent(false);
-            System.Threading.AutoResetEvent prepare_data = new System.Threading.AutoResetEvent(false);
+                new();
+            System.Threading.AutoResetEvent data_ready = new(false);
+            System.Threading.AutoResetEvent prepare_data = new(false);
 
             Task reader = Task.Factory.StartNew(() =>
             {
@@ -528,7 +528,7 @@ namespace Nethermind.HashLib
             Debug.Assert(a_from >= 0);
             Debug.Assert((a_length == -1) || (a_length > 0));
 
-            using (FileStream stream = new FileStream(a_file_name, FileMode.Open, FileAccess.Read))
+            using (FileStream stream = new(a_file_name, FileMode.Open, FileAccess.Read))
             {
                 stream.Seek(a_from, SeekOrigin.Begin);
                 TransformStream(stream, a_length);

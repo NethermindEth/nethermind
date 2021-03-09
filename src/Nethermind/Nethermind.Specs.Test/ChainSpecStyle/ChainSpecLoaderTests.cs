@@ -17,15 +17,15 @@
 using System.IO;
 using System.Linq;
 using FluentAssertions;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
-using Nethermind.Specs;
+using Nethermind.Specs.ChainSpecStyle;
 using NUnit.Framework;
 
-namespace Nethermind.Core.Test.Specs.ChainSpecStyle
+namespace Nethermind.Specs.Test.ChainSpecStyle
 {
     [Parallelizable(ParallelScope.All)]
     [TestFixture]
@@ -125,7 +125,7 @@ namespace Nethermind.Core.Test.Specs.ChainSpecStyle
         private static ChainSpec LoadChainSpec(string path)
         {
             var data = File.ReadAllText(path);
-            ChainSpecLoader chainSpecLoader = new ChainSpecLoader(new EthereumJsonSerializer());
+            ChainSpecLoader chainSpecLoader = new(new EthereumJsonSerializer());
             ChainSpec chainSpec = chainSpecLoader.Load(data);
             return chainSpec;
         }
@@ -327,7 +327,7 @@ namespace Nethermind.Core.Test.Specs.ChainSpecStyle
             chainSpec.ConstantinopleFixBlockNumber.Should().Be(0L);
             chainSpec.IstanbulBlockNumber.Should().Be(0L);
             chainSpec.MuirGlacierNumber.Should().Be(null);
-            chainSpec.BerlinBlockNumber.Should().Be(long.MaxValue - 1);
+            chainSpec.BerlinBlockNumber.Should().Be(0L);
         }
 
         [Test]

@@ -1,5 +1,5 @@
 ﻿/*
- * Copyright (c) 2018 Demerzel Solutions Limited
+ * Copyright (c) 2021 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
  * The Nethermind library is free software: you can redistribute it and/or modify
@@ -76,7 +76,7 @@ namespace Ethereum.Test.Base
             using (Stream stream = assembly.GetManifestResourceStream(resourceName))
             {
                 Assert.NotNull(stream);
-                using (StreamReader reader = new StreamReader(stream))
+                using (StreamReader reader = new(stream))
                 {
                     string testJson = reader.ReadToEnd();
                     TContainer testSpecs =

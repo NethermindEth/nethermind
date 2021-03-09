@@ -20,7 +20,7 @@ namespace Nethermind.Evm
 {
     public ref struct ZeroPaddedSpan
     {
-        public static ZeroPaddedSpan Empty => new ZeroPaddedSpan(Span<byte>.Empty, 0, PadDirection.Right);
+        public static ZeroPaddedSpan Empty => new(Span<byte>.Empty, 0, PadDirection.Right);
         
         public ZeroPaddedSpan(ReadOnlySpan<byte> span, int paddingLength, PadDirection padDirection)
         {

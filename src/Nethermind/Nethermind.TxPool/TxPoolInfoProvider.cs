@@ -35,11 +35,10 @@ namespace Nethermind.TxPool
 
         public TxPoolInfo GetInfo(BlockHeader head)
         {
-            var transactions = _txPool.GetPendingTransactions();
-            var groupedTransactions = transactions.GroupBy(t => t.SenderAddress);
+            var groupedTransactions = _txPool.GetPendingTransactionsBySender();
             var pendingTransactions = new Dictionary<Address, IDictionary<ulong, Transaction>>();
             var queuedTransactions = new Dictionary<Address, IDictionary<ulong, Transaction>>();
-            foreach (var group in groupedTransactions)
+            foreach (KeyValuePair<Address, Transaction[]> group in groupedTransactions)
             {
                 Address? address = group.Key;
                 if (address is null)
@@ -51,7 +50,7 @@ namespace Nethermind.TxPool
                 var expectedNonce = accountNonce;
                 var pending = new Dictionary<ulong, Transaction>();
                 var queued = new Dictionary<ulong, Transaction>();
-                var transactionsOrderedByNonce = group.OrderBy(t => t.Nonce);
+                var transactionsOrderedByNonce = group.Value.OrderBy(t => t.Nonce);
 
                 foreach (var transaction in transactionsOrderedByNonce)
                 {

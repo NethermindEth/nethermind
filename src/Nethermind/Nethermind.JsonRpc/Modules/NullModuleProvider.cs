@@ -24,7 +24,7 @@ namespace Nethermind.JsonRpc.Modules
 {
     public class NullModuleProvider : IRpcModuleProvider
     {
-        public static NullModuleProvider Instance = new NullModuleProvider();
+        public static NullModuleProvider Instance = new();
         private static Task<IModule> Null = Task.FromResult(default(IModule));
 
         private NullModuleProvider()
@@ -41,7 +41,7 @@ namespace Nethermind.JsonRpc.Modules
         
         public IReadOnlyCollection<ModuleType> All => Array.Empty<ModuleType>();
         
-        public ModuleResolution Check(string methodName)
+        public ModuleResolution Check(string methodName, RpcEndpoint rpcEndpoint)
         {
             return ModuleResolution.Unknown;
         }

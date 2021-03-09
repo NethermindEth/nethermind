@@ -32,11 +32,11 @@ namespace Nethermind.Blockchain.Producers
     {
         private const int ChainNotYetProcessedMillisecondsDelay = 100;
         private readonly string _name;
-        private Task _producerTask;
-        private bool _isRunning = false;
+        private Task? _producerTask;
+        private bool _isRunning;
         
-        protected CancellationTokenSource LoopCancellationTokenSource { get; } = new CancellationTokenSource();
-        protected int _canProduce = 0;
+        protected CancellationTokenSource LoopCancellationTokenSource { get; } = new();
+        protected int _canProduce;
 
         protected LoopBlockProducerBase(
             ITxSource txSource,
@@ -94,7 +94,7 @@ namespace Nethermind.Blockchain.Producers
             BlockTree.NewBestSuggestedBlock -= BlockTreeOnNewBestSuggestedBlock;
             _isRunning = false;
             
-            LoopCancellationTokenSource?.Cancel();
+            LoopCancellationTokenSource.Cancel();
             await (_producerTask ?? Task.CompletedTask);
         }
 

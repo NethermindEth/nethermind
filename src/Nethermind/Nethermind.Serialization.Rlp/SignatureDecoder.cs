@@ -45,7 +45,7 @@ namespace Nethermind.Serialization.Rlp
                 throw new RlpException("Both 'r' and 's' are zero when decoding a transaction.");
             }
 
-            Signature signature = new Signature(rBytes, sBytes, v);
+            Signature signature = new(rBytes, sBytes, v);
             return signature;
         }
     }

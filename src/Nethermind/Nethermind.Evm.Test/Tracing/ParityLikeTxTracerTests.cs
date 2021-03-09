@@ -749,7 +749,7 @@ namespace Nethermind.Evm.Test.Tracing
         [Test]
         public void Cannot_mark_as_failed_when_actions_stacked()
         {
-            ParityLikeTxTracer tracer = new ParityLikeTxTracer(Build.A.Block.TestObject, Build.A.Transaction.TestObject, ParityTraceTypes.All);
+            ParityLikeTxTracer tracer = new(Build.A.Block.TestObject, Build.A.Transaction.TestObject, ParityTraceTypes.All);
             tracer.ReportAction(1000L, 10, Address.Zero, Address.Zero, Array.Empty<byte>(), ExecutionType.Call, false);
             Assert.Throws<InvalidOperationException>(() => tracer.MarkAsFailed(TestItem.AddressA, 21000, Array.Empty<byte>(), "Error"));
         }
@@ -757,7 +757,7 @@ namespace Nethermind.Evm.Test.Tracing
         [Test]
         public void Cannot_mark_as_success_when_actions_stacked()
         {
-            ParityLikeTxTracer tracer = new ParityLikeTxTracer(Build.A.Block.TestObject, Build.A.Transaction.TestObject, ParityTraceTypes.All);
+            ParityLikeTxTracer tracer = new(Build.A.Block.TestObject, Build.A.Transaction.TestObject, ParityTraceTypes.All);
             tracer.ReportAction(1000L, 10, Address.Zero, Address.Zero, Array.Empty<byte>(), ExecutionType.Call, false);
             Assert.Throws<InvalidOperationException>(() => tracer.MarkAsSuccess(TestItem.AddressA, 21000, Array.Empty<byte>(), new LogEntry[] { }));
         }
@@ -765,17 +765,17 @@ namespace Nethermind.Evm.Test.Tracing
         [Test]
         public void Is_tracing_rewards_only_when_rewards_trace_type_selected()
         {
-            ParityLikeBlockTracer tracer = new ParityLikeBlockTracer(ParityTraceTypes.All ^ ParityTraceTypes.Rewards);
+            ParityLikeBlockTracer tracer = new(ParityTraceTypes.All ^ ParityTraceTypes.Rewards);
             Assert.False(tracer.IsTracingRewards);
 
-            ParityLikeBlockTracer tracer2 = new ParityLikeBlockTracer(ParityTraceTypes.Rewards);
+            ParityLikeBlockTracer tracer2 = new(ParityTraceTypes.Rewards);
             Assert.True(tracer2.IsTracingRewards);
         }
 
         private (ParityLikeTxTrace trace, Block block, Transaction tx) ExecuteInitAndTraceParityCall(params byte[] code)
         {
             (var block, var transaction) = PrepareInitTx(BlockNumber, 100000, code);
-            ParityLikeTxTracer tracer = new ParityLikeTxTracer(block, transaction, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff);
+            ParityLikeTxTracer tracer = new(block, transaction, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff);
             _processor.Execute(transaction, block.Header, tracer);
             return (tracer.BuildResult(), block, transaction);
         }
@@ -783,7 +783,7 @@ namespace Nethermind.Evm.Test.Tracing
         private (ParityLikeTxTrace trace, Block block, Transaction tx) ExecuteAndTraceParityCall(params byte[] code)
         {
             (var block, var transaction) = PrepareTx(BlockNumber, 100000, code);
-            ParityLikeTxTracer tracer = new ParityLikeTxTracer(block, transaction, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff | ParityTraceTypes.VmTrace);
+            ParityLikeTxTracer tracer = new(block, transaction, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff | ParityTraceTypes.VmTrace);
             _processor.Execute(transaction, block.Header, tracer);
             return (tracer.BuildResult(), block, transaction);
         }
@@ -791,7 +791,7 @@ namespace Nethermind.Evm.Test.Tracing
         private (ParityLikeTxTrace trace, Block block, Transaction tx) ExecuteAndTraceParityCall(ParityTraceTypes traceTypes, params byte[] code)
         {
             (var block, var transaction) = PrepareTx(BlockNumber, 100000, code);
-            ParityLikeTxTracer tracer = new ParityLikeTxTracer(block, transaction, traceTypes);
+            ParityLikeTxTracer tracer = new(block, transaction, traceTypes);
             _processor.Execute(transaction, block.Header, tracer);
             return (tracer.BuildResult(), block, transaction);
         }
@@ -799,7 +799,7 @@ namespace Nethermind.Evm.Test.Tracing
         private (ParityLikeTxTrace trace, Block block, Transaction tx) ExecuteAndTraceParityCall(byte[] input, UInt256 value, params byte[] code)
         {
             (var block, var transaction) = PrepareTx(BlockNumber, 100000, code, input, value);
-            ParityLikeTxTracer tracer = new ParityLikeTxTracer(block, transaction, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff);
+            ParityLikeTxTracer tracer = new(block, transaction, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff);
             _processor.Execute(transaction, block.Header, tracer);
             return (tracer.BuildResult(), block, transaction);
         }

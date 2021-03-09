@@ -45,7 +45,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
         private readonly IBlockFinder _blockFinder;
         private readonly IReceiptFinder _receiptFinder;
         private readonly ISpecProvider _specProvider;
-        private readonly HeaderDecoder _headerDecoder = new HeaderDecoder();
+        private readonly HeaderDecoder _headerDecoder = new();
 
         public ProofModule(
             ITracer tracer,
@@ -94,12 +94,12 @@ namespace Nethermind.JsonRpc.Modules.Proof
                 transaction.GasLimit = callHeader.GasLimit;
             }
 
-            Block block = new Block(callHeader, new[] {transaction}, Enumerable.Empty<BlockHeader>());
+            Block block = new(callHeader, new[] {transaction}, Enumerable.Empty<BlockHeader>());
 
-            ProofBlockTracer proofBlockTracer = new ProofBlockTracer(null, transaction.SenderAddress == Address.SystemUser);
+            ProofBlockTracer proofBlockTracer = new(null, transaction.SenderAddress == Address.SystemUser);
             _tracer.Trace(block, proofBlockTracer);
 
-            CallResultWithProof callResultWithProof = new CallResultWithProof();
+            CallResultWithProof callResultWithProof = new();
             ProofTxTracer proofTxTracer = proofBlockTracer.BuildResult().Single();
 
             callResultWithProof.BlockHeaders = CollectHeaderBytes(proofTxTracer, sourceHeader);
@@ -131,7 +131,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
             Transaction[] txs = block.Transactions;
             Transaction transaction = txs[receipt.Index];
 
-            TransactionWithProof txWithProof = new TransactionWithProof();
+            TransactionWithProof txWithProof = new();
             txWithProof.Transaction = new TransactionForRpc(block.Hash, block.Number, receipt.Index, transaction);
             txWithProof.TxProof = BuildTxProofs(txs, _specProvider.GetSpec(block.Number), receipt.Index);
             if (includeHeader)
@@ -159,14 +159,14 @@ namespace Nethermind.JsonRpc.Modules.Proof
             Block block = searchResult.Object;
             TxReceipt receipt = _receiptFinder.Get(block).ForTransaction(txHash);
             
-            BlockReceiptsTracer receiptsTracer = new BlockReceiptsTracer();
+            BlockReceiptsTracer receiptsTracer = new();
             receiptsTracer.SetOtherTracer(NullBlockTracer.Instance);
             _tracer.Trace(block, receiptsTracer);
 
             TxReceipt[] receipts = receiptsTracer.TxReceipts;
             Transaction[] txs = block.Transactions;
 
-            ReceiptWithProof receiptWithProof = new ReceiptWithProof();
+            ReceiptWithProof receiptWithProof = new();
             receiptWithProof.Receipt = new ReceiptForRpc(txHash, receipt);
             receiptWithProof.ReceiptProof = BuildReceiptProofs(block.Number, receipts, receipt.Index);
             receiptWithProof.TxProof = BuildTxProofs(txs, _specProvider.GetSpec(block.Number), receipt.Index);
@@ -180,10 +180,10 @@ namespace Nethermind.JsonRpc.Modules.Proof
 
         private AccountProof[] CollectAccountProofs(Keccak stateRoot, ProofTxTracer proofTxTracer)
         {
-            List<AccountProof> accountProofs = new List<AccountProof>();
+            List<AccountProof> accountProofs = new();
             foreach (Address address in proofTxTracer.Accounts)
             {
-                AccountProofCollector collector = new AccountProofCollector(address, proofTxTracer.Storages
+                AccountProofCollector collector = new(address, proofTxTracer.Storages
                     .Where(s => s.Address == address)
                     .Select(s => s.Index).ToArray());
 
@@ -196,7 +196,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
 
         private byte[][] CollectHeaderBytes(ProofTxTracer proofTxTracer, BlockHeader tracedBlockHeader)
         {
-            List<BlockHeader> relevantHeaders = new List<BlockHeader> {tracedBlockHeader};
+            List<BlockHeader> relevantHeaders = new() {tracedBlockHeader};
             foreach (Keccak blockHash in proofTxTracer.BlockHashes)
             {
                 relevantHeaders.Add(_blockFinder.FindHeader(blockHash));

@@ -23,13 +23,13 @@ namespace Nethermind.Facade.Proxy
         public RpcError Error { get; set; }
         public bool IsValid => Error is null;
 
-        public static RpcResult<T> Ok(T result, int id = 0) => new RpcResult<T>
+        public static RpcResult<T> Ok(T result, int id = 0) => new()
         {
             Result = result,
             Id = id
         };
 
-        public static RpcResult<T> Fail(string message) => new RpcResult<T>
+        public static RpcResult<T> Fail(string message) => new()
         {
             Error = new RpcError
             {

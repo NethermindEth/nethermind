@@ -30,6 +30,6 @@ namespace Nethermind.Crypto
             _timestamper = timestamper;
         }
 
-        public ProtectedPrivateKey Create(PrivateKey privateKey) => new ProtectedPrivateKey(privateKey, _random, _timestamper);
+        public ProtectedPrivateKey Create(PrivateKey privateKey) => new(privateKey, _random, _timestamper);
     }
 }

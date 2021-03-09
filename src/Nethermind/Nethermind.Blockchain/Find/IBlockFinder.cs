@@ -23,101 +23,118 @@ namespace Nethermind.Blockchain.Find
     public interface IBlockFinder
     {
         Keccak HeadHash { get; }
-        
+
         Keccak GenesisHash { get; }
-        
+
         Keccak? PendingHash { get; }
-        
+
         Block? Head { get; }
-        
+
         Block? FindBlock(Keccak blockHash, BlockTreeLookupOptions options);
-        
+
         Block? FindBlock(long blockNumber, BlockTreeLookupOptions options);
-        
+
         BlockHeader? FindHeader(Keccak blockHash, BlockTreeLookupOptions options);
-        
+
         BlockHeader? FindHeader(long blockNumber, BlockTreeLookupOptions options);
-        
+
         Keccak? FindBlockHash(long blockNumber);
-        
+
         /// <summary>
         /// Checks if the block is currently in the canonical chain
         /// </summary>
         /// <param name="blockHeader">Block header to check</param>
         /// <returns><value>True</value> if part of the canonical chain, otherwise <value>False</value></returns>
         bool IsMainChain(BlockHeader blockHeader);
-        
+
         /// <summary>
         /// Checks if the block is currently in the canonical chain
         /// </summary>
         /// <param name="blockHash">Hash of the block to check</param>
         /// <returns><value>True</value> if part of the canonical chain, otherwise <value>False</value></returns>
         bool IsMainChain(Keccak blockHash);
-        
-        public Block FindBlock(Keccak blockHash) => FindBlock(blockHash, BlockTreeLookupOptions.None);
-        
-        public Block FindBlock(long blockNumber) => FindBlock(blockNumber, BlockTreeLookupOptions.RequireCanonical);
-        
-        public Block FindGenesisBlock() => FindBlock(GenesisHash, BlockTreeLookupOptions.RequireCanonical);
-        
-        public Block FindHeadBlock() => Head;
-        
-        public Block FindEarliestBlock() => FindGenesisBlock();
-        
-        public Block FindLatestBlock() => FindHeadBlock();
-        
-        public Block FindPendingBlock() => FindBlock(PendingHash, BlockTreeLookupOptions.None);
-        
-        public BlockHeader FindHeader(Keccak blockHash) => FindHeader(blockHash, BlockTreeLookupOptions.None);
-        
-        public BlockHeader FindHeader(long blockNumber) => FindHeader(blockNumber, BlockTreeLookupOptions.RequireCanonical);
-        
-        public BlockHeader FindGenesisHeader() => FindHeader(GenesisHash, BlockTreeLookupOptions.RequireCanonical);
+
+        public Block? FindBlock(Keccak blockHash) => FindBlock(blockHash, BlockTreeLookupOptions.None);
+
+        public Block? FindBlock(long blockNumber) => FindBlock(blockNumber, BlockTreeLookupOptions.RequireCanonical);
+
+        public Block? FindGenesisBlock() => FindBlock(GenesisHash, BlockTreeLookupOptions.RequireCanonical);
+
+        public Block? FindHeadBlock() => Head;
+
+        public Block? FindEarliestBlock() => FindGenesisBlock();
+
+        public Block? FindLatestBlock() => FindHeadBlock();
+
+        public Block? FindPendingBlock() =>
+            PendingHash == null ? null : FindBlock(PendingHash, BlockTreeLookupOptions.None);
+
+        public BlockHeader? FindHeader(Keccak blockHash) => FindHeader(blockHash, BlockTreeLookupOptions.None);
+
+        public BlockHeader? FindHeader(long blockNumber) =>
+            FindHeader(blockNumber, BlockTreeLookupOptions.RequireCanonical);
+
+        public BlockHeader FindGenesisHeader() =>
+            FindHeader(GenesisHash, BlockTreeLookupOptions.RequireCanonical)
+            ?? throw new Exception("Genesis header could not be found");
 
         public BlockHeader FindEarliestHeader() => FindGenesisHeader();
-        
-        public BlockHeader FindLatestHeader() => Head?.Header;
 
-        public BlockHeader FindPendingHeader() => FindHeader(PendingHash, BlockTreeLookupOptions.None);
-        
+        public BlockHeader? FindLatestHeader() => Head?.Header;
+
+        public BlockHeader? FindPendingHeader() =>
+            PendingHash == null ? null : FindHeader(PendingHash, BlockTreeLookupOptions.None);
+
         BlockHeader FindBestSuggestedHeader();
 
-        public Block FindBlock(BlockParameter blockParameter, bool headLimit = false)
+        public Block? FindBlock(BlockParameter? blockParameter, bool headLimit = false)
         {
             if (blockParameter == null)
             {
                 return FindLatestBlock();
             }
-            
+
             return blockParameter.Type switch
             {
                 BlockParameterType.Pending => FindPendingBlock(),
                 BlockParameterType.Latest => FindLatestBlock(),
                 BlockParameterType.Earliest => FindEarliestBlock(),
-                BlockParameterType.BlockNumber => headLimit && blockParameter.BlockNumber.Value >= Head.Number 
+                BlockParameterType.BlockNumber => headLimit && blockParameter.BlockNumber!.Value >= Head.Number
                     ? FindLatestBlock()
-                    : FindBlock(blockParameter.BlockNumber.Value, blockParameter.RequireCanonical ? BlockTreeLookupOptions.RequireCanonical : BlockTreeLookupOptions.None),
-                BlockParameterType.BlockHash => FindBlock(blockParameter.BlockHash, blockParameter.RequireCanonical ? BlockTreeLookupOptions.RequireCanonical : BlockTreeLookupOptions.None),
+                    : FindBlock(blockParameter.BlockNumber!.Value,
+                        blockParameter.RequireCanonical
+                            ? BlockTreeLookupOptions.RequireCanonical
+                            : BlockTreeLookupOptions.None),
+                BlockParameterType.BlockHash => FindBlock(blockParameter.BlockHash!,
+                    blockParameter.RequireCanonical
+                        ? BlockTreeLookupOptions.RequireCanonical
+                        : BlockTreeLookupOptions.None),
                 _ => throw new ArgumentException($"{nameof(BlockParameterType)} not supported: {blockParameter.Type}")
             };
         }
-        
-        public BlockHeader FindHeader(BlockParameter blockParameter, bool headLimit = false)
+
+        public BlockHeader? FindHeader(BlockParameter? blockParameter, bool headLimit = false)
         {
             if (blockParameter == null)
             {
                 return FindLatestHeader();
             }
-            
+
             return blockParameter.Type switch
             {
                 BlockParameterType.Pending => FindPendingHeader(),
                 BlockParameterType.Latest => FindLatestHeader(),
                 BlockParameterType.Earliest => FindEarliestHeader(),
-                BlockParameterType.BlockNumber => headLimit && blockParameter.BlockNumber.Value >= Head.Number 
-                    ? FindLatestHeader() 
-                    : FindHeader(blockParameter.BlockNumber.Value, blockParameter.RequireCanonical ? BlockTreeLookupOptions.RequireCanonical : BlockTreeLookupOptions.None),
-                BlockParameterType.BlockHash => FindHeader(blockParameter.BlockHash, blockParameter.RequireCanonical ? BlockTreeLookupOptions.RequireCanonical : BlockTreeLookupOptions.None),
+                BlockParameterType.BlockNumber => headLimit && blockParameter.BlockNumber!.Value >= Head.Number
+                    ? FindLatestHeader()
+                    : FindHeader(blockParameter.BlockNumber!.Value,
+                        blockParameter.RequireCanonical
+                            ? BlockTreeLookupOptions.RequireCanonical
+                            : BlockTreeLookupOptions.None),
+                BlockParameterType.BlockHash => FindHeader(blockParameter.BlockHash!,
+                    blockParameter.RequireCanonical
+                        ? BlockTreeLookupOptions.RequireCanonical
+                        : BlockTreeLookupOptions.None),
                 _ => throw new ArgumentException($"{nameof(BlockParameterType)} not supported: {blockParameter.Type}")
             };
         }

@@ -21,25 +21,20 @@ using Nethermind.Serialization.Json;
 
 namespace Nethermind.Blockchain.Find
 {
-    [Todo(Improve.Refactor, "Can make it struct?")]
     public class BlockParameter : IEquatable<BlockParameter>
     {
-        public static BlockParameter Earliest = new BlockParameter(BlockParameterType.Earliest);
+        public static BlockParameter Earliest = new(BlockParameterType.Earliest);
 
-        public static BlockParameter Pending = new BlockParameter(BlockParameterType.Pending);
+        public static BlockParameter Pending = new(BlockParameterType.Pending);
 
-        public static BlockParameter Latest = new BlockParameter(BlockParameterType.Latest);
+        public static BlockParameter Latest = new(BlockParameterType.Latest);
 
         public BlockParameterType Type { get; set; }
         public long? BlockNumber { get; }
         
-        public Keccak BlockHash { get; }
+        public Keccak? BlockHash { get; }
 
         public bool RequireCanonical { get; }
-
-        public BlockParameter()
-        {
-        }
 
         public BlockParameter(BlockParameterType type)
         {
@@ -91,14 +86,14 @@ namespace Nethermind.Blockchain.Find
         {
             return $"{Type}, {BlockNumber?.ToString() ?? BlockHash?.ToString()}";
         }
-        public bool Equals(BlockParameter other)
+        public bool Equals(BlockParameter? other)
         {
             if (ReferenceEquals(null, other)) return false;
             if (ReferenceEquals(this, other)) return true;
             return Type == other.Type && BlockNumber == other.BlockNumber && BlockHash == other.BlockHash && other.RequireCanonical == RequireCanonical;
         }
 
-        public override bool Equals(object obj)
+        public override bool Equals(object? obj)
         {
             if (ReferenceEquals(null, obj)) return false;
             if (ReferenceEquals(this, obj)) return true;

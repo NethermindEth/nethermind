@@ -21,6 +21,8 @@ using Newtonsoft.Json;
 
 namespace Nethermind.JsonRpc.Modules
 {
+    // ReSharper disable once InconsistentNaming
+
     public interface IRpcModuleProvider
     {
         void Register<T>(IRpcModulePool<T> pool) where T : IModule;
@@ -31,7 +33,7 @@ namespace Nethermind.JsonRpc.Modules
         
         IReadOnlyCollection<ModuleType> All { get; }
 
-        ModuleResolution Check(string methodName);
+        ModuleResolution Check(string methodName, RpcEndpoint rpcEndpoint);
         
         (MethodInfo MethodInfo, bool ReadOnly) Resolve(string methodName);
         

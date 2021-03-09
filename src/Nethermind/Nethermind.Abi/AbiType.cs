@@ -28,21 +28,21 @@ namespace Nethermind.Abi
 
         public static AbiBool Bool { get; } = AbiBool.Instance;
 
-        public static AbiInt Int256 { get; } = new AbiInt(256);
+        public static AbiInt Int256 { get; } = new(256);
 
-        public static AbiUInt UInt256 { get; } = new AbiUInt(256);
+        public static AbiUInt UInt256 { get; } = new(256);
         
-        public static AbiUInt UInt32 { get; } = new AbiUInt(32);
+        public static AbiUInt UInt32 { get; } = new(32);
         
-        public static AbiUInt UInt16 { get; } = new AbiUInt(16);
+        public static AbiUInt UInt16 { get; } = new(16);
         
-        public static AbiUInt UInt96 { get; } = new AbiUInt(96);
+        public static AbiUInt UInt96 { get; } = new(96);
 
         public static AbiString String { get; } = AbiString.Instance;
 
-        public static AbiFixed Fixed { get; } = new AbiFixed(128, 18);
+        public static AbiFixed Fixed { get; } = new(128, 18);
 
-        public static AbiUFixed UFixed { get; } = new AbiUFixed(128, 18);
+        public static AbiUFixed UFixed { get; } = new(128, 18);
 
         public virtual bool IsDynamic => false;
 

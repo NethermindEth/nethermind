@@ -47,9 +47,8 @@ namespace Nethermind.Runner.JsonRpc
 
         public void ConfigureServices(IServiceCollection services)
         {
-            #pragma warning disable ASP0000
+            // ReSharper disable once ASP0000
             ServiceProvider sp = services.BuildServiceProvider()!;
-            #pragma warning restore ASP0000
             IConfigProvider? configProvider = sp.GetService<IConfigProvider>();
             if (configProvider == null)
             {
@@ -146,7 +145,7 @@ namespace Nethermind.Runner.JsonRpc
                     Stopwatch stopwatch = Stopwatch.StartNew();
                     using StreamReader reader = new StreamReader(ctx.Request.Body, Encoding.UTF8);
                     string request = await reader.ReadToEndAsync();
-                    using JsonRpcResult result = await jsonRpcProcessor.ProcessAsync(request);
+                    using JsonRpcResult result = await jsonRpcProcessor.ProcessAsync(request, JsonRpcContext.Http);
 
                     ctx.Response.ContentType = "application/json";
 

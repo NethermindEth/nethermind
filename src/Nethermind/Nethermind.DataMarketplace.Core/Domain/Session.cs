@@ -94,7 +94,7 @@ namespace Nethermind.DataMarketplace.Core.Domain
             _settledUnits = settledUnits;
         }
 
-        public bool Equals(Session other)
+        public bool Equals(Session? other)
         {
             if (ReferenceEquals(null, other)) return false;
             if (ReferenceEquals(this, other)) return true;

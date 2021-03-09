@@ -25,7 +25,7 @@ namespace Nethermind.TxPool
     /// </summary>
     public class CompareTxByGasPrice : IComparer<Transaction>
     {
-        public static readonly CompareTxByGasPrice Instance = new CompareTxByGasPrice();
+        public static readonly CompareTxByGasPrice Instance = new();
         
         private CompareTxByGasPrice() { }
 

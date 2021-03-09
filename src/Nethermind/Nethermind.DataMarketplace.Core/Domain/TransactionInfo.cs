@@ -67,7 +67,7 @@ namespace Nethermind.DataMarketplace.Core.Domain
             State = TransactionState.Rejected;
         }
 
-        public bool Equals(TransactionInfo other)
+        public bool Equals(TransactionInfo? other)
         {
             if (ReferenceEquals(null, other)) return false;
             return ReferenceEquals(this, other) || Equals(Hash, other.Hash);

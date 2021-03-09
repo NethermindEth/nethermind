@@ -43,7 +43,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
         public override int[] ReadJson(JsonReader reader, Type objectType, int[] existingValue, bool hasExistingValue, JsonSerializer serializer)
         {
-            List<int> result = new List<int>();
+            List<int> result = new();
             int? pathPart;
 
             do
