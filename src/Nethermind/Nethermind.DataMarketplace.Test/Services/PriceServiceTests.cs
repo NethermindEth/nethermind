@@ -72,16 +72,14 @@ namespace Nethermind.DataMarketplace.Test.Services
         [Test]
         public async Task update_async_should_be_call_every_5s()
         {
-            var updatedAt = _timestamper.UtcNow.AddSeconds(10);
-            _timestamper.UtcNow = updatedAt;
+            _timestamper.UtcNow = _timestamper.UtcNow.AddSeconds(10);
             Parallel.For(1, 1000, async i =>
             {
                 if ((i % 10) == 0)
                 {
                     lock (_timestamper)
                     {
-                        var updatedAt = _timestamper.UtcNow.AddSeconds(1);
-                        _timestamper.UtcNow = updatedAt;
+                        _timestamper.UtcNow = _timestamper.UtcNow.AddSeconds(1);
                     }
                 }
                 await _priceService.UpdateAsync(Currency);
