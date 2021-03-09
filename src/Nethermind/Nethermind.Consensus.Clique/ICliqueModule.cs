@@ -23,7 +23,10 @@ namespace Nethermind.Consensus.Clique
 {
     [RpcModule(ModuleType.Clique)]
     public interface ICliqueModule : IModule
-    {
+    {        
+        [JsonRpcMethod(Description = "Retrieves the signer of the block with the given hash. Returns error of a block with the given hash does not exist.", IsImplemented = true)]
+        ResultWrapper<Address?> clique_getBlockSigner(Keccak? hash);
+        
         [JsonRpcMethod(Description = "Retrieves a snapshot of all clique state at a given block.", IsImplemented = true)]
         ResultWrapper<Snapshot> clique_getSnapshot();
 

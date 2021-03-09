@@ -24,6 +24,7 @@ using Nethermind.Blockchain.Comparers;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Processing;
+using Nethermind.Blockchain.Producers;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Rewards;
 using Nethermind.Blockchain.Validators;
@@ -241,6 +242,12 @@ namespace Nethermind.DataMarketplace.Infrastructure
         {
             get => _nethermindApi.HeaderValidator;
             set => _nethermindApi.HeaderValidator = value;
+        }
+
+        public IManualBlockProductionTrigger ManualBlockProductionTrigger
+        {
+            get => _nethermindApi.ManualBlockProductionTrigger;
+            set => _nethermindApi.ManualBlockProductionTrigger = value;
         }
 
         public IIPResolver? IpResolver

@@ -24,7 +24,7 @@ namespace Nethermind.DataMarketplace.Consumers.Shared
     public interface IAccountService
     {
         event EventHandler<AddressChangedEventArgs> AddressChanged;
-        Address GetAddress();
+        Address? GetAddress();
         Task ChangeAddressAsync(Address address);
     }
 }

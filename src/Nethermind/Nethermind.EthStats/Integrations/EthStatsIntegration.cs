@@ -17,17 +17,20 @@
 using System;
 using System.Linq;
 using System.Runtime.InteropServices;
-using System.Threading;
 using System.Threading.Tasks;
 using System.Timers;
 using Nethermind.Blockchain;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.EthStats.Messages;
 using Nethermind.EthStats.Messages.Models;
 using Nethermind.Logging;
 using Nethermind.Network;
+using Nethermind.TxPool;
 using Websocket.Client;
-using Timer = System.Timers.Timer;
+using Block = Nethermind.Core.Block;
+using Transaction = Nethermind.EthStats.Messages.Models.Transaction;
 
 namespace Nethermind.EthStats.Integrations
 {
@@ -45,19 +48,34 @@ namespace Nethermind.EthStats.Integrations
         private readonly string _secret;
         private readonly IEthStatsClient _ethStatsClient;
         private readonly IMessageSender _sender;
+        private readonly ITxPool _txPool;
         private readonly IBlockTree _blockTree;
         private readonly IPeerManager _peerManager;
         private readonly ILogger _logger;
-        private IWebsocketClient _websocketClient;
+        private IWebsocketClient? _websocketClient;
         private bool _connected;
         private long _lastBlockProcessedTimestamp;
-        private Timer _timer;
+        private Timer? _timer;
         private const int ThrottlingThreshold = 25;
         private const int SendStatsInterval = 1000;
 
-        public EthStatsIntegration(string name, string node, int port, string network, string protocol, string api,
-            string client, string contact, bool canUpdateHistory, string secret, IEthStatsClient ethStatsClient,
-            IMessageSender sender, IBlockTree blockTree, IPeerManager peerManager, ILogManager logManager)
+        public EthStatsIntegration(
+            string name,
+            string node,
+            int port,
+            string network,
+            string protocol,
+            string api,
+            string client,
+            string contact,
+            bool canUpdateHistory,
+            string secret,
+            IEthStatsClient? ethStatsClient,
+            IMessageSender? sender,
+            ITxPool? txPool,
+            IBlockTree? blockTree,
+            IPeerManager? peerManager,
+            ILogManager? logManager)
         {
             _name = name;
             _node = node;
@@ -69,16 +87,17 @@ namespace Nethermind.EthStats.Integrations
             _contact = contact;
             _canUpdateHistory = canUpdateHistory;
             _secret = secret;
-            _ethStatsClient = ethStatsClient;
-            _sender = sender;
-            _blockTree = blockTree;
-            _peerManager = peerManager;
-            _logger = logManager.GetClassLogger();
+            _ethStatsClient = ethStatsClient ?? throw new ArgumentNullException(nameof(ethStatsClient));
+            _sender = sender ?? throw new ArgumentNullException(nameof(sender));
+            _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
+            _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
+            _peerManager = peerManager ?? throw new ArgumentNullException(nameof(peerManager));
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
         public async Task InitAsync()
         {
-            _timer = new Timer { Interval = SendStatsInterval };
+            _timer = new Timer {Interval = SendStatsInterval};
             _timer.Elapsed += TimerOnElapsed;
             _blockTree.NewHeadBlock += BlockTreeOnNewHeadBlock;
             _websocketClient = await _ethStatsClient.InitAsync();
@@ -91,7 +110,13 @@ namespace Nethermind.EthStats.Integrations
 
         private void Run(Timer timer)
         {
-            _websocketClient.ReconnectionHappened.Subscribe(async reason =>
+            if (_websocketClient is null)
+            {
+                if(_logger.IsError) _logger.Error("WebSocket client initialization failed");
+                return;
+            }
+            
+            _websocketClient.ReconnectionHappened.Subscribe(async _ =>
             {
                 if (_logger.IsInfo) _logger.Info("ETH Stats reconnected, sending 'hello' message...");
                 await SendHelloAsync();
@@ -120,6 +145,8 @@ namespace Nethermind.EthStats.Integrations
 
         private void BlockTreeOnNewHeadBlock(object sender, BlockEventArgs e)
         {
+            Block? block = e.Block;
+
             if (!_connected)
             {
                 return;
@@ -131,42 +158,64 @@ namespace Nethermind.EthStats.Integrations
                 return;
             }
 
+            if (block == null)
+            {
+                _logger.Error($"{nameof(EthStatsIntegration)} received null as the new head block.");
+                return;
+            }
+
             if (_logger.IsDebug) _logger.Debug("ETH Stats sending 'block', 'pending' messages...");
             _lastBlockProcessedTimestamp = timestamp;
-            SendBlockAsync(e.Block);
-            SendPendingAsync(e.Block.Transactions?.Length ?? 0);
+            SendBlockAsync(block);
+            SendPendingAsync(_txPool.GetPendingTransactionsCount());
         }
 
         public void Dispose()
         {
-            _websocketClient?.Dispose();
             _connected = false;
-            _timer.Stop();
-            _timer.Dispose();
             _blockTree.NewHeadBlock -= BlockTreeOnNewHeadBlock;
-            _timer.Elapsed -= TimerOnElapsed;
+            Timer? timer = _timer;
+            if (timer is not null)
+            {
+                timer.Elapsed -= TimerOnElapsed;
+                timer.Stop();
+                timer.Dispose();
+            }
+            
+            _websocketClient?.Dispose();
         }
 
         private Task SendHelloAsync()
-            => _sender.SendAsync(_websocketClient, new HelloMessage(_secret, new Info(_name, _node, _port, _network,
+            => _sender.SendAsync(_websocketClient!, new HelloMessage(_secret, new Info(_name, _node, _port, _network,
                 _protocol,
-                _api, Nethermind.Core.Platform.GetPlatformName(), RuntimeInformation.OSArchitecture.ToString(), _client,
+                _api, Platform.GetPlatformName(), RuntimeInformation.OSArchitecture.ToString(), _client,
                 _contact, _canUpdateHistory)));
 
-        private Task SendBlockAsync(Core.Block block)
-            => _sender.SendAsync(_websocketClient, new BlockMessage(new Block(block.Number, block.Hash?.ToString(),
-                block.ParentHash?.ToString(),
-                (long)block.Timestamp, (block.Author ?? block.Beneficiary)?.ToString(), block.GasUsed, block.GasLimit,
-                block.Difficulty.ToString(), block.TotalDifficulty?.ToString(),
-                block.Transactions?.Select(t => new Transaction(t.Hash?.ToString())) ?? Enumerable.Empty<Transaction>(),
-                block.TxRoot.ToString(), block.StateRoot.ToString(),
-                block.Ommers?.Select(o => new Uncle()) ?? Enumerable.Empty<Uncle>())));
+        // ReSharper disable once UnusedMethodReturnValue.Local
+        private Task SendBlockAsync(Block block)
+            => _sender.SendAsync(_websocketClient!, new BlockMessage(
+                new Messages.Models.Block(
+                    block.Number,
+                    (block.Hash ?? Keccak.Zero).ToString() ,
+                    (block.ParentHash ?? Keccak.Zero).ToString(),
+                    (long)block.Timestamp,
+                    (block.Author ?? block.Beneficiary ?? Address.Zero).ToString(),
+                    block.GasUsed,
+                    block.GasLimit,
+                    block.Difficulty.ToString(),
+                    (block.TotalDifficulty ?? 0).ToString(),
+                    block.Transactions.Select(t => new Transaction((t.Hash ?? Keccak.Zero).ToString())),
+                    (block.TxRoot ?? Keccak.Zero).ToString(),
+                    (block.StateRoot ?? Keccak.Zero).ToString(),
+                    block.Ommers.Select(_ => new Uncle()))));
 
+        // ReSharper disable once UnusedMethodReturnValue.Local
         private Task SendPendingAsync(int pending)
-            => _sender.SendAsync(_websocketClient, new PendingMessage(new PendingStats(pending)));
+            => _sender.SendAsync(_websocketClient!, new PendingMessage(new PendingStats(pending)));
 
+        // ReSharper disable once UnusedMethodReturnValue.Local
         private Task SendStatsAsync()
-            => _sender.SendAsync(_websocketClient, new StatsMessage(new Messages.Models.Stats(true, true, false, 0,
+            => _sender.SendAsync(_websocketClient!, new StatsMessage(new Messages.Models.Stats(true, true, false, 0,
                 _peerManager.ActivePeers.Count, (long)20.GWei(), 100)));
     }
 }

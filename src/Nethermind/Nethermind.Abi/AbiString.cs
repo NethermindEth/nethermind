@@ -21,7 +21,7 @@ namespace Nethermind.Abi
 {
     public class AbiString : AbiType
     {
-        public static AbiString Instance = new AbiString();
+        public static AbiString Instance = new();
 
         private AbiString()
         {

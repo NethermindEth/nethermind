@@ -39,6 +39,6 @@ namespace Nethermind.Specs
         {
         }
 
-        public static FrontierSpecProvider Instance = new FrontierSpecProvider();
+        public static FrontierSpecProvider Instance = new();
     }
 }

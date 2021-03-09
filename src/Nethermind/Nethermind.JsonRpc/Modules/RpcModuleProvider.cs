@@ -31,14 +31,14 @@ namespace Nethermind.JsonRpc.Modules
         private ILogger _logger;
         private IJsonRpcConfig _jsonRpcConfig;
         
-        private List<ModuleType> _modules = new List<ModuleType>();
-        private List<ModuleType> _enabledModules = new List<ModuleType>();
+        private List<ModuleType> _modules = new();
+        private List<ModuleType> _enabledModules = new();
         
         private Dictionary<string, ResolvedMethodInfo> _methods
-            = new Dictionary<string, ResolvedMethodInfo>(StringComparer.InvariantCulture);
+            = new(StringComparer.InvariantCulture);
         
         private Dictionary<ModuleType, (Func<bool, Task<IModule>> RentModule, Action<IModule> ReturnModule)> _pools
-            = new Dictionary<ModuleType, (Func<bool, Task<IModule>> RentModule, Action<IModule> ReturnModule)>();
+            = new();
         
         private IRpcMethodFilter _filter = NullRpcMethodFilter.Instance;
 
@@ -78,7 +78,7 @@ namespace Nethermind.JsonRpc.Modules
 
             foreach ((string name, (MethodInfo info, bool readOnly, RpcEndpoint availability)) in GetMethodDict(typeof(T)))
             {
-                ResolvedMethodInfo resolvedMethodInfo = new ResolvedMethodInfo(moduleType, info, readOnly, availability);
+                ResolvedMethodInfo resolvedMethodInfo = new(moduleType, info, readOnly, availability);
                 if (_filter.AcceptMethod(resolvedMethodInfo.ToString()))
                 {
                     _methods[name] = resolvedMethodInfo;

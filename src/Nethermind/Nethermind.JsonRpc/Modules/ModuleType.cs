@@ -27,6 +27,7 @@ namespace Nethermind.JsonRpc.Modules
         Db,
         Debug,
         Eth,
+        Evm,
         NdmProvider,
         NdmConsumer,
         Net,

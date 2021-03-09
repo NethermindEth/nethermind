@@ -56,14 +56,14 @@ namespace Nethermind.Evm.Tracing
 
         public byte StatusCode { get; set; }
 
-        public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak stateRoot = null)
+        public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak? stateRoot = null)
         {
             GasSpent = gasSpent;
             ReturnValue = output;
             StatusCode = Evm.StatusCode.Success;
         }
 
-        public void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Keccak stateRoot = null)
+        public void MarkAsFailed(Address recipient, long gasSpent, byte[]? output, string error, Keccak? stateRoot = null)
         {
             GasSpent = gasSpent;
             Error = error;
@@ -200,9 +200,9 @@ namespace Nethermind.Evm.Tracing
 
         private int _currentNestingLevel = -1;
 
-        private bool _isInPrecompile = false;
+        private bool _isInPrecompile;
 
-        private Stack<GasAndNesting> _currentGasAndNesting = new Stack<GasAndNesting>();
+        private Stack<GasAndNesting> _currentGasAndNesting = new();
 
         public void ReportAction(long gas, UInt256 value, Address @from, Address to, byte[] input, ExecutionType callType, bool isPrecompileCall = false)
         {

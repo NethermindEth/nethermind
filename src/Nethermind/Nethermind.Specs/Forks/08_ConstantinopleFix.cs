@@ -21,6 +21,8 @@ using Nethermind.Int256;
 
 namespace Nethermind.Specs.Forks
 {
+    
+    
     public class ConstantinopleFix : IReleaseSpec
     {
         private static IReleaseSpec _instance;
@@ -78,6 +80,5 @@ namespace Nethermind.Specs.Forks
         public bool IsEip158IgnoredAccount(Address address) => false;
         public bool IsEip1559Enabled => false;
         public long Eip1559TransitionBlock => long.MaxValue;
-        public long Eip1559MigrationDuration => 0;
     }
 }

@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
@@ -34,15 +35,16 @@ namespace Nethermind.Consensus.Ethash
 {
     public class NethDevPlugin : IConsensusPlugin
     {
-        private INethermindApi _nethermindApi;
-        public void Dispose() { }
+        private INethermindApi? _nethermindApi;
+
+        public ValueTask DisposeAsync() { return ValueTask.CompletedTask; }
 
         public string Name => "NethDev";
 
         public string Description => "NethDev (Spaceneth)";
 
         public string Author => "Nethermind";
-        
+
         public Task Init(INethermindApi nethermindApi)
         {
             _nethermindApi = nethermindApi;
@@ -81,14 +83,14 @@ namespace Nethermind.Consensus.Ethash
             if (logger.IsWarn) logger.Warn("Starting Neth Dev block producer & sealer");
 
 
-            ReadOnlyTxProcessingEnv producerEnv = new ReadOnlyTxProcessingEnv(
+            ReadOnlyTxProcessingEnv producerEnv = new(
                 readOnlyDbProvider,
                 getFromApi.ReadOnlyTrieStore,
                 readOnlyBlockTree,
                 getFromApi.SpecProvider,
                 getFromApi.LogManager);
 
-            BlockProcessor producerProcessor = new BlockProcessor(
+            BlockProcessor producerProcessor = new(
                 getFromApi!.SpecProvider,
                 getFromApi!.BlockValidator,
                 NoBlockRewards.Instance,
@@ -108,18 +110,20 @@ namespace Nethermind.Consensus.Ethash
                 BlockchainProcessor.Options.NoReceipts);
             
             setInApi.BlockProducer = new DevBlockProducer(
-                txSource,
+                txSource.ServeTxsOneByOne(),
                 producerChainProcessor,
                 producerEnv.StateProvider,
                 getFromApi.BlockTree,
                 getFromApi.BlockProcessingQueue,
-                getFromApi.TxPool,
+                new BuildBlocksRegularly(TimeSpan.FromMilliseconds(200))
+                    .IfPoolIsNotEmpty(getFromApi.TxPool)
+                    .Or(getFromApi.ManualBlockProductionTrigger),
                 getFromApi.Timestamper,
                 getFromApi.SpecProvider,
                 getFromApi.Config<IMiningConfig>(),
                 blockPreparationContextService,
                 getFromApi.LogManager);
-                
+
             return Task.CompletedTask;
         }
 

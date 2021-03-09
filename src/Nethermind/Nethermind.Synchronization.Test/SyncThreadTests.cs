@@ -121,7 +121,7 @@ namespace Nethermind.Synchronization.Test
             }
         }
 
-        private const int _waitTime = 1000;
+        private const int WaitTime = 1000;
 
         [Test, Ignore("travis failures")]
         public void Can_sync_when_connected()
@@ -133,7 +133,7 @@ namespace Nethermind.Synchronization.Test
             SemaphoreSlim waitEvent = new(0);
             foreach (SyncTestContext peer in _peers)
             {
-                peer.Tree.NewHeadBlock += (s, e) =>
+                peer.Tree.NewHeadBlock += (_, e) =>
                 {
                     if (e.Block.Number == _chainLength) waitEvent.Release();
                 };
@@ -141,7 +141,7 @@ namespace Nethermind.Synchronization.Test
 
             for (int i = 0; i < _peers.Count; i++)
             {
-                waitEvent.Wait(_waitTime);
+                waitEvent.Wait(WaitTime);
             }
 
             for (int i = 0; i < _peers.Count; i++)
@@ -158,7 +158,7 @@ namespace Nethermind.Synchronization.Test
         {
             Block headBlock = _genesis;
             AutoResetEvent resetEvent = new(false);
-            _originPeer.Tree.NewHeadBlock += (s, e) =>
+            _originPeer.Tree.NewHeadBlock += (_, e) =>
             {
                 resetEvent.Set();
                 headBlock = e.Block;
@@ -202,7 +202,7 @@ namespace Nethermind.Synchronization.Test
             SemaphoreSlim waitEvent = new(0);
             foreach (SyncTestContext peer in _peers)
             {
-                peer.Tree.NewHeadBlock += (s, e) =>
+                peer.Tree.NewHeadBlock += (_, e) =>
                 {
                     if (e.Block.Number == _chainLength) waitEvent.Release();
                 };
@@ -212,7 +212,7 @@ namespace Nethermind.Synchronization.Test
 
             for (int i = 0; i < _peers.Count; i++)
             {
-                waitEvent.Wait(_waitTime);
+                waitEvent.Wait(WaitTime);
             }
 
             for (int i = 0; i < _peers.Count; i++)
@@ -349,7 +349,7 @@ namespace Nethermind.Synchronization.Test
                 devChainProcessor,
                 stateProvider, tree,
                 processor,
-                txPool,
+                new BuildBlocksRegularly(TimeSpan.FromMilliseconds(50)).IfPoolIsNotEmpty(txPool),
                 Timestamper.Default,
                 specProvider,
                 new MiningConfig(),
@@ -385,7 +385,7 @@ namespace Nethermind.Synchronization.Test
                 logManager);
 
             ManualResetEventSlim waitEvent = new();
-            tree.NewHeadBlock += (s, e) => waitEvent.Set();
+            tree.NewHeadBlock += (_, _) => waitEvent.Set();
 
             if (index == 0)
             {

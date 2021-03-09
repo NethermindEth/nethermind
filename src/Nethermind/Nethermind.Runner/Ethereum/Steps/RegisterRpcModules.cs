@@ -35,6 +35,7 @@ using Nethermind.JsonRpc.Modules.TxPool;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Core;
+using Nethermind.JsonRpc.Modules.Evm;
 using Nethermind.JsonRpc.Modules.Subscribe;
 using Nethermind.JsonRpc.Modules.Web3;
 using Nethermind.Runner.Ethereum.Steps.Migrations;
@@ -46,8 +47,6 @@ namespace Nethermind.Runner.Ethereum.Steps
     {
         private readonly INethermindApi _api;
 
-        private int _cpuCount = Environment.ProcessorCount;
-        
         public RegisterRpcModules(INethermindApi api)
         {
             _api = api;
@@ -95,7 +94,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             ThreadPool.GetMinThreads(out int workerThreads, out int completionPortThreads);
             ThreadPool.SetMinThreads(workerThreads + Environment.ProcessorCount, completionPortThreads + Environment.ProcessorCount);
             
-            EthModuleFactory ethModuleFactory = new EthModuleFactory(
+            EthModuleFactory ethModuleFactory = new(
                 _api.TxPool,
                 _api.TxSender,
                 _api.Wallet,
@@ -105,17 +104,17 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.StateReader,
                 _api,
                 _api.SpecProvider);
-            _api.RpcModuleProvider.Register(new BoundedModulePool<IEthModule>(ethModuleFactory, _cpuCount, rpcConfig.Timeout));
+            _api.RpcModuleProvider.RegisterBoundedByCpuCount(ethModuleFactory, rpcConfig.Timeout);
             
             if (_api.DbProvider == null) throw new StepDependencyException(nameof(_api.DbProvider));
             if (_api.BlockPreprocessor == null) throw new StepDependencyException(nameof(_api.BlockPreprocessor));
             if (_api.BlockValidator == null) throw new StepDependencyException(nameof(_api.BlockValidator));
             if (_api.RewardCalculatorSource == null) throw new StepDependencyException(nameof(_api.RewardCalculatorSource));
             
-            ProofModuleFactory proofModuleFactory = new ProofModuleFactory(_api.DbProvider, _api.BlockTree, _api.TrieStore, _api.BlockPreprocessor, _api.ReceiptFinder, _api.SpecProvider, _api.LogManager);
-            _api.RpcModuleProvider.Register(new BoundedModulePool<IProofModule>(proofModuleFactory, 2, rpcConfig.Timeout));
+            ProofModuleFactory proofModuleFactory = new(_api.DbProvider, _api.BlockTree, _api.TrieStore, _api.BlockPreprocessor, _api.ReceiptFinder, _api.SpecProvider, _api.LogManager);
+            _api.RpcModuleProvider.RegisterBounded(proofModuleFactory, 2, rpcConfig.Timeout);
 
-            DebugModuleFactory debugModuleFactory = new DebugModuleFactory(
+            DebugModuleFactory debugModuleFactory = new(
                 _api.DbProvider, 
                 _api.BlockTree,
 				rpcConfig, 
@@ -128,9 +127,9 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.ConfigProvider, 
                 _api.SpecProvider, 
                 _api.LogManager);
-            _api.RpcModuleProvider.Register(new BoundedModulePool<IDebugModule>(debugModuleFactory, _cpuCount, rpcConfig.Timeout));
+            _api.RpcModuleProvider.RegisterBoundedByCpuCount(debugModuleFactory, rpcConfig.Timeout);
 
-            TraceModuleFactory traceModuleFactory = new TraceModuleFactory(
+            TraceModuleFactory traceModuleFactory = new(
                 _api.DbProvider,
                 _api.BlockTree,
                 _api.ReadOnlyTrieStore,
@@ -141,42 +140,42 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.SpecProvider,
                 _api.LogManager);
 
-            _api.RpcModuleProvider.Register(new BoundedModulePool<ITraceModule>(traceModuleFactory, _cpuCount, rpcConfig.Timeout));
+            _api.RpcModuleProvider.RegisterBoundedByCpuCount(traceModuleFactory, rpcConfig.Timeout);
             
             if (_api.EthereumEcdsa == null) throw new StepDependencyException(nameof(_api.EthereumEcdsa));
             if (_api.Wallet == null) throw new StepDependencyException(nameof(_api.Wallet));
             
-            PersonalModule personalModule = new PersonalModule(
+            PersonalModule personalModule = new(
                 _api.EthereumEcdsa,
                 _api.Wallet,
                 _api.KeyStore);
-            _api.RpcModuleProvider.Register(new SingletonModulePool<IPersonalModule>(personalModule, true));
+            _api.RpcModuleProvider.RegisterSingle<IPersonalModule>(personalModule);
             
             if (_api.PeerManager == null) throw new StepDependencyException(nameof(_api.PeerManager));
             if (_api.StaticNodesManager == null) throw new StepDependencyException(nameof(_api.StaticNodesManager));
             if (_api.Enode == null) throw new StepDependencyException(nameof(_api.Enode));
 
-            AdminModule adminModule = new AdminModule(
+            AdminModule adminModule = new(
                 _api.BlockTree,
                 networkConfig,
                 _api.PeerManager,
                 _api.StaticNodesManager,
                 _api.Enode,
                 initConfig.BaseDbPath);
-            _api.RpcModuleProvider.Register(new SingletonModulePool<IAdminModule>(adminModule, true));
+            _api.RpcModuleProvider.RegisterSingle<IAdminModule>(adminModule);
             
             if (_api.TxPoolInfoProvider == null) throw new StepDependencyException(nameof(_api.TxPoolInfoProvider));
 
-            TxPoolModule txPoolModule = new TxPoolModule(_api.BlockTree, _api.TxPoolInfoProvider, _api.LogManager);
-            _api.RpcModuleProvider.Register(new SingletonModulePool<ITxPoolModule>(txPoolModule, true));
+            TxPoolModule txPoolModule = new(_api.BlockTree, _api.TxPoolInfoProvider, _api.LogManager);
+            _api.RpcModuleProvider.RegisterSingle<ITxPoolModule>(txPoolModule);
             
             if (_api.SyncServer == null) throw new StepDependencyException(nameof(_api.SyncServer));
             if (_api.EngineSignerStore == null) throw new StepDependencyException(nameof(_api.EngineSignerStore));
 
-            NetModule netModule = new NetModule(_api.LogManager, new NetBridge(_api.Enode, _api.SyncServer));
-            _api.RpcModuleProvider.Register(new SingletonModulePool<INetModule>(netModule, true));
+            NetModule netModule = new(_api.LogManager, new NetBridge(_api.Enode, _api.SyncServer));
+            _api.RpcModuleProvider.RegisterSingle<INetModule>(netModule);
 
-            ParityModule parityModule = new ParityModule(
+            ParityModule parityModule = new(
                 _api.EthereumEcdsa,
                 _api.TxPool,
                 _api.BlockTree,
@@ -186,22 +185,25 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.KeyStore,
                 _api.LogManager,
                 _api.PeerManager);
-            _api.RpcModuleProvider.Register(new SingletonModulePool<IParityModule>(parityModule, true));
+            _api.RpcModuleProvider.RegisterSingle<IParityModule>(parityModule);
 
-            SubscriptionFactory subscriptionFactory = new SubscriptionFactory(
+            SubscriptionFactory subscriptionFactory = new(
                 _api.LogManager,
                 _api.BlockTree,
                 _api.TxPool,
                 _api.ReceiptStorage,
                 _api.FilterStore);
             
-            SubscriptionManger subscriptionManger = new SubscriptionManger(subscriptionFactory, _api.LogManager);
+            SubscriptionManger subscriptionManger = new(subscriptionFactory, _api.LogManager);
             
-            SubscribeModule subscribeModule = new SubscribeModule(subscriptionManger);
-            _api.RpcModuleProvider.Register(new SingletonModulePool<ISubscribeModule>(subscribeModule, true));
+            SubscribeModule subscribeModule = new(subscriptionManger);
+            _api.RpcModuleProvider.RegisterSingle<ISubscribeModule>(subscribeModule);
 
-            Web3Module web3Module = new Web3Module(_api.LogManager);
-            _api.RpcModuleProvider.Register(new SingletonModulePool<IWeb3Module>(web3Module, true));
+            Web3Module web3Module = new(_api.LogManager);
+            _api.RpcModuleProvider.RegisterSingle<IWeb3Module>(web3Module);
+
+            EvmModule evmModule = new(_api.ManualBlockProductionTrigger);
+            _api.RpcModuleProvider.RegisterSingle<IEvmModule>(evmModule);
 
             foreach (INethermindPlugin plugin in _api.Plugins)
             {

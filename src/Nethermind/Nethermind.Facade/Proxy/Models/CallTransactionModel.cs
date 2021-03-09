@@ -29,7 +29,7 @@ namespace Nethermind.Facade.Proxy.Models
         public byte[] Data { get; set; }
 
         public static CallTransactionModel FromTransaction(Transaction transaction)
-            => new CallTransactionModel
+            => new()
             {
                 From = transaction.SenderAddress,
                 To = transaction.To,

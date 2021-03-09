@@ -35,7 +35,7 @@ namespace Nethermind.Serialization.Rlp
                 return null;
             }
             
-            TxReceipt txReceipt = new TxReceipt();
+            TxReceipt txReceipt = new();
             _ = rlpStream.ReadSequenceLength();
             byte[] firstItem = rlpStream.DecodeByteArray();
             if (firstItem.Length == 1 && (firstItem[0] == 0 || firstItem[0] == 1))
@@ -128,7 +128,7 @@ namespace Nethermind.Serialization.Rlp
             }
             
             var length = GetLength(item, rlpBehaviors);
-            RlpStream stream = new RlpStream(length);
+            RlpStream stream = new(length);
             Encode(stream, item, rlpBehaviors);
             return stream.Data;
         }

@@ -27,10 +27,10 @@ namespace Nethermind.Consensus.Ethash
 {
     public class HintBasedCache
     {
-        private Dictionary<Guid, HashSet<uint>> _epochsPerGuid = new Dictionary<Guid, HashSet<uint>>();
-        private Dictionary<uint, int> _epochRefs = new Dictionary<uint, int>();
-        private Dictionary<uint, Task<IEthashDataSet>> _cachedSets = new Dictionary<uint, Task<IEthashDataSet>>();
-        private Dictionary<uint, DataSetWithTime> _recent = new Dictionary<uint, DataSetWithTime>();
+        private Dictionary<Guid, HashSet<uint>> _epochsPerGuid = new();
+        private Dictionary<uint, int> _epochRefs = new();
+        private Dictionary<uint, Task<IEthashDataSet>> _cachedSets = new();
+        private Dictionary<uint, DataSetWithTime> _recent = new();
 
         private struct DataSetWithTime
         {

@@ -81,7 +81,7 @@ namespace Nethermind.Core.Caching
                 }
                 else
                 {
-                    LinkedListNode<TKey> newNode = new LinkedListNode<TKey>(key);
+                    LinkedListNode<TKey> newNode = new(key);
                     _lruList.AddLast(newNode);
                     _cacheMap.Add(key, newNode);    
                 }

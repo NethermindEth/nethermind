@@ -105,7 +105,7 @@ namespace Nethermind.State
                 return;
             }
 
-            List<Change> keptInCache = new List<Change>();
+            List<Change> keptInCache = new();
 
             for (int i = 0; i < _currentPosition - snapshot; i++)
             {
@@ -334,7 +334,7 @@ namespace Nethermind.State
         {
             if (!_storages.ContainsKey(address))
             {
-                StorageTree storageTree = new StorageTree(_trieStore, _stateProvider.GetStorageRoot(address), _logManager);
+                StorageTree storageTree = new(_trieStore, _stateProvider.GetStorageRoot(address), _logManager);
                 return _storages[address] = storageTree;
             }
 

@@ -34,7 +34,7 @@ namespace Nethermind.Trie
             _logger = logManager.GetClassLogger();
         }
 
-        public TrieStats Stats { get; } = new TrieStats();
+        public TrieStats Stats { get; } = new();
 
         public bool ShouldVisit(Keccak nextNode)
         {

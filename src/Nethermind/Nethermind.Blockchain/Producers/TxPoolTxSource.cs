@@ -45,7 +45,7 @@ namespace Nethermind.Blockchain.Producers
         private readonly ISpecProvider _specProvider;
         protected readonly ILogger _logger;
 
-        public TxPoolTxSource(ITxPool transactionPool, IStateReader stateReader, ISpecProvider specProvider, IComparer<Transaction> comparer, IBlockPreparationContextService blockPreparationContextService, ILogManager logManager, ITxFilterPipeline txFilterPipeline)
+        public TxPoolTxSource(ITxPool? transactionPool, IStateReader? stateReader, ISpecProvider? specProvider, IComparer<Transaction>? comparer, IBlockPreparationContextService? blockPreparationContextService, ILogManager? logManager, ITxFilterPipeline? txFilterPipeline)
         {
             _transactionPool = transactionPool ?? throw new ArgumentNullException(nameof(transactionPool));
             _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
@@ -79,7 +79,7 @@ namespace Nethermind.Blockchain.Producers
 
             UInt256 GetCurrentNonce(IDictionary<Address, UInt256> noncesDictionary, Address address)
             {
-                if (!noncesDictionary.TryGetValue(address, out var nonce))
+                if (!noncesDictionary.TryGetValue(address, out UInt256 nonce))
                 {
                     noncesDictionary[address] = nonce = GetFromState(_stateReader.GetNonce, address, UInt256.Zero);
                 }
@@ -89,7 +89,7 @@ namespace Nethermind.Blockchain.Producers
 
             UInt256 GetRemainingBalance(IDictionary<Address, UInt256> balances, Address address)
             {
-                if (!balances.TryGetValue(address, out var balance))
+                if (!balances.TryGetValue(address, out UInt256 balance))
                 {
                     balances[address] = balance = GetFromState(_stateReader.GetBalance, address, UInt256.Zero);
                 }
@@ -99,7 +99,7 @@ namespace Nethermind.Blockchain.Producers
 
             bool HasEnoughFounds(IDictionary<Address, UInt256> balances, Transaction transaction, bool isEip1559Enabled, UInt256 baseFee)
             {
-                UInt256 balance = GetRemainingBalance(balances, transaction.SenderAddress);
+                UInt256 balance = GetRemainingBalance(balances, transaction.SenderAddress!);
                 UInt256 transactionPotentialCost = transaction.GetTransactionPotentialCost(isEip1559Enabled, baseFee);
 
                 if (balance < transactionPotentialCost)
@@ -139,7 +139,7 @@ namespace Nethermind.Blockchain.Producers
                 
                 if (tx.SenderAddress == null)
                 {
-                    _transactionPool.RemoveTransaction(tx.Hash, 0);
+                    _transactionPool.RemoveTransaction(tx.Hash!, 0);
                     if (_logger.IsDebug) _logger.Debug($"Rejecting (null sender) {tx.ToShortString()}");
                     continue;
                 }
@@ -155,12 +155,12 @@ namespace Nethermind.Blockchain.Producers
                 {
                     if (tx.Nonce < expectedNonce)
                     {
-                        _transactionPool.RemoveTransaction(tx.Hash, 0, true);    
+                        _transactionPool.RemoveTransaction(tx.Hash!, 0, true);    
                     }
                     
                     if (tx.Nonce > expectedNonce + 16)
                     {
-                        _transactionPool.RemoveTransaction(tx.Hash, 0);
+                        _transactionPool.RemoveTransaction(tx.Hash!, 0);
                     }
                     
                     if (_logger.IsDebug) _logger.Debug($"Rejecting (invalid nonce - expected {expectedNonce}) {tx.ToShortString()}");
@@ -177,7 +177,7 @@ namespace Nethermind.Blockchain.Producers
 
                 selected.Add(tx);
                 if (_logger.IsTrace) _logger.Trace($"Selected {tx.ToShortString()} to be included in block.");
-                nonces[tx.SenderAddress] = tx.Nonce + 1;
+                nonces[tx.SenderAddress!] = tx.Nonce + 1;
                 gasRemaining -= tx.GasLimit;
             }
 
@@ -205,7 +205,7 @@ namespace Nethermind.Blockchain.Producers
                 // A -> N0_P3, N1_P1, N1_P0, N3_P5...
                 // B -> N4_P4, N5_P3, N6_P3...
                 // We construct [N4_P4 (B), N0_P3 (A)] in sorted order by priority
-                var transactions = new DictionarySortedSet<Transaction, IEnumerator<Transaction>>(comparerWithIdentity);
+                DictionarySortedSet<Transaction, IEnumerator<Transaction>> transactions = new(comparerWithIdentity);
             
                 for (int i = 0; i < bySenderEnumerators.Length; i++)
                 {
@@ -220,7 +220,7 @@ namespace Nethermind.Blockchain.Producers
                 while (transactions.Count > 0)
                 {
                     // we take first transaction from sorting order, on first call: N4_P4 from B
-                    var (tx, enumerator) = transactions.Min;
+                    (Transaction tx, IEnumerator<Transaction> enumerator) = transactions.Min;
 
                     // we replace it by next transaction from same sender, on first call N5_P3 from B
                     transactions.Remove(tx);

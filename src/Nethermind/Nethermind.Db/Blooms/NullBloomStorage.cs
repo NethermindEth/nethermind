@@ -28,7 +28,7 @@ namespace Nethermind.Db.Blooms
         {
         }
         
-        public static NullBloomStorage Instance { get; } = new NullBloomStorage();
+        public static NullBloomStorage Instance { get; } = new();
         public long MinBlockNumber { get; } = long.MaxValue;
         public long MaxBlockNumber { get; } = 0;
         public long MigratedBlockNumber { get; } = -1;

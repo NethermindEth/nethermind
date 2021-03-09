@@ -12,14 +12,14 @@ namespace Nethermind.Trie.Test
         [Test]
         public void Cache_initial_memory_calculated_correctly()
         {
-            MemCountingCache cache = new MemCountingCache(1024, string.Empty);
+            MemCountingCache cache = new(1024, string.Empty);
             cache.MemorySize.Should().Be(160);
         }
         
         [Test]
         public void Cache_post_init_memory_calculated_correctly()
         {
-            MemCountingCache cache = new MemCountingCache(1024, string.Empty);
+            MemCountingCache cache = new(1024, string.Empty);
             cache.Set(Keccak.Zero, new byte[0]); 
             cache.MemorySize.Should().Be(400);
         }
@@ -27,7 +27,7 @@ namespace Nethermind.Trie.Test
         [Test]
         public void Cache_post_capacity_growth_memory_calculated_correctly()
         {
-            MemCountingCache cache = new MemCountingCache(1024, string.Empty);
+            MemCountingCache cache = new(1024, string.Empty);
             cache.Set(TestItem.KeccakA, new byte[0]);
             cache.Set(TestItem.KeccakB, new byte[0]);
             cache.Set(TestItem.KeccakC, new byte[0]);
@@ -38,7 +38,7 @@ namespace Nethermind.Trie.Test
         [Test]
         public void Limit_by_memory_works_fine()
         {
-            MemCountingCache cache = new MemCountingCache(800, string.Empty);
+            MemCountingCache cache = new(800, string.Empty);
             cache.Set(TestItem.KeccakA, new byte[0]);
             cache.Set(TestItem.KeccakB, new byte[0]);
             cache.Set(TestItem.KeccakC, new byte[0]);
@@ -61,7 +61,7 @@ namespace Nethermind.Trie.Test
         [Test]
         public void Limit_by_memory_works_fine_wth_deletes()
         {
-            MemCountingCache cache = new MemCountingCache(800, string.Empty);
+            MemCountingCache cache = new(800, string.Empty);
             cache.Set(TestItem.KeccakA, new byte[0]);
             cache.Set(TestItem.KeccakB, new byte[0]);
             cache.Set(TestItem.KeccakC, new byte[0]);

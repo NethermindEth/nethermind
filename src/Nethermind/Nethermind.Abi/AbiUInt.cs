@@ -79,7 +79,7 @@ namespace Nethermind.Abi
 
         public (UInt256, int) DecodeUInt(byte[] data, int position, bool packed)
         {
-            UInt256 lengthData = new UInt256(data.Slice(position, (packed ? LengthInBytes : UInt256.LengthInBytes)), true);
+            UInt256 lengthData = new(data.Slice(position, (packed ? LengthInBytes : UInt256.LengthInBytes)), true);
             return (lengthData, position + (packed ? LengthInBytes : UInt256.LengthInBytes));
         }
 

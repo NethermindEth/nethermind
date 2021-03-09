@@ -47,7 +47,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
 {
     public class EthModule : IEthModule
     {
-        private Encoding _messageEncoding = Encoding.UTF8;
+        private readonly Encoding _messageEncoding = Encoding.UTF8;
 
         private readonly IJsonRpcConfig _rpcConfig;
         private readonly IBlockchainBridge _blockchainBridge;
@@ -59,11 +59,11 @@ namespace Nethermind.JsonRpc.Modules.Eth
         private readonly ISpecProvider _specProvider;
 
         private readonly ILogger _logger;
-        private TimeSpan _cancellationTokenTimeout;
+        private readonly TimeSpan _cancellationTokenTimeout;
 
         private bool HasStateForBlock(BlockHeader header)
         {
-            RootCheckVisitor rootCheckVisitor = new RootCheckVisitor();
+            RootCheckVisitor rootCheckVisitor = new();
             _blockchainBridge.RunTreeVisitor(rootCheckVisitor, header.StateRoot);
             return rootCheckVisitor.HasRoot;
         }
@@ -73,7 +73,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             IBlockchainBridge blockchainBridge,
             IBlockFinder blockFinder,
             IStateReader stateReader,
-            ITxPool _txPool,
+            ITxPool txPool,
             ITxSender txSender,
             IWallet wallet,
             ILogManager logManager,
@@ -84,7 +84,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             _blockchainBridge = blockchainBridge ?? throw new ArgumentNullException(nameof(blockchainBridge));
             _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
             _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
-            _txPoolBridge = _txPool ?? throw new ArgumentNullException(nameof(_txPool));
+            _txPoolBridge = txPool ?? throw new ArgumentNullException(nameof(txPool));
             _txSender = txSender ?? throw new ArgumentNullException(nameof(txSender));
             _wallet = wallet ?? throw new ArgumentNullException(nameof(wallet));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
@@ -100,13 +100,15 @@ namespace Nethermind.JsonRpc.Modules.Eth
         {
             SyncingResult result;
             long bestSuggestedNumber = _blockFinder.FindBestSuggestedHeader().Number;
-            bool isSyncing = bestSuggestedNumber > _blockFinder.Head.Number + 8;
-            
+
+            long headNumberOrZero = _blockFinder.Head?.Number ?? 0;
+            bool isSyncing = bestSuggestedNumber > headNumberOrZero + 8;
+
             if (isSyncing)
             {
                 result = new SyncingResult
                 {
-                    CurrentBlock = _blockFinder.Head.Number,
+                    CurrentBlock = headNumberOrZero,
                     HighestBlock = bestSuggestedNumber,
                     StartingBlock = 0L,
                     IsSyncing = true
@@ -166,7 +168,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             return Task.FromResult(ResultWrapper<long?>.Success(number));
         }
 
-        public Task<ResultWrapper<UInt256?>> eth_getBalance(Address address, BlockParameter blockParameter = null)
+        public Task<ResultWrapper<UInt256?>> eth_getBalance(Address address, BlockParameter? blockParameter = null)
         {
             SearchResult<BlockHeader> searchResult = _blockFinder.SearchForHeader(blockParameter);
             if (searchResult.IsError)
@@ -177,14 +179,16 @@ namespace Nethermind.JsonRpc.Modules.Eth
             BlockHeader header = searchResult.Object;
             if (!HasStateForBlock(header))
             {
-                return Task.FromResult(ResultWrapper<UInt256?>.Fail($"No state available for block {header.Hash}", ErrorCodes.ResourceUnavailable));
+                return Task.FromResult(ResultWrapper<UInt256?>.Fail($"No state available for block {header.Hash}",
+                    ErrorCodes.ResourceUnavailable));
             }
 
             Account account = _stateReader.GetAccount(header.StateRoot, address);
             return Task.FromResult(ResultWrapper<UInt256?>.Success(account?.Balance ?? UInt256.Zero));
         }
 
-        public ResultWrapper<byte[]> eth_getStorageAt(Address address, UInt256 positionIndex, BlockParameter blockParameter = null)
+        public ResultWrapper<byte[]> eth_getStorageAt(Address address, UInt256 positionIndex,
+            BlockParameter? blockParameter = null)
         {
             SearchResult<BlockHeader> searchResult = _blockFinder.SearchForHeader(blockParameter);
             if (searchResult.IsError)
@@ -192,14 +196,14 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 return ResultWrapper<byte[]>.Fail(searchResult);
             }
 
-            BlockHeader header = searchResult.Object;
+            BlockHeader? header = searchResult.Object;
             Account account = _stateReader.GetAccount(header.StateRoot, address);
             if (account == null)
             {
                 return ResultWrapper<byte[]>.Success(Array.Empty<byte>());
             }
 
-            var storage = _stateReader.GetStorage(account.StorageRoot, positionIndex);
+            byte[] storage = _stateReader.GetStorage(account.StorageRoot, positionIndex);
             return ResultWrapper<byte[]>.Success(storage.PadLeft(32));
         }
 
@@ -214,7 +218,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
             BlockHeader header = searchResult.Object;
             if (!HasStateForBlock(header))
             {
-                return Task.FromResult(ResultWrapper<UInt256?>.Fail($"No state available for block {header.Hash}", ErrorCodes.ResourceUnavailable));
+                return Task.FromResult(ResultWrapper<UInt256?>.Fail($"No state available for block {header.Hash}",
+                    ErrorCodes.ResourceUnavailable));
             }
 
             Account account = _stateReader.GetAccount(header.StateRoot, address);
@@ -231,7 +236,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 return ResultWrapper<UInt256?>.Fail(searchResult);
             }
 
-            return ResultWrapper<UInt256?>.Success((UInt256) searchResult.Object.Transactions.Length);
+            return ResultWrapper<UInt256?>.Success((UInt256)searchResult.Object.Transactions.Length);
         }
 
         public ResultWrapper<UInt256?> eth_getBlockTransactionCountByNumber(BlockParameter blockParameter)
@@ -242,7 +247,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 return ResultWrapper<UInt256?>.Fail(searchResult);
             }
 
-            return ResultWrapper<UInt256?>.Success((UInt256) searchResult.Object.Transactions.Length);
+            return ResultWrapper<UInt256?>.Success((UInt256)searchResult.Object.Transactions.Length);
         }
 
         public ResultWrapper<UInt256?> eth_getUncleCountByBlockHash(Keccak blockHash)
@@ -253,10 +258,10 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 return ResultWrapper<UInt256?>.Fail(searchResult);
             }
 
-            return ResultWrapper<UInt256?>.Success((UInt256) searchResult.Object.Ommers.Length);
+            return ResultWrapper<UInt256?>.Success((UInt256)searchResult.Object.Ommers.Length);
         }
 
-        public ResultWrapper<UInt256?> eth_getUncleCountByBlockNumber(BlockParameter blockParameter)
+        public ResultWrapper<UInt256?> eth_getUncleCountByBlockNumber(BlockParameter? blockParameter)
         {
             SearchResult<Block> searchResult = _blockFinder.SearchForBlock(blockParameter);
             if (searchResult.IsError)
@@ -264,10 +269,10 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 return ResultWrapper<UInt256?>.Fail(searchResult);
             }
 
-            return ResultWrapper<UInt256?>.Success((UInt256) searchResult.Object.Ommers.Length);
+            return ResultWrapper<UInt256?>.Success((UInt256)searchResult.Object.Ommers.Length);
         }
 
-        public ResultWrapper<byte[]> eth_getCode(Address address, BlockParameter blockParameter = null)
+        public ResultWrapper<byte[]> eth_getCode(Address address, BlockParameter? blockParameter = null)
         {
             SearchResult<BlockHeader> searchResult = _blockFinder.SearchForHeader(blockParameter);
             if (searchResult.IsError)
@@ -278,7 +283,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
             BlockHeader header = searchResult.Object;
             if (!HasStateForBlock(header))
             {
-                return ResultWrapper<byte[]>.Fail($"No state available for block {header.Hash}", ErrorCodes.ResourceUnavailable);
+                return ResultWrapper<byte[]>.Fail($"No state available for block {header.Hash}",
+                    ErrorCodes.ResourceUnavailable);
             }
 
             Account account = _stateReader.GetAccount(header.StateRoot, address);
@@ -335,11 +341,13 @@ namespace Nethermind.JsonRpc.Modules.Eth
             }
         }
 
-        private async Task<ResultWrapper<Keccak>> SendTx(Transaction tx, TxHandlingOptions txHandlingOptions = TxHandlingOptions.None)
+        private async Task<ResultWrapper<Keccak>> SendTx(Transaction tx,
+            TxHandlingOptions txHandlingOptions = TxHandlingOptions.None)
         {
             try
             {
-                Keccak txHash = await _txSender.SendTransaction(tx, txHandlingOptions | TxHandlingOptions.PersistentBroadcast);
+                Keccak txHash =
+                    await _txSender.SendTransaction(tx, txHandlingOptions | TxHandlingOptions.PersistentBroadcast);
                 return ResultWrapper<Keccak>.Success(txHash);
             }
             catch (SecurityException e)
@@ -364,20 +372,23 @@ namespace Nethermind.JsonRpc.Modules.Eth
             BlockHeader header = searchResult.Object;
             if (!HasStateForBlock(header))
             {
-                return ResultWrapper<string>.Fail($"No state available for block {header.Hash}", ErrorCodes.ResourceUnavailable);
+                return ResultWrapper<string>.Fail($"No state available for block {header.Hash}",
+                    ErrorCodes.ResourceUnavailable);
             }
 
-            FixCallTx(transactionCall, header);
+            FixCallTx(transactionCall);
 
-            using CancellationTokenSource cancellationTokenSource = new CancellationTokenSource(_cancellationTokenTimeout);
+            using CancellationTokenSource cancellationTokenSource = new(_cancellationTokenTimeout);
             CancellationToken cancellationToken = cancellationTokenSource.Token;
             Transaction tx = transactionCall.ToTransaction();
             BlockchainBridge.CallOutput result = _blockchainBridge.Call(header, tx, cancellationToken);
 
-            return result.Error != null ? ResultWrapper<string>.Fail("VM execution error.", ErrorCodes.ExecutionError, result.Error) : ResultWrapper<string>.Success(result.OutputData.ToHexString(true));
+            return result.Error != null
+                ? ResultWrapper<string>.Fail("VM execution error.", ErrorCodes.ExecutionError, result.Error)
+                : ResultWrapper<string>.Success(result.OutputData.ToHexString(true));
         }
 
-        private void FixCallTx(TransactionForRpc transactionCall, BlockHeader header)
+        private void FixCallTx(TransactionForRpc transactionCall)
         {
             if (transactionCall.Gas == null || transactionCall.Gas == 0)
             {
@@ -403,7 +414,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
             if (!HasStateForBlock(header))
             {
-                return ResultWrapper<UInt256?>.Fail($"No state available for block {header.Hash}", ErrorCodes.ResourceUnavailable);
+                return ResultWrapper<UInt256?>.Fail($"No state available for block {header.Hash}",
+                    ErrorCodes.ResourceUnavailable);
             }
 
             return EstimateGas(transactionCall, header);
@@ -411,15 +423,31 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
         private ResultWrapper<UInt256?> EstimateGas(TransactionForRpc transactionCall, BlockHeader head)
         {
-            FixCallTx(transactionCall, head);
+            // 2021-03-04 08:54:18.6489|DEBUG|101|Responded to ID 40, eth_estimateGas({
+            //     "from": "0x2b5ad5c4795c026514f8317c7a215e218dccd6cf",
+            //     "to": "0xa28afda14be5789564ae5fa03665c4180e3c680b",
+            //     "data": "0x25936984"
+            // }) 
+            
+            // 2021-03-04 08:54:18.6533|DEBUG|13|Responded to ID 41, eth_sendTransaction({
+            //     "gas": "0x1f815f1",
+            //     "from": "0x2b5ad5c4795c026514f8317c7a215e218dccd6cf",
+            //     "to": "0xa28afda14be5789564ae5fa03665c4180e3c680b",
+            //     "data": "0x25936984",
+            //     "gasPrice": "0x4a817c800"
+            // }) 
+            
+            FixCallTx(transactionCall);
 
-            using CancellationTokenSource cancellationTokenSource = new CancellationTokenSource(_cancellationTokenTimeout);
-            CancellationToken cancellationToken = cancellationTokenSource.Token;
-            BlockchainBridge.CallOutput result = _blockchainBridge.EstimateGas(head, transactionCall.ToTransaction(), cancellationToken);
+            // using CancellationTokenSource cancellationTokenSource = new(_cancellationTokenTimeout);
+            CancellationToken cancellationToken = CancellationToken.None;
+            BlockchainBridge.CallOutput result =
+                _blockchainBridge.EstimateGas(head, transactionCall.ToTransaction(), cancellationToken);
 
             if (result.Error == null)
             {
-                return ResultWrapper<UInt256?>.Success((UInt256) result.GasSpent);
+                _logger.Error($"Estimating gas {transactionCall.From} {transactionCall.To} {transactionCall.Data} {transactionCall.Gas}");
+                return ResultWrapper<UInt256?>.Success((UInt256)result.GasSpent);
             }
 
             return ResultWrapper<UInt256?>.Fail(result.Error);
@@ -430,7 +458,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
             return GetBlock(new BlockParameter(blockHash), returnFullTransactionObjects);
         }
 
-        public ResultWrapper<BlockForRpc> eth_getBlockByNumber(BlockParameter blockParameter, bool returnFullTransactionObjects)
+        public ResultWrapper<BlockForRpc> eth_getBlockByNumber(BlockParameter blockParameter,
+            bool returnFullTransactionObjects)
         {
             return GetBlock(blockParameter, returnFullTransactionObjects);
         }
@@ -443,13 +472,15 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 return ResultWrapper<BlockForRpc>.Fail(searchResult);
             }
 
-            Block block = searchResult.Object;
+            Block? block = searchResult.Object;
             if (block != null)
             {
                 _blockchainBridge.RecoverTxSenders(block);
             }
 
-            return ResultWrapper<BlockForRpc>.Success(block == null ? null : new BlockForRpc(block, returnFullTransactionObjects, _specProvider));
+            return ResultWrapper<BlockForRpc>.Success(block == null
+                ? null
+                : new BlockForRpc(block, returnFullTransactionObjects, _specProvider));
         }
 
         public Task<ResultWrapper<TransactionForRpc>> eth_getTransactionByHash(Keccak transactionHash)
@@ -466,8 +497,10 @@ namespace Nethermind.JsonRpc.Modules.Eth
             }
 
             RecoverTxSenderIfNeeded(transaction);
-            TransactionForRpc transactionModel = new TransactionForRpc(receipt?.BlockHash, receipt?.BlockNumber, receipt?.Index, transaction);
-            if (_logger.IsTrace) _logger.Trace($"eth_getTransactionByHash request {transactionHash}, result: {transactionModel.Hash}");
+            TransactionForRpc transactionModel =
+                new(receipt?.BlockHash, receipt?.BlockNumber, receipt?.Index, transaction);
+            if (_logger.IsTrace)
+                _logger.Trace($"eth_getTransactionByHash request {transactionHash}, result: {transactionModel.Hash}");
             return Task.FromResult(ResultWrapper<TransactionForRpc>.Success(transactionModel));
         }
 
@@ -487,7 +520,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
             return ResultWrapper<TransactionForRpc[]>.Success(transactionsModels);
         }
 
-        public ResultWrapper<TransactionForRpc> eth_getTransactionByBlockHashAndIndex(Keccak blockHash, UInt256 positionIndex)
+        public ResultWrapper<TransactionForRpc> eth_getTransactionByBlockHashAndIndex(Keccak blockHash,
+            UInt256 positionIndex)
         {
             SearchResult<Block> searchResult = _blockFinder.SearchForBlock(new BlockParameter(blockHash));
             if (searchResult.IsError)
@@ -501,15 +535,16 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 return ResultWrapper<TransactionForRpc>.Fail("Position Index is incorrect", ErrorCodes.InvalidParams);
             }
 
-            Transaction transaction = block.Transactions[(int) positionIndex];
+            Transaction transaction = block.Transactions[(int)positionIndex];
             RecoverTxSenderIfNeeded(transaction);
 
-            TransactionForRpc transactionModel = new TransactionForRpc(block.Hash, block.Number, (int) positionIndex, transaction);
+            TransactionForRpc transactionModel = new(block.Hash, block.Number, (int)positionIndex, transaction);
 
             return ResultWrapper<TransactionForRpc>.Success(transactionModel);
         }
 
-        public ResultWrapper<TransactionForRpc> eth_getTransactionByBlockNumberAndIndex(BlockParameter blockParameter, UInt256 positionIndex)
+        public ResultWrapper<TransactionForRpc> eth_getTransactionByBlockNumberAndIndex(BlockParameter blockParameter,
+            UInt256 positionIndex)
         {
             SearchResult<Block> searchResult = _blockFinder.SearchForBlock(blockParameter);
             if (searchResult.IsError)
@@ -517,18 +552,20 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 return ResultWrapper<TransactionForRpc>.Fail(searchResult);
             }
 
-            Block block = searchResult.Object;
+            Block? block = searchResult.Object;
             if (positionIndex < 0 || positionIndex > block.Transactions.Length - 1)
             {
                 return ResultWrapper<TransactionForRpc>.Fail("Position Index is incorrect", ErrorCodes.InvalidParams);
             }
 
-            Transaction transaction = block.Transactions[(int) positionIndex];
+            Transaction transaction = block.Transactions[(int)positionIndex];
             RecoverTxSenderIfNeeded(transaction);
 
-            TransactionForRpc transactionModel = new TransactionForRpc(block.Hash, block.Number, (int) positionIndex, transaction);
+            TransactionForRpc transactionModel = new(block.Hash, block.Number, (int)positionIndex, transaction);
 
-            if (_logger.IsDebug) _logger.Debug($"eth_getTransactionByBlockNumberAndIndex request {blockParameter}, index: {positionIndex}, result: {transactionModel.Hash}");
+            if (_logger.IsDebug)
+                _logger.Debug(
+                    $"eth_getTransactionByBlockNumberAndIndex request {blockParameter}, index: {positionIndex}, result: {transactionModel.Hash}");
             return ResultWrapper<TransactionForRpc>.Success(transactionModel);
         }
 
@@ -540,7 +577,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 return Task.FromResult(ResultWrapper<ReceiptForRpc>.Success(null));
             }
 
-            ReceiptForRpc receiptModel = new ReceiptForRpc(txHash, receipt);
+            ReceiptForRpc receiptModel = new(txHash, receipt);
             if (_logger.IsTrace) _logger.Trace($"eth_getTransactionReceipt request {txHash}, result: {txHash}");
             return Task.FromResult(ResultWrapper<ReceiptForRpc>.Success(receiptModel));
         }
@@ -550,7 +587,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
             return GetUncle(new BlockParameter(blockHash), positionIndex);
         }
 
-        public ResultWrapper<BlockForRpc> eth_getUncleByBlockNumberAndIndex(BlockParameter blockParameter, UInt256 positionIndex)
+        public ResultWrapper<BlockForRpc> eth_getUncleByBlockNumberAndIndex(BlockParameter blockParameter,
+            UInt256 positionIndex)
         {
             return GetUncle(blockParameter, positionIndex);
         }
@@ -569,7 +607,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 return ResultWrapper<BlockForRpc>.Fail("Position Index is incorrect", ErrorCodes.InvalidParams);
             }
 
-            BlockHeader ommerHeader = block.Ommers[(int) positionIndex];
+            BlockHeader ommerHeader = block.Ommers[(int)positionIndex];
             return ResultWrapper<BlockForRpc>.Success(new BlockForRpc(new Block(ommerHeader, BlockBody.Empty), false, _specProvider));
         }
 
@@ -578,30 +616,30 @@ namespace Nethermind.JsonRpc.Modules.Eth
             BlockParameter fromBlock = filter.FromBlock;
             BlockParameter toBlock = filter.ToBlock;
             int filterId = _blockchainBridge.NewFilter(fromBlock, toBlock, filter.Address, filter.Topics);
-            return ResultWrapper<UInt256?>.Success((UInt256) filterId);
+            return ResultWrapper<UInt256?>.Success((UInt256)filterId);
         }
 
         public ResultWrapper<UInt256?> eth_newBlockFilter()
         {
             int filterId = _blockchainBridge.NewBlockFilter();
-            return ResultWrapper<UInt256?>.Success((UInt256) filterId);
+            return ResultWrapper<UInt256?>.Success((UInt256)filterId);
         }
 
         public ResultWrapper<UInt256?> eth_newPendingTransactionFilter()
         {
             int filterId = _blockchainBridge.NewPendingTransactionFilter();
-            return ResultWrapper<UInt256?>.Success((UInt256) filterId);
+            return ResultWrapper<UInt256?>.Success((UInt256)filterId);
         }
 
         public ResultWrapper<bool?> eth_uninstallFilter(UInt256 filterId)
         {
-            _blockchainBridge.UninstallFilter((int) filterId);
+            _blockchainBridge.UninstallFilter((int)filterId);
             return ResultWrapper<bool?>.Success(true);
         }
 
         public ResultWrapper<IEnumerable<object>> eth_getFilterChanges(UInt256 filterId)
         {
-            int id = (int) filterId;
+            int id = (int)filterId;
             FilterType filterType = _blockchainBridge.GetFilterType(id);
             switch (filterType)
             {
@@ -615,7 +653,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 case FilterType.PendingTransactionFilter:
                 {
                     return _blockchainBridge.FilterExists(id)
-                        ? ResultWrapper<IEnumerable<object>>.Success(_blockchainBridge.GetPendingTransactionFilterChanges(id))
+                        ? ResultWrapper<IEnumerable<object>>.Success(_blockchainBridge
+                            .GetPendingTransactionFilterChanges(id))
                         : ResultWrapper<IEnumerable<object>>.Fail($"Filter with id: '{filterId}' does not exist.");
                 }
 
@@ -636,7 +675,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
         public ResultWrapper<IEnumerable<FilterLog>> eth_getFilterLogs(UInt256 filterId)
         {
-            int id = (int) filterId;
+            int id = (int)filterId;
 
             return _blockchainBridge.FilterExists(id)
                 ? ResultWrapper<IEnumerable<FilterLog>>.Success(_blockchainBridge.GetFilterLogs(id))
@@ -645,11 +684,13 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
         public ResultWrapper<IEnumerable<FilterLog>> eth_getLogs(Filter filter)
         {
-            IEnumerable<FilterLog> GetLogs(BlockParameter blockParameter, BlockParameter toBlockParameter, CancellationTokenSource cancellationTokenSource, CancellationToken token)
+            IEnumerable<FilterLog> GetLogs(BlockParameter blockParameter, BlockParameter toBlockParameter,
+                CancellationTokenSource cancellationTokenSource, CancellationToken token)
             {
                 using (cancellationTokenSource)
                 {
-                    foreach (FilterLog log in _blockchainBridge.GetLogs(blockParameter, toBlockParameter, filter.Address, filter.Topics, token))
+                    foreach (FilterLog log in _blockchainBridge.GetLogs(blockParameter, toBlockParameter,
+                        filter.Address, filter.Topics, token))
                     {
                         yield return log;
                     }
@@ -661,14 +702,16 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
             try
             {
-                CancellationTokenSource cancellationTokenSource = new CancellationTokenSource(_cancellationTokenTimeout);
-                return ResultWrapper<IEnumerable<FilterLog>>.Success(GetLogs(fromBlock, toBlock, cancellationTokenSource, cancellationTokenSource.Token));
+                CancellationTokenSource cancellationTokenSource = new(_cancellationTokenTimeout);
+                return ResultWrapper<IEnumerable<FilterLog>>.Success(GetLogs(fromBlock, toBlock,
+                    cancellationTokenSource, cancellationTokenSource.Token));
             }
             catch (ArgumentException e)
             {
                 switch (e.Message)
                 {
-                    case ILogFinder.NotFoundError: return ResultWrapper<IEnumerable<FilterLog>>.Fail(e.Message, ErrorCodes.ResourceNotFound);
+                    case ILogFinder.NotFoundError:
+                        return ResultWrapper<IEnumerable<FilterLog>>.Fail(e.Message, ErrorCodes.ResourceNotFound);
                     default:
                         return ResultWrapper<IEnumerable<FilterLog>>.Fail(e.Message, ErrorCodes.InvalidParams);
                 }
@@ -691,7 +734,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
         }
 
         // https://github.com/ethereum/EIPs/issues/1186	
-        public ResultWrapper<AccountProof> eth_getProof(Address accountAddress, byte[][] storageKeys, BlockParameter blockParameter)
+        public ResultWrapper<AccountProof> eth_getProof(Address accountAddress, byte[][] storageKeys,
+            BlockParameter blockParameter)
         {
             BlockHeader header;
             try
@@ -699,12 +743,14 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 header = _blockFinder.FindHeader(blockParameter);
                 if (header == null)
                 {
-                    return ResultWrapper<AccountProof>.Fail($"{blockParameter} block not found", ErrorCodes.ResourceNotFound, null);
+                    return ResultWrapper<AccountProof>.Fail($"{blockParameter} block not found",
+                        ErrorCodes.ResourceNotFound, null);
                 }
 
                 if (!HasStateForBlock(header))
                 {
-                    return ResultWrapper<AccountProof>.Fail($"No state available for block {header.Hash}", ErrorCodes.ResourceUnavailable);
+                    return ResultWrapper<AccountProof>.Fail($"No state available for block {header.Hash}",
+                        ErrorCodes.ResourceUnavailable);
                 }
             }
             catch (Exception ex)
@@ -712,7 +758,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 return ResultWrapper<AccountProof>.Fail(ex.Message, ErrorCodes.InternalError, null);
             }
 
-            AccountProofCollector accountProofCollector = new AccountProofCollector(accountAddress, storageKeys);
+            AccountProofCollector accountProofCollector = new(accountAddress, storageKeys);
             _blockchainBridge.RunTreeVisitor(accountProofCollector, header.StateRoot);
 
             return ResultWrapper<AccountProof>.Success(accountProofCollector.BuildResult());

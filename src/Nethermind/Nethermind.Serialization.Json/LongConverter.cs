@@ -79,7 +79,7 @@ namespace Nethermind.Serialization.Json
 
             if (s.StartsWith("0x"))
             {
-                Span<char> withZero = new Span<char>(new char[s.Length - 1]);
+                Span<char> withZero = new(new char[s.Length - 1]);
                 withZero[0] = '0';
                 s.AsSpan(2).CopyTo(withZero.Slice(1));
                 return long.Parse(withZero, NumberStyles.AllowHexSpecifier);

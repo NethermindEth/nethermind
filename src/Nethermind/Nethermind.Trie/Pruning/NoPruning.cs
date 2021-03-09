@@ -20,7 +20,7 @@ namespace Nethermind.Trie.Pruning
     {
         private NoPruning() { }
 
-        public static NoPruning Instance { get; } = new NoPruning();
+        public static NoPruning Instance { get; } = new();
 
         public bool PruningEnabled => false;
 

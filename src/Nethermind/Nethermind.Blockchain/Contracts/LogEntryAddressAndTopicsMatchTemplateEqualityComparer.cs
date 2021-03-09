@@ -24,7 +24,7 @@ namespace Nethermind.Blockchain.Contracts
 {
     public class LogEntryAddressAndTopicsMatchTemplateEqualityComparer : IEqualityComparer<LogEntry>
     {
-        public static readonly LogEntryAddressAndTopicsMatchTemplateEqualityComparer Instance = new LogEntryAddressAndTopicsMatchTemplateEqualityComparer();
+        public static readonly LogEntryAddressAndTopicsMatchTemplateEqualityComparer Instance = new();
         
         /// <summary>
         /// Checks equality of LogEntry against SearchEntryTemplate.

@@ -81,7 +81,7 @@ namespace Nethermind.Serialization.Rlp
 
         public int Length => Bytes.Length;
 
-        public static readonly Dictionary<Type, IRlpDecoder> Decoders = new Dictionary<Type, IRlpDecoder>();
+        public static readonly Dictionary<Type, IRlpDecoder> Decoders = new();
 
         public static void RegisterDecoders(Assembly assembly)
         {

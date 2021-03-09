@@ -185,6 +185,11 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Services
                 {
                     break;
                 }
+                
+                if (block.ParentHash is null)
+                {
+                    break;
+                }
 
                 block = await _blockchainBridge.FindBlockAsync(block.ParentHash);
             } while (confirmations < _requiredBlockConfirmations);

@@ -49,7 +49,7 @@ namespace Nethermind.Consensus.Ethash
 
             public static Bucket Xor(Bucket a, Bucket b)
             {
-                Bucket result = new Bucket();
+                Bucket result = new();
                 result.Item0 = a.Item0 ^ b.Item0;
                 result.Item1 = a.Item1 ^ b.Item1;
                 result.Item2 = a.Item2 ^ b.Item2;

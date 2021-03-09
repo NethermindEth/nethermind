@@ -32,7 +32,7 @@ namespace Nethermind.Evm.Test
                 (byte)Instruction.JUMPDEST
             };
 
-            CodeInfo codeInfo = new CodeInfo(code);
+            CodeInfo codeInfo = new(code);
             
             codeInfo.ValidateJump(destination, false).Should().Be(isValid);
         }
@@ -47,7 +47,7 @@ namespace Nethermind.Evm.Test
                 (byte)Instruction.BEGINSUB
             };
 
-            CodeInfo codeInfo = new CodeInfo(code);
+            CodeInfo codeInfo = new(code);
 
 
             codeInfo.ValidateJump(destination, true).Should().Be(isValid);
@@ -62,7 +62,7 @@ namespace Nethermind.Evm.Test
                 (byte)Instruction.JUMPDEST
             };
 
-            CodeInfo codeInfo = new CodeInfo(code);
+            CodeInfo codeInfo = new(code);
 
             codeInfo.ValidateJump(1, true).Should().BeFalse();
             codeInfo.ValidateJump(1, false).Should().BeFalse();
@@ -77,7 +77,7 @@ namespace Nethermind.Evm.Test
                 (byte)Instruction.BEGINSUB
             };
 
-            CodeInfo codeInfo = new CodeInfo(code);
+            CodeInfo codeInfo = new(code);
 
             codeInfo.ValidateJump(1, true).Should().BeFalse();
             codeInfo.ValidateJump(1, false).Should().BeFalse();

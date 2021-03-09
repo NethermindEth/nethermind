@@ -46,10 +46,10 @@ namespace Nethermind.JsonRpc
         }
 
         public static JsonRpcResult Single(JsonRpcResponse response, RpcReport report)
-            => new JsonRpcResult(response, report);
+            => new(response, report);
 
         public static JsonRpcResult Collection(IReadOnlyList<JsonRpcResponse> responses, IReadOnlyList<RpcReport> reports)
-            => new JsonRpcResult(responses, reports);
+            => new(responses, reports);
 
         public void Dispose()
         {

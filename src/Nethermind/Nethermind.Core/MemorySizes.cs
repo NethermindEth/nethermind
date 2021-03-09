@@ -62,7 +62,7 @@ namespace Nethermind.Core
         {
             int sieveBound = (int) (upperLimit - 1);
             int upperSqrt = (int) Math.Sqrt(sieveBound);
-            BitArray primeBits = new BitArray(sieveBound + 1, true);
+            BitArray primeBits = new(sieveBound + 1, true);
             primeBits[0] = false;
             primeBits[1] = false;
             for (int j = 4; j <= sieveBound; j += 2)

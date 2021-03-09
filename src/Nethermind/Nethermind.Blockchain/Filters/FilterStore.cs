@@ -30,7 +30,7 @@ namespace Nethermind.Blockchain.Filters
     {
         private int _nextFilterId;
 
-        private readonly ConcurrentDictionary<int, FilterBase> _filters = new ConcurrentDictionary<int, FilterBase>();
+        private readonly ConcurrentDictionary<int, FilterBase> _filters = new();
 
         public bool FilterExists(int filterId) => _filters.ContainsKey(filterId);
 

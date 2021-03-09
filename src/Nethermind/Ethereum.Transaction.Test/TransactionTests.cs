@@ -1,5 +1,5 @@
 ﻿/*
- * Copyright (c) 2018 Demerzel Solutions Limited
+ * Copyright (c) 2021 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
  * The Nethermind library is free software: you can redistribute it and/or modify
@@ -48,7 +48,7 @@ namespace Ethereum.Transaction.Test
             Directory.SetCurrentDirectory(AppDomain.CurrentDomain.BaseDirectory);
             IEnumerable<string> testDirs = Directory.EnumerateDirectories(".", "tt" + testSet);
             Dictionary<string, Dictionary<string, TransactionTestJson>> testJsons =
-                new Dictionary<string, Dictionary<string, TransactionTestJson>>();
+                new();
             foreach (string testDir in testDirs)
             {
                 testJsons[testDir] = new Dictionary<string, TransactionTestJson>();
@@ -70,7 +70,7 @@ namespace Ethereum.Transaction.Test
                 }
             }
 
-            List<TransactionTest> tests = new List<TransactionTest>();
+            List<TransactionTest> tests = new();
             foreach (KeyValuePair<string, Dictionary<string, TransactionTestJson>> byDir in testJsons)
             {
                 foreach (KeyValuePair<string, TransactionTestJson> byName in byDir.Value)
@@ -179,7 +179,7 @@ namespace Ethereum.Transaction.Test
             Nethermind.Core.Transaction transaction;
             try
             {
-                Rlp rlp = new Rlp(Bytes.FromHexString(test.Rlp));
+                Rlp rlp = new(Bytes.FromHexString(test.Rlp));
                 transaction = Rlp.Decode<Nethermind.Core.Transaction>(rlp);
             }
             catch (Exception)
@@ -192,9 +192,9 @@ namespace Ethereum.Transaction.Test
                 throw;
             }
 
-            bool useChainId = transaction.Signature.V > 28;            
+            bool useChainId = transaction.Signature.V > 28UL;            
             
-            TxValidator validator = new TxValidator(useChainId ? ChainId.Mainnet : 0);
+            TxValidator validator = new(useChainId ? ChainId.Mainnet : 0UL);
 
             if (validTest != null)
             {
@@ -209,7 +209,7 @@ namespace Ethereum.Transaction.Test
                 Signature expectedSignature = new(validTest.R, validTest.S, validTest.V);
                 Assert.AreEqual(expectedSignature, transaction.Signature, "signature");
 
-                IEthereumEcdsa ecdsa = new EthereumEcdsa(useChainId ? ChainId.Mainnet : 0, LimboLogs.Instance);
+                IEthereumEcdsa ecdsa = new EthereumEcdsa(useChainId ? ChainId.Mainnet : 0UL, LimboLogs.Instance);
                 bool verified = ecdsa.Verify(
                     validTest.Sender,
                     transaction);

@@ -27,7 +27,7 @@ namespace Nethermind.Consensus
         {
         }
 
-        public static NullSealEngine Instance { get; } = new NullSealEngine();
+        public static NullSealEngine Instance { get; } = new();
 
         public Address Address => Address.Zero;
         

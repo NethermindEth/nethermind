@@ -26,7 +26,7 @@ namespace Nethermind.Blockchain.Filters
         {
         }
 
-        public static NullFilterStore Instance { get; } = new NullFilterStore();
+        public static NullFilterStore Instance { get; } = new();
 
         public bool FilterExists(int filterId)
         {

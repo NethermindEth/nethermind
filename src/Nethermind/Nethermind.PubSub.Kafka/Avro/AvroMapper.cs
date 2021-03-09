@@ -47,15 +47,14 @@ namespace Nethermind.PubSub.Kafka.Avro
                 miner = block.Beneficiary.ToString(),
                 nonce = block.Header.Nonce.ToString(),
                 size = Rlp.Encode(block).Bytes.Length,
-                transactions = block.Transactions?
-                                   .Select((t, i) => MapTransaction(i, block.Number, block.Hash, t)).ToList() ??
-                               new List<Transaction>(),
+                transactions = block.Transactions
+                                   .Select((t, i) => MapTransaction(i, block.Number, block.Hash, t)).ToList(),
                 logsBloom = block.Header.Bloom.ToString(),
                 receiptsRoot = block.Header.ReceiptsRoot.ToString(),
                 stateRoot = block.Header.StateRoot.ToString(),
                 transactionRoot = block.TxRoot.ToString(),
                 totalDifficulty = block.TotalDifficulty?.ToString() ?? string.Empty,
-                uncles = block.Ommers?.Select(o => o.Hash.ToString()).ToList() ?? new List<string>(),
+                uncles = block.Ommers.Select(o => o.Hash.ToString()).ToList(),
                 sha3uncles = block.Header.OmmersHash.ToString()
             };
 

@@ -75,7 +75,7 @@ namespace Nethermind.Blockchain.Contracts
 
         private bool TryCall(BlockHeader header, Transaction transaction, out byte[] result)
         {
-            CallOutputTracer tracer = new CallOutputTracer();
+            CallOutputTracer tracer = new();
             
             try
             {

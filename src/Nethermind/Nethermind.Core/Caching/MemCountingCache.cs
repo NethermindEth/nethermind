@@ -125,8 +125,8 @@ namespace Nethermind.Core.Caching
                 if (newMemorySize <= _maxCapacity)
                 {
                     MemorySize = newMemorySize;
-                    LruCacheItem cacheItem = new LruCacheItem(key, val);
-                    LinkedListNode<LruCacheItem> newNode = new LinkedListNode<LruCacheItem>(cacheItem);
+                    LruCacheItem cacheItem = new(key, val);
+                    LinkedListNode<LruCacheItem> newNode = new(cacheItem);
                     _lruList.AddLast(newNode);
                     _cacheMap.Add(key, newNode);
                 }

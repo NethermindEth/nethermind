@@ -55,7 +55,7 @@ namespace Nethermind.DataMarketplace.Core.Domain
             IsClaimed = true;
         }
 
-        public bool Equals(DataDeliveryReceiptDetails other)
+        public bool Equals(DataDeliveryReceiptDetails? other)
         {
             if (ReferenceEquals(null, other)) return false;
             if (ReferenceEquals(this, other)) return true;

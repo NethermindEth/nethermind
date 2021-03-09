@@ -21,7 +21,7 @@ namespace Nethermind.Trie.Pruning
     {
         private Archive() { }
 
-        public static Archive Instance { get; } = new Archive();
+        public static Archive Instance { get; } = new();
 
         public bool ShouldPersist(long blockNumber)
         {
