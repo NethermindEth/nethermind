@@ -67,14 +67,23 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
                 if (_logger.IsTrace) _logger.Trace($"Syncing subscription {Id} changed syncing status from {IsSyncing} to {isSyncing}");
 
                 IsSyncing = isSyncing;
+                JsonRpcResult result;
 
-                JsonRpcResult result = CreateSubscriptionMessage(new SyncingResult
+                if (isSyncing == false)
                 {
-                    IsSyncing = isSyncing,
-                    CurrentBlock = _blockTree.Head.Number,
-                    HighestBlock = BestSuggestedNumber,
-                    StartingBlock = 0L
-                });
+                    result = CreateSubscriptionMessage(isSyncing);
+                }
+                else
+                {
+                    result = CreateSubscriptionMessage(new SyncingResult
+                    {
+                        IsSyncing = isSyncing,
+                        CurrentBlock = _blockTree.Head.Number,
+                        HighestBlock = BestSuggestedNumber,
+                        StartingBlock = 0L
+                    });
+                }
+
                 
                 JsonRpcDuplexClient.SendJsonRpcResult(result);
                 _logger.Trace($"Syncing subscription {Id} printed SyncingResult object.");
