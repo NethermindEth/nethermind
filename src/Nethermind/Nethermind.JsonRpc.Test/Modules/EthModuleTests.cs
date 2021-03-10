@@ -106,14 +106,14 @@ namespace Nethermind.JsonRpc.Test.Modules
             if (eip1559)
             {
                 specProvider = Substitute.For<ISpecProvider>();
-                ReleaseSpec releaseSpec = new ReleaseSpec() {IsEip1559Enabled = true, Eip1559TransitionBlock = 1 };
+                ReleaseSpec releaseSpec = new ReleaseSpec() {IsEip1559Enabled = true, Eip1559TransitionBlock = 0 };
                 specProvider.GetSpec(Arg.Any<long>()).Returns(releaseSpec);
             }
             using Context ctx = await Context.Create();
             Block block = Build.A.Block.WithOmmers(Build.A.BlockHeader.TestObject, Build.A.BlockHeader.TestObject).TestObject;
             IBlockTree blockTree = Substitute.For<IBlockTree>();
             blockTree.FindBlock((BlockParameter) null).ReturnsForAnyArgs(block);
-            ctx._test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockFinder(blockTree).Build();
+            ctx._test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockFinder(blockTree).Build(specProvider);
             string serialized = ctx._test.TestEthRpc("eth_getUncleByBlockNumberAndIndex", ctx._test.BlockTree.FindHeadBlock().Number.ToString(), "1");
             Assert.AreEqual(expectedJson, serialized, serialized.Replace("\"", "\\\""));
         }
