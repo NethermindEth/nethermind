@@ -164,7 +164,7 @@ namespace Nethermind.TxPool
             _ownTimer.Start();
         }
 
-        public uint FutureNonceRetention { get; private set; }
+        public uint FutureNonceRetention { get; }
 
         public Transaction[] GetPendingTransactions() => _transactions.GetSnapshot();
         
@@ -325,7 +325,7 @@ namespace Nethermind.TxPool
             {
                 if (_logger.IsTrace)
                     _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, cost overflow.");
-                return AddTxResult.InsufficientFunds;
+                return AddTxResult.BalanceOverflow;
             }
             else if ((account?.Balance ?? UInt256.Zero) < cost)
             {
