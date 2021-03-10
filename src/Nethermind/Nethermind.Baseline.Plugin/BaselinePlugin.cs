@@ -89,5 +89,10 @@ namespace Nethermind.Plugin.Baseline
                 if (_logger.IsWarn) _logger.Info("Skipping Baseline RPC due to baseline being disabled in config.");
             }
         }
+
+        public ValueTask DisposeAsync()
+        {
+            return ValueTask.CompletedTask;
+        }
     }
 }
