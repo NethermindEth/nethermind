@@ -48,7 +48,6 @@ namespace Nethermind.Core.Test.Blockchain
 {
     public class TestBlockchain : IDisposable
     {
-        private readonly SealEngineType _sealEngineType;
         public IStateReader StateReader { get; private set; }
         public IEthereumEcdsa EthereumEcdsa { get; private set; }
         public TransactionProcessor TxProcessor { get; set; }
@@ -70,10 +69,11 @@ namespace Nethermind.Core.Test.Blockchain
         public IDbProvider DbProvider { get; set; }
         public ISpecProvider SpecProvider { get; set; }
 
-        protected TestBlockchain(SealEngineType sealEngineType)
+        protected TestBlockchain()
         {
-            _sealEngineType = sealEngineType;
         }
+        
+        public SealEngineType SealEngineType { get; set; }
 
         public static Address AccountA = TestItem.AddressA;
         public static Address AccountB = TestItem.AddressB;
@@ -111,14 +111,7 @@ namespace Nethermind.Core.Test.Blockchain
             State.Commit(SpecProvider.GenesisSpec);
             State.CommitTree(0);
             
-            TxPool = new TxPool.TxPool(
-                txStorage,
-                EthereumEcdsa,
-                new FixedBlockChainHeadSpecProvider(SpecProvider),
-                new TxPoolConfig(),
-                State,
-                new TxValidator(SpecProvider.ChainId),
-                LimboLogs.Instance);
+            TxPool = CreateTxPool(txStorage);
             
             IDb blockDb = new MemDb();
             IDb headerDb = new MemDb();
@@ -165,6 +158,16 @@ namespace Nethermind.Core.Test.Blockchain
             return this;
         }
 
+        protected virtual TxPool.TxPool CreateTxPool(ITxStorage txStorage) =>
+            new TxPool.TxPool(
+                txStorage,
+                EthereumEcdsa,
+                new FixedBlockChainHeadSpecProvider(SpecProvider),
+                new TxPoolConfig(),
+                State,
+                new TxValidator(SpecProvider.ChainId),
+                LimboLogs.Instance);
+
         protected virtual TxPoolTxSource CreateTxPoolTxSource()
         {
             return new TxPoolTxSource(TxPool, StateReader, LimboLogs.Instance);
@@ -181,7 +184,7 @@ namespace Nethermind.Core.Test.Blockchain
             }
             
             genesisBlockBuilder.WithStateRoot(State.StateRoot);
-            if (_sealEngineType == SealEngineType.AuRa)
+            if (SealEngineType == SealEngineType.AuRa)
             {
                 genesisBlockBuilder.WithAura(0, new byte[65]);
             }

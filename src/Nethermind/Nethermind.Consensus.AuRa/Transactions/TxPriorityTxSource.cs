@@ -35,7 +35,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
     {
         private readonly IContractDataStore<Address> _sendersWhitelist;
         private readonly IDictionaryContractDataStore<TxPriorityContract.Destination> _priorities;
-        private CompareTxByPermissionOnSpecifiedBlock _comparer;
+        private CompareTxByPriorityOnSpecifiedBlock _comparer;
 
 
         public TxPriorityTxSource(
@@ -53,7 +53,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
 
         protected override IComparer<Transaction> GetComparer(BlockHeader parent)
         {
-            _comparer = new CompareTxByPermissionOnSpecifiedBlock(_sendersWhitelist, _priorities, parent);
+            _comparer = new CompareTxByPriorityOnSpecifiedBlock(_sendersWhitelist, _priorities, parent);
             return _comparer.ThenBy(base.GetComparer(parent));
         }
 

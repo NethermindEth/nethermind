@@ -16,28 +16,24 @@
 // 
 
 using System;
-using System.Linq;
-using Nethermind.Blockchain;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.AuRa.Contracts.DataStore;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 
 namespace Nethermind.Consensus.AuRa.Transactions
 {
-    public class CompareTxByPermissionOnHead : CompareTxByPermissionBase
+    public class CompareTxByPriorityOnSpecifiedBlock : CompareTxByPriorityBase
     {
-        private readonly IBlockTree _blockTree;
-
-        public CompareTxByPermissionOnHead(
-            IContractDataStore<Address> sendersWhitelist, // expected HashSet based
-            IDictionaryContractDataStore<TxPriorityContract.Destination> priorities, // expected SortedList based
-            IBlockTree blockTree) 
-            : base(sendersWhitelist, priorities)
+        public CompareTxByPriorityOnSpecifiedBlock(
+            IContractDataStore<Address> sendersWhitelist, 
+            IDictionaryContractDataStore<TxPriorityContract.Destination> priorities, 
+            BlockHeader blockHeader) : base(sendersWhitelist, priorities)
         {
-            _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
+            BlockHeader = blockHeader;
         }
 
-        protected override BlockHeader BlockHeader => _blockTree.Head.Header;
+        protected override BlockHeader BlockHeader { get; }
     }
 }
