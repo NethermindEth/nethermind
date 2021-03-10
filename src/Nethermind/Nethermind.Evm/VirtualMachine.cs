@@ -1394,13 +1394,18 @@ namespace Nethermind.Evm
                             return CallResult.OutOfGasException;
                         }
 
-                        UpdateMemoryCost(in dest, length);
-
-                        ZeroPaddedSpan callDataSlice = env.InputData.SliceWithZeroPadding(src, (int) length);
-                        vmState.Memory.Save(in dest, callDataSlice);
-                        if (_txTracer.IsTracingInstructions)
-                            if (length > UInt256.Zero)
-                                _txTracer.ReportMemoryChange((long) dest, callDataSlice);
+                        if(length > UInt256.Zero)
+                        {
+                            UpdateMemoryCost(in dest, length);
+                            
+                            ZeroPaddedSpan callDataSlice = env.InputData.SliceWithZeroPadding(src, (int) length);
+                            vmState.Memory.Save(in dest, callDataSlice);
+                            if (_txTracer.IsTracingInstructions)
+                            {
+                                _txTracer.ReportMemoryChange((long)dest, callDataSlice);
+                            }
+                        }
+                        
                         break;
                     }
                     case Instruction.CODESIZE:
@@ -1425,11 +1430,12 @@ namespace Nethermind.Evm
                             EndInstructionTraceError(EvmExceptionType.OutOfGas);
                             return CallResult.OutOfGasException;
                         }
-
-                        UpdateMemoryCost(in dest, length);
-                        ZeroPaddedSpan codeSlice = code.SliceWithZeroPadding(src, (int) length);
-                        if (length > 0)
+                        
+                        if (length > UInt256.Zero)
                         {
+                            UpdateMemoryCost(in dest, length);
+                            
+                            ZeroPaddedSpan codeSlice = code.SliceWithZeroPadding(src, (int) length);
                             vmState.Memory.Save(in dest, codeSlice);
                             if (_txTracer.IsTracingInstructions) _txTracer.ReportMemoryChange((long) dest, codeSlice);
                         }
@@ -1490,13 +1496,19 @@ namespace Nethermind.Evm
                             return CallResult.OutOfGasException;
                         }
 
-                        UpdateMemoryCost(in dest, length);
-                        byte[] externalCode = GetCachedCodeInfo(address, spec).MachineCode;
-                        ZeroPaddedSpan callDataSlice = externalCode.SliceWithZeroPadding(src, (int) length);
-                        vmState.Memory.Save(in dest, callDataSlice);
-                        if (_txTracer.IsTracingInstructions)
-                            if (length > 0)
-                                _txTracer.ReportMemoryChange((long) dest, callDataSlice);
+                        if (length > UInt256.Zero)
+                        {
+                            UpdateMemoryCost(in dest, length);
+                            
+                            byte[] externalCode = GetCachedCodeInfo(address, spec).MachineCode;
+                            ZeroPaddedSpan callDataSlice = externalCode.SliceWithZeroPadding(src, (int) length);
+                            vmState.Memory.Save(in dest, callDataSlice);
+                            if (_txTracer.IsTracingInstructions)
+                            {
+                                _txTracer.ReportMemoryChange((long)dest, callDataSlice);
+                            }
+                        }
+
                         break;
                     }
                     case Instruction.RETURNDATASIZE:
@@ -1534,16 +1546,23 @@ namespace Nethermind.Evm
                             return CallResult.OutOfGasException;
                         }
 
-                        UpdateMemoryCost(in dest, length);
-
-                        if (UInt256.AddOverflow(length, src, out UInt256 newLength) || newLength > _returnDataBuffer.Length)
+                        if (length > UInt256.Zero)
                         {
-                            return CallResult.AccessViolationException;
+                            UpdateMemoryCost(in dest, length);
+                            
+                            if (UInt256.AddOverflow(length, src, out UInt256 newLength) || newLength > _returnDataBuffer.Length)
+                            {
+                                return CallResult.AccessViolationException;
+                            }
+                            
+                            ZeroPaddedSpan returnDataSlice = _returnDataBuffer.SliceWithZeroPadding(src, (int)length);
+                            vmState.Memory.Save(in dest, returnDataSlice);
+                            if (_txTracer.IsTracingInstructions)
+                            {
+                                _txTracer.ReportMemoryChange((long)dest, returnDataSlice);
+                            }
                         }
 
-                        ZeroPaddedSpan returnDataSlice = _returnDataBuffer.SliceWithZeroPadding(src, (int) length);
-                        vmState.Memory.Save(in dest, returnDataSlice);
-                        if (_txTracer.IsTracingInstructions) _txTracer.ReportMemoryChange((long) dest, returnDataSlice);
                         break;
                     }
                     case Instruction.BLOCKHASH:
