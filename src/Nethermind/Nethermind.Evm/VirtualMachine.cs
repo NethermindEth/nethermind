@@ -1428,8 +1428,12 @@ namespace Nethermind.Evm
 
                         UpdateMemoryCost(in dest, length);
                         ZeroPaddedSpan codeSlice = code.SliceWithZeroPadding(src, (int) length);
-                        vmState.Memory.Save(in dest, codeSlice);
-                        if (_txTracer.IsTracingInstructions) _txTracer.ReportMemoryChange((long) dest, codeSlice);
+                        if (length > 0)
+                        {
+                            vmState.Memory.Save(in dest, codeSlice);
+                            if (_txTracer.IsTracingInstructions) _txTracer.ReportMemoryChange((long) dest, codeSlice);
+                        }
+                        
                         break;
                     }
                     case Instruction.GASPRICE:
