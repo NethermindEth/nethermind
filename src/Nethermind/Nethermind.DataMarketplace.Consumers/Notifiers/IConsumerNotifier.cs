@@ -49,8 +49,7 @@ namespace Nethermind.DataMarketplace.Consumers.Notifiers
         Task SendBlockProcessedAsync(long blockNumber);
         Task SendGraceUnitsExceeded(Keccak depositId, string dataAssetName, uint consumedUnitsFromProvider,
             uint consumedUnits, uint graceUnits);
-        Task SendEthUsdPriceAsync(decimal price, ulong updatedAt);
-        Task SendDaiUsdPriceAsync(decimal price, ulong updatedAt);
         Task SendGasPriceAsync(GasPriceTypes types);
+        Task SendUsdPriceAsync(string currency, decimal price, ulong updatedAt);
     }
 }

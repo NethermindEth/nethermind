@@ -39,7 +39,9 @@ namespace Nethermind.DataMarketplace.Test.Services
         private IHttpClient _client;
         private IConfigManager _configManager;
         private ITimestamper _timestamper;
+        private TestTimestamper _testTimestamper;
         private IGasPriceService _gasPriceService;
+        private readonly DateTime _now = DateTime.UtcNow;
 
         [SetUp]
         public void Setup()
@@ -48,9 +50,9 @@ namespace Nethermind.DataMarketplace.Test.Services
             _configManager = Substitute.For<IConfigManager>();
             _config = new NdmConfig();
             _configManager.GetAsync(ConfigId).Returns(_config);
-            _timestamper = new Timestamper(DateTime.UtcNow);
-            _gasPriceService = new GasPriceService(_client, _configManager, ConfigId, _timestamper,
-                LimboLogs.Instance);
+            _timestamper = new Timestamper(_now);
+            _testTimestamper = new TestTimestamper(_now);
+            _gasPriceService = new GasPriceService(_client, _configManager, ConfigId, _testTimestamper, LimboLogs.Instance);
         }
 
         [Test]
@@ -122,7 +124,7 @@ namespace Nethermind.DataMarketplace.Test.Services
             _gasPriceService.Types.Fastest.Should().Be(GasPriceDetails.Empty);
             _gasPriceService.Types.Custom.Should().Be(new GasPriceDetails(_config.GasPrice, 0));
             _gasPriceService.Types.Type.Should().Be("custom");
-            _gasPriceService.Types.UpdatedAt.Should().Be(0);
+            _gasPriceService.Types.UpdatedAt.Should().Be(_timestamper.UnixTime.Seconds);
             await _configManager.Received().GetAsync(ConfigId);
             await _client.Received().GetAsync<GasPriceService.Result>(Arg.Any<string>());
         }
@@ -200,6 +202,35 @@ namespace Nethermind.DataMarketplace.Test.Services
 
             await _configManager.Received().GetAsync(ConfigId);
             await _configManager.Received().UpdateAsync(_config);
+        }
+
+        [Test]
+        public async Task update_async_should_be_call_every_5s()
+        {
+            _testTimestamper.UtcNow = _testTimestamper.UtcNow.AddSeconds(10);
+            Parallel.For(1, 1000, async i =>
+            {
+                if ((i % 10) == 0)
+                {
+                    lock (_timestamper)
+                    {
+                        _testTimestamper.UtcNow = _testTimestamper.UtcNow.AddSeconds(1);
+                    }
+                }
+
+                await _gasPriceService.UpdateGasPriceAsync();
+            });
+            await _client.Received(20).GetAsync<GasPriceService.Result>(Arg.Any<string>());
+        }
+        
+        private class TestTimestamper : ITimestamper
+        {
+            public DateTime UtcNow { get; set; }
+
+            public TestTimestamper(DateTime utcNow)
+            {
+                UtcNow = utcNow;
+            }
         }
     }
 }

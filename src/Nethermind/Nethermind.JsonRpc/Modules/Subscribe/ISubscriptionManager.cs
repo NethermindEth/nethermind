@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -13,15 +13,17 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using System.Threading.Tasks;
+using System;
+using Nethermind.JsonRpc.Modules.Eth;
 
-namespace Nethermind.DataMarketplace.Core.Services
+namespace Nethermind.JsonRpc.Modules.Subscribe
 {
-    public interface IEthPriceService
+    public interface ISubscriptionManager
     {
-        Task UpdateAsync();
-        decimal UsdPrice { get; }
-        ulong UpdatedAt { get; }
+        string AddSubscription(IJsonRpcDuplexClient jsonRpcDuplexClient, SubscriptionType subscriptionType, Filter? filter = null);
+        bool RemoveSubscription(IJsonRpcDuplexClient jsonRpcDuplexClient, string subscriptionId);
+        void RemoveClientSubscriptions(object? sender, EventArgs e);
     }
 }

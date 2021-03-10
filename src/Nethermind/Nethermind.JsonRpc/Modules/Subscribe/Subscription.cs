@@ -21,14 +21,28 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
 {
     public abstract class Subscription : IDisposable
     {
-        protected Subscription()
+        protected Subscription(IJsonRpcDuplexClient jsonRpcDuplexClient)
         {
             Id = string.Concat("0x", Guid.NewGuid().ToString("N"));
+            JsonRpcDuplexClient = jsonRpcDuplexClient;
         }
 
         public string Id { get; }
         public abstract SubscriptionType Type { get; }
-        public IJsonRpcDuplexClient JsonRpcDuplexClient { get; set; }
+        public IJsonRpcDuplexClient JsonRpcDuplexClient { get; }
         public abstract void Dispose();
+        
+        protected JsonRpcResult CreateSubscriptionMessage(object result)
+        {
+            return JsonRpcResult.Single(
+                new JsonRpcSubscriptionResponse()
+                {
+                    Params = new JsonRpcSubscriptionResult()
+                    {
+                        Result = result,
+                        Subscription = Id
+                    }
+                }, default);
+        }
     }
 }
