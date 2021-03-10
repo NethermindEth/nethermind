@@ -43,8 +43,8 @@ namespace Nethermind.Abi
                     $"Insufficient parameters for {signature.Name}. Expected {signature.Types.Length} arguments but got {arguments.Length}");
             }
 
-            List<byte[]> dynamicParts = new List<byte[]>();
-            List<byte[]> headerParts = new List<byte[]>();
+            List<byte[]> dynamicParts = new();
+            List<byte[]> headerParts = new();
             BigInteger currentOffset = arguments.Length * AbiType.UInt256.LengthInBytes;
             for (int i = 0; i < arguments.Length; i++)
             {

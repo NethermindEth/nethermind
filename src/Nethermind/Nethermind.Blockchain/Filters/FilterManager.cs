@@ -30,13 +30,13 @@ namespace Nethermind.Blockchain.Filters
     public class FilterManager : IFilterManager
     {
         private readonly ConcurrentDictionary<int, List<FilterLog>> _logs =
-            new ConcurrentDictionary<int, List<FilterLog>>();
+            new();
 
         private readonly ConcurrentDictionary<int, List<Keccak>> _blockHashes =
-            new ConcurrentDictionary<int, List<Keccak>>();
+            new();
 
         private readonly ConcurrentDictionary<int, List<Keccak>> _pendingTransactions =
-            new ConcurrentDictionary<int, List<Keccak>>();
+            new();
 
         private Keccak _lastBlockHash;
         private readonly IFilterStore _filterStore;

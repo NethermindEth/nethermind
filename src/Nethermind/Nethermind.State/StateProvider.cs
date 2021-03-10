@@ -49,7 +49,7 @@ namespace Nethermind.State
         private Change?[] _changes = new Change?[StartCapacity];
         private int _currentPosition = -1;
         
-        public StateProvider(ITrieStore trieStore, IKeyValueStore codeDb, ILogManager? logManager)
+        public StateProvider(ITrieStore? trieStore, IKeyValueStore? codeDb, ILogManager? logManager)
         {
             _logger = logManager?.GetClassLogger<StateProvider>() ?? throw new ArgumentNullException(nameof(logManager));
             _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
@@ -208,7 +208,7 @@ namespace Nethermind.State
 
             if (isSubtracting && account.Balance < balanceChange)
             {
-                throw new InsufficientBalanceException();
+                throw new InsufficientBalanceException(address);
             }
 
             UInt256 newBalance = isSubtracting ? account.Balance - balanceChange : account.Balance + balanceChange;

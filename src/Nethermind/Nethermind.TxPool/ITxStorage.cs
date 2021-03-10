@@ -21,7 +21,7 @@ namespace Nethermind.TxPool
 {
     public interface ITxStorage
     {
-        Transaction Get(Keccak hash);
+        Transaction? Get(Keccak hash);
         Transaction[] GetAll();
         void Add(Transaction transaction);
         void Delete(Keccak hash);

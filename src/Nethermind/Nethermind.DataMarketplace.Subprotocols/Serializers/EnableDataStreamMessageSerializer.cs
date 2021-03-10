@@ -32,7 +32,7 @@ namespace Nethermind.DataMarketplace.Subprotocols.Serializers
         {
             RlpStream context = bytes.AsRlpStream();
             context.ReadSequenceLength();
-            Keccak depositId = context.DecodeKeccak();
+            Keccak? depositId = context.DecodeKeccak();
             string client = context.DecodeString();
             string?[] args = context.DecodeArray(c => c.DecodeString());
 

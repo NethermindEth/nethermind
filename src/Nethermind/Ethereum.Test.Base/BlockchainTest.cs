@@ -1,5 +1,5 @@
 ﻿/*
- * Copyright (c) 2018 Demerzel Solutions Limited
+ * Copyright (c) 2021 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
  * The Nethermind library is free software: you can redistribute it and/or modify
@@ -27,24 +27,24 @@ namespace Ethereum.Test.Base
 {
     public class BlockchainTest : IEthereumTest
     {
-        public string Category { get; set; }
-        public string Name { get; set; }
-        public IReleaseSpec Network { get; set; }
-        public IReleaseSpec NetworkAfterTransition { get; set; }
+        public string? Category { get; set; }
+        public string? Name { get; set; }
+        public IReleaseSpec? Network { get; set; }
+        public IReleaseSpec? NetworkAfterTransition { get; set; }
         public long TransitionBlockNumber { get; set; }
-        public Keccak LastBlockHash { get; set; }
-        public Rlp GenesisRlp { get; set; }
+        public Keccak? LastBlockHash { get; set; }
+        public Rlp? GenesisRlp { get; set; }
 
-        public TestBlockJson[] Blocks { get; set; }
-        public TestBlockHeaderJson GenesisBlockHeader { get; set; }
+        public TestBlockJson[]? Blocks { get; set; }
+        public TestBlockHeaderJson? GenesisBlockHeader { get; set; }
 
-        public Dictionary<Address, AccountState> Pre { get; set; }
-        public Dictionary<Address, AccountState> PostState { get; set; }
-        public Keccak PostStateRoot { get; set; }
+        public Dictionary<Address, AccountState>? Pre { get; set; }
+        public Dictionary<Address, AccountState>? PostState { get; set; }
+        public Keccak? PostStateRoot { get; set; }
         public bool SealEngineUsed { get; set; }    
-        public string LoadFailure { get; set; }    
+        public string? LoadFailure { get; set; }    
 
-        public override string ToString()
+        public override string? ToString()
         {
             return Name;
         }

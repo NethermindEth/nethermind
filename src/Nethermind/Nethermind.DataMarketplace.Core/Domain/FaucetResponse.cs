@@ -54,7 +54,7 @@ namespace Nethermind.DataMarketplace.Core.Domain
         public static FaucetResponse ProcessingRequestError =>
             new FaucetResponse(FaucetRequestStatus.ProcessingRequestError);
 
-        public bool Equals(FaucetResponse other)
+        public bool Equals(FaucetResponse? other)
         {
             if (ReferenceEquals(null, other)) return false;
             if (ReferenceEquals(this, other)) return true;

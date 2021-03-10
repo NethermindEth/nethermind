@@ -31,7 +31,7 @@ namespace Nethermind.Blockchain.Contracts
         /// <param name="readOnlyTxProcessorSource">Source of readonly <see cref="ITransactionProcessor"/> to call transactions.</param>
         /// <returns>Constant version of the contract.</returns>
         protected ConstantContract GetConstant(IReadOnlyTxProcessorSource readOnlyTxProcessorSource) =>
-            new ConstantContract(this, readOnlyTxProcessorSource);
+            new(this, readOnlyTxProcessorSource);
         
         /// <summary>
         /// Constant version of the contract. Allows to call contract methods without state modification.

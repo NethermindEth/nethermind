@@ -24,6 +24,7 @@ namespace Nethermind.TxPool
 {
     public interface ITxPool
     {
+        int GetPendingTransactionsCount();
         Transaction[] GetPendingTransactions();
         Transaction[] GetOwnPendingTransactions();
         

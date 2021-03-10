@@ -27,9 +27,9 @@ namespace Nethermind.JsonRpc.Modules.Trace
 {
     public class ParityAccountStateChangeConverter : JsonConverter<ParityAccountStateChange>
     {
-        private ByteArrayConverter _bytesConverter = new ByteArrayConverter();
-        private NullableUInt256Converter _intConverter = new NullableUInt256Converter();
-        private Bytes32Converter _32BytesConverter = new Bytes32Converter();
+        private ByteArrayConverter _bytesConverter = new();
+        private NullableUInt256Converter _intConverter = new();
+        private Bytes32Converter _32BytesConverter = new();
 
         private void WriteChange(JsonWriter writer, ParityStateChange<byte[]> change, JsonSerializer serializer)
         {

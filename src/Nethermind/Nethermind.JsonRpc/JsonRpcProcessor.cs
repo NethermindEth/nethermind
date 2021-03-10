@@ -66,7 +66,7 @@ namespace Nethermind.JsonRpc
         /// </summary>
         private void BuildTraceJsonSerializer()
         {
-            JsonSerializerSettings jsonSettings = new JsonSerializerSettings
+            JsonSerializerSettings jsonSettings = new()
             {
                 ContractResolver = new CamelCasePropertyNamesContractResolver()
             };
@@ -79,7 +79,7 @@ namespace Nethermind.JsonRpc
             _traceSerializer = JsonSerializer.Create(jsonSettings);
         }
 
-        private JsonSerializer _obsoleteBasicJsonSerializer = new JsonSerializer();
+        private JsonSerializer _obsoleteBasicJsonSerializer = new();
 
         private (JsonRpcRequest Model, List<JsonRpcRequest> Collection) DeserializeObjectOrArray(string json)
         {
@@ -125,7 +125,7 @@ namespace Nethermind.JsonRpc
             }
         }
 
-        public async Task<JsonRpcResult> ProcessAsync(string request)
+        public async Task<JsonRpcResult> ProcessAsync(string request, JsonRpcContext context)
         {
             if (_jsonRpcConfig.RpcRecorderEnabled)
             {
@@ -153,7 +153,7 @@ namespace Nethermind.JsonRpc
                 if (_logger.IsDebug) _logger.Debug($"JSON RPC request {rpcRequest.Model}");
 
                 Metrics.JsonRpcRequests++;
-                JsonRpcResponse response = await _jsonRpcService.SendRequestAsync(rpcRequest.Model);
+                JsonRpcResponse response = await _jsonRpcService.SendRequestAsync(rpcRequest.Model, context);
                 JsonRpcErrorResponse localErrorResponse = response as JsonRpcErrorResponse;
                 bool isSuccess = localErrorResponse is null;
                 if (!isSuccess)
@@ -180,14 +180,14 @@ namespace Nethermind.JsonRpc
                 var responses = new List<JsonRpcResponse>(rpcRequest.Collection.Count);
                 var reports = new List<RpcReport>(rpcRequest.Collection.Count);
                 int requestIndex = 0;
-                Stopwatch singleRequestWatch = new Stopwatch();
+                Stopwatch singleRequestWatch = new();
                 for (var index = 0; index < rpcRequest.Collection.Count; index++)
                 {
                     JsonRpcRequest jsonRpcRequest = rpcRequest.Collection[index];
                     singleRequestWatch.Restart();
 
                     Metrics.JsonRpcRequests++;
-                    JsonRpcResponse response = await _jsonRpcService.SendRequestAsync(jsonRpcRequest);
+                    JsonRpcResponse response = await _jsonRpcService.SendRequestAsync(jsonRpcRequest, context);
                     JsonRpcErrorResponse localErrorResponse = response as JsonRpcErrorResponse;
                     bool isSuccess = localErrorResponse == null;
                     if (!isSuccess)
@@ -225,9 +225,9 @@ namespace Nethermind.JsonRpc
         {
             if (_logger.IsTrace)
             {
-                StringBuilder builder = new StringBuilder();
-                using StringWriter stringWriter = new StringWriter(builder);
-                using JsonTextWriter jsonWriter = new JsonTextWriter(stringWriter);
+                StringBuilder builder = new();
+                using StringWriter stringWriter = new(builder);
+                using JsonTextWriter jsonWriter = new(stringWriter);
                 _traceSerializer.Serialize(jsonWriter, response);
 
                 _logger.Trace($"Sending JSON RPC response: {builder}");
@@ -238,9 +238,9 @@ namespace Nethermind.JsonRpc
         {
             if (_logger.IsTrace)
             {
-                StringBuilder builder = new StringBuilder();
-                using StringWriter stringWriter = new StringWriter(builder);
-                using JsonTextWriter jsonWriter = new JsonTextWriter(stringWriter);
+                StringBuilder builder = new();
+                using StringWriter stringWriter = new(builder);
+                using JsonTextWriter jsonWriter = new(stringWriter);
                 _traceSerializer.Serialize(jsonWriter, responses);
 
                 _logger.Trace($"Sending JSON RPC response: {builder}");

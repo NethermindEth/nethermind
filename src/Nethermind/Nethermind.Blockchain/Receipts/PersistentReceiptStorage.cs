@@ -237,6 +237,7 @@ namespace Nethermind.Blockchain.Receipts
             }
             
             _receiptsCache.Set(block.Hash, txReceipts);
+            ReceiptsInserted?.Invoke(this, new ReceiptsEventArgs(block.Header, txReceipts));
         }
 
         public long? LowestInsertedReceiptBlockNumber
@@ -266,5 +267,7 @@ namespace Nethermind.Blockchain.Receipts
         {
             _receiptsCache.Clear();
         }
+        
+        public event EventHandler<ReceiptsEventArgs> ReceiptsInserted;
     }
 }

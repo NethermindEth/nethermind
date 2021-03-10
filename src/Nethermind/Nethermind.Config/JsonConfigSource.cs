@@ -42,7 +42,7 @@ namespace Nethermind.Config
         {
             if (!File.Exists(configFilePath))
             {
-                StringBuilder missingConfigFileMessage = new StringBuilder($"Config file {configFilePath} does not exist.");
+                StringBuilder missingConfigFileMessage = new($"Config file {configFilePath} does not exist.");
                 try
                 {
                     string directory = Path.GetDirectoryName(configFilePath);
@@ -95,9 +95,9 @@ namespace Nethermind.Config
             ApplyConfigValues(moduleName, itemsDict);
         }
 
-        private readonly Dictionary<string, Dictionary<string, string>> _values = new Dictionary<string, Dictionary<string, string>>(StringComparer.InvariantCultureIgnoreCase);
+        private readonly Dictionary<string, Dictionary<string, string>> _values = new(StringComparer.InvariantCultureIgnoreCase);
 
-        private readonly Dictionary<string, Dictionary<string, object>> _parsedValues = new Dictionary<string, Dictionary<string, object>>(StringComparer.InvariantCultureIgnoreCase);
+        private readonly Dictionary<string, Dictionary<string, object>> _parsedValues = new(StringComparer.InvariantCultureIgnoreCase);
 
         private void ApplyConfigValues(string configModule, Dictionary<string, string> items)
         {

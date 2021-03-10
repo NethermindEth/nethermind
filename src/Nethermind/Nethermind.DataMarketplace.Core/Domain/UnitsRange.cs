@@ -42,7 +42,7 @@ namespace Nethermind.DataMarketplace.Core.Domain
         public bool IsSubsetOf(UnitsRange unitsRange)
             => From >= unitsRange.From && To <= unitsRange.To;
 
-        public bool Equals(UnitsRange other)
+        public bool Equals(UnitsRange? other)
         {
             if (ReferenceEquals(null, other)) return false;
             if (ReferenceEquals(this, other)) return true;

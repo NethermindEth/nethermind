@@ -27,7 +27,7 @@ namespace Nethermind.Blockchain.Processing
         private readonly IBlockchainProcessor _processor;
         private readonly IReadOnlyDbProvider _readOnlyDbProvider;
 
-        private object _lock = new object();
+        private object _lock = new();
 
         public OneTimeChainProcessor(IReadOnlyDbProvider readOnlyDbProvider, IBlockchainProcessor processor)
         {

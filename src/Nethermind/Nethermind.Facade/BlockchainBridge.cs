@@ -123,7 +123,7 @@ namespace Nethermind.Facade
                 return (txReceipt, block?.Transactions[txReceipt.Index]);
             }
 
-            if (_txPool.TryGetPendingTransaction(txHash, out var transaction))
+            if (_txPool.TryGetPendingTransaction(txHash, out Transaction? transaction))
             {
                 return (null, transaction);
             }
@@ -133,7 +133,7 @@ namespace Nethermind.Facade
 
         public TxReceipt GetReceipt(Keccak txHash)
         {
-            var blockHash = _receiptFinder.FindBlockHash(txHash);
+            Keccak blockHash = _receiptFinder.FindBlockHash(txHash);
             return blockHash != null ? _receiptFinder.Get(blockHash).ForTransaction(txHash) : null;
         }
 
@@ -143,11 +143,12 @@ namespace Nethermind.Facade
             {
             }
 
-            public CallOutput(byte[] outputData, long gasSpent, string error)
+            public CallOutput(byte[] outputData, long gasSpent, string error, bool inputError = false)
             {
                 Error = error;
                 OutputData = outputData;
                 GasSpent = gasSpent;
+                InputError = inputError;
             }
 
             public string Error { get; set; }
@@ -155,12 +156,14 @@ namespace Nethermind.Facade
             public byte[] OutputData { get; set; }
 
             public long GasSpent { get; set; }
+            
+            public bool InputError { get; set; }
         }
 
         public CallOutput Call(BlockHeader blockHeader, Transaction transaction, CancellationToken cancellationToken)
         {
-            CallOutputTracer callOutputTracer = new CallOutputTracer();
-            CallAndRestore(blockHeader, blockHeader.Number, blockHeader.Timestamp, transaction,
+            CallOutputTracer callOutputTracer = new();
+            (bool Success, string Error) tryCallResult = TryCallAndRestore(blockHeader, blockHeader.Number, blockHeader.Timestamp, transaction,
                 new CancellationTxTracer(callOutputTracer, cancellationToken)
                 {
                     IsTracingActions = true, 
@@ -170,16 +173,17 @@ namespace Nethermind.Facade
                 });
             return new CallOutput
             {
-                Error = callOutputTracer.Error,
+                Error = tryCallResult.Success ? callOutputTracer.Error : tryCallResult.Error,
                 GasSpent = callOutputTracer.GasSpent,
-                OutputData = callOutputTracer.ReturnValue
+                OutputData = callOutputTracer.ReturnValue,
+                InputError = !tryCallResult.Success
             };
         }
 
         public CallOutput EstimateGas(BlockHeader header, Transaction tx, CancellationToken cancellationToken)
         {
-            EstimateGasTracer estimateGasTracer = new EstimateGasTracer();
-            CallAndRestore(
+            EstimateGasTracer estimateGasTracer = new();
+            (bool Success, string Error) tryCallResult = TryCallAndRestore(
                 header,
                 header.Number + 1,
                 UInt256.Max(header.Timestamp + 1, _timestamper.UnixTime.Seconds),
@@ -187,7 +191,25 @@ namespace Nethermind.Facade
                 estimateGasTracer.WithCancellation(cancellationToken));
             
             long estimate = estimateGasTracer.CalculateEstimate(tx);
-            return new CallOutput {Error = estimateGasTracer.Error, GasSpent = estimate};
+            return new CallOutput {Error = tryCallResult.Success ? estimateGasTracer.Error : tryCallResult.Error, GasSpent = estimate, InputError = !tryCallResult.Success};
+        }
+
+        private (bool Success, string Error) TryCallAndRestore(
+            BlockHeader blockHeader,
+            long number,
+            UInt256 timestamp,
+            Transaction transaction,
+            ITxTracer tracer)
+        {
+            try
+            {
+                CallAndRestore(blockHeader, number, timestamp, transaction, tracer);
+                return (true, string.Empty);
+            }
+            catch (InsufficientBalanceException ex)
+            {
+                return (false, ex.Message);
+            }
         }
 
         private void CallAndRestore(
@@ -210,7 +232,7 @@ namespace Nethermind.Facade
                     transaction.Nonce = GetNonce(_stateProvider.StateRoot, transaction.SenderAddress);
                 }
 
-                BlockHeader callHeader = new BlockHeader(
+                BlockHeader callHeader = new(
                     blockHeader.Hash,
                     Keccak.OfAnEmptySequenceRlp,
                     Address.Zero,
@@ -285,7 +307,7 @@ namespace Nethermind.Facade
         {
             for (int i = 0; i < block.Transactions.Length; i++)
             {
-                var transaction = block.Transactions[i];
+                Transaction transaction = block.Transactions[i];
                 if (transaction.SenderAddress == null)
                 {
                     RecoverTxSender(transaction);

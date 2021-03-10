@@ -1,5 +1,5 @@
 ﻿/*
- * Copyright (c) 2018 Demerzel Solutions Limited
+ * Copyright (c) 2021 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
  * The Nethermind library is free software: you can redistribute it and/or modify
@@ -22,7 +22,6 @@ namespace Ethereum.VM.Test
 {
     public class RandomTests : VMTestBase
     {
-        [Ignore("Ignoring these as some of them seem to be very wrong, need to confirm")]
         [TestCaseSource(nameof(LoadTests), new object[] {"RandomTest"})]
         public void Test(VirtualMachineTest test)
         {

@@ -48,9 +48,8 @@ using NSubstitute;
 using NUnit.Framework;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Blockchain.Spec;
 using Nethermind.Blockchain.Validators;
-using Nethermind.Core.Test.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Trie.Pruning;
 
 namespace Nethermind.DataMarketplace.Test

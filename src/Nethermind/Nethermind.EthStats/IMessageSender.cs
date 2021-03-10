@@ -21,6 +21,6 @@ namespace Nethermind.EthStats
 {
     public interface IMessageSender
     {
-        Task SendAsync<T>(IWebsocketClient client, T message, string type = null) where T : IMessage;
+        Task SendAsync<T>(IWebsocketClient client, T message, string? type = null) where T : IMessage;
     }
 }

@@ -1,8 +1,8 @@
 name: Fast Sync Auto Update
 
 on:
-  repository_dispatch:
-    types: update_configs
+  schedule:
+    - cron:  '0 0 * * *'
 
 jobs:
   configs-updating:

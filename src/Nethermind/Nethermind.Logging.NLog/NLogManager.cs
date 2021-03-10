@@ -31,11 +31,11 @@ namespace Nethermind.Logging.NLog
             _logDirectory = logDirectory;
         }
 
-        private ConcurrentDictionary<Type, NLogLogger> _loggers = new ConcurrentDictionary<Type, NLogLogger>();
+        private ConcurrentDictionary<Type, NLogLogger> _loggers = new();
 
         private NLogLogger BuildLogger(Type type)
         {
-            return new NLogLogger(type, _logFileName, _logDirectory);
+            return new(type, _logFileName, _logDirectory);
         }
 
         public ILogger GetClassLogger(Type type)

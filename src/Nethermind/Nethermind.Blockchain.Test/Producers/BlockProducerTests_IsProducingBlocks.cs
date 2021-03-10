@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System;
 using System.Security;
 using System.Threading;
 using System.Threading.Tasks;
@@ -56,7 +57,7 @@ namespace Nethermind.Blockchain.Test.Producers
                 testRpc.State,
                 testRpc.BlockTree,
                 Substitute.For<IBlockProcessingQueue>(),
-                testRpc.TxPool,
+                new BuildBlocksRegularly(TimeSpan.FromMilliseconds(200)).IfPoolIsNotEmpty(testRpc.TxPool),
                 testRpc.Timestamper, 
                 testRpc.SpecProvider,
                 new MiningConfig(),

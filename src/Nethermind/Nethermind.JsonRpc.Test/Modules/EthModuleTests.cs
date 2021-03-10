@@ -430,7 +430,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         public async Task Eth_call_web3_sample()
         {
             using Context ctx = await Context.Create();
-            var transaction = ctx._test.JsonSerializer.Deserialize<TransactionForRpc>("{\"data\": \"0x70a082310000000000000000000000006c1f09f6271fbe133db38db9c9280307f5d22160\", \"to\": \"0x0d8775f648430679a709e98d2b0cb6250d2887ef\"}");
+            TransactionForRpc transaction = ctx._test.JsonSerializer.Deserialize<TransactionForRpc>("{\"data\": \"0x70a082310000000000000000000000006c1f09f6271fbe133db38db9c9280307f5d22160\", \"to\": \"0x0d8775f648430679a709e98d2b0cb6250d2887ef\"}");
             string serialized = ctx._test.TestEthRpc("eth_call", ctx._test.JsonSerializer.Serialize(transaction), "0x0");
             Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":\"0x\",\"id\":67}", serialized);
         }
@@ -472,10 +472,34 @@ namespace Nethermind.JsonRpc.Test.Modules
         {
             using Context ctx = await Context.Create();
             ctx._test.State.AccountExists(Address.SystemUser).Should().BeFalse();
-            var transaction = ctx._test.JsonSerializer.Deserialize<TransactionForRpc>("{\"gasPrice\":\"0x100000\", \"data\": \"0x70a082310000000000000000000000006c1f09f6271fbe133db38db9c9280307f5d22160\", \"to\": \"0x0d8775f648430679a709e98d2b0cb6250d2887ef\"}");
+            TransactionForRpc transaction = ctx._test.JsonSerializer.Deserialize<TransactionForRpc>("{\"gasPrice\":\"0x100000\", \"data\": \"0x70a082310000000000000000000000006c1f09f6271fbe133db38db9c9280307f5d22160\", \"to\": \"0x0d8775f648430679a709e98d2b0cb6250d2887ef\"}");
             string serialized = ctx._test.TestEthRpc("eth_call", ctx._test.JsonSerializer.Serialize(transaction), "0x0");
             Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":\"0x\",\"id\":67}", serialized);
             ctx._test.State.AccountExists(Address.SystemUser).Should().BeFalse();
+        }
+        
+        [Test]
+        public async Task Eth_estimateGas_web3_should_return_insufficient_balance_error()
+        {
+            using Context ctx = await Context.Create();
+            Address someAccount = new Address("0x0001020304050607080910111213141516171819");
+            ctx._test.State.AccountExists(someAccount).Should().BeFalse();
+            TransactionForRpc transaction = ctx._test.JsonSerializer.Deserialize<TransactionForRpc>("{\"from\":\"0x0001020304050607080910111213141516171819\",\"gasPrice\":\"0x100000\", \"data\": \"0x70a082310000000000000000000000006c1f09f6271fbe133db38db9c9280307f5d22160\", \"to\": \"0x0d8775f648430679a709e98d2b0cb6250d2887ef\", \"value\": 500}");
+            string serialized = ctx._test.TestEthRpc("eth_estimateGas", ctx._test.JsonSerializer.Serialize(transaction));
+            Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"insufficient funds for transfer: address 0x0001020304050607080910111213141516171819\"},\"id\":67}", serialized);
+            ctx._test.State.AccountExists(someAccount).Should().BeFalse();
+        }
+        
+        [Test]
+        public async Task Eth_call_web3_should_return_insufficient_balance_error()
+        {
+            using Context ctx = await Context.Create();
+            Address someAccount = new Address("0x0001020304050607080910111213141516171819");
+            ctx._test.State.AccountExists(someAccount).Should().BeFalse();
+            TransactionForRpc transaction = ctx._test.JsonSerializer.Deserialize<TransactionForRpc>("{\"from\":\"0x0001020304050607080910111213141516171819\",\"gasPrice\":\"0x100000\", \"data\": \"0x70a082310000000000000000000000006c1f09f6271fbe133db38db9c9280307f5d22160\", \"to\": \"0x0d8775f648430679a709e98d2b0cb6250d2887ef\", \"value\": 500}");
+            string serialized = ctx._test.TestEthRpc("eth_call", ctx._test.JsonSerializer.Serialize(transaction));
+            Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"insufficient funds for transfer: address 0x0001020304050607080910111213141516171819\"},\"id\":67}", serialized);
+            ctx._test.State.AccountExists(someAccount).Should().BeFalse();
         }
 
         [Test]
@@ -484,7 +508,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             using Context ctx = await Context.Create();
             Address someAccount = new Address("0x0001020304050607080910111213141516171819");
             ctx._test.State.AccountExists(someAccount).Should().BeFalse();
-            var transaction = ctx._test.JsonSerializer.Deserialize<TransactionForRpc>("{\"from\":\"0x0001020304050607080910111213141516171819\",\"gasPrice\":\"0x100000\", \"data\": \"0x70a082310000000000000000000000006c1f09f6271fbe133db38db9c9280307f5d22160\", \"to\": \"0x0d8775f648430679a709e98d2b0cb6250d2887ef\"}");
+            TransactionForRpc transaction = ctx._test.JsonSerializer.Deserialize<TransactionForRpc>("{\"from\":\"0x0001020304050607080910111213141516171819\",\"gasPrice\":\"0x100000\", \"data\": \"0x70a082310000000000000000000000006c1f09f6271fbe133db38db9c9280307f5d22160\", \"to\": \"0x0d8775f648430679a709e98d2b0cb6250d2887ef\"}");
             string serialized = ctx._test.TestEthRpc("eth_call", ctx._test.JsonSerializer.Serialize(transaction), "0x0");
             Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":\"0x\",\"id\":67}", serialized);
             ctx._test.State.AccountExists(someAccount).Should().BeFalse();
@@ -495,7 +519,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         {
             using Context ctx = await Context.Create();
             ctx._test.State.AccountExists(Address.SystemUser).Should().BeFalse();
-            var transaction = ctx._test.JsonSerializer.Deserialize<TransactionForRpc>("{\"gasPrice\":\"0x100000\", \"data\": \"0x70a082310000000000000000000000006c1f09f6271fbe133db38db9c9280307f5d22160\", \"to\": \"0x0d8775f648430679a709e98d2b0cb6250d2887ef\"}");
+            TransactionForRpc transaction = ctx._test.JsonSerializer.Deserialize<TransactionForRpc>("{\"gasPrice\":\"0x100000\", \"data\": \"0x70a082310000000000000000000000006c1f09f6271fbe133db38db9c9280307f5d22160\", \"to\": \"0x0d8775f648430679a709e98d2b0cb6250d2887ef\"}");
             string serialized = ctx._test.TestEthRpc("eth_estimateGas", ctx._test.JsonSerializer.Serialize(transaction));
             Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":\"0x5898\",\"id\":67}", serialized);
             ctx._test.State.AccountExists(Address.SystemUser).Should().BeFalse();
@@ -507,7 +531,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             using Context ctx = await Context.Create();
             Address someAccount = new Address("0x0001020304050607080910111213141516171819");
             ctx._test.State.AccountExists(someAccount).Should().BeFalse();
-            var transaction = ctx._test.JsonSerializer.Deserialize<TransactionForRpc>("{\"from\":\"0x0001020304050607080910111213141516171819\",\"gasPrice\":\"0x100000\", \"data\": \"0x70a082310000000000000000000000006c1f09f6271fbe133db38db9c9280307f5d22160\", \"to\": \"0x0d8775f648430679a709e98d2b0cb6250d2887ef\"}");
+            TransactionForRpc transaction = ctx._test.JsonSerializer.Deserialize<TransactionForRpc>("{\"from\":\"0x0001020304050607080910111213141516171819\",\"gasPrice\":\"0x100000\", \"data\": \"0x70a082310000000000000000000000006c1f09f6271fbe133db38db9c9280307f5d22160\", \"to\": \"0x0d8775f648430679a709e98d2b0cb6250d2887ef\"}");
             string serialized = ctx._test.TestEthRpc("eth_estimateGas", ctx._test.JsonSerializer.Serialize(transaction));
             Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":\"0x5898\",\"id\":67}", serialized);
             ctx._test.State.AccountExists(someAccount).Should().BeFalse();
@@ -519,7 +543,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             using Context ctx = await Context.Create();
             Address someAccount = new Address("0x0001020304050607080910111213141516171819");
             ctx._test.State.AccountExists(someAccount).Should().BeFalse();
-            var transaction = ctx._test.JsonSerializer.Deserialize<TransactionForRpc>("{\"from\":\"0x0001020304050607080910111213141516171819\",\"gas\":\"0x100000000\",\"gasPrice\":\"0x100000\", \"data\": \"0x70a082310000000000000000000000006c1f09f6271fbe133db38db9c9280307f5d22160\", \"to\": \"0x0d8775f648430679a709e98d2b0cb6250d2887ef\"}");
+            TransactionForRpc transaction = ctx._test.JsonSerializer.Deserialize<TransactionForRpc>("{\"from\":\"0x0001020304050607080910111213141516171819\",\"gas\":\"0x100000000\",\"gasPrice\":\"0x100000\", \"data\": \"0x70a082310000000000000000000000006c1f09f6271fbe133db38db9c9280307f5d22160\", \"to\": \"0x0d8775f648430679a709e98d2b0cb6250d2887ef\"}");
             string serialized = ctx._test.TestEthRpc("eth_estimateGas", ctx._test.JsonSerializer.Serialize(transaction));
             Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":\"0x5898\",\"id\":67}", serialized);
             ctx._test.State.AccountExists(someAccount).Should().BeFalse();
@@ -529,7 +553,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         public async Task Eth_call_no_sender()
         {
             using Context ctx = await Context.Create();
-            var transaction = new TransactionForRpc(Keccak.Zero, 1L, 1, new Transaction());
+            TransactionForRpc transaction = new TransactionForRpc(Keccak.Zero, 1L, 1, new Transaction());
             transaction.To = TestItem.AddressB;
 
             string serialized = ctx._test.TestEthRpc("eth_call", ctx._test.JsonSerializer.Serialize(transaction), "latest");
@@ -540,7 +564,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         public async Task Eth_call_no_recipient_should_work_as_init()
         {
             using Context ctx = await Context.Create();
-            var transaction = new TransactionForRpc(Keccak.Zero, 1L, 1, new Transaction());
+            TransactionForRpc transaction = new TransactionForRpc(Keccak.Zero, 1L, 1, new Transaction());
             transaction.From = TestItem.AddressA;
             transaction.Data = new byte[] {1, 2, 3};
 
@@ -560,7 +584,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         public async Task Eth_call_ok()
         {
             using Context ctx = await Context.Create();
-            var transaction = new TransactionForRpc(Keccak.Zero, 1L, 1, new Transaction());
+            TransactionForRpc transaction = new TransactionForRpc(Keccak.Zero, 1L, 1, new Transaction());
             transaction.From = TestItem.AddressA;
             transaction.To = TestItem.AddressB;
 
@@ -572,7 +596,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         public async Task Eth_call_missing_state_after_fast_sync()
         {
             using Context ctx = await Context.Create();
-            var transaction = new TransactionForRpc(Keccak.Zero, 1L, 1, new Transaction());
+            TransactionForRpc transaction = new TransactionForRpc(Keccak.Zero, 1L, 1, new Transaction());
             transaction.From = TestItem.AddressA;
             transaction.To = TestItem.AddressB;
             
@@ -612,7 +636,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         {
             using Context ctx = await Context.Create();
             IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
-            var entries = new[]
+            LogEntry[] entries = new[]
             {
                 Build.A.LogEntry.TestObject,
                 Build.A.LogEntry.TestObject
@@ -622,7 +646,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             ctx._test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockchainBridge(bridge).Build();
             string serialized = ctx._test.TestEthRpc("eth_getTransactionReceipt", TestItem.KeccakA.ToString());
 
-            Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":{\"transactionHash\":\"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760\",\"transactionIndex\":\"0x2\",\"blockHash\":\"0x017e667f4b8c174291d1543c466717566e206df1bfd6f30271055ddafdb18f72\",\"blockNumber\":\"0x2\",\"cumulativeGasUsed\":\"0x3e8\",\"gasUsed\":\"0x64\",\"from\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"to\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"contractAddress\":\"0x76e68a8696537e4141926f3e528733af9e237d69\",\"logs\":[{\"removed\":false,\"logIndex\":\"0x0\",\"transactionIndex\":\"0x2\",\"transactionHash\":\"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760\",\"blockHash\":\"0x017e667f4b8c174291d1543c466717566e206df1bfd6f30271055ddafdb18f72\",\"blockNumber\":\"0x2\",\"address\":\"0x0000000000000000000000000000000000000000\",\"data\":\"0x\",\"topics\":[\"0x0000000000000000000000000000000000000000000000000000000000000000\"]},{\"removed\":false,\"logIndex\":\"0x1\",\"transactionIndex\":\"0x2\",\"transactionHash\":\"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760\",\"blockHash\":\"0x017e667f4b8c174291d1543c466717566e206df1bfd6f30271055ddafdb18f72\",\"blockNumber\":\"0x2\",\"address\":\"0x0000000000000000000000000000000000000000\",\"data\":\"0x\",\"topics\":[\"0x0000000000000000000000000000000000000000000000000000000000000000\"]}],\"logsBloom\":\"0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\",\"root\":\"0x1f675bff07515f5df96737194ea945c36c41e7b4fcef307b7cd4d0e602a69111\",\"status\":\"0x1\",\"error\":\"error\"},\"id\":67}", serialized);
+            Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":{\"transactionHash\":\"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760\",\"transactionIndex\":\"0x2\",\"blockHash\":\"0x017e667f4b8c174291d1543c466717566e206df1bfd6f30271055ddafdb18f72\",\"blockNumber\":\"0x2\",\"cumulativeGasUsed\":\"0x3e8\",\"gasUsed\":\"0x64\",\"from\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"to\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"contractAddress\":\"0x76e68a8696537e4141926f3e528733af9e237d69\",\"logs\":[{\"removed\":false,\"logIndex\":\"0x0\",\"transactionIndex\":\"0x2\",\"transactionHash\":\"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760\",\"blockHash\":\"0x017e667f4b8c174291d1543c466717566e206df1bfd6f30271055ddafdb18f72\",\"blockNumber\":\"0x2\",\"address\":\"0x0000000000000000000000000000000000000000\",\"data\":\"0x\",\"topics\":[\"0x0000000000000000000000000000000000000000000000000000000000000000\"]},{\"removed\":false,\"logIndex\":\"0x1\",\"transactionIndex\":\"0x2\",\"transactionHash\":\"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760\",\"blockHash\":\"0x017e667f4b8c174291d1543c466717566e206df1bfd6f30271055ddafdb18f72\",\"blockNumber\":\"0x2\",\"address\":\"0x0000000000000000000000000000000000000000\",\"data\":\"0x\",\"topics\":[\"0x0000000000000000000000000000000000000000000000000000000000000000\"]}],\"logsBloom\":\"0x00000000000000000080000000000000000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000000000000000800000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000000000\",\"root\":\"0x1f675bff07515f5df96737194ea945c36c41e7b4fcef307b7cd4d0e602a69111\",\"status\":\"0x1\",\"error\":\"error\"},\"id\":67}", serialized);
         }
 
         [Test]
@@ -632,7 +656,6 @@ namespace Nethermind.JsonRpc.Test.Modules
             string serialized = ctx._test.TestEthRpc("eth_getTransactionReceipt", TestItem.KeccakA.ToString());
             Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":null,\"id\":67}", serialized);
         }
-
 
         [Test]
         public async Task Eth_syncing()

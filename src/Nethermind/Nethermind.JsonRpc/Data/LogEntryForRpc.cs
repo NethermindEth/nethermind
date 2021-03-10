@@ -50,7 +50,7 @@ namespace Nethermind.JsonRpc.Data
 
         public LogEntry ToLogEntry()
         {
-            return new LogEntry(Address, Data, Topics);
+            return new(Address, Data, Topics);
         }
     }
 }

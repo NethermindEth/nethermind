@@ -36,14 +36,14 @@ namespace Nethermind.State
         
         public static string DumpState(this IStateProvider stateProvider)
         {
-            TreeDumper dumper = new TreeDumper();
+            TreeDumper dumper = new();
             stateProvider.Accept(dumper, stateProvider.StateRoot);
             return dumper.ToString();
         }
 
         public static TrieStats CollectStats(this IStateProvider stateProvider, IKeyValueStore codeStorage, ILogManager logManager)
         {
-            TrieStatsCollector collector = new TrieStatsCollector(codeStorage, logManager);
+            TrieStatsCollector collector = new(codeStorage, logManager);
             stateProvider.Accept(collector, stateProvider.StateRoot);
             return collector.Stats;
         }

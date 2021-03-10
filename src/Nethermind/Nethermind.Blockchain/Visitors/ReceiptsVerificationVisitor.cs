@@ -65,7 +65,7 @@ namespace Nethermind.Blockchain.Visitors
         public async Task<BlockVisitOutcome> VisitBlock(Block block, CancellationToken cancellationToken)
         {
             int txReceiptsLength = GetTxReceiptsLength(block, true);
-            int transactionsLength = (block.Transactions?.Length ?? 0);
+            int transactionsLength = block.Transactions.Length;
             if (txReceiptsLength != transactionsLength)
             {
                 if (_currentLevel.MainChainBlock?.BlockHash == block.Hash)

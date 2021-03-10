@@ -26,7 +26,9 @@ namespace Nethermind.TxPool
     {
         private NullTxPool() { }
 
-        public static NullTxPool Instance { get; } = new NullTxPool();
+        public static NullTxPool Instance { get; } = new();
+
+        public int GetPendingTransactionsCount() => 0;
 
         public Transaction[] GetPendingTransactions() => Array.Empty<Transaction>();
         
@@ -38,14 +40,10 @@ namespace Nethermind.TxPool
         public void RemovePeer(PublicKey nodeId) { }
 
         public AddTxResult AddTransaction(Transaction tx, TxHandlingOptions txHandlingOptions) => AddTxResult.Added;
-        
-        public void RemoveTransaction(Keccak hash, long blockNumber) { }
 
-        public void RemoveTransaction(Keccak hash, long blockNumber, bool removeBelowThisTxNonce)
-        {
-        }
+        public void RemoveTransaction(Keccak hash, long blockNumber, bool removeBelowThisTxNonce) { }
 
-        public bool TryGetPendingTransaction(Keccak hash, out Transaction transaction)
+        public bool TryGetPendingTransaction(Keccak hash, out Transaction? transaction)
         {
             transaction = null;
             return false;

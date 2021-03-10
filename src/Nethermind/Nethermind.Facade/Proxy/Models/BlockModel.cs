@@ -44,7 +44,7 @@ namespace Nethermind.Facade.Proxy.Models
 
         public Block ToBlock()
         {
-            Block block = new Block(new BlockHeader(ParentHash, Sha3Uncles, Miner, Difficulty, (long) Number,
+            Block block = new(new BlockHeader(ParentHash, Sha3Uncles, Miner, Difficulty, (long) Number,
                 (long) GasLimit, Timestamp, ExtraData));
 
             block.Header.StateRoot = StateRoot;

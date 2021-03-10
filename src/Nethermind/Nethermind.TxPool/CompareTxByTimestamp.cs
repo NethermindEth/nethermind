@@ -25,7 +25,7 @@ namespace Nethermind.TxPool
     /// </summary>
     public class CompareTxByTimestamp : IComparer<Transaction>
     {
-        public static readonly CompareTxByTimestamp Instance = new CompareTxByTimestamp();
+        public static readonly CompareTxByTimestamp Instance = new();
         
         private CompareTxByTimestamp() { }
 

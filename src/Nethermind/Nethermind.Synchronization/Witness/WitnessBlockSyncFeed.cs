@@ -55,7 +55,7 @@ namespace Nethermind.Synchronization.Witness
             Block block = e.Block;
             bool isBeamSync = (_syncModeSelector.Current & SyncMode.Beam) != 0;
             bool blockNotToOld = (_blockTree.Head?.Number ?? 0) - block.Number < FollowDelta;
-            bool blockHasWitness = block.Transactions?.Length > 0;
+            bool blockHasWitness = block.Transactions.Length > 0;
             if (block.Hash != null && isBeamSync && blockNotToOld && blockHasWitness)
             {
                 lock (_blockHashes)

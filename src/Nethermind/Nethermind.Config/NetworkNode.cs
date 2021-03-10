@@ -43,7 +43,7 @@ namespace Nethermind.Config
                 return Array.Empty<NetworkNode>();
             }
 
-            List<NetworkNode> nodes = new List<NetworkNode>();
+            List<NetworkNode> nodes = new();
             foreach (string nodeString in nodeStrings)
             {
                 try

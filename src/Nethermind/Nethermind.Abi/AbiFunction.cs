@@ -22,7 +22,7 @@ namespace Nethermind.Abi
         {
         }
 
-        public static AbiFunction Instance = new AbiFunction();
+        public static AbiFunction Instance = new();
 
         public override string Name => "function";
     }

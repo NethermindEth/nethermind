@@ -23,7 +23,7 @@ namespace Nethermind.Core.Buffers
 {
     public sealed class LargerArrayPool : ArrayPool<byte>
     {
-        static readonly LargerArrayPool s_instance = new LargerArrayPool();
+        static readonly LargerArrayPool s_instance = new();
 
         public static new ArrayPool<byte> Shared => s_instance;
 
@@ -34,7 +34,7 @@ namespace Nethermind.Core.Buffers
         // The CPU based is aligned with the SKU-like cloud environments where one scales both CPU count and an amount of memory.
         private static readonly int s_maxLargeBufferCount = Environment.ProcessorCount + 2;
         
-        private readonly Stack<byte[]> _pool = new Stack<byte[]>(s_maxLargeBufferCount);
+        private readonly Stack<byte[]> _pool = new(s_maxLargeBufferCount);
         private readonly int _largeBufferSize;
         private readonly int _arrayPoolLimit;
         private readonly ArrayPool<byte> _smallPool;

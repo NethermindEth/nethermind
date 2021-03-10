@@ -25,5 +25,7 @@ namespace Nethermind.JsonRpc.Modules
         public bool IsImplemented { get; set; } = true;
 
         public bool IsSharable { get; set; } = true;
+
+        public RpcEndpoint Availability { get; set; } = RpcEndpoint.All;
     }
 }

@@ -203,7 +203,7 @@ namespace Nethermind.Synchronization.BeamSync
             env.BlockProcessor.TransactionProcessed += (_, args) =>
             {
                 Interlocked.Increment(ref Metrics.BeamedTransactions);
-                if (_logger.IsInfo) _logger.Info($"Processed tx {args.Index + 1}/{block.Transactions?.Length} of {block.Number}");
+                if (_logger.IsInfo) _logger.Info($"Processed tx {args.Index + 1}/{block.Transactions.Length} of {block.Number}");
             };
 
             return (env.ChainProcessor, txEnv.StateReader);

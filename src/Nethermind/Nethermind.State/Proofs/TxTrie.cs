@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -36,11 +37,11 @@ namespace Nethermind.State.Proofs
         /// <param name="txs">Transactions to build a trie from.</param>
         /// <param name="allowMerkleProofConstructions">Some tries do not need to be used for proof constructions.
         /// In such cases we can avoid maintaining any in-memory databases.</param>
-        public TxTrie(Transaction[] txs, bool allowMerkleProofConstructions = false)
+        public TxTrie(IReadOnlyList<Transaction>? txs, bool allowMerkleProofConstructions = false)
             : base(allowMerkleProofConstructions ? (IDb) new MemDb() : NullDb.Instance, EmptyTreeHash, false, false, NullLogManager.Instance)
         {
             _allowMerkleProofConstructions = allowMerkleProofConstructions;
-            if (txs.Length == 0)
+            if ((txs?.Count ?? 0) == 0)
             {
                 return;
             }
@@ -48,7 +49,7 @@ namespace Nethermind.State.Proofs
             // 3% allocations (2GB) on a Goerli 3M blocks fast sync due to calling transaction encoder here
             // Avoiding it would require pooling byte arrays and passing them as Spans to temporary trees
             // a temporary trie would be a trie that exists to create a state root only and then be disposed of
-            for (int i = 0; i < txs.Length; i++)
+            for (int i = 0; i < txs.Count; i++)
             {
                 Rlp transactionRlp = _txDecoder.Encode(txs[i], RlpBehaviors.ForTxRoot);
                 Set(Rlp.Encode(i).Bytes, transactionRlp.Bytes);

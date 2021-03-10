@@ -32,9 +32,9 @@ namespace Nethermind.JsonRpc.Modules
             ErrorCode = 0;
         }
             
-        public T Object { get; set; }
+        public T? Object { get; set; }
 
-        public string Error { get; set; }
+        public string? Error { get; set; }
 
         public int ErrorCode { get; set; }
 

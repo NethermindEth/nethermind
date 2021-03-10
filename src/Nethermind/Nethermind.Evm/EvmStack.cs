@@ -363,7 +363,7 @@ namespace Nethermind.Evm
 
         public List<string> GetStackTrace()
         {
-            List<string> stackTrace = new List<string>();
+            List<string> stackTrace = new();
             for (int i = 0; i < Head; i++)
             {
                 Span<byte> stackItem = _bytes.Slice(i * 32, 32);

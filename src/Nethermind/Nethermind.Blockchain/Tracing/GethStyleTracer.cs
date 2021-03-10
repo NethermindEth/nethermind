@@ -89,7 +89,7 @@ namespace Nethermind.Blockchain.Tracing
             if (block == null) throw new InvalidOperationException("Only historical blocks");
             
             block.Body = new BlockBody(new[] {tx}, new BlockHeader[] { });
-            GethLikeBlockTracer blockTracer = new GethLikeBlockTracer(tx.Hash, options);
+            GethLikeBlockTracer blockTracer = new(tx.Hash, options);
             _processor.Process(block, ProcessingOptions.Trace, blockTracer.WithCancellation(cancellationToken));
             return blockTracer.BuildResult().SingleOrDefault();
         }
@@ -113,7 +113,7 @@ namespace Nethermind.Blockchain.Tracing
 
         private GethLikeTxTrace Trace(Block block, Keccak txHash, CancellationToken cancellationToken, GethTraceOptions options)
         {
-            GethLikeBlockTracer listener = new GethLikeBlockTracer(txHash, options);
+            GethLikeBlockTracer listener = new(txHash, options);
             _processor.Process(block, ProcessingOptions.Trace, listener.WithCancellation(cancellationToken));
             return listener.BuildResult().SingleOrDefault();
         }

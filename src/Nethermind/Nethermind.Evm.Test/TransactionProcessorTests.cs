@@ -53,7 +53,7 @@ namespace Nethermind.Evm.Test
         public TransactionProcessorTests(bool eip155Enabled)
         {
             _isEip155Enabled = eip155Enabled;
-            _specProvider = eip155Enabled ? (ISpecProvider)GoerliSpecProvider.Instance : MainnetSpecProvider.Instance;
+            _specProvider = eip155Enabled ? (ISpecProvider)MainnetSpecProvider.Instance : MainnetSpecProvider.Instance;
         }
         
         [SetUp]
@@ -96,18 +96,21 @@ namespace Nethermind.Evm.Test
         {
             Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, _isEip155Enabled).WithGasLimit(100000).TestObject;
 
-            Block block = Build.A.Block.WithNumber(1).WithTransactions(MuirGlacier.Instance, tx).TestObject;
+            long blockNumber = _isEip155Enabled
+                ? MainnetSpecProvider.ByzantiumBlockNumber
+                : MainnetSpecProvider.ByzantiumBlockNumber - 1; 
+            Block block = Build.A.Block.WithNumber(blockNumber).WithTransactions(MuirGlacier.Instance, tx).TestObject;
 
             BlockReceiptsTracer tracer = BuildTracer(block, tx, withTrace, withTrace);
             Execute(tracer, tx, block);
 
             if (_isEip155Enabled) // we use eip155 check just as a proxy on 658
             {
-                Assert.Null(tracer.TxReceipts[0].PostTransactionState);
+                Assert.Null(tracer.TxReceipts![0].PostTransactionState);
             }
             else
             {
-                Assert.NotNull(tracer.TxReceipts[0].PostTransactionState);
+                Assert.NotNull(tracer.TxReceipts![0].PostTransactionState);
             }
         }
 
@@ -317,7 +320,7 @@ namespace Nethermind.Evm.Test
         }
 
         [Test(Description = "Since the second call is a CREATE operation it has intrinsic gas of 21000 + 32000 + data")]
-        public void Can_estimate_with_destroy_refund_and_below_intrinsic()
+        public void Can_estimate_with_destroy_refund_and_below_intrinsic_pre_berlin()
         {
             byte[] initByteCode = Prepare.EvmCode.ForInitOf(Prepare.EvmCode.PushData(Address.Zero).Op(Instruction.SELFDESTRUCT).Done).Done;
             Address contractAddress = ContractAddress.From(TestItem.PrivateKeyA.Address, 0);

@@ -140,7 +140,7 @@ namespace Nethermind.Blockchain.Contracts
         {
             bool failure;
             
-            CallOutputTracer tracer = new CallOutputTracer();
+            CallOutputTracer tracer = new();
             
             try
             {

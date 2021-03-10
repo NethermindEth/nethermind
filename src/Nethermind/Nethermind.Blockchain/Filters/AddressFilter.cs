@@ -22,7 +22,7 @@ namespace Nethermind.Blockchain.Filters
 {
     public class AddressFilter
     {
-        public static AddressFilter AnyAddress = new AddressFilter((Address)null);
+        public static AddressFilter AnyAddress = new((Address)null);
         
         private Core.Bloom.BloomExtract[] _addressesBloomIndexes;
         private Core.Bloom.BloomExtract? _addressBloomExtract;

@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Collections.Concurrent;
 using System.Net.WebSockets;
 using System.Threading.Tasks;
@@ -26,7 +27,7 @@ namespace Nethermind.JsonRpc.WebSockets
     public class JsonRpcWebSocketsModule : IWebSocketsModule
     {
         private readonly ConcurrentDictionary<string, IWebSocketsClient> _clients =
-            new ConcurrentDictionary<string, IWebSocketsClient>();
+            new();
 
         private readonly JsonRpcProcessor _jsonRpcProcessor;
         private readonly JsonRpcService _jsonRpcService;
@@ -69,6 +70,13 @@ namespace Nethermind.JsonRpc.WebSockets
 
         public Task SendAsync(WebSocketsMessage message) => Task.CompletedTask;
 
-        public void RemoveClient(string id) => _clients.TryRemove(id, out _);
+        public void RemoveClient(string id)
+        {
+            if (_clients.TryRemove(id, out var client) 
+                && client is IDisposable disposableClient)
+            {
+                disposableClient.Dispose();
+            }
+        }
     }
 }

@@ -25,9 +25,7 @@ namespace Nethermind.Specs.Forks
     {   
         private static IReleaseSpec _instance;
 
-        private Homestead()
-        {
-        }
+        private Homestead() { }
 
         public static IReleaseSpec Instance => LazyInitializer.EnsureInitialized(ref _instance, () => new Homestead());
 
@@ -74,7 +72,6 @@ namespace Nethermind.Specs.Forks
         public bool IsEip2565Enabled => false;
         public bool IsEip1559Enabled => false;
         public long Eip1559TransitionBlock => long.MaxValue;
-        public long Eip1559MigrationDuration => 0;
         public bool IsEip2929Enabled => false;
         public bool IsEip2930Enabled => false;
         public bool IsEip2718Enabled => false;
