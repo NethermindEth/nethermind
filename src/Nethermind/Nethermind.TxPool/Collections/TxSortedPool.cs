@@ -35,7 +35,7 @@ namespace Nethermind.TxPool.Collections
         protected override IComparer<Transaction> GetGroupComparer(IComparer<Transaction> comparer) => GetPoolUniqueTxComparerByNonce(comparer);
 
         protected override Address? MapToGroup(Transaction value) => MapTxToGroup(value);
-        
+
         internal static IComparer<Transaction> GetPoolUniqueTxComparer(IComparer<Transaction> comparer)
             => comparer
                 .ThenBy(DistinctCompareTx.Instance); // in order to sort properly and not loose transactions we need to differentiate on their identity which provided comparer might not be doing
