@@ -139,6 +139,7 @@ namespace Nethermind.Blockchain.Producers
                 var (allowed, reason) = _txFilter.IsAllowed(tx, parent);
                 if (!allowed)
                 {
+                    _transactionPool.RemoveTransaction(tx.Hash!, 0);
                     if (_logger.IsDebug) _logger.Debug($"Rejecting ({reason}) {tx.ToShortString()}");
                     continue;
                 }
@@ -162,6 +163,7 @@ namespace Nethermind.Blockchain.Producers
 
                 if (!HasEnoughFounds(remainingBalance, tx))
                 {
+                    _transactionPool.RemoveTransaction(tx.Hash!, 0);
                     if (_logger.IsDebug) _logger.Debug($"Rejecting (sender balance too low) {tx.ToShortString()}");
                     continue;
                 }
