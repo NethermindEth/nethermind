@@ -44,5 +44,6 @@ namespace Nethermind.TxPool
         event EventHandler<TxEventArgs> RemovedPending;
         
         public uint FutureNonceRetention { get; }
+        long? BlockGasLimit { get; set; }
     }
 }

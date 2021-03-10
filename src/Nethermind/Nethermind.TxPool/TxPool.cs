@@ -76,6 +76,7 @@ namespace Nethermind.TxPool
         private readonly SortedPool<Keccak, Transaction, Address> _transactions;
 
         private readonly IChainHeadSpecProvider _specProvider;
+        private readonly ITxPoolConfig _txPoolConfig;
         private readonly IReadOnlyStateProvider _stateProvider;
         private readonly ITxValidator _validator;
         private readonly IEthereumEcdsa _ecdsa;
@@ -111,11 +112,6 @@ namespace Nethermind.TxPool
         private readonly Timer _ownTimer;
 
         /// <summary>
-        /// Defines the percentage of peers that will be notified about pending transactions on average.
-        /// </summary>
-        private readonly int _peerNotificationThreshold;
-
-        /// <summary>
         /// Indexes transactions
         /// </summary>
         private ulong _txIndex;
@@ -145,6 +141,7 @@ namespace Nethermind.TxPool
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _txStorage = txStorage ?? throw new ArgumentNullException(nameof(txStorage));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
+            _txPoolConfig = txPoolConfig;
             _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
             _validator = validator ?? throw new ArgumentNullException(nameof(validator));
 
@@ -155,8 +152,7 @@ namespace Nethermind.TxPool
 
             _transactions =
                 new TxDistinctSortedPool(MemoryAllowance.MemPoolSize, logManager, comparer ?? DefaultComparer);
-            _peerNotificationThreshold = txPoolConfig.PeerNotificationThreshold;
-            FutureNonceRetention = txPoolConfig.FutureNonceRetention;
+
 
             _ownTimer = new Timer(500);
             _ownTimer.Elapsed += OwnTimerOnElapsed;
@@ -164,7 +160,8 @@ namespace Nethermind.TxPool
             _ownTimer.Start();
         }
 
-        public uint FutureNonceRetention { get; }
+        public uint FutureNonceRetention  => _txPoolConfig.FutureNonceRetention;
+        public long? BlockGasLimit { get; set; } = null;
 
         public Transaction[] GetPendingTransactions() => _transactions.GetSnapshot();
         
@@ -283,6 +280,13 @@ namespace Nethermind.TxPool
                 Metrics.PendingTransactionsDiscarded++;
                 if (_logger.IsTrace) _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, invalid transaction.");
                 return AddTxResult.Invalid;
+            }
+            
+            var gasLimit = Math.Min(BlockGasLimit ?? long.MaxValue, _txPoolConfig.GasLimit ?? long.MaxValue);
+            if (tx.GasLimit > gasLimit)
+            {
+                if (_logger.IsTrace) _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, gas limit exceeded.");
+                return AddTxResult.GasLimitExceeded;
             }
             
             /* We have encountered multiple transactions that do not resolve sender address properly.
@@ -556,7 +560,7 @@ namespace Nethermind.TxPool
                         continue;
                     }
 
-                    if (_peerNotificationThreshold < Random.Value.Next(1, 100))
+                    if (_txPoolConfig.PeerNotificationThreshold < Random.Value.Next(1, 100))
                     {
                         continue;
                     }

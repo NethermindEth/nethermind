@@ -54,6 +54,7 @@ namespace Nethermind.Blockchain.Test.TxPools
         private ITxStorage _persistentTxStorage;
         private IStateProvider _stateProvider;
         private IBlockFinder _blockFinder;
+        private int _txGasLimit = 1_000_000;
 
         [SetUp]
         public void Setup()
@@ -159,7 +160,9 @@ namespace Nethermind.Blockchain.Test.TxPools
         public void should_add_valid_transactions()
         {
             _txPool = CreatePool(_noTxStorage);
-            Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            Transaction tx = Build.A.Transaction
+                .WithGasLimit(_txGasLimit)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
             EnsureSenderBalance(tx);
             AddTxResult result = _txPool.AddTransaction(tx, TxHandlingOptions.PersistentBroadcast);
             _txPool.GetPendingTransactions().Length.Should().Be(1);
@@ -211,6 +214,33 @@ namespace Nethermind.Blockchain.Test.TxPools
             AddTxResult result = _txPool.AddTransaction(tx, TxHandlingOptions.PersistentBroadcast);
             _txPool.GetPendingTransactions().Length.Should().Be(0);
             result.Should().Be(AddTxResult.BalanceOverflow);
+        }
+        
+        [Test]
+        public void should_ignore_block_gas_limit_exceeded()
+        {
+            _txPool = CreatePool(_noTxStorage);
+            Transaction tx = Build.A.Transaction
+                .WithGasLimit(Transaction.BaseTxGasCost * 5)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            EnsureSenderBalance(tx);
+            _txPool.BlockGasLimit = Transaction.BaseTxGasCost * 4;
+            AddTxResult result = _txPool.AddTransaction(tx, TxHandlingOptions.PersistentBroadcast);
+            _txPool.GetPendingTransactions().Length.Should().Be(0);
+            result.Should().Be(AddTxResult.GasLimitExceeded);
+        }
+        
+        [Test]
+        public void should_ignore_tx_gas_limit_exceeded()
+        {
+            _txPool = CreatePool(_noTxStorage);
+            Transaction tx = Build.A.Transaction
+                .WithGasLimit(_txGasLimit + 1)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            EnsureSenderBalance(tx);
+            AddTxResult result = _txPool.AddTransaction(tx, TxHandlingOptions.PersistentBroadcast);
+            _txPool.GetPendingTransactions().Length.Should().Be(0);
+            result.Should().Be(AddTxResult.GasLimitExceeded);
         }
 
         [Test]
@@ -422,8 +452,8 @@ namespace Nethermind.Blockchain.Test.TxPools
         }
 
         private TxPool.TxPool CreatePool(ITxStorage txStorage)
-            => new TxPool.TxPool(txStorage, _ethereumEcdsa, new ChainHeadSpecProvider(_specProvider, _blockFinder), 
-                new TxPoolConfig(), _stateProvider, new TxValidator(_specProvider.ChainId), _logManager);
+            => new TxPool.TxPool(txStorage, _ethereumEcdsa, new ChainHeadSpecProvider(_specProvider, _blockFinder),
+                new TxPoolConfig() {GasLimit = _txGasLimit}, _stateProvider, new TxValidator(_specProvider.ChainId), _logManager);
 
         private ITxPoolPeer GetPeer(PublicKey publicKey)
         {

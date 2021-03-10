@@ -33,5 +33,9 @@ namespace Nethermind.TxPool
             Description = "Max number of cached hashes of already known transactions." +
                           "It is set automatically by the memory hint.")]
         int HashCacheSize { get; set; }
+        
+        [ConfigItem(DefaultValue = "null",
+            Description = "Max transaction gas allowed.")]
+        long? GasLimit { get; set; }        
     }
 }
