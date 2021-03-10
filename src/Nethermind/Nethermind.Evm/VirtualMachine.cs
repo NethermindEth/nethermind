@@ -1546,15 +1546,15 @@ namespace Nethermind.Evm
                             return CallResult.OutOfGasException;
                         }
 
+                        if (UInt256.AddOverflow(length, src, out UInt256 newLength) || newLength > _returnDataBuffer.Length)
+                        {
+                            return CallResult.AccessViolationException;
+                        }
+                        
                         if (length > UInt256.Zero)
                         {
                             UpdateMemoryCost(in dest, length);
-                            
-                            if (UInt256.AddOverflow(length, src, out UInt256 newLength) || newLength > _returnDataBuffer.Length)
-                            {
-                                return CallResult.AccessViolationException;
-                            }
-                            
+
                             ZeroPaddedSpan returnDataSlice = _returnDataBuffer.SliceWithZeroPadding(src, (int)length);
                             vmState.Memory.Save(in dest, returnDataSlice);
                             if (_txTracer.IsTracingInstructions)
