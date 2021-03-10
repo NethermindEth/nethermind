@@ -68,5 +68,8 @@ namespace Nethermind.TxPool
             add { }
             remove { }
         }
+
+        public uint FutureNonceRetention { get; } = 16;
+        public long? BlockGasLimit { get; set; }
     }
 }

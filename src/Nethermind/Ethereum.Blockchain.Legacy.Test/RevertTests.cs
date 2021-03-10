@@ -17,6 +17,7 @@
  */
 
 using System.Collections.Generic;
+using System.Linq;
 using Ethereum.Test.Base;
 using NUnit.Framework;
 
@@ -37,15 +38,9 @@ namespace Ethereum.Blockchain.Legacy.Test
             List<GeneralStateTest> tests = (List<GeneralStateTest>)loader.LoadTests();
             HashSet<string> ignoredTests = new()
             {
-                "RevertPrecompiledTouch_storage_d0g0v0",
-                "RevertPrecompiledTouch_storage_d3g0v0",
-                "RevertPrecompiledTouchExactOOG_d7g1v0",
-                "RevertPrecompiledTouchExactOOG_d31g1v0",
-                "RevertPrecompiledTouchExactOOG_d7g1v0",
-                "RevertPrecompiledTouch_d3g0v0",
-                "RevertPrecompiledTouch_d0g0v0"
+                "RevertPrecompiledTouch",
             };
-            tests.RemoveAll(t => ignoredTests.Contains(t.Name));
+            tests.RemoveAll(t => ignoredTests.Any(pattern => t.Name.Contains(pattern)));
             return tests;
         }
     }

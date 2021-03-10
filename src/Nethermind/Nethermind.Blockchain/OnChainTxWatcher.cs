@@ -55,6 +55,8 @@ namespace Nethermind.Blockchain
 
         private void ProcessBlock(Block block, Block? previousBlock)
         {
+            _txPool.BlockGasLimit = block.GasLimit;
+            
             for (int i = 0; i < block.Transactions.Length; i++)
             {
                 _txPool.RemoveTransaction(block.Transactions[i].Hash, block.Number, true);

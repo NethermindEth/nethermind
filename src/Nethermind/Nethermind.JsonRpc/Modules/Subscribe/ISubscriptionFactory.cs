@@ -21,6 +21,6 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
 {
     public interface ISubscriptionFactory
     {
-        Subscription CreateSubscription(SubscriptionType subscriptionType, Filter? filter);
+        Subscription CreateSubscription(IJsonRpcDuplexClient jsonRpcDuplexClient, SubscriptionType subscriptionType, Filter? filter);
     }
 }

@@ -82,5 +82,10 @@ namespace Nethermind.Plugin.Baseline
 
             return Task.CompletedTask;
         }
+
+        public ValueTask DisposeAsync()
+        {
+            return ValueTask.CompletedTask;
+        }
     }
 }

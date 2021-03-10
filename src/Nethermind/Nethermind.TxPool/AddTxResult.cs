@@ -19,12 +19,15 @@ namespace Nethermind.TxPool
     public enum AddTxResult
     {
         AlreadyKnown,
-        OldScheme,
         Invalid,
         OldNonce,
         PotentiallyUseless,
         Added,
         OwnNonceAlreadyUsed,
-        Filtered
+        Filtered,
+        InsufficientFunds,
+        BalanceOverflow,
+        FutureNonce,
+        GasLimitExceeded
     }
 }
