@@ -261,7 +261,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 .WithCustomTxFilter(txSourceFilter)
                 .WithBaseFeeFilter(_blockPreparationContextService, _api.SpecProvider)
                 .Build;
-            return new TxPoolTxSource(_api.TxPool, processingEnv.StateReader, _api.SpecProvider, null /*ToDo*/, _blockPreparationContextService, _api.LogManager, txFilterPipeline);
+            return new TxPoolTxSource(_api.TxPool, processingEnv.StateReader, _api.SpecProvider,  _api.TransactionComparerProvider.GetDefaultProducerComparer(_blockPreparationContextService), _blockPreparationContextService, _api.LogManager, txFilterPipeline);
         }
 
         private ITxSource CreateTxSourceForProducer(ReadOnlyTxProcessingEnv processingEnv, IReadOnlyTxProcessorSource readOnlyTxProcessorSource)
