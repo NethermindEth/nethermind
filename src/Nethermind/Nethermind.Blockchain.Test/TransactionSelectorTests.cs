@@ -410,11 +410,11 @@ namespace Nethermind.Blockchain.Test
                 AccountStates = {{TestItem.AddressA, (1000, 1)}},
                 Transactions =
                 {
-                    Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithNonce(3).WithValue(1)
+                    Build.A.Transaction.WithType(TxType.EIP1559).WithSenderAddress(TestItem.AddressA).WithNonce(3).WithValue(1)
                         .WithFeeCap(10).WithGasLimit(10).SignedAndResolved(TestItem.PrivateKeyA).TestObject,
-                    Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithNonce(1).WithValue(10)
+                    Build.A.Transaction.WithType(TxType.EIP1559).WithSenderAddress(TestItem.AddressA).WithNonce(1).WithValue(10)
                         .WithFeeCap(10).WithGasLimit(10).SignedAndResolved(TestItem.PrivateKeyA).TestObject,
-                    Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithNonce(2).WithValue(10)
+                    Build.A.Transaction.WithType(TxType.EIP1559).WithSenderAddress(TestItem.AddressA).WithNonce(2).WithValue(10)
                         .WithFeeCap(10).WithGasLimit(10).SignedAndResolved(TestItem.PrivateKeyA).TestObject
                 },
                 GasLimit = 10000000
