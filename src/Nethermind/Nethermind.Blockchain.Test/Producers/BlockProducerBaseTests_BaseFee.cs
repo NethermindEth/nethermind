@@ -147,6 +147,18 @@ namespace Nethermind.Blockchain.Test.Producers
                     _antecedent = AssertNewBlockAsync(expectedBaseFee, transactions);
                     return this;
                 }
+                
+                public ScenarioBuilder AssertNewBlockWithDecreasedBaseFee()
+                {
+                    _antecedent = AssertNewBlockWithDecreasedBaseFeeAsync();
+                    return this;
+                }
+                
+                public ScenarioBuilder AssertNewBlockWithIncreasedBaseFee()
+                {
+                    _antecedent = AssertNewBlockWithIncreasedBaseFeeAsync();
+                    return this;
+                }
 
                 private async Task<ScenarioBuilder> BlocksBeforeTransitionShouldHaveZeroBaseFeeAsync()
                 {
@@ -170,8 +182,34 @@ namespace Nethermind.Blockchain.Test.Producers
                     await ExecuteAntecedentIfNeeded();
                     await _testRpcBlockchain.AddBlock(transactions);
                     IBlockTree blockTree = _testRpcBlockchain.BlockTree;
+                    Block headBlock = blockTree.Head;
+                    Assert.AreEqual(expectedBaseFee, headBlock!.Header.BaseFee);
+
+                    return this;
+                }
+                
+                private async Task<ScenarioBuilder> AssertNewBlockWithDecreasedBaseFeeAsync()
+                {
+                    await ExecuteAntecedentIfNeeded();
+                    
+                    IBlockTree blockTree = _testRpcBlockchain.BlockTree;
                     Block startingBlock = blockTree.Head;
-                    Assert.AreEqual(expectedBaseFee, startingBlock!.Header.BaseFee);
+                    await _testRpcBlockchain.AddBlock();
+                    Block newBlock = blockTree.Head;
+                    Assert.Less(newBlock!.Header.BaseFee, startingBlock!.Header.BaseFee);
+
+                    return this;
+                }
+                
+                private async Task<ScenarioBuilder> AssertNewBlockWithIncreasedBaseFeeAsync()
+                {
+                    await ExecuteAntecedentIfNeeded();
+                    
+                    IBlockTree blockTree = _testRpcBlockchain.BlockTree;
+                    Block startingBlock = blockTree.Head;
+                    await _testRpcBlockchain.AddBlock();
+                    Block newBlock = blockTree.Head;
+                    Assert.Less(startingBlock!.Header.BaseFee, newBlock!.Header.BaseFee);
 
                     return this;
                 }
@@ -243,22 +281,39 @@ namespace Nethermind.Blockchain.Test.Producers
         }
 
         [Test]
-        public async Task BadContract_test()
+        public async Task BaseFee_should_decrease_when_we_send_transactions_below_gas_limit()
         {
+            long gasLimit = 3000000;
             BaseFeeTestScenario.ScenarioBuilder scenario = BaseFeeTestScenario.GoesLikeThis()
                 .WithEip1559TransitionBlock(6)
-                .CreateTestBlockchain(3000000)
+                .CreateTestBlockchain(gasLimit)
                 .DeployContract()
                 .BlocksBeforeTransitionShouldHaveZeroBaseFee()
                 .AssertNewBlock(Eip1559Constants.ForkBaseFee)
-               // .SendLegacyTransaction(40.GWei())
-                // .SendLegacyTransaction(20.GWei())
-                // .SendLegacyTransaction(20.GWei())
-                // .SendLegacyTransaction(20.GWei())
+                .SendLegacyTransaction(gasLimit / 3, 20.GWei())
+                .SendEip1559Transaction(gasLimit / 3, 1.GWei(), 20.GWei())
                 .AssertNewBlock(875000000)
-                .AssertNewBlock(765625000)
-                .AssertNewBlock(669921875)
-                .AssertNewBlock(586181641);
+                .AssertNewBlockWithDecreasedBaseFee()
+                .AssertNewBlockWithDecreasedBaseFee();
+            await scenario.Finish();
+        }
+        
+        [Test]
+        public async Task BaseFee_should_not_change_when_we_send_transactions_equal_gas_limit()
+        {
+            long gasLimit = 3000000;
+            BaseFeeTestScenario.ScenarioBuilder scenario = BaseFeeTestScenario.GoesLikeThis()
+                .WithEip1559TransitionBlock(6)
+                .CreateTestBlockchain(gasLimit)
+                .DeployContract()
+                .BlocksBeforeTransitionShouldHaveZeroBaseFee()
+                .AssertNewBlock(Eip1559Constants.ForkBaseFee)
+                .SendLegacyTransaction(1500000, 20.GWei())
+                .SendLegacyTransaction(1500000, 1.GWei())
+                .SendEip1559Transaction(gasLimit / 2, 3.GWei(), 20.GWei()) // not accepted because gas limit
+                .AssertNewBlock(875000000)
+                .AssertNewBlock(875000000)
+                .AssertNewBlockWithDecreasedBaseFee();
             await scenario.Finish();
         }
     }

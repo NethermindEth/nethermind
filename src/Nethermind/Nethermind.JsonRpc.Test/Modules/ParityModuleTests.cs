@@ -86,7 +86,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             ITransactionComparerProvider transactionComparerProvider =
                 new TransactionComparerProvider(specProvider, blockTree);
             var txPool = new TxPool.TxPool(txStorage, ethereumEcdsa, new FixedBlockChainHeadSpecProvider(specProvider), new TxPoolConfig(),
-                new StateProvider(new TrieStore(new MemDb(), LimboLogs.Instance), new MemDb(), LimboLogs.Instance), new TxValidator(specProvider.ChainId), LimboLogs.Instance, transactionComparerProvider.GetDefaultComparer());
+                stateProvider, new TxValidator(specProvider.ChainId), LimboLogs.Instance, transactionComparerProvider.GetDefaultComparer());
             
             new OnChainTxWatcher(blockTree, txPool, specProvider, LimboLogs.Instance);
             
