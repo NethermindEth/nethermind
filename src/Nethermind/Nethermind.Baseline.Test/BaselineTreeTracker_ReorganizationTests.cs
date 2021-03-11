@@ -40,11 +40,11 @@ namespace Nethermind.Baseline.Test
             var result = await InitializeTestRpc(address);
             var testRpc = result.TestRpc;
             BaselineTree baselineTree = BuildATree();
-            var fromContractAdress = ContractAddress.From(address, 0L);
+            var fromContractAddress = ContractAddress.From(address, 0L);
             var baselineTreeHelper = new BaselineTreeHelper(testRpc.LogFinder, _baselineDb, _metadataBaselineDb, LimboNoErrorLogger.Instance);
-            new BaselineTreeTracker(fromContractAdress, baselineTree, testRpc.BlockProcessor, baselineTreeHelper, testRpc.BlockFinder, LimboNoErrorLogger.Instance);
+            new BaselineTreeTracker(fromContractAddress, baselineTree, testRpc.BlockProcessor, baselineTreeHelper, testRpc.BlockFinder, LimboNoErrorLogger.Instance);
 
-            var contract = new MerkleTreeSHAContract(_abiEncoder, fromContractAdress);
+            var contract = new MerkleTreeSHAContract(_abiEncoder, fromContractAddress);
             UInt256 nonce = 1L;
             for (int i = 0; i < test.LeavesInBlocksCounts.Length; i++)
             {

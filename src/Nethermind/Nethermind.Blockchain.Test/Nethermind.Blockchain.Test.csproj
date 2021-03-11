@@ -33,9 +33,11 @@
     <ProjectReference Include="..\Nethermind.JsonRpc.Test\Nethermind.JsonRpc.Test.csproj" />
   </ItemGroup>
   <ItemGroup>
+    <Content Include="contracts\BadContract.bin" />
     <None Remove="chainspec.json" />
     <Content Include="chainspec.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+    <None Remove="Producers\contracts\BadContract.bin" />
   </ItemGroup>
 </Project>
