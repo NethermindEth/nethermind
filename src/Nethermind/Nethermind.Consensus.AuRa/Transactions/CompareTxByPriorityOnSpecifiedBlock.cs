@@ -1,4 +1,4 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -16,14 +16,24 @@
 // 
 
 using System;
-using Nethermind.JsonRpc.Modules.Eth;
+using Nethermind.Consensus.AuRa.Contracts;
+using Nethermind.Consensus.AuRa.Contracts.DataStore;
+using Nethermind.Core;
+using Nethermind.Core.Extensions;
+using Nethermind.Int256;
 
-namespace Nethermind.JsonRpc.Modules.Subscribe
+namespace Nethermind.Consensus.AuRa.Transactions
 {
-    public interface ISubscriptionManger
+    public class CompareTxByPriorityOnSpecifiedBlock : CompareTxByPriorityBase
     {
-        string AddSubscription(IJsonRpcDuplexClient jsonRpcDuplexClient, SubscriptionType subscriptionType, Filter? filter = null);
-        bool RemoveSubscription(IJsonRpcDuplexClient jsonRpcDuplexClient, string subscriptionId);
-        void RemoveClientSubscriptions(object? sender, EventArgs e);
+        public CompareTxByPriorityOnSpecifiedBlock(
+            IContractDataStore<Address> sendersWhitelist, 
+            IDictionaryContractDataStore<TxPriorityContract.Destination> priorities, 
+            BlockHeader blockHeader) : base(sendersWhitelist, priorities)
+        {
+            BlockHeader = blockHeader;
+        }
+
+        protected override BlockHeader BlockHeader { get; }
     }
 }

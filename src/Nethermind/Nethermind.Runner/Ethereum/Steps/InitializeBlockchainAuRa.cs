@@ -241,10 +241,10 @@ namespace Nethermind.Runner.Ethereum.Steps
 
                 _api.DisposeStack.Push(whitelistContractDataStore);
                 _api.DisposeStack.Push(prioritiesContractDataStore);
-                IComparer<Transaction> txByPermissionComparer = new CompareTxByPermissionOnHead(whitelistContractDataStore, prioritiesContractDataStore, _api.BlockTree);
+                IComparer<Transaction> txByPriorityComparer = new CompareTxByPriorityOnHead(whitelistContractDataStore, prioritiesContractDataStore, _api.BlockTree);
+                IComparer<Transaction> sameSenderNonceComparer = new CompareTxSameSenderNonce(CompareTxByGasPrice.Instance, txByPriorityComparer);
                 
-                return CompareTxByGasPrice.Instance
-                    .ThenBy(txByPermissionComparer)
+                return sameSenderNonceComparer
                     .ThenBy(CompareTxByTimestamp.Instance)
                     .ThenBy(CompareTxByPoolIndex.Instance)
                     .ThenBy(CompareTxByGasLimit.Instance);

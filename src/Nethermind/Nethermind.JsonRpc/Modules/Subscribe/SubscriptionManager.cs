@@ -23,7 +23,7 @@ using Nethermind.Logging;
 
 namespace Nethermind.JsonRpc.Modules.Subscribe
 {
-    public class SubscriptionManger : ISubscriptionManger
+    public class SubscriptionManager : ISubscriptionManager
     {
         private readonly ISubscriptionFactory _subscriptionFactory;
         private readonly ILogger _logger;
@@ -33,7 +33,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         private readonly ConcurrentDictionary<string, HashSet<Subscription>> _subscriptionsByJsonRpcClient =
             new();
         
-        public SubscriptionManger(ISubscriptionFactory? subscriptionFactory, ILogManager? logManager)
+        public SubscriptionManager(ISubscriptionFactory? subscriptionFactory, ILogManager? logManager)
         {
             _subscriptionFactory = subscriptionFactory ?? throw new ArgumentNullException(nameof(subscriptionFactory));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));

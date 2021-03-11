@@ -53,44 +53,41 @@ namespace Nethermind.JsonRpc.Test.Modules
         public IKeyStore KeyStore { get; } = new MemKeyStore(TestItem.PrivateKeys);
         public IWallet TestWallet { get; } = new DevKeyStoreWallet(new MemKeyStore(TestItem.PrivateKeys), LimboLogs.Instance);
 
-        protected TestRpcBlockchain(SealEngineType sealEngineType)
-            : base(sealEngineType)
+        public static Builder<TestRpcBlockchain> ForTest(SealEngineType sealEngineType) => ForTest<TestRpcBlockchain>(sealEngineType);
+
+        public static Builder<T> ForTest<T>(SealEngineType sealEngineType) where T : TestRpcBlockchain, new()
         {
-        }
- 
-        public static Builder ForTest(SealEngineType sealEngineType)
-        {
-            return new Builder(sealEngineType);
+            return new Builder<T>(sealEngineType);
         }
 
-        public class Builder
+        public class Builder<T>  where T : TestRpcBlockchain, new()
         {
+            private readonly TestRpcBlockchain _blockchain;
+            
             public Builder(SealEngineType sealEngineType)
             {
-                _blockchain = new TestRpcBlockchain(sealEngineType);
+                _blockchain = new T {SealEngineType = sealEngineType};
             }
             
-            private TestRpcBlockchain _blockchain;
-            
-            public Builder WithBlockchainBridge(IBlockchainBridge blockchainBridge)
+            public Builder<T> WithBlockchainBridge(IBlockchainBridge blockchainBridge)
             {
                 _blockchain.Bridge = blockchainBridge;
                 return this;
             }
             
-            public Builder WithBlockFinder(IBlockFinder blockFinder)
+            public Builder<T> WithBlockFinder(IBlockFinder blockFinder)
             {
                 _blockchain.BlockFinder = blockFinder;
                 return this;
             }
             
-            public Builder WithTxSender(ITxSender txSender)
+            public Builder<T> WithTxSender(ITxSender txSender)
             {
                 _blockchain.TxSender = txSender;
                 return this;
             }
 
-            public Builder WithGenesisBlockBuilder(BlockBuilder blockBuilder)
+            public Builder<T> WithGenesisBlockBuilder(BlockBuilder blockBuilder)
             {
                 _blockchain.GenesisBlockBuilder = blockBuilder;
                 return this;
