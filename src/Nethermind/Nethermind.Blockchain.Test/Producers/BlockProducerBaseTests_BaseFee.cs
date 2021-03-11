@@ -129,7 +129,7 @@ namespace Nethermind.Blockchain.Test.Producers
                     tx.GasLimit = gasLimit;
                     tx.GasPrice = gasPrice;
                     tx.DecodedFeeCap = feeCap;
-                    tx.Type = 
+                    tx.Type = txType;
                     tx.Nonce = _currentNonce;
                     ++_currentNonce;
                     
