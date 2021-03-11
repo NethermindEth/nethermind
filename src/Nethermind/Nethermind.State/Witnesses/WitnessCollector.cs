@@ -56,21 +56,23 @@ namespace Nethermind.State.Witnesses
         public void Persist(Keccak blockHash)
         {
             if(_logger.IsDebug) _logger.Debug($"Persisting {blockHash} witness ({_collected.Count})");
+            
 
             if (_collected.Count > 0)
             {
-                byte[] witness = new byte[_collected.Count * Keccak.Size];
+                Keccak[] collected = _collected.ToArray();
+                byte[] witness = new byte[collected.Length * Keccak.Size];
                 Span<byte> witnessSpan = witness;
 
                 int i = 0;
-                foreach (Keccak keccak in _collected)
+                foreach (Keccak keccak in collected)
                 {
                     keccak.Bytes.AsSpan().CopyTo(witnessSpan.Slice(i * Keccak.Size, Keccak.Size));
                     i++;
                 }
 
                 _keyValueStore[blockHash.Bytes] = witness;
-                _witnessCache.Set(blockHash, _collected.ToArray());
+                _witnessCache.Set(blockHash, collected);
             }
             else
             {
