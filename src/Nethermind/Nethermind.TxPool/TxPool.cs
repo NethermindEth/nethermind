@@ -71,6 +71,7 @@ namespace Nethermind.TxPool
         private readonly SortedPool<Keccak, Transaction, Address> _transactions;
 
         private readonly IChainHeadSpecProvider _specProvider;
+        private readonly ITxPoolConfig _txPoolConfig;
         private readonly IReadOnlyStateProvider _stateProvider;
         private readonly ITxValidator _validator;
         private readonly IEthereumEcdsa _ecdsa;
@@ -106,11 +107,6 @@ namespace Nethermind.TxPool
         private readonly Timer _ownTimer;
 
         /// <summary>
-        /// Defines the percentage of peers that will be notified about pending transactions on average.
-        /// </summary>
-        private readonly int _peerNotificationThreshold;
-
-        /// <summary>
         /// Indexes transactions
         /// </summary>
         private ulong _txIndex;
@@ -141,6 +137,7 @@ namespace Nethermind.TxPool
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _txStorage = txStorage ?? throw new ArgumentNullException(nameof(txStorage));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
+            _txPoolConfig = txPoolConfig;
             _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
             _validator = validator ?? throw new ArgumentNullException(nameof(validator));
 
@@ -151,13 +148,16 @@ namespace Nethermind.TxPool
 
             _transactions =
                 new TxDistinctSortedPool(MemoryAllowance.MemPoolSize, logManager, comparer);
-            _peerNotificationThreshold = txPoolConfig.PeerNotificationThreshold;
+
 
             _ownTimer = new Timer(500);
             _ownTimer.Elapsed += OwnTimerOnElapsed;
             _ownTimer.AutoReset = false;
             _ownTimer.Start();
         }
+
+        public uint FutureNonceRetention  => _txPoolConfig.FutureNonceRetention;
+        public long? BlockGasLimit { get; set; } = null;
 
         public Transaction[] GetPendingTransactions() => _transactions.GetSnapshot();
         
@@ -194,6 +194,8 @@ namespace Nethermind.TxPool
             {
                 throw new ArgumentException($"{nameof(tx.Hash)} not set on {nameof(Transaction)}");
             }
+            
+            tx.PoolIndex = Interlocked.Increment(ref _txIndex);
 
             NewDiscovered?.Invoke(this, new TxEventArgs(tx));
 
@@ -241,12 +243,9 @@ namespace Nethermind.TxPool
                 if (_logger.IsTrace) _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, already known.");
                 return AddTxResult.AlreadyKnown;
             }
-
-            tx.PoolIndex = _txIndex++;
+            
             _hashCache.Set(tx.Hash);
-
             HandleOwnTransaction(tx, isPersistentBroadcast);
-
             NotifySelectedPeers(tx);
             StoreTx(tx);
             NewPending?.Invoke(this, new TxEventArgs(tx));
@@ -271,13 +270,6 @@ namespace Nethermind.TxPool
 
             Metrics.PendingTransactionsReceived++;
 
-            //            if (tx.Signature.ChainId == null)
-            //            {
-            //                // Note that we are discarding here any transactions that follow the old signature scheme (no ChainId).
-            //                Metrics.PendingTransactionsDiscarded++;
-            //                return AddTxResult.OldScheme;
-            //            }
-
             if (!_validator.IsWellFormed(tx, _specProvider.GetSpec()))
             {
                 // It may happen that other nodes send us transactions that were signed for another chain or don't have enough gas.
@@ -285,19 +277,14 @@ namespace Nethermind.TxPool
                 if (_logger.IsTrace) _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, invalid transaction.");
                 return AddTxResult.Invalid;
             }
-
-            /* Note that here we should also test incoming transactions for old nonce.
-             * This is not a critical check and it is expensive since it requires state read so it is better
-             * if we leave it for block production only.
-             * */
-
-            if (managedNonce && CheckOwnTransactionAlreadyUsed(tx))
+            
+            var gasLimit = Math.Min(BlockGasLimit ?? long.MaxValue, _txPoolConfig.GasLimit ?? long.MaxValue);
+            if (tx.GasLimit > gasLimit)
             {
-                if (_logger.IsTrace)
-                    _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, nonce already used.");
-                return AddTxResult.OwnNonceAlreadyUsed;
+                if (_logger.IsTrace) _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, gas limit exceeded.");
+                return AddTxResult.GasLimitExceeded;
             }
-
+            
             /* We have encountered multiple transactions that do not resolve sender address properly.
              * We need to investigate what these txs are and why the sender address is resolved to null.
              * Then we need to decide whether we really want to broadcast them.
@@ -312,6 +299,48 @@ namespace Nethermind.TxPool
                 }
             }
 
+            // As we have limited number of transaction that we store in mem pool its fairly easy to fill it up with
+            // high-priority garbage transactions. We need to filter them as much as possible to use the tx pool space
+            // efficiently. One call to get account from state is not that costly and it only happens after previous checks.
+            // This was modeled by OpenEthereum behavior.
+            var account = _stateProvider.GetAccount(tx.SenderAddress);
+            var currentNonce = account?.Nonce ?? UInt256.Zero;
+            if (tx.Nonce < currentNonce)
+            {
+                if (_logger.IsTrace)
+                    _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, nonce already used.");
+                return AddTxResult.OldNonce;
+            }
+
+            if (tx.Nonce > currentNonce + FutureNonceRetention)
+            {
+                if (_logger.IsTrace)
+                    _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, nonce in far future.");
+                return AddTxResult.FutureNonce;
+            }
+
+            bool overflow = UInt256.MultiplyOverflow(tx.GasPrice, (UInt256) tx.GasLimit, out UInt256 cost);
+            overflow |= UInt256.AddOverflow(cost, tx.Value, out cost);
+            if (overflow)
+            {
+                if (_logger.IsTrace)
+                    _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, cost overflow.");
+                return AddTxResult.BalanceOverflow;
+            }
+            else if ((account?.Balance ?? UInt256.Zero) < cost)
+            {
+                if (_logger.IsTrace)
+                    _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, insufficient funds.");
+                return AddTxResult.InsufficientFunds;
+            }
+
+            if (managedNonce && CheckOwnTransactionAlreadyUsed(tx, currentNonce))
+            {
+                if (_logger.IsTrace)
+                    _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, nonce already used.");
+                return AddTxResult.OwnNonceAlreadyUsed;
+            }
+            
             return null;
         }
 
@@ -326,14 +355,13 @@ namespace Nethermind.TxPool
             }
         }
 
-        private bool CheckOwnTransactionAlreadyUsed(Transaction transaction)
+        private bool CheckOwnTransactionAlreadyUsed(Transaction transaction, UInt256 currentNonce)
         {
             Address address = transaction.SenderAddress;
             lock (_locker)
             {
                 if (!_nonces.TryGetValue(address, out var addressNonces))
                 {
-                    var currentNonce = _stateProvider.GetNonce(address);
                     addressNonces = new AddressNonces(currentNonce);
                     _nonces.TryAdd(address, addressNonces);
                 }
@@ -528,7 +556,7 @@ namespace Nethermind.TxPool
                         continue;
                     }
 
-                    if (_peerNotificationThreshold < Random.Value.Next(1, 100))
+                    if (_txPoolConfig.PeerNotificationThreshold < Random.Value.Next(1, 100))
                     {
                         continue;
                     }

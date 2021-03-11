@@ -50,7 +50,6 @@ namespace Nethermind.Core.Test.Blockchain
 {
     public class TestBlockchain : IDisposable
     {
-        private readonly SealEngineType _sealEngineType;
         public IStateReader StateReader { get; private set; }
         public IEthereumEcdsa EthereumEcdsa { get; private set; }
         public TransactionProcessor TxProcessor { get; set; }
@@ -76,10 +75,11 @@ namespace Nethermind.Core.Test.Blockchain
         
         public IBlockPreparationContextService BlockPreparationContextService { get; set; }
 
-        protected TestBlockchain(SealEngineType sealEngineType)
+        protected TestBlockchain()
         {
-            _sealEngineType = sealEngineType;
         }
+        
+        public SealEngineType SealEngineType { get; set; }
 
         public static Address AccountA = TestItem.AddressA;
         public static Address AccountB = TestItem.AddressB;
@@ -117,22 +117,16 @@ namespace Nethermind.Core.Test.Blockchain
             State.Commit(SpecProvider.GenesisSpec);
             State.CommitTree(0);
             
+            
+            
             IDb blockDb = new MemDb();
             IDb headerDb = new MemDb();
             IDb blockInfoDb = new MemDb();
             BlockTree = new BlockTree(blockDb, headerDb, blockInfoDb, new ChainLevelInfoRepository(blockDb), SpecProvider, NullBloomStorage.Instance, LimboLogs.Instance);
             TransactionComparerProvider = new TransactionComparerProvider(specProvider, BlockTree);
             BlockPreparationContextService = new BlockPreparationContextService(LimboLogs.Instance);
+            TxPool = CreateTxPool(txStorage);
 
-            TxPool = new TxPool.TxPool(
-                txStorage,
-                EthereumEcdsa,
-                new FixedBlockChainHeadSpecProvider(SpecProvider),
-                new TxPoolConfig(),
-                State,
-                new TxValidator(SpecProvider.ChainId),
-                LimboLogs.Instance,
-                TransactionComparerProvider.GetDefaultComparer());
             new OnChainTxWatcher(BlockTree, TxPool, SpecProvider, LimboLogs.Instance);
 
             ReceiptStorage = new InMemoryReceiptStorage();
@@ -174,6 +168,17 @@ namespace Nethermind.Core.Test.Blockchain
             return this;
         }
 
+        protected virtual TxPool.TxPool CreateTxPool(ITxStorage txStorage) =>
+            new TxPool.TxPool(
+                txStorage,
+                EthereumEcdsa,
+                new FixedBlockChainHeadSpecProvider(SpecProvider),
+                new TxPoolConfig(),
+                State,
+                new TxValidator(SpecProvider.ChainId),
+                LimboLogs.Instance,
+                TransactionComparerProvider.GetDefaultComparer());
+
         protected virtual TxPoolTxSource CreateTxPoolTxSource()
         {
             ITxFilterPipeline txFilterPipeline = TxFilterPipelineBuilder.CreateStandardFilteringPipeline(LimboLogs.Instance,
@@ -192,7 +197,7 @@ namespace Nethermind.Core.Test.Blockchain
             }
             
             genesisBlockBuilder.WithStateRoot(State.StateRoot);
-            if (_sealEngineType == SealEngineType.AuRa)
+            if (SealEngineType == SealEngineType.AuRa)
             {
                 genesisBlockBuilder.WithAura(0, new byte[65]);
             }

@@ -31,14 +31,18 @@ namespace Nethermind.TxPool.Collections
         {
         }
 
-        protected override IComparer<Transaction> GetUniqueComparer(IComparer<Transaction> comparer) => GetPoolUniqueTxComparerByNonce(comparer);
+        protected override IComparer<Transaction> GetUniqueComparer(IComparer<Transaction> comparer) => GetPoolUniqueTxComparer(comparer);
+        protected override IComparer<Transaction> GetGroupComparer(IComparer<Transaction> comparer) => GetPoolUniqueTxComparerByNonce(comparer);
 
         protected override Address? MapToGroup(Transaction value) => MapTxToGroup(value);
 
+        internal static IComparer<Transaction> GetPoolUniqueTxComparer(IComparer<Transaction> comparer)
+            => comparer
+                .ThenBy(DistinctCompareTx.Instance); // in order to sort properly and not loose transactions we need to differentiate on their identity which provided comparer might not be doing
+
         internal static IComparer<Transaction> GetPoolUniqueTxComparerByNonce(IComparer<Transaction> comparer)
             => CompareTxByNonce.Instance // we need to ensure transactions are ordered by nonce, which might not be done in supplied comparer
-                .ThenBy(comparer)
-                .ThenBy(DistinctCompareTx.Instance); // in order to sort properly and not loose transactions we need to differentiate on their identity which provided comparer might not be doing
+                .ThenBy(GetPoolUniqueTxComparer(comparer));
 
         internal static Address? MapTxToGroup(Transaction value) => value.SenderAddress;
     }

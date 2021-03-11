@@ -383,9 +383,14 @@ namespace Nethermind.JsonRpc.Modules.Eth
             Transaction tx = transactionCall.ToTransaction();
             BlockchainBridge.CallOutput result = _blockchainBridge.Call(header, tx, cancellationToken);
 
-            return result.Error != null
-                ? ResultWrapper<string>.Fail("VM execution error.", ErrorCodes.ExecutionError, result.Error)
-                : ResultWrapper<string>.Success(result.OutputData.ToHexString(true));
+            if (result.Error == null)
+            {
+                return ResultWrapper<string>.Success(result.OutputData.ToHexString(true));
+            }
+
+            return result.InputError 
+                ? ResultWrapper<string>.Fail(result.Error, ErrorCodes.InvalidInput)
+                :  ResultWrapper<string>.Fail("VM execution error.", ErrorCodes.ExecutionError, result.Error);
         }
 
         private void FixCallTx(TransactionForRpc transactionCall)
@@ -450,7 +455,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 return ResultWrapper<UInt256?>.Success((UInt256)result.GasSpent);
             }
 
-            return ResultWrapper<UInt256?>.Fail(result.Error);
+            return ResultWrapper<UInt256?>.Fail(result.Error, result.InputError ? ErrorCodes.InvalidInput : ErrorCodes.InternalError);
         }
 
         public ResultWrapper<BlockForRpc> eth_getBlockByHash(Keccak blockHash, bool returnFullTransactionObjects)

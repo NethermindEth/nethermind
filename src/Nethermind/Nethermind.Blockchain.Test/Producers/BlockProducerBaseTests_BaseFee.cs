@@ -235,21 +235,21 @@ namespace Nethermind.Blockchain.Test.Producers
             await scenario.Finish();
         }
 
-        [Test]
-        public async Task BadContract_test()
-        {
-            BaseFeeTestScenario.ScenarioBuilder scenario = BaseFeeTestScenario.GoesLikeThis()
-                .WithEip1559TransitionBlock(6)
-                .CreateTestBlockchain()
-                .BlocksBeforeTransitionShouldHaveZeroBaseFee()
-                .DeployContract()
-                .SendTransaction()
-                .AssertNewBlock(Eip1559Constants.ForkBaseFee)
-                .AssertNewBlock(875000000)
-                .AssertNewBlock(765625000)
-                .AssertNewBlock(669921875)
-                .AssertNewBlock(586181641);
-            await scenario.Finish();
-        }
+        // [Test]
+        // public async Task BadContract_test()
+        // {
+        //     BaseFeeTestScenario.ScenarioBuilder scenario = BaseFeeTestScenario.GoesLikeThis()
+        //         .WithEip1559TransitionBlock(6)
+        //         .CreateTestBlockchain()
+        //         .BlocksBeforeTransitionShouldHaveZeroBaseFee()
+        //         .DeployContract()
+        //         .SendTransaction()
+        //         .AssertNewBlock(Eip1559Constants.ForkBaseFee)
+        //         .AssertNewBlock(875000000)
+        //         .AssertNewBlock(765625000)
+        //         .AssertNewBlock(669921875)
+        //         .AssertNewBlock(586181641);
+        //     await scenario.Finish();
+        // }
     }
 }

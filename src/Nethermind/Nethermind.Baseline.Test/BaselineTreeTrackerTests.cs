@@ -23,10 +23,14 @@ using System.Threading.Tasks;
 using Nethermind.Abi;
 using Nethermind.Baseline.Test.Contracts;
 using Nethermind.Baseline.Tree;
+using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Int256;
@@ -34,7 +38,9 @@ using Nethermind.JsonRpc.Test.Modules;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
+using Nethermind.State;
 using Nethermind.Trie;
+using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -140,7 +146,7 @@ namespace Nethermind.Baseline.Test
         {
             var spec = new SingleReleaseSpecProvider(ConstantinopleFix.Instance, 1);
             var blockBuilder = Core.Test.Builders.Build.A.Block.Genesis.WithGasLimit(10000000000);
-            var testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            var testRpc = await TestRpcBlockchain.ForTest<BaseLineTreeReorgTestBlockChain>(SealEngineType.NethDev)
                 .WithGenesisBlockBuilder(blockBuilder)
                 .Build(spec);
             testRpc.TestWallet.UnlockAccount(address, new SecureString());
@@ -161,6 +167,41 @@ namespace Nethermind.Baseline.Test
             Keccak txHash = (await baselineModule.baseline_deploy(address, "MerkleTreeSHA")).Data;
             await testRpc.AddBlock();
             return (testRpc, baselineModule);
+        }
+        
+        private class BaseLineTreeReorgTestBlockChain : TestRpcBlockchain
+        {
+            private class ReorgTxPool : TxPool.TxPool
+            {
+                public ReorgTxPool(
+                    ITxStorage txStorage, 
+                    IEthereumEcdsa ecdsa,
+                    IChainHeadSpecProvider specProvider,
+                    ITxPoolConfig txPoolConfig,
+                    IReadOnlyStateProvider stateProvider,
+                    ITxValidator validator,
+                    ILogManager? logManager,
+                    IComparer<Transaction>? comparer = null) 
+                    : base(txStorage, ecdsa, specProvider, txPoolConfig, stateProvider, validator, logManager, comparer)
+                {
+                }
+
+                protected override AddTxResult? FilterTransaction(Transaction tx, in bool managedNonce)
+                {
+                    AddTxResult? addTxResult = base.FilterTransaction(tx, in managedNonce);
+                    return addTxResult == AddTxResult.OldNonce ? null : addTxResult;
+                }
+            }
+            
+            protected override TxPool.TxPool CreateTxPool(ITxStorage txStorage) =>
+                new ReorgTxPool(
+                    txStorage,
+                    EthereumEcdsa,
+                    new FixedBlockChainHeadSpecProvider(SpecProvider),
+                    new TxPoolConfig(),
+                    State,
+                    new TxValidator(SpecProvider.ChainId),
+                    LimboLogs.Instance);
         }
 
         private BaselineTree BuildATree(IKeyValueStore keyValueStore = null)

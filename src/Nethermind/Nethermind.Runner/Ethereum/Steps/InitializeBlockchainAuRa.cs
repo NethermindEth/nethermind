@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -244,10 +244,10 @@ namespace Nethermind.Runner.Ethereum.Steps
 
                 _api.DisposeStack.Push(whitelistContractDataStore);
                 _api.DisposeStack.Push(prioritiesContractDataStore);
-                IComparer<Transaction> txByPermissionComparer = new CompareTxByPermissionOnHead(whitelistContractDataStore, prioritiesContractDataStore, _api.BlockTree);
+                IComparer<Transaction> txByPriorityComparer = new CompareTxByPriorityOnHead(whitelistContractDataStore, prioritiesContractDataStore, _api.BlockTree);
+                IComparer<Transaction> sameSenderNonceComparer = new CompareTxSameSenderNonce(new GasPriceTxComparer(_api.BlockTree, new GasPriceTxComparerByBaseFee(_api.SpecProvider)), txByPriorityComparer);
                 
-                return new GasPriceTxComparer(_api.BlockTree, new GasPriceTxComparerByBaseFee(_api.SpecProvider))
-                    .ThenBy(txByPermissionComparer)
+                return sameSenderNonceComparer
                     .ThenBy(CompareTxByTimestamp.Instance)
                     .ThenBy(CompareTxByPoolIndex.Instance)
                     .ThenBy(CompareTxByGasLimit.Instance);

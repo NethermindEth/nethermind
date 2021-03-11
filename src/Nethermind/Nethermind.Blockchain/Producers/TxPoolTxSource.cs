@@ -147,6 +147,7 @@ namespace Nethermind.Blockchain.Producers
                 bool success = _txFilterPipeline.Execute(tx, parent);
                 if (!success)
                 {
+                    _transactionPool.RemoveTransaction(tx.Hash!, 0);
                     continue;
                 }
 
@@ -158,7 +159,7 @@ namespace Nethermind.Blockchain.Producers
                         _transactionPool.RemoveTransaction(tx.Hash!, 0, true);    
                     }
                     
-                    if (tx.Nonce > expectedNonce + 16)
+                    if (tx.Nonce > expectedNonce + _transactionPool.FutureNonceRetention)
                     {
                         _transactionPool.RemoveTransaction(tx.Hash!, 0);
                     }
@@ -170,6 +171,7 @@ namespace Nethermind.Blockchain.Producers
                 bool isEip1559Enabled = _specProvider.GetSpec(parent.Number + 1).IsEip1559Enabled;
                 if (!HasEnoughFounds(remainingBalance, tx, isEip1559Enabled, _blockPreparationContextService.BaseFee))
                 {
+                    _transactionPool.RemoveTransaction(tx.Hash!, 0);
                     if (_logger.IsDebug) _logger.Debug($"Rejecting (sender balance too low) {tx.ToShortString()}");
                     continue;
                 }

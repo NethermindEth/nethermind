@@ -21,10 +21,10 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
 {
     public class JsonRpcSubscriptionResult
     {
-        [JsonProperty(PropertyName = "result", Order = 0)]
+        [JsonProperty(PropertyName = "result", Order = 1)]
         public object Result { get; set; }
         
-        [JsonProperty(PropertyName = "subscription", Order = 1)]
+        [JsonProperty(PropertyName = "subscription", Order = 0)]
         public string Subscription { get; set; }
     }
 }

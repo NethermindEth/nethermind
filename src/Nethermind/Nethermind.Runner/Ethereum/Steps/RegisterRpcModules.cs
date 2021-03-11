@@ -194,9 +194,9 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.ReceiptStorage,
                 _api.FilterStore);
             
-            SubscriptionManger subscriptionManger = new(subscriptionFactory, _api.LogManager);
+            SubscriptionManager subscriptionManager = new(subscriptionFactory, _api.LogManager);
             
-            SubscribeModule subscribeModule = new(subscriptionManger);
+            SubscribeModule subscribeModule = new(subscriptionManager);
             _api.RpcModuleProvider.RegisterSingle<ISubscribeModule>(subscribeModule);
 
             Web3Module web3Module = new(_api.LogManager);

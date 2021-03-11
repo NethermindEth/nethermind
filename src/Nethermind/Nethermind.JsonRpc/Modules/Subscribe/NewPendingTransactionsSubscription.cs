@@ -27,7 +27,8 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         private readonly ITxPool _txPool;
         private readonly ILogger _logger;
 
-        public NewPendingTransactionsSubscription(ITxPool? txPool, ILogManager? logManager)
+        public NewPendingTransactionsSubscription(IJsonRpcDuplexClient jsonRpcDuplexClient, ITxPool? txPool, ILogManager? logManager) 
+            : base(jsonRpcDuplexClient)
         {
             _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
@@ -40,18 +41,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         {
             Task.Run(() =>
             {
-                JsonRpcResult result =
-                    JsonRpcResult.Single(
-                        new JsonRpcSubscriptionResponse()
-                        {
-                            MethodName = nameof(ISubscribeModule.eth_subscribe),
-                            Params = new JsonRpcSubscriptionResult()
-                            {
-                                Subscription = Id,
-                                Result = e.Transaction.Hash
-                            }
-                        }, default);
-
+                JsonRpcResult result = CreateSubscriptionMessage(e.Transaction.Hash);
                 JsonRpcDuplexClient.SendJsonRpcResult(result);
                 if(_logger.IsTrace) _logger.Trace($"NewPendingTransactions subscription {Id} printed hash of NewPendingTransaction.");
             }).ContinueWith(

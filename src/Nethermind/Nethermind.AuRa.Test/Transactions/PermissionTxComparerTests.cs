@@ -279,7 +279,7 @@ namespace Nethermind.AuRa.Test.Transactions
             specProvider.GetSpec(Arg.Any<long>()).Returns(new ReleaseSpec() {IsEip1559Enabled = false});
             var transactionComparerProvider = new TransactionComparerProvider(specProvider, blockTree);
             IComparer<Transaction> defaultComparer = transactionComparerProvider.GetDefaultComparer();
-            IComparer<Transaction> comparer = new CompareTxByPermissionOnSpecifiedBlock(sendersWhitelist, priorities, blockHeader)
+            IComparer<Transaction> comparer = new CompareTxByPriorityOnSpecifiedBlock(sendersWhitelist, priorities, blockHeader)
                 .ThenBy(defaultComparer); 
             
 

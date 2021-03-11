@@ -75,7 +75,9 @@ namespace Nethermind.JsonRpc.Test.Modules
             peerManager.ActivePeers.Returns(new List<Peer> {peerA, peerB, peerC});
             peerManager.ConnectedPeers.Returns(new List<Peer> {peerA, peerB, peerA, peerC, peerB});
             peerManager.MaxActivePeers.Returns(15);
-            
+
+            StateProvider stateProvider = new StateProvider(new TrieStore(new MemDb(), LimboLogs.Instance), new MemDb(), LimboLogs.Instance);
+           
             IDb blockDb = new MemDb();
             IDb headerDb = new MemDb();
             IDb blockInfoDb = new MemDb();
@@ -98,6 +100,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             var pendingTransaction = Build.A.Transaction.Signed(ethereumEcdsa, TestItem.PrivateKeyD, false)
                 .WithSenderAddress(Address.FromNumber((UInt256)blockNumber)).TestObject;
             pendingTransaction.Signature.V = 37;
+            stateProvider.CreateAccount(pendingTransaction.SenderAddress, UInt256.UInt128MaxValue);
             txPool.AddTransaction(pendingTransaction, TxHandlingOptions.None);
             
             blockNumber = 1;
@@ -105,6 +108,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 .WithSenderAddress(Address.FromNumber((UInt256)blockNumber))
                 .WithNonce(100).TestObject;
             transaction.Signature.V = 37;
+            stateProvider.CreateAccount(transaction.SenderAddress, UInt256.UInt128MaxValue);
             txPool.AddTransaction(transaction, TxHandlingOptions.None);
 
             
