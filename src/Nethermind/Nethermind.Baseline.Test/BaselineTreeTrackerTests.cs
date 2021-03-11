@@ -181,7 +181,7 @@ namespace Nethermind.Baseline.Test
                     IReadOnlyStateProvider stateProvider,
                     ITxValidator validator,
                     ILogManager? logManager,
-                    IComparer<Transaction>? comparer = null) 
+                    IComparer<Transaction> comparer) 
                     : base(txStorage, ecdsa, specProvider, txPoolConfig, stateProvider, validator, logManager, comparer)
                 {
                 }
@@ -201,7 +201,8 @@ namespace Nethermind.Baseline.Test
                     new TxPoolConfig(),
                     State,
                     new TxValidator(SpecProvider.ChainId),
-                    LimboLogs.Instance);
+                    LimboLogs.Instance,
+                    TransactionComparerProvider.GetDefaultComparer());
         }
 
         private BaselineTree BuildATree(IKeyValueStore keyValueStore = null)

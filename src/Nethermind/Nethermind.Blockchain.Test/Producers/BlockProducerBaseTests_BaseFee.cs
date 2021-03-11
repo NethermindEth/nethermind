@@ -51,6 +51,7 @@ namespace Nethermind.Blockchain.Test.Producers
                 private bool _eip1559Enabled;
                 private TestRpcBlockchain _testRpcBlockchain;
                 private Task<ScenarioBuilder> _antecedent;
+                private UInt256 _currentNonce = 1;
 
                 public ScenarioBuilder WithEip1559TransitionBlock(long transitionBlock)
                 {
@@ -59,7 +60,7 @@ namespace Nethermind.Blockchain.Test.Producers
                     return this;
                 }
 
-                private async Task<ScenarioBuilder> CreateTestBlockchainAsync()
+                private async Task<ScenarioBuilder> CreateTestBlockchainAsync(long gasLimit)
                 {
                     await ExecuteAntecedentIfNeeded();
                     SingleReleaseSpecProvider spec = new SingleReleaseSpecProvider(
@@ -67,7 +68,7 @@ namespace Nethermind.Blockchain.Test.Producers
                         {
                             IsEip1559Enabled = _eip1559Enabled, Eip1559TransitionBlock = _eip1559TransitionBlock
                         }, 1);
-                    BlockBuilder blockBuilder = Core.Test.Builders.Build.A.Block.Genesis.WithGasLimit(10000000000);
+                    BlockBuilder blockBuilder = Core.Test.Builders.Build.A.Block.Genesis.WithGasLimit(gasLimit);
                     _testRpcBlockchain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
                         .WithGenesisBlockBuilder(blockBuilder)
                         .Build(spec);
@@ -76,9 +77,9 @@ namespace Nethermind.Blockchain.Test.Producers
                     return this;
                 }
 
-                public ScenarioBuilder CreateTestBlockchain()
+                public ScenarioBuilder CreateTestBlockchain(long gasLimit = 10000000000)
                 {
-                    _antecedent = CreateTestBlockchainAsync();
+                    _antecedent = CreateTestBlockchainAsync(gasLimit);
                     return this;
                 }
 
@@ -92,7 +93,7 @@ namespace Nethermind.Blockchain.Test.Producers
                 {
                     await ExecuteAntecedentIfNeeded();
                     _contractAddress = ContractAddress.From(_address, 0L);
-                    var bytecode = await GetContractBytecode("BadContract");
+                    byte[] bytecode = await GetContractBytecode("BadContract");
                     Transaction tx = new Transaction();
                     tx.Value = 0;
                     tx.Data = bytecode;
@@ -103,27 +104,35 @@ namespace Nethermind.Blockchain.Test.Producers
                     return this;
                 }
                 
-                public ScenarioBuilder SendTransaction()
+                public ScenarioBuilder SendEip1559Transaction(long gasLimit = 1000000, UInt256? gasPremium = null, UInt256? feeCap = null)
                 {
-                    _antecedent = SendTransactionAsync();
+                    _antecedent = SendTransactionAsync(gasLimit, gasPremium ?? 20.GWei(), feeCap ?? UInt256.Zero);
                     return this;
                 }
-                private async Task<ScenarioBuilder> SendTransactionAsync()
+                
+                public ScenarioBuilder SendLegacyTransaction(long gasLimit = 1000000, UInt256? gasPremium = null)
                 {
-                    var txData = _abiEncoder.Encode(
+                    _antecedent = SendTransactionAsync(gasLimit, gasPremium ?? 20.GWei(), UInt256.Zero);
+                    return this;
+                }
+                private async Task<ScenarioBuilder> SendTransactionAsync(long gasLimit, UInt256 gasPrice, UInt256 feeCap)
+                {
+                    await ExecuteAntecedentIfNeeded();
+                    byte[] txData = _abiEncoder.Encode(
                         AbiEncodingStyle.IncludeSignature,
                         BadContract.Divide);
-
-                    await ExecuteAntecedentIfNeeded();
                     Transaction tx = new Transaction();
                     tx.Value = 0;
                     tx.Data = txData;
                     tx.To = _contractAddress;
                     tx.SenderAddress = _address;
-                    tx.GasLimit = 1000000;
-                    tx.GasPrice = 20.GWei();
+                    tx.GasLimit = gasLimit;
+                    tx.GasPrice = gasPrice;
+                    tx.DecodedFeeCap = feeCap;
+                    tx.Nonce = _currentNonce;
+                    ++_currentNonce;
                     
-                    await _testRpcBlockchain.TxSender.SendTransaction(tx, TxHandlingOptions.ManagedNonce | TxHandlingOptions.PersistentBroadcast);
+                    await _testRpcBlockchain.TxSender.SendTransaction(tx, TxHandlingOptions.None);
                     return this;
                 }
 
@@ -197,8 +206,6 @@ namespace Nethermind.Blockchain.Test.Producers
             }
         }
 
-
-
         [Test]
         public async Task BlockProducer_has_blocks_with_zero_base_fee_before_fork()
         {
@@ -235,21 +242,24 @@ namespace Nethermind.Blockchain.Test.Producers
             await scenario.Finish();
         }
 
-        // [Test]
-        // public async Task BadContract_test()
-        // {
-        //     BaseFeeTestScenario.ScenarioBuilder scenario = BaseFeeTestScenario.GoesLikeThis()
-        //         .WithEip1559TransitionBlock(6)
-        //         .CreateTestBlockchain()
-        //         .BlocksBeforeTransitionShouldHaveZeroBaseFee()
-        //         .DeployContract()
-        //         .SendTransaction()
-        //         .AssertNewBlock(Eip1559Constants.ForkBaseFee)
-        //         .AssertNewBlock(875000000)
-        //         .AssertNewBlock(765625000)
-        //         .AssertNewBlock(669921875)
-        //         .AssertNewBlock(586181641);
-        //     await scenario.Finish();
-        // }
+        [Test]
+        public async Task BadContract_test()
+        {
+            BaseFeeTestScenario.ScenarioBuilder scenario = BaseFeeTestScenario.GoesLikeThis()
+                .WithEip1559TransitionBlock(6)
+                .CreateTestBlockchain(3000000)
+                .DeployContract()
+                .BlocksBeforeTransitionShouldHaveZeroBaseFee()
+                .AssertNewBlock(Eip1559Constants.ForkBaseFee)
+               // .SendLegacyTransaction(40.GWei())
+                // .SendLegacyTransaction(20.GWei())
+                // .SendLegacyTransaction(20.GWei())
+                // .SendLegacyTransaction(20.GWei())
+                .AssertNewBlock(875000000)
+                .AssertNewBlock(765625000)
+                .AssertNewBlock(669921875)
+                .AssertNewBlock(586181641);
+            await scenario.Finish();
+        }
     }
 }

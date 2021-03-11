@@ -32,7 +32,6 @@ namespace Nethermind.Baseline.Test
 {
     public partial class BaselineTreeTrackerTests
     {
-       
         [Test]
         public async Task Tree_tracker_reorganization([ValueSource(nameof(ReorganizationTestCases))]ReorganizedInsertLeafTest test)
         {
