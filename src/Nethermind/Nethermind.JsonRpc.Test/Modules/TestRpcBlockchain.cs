@@ -112,7 +112,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             
             ReadOnlyTxProcessingEnv processingEnv = new ReadOnlyTxProcessingEnv(
                 new ReadOnlyDbProvider(DbProvider, false),
-                new TrieStore(DbProvider.StateDb, LimboLogs.Instance).AsReadOnly(DbProvider.StateDb),
+                new TrieStore(DbProvider.StateDb, LimboLogs.Instance).AsReadOnly(),
                 new ReadOnlyBlockTree(BlockTree),
                 SpecProvider,
                 LimboLogs.Instance);

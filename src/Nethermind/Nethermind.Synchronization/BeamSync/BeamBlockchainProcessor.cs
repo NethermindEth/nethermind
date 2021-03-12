@@ -198,7 +198,7 @@ namespace Nethermind.Synchronization.BeamSync
         private (IBlockchainProcessor, IStateReader) CreateProcessor(Block block, IReadOnlyDbProvider readOnlyDbProvider, ISpecProvider specProvider, ILogManager logManager)
         {
             // TODO: need to pass the state with cache
-            ReadOnlyTxProcessingEnv txEnv = new(readOnlyDbProvider, new TrieStore(readOnlyDbProvider.StateDb, logManager).AsReadOnly(readOnlyDbProvider.StateDb), _readOnlyBlockTree, specProvider, logManager);
+            ReadOnlyTxProcessingEnv txEnv = new(readOnlyDbProvider, new TrieStore(readOnlyDbProvider.StateDb, logManager).AsReadOnly(), _readOnlyBlockTree, specProvider, logManager);
             ReadOnlyChainProcessingEnv env = new(txEnv, _blockValidator, _recoveryStep, _rewardCalculatorSource.Get(txEnv.TransactionProcessor), NullReceiptStorage.Instance, _readOnlyDbProvider, specProvider, logManager);
             env.BlockProcessor.TransactionProcessed += (_, args) =>
             {
