@@ -118,7 +118,7 @@ namespace Nethermind.Db
             db.Remove(key.ToBigEndianByteArrayWithoutLeadingZeros());
         }
 
-        public static TItem Get<TItem>(this IDb db, Keccak key, IRlpStreamDecoder<TItem> decoder, ICache<Keccak, TItem> cache = null, bool shouldCache = true) where TItem : class
+        public static TItem? Get<TItem>(this IDb db, Keccak key, IRlpStreamDecoder<TItem> decoder, ICache<Keccak, TItem> cache = null, bool shouldCache = true) where TItem : class
         {
             TItem item = cache?.Get(key);
             if (item is null)

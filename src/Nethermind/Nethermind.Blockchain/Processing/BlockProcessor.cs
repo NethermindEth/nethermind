@@ -159,7 +159,7 @@ namespace Nethermind.Blockchain.Processing
             }
         }
 
-        public event EventHandler<BlocksProcessingEventArgs> BlocksProcessing;
+        public event EventHandler<BlocksProcessingEventArgs>? BlocksProcessing;
 
         // TODO: move to branch processor
         private void InitBranch(Keccak branchStateRoot, bool incrementReorgMetric = true)
