@@ -86,7 +86,9 @@ namespace Nethermind.Trie.Pruning
                 {
                     if (trieNode!.FullRlp is null)
                     {
-                        throw new InvalidAsynchronousStateException("Read only trie store is trying to reda a transient node.");
+                        // // this happens in SyncProgressResolver
+                        // throw new InvalidAsynchronousStateException("Read only trie store is trying to read a transient node.");
+                        return new TrieNode(NodeType.Unknown, hash);
                     }
                     
                     // we returning a copy to avoid multithreaded access
