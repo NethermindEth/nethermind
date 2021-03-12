@@ -46,6 +46,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;

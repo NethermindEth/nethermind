@@ -1,4 +1,4 @@
-//  Copyright (c) 2020 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -13,20 +13,15 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 
 namespace Nethermind.Trie.Pruning
 {
-    public class NullTrieNodeResolver : ITrieNodeResolver
+    public static class TrieNodeResolverExtensions
     {
-        private NullTrieNodeResolver() { }
-        
-        public static readonly NullTrieNodeResolver Instance = new ();
-
-        public TrieNode FindCachedOrUnknown(Keccak hash, bool addToCacheWhenNotFound) => new (NodeType.Unknown, hash);
-
-        public byte[] LoadRlp(Keccak hash, IKeyValueStore? keyValueStore = null) => null;
+        public static ReadOnlyTrieStore AsReadOnly(this ITrieNodeResolver trieStore, IKeyValueStore readOnlyStore) => 
+            new(trieStore, readOnlyStore);
     }
 }

@@ -13,6 +13,7 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
 using System;
 using Nethermind.Core;
@@ -20,16 +21,30 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Trie.Pruning
 {
-    public class NullTrieStore : ITrieStore
+    /// <summary>
+    /// Safe to be reused for the same wrapped store.
+    /// </summary>
+    public class ReadOnlyTrieStore : IReadOnlyTrieStore
     {
-        private NullTrieStore() { }
+        private readonly ITrieNodeResolver _trieStore;
+        private readonly IKeyValueStore _readOnlyStore;
 
-        public static NullTrieStore Instance { get; } = new ();
+        public ReadOnlyTrieStore(ITrieNodeResolver trieStore, IKeyValueStore readOnlyStore)
+        {
+            _trieStore = trieStore ?? throw new ArgumentNullException(nameof(trieStore));
+            _readOnlyStore = readOnlyStore ?? throw new ArgumentNullException(nameof(readOnlyStore));
+        }
+
+        public TrieNode FindCachedOrUnknown(Keccak hash, bool addToCacheWhenNotFound) => 
+            _trieStore.FindCachedOrUnknown(hash, false);
+
+        public byte[] LoadRlp(Keccak hash, IKeyValueStore? keyValueStore = null) => 
+            _trieStore.LoadRlp(hash, keyValueStore ?? _readOnlyStore);
 
         public void CommitNode(long blockNumber, NodeCommitInfo nodeCommitInfo) { }
 
         public void FinishBlockCommit(TrieType trieType, long blockNumber, TrieNode? root) { }
-        
+
         public void HackPersistOnShutdown() { }
         
         public event EventHandler<ReorgBoundaryReached> ReorgBoundaryReached
@@ -38,16 +53,6 @@ namespace Nethermind.Trie.Pruning
             remove { }
         }
 
-        public TrieNode FindCachedOrUnknown(Keccak hash, bool addToCacheWhenNotFound)
-        {
-            return new (NodeType.Unknown, hash);
-        }
-
-        public byte[] LoadRlp(Keccak hash, IKeyValueStore? keyValueStore = null)
-        {
-            return Array.Empty<byte>();
-        }
-        
         public void Dispose() { }
     }
 }
