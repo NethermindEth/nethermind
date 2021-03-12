@@ -1,4 +1,6 @@
+using System;
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -562,6 +564,61 @@ namespace Nethermind.Trie.Test.Pruning
             readOnlyTrieStore.LoadRlp(node.Keccak);
             
             witnessCollector.Collected.Should().BeEmpty();
+        }
+        
+        [TestCase(true)]
+        [TestCase(false)]
+        public async Task Read_only_trie_store_is_allowing_many_thread_to_work_with_the_same_node(bool beThreadSafe)
+        {
+            TrieNode trieNode = new(NodeType.Branch);
+            for (int i = 0; i < 16; i++)
+            {
+                trieNode.SetChild(i, new TrieNode(NodeType.Unknown, TestItem.Keccaks[i]));
+            }
+
+            trieNode.Seal();
+
+            MemDb memDb = new();
+            ITrieStore trieStore = new TrieStore(memDb, Prune.WhenCacheReaches(10.MB()), Persist.IfBlockOlderThan(10), _logManager);
+            trieNode.ResolveKey(trieStore, false);
+            trieStore.CommitNode(1, new NodeCommitInfo(trieNode));
+
+            if (beThreadSafe)
+            {
+                trieStore = trieStore.AsReadOnly(memDb);
+            }
+
+            void CheckChildren()
+            {
+                for (int i = 0; i < 16 * 10; i++)
+                {
+                    try
+                    {
+                        trieStore.FindCachedOrUnknown(trieNode.Keccak).GetChildHash(i % 16).Should().BeEquivalentTo(TestItem.Keccaks[i % 16], i.ToString());
+                    }
+                    catch (Exception e)
+                    {
+                        throw new AssertionException("Failed");
+                    }
+                }
+            }
+
+            List<Task> tasks = new();
+            for (int i = 0; i < 2; i++)
+            {
+                Task task = new(CheckChildren);
+                task.Start();
+                tasks.Add(task);
+            }
+
+            if (beThreadSafe)
+            {
+                await Task.WhenAll();
+            }
+            else
+            {
+                Assert.ThrowsAsync<AssertionException>(() => Task.WhenAll(tasks));   
+            }
         }
     }
 }
