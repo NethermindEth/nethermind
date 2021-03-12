@@ -258,7 +258,6 @@ namespace Nethermind.AuRa.Test.Transactions
                     new LruCache<Keccak, UInt256>(PermissionBasedTxFilter.Cache.MaxCacheSize, nameof(TransactionPermissionContract));
 
                 var trieStore = new TrieStore(DbProvider.StateDb, LimboLogs.Instance).AsReadOnly();
-
                 IReadOnlyTxProcessorSource txProcessorSource = new ReadOnlyTxProcessingEnv(
                     DbProvider,
                     trieStore,
