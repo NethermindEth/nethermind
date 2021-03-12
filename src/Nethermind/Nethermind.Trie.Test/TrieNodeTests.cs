@@ -15,7 +15,9 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -849,6 +851,44 @@ namespace Nethermind.Trie.Test
             trieStore.FindCachedOrUnknown(Arg.Any<Keccak>()).Returns(new TrieNode(NodeType.Unknown, child.Keccak!));
             trieNode.GetChild(trieStore, 0);
             Assert.Throws<TrieException>(() => trieNode.GetChild(trieStore, 0).ResolveNode(trieStore));
+        }
+        
+        [Test]
+        public async Task Trie_node_Is_not_thread_safe()
+        {
+            TrieNode trieNode = new(NodeType.Branch);
+            for (int i = 0; i < 16; i++)
+            {
+                trieNode.SetChild(i, new TrieNode(NodeType.Unknown, TestItem.Keccaks[i]));
+            }
+
+            trieNode.Seal();
+            trieNode.ResolveKey(Substitute.For<ITrieNodeResolver>(), false);
+
+            void CheckChildren()
+            {
+                for (int i = 0; i < 16 * 10; i++)
+                {
+                    try
+                    {
+                        trieNode.GetChildHash(i % 16).Should().BeEquivalentTo(TestItem.Keccaks[i % 16], i.ToString());
+                    }
+                    catch (Exception e)
+                    {
+                        throw new AssertionException("Failed");
+                    }
+                }
+            }
+
+            List<Task> tasks = new();
+            for (int i = 0; i < 2; i++)
+            {
+                Task task = new(CheckChildren);
+                task.Start();
+                tasks.Add(task);
+            }
+            
+            Assert.ThrowsAsync<AssertionException>(() => Task.WhenAll(tasks));
         }
 
         [Test]

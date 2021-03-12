@@ -47,13 +47,8 @@ namespace Nethermind.Trie
 
         public TrieNode(NodeType nodeType, Keccak keccak)
         {
-            if (keccak is null)
-            {
-                throw new ArgumentNullException(nameof(keccak));
-            }
-
+            Keccak = keccak ?? throw new ArgumentNullException(nameof(keccak));
             NodeType = nodeType;
-            Keccak = keccak;
             if (nodeType == NodeType.Unknown)
             {
                 IsPersisted = true;
@@ -64,7 +59,18 @@ namespace Nethermind.Trie
         {
             NodeType = nodeType;
             FullRlp = rlp;
+
             _rlpStream = rlp.AsRlpStream();
+        }
+        
+        public TrieNode(NodeType nodeType, Keccak keccak, byte[] rlp) 
+            :this(nodeType, rlp)
+        {
+            Keccak = keccak;
+            if (nodeType == NodeType.Unknown)
+            {
+                IsPersisted = true;
+            }
         }
 
         /// <summary>
@@ -81,6 +87,8 @@ namespace Nethermind.Trie
         /// </summary>
         public bool IsSealed => !IsDirty;
 
+        public bool IsBeingPersisted { get; set; }
+        
         public bool IsPersisted { get; set; }
 
         /// <summary>
@@ -586,10 +594,13 @@ namespace Nethermind.Trie
         /// where A is a <see cref="TrieNode"/> on which the <paramref name="action"/> was invoked.
         /// Note that nodes referenced by hash are not called.
         /// </summary>
-        public void CallRecursively(Action<TrieNode> action, ITrieNodeResolver resolver, bool skipPersisted,
+        public void CallRecursively(
+            Action<TrieNode> action,
+            ITrieNodeResolver resolver,
+            bool skipPersisted,
             ILogger logger)
         {
-            if (skipPersisted && IsPersisted)
+            if (skipPersisted && (IsPersisted || IsBeingPersisted))
             {
                 if (logger.IsTrace) logger.Trace($"Skipping {this} - already persisted");
                 return;

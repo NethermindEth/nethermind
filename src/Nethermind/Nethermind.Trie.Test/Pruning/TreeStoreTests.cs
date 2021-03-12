@@ -94,12 +94,12 @@ namespace Nethermind.Trie.Test.Pruning
         }
 
         [Test]
-        public void Prunning_off_cache_should_not_find_cached_or_unknown()
+        public void Pruning_off_cache_should_not_find_cached_or_unknown()
         {
             TrieStore trieStore = new(new MemDb(), No.Pruning, No.Persistence, _logManager);
-            var returnedNode = trieStore.FindCachedOrUnknown(TestItem.KeccakA, true);
-            var returnedNode2 = trieStore.FindCachedOrUnknown(TestItem.KeccakB, true);
-            var returnedNode3 = trieStore.FindCachedOrUnknown(TestItem.KeccakC, true);
+            TrieNode returnedNode = trieStore.FindCachedOrUnknown(TestItem.KeccakA);
+            TrieNode returnedNode2 = trieStore.FindCachedOrUnknown(TestItem.KeccakB);
+            TrieNode returnedNode3 = trieStore.FindCachedOrUnknown(TestItem.KeccakC);
             Assert.AreEqual(NodeType.Unknown, returnedNode.NodeType);
             Assert.AreEqual(NodeType.Unknown, returnedNode2.NodeType);
             Assert.AreEqual(NodeType.Unknown, returnedNode3.NodeType);
@@ -110,10 +110,10 @@ namespace Nethermind.Trie.Test.Pruning
         public void FindCachedOrUnknown_CorrectlyCalculatedMemoryUsedByDirtyCache()
         {
             TrieStore trieStore = new(new MemDb(), new TestPruningStrategy(true), No.Persistence, _logManager);
-            var startSize = trieStore.MemoryUsedByDirtyCache;
+            long startSize = trieStore.MemoryUsedByDirtyCache;
             trieStore.FindCachedOrUnknown(TestItem.KeccakA);
             TrieNode trieNode = new(NodeType.Leaf, Keccak.Zero);
-            var oneKeccakSize = trieNode.GetMemorySize(false);
+            long oneKeccakSize = trieNode.GetMemorySize(false);
             Assert.AreEqual(startSize + oneKeccakSize, trieStore.MemoryUsedByDirtyCache);
             trieStore.FindCachedOrUnknown(TestItem.KeccakB);
             Assert.AreEqual(2 * oneKeccakSize + startSize, trieStore.MemoryUsedByDirtyCache);
@@ -121,7 +121,7 @@ namespace Nethermind.Trie.Test.Pruning
             Assert.AreEqual(2 * oneKeccakSize + startSize, trieStore.MemoryUsedByDirtyCache);
             trieStore.FindCachedOrUnknown(TestItem.KeccakC);
             Assert.AreEqual(3 * oneKeccakSize + startSize, trieStore.MemoryUsedByDirtyCache);
-            trieStore.FindCachedOrUnknown(TestItem.KeccakD, false);
+            trieStore.FindCachedOrUnknown(TestItem.KeccakD, true);
             Assert.AreEqual(3 * oneKeccakSize + startSize, trieStore.MemoryUsedByDirtyCache);
         }
 
@@ -553,12 +553,12 @@ namespace Nethermind.Trie.Test.Pruning
             
             MemDb originalStore = new MemDb();
             WitnessCollector witnessCollector = new WitnessCollector(new MemDb(), LimboLogs.Instance);
-            var store = originalStore.WitnessedBy(witnessCollector);
+            IKeyValueStoreWithBatching store = originalStore.WitnessedBy(witnessCollector);
             TrieStore trieStore = new(store, new TestPruningStrategy(false), No.Persistence, _logManager);
             trieStore.CommitNode(0, new NodeCommitInfo(node));
             trieStore.FinishBlockCommit(TrieType.State, 0, node);
             
-            var readOnlyTrieStore = trieStore.AsReadOnly(originalStore);
+            IReadOnlyTrieStore readOnlyTrieStore = trieStore.AsReadOnly(originalStore);
             readOnlyTrieStore.LoadRlp(node.Keccak);
             
             witnessCollector.Collected.Should().BeEmpty();
