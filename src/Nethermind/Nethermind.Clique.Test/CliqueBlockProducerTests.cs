@@ -154,6 +154,7 @@ namespace Nethermind.Clique.Test
                 processor.Start();
 
                 var minerTrieStore = trieStore.AsReadOnly();
+              
                 StateProvider minerStateProvider = new StateProvider(minerTrieStore, codeDb, nodeLogManager);
                 StorageProvider minerStorageProvider = new StorageProvider(minerTrieStore, minerStateProvider, nodeLogManager);
                 VirtualMachine minerVirtualMachine = new VirtualMachine(minerStateProvider, minerStorageProvider, blockhashProvider, specProvider, nodeLogManager);

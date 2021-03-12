@@ -129,6 +129,7 @@ namespace Nethermind.Core.Test.Blockchain
             chainProcessor.Start();
 
             var readOnlyTrieStore = TrieStore.AsReadOnly();
+            
             StateReader = new StateReader(readOnlyTrieStore, CodeDb, LimboLogs.Instance);
             TxPoolTxSource txPoolTxSource = CreateTxPoolTxSource();
             ISealer sealer = new NethDevSealEngine(TestItem.AddressD);

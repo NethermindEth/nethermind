@@ -26,20 +26,24 @@ namespace Nethermind.Trie.Pruning
     /// </summary>
     public class ReadOnlyTrieStore : IReadOnlyTrieStore
     {
-        private readonly ITrieNodeResolver _trieStore;
+        private readonly TrieStore _trieStore;
         private readonly IKeyValueStore? _readOnlyStore;
 
-        public ReadOnlyTrieStore(ITrieNodeResolver trieStore, IKeyValueStore? readOnlyStore)
+        public ReadOnlyTrieStore(TrieStore trieStore, IKeyValueStore? readOnlyStore)
         {
             _trieStore = trieStore ?? throw new ArgumentNullException(nameof(trieStore));
             _readOnlyStore = readOnlyStore;
         }
 
-        public TrieNode FindCachedOrUnknown(Keccak hash, bool addToCacheWhenNotFound) => 
-            _trieStore.FindCachedOrUnknown(hash, false);
+        public TrieNode FindCachedOrUnknown(Keccak hash) => 
+            _trieStore.FindCachedOrUnknown(hash, true);
 
-        public byte[] LoadRlp(Keccak hash, IKeyValueStore? keyValueStore = null) => 
-            _trieStore.LoadRlp(hash, keyValueStore ?? _readOnlyStore);
+        public byte[] LoadRlp(Keccak hash) => _trieStore.LoadRlp(hash, _readOnlyStore);
+
+        public IReadOnlyTrieStore AsReadOnly(IKeyValueStore keyValueStore)
+        {
+            return new ReadOnlyTrieStore(_trieStore, keyValueStore);
+        }
 
         public void CommitNode(long blockNumber, NodeCommitInfo nodeCommitInfo) { }
 

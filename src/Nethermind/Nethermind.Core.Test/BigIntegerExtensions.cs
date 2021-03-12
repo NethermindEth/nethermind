@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -13,32 +13,22 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
 using System.Numerics;
+using FluentAssertions;
+using Nethermind.Core.Extensions;
+using NUnit.Framework;
 
-namespace Nethermind.Core.Extensions
+namespace Nethermind.Core.Test
 {
-    public static class BigIntegerExtensions
+    public class BigIntegerExtensions
     {
-        public static byte[] ToBigEndianByteArray(this BigInteger bigInteger, int outputLength = -1)
+        [Test]
+        public void Test()
         {
-            if (outputLength == 0)
-            {
-                return Bytes.Empty;
-            }
-            
-            byte[] result = bigInteger.ToByteArray(false, true);
-            if (result[0] == 0 && result.Length != 1)
-            {
-                result = result.Slice(1, result.Length - 1);
-            }
-
-            if (outputLength != -1)
-            {
-                result = result.PadLeft(outputLength, bigInteger.Sign < 0 ? (byte) 0xff : (byte) 0x00);
-            }
-
-            return result;
+            BigInteger a = BigInteger.One;
+            a.ToBigEndianByteArray(0).Should().BeEquivalentTo(new byte[0]);
         }
     }
 }

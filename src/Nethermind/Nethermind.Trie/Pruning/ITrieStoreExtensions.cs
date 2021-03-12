@@ -19,9 +19,10 @@ using Nethermind.Core;
 
 namespace Nethermind.Trie.Pruning
 {
-    public static class TrieNodeResolverExtensions
+    // ReSharper disable once InconsistentNaming
+    public static class ITrieStoreExtensions
     {
-        public static ReadOnlyTrieStore AsReadOnly(this ITrieNodeResolver trieStore, IKeyValueStore? readOnlyStore = null) => 
-            new(trieStore, readOnlyStore);
+        public static IReadOnlyTrieStore AsReadOnly(this ITrieStore trieStore, IKeyValueStore? readOnlyStore = null) => 
+            trieStore.AsReadOnly(readOnlyStore);
     }
 }
