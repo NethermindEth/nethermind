@@ -111,7 +111,7 @@ namespace Nethermind.Runner.Test.Ethereum
                 WebSocketsManager = Substitute.For<IWebSocketsManager>(),
                 ChainLevelInfoRepository = Substitute.For<IChainLevelInfoRepository>(),
                 TrieStore = Substitute.For<ITrieStore>(),
-                ReadOnlyTrieStore = Substitute.For<ITrieStore>().AsReadOnly()
+                ReadOnlyTrieStore = Substitute.For<IReadOnlyTrieStore>()
             };
     }
 }

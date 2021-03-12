@@ -176,7 +176,7 @@ namespace Nethermind.Runner.Ethereum.Api
         public ITimestamper Timestamper { get; } = Core.Timestamper.Default;
         public ITransactionProcessor? TransactionProcessor { get; set; }
         public ITrieStore? TrieStore { get; set; }
-        public ReadOnlyTrieStore? ReadOnlyTrieStore { get; set; }
+        public IReadOnlyTrieStore? ReadOnlyTrieStore { get; set; }
         public ITxSender? TxSender { get; set; }
         public ITxPool? TxPool { get; set; }
         public ITxPoolInfoProvider? TxPoolInfoProvider { get; set; }

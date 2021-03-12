@@ -219,9 +219,11 @@ namespace Nethermind.Trie.Pruning
 
         public event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached;
 
-        public byte[] LoadRlp(Keccak keccak)
+        public byte[] LoadRlp(Keccak keccak) => LoadRlp(keccak, _keyValueStore);
+
+        private byte[] LoadRlp(Keccak keccak, IKeyValueStore keyValueStore)
         {
-            byte[]? rlp = _currentBatch.Value?[keccak.Bytes] ?? _keyValueStore[keccak.Bytes];
+            byte[]? rlp = _currentBatch.Value?[keccak.Bytes] ?? keyValueStore[keccak.Bytes];
             if (rlp is null)
             {
                 throw new TrieException($"Node {keccak} is missing from the DB");
@@ -695,5 +697,41 @@ namespace Nethermind.Trie.Pruning
         }
 
         #endregion
+        
+        public IReadOnlyTrieStore AsReadOnly(IKeyValueStore readOnlyStore)
+        {
+            return new ReadOnlyTrieStore(this, readOnlyStore);
+        }
+        
+        private class ReadOnlyTrieStore : IReadOnlyTrieStore
+        {
+            private readonly TrieStore _trieStore;
+            private readonly IKeyValueStore _readOnlyStore;
+
+            public ReadOnlyTrieStore(TrieStore trieStore, IKeyValueStore readOnlyStore)
+            {
+                _trieStore = trieStore ?? throw new ArgumentNullException(nameof(trieStore));
+                _readOnlyStore = readOnlyStore ?? throw new ArgumentNullException(nameof(readOnlyStore));
+            }
+
+            public TrieNode FindCachedOrUnknown(Keccak hash, bool addToCacheWhenNotFound) => 
+                _trieStore.FindCachedOrUnknown(hash, false);
+
+            public byte[] LoadRlp(Keccak hash) => _trieStore.LoadRlp(hash, _readOnlyStore);
+
+            public void CommitNode(long blockNumber, NodeCommitInfo nodeCommitInfo) { }
+
+            public void FinishBlockCommit(TrieType trieType, long blockNumber, TrieNode? root) { }
+
+            public void HackPersistOnShutdown() { }
+        
+            public event EventHandler<ReorgBoundaryReached> ReorgBoundaryReached
+            {
+                add { }
+                remove { }
+            }
+
+            public void Dispose() { }
+        }
     }
 }

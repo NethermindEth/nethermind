@@ -67,7 +67,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
             MemDb stateDb = new MemDb();
             MemDb codeDb = new MemDb();
 
-            ITrieStore trieStore = new ReadOnlyTrieStore(new TrieStore(stateDb, LimboLogs.Instance));
+            ITrieStore trieStore = new TrieStore(stateDb, LimboLogs.Instance).AsReadOnly(stateDb);
             StateProvider stateProvider = new StateProvider(trieStore, codeDb, LimboLogs.Instance);
             StorageProvider storageProvider = new StorageProvider(trieStore, stateProvider, LimboLogs.Instance);
 

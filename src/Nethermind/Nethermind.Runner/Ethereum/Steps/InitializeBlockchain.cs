@@ -88,25 +88,25 @@ namespace Nethermind.Runner.Ethereum.Steps
                     .WithPruning(getApi.BlockTree!, getApi.LogManager)
                 : NullWitnessCollector.Instance;
 
-            setApi.MainStateDbWithCache = getApi.DbProvider.StateDb
-                .Cached(Trie.MemoryAllowance.TrieNodeCacheCount)
-                .WitnessedBy(witnessCollector);
+            IKeyValueStoreWithBatching cachedStateDb = getApi.DbProvider.StateDb
+                .Cached(Trie.MemoryAllowance.TrieNodeCacheCount);
+            setApi.MainStateDbWithCache = cachedStateDb;
             IKeyValueStore codeDb = getApi.DbProvider.CodeDb
                 .WitnessedBy(witnessCollector);
 
-            ITrieStore trieStore;
+            TrieStore trieStore;
             if (pruningConfig.Enabled)
             {
-                trieStore = setApi.TrieStore = new TrieStore(
-                    setApi.MainStateDbWithCache,
+                setApi.TrieStore = trieStore = new TrieStore(
+                    setApi.MainStateDbWithCache.WitnessedBy(witnessCollector),
                     Prune.WhenCacheReaches(pruningConfig.CacheMb.MB()), // TODO: memory hint should define this
                     Persist.IfBlockOlderThan(pruningConfig.PersistenceInterval), // TODO: this should be based on time
                     getApi.LogManager);
             }
             else
             {
-                trieStore = setApi.TrieStore = new TrieStore(
-                    setApi.MainStateDbWithCache, // TODO: PRUNING what a hack here just to pass the actual DB
+                setApi.TrieStore = trieStore = new TrieStore(
+                    setApi.MainStateDbWithCache.WitnessedBy(witnessCollector), // TODO: PRUNING what a hack here just to pass the actual DB
                     No.Pruning,
                     Persist.EveryBlock,
                     getApi.LogManager);
@@ -114,7 +114,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             
             getApi.DisposeStack.Push(trieStore);
             trieStore.ReorgBoundaryReached += ReorgBoundaryReached;
-            ITrieStore readOnlyTrieStore = setApi.ReadOnlyTrieStore = trieStore.AsReadOnly();
+            ITrieStore readOnlyTrieStore = setApi.ReadOnlyTrieStore = trieStore.AsReadOnly(cachedStateDb);
 
             IStateProvider stateProvider = setApi.StateProvider = new StateProvider(
                 trieStore,
