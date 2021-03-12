@@ -87,8 +87,6 @@ namespace Nethermind.Trie
         /// </summary>
         public bool IsSealed => !IsDirty;
 
-        public bool IsBeingPersisted { get; set; }
-        
         public bool IsPersisted { get; set; }
 
         /// <summary>
@@ -602,7 +600,7 @@ namespace Nethermind.Trie
             bool skipPersisted,
             ILogger logger)
         {
-            if (skipPersisted && (IsPersisted || IsBeingPersisted))
+            if (skipPersisted && IsPersisted)
             {
                 if (logger.IsTrace) logger.Trace($"Skipping {this} - already persisted");
                 return;
