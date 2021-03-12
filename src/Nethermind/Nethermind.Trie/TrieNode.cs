@@ -84,7 +84,7 @@ namespace Nethermind.Trie
         public bool IsPersisted { get; set; }
 
         /// <summary>
-        /// Node will no longer be mutable except for ref counting
+        /// Node will no longer be mutable
         /// </summary>
         public void Seal()
         {
@@ -650,9 +650,9 @@ namespace Nethermind.Trie
         /// After calling this method you will end up with
         ///        B
         /// ||||||||||||||||
-        /// -?--T?----?--TT-
+        /// -T--T?----?--TT-
         /// where ? stands for an unresolved child (unresolved child is one for which we know the hash in RLP
-        /// abd for which we do not have an in-memory .NET object representation - TrieNode)
+        /// and for which we do not have an in-memory .NET object representation - TrieNode)
         /// Unresolved child can be resolved by calling ResolveChild(child_index).
         /// </summary>
         /// <param name="maxLevelsDeep">How many levels deep we will be pruning the child nodes.</param>

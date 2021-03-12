@@ -34,7 +34,36 @@ namespace Nethermind.Trie.Pruning
     public class TrieStore : ITrieStore
     {
         private int _isFirst;
-        private readonly ThreadLocal<IBatch?> _currentBatch = new();
+
+        private class BatchWithInfo : IDisposable
+        {
+            public IBatch Batch { get; }
+
+            private List<TrieNode> _nodesToMarkAsPersisted = new();
+
+            public BatchWithInfo(IBatch batch)
+            {
+                Batch = batch;
+            }
+
+            public void AddNode(TrieNode trieNode)
+            {
+                _nodesToMarkAsPersisted.Add(trieNode);
+            }
+
+            public void Dispose()
+            {
+                Batch.Dispose();
+                
+                for (int index = 0; index < _nodesToMarkAsPersisted.Count; index++)
+                {
+                    TrieNode trieNode = _nodesToMarkAsPersisted[index];
+                    trieNode.IsPersisted = true;
+                }
+            }
+        }
+        
+        private readonly ThreadLocal<BatchWithInfo> _currentBatch = new();
 
         public TrieStore(IKeyValueStoreWithBatching? keyValueStore, ILogManager? logManager)
             : this(keyValueStore, No.Pruning, Pruning.Persist.EveryBlock, logManager)
@@ -222,7 +251,7 @@ namespace Nethermind.Trie.Pruning
         public byte[] LoadRlp(Keccak keccak, IKeyValueStore? keyValueStore = null)
         {
             keyValueStore ??= _keyValueStore;
-            byte[]? rlp = _currentBatch.Value?[keccak.Bytes] ?? keyValueStore[keccak.Bytes];
+            byte[]? rlp = _currentBatch.Value?.Batch[keccak.Bytes] ?? keyValueStore[keccak.Bytes];
             if (rlp is null)
             {
                 throw new TrieException($"Node {keccak} is missing from the DB");
@@ -538,7 +567,7 @@ namespace Nethermind.Trie.Pruning
 
             try
             {
-                _currentBatch.Value ??= _keyValueStore.StartBatch();
+                _currentBatch.Value ??= new BatchWithInfo(_keyValueStore.StartBatch());
                 if (_logger.IsDebug) _logger.Debug($"Persisting from root {commitSet.Root} in {commitSet.BlockNumber}");
 
                 Stopwatch stopwatch = Stopwatch.StartNew();
@@ -565,7 +594,7 @@ namespace Nethermind.Trie.Pruning
 
         private void Persist(TrieNode currentNode, long blockNumber)
         {
-            _currentBatch.Value ??= _keyValueStore.StartBatch();
+            _currentBatch.Value ??= new BatchWithInfo(_keyValueStore.StartBatch());
             if (currentNode is null)
             {
                 throw new ArgumentNullException(nameof(currentNode));
@@ -582,8 +611,8 @@ namespace Nethermind.Trie.Pruning
 
                 if (_logger.IsTrace)
                     _logger.Trace($"Persisting {nameof(TrieNode)} {currentNode} in snapshot {blockNumber}.");
-                _currentBatch.Value[currentNode.Keccak.Bytes] = currentNode.FullRlp;
-                currentNode.IsPersisted = true;
+                _currentBatch.Value.Batch[currentNode.Keccak.Bytes] = currentNode.FullRlp;
+                _currentBatch.Value.AddNode(currentNode);
                 currentNode.LastSeen = blockNumber;
                 PersistedNodesCount++;
             }

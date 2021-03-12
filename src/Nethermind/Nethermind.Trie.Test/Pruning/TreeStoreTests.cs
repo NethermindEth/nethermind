@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -7,6 +8,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
+using Nethermind.State;
 using Nethermind.State.Witnesses;
 using Nethermind.Trie.Pruning;
 using NUnit.Framework;
@@ -44,7 +46,7 @@ namespace Nethermind.Trie.Test.Pruning
 
 
         [Test]
-        public void Prunning_off_cache_should_not_change_commit_node()
+        public void Pruning_off_cache_should_not_change_commit_node()
         {
             TrieNode trieNode = new(NodeType.Leaf, Keccak.Zero);
             TrieNode trieNode2 = new(NodeType.Branch, TestItem.KeccakA);
@@ -369,6 +371,47 @@ namespace Nethermind.Trie.Test.Pruning
 
             memDb[a.Keccak!.Bytes].Should().BeNull();
             trieStore.IsNodeCached(a.Keccak).Should().BeTrue();
+        }
+
+        private class BadDb : IKeyValueStoreWithBatching
+        {
+            private Dictionary<byte[], byte[]> _db = new();
+            
+            public byte[]? this[byte[] key]
+            {
+                get => _db[key];
+                set => _db[key] = value;
+            }
+
+            public IBatch StartBatch()
+            {
+                return new BadBatch();
+            }
+
+            private class BadBatch : IBatch
+            {
+                private Dictionary<byte[], byte[]> _inBatched = new();
+                
+                public void Dispose()
+                {
+                }
+
+                public byte[]? this[byte[] key]
+                {
+                    get => _inBatched[key];
+                    set => _inBatched[key] = value;
+                }
+            }
+        }
+        
+        
+        [Test]
+        public void Trie_store_multi_threaded_scenario()
+        {
+            TrieStore trieStore = new(new BadDb(), _logManager);
+            StateTree tree = new(trieStore, _logManager);
+            tree.Set(TestItem.AddressA, Build.A.Account.WithBalance(1000).TestObject);
+            tree.Set(TestItem.AddressB, Build.A.Account.WithBalance(1000).TestObject);
         }
 
         private AccountDecoder _accountDecoder = new();

@@ -26,6 +26,7 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie.Pruning;
 using NSubstitute;
+using NSubstitute.ExceptionExtensions;
 using NUnit.Framework;
 
 namespace Nethermind.Trie.Test
@@ -826,6 +827,28 @@ namespace Nethermind.Trie.Test
             var trieStore = Substitute.For<ITrieNodeResolver>();
             trieStore.FindCachedOrUnknown(Arg.Any<Keccak>()).Returns(child);
             trieNode.GetChild(trieStore, 0).Should().Be(child);
+        }
+
+        [Test]
+        public void Batch_not_db_regression()
+        {
+            TrieNode child = new(NodeType.Leaf);
+            child.Key = HexPrefix.Leaf("abc");
+            child.Value = new byte[200];
+            child.Seal();
+            
+            TrieNode trieNode = new(NodeType.Extension);
+            trieNode.SetChild(0, child);
+            trieNode.Seal();
+
+            ITrieNodeResolver trieStore = Substitute.For<ITrieNodeResolver>();
+            trieStore.LoadRlp(Arg.Any<Keccak>(), null).Throws(new TrieException());
+            child.ResolveKey(trieStore, false);
+            child.IsPersisted = true;
+
+            trieStore.FindCachedOrUnknown(Arg.Any<Keccak>()).Returns(new TrieNode(NodeType.Unknown, child.Keccak!));
+            trieNode.GetChild(trieStore, 0);
+            trieNode.GetChild(trieStore, 0)!.ResolveNode(trieStore);
         }
 
         [Test]
