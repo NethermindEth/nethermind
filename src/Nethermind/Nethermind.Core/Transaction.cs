@@ -41,7 +41,7 @@ namespace Nethermind.Core
         public UInt256 GasPremium => GasPrice; 
         public UInt256 DecodedFeeCap { get; set; }
         public UInt256 FeeCap => IsEip1559 ? DecodedFeeCap : GasPrice;
-        public bool IsEip1559 => Type == TxType.EIP1559;
+        public bool IsEip1559 => DecodedFeeCap > UInt256.Zero;
         public long GasLimit { get; set; }
         public Address? To { get; set; }
         public UInt256 Value { get; set; }

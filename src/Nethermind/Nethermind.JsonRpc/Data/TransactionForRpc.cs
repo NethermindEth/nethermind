@@ -118,11 +118,7 @@ namespace Nethermind.JsonRpc.Data
             tx.SenderAddress = From;
             tx.Value = Value ?? 0;
             tx.Data = Data ?? Input;
-            if (tx.FeeCap != null)
-            {
-                tx.Type = TxType.EIP1559;
-                tx.DecodedFeeCap = FeeCap ?? 0;
-            }
+            tx.DecodedFeeCap = FeeCap ?? 0;
 
             return tx;
         }

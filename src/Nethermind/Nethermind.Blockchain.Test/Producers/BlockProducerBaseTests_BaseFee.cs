@@ -106,16 +106,16 @@ namespace Nethermind.Blockchain.Test.Producers
                 
                 public ScenarioBuilder SendEip1559Transaction(long gasLimit = 1000000, UInt256? gasPremium = null, UInt256? feeCap = null)
                 {
-                    _antecedent = SendTransactionAsync(gasLimit, gasPremium ?? 20.GWei(), feeCap ?? UInt256.Zero, TxType.EIP1559);
+                    _antecedent = SendTransactionAsync(gasLimit, gasPremium ?? 20.GWei(), feeCap ?? UInt256.Zero);
                     return this;
                 }
                 
                 public ScenarioBuilder SendLegacyTransaction(long gasLimit = 1000000, UInt256? gasPremium = null)
                 {
-                    _antecedent = SendTransactionAsync(gasLimit, gasPremium ?? 20.GWei(), UInt256.Zero, TxType.Legacy);
+                    _antecedent = SendTransactionAsync(gasLimit, gasPremium ?? 20.GWei(), UInt256.Zero);
                     return this;
                 }
-                private async Task<ScenarioBuilder> SendTransactionAsync(long gasLimit, UInt256 gasPrice, UInt256 feeCap, TxType txType)
+                private async Task<ScenarioBuilder> SendTransactionAsync(long gasLimit, UInt256 gasPrice, UInt256 feeCap)
                 {
                     await ExecuteAntecedentIfNeeded();
                     byte[] txData = _abiEncoder.Encode(
@@ -129,7 +129,6 @@ namespace Nethermind.Blockchain.Test.Producers
                     tx.GasLimit = gasLimit;
                     tx.GasPrice = gasPrice;
                     tx.DecodedFeeCap = feeCap;
-                    tx.Type = txType;
                     tx.Nonce = _currentNonce;
                     ++_currentNonce;
                     
