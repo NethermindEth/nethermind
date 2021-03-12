@@ -158,6 +158,7 @@ namespace Nethermind.Trie
 
                 InitData();
                 _data![0] = value;
+                Keccak = null;
             }
         }
 
@@ -459,6 +460,7 @@ namespace Nethermind.Trie
             InitData();
             int index = IsExtension ? i + 1 : i;
             _data![index] = node ?? _nullNode;
+            Keccak = null;
         }
 
         public long GetMemorySize(bool recursive)

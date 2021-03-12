@@ -320,13 +320,8 @@ namespace Nethermind.Trie.Pruning
                     if (set is not null)
                     {
                         set.Root = root;
-                        if (_logger.IsTrace)
-                            _logger.Trace(
-                                $"Current root (block {blockNumber}): {set.Root}, block {set.BlockNumber}");
-                        if (_logger.IsTrace)
-                            _logger.Trace(
-                                $"Incrementing refs from block {blockNumber} root {set.Root?.ToString() ?? "NULL"} ");
-
+                        if (_logger.IsTrace) _logger.Trace(
+                            $"Current root (block {blockNumber}): {set.Root}, block {set.BlockNumber}");
                         set.Seal();
                     }
 
