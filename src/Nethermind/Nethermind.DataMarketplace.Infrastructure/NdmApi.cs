@@ -453,7 +453,7 @@ namespace Nethermind.DataMarketplace.Infrastructure
             set => _nethermindApi.TrieStore = value;
         }
         
-        public ReadOnlyTrieStore? ReadOnlyTrieStore
+        public IReadOnlyTrieStore? ReadOnlyTrieStore
         {
             get => _nethermindApi.ReadOnlyTrieStore;
             set => _nethermindApi.ReadOnlyTrieStore = value;

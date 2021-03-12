@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Trie.Pruning
@@ -42,7 +43,7 @@ namespace Nethermind.Trie.Pruning
             return new (NodeType.Unknown, hash);
         }
 
-        public byte[] LoadRlp(Keccak hash)
+        public byte[] LoadRlp(Keccak hash, IKeyValueStore? keyValueStore = null)
         {
             return Array.Empty<byte>();
         }

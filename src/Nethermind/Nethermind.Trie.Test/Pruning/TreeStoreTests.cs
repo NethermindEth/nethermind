@@ -7,6 +7,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
+using Nethermind.State.Witnesses;
 using Nethermind.Trie.Pruning;
 using NUnit.Framework;
 
@@ -496,6 +497,28 @@ namespace Nethermind.Trie.Test.Pruning
             memDb[storage1.Keccak!.Bytes].Should().NotBeNull();
             trieStore.IsNodeCached(a.Keccak).Should().BeTrue();
             trieStore.IsNodeCached(storage1.Keccak).Should().BeTrue();
+        }
+        
+        [Test]
+        public void ReadOnly_store_doesnt_change_witness()
+        {
+            TrieNode node = new(NodeType.Leaf);
+            Account account = new(1, 1, TestItem.KeccakA, Keccak.OfAnEmptyString);
+            node.Value = _accountDecoder.Encode(account).Bytes;
+            node.Key = HexPrefix.Leaf("abc");
+            node.ResolveKey(NullTrieNodeResolver.Instance, true);
+            
+            MemDb originalStore = new MemDb();
+            WitnessCollector witnessCollector = new WitnessCollector(new MemDb(), LimboLogs.Instance);
+            var store = originalStore.WitnessedBy(witnessCollector);
+            TrieStore trieStore = new(store, new TestPruningStrategy(false), No.Persistence, _logManager);
+            trieStore.CommitNode(0, new NodeCommitInfo(node));
+            trieStore.FinishBlockCommit(TrieType.State, 0, node);
+            
+            var readOnlyTrieStore = trieStore.AsReadOnly(originalStore);
+            readOnlyTrieStore.LoadRlp(node.Keccak);
+            
+            witnessCollector.Collected.Should().BeEmpty();
         }
     }
 }

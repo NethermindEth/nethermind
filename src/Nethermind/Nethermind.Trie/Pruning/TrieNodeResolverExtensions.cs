@@ -15,13 +15,13 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using Nethermind.Core;
+
 namespace Nethermind.Trie.Pruning
 {
     public static class TrieNodeResolverExtensions
     {
-        public static ReadOnlyTrieStore AsReadOnly(this ITrieNodeResolver trieStore)
-        {
-            return new(trieStore);
-        }
+        public static ReadOnlyTrieStore AsReadOnly(this ITrieNodeResolver trieStore, IKeyValueStore? readOnlyStore = null) => 
+            new(trieStore, readOnlyStore);
     }
 }

@@ -219,9 +219,10 @@ namespace Nethermind.Trie.Pruning
 
         public event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached;
 
-        public byte[] LoadRlp(Keccak keccak)
+        public byte[] LoadRlp(Keccak keccak, IKeyValueStore? keyValueStore = null)
         {
-            byte[]? rlp = _currentBatch.Value?[keccak.Bytes] ?? _keyValueStore[keccak.Bytes];
+            keyValueStore ??= _keyValueStore;
+            byte[]? rlp = _currentBatch.Value?[keccak.Bytes] ?? keyValueStore[keccak.Bytes];
             if (rlp is null)
             {
                 throw new TrieException($"Node {keccak} is missing from the DB");

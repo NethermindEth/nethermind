@@ -50,7 +50,7 @@ namespace Nethermind.Api
         IFilterManager? FilterManager { get; set; }
         IHeaderValidator? HeaderValidator { get; set; }
         IManualBlockProductionTrigger ManualBlockProductionTrigger { get; set; }
-        ReadOnlyTrieStore? ReadOnlyTrieStore { get; set; }
+        IReadOnlyTrieStore? ReadOnlyTrieStore { get; set; }
         IRewardCalculatorSource? RewardCalculatorSource { get; set; }
         ISealer? Sealer { get; set; }
         ISealValidator? SealValidator { get; set; }
