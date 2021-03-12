@@ -262,7 +262,7 @@ namespace Nethermind.Serialization.Rlp
             sequence[position++] = Encode(transaction.To);
             sequence[position++] = Encode(transaction.Value);
             sequence[position++] = Encode(transaction.Data);
-            if (transaction.Type != TxType.Legacy)
+            if (transaction.Type == TxType.AccessList)
             {
                 sequence[position++] = Encode(transaction.AccessList);    
             }
