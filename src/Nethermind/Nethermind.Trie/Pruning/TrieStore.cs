@@ -252,6 +252,7 @@ namespace Nethermind.Trie.Pruning
         {
             keyValueStore ??= _keyValueStore;
             byte[]? rlp = _currentBatch.Value?.Batch[keccak.Bytes] ?? keyValueStore[keccak.Bytes];
+            
             if (rlp is null)
             {
                 throw new TrieException($"Node {keccak} is missing from the DB");

@@ -21,7 +21,7 @@ namespace Nethermind.Trie.Pruning
 {
     public static class TrieNodeResolverExtensions
     {
-        public static ReadOnlyTrieStore AsReadOnly(this ITrieNodeResolver trieStore, IKeyValueStore readOnlyStore) => 
+        public static ReadOnlyTrieStore AsReadOnly(this ITrieNodeResolver trieStore, IKeyValueStore? readOnlyStore = null) => 
             new(trieStore, readOnlyStore);
     }
 }

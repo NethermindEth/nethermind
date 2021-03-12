@@ -153,7 +153,8 @@ namespace Nethermind.Clique.Test
                 BlockchainProcessor processor = new BlockchainProcessor(blockTree, blockProcessor, new AuthorRecoveryStep(snapshotManager), nodeLogManager, BlockchainProcessor.Options.NoReceipts);
                 processor.Start();
 
-                var minerTrieStore = trieStore.AsReadOnly(stateDb);
+                var minerTrieStore = trieStore.AsReadOnly();
+              
                 StateProvider minerStateProvider = new StateProvider(minerTrieStore, codeDb, nodeLogManager);
                 StorageProvider minerStorageProvider = new StorageProvider(minerTrieStore, minerStateProvider, nodeLogManager);
                 VirtualMachine minerVirtualMachine = new VirtualMachine(minerStateProvider, minerStorageProvider, blockhashProvider, specProvider, nodeLogManager);
