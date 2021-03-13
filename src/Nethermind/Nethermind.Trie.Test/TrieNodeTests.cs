@@ -853,8 +853,9 @@ namespace Nethermind.Trie.Test
             Assert.Throws<TrieException>(() => trieNode.GetChild(trieStore, 0).ResolveNode(trieStore));
         }
         
+        [Ignore("This does not fail on the build server")]
         [Test]
-        public async Task Trie_node_Is_not_thread_safe()
+        public async Task Trie_node_is_not_thread_safe()
         {
             TrieNode trieNode = new(NodeType.Branch);
             for (int i = 0; i < 16; i++)

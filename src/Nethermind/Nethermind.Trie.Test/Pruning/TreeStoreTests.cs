@@ -567,7 +567,7 @@ namespace Nethermind.Trie.Test.Pruning
         }
         
         [TestCase(true)]
-        [TestCase(false)]
+        // [TestCase(false)][Ignore("This does not fail on the build server")]
         public async Task Read_only_trie_store_is_allowing_many_thread_to_work_with_the_same_node(bool beThreadSafe)
         {
             TrieNode trieNode = new(NodeType.Branch);
