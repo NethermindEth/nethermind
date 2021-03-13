@@ -20,7 +20,6 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Timers;
-using Nethermind.Blockchain;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -49,48 +48,48 @@ namespace Nethermind.DataMarketplace.Consumers.Shared.Services
         private readonly IAccountService _accountService;
         private readonly IRefundClaimant _refundClaimant;
         private readonly IDepositConfirmationService _depositConfirmationService;
-        private readonly IEthPriceService _ethPriceService;
-        private readonly IDaiPriceService _daiPriceService;
         private readonly IGasPriceService _gasPriceService;
         private readonly IBlockProcessor _blockProcessor;
         private readonly ILogger _logger;
+        private readonly IPriceService _priceService;
 
         private Timer? _depositTimer;
+        private Timer? _priceTimer;
         private uint _depositTimerPeriod;
+        private uint _priceTimerPeriod;
         private long _currentBlockTimestamp;
         private long _currentBlockNumber;
+        private string[] _currencies = {"USDT_DAI", "USDT_ETH"};
 
         public ConsumerServicesBackgroundProcessor(
             IAccountService accountService,
             IRefundClaimant refundClaimant,
             IDepositConfirmationService depositConfirmationService,
-            IEthPriceService ethPriceService,
-            IDaiPriceService daiPriceService,
             IGasPriceService gasPriceService,
             IBlockProcessor blockProcessor,
             IDepositDetailsRepository depositRepository,
             IConsumerNotifier consumerNotifier,
             ILogManager logManager,
+            IPriceService priceService,
             bool useDepositTimer = false,
             IEthJsonRpcClientProxy? ethJsonRpcClientProxy = null,
-            uint depositTimer = 10000)
+            uint depositTimer = 10000, uint priceTimer = 10000)
         {
             _accountService = accountService;
             _refundClaimant = refundClaimant;
             _depositConfirmationService = depositConfirmationService;
-            _ethPriceService = ethPriceService;
-            _daiPriceService = daiPriceService;
             _gasPriceService = gasPriceService;
             _blockProcessor = blockProcessor;
             _consumerNotifier = consumerNotifier;
+            _priceService = priceService;
             _depositRepository = depositRepository;
             _useDepositTimer = useDepositTimer;
             _ethJsonRpcClientProxy = ethJsonRpcClientProxy;
-            _logger = logManager.GetClassLogger();
-            _ethPriceService.UpdateAsync();
-            _daiPriceService.UpdateAsync();
-            _gasPriceService.UpdateGasPriceAsync();
             _depositTimerPeriod = depositTimer;
+            _priceTimerPeriod = priceTimer;
+            _logger = logManager.GetClassLogger();
+            _gasPriceService.UpdateGasPriceAsync();
+            _priceService.UpdateAsync(_currencies);
         }
 
         public void Init()
@@ -116,6 +115,10 @@ namespace Nethermind.DataMarketplace.Consumers.Shared.Services
             {
                 _blockProcessor.BlockProcessed += OnBlockProcessed;
             }
+
+            _priceTimer = new Timer(_priceTimerPeriod);
+            _priceTimer.Elapsed += PriceTimerOnElapsed;
+            _priceTimer.Start();
         }
 
         private void DepositTimerOnElapsed(object sender, ElapsedEventArgs e)
@@ -143,6 +146,27 @@ namespace Nethermind.DataMarketplace.Consumers.Shared.Services
                     await ProcessBlockAsync((long) block.Number, (long) block.Timestamp);
                 });
 
+        private async void PriceTimerOnElapsed(object sender, ElapsedEventArgs e)
+        {
+            await _priceService.UpdateAsync(_currencies);
+            foreach (var currency in _currencies)
+            {
+                var priceInfo = _priceService.Get(currency);
+                if (priceInfo is null)
+                {
+                    continue;
+                }
+
+                await _consumerNotifier.SendUsdPriceAsync(currency, priceInfo.UsdPrice, priceInfo.UpdatedAt);
+            }
+
+            await _gasPriceService.UpdateGasPriceAsync();
+
+            if (_gasPriceService.Types != null)
+            {
+                await _consumerNotifier.SendGasPriceAsync(_gasPriceService.Types);
+            }
+        }
 
         private void OnBlockProcessed(object? sender, BlockProcessedEventArgs e)
             => ProcessBlockAsync(e.Block.Number, (long) e.Block.Timestamp).ContinueWith(t =>
@@ -175,17 +199,6 @@ namespace Nethermind.DataMarketplace.Consumers.Shared.Services
             });
 
             await TryClaimRefundsAsync(depositsToRefund.Items);
-
-            await _ethPriceService.UpdateAsync();
-            await _consumerNotifier.SendEthUsdPriceAsync(_ethPriceService.UsdPrice, _ethPriceService.UpdatedAt);
-            await _daiPriceService.UpdateAsync();
-            await _consumerNotifier.SendDaiUsdPriceAsync(_daiPriceService.UsdPrice, _daiPriceService.UpdatedAt);
-            await _gasPriceService.UpdateGasPriceAsync();
-
-            if (_gasPriceService.Types != null)
-            {
-                await _consumerNotifier.SendGasPriceAsync(_gasPriceService.Types);
-            }
         }
 
         private async Task TryConfirmDepositsAsync(IReadOnlyList<DepositDetails> deposits)

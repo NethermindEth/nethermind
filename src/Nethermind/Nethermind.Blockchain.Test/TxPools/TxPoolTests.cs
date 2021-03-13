@@ -54,6 +54,7 @@ namespace Nethermind.Blockchain.Test.TxPools
         private ITxStorage _persistentTxStorage;
         private IStateProvider _stateProvider;
         private IBlockFinder _blockFinder;
+        private int _txGasLimit = 1_000_000;
 
         [SetUp]
         public void Setup()
@@ -136,6 +137,7 @@ namespace Nethermind.Blockchain.Test.TxPools
         {
             _txPool = CreatePool(_noTxStorage);
             Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, false).TestObject;
+            EnsureSenderBalance(tx);
             AddTxResult result = _txPool.AddTransaction(tx, TxHandlingOptions.PersistentBroadcast);
             _txPool.GetPendingTransactions().Length.Should().Be(1);
             result.Should().Be(AddTxResult.Added);
@@ -146,6 +148,7 @@ namespace Nethermind.Blockchain.Test.TxPools
         {
             _txPool = CreatePool(_noTxStorage);
             Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            EnsureSenderBalance(tx);
             AddTxResult result1 = _txPool.AddTransaction(tx, TxHandlingOptions.PersistentBroadcast);
             AddTxResult result2 = _txPool.AddTransaction(tx, TxHandlingOptions.PersistentBroadcast);
             _txPool.GetPendingTransactions().Length.Should().Be(1);
@@ -157,10 +160,87 @@ namespace Nethermind.Blockchain.Test.TxPools
         public void should_add_valid_transactions()
         {
             _txPool = CreatePool(_noTxStorage);
-            Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            Transaction tx = Build.A.Transaction
+                .WithGasLimit(_txGasLimit)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            EnsureSenderBalance(tx);
             AddTxResult result = _txPool.AddTransaction(tx, TxHandlingOptions.PersistentBroadcast);
             _txPool.GetPendingTransactions().Length.Should().Be(1);
             result.Should().Be(AddTxResult.Added);
+        }
+        
+        [Test]
+        public void should_ignore_insufficient_funds_transactions()
+        {
+            _txPool = CreatePool(_noTxStorage);
+            Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            AddTxResult result = _txPool.AddTransaction(tx, TxHandlingOptions.PersistentBroadcast);
+            _txPool.GetPendingTransactions().Length.Should().Be(0);
+            result.Should().Be(AddTxResult.InsufficientFunds);
+        }
+        
+        [Test]
+        public void should_ignore_old_nonce_transactions()
+        {
+            _txPool = CreatePool(_noTxStorage);
+            Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            EnsureSenderBalance(tx);
+            _stateProvider.IncrementNonce(tx.SenderAddress);
+            AddTxResult result = _txPool.AddTransaction(tx, TxHandlingOptions.PersistentBroadcast);
+            _txPool.GetPendingTransactions().Length.Should().Be(0);
+            result.Should().Be(AddTxResult.OldNonce);
+        }
+        
+        [Test]
+        public void should_ignore_transactions_too_far_into_future()
+        {
+            _txPool = CreatePool(_noTxStorage);
+            Transaction tx = Build.A.Transaction.WithNonce(_txPool.FutureNonceRetention + 1).SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            EnsureSenderBalance(tx);
+            AddTxResult result = _txPool.AddTransaction(tx, TxHandlingOptions.PersistentBroadcast);
+            _txPool.GetPendingTransactions().Length.Should().Be(0);
+            result.Should().Be(AddTxResult.FutureNonce);
+        }
+
+        [Test]
+        public void should_ignore_overflow_transactions()
+        {
+            _txPool = CreatePool(_noTxStorage);
+            Transaction tx = Build.A.Transaction.WithGasPrice(UInt256.MaxValue / Transaction.BaseTxGasCost)
+                .WithGasLimit(Transaction.BaseTxGasCost)
+                .WithValue(Transaction.BaseTxGasCost)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            EnsureSenderBalance(tx);
+            AddTxResult result = _txPool.AddTransaction(tx, TxHandlingOptions.PersistentBroadcast);
+            _txPool.GetPendingTransactions().Length.Should().Be(0);
+            result.Should().Be(AddTxResult.BalanceOverflow);
+        }
+        
+        [Test]
+        public void should_ignore_block_gas_limit_exceeded()
+        {
+            _txPool = CreatePool(_noTxStorage);
+            Transaction tx = Build.A.Transaction
+                .WithGasLimit(Transaction.BaseTxGasCost * 5)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            EnsureSenderBalance(tx);
+            _txPool.BlockGasLimit = Transaction.BaseTxGasCost * 4;
+            AddTxResult result = _txPool.AddTransaction(tx, TxHandlingOptions.PersistentBroadcast);
+            _txPool.GetPendingTransactions().Length.Should().Be(0);
+            result.Should().Be(AddTxResult.GasLimitExceeded);
+        }
+        
+        [Test]
+        public void should_ignore_tx_gas_limit_exceeded()
+        {
+            _txPool = CreatePool(_noTxStorage);
+            Transaction tx = Build.A.Transaction
+                .WithGasLimit(_txGasLimit + 1)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            EnsureSenderBalance(tx);
+            AddTxResult result = _txPool.AddTransaction(tx, TxHandlingOptions.PersistentBroadcast);
+            _txPool.GetPendingTransactions().Length.Should().Be(0);
+            result.Should().Be(AddTxResult.GasLimitExceeded);
         }
 
         [Test]
@@ -331,6 +411,7 @@ namespace Nethermind.Blockchain.Test.TxPools
         public void should_retrieve_added_transaction_correctly()
         {
             var transaction = Build.A.Transaction.SignedAndResolved().TestObject;
+            EnsureSenderBalance(transaction);
             _specProvider = Substitute.For<ISpecProvider>();
             _specProvider.ChainId.Returns(transaction.Signature.ChainId.Value);
             _txPool = CreatePool(_inMemoryTxStorage);
@@ -371,8 +452,8 @@ namespace Nethermind.Blockchain.Test.TxPools
         }
 
         private TxPool.TxPool CreatePool(ITxStorage txStorage)
-            => new TxPool.TxPool(txStorage, _ethereumEcdsa, new ChainHeadSpecProvider(_specProvider, _blockFinder), 
-                new TxPoolConfig(), _stateProvider, new TxValidator(_specProvider.ChainId), _logManager);
+            => new TxPool.TxPool(txStorage, _ethereumEcdsa, new ChainHeadSpecProvider(_specProvider, _blockFinder),
+                new TxPoolConfig() {GasLimit = _txGasLimit}, _stateProvider, new TxValidator(_specProvider.ChainId), _logManager);
 
         private ITxPoolPeer GetPeer(PublicKey publicKey)
         {
@@ -381,7 +462,7 @@ namespace Nethermind.Blockchain.Test.TxPools
             return peer;
         }
 
-        private Transaction[] AddTransactionsToPool(bool sameTransactionSenderPerPeer = true, bool sameNoncePerPeer= true, int transactionsPerPeer = 10)
+        private Transaction[] AddTransactionsToPool(bool sameTransactionSenderPerPeer = true, bool sameNoncePerPeer= false, int transactionsPerPeer = 10)
         {
             var transactions = GetTransactions(GetPeers(transactionsPerPeer), sameTransactionSenderPerPeer, sameNoncePerPeer);
             foreach (var transaction in transactions)
@@ -426,7 +507,16 @@ namespace Nethermind.Blockchain.Test.TxPools
         }
 
         private Transaction GetTransaction(PrivateKey privateKey, Address to = null, UInt256? nonce = null)
-            => GetTransaction(nonce ?? UInt256.Zero, GasCostOf.Transaction, 1000, to, Array.Empty<byte>(), privateKey);
+        {
+            Transaction transaction = GetTransaction(nonce ?? UInt256.Zero, GasCostOf.Transaction, 1000, to, Array.Empty<byte>(), privateKey);
+            EnsureSenderBalance(transaction);
+            return transaction;
+        }
+
+        private void EnsureSenderBalance(Transaction transaction)
+        {
+            _stateProvider.CreateAccount(transaction.SenderAddress, transaction.GasPrice * (UInt256)transaction.GasLimit + transaction.Value);
+        }
 
         private Transaction GetTransaction(UInt256 nonce, long gasLimit, UInt256 gasPrice, Address to, byte[] data,
             PrivateKey privateKey)

@@ -210,22 +210,6 @@ namespace Nethermind.DataMarketplace.Consumers.Notifiers.Services
                     graceUnits
                 }));
 
-        public Task SendEthUsdPriceAsync(decimal price, ulong updatedAt)
-            => _notifier.NotifyAsync(new Notification("eth_usd_price",
-                new
-                {
-                    price,
-                    updatedAt
-                }));
-        
-        public Task SendDaiUsdPriceAsync(decimal price, ulong updatedAt)
-            => _notifier.NotifyAsync(new Notification("dai_usd_price",
-                new
-                {
-                    price,
-                    updatedAt
-                }));
-
         public Task SendGasPriceAsync(GasPriceTypes types)
             => _notifier.NotifyAsync(new Notification("gas_price",
                 new
@@ -257,6 +241,15 @@ namespace Nethermind.DataMarketplace.Consumers.Notifiers.Services
                     },
                     type = types.Type,
                     updatedAt = types.UpdatedAt
+                }));
+
+        public Task SendUsdPriceAsync(string currency, decimal price, ulong updatedAt)
+            => _notifier.NotifyAsync(new Notification("usd_price",
+                new
+                {
+                    currency,
+                    price,
+                    updatedAt
                 }));
     }
 }

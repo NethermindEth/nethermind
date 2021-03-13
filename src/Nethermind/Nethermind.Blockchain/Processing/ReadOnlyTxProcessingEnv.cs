@@ -39,17 +39,17 @@ namespace Nethermind.Blockchain.Processing
 
         public ReadOnlyTxProcessingEnv(
             IDbProvider dbProvider,
-            ITrieNodeResolver trieStore,
+            IReadOnlyTrieStore trieStore,
             IBlockTree blockTree,
             ISpecProvider specProvider,
             ILogManager logManager) 
-            : this(dbProvider.AsReadOnly(false), trieStore.AsReadOnly(), blockTree.AsReadOnly(), specProvider, logManager)
+            : this(dbProvider.AsReadOnly(false), trieStore, blockTree.AsReadOnly(), specProvider, logManager)
         {
         }
 
         public ReadOnlyTxProcessingEnv(
             IReadOnlyDbProvider? readOnlyDbProvider,
-            ReadOnlyTrieStore? readOnlyTrieStore,
+            IReadOnlyTrieStore? readOnlyTrieStore,
             ReadOnlyBlockTree? readOnlyBlockTree,
             ISpecProvider? specProvider,
             ILogManager? logManager)

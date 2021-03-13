@@ -110,7 +110,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             if (_api.BlockValidator == null) throw new StepDependencyException(nameof(_api.BlockValidator));
             if (_api.RewardCalculatorSource == null) throw new StepDependencyException(nameof(_api.RewardCalculatorSource));
             
-            ProofModuleFactory proofModuleFactory = new(_api.DbProvider, _api.BlockTree, _api.TrieStore, _api.BlockPreprocessor, _api.ReceiptFinder, _api.SpecProvider, _api.LogManager);
+            ProofModuleFactory proofModuleFactory = new(_api.DbProvider, _api.BlockTree, _api.ReadOnlyTrieStore, _api.BlockPreprocessor, _api.ReceiptFinder, _api.SpecProvider, _api.LogManager);
             _api.RpcModuleProvider.RegisterBounded(proofModuleFactory, 2, rpcConfig.Timeout);
 
             DebugModuleFactory debugModuleFactory = new(
@@ -122,7 +122,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.RewardCalculatorSource, 
                 _api.ReceiptStorage,
                 new ReceiptMigration(_api),
-                _api.TrieStore, 
+                _api.ReadOnlyTrieStore, 
                 _api.ConfigProvider, 
                 _api.SpecProvider, 
                 _api.LogManager);
@@ -193,9 +193,9 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.ReceiptStorage,
                 _api.FilterStore);
             
-            SubscriptionManger subscriptionManger = new(subscriptionFactory, _api.LogManager);
+            SubscriptionManager subscriptionManager = new(subscriptionFactory, _api.LogManager);
             
-            SubscribeModule subscribeModule = new(subscriptionManger);
+            SubscribeModule subscribeModule = new(subscriptionManager);
             _api.RpcModuleProvider.RegisterSingle<ISubscribeModule>(subscribeModule);
 
             Web3Module web3Module = new(_api.LogManager);

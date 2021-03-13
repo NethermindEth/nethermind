@@ -79,7 +79,7 @@ namespace Nethermind.Evm.Test
             IDb beamSyncCodeDb = new BeamSyncDb(new MemDb(), beamStateDb, StaticSelector.Full, logManager);
             IDb codeDb = UseBeamSync ? beamSyncCodeDb : new MemDb();
             _stateDb = UseBeamSync ? beamSyncDb : new MemDb();
-            var trieStore = new TrieStore(_stateDb, logManager);
+            ITrieStore trieStore = new TrieStore(_stateDb, logManager);
             TestState = new StateProvider(trieStore, codeDb, logManager);
             Storage = new StorageProvider(trieStore, TestState, logManager);
             _ethereumEcdsa = new EthereumEcdsa(SpecProvider.ChainId, logManager);
@@ -121,7 +121,7 @@ namespace Nethermind.Evm.Test
 
         protected TestAllTracerWithOutput Execute(long blockNumber, long gasLimit, byte[] code)
         {
-            (var block, var transaction) = PrepareTx(blockNumber, gasLimit, code);
+            (Block block, Transaction transaction) = PrepareTx(blockNumber, gasLimit, code);
             TestAllTracerWithOutput tracer = new();
             _processor.Execute(transaction, block.Header, tracer);
             return tracer;

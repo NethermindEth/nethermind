@@ -483,7 +483,7 @@ namespace Nethermind.Blockchain
             }
         }
 
-        private AddBlockResult Suggest(Block block, BlockHeader header, bool shouldProcess = true, bool? setAsMain = null)
+        private AddBlockResult Suggest(Block? block, BlockHeader header, bool shouldProcess = true, bool? setAsMain = null)
         {
 #if DEBUG
             /* this is just to make sure that we do not fall into this trap when creating tests */
@@ -543,13 +543,12 @@ namespace Nethermind.Blockchain
                 }
 
                 BestSuggestedHeader = header;
-                if (block != null && shouldProcess)
+                if (block is not null && shouldProcess)
                 {
                     BestSuggestedBody = block;
                     NewBestSuggestedBlock?.Invoke(this, new BlockEventArgs(block));
                 }
             }
-
 
             return AddBlockResult.Added;
         }
@@ -569,15 +568,15 @@ namespace Nethermind.Blockchain
             return Suggest(block, block.Header, shouldProcess, setAsMain);
         }
 
-        public BlockHeader FindHeader(long number, BlockTreeLookupOptions options)
+        public BlockHeader? FindHeader(long number, BlockTreeLookupOptions options)
         {
             Keccak blockHash = GetBlockHashOnMainOrBestDifficultyHash(number);
-            return blockHash == null ? null : FindHeader(blockHash, options);
+            return blockHash is null ? null : FindHeader(blockHash, options);
         }
 
         public Keccak FindBlockHash(long blockNumber) => GetBlockHashOnMainOrBestDifficultyHash(blockNumber);
 
-        public BlockHeader FindHeader(Keccak blockHash, BlockTreeLookupOptions options)
+        public BlockHeader? FindHeader(Keccak? blockHash, BlockTreeLookupOptions options)
         {
             if (blockHash == null || blockHash == Keccak.Zero)
             {
@@ -585,8 +584,8 @@ namespace Nethermind.Blockchain
                 return null;
             }
 
-            BlockHeader header = _headerDb.Get(blockHash, _headerDecoder, _headerCache, false);
-            if (header == null)
+            BlockHeader? header = _headerDb.Get(blockHash, _headerDecoder, _headerCache, false);
+            if (header is null)
             {
                 return null;
             }
@@ -597,7 +596,7 @@ namespace Nethermind.Blockchain
             if ((totalDifficultyNeeded && header.TotalDifficulty == null) || requiresCanonical)
             {
                 (BlockInfo blockInfo, ChainLevelInfo level) = LoadInfo(header.Number, header.Hash, true);
-                if (level == null || blockInfo == null)
+                if (level is null || blockInfo is null)
                 {
                     // TODO: this is here because storing block data is not transactional
                     // TODO: would be great to remove it, he?
@@ -768,7 +767,7 @@ namespace Nethermind.Blockchain
             return header;
         }
 
-        private Keccak GetBlockHashOnMainOrBestDifficultyHash(long blockNumber)
+        private Keccak? GetBlockHashOnMainOrBestDifficultyHash(long blockNumber)
         {
             if (blockNumber < 0)
             {
@@ -1360,13 +1359,13 @@ namespace Nethermind.Blockchain
             if (_logger.IsTrace) _logger.Trace($"Calculated total difficulty for {header} is {header.TotalDifficulty}");
         }
 
-        public event EventHandler<BlockReplacementEventArgs> BlockAddedToMain;
+        public event EventHandler<BlockReplacementEventArgs>? BlockAddedToMain;
 
-        public event EventHandler<BlockEventArgs> NewBestSuggestedBlock;
+        public event EventHandler<BlockEventArgs>? NewBestSuggestedBlock;
         
-        public event EventHandler<BlockEventArgs> NewSuggestedBlock;
+        public event EventHandler<BlockEventArgs>? NewSuggestedBlock;
 
-        public event EventHandler<BlockEventArgs> NewHeadBlock;
+        public event EventHandler<BlockEventArgs>? NewHeadBlock;
 
         /// <summary>
         /// Can delete a slice of the chain (usually invoked when the chain is corrupted in the DB).

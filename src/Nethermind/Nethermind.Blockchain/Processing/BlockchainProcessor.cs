@@ -418,9 +418,7 @@ namespace Nethermind.Blockchain.Processing
             }
 
             if (_logger.IsTrace) _logger.Trace($"Processing {blocksToProcess.Count} blocks from state root {processingBranch.Root}");
-            for (int i = 0;
-                i < blocksToProcess.Count;
-                i++)
+            for (int i = 0; i < blocksToProcess.Count; i++)
             {
                 /* this can happen if the block was loaded as an ancestor and did not go through the recovery queue */
                 _recoveryStep.RecoverData(blocksToProcess[i]);

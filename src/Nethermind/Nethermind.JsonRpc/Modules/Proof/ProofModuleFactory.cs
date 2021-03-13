@@ -39,12 +39,12 @@ namespace Nethermind.JsonRpc.Modules.Proof
         private readonly ILogManager _logManager;
         private readonly ReadOnlyBlockTree _blockTree;
         private readonly ReadOnlyDbProvider _dbProvider;
-        private readonly ReadOnlyTrieStore _trieStore;
+        private readonly IReadOnlyTrieStore _trieStore;
 
         public ProofModuleFactory(
             IDbProvider dbProvider,
             IBlockTree blockTree,
-            ITrieStore trieStore,
+            IReadOnlyTrieStore trieStore,
             IBlockPreprocessorStep recoveryStep,
             IReceiptFinder receiptFinder,
             ISpecProvider specProvider,
@@ -56,7 +56,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _dbProvider = dbProvider.AsReadOnly(false);
             _blockTree = blockTree.AsReadOnly();
-            _trieStore = trieStore.AsReadOnly();
+            _trieStore = trieStore;
         }
 
         public override IProofModule Create()

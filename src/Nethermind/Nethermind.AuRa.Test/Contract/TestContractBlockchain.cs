@@ -31,8 +31,9 @@ namespace Nethermind.AuRa.Test.Contract
     {
         public ChainSpec ChainSpec { get; set; }
         
-        protected TestContractBlockchain() : base(SealEngineType.AuRa)
+        protected TestContractBlockchain()
         {
+            SealEngineType = SealEngineType.AuRa;
         }
 
         public static async Task<TTest> ForTest<TTest, TTestClass>(string testSuffix = null) where TTest : TestContractBlockchain, new()

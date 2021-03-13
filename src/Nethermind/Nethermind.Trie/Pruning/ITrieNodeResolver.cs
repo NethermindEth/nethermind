@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Trie.Pruning
@@ -26,16 +27,14 @@ namespace Nethermind.Trie.Pruning
         /// its RLP data from the state database.
         /// </summary>
         /// <param name="hash">Keccak hash of the RLP of the node.</param>
-        /// <param name="addToCacheWhenNotFound">Sometimes (read only cases) we want to read the node without caching.</param>
         /// <returns></returns>
-        TrieNode FindCachedOrUnknown(Keccak hash, bool addToCacheWhenNotFound = true);
-        
+        TrieNode FindCachedOrUnknown(Keccak hash);
+
         /// <summary>
         /// Loads RLP of the node.
         /// </summary>
         /// <param name="hash"></param>
-        /// <param name="allowCaching"></param>
         /// <returns></returns>
-        byte[] LoadRlp(Keccak hash);
+        byte[]? LoadRlp(Keccak hash);
     }
 }

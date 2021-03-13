@@ -104,7 +104,7 @@ namespace Nethermind.Runner.Ethereum.Steps
         }
 
         private ReadOnlyTxProcessingEnv CreateReadOnlyTransactionProcessorSource() => 
-            new ReadOnlyTxProcessingEnv(_api.DbProvider, _api.TrieStore, _api.BlockTree, _api.SpecProvider, _api.LogManager);
+            new ReadOnlyTxProcessingEnv(_api.DbProvider, _api.ReadOnlyTrieStore, _api.BlockTree, _api.SpecProvider, _api.LogManager);
 
         protected override IHealthHintService CreateHealthHintService() =>
             new AuraHealthHintService(_auRaStepCalculator, _api.ValidatorStore);
@@ -241,10 +241,10 @@ namespace Nethermind.Runner.Ethereum.Steps
 
                 _api.DisposeStack.Push(whitelistContractDataStore);
                 _api.DisposeStack.Push(prioritiesContractDataStore);
-                IComparer<Transaction> txByPermissionComparer = new CompareTxByPermissionOnHead(whitelistContractDataStore, prioritiesContractDataStore, _api.BlockTree);
+                IComparer<Transaction> txByPriorityComparer = new CompareTxByPriorityOnHead(whitelistContractDataStore, prioritiesContractDataStore, _api.BlockTree);
+                IComparer<Transaction> sameSenderNonceComparer = new CompareTxSameSenderNonce(CompareTxByGasPrice.Instance, txByPriorityComparer);
                 
-                return CompareTxByGasPrice.Instance
-                    .ThenBy(txByPermissionComparer)
+                return sameSenderNonceComparer
                     .ThenBy(CompareTxByTimestamp.Instance)
                     .ThenBy(CompareTxByPoolIndex.Instance)
                     .ThenBy(CompareTxByGasLimit.Instance);

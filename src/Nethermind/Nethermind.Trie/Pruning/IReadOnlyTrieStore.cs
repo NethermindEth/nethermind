@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -15,25 +15,9 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System;
-using Nethermind.Consensus.AuRa.Contracts;
-using Nethermind.Consensus.AuRa.Contracts.DataStore;
-using Nethermind.Core;
-using Nethermind.Core.Extensions;
-using Nethermind.Int256;
-
-namespace Nethermind.Consensus.AuRa.Transactions
+namespace Nethermind.Trie.Pruning
 {
-    public class CompareTxByPermissionOnSpecifiedBlock : CompareTxByPermissionBase
+    public interface IReadOnlyTrieStore : ITrieStore
     {
-        public CompareTxByPermissionOnSpecifiedBlock(
-            IContractDataStore<Address> sendersWhitelist, 
-            IDictionaryContractDataStore<TxPriorityContract.Destination> priorities, 
-            BlockHeader blockHeader) : base(sendersWhitelist, priorities)
-        {
-            BlockHeader = blockHeader;
-        }
-
-        protected override BlockHeader BlockHeader { get; }
     }
 }

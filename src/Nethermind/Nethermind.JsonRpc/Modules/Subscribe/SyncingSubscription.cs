@@ -30,7 +30,8 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         private bool IsSyncing { get; set; }
         private long BestSuggestedNumber { get; set; }
         
-        public SyncingSubscription(IBlockTree? blockTree, ILogManager? logManager)
+        public SyncingSubscription(IJsonRpcDuplexClient jsonRpcDuplexClient, IBlockTree? blockTree, ILogManager? logManager) 
+            : base(jsonRpcDuplexClient)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
@@ -66,8 +67,24 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
                 if (_logger.IsTrace) _logger.Trace($"Syncing subscription {Id} changed syncing status from {IsSyncing} to {isSyncing}");
 
                 IsSyncing = isSyncing;
+                JsonRpcResult result;
 
-                JsonRpcResult result = GetJsonRpcResult(isSyncing);
+                if (isSyncing == false)
+                {
+                    result = CreateSubscriptionMessage(isSyncing);
+                }
+                else
+                {
+                    result = CreateSubscriptionMessage(new SyncingResult
+                    {
+                        IsSyncing = isSyncing,
+                        CurrentBlock = _blockTree.Head.Number,
+                        HighestBlock = BestSuggestedNumber,
+                        StartingBlock = 0L
+                    });
+                }
+
+                
                 JsonRpcDuplexClient.SendJsonRpcResult(result);
                 _logger.Trace($"Syncing subscription {Id} printed SyncingResult object.");
             }).ContinueWith(
@@ -79,28 +96,6 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
                     })
                 , TaskContinuationOptions.OnlyOnFaulted
             );
-        }
-
-        private JsonRpcResult GetJsonRpcResult(bool isSyncing)
-        {
-            JsonRpcResult result =
-                JsonRpcResult.Single(
-                    new JsonRpcSubscriptionResponse()
-                    {
-                        MethodName = nameof(ISubscribeModule.eth_subscribe),
-                        Params = new JsonRpcSubscriptionResult()
-                        {
-                            Subscription = Id,
-                            Result = new SyncingResult
-                            {
-                                IsSyncing = isSyncing,
-                                CurrentBlock = _blockTree.Head.Number,
-                                HighestBlock = BestSuggestedNumber,
-                                StartingBlock = 0L
-                            }
-                        }
-                    }, default);
-            return result;
         }
         
         public override SubscriptionType Type => SubscriptionType.Syncing;
