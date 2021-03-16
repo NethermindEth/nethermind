@@ -102,7 +102,7 @@ namespace Nethermind.Trie
             IsDirty = false;
         }
 
-        public Keccak? Keccak { get; private set; }
+        public Keccak? Keccak { get; internal set; }
 
         public byte[]? FullRlp { get; private set; }
 
