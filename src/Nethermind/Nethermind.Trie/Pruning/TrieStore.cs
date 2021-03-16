@@ -92,7 +92,7 @@ namespace Nethermind.Trie.Pruning
                     }
                     
                     // we returning a copy to avoid multithreaded access
-                    trieNode = new TrieNode(NodeType.Unknown, hash, trieNode.FullRlp);
+                    trieNode = new TrieNode(trieNode.NodeType, hash, trieNode.FullRlp);
                     Metrics.LoadedFromCacheNodesCount++;
                 }
 

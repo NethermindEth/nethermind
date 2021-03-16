@@ -567,7 +567,7 @@ namespace Nethermind.Trie.Test.Pruning
         }
         
         [TestCase(true)]
-        // [TestCase(false)][Ignore("This does not fail on the build server")]
+        [TestCase(false, Explicit = true)]
         public async Task Read_only_trie_store_is_allowing_many_thread_to_work_with_the_same_node(bool beThreadSafe)
         {
             TrieNode trieNode = new(NodeType.Branch);
@@ -619,6 +619,31 @@ namespace Nethermind.Trie.Test.Pruning
             {
                 Assert.ThrowsAsync<AssertionException>(() => Task.WhenAll(tasks));   
             }
+        }
+        
+        [TestCase(true)]
+        [TestCase(false)]
+        public void ReadOnly_store_returns_copies(bool pruning)
+        {
+            TrieNode node = new(NodeType.Leaf);
+            Account account = new(1, 1, TestItem.KeccakA, Keccak.OfAnEmptyString);
+            node.Value = _accountDecoder.Encode(account).Bytes;
+            node.Key = HexPrefix.Leaf("abc");
+            node.ResolveKey(NullTrieNodeResolver.Instance, true);
+            
+            TrieStore trieStore = new(new MemDb(), new TestPruningStrategy(pruning), No.Persistence, _logManager);
+            trieStore.CommitNode(0, new NodeCommitInfo(node));
+            trieStore.FinishBlockCommit(TrieType.State, 0, node);
+            var originalNode = trieStore.FindCachedOrUnknown(node.Keccak);
+            
+            IReadOnlyTrieStore readOnlyTrieStore = trieStore.AsReadOnly();
+            var readOnlyNode = readOnlyTrieStore.FindCachedOrUnknown(node.Keccak);
+
+            readOnlyNode.Should().NotBe(originalNode);
+            readOnlyNode.Should().BeEquivalentTo(originalNode, 
+                eq => eq.Including(t => t.Keccak)
+                    .Including(t => t.FullRlp)
+                    .Including(t => t.NodeType));
         }
     }
 }
