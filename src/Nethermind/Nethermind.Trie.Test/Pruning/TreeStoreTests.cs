@@ -644,6 +644,8 @@ namespace Nethermind.Trie.Test.Pruning
                 eq => eq.Including(t => t.Keccak)
                     .Including(t => t.FullRlp)
                     .Including(t => t.NodeType));
+            
+            readOnlyNode.Key?.ToString().Should().Be(originalNode.Key?.ToString());
         }
     }
 }
