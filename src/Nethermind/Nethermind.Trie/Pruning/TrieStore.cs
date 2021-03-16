@@ -92,7 +92,8 @@ namespace Nethermind.Trie.Pruning
                     }
 
                     // we returning a copy to avoid multithreaded access
-                    trieNode = trieNode.Clone();
+                    trieNode = new TrieNode(NodeType.Unknown, hash, trieNode.FullRlp);
+                    trieNode.ResolveNode(_trieStore);
                     trieNode.Keccak = hash;
 
                     Metrics.LoadedFromCacheNodesCount++;
