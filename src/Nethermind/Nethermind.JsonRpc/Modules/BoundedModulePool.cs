@@ -44,16 +44,13 @@ namespace Nethermind.JsonRpc.Modules
             _sharedAsTask = Task.FromResult(_shared);
         }
         
-        public Task<T> GetModule(bool canBeShared)
-        {
-            return canBeShared ? _sharedAsTask : SlowPath();
-        }
+        public Task<T> GetModule(bool canBeShared) => canBeShared ? _sharedAsTask : SlowPath();
 
         private async Task<T> SlowPath()
         {
             if (! await _semaphore.WaitAsync(_timeout))
             {
-                throw new TimeoutException($"Unable to rent an instance of {typeof(T).Name}. Too many concurrent requests.");
+                throw new ModuleTimeoutException($"Unable to rent an instance of {typeof(T).Name}. Too many concurrent requests.");
             }
 
             _pool.TryDequeue(out T result);

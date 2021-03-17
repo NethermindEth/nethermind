@@ -17,9 +17,11 @@
 using System;
 using System.Diagnostics;
 using System.IO;
+using System.Net;
 using System.Security.Authentication;
 using System.Text;
 using System.Threading;
+using System.Threading.Tasks;
 using HealthChecks.UI.Client;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
@@ -149,13 +151,14 @@ namespace Nethermind.Runner.JsonRpc
                     Interlocked.Add(ref Nethermind.JsonRpc.Metrics.JsonRpcBytesReceivedHttp, ctx.Request.ContentLength ?? request.Length);
                     using JsonRpcResult result = await jsonRpcProcessor.ProcessAsync(request, JsonRpcContext.Http);
 
-                    ctx.Response.ContentType = "application/json";
-
                     Stream resultStream = jsonRpcConfig.BufferResponses ? new MemoryStream() : ctx.Response.Body;
 
                     long responseSize = 0;
                     try
                     {
+                        ctx.Response.ContentType = "application/json";
+                        ctx.Response.StatusCode = GetStatusCode(result);
+                        
                         responseSize = result.IsCollection 
                             ? _jsonSerializer.Serialize(resultStream, result.Responses) 
                             : _jsonSerializer.Serialize(resultStream, result.Response);
@@ -178,7 +181,7 @@ namespace Nethermind.Runner.JsonRpc
                     finally
                     {
                         await ctx.Response.CompleteAsync();
-                        
+
                         if (jsonRpcConfig.BufferResponses)
                         {
                             await resultStream.DisposeAsync();
@@ -199,6 +202,34 @@ namespace Nethermind.Runner.JsonRpc
                     Interlocked.Add(ref Nethermind.JsonRpc.Metrics.JsonRpcBytesSentHttp, responseSize);
                 }
             });
+        }
+
+        private static int GetStatusCode(JsonRpcResult result) =>
+            ModuleTimeout(result) 
+                ? StatusCodes.Status503ServiceUnavailable 
+                : StatusCodes.Status200OK;
+
+        private static bool ModuleTimeout(JsonRpcResult result)
+        {
+            static bool ModuleTimeoutError(JsonRpcResponse response) => 
+                response is JsonRpcErrorResponse errorResponse && errorResponse.Error?.Code == ErrorCodes.ModuleTimeout;
+
+            if (result.IsCollection)
+            {
+                for (var i = 0; i < result.Responses.Count; i++)
+                {
+                    if (ModuleTimeoutError(result.Responses[i]))
+                    {
+                        return true;
+                    }
+                }
+            }
+            else if (ModuleTimeoutError(result.Response))
+            {
+                return true;
+            }
+
+            return false;
         }
     }
 }
