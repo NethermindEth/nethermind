@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.ComponentModel;
+using System.Threading;
 
 namespace Nethermind.JsonRpc
 {
@@ -34,5 +35,23 @@ namespace Nethermind.JsonRpc
         
         [Description("Number of JSON RPC requests processed succesfully.")]
         public static long JsonRpcSuccesses { get; set; }
+
+        [Description("Number of JSON RPC bytes sent.")]
+        public static long JsonRpcBytesSent;
+        
+        [Description("Number of JSON RPC bytes sent through http.")]
+        public static long JsonRpcBytesSentHttp;
+        
+        [Description("Number of JSON RPC bytes sent through web sockets.")]
+        public static long JsonRpcBytesSentWebSockets;
+
+        [Description("Number of JSON RPC bytes received.")]
+        public static long JsonRpcBytesReceived;
+        
+        [Description("Number of JSON RPC bytes received through http.")]
+        public static long JsonRpcBytesReceivedHttp;
+        
+        [Description("Number of JSON RPC bytes received through web sockets.")]
+        public static long JsonRpcBytesReceivedWebSockets;
     }
 }

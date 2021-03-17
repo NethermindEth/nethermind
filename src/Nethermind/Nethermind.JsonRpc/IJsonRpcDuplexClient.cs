@@ -23,7 +23,7 @@ namespace Nethermind.JsonRpc
     public interface IJsonRpcDuplexClient : IDisposable
     {
         string Id { get; }
-        Task SendJsonRpcResult(JsonRpcResult result);
+        Task<int> SendJsonRpcResult(JsonRpcResult result);
         event EventHandler Closed;
     }
 }
