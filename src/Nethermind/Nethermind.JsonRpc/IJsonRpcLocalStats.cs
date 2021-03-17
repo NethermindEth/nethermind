@@ -21,7 +21,7 @@ namespace Nethermind.JsonRpc
 {
     public interface IJsonRpcLocalStats
     {
-        void ReportCall(in RpcReport report, long elapsedMicroseconds = 0);
+        void ReportCall(in RpcReport report, long elapsedMicroseconds = 0, long? size = null);
 
         public void ReportCalls(in IReadOnlyList<RpcReport> reports)
         {

@@ -110,10 +110,11 @@ namespace Nethermind.Serialization.Json
             return stringWriter.ToString();
         }
 
-        public void Serialize<T>(Stream stream, T value, bool indented = false)
+        public long Serialize<T>(Stream stream, T value, bool indented = false)
         {
             using StreamWriter streamWriter = new(stream, leaveOpen: true);
-            using JsonTextWriter jsonTextWriter = new(streamWriter);
+            using CountingTextWriter countingTextWriter = new(streamWriter);
+            using JsonTextWriter jsonTextWriter = new(countingTextWriter);
             if (indented)
             {
                 jsonTextWriter.Formatting = _internalReadableSerializer.Formatting;
@@ -124,6 +125,8 @@ namespace Nethermind.Serialization.Json
                 jsonTextWriter.Formatting = _internalSerializer.Formatting;
                 _internalSerializer.Serialize(jsonTextWriter, value, typeof(T));
             }
+
+            return countingTextWriter.Size;
         }
 
         public void RegisterConverter(JsonConverter converter)
@@ -149,7 +152,7 @@ namespace Nethermind.Serialization.Json
                 ContractResolver = new CamelCasePropertyNamesContractResolver(),
                 NullValueHandling = NullValueHandling.Ignore,
                 Formatting = Formatting.None,
-                Converters = BasicConverters
+                Converters = BasicConverters,
             };
 
             _internalSerializer = JsonSerializer.Create(_settings);

@@ -17,6 +17,7 @@
 using System;
 using System.Net;
 using System.Net.Sockets;
+using System.Threading;
 using DotNetty.Buffers;
 using DotNetty.Transport.Channels;
 using DotNetty.Transport.Channels.Sockets;
@@ -97,6 +98,8 @@ namespace Nethermind.Network.Discovery
                     if (_logger.IsTrace) _logger.Trace($"Error when sending a discovery message Msg: {discoveryMessage.ToString()} ,Exp: {t.Exception}");
                 }
             });
+
+            Interlocked.Add(ref Metrics.DiscoveryBytesSent, message.Length);
         }
         protected override void ChannelRead0(IChannelHandlerContext ctx, DatagramPacket packet)
         {
@@ -105,6 +108,8 @@ namespace Nethermind.Network.Discovery
 
             byte[] msg = new byte[content.ReadableBytes];
             content.ReadBytes(msg);
+            
+            Interlocked.Add(ref Metrics.DiscoveryBytesReceived, msg.Length);
 
             if (msg.Length < 98)
             {

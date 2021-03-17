@@ -18,6 +18,6 @@ namespace Nethermind.Network.P2P
 {
     public interface IPacketSender
     {
-        void Enqueue<T>(T message) where T : P2PMessage;
+        int Enqueue<T>(T message) where T : P2PMessage;
     }
 }

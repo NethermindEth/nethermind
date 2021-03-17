@@ -17,6 +17,7 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using FluentAssertions;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Test.Modules;
 using Nethermind.Logging;
@@ -56,7 +57,7 @@ namespace Nethermind.JsonRpc.Test
             }
             
             Stream stream = new MemoryStream();
-            serializer.Serialize(stream, response);
+            long size = serializer.Serialize(stream, response);
             
             // for coverage (and to prove that it does not throw
             Stream indentedStream = new MemoryStream();
@@ -66,6 +67,9 @@ namespace Nethermind.JsonRpc.Test
             string serialized = new StreamReader(stream).ReadToEnd(); 
             TestContext.Out?.WriteLine("Serialized:");
             TestContext.Out?.WriteLine(serialized);
+            
+            size.Should().Be(serialized.Length);
+            
             return serialized;
         }
         
