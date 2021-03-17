@@ -53,8 +53,8 @@ namespace Nethermind.JsonRpc
             public decimal AvgTimeOfSuccesses { get; set; }
             public long MaxTimeOfError { get; set; }
             public long MaxTimeOfSuccess { get; set; }
-            public decimal AvgSize { get; set; }
             public decimal TotalSize { get; set; }
+            public decimal AvgSize => TotalSize / Calls;
             public int Calls => Successes + Errors;
         }
 
@@ -96,7 +96,6 @@ namespace Nethermind.JsonRpc
                 }
 
                 methodStats.TotalSize += sizeDec;
-                methodStats.AvgSize = (methodStats.Calls * methodStats.AvgSize + sizeDec) / methodStats.Calls;
             }
         }
 
@@ -146,10 +145,6 @@ namespace Nethermind.JsonRpc
                 total.MaxTimeOfSuccess = Math.Max(total.MaxTimeOfSuccess, methodStats.Value.MaxTimeOfSuccess);
                 total.MaxTimeOfError = Math.Max(total.MaxTimeOfError, methodStats.Value.MaxTimeOfError);
                 total.TotalSize += methodStats.Value.TotalSize;
-                total.AvgSize += total.Calls + methodStats.Value.Calls == 0
-                    ? 0
-                    : (total.AvgSize * total.Calls + methodStats.Value.Calls * methodStats.Value.AvgSize)
-                      / (total.Calls + methodStats.Value.Calls);
                 stringBuilder.AppendLine(PrepareReportLine(methodStats.Key, methodStats.Value));
             }
 
@@ -178,8 +173,8 @@ namespace Nethermind.JsonRpc
                                 $"{methodStats.Errors.ToString().PadLeft(9)} | " +
                                 $"{methodStats.AvgTimeOfErrors.ToString("0", CultureInfo.InvariantCulture).PadLeft(9)} | " +
                                 $"{methodStats.MaxTimeOfError.ToString(CultureInfo.InvariantCulture).PadLeft(9)} | " +
-                                $"{methodStats.AvgSize.ToString("0", CultureInfo.InvariantCulture).PadLeft(9)} | " +
-                                $"{methodStats.TotalSize.ToString("0", CultureInfo.InvariantCulture).PadLeft(11)} | ";
+                                $"{methodStats.AvgSize.ToString("0", CultureInfo.InvariantCulture).PadLeft(8)} | " +
+                                $"{methodStats.TotalSize.ToString("0", CultureInfo.InvariantCulture).PadLeft(10)} | ";
 
             return reportLine;
         }
