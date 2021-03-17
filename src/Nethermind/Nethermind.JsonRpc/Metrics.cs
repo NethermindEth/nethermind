@@ -37,7 +37,7 @@ namespace Nethermind.JsonRpc
         public static long JsonRpcSuccesses { get; set; }
 
         [Description("Number of JSON RPC bytes sent.")]
-        public static long JsonRpcBytesSent;
+        public static long JsonRpcBytesSent => JsonRpcBytesSentHttp + JsonRpcBytesSentWebSockets;
         
         [Description("Number of JSON RPC bytes sent through http.")]
         public static long JsonRpcBytesSentHttp;
@@ -46,7 +46,7 @@ namespace Nethermind.JsonRpc
         public static long JsonRpcBytesSentWebSockets;
 
         [Description("Number of JSON RPC bytes received.")]
-        public static long JsonRpcBytesReceived;
+        public static long JsonRpcBytesReceived => JsonRpcBytesReceivedHttp + JsonRpcBytesReceivedWebSockets;
         
         [Description("Number of JSON RPC bytes received through http.")]
         public static long JsonRpcBytesReceivedHttp;

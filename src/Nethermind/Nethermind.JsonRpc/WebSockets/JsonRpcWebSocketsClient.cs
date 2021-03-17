@@ -55,7 +55,6 @@ namespace Nethermind.JsonRpc.WebSockets
         public async Task ReceiveAsync(Memory<byte> data)
         {
             Stopwatch stopwatch = Stopwatch.StartNew();
-            Interlocked.Add(ref Metrics.JsonRpcBytesReceived, data.Length);
             Interlocked.Add(ref Metrics.JsonRpcBytesReceivedWebSockets, data.Length);
             using JsonRpcResult result = await _jsonRpcProcessor.ProcessAsync(Encoding.UTF8.GetString(data.Span), _jsonRpcContext);
 
@@ -72,7 +71,6 @@ namespace Nethermind.JsonRpc.WebSockets
                 _jsonRpcLocalStats.ReportCall(result.Report, handlingTimeMicroseconds, size);
             }
             
-            Interlocked.Add(ref Metrics.JsonRpcBytesSent, data.Length);
             Interlocked.Add(ref Metrics.JsonRpcBytesSentWebSockets, data.Length);
         }
 

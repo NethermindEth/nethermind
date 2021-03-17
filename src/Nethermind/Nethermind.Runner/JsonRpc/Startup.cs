@@ -146,7 +146,6 @@ namespace Nethermind.Runner.JsonRpc
                     Stopwatch stopwatch = Stopwatch.StartNew();
                     using StreamReader reader = new StreamReader(ctx.Request.Body, Encoding.UTF8);
                     string request = await reader.ReadToEndAsync();
-                    Interlocked.Add(ref Nethermind.JsonRpc.Metrics.JsonRpcBytesReceived, ctx.Request.ContentLength ?? request.Length);
                     Interlocked.Add(ref Nethermind.JsonRpc.Metrics.JsonRpcBytesReceivedHttp, ctx.Request.ContentLength ?? request.Length);
                     using JsonRpcResult result = await jsonRpcProcessor.ProcessAsync(request, JsonRpcContext.Http);
 
@@ -197,7 +196,6 @@ namespace Nethermind.Runner.JsonRpc
                         jsonRpcLocalStats.ReportCall(result.Report, handlingTimeMicroseconds, responseSize);
                     }
                     
-                    Interlocked.Add(ref Nethermind.JsonRpc.Metrics.JsonRpcBytesSent, responseSize);
                     Interlocked.Add(ref Nethermind.JsonRpc.Metrics.JsonRpcBytesSentHttp, responseSize);
                 }
             });
