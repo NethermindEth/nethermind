@@ -80,7 +80,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         public async Task Ensure_limited_exclusive()
         {
             await _modulePool.GetModule(false);
-            Assert.ThrowsAsync<ModuleTimeoutException>(() => _modulePool.GetModule(false));
+            Assert.ThrowsAsync<ModuleRentalTimeoutException>(() => _modulePool.GetModule(false));
         }
         
         [Test]
@@ -89,7 +89,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             IEthModule shared = await _modulePool.GetModule(true);
             _modulePool.ReturnModule(shared);
             await _modulePool.GetModule(false);
-            Assert.ThrowsAsync<ModuleTimeoutException>(() => _modulePool.GetModule(false));
+            Assert.ThrowsAsync<ModuleRentalTimeoutException>(() => _modulePool.GetModule(false));
         }
 
         [Test]

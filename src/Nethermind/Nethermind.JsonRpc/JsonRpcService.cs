@@ -86,7 +86,7 @@ namespace Nethermind.JsonRpc
                     if (_logger.IsError) _logger.Error($"Error during method execution, request: {rpcRequest}", ex.InnerException);
                     return GetErrorResponse(rpcRequest.Method, ErrorCodes.InternalError, "Internal error", ex.InnerException?.ToString(), rpcRequest.Id);
                 }
-                catch (ModuleTimeoutException ex)
+                catch (ModuleRentalTimeoutException ex)
                 {
                     if (_logger.IsError) _logger.Error($"Error during method execution, request: {rpcRequest}", ex);
                     return GetErrorResponse(rpcRequest.Method, ErrorCodes.ModuleTimeout, "Timeout", ex.ToString(), rpcRequest.Id);

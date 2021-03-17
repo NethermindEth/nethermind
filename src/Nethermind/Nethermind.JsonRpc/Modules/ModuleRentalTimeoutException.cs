@@ -19,18 +19,18 @@ using System;
 
 namespace Nethermind.JsonRpc.Modules
 {
-    public class ModuleTimeoutException : TimeoutException
+    public class ModuleRentalTimeoutException : TimeoutException
     {
-        public ModuleTimeoutException()
+        public ModuleRentalTimeoutException()
         {
         }
 
-        public ModuleTimeoutException(string message)
+        public ModuleRentalTimeoutException(string message)
             : base(message)
         {
         }
 
-        public ModuleTimeoutException(string message, Exception inner)
+        public ModuleRentalTimeoutException(string message, Exception inner)
             : base(message, inner)
         {
         }
