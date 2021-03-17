@@ -166,5 +166,11 @@ namespace Nethermind.Network
         
         [Description("Number of eth.65 NewPooledTransactionHashes messages received")]
         public static long Eth65NewPooledTransactionHashesReceived { get; set; }
+
+        [Description("Number of bytes sent through P2P")]
+        public static long P2PBytesSent;
+
+        [Description("Number of bytes received through P2P")]
+        public static long P2PBytesReceived;
     }
 }

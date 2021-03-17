@@ -76,6 +76,7 @@ namespace Nethermind.Network.Rlpx
                 IByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer();
                 buffer.WriteBytes(auth.Data);
                 context.WriteAndFlushAsync(buffer);
+                Interlocked.Add(ref Metrics.P2PBytesSent, auth.Data.Length);
             }
             else
             {
@@ -147,6 +148,7 @@ namespace Nethermind.Network.Rlpx
                 if (_logger.IsTrace) _logger.Trace($"AUTH received from {context.Channel.RemoteAddress}");
                 byte[] authData = new byte[input.ReadableBytes];
                 input.ReadBytes(authData);
+                Interlocked.Add(ref Metrics.P2PBytesReceived, authData.Length);
                 Packet ack = _service.Ack(_handshake, new Packet(authData));
 
                 //_p2PSession.RemoteNodeId = _remoteId;
@@ -154,11 +156,13 @@ namespace Nethermind.Network.Rlpx
                 IByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer();
                 buffer.WriteBytes(ack.Data);
                 context.WriteAndFlushAsync(buffer);
+                Interlocked.Add(ref Metrics.P2PBytesSent, ack.Data.Length);
             }
             else
             {
                 if (_logger.IsTrace) _logger.Trace($"Received ACK from {RemoteId} @ {context.Channel.RemoteAddress}");
                 byte[] ackData = new byte[input.ReadableBytes];
+                Interlocked.Add(ref Metrics.P2PBytesReceived, ackData.Length);
                 input.ReadBytes(ackData);
                 _service.Agree(_handshake, new Packet(ackData));
             }
