@@ -103,7 +103,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.LogManager,
                 _api.StateReader,
                 _api);
-            _api.RpcModuleProvider.RegisterBoundedByCpuCount(ethModuleFactory, rpcConfig.Timeout);
+            _api.RpcModuleProvider.RegisterBounded(ethModuleFactory, rpcConfig.EthModuleConcurrentInstances ?? Environment.ProcessorCount, rpcConfig.Timeout);
             
             if (_api.DbProvider == null) throw new StepDependencyException(nameof(_api.DbProvider));
             if (_api.BlockPreprocessor == null) throw new StepDependencyException(nameof(_api.BlockPreprocessor));
