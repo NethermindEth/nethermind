@@ -1,6 +1,6 @@
 name: Vault Integration Test
 
-on: push
+on: [push, pull_request, workflow_dispatch]
 
 jobs:
   vault-tests:
