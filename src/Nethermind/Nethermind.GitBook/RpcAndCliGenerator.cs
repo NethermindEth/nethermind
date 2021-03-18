@@ -189,14 +189,14 @@ namespace Nethermind.GitBook
                     CreateCliContent(cliBuilder, paramBuilder, returnBuilder, objectsBuilder, cliMethodName, exampleArguments, cliInvocation, methodData);
                 }
             }
-
-            const int notEmptyModule = 20;
-
-            if (rpcBuilder.Length > notEmptyModule)
+            
+            int emptyModuleLength = "this is empty module".Length;
+            
+            if (rpcBuilder.Length > emptyModuleLength)
             {
                 _sharedContent.Save(moduleName, string.Concat(docsDir, "/ethereum-client/json-rpc"), rpcBuilder);
             }
-            if (cliBuilder.Length > notEmptyModule)
+            if (cliBuilder.Length > emptyModuleLength)
             {
                 _sharedContent.Save(moduleName, string.Concat(docsDir, "/nethermind-utilities/cli"), cliBuilder);
             }

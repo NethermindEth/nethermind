@@ -112,7 +112,7 @@ namespace Nethermind.GitBook
         {
             foreach (Type cliType in cliTypes)
             {
-                MethodInfo[] moduleMethods = cliType.GetMethods().Where(method => method.Name != "GetType" && method.Name != "ToString" && method.Name != "Equals" && method.Name != "GetHashCode").ToArray();
+                MethodInfo[] moduleMethods = cliType.GetMethods().ToArray();
                 
                 string cliModuleName = cliType.Name.Replace("CliModule", "").ToLower();
 
@@ -135,7 +135,7 @@ namespace Nethermind.GitBook
             foreach (MethodInfo moduleMethod in moduleMethods)
             {
                 string methodName = GetCliMethodName(moduleMethod);
-                AddNewMethod(methods, methodName, moduleMethod);
+                AddNewMethod(methods, cliModuleName, methodName, moduleMethod);
             }
             
             _modulesData.Add(cliModuleName, methods);
@@ -165,28 +165,31 @@ namespace Nethermind.GitBook
                 }
                 else
                 {
-                    AddNewMethod(methods, methodName, moduleMethod);
+                    AddNewMethod(methods, cliModuleName, methodName, moduleMethod);
                 }
             }
         }
 
-        private void AddNewMethod(Dictionary<string, MethodData> methods, string methodName, MethodInfo moduleMethod)
+        private void AddNewMethod(Dictionary<string, MethodData> methods, string cliModuleName, string methodName, MethodInfo moduleMethod)
         {
             CliFunctionAttribute functionAttribute = moduleMethod.GetCustomAttribute<CliFunctionAttribute>();
             CliPropertyAttribute propertyAttribute = moduleMethod.GetCustomAttribute<CliPropertyAttribute>();
-                
-            MethodData methodData = new MethodData()
+
+            if (functionAttribute?.ObjectName == cliModuleName || propertyAttribute?.ObjectName == cliModuleName)
             {
-                ReturnType = moduleMethod.ReturnType,
-                Parameters = moduleMethod.GetParameters(),
-                Description = functionAttribute?.Description ?? propertyAttribute?.Description,
-                ResponseDescription = functionAttribute?.ResponseDescription ?? propertyAttribute?.ResponseDescription,
-                ExampleResponse = functionAttribute?.ExampleResponse ?? propertyAttribute?.ExampleResponse,
-                IsFunction =  functionAttribute != null,
-                InvocationType = InvocationType.Cli
-            };
-            
-            methods.Add(methodName, methodData);
+                MethodData methodData = new MethodData()
+                {
+                    ReturnType = moduleMethod.ReturnType,
+                    Parameters = moduleMethod.GetParameters(),
+                    Description = functionAttribute?.Description ?? propertyAttribute?.Description,
+                    ResponseDescription = functionAttribute?.ResponseDescription ?? propertyAttribute?.ResponseDescription,
+                    ExampleResponse = functionAttribute?.ExampleResponse ?? propertyAttribute?.ExampleResponse,
+                    IsFunction = functionAttribute != null,
+                    InvocationType = InvocationType.Cli
+                };
+
+                methods.Add(methodName, methodData);
+            }
         }
         
         private void UpdateMethod(Dictionary<string, MethodData> methods, string methodName, MethodInfo moduleMethod)
@@ -203,9 +206,14 @@ namespace Nethermind.GitBook
                 commonMethod.Description = functionAttribute?.Description ?? propertyAttribute?.Description;
             }
 
+            if (commonMethod.ResponseDescription?.Length == 0)
+            {
+                commonMethod.ResponseDescription = functionAttribute?.ResponseDescription ?? propertyAttribute?.ResponseDescription;
+            }
+
             if (commonMethod.ExampleResponse?.Length == 0)
             {
-                commonMethod.ExampleResponse = functionAttribute?.ExampleResponse;
+                commonMethod.ExampleResponse = functionAttribute?.ExampleResponse ?? propertyAttribute?.ExampleResponse;
             }
 
             methods.Add(methodName, commonMethod);
