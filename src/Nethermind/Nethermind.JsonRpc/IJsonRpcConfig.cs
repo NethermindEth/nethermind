@@ -101,8 +101,8 @@ namespace Nethermind.JsonRpc
                           nameof(IEthModule.eth_newPendingTransactionFilter) + ", " +
                           nameof(IEthModule.eth_uninstallFilter) + "). " +
                           "This will limit load on the node CPU and IO to reasonable levels. " +
-                          "If this limit is exceeded on Http calls 503 Service Unavailable will be returned along with Json RPC error.",
-                          DefaultValue = "Number of logical processes.")]
+                          "If this limit is exceeded on Http calls 503 Service Unavailable will be returned along with Json RPC error. " +
+                          "Defaults to number of logical processes.")]
         int? EthModuleConcurrentInstances { get; set; }
     }
 }
