@@ -190,7 +190,7 @@ namespace Nethermind.GitBook
                 }
             }
             
-            int emptyModuleLength = "this is empty module".Length;
+            int emptyModuleLength = "# only_some_module_name".Length;
             
             if (rpcBuilder.Length > emptyModuleLength)
             {
