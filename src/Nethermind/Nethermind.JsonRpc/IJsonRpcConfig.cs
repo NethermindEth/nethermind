@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using Nethermind.Config;
+using Nethermind.JsonRpc.Modules.Eth;
 
 namespace Nethermind.JsonRpc
 {
@@ -89,5 +90,19 @@ namespace Nethermind.JsonRpc
             Description = "Max HTTP request body size",
             DefaultValue = "30000000")]
         long? MaxRequestBodySize { get; set; }
+
+        [ConfigItem(
+            Description = "Number of concurrent instances for non-sharable calls (" + 
+                          nameof(IEthModule.eth_call) + ", " +
+                          nameof(IEthModule.eth_estimateGas) + ", " +
+                          nameof(IEthModule.eth_getLogs) + ", " +
+                          nameof(IEthModule.eth_newFilter) + ", " +
+                          nameof(IEthModule.eth_newBlockFilter) + ", " +
+                          nameof(IEthModule.eth_newPendingTransactionFilter) + ", " +
+                          nameof(IEthModule.eth_uninstallFilter) + "). " +
+                          "This will limit load on the node CPU and IO to reasonable levels. " +
+                          "If this limit is exceeded on Http calls 503 Service Unavailable will be returned along with Json RPC error.",
+                          DefaultValue = "Number of logical processes.")]
+        int? EthModuleConcurrentInstances { get; set; }
     }
 }
