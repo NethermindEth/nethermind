@@ -134,7 +134,7 @@ namespace Nethermind.Blockchain.Visitors
             AssertNotVisitingAfterGap();
             _blocksCheckedInCurrentLevel++;
             _bodiesInCurrentLevel++;
-            return Task.FromResult(BlockVisitOutcome.None);
+            return Task.FromResult(BlockVisitOutcome.Suggest);
         }
 
         Task<LevelVisitOutcome> IBlockTreeVisitor.VisitLevelEnd(ChainLevelInfo chainLevelInfo, long levelNumber, CancellationToken cancellationToken)

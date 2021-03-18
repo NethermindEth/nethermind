@@ -23,7 +23,7 @@ using Nethermind.Logging;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
-    [RunnerStepDependencies(typeof(StartBlockProcessor))]
+    [RunnerStepDependencies(typeof(StartBlockProcessor), (typeof(InitializeNetwork)))]
     public class ReviewBlockTree : IStep
     {
         private readonly IApiWithBlockchain _api;
@@ -59,7 +59,7 @@ namespace Nethermind.Runner.Ethereum.Steps
 
             if (!syncConfig.FastSync && !syncConfig.BeamSync)
             {
-                DbBlocksLoader loader = new DbBlocksLoader(_api.BlockTree, _logger);
+                DbBlocksLoader loader = new(_api.BlockTree, _logger);
                 await _api.BlockTree.Accept(loader, cancellationToken).ContinueWith(t =>
                 {
                     if (t.IsFaulted)
