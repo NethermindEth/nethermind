@@ -63,26 +63,26 @@ namespace Nethermind.Blockchain.Visitors
             _blocksToLoad = (assumedHead + 1) >= _startNumber ? (_blockTree.BestKnownNumber - _startNumber + 1) : 0;
 
             _currentLevelNumber = _startNumber - 1; // because we always increment on entering
-            if (_blocksToLoad != 0)
-            {
-                _blockTree.NewHeadBlock += BlockTreeOnNewHeadBlock;
-            }
+            // if (_blocksToLoad != 0)
+            // {
+            //     _blockTree.NewHeadBlock += BlockTreeOnNewHeadBlock;
+            // }
 
             LogPlannedOperation();
         }
 
-        private void BlockTreeOnNewHeadBlock(object sender, BlockEventArgs e)
-        {
-            if (_dbBatchProcessed != null)
-            {
-                if (e.Block.Number == _currentDbLoadBatchEnd)
-                {
-                    TaskCompletionSource<object> completionSource = _dbBatchProcessed;
-                    _dbBatchProcessed = null;
-                    completionSource.SetResult(null);
-                }
-            }
-        }
+        // private void BlockTreeOnNewHeadBlock(object sender, BlockEventArgs e)
+        // {
+        //     if (_dbBatchProcessed != null)
+        //     {
+        //         if (e.Block.Number == _currentDbLoadBatchEnd)
+        //         {
+        //             TaskCompletionSource<object> completionSource = _dbBatchProcessed;
+        //             _dbBatchProcessed = null;
+        //             completionSource.SetResult(null);
+        //         }
+        //     }
+        // }
 
         public bool PreventsAcceptingNewBlocks => true;
         public long StartLevelInclusive => _startNumber;
@@ -167,23 +167,23 @@ namespace Nethermind.Blockchain.Visitors
             _blocksCheckedInCurrentLevel++;
             _bodiesInCurrentLevel++;
 
-            long i = block.Number - StartLevelInclusive;
-            if (i % _batchSize == _batchSize - 1 && i != _blocksToLoad - 1 &&
-                _blockTree.Head.Number + _batchSize < block.Number)
-            {
-                if (_logger.IsInfo)
-                {
-                    _logger.Info(
-                        $"Loaded {i + 1} out of {_blocksToLoad} blocks from DB into processing queue, waiting for processor before loading more.");
-                }
-
-                _dbBatchProcessed = new TaskCompletionSource<object>();
-                await using (cancellationToken.Register(() => _dbBatchProcessed.SetCanceled()))
-                {
-                    _currentDbLoadBatchEnd = block.Number - _batchSize;
-                    await _dbBatchProcessed.Task;
-                }
-            }
+            // long i = block.Number - StartLevelInclusive;
+            // if (i % _batchSize == _batchSize - 1 && i != _blocksToLoad - 1 &&
+            //     _blockTree.Head.Number + _batchSize < block.Number)
+            // {
+            //     if (_logger.IsInfo)
+            //     {
+            //         _logger.Info(
+            //             $"Loaded {i + 1} out of {_blocksToLoad} blocks from DB into processing queue, waiting for processor before loading more.");
+            //     }
+            //
+            //     _dbBatchProcessed = new TaskCompletionSource<object>();
+            //     await using (cancellationToken.Register(() => _dbBatchProcessed.SetCanceled()))
+            //     {
+            //         _currentDbLoadBatchEnd = block.Number - _batchSize;
+            //         await _dbBatchProcessed.Task;
+            //     }
+            // }
 
             return BlockVisitOutcome.Suggest;
         }
