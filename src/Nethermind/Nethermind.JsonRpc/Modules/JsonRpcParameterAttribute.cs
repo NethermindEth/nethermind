@@ -13,25 +13,16 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
 using System;
 
 namespace Nethermind.JsonRpc.Modules
 {
-    public class JsonRpcMethodAttribute : Attribute
+    public class JsonRpcParameterAttribute : Attribute
     {
-        public string Description { get; set; }
+        public string? Description { get; set; }
         
-        public string? EdgeCaseHint { get; set; }
-
-        public bool IsImplemented { get; set; } = true;
-
-        public bool IsSharable { get; set; } = true;
-
-        public RpcEndpoint Availability { get; set; } = RpcEndpoint.All;
-        
-        public string? ResponseDescription { get; set; }
-        
-        public string? ExampleResponse { get; set; }
+        public string? ExampleValue { get; set; }
     }
 }
