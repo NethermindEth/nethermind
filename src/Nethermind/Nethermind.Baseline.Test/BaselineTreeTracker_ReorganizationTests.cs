@@ -60,12 +60,8 @@ namespace Nethermind.Baseline.Test
 
             nonce = 1L;
             nonce = await InsertLeafFromArray(test.LeavesInMiddleOfReorganization, nonce, testRpc, contract, address);
-// add stop tracking here
+
             await testRpc.AddBlock(false);
-            testRpc.BlockProducer.BlockParent = testRpc.BlockProducer.LastProducedBlock.Header;
-            await testRpc.AddBlock(false);
-            testRpc.BlockProducer.BlockParent = testRpc.BlockProducer.LastProducedBlock.Header;
-// resume tracking?
             await InsertLeafFromArray(test.LeavesInAfterReorganization, nonce, testRpc, contract, address);
 
             await testRpc.AddBlock();

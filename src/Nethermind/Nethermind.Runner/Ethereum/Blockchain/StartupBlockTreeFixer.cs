@@ -20,18 +20,22 @@ using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Blockchain.Visitors;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
+using Nethermind.Synchronization.ParallelSync;
 
-namespace Nethermind.Blockchain.Visitors
+namespace Nethermind.Ethereum.Blockchain
 {
     public class StartupBlockTreeFixer : IBlockTreeVisitor
     {
         public const int DefaultBatchSize = 4000;
         private readonly IBlockTree _blockTree;
         private readonly ILogger _logger;
+        private readonly ISyncModeSelector _syncModeSelector;
         private long _startNumber;
         private long _blocksToLoad;
 
@@ -47,17 +51,21 @@ namespace Nethermind.Blockchain.Visitors
         private TaskCompletionSource<object> _dbBatchProcessed;
         private long _currentDbLoadBatchEnd;
         private readonly long _batchSize;
+        private readonly SyncMode startingSyncMode;
 
         public StartupBlockTreeFixer(
             ISyncConfig syncConfig, 
             IBlockTree blockTree, 
             ILogger logger,
+            ISyncModeSelector syncModeSelector,
             long batchSize = DefaultBatchSize)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+            _syncModeSelector = syncModeSelector ?? throw new ArgumentNullException(nameof(syncModeSelector));
 
             _batchSize = batchSize;
+            startingSyncMode = syncModeSelector.Current;
             long assumedHead = _blockTree.Head?.Number ?? 0;
             _startNumber = Math.Max(syncConfig.PivotNumberParsed, assumedHead + 1);
             _blocksToLoad = (assumedHead + 1) >= _startNumber ? (_blockTree.BestKnownNumber - _startNumber + 1) : 0;
@@ -167,6 +175,11 @@ namespace Nethermind.Blockchain.Visitors
             _blocksCheckedInCurrentLevel++;
             _bodiesInCurrentLevel++;
 
+            if ((startingSyncMode & SyncMode.Full) != SyncMode.Full || (_syncModeSelector.Current & SyncMode.Full) != SyncMode.Full)
+            {
+                return BlockVisitOutcome.None;
+            }
+            
             long i = block.Number - StartLevelInclusive;
             if (i % _batchSize == _batchSize - 1 && i != _blocksToLoad - 1 &&
                 _blockTree.Head.Number + _batchSize < block.Number)

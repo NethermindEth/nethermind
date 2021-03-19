@@ -19,7 +19,9 @@ using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Visitors;
+using Nethermind.Ethereum.Blockchain;
 using Nethermind.Logging;
+using Nethermind.Synchronization.ParallelSync;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
@@ -74,7 +76,8 @@ namespace Nethermind.Runner.Ethereum.Steps
             }
             else
             {
-                StartupBlockTreeFixer fixer = new(syncConfig, _api.BlockTree, _logger);
+                ISyncModeSelector syncModeSelector = _api.SyncModeSelector;
+                StartupBlockTreeFixer fixer = new(syncConfig, _api.BlockTree, _logger, syncModeSelector!);
                 await _api.BlockTree.Accept(fixer, cancellationToken).ContinueWith(t =>
                 {
                     if (t.IsFaulted)
