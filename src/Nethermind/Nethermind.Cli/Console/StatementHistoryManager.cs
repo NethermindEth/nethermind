@@ -25,6 +25,7 @@ namespace Nethermind.Cli.Console
     {
         private readonly ICliConsole _cliConsole;
         private const string HistoryFilePath = "cli.cmd.history";
+        private bool writeFailNotReported = true;
 
         private List<string> _historyCloned = new List<string>();
 
@@ -46,27 +47,38 @@ namespace Nethermind.Cli.Console
 
         public void UpdateHistory(string statement)
         {
-            if (!File.Exists(HistoryFilePath))
+            try
             {
-                File.Create(HistoryFilePath).Dispose();
-            }
-
-            if (!SecuredCommands.Any(statement.Contains))
-            {
-                List<string> history = ReadLine.GetHistory();
-                if (history.LastOrDefault() != statement)
+                if (!File.Exists(HistoryFilePath))
                 {
-                    ReadLine.AddHistory(statement);
+                    File.Create(HistoryFilePath).Dispose();
+                }
+
+                if (!SecuredCommands.Any(statement.Contains))
+                {
+                    List<string> history = ReadLine.GetHistory();
+                    if (history.LastOrDefault() != statement)
+                    {
+                        ReadLine.AddHistory(statement);
+                        _historyCloned.Insert(0, statement);
+                    }
+                }
+                else
+                {
+                    ReadLine.AddHistory(_removedString);
                     _historyCloned.Insert(0, statement);
                 }
-            }
-            else
-            {
-                ReadLine.AddHistory(_removedString);
-                _historyCloned.Insert(0, statement);
-            }
 
-            File.WriteAllLines(HistoryFilePath, _historyCloned.Distinct().Reverse().ToArray());
+                File.WriteAllLines(HistoryFilePath, _historyCloned.Distinct().Reverse().ToArray());
+            }
+            catch (Exception e)
+            {
+                if (writeFailNotReported)
+                {
+                    writeFailNotReported = false;
+                    _cliConsole.WriteErrorLine($"Could not write cmd history to {HistoryFilePath} {e.Message}");
+                }
+            }
         }
 
         public void Init()
