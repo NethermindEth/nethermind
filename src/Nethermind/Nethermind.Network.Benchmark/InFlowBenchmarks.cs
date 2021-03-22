@@ -27,6 +27,7 @@ using Nethermind.Logging;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Test;
+using Nethermind.Specs.Forks;
 
 namespace Nethermind.Network.Benchmarks
 {
@@ -83,7 +84,7 @@ namespace Nethermind.Network.Benchmarks
 //            _zeroSnappyEncoder = new TestZeroSnappy();
             Transaction a = Build.A.Transaction.TestObject;
             Transaction b = Build.A.Transaction.TestObject;
-            _block = Build.A.Block.WithTransactions(a, b).TestObject;
+            _block = Build.A.Block.WithTransactions(Berlin.Instance, a, b).TestObject;
             _newBlockMessageSerializer = new NewBlockMessageSerializer();
 
             _newBlockMessage = new NewBlockMessage();
