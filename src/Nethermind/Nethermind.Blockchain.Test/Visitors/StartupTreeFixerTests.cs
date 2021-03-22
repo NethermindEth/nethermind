@@ -16,8 +16,13 @@
 // 
 
 using System.Threading;
+using System.Threading.Tasks;
 using FluentAssertions;
+using Nethermind.Blockchain.Processing;
+using Nethermind.Blockchain.Receipts;
+using Nethermind.Blockchain.Rewards;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Blockchain.Validators;
 using Nethermind.Blockchain.Visitors;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
@@ -26,6 +31,11 @@ using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.State.Repositories;
 using Nethermind.Db.Blooms;
+using Nethermind.Evm;
+using Nethermind.JsonRpc.Test.Modules;
+using Nethermind.Serialization.Rlp;
+using Nethermind.State;
+using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using NUnit.Framework;
 
@@ -90,6 +100,25 @@ namespace Nethermind.Blockchain.Test.Visitors
             tree.BestSuggestedHeader.Should().BeEquivalentTo(block2.Header, options => options.Excluding(t => t.MaybeParent));
             tree.BestSuggestedBody.Should().BeEquivalentTo(block2.Body);
             tree.BestKnownNumber.Should().Be(2);
+        }
+        
+        [Test]
+        public async Task Suggesting_blocks()
+        {
+            var testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
+            await testRpc.BlockchainProcessor.StopAsync();
+            Block block4 = Build.A.Block.WithNumber(4).WithDifficulty(5).WithParent(testRpc.BlockTree.Head).TestObject;
+
+            var tree = testRpc.BlockTree;
+            testRpc.BlockTree.SuggestBlock(block4);
+
+        //    var tree = new BlockTree(testRpc.DbProvider.BlocksDb, testRpc.DbProvider.HeadersDb, testRpc.DbProvider.BlockInfosDb, new ChainLevelInfoRepository(testRpc.DbProvider.BlockInfosDb), MainnetSpecProvider.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
+            testRpc.BlockchainProcessor.Start();
+            StartupBlockTreeFixer fixer = new StartupBlockTreeFixer(new SyncConfig(), tree, testRpc.DbProvider.StateDb, LimboNoErrorLogger.Instance);
+
+            await tree.Accept(fixer, CancellationToken.None);
+
+            await testRpc.AddBlock();
         }
         
         [Ignore("It is causing some trouble now. Disabling it while the restarts logic is under review")]
