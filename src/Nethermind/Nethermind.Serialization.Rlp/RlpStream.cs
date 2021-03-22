@@ -519,7 +519,7 @@ namespace Nethermind.Serialization.Rlp
         public (int PrefixLength, int ContentLength) PeekPrefixAndContentLength()
         {
             int memorizedPosition = Position;
-            (int prefixLength, int contentLengt) result;
+            (int prefixLength, int contentLength) result;
             int prefix = ReadByte();
             if (prefix <= 128)
             {

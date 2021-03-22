@@ -36,7 +36,19 @@ namespace Nethermind.Serialization.Rlp
             }
             
             TxReceipt txReceipt = new();
-            _ = rlpStream.ReadSequenceLength();
+            byte firstByte = rlpStream.PeekByte();
+            if (firstByte < 192)
+            {
+                rlpStream.ReadByte();
+                txReceipt.TxType = (TxType)rlpStream.ReadByte();
+            }
+            else
+            {
+                _ = rlpStream.ReadSequenceLength();
+                txReceipt.TxType = TxType.Legacy;
+            }
+            
+
             byte[] firstItem = rlpStream.DecodeByteArray();
             if (firstItem.Length == 1 && (firstItem[0] == 0 || firstItem[0] == 1))
             {
@@ -71,11 +83,27 @@ namespace Nethermind.Serialization.Rlp
 
         public Rlp Encode(TxReceipt item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            return Rlp.Encode(
-                (rlpBehaviors & RlpBehaviors.Eip658Receipts) == RlpBehaviors.Eip658Receipts ? Rlp.Encode(item.StatusCode) : Rlp.Encode(item.PostTransactionState),
-                Rlp.Encode(item.GasUsedTotal),
-                Rlp.Encode(item.Bloom),
-                Rlp.Encode(item.Logs));
+            if (item.TxType == TxType.Legacy)
+            {
+                return Rlp.Encode(
+                    (rlpBehaviors & RlpBehaviors.Eip658Receipts) == RlpBehaviors.Eip658Receipts
+                        ? Rlp.Encode(item.StatusCode)
+                        : Rlp.Encode(item.PostTransactionState),
+                    Rlp.Encode(item.GasUsedTotal),
+                    Rlp.Encode(item.Bloom),
+                    Rlp.Encode(item.Logs));
+            }
+            else
+            {
+                return Rlp.Encode(
+                    Rlp.Encode((byte)item.TxType),
+                    (rlpBehaviors & RlpBehaviors.Eip658Receipts) == RlpBehaviors.Eip658Receipts
+                        ? Rlp.Encode(item.StatusCode)
+                        : Rlp.Encode(item.PostTransactionState),
+                    Rlp.Encode(item.GasUsedTotal),
+                    Rlp.Encode(item.Bloom),
+                    Rlp.Encode(item.Logs));
+            }
         }
 
         private (int Total, int Logs) GetContentLength(TxReceipt item, RlpBehaviors rlpBehaviors)
