@@ -43,6 +43,11 @@ namespace Nethermind.TxPool
         /// </summary>
         AllowReplacingSignature = 8,
         
-        All = ManagedNonce | PersistentBroadcast | PreEip155Signing | AllowReplacingSignature
+        /// <summary>
+        /// Indicates transaction is re-added after reorganisation
+        /// </summary>
+        Reorganisation = 16 | PersistentBroadcast,
+        
+        All = ManagedNonce | PersistentBroadcast | PreEip155Signing | AllowReplacingSignature | Reorganisation
     }
 }
