@@ -20,22 +20,20 @@ using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
-using Nethermind.Blockchain.Visitors;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Db;
 using Nethermind.Logging;
-using Nethermind.Synchronization.ParallelSync;
 
-namespace Nethermind.Ethereum.Blockchain
+namespace Nethermind.Blockchain.Visitors
 {
     public class StartupBlockTreeFixer : IBlockTreeVisitor
     {
         public const int DefaultBatchSize = 4000;
         private readonly IBlockTree _blockTree;
+        private readonly IDb _stateDb;
         private readonly ILogger _logger;
-        private readonly ISyncModeSelector _syncModeSelector;
         private long _startNumber;
         private long _blocksToLoad;
 
@@ -48,24 +46,24 @@ namespace Nethermind.Ethereum.Blockchain
         private long? _lastProcessedLevel;
         private long? _processingGapStart;
 
-        private TaskCompletionSource<object> _dbBatchProcessed;
+        private TaskCompletionSource _dbBatchProcessed;
         private long _currentDbLoadBatchEnd;
+        private bool _firstBlockVisited = true;
+        private bool _suggestBlocks = true;
         private readonly long _batchSize;
-        private readonly SyncMode startingSyncMode;
 
         public StartupBlockTreeFixer(
             ISyncConfig syncConfig, 
-            IBlockTree blockTree, 
+            IBlockTree blockTree,
+            IDb stateDb,
             ILogger logger,
-            ISyncModeSelector syncModeSelector,
             long batchSize = DefaultBatchSize)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
+            _stateDb = stateDb;
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-            _syncModeSelector = syncModeSelector ?? throw new ArgumentNullException(nameof(syncModeSelector));
 
             _batchSize = batchSize;
-            startingSyncMode = syncModeSelector.Current;
             long assumedHead = _blockTree.Head?.Number ?? 0;
             _startNumber = Math.Max(syncConfig.PivotNumberParsed, assumedHead + 1);
             _blocksToLoad = (assumedHead + 1) >= _startNumber ? (_blockTree.BestKnownNumber - _startNumber + 1) : 0;
@@ -85,9 +83,9 @@ namespace Nethermind.Ethereum.Blockchain
             {
                 if (e.Block.Number == _currentDbLoadBatchEnd)
                 {
-                    TaskCompletionSource<object> completionSource = _dbBatchProcessed;
+                    TaskCompletionSource completionSource = _dbBatchProcessed;
                     _dbBatchProcessed = null;
-                    completionSource.SetResult(null);
+                    completionSource.SetResult();
                 }
             }
         }
@@ -175,10 +173,12 @@ namespace Nethermind.Ethereum.Blockchain
             _blocksCheckedInCurrentLevel++;
             _bodiesInCurrentLevel++;
 
-            if ((startingSyncMode & SyncMode.Full) != SyncMode.Full || (_syncModeSelector.Current & SyncMode.Full) != SyncMode.Full)
+            if (_firstBlockVisited)
             {
-                return BlockVisitOutcome.None;
+                _suggestBlocks = CanSuggestBlocks(block);
             }
+
+            if (!_suggestBlocks) return BlockVisitOutcome.None;
             
             long i = block.Number - StartLevelInclusive;
             if (i % _batchSize == _batchSize - 1 && i != _blocksToLoad - 1 &&
@@ -190,15 +190,15 @@ namespace Nethermind.Ethereum.Blockchain
                         $"Loaded {i + 1} out of {_blocksToLoad} blocks from DB into processing queue, waiting for processor before loading more.");
                 }
 
-                _dbBatchProcessed = new TaskCompletionSource<object>();
+                _dbBatchProcessed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
                 await using (cancellationToken.Register(() => _dbBatchProcessed.SetCanceled()))
                 {
                     _currentDbLoadBatchEnd = block.Number - _batchSize;
                     await _dbBatchProcessed.Task;
                 }
             }
-
             return BlockVisitOutcome.Suggest;
+
         }
 
         Task<LevelVisitOutcome> IBlockTreeVisitor.VisitLevelEnd(ChainLevelInfo chainLevelInfo, long levelNumber,
@@ -244,6 +244,25 @@ namespace Nethermind.Ethereum.Blockchain
                 throw new InvalidOperationException(
                     $"Not expecting to visit block at {_currentLevelNumber} because the gap has already been identified.");
             }
+        }
+
+        private bool CanSuggestBlocks(Block block)
+        {
+            _firstBlockVisited = false;
+            if (block?.ParentHash != null)
+            {
+                Block parentBlock = _blockTree.FindBlock(block.ParentHash,
+                    BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+                if (parentBlock == null || parentBlock.StateRoot == null ||
+                    _stateDb.Get(parentBlock.StateRoot) == null)
+                    return false;
+            }
+            else
+            {
+                return false;
+            }
+
+            return true;
         }
 
         private void LogPlannedOperation()
