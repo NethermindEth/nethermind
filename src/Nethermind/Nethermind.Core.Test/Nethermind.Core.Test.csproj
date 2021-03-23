@@ -33,6 +33,7 @@
     <None Remove="Specs\rinkeby.json" />
   </ItemGroup>
   <ItemGroup>
+    <Folder Include="Encoding\RawMessages" />
     <Folder Include="Specs" />
   </ItemGroup>
 </Project>
