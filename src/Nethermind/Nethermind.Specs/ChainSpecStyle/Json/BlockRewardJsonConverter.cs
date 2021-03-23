@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -17,32 +17,33 @@
 
 using System;
 using System.Collections.Generic;
+using Nethermind.Int256;
 using Nethermind.Serialization.Json;
 using Newtonsoft.Json;
 
 namespace Nethermind.Specs.ChainSpecStyle.Json
 {
-    internal class StepDurationJsonConverter : JsonConverter<ChainSpecJson.AuraEngineParamsJson.StepDurationJson>
+    internal class BlockRewardJsonConverter : JsonConverter<ChainSpecJson.AuraEngineParamsJson.BlockRewardJson>
     {
-        public override void WriteJson(JsonWriter writer, ChainSpecJson.AuraEngineParamsJson.StepDurationJson value, JsonSerializer serializer)
+        public override void WriteJson(JsonWriter writer, ChainSpecJson.AuraEngineParamsJson.BlockRewardJson value, JsonSerializer serializer)
         {
-            throw new NotSupportedException();
+            throw new NotImplementedException();
         }
 
-        public override ChainSpecJson.AuraEngineParamsJson.StepDurationJson ReadJson(JsonReader reader, Type objectType, ChainSpecJson.AuraEngineParamsJson.StepDurationJson existingValue, bool hasExistingValue, JsonSerializer serializer)
+        public override ChainSpecJson.AuraEngineParamsJson.BlockRewardJson ReadJson(JsonReader reader, Type objectType, ChainSpecJson.AuraEngineParamsJson.BlockRewardJson existingValue, bool hasExistingValue, JsonSerializer serializer)
         {
-            existingValue ??= new ChainSpecJson.AuraEngineParamsJson.StepDurationJson();
+            existingValue ??= new ChainSpecJson.AuraEngineParamsJson.BlockRewardJson();
             if (reader.TokenType == JsonToken.String || reader.TokenType == JsonToken.Integer)
             {
-                var stepDuration = serializer.Deserialize<long>(reader);
-                existingValue.Add(0, stepDuration);
+                var blockReward = serializer.Deserialize<UInt256>(reader);
+                existingValue.Add(0, blockReward);
             }
             else
             {
-                var stepDurations = serializer.Deserialize<Dictionary<string, long>>(reader);
-                foreach (var stepDuration in stepDurations ?? throw new ArgumentException("Cannot deserialize StepDuration."))
+                var blockRewards = serializer.Deserialize<Dictionary<string, UInt256>>(reader);
+                foreach (var blockReward in blockRewards ?? throw new ArgumentException("Cannot deserialize BlockReward."))
                 {
-                    existingValue.Add(LongConverter.FromString(stepDuration.Key), stepDuration.Value);
+                    existingValue.Add(LongConverter.FromString(blockReward.Key), blockReward.Value);
                 }
             }
 

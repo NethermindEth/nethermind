@@ -84,7 +84,7 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
         internal class AuraEngineParamsJson
         {
             public StepDurationJson StepDuration { get; set; }
-            public UInt256 BlockReward { get; set; }
+            public BlockRewardJson BlockReward { get; set; }
             public long MaximumUncleCountTransition { get; set; }
             public long? MaximumUncleCount { get; set; }
             public Address BlockRewardContractAddress { get; set; }
@@ -99,6 +99,7 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
             public long? PosdaoTransition { get; set; }
 
             public class StepDurationJson : SortedDictionary<long, long> { }
+            public class BlockRewardJson : SortedDictionary<long, UInt256> { }
         }
 
         internal class AuRaValidatorJson
@@ -137,7 +138,7 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
         {
             public IDictionary<long, long> StepDuration => Params.StepDuration;
 
-            public UInt256 BlockReward  => Params.BlockReward;
+            public IDictionary<long, UInt256> BlockReward  => Params.BlockReward;
 
             public long MaximumUncleCountTransition => Params.MaximumUncleCountTransition;
 

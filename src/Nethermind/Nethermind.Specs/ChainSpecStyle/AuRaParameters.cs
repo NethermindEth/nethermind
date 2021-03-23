@@ -52,7 +52,7 @@ namespace Nethermind.Specs.ChainSpecStyle
         
         public IDictionary<long, long> StepDuration { get; set; }
 
-        public UInt256 BlockReward { get; set; }
+        public IDictionary<long, UInt256> BlockReward { get; set; }
 
         public long MaximumUncleCountTransition { get; set; }
         

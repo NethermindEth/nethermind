@@ -27,6 +27,7 @@ using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
+using Nethermind.Int256;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -53,7 +54,7 @@ namespace Nethermind.AuRa.Test.Reward
             {
                 BlockRewardContractAddress = _address10,
                 BlockRewardContractTransition = 10,
-                BlockReward = 200,
+                BlockReward = new Dictionary<long, UInt256>() {{0, 200}, {5, 150}, {6, 100}, {10, 50}},
             };
 
             _abiEncoder = Substitute.For<IAbiEncoder>();
@@ -100,8 +101,8 @@ namespace Nethermind.AuRa.Test.Reward
         }
         
         [TestCase(1, 200ul)]
-        [TestCase(5, 200ul)]
-        [TestCase(9, 200ul)]
+        [TestCase(5, 150ul)]
+        [TestCase(9, 100ul)]
         public void calculates_rewards_correctly_before_contract_transition(long blockNumber, ulong expectedReward)
         {
             _block.Header.Number = blockNumber;
