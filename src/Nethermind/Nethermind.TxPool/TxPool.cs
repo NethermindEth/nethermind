@@ -200,7 +200,7 @@ namespace Nethermind.TxPool
             bool managedNonce = (handlingOptions & TxHandlingOptions.ManagedNonce) == TxHandlingOptions.ManagedNonce;
             bool isPersistentBroadcast = (handlingOptions & TxHandlingOptions.PersistentBroadcast) ==
                                          TxHandlingOptions.PersistentBroadcast;
-            bool isReorg = (handlingOptions & TxHandlingOptions.Reorganisation) != TxHandlingOptions.Reorganisation;
+            bool isReorg = (handlingOptions & TxHandlingOptions.Reorganisation) == TxHandlingOptions.Reorganisation;
 
             if (_logger.IsTrace)
                 _logger.Trace(
@@ -383,7 +383,7 @@ namespace Nethermind.TxPool
             return false;
         }
 
-        public void RemoveTransaction(Keccak hash, long blockNumber, bool removeBelowThisTxNonce = false)
+        public void RemoveTransaction(Keccak hash, bool removeBelowThisTxNonce = false)
         {
             ICollection<Transaction>? bucket;
             ICollection<Transaction>? persistentBucket = null;
@@ -426,7 +426,7 @@ namespace Nethermind.TxPool
                     Transaction? txWithSmallestNonce = bucket.FirstOrDefault();
                     while (txWithSmallestNonce != null && txWithSmallestNonce.Nonce <= transaction.Nonce)
                     {
-                        RemoveTransaction(txWithSmallestNonce.Hash!, blockNumber);
+                        RemoveTransaction(txWithSmallestNonce.Hash!);
                         txWithSmallestNonce = bucket.FirstOrDefault();
                     }
 
