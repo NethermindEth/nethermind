@@ -538,7 +538,7 @@ namespace Nethermind.Synchronization.Test
 
             public PublicKey Id => Node.Id;
 
-            public void SendNewTransaction(Transaction transaction, bool isPriority)
+            public bool SendNewTransaction(Transaction transaction, bool isPriority)
             {
                 throw new NotImplementedException();
             }
@@ -972,7 +972,7 @@ namespace Nethermind.Synchronization.Test
 
             public PublicKey Id => Node.Id;
 
-            public void SendNewTransaction(Transaction transaction, bool isPriority)
+            public bool SendNewTransaction(Transaction transaction, bool isPriority)
             {
                 throw new NotImplementedException();
             }

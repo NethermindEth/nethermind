@@ -217,7 +217,7 @@ namespace Nethermind.Network.P2P
 
         public abstract void NotifyOfNewBlock(Block block, SendBlockPriority priority);
 
-        public virtual void SendNewTransaction(Transaction transaction, bool isPriority)
+        public virtual bool SendNewTransaction(Transaction transaction, bool isPriority)
         {
             if (transaction.Hash == null)
             {
@@ -226,6 +226,7 @@ namespace Nethermind.Network.P2P
 
             TransactionsMessage msg = new(new[] {transaction});
             Send(msg);
+            return true;
         }
 
         public override void HandleMessage(Packet message)

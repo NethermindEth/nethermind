@@ -95,7 +95,7 @@ namespace Nethermind.TxPool
         /// <summary>
         /// Connected peers that can be notified about transactions.
         /// </summary>
-        private readonly ConcurrentDictionary<PublicKey, PeerInfo> _peers =
+        private readonly ConcurrentDictionary<PublicKey, ITxPoolPeer> _peers =
             new();
 
         /// <summary>
@@ -172,7 +172,7 @@ namespace Nethermind.TxPool
                     Notify(peerInfo, transaction, false);
                 }
 
-                if (_logger.IsTrace) _logger.Trace($"Added a peer to TX pool: {peer.Enode}");
+                if (_logger.IsTrace) _logger.Trace($"Added a peer to TX pool: {peer}");
             }
         }
 
@@ -490,21 +490,19 @@ namespace Nethermind.TxPool
         public event EventHandler<TxEventArgs>? NewPending;
         public event EventHandler<TxEventArgs>? RemovedPending;
 
-        private void Notify(PeerInfo peer, Transaction tx, bool isPriority)
+        private void Notify(ITxPoolPeer peer, Transaction tx, bool isPriority)
         {
             try
             {
-                if (!peer.NotifiedTransactions.Get(tx.Hash))
+                if (peer.SendNewTransaction(tx, isPriority))
                 {
-                    peer.NotifiedTransactions.Set(tx.Hash);
-                    peer.Peer.SendNewTransaction(tx, isPriority);
                     Metrics.PendingTransactionsSent++;
-                    if (_logger.IsTrace) _logger.Trace($"Notified {peer.Peer.Enode} about a transaction: {tx.Hash}");
+                    if (_logger.IsTrace) _logger.Trace($"Notified {peer} about a transaction: {tx.Hash}");
                 }
             }
             catch (Exception e)
             {
-                if (_logger.IsError) _logger.Error($"Failed to notify {peer.Peer.Enode} about a transaction: {tx.Hash}", e);
+                if (_logger.IsError) _logger.Error($"Failed to notify {peer} about a transaction: {tx.Hash}", e);
             }
         }
 
@@ -512,7 +510,7 @@ namespace Nethermind.TxPool
         {
             Task.Run(() =>
             {
-                foreach ((_, PeerInfo peer) in _peers)
+                foreach ((_, ITxPoolPeer peer) in _peers)
                 {
                     Notify(peer, tx, true);
                 }
@@ -523,7 +521,7 @@ namespace Nethermind.TxPool
         {
             Task.Run(() =>
             {
-                foreach ((_, PeerInfo peer) in _peers)
+                foreach ((_, ITxPoolPeer peer) in _peers)
                 {
                     if (tx.DeliveredBy == null)
                     {
@@ -531,7 +529,7 @@ namespace Nethermind.TxPool
                         continue;
                     }
 
-                    if (tx.DeliveredBy.Equals(peer.Peer.Id))
+                    if (tx.DeliveredBy.Equals(peer.Id))
                     {
                         continue;
                     }
@@ -607,16 +605,32 @@ namespace Nethermind.TxPool
             public Nonce Increment() => new(Value + 1);
         }
 
-        private class PeerInfo
+        private class PeerInfo : ITxPoolPeer
         {
-            public ITxPoolPeer Peer { get; }
+            private ITxPoolPeer Peer { get; }
 
-            public LruKeyCache<Keccak> NotifiedTransactions { get; } = new(MemoryAllowance.MemPoolSize, "notifiedTransactions");
+            private LruKeyCache<Keccak> NotifiedTransactions { get; } = new(MemoryAllowance.MemPoolSize, "notifiedTransactions");
 
             public PeerInfo(ITxPoolPeer peer)
             {
                 Peer = peer;
             }
+
+            public PublicKey Id => Peer.Id;
+
+            public bool SendNewTransaction(Transaction tx, bool isPriority)
+            {
+                if (!NotifiedTransactions.Get(tx.Hash))
+                {
+                    NotifiedTransactions.Set(tx.Hash);
+                    Peer.SendNewTransaction(tx, isPriority);
+                    return true;
+                }
+
+                return false;
+            }
+
+            public override string ToString() => Peer.Enode;
         }
     }
 }
