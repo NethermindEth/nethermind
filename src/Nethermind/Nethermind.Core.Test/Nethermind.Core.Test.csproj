@@ -22,6 +22,7 @@
   <ItemGroup>
     <ProjectReference Include="..\Nethermind.Blockchain\Nethermind.Blockchain.csproj" />
     <ProjectReference Include="..\Nethermind.Core\Nethermind.Core.csproj" />
+    <ProjectReference Include="..\Nethermind.Network\Nethermind.Network.csproj" />
   </ItemGroup>
   <ItemGroup>
     <Content Include="TestRopstenBlocks\*.*">
@@ -32,6 +33,7 @@
     <None Remove="Specs\rinkeby.json" />
   </ItemGroup>
   <ItemGroup>
+    <Folder Include="Encoding\RawMessages" />
     <Folder Include="Specs" />
   </ItemGroup>
 </Project>
