@@ -135,12 +135,12 @@ namespace Nethermind.Serialization.Rlp
         {
             (int Total, int Logs) length = GetContentLength(item, rlpBehaviors);
             int receiptPayloadLength = Rlp.GetSequenceRlpLength(length.Total);
-            
-            bool isForTxRoot = (rlpBehaviors & RlpBehaviors.ForTxRoot) == RlpBehaviors.ForTxRoot;
+
+            bool isForTxRoot = (rlpBehaviors & RlpBehaviors.ForTreeRoot) == RlpBehaviors.ForTreeRoot;
             int result = item.TxType != TxType.Legacy
                 ? isForTxRoot
                     ? (1 + receiptPayloadLength)
-                    : Rlp.GetSequenceRlpLength(1 + receiptPayloadLength) // Rlp(TransactionType || ReceiptPayload)
+                    : Rlp.GetSequenceRlpLength(1 + receiptPayloadLength) // Rlp(TransactionType || TransactionPayload)
                 : receiptPayloadLength;
             return result;
         }
@@ -152,7 +152,7 @@ namespace Nethermind.Serialization.Rlp
                 return Rlp.OfEmptySequence.Bytes;
             }
             
-            var length = GetLength(item, rlpBehaviors);
+            int length = GetLength(item, rlpBehaviors);
             RlpStream stream = new(length);
             Encode(stream, item, rlpBehaviors);
             return stream.Data;
@@ -172,7 +172,7 @@ namespace Nethermind.Serialization.Rlp
             
             if (item.TxType != TxType.Legacy)
             {
-                if ((rlpBehaviors & RlpBehaviors.ForTxRoot) == RlpBehaviors.None)
+                if ((rlpBehaviors & RlpBehaviors.ForTreeRoot) == RlpBehaviors.None)
                 {
                     rlpStream.StartByteArray(totalContentLength + 1, false);
                 }

@@ -38,7 +38,7 @@ namespace Nethermind.Serialization.Rlp
         
         public const int LengthOfAddressRlp = 21;
 
-        internal const int DebugMessageContentLength = 2048;
+        internal const int DebugMessageContentLength = int.MaxValue;
         
         public const byte EmptyArrayByte = 128;
 
