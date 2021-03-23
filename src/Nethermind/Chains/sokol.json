@@ -3,14 +3,8 @@
   "engine": {
     "authorityRound": {
       "params": {
-        "stepDuration": {
-          "0x0": "0x5",
-          "0x1": "0x0"
-        },
-        "blockReward": {
-          "0x0": "0xDE0B6B3A7640000",
-          "0x1": "0x2"
-        },
+        "stepDuration": 5,
+        "blockReward": "0xDE0B6B3A7640000",
         "maximumUncleCountTransition": 0,
         "maximumUncleCount": 0,
         "validators": {
