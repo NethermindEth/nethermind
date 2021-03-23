@@ -229,7 +229,7 @@ namespace Nethermind.Core.Test.Encoding
             Assert.AreEqual(txReceipt.StatusCode, deserialized.StatusCode, "status");
             Assert.AreEqual(txReceipt.TxType, deserialized.TxType, "type");
         }
-        
+
         [Test]
         public void Can_do_roundtrip_with_storage_receipt_access_list()
         {
