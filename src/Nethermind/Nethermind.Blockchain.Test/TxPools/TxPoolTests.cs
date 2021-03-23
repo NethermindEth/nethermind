@@ -248,8 +248,8 @@ namespace Nethermind.Blockchain.Test.TxPools
         {
             _txPool = CreatePool(_noTxStorage);
             var transactions = AddOwnTransactionToPool();
-            _txPool.RemoveTransaction(transactions[0].Hash, 1);
-            _txPool.AddTransaction(transactions[0], TxHandlingOptions.PersistentBroadcast);
+            _txPool.RemoveTransaction(transactions[0].Hash);
+            _txPool.AddTransaction(transactions[0], TxHandlingOptions.Reorganisation);
             Assert.AreEqual(1, _txPool.GetOwnPendingTransactions().Length);
         }
 
@@ -267,8 +267,8 @@ namespace Nethermind.Blockchain.Test.TxPools
         {
             _txPool = CreatePool(_noTxStorage);
             var transactions = AddOwnTransactionToPool();
-            _txPool.RemoveTransaction(transactions[0].Hash, 1);
-            _txPool.RemoveTransaction(TestItem.KeccakA, 100);
+            _txPool.RemoveTransaction(transactions[0].Hash);
+            _txPool.RemoveTransaction(TestItem.KeccakA);
             _txPool.AddTransaction(transactions[0], TxHandlingOptions.None);
             Assert.AreEqual(0, _txPool.GetOwnPendingTransactions().Length);
         }
@@ -313,6 +313,7 @@ namespace Nethermind.Blockchain.Test.TxPools
             var transactions = AddTransactionsToPool();
             DeleteTransactionsFromPool(false, transactions);
             _txPool.GetPendingTransactions().Should().BeEmpty();
+            _txPool.GetOwnPendingTransactions().Should().BeEmpty();
         }
         
         [Test]
@@ -326,6 +327,7 @@ namespace Nethermind.Blockchain.Test.TxPools
             transactionsToDelete.Should().HaveCount(transactionsPerPeer);
             DeleteTransactionsFromPool(true, transactionsToDelete);
             _txPool.GetPendingTransactions().Should().HaveCount(transactionsPerPeer);
+            _txPool.GetOwnPendingTransactions().Should().HaveCount(transactionsPerPeer);
         }
 
         [Test]
@@ -428,6 +430,37 @@ namespace Nethermind.Blockchain.Test.TxPools
             _txPool.TryGetPendingTransaction(transaction.Hash, out var retrievedTransaction).Should().BeFalse();
             retrievedTransaction.Should().BeNull();
         }
+        
+        [Test]
+        public void should_notify_added_peer_of_own_tx()
+        {
+            _txPool = CreatePool(_noTxStorage);
+            var tx = AddOwnTransactionToPool().First();
+            ITxPoolPeer txPoolPeer = Substitute.For<ITxPoolPeer>();
+            txPoolPeer.Id.Returns(TestItem.PublicKeyA);
+            _txPool.AddPeer(txPoolPeer);
+            txPoolPeer.Received().SendNewTransaction(tx, false);
+        }
+        
+        [Test]
+        public async Task should_notify_peer_only_once()
+        {
+            _txPool = CreatePool(_noTxStorage);
+            ITxPoolPeer txPoolPeer = Substitute.For<ITxPoolPeer>();
+            txPoolPeer.Id.Returns(TestItem.PublicKeyA);
+            _txPool.AddPeer(txPoolPeer);
+            var tx = AddOwnTransactionToPool().First();
+            await Task.Delay(1000);
+            txPoolPeer.Received(1).SendNewTransaction(tx, true);
+        }
+        
+        [Test]
+        public void should_drop_own_transaction_over_limit()
+        {
+            _txPool = CreatePool(_noTxStorage, new TxPoolConfig() {Size = 10});
+            AddTransactionsToPool(transactionsPerPeer: 5); //generates 50 tx with 1..9 gasprice per 5 peers, only 8 up will be kept 
+            _txPool.GetOwnPendingTransactions().Min(t => t.GasPrice).Should().Be(8);
+        }
 
         private Transactions AddTransactions(ITxStorage storage)
         {
@@ -451,9 +484,9 @@ namespace Nethermind.Blockchain.Test.TxPools
             return peers;
         }
 
-        private TxPool.TxPool CreatePool(ITxStorage txStorage)
+        private TxPool.TxPool CreatePool(ITxStorage txStorage, ITxPoolConfig config = null)
             => new TxPool.TxPool(txStorage, _ethereumEcdsa, new ChainHeadSpecProvider(_specProvider, _blockFinder),
-                new TxPoolConfig() {GasLimit = _txGasLimit}, _stateProvider, new TxValidator(_specProvider.ChainId), _logManager);
+                config ?? new TxPoolConfig() {GasLimit = _txGasLimit}, _stateProvider, new TxValidator(_specProvider.ChainId), _logManager);
 
         private ITxPoolPeer GetPeer(PublicKey publicKey)
         {
@@ -484,7 +517,7 @@ namespace Nethermind.Blockchain.Test.TxPools
         {
             foreach (var transaction in transactions)
             {
-                _txPool.RemoveTransaction(transaction.Hash, 0, removeSmallerNonces);
+                _txPool.RemoveTransaction(transaction.Hash, removeSmallerNonces);
             }
         }
 
@@ -508,7 +541,7 @@ namespace Nethermind.Blockchain.Test.TxPools
 
         private Transaction GetTransaction(PrivateKey privateKey, Address to = null, UInt256? nonce = null)
         {
-            Transaction transaction = GetTransaction(nonce ?? UInt256.Zero, GasCostOf.Transaction, 1000, to, Array.Empty<byte>(), privateKey);
+            Transaction transaction = GetTransaction(nonce ?? UInt256.Zero, GasCostOf.Transaction, nonce ?? 1000, to, Array.Empty<byte>(), privateKey);
             EnsureSenderBalance(transaction);
             return transaction;
         }

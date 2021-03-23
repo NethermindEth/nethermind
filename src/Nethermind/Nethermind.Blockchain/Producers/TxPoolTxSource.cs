@@ -131,7 +131,7 @@ namespace Nethermind.Blockchain.Producers
                 
                 if (tx.SenderAddress == null)
                 {
-                    _transactionPool.RemoveTransaction(tx.Hash!, 0);
+                    _transactionPool.RemoveTransaction(tx.Hash!);
                     if (_logger.IsDebug) _logger.Debug($"Rejecting (null sender) {tx.ToShortString()}");
                     continue;
                 }
@@ -139,7 +139,7 @@ namespace Nethermind.Blockchain.Producers
                 (bool allowed, string reason) = _txFilter.IsAllowed(tx, parent);
                 if (!allowed)
                 {
-                    _transactionPool.RemoveTransaction(tx.Hash!, 0);
+                    _transactionPool.RemoveTransaction(tx.Hash!);
                     if (_logger.IsDebug) _logger.Debug($"Rejecting ({reason}) {tx.ToShortString()}");
                     continue;
                 }
@@ -149,12 +149,12 @@ namespace Nethermind.Blockchain.Producers
                 {
                     if (tx.Nonce < expectedNonce)
                     {
-                        _transactionPool.RemoveTransaction(tx.Hash!, 0, true);    
+                        _transactionPool.RemoveTransaction(tx.Hash!, true);    
                     }
                     
                     if (tx.Nonce > expectedNonce + _transactionPool.FutureNonceRetention)
                     {
-                        _transactionPool.RemoveTransaction(tx.Hash!, 0);
+                        _transactionPool.RemoveTransaction(tx.Hash!);
                     }
                     
                     if (_logger.IsDebug) _logger.Debug($"Rejecting (invalid nonce - expected {expectedNonce}) {tx.ToShortString()}");
@@ -163,7 +163,7 @@ namespace Nethermind.Blockchain.Producers
 
                 if (!HasEnoughFounds(remainingBalance, tx))
                 {
-                    _transactionPool.RemoveTransaction(tx.Hash!, 0);
+                    _transactionPool.RemoveTransaction(tx.Hash!);
                     if (_logger.IsDebug) _logger.Debug($"Rejecting (sender balance too low) {tx.ToShortString()}");
                     continue;
                 }
