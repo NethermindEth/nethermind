@@ -623,8 +623,7 @@ namespace Nethermind.TxPool
                 if (!NotifiedTransactions.Get(tx.Hash))
                 {
                     NotifiedTransactions.Set(tx.Hash);
-                    Peer.SendNewTransaction(tx, isPriority);
-                    return true;
+                    return Peer.SendNewTransaction(tx, isPriority);                     
                 }
 
                 return false;
