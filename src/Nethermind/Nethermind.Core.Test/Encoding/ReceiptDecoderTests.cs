@@ -16,11 +16,8 @@
 
 using FluentAssertions;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Network.P2P.Subprotocols.Eth.V63;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Specs;
 using NUnit.Framework;
 #pragma warning disable 618
 
@@ -264,17 +261,5 @@ namespace Nethermind.Core.Test.Encoding
             Assert.AreEqual(txReceipt.Recipient, deserialized.Recipient, "recipient");
             Assert.AreEqual(txReceipt.StatusCode, deserialized.StatusCode, "status");
         }
-        
-        // [Test]
-        // public void Can_do_2()
-        // {
-        //     ReceiptsMessageSerializer receiptMessageSerializer
-        //         = new ReceiptsMessageSerializer(MainnetSpecProvider.Instance);
-        //     
-        //     var hash = "";
-        //     RlpStream incomingTxRlp = Bytes.FromHexString(hash).AsRlpStream();
-        //     ReceiptMessageDecoder decoder = new ReceiptMessageDecoder();
-        //     var decoded = receiptMessageSerializer.Deserialize(incomingTxRlp);
-        // }
     }
 }

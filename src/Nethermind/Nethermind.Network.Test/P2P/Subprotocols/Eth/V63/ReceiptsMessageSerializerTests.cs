@@ -60,6 +60,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
                             }
                             else
                             {
+                                Assert.AreEqual(txReceipts[i][j].TxType, deserialized.TxReceipts[i][j].TxType, $"receipts[{i}][{j}].TxType");
                                 Assert.AreEqual(txReceipts[i][j].Bloom, deserialized.TxReceipts[i][j].Bloom, $"receipts[{i}][{j}].Bloom");
                                 Assert.Null(deserialized.TxReceipts[i][j].Error, $"receipts[{i}][{j}].Error");
                                 Assert.AreEqual(0, deserialized.TxReceipts[i][j].Index, $"receipts[{i}][{j}].Index");
@@ -79,7 +80,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
                 }
             }
         }
-
+        
         [Test]
         public void Roundtrip()
         {            
@@ -134,5 +135,12 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
             byte[] serialized = serializer.Serialize(message);
             Assert.AreEqual(bytes,  serialized);
         }   
+        
+        [Test]
+        public void Roundtrip_with_access_list_txTypes()
+        {            
+            TxReceipt[][] data = {new[] {Build.A.Receipt.WithAllFieldsFilled.TestObject, Build.A.Receipt.WithAllFieldsFilled.WithBlockNumber(0).WithTxType(TxType.AccessList).TestObject}, new[] {Build.A.Receipt.WithAllFieldsFilled.WithTxType(TxType.AccessList).TestObject, Build.A.Receipt.WithAllFieldsFilled.TestObject}};
+            Test(data);
+        }
     }
 }
