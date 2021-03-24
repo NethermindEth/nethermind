@@ -32,7 +32,7 @@ namespace Nethermind.Network.P2P
 
         private byte[] breach1 = Bytes.FromHexString("0204c104");
         private byte[] breach2 = Bytes.FromHexString("0204c180");
-
+        
         public DisconnectMessage Deserialize(byte[] bytes)
         {
             if (bytes.Length == 1)
