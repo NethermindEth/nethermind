@@ -118,7 +118,7 @@ namespace Nethermind.Blockchain.Test.Visitors
 
             SuggestNumberOfBlocks(tree, suggestedBlocksAmount);
             
-            // simulating restarts - we stopped old blockchain processor and create the new one
+            // simulating restarts - we stopped the old blockchain processor and create the new one
             BlockchainProcessor newBlockchainProcessor = new BlockchainProcessor(tree, testRpc.BlockProcessor,
                 testRpc.BlockPreprocessorStep, LimboLogs.Instance, BlockchainProcessor.Options.Default);
             newBlockchainProcessor.Start();
@@ -138,8 +138,34 @@ namespace Nethermind.Blockchain.Test.Visitors
             await testRpc.AddBlock();
             Assert.AreEqual(startingBlockNumber + suggestedBlocksAmount + 1, tree.Head!.Number);
         }
+        
+        [TestCase(0)]
+        [TestCase(1)]
+        [TestCase(2)]
+        [TestCase(6)]
+        public async Task Fixer_should_not_suggest_block_without_state(int suggestedBlocksAmount)
+        {
+            TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
+            await testRpc.BlockchainProcessor.StopAsync();
+            IBlockTree tree = testRpc.BlockTree;
 
-        private void SuggestNumberOfBlocks(IBlockTree blockTree, int blockAmount)
+            SuggestNumberOfBlocks(tree, suggestedBlocksAmount);
+            
+            // simulating restarts - we stopped the old blockchain processor and create the new one
+            BlockchainProcessor newBlockchainProcessor = new BlockchainProcessor(tree, testRpc.BlockProcessor,
+                testRpc.BlockPreprocessorStep, LimboLogs.Instance, BlockchainProcessor.Options.Default);
+            newBlockchainProcessor.Start();
+            testRpc.BlockchainProcessor = newBlockchainProcessor;
+            
+            // we create a new empty db for stateDb so we shouldn't suggest new blocks
+            MemDb stateDb = new MemDb();
+            IBlockTreeVisitor fixer = new StartupBlockTreeFixer(new SyncConfig(), tree, stateDb, LimboNoErrorLogger.Instance, 5);
+            BlockVisitOutcome result = await fixer.VisitBlock(tree.Head!, CancellationToken.None);
+            
+            Assert.AreEqual(BlockVisitOutcome.None, result);
+        }
+
+        private static void SuggestNumberOfBlocks(IBlockTree blockTree, int blockAmount)
         {
             Block newParent = blockTree.Head;
             for (int i = 0; i < blockAmount; ++i)
