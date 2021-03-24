@@ -109,10 +109,10 @@ namespace Nethermind.Blockchain.Visitors
             _currentLevelNumber++;
             _currentLevel = chainLevelInfo;
 
-
-            if (_logger.IsInfo)
-                _logger.Info(
-                    $"Reviewed {_currentLevelNumber - StartLevelInclusive} blocks out of {EndLevelExclusive - StartLevelInclusive}");
+            if ((_currentLevelNumber - StartLevelInclusive) % 1000 == 0)
+            {
+                if(_logger.IsInfo) _logger.Info($"Reviewed {_currentLevelNumber - StartLevelInclusive} blocks out of {EndLevelExclusive - StartLevelInclusive}");
+            }
             
             if (_gapStart != null)
             {
