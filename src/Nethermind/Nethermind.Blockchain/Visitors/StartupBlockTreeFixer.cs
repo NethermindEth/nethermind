@@ -20,6 +20,7 @@ using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -251,10 +252,9 @@ namespace Nethermind.Blockchain.Visitors
             _firstBlockVisited = false;
             if (block?.ParentHash != null)
             {
-                Block parentBlock = _blockTree.FindBlock(block.ParentHash,
-                    BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-                if (parentBlock == null || parentBlock.StateRoot == null ||
-                    _stateDb.Get(parentBlock.StateRoot) == null)
+                BlockHeader? parentHeader = _blockTree.FindParentHeader(block.Header, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+                if (parentHeader == null || parentHeader.StateRoot == null ||
+                    _stateDb.Get(parentHeader.StateRoot) == null)
                     return false;
             }
             else
