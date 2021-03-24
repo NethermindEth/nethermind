@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Blockchain.Rewards;
 using Nethermind.Core;
 using Nethermind.Int256;
@@ -25,9 +26,9 @@ namespace Nethermind.Consensus.AuRa.Rewards
     {
         private readonly IList<BlockRewardInfo> _blockRewards;
 
-        public StaticRewardCalculator(IDictionary<long, UInt256> blockRewards)
+        public StaticRewardCalculator(IDictionary<long, UInt256>? blockRewards)
         {
-            _blockRewards = CreateBlockRewards(blockRewards);
+            _blockRewards = CreateBlockRewards(blockRewards ?? new Dictionary<long, UInt256>(){{0, 0}});
         }
 
         public BlockReward[] CalculateRewards(Block block)
@@ -38,13 +39,16 @@ namespace Nethermind.Consensus.AuRa.Rewards
 
         private IList<BlockRewardInfo> CreateBlockRewards(IDictionary<long, UInt256> blockRewards)
         {
-            BlockRewardInfo[] result = new BlockRewardInfo[blockRewards.Count];
-            int index = 0;
+            List<BlockRewardInfo> blockRewardInfos = new();
+            if (blockRewards.First().Key > 0)
+            {
+                blockRewardInfos.Add(new BlockRewardInfo(0, 0));
+            }
             foreach (var threshold in blockRewards)
             {
-                result[index++] = new BlockRewardInfo(threshold.Key, threshold.Value);
+                blockRewardInfos.Add(new BlockRewardInfo(threshold.Key, threshold.Value));
             }
-            return result;
+            return blockRewardInfos;
         }
         private class BlockRewardInfo : IActivatedAt
         {
