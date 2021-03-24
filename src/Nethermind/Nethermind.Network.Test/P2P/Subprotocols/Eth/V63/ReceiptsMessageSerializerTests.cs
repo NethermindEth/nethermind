@@ -144,7 +144,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
         }
         
         [Test]
-        public void Roundtrip_with_access_list_txTypes()
+        public void Roundtrip_with_both_txTypes_of_receipt()
         {            
             TxReceipt[][] data = {new[] {Build.A.Receipt.WithAllFieldsFilled.TestObject, Build.A.Receipt.WithAllFieldsFilled.WithBlockNumber(0).WithTxType(TxType.AccessList).TestObject}, new[] {Build.A.Receipt.WithAllFieldsFilled.WithTxType(TxType.AccessList).TestObject, Build.A.Receipt.WithAllFieldsFilled.TestObject}};
             Test(data);

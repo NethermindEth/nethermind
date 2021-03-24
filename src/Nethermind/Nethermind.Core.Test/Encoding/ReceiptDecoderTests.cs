@@ -206,7 +206,7 @@ namespace Nethermind.Core.Test.Encoding
         }
         
         [Test]
-        public void Can_do_roundtrip_rlp_stream_with_new_receipts_format()
+        public void Can_do_roundtrip_with_receipt_message_and_tx_type_access_list()
         {
             TxReceipt txReceipt = Build.A.Receipt.TestObject;
             txReceipt.Bloom = new Bloom();
@@ -228,7 +228,7 @@ namespace Nethermind.Core.Test.Encoding
         }
 
         [Test]
-        public void Can_do_roundtrip_with_storage_receipt_access_list()
+        public void Can_do_roundtrip_with_storage_receipt_and_tx_type_access_list()
         {
             TxReceipt txReceipt = Build.A.Receipt.TestObject;
             txReceipt.BlockNumber = 1;
