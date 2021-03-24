@@ -102,22 +102,53 @@ namespace Nethermind.Blockchain.Test.Visitors
             tree.BestKnownNumber.Should().Be(2);
         }
         
-        [Test]
-        public async Task Suggesting_blocks()
+        [TestCase(0)]
+        [TestCase(1)]
+        [TestCase(2)]
+        [TestCase(4)]
+        [TestCase(5)]
+        [TestCase(6)]
+        [TestCase(65)]
+        public async Task Suggesting_blocks_works_correctly_after_processor_restart(int suggestedBlocksAmount)
         {
             TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
             await testRpc.BlockchainProcessor.StopAsync();
-            Block block4 = Build.A.Block.WithNumber(4).WithDifficulty(5).WithParent(testRpc.BlockTree.Head).TestObject;
-
             IBlockTree tree = testRpc.BlockTree;
-            testRpc.BlockTree.SuggestBlock(block4);
-            
-            testRpc.BlockchainProcessor.Start();
-            StartupBlockTreeFixer fixer = new StartupBlockTreeFixer(new SyncConfig(), tree, testRpc.DbProvider.StateDb, LimboNoErrorLogger.Instance);
+            long startingBlockNumber = tree.Head!.Number;
 
+            SuggestNumberOfBlocks(tree, suggestedBlocksAmount);
+            
+            // simulating restarts - we stopped old blockchain processor and create the new one
+            BlockchainProcessor newBlockchainProcessor = new BlockchainProcessor(tree, testRpc.BlockProcessor,
+                testRpc.BlockPreprocessorStep, LimboLogs.Instance, BlockchainProcessor.Options.Default);
+            newBlockchainProcessor.Start();
+            testRpc.BlockchainProcessor = newBlockchainProcessor;
+            
+            // fixing after restart
+            StartupBlockTreeFixer fixer = new StartupBlockTreeFixer(new SyncConfig(), tree, testRpc.DbProvider.StateDb, LimboNoErrorLogger.Instance, 5);
             await tree.Accept(fixer, CancellationToken.None);
 
-            // await testRpc.AddBlock();
+            // waiting for N new heads
+            for (int i = 0; i < suggestedBlocksAmount; ++i)
+            {
+                await testRpc.WaitForNewHead();
+            }
+
+            // add a new block at the end
+            await testRpc.AddBlock();
+            Assert.AreEqual(startingBlockNumber + suggestedBlocksAmount + 1, tree.Head!.Number);
+        }
+
+        private void SuggestNumberOfBlocks(IBlockTree blockTree, int blockAmount)
+        {
+            Block newParent = blockTree.Head;
+            for (int i = 0; i < blockAmount; ++i)
+            {
+                Block newBlock = Build.A.Block.WithNumber(newParent!.Number + 1)
+                    .WithDifficulty(newParent.Difficulty + 1).WithParent(newParent).TestObject;
+                blockTree.SuggestBlock(newBlock);
+                newParent = newBlock;
+            }
         }
         
         [Ignore("It is causing some trouble now. Disabling it while the restarts logic is under review")]
