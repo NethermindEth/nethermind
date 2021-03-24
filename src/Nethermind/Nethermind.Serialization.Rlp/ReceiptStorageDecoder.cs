@@ -200,6 +200,7 @@ namespace Nethermind.Serialization.Rlp
             }
 
             (int totalContentLength, int logsLength) = GetContentLength(item, rlpBehaviors);
+            int sequenceLength = Rlp.GetSequenceRlpLength(totalContentLength);
 
             bool isStorage = (rlpBehaviors & RlpBehaviors.Storage) != 0;
             bool isEip658receipts = (rlpBehaviors & RlpBehaviors.Eip658Receipts) == RlpBehaviors.Eip658Receipts;
@@ -208,7 +209,7 @@ namespace Nethermind.Serialization.Rlp
             {
                 if ((rlpBehaviors & RlpBehaviors.ForTreeRoot) == RlpBehaviors.None)
                 {
-                    rlpStream.StartByteArray(totalContentLength + 1, false);
+                    rlpStream.StartByteArray(sequenceLength + 1, false);
                 }
                 
                 rlpStream.WriteByte((byte)item.TxType);
