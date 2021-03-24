@@ -3,6 +3,7 @@ name: GMP Build
 on:
   repository_dispatch:
     types: gmp_build
+  workflow_dispatch:
 
 jobs:
   gmp-build:
