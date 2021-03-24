@@ -116,7 +116,7 @@ namespace Nethermind.Core.Test.Blockchain
             IDb blockDb = new MemDb();
             IDb headerDb = new MemDb();
             IDb blockInfoDb = new MemDb();
-            BlockTree = new BlockTree(blockDb, headerDb, blockInfoDb, new ChainLevelInfoRepository(blockDb), SpecProvider, NullBloomStorage.Instance, LimboLogs.Instance);
+            BlockTree = new BlockTree(blockDb, headerDb, blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), SpecProvider, NullBloomStorage.Instance, LimboLogs.Instance);
             new OnChainTxWatcher(BlockTree, TxPool, SpecProvider, LimboLogs.Instance);
 
             ReceiptStorage = new InMemoryReceiptStorage();

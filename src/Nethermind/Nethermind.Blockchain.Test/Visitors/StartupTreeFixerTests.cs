@@ -105,20 +105,19 @@ namespace Nethermind.Blockchain.Test.Visitors
         [Test]
         public async Task Suggesting_blocks()
         {
-            var testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
+            TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
             await testRpc.BlockchainProcessor.StopAsync();
             Block block4 = Build.A.Block.WithNumber(4).WithDifficulty(5).WithParent(testRpc.BlockTree.Head).TestObject;
 
-            var tree = testRpc.BlockTree;
+            IBlockTree tree = testRpc.BlockTree;
             testRpc.BlockTree.SuggestBlock(block4);
-
-        //    var tree = new BlockTree(testRpc.DbProvider.BlocksDb, testRpc.DbProvider.HeadersDb, testRpc.DbProvider.BlockInfosDb, new ChainLevelInfoRepository(testRpc.DbProvider.BlockInfosDb), MainnetSpecProvider.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
+            
             testRpc.BlockchainProcessor.Start();
             StartupBlockTreeFixer fixer = new StartupBlockTreeFixer(new SyncConfig(), tree, testRpc.DbProvider.StateDb, LimboNoErrorLogger.Instance);
 
             await tree.Accept(fixer, CancellationToken.None);
 
-            await testRpc.AddBlock();
+            // await testRpc.AddBlock();
         }
         
         [Ignore("It is causing some trouble now. Disabling it while the restarts logic is under review")]
