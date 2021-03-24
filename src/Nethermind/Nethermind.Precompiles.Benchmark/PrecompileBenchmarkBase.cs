@@ -24,6 +24,8 @@ using BenchmarkDotNet.Attributes;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Serialization.Json;
+using Nethermind.Specs;
+using Nethermind.Specs.Forks;
 
 namespace Nethermind.Precompiles.Benchmark
 {
@@ -102,7 +104,7 @@ namespace Nethermind.Precompiles.Benchmark
         [Benchmark(Baseline = true)]
         public (byte[], bool) Baseline()
         {
-            return Input.Precompile.Run(Input.Bytes);
+            return Input.Precompile.Run(Input.Bytes, Berlin.Instance);
         }
     }
 }

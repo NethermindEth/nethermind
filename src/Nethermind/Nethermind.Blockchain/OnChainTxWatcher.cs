@@ -59,7 +59,7 @@ namespace Nethermind.Blockchain
             
             for (int i = 0; i < block.Transactions.Length; i++)
             {
-                _txPool.RemoveTransaction(block.Transactions[i].Hash, block.Number, true);
+                _txPool.RemoveTransaction(block.Transactions[i].Hash, true);
             }
             
             // the hash will only be the same during perf test runs / modified DB states
@@ -69,7 +69,7 @@ namespace Nethermind.Blockchain
                 for (int i = 0; i < previousBlock.Transactions.Length; i++)
                 {
                     Transaction tx = previousBlock.Transactions[i];
-                    _txPool.AddTransaction(tx, isEip155Enabled ? TxHandlingOptions.None : TxHandlingOptions.PreEip155Signing);
+                    _txPool.AddTransaction(tx, (isEip155Enabled ? TxHandlingOptions.None : TxHandlingOptions.PreEip155Signing) | TxHandlingOptions.Reorganisation);
                 }
             }
         }
