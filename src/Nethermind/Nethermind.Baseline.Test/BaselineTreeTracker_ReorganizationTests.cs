@@ -40,11 +40,11 @@ namespace Nethermind.Baseline.Test
             (TestRpcBlockchain TestRpc, BaselineModule BaselineModule) result = await InitializeTestRpc(address);
             TestRpcBlockchain testRpc = result.TestRpc;
             BaselineTree baselineTree = BuildATree();
-            Address fromContractAddress = ContractAddress.From(address, 0L);
-            BaselineTreeHelper baselineTreeHelper = new(testRpc.LogFinder, _baselineDb, _metadataBaselineDb, LimboNoErrorLogger.Instance);
-            new BaselineTreeTracker(fromContractAddress, baselineTree, testRpc.BlockProcessor, baselineTreeHelper, testRpc.BlockFinder, LimboNoErrorLogger.Instance);
+            Address contractAddress = ContractAddress.From(address, 0L);
+            BaselineTreeHelper baselineTreeHelper = new BaselineTreeHelper(testRpc.LogFinder, _baselineDb, _metadataBaselineDb, LimboNoErrorLogger.Instance);
+            new BaselineTreeTracker(contractAddress, baselineTree, testRpc.BlockProcessor, baselineTreeHelper, testRpc.BlockFinder, LimboNoErrorLogger.Instance);
 
-            MerkleTreeSHAContract contract = new(_abiEncoder, fromContractAddress);
+            MerkleTreeSHAContract contract = new MerkleTreeSHAContract(_abiEncoder, contractAddress);
             UInt256 nonce = 1L;
             for (int i = 0; i < test.LeavesInBlocksCounts.Length; i++)
             {
@@ -54,14 +54,16 @@ namespace Nethermind.Baseline.Test
                 Assert.AreEqual(test.LeavesInBlocksCounts[i], baselineTree.Count);
             }
 
-            const int initBlocksCount = 4;
+            int initBlocksCount = 4;
             int allBlocksCount = initBlocksCount + test.LeavesInBlocksCounts.Length;
-            testRpc.BlockProducer.BlockParent = testRpc.BlockTree.FindHeader(allBlocksCount - 1);
+            testRpc.BlockProducer.BlockParent = testRpc.BlockTree.FindHeader(allBlocksCount);
 
             nonce = 1L;
             nonce = await InsertLeafFromArray(test.LeavesInMiddleOfReorganization, nonce, testRpc, contract, address);
 
             await testRpc.AddBlock(false);
+            testRpc.BlockProducer.BlockParent = testRpc.BlockProducer.LastProducedBlock.Header;
+
             await InsertLeafFromArray(test.LeavesInAfterReorganization, nonce, testRpc, contract, address);
 
             await testRpc.AddBlock();

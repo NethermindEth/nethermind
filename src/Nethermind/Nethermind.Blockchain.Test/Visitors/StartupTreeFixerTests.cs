@@ -164,6 +164,27 @@ namespace Nethermind.Blockchain.Test.Visitors
             
             Assert.AreEqual(BlockVisitOutcome.None, result);
         }
+        
+        [Test]
+        public async Task Fixer_should_not_suggest_block_with_null_block()
+        {
+            TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
+            await testRpc.BlockchainProcessor.StopAsync();
+            IBlockTree tree = testRpc.BlockTree;
+
+            SuggestNumberOfBlocks(tree, 1);
+            
+            // simulating restarts - we stopped the old blockchain processor and create the new one
+            BlockchainProcessor newBlockchainProcessor = new BlockchainProcessor(tree, testRpc.BlockProcessor,
+                testRpc.BlockPreprocessorStep, LimboLogs.Instance, BlockchainProcessor.Options.Default);
+            newBlockchainProcessor.Start();
+            testRpc.BlockchainProcessor = newBlockchainProcessor;
+            
+            IBlockTreeVisitor fixer = new StartupBlockTreeFixer(new SyncConfig(), tree, testRpc.DbProvider.StateDb, LimboNoErrorLogger.Instance, 5);
+            BlockVisitOutcome result = await fixer.VisitBlock(null, CancellationToken.None);
+            
+            Assert.AreEqual(BlockVisitOutcome.None, result);
+        }
 
         private static void SuggestNumberOfBlocks(IBlockTree blockTree, int blockAmount)
         {
