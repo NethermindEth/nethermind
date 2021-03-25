@@ -235,6 +235,10 @@ namespace Nethermind.Core.Specs
         /// </summary>
         bool IsEip1559Enabled { get; }
         
+        /// <summary>
+        /// Hardcoded Block Gas Limit
+        /// </summary>
+        bool IsEip3382Enabled { get; }
         
         /// <summary>
         /// Should transactions be validated against chainId.

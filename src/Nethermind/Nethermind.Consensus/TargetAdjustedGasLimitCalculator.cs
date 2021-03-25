@@ -36,10 +36,12 @@ namespace Nethermind.Consensus
         {
             long parentGasLimit = parentHeader.GasLimit;
             long gasLimit = parentGasLimit;
-            bool isEip1559Enabled = _specProvider.GetSpec(parentHeader.Number + 1).IsEip1559Enabled;
+            IReleaseSpec releaseSpec = _specProvider.GetSpec(parentHeader.Number + 1);
+            bool isEip1559Enabled = releaseSpec.IsEip1559Enabled;
+            bool isEip3382Enabled = releaseSpec.IsEip3382Enabled;
             long? targetGasLimit = _miningConfig.TargetBlockGasLimit;
             
-            if (isEip1559Enabled)
+            if (isEip3382Enabled)
             {
                 targetGasLimit = Eip1559Constants.HardcodedGasLimit;
             }
