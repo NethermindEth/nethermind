@@ -123,6 +123,7 @@ namespace Nethermind.Blockchain.Producers
             long gasRemaining = gasLimit;
 
             if (_logger.IsDebug) _logger.Debug($"Collecting pending transactions at block gas limit {gasRemaining}.");
+            bool isEip1559Enabled = _specProvider.GetSpec(parent.Number + 1).IsEip1559Enabled;
 
             foreach (Transaction tx in transactions)
             {
@@ -168,7 +169,6 @@ namespace Nethermind.Blockchain.Producers
                     continue;
                 }
                 
-                bool isEip1559Enabled = _specProvider.GetSpec(parent.Number + 1).IsEip1559Enabled;
                 if (!HasEnoughFounds(remainingBalance, tx, isEip1559Enabled, _blockPreparationContextService.BaseFee))
                 {
                     _transactionPool.RemoveTransaction(tx.Hash!);

@@ -23,6 +23,7 @@ using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Logging;
 
@@ -45,18 +46,21 @@ namespace Nethermind.Consensus.AuRa
         private readonly bool _minimum2MlnGasPerBlockWhenUsingBlockGasLimitContract;
         private readonly IGasLimitCalculator _innerCalculator;
         private readonly ILogger _logger;
+        private readonly ISpecProvider _specProvider;
         
         public AuRaContractGasLimitOverride(
             IList<IBlockGasLimitContract> contracts,
             Cache cache,
             bool minimum2MlnGasPerBlockWhenUsingBlockGasLimitContract,
             IGasLimitCalculator innerCalculator,
+            ISpecProvider specProvider,
             ILogManager logManager)
         {
             _contracts = contracts ?? throw new ArgumentNullException(nameof(contracts));
             _cache = cache ?? throw new ArgumentNullException(nameof(cache));
             _minimum2MlnGasPerBlockWhenUsingBlockGasLimitContract = minimum2MlnGasPerBlockWhenUsingBlockGasLimitContract;
             _innerCalculator = innerCalculator ?? throw new ArgumentNullException(nameof(innerCalculator));
+            _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _logger = logManager?.GetClassLogger<AuRaContractGasLimitOverride>() ?? throw new ArgumentNullException(nameof(logManager));
         }
         
@@ -88,6 +92,11 @@ namespace Nethermind.Consensus.AuRa
                         _logger.Trace("Contract call returned nothing. Not changing the block gas limit.");
                 }
             }
+            
+            if (_specProvider.GetSpec(parentHeader.Number).IsEip1559Enabled)
+            {
+                gasLimit *= Eip1559Constants.ElasticityMultiplier;
+            }
 
             return gasLimit;
         }
@@ -96,7 +105,7 @@ namespace Nethermind.Consensus.AuRa
         {
             try
             {
-                var contractGasLimit = contract.BlockGasLimit(parent);
+                UInt256? contractGasLimit = contract.BlockGasLimit(parent);
                 return contractGasLimit.HasValue && _minimum2MlnGasPerBlockWhenUsingBlockGasLimitContract && contractGasLimit < MinimalContractGasLimit 
                     ? MinimalContractGasLimit 
                     : contractGasLimit;

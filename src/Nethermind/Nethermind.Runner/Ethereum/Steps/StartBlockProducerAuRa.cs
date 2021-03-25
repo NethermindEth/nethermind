@@ -368,6 +368,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                         _api.GasLimitCalculatorCache,
                         _auraConfig?.Minimum2MlnGasPerBlockWhenUsingBlockGasLimitContract == true,
                         gasLimitCalculator,
+                        _api.SpecProvider,
                         _api.LogManager);
 
                 gasLimitCalculator = auRaContractGasLimitOverride;

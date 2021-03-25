@@ -176,7 +176,8 @@ namespace Nethermind.Runner.Ethereum.Steps
                         .ToArray<IBlockGasLimitContract>(),
                     _api.GasLimitCalculatorCache,
                     _auraConfig.Minimum2MlnGasPerBlockWhenUsingBlockGasLimitContract,
-                    new TargetAdjustedGasLimitCalculator(_api.SpecProvider, NethermindApi.Config<IMiningConfig>()), 
+                    new TargetAdjustedGasLimitCalculator(_api.SpecProvider, NethermindApi.Config<IMiningConfig>()),
+                    _api.SpecProvider,
                     _api.LogManager);
                 
                 return gasLimitCalculator;

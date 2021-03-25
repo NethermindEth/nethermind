@@ -25,5 +25,9 @@ namespace Nethermind.Core
         public static readonly UInt256 BaseFeeMaxChangeDenominator = 8;
         
         public static readonly UInt256 ForkBaseFee = 1.GWei();
+
+        public static readonly int ElasticityMultiplier = 2;
+        
+        public static readonly long HardcodedGasLimit = 12500000; //eip-3382
     }
 }

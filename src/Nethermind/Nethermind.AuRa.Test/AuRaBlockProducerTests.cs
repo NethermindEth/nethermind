@@ -104,7 +104,7 @@ namespace Nethermind.AuRa.Test
                             AuRaStepCalculator,
                             NullReportingValidator.Instance,
                             auraConfig,
-                            FollowOtherMiners.Instance,
+                            new FollowOtherMiners(MainnetSpecProvider.Instance),
                             MainnetSpecProvider.Instance, 
                             new BlockPreparationContextService(LimboLogs.Instance),
                             LimboLogs.Instance);

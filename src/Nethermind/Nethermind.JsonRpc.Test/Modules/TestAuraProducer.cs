@@ -60,7 +60,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 auRaStepCalculator,
                 reportingValidator,
                 config,
-                FollowOtherMiners.Instance,
+                new FollowOtherMiners(specProvider),
                 specProvider,
                 blockPreparationContextService,
                 logManager)

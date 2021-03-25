@@ -235,6 +235,7 @@ namespace Nethermind.Core.Specs
         /// </summary>
         bool IsEip1559Enabled { get; }
         
+        
         /// <summary>
         /// Should transactions be validated against chainId.
         /// </summary>

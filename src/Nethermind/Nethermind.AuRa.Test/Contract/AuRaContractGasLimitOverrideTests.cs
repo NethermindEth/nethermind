@@ -101,7 +101,7 @@ namespace Nethermind.AuRa.Test.Contract
                         BlockTree, SpecProvider, LimboLogs.Instance));
                 
                 GasLimitOverrideCache = new AuRaContractGasLimitOverride.Cache();
-                GasLimitCalculator = new AuRaContractGasLimitOverride(new[] {gasLimitContract}, GasLimitOverrideCache, false, FollowOtherMiners.Instance, LimboLogs.Instance);
+                GasLimitCalculator = new AuRaContractGasLimitOverride(new[] {gasLimitContract}, GasLimitOverrideCache, false, new FollowOtherMiners(SpecProvider), SpecProvider, LimboLogs.Instance);
 
                 return new AuRaBlockProcessor(
                     SpecProvider,
