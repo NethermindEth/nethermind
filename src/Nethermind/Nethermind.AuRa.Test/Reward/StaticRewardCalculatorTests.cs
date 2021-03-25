@@ -75,5 +75,15 @@ namespace Nethermind.AuRa.Test.Reward
             var result =  calculator.CalculateRewards(_block);
             result.Should().BeEquivalentTo(new BlockReward(_block.Beneficiary, expectedReward));
         }
+        
+        [TestCase(1, 0ul)]
+        public void calculates_rewards_correctly_for_empty_dictionary(long blockNumber, ulong expectedReward)
+        {
+            var blockReward = new Dictionary<long, UInt256>() {};
+            _block.Header.Number = blockNumber;
+            var calculator = new StaticRewardCalculator(blockReward);
+            var result =  calculator.CalculateRewards(_block);
+            result.Should().BeEquivalentTo(new BlockReward(_block.Beneficiary, expectedReward));
+        }
     }
 }

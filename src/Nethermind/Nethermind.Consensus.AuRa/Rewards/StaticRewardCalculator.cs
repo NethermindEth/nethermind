@@ -28,7 +28,7 @@ namespace Nethermind.Consensus.AuRa.Rewards
 
         public StaticRewardCalculator(IDictionary<long, UInt256>? blockRewards)
         {
-            _blockRewards = CreateBlockRewards(blockRewards ?? new Dictionary<long, UInt256>(){{0, 0}});
+            _blockRewards = CreateBlockRewards(blockRewards);
         }
 
         public BlockReward[] CalculateRewards(Block block)
@@ -37,19 +37,27 @@ namespace Nethermind.Consensus.AuRa.Rewards
             return new[] { new BlockReward(block.Beneficiary, blockReward.Reward) };
         }
 
-        private IList<BlockRewardInfo> CreateBlockRewards(IDictionary<long, UInt256> blockRewards)
+        private IList<BlockRewardInfo> CreateBlockRewards(IDictionary<long, UInt256>? blockRewards)
         {
             List<BlockRewardInfo> blockRewardInfos = new();
-            if (blockRewards.First().Key > 0)
+            if (blockRewards?.Count > 0)
+            {
+                if (blockRewards.First().Key > 0)
+                {
+                    blockRewardInfos.Add(new BlockRewardInfo(0, 0));
+                }
+                foreach (var threshold in blockRewards)
+                {
+                    blockRewardInfos.Add(new BlockRewardInfo(threshold.Key, threshold.Value));
+                }
+            }
+            else
             {
                 blockRewardInfos.Add(new BlockRewardInfo(0, 0));
             }
-            foreach (var threshold in blockRewards)
-            {
-                blockRewardInfos.Add(new BlockRewardInfo(threshold.Key, threshold.Value));
-            }
             return blockRewardInfos;
         }
+        
         private class BlockRewardInfo : IActivatedAt
         {
             public long BlockNumber { get; }
