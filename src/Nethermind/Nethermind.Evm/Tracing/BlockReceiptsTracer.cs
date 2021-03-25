@@ -41,46 +41,46 @@ namespace Nethermind.Evm.Tracing
 
         private IBlockTracer _otherTracer;
 
-        public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak stateRoot = null)
+        public void MarkAsSuccess(Address recipient, long gasSpent, UInt256 effectiveGasPrice, byte[] output, LogEntry[] logs, Keccak stateRoot = null)
         {
-            TxReceipts[_currentIndex] = BuildReceipt(recipient, gasSpent, StatusCode.Success, logs, stateRoot);
+            TxReceipts[_currentIndex] = BuildReceipt(recipient, gasSpent, effectiveGasPrice, StatusCode.Success, logs, stateRoot);
             
             // hacky way to support nested receipt tracers
             if (_otherTracer is ITxTracer otherTxTracer)
             {
-                otherTxTracer.MarkAsSuccess(recipient, gasSpent, output, logs, stateRoot);
+                otherTxTracer.MarkAsSuccess(recipient, gasSpent, effectiveGasPrice, output, logs, stateRoot);
             }
             
             if (_currentTxTracer.IsTracingReceipt)
             {
-                _currentTxTracer.MarkAsSuccess(recipient, gasSpent, output, logs);
+                _currentTxTracer.MarkAsSuccess(recipient, gasSpent, effectiveGasPrice, output, logs);
             }
         }
 
-        public void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Keccak stateRoot = null)
+        public void MarkAsFailed(Address recipient, long gasSpent, UInt256 effectiveGasPrice, byte[] output, string error, Keccak stateRoot = null)
         {
-            TxReceipts[_currentIndex] = BuildFailedReceipt(recipient, gasSpent, error, stateRoot);
+            TxReceipts[_currentIndex] = BuildFailedReceipt(recipient, gasSpent, effectiveGasPrice, error, stateRoot);
             
             // hacky way to support nested receipt tracers
             if (_otherTracer is ITxTracer otherTxTracer)
             {
-                otherTxTracer.MarkAsFailed(recipient, gasSpent, output, error, stateRoot);
+                otherTxTracer.MarkAsFailed(recipient, gasSpent, effectiveGasPrice, output, error, stateRoot);
             }
             
             if (_currentTxTracer.IsTracingReceipt)
             {
-                _currentTxTracer.MarkAsFailed(recipient, gasSpent, output, error);
+                _currentTxTracer.MarkAsFailed(recipient, gasSpent, effectiveGasPrice, output, error);
             }
         }
 
-        private TxReceipt BuildFailedReceipt(Address recipient, long gasSpent, string error, Keccak stateRoot = null)
+        private TxReceipt BuildFailedReceipt(Address recipient, long gasSpent, UInt256 effectiveGasPrice, string error, Keccak stateRoot = null)
         {
-            TxReceipt receipt = BuildReceipt(recipient, gasSpent, StatusCode.Failure, Array.Empty<LogEntry>(), stateRoot);
+            TxReceipt receipt = BuildReceipt(recipient, gasSpent, effectiveGasPrice, StatusCode.Failure, Array.Empty<LogEntry>(), stateRoot);
             receipt.Error = error;
             return receipt;
         }
 
-        private TxReceipt BuildReceipt(Address recipient, long spentGas, byte statusCode, LogEntry[] logEntries, Keccak stateRoot = null)
+        private TxReceipt BuildReceipt(Address recipient, long spentGas,  UInt256 effectiveGasPrice, byte statusCode, LogEntry[] logEntries, Keccak stateRoot = null)
         {
             Transaction transaction = _block.Transactions[_currentIndex];
             TxReceipt txReceipt = new();
@@ -101,6 +101,7 @@ namespace Nethermind.Evm.Tracing
             txReceipt.BlockHash = _block.Hash;
             txReceipt.BlockNumber = _block.Number;
             txReceipt.Index = _currentIndex;
+            txReceipt.EffectiveGasPrice = effectiveGasPrice;
             txReceipt.GasUsed = spentGas;
             txReceipt.Sender = transaction.SenderAddress;
             txReceipt.ContractAddress = transaction.IsContractCreation ? recipient : null;

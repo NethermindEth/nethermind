@@ -60,9 +60,9 @@ namespace Nethermind.Evm.Tracing
         /// </summary>
         bool IsTracingBlockHash { get; }
 
-        void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak? stateRoot = null);
+        void MarkAsSuccess(Address recipient, long gasSpent, UInt256 effectiveGasPrice, byte[] output, LogEntry[] logs, Keccak? stateRoot = null);
 
-        void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Keccak? stateRoot = null);
+        void MarkAsFailed(Address recipient, long gasSpent, UInt256 effectiveGasPrice, byte[] output, string error, Keccak? stateRoot = null);
 
         void StartOperation(int depth, long gas, Instruction opcode, int pc);
 

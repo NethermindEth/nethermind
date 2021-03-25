@@ -299,18 +299,18 @@ namespace Nethermind.Blockchain.Test.Producers
         }
         
         [Test]
-        public async Task BaseFee_should_not_change_when_we_send_transactions_equal_gas_limit()
+        public async Task BaseFee_should_not_change_when_we_send_transactions_equal_gas_target()
         {
-            long gasLimit = 3000000;
+            long gasTarget = 3000000;
+            long gasLimit = Eip1559Constants.ElasticityMultiplier * gasTarget;
             BaseFeeTestScenario.ScenarioBuilder scenario = BaseFeeTestScenario.GoesLikeThis()
                 .WithEip1559TransitionBlock(6)
                 .CreateTestBlockchain(gasLimit)
                 .DeployContract()
                 .BlocksBeforeTransitionShouldHaveZeroBaseFee()
                 .AssertNewBlock(Eip1559Constants.ForkBaseFee)
-                .SendLegacyTransaction(1500000, 20.GWei())
-                .SendLegacyTransaction(1500000, 1.GWei())
-                .SendEip1559Transaction(gasLimit / 2, 3.GWei(), 20.GWei()) // not accepted because gas limit
+                .SendLegacyTransaction(gasTarget / 2, 20.GWei())
+                .SendLegacyTransaction(gasTarget / 2, 1.GWei())
                 .AssertNewBlock(875000000)
                 .AssertNewBlock(875000000)
                 .AssertNewBlockWithDecreasedBaseFee();

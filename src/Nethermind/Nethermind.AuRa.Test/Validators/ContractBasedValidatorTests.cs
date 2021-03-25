@@ -628,6 +628,7 @@ namespace Nethermind.AuRa.Test.Validators
                     args.Arg<ITxTracer>().MarkAsSuccess(
                         args.Arg<Transaction>().To,
                         0,
+                        0,
                         SetupAbiAddresses(_initialValidators),
                         Array.Empty<LogEntry>()));
         }

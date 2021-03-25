@@ -17,6 +17,7 @@
 using System;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
+using Nethermind.Int256;
 
 namespace Nethermind.Core
 {
@@ -35,6 +36,8 @@ namespace Nethermind.Core
         public Keccak? BlockHash { get; set; }
         public Keccak? TxHash { get; set; }
         public int Index { get; set; }
+        
+        public UInt256 EffectiveGasPrice { get; set; }
         public long GasUsed { get; set; }
         public long GasUsedTotal { get; set; }
         public Address? Sender { get; set; }

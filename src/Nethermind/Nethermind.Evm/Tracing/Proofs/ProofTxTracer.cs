@@ -138,12 +138,12 @@ namespace Nethermind.Evm.Tracing.Proofs
             Accounts.Add(address);
         }
 
-        public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak? stateRoot = null)
+        public void MarkAsSuccess(Address recipient, long gasSpent, UInt256 effectiveGasPrice, byte[] output, LogEntry[] logs, Keccak? stateRoot = null)
         {
             Output = output;
         }
 
-        public void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Keccak? stateRoot = null)
+        public void MarkAsFailed(Address recipient, long gasSpent, UInt256 effectiveGasPrice, byte[] output, string error, Keccak? stateRoot = null)
         {
             Output = output;
         }
