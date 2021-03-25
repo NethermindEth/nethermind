@@ -54,6 +54,12 @@ namespace Nethermind.Core.Test.Builders
             TestObjectInternal.Bloom = new Bloom(logs);
             return this;
         }
+        
+        public ReceiptBuilder WithTxType(TxType txType)
+        {
+            TestObject.TxType = txType;
+            return this;
+        }
 
         public ReceiptBuilder WithTransactionHash(Keccak hash)
         {

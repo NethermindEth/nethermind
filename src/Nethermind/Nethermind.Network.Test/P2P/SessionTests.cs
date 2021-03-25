@@ -18,6 +18,7 @@ using System;
 using System.Net.NetworkInformation;
 using System.Threading.Tasks;
 using DotNetty.Transport.Channels;
+using FluentAssertions;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
@@ -433,6 +434,8 @@ namespace Nethermind.Network.Test.P2P
         [Test]
         public void Can_deliver_messages()
         {
+            Metrics.P2PBytesSent = 0;
+            
             Session session = new Session(30312, new Node("127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
             session.Handshake(TestItem.PublicKeyA);
             session.Init(5, _channelHandlerContext, _packetSender);
@@ -445,8 +448,11 @@ namespace Nethermind.Network.Test.P2P
             session.AddProtocolHandler(bbb);
             session.AddProtocolHandler(ccc);
 
+            _packetSender.Enqueue(PingMessage.Instance).Returns(10);
             session.DeliverMessage(PingMessage.Instance);
             _packetSender.Received().Enqueue(PingMessage.Instance);
+
+            Metrics.P2PBytesSent.Should().Be(10);
         }
 
         [Test]
@@ -506,6 +512,8 @@ namespace Nethermind.Network.Test.P2P
         [Test]
         public void Can_receive_messages()
         {
+            Metrics.P2PBytesReceived = 0;
+            
             Session session = new Session(30312, new Node("127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
             session.Handshake(TestItem.PublicKeyA);
             session.Init(5, _channelHandlerContext, _packetSender);
@@ -518,19 +526,22 @@ namespace Nethermind.Network.Test.P2P
             session.AddProtocolHandler(bbb);
             session.AddProtocolHandler(ccc);
 
-            session.ReceiveMessage(new Packet("---", 3, Array.Empty<byte>()));
+            byte[] data = new byte[10];
+            session.ReceiveMessage(new Packet("---", 3, data));
             p2p.Received().HandleMessage(Arg.Is<Packet>(p => p.Protocol == "p2p" && p.PacketType == 3));
 
-            session.ReceiveMessage(new Packet("---", 11, Array.Empty<byte>()));
+            session.ReceiveMessage(new Packet("---", 11, data));
             aaa.Received().HandleMessage(Arg.Is<Packet>(p => p.Protocol == "aaa" && p.PacketType == 1));
 
-            session.ReceiveMessage(new Packet("---", 21, Array.Empty<byte>()));
+            session.ReceiveMessage(new Packet("---", 21, data));
             bbb.Received().HandleMessage(Arg.Is<Packet>(p => p.Protocol == "bbb" && p.PacketType == 1));
 
-            session.ReceiveMessage(new Packet("---", 25, Array.Empty<byte>()));
+            session.ReceiveMessage(new Packet("---", 25, data));
             ccc.Received().HandleMessage(Arg.Is<Packet>(p => p.Protocol == "ccc" && p.PacketType == 0));
 
-            session.ReceiveMessage(new Packet("---", 100, Array.Empty<byte>()));
+            session.ReceiveMessage(new Packet("---", 100, data));
+
+            Metrics.P2PBytesReceived.Should().Be(data.Length * 5);
         }
 
         [Test]

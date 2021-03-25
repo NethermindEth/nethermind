@@ -31,6 +31,7 @@ namespace Nethermind.JsonRpc.Modules
         NdmProvider,
         NdmConsumer,
         Net,
+        NFT,
         Parity,
         Personal,
         Proof,

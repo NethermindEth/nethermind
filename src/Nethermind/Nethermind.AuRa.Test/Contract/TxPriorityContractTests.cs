@@ -46,6 +46,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
@@ -276,7 +277,7 @@ namespace Nethermind.AuRa.Test.Contract
                 TxPoolTxSource txPoolTxSource = base.CreateTxPoolTxSource();
                 
                 TxPriorityContract = new TxPriorityContract(new AbiEncoder(), TestItem.AddressA, 
-                    new ReadOnlyTxProcessingEnv(DbProvider, TrieStore, BlockTree, SpecProvider, LimboLogs.Instance));
+                    new ReadOnlyTxProcessingEnv(DbProvider, TrieStore.AsReadOnly(), BlockTree, SpecProvider, LimboLogs.Instance));
 
                 Priorities = new DictionaryContractDataStore<TxPriorityContract.Destination>(
                     new TxPriorityContract.DestinationSortedListContractDataStoreCollection(),  

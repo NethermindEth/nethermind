@@ -20,8 +20,10 @@ using BenchmarkDotNet.Jobs;
 using DotNetty.Buffers;
 using DotNetty.Transport.Channels;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Logging;
@@ -32,6 +34,7 @@ using Nethermind.Network.Rlpx;
 using Nethermind.Specs;
 using Nethermind.State;
 using Nethermind.Stats;
+using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Storages;
@@ -52,22 +55,22 @@ namespace Nethermind.Network.Benchmarks
         public void SetUp()
         {
             Console.WriteLine("AAA");
-            Session session = new Session(8545, LimboLogs.Instance, Substitute.For<IChannel>());
+            Session session = new Session(8545, Substitute.For<IChannel>(), Substitute.For<IDisconnectsAnalyzer>(), LimboLogs.Instance);
             session.RemoteNodeId = TestItem.PublicKeyA;
             session.RemoteHost = "127.0.0.1";
             session.RemotePort = 30303;
             _ser = new MessageSerializationService();
             _ser.Register(new TransactionsMessageSerializer());
             _ser.Register(new StatusMessageSerializer());
-            NodeStatsManager stats = new NodeStatsManager(new StatsConfig(), LimboLogs.Instance);
-
+            NodeStatsManager stats = new NodeStatsManager(LimboLogs.Instance);
             var ecdsa = new EthereumEcdsa(ChainId.Mainnet, LimboLogs.Instance);
             TxPool.TxPool txPool = new TxPool.TxPool(
                 NullTxStorage.Instance,
                 ecdsa,
-                MainnetSpecProvider.Instance,
+                new FixedBlockChainHeadSpecProvider(MainnetSpecProvider.Instance),
                 new TxPoolConfig(),
                 Substitute.For<IStateProvider>(),
+                new TxValidator(ChainId.Mainnet),
                 LimboLogs.Instance);
             ISyncServer syncSrv = Substitute.For<ISyncServer>();
             BlockHeader head = Build.A.BlockHeader.WithNumber(1).TestObject;

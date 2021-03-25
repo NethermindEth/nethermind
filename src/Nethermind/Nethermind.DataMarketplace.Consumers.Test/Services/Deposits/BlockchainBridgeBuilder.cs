@@ -62,7 +62,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Deposits
 
             ReadOnlyTxProcessingEnv processingEnv = new ReadOnlyTxProcessingEnv(
                 new ReadOnlyDbProvider(memDbProvider, false),
-                new TrieStore(memDbProvider.StateDb, LimboLogs.Instance),
+                new TrieStore(memDbProvider.StateDb, LimboLogs.Instance).AsReadOnly(memDbProvider.StateDb),
                 new ReadOnlyBlockTree(blockTree),
                 specProvider, LimboLogs.Instance);
             BlockchainBridge blockchainBridge = new BlockchainBridge(

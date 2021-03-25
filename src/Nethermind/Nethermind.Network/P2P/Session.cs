@@ -18,6 +18,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using DotNetty.Transport.Channels;
 using Nethermind.Core;
@@ -162,6 +163,8 @@ namespace Nethermind.Network.P2P
 
         public void ReceiveMessage(ZeroPacket zeroPacket)
         {
+            Interlocked.Add(ref Metrics.P2PBytesReceived, zeroPacket.Content.ReadableBytes);
+            
             lock (_sessionStateLock)
             {
                 if (State < SessionState.Initialized)
@@ -223,11 +226,14 @@ namespace Nethermind.Network.P2P
             if (_logger.IsTrace) _logger.Trace($"P2P to deliver {message.Protocol}.{message.PacketType} on {this}");
 
             message.AdaptivePacketType = _resolver.ResolveAdaptiveId(message.Protocol, message.PacketType);
-            _packetSender.Enqueue(message);
+            var size = _packetSender.Enqueue(message);
+            Interlocked.Add(ref Metrics.P2PBytesSent, size);
         }
 
         public void ReceiveMessage(Packet packet)
         {
+            Interlocked.Add(ref Metrics.P2PBytesReceived, packet.Data.Length);
+            
             lock (_sessionStateLock)
             {
                 if (State < SessionState.Initialized)

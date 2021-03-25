@@ -1,3 +1,6 @@
+using System;
+using System.Collections.Generic;
+using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -7,6 +10,8 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
+using Nethermind.State;
+using Nethermind.State.Witnesses;
 using Nethermind.Trie.Pruning;
 using NUnit.Framework;
 
@@ -43,7 +48,7 @@ namespace Nethermind.Trie.Test.Pruning
 
 
         [Test]
-        public void Prunning_off_cache_should_not_change_commit_node()
+        public void Pruning_off_cache_should_not_change_commit_node()
         {
             TrieNode trieNode = new(NodeType.Leaf, Keccak.Zero);
             TrieNode trieNode2 = new(NodeType.Branch, TestItem.KeccakA);
@@ -91,12 +96,12 @@ namespace Nethermind.Trie.Test.Pruning
         }
 
         [Test]
-        public void Prunning_off_cache_should_not_find_cached_or_unknown()
+        public void Pruning_off_cache_should_not_find_cached_or_unknown()
         {
             TrieStore trieStore = new(new MemDb(), No.Pruning, No.Persistence, _logManager);
-            var returnedNode = trieStore.FindCachedOrUnknown(TestItem.KeccakA, true);
-            var returnedNode2 = trieStore.FindCachedOrUnknown(TestItem.KeccakB, true);
-            var returnedNode3 = trieStore.FindCachedOrUnknown(TestItem.KeccakC, true);
+            TrieNode returnedNode = trieStore.FindCachedOrUnknown(TestItem.KeccakA);
+            TrieNode returnedNode2 = trieStore.FindCachedOrUnknown(TestItem.KeccakB);
+            TrieNode returnedNode3 = trieStore.FindCachedOrUnknown(TestItem.KeccakC);
             Assert.AreEqual(NodeType.Unknown, returnedNode.NodeType);
             Assert.AreEqual(NodeType.Unknown, returnedNode2.NodeType);
             Assert.AreEqual(NodeType.Unknown, returnedNode3.NodeType);
@@ -107,10 +112,10 @@ namespace Nethermind.Trie.Test.Pruning
         public void FindCachedOrUnknown_CorrectlyCalculatedMemoryUsedByDirtyCache()
         {
             TrieStore trieStore = new(new MemDb(), new TestPruningStrategy(true), No.Persistence, _logManager);
-            var startSize = trieStore.MemoryUsedByDirtyCache;
+            long startSize = trieStore.MemoryUsedByDirtyCache;
             trieStore.FindCachedOrUnknown(TestItem.KeccakA);
             TrieNode trieNode = new(NodeType.Leaf, Keccak.Zero);
-            var oneKeccakSize = trieNode.GetMemorySize(false);
+            long oneKeccakSize = trieNode.GetMemorySize(false);
             Assert.AreEqual(startSize + oneKeccakSize, trieStore.MemoryUsedByDirtyCache);
             trieStore.FindCachedOrUnknown(TestItem.KeccakB);
             Assert.AreEqual(2 * oneKeccakSize + startSize, trieStore.MemoryUsedByDirtyCache);
@@ -118,7 +123,7 @@ namespace Nethermind.Trie.Test.Pruning
             Assert.AreEqual(2 * oneKeccakSize + startSize, trieStore.MemoryUsedByDirtyCache);
             trieStore.FindCachedOrUnknown(TestItem.KeccakC);
             Assert.AreEqual(3 * oneKeccakSize + startSize, trieStore.MemoryUsedByDirtyCache);
-            trieStore.FindCachedOrUnknown(TestItem.KeccakD, false);
+            trieStore.FindCachedOrUnknown(TestItem.KeccakD, true);
             Assert.AreEqual(3 * oneKeccakSize + startSize, trieStore.MemoryUsedByDirtyCache);
         }
 
@@ -370,6 +375,47 @@ namespace Nethermind.Trie.Test.Pruning
             trieStore.IsNodeCached(a.Keccak).Should().BeTrue();
         }
 
+        private class BadDb : IKeyValueStoreWithBatching
+        {
+            private Dictionary<byte[], byte[]> _db = new();
+            
+            public byte[]? this[byte[] key]
+            {
+                get => _db[key];
+                set => _db[key] = value;
+            }
+
+            public IBatch StartBatch()
+            {
+                return new BadBatch();
+            }
+
+            private class BadBatch : IBatch
+            {
+                private Dictionary<byte[], byte[]> _inBatched = new();
+                
+                public void Dispose()
+                {
+                }
+
+                public byte[]? this[byte[] key]
+                {
+                    get => _inBatched[key];
+                    set => _inBatched[key] = value;
+                }
+            }
+        }
+        
+        
+        [Test]
+        public void Trie_store_multi_threaded_scenario()
+        {
+            TrieStore trieStore = new(new BadDb(), _logManager);
+            StateTree tree = new(trieStore, _logManager);
+            tree.Set(TestItem.AddressA, Build.A.Account.WithBalance(1000).TestObject);
+            tree.Set(TestItem.AddressB, Build.A.Account.WithBalance(1000).TestObject);
+        }
+
         private AccountDecoder _accountDecoder = new();
 
         [Test]
@@ -496,6 +542,110 @@ namespace Nethermind.Trie.Test.Pruning
             memDb[storage1.Keccak!.Bytes].Should().NotBeNull();
             trieStore.IsNodeCached(a.Keccak).Should().BeTrue();
             trieStore.IsNodeCached(storage1.Keccak).Should().BeTrue();
+        }
+        
+        [Test]
+        public void ReadOnly_store_doesnt_change_witness()
+        {
+            TrieNode node = new(NodeType.Leaf);
+            Account account = new(1, 1, TestItem.KeccakA, Keccak.OfAnEmptyString);
+            node.Value = _accountDecoder.Encode(account).Bytes;
+            node.Key = HexPrefix.Leaf("abc");
+            node.ResolveKey(NullTrieNodeResolver.Instance, true);
+            
+            MemDb originalStore = new MemDb();
+            WitnessCollector witnessCollector = new WitnessCollector(new MemDb(), LimboLogs.Instance);
+            IKeyValueStoreWithBatching store = originalStore.WitnessedBy(witnessCollector);
+            TrieStore trieStore = new(store, new TestPruningStrategy(false), No.Persistence, _logManager);
+            trieStore.CommitNode(0, new NodeCommitInfo(node));
+            trieStore.FinishBlockCommit(TrieType.State, 0, node);
+            
+            IReadOnlyTrieStore readOnlyTrieStore = trieStore.AsReadOnly(originalStore);
+            readOnlyTrieStore.LoadRlp(node.Keccak);
+            
+            witnessCollector.Collected.Should().BeEmpty();
+        }
+        
+        [TestCase(true)]
+        [TestCase(false, Explicit = true)]
+        public async Task Read_only_trie_store_is_allowing_many_thread_to_work_with_the_same_node(bool beThreadSafe)
+        {
+            TrieNode trieNode = new(NodeType.Branch);
+            for (int i = 0; i < 16; i++)
+            {
+                trieNode.SetChild(i, new TrieNode(NodeType.Unknown, TestItem.Keccaks[i]));
+            }
+
+            trieNode.Seal();
+
+            MemDb memDb = new();
+            ITrieStore trieStore = new TrieStore(memDb, Prune.WhenCacheReaches(10.MB()), Persist.IfBlockOlderThan(10), _logManager);
+            trieNode.ResolveKey(trieStore, false);
+            trieStore.CommitNode(1, new NodeCommitInfo(trieNode));
+
+            if (beThreadSafe)
+            {
+                trieStore = trieStore.AsReadOnly(memDb);
+            }
+
+            void CheckChildren()
+            {
+                for (int i = 0; i < 16 * 10; i++)
+                {
+                    try
+                    {
+                        trieStore.FindCachedOrUnknown(trieNode.Keccak).GetChildHash(i % 16).Should().BeEquivalentTo(TestItem.Keccaks[i % 16], i.ToString());
+                    }
+                    catch (Exception e)
+                    {
+                        throw new AssertionException("Failed");
+                    }
+                }
+            }
+
+            List<Task> tasks = new();
+            for (int i = 0; i < 2; i++)
+            {
+                Task task = new(CheckChildren);
+                task.Start();
+                tasks.Add(task);
+            }
+
+            if (beThreadSafe)
+            {
+                await Task.WhenAll();
+            }
+            else
+            {
+                Assert.ThrowsAsync<AssertionException>(() => Task.WhenAll(tasks));   
+            }
+        }
+        
+        [TestCase(true)]
+        [TestCase(false)]
+        public void ReadOnly_store_returns_copies(bool pruning)
+        {
+            TrieNode node = new(NodeType.Leaf);
+            Account account = new(1, 1, TestItem.KeccakA, Keccak.OfAnEmptyString);
+            node.Value = _accountDecoder.Encode(account).Bytes;
+            node.Key = HexPrefix.Leaf("abc");
+            node.ResolveKey(NullTrieNodeResolver.Instance, true);
+            
+            TrieStore trieStore = new(new MemDb(), new TestPruningStrategy(pruning), No.Persistence, _logManager);
+            trieStore.CommitNode(0, new NodeCommitInfo(node));
+            trieStore.FinishBlockCommit(TrieType.State, 0, node);
+            var originalNode = trieStore.FindCachedOrUnknown(node.Keccak);
+            
+            IReadOnlyTrieStore readOnlyTrieStore = trieStore.AsReadOnly();
+            var readOnlyNode = readOnlyTrieStore.FindCachedOrUnknown(node.Keccak);
+
+            readOnlyNode.Should().NotBe(originalNode);
+            readOnlyNode.Should().BeEquivalentTo(originalNode, 
+                eq => eq.Including(t => t.Keccak)
+                    .Including(t => t.FullRlp)
+                    .Including(t => t.NodeType));
+            
+            readOnlyNode.Key?.ToString().Should().Be(originalNode.Key?.ToString());
         }
     }
 }

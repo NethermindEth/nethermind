@@ -6,6 +6,7 @@ on:
 
 jobs:
   configs-updating:
+    if: github.repository_owner == 'NethermindEth'
     name: Updating Fast Sync Settings
     runs-on: ubuntu-latest
     steps:

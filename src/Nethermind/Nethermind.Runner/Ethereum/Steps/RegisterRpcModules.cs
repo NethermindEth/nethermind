@@ -104,14 +104,14 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.StateReader,
                 _api,
                 _api.SpecProvider);
-            _api.RpcModuleProvider.RegisterBoundedByCpuCount(ethModuleFactory, rpcConfig.Timeout);
+            _api.RpcModuleProvider.RegisterBounded(ethModuleFactory, rpcConfig.EthModuleConcurrentInstances ?? Environment.ProcessorCount, rpcConfig.Timeout);
             
             if (_api.DbProvider == null) throw new StepDependencyException(nameof(_api.DbProvider));
             if (_api.BlockPreprocessor == null) throw new StepDependencyException(nameof(_api.BlockPreprocessor));
             if (_api.BlockValidator == null) throw new StepDependencyException(nameof(_api.BlockValidator));
             if (_api.RewardCalculatorSource == null) throw new StepDependencyException(nameof(_api.RewardCalculatorSource));
             
-            ProofModuleFactory proofModuleFactory = new(_api.DbProvider, _api.BlockTree, _api.TrieStore, _api.BlockPreprocessor, _api.ReceiptFinder, _api.SpecProvider, _api.LogManager);
+            ProofModuleFactory proofModuleFactory = new(_api.DbProvider, _api.BlockTree, _api.ReadOnlyTrieStore, _api.BlockPreprocessor, _api.ReceiptFinder, _api.SpecProvider, _api.LogManager);
             _api.RpcModuleProvider.RegisterBounded(proofModuleFactory, 2, rpcConfig.Timeout);
 
             DebugModuleFactory debugModuleFactory = new(
@@ -123,7 +123,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.RewardCalculatorSource, 
                 _api.ReceiptStorage,
                 new ReceiptMigration(_api),
-                _api.TrieStore, 
+                _api.ReadOnlyTrieStore, 
                 _api.ConfigProvider, 
                 _api.SpecProvider, 
                 _api.LogManager);

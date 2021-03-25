@@ -127,28 +127,5 @@ namespace Nethermind.Trie
                     throw new TrieException($"An attempt was made to visit a node {Keccak} of type {NodeType}");
             }
         }
-
-        private void UnresolveChild(int i)
-        {
-            if (IsPersisted)
-            {
-                _data![i] = null;
-            }
-            else
-            {
-                TrieNode childNode = _data![i] as TrieNode;
-                if (childNode != null)
-                {
-                    if (!childNode.IsPersisted)
-                    {
-                        throw new InvalidOperationException("Cannot unresolve a child that is not persisted yet.");
-                    }
-                    else if (childNode.Keccak != null) // if not by value node
-                    {
-                        _data![i] = childNode.Keccak;
-                    }
-                }
-            }
-        }
     }
 }

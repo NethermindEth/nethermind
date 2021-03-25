@@ -15,11 +15,12 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Trie.Pruning
 {
-    public class NullTrieStore : ITrieStore
+    public class NullTrieStore : IReadOnlyTrieStore
     {
         private NullTrieStore() { }
 
@@ -31,13 +32,18 @@ namespace Nethermind.Trie.Pruning
         
         public void HackPersistOnShutdown() { }
         
+        public IReadOnlyTrieStore AsReadOnly(IKeyValueStore keyValueStore)
+        {
+            return this;
+        }
+
         public event EventHandler<ReorgBoundaryReached> ReorgBoundaryReached
         {
             add { }
             remove { }
         }
 
-        public TrieNode FindCachedOrUnknown(Keccak hash, bool addToCacheWhenNotFound)
+        public TrieNode FindCachedOrUnknown(Keccak hash)
         {
             return new (NodeType.Unknown, hash);
         }

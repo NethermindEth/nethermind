@@ -144,8 +144,8 @@ namespace Nethermind.AuRa.Test.Transactions
                 AbiEncoder abiEncoder = new AbiEncoder();
                 ReadOnlyTransactionProcessorSource = new(
                     DbProvider,
-                    new ReadOnlyTrieStore(new TrieStore(DbProvider.StateDb, LimboLogs.Instance)),
-                    BlockTree, SpecProvider,
+                    new TrieStore(DbProvider.StateDb, LimboLogs.Instance).AsReadOnly(),
+                BlockTree, SpecProvider,
                     LimboLogs.Instance);
                 RegisterContract = new RegisterContract(abiEncoder, ChainSpec.Parameters.Registrar, ReadOnlyTransactionProcessorSource);
                 CertifierContract = new CertifierContract(

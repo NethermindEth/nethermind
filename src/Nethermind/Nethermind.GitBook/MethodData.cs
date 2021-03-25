@@ -13,24 +13,31 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using Nethermind.Core;
-using Nethermind.Int256;
+using System;
+using System.Reflection;
 
-namespace Nethermind.Blockchain.Rewards
+namespace Nethermind.GitBook
 {
-    public class StaticRewardCalculator : IRewardCalculator
+    public class MethodData
     {
-        private readonly UInt256 _blockReward;
+        public bool? IsImplemented { get; set; }
+        
+        public Type ReturnType { get; set; }
+        
+        public ParameterInfo[] Parameters { get; set; }
 
-        public StaticRewardCalculator(UInt256 blockReward)
-        {
-            _blockReward = blockReward;
-        }
+        public string Description { get; set; }
+        
+        public string EdgeCaseHint { get; set; }
 
-        public BlockReward[] CalculateRewards(Block block)
-        {
-            return new[] { new BlockReward(block.Beneficiary, _blockReward) };
-        }
+        public string ResponseDescription { get; set; }
+
+        public string ExampleResponse { get; set; }
+        
+        public bool IsFunction { get; set; }
+        
+        public InvocationType InvocationType { get; set; }
     }
 }

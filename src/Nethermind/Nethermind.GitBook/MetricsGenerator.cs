@@ -1,3 +1,19 @@
+//  Copyright (c) 2021 Demerzel Solutions Limited
+//  This file is part of the Nethermind library.
+// 
+//  The Nethermind library is free software: you can redistribute it and/or modify
+//  it under the terms of the GNU Lesser General Public License as published by
+//  the Free Software Foundation, either version 3 of the License, or
+//  (at your option) any later version.
+// 
+//  The Nethermind library is distributed in the hope that it will be useful,
+//  but WITHOUT ANY WARRANTY; without even the implied warranty of
+//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+//  GNU Lesser General Public License for more details.
+// 
+//  You should have received a copy of the GNU Lesser General Public License
+//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+
 using System;
 using System.ComponentModel;
 using System.Linq;
@@ -17,7 +33,7 @@ namespace Nethermind.GitBook
         
         public void Generate()
         {
-            string docsDir = DocsDirFinder.FindMetrics();
+            string docsDir = DocsDirFinder.FindDocsDir();
             
             //ToFix: Create MetricsCategoryAttribute and add MetricsCategory attribute to every "Metrics" class and load Metrics automatically instead of manually
             Type metricsType = Assembly.Load("Nethermind.Blockchain").GetTypes()
@@ -70,7 +86,7 @@ namespace Nethermind.GitBook
             docBuilder.AppendLine(@$"# {moduleName}");
             docBuilder.AppendLine();
             moduleName = moduleName.ToLower();
-            docBuilder.AppendLine("| Metric Name | Description |");
+            docBuilder.AppendLine("| Metric | Description |");
             docBuilder.AppendLine("| :--- | :--- |");
             
             if (moduleProperties.Length == 0) return;
@@ -80,7 +96,7 @@ namespace Nethermind.GitBook
                 Attribute attr = property.GetCustomAttribute(typeof(DescriptionAttribute));
                 docBuilder.AppendLine($"| {property.Name} | {((DescriptionAttribute)attr)?.Description ?? ""} |");
             }
-            _sharedContent.Save(moduleName, docsDir + "/modules", docBuilder);
+            _sharedContent.Save(moduleName, docsDir + "/ethereum-client/metrics", docBuilder);
         }
     }
 }

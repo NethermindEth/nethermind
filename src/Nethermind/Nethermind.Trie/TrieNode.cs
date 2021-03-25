@@ -47,13 +47,8 @@ namespace Nethermind.Trie
 
         public TrieNode(NodeType nodeType, Keccak keccak)
         {
-            if (keccak is null)
-            {
-                throw new ArgumentNullException(nameof(keccak));
-            }
-
+            Keccak = keccak ?? throw new ArgumentNullException(nameof(keccak));
             NodeType = nodeType;
-            Keccak = keccak;
             if (nodeType == NodeType.Unknown)
             {
                 IsPersisted = true;
@@ -64,7 +59,18 @@ namespace Nethermind.Trie
         {
             NodeType = nodeType;
             FullRlp = rlp;
+
             _rlpStream = rlp.AsRlpStream();
+        }
+        
+        public TrieNode(NodeType nodeType, Keccak keccak, byte[] rlp) 
+            :this(nodeType, rlp)
+        {
+            Keccak = keccak;
+            if (nodeType == NodeType.Unknown)
+            {
+                IsPersisted = true;
+            }
         }
 
         /// <summary>
@@ -84,7 +90,7 @@ namespace Nethermind.Trie
         public bool IsPersisted { get; set; }
 
         /// <summary>
-        /// Node will no longer be mutable except for ref counting
+        /// Node will no longer be mutable
         /// </summary>
         public void Seal()
         {
@@ -96,7 +102,7 @@ namespace Nethermind.Trie
             IsDirty = false;
         }
 
-        public Keccak? Keccak { get; private set; }
+        public Keccak? Keccak { get; internal set; }
 
         public byte[]? FullRlp { get; private set; }
 
@@ -150,7 +156,7 @@ namespace Nethermind.Trie
 
                 InitData();
                 _data![0] = value;
-                UnresolveKey();
+                Keccak = null;
             }
         }
 
@@ -413,26 +419,6 @@ namespace Nethermind.Trie
             }
             else
             {
-                // TODO: fix this
-                /*
-                 * 2021-01-26 01:58:10.7317|ERROR|35|Block producer could not produce block on top of 4169862 (0x021f9c...115707) System.ArgumentNullException: Value cannot be null. (Parameter 'hash')
-       at Nethermind.Trie.Pruning.TrieStore.FindCachedOrUnknown(Keccak hash, Boolean addToCacheWhenNotFound) in /root/src/nethermind/src/Nethermind/Nethermind.Trie/Pruning/TrieStore.cs:line 285
-       at Nethermind.Trie.TrieNode.GetChild(ITrieNodeResolver tree, Int32 childIndex) in /root/src/nethermind/src/Nethermind/Nethermind.Trie/TrieNode.cs:line 406
-       at Nethermind.Trie.PatriciaTree.TraverseExtension(TrieNode node, TraverseContext traverseContext) in /root/src/nethermind/src/Nethermind/Nethermind.Trie/PatriciaTree.cs:line 841
-       at Nethermind.Trie.PatriciaTree.TraverseNode(TrieNode node, TraverseContext traverseContext) in /root/src/nethermind/src/Nethermind/Nethermind.Trie/PatriciaTree.cs:line 433
-       at Nethermind.Trie.PatriciaTree.TraverseBranch(TrieNode node, TraverseContext traverseContext) in /root/src/nethermind/src/Nethermind/Nethermind.Trie/PatriciaTree.cs:line 662
-       at Nethermind.Trie.PatriciaTree.TraverseNode(TrieNode node, TraverseContext traverseContext) in /root/src/nethermind/src/Nethermind/Nethermind.Trie/PatriciaTree.cs:line 433
-       at Nethermind.Trie.PatriciaTree.TraverseBranch(TrieNode node, TraverseContext traverseContext) in /root/src/nethermind/src/Nethermind/Nethermind.Trie/PatriciaTree.cs:line 662
-       at Nethermind.Trie.PatriciaTree.TraverseNode(TrieNode node, TraverseContext traverseContext) in /root/src/nethermind/src/Nethermind/Nethermind.Trie/PatriciaTree.cs:line 433
-       at Nethermind.Trie.PatriciaTree.TraverseBranch(TrieNode node, TraverseContext traverseContext) in /root/src/nethermind/src/Nethermind/Nethermind.Trie/PatriciaTree.cs:line 662
-       at Nethermind.Trie.PatriciaTree.TraverseNode(TrieNode node, TraverseContext traverseContext) in /root/src/nethermind/src/Nethermind/Nethermind.Trie/PatriciaTree.cs:line 433
-       at Nethermind.Trie.PatriciaTree.TraverseBranch(TrieNode node, TraverseContext traverseContext) in /root/src/nethermind/src/Nethermind/Nethermind.Trie/PatriciaTree.cs:line 662
-       at Nethermind.Trie.PatriciaTree.TraverseNode(TrieNode node, TraverseContext traverseContext) in /root/src/nethermind/src/Nethermind/Nethermind.Trie/PatriciaTree.cs:line 433
-       at Nethermind.Trie.PatriciaTree.Run(Span`1 updatePath, Int32 nibblesCount, Byte[] updateValue, Boolean isUpdate, Boolean ignoreMissingDelete, Keccak startRootHash) in /root/src/nethermind/src/Nethermind/Nethermind.Trie/PatriciaTree.cs:line 402
-       at Nethermind.Trie.PatriciaTree.Get(Span`1 rawKey, Keccak rootHash) in /root/src/nethermind/src/Nethermind/Nethermind.Trie/PatriciaTree.cs:line 326
-       at Nethermind.State.StorageProvider.LoadFromTree(StorageCell storageCell) in /root/src/nethermind/src/Nethermind/Nethermind.State/StorageProvider.cs:line 363
-                 */
-                
                 // we expect this to happen as a Trie traversal error (please see the stack trace above)
                 // we need to investigate this case when it happens again
                 bool isKeccakCalculated = Keccak is not null && FullRlp is not null;
@@ -472,7 +458,7 @@ namespace Nethermind.Trie
             InitData();
             int index = IsExtension ? i + 1 : i;
             _data![index] = node ?? _nullNode;
-            UnresolveKey();
+            Keccak = null;
         }
 
         public long GetMemorySize(bool recursive)
@@ -608,7 +594,10 @@ namespace Nethermind.Trie
         /// where A is a <see cref="TrieNode"/> on which the <paramref name="action"/> was invoked.
         /// Note that nodes referenced by hash are not called.
         /// </summary>
-        public void CallRecursively(Action<TrieNode> action, ITrieNodeResolver resolver, bool skipPersisted,
+        public void CallRecursively(
+            Action<TrieNode> action,
+            ITrieNodeResolver resolver,
+            bool skipPersisted,
             ILogger logger)
         {
             if (skipPersisted && IsPersisted)
@@ -650,9 +639,9 @@ namespace Nethermind.Trie
         /// After calling this method you will end up with
         ///        B
         /// ||||||||||||||||
-        /// -?--T?----?--TT-
+        /// -T--T?----?--TT-
         /// where ? stands for an unresolved child (unresolved child is one for which we know the hash in RLP
-        /// abd for which we do not have an in-memory .NET object representation - TrieNode)
+        /// and for which we do not have an in-memory .NET object representation - TrieNode)
         /// Unresolved child can be resolved by calling ResolveChild(child_index).
         /// </summary>
         /// <param name="maxLevelsDeep">How many levels deep we will be pruning the child nodes.</param>
@@ -727,12 +716,6 @@ namespace Nethermind.Trie
 
         private object?[]? _data;
 
-        // TODO: I believe this is no longer ever valid since we made our nodes immutable
-        private void UnresolveKey()
-        {
-            Keccak = null;
-        }
-
         private void InitData()
         {
             if (_data is null)
@@ -787,6 +770,7 @@ namespace Nethermind.Trie
                 {
                     SeekChild(i);
                     int prefix = _rlpStream!.ReadByte();
+
                     switch (prefix)
                     {
                         case 0:
@@ -822,6 +806,28 @@ namespace Nethermind.Trie
             }
 
             return childOrRef;
+        }
+        
+        private void UnresolveChild(int i)
+        {
+            if (IsPersisted)
+            {
+                _data![i] = null;
+            }
+            else
+            {
+                if (_data![i] is TrieNode childNode)
+                {
+                    if (!childNode.IsPersisted)
+                    {
+                        throw new InvalidOperationException("Cannot unresolve a child that is not persisted yet.");
+                    }
+                    else if (childNode.Keccak != null) // if not by value node
+                    {
+                        _data![i] = childNode.Keccak;
+                    }
+                }
+            }
         }
 
         #endregion

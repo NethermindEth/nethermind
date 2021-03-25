@@ -50,6 +50,7 @@ namespace Nethermind.Runner.Ethereum.Steps
     public class InitializeBlockchain : IStep
     {
         private readonly INethermindApi _api;
+        private ILogger _logger;
 
         // ReSharper disable once MemberCanBeProtected.Global
         public InitializeBlockchain(INethermindApi api)
@@ -71,14 +72,14 @@ namespace Nethermind.Runner.Ethereum.Steps
             if (getApi.DbProvider == null) throw new StepDependencyException(nameof(getApi.DbProvider));
             if (getApi.SpecProvider == null) throw new StepDependencyException(nameof(getApi.SpecProvider));
             
-            ILogger logger = getApi.LogManager.GetClassLogger();
+            _logger = getApi.LogManager.GetClassLogger();
             IInitConfig initConfig = getApi.Config<IInitConfig>();
             ISyncConfig syncConfig = getApi.Config<ISyncConfig>();
             IPruningConfig pruningConfig = getApi.Config<IPruningConfig>();
 
             if (syncConfig.DownloadReceiptsInFastSync && !syncConfig.DownloadBodiesInFastSync)
             {
-                logger.Warn($"{nameof(syncConfig.DownloadReceiptsInFastSync)} is selected but {nameof(syncConfig.DownloadBodiesInFastSync)} - enabling bodies to support receipts download.");
+                _logger.Warn($"{nameof(syncConfig.DownloadReceiptsInFastSync)} is selected but {nameof(syncConfig.DownloadBodiesInFastSync)} - enabling bodies to support receipts download.");
                 syncConfig.DownloadBodiesInFastSync = true;
             }
             
@@ -89,25 +90,25 @@ namespace Nethermind.Runner.Ethereum.Steps
                     .WithPruning(getApi.BlockTree!, getApi.LogManager)
                 : NullWitnessCollector.Instance;
 
-            setApi.MainStateDbWithCache = getApi.DbProvider.StateDb
-                .Cached(Trie.MemoryAllowance.TrieNodeCacheCount)
-                .WitnessedBy(witnessCollector);
+            IKeyValueStoreWithBatching cachedStateDb = getApi.DbProvider.StateDb
+                .Cached(Trie.MemoryAllowance.TrieNodeCacheCount);
+            setApi.MainStateDbWithCache = cachedStateDb;
             IKeyValueStore codeDb = getApi.DbProvider.CodeDb
                 .WitnessedBy(witnessCollector);
 
-            ITrieStore trieStore;
+            TrieStore trieStore;
             if (pruningConfig.Enabled)
             {
-                trieStore = setApi.TrieStore = new TrieStore(
-                    setApi.MainStateDbWithCache,
+                setApi.TrieStore = trieStore = new TrieStore(
+                    setApi.MainStateDbWithCache.WitnessedBy(witnessCollector),
                     Prune.WhenCacheReaches(pruningConfig.CacheMb.MB()), // TODO: memory hint should define this
                     Persist.IfBlockOlderThan(pruningConfig.PersistenceInterval), // TODO: this should be based on time
                     getApi.LogManager);
             }
             else
             {
-                trieStore = setApi.TrieStore = new TrieStore(
-                    setApi.MainStateDbWithCache,
+                setApi.TrieStore = trieStore = new TrieStore(
+                    setApi.MainStateDbWithCache.WitnessedBy(witnessCollector),
                     No.Pruning,
                     Persist.EveryBlock,
                     getApi.LogManager);
@@ -115,7 +116,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             
             getApi.DisposeStack.Push(trieStore);
             trieStore.ReorgBoundaryReached += ReorgBoundaryReached;
-            ITrieStore readOnlyTrieStore = setApi.ReadOnlyTrieStore = trieStore.AsReadOnly();
+            ITrieStore readOnlyTrieStore = setApi.ReadOnlyTrieStore = trieStore.AsReadOnly(cachedStateDb);
 
             IStateProvider stateProvider = setApi.StateProvider = new StateProvider(
                 trieStore,
@@ -136,9 +137,9 @@ namespace Nethermind.Runner.Ethereum.Steps
 
             if (_api.Config<IInitConfig>().DiagnosticMode == DiagnosticMode.VerifyTrie)
             {
-                logger.Info("Collecting trie stats and verifying that no nodes are missing...");
+                _logger.Info("Collecting trie stats and verifying that no nodes are missing...");
                 TrieStats stats = stateProvider.CollectStats(getApi.DbProvider.CodeDb, _api.LogManager);
-                logger.Info($"Starting from {getApi.BlockTree.Head?.Number} {getApi.BlockTree.Head?.StateRoot}{Environment.NewLine}" + stats);
+                _logger.Info($"Starting from {getApi.BlockTree.Head?.Number} {getApi.BlockTree.Head?.StateRoot}{Environment.NewLine}" + stats);
             }
 
             // Init state if we need system calls before actual processing starts
@@ -250,7 +251,7 @@ namespace Nethermind.Runner.Ethereum.Steps
         
         private void ReorgBoundaryReached(object? sender, ReorgBoundaryReached e)
         {
-            _api.LogManager.GetClassLogger().Warn($"Saving reorg boundary {e.BlockNumber}");
+            if (_logger.IsDebug) _logger.Debug($"Saving reorg boundary {e.BlockNumber}");
             (_api.BlockTree as BlockTree)!.SavePruningReorganizationBoundary(e.BlockNumber);
         }
         

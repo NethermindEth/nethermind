@@ -18,6 +18,7 @@ using System;
 using System.Diagnostics;
 using System.Reflection;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core.Extensions;
 using Nethermind.JsonRpc.Modules;
@@ -54,22 +55,26 @@ namespace Nethermind.JsonRpc.WebSockets
         public async Task ReceiveAsync(Memory<byte> data)
         {
             Stopwatch stopwatch = Stopwatch.StartNew();
+            Interlocked.Add(ref Metrics.JsonRpcBytesReceivedWebSockets, data.Length);
             using JsonRpcResult result = await _jsonRpcProcessor.ProcessAsync(Encoding.UTF8.GetString(data.Span), _jsonRpcContext);
 
-            await SendJsonRpcResult(result);
+            var size = await SendJsonRpcResult(result);
 
+            long handlingTimeMicroseconds = stopwatch.ElapsedMicroseconds();
             if (result.IsCollection)
             {
                 _jsonRpcLocalStats.ReportCalls(result.Reports);
-                _jsonRpcLocalStats.ReportCall(new RpcReport("# collection serialization #", stopwatch.ElapsedMicroseconds(), true));
+                _jsonRpcLocalStats.ReportCall(new RpcReport("# collection serialization #", handlingTimeMicroseconds, true), handlingTimeMicroseconds, size);
             }
             else
             {
-                _jsonRpcLocalStats.ReportCall(result.Report, stopwatch.ElapsedMicroseconds());
+                _jsonRpcLocalStats.ReportCall(result.Report, handlingTimeMicroseconds, size);
             }
+            
+            Interlocked.Add(ref Metrics.JsonRpcBytesSentWebSockets, data.Length);
         }
 
-        public async Task SendJsonRpcResult(JsonRpcResult result)
+        public async Task<int> SendJsonRpcResult(JsonRpcResult result)
         {
             string SerializeTimeoutException()
             {
@@ -93,6 +98,8 @@ namespace Nethermind.JsonRpc.WebSockets
             }
             
             await SendRawAsync(resultData);
+
+            return resultData.Length;
         }
 
         public event EventHandler Closed;

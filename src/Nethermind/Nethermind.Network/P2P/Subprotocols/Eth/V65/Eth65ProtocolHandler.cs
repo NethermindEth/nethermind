@@ -93,7 +93,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
                              $"in {stopwatch.Elapsed.TotalMilliseconds}ms");
         }
 
-        public override void SendNewTransaction(Transaction transaction, bool isPriority)
+        public override bool SendNewTransaction(Transaction transaction, bool isPriority)
         {
             if (isPriority)
             {
@@ -105,6 +105,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
                 NewPooledTransactionHashesMessage msg = new(new[] {transaction.Hash});
                 Send(msg);
             }
+
+            return true;
         }
     }
 }

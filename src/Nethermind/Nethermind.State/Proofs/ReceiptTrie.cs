@@ -46,14 +46,10 @@ namespace Nethermind.State.Proofs
             {
                 TxReceipt? currentReceipt = txReceipts[i];
                 byte[] receiptRlp = Decoder.EncodeNew(currentReceipt,
-                    releaseSpec.IsEip658Enabled
+                    (releaseSpec.IsEip658Enabled
                         ? RlpBehaviors.Eip658Receipts
-                        : RlpBehaviors.None);
+                        : RlpBehaviors.None) | RlpBehaviors.ForTreeRoot);
                 
-                if (currentReceipt is not null && currentReceipt.TxType != TxType.Legacy)
-                {
-                    receiptRlp = Bytes.Concat((byte)currentReceipt.TxType, receiptRlp);
-                }
                 
                 Set(Rlp.Encode(i).Bytes, receiptRlp);
             }

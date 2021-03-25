@@ -1,4 +1,20 @@
-﻿namespace Nethermind.GitBook
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  This file is part of the Nethermind library.
+// 
+//  The Nethermind library is free software: you can redistribute it and/or modify
+//  it under the terms of the GNU Lesser General Public License as published by
+//  the Free Software Foundation, either version 3 of the License, or
+//  (at your option) any later version.
+// 
+//  The Nethermind library is distributed in the hope that it will be useful,
+//  but WITHOUT ANY WARRANTY; without even the implied warranty of
+//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+//  GNU Lesser General Public License for more details.
+// 
+//  You should have received a copy of the GNU Lesser General Public License
+//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+
+namespace Nethermind.GitBook
 {
     class Program
     {
@@ -7,17 +23,17 @@
             MarkdownGenerator markdownGenerator = new MarkdownGenerator();
             SharedContent sharedContent = new SharedContent();
 
-            JsonRpcGenerator rpcGenerator = new JsonRpcGenerator(markdownGenerator, sharedContent);
-            rpcGenerator.Generate();
-            
-            CliGenerator cliGenerator = new CliGenerator(markdownGenerator, sharedContent);
-            cliGenerator.Generate();
-
             MetricsGenerator metricsGenerator = new MetricsGenerator(sharedContent);
             metricsGenerator.Generate();
 
             ConfigGenerator configGenerator = new ConfigGenerator(sharedContent);
             configGenerator.Generate();
+
+            RpcAndCliGenerator rpcAndCliGenerator = new RpcAndCliGenerator(markdownGenerator, sharedContent);
+            rpcAndCliGenerator.Generate();
+
+            SampleConfigGenerator sampleConfigGenerator = new SampleConfigGenerator(markdownGenerator, sharedContent);
+            sampleConfigGenerator.Generate();
         }
     }
 }

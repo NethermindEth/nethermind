@@ -20,6 +20,7 @@ using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Comparers;
 using Nethermind.Blockchain.Processing;
@@ -156,7 +157,8 @@ namespace Nethermind.Clique.Test
                 BlockchainProcessor processor = new BlockchainProcessor(blockTree, blockProcessor, new AuthorRecoveryStep(snapshotManager), nodeLogManager, BlockchainProcessor.Options.NoReceipts);
                 processor.Start();
 
-                var minerTrieStore = new ReadOnlyTrieStore(trieStore);
+                var minerTrieStore = trieStore.AsReadOnly();
+              
                 StateProvider minerStateProvider = new StateProvider(minerTrieStore, codeDb, nodeLogManager);
                 StorageProvider minerStorageProvider = new StorageProvider(minerTrieStore, minerStateProvider, nodeLogManager);
                 VirtualMachine minerVirtualMachine = new VirtualMachine(minerStateProvider, minerStorageProvider, blockhashProvider, specProvider, nodeLogManager);

@@ -22,6 +22,11 @@ namespace Nethermind.Core.Extensions
     {
         public static byte[] ToBigEndianByteArray(this BigInteger bigInteger, int outputLength = -1)
         {
+            if (outputLength == 0)
+            {
+                return Bytes.Empty;
+            }
+            
             byte[] result = bigInteger.ToByteArray(false, true);
             if (result[0] == 0 && result.Length != 1)
             {

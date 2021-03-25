@@ -451,7 +451,6 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
             if (result.Error == null)
             {
-                _logger.Error($"Estimating gas {transactionCall.From} {transactionCall.To} {transactionCall.Data} {transactionCall.Gas}");
                 return ResultWrapper<UInt256?>.Success((UInt256)result.GasSpent);
             }
 

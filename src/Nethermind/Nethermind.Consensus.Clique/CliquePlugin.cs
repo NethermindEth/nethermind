@@ -31,6 +31,7 @@ using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules;
+using Nethermind.State;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 
@@ -123,7 +124,7 @@ namespace Nethermind.Consensus.Clique
                 producerEnv.StorageProvider,
                 NullTxPool.Instance, // do not remove transactions from the pool when preprocessing
                 NullReceiptStorage.Instance,
-                getFromApi.WitnessCollector,
+                NullWitnessCollector.Instance,
                 getFromApi.LogManager);
 
             IBlockchainProcessor producerChainProcessor = new BlockchainProcessor(

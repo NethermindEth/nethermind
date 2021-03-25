@@ -29,6 +29,7 @@ using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.State;
 using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.Ethash
@@ -99,7 +100,7 @@ namespace Nethermind.Consensus.Ethash
                 producerEnv.StorageProvider,
                 NullTxPool.Instance,
                 NullReceiptStorage.Instance,
-                getFromApi.WitnessCollector,
+                NullWitnessCollector.Instance,
                 getFromApi.LogManager);
 
             IBlockchainProcessor producerChainProcessor = new BlockchainProcessor(

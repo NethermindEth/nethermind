@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Trie.Pruning
@@ -24,14 +25,8 @@ namespace Nethermind.Trie.Pruning
         
         public static readonly NullTrieNodeResolver Instance = new ();
 
-        public TrieNode FindCachedOrUnknown(Keccak hash, bool addToCacheWhenNotFound)
-        {
-            return new (NodeType.Unknown, hash);
-        }
+        public TrieNode FindCachedOrUnknown(Keccak hash) => new (NodeType.Unknown, hash);
 
-        public byte[]? LoadRlp(Keccak hash)
-        {
-            return null;
-        }
+        public byte[]? LoadRlp(Keccak hash) => null;
     }
 }
