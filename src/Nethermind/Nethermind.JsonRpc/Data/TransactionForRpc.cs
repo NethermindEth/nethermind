@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -39,6 +40,8 @@ namespace Nethermind.JsonRpc.Data
             GasPrice = transaction.GasPrice;
             Gas = transaction.GasLimit;
             Input = Data = transaction.Data;
+            Type = transaction.Type;
+            AccessList = transaction.AccessList.Data.Select(i => new AccessListItemForRpc(i)).ToArray();
 
             Signature? signature = transaction.Signature;
             if (signature != null)
@@ -78,6 +81,11 @@ namespace Nethermind.JsonRpc.Data
 
         [JsonProperty(NullValueHandling = NullValueHandling.Include)]
         public byte[]? Input { get; set; }
+
+        [JsonProperty(NullValueHandling = NullValueHandling.Include)]
+        public TxType? Type { get; set; }
+        
+        public AccessListItemForRpc[] AccessList { get; set; }
 
         public UInt256? V { get; set; }
 
