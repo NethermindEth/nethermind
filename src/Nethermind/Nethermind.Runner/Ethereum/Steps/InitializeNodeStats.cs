@@ -17,6 +17,7 @@
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
+using Nethermind.Network.Config;
 using Nethermind.Stats;
 
 namespace Nethermind.Runner.Ethereum.Steps
@@ -33,8 +34,12 @@ namespace Nethermind.Runner.Ethereum.Steps
 
         public Task Execute(CancellationToken _)
         {
+            var config = _api.Config<INetworkConfig>();
+            
             // create shared objects between discovery and peer manager
-            _api.NodeStatsManager = new NodeStatsManager(_api.LogManager);
+            NodeStatsManager nodeStatsManager = new NodeStatsManager(_api.LogManager, config.MaxCandidatePeerCount);
+            _api.NodeStatsManager = nodeStatsManager;
+            _api.DisposeStack.Push(nodeStatsManager);
 
             return Task.CompletedTask;
         }
