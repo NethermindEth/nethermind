@@ -143,6 +143,22 @@ namespace Nethermind.Blockchain.Validators
                 UInt256? expectedBaseFee = BlockHeader.CalculateBaseFee(parent, spec);
                 baseFeeIsCorrect = expectedBaseFee == header.BaseFee;
             }
+            
+            // ToDo
+            // bool isEip1559Enabled = spec.IsEip1559Enabled;
+            // if (isEip1559Enabled)
+            // {
+            //     if (block.GasUsed <= Eip1559Constants.ElasticityMultiplier * block.GasLimit)
+            //     {
+            //         if (_logger.IsDebug) _logger.Debug($"Invalid block ({block.ToString(Block.Format.FullHashAndNumber)}) too much gas used");
+            //         return false;
+            //     }
+            // }
+            //
+            // if (header.GasUsed <= block.Parparent.gas_target + parent_gas_target)
+            // {
+            //     if (_logger.IsDebug) _logger.Debug($"Invalid block ({block.ToString(Block.Format.FullHashAndNumber)}) too much gas used");
+            // }
 
             return
                 totalDifficultyCorrect &&

@@ -236,11 +236,6 @@ namespace Nethermind.Core.Specs
         bool IsEip1559Enabled { get; }
         
         /// <summary>
-        /// Hardcoded Block Gas Limit
-        /// </summary>
-        bool IsEip3382Enabled { get; }
-        
-        /// <summary>
         /// Should transactions be validated against chainId.
         /// </summary>
         /// <remarks>Backward compatibility for early Kovan blocks.</remarks>

@@ -52,7 +52,7 @@ namespace Nethermind.Core.Test.Blockchain
                 blockProcessingQueue,
                 stateProvider,
                 timestamper,
-                new FollowOtherMiners(specProvider),
+                FollowOtherMiners.Instance,
                 specProvider,
                 blockPreparationContextService,
                 logManager,

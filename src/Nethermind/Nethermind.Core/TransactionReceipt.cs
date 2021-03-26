@@ -78,6 +78,8 @@ namespace Nethermind.Core
         public KeccakStructRef BlockHash;
         public KeccakStructRef TxHash;
         public int Index { get; set; }
+        
+        public UInt256 EffectiveGasPrice { get; set; }
         public long GasUsed { get; set; }
         public long GasUsedTotal { get; set; }
         public AddressStructRef Sender;
@@ -111,6 +113,7 @@ namespace Nethermind.Core
             BlockHash = (receipt.BlockHash ?? Keccak.Zero).ToStructRef();
             TxHash = (receipt.TxHash ?? Keccak.Zero).ToStructRef();
             Index = receipt.Index;
+            EffectiveGasPrice = receipt.EffectiveGasPrice;
             GasUsed = receipt.GasUsed;
             GasUsedTotal = receipt.GasUsedTotal;
             Sender = (receipt.Sender ?? Address.Zero).ToStructRef();
