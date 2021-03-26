@@ -41,6 +41,7 @@ namespace Nethermind.JsonRpc.Test.Data
         {
             _data = new Dictionary<Address, IReadOnlySet<UInt256>>();
             _transaction = new Transaction();
+            _transaction.Type = TxType.AccessList;
 
             _storageKeys = new HashSet<UInt256> {1, 2, 3, 5, 8};
             _data.Add(TestItem.AddressA, _storageKeys);
@@ -50,7 +51,7 @@ namespace Nethermind.JsonRpc.Test.Data
             _transactionForRpc = new TransactionForRpc(_transaction);
 
             string serialized = _serializer.Serialize(_transactionForRpc);
-            string expected = "{\"nonce\":\"0x0\",\"blockHash\":null,\"blockNumber\":null,\"transactionIndex\":null,\"to\":null,\"value\":\"0x0\",\"gasPrice\":\"0x0\",\"gas\":\"0x0\",\"input\":null,\"accessList\":[{\"address\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"storageKeys\":[\"0x1\",\"0x2\",\"0x3\",\"0x5\",\"0x8\"]},{\"address\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"storageKeys\":[\"0x2a\"]}]}";
+            string expected = "{\"nonce\":\"0x0\",\"blockHash\":null,\"blockNumber\":null,\"transactionIndex\":null,\"to\":null,\"value\":\"0x0\",\"gasPrice\":\"0x0\",\"gas\":\"0x0\",\"input\":null,\"type\":\"0x1\",\"accessList\":[{\"address\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"storageKeys\":[\"0x1\",\"0x2\",\"0x3\",\"0x5\",\"0x8\"]},{\"address\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"storageKeys\":[\"0x2a\"]}]}";
             expected.Should().Be(serialized);
         }
 
@@ -58,10 +59,11 @@ namespace Nethermind.JsonRpc.Test.Data
         public void can_serialize_null_accessList()
         {
             _transaction = new Transaction();
+            _transaction.Type = TxType.AccessList;
             _transactionForRpc = new TransactionForRpc(_transaction);
 
             string serialized = _serializer.Serialize(_transactionForRpc);
-            string expected = "{\"nonce\":\"0x0\",\"blockHash\":null,\"blockNumber\":null,\"transactionIndex\":null,\"to\":null,\"value\":\"0x0\",\"gasPrice\":\"0x0\",\"gas\":\"0x0\",\"input\":null}";
+            string expected = "{\"nonce\":\"0x0\",\"blockHash\":null,\"blockNumber\":null,\"transactionIndex\":null,\"to\":null,\"value\":\"0x0\",\"gasPrice\":\"0x0\",\"gas\":\"0x0\",\"input\":null,\"type\":\"0x1\"}";
             expected.Should().Be(serialized);
         }
 
@@ -70,11 +72,12 @@ namespace Nethermind.JsonRpc.Test.Data
         {
             _data = new Dictionary<Address, IReadOnlySet<UInt256>>();
             _transaction = new Transaction();
+            _transaction.Type = TxType.AccessList;
             _transaction.AccessList = new AccessList(_data);
             _transactionForRpc = new TransactionForRpc(_transaction);
 
             string serialized = _serializer.Serialize(_transactionForRpc);
-            string expected = "{\"nonce\":\"0x0\",\"blockHash\":null,\"blockNumber\":null,\"transactionIndex\":null,\"to\":null,\"value\":\"0x0\",\"gasPrice\":\"0x0\",\"gas\":\"0x0\",\"input\":null,\"accessList\":[]}";
+            string expected = "{\"nonce\":\"0x0\",\"blockHash\":null,\"blockNumber\":null,\"transactionIndex\":null,\"to\":null,\"value\":\"0x0\",\"gasPrice\":\"0x0\",\"gas\":\"0x0\",\"input\":null,\"type\":\"0x1\",\"accessList\":[]}";
             expected.Should().Be(serialized);
         }
 
@@ -83,6 +86,7 @@ namespace Nethermind.JsonRpc.Test.Data
         {
             _data = new Dictionary<Address, IReadOnlySet<UInt256>>();
             _transaction = new Transaction();
+            _transaction.Type = TxType.AccessList;
 
             _storageKeys = new HashSet<UInt256> {};
             _data.Add(TestItem.AddressA, _storageKeys);
@@ -90,7 +94,7 @@ namespace Nethermind.JsonRpc.Test.Data
             _transactionForRpc = new TransactionForRpc(_transaction);
 
             string serialized = _serializer.Serialize(_transactionForRpc);
-            string expected = "{\"nonce\":\"0x0\",\"blockHash\":null,\"blockNumber\":null,\"transactionIndex\":null,\"to\":null,\"value\":\"0x0\",\"gasPrice\":\"0x0\",\"gas\":\"0x0\",\"input\":null,\"accessList\":[{\"address\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"storageKeys\":[]}]}";
+            string expected = "{\"nonce\":\"0x0\",\"blockHash\":null,\"blockNumber\":null,\"transactionIndex\":null,\"to\":null,\"value\":\"0x0\",\"gasPrice\":\"0x0\",\"gas\":\"0x0\",\"input\":null,\"type\":\"0x1\",\"accessList\":[{\"address\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"storageKeys\":[]}]}";
             expected.Should().Be(serialized);
         }
         
@@ -99,13 +103,14 @@ namespace Nethermind.JsonRpc.Test.Data
         {
             _data = new Dictionary<Address, IReadOnlySet<UInt256>>();
             _transaction = new Transaction();
+            _transaction.Type = TxType.AccessList;
 
             _data.Add(TestItem.AddressA, null);
             _transaction.AccessList = new AccessList(_data);
             _transactionForRpc = new TransactionForRpc(_transaction);
 
             string serialized = _serializer.Serialize(_transactionForRpc);
-            string expected = "{\"nonce\":\"0x0\",\"blockHash\":null,\"blockNumber\":null,\"transactionIndex\":null,\"to\":null,\"value\":\"0x0\",\"gasPrice\":\"0x0\",\"gas\":\"0x0\",\"input\":null,\"accessList\":[{\"address\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\"}]}";
+            string expected = "{\"nonce\":\"0x0\",\"blockHash\":null,\"blockNumber\":null,\"transactionIndex\":null,\"to\":null,\"value\":\"0x0\",\"gasPrice\":\"0x0\",\"gas\":\"0x0\",\"input\":null,\"type\":\"0x1\",\"accessList\":[{\"address\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\"}]}";
             expected.Should().Be(serialized);
         }
     }
