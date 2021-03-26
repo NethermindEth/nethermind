@@ -59,6 +59,7 @@ namespace Nethermind.Blockchain.Producers
         private readonly ISpecProvider _spec;
         private readonly IBlockPreparationContextService _blockPreparationContextService;
         private readonly ITxSource _txSource;
+        private readonly IEip1559GasLimitAdjuster _eip1559GasLimitAdjuster;
 
         protected DateTime _lastProducedBlock;
         protected ILogger Logger { get; }
@@ -86,8 +87,9 @@ namespace Nethermind.Blockchain.Producers
             _gasLimitCalculator = gasLimitCalculator ?? throw new ArgumentNullException(nameof(gasLimitCalculator));
             _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
             _spec = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-            _blockPreparationContextService = blockPreparationContextService;
+            _blockPreparationContextService = blockPreparationContextService ?? throw new ArgumentNullException(nameof(blockPreparationContextService));
             Logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _eip1559GasLimitAdjuster = new Eip1559GasLimitAdjuster(specProvider);
         }
 
         public abstract void Start();
@@ -222,7 +224,8 @@ namespace Nethermind.Blockchain.Producers
         private IEnumerable<Transaction> GetTransactions(BlockHeader parent)
         {
             long gasLimit = _gasLimitCalculator.GetGasLimit(parent);
-            return _txSource.GetTransactions(parent, gasLimit);
+            long gasLimitEip1559Adjusted = _eip1559GasLimitAdjuster.AdjustGasLimit(parent.Number + 1, gasLimit);
+            return _txSource.GetTransactions(parent, gasLimitEip1559Adjusted);
         }
 
         protected virtual Block PrepareBlock(BlockHeader parent)

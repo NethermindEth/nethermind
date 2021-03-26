@@ -55,11 +55,12 @@ namespace Nethermind.Consensus.Clique
         private readonly ISnapshotManager _snapshotManager;
         private readonly ICliqueConfig _config;
         private readonly IBlockPreparationContextService _blockPreparationContextService;
+        private readonly IEip1559GasLimitAdjuster _eip1559GasLimitAdjuster;
 
-        private readonly ConcurrentDictionary<Address, bool> _proposals = new ConcurrentDictionary<Address, bool>();
+        private readonly ConcurrentDictionary<Address, bool> _proposals = new();
 
-        private readonly CancellationTokenSource _cancellationTokenSource = new CancellationTokenSource();
-        private readonly System.Timers.Timer _timer = new System.Timers.Timer();
+        private readonly CancellationTokenSource _cancellationTokenSource = new();
+        private readonly System.Timers.Timer _timer = new();
         private DateTime _lastProducedBlock;
 
         public CliqueBlockProducer(
@@ -91,6 +92,7 @@ namespace Nethermind.Consensus.Clique
             _config = config ?? throw new ArgumentNullException(nameof(config));
             _blockPreparationContextService = blockPreparationContextService;
             _wiggle = new WiggleRandomizer(_cryptoRandom, _snapshotManager);
+            _eip1559GasLimitAdjuster = new Eip1559GasLimitAdjuster(specProvider);
 
             _timer.AutoReset = false;
             _timer.Elapsed += TimerOnElapsed;
@@ -99,7 +101,7 @@ namespace Nethermind.Consensus.Clique
         }
 
         private readonly BlockingCollection<Block> _signalsQueue =
-            new BlockingCollection<Block>(new ConcurrentQueue<Block>());
+            new(new ConcurrentQueue<Block>());
 
         private Block? _scheduledBlock;
 
@@ -358,7 +360,7 @@ namespace Nethermind.Consensus.Clique
 
             UInt256 timestamp = _timestamper.UnixTime.Seconds;
 
-            BlockHeader header = new BlockHeader(
+            BlockHeader header = new(
                 parentBlock.Hash,
                 Keccak.OfAnEmptySequenceRlp,
                 Address.Zero,
@@ -376,8 +378,8 @@ namespace Nethermind.Consensus.Clique
             if (!isEpochBlock && _proposals.Any())
             {
                 // Gather all the proposals that make sense voting on
-                List<Address> addresses = new List<Address>();
-                foreach (var proposal in _proposals)
+                List<Address> addresses = new();
+                foreach (KeyValuePair<Address, bool> proposal in _proposals)
                 {
                     Address address = proposal.Key;
                     bool authorize = proposal.Value;
@@ -436,8 +438,9 @@ namespace Nethermind.Consensus.Clique
 
             _stateProvider.StateRoot = parentHeader.StateRoot;
 
-            var selectedTxs = _txSource.GetTransactions(parentBlock.Header, header.GasLimit);
-            Block block = new Block(header, selectedTxs, Array.Empty<BlockHeader>());
+            long adjustedGasLimit = _eip1559GasLimitAdjuster.AdjustGasLimit(number, header.GasLimit);
+            IEnumerable<Transaction> selectedTxs = _txSource.GetTransactions(parentBlock.Header, adjustedGasLimit);
+            Block block = new(header, selectedTxs, Array.Empty<BlockHeader>());
             header.TxRoot = new TxTrie(block.Transactions).RootHash;
             block.Header.Author = _sealer.Address;
             return block;

@@ -281,7 +281,7 @@ namespace Nethermind.Blockchain.Test.Producers
         }
 
         [Test]
-        public async Task BaseFee_should_decrease_when_we_send_transactions_below_gas_limit()
+        public async Task BaseFee_should_decrease_when_we_send_transactions_below_gas_target()
         {
             long gasLimit = 3000000;
             BaseFeeTestScenario.ScenarioBuilder scenario = BaseFeeTestScenario.GoesLikeThis()
@@ -305,14 +305,33 @@ namespace Nethermind.Blockchain.Test.Producers
             long gasLimit = Eip1559Constants.ElasticityMultiplier * gasTarget;
             BaseFeeTestScenario.ScenarioBuilder scenario = BaseFeeTestScenario.GoesLikeThis()
                 .WithEip1559TransitionBlock(6)
-                .CreateTestBlockchain(gasLimit)
+                .CreateTestBlockchain(gasTarget)
                 .DeployContract()
                 .BlocksBeforeTransitionShouldHaveZeroBaseFee()
                 .AssertNewBlock(Eip1559Constants.ForkBaseFee)
                 .SendLegacyTransaction(gasTarget / 2, 20.GWei())
-                .SendLegacyTransaction(gasTarget / 2, 1.GWei())
+                .SendEip1559Transaction(gasTarget / 2, 1.GWei(), 20.GWei())
                 .AssertNewBlock(875000000)
                 .AssertNewBlock(875000000)
+                .AssertNewBlockWithDecreasedBaseFee();
+            await scenario.Finish();
+        }
+        
+        [Test]
+        public async Task BaseFee_should_increase_when_we_send_transactions_above_gas_target()
+        {
+            long gasTarget = 3000000;
+            BaseFeeTestScenario.ScenarioBuilder scenario = BaseFeeTestScenario.GoesLikeThis()
+                .WithEip1559TransitionBlock(6)
+                .CreateTestBlockchain(gasTarget)
+                .DeployContract()
+                .BlocksBeforeTransitionShouldHaveZeroBaseFee()
+                .AssertNewBlock(Eip1559Constants.ForkBaseFee)
+                .SendLegacyTransaction(gasTarget / 2, 20.GWei())
+                .SendEip1559Transaction(gasTarget / 2, 1.GWei(), 20.GWei())
+                .SendLegacyTransaction(gasTarget / 2, 20.GWei())
+                .AssertNewBlock(875000000)
+                .AssertNewBlock(929687500)
                 .AssertNewBlockWithDecreasedBaseFee();
             await scenario.Finish();
         }

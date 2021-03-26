@@ -15,17 +15,10 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using Nethermind.Core.Extensions;
-using Nethermind.Int256;
-
-namespace Nethermind.Core
+namespace Nethermind.Consensus
 {
-    public static class Eip1559Constants
+    public interface IEip1559GasLimitAdjuster
     {
-        public static readonly UInt256 BaseFeeMaxChangeDenominator = 8;
-        
-        public static readonly UInt256 ForkBaseFee = 1.GWei();
-
-        public const int ElasticityMultiplier = 2;
+        long AdjustGasLimit(long blockNumber, long gasLimit);
     }
 }
