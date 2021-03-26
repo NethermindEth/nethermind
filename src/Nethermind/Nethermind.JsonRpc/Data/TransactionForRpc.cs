@@ -40,8 +40,8 @@ namespace Nethermind.JsonRpc.Data
             GasPrice = transaction.GasPrice;
             Gas = transaction.GasLimit;
             Input = Data = transaction.Data;
-            Type = transaction.Type;
-            AccessList = transaction.AccessList.Data.Select(i => new AccessListItemForRpc(i)).ToArray();
+            // Type = transaction.Type;
+            AccessList = transaction.AccessList?.Data.Select(i => new AccessListItemForRpc(i.Key, i.Value)).ToArray();
 
             Signature? signature = transaction.Signature;
             if (signature != null)
@@ -82,10 +82,10 @@ namespace Nethermind.JsonRpc.Data
         [JsonProperty(NullValueHandling = NullValueHandling.Include)]
         public byte[]? Input { get; set; }
 
-        [JsonProperty(NullValueHandling = NullValueHandling.Include)]
-        public TxType? Type { get; set; }
+        // [JsonProperty(NullValueHandling = NullValueHandling.Include)]
+        // public TxType? Type { get; set; }
         
-        public AccessListItemForRpc[] AccessList { get; set; }
+        public AccessListItemForRpc[]? AccessList { get; set; }
 
         public UInt256? V { get; set; }
 
