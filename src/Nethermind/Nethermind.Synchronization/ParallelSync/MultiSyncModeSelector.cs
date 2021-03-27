@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
 using System.Timers;
@@ -267,14 +268,13 @@ namespace Nethermind.Synchronization.ParallelSync
 
             if (_logger.IsTrace)
             {
-                _logger.Trace("WAITING FOR BLOCK: " +
-                              $"{GetBoolFlagString(noDesiredPeerKnown)}{nameof(noDesiredPeerKnown)} && " +
-                              $"{GetBoolFlagString(postPivotPeerAvailable)}{nameof(postPivotPeerAvailable)} && " +
-                              $"{GetBoolFlagString(hasFastSyncBeenActive)}{nameof(hasFastSyncBeenActive)} && " +
-                              $"{GetBoolFlagString(notInBeamSync)}{nameof(notInBeamSync)} && " +
-                              $"{GetBoolFlagString(notInFastSync)}{nameof(notInFastSync)} && " +
-                              $"{GetBoolFlagString(notInStateSync)}{nameof(notInStateSync)} " +
-                              $"== {result}");
+                LogDetailedSyncModeChecks("WAITING FOR BLOCK",
+                        (nameof(noDesiredPeerKnown), noDesiredPeerKnown),
+                        (nameof(postPivotPeerAvailable),postPivotPeerAvailable),
+                        (nameof(hasFastSyncBeenActive),hasFastSyncBeenActive),
+                        (nameof(notInBeamSync), notInBeamSync),
+                        (nameof(notInFastSync), notInFastSync),
+                        (nameof(notInStateSync), notInStateSync));
             }
 
             return result;
@@ -310,13 +310,11 @@ namespace Nethermind.Synchronization.ParallelSync
 
             if (_logger.IsTrace)
             {
-                _logger.Trace("FAST: " +
-                              $"{GetBoolFlagString(postPivotPeerAvailable)}{nameof(postPivotPeerAvailable)} && " +
-                              $"{GetBoolFlagString(heightDeltaGreaterThanLag)}{nameof(heightDeltaGreaterThanLag)} && " +
-                              $"{GetBoolFlagString(notInAStickyFullSync)}{nameof(notInAStickyFullSync)} && " +
-                              $"{GetBoolFlagString(notHasJustStartedFullSync)}{nameof(notHasJustStartedFullSync)} " +
-                              $"== {result}");
-
+                LogDetailedSyncModeChecks("FAST",
+                    (nameof(postPivotPeerAvailable), postPivotPeerAvailable),
+                    (nameof(heightDeltaGreaterThanLag), heightDeltaGreaterThanLag),
+                    (nameof(notInAStickyFullSync), notInAStickyFullSync),
+                    (nameof(notHasJustStartedFullSync), notHasJustStartedFullSync));
             }
 
             return result;
@@ -340,14 +338,13 @@ namespace Nethermind.Synchronization.ParallelSync
 
             if (_logger.IsTrace)
             {
-                _logger.Trace("FULL: " +
-                              $"{GetBoolFlagString(desiredPeerKnown)}{nameof(desiredPeerKnown)} && " +
-                              $"{GetBoolFlagString(postPivotPeerAvailable)}{nameof(postPivotPeerAvailable)} && " +
-                              $"{GetBoolFlagString(hasFastSyncBeenActive)}{nameof(hasFastSyncBeenActive)} && " +
-                              $"{GetBoolFlagString(notInBeamSync)}{nameof(notInBeamSync)} && " +
-                              $"{GetBoolFlagString(notInFastSync)}{nameof(notInFastSync)} && " +
-                              $"{GetBoolFlagString(notInStateSync)}{nameof(notInStateSync)} " +
-                              $"== {result}");
+                LogDetailedSyncModeChecks("FULL",
+                    (nameof(desiredPeerKnown), desiredPeerKnown),
+                    (nameof(postPivotPeerAvailable), postPivotPeerAvailable),
+                    (nameof(hasFastSyncBeenActive), hasFastSyncBeenActive),
+                    (nameof(notInBeamSync), notInBeamSync),
+                    (nameof(notInFastSync), notInFastSync),
+                    (nameof(notInStateSync), notInStateSync));
             }
 
             return result;
@@ -360,9 +357,8 @@ namespace Nethermind.Synchronization.ParallelSync
 
             if (_logger.IsTrace)
             {
-                _logger.Trace("HEADERS: " +
-                              $"{GetBoolFlagString(fastBlocksHeadersNotFinished)}{nameof(fastBlocksHeadersNotFinished)} " +
-                              $"== {fastBlocksHeadersNotFinished}");
+                LogDetailedSyncModeChecks("HEADERS",
+                    (nameof(fastBlocksHeadersNotFinished), fastBlocksHeadersNotFinished));
             }
 
             // this is really the only condition - fast blocks headers can always run if there are peers until it is done
@@ -383,12 +379,11 @@ namespace Nethermind.Synchronization.ParallelSync
 
             if (_logger.IsTrace)
             {
-                _logger.Trace("BODIES: " +
-                              $"{GetBoolFlagString(fastBodiesNotFinished)}{nameof(fastBodiesNotFinished)} && " +
-                              $"{GetBoolFlagString(fastHeadersFinished)}{nameof(fastHeadersFinished)} && " +
-                              $"{GetBoolFlagString(notInStateSync)}{nameof(notInStateSync)} && " +
-                              $"{GetBoolFlagString(stateSyncFinished)}{nameof(stateSyncFinished)} " +
-                              $"== {result}");
+                LogDetailedSyncModeChecks("BODIES",
+                    (nameof(fastBodiesNotFinished), fastBodiesNotFinished),
+                    (nameof(fastHeadersFinished), fastHeadersFinished),
+                    (nameof(notInStateSync), notInStateSync),
+                    (nameof(stateSyncFinished), stateSyncFinished));
             }
 
             return result;
@@ -404,20 +399,19 @@ namespace Nethermind.Synchronization.ParallelSync
             // fast blocks receipts can run if there are peers until it is done
             // fast blocks receipts can run in parallel with full sync when bodies are finished
             bool result = fastReceiptsNotFinished && fastBodiesFinished && notInStateSync && stateSyncFinished;
-
+            
             if (_logger.IsTrace)
             {
-                _logger.Trace("RECEIPTS: " +
-                              $"{GetBoolFlagString(fastReceiptsNotFinished)}{nameof(fastReceiptsNotFinished)} && " +
-                              $"{GetBoolFlagString(fastBodiesFinished)}{nameof(fastBodiesFinished)} && " +
-                              $"{GetBoolFlagString(notInStateSync)}{nameof(notInStateSync)} && " +
-                              $"{GetBoolFlagString(stateSyncFinished)}{nameof(stateSyncFinished)} " +
-                              $"== {result}");
+                LogDetailedSyncModeChecks("RECEIPTS",
+                    (nameof(fastReceiptsNotFinished), fastReceiptsNotFinished),
+                    (nameof(fastBodiesFinished), fastBodiesFinished),
+                    (nameof(notInStateSync), notInStateSync),
+                    (nameof(stateSyncFinished), stateSyncFinished));
             }
 
             // fast blocks receipts can run if there are peers until it is done
             // fast blocks receipts can run in parallel with full sync when bodies are finished
-            return fastReceiptsNotFinished && fastBodiesFinished && notInStateSync && stateSyncFinished;
+            return result;
         }
 
         private bool ShouldBeInDisconnectedMode(Snapshot best)
@@ -452,18 +446,17 @@ namespace Nethermind.Synchronization.ParallelSync
                           stateNotDownloadedYet &&
                           notHasJustStartedFullSync &&
                           notInAStickyFullSync;
-
+            
             if (_logger.IsTrace)
             {
-                _logger.Trace("STATE: " +
-                              $"{GetBoolFlagString(fastSyncEnabled)}{nameof(fastSyncEnabled)} && " +
-                              $"{GetBoolFlagString(hasFastSyncBeenActive)}{nameof(hasFastSyncBeenActive)} && " +
-                              $"{GetBoolFlagString(hasAnyPostPivotPeer)}{nameof(hasAnyPostPivotPeer)} && " +
-                              $"{GetBoolFlagString(notInFastSync)}{nameof(notInFastSync)} && " +
-                              $"{GetBoolFlagString(stateNotDownloadedYet)}{nameof(stateNotDownloadedYet)} && " +
-                              $"{GetBoolFlagString(notInAStickyFullSync)}{nameof(notInAStickyFullSync)} && " +
-                              $"{GetBoolFlagString(notHasJustStartedFullSync)}{nameof(notHasJustStartedFullSync)} " +
-                              $"== {result}");
+                LogDetailedSyncModeChecks("STATE",
+                    (nameof(fastSyncEnabled), fastSyncEnabled),
+                    (nameof(hasFastSyncBeenActive), hasFastSyncBeenActive),
+                    (nameof(hasAnyPostPivotPeer), hasAnyPostPivotPeer),
+                    (nameof(notInFastSync), notInFastSync),
+                    (nameof(stateNotDownloadedYet), stateNotDownloadedYet),
+                    (nameof(notInAStickyFullSync), notInAStickyFullSync),
+                    (nameof(notHasJustStartedFullSync), notHasJustStartedFullSync));
             }
 
             return result;
@@ -479,10 +472,9 @@ namespace Nethermind.Synchronization.ParallelSync
 
             if (_logger.IsTrace)
             {
-                _logger.Trace("BEAM: " +
-                              $"{GetBoolFlagString(beamSyncEnabled)}{nameof(beamSyncEnabled)} && " +
-                              $"{GetBoolFlagString(isInStateSync)}{nameof(isInStateSync)} " +
-                              $"== {result}");
+                LogDetailedSyncModeChecks("BEAM",
+                    (nameof(beamSyncEnabled), beamSyncEnabled),
+                    (nameof(isInStateSync), isInStateSync));
             }
 
             return result;
@@ -579,6 +571,28 @@ namespace Nethermind.Synchronization.ParallelSync
         }
 
         private string GetBoolFlagString(in bool flag) => flag ? string.Empty : "!";
+
+        private void LogDetailedSyncModeChecks(string syncType, params (string Name, bool IsFailed)[] checks)
+        {
+            List<string> matched = new();
+            List<string> failed = new();
+
+            foreach ((string Name, bool IsFailed) check in checks)
+            {
+                if (check.IsFailed)
+                {
+                    failed.Add(check.Name);
+                }
+                else
+                {
+                    matched.Add(check.Name);
+                }
+            }
+
+            bool result = checks.All(c => !c.IsFailed);
+            _logger.Trace(
+                $"{(result ? " * " : "   ")}{syncType.PadRight(20)}: yes({string.Join(',', matched)}), no({string.Join(',', failed)})");
+        }
 
         public event EventHandler<SyncModeChangedEventArgs>? Preparing;
         public event EventHandler<SyncModeChangedEventArgs>? Changing;
