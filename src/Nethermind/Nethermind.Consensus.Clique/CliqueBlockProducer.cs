@@ -55,10 +55,10 @@ namespace Nethermind.Consensus.Clique
         private readonly ISnapshotManager _snapshotManager;
         private readonly ICliqueConfig _config;
 
-        private readonly ConcurrentDictionary<Address, bool> _proposals = new ConcurrentDictionary<Address, bool>();
+        private readonly ConcurrentDictionary<Address, bool> _proposals = new();
 
-        private readonly CancellationTokenSource _cancellationTokenSource = new CancellationTokenSource();
-        private readonly System.Timers.Timer _timer = new System.Timers.Timer();
+        private readonly CancellationTokenSource _cancellationTokenSource = new();
+        private readonly System.Timers.Timer _timer = new();
         private DateTime _lastProducedBlock;
 
         public CliqueBlockProducer(
@@ -96,7 +96,7 @@ namespace Nethermind.Consensus.Clique
         }
 
         private readonly BlockingCollection<Block> _signalsQueue =
-            new BlockingCollection<Block>(new ConcurrentQueue<Block>());
+            new(new ConcurrentQueue<Block>());
 
         private Block? _scheduledBlock;
 
@@ -254,9 +254,11 @@ namespace Nethermind.Consensus.Clique
                     }
 
                     if (_logger.IsInfo) _logger.Info($"Processing prepared block {block.Number}");
-                    Block processedBlock = _processor.Process(block, ProcessingOptions.ProducingBlock,
+                    Block? processedBlock = _processor.Process(
+                        block,
+                        ProcessingOptions.ProducingBlock,
                         NullBlockTracer.Instance);
-                    if (processedBlock == null)
+                    if (processedBlock is null)
                     {
                         if (_logger.IsInfo) _logger.Info($"Prepared block has lost the race");
                         Metrics.FailedBlockSeals++;
@@ -330,11 +332,10 @@ namespace Nethermind.Consensus.Clique
         private Block? PrepareBlock(Block parentBlock)
         {
             BlockHeader parentHeader = parentBlock.Header;
-            if (parentHeader == null)
+            if (parentHeader.Hash == null)
             {
-                if (_logger.IsError)
-                    _logger.Error(
-                        $"Preparing new block on top of {parentBlock.ToString(Block.Format.Short)} - parent header is null");
+                if (_logger.IsError) _logger.Error(
+                    $"Preparing new block on top of {parentHeader.ToString(BlockHeader.Format.Short)} - parent header hash is null");
                 return null;
             }
 
@@ -355,8 +356,8 @@ namespace Nethermind.Consensus.Clique
 
             UInt256 timestamp = _timestamper.UnixTime.Seconds;
 
-            BlockHeader header = new BlockHeader(
-                parentBlock.Hash,
+            BlockHeader header = new (
+                parentHeader.Hash,
                 Keccak.OfAnEmptySequenceRlp,
                 Address.Zero,
                 1,
@@ -368,12 +369,12 @@ namespace Nethermind.Consensus.Clique
             // If the block isn't a checkpoint, cast a random vote (good enough for now)
             long number = header.Number;
             // Assemble the voting snapshot to check which votes make sense
-            Snapshot snapshot = _snapshotManager.GetOrCreateSnapshot(number - 1, header.ParentHash);
+            Snapshot snapshot = _snapshotManager.GetOrCreateSnapshot(number - 1, parentHeader.Hash);
             bool isEpochBlock = (ulong)number % 30000 == 0;
             if (!isEpochBlock && _proposals.Any())
             {
                 // Gather all the proposals that make sense voting on
-                List<Address> addresses = new List<Address>();
+                List<Address> addresses = new();
                 foreach (var proposal in _proposals)
                 {
                     Address address = proposal.Key;
@@ -407,6 +408,7 @@ namespace Nethermind.Consensus.Clique
             int signerBytesLength = isEpochBlock ? 20 * snapshot.Signers.Count : 0;
             int extraDataLength = mainBytesLength + signerBytesLength;
             header.ExtraData = new byte[extraDataLength];
+            header.Bloom = Bloom.Empty;
 
             byte[] clientName = Encoding.UTF8.GetBytes("Nethermind " + ClientVersion.Version);
             Array.Copy(clientName, header.ExtraData, clientName.Length);
@@ -433,7 +435,7 @@ namespace Nethermind.Consensus.Clique
             _stateProvider.StateRoot = parentHeader.StateRoot;
 
             var selectedTxs = _txSource.GetTransactions(parentBlock.Header, header.GasLimit);
-            Block block = new Block(header, selectedTxs, Array.Empty<BlockHeader>());
+            Block block = new(header, selectedTxs, Array.Empty<BlockHeader>());
             header.TxRoot = new TxTrie(block.Transactions).RootHash;
             block.Header.Author = _sealer.Address;
             return block;
