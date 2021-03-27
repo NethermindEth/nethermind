@@ -152,7 +152,7 @@ namespace Nethermind.Synchronization.FastSync
             string detailsString = string.Empty;
             if (_logger.IsInfo)
             {
-                StringBuilder builder = new StringBuilder();
+                StringBuilder builder = new();
                 for (int i = 0; i < _syncProgress.Length; i++)
                 {
                     if (i % 64 == 0)

@@ -39,7 +39,7 @@ namespace Nethermind.AuRa.Test.Reward
         private IAbiEncoder _abiEncoder;
         private ITransactionProcessor _transactionProcessor;
         private Block _block;
-        private readonly byte[] _rewardData = new byte[] {3, 4, 5};
+        private readonly byte[] _rewardData = {3, 4, 5};
         private Address _address10;
         private Address _address50;
         private Address _address150;
@@ -106,8 +106,8 @@ namespace Nethermind.AuRa.Test.Reward
         public void calculates_rewards_correctly_before_contract_transition(long blockNumber, ulong expectedReward)
         {
             _block.Header.Number = blockNumber;
-            var calculator = new AuRaRewardCalculator(_auraParameters, _abiEncoder, _transactionProcessor);
-            var result =  calculator.CalculateRewards(_block);
+            AuRaRewardCalculator calculator = new(_auraParameters, _abiEncoder, _transactionProcessor);
+            BlockReward[] result =  calculator.CalculateRewards(_block);
             result.Should().BeEquivalentTo(new BlockReward(_block.Beneficiary, expectedReward));
         }
         
@@ -115,8 +115,8 @@ namespace Nethermind.AuRa.Test.Reward
         public void calculates_rewards_correctly_for_genesis()
         {
             _block.Header.Number = 0;
-            var calculator = new AuRaRewardCalculator(_auraParameters, _abiEncoder, _transactionProcessor);
-            var result =  calculator.CalculateRewards(_block);
+            AuRaRewardCalculator calculator = new(_auraParameters, _abiEncoder, _transactionProcessor);
+            BlockReward[] result =  calculator.CalculateRewards(_block);
             result.Should().BeEmpty();
         }
         
@@ -125,10 +125,10 @@ namespace Nethermind.AuRa.Test.Reward
         public void calculates_rewards_correctly_after_contract_transition(long blockNumber, ulong expectedReward)
         {
             _block.Header.Number = blockNumber;
-            var expected = new BlockReward(_block.Beneficiary, expectedReward, BlockRewardType.External);
+            BlockReward expected = new(_block.Beneficiary, expectedReward, BlockRewardType.External);
             SetupBlockRewards(new Dictionary<Address, BlockReward[]>() {{_address10, new[] {expected}}});
-            var calculator = new AuRaRewardCalculator(_auraParameters, _abiEncoder, _transactionProcessor);
-            var result =  calculator.CalculateRewards(_block);            
+            AuRaRewardCalculator calculator = new(_auraParameters, _abiEncoder, _transactionProcessor);
+            BlockReward[] result =  calculator.CalculateRewards(_block);            
             result.Should().BeEquivalentTo(expected);
         }
 
@@ -151,10 +151,10 @@ namespace Nethermind.AuRa.Test.Reward
                 {150, _address150}
             };
             _block.Header.Number = blockNumber;
-            var expected = new BlockReward(_block.Beneficiary, expectedReward, BlockRewardType.External);
+            BlockReward expected = new(_block.Beneficiary, expectedReward, BlockRewardType.External);
             SetupBlockRewards(new Dictionary<Address, BlockReward[]>() {{address, new[] {expected}}});
-            var calculator = new AuRaRewardCalculator(_auraParameters, _abiEncoder, _transactionProcessor);
-            var result =  calculator.CalculateRewards(_block);            
+            AuRaRewardCalculator calculator = new(_auraParameters, _abiEncoder, _transactionProcessor);
+            BlockReward[] result =  calculator.CalculateRewards(_block);            
             result.Should().BeEquivalentTo(expected);
         }
         
@@ -163,22 +163,21 @@ namespace Nethermind.AuRa.Test.Reward
         public void calculates_rewards_correctly_for_ommers(long blockNumber, ulong expectedReward)
         {
             _block.Header.Number = blockNumber;
-            _block.Body = new BlockBody(_block.Body.Transactions, new[]
+            _block = _block.WithReplacedBody(new BlockBody(_block.Body.Transactions, new[]
             {
                  Build.A.BlockHeader.WithBeneficiary(TestItem.AddressB).WithNumber(blockNumber - 1).TestObject,
                  Build.A.BlockHeader.WithBeneficiary(TestItem.AddressD).WithNumber(blockNumber - 2).TestObject
-            });
+            }));
             
-            var expected = new BlockReward[]
-            {
-                new BlockReward(_block.Beneficiary, expectedReward, BlockRewardType.External),
-                new BlockReward(_block.Body.Ommers[0].Beneficiary, expectedReward, BlockRewardType.External),
-                new BlockReward(_block.Body.Ommers[1].Beneficiary, expectedReward, BlockRewardType.External),
+            BlockReward[] expected = {
+                new(_block.Beneficiary, expectedReward, BlockRewardType.External),
+                new(_block.Body.Ommers[0].Beneficiary, expectedReward, BlockRewardType.External),
+                new(_block.Body.Ommers[1].Beneficiary, expectedReward, BlockRewardType.External),
             };
             
             SetupBlockRewards(new Dictionary<Address, BlockReward[]>() {{_address10, expected}});
-            var calculator = new AuRaRewardCalculator(_auraParameters, _abiEncoder, _transactionProcessor);
-            var result =  calculator.CalculateRewards(_block);            
+            AuRaRewardCalculator calculator = new(_auraParameters, _abiEncoder, _transactionProcessor);
+            BlockReward[] result =  calculator.CalculateRewards(_block);            
             result.Should().BeEquivalentTo(expected);
         }
         
@@ -186,23 +185,22 @@ namespace Nethermind.AuRa.Test.Reward
         public void calculates_rewards_correctly_for_external_addresses()
         {
             _block.Header.Number = 10;
-            _block.Body = new BlockBody(_block.Body.Transactions, new[]
+            _block = _block.WithReplacedBody(new BlockBody(_block.Body.Transactions, new[]
             {
                  Build.A.BlockHeader.WithBeneficiary(TestItem.Addresses[0]).WithNumber(9).TestObject,
                  Build.A.BlockHeader.WithBeneficiary(TestItem.Addresses[1]).WithNumber(8).TestObject
-            });
+            }));
             
-            var expected = new BlockReward[]
-            {
-                new BlockReward(TestItem.AddressA, 1, BlockRewardType.External),
-                new BlockReward(TestItem.AddressB, 3, BlockRewardType.External),
-                new BlockReward(TestItem.AddressC, 5, BlockRewardType.External),
-                new BlockReward(TestItem.AddressD, 8, BlockRewardType.External),
+            BlockReward[] expected = {
+                new(TestItem.AddressA, 1, BlockRewardType.External),
+                new(TestItem.AddressB, 3, BlockRewardType.External),
+                new(TestItem.AddressC, 5, BlockRewardType.External),
+                new(TestItem.AddressD, 8, BlockRewardType.External),
             };
             
             SetupBlockRewards(new Dictionary<Address, BlockReward[]>() {{_address10, expected}});
-            var calculator = new AuRaRewardCalculator(_auraParameters, _abiEncoder, _transactionProcessor);
-            var result =  calculator.CalculateRewards(_block);            
+            AuRaRewardCalculator calculator = new(_auraParameters, _abiEncoder, _transactionProcessor);
+            BlockReward[] result =  calculator.CalculateRewards(_block);            
             result.Should().BeEquivalentTo(expected);
         }
         
@@ -214,7 +212,7 @@ namespace Nethermind.AuRa.Test.Reward
                     Arg.Is<ITxTracer>(t => t is CallOutputTracer)))
                 .Do(args =>
                 {
-                    var recipient = args.Arg<Transaction>().To;
+                    Address? recipient = args.Arg<Transaction>().To;
                     args.Arg<ITxTracer>().MarkAsSuccess(
                         recipient,
                         0,

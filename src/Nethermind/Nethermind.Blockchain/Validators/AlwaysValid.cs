@@ -22,7 +22,7 @@ using Nethermind.TxPool;
 
 namespace Nethermind.Blockchain.Validators
 {
-    public class Always : IBlockValidator, IHeaderValidator, ISealValidator, IOmmersValidator, ITxValidator
+    public class Always : IBlockValidator, ISealValidator, IOmmersValidator, ITxValidator
     {
         private readonly bool _result;
 
@@ -31,11 +31,13 @@ namespace Nethermind.Blockchain.Validators
             _result = result;
         }
         
+        // ReSharper disable once NotNullMemberIsNotInitialized
         private static Always _valid;
 
         public static Always Valid
             => LazyInitializer.EnsureInitialized(ref _valid, () => new Always(true));
         
+        // ReSharper disable once NotNullMemberIsNotInitialized
         private static Always _invalid;
         
         public static Always Invalid
@@ -52,16 +54,6 @@ namespace Nethermind.Blockchain.Validators
         }
 
         public bool Validate(BlockHeader blockHeader, bool isOmmer = false)
-        {
-            return _result;
-        }
-
-        public bool ValidateHeader(BlockHeader header, BlockHeader parent, bool isOmmer)
-        {
-            return _result;
-        }
-
-        public bool ValidateHeader(BlockHeader header, bool isOmmer)
         {
             return _result;
         }
