@@ -138,7 +138,7 @@ namespace Nethermind.Blockchain.Test.TxPools
         
         private Block GetBlock(Transaction transaction) =>
             Build.A.Block.WithNumber(0)
-                .WithTransactions(_useEip2718 ? Berlin.Instance : MuirGlacier.Instance, transaction)
+                .WithTransactions(transaction)
                 .WithReceiptsRoot(TestItem.KeccakA).TestObject;
     }
 }

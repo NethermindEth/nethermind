@@ -1112,9 +1112,7 @@ namespace Nethermind.Synchronization.Test
 
                         if (withTransactions && header.ReceiptsRoot != Keccak.EmptyTreeHash)
                         {
-                            blockBuilder.WithTransactions(
-                                MuirGlacier.Instance,
-                                Build.A.Transaction.WithValue(i * 2).SignedAndResolved().TestObject,
+                            blockBuilder.WithTransactions(Build.A.Transaction.WithValue(i * 2).SignedAndResolved().TestObject,
                                 Build.A.Transaction.WithValue(i * 2 + 1).SignedAndResolved().TestObject);
                         }
 

@@ -1357,8 +1357,8 @@ namespace Nethermind.Blockchain.Test
             BlockTree blockTree = new BlockTree(blocksDb, headersDb, blockInfosDb, new ChainLevelInfoRepository(blockInfosDb), OlympicSpecProvider.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
             new OnChainTxWatcher(blockTree, txPoolMock, OlympicSpecProvider.Instance, LimboLogs.Instance);
             Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).WithGasLimit(100).TestObject;
-            Block block1A = Build.A.Block.WithNumber(1).WithDifficulty(2).WithGasLimit(100).WithTransactions(MuirGlacier.Instance, t1).WithParent(block0).TestObject;
-            Block block1B = Build.A.Block.WithNumber(1).WithDifficulty(3).WithGasLimit(100).WithTransactions(MuirGlacier.Instance, t2).WithParent(block0).TestObject;
+            Block block1A = Build.A.Block.WithNumber(1).WithDifficulty(2).WithGasLimit(100).WithTransactions(t1).WithParent(block0).TestObject;
+            Block block1B = Build.A.Block.WithNumber(1).WithDifficulty(3).WithGasLimit(100).WithTransactions(t2).WithParent(block0).TestObject;
 
             AddToMain(blockTree, block0);
 
@@ -1388,8 +1388,8 @@ namespace Nethermind.Blockchain.Test
             BlockTree blockTree = new BlockTree(blocksDb, headersDb, blockInfosDb, new ChainLevelInfoRepository(blockInfosDb), specProvider, NullBloomStorage.Instance, LimboLogs.Instance);
             new OnChainTxWatcher(blockTree, txPoolMock, specProvider, LimboLogs.Instance);
             Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
-            Block block1A = Build.A.Block.WithNumber(1).WithDifficulty(2).WithTransactions(MuirGlacier.Instance, t1).WithParent(block0).TestObject;
-            Block block1B = Build.A.Block.WithNumber(1).WithDifficulty(3).WithTransactions(MuirGlacier.Instance, t2).WithParent(block0).TestObject;
+            Block block1A = Build.A.Block.WithNumber(1).WithDifficulty(2).WithTransactions(t1).WithParent(block0).TestObject;
+            Block block1B = Build.A.Block.WithNumber(1).WithDifficulty(3).WithTransactions(t2).WithParent(block0).TestObject;
 
             AddToMain(blockTree, block0);
 
@@ -1416,8 +1416,8 @@ namespace Nethermind.Blockchain.Test
             var bloomStorage = Substitute.For<IBloomStorage>();
             BlockTree blockTree = new BlockTree(blocksDb, headersDb, blockInfosDb, new ChainLevelInfoRepository(blockInfosDb), OlympicSpecProvider.Instance, bloomStorage, LimboLogs.Instance);
             Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
-            Block block1A = Build.A.Block.WithNumber(1).WithDifficulty(2).WithTransactions(MuirGlacier.Instance, t1).WithParent(block0).TestObject;
-            Block block1B = Build.A.Block.WithNumber(1).WithDifficulty(3).WithTransactions(MuirGlacier.Instance, t2).WithParent(block0).TestObject;
+            Block block1A = Build.A.Block.WithNumber(1).WithDifficulty(2).WithTransactions(t1).WithParent(block0).TestObject;
+            Block block1B = Build.A.Block.WithNumber(1).WithDifficulty(3).WithTransactions(t2).WithParent(block0).TestObject;
 
             AddToMain(blockTree, block0);
 

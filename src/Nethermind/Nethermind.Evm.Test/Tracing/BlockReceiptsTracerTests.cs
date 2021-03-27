@@ -31,7 +31,7 @@ namespace Nethermind.Evm.Test.Tracing
         [Test]
         public void Sets_state_root_if_provided_on_success()
         {
-            Block block = Build.A.Block.WithTransactions(MuirGlacier.Instance, Build.A.Transaction.TestObject).TestObject;
+            Block block = Build.A.Block.WithTransactions(Build.A.Transaction.TestObject).TestObject;
             
             BlockReceiptsTracer tracer = new();
             tracer.SetOtherTracer(NullBlockTracer.Instance);
@@ -45,7 +45,7 @@ namespace Nethermind.Evm.Test.Tracing
         [Test]
         public void Sets_tx_type()
         {
-            Block block = Build.A.Block.WithTransactions(MuirGlacier.Instance, Build.A.Transaction.WithChainId(1).WithType(TxType.AccessList).TestObject).TestObject;
+            Block block = Build.A.Block.WithTransactions(Build.A.Transaction.WithChainId(1).WithType(TxType.AccessList).TestObject).TestObject;
             
             BlockReceiptsTracer tracer = new();
             tracer.SetOtherTracer(NullBlockTracer.Instance);
@@ -59,7 +59,7 @@ namespace Nethermind.Evm.Test.Tracing
         [Test]
         public void Sets_state_root_if_provided_on_failure()
         {
-            Block block = Build.A.Block.WithTransactions(MuirGlacier.Instance, Build.A.Transaction.TestObject).TestObject;
+            Block block = Build.A.Block.WithTransactions(Build.A.Transaction.TestObject).TestObject;
             
             BlockReceiptsTracer tracer = new();
             tracer.SetOtherTracer(NullBlockTracer.Instance);
@@ -73,7 +73,7 @@ namespace Nethermind.Evm.Test.Tracing
         [Test]
         public void Invokes_other_tracer_mark_as_failed_if_other_block_tracer_is_tx_tracer_too()
         {
-            Block block = Build.A.Block.WithTransactions(MuirGlacier.Instance, Build.A.Transaction.TestObject).TestObject;
+            Block block = Build.A.Block.WithTransactions(Build.A.Transaction.TestObject).TestObject;
             
             IBlockTracer otherTracer = Substitute.For<IBlockTracer, ITxTracer>();
             BlockReceiptsTracer tracer = new();
@@ -88,7 +88,7 @@ namespace Nethermind.Evm.Test.Tracing
         [Test]
         public void Invokes_other_tracer_mark_as_success_if_other_block_tracer_is_tx_tracer_too()
         {
-            Block block = Build.A.Block.WithTransactions(MuirGlacier.Instance, Build.A.Transaction.TestObject).TestObject;
+            Block block = Build.A.Block.WithTransactions(Build.A.Transaction.TestObject).TestObject;
             
             IBlockTracer otherTracer = Substitute.For<IBlockTracer, ITxTracer>();
             BlockReceiptsTracer tracer = new();
