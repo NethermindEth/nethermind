@@ -24,15 +24,15 @@ namespace Nethermind.Synchronization.Reporting
         {
         }
         
-        public static NullSyncReport Instance = new NullSyncReport(); 
+        public static NullSyncReport Instance = new(); 
 
-        public MeasuredProgress FullSyncBlocksDownloaded { get; } = new MeasuredProgress();
+        public MeasuredProgress FullSyncBlocksDownloaded { get; } = new();
         public long FullSyncBlocksKnown { get; set; }
-        public MeasuredProgress HeadersInQueue { get; } = new MeasuredProgress();
-        public MeasuredProgress BodiesInQueue { get; } = new MeasuredProgress();
-        public MeasuredProgress ReceiptsInQueue { get; } = new MeasuredProgress();
-        public MeasuredProgress FastBlocksHeaders { get; } = new MeasuredProgress();
-        public MeasuredProgress FastBlocksBodies { get; } = new MeasuredProgress();
-        public MeasuredProgress FastBlocksReceipts { get; } = new MeasuredProgress();
+        public MeasuredProgress HeadersInQueue { get; } = new();
+        public MeasuredProgress BodiesInQueue { get; } = new();
+        public MeasuredProgress ReceiptsInQueue { get; } = new();
+        public MeasuredProgress FastBlocksHeaders { get; } = new();
+        public MeasuredProgress FastBlocksBodies { get; } = new();
+        public MeasuredProgress FastBlocksReceipts { get; } = new();
     }
 }

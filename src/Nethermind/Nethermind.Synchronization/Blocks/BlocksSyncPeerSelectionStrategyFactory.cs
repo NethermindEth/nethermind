@@ -32,7 +32,7 @@ namespace Nethermind.Synchronization.Blocks
             }
             
             IPeerAllocationStrategy baseStrategy = new BlocksSyncPeerAllocationStrategy(request.NumberOfLatestBlocksToBeIgnored);
-            TotalDiffStrategy totalDiffStrategy = new TotalDiffStrategy(baseStrategy);
+            TotalDiffStrategy totalDiffStrategy = new(baseStrategy);
             return totalDiffStrategy;
         }
     }

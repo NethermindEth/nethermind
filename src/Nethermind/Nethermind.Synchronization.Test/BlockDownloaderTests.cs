@@ -403,13 +403,13 @@ namespace Nethermind.Synchronization.Test
                 return true;
             }
 
-            public bool ValidateHeader(BlockHeader header, BlockHeader parent, bool isOmmer)
+            public bool Validate(BlockHeader header, BlockHeader parent, bool isOmmer)
             {
                 Thread.Sleep(1000);
                 return true;
             }
 
-            public bool ValidateHeader(BlockHeader header, bool isOmmer)
+            public bool Validate(BlockHeader header, bool isOmmer)
             {
                 Thread.Sleep(1000);
                 return true;

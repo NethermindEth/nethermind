@@ -81,7 +81,7 @@ namespace Nethermind.Synchronization.ParallelSync
 
         private Timer StartUpdateTimer()
         {
-            Timer timer = new Timer();
+            Timer timer = new();
             timer.Interval = 1000;
             timer.AutoReset = false;
             timer.Elapsed += TimerOnElapsed;
@@ -206,7 +206,7 @@ namespace Nethermind.Synchronization.ParallelSync
 
             SyncMode previous = Current;
 
-            SyncModeChangedEventArgs args = new SyncModeChangedEventArgs(previous, newModes);
+            SyncModeChangedEventArgs args = new(previous, newModes);
 
             // Changing is invoked here so we can block until all the subsystems are ready to switch
             // for example when switching to Full sync we need to ensure that we safely transition
@@ -493,7 +493,7 @@ namespace Nethermind.Synchronization.ParallelSync
             if (anyDesiredPeerKnown)
             {
                 if (_logger.IsTrace)
-                    _logger.Trace($"Best peer [{best.PeerBlock},{best.PeerDifficulty}] " +
+                    _logger.Trace($"   Best peer [{best.PeerBlock},{best.PeerDifficulty}] " +
                                   $"> local [{best.Header},{localChainDifficulty}]");
             }
 
@@ -539,7 +539,7 @@ namespace Nethermind.Synchronization.ParallelSync
             long block = _syncProgressResolver.FindBestFullBlock();
             long header = _syncProgressResolver.FindBestHeader();
 
-            Snapshot best = new Snapshot(processed, state, block, header, peerBlock, peerDifficulty);
+            Snapshot best = new(processed, state, block, header, peerBlock, peerDifficulty);
             VerifySnapshot(best);
             return best;
         }
@@ -591,7 +591,7 @@ namespace Nethermind.Synchronization.ParallelSync
 
             bool result = checks.All(c => c.IsSatisfied);
             _logger.Trace(
-                $"{(result ? " * " : "   ")}{syncType.PadRight(20)}: yes({string.Join(',', matched)}), no({string.Join(',', failed)})");
+                $"{(result ? " * " : "   ")}{syncType.PadRight(20)}: yes({string.Join(", ", matched)}), no({string.Join(", ", failed)})");
         }
 
         public event EventHandler<SyncModeChangedEventArgs>? Preparing;
