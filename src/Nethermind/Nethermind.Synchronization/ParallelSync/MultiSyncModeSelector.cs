@@ -572,24 +572,24 @@ namespace Nethermind.Synchronization.ParallelSync
 
         private string GetBoolFlagString(in bool flag) => flag ? string.Empty : "!";
 
-        private void LogDetailedSyncModeChecks(string syncType, params (string Name, bool IsFailed)[] checks)
+        private void LogDetailedSyncModeChecks(string syncType, params (string Name, bool IsSatisfied)[] checks)
         {
             List<string> matched = new();
             List<string> failed = new();
 
-            foreach ((string Name, bool IsFailed) check in checks)
+            foreach ((string Name, bool IsSatisfied) check in checks)
             {
-                if (check.IsFailed)
-                {
-                    failed.Add(check.Name);
-                }
-                else
+                if (check.IsSatisfied)
                 {
                     matched.Add(check.Name);
                 }
+                else
+                {
+                    failed.Add(check.Name);
+                }
             }
 
-            bool result = checks.All(c => !c.IsFailed);
+            bool result = checks.All(c => c.IsSatisfied);
             _logger.Trace(
                 $"{(result ? " * " : "   ")}{syncType.PadRight(20)}: yes({string.Join(',', matched)}), no({string.Join(',', failed)})");
         }
