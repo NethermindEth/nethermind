@@ -16,6 +16,7 @@
 // 
 
 using System;
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Crypto;
 
@@ -32,7 +33,7 @@ namespace Nethermind.TxPool
             _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
         }
 
-        public virtual void Seal(Transaction tx, TxHandlingOptions txHandlingOptions)
+        public virtual ValueTask Seal(Transaction tx, TxHandlingOptions txHandlingOptions)
         {
             bool allowChangeExistingSignature = (txHandlingOptions & TxHandlingOptions.AllowReplacingSignature) == TxHandlingOptions.AllowReplacingSignature;
             if (tx.Signature == null || allowChangeExistingSignature)
@@ -42,6 +43,8 @@ namespace Nethermind.TxPool
 
             tx.Hash = tx.CalculateHash();
             tx.Timestamp = _timestamper.UnixTime.Seconds;
+            
+            return ValueTask.CompletedTask;
         }
     }
 }

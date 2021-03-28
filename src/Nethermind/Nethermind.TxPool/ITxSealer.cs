@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System.Threading.Tasks;
 using Nethermind.Core;
 
 namespace Nethermind.TxPool
@@ -24,6 +25,6 @@ namespace Nethermind.TxPool
     /// </summary>
     public interface ITxSealer
     {
-        void Seal(Transaction tx, TxHandlingOptions txHandlingOptions);
+        ValueTask Seal(Transaction tx, TxHandlingOptions txHandlingOptions);
     }
 }
