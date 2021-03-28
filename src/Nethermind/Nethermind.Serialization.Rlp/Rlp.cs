@@ -237,7 +237,7 @@ namespace Nethermind.Serialization.Rlp
             ulong chainId = 0)
         {
             bool includeSigChainIdHack = isEip155Enabled && chainId != 0 && transaction.Type == TxType.Legacy;
-            int extraItems = transaction.IsEip1559 ? 2 : 0; // 2 extra gas fields for eip-1559
+            int extraItems = transaction.IsEip1559 ? 1 : 0; // 2 extra gas fields for eip-1559
             if (!forSigning || includeSigChainIdHack)
             {
                 extraItems += 3; // sig fields
@@ -253,26 +253,30 @@ namespace Nethermind.Serialization.Rlp
 
             if (transaction.Type != TxType.Legacy)
             {
-                sequence[position++] = Encode(transaction.ChainId!.Value);
+                sequence[position++] = Encode(transaction.ChainId ?? 0);
             }
 
             sequence[position++] = Encode(transaction.Nonce);
-            sequence[position++] = Encode(transaction.IsEip1559 ? 0 : transaction.GasPrice);
+
+            if (transaction.IsEip1559)
+            {
+                sequence[position++] = Encode(transaction.GasPremium);
+                sequence[position++] = Encode(transaction.DecodedFeeCap);
+            }
+            else
+            {
+                sequence[position++] = Encode(transaction.GasPrice);
+            }
+            
             sequence[position++] = Encode(transaction.GasLimit);
             sequence[position++] = Encode(transaction.To);
             sequence[position++] = Encode(transaction.Value);
             sequence[position++] = Encode(transaction.Data);
-            if (transaction.Type == TxType.AccessList)
+            if (transaction.Type != TxType.Legacy)
             {
                 sequence[position++] = Encode(transaction.AccessList);    
             }
             
-            if (transaction.IsEip1559)
-            {
-                sequence[position++] = Encode(transaction.GasPrice);
-                sequence[position++] = Encode(transaction.DecodedFeeCap);
-            }
-
             if (forSigning)
             {
                 if (includeSigChainIdHack)

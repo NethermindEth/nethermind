@@ -419,7 +419,16 @@ namespace Nethermind.Serialization.Rlp
                     break;
             }            
             
-            if (!forSigning)
+            if (forSigning)
+            {
+                if (isEip155Enabled && chainId != 0)
+                {
+                    contentLength += Rlp.LengthOf(chainId);
+                    contentLength += 1;
+                    contentLength += 1;
+                }
+            }
+            else
             {
                 bool signatureIsNull = item.Signature == null;
                 contentLength += signatureIsNull ? 1 : Rlp.LengthOf(item.Signature.V);
