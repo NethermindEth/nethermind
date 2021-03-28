@@ -331,7 +331,7 @@ namespace Nethermind.Blockchain.Test.Producers
                 .SendEip1559Transaction(gasTarget / 2, 1.GWei(), 20.GWei())
                 .SendLegacyTransaction(gasTarget / 2, 20.GWei())
                 .AssertNewBlock(875000000)
-                .AssertNewBlock(929687500)
+                .AssertNewBlockWithIncreasedBaseFee()
                 .AssertNewBlockWithDecreasedBaseFee();
             await scenario.Finish();
         }

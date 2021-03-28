@@ -137,28 +137,23 @@ namespace Nethermind.Blockchain.Validators
             if (_logger.IsTrace) _logger.Trace($"Validating block {header.ToString(BlockHeader.Format.Short)}, extraData {header.ExtraData.ToHexString(true)}");
 
             bool baseFeeIsCorrect = true;
-
-            if (spec.IsEip1559Enabled)
+            bool isEip1559Enabled = spec.IsEip1559Enabled;
+            if (isEip1559Enabled)
             {
                 UInt256? expectedBaseFee = BlockHeader.CalculateBaseFee(parent, spec);
                 baseFeeIsCorrect = expectedBaseFee == header.BaseFee;
+                
+                // ToDo
+                // if (block.GasUsed <= Eip1559Constants.ElasticityMultiplier * block.GasLimit)
+                // {
+                //     if (_logger.IsDebug) _logger.Debug($"Invalid block ({block.ToString(Block.Format.FullHashAndNumber)}) too much gas used");
+                // }
+                //
+                // if (header.GasUsed <= block.Parparent.gas_target + parent_gas_target)
+                // {
+                //     if (_logger.IsDebug) _logger.Debug($"Invalid block ({block.ToString(Block.Format.FullHashAndNumber)}) too much gas used");
+                // }
             }
-            
-            // ToDo
-            // bool isEip1559Enabled = spec.IsEip1559Enabled;
-            // if (isEip1559Enabled)
-            // {
-            //     if (block.GasUsed <= Eip1559Constants.ElasticityMultiplier * block.GasLimit)
-            //     {
-            //         if (_logger.IsDebug) _logger.Debug($"Invalid block ({block.ToString(Block.Format.FullHashAndNumber)}) too much gas used");
-            //         return false;
-            //     }
-            // }
-            //
-            // if (header.GasUsed <= block.Parparent.gas_target + parent_gas_target)
-            // {
-            //     if (_logger.IsDebug) _logger.Debug($"Invalid block ({block.ToString(Block.Format.FullHashAndNumber)}) too much gas used");
-            // }
 
             return
                 totalDifficultyCorrect &&
