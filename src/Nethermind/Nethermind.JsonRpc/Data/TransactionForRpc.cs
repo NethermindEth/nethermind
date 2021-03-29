@@ -18,6 +18,7 @@ using System;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Newtonsoft.Json;
@@ -26,6 +27,8 @@ namespace Nethermind.JsonRpc.Data
 {
     public class TransactionForRpc
     {
+        private readonly AccessListBuilder _accessListBuilder = new();
+
         public TransactionForRpc(Transaction transaction) : this(null, null, null, transaction) { }
 
         public TransactionForRpc(Keccak? blockHash, long? blockNumber, int? txIndex, Transaction transaction)
@@ -41,7 +44,7 @@ namespace Nethermind.JsonRpc.Data
             GasPrice = transaction.GasPrice;
             Gas = transaction.GasLimit;
             Input = Data = transaction.Data;
-            Type = Convert.ToByte(transaction.Type);
+            Type = (UInt256)Convert.ToByte(transaction.Type);
             AccessList = transaction.AccessList?.Data.Select(i => new AccessListItemForRpc(i.Key, i.Value)).ToArray();
 
             Signature? signature = transaction.Signature;
@@ -103,7 +106,9 @@ namespace Nethermind.JsonRpc.Data
             tx.SenderAddress = From;
             tx.Value = Value ?? 0;
             tx.Data = Data ?? Input;
-
+            tx.Type = (TxType)(byte)Type;
+            tx.AccessList = TryGetAccessList();
+            
             return tx;
         }
 
@@ -117,8 +122,28 @@ namespace Nethermind.JsonRpc.Data
             tx.SenderAddress = From;
             tx.Value = Value ?? 0;
             tx.Data = Data ?? Input;
+            tx.Type = (TxType)(byte)Type;
+            tx.AccessList = TryGetAccessList();
 
             return tx;
+        }
+        
+        private AccessList? TryGetAccessList()
+        {
+            if (Type == 1 && AccessList != null)
+            {
+                foreach (var item in AccessList)
+                {
+                    _accessListBuilder.AddAddress(item.Address);
+                    
+                    foreach (var storageKey in item.StorageKeys)
+                    {
+                        _accessListBuilder.AddStorage(storageKey);
+                    }
+                }
+                return _accessListBuilder.ToAccessList();
+            }
+            return null;
         }
     }
 }
