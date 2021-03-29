@@ -85,7 +85,7 @@ namespace Nethermind.Stats
                     i++;
                 }
                 
-                if (_logger.IsInfo) _logger.Info($"Removed {i} node stats.");
+                if (_logger.IsDebug) _logger.Debug($"Removed {i} node stats.");
             }
         }
 
