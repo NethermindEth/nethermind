@@ -49,6 +49,24 @@ namespace Nethermind.Core.Test.Encoding
                             {Address.Zero, new HashSet<UInt256> {(UInt256)1}}
                         }, new Queue<object>(new List<object> {Address.Zero, (UInt256)1})))
                 .SignedAndResolved().TestObject, "access list");
+            yield return (Build.A.Transaction
+                .WithData(new byte[] {1, 2, 3})
+                .WithType(TxType.EIP1559)
+                .WithFeeCap(30)
+                .WithChainId(1)
+                .WithAccessList(
+                    new AccessList(
+                        new Dictionary<Address, IReadOnlySet<UInt256>>
+                        {
+                            {Address.Zero, new HashSet<UInt256> {(UInt256)1}}
+                        }, new Queue<object>(new List<object> {Address.Zero, (UInt256)1})))
+                .SignedAndResolved().TestObject, "EIP1559 - access list");
+            yield return (Build.A.Transaction
+                .WithType(TxType.EIP1559)
+                .WithFeeCap(50)
+                .WithGasPremium(10)
+                .WithChainId(0)
+                .SignedAndResolved().TestObject, "EIP 1559");
         }
 
         [TestCaseSource(nameof(TestCaseSource))]
@@ -77,6 +95,16 @@ namespace Nethermind.Core.Test.Encoding
             string ourRlpHex = ourRlpOutput.Data.AsSpan(0, incomingTxRlp.Length).ToHexString();
             ourRlpHex.Should().BeEquivalentTo(testCase.IncomingRlpHex);
         }
+        
+        // [TestCaseSource(nameof(TestCaseSource))]
+        // public void Rlp_encode_should_return_the_same_as_rlp_stream_encoding((Transaction Tx, string Description) testCase)
+        // {
+        //     Rlp rlpStreamResult = _txDecoder.Encode(testCase.Tx);
+        //     Rlp rlpResult = Rlp.Encode(testCase.Tx, true, true, testCase.Tx.ChainId ?? 0);
+        //  //   Transaction decodedRlpStream = _txDecoder.Decode(rlpStreamResult);
+        //     Assert.AreEqual(rlpResult.Bytes, rlpStreamResult.Bytes);
+        //
+        // }
 
         public static IEnumerable<(string, Keccak)> YoloV3TestCases()
         {
