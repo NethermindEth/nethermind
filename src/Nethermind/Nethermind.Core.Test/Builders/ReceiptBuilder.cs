@@ -16,6 +16,7 @@
 
 using System;
 using Nethermind.Core.Crypto;
+using Nethermind.Int256;
 
 namespace Nethermind.Core.Test.Builders
 {
@@ -64,6 +65,12 @@ namespace Nethermind.Core.Test.Builders
         public ReceiptBuilder WithTransactionHash(Keccak hash)
         {
             TestObject.TxHash = hash;
+            return this;
+        }
+        
+        public ReceiptBuilder WithEffectiveGasPrice(UInt256 effectiveGasPrice)
+        {
+            TestObject.EffectiveGasPrice = effectiveGasPrice;
             return this;
         }
 

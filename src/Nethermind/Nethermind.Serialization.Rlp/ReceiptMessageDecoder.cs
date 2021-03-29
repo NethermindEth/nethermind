@@ -124,6 +124,11 @@ namespace Nethermind.Serialization.Rlp
                     ? Rlp.LengthOf(item.StatusCode) 
                     : Rlp.LengthOf(item.PostTransactionState);
             }
+            
+            if (item.TxType == TxType.EIP1559)
+            {
+                contentLength += Rlp.LengthOf(item.EffectiveGasPrice);
+            }
 
             return (contentLength, logsLength);
         }
