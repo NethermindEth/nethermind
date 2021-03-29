@@ -37,7 +37,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             var config = _api.Config<INetworkConfig>();
             
             // create shared objects between discovery and peer manager
-            NodeStatsManager nodeStatsManager = new NodeStatsManager(_api.LogManager, config.MaxCandidatePeerCount);
+            NodeStatsManager nodeStatsManager = new(_api.TimerFactory, _api.LogManager, config.MaxCandidatePeerCount);
             _api.NodeStatsManager = nodeStatsManager;
             _api.DisposeStack.Push(nodeStatsManager);
 

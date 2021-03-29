@@ -26,6 +26,7 @@ using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Timers;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Specs;
@@ -59,7 +60,8 @@ namespace Nethermind.Synchronization.Test
             SyncConfig quickConfig = new SyncConfig();
             quickConfig.FastSync = false;
 
-            var stats = new NodeStatsManager(LimboLogs.Instance);
+            ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
+            var stats = new NodeStatsManager(timerFactory, LimboLogs.Instance);
             _pool = new SyncPeerPool(_blockTree, stats, 25, LimboLogs.Instance);
             SyncConfig syncConfig = new SyncConfig();
             SyncProgressResolver resolver = new SyncProgressResolver(

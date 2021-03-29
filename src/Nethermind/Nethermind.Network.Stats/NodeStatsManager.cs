@@ -21,6 +21,7 @@ using System.IO;
 using System.Linq;
 using System.Timers;
 using Nethermind.Core.Caching;
+using Nethermind.Core.Timers;
 using Nethermind.Logging;
 using Nethermind.Stats.Model;
 
@@ -53,21 +54,20 @@ namespace Nethermind.Stats
         
         private readonly ILogger _logger;
         private readonly ConcurrentDictionary<Node, INodeStats> _nodeStats = new ConcurrentDictionary<Node, INodeStats>(new NodeComparer());
-        private readonly Timer _cleanupTimer;
+        private readonly ITimer _cleanupTimer;
         private readonly int _maxCount;
 
-        public NodeStatsManager(ILogManager logManager, int maxCount = 10000)
+        public NodeStatsManager(ITimerFactory timerFactory, ILogManager logManager, int maxCount = 10000)
         {
             _maxCount = maxCount;
-            _maxCount = 1000;
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-            
-            _cleanupTimer = new Timer(TimeSpan.FromMinutes(10).TotalMilliseconds);
+
+            _cleanupTimer = timerFactory.CreateTimer(TimeSpan.FromMinutes(10));
             _cleanupTimer.Elapsed += CleanupTimerOnElapsed;
             _cleanupTimer.Start();
         }
 
-        private void CleanupTimerOnElapsed(object sender, ElapsedEventArgs e)
+        private void CleanupTimerOnElapsed(object sender, EventArgs e)
         {
             int deleteCount = _nodeStats.Count - _maxCount;
 
