@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.Collections.Generic;
 using FluentAssertions;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -226,6 +227,13 @@ namespace Nethermind.Core.Test.Encoding
             Assert.AreEqual(txReceipt.StatusCode, deserialized.StatusCode, "status");
             Assert.AreEqual(txReceipt.TxType, deserialized.TxType, "type");
         }
+        public static IEnumerable<(TxReceipt, string)> TestCaseSource()
+        {
+            Bloom bloom = new Bloom();
+            bloom.Set(Keccak.EmptyTreeHash.Bytes);
+            yield return (Build.A.Receipt.TestObject, "basic with defaults");
+            yield return (Build.A.Receipt.WithBloom(bloom).TestObject, "basic");
+        }
 
         [Test]
         public void Can_do_roundtrip_with_storage_receipt_and_tx_type_access_list()
@@ -261,5 +269,8 @@ namespace Nethermind.Core.Test.Encoding
             Assert.AreEqual(txReceipt.Recipient, deserialized.Recipient, "recipient");
             Assert.AreEqual(txReceipt.StatusCode, deserialized.StatusCode, "status");
         }
+        
+        
+
     }
 }

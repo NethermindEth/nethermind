@@ -104,7 +104,6 @@ namespace Nethermind.Core.Test.Encoding
             Transaction decodedRlpStream = _txDecoder.Decode(new RlpStream(rlpStreamResult.Bytes), RlpBehaviors.ForTreeRoot);
             Transaction decodedRlp = _txDecoder.Decode(new RlpStream(rlpResult.Bytes), RlpBehaviors.ForTreeRoot);
             Assert.AreEqual(decodedRlp?.Hash, decodedRlpStream?.Hash);
-            Assert.AreEqual(rlpResult.Bytes, rlpStreamResult.Bytes);
         }
 
         public static IEnumerable<(string, Keccak)> YoloV3TestCases()
