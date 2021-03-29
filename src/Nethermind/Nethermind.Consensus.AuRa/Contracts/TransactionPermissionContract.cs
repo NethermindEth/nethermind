@@ -107,7 +107,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
 
         protected abstract object[] GetAllowedTxTypesParameters(Transaction tx);
         
-        protected PermissionConstantContract Constant { get; }
+        protected IConstantContract Constant { get; }
 
         protected TransactionPermissionContract(
             IAbiEncoder abiEncoder,
