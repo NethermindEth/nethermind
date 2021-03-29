@@ -118,7 +118,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             Block previousBlock = genesis;
             Block block = Build.A.Block.WithNumber(blockNumber).WithParent(previousBlock)
                     .WithStateRoot(new Keccak("0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f"))
-                    .WithTransactions(MuirGlacier.Instance, transaction)
+                    .WithTransactions(transaction)
                     .TestObject;
                 
             blockTree.SuggestBlock(block);

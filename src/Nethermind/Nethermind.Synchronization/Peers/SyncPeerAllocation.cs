@@ -24,12 +24,12 @@ namespace Nethermind.Synchronization.Peers
 {
     public class SyncPeerAllocation
     {
-        public static SyncPeerAllocation FailedAllocation = new SyncPeerAllocation(NullStrategy.Instance, AllocationContexts.None);
+        public static SyncPeerAllocation FailedAllocation = new(NullStrategy.Instance, AllocationContexts.None);
 
         /// <summary>
         /// this should be used whenever we change IsAllocated property on PeerInfo-
         /// </summary>
-        private static object _allocationLock = new object();
+        private static object _allocationLock = new();
 
         private IPeerAllocationStrategy _peerAllocationStrategy;
         public AllocationContexts Contexts { get; }
@@ -65,7 +65,7 @@ namespace Nethermind.Synchronization.Peers
                 if (selected != null && selected.TryAllocate(Contexts))
                 {
                     Current = selected;
-                    AllocationChangeEventArgs args = new AllocationChangeEventArgs(current, selected);
+                    AllocationChangeEventArgs args = new(current, selected);
                     current?.Free(Contexts);
                     Replaced?.Invoke(this, args);
                 }
@@ -86,7 +86,7 @@ namespace Nethermind.Synchronization.Peers
                 Current = null;
             }
 
-            AllocationChangeEventArgs args = new AllocationChangeEventArgs(current, null);
+            AllocationChangeEventArgs args = new(current, null);
             Cancelled?.Invoke(this, args);
         }
 

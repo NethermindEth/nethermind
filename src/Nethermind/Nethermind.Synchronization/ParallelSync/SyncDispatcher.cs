@@ -24,7 +24,7 @@ namespace Nethermind.Synchronization.ParallelSync
 {
     public abstract class SyncDispatcher<T>
     {
-        private object _feedStateManipulation = new object();
+        private object _feedStateManipulation = new();
         private SyncFeedState _currentFeedState = SyncFeedState.Dormant;
 
         private IPeerAllocationStrategyFactory<T> PeerAllocationStrategy { get; }
@@ -34,10 +34,10 @@ namespace Nethermind.Synchronization.ParallelSync
         protected ISyncPeerPool SyncPeerPool { get; }
 
         protected SyncDispatcher(
-            ISyncFeed<T> syncFeed,
-            ISyncPeerPool syncPeerPool,
-            IPeerAllocationStrategyFactory<T> peerAllocationStrategy,
-            ILogManager logManager)
+            ISyncFeed<T>? syncFeed,
+            ISyncPeerPool? syncPeerPool,
+            IPeerAllocationStrategyFactory<T>? peerAllocationStrategy,
+            ILogManager? logManager)
         {
             Logger = logManager?.GetClassLogger<SyncDispatcher<T>>() ?? throw new ArgumentNullException(nameof(logManager));
             Feed = syncFeed ?? throw new ArgumentNullException(nameof(syncFeed));
@@ -47,7 +47,7 @@ namespace Nethermind.Synchronization.ParallelSync
             syncFeed.StateChanged += SyncFeedOnStateChanged;
         }
 
-        private TaskCompletionSource<object?>? _dormantStateTask = new TaskCompletionSource<object?>();
+        private TaskCompletionSource<object?>? _dormantStateTask = new();
 
         protected abstract Task Dispatch(PeerInfo peerInfo, T request, CancellationToken cancellationToken);
 

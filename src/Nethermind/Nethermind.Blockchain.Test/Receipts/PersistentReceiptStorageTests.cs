@@ -99,9 +99,7 @@ namespace Nethermind.Blockchain.Test.Receipts
         public void Should_not_cache_empty_non_processed_blocks()
         {
             var block = Build.A.Block
-                .WithTransactions(
-                    _useEip2718 ? Berlin.Instance : MuirGlacier.Instance,
-                    Build.A.Transaction.SignedAndResolved().TestObject)
+                .WithTransactions(Build.A.Transaction.SignedAndResolved().TestObject)
                 .WithReceiptsRoot(TestItem.KeccakA)
                 .TestObject;
 
@@ -157,9 +155,7 @@ namespace Nethermind.Blockchain.Test.Receipts
         private (Block block, TxReceipt[] receipts) InsertBlock(Block block = null)
         {
             block ??= Build.A.Block
-                .WithTransactions(
-                    _useEip2718 ? Berlin.Instance : MuirGlacier.Instance,
-                    Build.A.Transaction.SignedAndResolved().TestObject)
+                .WithTransactions(Build.A.Transaction.SignedAndResolved().TestObject)
                 .WithReceiptsRoot(TestItem.KeccakA)
                 .TestObject;
 

@@ -42,7 +42,7 @@ namespace Nethermind.Synchronization.Peers
 
         public AllocationContexts SleepingContexts { get; private set; }
 
-        private ConcurrentDictionary<AllocationContexts, DateTime?> SleepingSince { get; } = new ConcurrentDictionary<AllocationContexts, DateTime?>();
+        private ConcurrentDictionary<AllocationContexts, DateTime?> SleepingSince { get; } = new();
 
         public ISyncPeer SyncPeer { get; }
 

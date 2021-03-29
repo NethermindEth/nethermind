@@ -48,8 +48,8 @@ namespace Nethermind.Synchronization.FastBlocks
         private readonly IBlockTree _blockTree;
         private readonly ISyncConfig _syncConfig;
 
-        private readonly object _dummyObject = new object();
-        private readonly object _handlerLock = new object();
+        private readonly object _dummyObject = new();
+        private readonly object _handlerLock = new();
 
         private readonly int _headersRequestSize = GethSyncLimits.MaxHeaderFetch;
         private long _lowestRequestedHeaderNumber;
@@ -286,7 +286,7 @@ namespace Nethermind.Synchronization.FastBlocks
 
         private static HeadersSyncBatch BuildRightFiller(HeadersSyncBatch batch, int rightFillerSize)
         {
-            HeadersSyncBatch rightFiller = new HeadersSyncBatch();
+            HeadersSyncBatch rightFiller = new();
             rightFiller.StartNumber = batch.EndNumber - rightFillerSize + 1;
             rightFiller.RequestSize = rightFillerSize;
             rightFiller.MinNumber = batch.MinNumber;
@@ -295,7 +295,7 @@ namespace Nethermind.Synchronization.FastBlocks
 
         private static HeadersSyncBatch BuildLeftFiller(HeadersSyncBatch batch, int leftFillerSize)
         {
-            HeadersSyncBatch leftFiller = new HeadersSyncBatch();
+            HeadersSyncBatch leftFiller = new();
             leftFiller.StartNumber = batch.StartNumber;
             leftFiller.RequestSize = leftFillerSize;
             leftFiller.MinNumber = batch.MinNumber;

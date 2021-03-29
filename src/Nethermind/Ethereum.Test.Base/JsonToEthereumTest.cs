@@ -91,14 +91,14 @@ namespace Ethereum.Test.Base
         public static Block Convert(PostStateJson postStateJson, TestBlockJson testBlockJson)
         {
             BlockHeader? header = Convert(testBlockJson.BlockHeader);
-            BlockHeader[] ommers = testBlockJson.UncleHeaders?.Select(Convert).ToArray() ?? new BlockHeader[0];
-            Block block = new(header, Enumerable.Empty<Transaction>(), ommers);
-            block.Body = block.Body.WithChangedTransactions(testBlockJson.Transactions?.Select(Convert).ToArray() ??
-                                                            Array.Empty<Transaction>());
+            BlockHeader[] ommers = testBlockJson.UncleHeaders?.Select(Convert).ToArray()
+                                   ?? Array.Empty<BlockHeader>();
+            Transaction[] transactions = testBlockJson.Transactions?.Select(Convert).ToArray()
+                                         ?? Array.Empty<Transaction>();
+            Block block = new(header, transactions, ommers);
             return block;
         }
-
-
+        
         public static Transaction Convert(PostStateJson postStateJson, TransactionJson transactionJson)
         {
             Transaction transaction = new();

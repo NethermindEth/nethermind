@@ -403,13 +403,13 @@ namespace Nethermind.Synchronization.Test
                 return true;
             }
 
-            public bool ValidateHeader(BlockHeader header, BlockHeader parent, bool isOmmer)
+            public bool Validate(BlockHeader header, BlockHeader parent, bool isOmmer)
             {
                 Thread.Sleep(1000);
                 return true;
             }
 
-            public bool ValidateHeader(BlockHeader header, bool isOmmer)
+            public bool Validate(BlockHeader header, bool isOmmer)
             {
                 Thread.Sleep(1000);
                 return true;
@@ -1112,9 +1112,7 @@ namespace Nethermind.Synchronization.Test
 
                         if (withTransactions && header.ReceiptsRoot != Keccak.EmptyTreeHash)
                         {
-                            blockBuilder.WithTransactions(
-                                MuirGlacier.Instance,
-                                Build.A.Transaction.WithValue(i * 2).SignedAndResolved().TestObject,
+                            blockBuilder.WithTransactions(Build.A.Transaction.WithValue(i * 2).SignedAndResolved().TestObject,
                                 Build.A.Transaction.WithValue(i * 2 + 1).SignedAndResolved().TestObject);
                         }
 

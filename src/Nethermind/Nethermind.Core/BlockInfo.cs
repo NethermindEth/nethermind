@@ -21,18 +21,18 @@ namespace Nethermind.Core
 {
     public class BlockInfo
     {
-        public BlockInfo() { }
-        
         public BlockInfo(Keccak blockHash, UInt256 totalDifficulty)
         {
             BlockHash = blockHash;
             TotalDifficulty = totalDifficulty;
         }
         
-        public UInt256 TotalDifficulty { get; set; }
+        public UInt256 TotalDifficulty { get; }
+        
         public bool WasProcessed { get; set; }
-        public Keccak? BlockHash { get; set; }
-
+        
+        public Keccak BlockHash { get; }
+        
         public bool IsFinalized { get; set; }
         
         /// <summary>

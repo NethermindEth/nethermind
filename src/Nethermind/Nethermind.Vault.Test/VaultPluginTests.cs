@@ -39,6 +39,7 @@ namespace Nethermind.Vault.Test
             Assert.DoesNotThrow(() => { plugin.InitBlockchain(); });
             Assert.DoesNotThrow(() => { plugin.InitNetworkProtocol(); });
             Assert.DoesNotThrowAsync(async () => { await plugin.InitRpcModules(); });
+            Assert.DoesNotThrowAsync(async () => { await plugin.DisposeAsync(); });
         }
     }
 }

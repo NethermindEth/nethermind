@@ -167,7 +167,7 @@ namespace Nethermind.Db.Rocks
             tableOptions.SetCacheIndexAndFilterBlocks(GetCacheIndexAndFilterBlocks(dbConfig));
 
             tableOptions.SetFilterPolicy(BloomFilterPolicy.Create(10, true));
-            tableOptions.SetFormatVersion(2);
+            tableOptions.SetFormatVersion(4);
 
             ulong blockCacheSize = GetBlockCacheSize(dbConfig);
 

@@ -143,7 +143,7 @@ namespace Nethermind.Core.Test.Builders
                     .WithNumber(blockIndex + 1)
                     .WithParent(parent)
                     .WithDifficulty(BlockHeaderBuilder.DefaultDifficulty - (splitFrom > parent.Number ? 0 : (ulong) splitVariant))
-                    .WithTransactions(MuirGlacier.Instance, transactions)
+                    .WithTransactions(transactions)
                     .WithBloom(new Bloom())
                     .WithBeneficiary(beneficiary)
                     .TestObject;

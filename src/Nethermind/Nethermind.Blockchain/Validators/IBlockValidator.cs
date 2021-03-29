@@ -18,11 +18,8 @@ using Nethermind.Core;
 
 namespace Nethermind.Blockchain.Validators
 {
-    public interface IBlockValidator
+    public interface IBlockValidator : IHeaderValidator
     {
-        bool ValidateHash(BlockHeader header);
-        bool ValidateHeader(BlockHeader header, BlockHeader parent, bool isOmmer);
-        bool ValidateHeader(BlockHeader header, bool isOmmer);
         bool ValidateSuggestedBlock(Block block);
         bool ValidateProcessedBlock(Block processedBlock, TxReceipt[] receipts, Block suggestedBlock);
     }
