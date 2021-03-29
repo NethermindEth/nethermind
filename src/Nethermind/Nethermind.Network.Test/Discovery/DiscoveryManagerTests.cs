@@ -21,6 +21,7 @@ using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Timers;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -78,7 +79,9 @@ namespace Nethermind.Network.Test.Discovery
             _ipResolver = new IPResolver(_networkConfig, logManager);
 
             var evictionManager = new EvictionManager(_nodeTable, logManager);
-            var lifecycleFactory = new NodeLifecycleManagerFactory(_nodeTable, new DiscoveryMessageFactory(_timestamper), evictionManager, new NodeStatsManager(logManager), discoveryConfig, logManager);
+            ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
+            var lifecycleFactory = new NodeLifecycleManagerFactory(_nodeTable, new DiscoveryMessageFactory(_timestamper), evictionManager, 
+                new NodeStatsManager(timerFactory, logManager), discoveryConfig, logManager);
 
             _nodes = new[] {new Node("192.168.1.18", 1), new Node("192.168.1.19", 2)};
 

@@ -21,6 +21,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Timers;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
@@ -30,6 +31,7 @@ using Nethermind.Network.Discovery.Messages;
 using Nethermind.Network.Discovery.RoutingTable;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Test.Discovery
@@ -57,7 +59,8 @@ namespace Nethermind.Network.Test.Discovery
                 LimboLogs.Instance);
             DiscoveryMessageFactory messageFactory = new DiscoveryMessageFactory(Timestamper.Default);
             EvictionManager evictionManager = new EvictionManager(_nodeTable, LimboLogs.Instance);
-            NodeStatsManager nodeStatsManager = new NodeStatsManager(LimboLogs.Instance);
+            ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
+            NodeStatsManager nodeStatsManager = new NodeStatsManager(timerFactory, LimboLogs.Instance);
             NodeLifecycleManagerFactory managerFactory =
                 new NodeLifecycleManagerFactory(
                     _nodeTable,
