@@ -42,7 +42,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
         /// Category of domain name service addresses
         /// </summary>
         private const string DnsAddressRecord = "A";
-        private ConstantContract Constant { get; }
+        private IConstantContract Constant { get; }
         
         public RegisterContract(
             IAbiEncoder abiEncoder, 
@@ -70,6 +70,6 @@ namespace Nethermind.Consensus.AuRa.Contracts
         public Address GetAddress(BlockHeader header, string key) =>
             // 2 arguments: name and key (category)
             Constant.Call<Address>(
-                new ConstantContract.CallInfo(header, nameof(GetAddress), Address.Zero, Keccak.Compute(key).Bytes, DnsAddressRecord) {MissingContractResult = MissingGetAddressResult});
+                new CallInfo(header, nameof(GetAddress), Address.Zero, Keccak.Compute(key).Bytes, DnsAddressRecord) {MissingContractResult = MissingGetAddressResult});
     }
 }
