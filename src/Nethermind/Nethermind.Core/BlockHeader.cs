@@ -174,7 +174,7 @@ namespace Nethermind.Core
                 {
                     gasDelta = parentGasTarget - parent.GasUsed;
                     feeDelta = parentBaseFee * (UInt256) gasDelta / (UInt256) parentGasTarget / Eip1559Constants.BaseFeeMaxChangeDenominator;
-                    expectedBaseFee = parentBaseFee - feeDelta;
+                    expectedBaseFee = UInt256.Max(parentBaseFee - feeDelta, 0);
                 }
 
                 if (spec.Eip1559TransitionBlock == parent.Number + 1)
