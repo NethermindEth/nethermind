@@ -96,15 +96,16 @@ namespace Nethermind.Core.Test.Encoding
             ourRlpHex.Should().BeEquivalentTo(testCase.IncomingRlpHex);
         }
         
-        // [TestCaseSource(nameof(TestCaseSource))]
-        // public void Rlp_encode_should_return_the_same_as_rlp_stream_encoding((Transaction Tx, string Description) testCase)
-        // {
-        //     Rlp rlpStreamResult = _txDecoder.Encode(testCase.Tx);
-        //     Rlp rlpResult = Rlp.Encode(testCase.Tx, true, true, testCase.Tx.ChainId ?? 0);
-        //  //   Transaction decodedRlpStream = _txDecoder.Decode(rlpStreamResult);
-        //     Assert.AreEqual(rlpResult.Bytes, rlpStreamResult.Bytes);
-        //
-        // }
+        [TestCaseSource(nameof(TestCaseSource))]
+        public void Rlp_encode_should_return_the_same_as_rlp_stream_encoding((Transaction Tx, string Description) testCase)
+        {
+            Rlp rlpStreamResult = _txDecoder.Encode(testCase.Tx, RlpBehaviors.ForTreeRoot);
+            Rlp rlpResult = Rlp.Encode(testCase.Tx, false, true, testCase.Tx.ChainId ?? 0);
+            Transaction decodedRlpStream = _txDecoder.Decode(new RlpStream(rlpStreamResult.Bytes), RlpBehaviors.ForTreeRoot);
+            Transaction decodedRlp = _txDecoder.Decode(new RlpStream(rlpResult.Bytes), RlpBehaviors.ForTreeRoot);
+            Assert.AreEqual(decodedRlp?.Hash, decodedRlpStream?.Hash);
+            Assert.AreEqual(rlpResult.Bytes, rlpStreamResult.Bytes);
+        }
 
         public static IEnumerable<(string, Keccak)> YoloV3TestCases()
         {
