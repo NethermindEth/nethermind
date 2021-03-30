@@ -136,17 +136,17 @@ namespace Nethermind.Blockchain.Validators
 
             if (_logger.IsTrace) _logger.Trace($"Validating block {header.ToString(BlockHeader.Format.Short)}, extraData {header.ExtraData.ToHexString(true)}");
 
-            bool baseFeeIsCorrect = true;
+            bool isEip1559Correct = true;
             bool isEip1559Enabled = spec.IsEip1559Enabled;
             if (isEip1559Enabled)
             {
                 UInt256? expectedBaseFee = BlockHeader.CalculateBaseFee(parent, spec);
-                baseFeeIsCorrect = expectedBaseFee == header.BaseFee;
+                isEip1559Correct = expectedBaseFee == header.BaseFee;
                 
                 if (expectedBaseFee != header.BaseFee)
                 {
                     if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.ToString(BlockHeader.Format.Short)}) incorrect base fee. Expected base fee: {expectedBaseFee}, Current base fee: {header.BaseFee} ");
-                    baseFeeIsCorrect = false;
+                    isEip1559Correct = false;
                 }
             }
 
@@ -160,7 +160,7 @@ namespace Nethermind.Blockchain.Validators
                 numberIsParentPlusOne &&
                 hashAsExpected &&
                 extraDataValid &&
-                baseFeeIsCorrect;
+                isEip1559Correct;
         }
 
         protected virtual bool ValidateGasLimitRange(BlockHeader header, BlockHeader parent, IReleaseSpec spec)
