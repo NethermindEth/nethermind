@@ -45,6 +45,10 @@
     "eip1884Transition": "0x0",
     "eip2028Transition": "0x0",
 	"eip1559Transition": "0xA",
+	"eip2565Transition": "0x0",
+    "eip2718Transition": "0x0",
+    "eip2929Transition": "0x0",
+    "eip2930Transition": "0x0",
     "registrar": "0x6000000000000000000000000000000000000000",
     "transactionPermissionContract": "0x4000000000000000000000000000000000000001",
     "transactionPermissionContractTransition": "0x0"

@@ -82,6 +82,8 @@ namespace Nethermind.JsonRpc.Data
         public UInt256? GasPremium { get; set; }
         
         public UInt256? FeeCap { get; set; }
+        
+        public TxType? Type { get; set; }
         public long? Gas { get; set; }
         public byte[]? Data { get; set; }
 
@@ -119,6 +121,7 @@ namespace Nethermind.JsonRpc.Data
             tx.Value = Value ?? 0;
             tx.Data = Data ?? Input;
             tx.DecodedFeeCap = FeeCap ?? 0;
+            tx.Type = Type ?? TxType.Legacy;
 
             return tx;
         }
