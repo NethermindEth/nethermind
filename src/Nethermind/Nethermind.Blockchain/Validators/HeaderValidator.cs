@@ -143,16 +143,11 @@ namespace Nethermind.Blockchain.Validators
                 UInt256? expectedBaseFee = BlockHeader.CalculateBaseFee(parent, spec);
                 baseFeeIsCorrect = expectedBaseFee == header.BaseFee;
                 
-                // ToDo
-                // if (block.GasUsed <= Eip1559Constants.ElasticityMultiplier * block.GasLimit)
-                // {
-                //     if (_logger.IsDebug) _logger.Debug($"Invalid block ({block.ToString(Block.Format.FullHashAndNumber)}) too much gas used");
-                // }
-                //
-                // if (header.GasUsed <= block.Parparent.gas_target + parent_gas_target)
-                // {
-                //     if (_logger.IsDebug) _logger.Debug($"Invalid block ({block.ToString(Block.Format.FullHashAndNumber)}) too much gas used");
-                // }
+                if (expectedBaseFee != header.BaseFee)
+                {
+                    if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.ToString(BlockHeader.Format.Short)}) incorrect base fee. Expected base fee: {expectedBaseFee}, Current base fee: {header.BaseFee} ");
+                    baseFeeIsCorrect = false;
+                }
             }
 
             return
