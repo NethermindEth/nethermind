@@ -14,21 +14,20 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System;
+using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
+using Nethermind.Serialization.Json;
 using Newtonsoft.Json;
 
 namespace Nethermind.JsonRpc.Data
 {
     public class TransactionForRpc
     {
-        private readonly AccessListBuilder _accessListBuilder = new();
-
         public TransactionForRpc(Transaction transaction) : this(null, null, null, transaction) { }
 
         public TransactionForRpc(Keccak? blockHash, long? blockNumber, int? txIndex, Transaction transaction)
@@ -44,8 +43,8 @@ namespace Nethermind.JsonRpc.Data
             GasPrice = transaction.GasPrice;
             Gas = transaction.GasLimit;
             Input = Data = transaction.Data;
-            Type = (UInt256)Convert.ToByte(transaction.Type);
-            AccessList = transaction.AccessList?.Data.Select(i => new AccessListItemForRpc(i.Key, i.Value)).ToArray();
+            Type = (byte)transaction.Type;
+            AccessList = transaction.AccessList?.Data.Select(i => new AccessListItemForRpc(i.Key, TryGetHashSet(i.Value))).ToArray();
 
             Signature? signature = transaction.Signature;
             if (signature != null)
@@ -86,7 +85,8 @@ namespace Nethermind.JsonRpc.Data
         [JsonProperty(NullValueHandling = NullValueHandling.Include)]
         public byte[]? Input { get; set; }
 
-        public UInt256 Type { get; set; }
+        [JsonConverter(typeof(ByteConverter))]
+        public byte Type { get; set; }
         
         public AccessListItemForRpc[]? AccessList { get; set; }
 
@@ -106,7 +106,7 @@ namespace Nethermind.JsonRpc.Data
             tx.SenderAddress = From;
             tx.Value = Value ?? 0;
             tx.Data = Data ?? Input;
-            tx.Type = (TxType)(byte)Type;
+            tx.Type = (TxType)Type;
             tx.AccessList = TryGetAccessList();
             
             return tx;
@@ -122,26 +122,40 @@ namespace Nethermind.JsonRpc.Data
             tx.SenderAddress = From;
             tx.Value = Value ?? 0;
             tx.Data = Data ?? Input;
-            tx.Type = (TxType)(byte)Type;
+            tx.Type = (TxType)Type;
             tx.AccessList = TryGetAccessList();
 
             return tx;
         }
-        
+
         private AccessList? TryGetAccessList()
         {
             if (Type == 1 && AccessList != null)
             {
-                foreach (var item in AccessList)
+                return GetAccessList();
+            }
+            return null;
+        }
+
+        private AccessList GetAccessList()
+        {
+            AccessListBuilder accessListBuilder = new();
+            foreach (var item in AccessList)
+            {
+                accessListBuilder.AddAddress(item.Address);
+                foreach (var storageKey in item.StorageKeys)
                 {
-                    _accessListBuilder.AddAddress(item.Address);
-                    
-                    foreach (var storageKey in item.StorageKeys)
-                    {
-                        _accessListBuilder.AddStorage(storageKey);
-                    }
+                    accessListBuilder.AddStorage(storageKey);
                 }
-                return _accessListBuilder.ToAccessList();
+            }
+            return accessListBuilder.ToAccessList();
+        }
+
+        private IEnumerable<UInt256>? TryGetHashSet(IReadOnlySet<UInt256> argValue)
+        {
+            if (argValue != null)
+            {
+                return new HashSet<UInt256>(argValue);
             }
             return null;
         }

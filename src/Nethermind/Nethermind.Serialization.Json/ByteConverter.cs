@@ -15,22 +15,25 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System.Collections.Generic;
-using System.Linq;
-using Nethermind.Core;
-using Nethermind.Int256;
+using System;
+using Nethermind.Core.Extensions;
+using Newtonsoft.Json;
 
-namespace Nethermind.JsonRpc.Data
+namespace Nethermind.Serialization.Json
 {
-    public class AccessListItemForRpc
+    public class ByteConverter : JsonConverter<byte>
     {
-        public AccessListItemForRpc(Address address, IEnumerable<UInt256>? storageKeys)
+        public override void WriteJson(JsonWriter writer, byte byteValue, JsonSerializer serializer)
         {
-            Address = address;
-            StorageKeys = storageKeys?.Select(k => k).ToArray();
+            byte[] value = {byteValue};
+            writer.WriteValue(value.ToHexString(true));
         }
-        
-        public Address Address { get; set; }
-        public UInt256[]? StorageKeys { get; set; }
+
+        public override byte ReadJson(JsonReader reader, Type objectType, byte existingValue, bool hasExistingValue, JsonSerializer serializer)
+        {
+            string s = (string) reader.Value;
+            byte[] array = Bytes.FromHexString(s);
+            return array[0];
+        }
     }
 }

@@ -15,22 +15,20 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System.Collections.Generic;
-using System.Linq;
-using Nethermind.Core;
-using Nethermind.Int256;
+using Nethermind.Serialization.Json;
+using NUnit.Framework;
 
-namespace Nethermind.JsonRpc.Data
+namespace Nethermind.Core.Test.Json
 {
-    public class AccessListItemForRpc
+    [TestFixture]
+    public class ByteConverterTests : ConverterTestBase<byte>
     {
-        public AccessListItemForRpc(Address address, IEnumerable<UInt256>? storageKeys)
+        [TestCase(null)]
+        [TestCase(0)]
+        [TestCase(32)]
+        public void Test_roundtrip(byte argByte)
         {
-            Address = address;
-            StorageKeys = storageKeys?.Select(k => k).ToArray();
+            TestConverter(argByte, (before, after) => before.Equals(after), new ByteConverter());
         }
-        
-        public Address Address { get; set; }
-        public UInt256[]? StorageKeys { get; set; }
     }
 }
