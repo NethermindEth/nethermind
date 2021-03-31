@@ -28,7 +28,6 @@ namespace Nethermind.Core
     [DebuggerDisplay("{Hash}, Value: {Value}, To: {To}, Gas: {GasLimit}")]
     public class Transaction
     {
-        private TxType _type;
         public const int BaseTxGasCost = 21000;
         
         public ulong? ChainId { get; set; }
@@ -36,19 +35,7 @@ namespace Nethermind.Core
         /// <summary>
         /// EIP-2718 transaction type
         /// </summary>
-        public TxType Type
-        {
-            get => _type;
-            set
-            {
-                if (value > TxType.AccessList)
-                {
-                    throw new InvalidOperationException($"Invalid transaction type: {value}.");
-                }
-                
-                _type = value;
-            }
-        }
+        public TxType Type { get; set; }
 
         public UInt256 Nonce { get; set; }
         public UInt256 GasPrice { get; set; }

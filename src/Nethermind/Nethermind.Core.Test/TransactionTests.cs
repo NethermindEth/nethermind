@@ -40,21 +40,5 @@ namespace Nethermind.Core.Test
             Assert.False(transaction.IsMessageCall, nameof(Transaction.IsMessageCall));
             Assert.True(transaction.IsContractCreation, nameof(Transaction.IsContractCreation));
         }
-        
-        [TestCase(TxType.Legacy)]
-        [TestCase(TxType.AccessList)]
-        [TestCase((TxType)100, true)]
-        public void Only_correct_types_allowed(TxType txType, bool shouldThrow = false)
-        {
-            Func<Transaction> transactionFactory = () => new Transaction() {Type = txType};
-            if (shouldThrow)
-            {
-                transactionFactory.Should().Throw<InvalidOperationException>();
-            }
-            else
-            {
-                transactionFactory.Should().NotThrow();
-            }
-        }
     }
 }

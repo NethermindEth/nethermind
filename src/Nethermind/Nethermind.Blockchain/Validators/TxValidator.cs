@@ -48,9 +48,16 @@ namespace Nethermind.Blockchain.Validators
                    transaction.GasLimit >= IntrinsicGasCalculator.Calculate(transaction, releaseSpec) &&
                    /* if it is a call or a transfer then we require the 'To' field to have a value
                       while for an init it will be empty */
-                   ValidateSignature(transaction.Signature, releaseSpec);
+                   ValidateSignature(transaction.Signature, releaseSpec) &&
+                   ValidateTxType(transaction, releaseSpec);
         }
-        
+
+        private bool ValidateTxType(Transaction transaction, IReleaseSpec releaseSpec)
+        {
+            return transaction.Type == TxType.Legacy || 
+                   (transaction.Type == TxType.AccessList && releaseSpec.IsEip2930Enabled);
+        }
+
         private bool ValidateSignature(Signature signature, IReleaseSpec spec)
         {
             BigInteger sValue = signature.SAsSpan.ToUnsignedBigInteger();
