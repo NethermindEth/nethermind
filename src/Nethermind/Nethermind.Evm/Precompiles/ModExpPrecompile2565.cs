@@ -16,10 +16,12 @@
 
 using System;
 using System.Numerics;
+using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
+using MathGmp.Native;
 
 namespace Nethermind.Evm.Precompiles
 {
@@ -79,10 +81,21 @@ namespace Nethermind.Evm.Precompiles
             }
         }
 
-        public (byte[], bool) Run(byte[] inputData, IReleaseSpec releaseSpec)
+        private mpz_t ImportDataToGmp(byte[] data)
         {
-            Metrics.ModExpPrecompile++;
+            mpz_t result = new();
+            gmp_lib.mpz_init(result);
+            ulong memorySize = ulong.Parse(data.Length.ToString());
+            using void_ptr memoryChunk = gmp_lib.allocate(memorySize);
+            
+            Marshal.Copy(data, 0, memoryChunk.ToIntPtr(), data.Length);
+            gmp_lib.mpz_import(result, ulong.Parse(data.Length.ToString()), 1, 1, 1, 0, memoryChunk);
 
+            return result;
+        }
+
+        private static (int, int, int) GetInputLengths(byte[] inputData)
+        {
             Span<byte> extendedInput = stackalloc byte[96];
             inputData.Slice(0, Math.Min(96, inputData.Length))
                 .CopyTo(extendedInput.Slice(0, Math.Min(96, inputData.Length)));
@@ -90,6 +103,53 @@ namespace Nethermind.Evm.Precompiles
             int baseLength = (int)new UInt256(extendedInput.Slice(0, 32), true);
             int expLength = (int)new UInt256(extendedInput.Slice(32, 32), true);
             int modulusLength = (int)new UInt256(extendedInput.Slice(64, 32), true);
+
+            return (baseLength, expLength, modulusLength);
+        }
+
+        public (byte[], bool) Run(byte[] inputData, IReleaseSpec releaseSpec)
+        {
+            Metrics.ModExpPrecompile++;
+
+            (int baseLength, int expLength, int modulusLength) = GetInputLengths(inputData);
+
+            byte[] modulusData = inputData.SliceWithZeroPaddingEmptyOnError(96 + baseLength + expLength, modulusLength);
+            using mpz_t modulusInt = ImportDataToGmp(modulusData);
+
+            if (gmp_lib.mpz_sgn(modulusInt) == 0)
+            {
+                return (new byte[modulusLength], true);
+            }
+
+            byte[] baseData = inputData.SliceWithZeroPaddingEmptyOnError(96, baseLength);
+            using mpz_t baseInt = ImportDataToGmp(baseData);
+            
+            byte[] expData = inputData.SliceWithZeroPaddingEmptyOnError(96 + baseLength, expLength);
+            using mpz_t expInt = ImportDataToGmp(expData);
+
+            using mpz_t powmResult = new();
+            gmp_lib.mpz_init(powmResult);
+            gmp_lib.mpz_powm(powmResult, baseInt, expInt, modulusInt);
+            
+            
+            using void_ptr data = gmp_lib.allocate((size_t) modulusLength);
+            ptr<size_t> countp = new(0);
+            gmp_lib.mpz_export(data, countp, 1, 1, 1, 0, powmResult);
+            int count = (int) countp.Value;
+
+
+            byte[] result = new byte[modulusLength];
+            Marshal.Copy(data.ToIntPtr(), result, modulusLength - count, count);
+
+            return (result, true);
+        }
+        
+        [Obsolete("This is a previous implementation using BigInteger instead of GMP")]
+        public static (byte[], bool) OldRun(byte[] inputData)
+        {
+            Metrics.ModExpPrecompile++;
+            
+            (int baseLength, int expLength, int modulusLength) = GetInputLengths(inputData);
 
             BigInteger modulusInt = inputData
                 .SliceWithZeroPaddingEmptyOnError(96 + baseLength + expLength, modulusLength).ToUnsignedBigInteger();
