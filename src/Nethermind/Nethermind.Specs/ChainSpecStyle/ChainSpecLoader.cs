@@ -128,7 +128,6 @@ namespace Nethermind.Specs.ChainSpecStyle
                 Eip2315Transition = chainSpecJson.Params.Eip2315Transition,
                 Eip2537Transition = chainSpecJson.Params.Eip2537Transition,
                 Eip2565Transition = chainSpecJson.Params.Eip2565Transition,
-                Eip2718Transition = chainSpecJson.Params.Eip2718Transition,
                 Eip2929Transition = chainSpecJson.Params.Eip2929Transition,
                 Eip2930Transition = chainSpecJson.Params.Eip2930Transition,
                 TransactionPermissionContract = chainSpecJson.Params.TransactionPermissionContract,
@@ -183,7 +182,7 @@ namespace Nethermind.Specs.ChainSpecStyle
             chainSpec.MuirGlacierNumber = chainSpec.Ethash?.DifficultyBombDelays.Count > 2 ?
                 chainSpec.Ethash?.DifficultyBombDelays.Keys.ToArray()[2]
                 : null;
-            chainSpec.BerlinBlockNumber = chainSpec.Parameters.Eip2718Transition ?? (long.MaxValue - 1);
+            chainSpec.BerlinBlockNumber = chainSpec.Parameters.Eip2565Transition ?? (long.MaxValue - 1);
         }
 
         private static void LoadEngine(ChainSpecJson chainSpecJson, ChainSpec chainSpec)

@@ -206,12 +206,7 @@ namespace Nethermind.Core.Specs
         /// Berlin MODEXP precompiles
         /// </summary>
         bool IsEip2565Enabled { get; }
-        
-        /// <summary>
-        /// Berlin transaction type
-        /// </summary>
-        bool IsEip2718Enabled { get; }
-        
+
         /// <summary>
         /// Berlin gas cost increases for state reading opcodes
         /// </summary>
@@ -306,7 +301,5 @@ namespace Nethermind.Core.Specs
         public bool UseNetGasMeteringWithAStipendFix => UseIstanbulNetGasMetering;
         
         public bool Use63Over64Rule => UseShanghaiDDosProtection;
-        
-        public bool UseTransactionTypes => IsEip2718Enabled;
     }
 }

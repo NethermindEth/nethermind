@@ -100,9 +100,7 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
         public long? Eip2537Transition { get; set; }
         
         public long? Eip2565Transition { get; set; }
-        
-        public long? Eip2718Transition { get; set; }
-        
+
         public long? Eip2929Transition { get; set; }
         
         public long? Eip2930Transition { get; set; }
