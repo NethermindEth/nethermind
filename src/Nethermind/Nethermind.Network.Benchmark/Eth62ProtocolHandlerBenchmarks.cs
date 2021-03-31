@@ -25,6 +25,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Timers;
 using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.P2P;
@@ -62,7 +63,7 @@ namespace Nethermind.Network.Benchmarks
             _ser = new MessageSerializationService();
             _ser.Register(new TransactionsMessageSerializer());
             _ser.Register(new StatusMessageSerializer());
-            NodeStatsManager stats = new NodeStatsManager(LimboLogs.Instance);
+            NodeStatsManager stats = new NodeStatsManager(TimerFactory.Default, LimboLogs.Instance);
             var ecdsa = new EthereumEcdsa(ChainId.Mainnet, LimboLogs.Instance);
             TxPool.TxPool txPool = new TxPool.TxPool(
                 NullTxStorage.Instance,

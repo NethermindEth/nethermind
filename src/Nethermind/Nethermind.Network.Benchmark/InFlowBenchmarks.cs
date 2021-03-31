@@ -84,7 +84,7 @@ namespace Nethermind.Network.Benchmarks
 //            _zeroSnappyEncoder = new TestZeroSnappy();
             Transaction a = Build.A.Transaction.TestObject;
             Transaction b = Build.A.Transaction.TestObject;
-            _block = Build.A.Block.WithTransactions(Berlin.Instance, a, b).TestObject;
+            _block = Build.A.Block.WithTransactions(a, b).TestObject;
             _newBlockMessageSerializer = new NewBlockMessageSerializer();
 
             _newBlockMessage = new NewBlockMessage();
