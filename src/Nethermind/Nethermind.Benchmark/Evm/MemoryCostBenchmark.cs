@@ -22,7 +22,7 @@ using Nethermind.Int256;
 namespace Nethermind.Benchmarks.Evm
 {
     [MemoryDiagnoser]
-    [SimpleJob(RuntimeMoniker.NetCoreApp31)]
+    [SimpleJob(RuntimeMoniker.NetCoreApp50)]
     public class MemoryCostBenchmark
     {
         private IEvmMemory _current = new EvmPooledMemory();

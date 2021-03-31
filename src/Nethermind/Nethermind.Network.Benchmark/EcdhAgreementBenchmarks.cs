@@ -31,7 +31,7 @@ using Org.BouncyCastle.Utilities;
 namespace Nethermind.Network.Benchmarks
 {
     [MemoryDiagnoser]
-    [SimpleJob(RuntimeMoniker.NetCoreApp31)]
+    [SimpleJob(RuntimeMoniker.NetCoreApp50)]
     public class EcdhAgreementBenchmarks
     {
         [GlobalSetup]

@@ -24,7 +24,7 @@ using Nethermind.Dirichlet.Numerics;
 namespace Nethermind.Dirichlet.Benchmark
 {
     [MemoryDiagnoser]
-    [SimpleJob(RuntimeMoniker.NetCoreApp31)]
+    [SimpleJob(RuntimeMoniker.NetCoreApp50)]
     public class UInt256ToBigEndianBenchmarks
     {
         private byte[] _address = new byte[20];

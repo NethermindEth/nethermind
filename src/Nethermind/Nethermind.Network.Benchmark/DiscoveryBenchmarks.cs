@@ -26,7 +26,7 @@ using Nethermind.Network.Discovery.Serializers;
 namespace Nethermind.Network.Benchmarks
 {
     [MemoryDiagnoser]
-    [SimpleJob(RuntimeMoniker.NetCoreApp31)]
+    [SimpleJob(RuntimeMoniker.NetCoreApp50)]
     public class DiscoveryBenchmarks
     {
         [GlobalSetup]

@@ -31,7 +31,7 @@ using Nethermind.Specs.Forks;
 namespace Nethermind.Benchmarks.Rlp
 {
     [MemoryDiagnoser]
-    [SimpleJob(RuntimeMoniker.NetCoreApp31)]
+    [SimpleJob(RuntimeMoniker.NetCoreApp50)]
     public class RlpEncodeBlockBenchmark
     {
         private static BlockDecoder _blockDecoder = new BlockDecoder();

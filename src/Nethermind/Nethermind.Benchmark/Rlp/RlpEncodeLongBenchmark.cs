@@ -23,7 +23,7 @@ using Nethermind.Core.Extensions;
 namespace Nethermind.Benchmarks.Rlp
 {
     [MemoryDiagnoser]
-    [SimpleJob(RuntimeMoniker.NetCoreApp31)]
+    [SimpleJob(RuntimeMoniker.NetCoreApp50)]
     public class RlpEncodeLongBenchmark
     {
         private long[] _scenarios;

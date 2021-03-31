@@ -44,7 +44,7 @@ using NSubstitute;
 namespace Nethermind.Network.Benchmarks
 {
     [MemoryDiagnoser]
-    [SimpleJob(RuntimeMoniker.NetCoreApp31)]
+    [SimpleJob(RuntimeMoniker.NetCoreApp50)]
     public class Eth62ProtocolHandlerBenchmarks
     {
         private Eth62ProtocolHandler _handler;

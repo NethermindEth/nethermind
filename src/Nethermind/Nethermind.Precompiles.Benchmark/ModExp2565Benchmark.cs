@@ -25,8 +25,8 @@ namespace Nethermind.Precompiles.Benchmark
     [HtmlExporter]
     // [NativeMemoryProfiler]
     // [MemoryDiagnoser]
-    // [ShortRunJob(RuntimeMoniker.NetCoreApp31)]
-    [SimpleJob(RuntimeMoniker.NetCoreApp31)]
+    // [ShortRunJob(RuntimeMoniker.NetCoreApp50)]
+    [SimpleJob(RuntimeMoniker.NetCoreApp50)]
     public class ModExp2565Benchmark : PrecompileBenchmarkBase
     {
         protected override IEnumerable<IPrecompile> Precompiles => new[] {ModExpPrecompile2565.Instance};
