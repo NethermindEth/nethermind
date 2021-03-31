@@ -14,7 +14,7 @@ jobs:
     steps:
     - uses: actions/checkout@v2.3.3
     - name: Updating submodules
-      run: git submodule update --init src/rocksdb-sharp src/int256 src/Dirichlet
+      run: git submodule update --init src/rocksdb-sharp src/int256 src/Dirichlet src/Math.Gmp.Native
     - name: Installing Linux packages
       if: matrix.os == 'ubuntu-latest'
       run: |
@@ -56,7 +56,7 @@ jobs:
     steps:
     - uses: actions/checkout@v2.3.3
     - name: Updating submodules
-      run: git submodule update --init src/rocksdb-sharp src/int256 src/Dirichlet
+      run: git submodule update --init src/rocksdb-sharp src/int256 src/Dirichlet src/Math.Gmp.Native
     - name: Installing Linux packages
       if: matrix.os == 'ubuntu-latest'
       run: |
@@ -101,7 +101,7 @@ jobs:
     steps:
     - uses: actions/checkout@v2.3.3
     - name: Updating submodules
-      run: git submodule update --init src/rocksdb-sharp src/int256 src/Dirichlet
+      run: git submodule update --init src/rocksdb-sharp src/int256 src/Dirichlet src/Math.Gmp.Native
     - name: Installing Linux packages
       if: matrix.os == 'ubuntu-latest'
       run: |
@@ -143,7 +143,7 @@ jobs:
     steps:
     - uses: actions/checkout@v2.3.3
     - name: Updating submodules
-      run: git submodule update --init src/rocksdb-sharp src/int256
+      run: git submodule update --init src/rocksdb-sharp src/int256 src/Math.Gmp.Native
     - name: Installing Linux packages
       if: matrix.os == 'ubuntu-latest'
       run: |
@@ -176,7 +176,7 @@ jobs:
     steps:
     - uses: actions/checkout@v2.3.3
     - name: Updating submodules
-      run: git submodule update --init src/rocksdb-sharp src/int256 src/Dirichlet
+      run: git submodule update --init src/rocksdb-sharp src/int256 src/Dirichlet src/Math.Gmp.Native
     - name: Installing Linux packages
       if: matrix.os == 'ubuntu-latest'
       run: |
@@ -221,7 +221,7 @@ jobs:
     steps:
     - uses: actions/checkout@v2.3.3
     - name: Updating submodules
-      run: git submodule update --init src/rocksdb-sharp src/int256 src/Dirichlet
+      run: git submodule update --init src/rocksdb-sharp src/int256 src/Dirichlet src/Math.Gmp.Native
     - name: Installing Linux packages
       if: matrix.os == 'ubuntu-latest'
       run: |
