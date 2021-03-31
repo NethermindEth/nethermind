@@ -260,8 +260,16 @@ namespace Nethermind.TxPool
             }
 
             Metrics.PendingTransactionsReceived++;
-
-            if (!_validator.IsWellFormed(tx, _specProvider.GetSpec()))
+            
+            IReleaseSpec releaseSpec = _specProvider.GetSpec();
+            if (tx.Type == TxType.AccessList && !releaseSpec.IsEip2930Enabled)
+            {
+                Metrics.PendingTransactionsDiscarded++;
+                if (_logger.IsTrace) _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, wrong transaction type {tx.Type}.");
+                return AddTxResult.Invalid;
+            }
+            
+            if (!_validator.IsWellFormed(tx, releaseSpec))
             {
                 // It may happen that other nodes send us transactions that were signed for another chain or don't have enough gas.
                 Metrics.PendingTransactionsDiscarded++;
