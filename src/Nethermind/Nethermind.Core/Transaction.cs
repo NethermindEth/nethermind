@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Text;
@@ -27,14 +28,28 @@ namespace Nethermind.Core
     [DebuggerDisplay("{Hash}, Value: {Value}, To: {To}, Gas: {GasLimit}")]
     public class Transaction
     {
+        private TxType _type;
         public const int BaseTxGasCost = 21000;
         
         public ulong? ChainId { get; set; }
-        
+
         /// <summary>
         /// EIP-2718 transaction type
         /// </summary>
-        public TxType Type { get; set; }
+        public TxType Type
+        {
+            get => _type;
+            set
+            {
+                if (value > TxType.AccessList)
+                {
+                    throw new InvalidOperationException($"Invalid transaction type: {value}.");
+                }
+                
+                _type = value;
+            }
+        }
+
         public UInt256 Nonce { get; set; }
         public UInt256 GasPrice { get; set; }
         public UInt256 GasPremium => GasPrice; 
