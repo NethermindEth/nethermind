@@ -20,3 +20,4 @@
 [submodule "src/Math.Gmp.Native"]
 	path = src/Math.Gmp.Native
 	url = https://github.com/NethermindEth/Math.Gmp.Native
+	branch = master
