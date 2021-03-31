@@ -35,19 +35,28 @@ namespace Nethermind.JsonRpc.Test.Data
         private TransactionForRpc _transactionForRpc = new TransactionForRpc();
         private HashSet<UInt256> _storageKeys = new HashSet<UInt256>();
 
+        private AccessList GetTestAccessList()
+        {
+            AccessListBuilder accessListBuilder = new AccessListBuilder();
+
+            accessListBuilder.AddAddress(TestItem.AddressA);
+            accessListBuilder.AddStorage(1);
+            accessListBuilder.AddStorage(2);
+            accessListBuilder.AddStorage(3);
+            accessListBuilder.AddStorage(5);
+            accessListBuilder.AddStorage(8);
+            accessListBuilder.AddAddress(TestItem.AddressB);
+            accessListBuilder.AddStorage(42);
+
+            return accessListBuilder.ToAccessList();
+        }
 
         [Test]
         public void can_serialize_valid_accessList()
         {
-            _data = new Dictionary<Address, IReadOnlySet<UInt256>>();
             _transaction = new Transaction();
             _transaction.Type = TxType.AccessList;
-
-            _storageKeys = new HashSet<UInt256> {1, 2, 3, 5, 8};
-            _data.Add(TestItem.AddressA, _storageKeys);
-            _storageKeys = new HashSet<UInt256> {42};
-            _data.Add(TestItem.AddressB, _storageKeys);
-            _transaction.AccessList = new AccessList(_data);
+            _transaction.AccessList = GetTestAccessList();
             _transactionForRpc = new TransactionForRpc(_transaction);
 
             string serialized = _serializer.Serialize(_transactionForRpc);
@@ -58,14 +67,14 @@ namespace Nethermind.JsonRpc.Test.Data
         [Test]
         public void can_deserialize_valid_accessList()
         {
-            _transactionForRpc = _serializer.Deserialize<TransactionForRpc>("{\"nonce\":\"0x0\",\"blockHash\":null,\"blockNumber\":null,\"transactionIndex\":null,\"to\":null,\"value\":\"0x0\",\"gasPrice\":\"0x0\",\"gas\":\"0x0\",\"input\":null,\"type\":\"0x01\",\"accessList\":[{\"address\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"storageKeys\":[\"0x1\",\"0x2\",\"0x3\",\"0x5\",\"0x8\"]},{\"address\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"storageKeys\":[\"0x2a\"]}]}");
-
-            _transactionForRpc.Type.Should().Be(1);
-            _transactionForRpc.AccessList.Length.Should().Be(2);
-            _transactionForRpc.AccessList[0].Address.Should().Be(TestItem.AddressA);
-            _transactionForRpc.AccessList[0].StorageKeys.Should().BeEquivalentTo(new HashSet<UInt256>{1, 2, 3, 5, 8});
-            _transactionForRpc.AccessList[1].Address.Should().Be(TestItem.AddressB);
-            _transactionForRpc.AccessList[1].StorageKeys.Should().BeEquivalentTo(new HashSet<UInt256> {42});
+            TransactionForRpc deserializedTxForRpc = _serializer.Deserialize<TransactionForRpc>("{\"nonce\":\"0x0\",\"blockHash\":null,\"blockNumber\":null,\"transactionIndex\":null,\"to\":null,\"value\":\"0x0\",\"gasPrice\":\"0x0\",\"gas\":\"0x0\",\"input\":null,\"type\":\"0x01\",\"accessList\":[{\"address\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"storageKeys\":[\"0x1\",\"0x2\",\"0x3\",\"0x5\",\"0x8\"]},{\"address\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"storageKeys\":[\"0x2a\"]}]}");
+            
+            _transaction = new Transaction();
+            _transaction.Type = TxType.AccessList;
+            _transaction.AccessList = GetTestAccessList();
+            _transactionForRpc = new TransactionForRpc(_transaction);
+            
+            deserializedTxForRpc.Should().BeEquivalentTo(_transactionForRpc);
         }
 
         [Test]
@@ -109,7 +118,6 @@ namespace Nethermind.JsonRpc.Test.Data
             _transactionForRpc = _serializer.Deserialize<TransactionForRpc>("{\"nonce\":\"0x0\",\"blockHash\":null,\"blockNumber\":null,\"transactionIndex\":null,\"to\":null,\"value\":\"0x0\",\"gasPrice\":\"0x0\",\"gas\":\"0x0\",\"input\":null,\"type\":\"0x01\",\"accessList\":[]}");
 
             _transactionForRpc.Type.Should().Be(1);
-            _transactionForRpc.AccessList.Should().NotBeNull();
             _transactionForRpc.AccessList.Length.Should().Be(0);
         }
 
@@ -135,11 +143,9 @@ namespace Nethermind.JsonRpc.Test.Data
         {
             _transactionForRpc = _serializer.Deserialize<TransactionForRpc>("{\"nonce\":\"0x0\",\"blockHash\":null,\"blockNumber\":null,\"transactionIndex\":null,\"to\":null,\"value\":\"0x0\",\"gasPrice\":\"0x0\",\"gas\":\"0x0\",\"input\":null,\"type\":\"0x01\",\"accessList\":[{\"address\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"storageKeys\":[]}]}");
 
+            object[] accessList = {new AccessListItemForRpc(TestItem.AddressA, new HashSet<UInt256>{})};
             _transactionForRpc.Type.Should().Be(1);
-            _transactionForRpc.AccessList.Length.Should().Be(1);
-            _transactionForRpc.AccessList[0].Address.Should().Be(TestItem.AddressA);
-            _transactionForRpc.AccessList[0].StorageKeys.Should().NotBeNull();
-            _transactionForRpc.AccessList[0].StorageKeys.Length.Should().Be(0);
+            _transactionForRpc.AccessList.Should().BeEquivalentTo(accessList);
         }
         
         [Test]
@@ -163,10 +169,10 @@ namespace Nethermind.JsonRpc.Test.Data
         {
             _transactionForRpc = _serializer.Deserialize<TransactionForRpc>("{\"nonce\":\"0x0\",\"blockHash\":null,\"blockNumber\":null,\"transactionIndex\":null,\"to\":null,\"value\":\"0x0\",\"gasPrice\":\"0x0\",\"gas\":\"0x0\",\"input\":null,\"type\":\"0x01\",\"accessList\":[{\"address\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\"}]}");
             
+            object[] accessList = {new AccessListItemForRpc(TestItem.AddressA, null)};
             _transactionForRpc.Type.Should().Be(1);
             _transactionForRpc.AccessList.Length.Should().Be(1);
-            _transactionForRpc.AccessList[0].Address.Should().Be(TestItem.AddressA);
-            _transactionForRpc.AccessList[0].StorageKeys.Should().BeNull();
+            _transactionForRpc.AccessList.Should().BeEquivalentTo(accessList);
         }
 
         [Test]
@@ -190,19 +196,10 @@ namespace Nethermind.JsonRpc.Test.Data
         [Test]
         public void can_convert_from_Transaction_to_TransactionForRpc_and_back()
         {
-            AccessListBuilder accessListBuilder = new AccessListBuilder();
             _transaction = new Transaction();
             _transaction.Type = TxType.AccessList;
 
-            accessListBuilder.AddAddress(TestItem.AddressA);
-            accessListBuilder.AddStorage(1);
-            accessListBuilder.AddStorage(2);
-            accessListBuilder.AddStorage(3);
-            accessListBuilder.AddStorage(5);
-            accessListBuilder.AddStorage(8);
-            accessListBuilder.AddAddress(TestItem.AddressB);
-            accessListBuilder.AddStorage(42);
-            _transaction.AccessList = accessListBuilder.ToAccessList();
+            _transaction.AccessList = GetTestAccessList();
             _transactionForRpc = new TransactionForRpc(_transaction);
             Transaction afterConversion = _transactionForRpc.ToTransaction();
 

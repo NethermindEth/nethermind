@@ -15,25 +15,24 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System;
-using Nethermind.Core.Extensions;
-using Newtonsoft.Json;
+using Nethermind.Serialization.Json;
+using NUnit.Framework;
 
-namespace Nethermind.Serialization.Json
+namespace Nethermind.Core.Test.Json
 {
-    public class ByteConverter : JsonConverter<byte>
+    [TestFixture]
+    public class TxTypeConverterTests : ConverterTestBase<TxType>
     {
-        public override void WriteJson(JsonWriter writer, byte byteValue, JsonSerializer serializer)
+        [TestCase(null)]
+        [TestCase((TxType)0)]
+        [TestCase((TxType)15)]
+        [TestCase((TxType)16)]
+        [TestCase((TxType)255)]
+        [TestCase(TxType.Legacy)]
+        [TestCase(TxType.AccessList)]
+        public void Test_roundtrip(TxType arg)
         {
-            byte[] value = {byteValue};
-            writer.WriteValue(value.ToHexString(true));
-        }
-
-        public override byte ReadJson(JsonReader reader, Type objectType, byte existingValue, bool hasExistingValue, JsonSerializer serializer)
-        {
-            string s = (string) reader.Value;
-            byte[] array = Bytes.FromHexString(s);
-            return array[0];
+            TestConverter(arg, (before, after) => before.Equals(after), new TxTypeConverter());
         }
     }
 }

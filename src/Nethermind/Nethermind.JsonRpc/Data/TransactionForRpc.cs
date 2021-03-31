@@ -21,7 +21,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
-using Nethermind.Serialization.Json;
 using Newtonsoft.Json;
 
 namespace Nethermind.JsonRpc.Data
@@ -43,8 +42,8 @@ namespace Nethermind.JsonRpc.Data
             GasPrice = transaction.GasPrice;
             Gas = transaction.GasLimit;
             Input = Data = transaction.Data;
-            Type = (byte)transaction.Type;
-            AccessList = transaction.AccessList?.Data.Select(i => new AccessListItemForRpc(i.Key, TryGetHashSet(i.Value))).ToArray();
+            Type = transaction.Type;
+            AccessList = TryGetAccessListItems();
 
             Signature? signature = transaction.Signature;
             if (signature != null)
@@ -52,6 +51,29 @@ namespace Nethermind.JsonRpc.Data
                 R = new UInt256(signature.R, true);
                 S = new UInt256(signature.S, true);
                 V = (UInt256?)signature.V;
+            }
+            
+            
+            AccessListItemForRpc[]? TryGetAccessListItems()
+            {
+                int? accessListLength = transaction.AccessList?.Data.Count;
+                if (accessListLength == null)
+                {
+                    return null;
+                }
+                
+                AccessListItemForRpc[] accessList = new AccessListItemForRpc[(int)accessListLength];
+                for (int i = 0; i < accessListLength; i++)
+                {
+                    Address address = transaction.AccessList.Data.Keys.ElementAt(i);
+                    IEnumerable<UInt256>? keys = TryGetHashSet(transaction.AccessList.Data.Values.ElementAt(i));
+                    accessList[i] = new AccessListItemForRpc(address, keys);
+                }
+                return accessList;
+                
+                
+                IEnumerable<UInt256>? TryGetHashSet(IReadOnlySet<UInt256> argValue)
+                    => argValue != null ? new HashSet<UInt256>(argValue) : null;
             }
         }
 
@@ -85,8 +107,7 @@ namespace Nethermind.JsonRpc.Data
         [JsonProperty(NullValueHandling = NullValueHandling.Include)]
         public byte[]? Input { get; set; }
 
-        [JsonConverter(typeof(ByteConverter))]
-        public byte Type { get; set; }
+        public TxType Type { get; set; }
         
         public AccessListItemForRpc[]? AccessList { get; set; }
 
@@ -106,7 +127,7 @@ namespace Nethermind.JsonRpc.Data
             tx.SenderAddress = From;
             tx.Value = Value ?? 0;
             tx.Data = Data ?? Input;
-            tx.Type = (TxType)Type;
+            tx.Type = Type;
             tx.AccessList = TryGetAccessList();
             
             return tx;
@@ -122,7 +143,7 @@ namespace Nethermind.JsonRpc.Data
             tx.SenderAddress = From;
             tx.Value = Value ?? 0;
             tx.Data = Data ?? Input;
-            tx.Type = (TxType)Type;
+            tx.Type = Type;
             tx.AccessList = TryGetAccessList();
 
             return tx;
@@ -130,34 +151,21 @@ namespace Nethermind.JsonRpc.Data
 
         private AccessList? TryGetAccessList()
         {
-            if (Type == 1 && AccessList != null)
+            if (Type != TxType.AccessList || AccessList == null)
             {
-                return GetAccessList();
+                return null;
             }
-            return null;
-        }
 
-        private AccessList GetAccessList()
-        {
             AccessListBuilder accessListBuilder = new();
-            foreach (var item in AccessList)
+            for (int i = 0; i < AccessList.Length; i++)
             {
-                accessListBuilder.AddAddress(item.Address);
-                foreach (var storageKey in item.StorageKeys)
+                accessListBuilder.AddAddress(AccessList[i].Address);
+                for (int j = 0; j < AccessList[i].StorageKeys.Length; j++)
                 {
-                    accessListBuilder.AddStorage(storageKey);
+                    accessListBuilder.AddStorage(AccessList[i].StorageKeys[j]);
                 }
             }
             return accessListBuilder.ToAccessList();
-        }
-
-        private IEnumerable<UInt256>? TryGetHashSet(IReadOnlySet<UInt256> argValue)
-        {
-            if (argValue != null)
-            {
-                return new HashSet<UInt256>(argValue);
-            }
-            return null;
         }
     }
 }
