@@ -29,6 +29,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Timers;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -41,6 +42,7 @@ using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.StateSync;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
+using NSubstitute;
 using NUnit.Framework;
 using BlockTree = Nethermind.Blockchain.BlockTree;
 
@@ -288,7 +290,8 @@ namespace Nethermind.Synchronization.Test.FastSync
             SafeContext ctx = new SafeContext();
             ctx = new SafeContext();
             BlockTree blockTree = Build.A.BlockTree().OfChainLength((int) BlockTree.BestSuggestedHeader.Number).TestObject;
-            ctx.Pool = new SyncPeerPool(blockTree, new NodeStatsManager(LimboLogs.Instance), 25, LimboLogs.Instance);
+            ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
+            ctx.Pool = new SyncPeerPool(blockTree, new NodeStatsManager(timerFactory, LimboLogs.Instance), 25, LimboLogs.Instance);
             ctx.Pool.Start();
             ctx.Pool.AddPeer(syncPeer);
 

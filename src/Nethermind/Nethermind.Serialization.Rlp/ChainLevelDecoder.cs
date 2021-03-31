@@ -37,7 +37,12 @@ namespace Nethermind.Serialization.Rlp
             rlpStream.ReadSequenceLength();
             while (rlpStream.Position < lastCheck)
             {
-                blockInfos.Add(Rlp.Decode<BlockInfo>(rlpStream, RlpBehaviors.AllowExtraData));
+                // block info can be null for corrupted states (also cases where block hash is null from the old DBs)
+                BlockInfo? blockInfo = Rlp.Decode<BlockInfo?>(rlpStream, RlpBehaviors.AllowExtraData);
+                if (blockInfo is not null)
+                {
+                    blockInfos.Add(blockInfo);
+                }
             }
 
             if ((rlpBehaviors & RlpBehaviors.AllowExtraData) != RlpBehaviors.AllowExtraData)
@@ -69,7 +74,12 @@ namespace Nethermind.Serialization.Rlp
             decoderContext.ReadSequenceLength();
             while (decoderContext.Position < lastCheck)
             {
-                blockInfos.Add(Rlp.Decode<BlockInfo>(ref decoderContext, RlpBehaviors.AllowExtraData));
+                // block info can be null for corrupted states (also cases where block hash is null from the old DBs)
+                BlockInfo? blockInfo = Rlp.Decode<BlockInfo?>(ref decoderContext, RlpBehaviors.AllowExtraData);
+                if (blockInfo is not null)
+                {
+                    blockInfos.Add(blockInfo);
+                }
             }
 
             if ((rlpBehaviors & RlpBehaviors.AllowExtraData) != RlpBehaviors.AllowExtraData)

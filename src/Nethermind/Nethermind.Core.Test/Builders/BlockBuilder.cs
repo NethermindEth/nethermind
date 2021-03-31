@@ -34,7 +34,7 @@ namespace Nethermind.Core.Test.Builders
 
         public BlockBuilder WithHeader(BlockHeader header)
         {
-            TestObjectInternal.Header = header;
+            TestObjectInternal = TestObjectInternal.WithReplacedHeader(header);
             return this;
         }
 
@@ -76,7 +76,7 @@ namespace Nethermind.Core.Test.Builders
                 txs[i] = new Transaction();
             }
 
-            return WithTransactions(releaseSpec, txs);
+            return WithTransactions(txs);
         }
         
         public BlockBuilder WithTransactions(int txCount, ISpecProvider specProvider)
@@ -97,15 +97,16 @@ namespace Nethermind.Core.Test.Builders
             ReceiptTrie receiptTrie = new ReceiptTrie(specProvider.GetSpec(number), receipts);
             receiptTrie.UpdateRootHash();
 
-            BlockBuilder result = WithTransactions(specProvider.GetSpec(number), txs);
+            BlockBuilder result = WithTransactions(txs);
             TestObjectInternal.Header.ReceiptsRoot = receiptTrie.RootHash;
             return result;
         }
         
-        public BlockBuilder WithTransactions(IReleaseSpec releaseSpec, params Transaction[] transactions)
+        public BlockBuilder WithTransactions(params Transaction[] transactions)
         {
-            TestObjectInternal.Body = TestObjectInternal.Body.WithChangedTransactions(transactions);
-            TxTrie trie = new TxTrie(transactions, false);
+            TestObjectInternal = TestObjectInternal.WithReplacedBody(
+                TestObjectInternal.Body.WithChangedTransactions(transactions));
+            TxTrie trie = new TxTrie(transactions);
             trie.UpdateRootHash();
 
             TestObjectInternal.Header.TxRoot = trie.RootHash;
@@ -163,13 +164,15 @@ namespace Nethermind.Core.Test.Builders
 
         public BlockBuilder WithOmmers(params Block[] ommers)
         {
-            TestObjectInternal.Body = TestObjectInternal.Body.WithChangedOmmers(ommers.Select(o => o.Header).ToArray());
+            TestObjectInternal = TestObjectInternal.WithReplacedBody(
+                TestObjectInternal.Body.WithChangedOmmers(ommers.Select(o => o.Header).ToArray()));
             return this;
         }
 
         public BlockBuilder WithOmmers(params BlockHeader[] ommers)
         {
-            TestObjectInternal.Body = TestObjectInternal.Body.WithChangedOmmers(ommers);
+            TestObjectInternal = TestObjectInternal.WithReplacedBody(
+                TestObjectInternal.Body.WithChangedOmmers(ommers));
             return this;
         }
 

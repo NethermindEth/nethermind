@@ -74,7 +74,7 @@ namespace Nethermind.Synchronization.BeamSync
             _preProcessExpiryTimeSpan = TimeSpan.FromSeconds(preProcessTimeout);
         }
 
-        private readonly object _finishLock = new object();
+        private readonly object _finishLock = new();
 
         private void SyncModeSelectorOnChanged(object? sender, SyncModeChangedEventArgs e)
         {
@@ -128,9 +128,9 @@ namespace Nethermind.Synchronization.BeamSync
 
         public string Name => _tempDb.Name;
 
-        private readonly object _diffLock = new object();
+        private readonly object _diffLock = new();
 
-        private readonly HashSet<Keccak> _requestedNodes = new HashSet<Keccak>();
+        private readonly HashSet<Keccak> _requestedNodes = new();
 
         private readonly TimeSpan _contextExpiryTimeSpan;
         private readonly TimeSpan _preProcessExpiryTimeSpan;
@@ -396,7 +396,7 @@ namespace Nethermind.Synchronization.BeamSync
         /// <summary>
         /// not sure if this synchronization is still needed nowadays?
         /// </summary>
-        private AutoResetEvent _autoReset = new AutoResetEvent(true);
+        private AutoResetEvent _autoReset = new(true);
 
         public override bool IsMultiFeed => false;
         public override AllocationContexts Contexts => AllocationContexts.State;

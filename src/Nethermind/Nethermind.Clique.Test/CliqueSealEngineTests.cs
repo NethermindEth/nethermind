@@ -67,33 +67,62 @@ namespace Nethermind.Clique.Test
         [OneTimeSetUp]
         public void Setup_chain()
         {
+            IDb db = new MemDb();
             // Import blocks
             _blockTree = Build.A.BlockTree().TestObject;
             Block genesisBlock = GetRinkebyGenesis();
-            Block block1 = Rlp.Decode<Block>(new Rlp(Bytes.FromHexString(Block1Rlp)));
-            Block block2 = Rlp.Decode<Block>(new Rlp(Bytes.FromHexString(Block2Rlp)));
-            Block block3 = Rlp.Decode<Block>(new Rlp(Bytes.FromHexString(Block3Rlp)));
-            Block block4 = Rlp.Decode<Block>(new Rlp(Bytes.FromHexString(Block4Rlp)));
-            Block block5 = Rlp.Decode<Block>(new Rlp(Bytes.FromHexString(Block5Rlp)));
-            _lastBlock = block5;
-            // Add blocks
             MineBlock(_blockTree, genesisBlock);
+            
+            Block block1 = Rlp.Decode<Block>(new Rlp(Bytes.FromHexString(Block1Rlp)));
+            block1.Header.ParentHash = genesisBlock.Hash;
+            BuildSealer(1, db).SealBlock(block1, CancellationToken.None).Wait();
+            block1.Header.Hash = block1.CalculateHash();
             MineBlock(_blockTree, block1);
+            
+            Block block2 = Rlp.Decode<Block>(new Rlp(Bytes.FromHexString(Block2Rlp)));
+            block2.Header.ParentHash = block1.Hash;
+            BuildSealer(2, db).SealBlock(block2, CancellationToken.None).Wait();
+            block2.Header.Hash = block2.CalculateHash();
             MineBlock(_blockTree, block2);
+            
+            Block block3 = Rlp.Decode<Block>(new Rlp(Bytes.FromHexString(Block3Rlp)));
+            block3.Header.ParentHash = block2.Hash;
+            BuildSealer(3, db).SealBlock(block3, CancellationToken.None).Wait();
+            block3.Header.Hash = block3.CalculateHash();
             MineBlock(_blockTree, block3);
-            MineBlock(_blockTree, block4);           
+            
+            Block block4 = Rlp.Decode<Block>(new Rlp(Bytes.FromHexString(Block4Rlp)));
+            block4.Header.ParentHash = block3.Hash;
+            BuildSealer(4, db).SealBlock(block4, CancellationToken.None).Wait();
+            block4.Header.Hash = block4.CalculateHash();
+            MineBlock(_blockTree, block4);
+            
+            Block block5 = Rlp.Decode<Block>(new Rlp(Bytes.FromHexString(Block5Rlp)));
+            block5.Header.ParentHash = block4.Hash;
+            BuildSealer(5, db).SealBlock(block5, CancellationToken.None).Wait();
+            block5.Header.Hash = block5.CalculateHash();
             MineBlock(_blockTree, block5);
-            IEthereumEcdsa ecdsa = new EthereumEcdsa(ChainId.Rinkeby, LimboLogs.Instance);
+            _lastBlock = block5;
             // Init snapshot db
-            IDb db = new MemDb();
-            CliqueConfig config = new CliqueConfig();
+            
+            
             // Select in-turn signer
             int currentBlock = 6;
+            
+            BuildSealer(currentBlock, db);
+        }
+
+        private CliqueSealer BuildSealer(int currentBlock, IDb db)
+        {
+            IEthereumEcdsa ecdsa = new EthereumEcdsa(ChainId.Rinkeby, LimboLogs.Instance);
+            CliqueConfig config = new CliqueConfig();
             int currentSignerIndex = (currentBlock % _signers.Count);
             _currentSigner = _signers[currentSignerIndex];
             _snapshotManager = new SnapshotManager(config, db, _blockTree, ecdsa, LimboLogs.Instance);
             _sealValidator = new CliqueSealValidator(config, _snapshotManager, LimboLogs.Instance);
-            _clique = new CliqueSealer(new Signer(ChainId.Rinkeby, _currentSigner, LimboLogs.Instance), config, _snapshotManager, LimboLogs.Instance);
+            _clique = new CliqueSealer(new Signer(ChainId.Rinkeby, _currentSigner, LimboLogs.Instance), config,
+                _snapshotManager, LimboLogs.Instance);
+            return _clique;
         }
 
         [Test]
@@ -118,9 +147,11 @@ namespace Nethermind.Clique.Test
             UInt256 timestamp = new UInt256(1492009146);
             byte[] extraData = Bytes.FromHexString(GetGenesisExtraData());
             BlockHeader header = new BlockHeader(parentHash, ommersHash, beneficiary, difficulty, number, gasLimit, timestamp, extraData);
+            header.Bloom = Bloom.Empty;
             Block genesis = new Block(header);            
+            genesis.Header.Bloom = Bloom.Empty;
             genesis.Header.Hash = genesis.CalculateHash();
-            
+
             // this would need to be loaded from rinkeby chainspec to include allocations
 //            Assert.AreEqual(new Keccak("0x6341fd3daf94b748c72ced5a5b26028f2474f5f00d824504e4fa37a75767e177"), genesis.Hash);
             
@@ -132,19 +163,18 @@ namespace Nethermind.Clique.Test
         {
             StringBuilder extraDataString = new StringBuilder();
             extraDataString.Append("52657370656374206d7920617574686f7269746168207e452e436172746d616e");
-            // Addresses of the defined private keys
-            extraDataString.Append("26e7ae36f3b9e0f8574f25d4bff891b65879a03a");
-            extraDataString.Append("3d6ca9816e262ba2b3b4240069e57eeb490ed9cd");
-            extraDataString.Append("ba78a89bef9a5f44125d63cc9f9e7c3bb47e0fd9");
-            extraDataString.Append("c68b00b614af0374786c963b28cef9a536a265b6");
+            for (int i = 0; i < _signers.Count; i++)
+            {
+                extraDataString.Append(_signers[i].Address.ToString(false, false));
+            }
+            
             extraDataString.Append("0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000");
             return extraDataString.ToString();
         }
 
-        private void MineBlock(BlockTree tree, Block block)
+        private static void MineBlock(BlockTree tree, Block block)
         {
             tree.SuggestBlock(block);
-            tree.UpdateMainChain(block);
         }
 
         private Block CreateBlock(int blockDifficulty, int blockNumber, Block lastBlock)
@@ -160,6 +190,7 @@ namespace Nethermind.Clique.Test
             BlockHeader header = new BlockHeader(parentHash, ommersHash, beneficiary, difficulty, number, gasLimit, timestamp, extraData);
             header.MixHash = Keccak.Zero;
             Block block = new Block(header);
+            block.Header.Bloom = Bloom.Empty;
             block.Header.Hash = block.CalculateHash();
             return block;
         }

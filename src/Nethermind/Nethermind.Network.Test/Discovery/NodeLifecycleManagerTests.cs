@@ -22,6 +22,7 @@ using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Timers;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Network.Discovery;
@@ -93,7 +94,9 @@ namespace Nethermind.Network.Test.Discovery
 
             var evictionManager = new EvictionManager(_nodeTable, logManager);
             _evictionManagerMock = Substitute.For<IEvictionManager>();
-            var lifecycleFactory = new NodeLifecycleManagerFactory(_nodeTable, new DiscoveryMessageFactory(_timestamper), evictionManager, new NodeStatsManager(logManager), discoveryConfig, logManager);
+            ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
+            var lifecycleFactory = new NodeLifecycleManagerFactory(_nodeTable, new DiscoveryMessageFactory(_timestamper), evictionManager, 
+                new NodeStatsManager(timerFactory, logManager), discoveryConfig, logManager);
 
             _udpClient = Substitute.For<IMessageSender>();
 

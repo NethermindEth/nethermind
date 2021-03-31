@@ -201,6 +201,7 @@ namespace Nethermind.Blockchain.Validators
                 header.GasLimit > _specProvider.GenesisSpec.MinGasLimit &&
                 header.Timestamp > 0 &&
                 header.Number == 0 &&
+                header.Bloom is not null &&
                 header.ExtraData.Length <= _specProvider.GenesisSpec.MaximumExtraDataSize;
         }
     }

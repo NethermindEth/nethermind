@@ -30,7 +30,7 @@ namespace Nethermind.Synchronization.LesSync
 {
     public class CanonicalHashTrie: PatriciaTree
     {
-        private static readonly ChtDecoder _decoder = new ChtDecoder();
+        private static readonly ChtDecoder _decoder = new();
         public static readonly int SectionSize = 32768; // 2**15
 
         private static readonly byte[] MaxSectionKey = Encoding.ASCII.GetBytes("MaxSection");
@@ -65,7 +65,7 @@ namespace Nethermind.Synchronization.LesSync
 
         public byte[][] BuildProof(byte[] key, long sectionIndex, long fromLevel)
         {
-            ChtProofCollector proofCollector = new ChtProofCollector(key, fromLevel);
+            ChtProofCollector proofCollector = new(key, fromLevel);
             //Accept(proofCollector, GetRootHash(sectionIndex), false);
             return proofCollector.BuildResult();
         }

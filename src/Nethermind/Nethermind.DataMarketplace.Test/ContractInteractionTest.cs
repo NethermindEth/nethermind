@@ -164,7 +164,8 @@ namespace Nethermind.DataMarketplace.Test
             {
                 _txIndex = 0;
                 _headBlock = Build.A.Block.WithParent(Head).WithTimestamp(timestamp).TestObject;
-                _headBlock.Body = _headBlock.Body.WithChangedTransactions(new Transaction[100]);
+                _headBlock = _headBlock.WithReplacedBody(
+                    _headBlock.Body.WithChangedTransactions(new Transaction[100]));
                 _receiptsTracer.StartNewBlockTrace(_headBlock);
             }
 
@@ -182,7 +183,7 @@ namespace Nethermind.DataMarketplace.Test
                 _receiptsTracer = new BlockReceiptsTracer();
                 _processor = processor;
                 _tx = Build.A.Transaction.SignedAndResolved(new EthereumEcdsa(ChainId.Mainnet, LimboLogs.Instance), TestItem.PrivateKeyA).TestObject;
-                _headBlock = Build.A.Block.WithNumber(1).WithTransactions(MuirGlacier.Instance, Enumerable.Repeat(_tx, 100).ToArray()).TestObject;
+                _headBlock = Build.A.Block.WithNumber(1).WithTransactions(Enumerable.Repeat(_tx, 100).ToArray()).TestObject;
 
                 _receiptsTracer.SetOtherTracer(GethTracer);
                 _receiptsTracer.StartNewBlockTrace(_headBlock);

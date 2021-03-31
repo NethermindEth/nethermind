@@ -36,8 +36,8 @@ namespace Nethermind.Synchronization.Witness
     {
         private readonly IDb _db;
         private readonly int _maxRequestSize;
-        private readonly ConcurrentStack<WitnessBlockSyncBatch> _blockSyncBatches = new ConcurrentStack<WitnessBlockSyncBatch>();
-        private readonly ConcurrentQueue<StateSyncBatch> _retryBatches = new ConcurrentQueue<StateSyncBatch>();
+        private readonly ConcurrentStack<WitnessBlockSyncBatch> _blockSyncBatches = new();
+        private readonly ConcurrentQueue<StateSyncBatch> _retryBatches = new();
         private readonly ILogger _logger;
         private const int RetryCount = 10;
 
@@ -50,7 +50,7 @@ namespace Nethermind.Synchronization.Witness
         
         public override Task<StateSyncBatch?> PrepareRequest()
         {
-            List<StateSyncItem> batchElements = new List<StateSyncItem>(_maxRequestSize);
+            List<StateSyncItem> batchElements = new(_maxRequestSize);
             int freeSpace = _maxRequestSize;
             
             while (freeSpace > 0 && _blockSyncBatches.TryPop(out var batch))
@@ -89,7 +89,7 @@ namespace Nethermind.Synchronization.Witness
 
         private StateSyncBatch CreateBatch(StateSyncItem[] batchElements) => new StateSyncBatchWithRetries(batchElements) {ConsumerId = FeedId};
 
-        private static StateSyncItem GetStateSyncItem(Keccak key) => new StateSyncItem(key, NodeDataType.State);
+        private static StateSyncItem GetStateSyncItem(Keccak key) => new(key, NodeDataType.State);
 
         public override SyncResponseHandlingResult HandleResponse(StateSyncBatch? batch)
         {

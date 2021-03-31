@@ -241,6 +241,7 @@ namespace Nethermind.Clique.Test
                 genesis.Header.StateRoot = Keccak.EmptyTreeHash;
                 genesis.Header.TxRoot = Keccak.EmptyTreeHash;
                 genesis.Header.ReceiptsRoot = Keccak.EmptyTreeHash;
+                genesis.Header.Bloom = Bloom.Empty;
 
                 return genesis;
             }

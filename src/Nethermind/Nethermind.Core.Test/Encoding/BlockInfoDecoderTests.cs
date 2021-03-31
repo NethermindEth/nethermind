@@ -50,9 +50,7 @@ namespace Nethermind.Core.Test.Encoding
         
         private static void Roundtrip(bool valueDecode)
         {
-            BlockInfo blockInfo = new BlockInfo();
-            blockInfo.BlockHash = TestItem.KeccakA;
-            blockInfo.TotalDifficulty = 1;
+            BlockInfo blockInfo = new BlockInfo(TestItem.KeccakA, 1);
             blockInfo.WasProcessed = true;
 
             Rlp rlp = Rlp.Encode(blockInfo);

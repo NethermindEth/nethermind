@@ -34,7 +34,7 @@ namespace Nethermind.Synchronization.Witness
         private readonly IBlockTree _blockTree;
         private readonly IWitnessStateSyncFeed _witnessStateSyncFeed;
         private readonly ISyncModeSelector _syncModeSelector;
-        private readonly SortedSet<WitnessBlockSyncBatch> _blockHashes = new SortedSet<WitnessBlockSyncBatch>(new WitnessBlockSyncBatchComparer());
+        private readonly SortedSet<WitnessBlockSyncBatch> _blockHashes = new(new WitnessBlockSyncBatchComparer());
         private readonly ILogger _logger;
         private const int FollowDelta = 256;
         private static readonly TimeSpan _minRetryDelay = TimeSpan.FromMilliseconds(100);

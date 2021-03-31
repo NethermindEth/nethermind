@@ -32,6 +32,7 @@ using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Timers;
 using Nethermind.Crypto;
 using Nethermind.DataMarketplace.Channels;
 using Nethermind.DataMarketplace.Consumers.Shared;
@@ -441,6 +442,7 @@ namespace Nethermind.DataMarketplace.Infrastructure
         }
 
         public ITimestamper Timestamper => _nethermindApi.Timestamper;
+        public ITimerFactory TimerFactory => _nethermindApi.TimerFactory;
 
         public ITransactionProcessor? TransactionProcessor
         {

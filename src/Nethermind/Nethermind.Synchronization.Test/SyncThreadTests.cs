@@ -32,6 +32,7 @@ using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Timers;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Int256;
@@ -48,6 +49,7 @@ using Nethermind.Synchronization.Peers;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Storages;
+using NSubstitute;
 using NUnit.Framework;
 using BlockTree = Nethermind.Blockchain.BlockTree;
 
@@ -318,7 +320,8 @@ namespace Nethermind.Synchronization.Test
             BlockchainProcessor processor = new(tree, blockProcessor, step, logManager,
                 BlockchainProcessor.Options.Default);
 
-            NodeStatsManager nodeStatsManager = new(logManager);
+            ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
+            NodeStatsManager nodeStatsManager = new(timerFactory, logManager);
             SyncPeerPool syncPeerPool = new(tree, nodeStatsManager, 25, logManager);
 
             StateProvider devState = new(trieStore, codeDb, logManager);

@@ -59,6 +59,8 @@ namespace Nethermind.Core.Test.Blockchain
         public IDb CodeDb => DbProvider.CodeDb;
         public IBlockProcessor BlockProcessor { get; set; }
         public IBlockchainProcessor BlockchainProcessor { get; set; }
+
+        public IBlockPreprocessorStep BlockPreprocessorStep { get; set; }
         
         public IBlockProcessingQueue BlockProcessingQueue { get; set; }
         public IBlockTree BlockTree { get; set; }
@@ -122,7 +124,7 @@ namespace Nethermind.Core.Test.Blockchain
             IDb blockDb = new MemDb();
             IDb headerDb = new MemDb();
             IDb blockInfoDb = new MemDb();
-            BlockTree = new BlockTree(blockDb, headerDb, blockInfoDb, new ChainLevelInfoRepository(blockDb), SpecProvider, NullBloomStorage.Instance, LimboLogs.Instance);
+            BlockTree = new BlockTree(blockDb, headerDb, blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), SpecProvider, NullBloomStorage.Instance, LimboLogs.Instance);
             TransactionComparerProvider = new TransactionComparerProvider(specProvider, BlockTree);
             BlockPreparationContextService = new BlockPreparationContextService(LimboLogs.Instance);
             TxPool = CreateTxPool(txStorage);
@@ -133,7 +135,8 @@ namespace Nethermind.Core.Test.Blockchain
             VirtualMachine virtualMachine = new VirtualMachine(State, Storage, new BlockhashProvider(BlockTree, LimboLogs.Instance), SpecProvider, LimboLogs.Instance);
             TxProcessor = new TransactionProcessor(SpecProvider, State, Storage, virtualMachine, LimboLogs.Instance);
             BlockProcessor = CreateBlockProcessor();
-            BlockchainProcessor chainProcessor = new BlockchainProcessor(BlockTree, BlockProcessor, new RecoverSignatures(EthereumEcdsa, TxPool, SpecProvider, LimboLogs.Instance), LimboLogs.Instance, Nethermind.Blockchain.Processing.BlockchainProcessor.Options.Default);
+            BlockPreprocessorStep = new RecoverSignatures(EthereumEcdsa, TxPool, SpecProvider, LimboLogs.Instance);
+            BlockchainProcessor chainProcessor = new BlockchainProcessor(BlockTree, BlockProcessor, BlockPreprocessorStep, LimboLogs.Instance, Nethermind.Blockchain.Processing.BlockchainProcessor.Options.Default);
             BlockchainProcessor = chainProcessor;
             BlockProcessingQueue = chainProcessor;
             chainProcessor.Start();
@@ -226,6 +229,12 @@ namespace Nethermind.Core.Test.Blockchain
                 ReceiptStorage,
                 NullWitnessCollector.Instance, 
                 LimboLogs.Instance);
+
+        public async Task WaitForNewHead()
+        {
+            await _resetEvent.WaitAsync(CancellationToken.None);
+            _suggestedBlockResetEvent.Reset();
+        }
 
         public async Task AddBlock(params Transaction[] transactions)
         {

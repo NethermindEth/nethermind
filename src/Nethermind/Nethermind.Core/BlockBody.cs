@@ -25,9 +25,9 @@ namespace Nethermind.Core
             Transactions = transactions ?? Array.Empty<Transaction>();
             Ommers = ommers ?? Array.Empty<BlockHeader>();
         }
-        
-        public BlockBody() 
-            :this(null, null)
+
+        public BlockBody()
+            : this(null, null)
         {
         }
 
@@ -35,15 +35,20 @@ namespace Nethermind.Core
         {
             return new(transactions, Ommers);
         }
-        
+
         public BlockBody WithChangedOmmers(BlockHeader[] ommers)
         {
             return new(Transactions, ommers);
         }
 
+        public static BlockBody WithOneTransactionOnly(Transaction tx)
+        {
+            return new(new[] {tx}, Array.Empty<BlockHeader>());
+        }
+
         public Transaction[] Transactions { get; }
         public BlockHeader[] Ommers { get; }
-        
-        public static BlockBody Empty = new();
+
+        public static readonly BlockBody Empty = new();
     }
 }
