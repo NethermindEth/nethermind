@@ -117,9 +117,7 @@ namespace Nethermind.Synchronization.Test
 
             public PublicKey Id => Node.Id;
 
-            public void SendNewTransaction(Transaction transaction, bool isPriority)
-            {
-            }
+            public bool SendNewTransaction(Transaction transaction, bool isPriority) => true;
 
             public Task<TxReceipt[][]> GetReceipts(IList<Keccak> blockHash, CancellationToken token)
             {

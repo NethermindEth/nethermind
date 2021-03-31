@@ -16,6 +16,7 @@
 
 using System.Linq;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Timers;
 using Nethermind.Logging;
 using Nethermind.Network.P2P;
 using Nethermind.Network.Rlpx;
@@ -52,10 +53,11 @@ namespace Nethermind.Network.Test.P2P
             _session.LocalPort.Returns(ListenPort);
             Node node = new Node("127.0.0.1", 30303, false);
             _session.Node.Returns(node);
+            ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
             return new P2PProtocolHandler(
                 _session,
                 TestItem.PublicKeyA,
-                new NodeStatsManager(LimboLogs.Instance), 
+                new NodeStatsManager(timerFactory, LimboLogs.Instance), 
                 _serializer,
                 LimboLogs.Instance);
         }

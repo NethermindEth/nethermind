@@ -23,6 +23,7 @@ using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Timers;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.KeyStore;
@@ -55,5 +56,6 @@ namespace Nethermind.Api
         ISpecProvider? SpecProvider { get; set; }
         ISyncModeSelector? SyncModeSelector { get; set; } // here for beam sync DB setup
         ITimestamper Timestamper { get; }
+        ITimerFactory TimerFactory { get; }
     }
 }

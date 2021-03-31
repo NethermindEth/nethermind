@@ -43,7 +43,7 @@ namespace Nethermind.Synchronization.FastSync
 
         private const StateSyncBatch EmptyBatch = null;
 
-        private static readonly AccountDecoder AccountDecoder = new AccountDecoder();
+        private static readonly AccountDecoder AccountDecoder = new();
 
         private readonly DetailedProgress _data;
         private readonly IPendingSyncItems _pendingItems;
@@ -54,11 +54,11 @@ namespace Nethermind.Synchronization.FastSync
         private DateTime _currentSyncStart;
         private long _currentSyncStartSecondsInSync;
 
-        private readonly object _stateDbLock = new object();
-        private readonly object _codeDbLock = new object();
+        private readonly object _stateDbLock = new();
+        private readonly object _codeDbLock = new();
 
-        private readonly Stopwatch _networkWatch = new Stopwatch();
-        private readonly Stopwatch _handleWatch = new Stopwatch();
+        private readonly Stopwatch _networkWatch = new();
+        private readonly Stopwatch _handleWatch = new();
 
         private Keccak _rootNode = Keccak.EmptyTreeHash;
         private int _rootSaved;
@@ -72,8 +72,8 @@ namespace Nethermind.Synchronization.FastSync
 
         private readonly ConcurrentDictionary<StateSyncBatch, object?> _pendingRequests = new ();
         private Dictionary<Keccak, HashSet<DependentItem>> _dependencies = new ();
-        private LruKeyCache<Keccak> _alreadySaved = new LruKeyCache<Keccak>(AlreadySavedCapacity, "saved nodes");
-        private readonly HashSet<Keccak> _codesSameAsNodes = new HashSet<Keccak>();
+        private LruKeyCache<Keccak> _alreadySaved = new(AlreadySavedCapacity, "saved nodes");
+        private readonly HashSet<Keccak> _codesSameAsNodes = new();
 
         private BranchProgress _branchProgress;
         private int _hintsToResetRoot;
@@ -186,7 +186,7 @@ namespace Nethermind.Synchronization.FastSync
 
         private void PossiblySaveDependentNodes(Keccak hash)
         {
-            List<DependentItem> nodesToSave = new List<DependentItem>();
+            List<DependentItem> nodesToSave = new();
             lock (_dependencies)
             {
                 if (_dependencies.ContainsKey(hash))
@@ -506,7 +506,7 @@ namespace Nethermind.Synchronization.FastSync
         private void HandleTrieNode(StateSyncItem currentStateSyncItem, byte[] currentResponseItem, ref int invalidNodes)
         {
             NodeDataType nodeDataType = currentStateSyncItem.NodeDataType;
-            TrieNode trieNode = new TrieNode(NodeType.Unknown, currentResponseItem);
+            TrieNode trieNode = new(NodeType.Unknown, currentResponseItem);
             trieNode.ResolveNode(NullTrieNodeResolver.Instance); // TODO: will this work now?
             switch (trieNode.NodeType)
             {
@@ -515,10 +515,10 @@ namespace Nethermind.Synchronization.FastSync
                     if (_logger.IsError) _logger.Error($"Node {currentStateSyncItem.Hash} resolved to {nameof(NodeType.Unknown)}");
                     break;
                 case NodeType.Branch:
-                    DependentItem dependentBranch = new DependentItem(currentStateSyncItem, currentResponseItem, 0);
+                    DependentItem dependentBranch = new(currentStateSyncItem, currentResponseItem, 0);
 
                     // children may have the same hashes (e.g. a set of accounts with the same code at different addresses)
-                    HashSet<Keccak?> alreadyProcessedChildHashes = new HashSet<Keccak?>();
+                    HashSet<Keccak?> alreadyProcessedChildHashes = new();
                     for (int childIndex = 15; childIndex >= 0; childIndex--)
                     {
                         Keccak? childHash = trieNode.GetChildHash(childIndex);
@@ -558,7 +558,7 @@ namespace Nethermind.Synchronization.FastSync
                     Keccak? next = trieNode.GetChild(NullTrieNodeResolver.Instance, 0)?.Keccak;
                     if (next != null)
                     {
-                        DependentItem dependentItem = new DependentItem(currentStateSyncItem, currentResponseItem, 1);
+                        DependentItem dependentItem = new(currentStateSyncItem, currentResponseItem, 1);
                         AddNodeResult addResult = AddNodeToPending(
                             new StateSyncItem(
                                 next,
@@ -585,7 +585,7 @@ namespace Nethermind.Synchronization.FastSync
                     if (nodeDataType == NodeDataType.State)
                     {
                         _pendingItems.MaxStateLevel = 64;
-                        DependentItem dependentItem = new DependentItem(currentStateSyncItem, currentResponseItem, 0, true);
+                        DependentItem dependentItem = new(currentStateSyncItem, currentResponseItem, 0, true);
                         (Keccak codeHash, Keccak storageRoot) = AccountDecoder.DecodeHashesOnly(new RlpStream(trieNode.Value));
                         if (codeHash != Keccak.OfAnEmptyString)
                         {
@@ -753,7 +753,7 @@ namespace Nethermind.Synchronization.FastSync
                 if (requestHashes.Count > 0)
                 {
                     StateSyncItem[] requestedNodes = requestHashes.ToArray();
-                    StateSyncBatch result = new StateSyncBatch(requestedNodes);
+                    StateSyncBatch result = new(requestedNodes);
                     
                     Interlocked.Add(ref _data.RequestedNodesCount, result.RequestedNodes.Length);
                     Interlocked.Exchange(ref _data.SecondsInSync, _currentSyncStartSecondsInSync + (long) (DateTime.UtcNow - _currentSyncStart).TotalSeconds);

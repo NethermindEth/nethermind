@@ -100,7 +100,7 @@ namespace Nethermind.Blockchain.Processing
             InitBranch(newBranchStateRoot);
 
             bool readOnly = (options & ProcessingOptions.ReadOnlyChain) != 0;
-            var blocksCount = suggestedBlocks.Count;
+            int blocksCount = suggestedBlocks.Count;
             Block[] processedBlocks = new Block[blocksCount];
             try
             {
@@ -108,12 +108,12 @@ namespace Nethermind.Blockchain.Processing
                 {
                     if (blocksCount > 64 && i % 8 == 0)
                     {
-                        if(_logger.IsInfo) _logger.Info($"Processing part of a long blocks branch {i}/{blocksCount}");
+                        if(_logger.IsInfo) _logger.Info($"Processing part of a long blocks branch {i}/{blocksCount}. Block: {suggestedBlocks[i]}");
                     }
 
                     _witnessCollector.Reset();
 
-                    var (processedBlock, receipts) = ProcessOne(suggestedBlocks[i], options, blockTracer);
+                    (Block processedBlock, TxReceipt[] receipts) = ProcessOne(suggestedBlocks[i], options, blockTracer);
                     processedBlocks[i] = processedBlock;
 
                     // be cautious here as AuRa depends on processing
@@ -134,7 +134,7 @@ namespace Nethermind.Blockchain.Processing
                         if (_logger.IsInfo) _logger.Info($"Commit part of a long blocks branch {i}/{blocksCount}");
                         CommitBranch();
                         previousBranchStateRoot = CreateCheckpoint();
-                        var newStateRoot = suggestedBlocks[i].StateRoot;
+                        Keccak? newStateRoot = suggestedBlocks[i].StateRoot;
                         InitBranch(newStateRoot, false);
                     }
                 }
@@ -286,7 +286,7 @@ namespace Nethermind.Blockchain.Processing
             _receiptStorage.Insert(block, txReceipts);
             for (int i = 0; i < block.Transactions.Length; i++)
             {
-                _txPool.RemoveTransaction(txReceipts[i].TxHash, block.Number, true);
+                _txPool.RemoveTransaction(txReceipts[i].TxHash, true);
             }
         }
 

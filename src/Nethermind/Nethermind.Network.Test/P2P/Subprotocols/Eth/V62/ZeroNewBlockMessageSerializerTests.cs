@@ -35,7 +35,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             {
                 Transaction a = Build.A.Transaction.TestObject;
                 Transaction b = Build.A.Transaction.TestObject;
-                Block block = Build.A.Block.WithTransactions(MuirGlacier.Instance, a, b).TestObject;
+                Block block = Build.A.Block.WithTransactions(a, b).TestObject;
                 NewBlockMessage newBlockMessage = new NewBlockMessage();
                 newBlockMessage.Block = block;
 
@@ -60,7 +60,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             {
                 Transaction a = Build.A.Transaction.TestObject;
                 Transaction b = Build.A.Transaction.TestObject;
-                Block block = Build.A.Block.WithTransactions(MuirGlacier.Instance, a, b).TestObject;
+                Block block = Build.A.Block.WithTransactions(a, b).TestObject;
                 NewBlockMessage newBlockMessage = new NewBlockMessage();
                 newBlockMessage.Block = block;
 

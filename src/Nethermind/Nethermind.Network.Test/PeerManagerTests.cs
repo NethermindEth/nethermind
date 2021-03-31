@@ -25,6 +25,7 @@ using FluentAssertions;
 using Nethermind.Config;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Timers;
 using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
@@ -412,7 +413,8 @@ namespace Nethermind.Network.Test
             {
                 RlpxPeer = new RlpxMock(Sessions);
                 DiscoveryApp = Substitute.For<IDiscoveryApp>();
-                Stats = new NodeStatsManager(LimboLogs.Instance);
+                ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
+                Stats = new NodeStatsManager(timerFactory, LimboLogs.Instance);
                 Storage = new InMemoryStorage();
                 PeerLoader = new PeerLoader(new NetworkConfig(), new DiscoveryConfig(), Stats, Storage, LimboLogs.Instance);
                 NetworkConfig = new NetworkConfig();

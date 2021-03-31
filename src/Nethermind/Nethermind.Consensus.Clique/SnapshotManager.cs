@@ -69,7 +69,7 @@ namespace Nethermind.Consensus.Clique
             }
 
             Span<byte> signatureBytes = header.ExtraData.AsSpan().Slice(header.ExtraData.Length - extraSeal, extraSeal);
-            Signature signature = new Signature(signatureBytes);
+            Signature signature = new(signatureBytes);
             signature.V += Signature.VOffset;
             Keccak message = CalculateCliqueHeaderHash(header);
             Address address = _ecdsa.RecoverAddress(signatureBytes, message);
@@ -97,7 +97,7 @@ namespace Nethermind.Consensus.Clique
             return sigHash;
         }
 
-        private object _snapshotCreationLock = new object();
+        private object _snapshotCreationLock = new();
 
         public ulong GetLastSignersCount() => _lastSignersCount;
         
@@ -140,7 +140,7 @@ namespace Nethermind.Consensus.Clique
                         Address epochSigner = GetBlockSealer(header);
                         for (int i = 0; i < signersCount; i++)
                         {
-                            Address signer = new Address(header.ExtraData.Slice(Clique.ExtraVanityLength + i * Address.ByteLength, Address.ByteLength));                            
+                            Address signer = new(header.ExtraData.Slice(Clique.ExtraVanityLength + i * Address.ByteLength, Address.ByteLength));                            
                             signers.Add(signer, signer == epochSigner ? number : parentSnapshot == null ? 0L : parentSnapshot.Signers.ContainsKey(signer) ? parentSnapshot.Signers[signer] : 0L);
                         }
 
@@ -239,7 +239,7 @@ namespace Nethermind.Consensus.Clique
             return new Keccak(keyBytes);
         }
 
-        private SnapshotDecoder _decoder = new SnapshotDecoder();
+        private SnapshotDecoder _decoder = new();
 
         [Todo(Improve.Refactor, "I guess it was only added here because of the use of blocksdb")]
         private Snapshot? LoadSnapshot(Keccak hash)
@@ -309,7 +309,7 @@ namespace Nethermind.Consensus.Clique
                 bool authorize = header.Nonce == Clique.NonceAuthVote;
                 if (Cast(snapshot, header.Beneficiary, authorize))
                 {
-                    Vote vote = new Vote(signer, number, header.Beneficiary, authorize);
+                    Vote vote = new(signer, number, header.Beneficiary, authorize);
                     snapshot.Votes.Add(vote);
                 }
 

@@ -259,7 +259,7 @@ namespace Nethermind.Serialization.Rlp
 
             if (item.Type != TxType.Legacy)
             {
-                if ((rlpBehaviors & RlpBehaviors.ForTxRoot) == RlpBehaviors.None)
+                if ((rlpBehaviors & RlpBehaviors.ForTreeRoot) == RlpBehaviors.None)
                 {
                     stream.StartByteArray(sequenceLength + 1, false);
                 }
@@ -343,7 +343,7 @@ namespace Nethermind.Serialization.Rlp
             int txContentLength = GetContentLength(tx, false);
             int txPayloadLength = Rlp.GetSequenceRlpLength(txContentLength);
 
-            bool isForTxRoot = (rlpBehaviors & RlpBehaviors.ForTxRoot) == RlpBehaviors.ForTxRoot;
+            bool isForTxRoot = (rlpBehaviors & RlpBehaviors.ForTreeRoot) == RlpBehaviors.ForTreeRoot;
             int result = tx.Type != TxType.Legacy
                 ? isForTxRoot
                     ? (1 + txPayloadLength)

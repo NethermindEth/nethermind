@@ -1,4 +1,4 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -13,24 +13,21 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using Nethermind.Core;
-using Nethermind.Int256;
+using System;
+using System.Timers;
 
-namespace Nethermind.Blockchain.Rewards
+namespace Nethermind.Core.Timers
 {
-    public class StaticRewardCalculator : IRewardCalculator
+    public interface ITimer : IDisposable
     {
-        private readonly UInt256 _blockReward;
-
-        public StaticRewardCalculator(UInt256 blockReward)
-        {
-            _blockReward = blockReward;
-        }
-
-        public BlockReward[] CalculateRewards(Block block)
-        {
-            return new[] { new BlockReward(block.Beneficiary, _blockReward) };
-        }
+        bool AutoReset { get; set; }
+        bool Enabled { get; set; }
+        TimeSpan Interval { get; set; }
+        double IntervalMilliseconds { get; set; }
+        void Start();
+        void Stop();
+        event EventHandler Elapsed;
     }
 }

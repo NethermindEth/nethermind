@@ -41,6 +41,7 @@ namespace Nethermind.Specs.ChainSpecStyle
         {
             _serializer = serializer;
             _serializer.RegisterConverter(new StepDurationJsonConverter());
+            _serializer.RegisterConverter(new BlockRewardJsonConverter());
         }
 
         public ChainSpec Load(byte[] data) => Load(Encoding.UTF8.GetString(data));

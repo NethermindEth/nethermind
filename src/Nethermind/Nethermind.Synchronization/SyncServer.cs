@@ -57,7 +57,7 @@ namespace Nethermind.Synchronization
         private readonly ISyncConfig _syncConfig;
         private readonly IWitnessRepository _witnessRepository;
         private readonly CanonicalHashTrie? _cht;
-        private object _dummyValue = new object();
+        private object _dummyValue = new();
 
         private ICache<Keccak, object> _recentlySuggested =
             new LruCache<Keccak, object>(128, 128, "recently suggested blocks");
@@ -252,7 +252,7 @@ namespace Nethermind.Synchronization
         /// </summary>
         private void LogBlockAuthorNicely(Block block, ISyncPeer syncPeer)
         {
-            StringBuilder sb = new StringBuilder();
+            StringBuilder sb = new();
             sb.Append($"Discovered new block {block.ToString(Block.Format.HashNumberAndTx)}");
 
             if (block.Author != null)
@@ -362,7 +362,7 @@ namespace Nethermind.Synchronization
             return _blockTree.FindLowestCommonAncestor(firstDescendant, secondDescendant, Sync.MaxReorgLength);
         }
 
-        private object _chtLock = new object();
+        private object _chtLock = new();
 
         // TODO - Cancellation token?
         // TODO - not a fan of this function name - CatchUpCHT, AddMissingCHTBlocks, ...?
@@ -425,7 +425,7 @@ namespace Nethermind.Synchronization
             return null;
         }
 
-        private Random _broadcastRandomizer = new Random();
+        private Random _broadcastRandomizer = new();
 
         [Todo(Improve.Refactor, "This may not be desired if the other node is just syncing now too")]
         private void OnNewHeadBlock(object? sender, BlockEventArgs blockEventArgs)

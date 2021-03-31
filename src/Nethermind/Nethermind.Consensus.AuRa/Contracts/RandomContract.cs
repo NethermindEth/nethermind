@@ -90,7 +90,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
     public sealed class RandomContract : Blockchain.Contracts.Contract, IRandomContract
     {
         private readonly ISigner _signer;
-        private ConstantContract Constant { get; }
+        private IConstantContract Constant { get; }
 
         public RandomContract(
             IAbiEncoder abiEncoder,

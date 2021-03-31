@@ -24,6 +24,6 @@ namespace Nethermind.TxPool
     {
         public PublicKey Id { get; }
         public string Enode => string.Empty;
-        void SendNewTransaction(Transaction tx, bool isPriority);
+        bool SendNewTransaction(Transaction tx, bool isPriority);
     }
 }

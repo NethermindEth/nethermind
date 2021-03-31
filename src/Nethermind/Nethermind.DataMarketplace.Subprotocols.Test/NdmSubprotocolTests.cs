@@ -18,6 +18,7 @@ using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Timers;
 using Nethermind.Crypto;
 using Nethermind.DataMarketplace.Channels;
 using Nethermind.DataMarketplace.Consumers.Shared;
@@ -49,7 +50,7 @@ namespace Nethermind.DataMarketplace.Subprotocols.Test
         private void BuildSubprotocol()
         {
             ISession session = Substitute.For<ISession>();
-            INodeStatsManager nodeStatsManager = new NodeStatsManager(LimboLogs.Instance);
+            INodeStatsManager nodeStatsManager = new NodeStatsManager(Substitute.For<ITimerFactory>(), LimboLogs.Instance);
             MessageSerializationService serializationService = new MessageSerializationService();
             serializationService.Register(typeof(HiMessage).Assembly);
             IConsumerService consumerService = Substitute.For<IConsumerService>();

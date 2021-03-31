@@ -23,6 +23,6 @@ namespace Nethermind.State.Repositories
         void Delete(long number, BatchWrite? batch = null);
         void PersistLevel(long number, ChainLevelInfo level, BatchWrite? batch = null);
         BatchWrite StartBatch();
-        ChainLevelInfo LoadLevel(long number);
+        ChainLevelInfo? LoadLevel(long number);
     }
 }

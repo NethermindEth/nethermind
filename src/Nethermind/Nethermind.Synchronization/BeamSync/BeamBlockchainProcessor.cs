@@ -83,7 +83,7 @@ namespace Nethermind.Synchronization.BeamSync
 
         private Action<Block> _blockAction;
 
-        private Queue<Block> _shelvedBlocks = new Queue<Block>();
+        private Queue<Block> _shelvedBlocks = new();
 
         private void EnqueueForStandardProcessing(Block block)
         {
@@ -103,7 +103,7 @@ namespace Nethermind.Synchronization.BeamSync
             _shelvedBlocks.Enqueue(block);
         }
 
-        private object _transitionLock = new object();
+        private object _transitionLock = new();
 
         private bool _isAfterBeam;
 
@@ -209,7 +209,7 @@ namespace Nethermind.Synchronization.BeamSync
             return (env.ChainProcessor, txEnv.StateReader);
         }
 
-        private ConcurrentBag<Task> _beamProcessTasks = new ConcurrentBag<Task>();
+        private ConcurrentBag<Task> _beamProcessTasks = new();
 
         private void OnNewBlock(object? sender, BlockEventArgs e)
         {
@@ -229,7 +229,7 @@ namespace Nethermind.Synchronization.BeamSync
         /// <summary>
         /// Tokens really should be by hash or hash sets by number
         /// </summary>
-        private ConcurrentDictionary<long, CancellationTokenSource> _tokens = new ConcurrentDictionary<long, CancellationTokenSource>();
+        private ConcurrentDictionary<long, CancellationTokenSource> _tokens = new();
 
         private void BeamProcess(Block block)
         {
