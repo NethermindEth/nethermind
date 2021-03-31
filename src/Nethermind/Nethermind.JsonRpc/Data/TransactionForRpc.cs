@@ -106,6 +106,8 @@ namespace Nethermind.JsonRpc.Data
             tx.SenderAddress = From;
             tx.Value = Value ?? 0;
             tx.Data = Data ?? Input;
+            tx.DecodedFeeCap = FeeCap ?? 0;
+            tx.Type = (TxType?)Type ?? TxType.Legacy;
 
             return tx;
         }
