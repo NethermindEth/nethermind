@@ -8,6 +8,7 @@
     <Nullable>annotations</Nullable>
   </PropertyGroup>
   <ItemGroup>
+    <ProjectReference Include="..\..\Math.Gmp.Native\MathGmp.Native\MathGmp.Native.csproj" />
     <ProjectReference Include="..\Nethermind.Core\Nethermind.Core.csproj" />
     <ProjectReference Include="..\Nethermind.Serialization.Rlp\Nethermind.Serialization.Rlp.csproj" />
     <ProjectReference Include="..\Nethermind.State\Nethermind.State.csproj" />
