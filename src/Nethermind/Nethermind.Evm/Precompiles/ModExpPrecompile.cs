@@ -55,11 +55,6 @@ namespace Nethermind.Evm.Precompiles
         /// <returns>Gas cost of the MODEXP operation in the context of EIP2565</returns>
         public long DataGasCost(byte[] inputData, IReleaseSpec releaseSpec)
         {
-            if (!releaseSpec.IsEip2565Enabled)
-            {
-                return ModExpPrecompileOld.Instance.DataGasCost(inputData, releaseSpec);
-            }
-            
             try
             {
                 byte[] extendedInput = new byte[96];

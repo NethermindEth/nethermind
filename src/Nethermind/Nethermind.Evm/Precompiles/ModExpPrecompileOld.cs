@@ -44,6 +44,11 @@ namespace Nethermind.Evm.Precompiles
         
         public long DataGasCost(byte[] inputData, IReleaseSpec releaseSpec)
         {
+            if (releaseSpec.IsEip2565Enabled)
+            {
+                return ModExpPrecompile.Instance.DataGasCost(inputData, releaseSpec);
+            }
+            
             try
             {
                 Span<byte> extendedInput = stackalloc byte[96];
