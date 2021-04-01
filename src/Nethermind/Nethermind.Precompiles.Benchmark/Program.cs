@@ -34,7 +34,6 @@ namespace Nethermind.Precompiles.Benchmark
             // BenchmarkRunner.Run<Bn256AddBenchmark>();
             // BenchmarkRunner.Run<Bn256MulBenchmark>();
             // BenchmarkRunner.Run<Bn256PairingBenchmark>();
-            BenchmarkRunner.Run<ModExp2565Benchmark>();
             // BenchmarkRunner.Run<ModExpBenchmark>();
             Console.ReadLine();
         }
