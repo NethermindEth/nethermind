@@ -71,6 +71,7 @@ namespace Nethermind.Core.Test.Encoding
                 .WithFeeCap(2.GWei())
                 .WithType(TxType.EIP1559)
                 .WithGasPrice(0)
+                .WithChainId(1559)
                 .SignedAndResolved().TestObject, "EIP 1559 second test case");
         }
 
