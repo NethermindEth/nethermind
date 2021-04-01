@@ -114,6 +114,11 @@ namespace Nethermind.Evm.Precompiles
 
         public (byte[], bool) Run(byte[] inputData, IReleaseSpec releaseSpec)
         {
+            if (!releaseSpec.IsEip2565Enabled)
+            {
+                return ModExpPrecompileOld.Instance.Run(inputData, releaseSpec);
+            }
+            
             Metrics.ModExpPrecompile++;
 
             (int baseLength, int expLength, int modulusLength) = GetInputLengths(inputData);

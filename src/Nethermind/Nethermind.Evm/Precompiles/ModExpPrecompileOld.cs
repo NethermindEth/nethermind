@@ -71,11 +71,6 @@ namespace Nethermind.Evm.Precompiles
 
         public (byte[], bool) Run(byte[] inputData, IReleaseSpec releaseSpec)
         {
-            // if (releaseSpec.IsEip2565Enabled)
-            // {
-            //     return ModExpPrecompile.Instance.Run(inputData, releaseSpec);
-            // }
-            
             Metrics.ModExpPrecompile++;
             
             int baseLength = (int)inputData.SliceWithZeroPaddingEmptyOnError(0, 32).ToUnsignedBigInteger();
