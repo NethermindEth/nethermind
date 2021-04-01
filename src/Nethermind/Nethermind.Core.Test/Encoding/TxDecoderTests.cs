@@ -67,6 +67,7 @@ namespace Nethermind.Core.Test.Encoding
                 .WithGasPremium(10)
                 .WithChainId(0)
                 .SignedAndResolved().TestObject, "EIP 1559");
+            yield return (Build.A.Transaction.WithFeeCap(2.GWei()).WithType(TxType.EIP1559).WithGasPrice(0).TestObject, "EIP 1559 second test case");
         }
 
         [TestCaseSource(nameof(TestCaseSource))]
@@ -105,7 +106,7 @@ namespace Nethermind.Core.Test.Encoding
             Transaction decodedRlp = _txDecoder.Decode(new RlpStream(rlpResult.Bytes), RlpBehaviors.ForTreeRoot);
             Assert.AreEqual(decodedRlp?.Hash, decodedRlpStream?.Hash);
         }
-
+        
         public static IEnumerable<(string, Keccak)> YoloV3TestCases()
         {
             yield return

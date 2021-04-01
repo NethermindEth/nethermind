@@ -160,7 +160,7 @@ namespace Nethermind.Serialization.Rlp
         
         private void EncodeAccessListPayloadWithoutPayload(Transaction item, RlpStream stream, RlpBehaviors rlpBehaviors)
         {
-            stream.Encode(item.ChainId!.Value);
+            stream.Encode(item.ChainId ?? 0);
             stream.Encode(item.Nonce);
             stream.Encode(item.GasPrice);
             stream.Encode(item.GasLimit);
@@ -172,7 +172,7 @@ namespace Nethermind.Serialization.Rlp
         
         private void EncodeEip1559PayloadWithoutPayload(Transaction item, RlpStream stream, RlpBehaviors rlpBehaviors)
         {
-            stream.Encode(item.ChainId!.Value);
+            stream.Encode(item.ChainId ?? 0);
             stream.Encode(item.Nonce);
             stream.Encode(item.GasPrice); // gas premium
             stream.Encode(item.DecodedFeeCap);
