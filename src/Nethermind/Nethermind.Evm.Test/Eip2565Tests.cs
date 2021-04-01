@@ -37,8 +37,8 @@ namespace Nethermind.Evm.Test
 
             Prepare input = Prepare.EvmCode.FromCode(randomInput);
             
-            (byte[], bool) gmpPair = ModExpPrecompile2565.Instance.Run(input.Done, Berlin.Instance);
-            (byte[], bool) bigIntPair = ModExpPrecompile2565.OldRun(input.Done);
+            (byte[], bool) gmpPair = ModExpPrecompile.Instance.Run(input.Done, Berlin.Instance);
+            (byte[], bool) bigIntPair = ModExpPrecompile.OldRun(input.Done);
             
             Assert.AreEqual(gmpPair.Item1, bigIntPair.Item1);
         }
