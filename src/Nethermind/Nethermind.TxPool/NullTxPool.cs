@@ -48,7 +48,9 @@ namespace Nethermind.TxPool
             transaction = null;
             return false;
         }
-        
+
+        public bool IsTransactionKnown(Keccak hash) => false;
+
         public UInt256 ReserveOwnTransactionNonce(Address address) => UInt256.Zero;
 
         public event EventHandler<TxEventArgs> NewDiscovered

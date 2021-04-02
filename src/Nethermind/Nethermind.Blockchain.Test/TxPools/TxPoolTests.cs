@@ -462,6 +462,23 @@ namespace Nethermind.Blockchain.Test.TxPools
             _txPool.GetOwnPendingTransactions().Min(t => t.GasPrice).Should().Be(8);
         }
 
+        [Test]
+        public void should_return_true_when_asking_for_txHash_existing_in_pool()
+        {
+            _txPool = CreatePool(_noTxStorage);
+            Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            EnsureSenderBalance(tx);
+            _txPool.AddTransaction(tx, TxHandlingOptions.PersistentBroadcast);
+            _txPool.IsTransactionKnown(tx.Hash).Should().Be(true);
+        }
+        
+        [Test]
+        public void should_return_false_when_asking_for_not_known_txHash()
+        {
+            _txPool = CreatePool(_noTxStorage);
+            _txPool.IsTransactionKnown(TestItem.KeccakA).Should().Be(false);
+        }
+
         private Transactions AddTransactions(ITxStorage storage)
         {
             _txPool = CreatePool(storage);
