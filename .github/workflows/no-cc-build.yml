@@ -92,6 +92,9 @@ jobs:
     - name: Nethermind.Logging.NLog.Test
       run: |
         dotnet test -c Release src/Nethermind/Nethermind.Logging.NLog.Test
+    - name: MathGmp.Native
+      run: |
+        dotnet test -c Release src/Math.Gmp.Native/MathGmp.Native.UnitTests                
   neth-tests3:
     name: Nethermind Tests 3
     runs-on: ${{ matrix.os }}
