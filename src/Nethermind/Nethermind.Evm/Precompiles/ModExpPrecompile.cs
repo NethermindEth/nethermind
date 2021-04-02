@@ -57,7 +57,7 @@ namespace Nethermind.Evm.Precompiles
         {
             if (!releaseSpec.IsEip2565Enabled)
             {
-                return ModExpPrecompileOld.Instance.DataGasCost(inputData, releaseSpec);
+                return ModExpPrecompilePreEip2565.Instance.DataGasCost(inputData, releaseSpec);
             }
             
             try
@@ -114,11 +114,6 @@ namespace Nethermind.Evm.Precompiles
 
         public (byte[], bool) Run(byte[] inputData, IReleaseSpec releaseSpec)
         {
-            if (!releaseSpec.IsEip2565Enabled)
-            {
-                return ModExpPrecompileOld.Instance.Run(inputData, releaseSpec);
-            }
-            
             Metrics.ModExpPrecompile++;
 
             (int baseLength, int expLength, int modulusLength) = GetInputLengths(inputData);
