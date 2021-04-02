@@ -63,11 +63,10 @@ namespace Nethermind.Blockchain
             for (int i = 0; i < transactionsInBlock; i++)
             {
                 Keccak txHash = block.Transactions[i].Hash;
-                if (!_txPool.IsTransactionKnown(txHash))
+                if (!_txPool.RemoveTransaction(txHash, true))
                 {
                     discoveredTransactions++;
-                } 
-                _txPool.RemoveTransaction(txHash, true);
+                }
             }
             TxPool.Metrics.DarkPoolRatio = transactionsInBlock == 0 ? 0 : (float)discoveredTransactions / transactionsInBlock;
 

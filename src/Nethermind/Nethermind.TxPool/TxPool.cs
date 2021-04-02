@@ -383,7 +383,7 @@ namespace Nethermind.TxPool
             return false;
         }
 
-        public void RemoveTransaction(Keccak hash, bool removeBelowThisTxNonce = false)
+        public bool RemoveTransaction(Keccak hash, bool removeBelowThisTxNonce = false)
         {
             ICollection<Transaction>? bucket;
             ICollection<Transaction>? persistentBucket = null;
@@ -441,6 +441,7 @@ namespace Nethermind.TxPool
                     }
                 }
             }
+            return _hashCache.Get(hash);
         }
 
         public bool TryGetPendingTransaction(Keccak hash, out Transaction transaction)
@@ -459,11 +460,6 @@ namespace Nethermind.TxPool
             }
 
             return transaction != null;
-        }
-
-        public bool IsTransactionKnown(Keccak hash)
-        {
-            return _hashCache.Get(hash);
         }
 
         // TODO: Ensure that nonce is always valid in case of sending own transactions from different nodes.

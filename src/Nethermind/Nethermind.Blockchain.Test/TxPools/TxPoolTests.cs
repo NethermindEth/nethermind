@@ -469,14 +469,14 @@ namespace Nethermind.Blockchain.Test.TxPools
             Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
             EnsureSenderBalance(tx);
             _txPool.AddTransaction(tx, TxHandlingOptions.PersistentBroadcast);
-            _txPool.IsTransactionKnown(tx.Hash).Should().Be(true);
+            _txPool.RemoveTransaction(tx.Hash).Should().Be(true);
         }
         
         [Test]
         public void should_return_false_when_asking_for_not_known_txHash()
         {
             _txPool = CreatePool(_noTxStorage);
-            _txPool.IsTransactionKnown(TestItem.KeccakA).Should().Be(false);
+            _txPool.RemoveTransaction(TestItem.KeccakA).Should().Be(false);
         }
 
         private Transactions AddTransactions(ITxStorage storage)
