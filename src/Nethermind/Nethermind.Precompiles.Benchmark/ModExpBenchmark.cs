@@ -30,5 +30,11 @@ namespace Nethermind.Precompiles.Benchmark
     {
         protected override IEnumerable<IPrecompile> Precompiles => new[] {ModExpPrecompile.Instance};
         protected override string InputsDirectory => "modexp";
+        
+        [Benchmark]
+        public (byte[], bool) BigInt()
+        {
+            return ModExpPrecompile.OldRun(Input.Bytes);
+        }
     }
 }
