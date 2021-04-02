@@ -9,8 +9,8 @@ namespace Nethermind.Precompiles.Benchmark
     [HtmlExporter]
     // [NativeMemoryProfiler]
     // [MemoryDiagnoser]
-    // [ShortRunJob(RuntimeMoniker.NetCoreApp31)]
-    [SimpleJob(RuntimeMoniker.NetCoreApp31)]
+    // [ShortRunJob(RuntimeMoniker.NetCoreApp50)]
+    [SimpleJob(RuntimeMoniker.NetCoreApp50)]
     public class Sha256Benchmark : PrecompileBenchmarkBase
     {
         protected override IEnumerable<IPrecompile> Precompiles => new[] {Sha256Precompile.Instance};

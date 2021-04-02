@@ -21,7 +21,7 @@ using Nethermind.Core.Extensions;
 namespace Nethermind.Benchmarks.Core
 {
     [MemoryDiagnoser]
-    [SimpleJob(RuntimeMoniker.NetCoreApp31)]
+    [SimpleJob(RuntimeMoniker.NetCoreApp50)]
     public class FromHexBenchmarks
     {
         private string array = Bytes.FromHexString("0123456789abcdef").ToHexString();

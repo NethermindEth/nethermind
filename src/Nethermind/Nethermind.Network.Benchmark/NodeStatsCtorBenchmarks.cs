@@ -25,7 +25,7 @@ using Nethermind.Stats.Model;
 namespace Nethermind.Network.Benchmarks
 {
     [MemoryDiagnoser]
-    [SimpleJob(RuntimeMoniker.NetCoreApp31)]
+    [SimpleJob(RuntimeMoniker.NetCoreApp50)]
     public class NodeStatsCtorBenchmarks
     {
         private Node _node;

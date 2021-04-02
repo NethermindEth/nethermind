@@ -29,7 +29,7 @@ using Nethermind.Serialization.Rlp;
 namespace Nethermind.Benchmarks.Rlp
 {
     [MemoryDiagnoser]
-    [SimpleJob(RuntimeMoniker.NetCoreApp31)]
+    [SimpleJob(RuntimeMoniker.NetCoreApp50)]
     public class RlpEncodeHeaderBenchmark
     {
         private static HeaderDecoder _headerDecoder = new HeaderDecoder();

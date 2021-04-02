@@ -17,3 +17,7 @@
 [submodule "src/int256"]
 	path = src/int256
 	url = https://github.com/NethermindEth/int256.git
+[submodule "src/Math.Gmp.Native"]
+	path = src/Math.Gmp.Native
+	url = https://github.com/NethermindEth/Math.Gmp.Native.git
+	branch = master
