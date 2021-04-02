@@ -106,7 +106,8 @@ namespace Nethermind.Evm.Precompiles
                 .CopyTo(extendedInput.Slice(0, Math.Min(96, inputData.Length)));
 
             int baseLength = (int)new UInt256(extendedInput.Slice(0, 32), true);
-            int expLength = (int)new UInt256(extendedInput.Slice(32, 32), true);
+            UInt256 expLengthUint256 = new UInt256(extendedInput.Slice(32, 32), true);
+            int expLength = expLengthUint256 > int.MaxValue ? int.MaxValue : (int)expLengthUint256;
             int modulusLength = (int)new UInt256(extendedInput.Slice(64, 32), true);
 
             return (baseLength, expLength, modulusLength);
