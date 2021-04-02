@@ -373,7 +373,6 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
                     Eip2315Transition = 23150L,
                     Eip2537Transition = 25370L,
                     Eip2565Transition = 25650L,
-                    Eip2718Transition = 27180L,
                     Eip2929Transition = 29290L,
                     Eip2930Transition = 29300L,
                     Eip1283ReenableTransition = 23000L,

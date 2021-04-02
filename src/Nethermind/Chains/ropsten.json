@@ -54,7 +54,6 @@
 		"eip2028Transition": "0x62F756",
 		"eip2200Transition": "0x62F756",
         "eip2565Transition": "0x95B8DD",
-        "eip2718Transition": "0x95B8DD",
         "eip2929Transition": "0x95B8DD",
         "eip2930Transition": "0x95B8DD"
     },

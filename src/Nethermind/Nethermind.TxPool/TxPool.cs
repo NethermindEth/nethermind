@@ -260,7 +260,7 @@ namespace Nethermind.TxPool
             }
 
             Metrics.PendingTransactionsReceived++;
-
+            
             if (!_validator.IsWellFormed(tx, _specProvider.GetSpec()))
             {
                 // It may happen that other nodes send us transactions that were signed for another chain or don't have enough gas.
