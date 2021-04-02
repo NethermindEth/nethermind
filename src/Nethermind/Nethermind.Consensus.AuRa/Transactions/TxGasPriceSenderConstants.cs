@@ -23,6 +23,6 @@ namespace Nethermind.Consensus.AuRa.Transactions
     {
         public static  UInt256 DefaultGasPrice = 20_000_000ul;
 
-        public const uint DefaultPercentDelta = 110;
+        public const uint DefaultPercentMultiplier = 110;
     }
 }

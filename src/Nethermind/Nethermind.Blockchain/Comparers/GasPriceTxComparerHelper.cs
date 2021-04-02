@@ -16,33 +16,20 @@
 // 
 
 using Nethermind.Core;
-using Nethermind.Core.Specs;
 using Nethermind.Int256;
 
 namespace Nethermind.Blockchain.Comparers
 {
-    public interface IGasPriceTxComparerByBaseFee
+    public class GasPriceTxComparerHelper
     {
-        int Compare(Transaction? x, Transaction? y, UInt256 baseFee, long blockNumber);
-    }
-    
-    public class GasPriceTxComparerByBaseFee : IGasPriceTxComparerByBaseFee
-    {
-        private readonly ISpecProvider _specProvider;
-
-        public GasPriceTxComparerByBaseFee(ISpecProvider specProvider)
-        {
-            _specProvider = specProvider;
-        }
-        
-        public int Compare(Transaction? x, Transaction? y, UInt256 baseFee, long blockNumber)
+        public static int Compare(Transaction? x, Transaction? y, UInt256 baseFee, bool isEip1559Enabled)
         {
             if (ReferenceEquals(x, y)) return 0;
             if (ReferenceEquals(null, y)) return 1;
             if (ReferenceEquals(null, x)) return -1;
             
             // then by gas price descending
-            if (_specProvider.GetSpec(blockNumber).IsEip1559Enabled)
+            if (isEip1559Enabled)
             {
                 UInt256 xGasPrice = UInt256.Min(x.FeeCap, x.GasPremium + baseFee);
                 UInt256 yGasPrice = UInt256.Min(y.FeeCap, y.GasPremium + baseFee);
@@ -54,5 +41,6 @@ namespace Nethermind.Blockchain.Comparers
             
             return y.GasPrice.CompareTo(x.GasPrice);
         }
+
     }
 }

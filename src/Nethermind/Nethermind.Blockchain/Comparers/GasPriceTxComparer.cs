@@ -18,24 +18,26 @@
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Int256;
 
 namespace Nethermind.Blockchain.Comparers
 {
     public class GasPriceTxComparer : IComparer<Transaction>
     {
         private readonly IBlockTree _blockTree;
-        private readonly IGasPriceTxComparerByBaseFee _gasPriceTxComparerByBaseFee;
+        private readonly ISpecProvider _specProvider;
 
-        public GasPriceTxComparer(IBlockTree blockTree, IGasPriceTxComparerByBaseFee gasPriceTxComparerByBaseFee)
+        public GasPriceTxComparer(IBlockTree blockTree, ISpecProvider specProvider)
         {
             _blockTree = blockTree;
-            _gasPriceTxComparerByBaseFee = gasPriceTxComparerByBaseFee;
+            _specProvider = specProvider;
         }
         
         public int Compare(Transaction? x, Transaction? y)
         {
             Block block = _blockTree.Head;
-            return _gasPriceTxComparerByBaseFee.Compare(x, y, block?.Header.BaseFee ?? 0, block?.Number ?? 0);
+            bool isEip1559Enabled = _specProvider.GetSpec(block?.Number ?? 0).IsEip1559Enabled;
+            return GasPriceTxComparerHelper.Compare(x, y, block?.Header.BaseFee ?? 0, isEip1559Enabled);
         }
     }
 }

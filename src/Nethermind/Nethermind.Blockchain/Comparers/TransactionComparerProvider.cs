@@ -27,14 +27,12 @@ namespace Nethermind.Blockchain.Comparers
     {
         private readonly ISpecProvider _specProvider;
         private readonly IBlockTree _blockTree;
-        private readonly IGasPriceTxComparerByBaseFee _gasPriceTxComparerByBaseFee;
         private IComparer<Transaction>? _defaultComparer = null;
 
         public TransactionComparerProvider(ISpecProvider specProvider, IBlockTree blockTree)
         {
             _specProvider = specProvider;
             _blockTree = blockTree;
-            _gasPriceTxComparerByBaseFee = new GasPriceTxComparerByBaseFee(specProvider);
 
         }
 
@@ -42,7 +40,7 @@ namespace Nethermind.Blockchain.Comparers
         {
             if (_defaultComparer == null)
             {
-                IComparer<Transaction> gasPriceComparer = new GasPriceTxComparer(_blockTree, _gasPriceTxComparerByBaseFee);
+                IComparer<Transaction> gasPriceComparer = new GasPriceTxComparer(_blockTree, _specProvider);
                 _defaultComparer = gasPriceComparer
                     .ThenBy(CompareTxByTimestamp.Instance)
                     .ThenBy(CompareTxByPoolIndex.Instance)
@@ -55,7 +53,7 @@ namespace Nethermind.Blockchain.Comparers
         public IComparer<Transaction> GetDefaultProducerComparer(IBlockPreparationContextService blockPreparationContextService)
         {
             IComparer<Transaction> gasPriceComparer =
-                new GasPriceTxComparerForProducer(blockPreparationContextService, _gasPriceTxComparerByBaseFee);
+                new GasPriceTxComparerForProducer(blockPreparationContextService, _specProvider);
             return gasPriceComparer
                 .ThenBy(CompareTxByTimestamp.Instance)
                 .ThenBy(CompareTxByPoolIndex.Instance)

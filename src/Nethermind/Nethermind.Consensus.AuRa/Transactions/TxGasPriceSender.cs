@@ -32,7 +32,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
         private readonly IMiningConfig _miningConfig;
         private readonly uint _percentDelta;
 
-        public TxGasPriceSender(ITxSender txSender, ITxPool txPool, IMiningConfig miningConfig, uint percentDelta = TxGasPriceSenderConstants.DefaultPercentDelta)
+        public TxGasPriceSender(ITxSender txSender, ITxPool txPool, IMiningConfig miningConfig, uint percentDelta = TxGasPriceSenderConstants.DefaultPercentMultiplier)
         {
             _txSender = txSender ?? throw new ArgumentNullException(nameof(txSender));
             _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
