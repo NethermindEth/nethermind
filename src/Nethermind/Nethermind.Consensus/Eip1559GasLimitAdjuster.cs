@@ -20,30 +20,12 @@ using Nethermind.Core.Specs;
 
 namespace Nethermind.Consensus
 {
-    public class Eip1559GasLimitAdjuster : IEip1559GasLimitAdjuster
-    {       
-        private readonly ISpecProvider _specProvider;
-        
-        public Eip1559GasLimitAdjuster(ISpecProvider specProvider) 
-        {
-            _specProvider = specProvider;
-        }
-
-        public long GetGasLimit(BlockHeader blockHeader)
-        {
-            long gaslimit = blockHeader.GasLimit;
-            if (_specProvider.GetSpec(blockHeader.Number).IsEip1559Enabled)
-            {
-                gaslimit *= Eip1559Constants.ElasticityMultiplier;
-            }
-
-            return gaslimit;
-        }
-
-        public long AdjustGasLimit(long blockNumber, long gasLimit)
+    public class Eip1559GasLimitAdjuster
+    {
+        public static long AdjustGasLimit(bool isEip1559Enabled, long gasLimit)
         {
             long adjustedGasLimit = gasLimit;
-            if (_specProvider.GetSpec(blockNumber).IsEip1559Enabled)
+            if (isEip1559Enabled)
             {
                 adjustedGasLimit *= Eip1559Constants.ElasticityMultiplier;
             }

@@ -55,8 +55,7 @@ namespace Nethermind.Consensus.Clique
         private readonly ISnapshotManager _snapshotManager;
         private readonly ICliqueConfig _config;
         private readonly IBlockPreparationContextService _blockPreparationContextService;
-        private readonly IEip1559GasLimitAdjuster _eip1559GasLimitAdjuster;
-
+        
         private readonly ConcurrentDictionary<Address, bool> _proposals = new();
 
         private readonly CancellationTokenSource _cancellationTokenSource = new();
@@ -92,7 +91,6 @@ namespace Nethermind.Consensus.Clique
             _config = config ?? throw new ArgumentNullException(nameof(config));
             _blockPreparationContextService = blockPreparationContextService;
             _wiggle = new WiggleRandomizer(_cryptoRandom, _snapshotManager);
-            _eip1559GasLimitAdjuster = new Eip1559GasLimitAdjuster(specProvider);
 
             _timer.AutoReset = false;
             _timer.Elapsed += TimerOnElapsed;
@@ -440,7 +438,8 @@ namespace Nethermind.Consensus.Clique
 
             _stateProvider.StateRoot = parentHeader.StateRoot;
 
-            long adjustedGasLimit = _eip1559GasLimitAdjuster.AdjustGasLimit(number, header.GasLimit);
+            bool isEip1559Enabled = _specProvider.GetSpec(number + 1).IsEip1559Enabled;
+            long adjustedGasLimit = Eip1559GasLimitAdjuster.AdjustGasLimit(isEip1559Enabled, header.GasLimit);
             IEnumerable<Transaction> selectedTxs = _txSource.GetTransactions(parentBlock.Header, adjustedGasLimit);
             Block block = new(header, selectedTxs, Array.Empty<BlockHeader>());
             header.TxRoot = new TxTrie(block.Transactions).RootHash;
