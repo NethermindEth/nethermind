@@ -62,13 +62,13 @@ namespace Nethermind.Evm.Precompiles
             
             try
             {
-                byte[] extendedInput = new byte[96];
+                Span<byte> extendedInput = stackalloc byte[96];
                 inputData.Slice(0, Math.Min(96, inputData.Length))
-                    .CopyTo(extendedInput.AsSpan().Slice(0, Math.Min(96, inputData.Length)));
+                    .CopyTo(extendedInput.Slice(0, Math.Min(96, inputData.Length)));
 
-                UInt256 baseLength = new(extendedInput.AsSpan().Slice(0, 32), true);
-                UInt256 expLength = new(extendedInput.AsSpan().Slice(32, 32), true);
-                UInt256 modulusLength = new(extendedInput.AsSpan().Slice(64, 32), true);
+                UInt256 baseLength = new(extendedInput.Slice(0, 32), true);
+                UInt256 expLength = new(extendedInput.Slice(32, 32), true);
+                UInt256 modulusLength = new(extendedInput.Slice(64, 32), true);
 
                 UInt256 complexity = MultComplexity(baseLength, modulusLength);
 
