@@ -21,10 +21,34 @@ using Nethermind.Logging;
 
 namespace Nethermind.Api.Extensions
 {
-    public interface IPluginLoader
+    /// <summary>
+    /// This class is introduced to help combining <see cref="SinglePluginLoader{T}"/> with
+    /// <see cref="PluginLoader"/>
+    /// </summary>
+    public class CompositePluginLoader : IPluginLoader
     {
-        IEnumerable<Type> PluginTypes { get; }
+        private readonly HashSet<Type> _pluginTypes = new();
         
-        void Load(ILogManager logManager);
+        private readonly IPluginLoader[] _loaders;
+
+        public CompositePluginLoader(params IPluginLoader[] loaders)
+        {
+            _loaders = loaders;
+        }
+
+        public IEnumerable<Type> PluginTypes => _pluginTypes;
+
+        public void Load(ILogManager logManager)
+        {
+            foreach (IPluginLoader loader in _loaders)
+            {
+                loader.Load(logManager);
+
+                foreach (Type pluginType in loader.PluginTypes)
+                {
+                    _pluginTypes.Add(pluginType);
+                }
+            }
+        }
     }
 }
