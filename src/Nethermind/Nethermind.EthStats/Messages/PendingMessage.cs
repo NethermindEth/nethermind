@@ -15,12 +15,14 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using Nethermind.EthStats.Messages.Models;
+// ReSharper disable MemberCanBePrivate.Global
+// ReSharper disable UnusedAutoPropertyAccessor.Global
 
 namespace Nethermind.EthStats.Messages
 {
     public class PendingMessage : IMessage
     {
-        public string Id { get; set; }
+        public string? Id { get; set; }
         public PendingStats Stats { get; }
 
         public PendingMessage(PendingStats stats)
