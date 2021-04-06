@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net5.0</TargetFramework>
+
+        <IsPackable>false</IsPackable>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <PackageReference Include="Mongo2Go" Version="2.2.12" />
+        <PackageReference Include="MongoDB.Driver" Version="2.11.5" />
+        <PackageReference Include="nunit" Version="3.13.0" />
+        <PackageReference Include="NUnit3TestAdapter" Version="3.17.0" />
+        <PackageReference Include="Microsoft.NET.Test.Sdk" Version="16.8.3" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <ProjectReference Include="..\Nethermind.DataMarketplace.Providers.Infrastructure\Nethermind.DataMarketplace.Providers.Infrastructure.csproj" />
+      <ProjectReference Include="..\nethermind\src\Nethermind\Nethermind.Core.Test\Nethermind.Core.Test.csproj" />
+      <ProjectReference Include="..\nethermind\src\Nethermind\Nethermind.DataMarketplace.Infrastructure\Nethermind.DataMarketplace.Infrastructure.csproj" />
+    </ItemGroup>
+
+</Project>

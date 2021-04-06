@@ -1,0 +1,15 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net5.0</TargetFramework>
+        <Nullable>enable</Nullable>
+    </PropertyGroup>
+
+    <ItemGroup>
+      <ProjectReference Include="..\nethermind\src\Nethermind\Nethermind.Core\Nethermind.Core.csproj" />
+      <ProjectReference Include="..\nethermind\src\Nethermind\Nethermind.DataMarketplace.Core\Nethermind.DataMarketplace.Core.csproj" />
+      <ProjectReference Include="..\nethermind\src\Nethermind\Nethermind.Grpc\Nethermind.Grpc.csproj" />
+      <ProjectReference Include="..\nethermind\src\Nethermind\Nethermind.Network\Nethermind.Network.csproj" />
+    </ItemGroup>
+
+</Project>
