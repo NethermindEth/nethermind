@@ -206,6 +206,12 @@ jobs:
     - name: Nethermind.DataMarketplace.Consumers.Test
       run: |
         dotnet test -c Release src/Nethermind/Nethermind.DataMarketplace.Consumers.Test
+    - name: Nethermind.DataMarketplace.Providers.Infrastructure.Tests
+      run: |
+        dotnet test -c Release src/Nethermind.DataMarketplace.Providers.Infrastructure.Tests
+    - name: Nethermind.DataMarketplace.Providers.Test
+      run: |
+        dotnet test -c Release src/Nethermind.DataMarketplace.Providers.Test
     - name: Nethermind.DataMarketplace.Infrastructure.Test
       run: |
         dotnet test -c Release src/Nethermind/Nethermind.DataMarketplace.Infrastructure.Test
