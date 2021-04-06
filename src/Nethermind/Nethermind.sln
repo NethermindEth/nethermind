@@ -186,6 +186,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Specs.Test", "Ne
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MathGmp.Native", "..\Math.Gmp.Native\MathGmp.Native\MathGmp.Native.csproj", "{11A5D908-1FB6-4492-BFA8-676A096AC089}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Api.Test", "Nethermind.Api.Test\Nethermind.Api.Test.csproj", "{DF891F59-5764-4F39-B42B-6263499B0464}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -496,6 +498,10 @@ Global
 		{11A5D908-1FB6-4492-BFA8-676A096AC089}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{11A5D908-1FB6-4492-BFA8-676A096AC089}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{11A5D908-1FB6-4492-BFA8-676A096AC089}.Release|Any CPU.Build.0 = Release|Any CPU
+		{DF891F59-5764-4F39-B42B-6263499B0464}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{DF891F59-5764-4F39-B42B-6263499B0464}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{DF891F59-5764-4F39-B42B-6263499B0464}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{DF891F59-5764-4F39-B42B-6263499B0464}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -560,6 +566,7 @@ Global
 		{09A68405-C911-4827-A705-931F45E26EFD} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
 		{8089024B-6744-4034-8F4A-0FD86C1491E2} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
 		{0EC840BB-CC6A-4AB1-9E2A-625C777EBAB6} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
+		{DF891F59-5764-4F39-B42B-6263499B0464} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

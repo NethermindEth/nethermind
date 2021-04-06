@@ -15,16 +15,34 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System;
-using System.Collections.Generic;
-using Nethermind.Logging;
+using System.Threading.Tasks;
+using Nethermind.Api.Extensions;
 
-namespace Nethermind.Api.Extensions
+namespace Nethermind.Api.Test
 {
-    public interface IPluginLoader
+    public class TestPlugin : INethermindPlugin
     {
-        IEnumerable<Type> PluginTypes { get; }
-        
-        void Load(ILogManager logManager);
+        public ValueTask DisposeAsync()
+        {
+            throw new System.NotImplementedException();
+        }
+
+        public string Name { get; }
+        public string Description { get; }
+        public string Author { get; }
+        public Task Init(INethermindApi nethermindApi)
+        {
+            throw new System.NotImplementedException();
+        }
+
+        public Task InitNetworkProtocol()
+        {
+            throw new System.NotImplementedException();
+        }
+
+        public Task InitRpcModules()
+        {
+            throw new System.NotImplementedException();
+        }
     }
 }
