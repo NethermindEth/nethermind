@@ -18,7 +18,6 @@ jobs:
       OSX_RELEASE: nethermind-osx-x64
       WIN_RELEASE: nethermind-win-x64
       LIN_ARM64_RELEASE: nethermind-lin-arm64
-      LIN_ARM_RELEASE: nethermind-lin-arm
       LINUX: linux-x64
       OSX: osx-x64
       WIN10: win10-x64
@@ -77,11 +76,6 @@ jobs:
         name: nethermind-linux-arm64-package
         path: ${{ env.RELEASE_DIRECTORY }}/${{ env.LIN_ARM64_RELEASE }}/nethermind-linux-arm64-*
     - uses: actions/upload-artifact@master
-      name: Upload Nethermind linux arm package
-      with:
-        name: nethermind-linux-arm-package
-        path: ${{ env.RELEASE_DIRECTORY }}/${{ env.LIN_ARM_RELEASE }}/nethermind-linux-arm-*
-    - uses: actions/upload-artifact@master
       name: Upload plugins package
       with:
         name: plugins
@@ -108,7 +102,6 @@ jobs:
       OSX_RELEASE: nethermind-osx-x64
       WIN_RELEASE: nethermind-win-x64
       LIN_ARM64_RELEASE: nethermind-lin-arm64
-      LIN_ARM_RELEASE: nethermind-lin-arm
     steps:
     - name: Check out Nethermind repository
       uses: actions/checkout@master
@@ -137,11 +130,6 @@ jobs:
         name: nethermind-linux-arm64-package
         path: ${{ env.RELEASE_DIRECTORY }}/${{ env.LIN_ARM64_RELEASE }}/
     - uses: actions/download-artifact@master
-      name: Download Nethermind linux arm package
-      with:
-        name: nethermind-linux-arm-package
-        path: ${{ env.RELEASE_DIRECTORY }}/${{ env.LIN_ARM_RELEASE }}/
-    - uses: actions/download-artifact@master
       name: Download plugins package
       with:
         name: plugins
@@ -162,7 +150,6 @@ jobs:
       OSX_RELEASE: nethermind-osx-x64
       WIN_RELEASE: nethermind-win-x64
       LIN_ARM64_RELEASE: nethermind-lin-arm64
-      LIN_ARM_RELEASE: nethermind-lin-arm
     steps:
     - name: Check out Nethermind repository
       uses: actions/checkout@master
@@ -189,11 +176,6 @@ jobs:
       with:
         name: nethermind-linux-arm64-package
         path: ${{ env.RELEASE_DIRECTORY }}/${{ env.LIN_ARM64_RELEASE }}/
-    - uses: actions/download-artifact@master
-      name: Download Nethermind linux arm package
-      with:
-        name: nethermind-linux-arm-package
-        path: ${{ env.RELEASE_DIRECTORY }}/${{ env.LIN_ARM_RELEASE }}/
     - name: Configure GPG Key
       run: |
         mkdir -p ~/.gnupg/
