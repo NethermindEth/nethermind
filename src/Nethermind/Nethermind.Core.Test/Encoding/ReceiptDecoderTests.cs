@@ -235,7 +235,7 @@ namespace Nethermind.Core.Test.Encoding
             yield return (Build.A.Receipt.TestObject, "basic with defaults");
             yield return (Build.A.Receipt.WithBloom(bloom).WithGasUsedTotal(1000).WithState(TestItem.KeccakH).TestObject, "basic");
             yield return (Build.A.Receipt.WithBloom(bloom).WithGasUsedTotal(500).WithState(TestItem.KeccakA).WithTxType(TxType.AccessList).TestObject, "access list");
-            yield return (Build.A.Receipt.WithBloom(bloom).WithGasUsedTotal(100).WithState(TestItem.KeccakH).WithEffectiveGasPrice(40).WithTxType(TxType.EIP1559).TestObject, "eip 1559");
+            yield return (Build.A.Receipt.WithBloom(bloom).WithGasUsedTotal(100).WithState(TestItem.KeccakH).WithTxType(TxType.EIP1559).TestObject, "eip 1559");
         }
         
         [TestCaseSource(nameof(TestCaseSource))]
@@ -270,8 +270,6 @@ namespace Nethermind.Core.Test.Encoding
             Assert.AreEqual(txReceipt.PostTransactionState, deserialized.PostTransactionState, "post transaction state");
             Assert.AreEqual(txReceipt.StatusCode, deserialized.StatusCode, "status");
             Assert.AreEqual(txReceipt.TxType, deserialized.TxType, "type");
-            if (txReceipt.TxType == TxType.EIP1559) 
-                Assert.AreEqual(txReceipt.EffectiveGasPrice, deserialized.EffectiveGasPrice, "effective gas price");
         }
 
         private void AssertStorageReceipt(TxReceipt txReceipt, TxReceipt deserialized)

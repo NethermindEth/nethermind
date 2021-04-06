@@ -168,21 +168,21 @@ namespace Nethermind.Evm.Tracing
             }
         }
 
-        public void MarkAsSuccess(Address recipient, long gasSpent, UInt256 effectiveGasPrice, byte[] output, LogEntry[] logs, Keccak? stateRoot = null)
+        public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak? stateRoot = null)
         {
             _token.ThrowIfCancellationRequested();
             if (_innerTracer.IsTracingReceipt)
             {
-                _innerTracer.MarkAsSuccess(recipient, gasSpent, effectiveGasPrice, output, logs, stateRoot);
+                _innerTracer.MarkAsSuccess(recipient, gasSpent, output, logs, stateRoot);
             }
         }
 
-        public void MarkAsFailed(Address recipient, long gasSpent, UInt256 effectiveGasPrice, byte[] output, string error, Keccak? stateRoot = null)
+        public void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Keccak? stateRoot = null)
         {
             _token.ThrowIfCancellationRequested();
             if (_innerTracer.IsTracingReceipt)
             {
-                _innerTracer.MarkAsFailed(recipient, gasSpent, effectiveGasPrice, output, error, stateRoot);
+                _innerTracer.MarkAsFailed(recipient, gasSpent, output, error, stateRoot);
             }
         }
 

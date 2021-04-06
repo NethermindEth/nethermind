@@ -67,12 +67,6 @@ namespace Nethermind.Core.Test.Builders
             TestObject.TxHash = hash;
             return this;
         }
-        
-        public ReceiptBuilder WithEffectiveGasPrice(UInt256 effectiveGasPrice)
-        {
-            TestObject.EffectiveGasPrice = effectiveGasPrice;
-            return this;
-        }
 
         public ReceiptBuilder WithBlockNumber(long number)
         {

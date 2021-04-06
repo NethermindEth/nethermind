@@ -77,7 +77,7 @@ namespace Nethermind.Evm
             _stateProvider.RecalculateStateRoot();
             Keccak? stateRoot = _specProvider.GetSpec(block.Number).IsEip658Enabled ? null : _stateProvider.StateRoot;
             if (txTracer.IsTracingReceipt)
-                txTracer.MarkAsFailed(recipient, tx.GasLimit, effectiveGasPrice, Array.Empty<byte>(), reason ?? "invalid", stateRoot);
+                txTracer.MarkAsFailed(recipient, tx.GasLimit, Array.Empty<byte>(), reason ?? "invalid", stateRoot);
         }
 
         private void Execute(Transaction transaction, BlockHeader block, ITxTracer txTracer, bool isCall)
@@ -377,11 +377,11 @@ namespace Nethermind.Evm
 
                 if (statusCode == StatusCode.Failure)
                 {
-                    txTracer.MarkAsFailed(recipientOrNull, spentGas, gasPrice, (substate?.ShouldRevert ?? false) ? substate.Output : Array.Empty<byte>(), substate?.Error, stateRoot);
+                    txTracer.MarkAsFailed(recipientOrNull, spentGas, (substate?.ShouldRevert ?? false) ? substate.Output : Array.Empty<byte>(), substate?.Error, stateRoot);
                 }
                 else
                 {
-                    txTracer.MarkAsSuccess(recipientOrNull, spentGas, gasPrice, substate.Output, substate.Logs.Any() ? substate.Logs.ToArray() : Array.Empty<LogEntry>(), stateRoot);
+                    txTracer.MarkAsSuccess(recipientOrNull, spentGas, substate.Output, substate.Logs.Any() ? substate.Logs.ToArray() : Array.Empty<LogEntry>(), stateRoot);
                 }
             }
         }

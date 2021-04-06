@@ -53,9 +53,9 @@ namespace Nethermind.Evm.Tracing
         public bool IsTracingStorage => true;
         public bool IsTracingBlockHash => true;
 
-        public void MarkAsSuccess(Address recipient, long gasSpent, UInt256 effectiveGasPrice, byte[] output, LogEntry[] logs, Keccak stateRoot = null) => throw new OperationCanceledException(ErrorMessage);
+        public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak stateRoot = null) => throw new OperationCanceledException(ErrorMessage);
 
-        public void MarkAsFailed(Address recipient, long gasSpent, UInt256 effectiveGasPrice, byte[] output, string error, Keccak stateRoot = null) => throw new OperationCanceledException(ErrorMessage);
+        public void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Keccak stateRoot = null) => throw new OperationCanceledException(ErrorMessage);
 
         public void StartOperation(int depth, long gas, Instruction opcode, int pc) => throw new OperationCanceledException(ErrorMessage);
 

@@ -235,7 +235,6 @@ namespace Nethermind.Serialization.Rlp
                 rlpStream.Encode(item.Sender);
                 rlpStream.Encode(item.Recipient);
                 rlpStream.Encode(item.ContractAddress);
-                if (item.TxType == TxType.EIP1559) rlpStream.Encode(item.EffectiveGasPrice);
                 rlpStream.Encode(item.GasUsed);
                 rlpStream.Encode(item.GasUsedTotal);
                 rlpStream.Encode(item.Bloom);
@@ -257,7 +256,6 @@ namespace Nethermind.Serialization.Rlp
             }
             else
             {
-                if (item.TxType == TxType.EIP1559) rlpStream.Encode(item.EffectiveGasPrice);
                 rlpStream.Encode(item.GasUsedTotal);
                 rlpStream.Encode(item.Bloom);
 
@@ -291,13 +289,8 @@ namespace Nethermind.Serialization.Rlp
                 contentLength += Rlp.LengthOf(item.Sender);
                 contentLength += Rlp.LengthOf(item.Recipient);
                 contentLength += Rlp.LengthOf(item.ContractAddress);
-                if (item.TxType == TxType.EIP1559) contentLength += Rlp.LengthOf(item.EffectiveGasPrice);
                 contentLength += Rlp.LengthOf(item.GasUsed);
                 contentLength += 1 + Rlp.LengthOf(item.TxHash);
-            }
-            else
-            {
-                if (item.TxType == TxType.EIP1559) contentLength += Rlp.LengthOf(item.EffectiveGasPrice);
             }
             
             contentLength += Rlp.LengthOf(item.GasUsedTotal);
@@ -386,7 +379,6 @@ namespace Nethermind.Serialization.Rlp
             if (isStorage) decoderContext.DecodeAddressStructRef(out item.Sender);
             if (isStorage) decoderContext.DecodeAddressStructRef(out item.Recipient);
             if (isStorage) decoderContext.DecodeAddressStructRef(out item.ContractAddress);
-            if (item.TxType == TxType.EIP1559) item.EffectiveGasPrice = decoderContext.DecodeUInt256();
             if (isStorage) item.GasUsed = (long)decoderContext.DecodeUBigInt();
             item.GasUsedTotal = (long)decoderContext.DecodeUBigInt();
             decoderContext.DecodeBloomStructRef(out item.Bloom);

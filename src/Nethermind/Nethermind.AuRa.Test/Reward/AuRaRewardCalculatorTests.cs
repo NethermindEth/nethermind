@@ -216,7 +216,6 @@ namespace Nethermind.AuRa.Test.Reward
                     args.Arg<ITxTracer>().MarkAsSuccess(
                         recipient,
                         0,
-                        0,
                         SetupAbiAddresses(rewards[recipient]),
                         Array.Empty<LogEntry>());
                 });

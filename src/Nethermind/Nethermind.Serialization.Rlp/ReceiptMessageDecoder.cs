@@ -47,18 +47,15 @@ namespace Nethermind.Serialization.Rlp
             if (firstItem.Length == 1 && (firstItem[0] == 0 || firstItem[0] == 1))
             {
                 txReceipt.StatusCode = firstItem[0];
-                DecodeEffectiveGasUsed(txReceipt, rlpStream);
                 txReceipt.GasUsedTotal = (long) rlpStream.DecodeUBigInt();
             }
             else if (firstItem.Length >= 1 && firstItem.Length <= 4)
             {
-                DecodeEffectiveGasUsed(txReceipt, rlpStream);
                 txReceipt.GasUsedTotal = (long) firstItem.ToUnsignedBigInteger();
                 txReceipt.SkipStateAndStatusInRlp = true;
             }
             else
             {
-                DecodeEffectiveGasUsed(txReceipt, rlpStream);
                 txReceipt.PostTransactionState = firstItem.Length == 0 ? null : new Keccak(firstItem);
                 txReceipt.GasUsedTotal = (long) rlpStream.DecodeUBigInt();
             }
@@ -76,14 +73,6 @@ namespace Nethermind.Serialization.Rlp
 
             txReceipt.Logs = entries;
             return txReceipt;
-        }
-
-        private void DecodeEffectiveGasUsed(TxReceipt txReceipt, RlpStream rlpStream)
-        {
-            if (txReceipt.TxType == TxType.EIP1559)
-            {
-                txReceipt.EffectiveGasPrice = rlpStream.DecodeUInt256();
-            }
         }
 
         public Rlp Encode(TxReceipt item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -123,11 +112,6 @@ namespace Nethermind.Serialization.Rlp
                 contentLength += isEip658Receipts 
                     ? Rlp.LengthOf(item.StatusCode) 
                     : Rlp.LengthOf(item.PostTransactionState);
-            }
-            
-            if (item.TxType == TxType.EIP1559)
-            {
-                contentLength += Rlp.LengthOf(item.EffectiveGasPrice);
             }
 
             return (contentLength, logsLength);
@@ -208,11 +192,6 @@ namespace Nethermind.Serialization.Rlp
                 {
                     rlpStream.Encode(item.PostTransactionState);
                 }
-            }
-
-            if (item.TxType == TxType.EIP1559)
-            {
-                rlpStream.Encode(item.EffectiveGasPrice);
             }
 
             rlpStream.Encode(item.GasUsedTotal);
