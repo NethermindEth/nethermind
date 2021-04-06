@@ -46,13 +46,13 @@ namespace Nethermind.State.Test.Runner
         bool IStorageTracer.IsTracingStorage => false;
         public bool IsTracingBlockHash { get; } = false;
 
-        public void MarkAsSuccess(Address recipient, long gasSpent, UInt256 effectiveGasPrice, byte[] output, LogEntry[] logs, Keccak stateRoot = null)
+        public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak stateRoot = null)
         {
             _trace.Result.Output = output;
             _trace.Result.GasUsed = gasSpent;
         }
 
-        public void MarkAsFailed(Address recipient, long gasSpent, UInt256 effectiveGasPrice, byte[] output, string error, Keccak stateRoot = null)
+        public void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Keccak stateRoot = null)
         {
             _trace.Result.Error = _traceEntry?.Error ?? error;
             _trace.Result.Output = output ?? Bytes.Empty;
