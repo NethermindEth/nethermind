@@ -469,6 +469,7 @@ namespace Nethermind.Blockchain.Test.TxPools
             Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
             EnsureSenderBalance(tx);
             _txPool.AddTransaction(tx, TxHandlingOptions.PersistentBroadcast);
+            _txPool.IsInHashCache(tx.Hash).Should().Be(true);
             _txPool.RemoveTransaction(tx.Hash).Should().Be(true);
         }
         
@@ -476,6 +477,7 @@ namespace Nethermind.Blockchain.Test.TxPools
         public void should_return_false_when_asking_for_not_known_txHash()
         {
             _txPool = CreatePool(_noTxStorage);
+            _txPool.IsInHashCache(TestItem.KeccakA).Should().Be(false);
             _txPool.RemoveTransaction(TestItem.KeccakA).Should().Be(false);
         }
 

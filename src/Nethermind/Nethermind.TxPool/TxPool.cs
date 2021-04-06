@@ -388,9 +388,11 @@ namespace Nethermind.TxPool
             ICollection<Transaction>? bucket;
             ICollection<Transaction>? persistentBucket = null;
             Transaction transaction;
+            bool isKnown;
             lock (_locker)
             {
-                if (_transactions.TryRemove(hash, out transaction, out bucket))
+                isKnown = _transactions.TryRemove(hash, out transaction, out bucket);
+                if (isKnown)
                 {
                     Address address = transaction.SenderAddress;
                     if (_nonces.TryGetValue(address, out AddressNonces addressNonces))
@@ -441,6 +443,11 @@ namespace Nethermind.TxPool
                     }
                 }
             }
+            return isKnown;
+        }
+
+        public bool IsInHashCache(Keccak hash)
+        {
             return _hashCache.Get(hash);
         }
 

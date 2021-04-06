@@ -18,7 +18,6 @@
 using System;
 using System.Threading.Tasks;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.TxPool;
@@ -57,19 +56,12 @@ namespace Nethermind.Blockchain
         private void ProcessBlock(Block block, Block? previousBlock)
         {
             _txPool.BlockGasLimit = block.GasLimit;
-            long discoveredTransactions = 0;
-            long transactionsInBlock = block.Transactions.Length;
-
-            for (int i = 0; i < transactionsInBlock; i++)
+            
+            for (int i = 0; i < block.Transactions.Length; i++)
             {
-                Keccak txHash = block.Transactions[i].Hash;
-                if (!_txPool.RemoveTransaction(txHash, true))
-                {
-                    discoveredTransactions++;
-                }
+                _txPool.RemoveTransaction(block.Transactions[i].Hash, true);
             }
-            TxPool.Metrics.DarkPoolRatio = transactionsInBlock == 0 ? 0 : (float)discoveredTransactions / transactionsInBlock;
-
+            
             // the hash will only be the same during perf test runs / modified DB states
             if (previousBlock is not null)
             {
