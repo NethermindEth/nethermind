@@ -22,7 +22,6 @@ jobs:
       OSX: osx-x64
       WIN10: win10-x64
       LINUX_ARM64: linux-arm64
-      LINUX_ARM: linux-arm
     steps:
     - name: Check out Nethermind repository
       uses: actions/checkout@master
