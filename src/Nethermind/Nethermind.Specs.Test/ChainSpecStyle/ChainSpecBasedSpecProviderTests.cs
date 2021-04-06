@@ -55,8 +55,8 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
                 && pi.Name != "DifficultyBombDelay"
                 && pi.Name != "DifficultyBoundDivisor"))
             {
-                object a = propertyInfo.GetValue(oldRinkebySpec);
-                object b = propertyInfo.GetValue(newRinkebySpec);
+                object? a = propertyInfo.GetValue(oldRinkebySpec);
+                object? b = propertyInfo.GetValue(newRinkebySpec);
 
                 Assert.AreEqual(a, b, propertyInfo.Name);
             }
@@ -98,7 +98,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             ChainSpecBasedSpecProvider provider = new(chainSpec);
             MainnetSpecProvider mainnet = MainnetSpecProvider.Instance;
 
-            List<long>? blockNumbersToTest = new()
+            List<long> blockNumbersToTest = new()
             {
                 0,
                 1,
@@ -176,7 +176,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             ChainSpecBasedSpecProvider provider = new(chainSpec);
             RopstenSpecProvider ropsten = RopstenSpecProvider.Instance;
 
-            List<long>? blockNumbersToTest = new List<long>
+            List<long> blockNumbersToTest = new()
             {
                 0,
                 1,
