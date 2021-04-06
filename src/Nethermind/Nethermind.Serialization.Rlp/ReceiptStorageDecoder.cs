@@ -68,7 +68,6 @@ namespace Nethermind.Serialization.Rlp
             if (isStorage) txReceipt.Sender = rlpStream.DecodeAddress();
             if (isStorage) txReceipt.Recipient = rlpStream.DecodeAddress();
             if (isStorage) txReceipt.ContractAddress = rlpStream.DecodeAddress();
-            if (txReceipt.TxType == TxType.EIP1559) rlpStream.DecodeUInt256();
             if (isStorage) txReceipt.GasUsed = (long)rlpStream.DecodeUBigInt();
             txReceipt.GasUsedTotal = (long)rlpStream.DecodeUBigInt();
             txReceipt.Bloom = rlpStream.DecodeBloom();
@@ -144,7 +143,6 @@ namespace Nethermind.Serialization.Rlp
             if (isStorage) txReceipt.Sender = decoderContext.DecodeAddress();
             if (isStorage) txReceipt.Recipient = decoderContext.DecodeAddress();
             if (isStorage) txReceipt.ContractAddress = decoderContext.DecodeAddress();
-            if (txReceipt.TxType == TxType.EIP1559) decoderContext.DecodeUInt256();
             if (isStorage) txReceipt.GasUsed = (long)decoderContext.DecodeUBigInt();
             txReceipt.GasUsedTotal = (long)decoderContext.DecodeUBigInt();
             txReceipt.Bloom = decoderContext.DecodeBloom();
