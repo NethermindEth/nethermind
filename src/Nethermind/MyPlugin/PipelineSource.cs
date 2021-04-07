@@ -18,6 +18,11 @@ namespace MyPlugin
 
         public void OnNewPending(object? sender, TxEventArgs args)
         {
+            if(Emit == null)
+            {
+                return; 
+            }
+
             Emit((T)args.Transaction);
         }
     }
