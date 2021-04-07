@@ -481,6 +481,25 @@ namespace Nethermind.Blockchain.Test.TxPools
             result.Should().Be(eip2930Enabled ? AddTxResult.Added : AddTxResult.Invalid);
         }
 
+        [Test]
+        public void should_return_true_when_asking_for_txHash_existing_in_pool()
+        {
+            _txPool = CreatePool(_noTxStorage);
+            Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            EnsureSenderBalance(tx);
+            _txPool.AddTransaction(tx, TxHandlingOptions.PersistentBroadcast);
+            _txPool.IsInHashCache(tx.Hash).Should().Be(true);
+            _txPool.RemoveTransaction(tx.Hash).Should().Be(true);
+        }
+        
+        [Test]
+        public void should_return_false_when_asking_for_not_known_txHash()
+        {
+            _txPool = CreatePool(_noTxStorage);
+            _txPool.IsInHashCache(TestItem.KeccakA).Should().Be(false);
+            _txPool.RemoveTransaction(TestItem.KeccakA).Should().Be(false);
+        }
+
         private Transactions AddTransactions(ITxStorage storage)
         {
             _txPool = CreatePool(storage);

@@ -31,5 +31,11 @@ namespace Nethermind.TxPool
         
         [Description("Number of known pending transactions.")]
         public static long PendingTransactionsKnown { get; set; }
+        
+        [Description("Ratio of transactions in the block absent in hashCache")]
+        public static float DarkPoolRatioLevel1 { get; set; }
+        
+        [Description("Ratio of transactions in the block absent in pending transactions")]
+        public static float DarkPoolRatioLevel2 { get; set; }
     }
 }
