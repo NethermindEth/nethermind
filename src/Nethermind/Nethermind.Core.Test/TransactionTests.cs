@@ -55,7 +55,7 @@ namespace Nethermind.Core.Test
         
         [Test]
         public void GetTransactionPotentialCost_returns_expected_results([ValueSource(nameof(TransactionPotentialCostsTestCases))]
-            TransactionPotentialCosts test)
+            TransactionPotentialCostsAndEffectiveGasPrice test)
         {
             Transaction transaction = new Transaction();
             transaction.GasPrice = test.GasPrice;
@@ -64,10 +64,13 @@ namespace Nethermind.Core.Test
             transaction.DecodedFeeCap = test.FeeCap;
             transaction.Type = test.FeeCap > 0 ? TxType.EIP1559 : TxType.Legacy;
             UInt256 actualResult = transaction.GetTransactionPotentialCost(test.IsEip1559Enabled, test.BaseFee);
+            UInt256 effectiveGasPrice = transaction.GetEffectiveGasPrice(test.IsEip1559Enabled, test.BaseFee);
             Assert.AreEqual(test.ExpectedPotentialCostResult, actualResult);
+            Assert.AreEqual(test.ExpectedEffectiveGasPriceResult, effectiveGasPrice);
+            Assert.AreEqual(test.ExpectedEffectiveGasPriceResult * (UInt256)test.GasLimit + test.Value, test.ExpectedPotentialCostResult);
         }
         
-        public class TransactionPotentialCosts
+        public class TransactionPotentialCostsAndEffectiveGasPrice
         {
             public int Lp { get; set; }
             public UInt256 BaseFee { get; set; }
@@ -78,53 +81,72 @@ namespace Nethermind.Core.Test
             public bool IsEip1559Enabled { get; set; }
             public UInt256 ExpectedPotentialCostResult { get; set; }
             
+            public UInt256 ExpectedEffectiveGasPriceResult { get; set; }
+            
             public override string ToString() =>
-                $"Lp: {Lp}, ExpectedPotentialCostResult: {ExpectedPotentialCostResult}";
+                $"Lp: {Lp}, ExpectedPotentialCostResult: {ExpectedPotentialCostResult}, ExpectedEffectiveGasPriceResult: {ExpectedEffectiveGasPriceResult}";
         }
         
-        public static IEnumerable<TransactionPotentialCosts> TransactionPotentialCostsTestCases
+        public static IEnumerable<TransactionPotentialCostsAndEffectiveGasPrice> TransactionPotentialCostsTestCases
         {
             get
             {
                 /* Legacy transactions before 1559 fork:*/
-                yield return new TransactionPotentialCosts()
+                yield return new TransactionPotentialCostsAndEffectiveGasPrice()
                 {
-                    Lp = 1, GasPrice = 10, ExpectedPotentialCostResult = 0
+                    Lp = 1, GasPrice = 10, ExpectedPotentialCostResult = 0, ExpectedEffectiveGasPriceResult = 10
                 };
-                yield return new TransactionPotentialCosts()
+                yield return new TransactionPotentialCostsAndEffectiveGasPrice()
                 {
-                    Lp = 2, GasPrice = 21, GasLimit = 100, ExpectedPotentialCostResult = 2100
+                    Lp = 2, GasPrice = 21, GasLimit = 100, ExpectedPotentialCostResult = 2100, ExpectedEffectiveGasPriceResult = 21
                 };
-                yield return new TransactionPotentialCosts()
+                yield return new TransactionPotentialCostsAndEffectiveGasPrice()
                 {
-                    Lp = 3, GasPrice = 21, GasLimit = 100, Value = 3, ExpectedPotentialCostResult = 2103
+                    Lp = 3, GasPrice = 21, GasLimit = 100, Value = 3, ExpectedPotentialCostResult = 2103, ExpectedEffectiveGasPriceResult = 21
                 };
                 
                 /*Legacy after 1559 fork:*/
-                yield return new TransactionPotentialCosts()
+                yield return new TransactionPotentialCostsAndEffectiveGasPrice()
                 {
-                    Lp = 4, IsEip1559Enabled = true, GasPrice = 10, GasLimit = 300, Value = 5, ExpectedPotentialCostResult = 3005
+                    Lp = 4, IsEip1559Enabled = true, GasPrice = 10, GasLimit = 300, Value = 5, ExpectedPotentialCostResult = 3005, ExpectedEffectiveGasPriceResult = 10
                 };
-                yield return new TransactionPotentialCosts()
+                yield return new TransactionPotentialCostsAndEffectiveGasPrice()
                 {
-                    Lp = 5, IsEip1559Enabled = true, GasPrice = 10, GasLimit = 300, Value = 5, BaseFee = 200, ExpectedPotentialCostResult = 3005
+                    Lp = 5, IsEip1559Enabled = true, GasPrice = 10, GasLimit = 300, Value = 5, BaseFee = 200, ExpectedPotentialCostResult = 3005, ExpectedEffectiveGasPriceResult = 10
+                };
+                yield return new TransactionPotentialCostsAndEffectiveGasPrice()
+                {
+                    Lp = 6, IsEip1559Enabled = true, GasPrice = 10, GasLimit = 300, Value = 5, BaseFee = 5, ExpectedPotentialCostResult = 3005, ExpectedEffectiveGasPriceResult = 10
+                };
+                yield return new TransactionPotentialCostsAndEffectiveGasPrice()
+                {
+                    Lp = 7, IsEip1559Enabled = true, GasPrice = 0, GasLimit = 300, Value = 0, BaseFee = 5, ExpectedPotentialCostResult = 0, ExpectedEffectiveGasPriceResult = 0
                 };
                 
                 /* Eip1559 transactions before 1559 fork:*/
-                yield return new TransactionPotentialCosts()
+                yield return new TransactionPotentialCostsAndEffectiveGasPrice()
                 {
-                    Lp = 6, GasPrice = 10, GasLimit = 300, FeeCap = 500, Value = 5, ExpectedPotentialCostResult = 3005
+                    Lp = 8, GasPrice = 10, GasLimit = 300, FeeCap = 500, Value = 5, ExpectedPotentialCostResult = 3005, ExpectedEffectiveGasPriceResult = 10
                 };
-                yield return new TransactionPotentialCosts()
+                yield return new TransactionPotentialCostsAndEffectiveGasPrice()
                 {
-                    Lp = 9, GasPrice = 10, FeeCap = 300, ExpectedPotentialCostResult = 0
+                    Lp = 9, GasPrice = 10, FeeCap = 300, ExpectedPotentialCostResult = 0, ExpectedEffectiveGasPriceResult = 10
                 };
                 
                 /* Eip1559 transactions after 1559 fork:*/
-                yield return new TransactionPotentialCosts()
+                yield return new TransactionPotentialCostsAndEffectiveGasPrice()
                 {
-                    Lp = 10, IsEip1559Enabled = true, GasPrice = 10, GasLimit = 300, FeeCap = 5, Value = 5, BaseFee = 200, ExpectedPotentialCostResult = 1505
+                    Lp = 10, IsEip1559Enabled = true, GasPrice = 10, GasLimit = 300, FeeCap = 5, Value = 5, BaseFee = 200, ExpectedPotentialCostResult = 1505, ExpectedEffectiveGasPriceResult = 5
                 };
+                yield return new TransactionPotentialCostsAndEffectiveGasPrice()
+                {
+                    Lp = 11, IsEip1559Enabled = true, GasPrice = 10, GasLimit = 300, FeeCap = 300, Value = 5, BaseFee = 200, ExpectedPotentialCostResult = 63005, ExpectedEffectiveGasPriceResult = 210
+                };
+                yield return new TransactionPotentialCostsAndEffectiveGasPrice()
+                {
+                    Lp = 12, IsEip1559Enabled = true, GasPrice = 0, GasLimit = 300, FeeCap = 0, Value = 5, BaseFee = 200, ExpectedPotentialCostResult = 5, ExpectedEffectiveGasPriceResult = 0
+                };
+                
             }
         }
     }
