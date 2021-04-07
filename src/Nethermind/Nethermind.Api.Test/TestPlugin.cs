@@ -13,22 +13,36 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using Nethermind.EthStats.Messages.Models;
-// ReSharper disable MemberCanBePrivate.Global
-// ReSharper disable UnusedAutoPropertyAccessor.Global
+using System.Threading.Tasks;
+using Nethermind.Api.Extensions;
 
-namespace Nethermind.EthStats.Messages
+namespace Nethermind.Api.Test
 {
-    public class BlockMessage : IMessage
+    public class TestPlugin : INethermindPlugin
     {
-        public string? Id { get; set; }
-        
-        public Block Block { get; }
-
-        public BlockMessage(Block block)
+        public ValueTask DisposeAsync()
         {
-            Block = block;
+            throw new System.NotImplementedException();
+        }
+
+        public string Name { get; }
+        public string Description { get; }
+        public string Author { get; }
+        public Task Init(INethermindApi nethermindApi)
+        {
+            throw new System.NotImplementedException();
+        }
+
+        public Task InitNetworkProtocol()
+        {
+            throw new System.NotImplementedException();
+        }
+
+        public Task InitRpcModules()
+        {
+            throw new System.NotImplementedException();
         }
     }
 }

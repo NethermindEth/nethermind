@@ -13,22 +13,28 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using Nethermind.EthStats.Messages.Models;
-// ReSharper disable MemberCanBePrivate.Global
-// ReSharper disable UnusedAutoPropertyAccessor.Global
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using Nethermind.Logging;
 
-namespace Nethermind.EthStats.Messages
+namespace Nethermind.Api.Extensions
 {
-    public class BlockMessage : IMessage
+    /// <summary>
+    /// This class is introduced for easier testing of the plugins under construction - it allows to load a plugin
+    /// directly from the current solution
+    /// </summary>
+    /// <typeparam name="T">Type of the plugin to load</typeparam>
+    public class SinglePluginLoader<T> : IPluginLoader where T : INethermindPlugin
     {
-        public string? Id { get; set; }
-        
-        public Block Block { get; }
+        private SinglePluginLoader() { }
 
-        public BlockMessage(Block block)
-        {
-            Block = block;
-        }
+        public static IPluginLoader Instance { get; } = new SinglePluginLoader<T>();
+        
+        public IEnumerable<Type> PluginTypes => Enumerable.Repeat(typeof(T), 1);
+        
+        public void Load(ILogManager logManager) { }
     }
 }

@@ -18,6 +18,6 @@ namespace Nethermind.EthStats
 {
     public interface IMessage
     {
-        string Id { get; set; }
+        string? Id { get; set; }
     }
 }

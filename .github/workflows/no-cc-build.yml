@@ -26,6 +26,9 @@ jobs:
     - name: Nethermind.Abi.Test
       run: |
         dotnet test -c Release src/Nethermind/Nethermind.Abi.Test;
+    - name: Nethermind.Api.Test
+      run: |
+        dotnet test -c Release src/Nethermind/Nethermind.Api.Test;
     - name: Nethermind.AuRa.Test
       run: |
         dotnet test -c Release src/Nethermind/Nethermind.AuRa.Test
