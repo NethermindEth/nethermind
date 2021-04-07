@@ -103,7 +103,7 @@ namespace Nethermind.Evm
             }
             
             UInt256 premiumPerGas = (feeCap < baseFee && transaction.IsSystem()) ? UInt256.Zero  : UInt256.Min(transaction.GasPremium, feeCap - baseFee);
-            UInt256 gasPrice = GetEffectiveGasPrice(transaction, block);
+            UInt256 gasPrice = GetEffectiveGasPrice(transaction, block, spec.IsEip1559Enabled);
 
             long gasLimit = transaction.GasLimit;
             byte[] machineCode = transaction.IsContractCreation ? transaction.Data : null;
@@ -386,9 +386,9 @@ namespace Nethermind.Evm
             }
         }
 
-        private UInt256 GetEffectiveGasPrice(Transaction tx, BlockHeader blockHeader)
+        private UInt256 GetEffectiveGasPrice(Transaction tx, BlockHeader blockHeader, bool isEip1559Enabled)
         {
-            return UInt256.Min(tx.FeeCap, tx.GasPremium + blockHeader.BaseFee);;
+            return isEip1559Enabled ? UInt256.Min(tx.FeeCap, tx.GasPremium + blockHeader.BaseFee) : tx.GasPrice;
         }
 
         private void TraceLogInvalidTx(Transaction transaction, string reason)
