@@ -62,7 +62,7 @@ namespace Nethermind.Core.Test
             transaction.GasLimit = test.GasLimit;
             transaction.Value = test.Value;
             transaction.DecodedFeeCap = test.FeeCap;
-            transaction.Type = test.FeeCap > 0 ? TxType.EIP1559 : TxType.Legacy;
+            transaction.Type = test.Type;
             UInt256 actualResult = transaction.GetTransactionPotentialCost(test.IsEip1559Enabled, test.BaseFee);
             UInt256 effectiveGasPrice = transaction.GetEffectiveGasPrice(test.IsEip1559Enabled, test.BaseFee);
             Assert.AreEqual(test.ExpectedPotentialCostResult, actualResult);
