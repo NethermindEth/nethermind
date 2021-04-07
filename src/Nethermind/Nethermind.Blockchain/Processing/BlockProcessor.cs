@@ -284,24 +284,6 @@ namespace Nethermind.Blockchain.Processing
         private void StoreTxReceipts(Block block, TxReceipt[] txReceipts)
         {
             _receiptStorage.Insert(block, txReceipts);
-            long transactionsInBlock = block.Transactions.Length;
-            long discoveredForPendingTxs = 0;
-            long discoveredForHashCache = 0;
-
-            for (int i = 0; i < transactionsInBlock; i++)
-            {
-                Keccak txHash = txReceipts[i].TxHash;
-                if (!_txPool.IsInHashCache(txHash))
-                {
-                    discoveredForHashCache++;
-                }
-                if (!_txPool.RemoveTransaction(txHash, true))
-                {
-                    discoveredForPendingTxs++;
-                }
-            }
-            TxPool.Metrics.DarkPoolRatioL1 = transactionsInBlock == 0 ? 0 : (float)discoveredForHashCache / transactionsInBlock;
-            TxPool.Metrics.DarkPoolRatioL2 = transactionsInBlock == 0 ? 0 : (float)discoveredForPendingTxs / transactionsInBlock;
         }
 
         // TODO: block processor pipeline
