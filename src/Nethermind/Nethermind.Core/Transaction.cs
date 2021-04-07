@@ -108,6 +108,11 @@ namespace Nethermind.Core
 
             return GasPrice * (ulong)GasLimit + Value;
         }
+        
+        public UInt256 GetEffectiveGasPrice(bool eip1559Enabled, UInt256 baseFee)
+        {
+            return eip1559Enabled ? UInt256.Min(IsEip1559 ? FeeCap : GasPrice, GasPremium + baseFee) : GasPrice;
+        }
     }
 
     /// <summary>

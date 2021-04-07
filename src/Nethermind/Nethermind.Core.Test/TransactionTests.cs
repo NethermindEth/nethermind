@@ -76,6 +76,7 @@ namespace Nethermind.Core.Test
             public UInt256 BaseFee { get; set; }
             public UInt256 FeeCap { get; set; }
             public UInt256 GasPrice { get; set; }
+            public TxType Type { get; set; }
             public long GasLimit { get; set; }
             public UInt256 Value { get; set; }
             public bool IsEip1559Enabled { get; set; }
@@ -126,25 +127,25 @@ namespace Nethermind.Core.Test
                 /* Eip1559 transactions before 1559 fork:*/
                 yield return new TransactionPotentialCostsAndEffectiveGasPrice()
                 {
-                    Lp = 8, GasPrice = 10, GasLimit = 300, FeeCap = 500, Value = 5, ExpectedPotentialCostResult = 3005, ExpectedEffectiveGasPriceResult = 10
+                    Lp = 8, Type = TxType.EIP1559, GasPrice = 10, GasLimit = 300, FeeCap = 500, Value = 5, ExpectedPotentialCostResult = 3005, ExpectedEffectiveGasPriceResult = 10
                 };
                 yield return new TransactionPotentialCostsAndEffectiveGasPrice()
                 {
-                    Lp = 9, GasPrice = 10, FeeCap = 300, ExpectedPotentialCostResult = 0, ExpectedEffectiveGasPriceResult = 10
+                    Lp = 9, Type = TxType.EIP1559, GasPrice = 10, FeeCap = 300, ExpectedPotentialCostResult = 0, ExpectedEffectiveGasPriceResult = 10
                 };
                 
                 /* Eip1559 transactions after 1559 fork:*/
                 yield return new TransactionPotentialCostsAndEffectiveGasPrice()
                 {
-                    Lp = 10, IsEip1559Enabled = true, GasPrice = 10, GasLimit = 300, FeeCap = 5, Value = 5, BaseFee = 200, ExpectedPotentialCostResult = 1505, ExpectedEffectiveGasPriceResult = 5
+                    Lp = 10, IsEip1559Enabled = true, Type = TxType.EIP1559, GasPrice = 10, GasLimit = 300, FeeCap = 5, Value = 5, BaseFee = 200, ExpectedPotentialCostResult = 1505, ExpectedEffectiveGasPriceResult = 5
                 };
                 yield return new TransactionPotentialCostsAndEffectiveGasPrice()
                 {
-                    Lp = 11, IsEip1559Enabled = true, GasPrice = 10, GasLimit = 300, FeeCap = 300, Value = 5, BaseFee = 200, ExpectedPotentialCostResult = 63005, ExpectedEffectiveGasPriceResult = 210
+                    Lp = 11, IsEip1559Enabled = true, Type = TxType.EIP1559, GasPrice = 10, GasLimit = 300, FeeCap = 300, Value = 5, BaseFee = 200, ExpectedPotentialCostResult = 63005, ExpectedEffectiveGasPriceResult = 210
                 };
                 yield return new TransactionPotentialCostsAndEffectiveGasPrice()
                 {
-                    Lp = 12, IsEip1559Enabled = true, GasPrice = 0, GasLimit = 300, FeeCap = 0, Value = 5, BaseFee = 200, ExpectedPotentialCostResult = 5, ExpectedEffectiveGasPriceResult = 0
+                    Lp = 12, IsEip1559Enabled = true, Type = TxType.EIP1559, GasPrice = 0, GasLimit = 300, FeeCap = 0, Value = 5, BaseFee = 200, ExpectedPotentialCostResult = 5, ExpectedEffectiveGasPriceResult = 0
                 };
                 
             }
