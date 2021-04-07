@@ -497,13 +497,7 @@ namespace Nethermind.TxPool
         public event EventHandler<TxEventArgs>? NewDiscovered;
         public event EventHandler<TxEventArgs>? NewPending;
         public event EventHandler<TxEventArgs>? RemovedPending;
-        public event EventHandler<TxEventArgs>? Emit;
         
-        public void SubscribeToData(object? sender, TxEventArgs args)
-        {
-            Emit?.Invoke(sender, args);
-        }
-
         private void Notify(ITxPoolPeer peer, Transaction tx, bool isPriority)
         {
             try
