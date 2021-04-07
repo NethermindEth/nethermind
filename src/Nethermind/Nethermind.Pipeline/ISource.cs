@@ -2,8 +2,8 @@ using System;
 
 namespace Nethermind.Pipeline
 {
-    public interface ISource<TOut>
+    public interface ISource<T>
     {
-        event EventHandler<TOut>? Emit;
+        Action<T> Emit { set; }
     }
 }

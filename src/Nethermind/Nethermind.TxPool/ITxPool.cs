@@ -19,7 +19,6 @@ using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
-using Nethermind.Pipeline;
 
 namespace Nethermind.TxPool
 {

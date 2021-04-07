@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using Nethermind.Pipeline.Publishers;
+using Nethermind.PubSub;
 
 namespace Nethermind.Pipeline
 {
@@ -7,12 +9,10 @@ namespace Nethermind.Pipeline
     {
         public Stack<IPipelineElement<T>> Elements { get; }
         public ISource<T> Source { get; }
-        public IPipelinePublisher<T> Publisher { get; }
 
-        public Pipeline(ISource<T> source, IPipelinePublisher<T> publisher)
+        public Pipeline(ISource<T> source)
         {
             Source = source ?? throw new ArgumentNullException(nameof(source));
-            Publisher = publisher ?? throw new ArgumentNullException(nameof(publisher));
         }
 
         public void AddElement(IPipelineElement<T> element)
@@ -20,11 +20,11 @@ namespace Nethermind.Pipeline
             var lastElement = Elements.Peek();
             if (lastElement == null)
             {
-                Source.Emit += element.SubscribeToData;
+                Source.Emit = element.SubscribeToData;
             }
             else
             {
-                lastElement.Emit += element.SubscribeToData;
+                lastElement.Emit = element.SubscribeToData;
             }
 
             Elements.Push(element);

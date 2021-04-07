@@ -8,7 +8,7 @@ namespace MyPlugin
     public class PipelineSource<T> : ISource<T> where T : Transaction
     {
         public ITxPool _txPool { get; set; }
-        public event EventHandler<T> Emit;
+        public Action<T> Emit { get; set; }
 
         public PipelineSource(ITxPool txPool)
         {
@@ -18,7 +18,7 @@ namespace MyPlugin
 
         public void OnNewPending(object? sender, TxEventArgs args)
         {
-            Emit?.Invoke(this, (T)args.Transaction);
+            Emit((T)args.Transaction);
         }
     }
 }

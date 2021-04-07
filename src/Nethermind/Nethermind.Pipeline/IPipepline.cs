@@ -1,3 +1,5 @@
+using Nethermind.Pipeline.Publishers;
+using Nethermind.PubSub;
 using System.Collections.Generic;
 
 namespace Nethermind.Pipeline
@@ -6,7 +8,6 @@ namespace Nethermind.Pipeline
     {
         ISource<T> Source { get; }
         Stack<IPipelineElement<T>> Elements { get; }
-        IPipelinePublisher<T> Publisher { get; }
         void AddElement(IPipelineElement<T> element);
         void RemoveLastElement();
     }
