@@ -67,7 +67,6 @@ namespace Nethermind.Evm
         private void QuickFail(Transaction tx, BlockHeader block, ITxTracer txTracer, string? reason)
         {
             block.GasUsed += tx.GasLimit;
-            UInt256 effectiveGasPrice = GetEffectiveGasPrice(tx, block);
             
             Address recipient = tx.To ?? ContractAddress.From(
                 tx.SenderAddress ?? Address.Zero,
