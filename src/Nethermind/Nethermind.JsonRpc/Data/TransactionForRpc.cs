@@ -41,8 +41,8 @@ namespace Nethermind.JsonRpc.Data
             Input = Data = transaction.Data;
             if (transaction.IsEip1559)
             {
-                FeeCap = transaction.FeeCap;
-                GasPremium = transaction.GasPremium;
+                MaxFeePerGas = transaction.FeeCap;
+                MaxInclusionFeePerGas = transaction.GasPremium;
             }
 
             Signature? signature = transaction.Signature;
@@ -79,9 +79,9 @@ namespace Nethermind.JsonRpc.Data
         public UInt256? Value { get; set; }
         public UInt256? GasPrice { get; set; }
         
-        public UInt256? GasPremium { get; set; }
+        public UInt256? MaxInclusionFeePerGas { get; set; }
         
-        public UInt256? FeeCap { get; set; }
+        public UInt256? MaxFeePerGas { get; set; }
         
         public int? Type { get; set; }
         public long? Gas { get; set; }
@@ -106,7 +106,7 @@ namespace Nethermind.JsonRpc.Data
             tx.SenderAddress = From;
             tx.Value = Value ?? 0;
             tx.Data = Data ?? Input;
-            tx.DecodedFeeCap = FeeCap ?? 0;
+            tx.DecodedFeeCap = MaxFeePerGas ?? 0;
             tx.Type = (TxType?)Type ?? TxType.Legacy;
 
             return tx;
@@ -122,7 +122,7 @@ namespace Nethermind.JsonRpc.Data
             tx.SenderAddress = From;
             tx.Value = Value ?? 0;
             tx.Data = Data ?? Input;
-            tx.DecodedFeeCap = FeeCap ?? 0;
+            tx.DecodedFeeCap = MaxFeePerGas ?? 0;
             tx.Type = (TxType?)Type ?? TxType.Legacy;
 
             return tx;
