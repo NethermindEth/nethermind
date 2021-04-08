@@ -190,6 +190,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Api.Test", "Neth
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Pipeline", "Nethermind.Pipeline\Nethermind.Pipeline.csproj", "{13CC63AC-DE38-495B-B826-7651ABB49BC5}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Pipeline.Tests", "Nethermind.Pipeline.Tests\Nethermind.Pipeline.Tests.csproj", "{C59AF707-0A1C-42FB-A8D2-F9B9F84D71EC}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -508,6 +510,10 @@ Global
 		{13CC63AC-DE38-495B-B826-7651ABB49BC5}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{13CC63AC-DE38-495B-B826-7651ABB49BC5}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{13CC63AC-DE38-495B-B826-7651ABB49BC5}.Release|Any CPU.Build.0 = Release|Any CPU
+		{C59AF707-0A1C-42FB-A8D2-F9B9F84D71EC}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{C59AF707-0A1C-42FB-A8D2-F9B9F84D71EC}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{C59AF707-0A1C-42FB-A8D2-F9B9F84D71EC}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{C59AF707-0A1C-42FB-A8D2-F9B9F84D71EC}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

@@ -2,9 +2,17 @@ using System;
 
 namespace Nethermind.Pipeline
 {
-    public interface IPipelineElement<T>
+    public interface IPipelineElement
     {
-       void SubscribeToData(T data); 
-       Action<T> Emit { set; }
+    }
+
+    public interface IPipelineElement<TOut> : IPipelineElement
+    {
+       Action<TOut> Emit { set; }
+    }
+
+    public interface IPipelineElement<TIn, TOut> : IPipelineElement<TOut>
+    {
+       void SubscribeToData(TIn data); 
     }
 }
