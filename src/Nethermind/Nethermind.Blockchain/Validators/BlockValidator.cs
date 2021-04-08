@@ -32,7 +32,7 @@ namespace Nethermind.Blockchain.Validators
         private readonly ISpecProvider _specProvider;
         private readonly ILogger _logger;
 
-        public BlockValidator(ITxValidator txValidator, IHeaderValidator headerValidator, IOmmersValidator ommersValidator, ISpecProvider specProvider, ILogManager logManager)
+        public BlockValidator(ITxValidator? txValidator, IHeaderValidator? headerValidator, IOmmersValidator? ommersValidator, ISpecProvider? specProvider, ILogManager? logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _txValidator = txValidator ?? throw new ArgumentNullException(nameof(headerValidator));
@@ -46,12 +46,12 @@ namespace Nethermind.Blockchain.Validators
             return _headerValidator.ValidateHash(header);
         }
         
-        public bool ValidateHeader(BlockHeader header, BlockHeader parent, bool isOmmer)
+        public bool Validate(BlockHeader header, BlockHeader? parent, bool isOmmer)
         {
             return _headerValidator.Validate(header, parent, isOmmer);
         }
 
-        public bool ValidateHeader(BlockHeader header, bool isOmmer)
+        public bool Validate(BlockHeader header, bool isOmmer)
         {
             return _headerValidator.Validate(header, isOmmer);
         }

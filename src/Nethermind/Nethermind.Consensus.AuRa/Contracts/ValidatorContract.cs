@@ -68,7 +68,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
         private readonly IStateProvider _stateProvider;
         private readonly ISigner _signer;
 
-        private ConstantContract Constant { get; }
+        private IConstantContract Constant { get; }
 
         public ValidatorContract(
             ITransactionProcessor transactionProcessor, 

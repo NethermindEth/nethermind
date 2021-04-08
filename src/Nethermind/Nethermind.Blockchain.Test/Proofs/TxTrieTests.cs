@@ -41,9 +41,7 @@ namespace Nethermind.Blockchain.Test.Proofs
         [Test]
         public void Can_calculate_root()
         {
-            Block block = Build.A.Block.WithTransactions(
-                _releaseSpec,
-                 Build.A.Transaction.TestObject).TestObject;
+            Block block = Build.A.Block.WithTransactions(Build.A.Transaction.TestObject).TestObject;
             TxTrie txTrie = new TxTrie(block.Transactions);
 
             if (_releaseSpec == Berlin.Instance)
@@ -61,7 +59,7 @@ namespace Nethermind.Blockchain.Test.Proofs
         [Test]
         public void Can_collect_proof_trie_case_1()
         {
-            Block block = Build.A.Block.WithTransactions(_releaseSpec, Build.A.Transaction.TestObject).TestObject;
+            Block block = Build.A.Block.WithTransactions(Build.A.Transaction.TestObject).TestObject;
             TxTrie txTrie = new TxTrie(block.Transactions, true);
             byte[][] proof = txTrie.BuildProof(0);
             
@@ -72,9 +70,7 @@ namespace Nethermind.Blockchain.Test.Proofs
         [Test]
         public void Can_collect_proof_with_trie_case_2()
         {
-            Block block = Build.A.Block.WithTransactions(
-                _releaseSpec,
-                Build.A.Transaction.TestObject, Build.A.Transaction.TestObject).TestObject;
+            Block block = Build.A.Block.WithTransactions(Build.A.Transaction.TestObject, Build.A.Transaction.TestObject).TestObject;
             TxTrie txTrie = new TxTrie(block.Transactions, true);
             byte[][] proof = txTrie.BuildProof(0);
             Assert.AreEqual(2, proof.Length);
@@ -86,9 +82,7 @@ namespace Nethermind.Blockchain.Test.Proofs
         [Test]
         public void Can_collect_proof_with_trie_case_3_modified()
         {
-            Block block = Build.A.Block.WithTransactions(
-                _releaseSpec,
-                Enumerable.Repeat(Build.A.Transaction.TestObject, 1000).ToArray()).TestObject;
+            Block block = Build.A.Block.WithTransactions(Enumerable.Repeat(Build.A.Transaction.TestObject, 1000).ToArray()).TestObject;
             TxTrie txTrie = new TxTrie(block.Transactions, true);
 
             txTrie.UpdateRootHash();

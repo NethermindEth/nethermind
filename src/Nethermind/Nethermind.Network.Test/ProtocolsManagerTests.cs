@@ -23,6 +23,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Timers;
 using Nethermind.Logging;
 using Nethermind.Network.Discovery;
 using Nethermind.Network.P2P;
@@ -92,7 +93,8 @@ namespace Nethermind.Network.Test
                 _localPeer = Substitute.For<IRlpxPeer>();
                 _localPeer.LocalPort.Returns(_localPort);
                 _localPeer.LocalNodeId.Returns(TestItem.PublicKeyA);
-                _nodeStatsManager = new NodeStatsManager(LimboLogs.Instance);
+                ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
+                _nodeStatsManager = new NodeStatsManager(timerFactory, LimboLogs.Instance);
                 _blockTree = Substitute.For<IBlockTree>();
                 _blockTree.ChainId.Returns(1ul);
                 _blockTree.Genesis.Returns(Build.A.Block.Genesis.TestObject.Header);

@@ -33,7 +33,6 @@ namespace Nethermind.Specs.Test
             _specProvider.GetSpec(blockNumber).IsEip2315Enabled.Should().Be(false);
             _specProvider.GetSpec(blockNumber).IsEip2537Enabled.Should().Be(false);
             _specProvider.GetSpec(blockNumber).IsEip2565Enabled.Should().Be(isEnabled);
-            _specProvider.GetSpec(blockNumber).IsEip2718Enabled.Should().Be(isEnabled);
             _specProvider.GetSpec(blockNumber).IsEip2929Enabled.Should().Be(isEnabled);
             _specProvider.GetSpec(blockNumber).IsEip2930Enabled.Should().Be(isEnabled);
         }

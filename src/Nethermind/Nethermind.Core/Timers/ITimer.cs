@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2020 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -13,23 +13,21 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using System.Collections.Generic;
-using BenchmarkDotNet.Attributes;
-using BenchmarkDotNet.Diagnostics.Windows.Configs;
-using BenchmarkDotNet.Jobs;
-using Nethermind.Evm.Precompiles;
+using System;
+using System.Timers;
 
-namespace Nethermind.Precompiles.Benchmark
+namespace Nethermind.Core.Timers
 {
-    [HtmlExporter]
-    // [NativeMemoryProfiler]
-    // [MemoryDiagnoser]
-    // [ShortRunJob(RuntimeMoniker.NetCoreApp31)]
-    [SimpleJob(RuntimeMoniker.NetCoreApp31)]
-    public class ModExp2565Benchmark : PrecompileBenchmarkBase
+    public interface ITimer : IDisposable
     {
-        protected override IEnumerable<IPrecompile> Precompiles => new[] {ModExpPrecompile2565.Instance};
-        protected override string InputsDirectory => "modexp";
+        bool AutoReset { get; set; }
+        bool Enabled { get; set; }
+        TimeSpan Interval { get; set; }
+        double IntervalMilliseconds { get; set; }
+        void Start();
+        void Stop();
+        event EventHandler Elapsed;
     }
 }

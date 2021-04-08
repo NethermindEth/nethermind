@@ -123,7 +123,7 @@ namespace Nethermind.Synchronization.FastSync
             {
                 if (serializedData != null)
                 {
-                    RlpStream rlpStream = new RlpStream(serializedData);
+                    RlpStream rlpStream = new(serializedData);
                     rlpStream.ReadSequenceLength();
                     ConsumedNodesCount = rlpStream.DecodeLong();
                     SavedStorageCount = rlpStream.DecodeLong();

@@ -26,6 +26,7 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Timers;
 using Nethermind.Logging;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Subprotocols;
@@ -66,10 +67,11 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             _genesisBlock = Build.A.Block.Genesis.TestObject;
             _syncManager.Head.Returns(_genesisBlock.Header);
             _syncManager.Genesis.Returns(_genesisBlock.Header);
+            ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
             _handler = new Eth62ProtocolHandler(
                 _session,
                 _svc,
-                new NodeStatsManager(LimboLogs.Instance),
+                new NodeStatsManager(timerFactory, LimboLogs.Instance),
                 _syncManager,
                 _transactionPool,
                 LimboLogs.Instance);

@@ -143,7 +143,7 @@ namespace Nethermind.EthStats.Integrations
             SendStatsAsync();
         }
 
-        private void BlockTreeOnNewHeadBlock(object sender, BlockEventArgs e)
+        private void BlockTreeOnNewHeadBlock(object? sender, BlockEventArgs e)
         {
             Block? block = e.Block;
 

@@ -260,7 +260,7 @@ namespace Nethermind.TxPool
             }
 
             Metrics.PendingTransactionsReceived++;
-
+            
             if (!_validator.IsWellFormed(tx, _specProvider.GetSpec()))
             {
                 // It may happen that other nodes send us transactions that were signed for another chain or don't have enough gas.
@@ -383,14 +383,16 @@ namespace Nethermind.TxPool
             return false;
         }
 
-        public void RemoveTransaction(Keccak hash, bool removeBelowThisTxNonce = false)
+        public bool RemoveTransaction(Keccak hash, bool removeBelowThisTxNonce = false)
         {
             ICollection<Transaction>? bucket;
             ICollection<Transaction>? persistentBucket = null;
             Transaction transaction;
+            bool isKnown;
             lock (_locker)
             {
-                if (_transactions.TryRemove(hash, out transaction, out bucket))
+                isKnown = _transactions.TryRemove(hash, out transaction, out bucket);
+                if (isKnown)
                 {
                     Address address = transaction.SenderAddress;
                     if (_nonces.TryGetValue(address, out AddressNonces addressNonces))
@@ -441,6 +443,12 @@ namespace Nethermind.TxPool
                     }
                 }
             }
+            return isKnown;
+        }
+
+        public bool IsInHashCache(Keccak hash)
+        {
+            return _hashCache.Get(hash);
         }
 
         public bool TryGetPendingTransaction(Keccak hash, out Transaction transaction)

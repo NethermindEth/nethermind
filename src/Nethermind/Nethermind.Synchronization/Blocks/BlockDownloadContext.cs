@@ -98,16 +98,17 @@ namespace Nethermind.Synchronization.Blocks
 
         public void SetBody(int index, BlockBody body)
         {
-            Block block = Blocks[_indexMapping[index]];
+            int mappedIndex = _indexMapping[index];
+            Block block = Blocks[mappedIndex];
             if (body == null)
             {
                 throw new EthSyncException($"{_syncPeer} sent an empty body for {block.ToString(Block.Format.Short)}.");
             }
 
-            block.Body = body;
+            Blocks[mappedIndex] = block.WithReplacedBody(body);
         }
 
-        public bool TrySetReceipts(int index, TxReceipt[] receipts, out Block block)
+        public bool TrySetReceipts(int index, TxReceipt[]? receipts, out Block block)
         {
             if (!_downloadReceipts)
             {

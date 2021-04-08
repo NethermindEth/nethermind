@@ -16,6 +16,7 @@
 // 
 
 using System;
+using System.Threading.Tasks;
 using Nethermind.Core;
 
 namespace Nethermind.TxPool
@@ -31,7 +32,7 @@ namespace Nethermind.TxPool
             _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
         }
 
-        public override void Seal(Transaction tx, TxHandlingOptions txHandlingOptions)
+        public override ValueTask Seal(Transaction tx, TxHandlingOptions txHandlingOptions)
         {
             bool manageNonce = (txHandlingOptions & TxHandlingOptions.ManagedNonce) == TxHandlingOptions.ManagedNonce;
             if (manageNonce)
@@ -40,7 +41,7 @@ namespace Nethermind.TxPool
                 txHandlingOptions |= TxHandlingOptions.AllowReplacingSignature;
             }
 
-            base.Seal(tx, txHandlingOptions);
+            return base.Seal(tx, txHandlingOptions);
         }
     }
 }

@@ -17,12 +17,17 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Timers;
+using Nethermind.Core.Caching;
+using Nethermind.Core.Timers;
 using Nethermind.Logging;
 using Nethermind.Stats.Model;
 
 namespace Nethermind.Stats
 {
-    public class NodeStatsManager : INodeStatsManager
+    public class NodeStatsManager : INodeStatsManager, IDisposable
     {
         private class NodeComparer : IEqualityComparer<Node>
         {
@@ -49,10 +54,39 @@ namespace Nethermind.Stats
         
         private readonly ILogger _logger;
         private readonly ConcurrentDictionary<Node, INodeStats> _nodeStats = new ConcurrentDictionary<Node, INodeStats>(new NodeComparer());
+        private readonly ITimer _cleanupTimer;
+        private readonly int _maxCount;
 
-        public NodeStatsManager(ILogManager logManager)
+        public NodeStatsManager(ITimerFactory timerFactory, ILogManager logManager, int maxCount = 10000)
         {
+            _maxCount = maxCount;
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+
+            _cleanupTimer = timerFactory.CreateTimer(TimeSpan.FromMinutes(10));
+            _cleanupTimer.Elapsed += CleanupTimerOnElapsed;
+            _cleanupTimer.Start();
+        }
+
+        private void CleanupTimerOnElapsed(object sender, EventArgs e)
+        {
+            int deleteCount = _nodeStats.Count - _maxCount;
+
+            if (deleteCount > 0)
+            {
+                IEnumerable<Node> toDelete = _nodeStats
+                    .OrderBy(n => n.Value.CurrentNodeReputation)
+                    .Select(n => n.Key)
+                    .Take(_nodeStats.Count - _maxCount);
+
+                int i = 0;
+                foreach (Node node in toDelete)
+                {
+                    _nodeStats.TryRemove(node, out _);
+                    i++;
+                }
+                
+                if (_logger.IsDebug) _logger.Debug($"Removed {i} node stats.");
+            }
         }
 
         private INodeStats AddStats(Node node)
@@ -163,6 +197,11 @@ namespace Nethermind.Stats
         {
             INodeStats stats = GetOrAdd(node);
             stats.AddTransferSpeedCaptureEvent(type, value);
+        }
+
+        public void Dispose()
+        {
+            _cleanupTimer.Dispose();
         }
     }
 }

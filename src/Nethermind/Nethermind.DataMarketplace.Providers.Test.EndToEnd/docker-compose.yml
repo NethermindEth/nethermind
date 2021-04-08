@@ -1,0 +1,75 @@
+
+version: "3.7"
+services:
+
+  grafana:
+    image: grafana/grafana
+    restart: unless-stopped
+    networks:
+      - ndm
+    ports:
+      - 3000:3000
+    volumes:
+      - ./grafana/provisioning/:/etc/grafana/provisioning/
+
+  prometheus:
+    build: ./prometheus
+    container_name: prometheus
+    networks:
+      - ndm
+    ports:
+      - 9090:9090
+
+  pushgateway:
+    image: prom/pushgateway
+    container_name: pushgateway
+    depends_on:
+      - prometheus
+    networks:
+      - ndm
+    ports:
+      - 9091:9091
+
+  e2e-provider:
+    image: nethermind-provider-e2e
+    depends_on:
+      - ndm-provider
+    environment:
+      - JSON_RPC_URL=http://ndm-provider:8545
+      - NETHERMIND_JSONRPCCONFIG_HOST="0.0.0.0"
+    networks:
+      - ndm
+  
+  ndm-provider:
+    build: .
+    container_name: ndm-provider
+    depends_on:
+      - pushgateway
+    networks:
+      - ndm
+    environment:
+      - NETHERMIND_CONFIG=ndm_provider_e2e
+      - NETHERMIND_JSONRPCCONFIG_HOST="0.0.0.0"
+      - NDM_PROVIDER_SKIP_DEPOSIT_VERIFICATION=true
+      - NDM_PROVIDER_BACKGROUND_SERVICES_DISABLED=false
+      - NDM_PROVIDER_SENDING_PAYMENT_CLAIM_TRANSACTION_DISABLED=false
+      - NDM_PROVIDER_INSTANT_PAYMENT_CLAIM_VERIFICATION_ENABLED=true
+    ports:
+      - 30305:30305
+      - 8545:8545
+
+  ndm-provider-mongo:
+    image: mongo
+    container_name: ndm-provider-mongo
+    networks:
+      - ndm
+
+  ndm-connector-sample:
+    image: ndm-provider-sample-web-api
+    container_name: ndm-connector-sample
+    networks:
+      - ndm
+
+networks:
+  ndm:
+    name: ndm-network

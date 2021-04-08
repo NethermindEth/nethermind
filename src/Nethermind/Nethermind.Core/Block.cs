@@ -44,9 +44,19 @@ namespace Nethermind.Core
         {
         }
 
-        public BlockHeader Header { get; set; }
+        public Block WithReplacedHeader(BlockHeader newHeader)
+        {
+            return new(newHeader, Body);
+        }
 
-        public BlockBody Body { get; set; }
+        public Block WithReplacedBody(BlockBody newBody)
+        {
+            return new(Header, newBody);
+        }
+        
+        public BlockHeader Header { get; }
+
+        public BlockBody Body { get; }
 
         public bool IsGenesis => Header.IsGenesis;
 
@@ -104,11 +114,11 @@ namespace Nethermind.Core
                 Format.Full => ToFullString(),
                 Format.FullHashAndNumber => Hash == null ? $"{Number} null" : $"{Number} ({Hash})",
                 Format.HashNumberAndTx => Hash == null
-                    ? $"{Number} null, tx count: {Body?.Transactions.Length}"
-                    : $"{Number} {TimestampDate:HH:mm:ss} ({Hash?.ToShortString()}), tx count: {Body?.Transactions.Length}",
+                    ? $"{Number} null, tx count: {Body.Transactions.Length}"
+                    : $"{Number} {TimestampDate:HH:mm:ss} ({Hash?.ToShortString()}), tx count: {Body.Transactions.Length}",
                 Format.HashNumberDiffAndTx => Hash == null
-                    ? $"{Number} null, diff: {Difficulty}, tx count: {Body?.Transactions.Length}"
-                    : $"{Number} ({Hash?.ToShortString()}), diff: {Difficulty}, tx count: {Body?.Transactions.Length}",
+                    ? $"{Number} null, diff: {Difficulty}, tx count: {Body.Transactions.Length}"
+                    : $"{Number} ({Hash?.ToShortString()}), diff: {Difficulty}, tx count: {Body.Transactions.Length}",
                 _ => Hash == null ? $"{Number} null" : $"{Number} ({Hash?.ToShortString()})"
             };
         }
@@ -121,7 +131,7 @@ namespace Nethermind.Core
             builder.Append($"{Header.ToString("    ")}");
 
             builder.AppendLine("  Ommers:");
-            foreach (BlockHeader ommer in Body?.Ommers ?? Array.Empty<BlockHeader>())
+            foreach (BlockHeader ommer in Body.Ommers ?? Array.Empty<BlockHeader>())
             {
                 builder.Append($"{ommer.ToString("    ")}");
             }

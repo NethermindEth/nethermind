@@ -14,11 +14,13 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+// ReSharper disable MemberCanBePrivate.Global
+// ReSharper disable UnusedAutoPropertyAccessor.Global
 namespace Nethermind.EthStats.Messages
 {
     public class StatsMessage : IMessage
     {
-        public string Id { get; set; }
+        public string? Id { get; set; }
         public Models.Stats Stats { get; }
 
         public StatsMessage(Models.Stats stats)

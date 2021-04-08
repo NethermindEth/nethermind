@@ -96,7 +96,7 @@ namespace Nethermind.Network.Test.Rlpx
         {
             Transaction a = Build.A.Transaction.TestObject;
             Transaction b = Build.A.Transaction.TestObject;
-            Block block = Build.A.Block.WithTransactions(MuirGlacier.Instance, a, b).TestObject;
+            Block block = Build.A.Block.WithTransactions(a, b).TestObject;
             NewBlockMessage newBlockMessage = new NewBlockMessage();
             newBlockMessage.Block = block;
 
@@ -111,7 +111,7 @@ namespace Nethermind.Network.Test.Rlpx
         public void Two_frame_block_there_and_back(StackType inbound, StackType outbound, bool framingEnabled)
         {
             Transaction[] txs = Build.A.Transaction.SignedAndResolved().TestObjectNTimes(10);
-            Block block = Build.A.Block.WithTransactions(MuirGlacier.Instance, txs).TestObject;
+            Block block = Build.A.Block.WithTransactions(txs).TestObject;
             NewBlockMessage newBlockMessage = new NewBlockMessage();
             newBlockMessage.Block = block;
 

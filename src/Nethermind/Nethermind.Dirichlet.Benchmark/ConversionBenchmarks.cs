@@ -27,7 +27,7 @@ namespace Nethermind.Dirichlet.Benchmark
 {
     [MemoryDiagnoser]
     [ShortRunJob]
-    // [SimpleJob(RuntimeMoniker.NetCoreApp31)]
+    // [SimpleJob(RuntimeMoniker.NetCoreApp50)]
     public class ConversionBenchmarks
     {
         private BigInteger[] _scenariosBI = new BigInteger[3];
