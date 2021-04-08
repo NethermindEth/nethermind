@@ -17,6 +17,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -28,18 +29,19 @@ namespace Nethermind.Evm.Tracing
     {
         private readonly ITxTracer _innerTracer;
         private readonly CancellationToken _token;
-        private bool _isTracingReceipt;
-        private bool _isTracingActions;
-        private bool _isTracingOpLevelStorage;
-        private bool _isTracingMemory;
-        private bool _isTracingInstructions;
-        private bool _isTracingRefunds;
-        private bool _isTracingCode;
-        private bool _isTracingStack;
-        private bool _isTracingState;
-        private bool _isTracingStorage;
-        private bool _isTracingBlockHash;
-        
+        private readonly bool _isTracingReceipt;
+        private readonly bool _isTracingActions;
+        private readonly bool _isTracingOpLevelStorage;
+        private readonly bool _isTracingMemory;
+        private readonly bool _isTracingInstructions;
+        private readonly bool _isTracingRefunds;
+        private readonly bool _isTracingCode;
+        private readonly bool _isTracingStack;
+        private readonly bool _isTracingState;
+        private readonly bool _isTracingStorage;
+        private readonly bool _isTracingBlockHash;
+        private readonly bool _isTracingBlockAccess;
+
         public ITxTracer InnerTracer => _innerTracer;
 
         public CancellationTxTracer(ITxTracer innerTracer, CancellationToken token = default)
@@ -112,6 +114,12 @@ namespace Nethermind.Evm.Tracing
         {
             get => _isTracingBlockHash || _innerTracer.IsTracingBlockHash;
             init => _isTracingBlockHash = value;
+        }
+
+        public bool IsTracingAccess
+        {
+            get => _isTracingBlockAccess || _innerTracer.IsTracingAccess;
+            init => _isTracingBlockAccess = value;
         }
 
         public void ReportBalanceChange(Address address, UInt256? before, UInt256? after)
@@ -399,6 +407,15 @@ namespace Nethermind.Evm.Tracing
             if (_innerTracer.IsTracingRefunds)
             {
                 _innerTracer.ReportExtraGasPressure(extraGasPressure);
+            }
+        }
+
+        public void ReportAccess(IReadOnlySet<Address> accessedAddresses, IReadOnlySet<StorageCell> accessedStorageCells)
+        {
+            _token.ThrowIfCancellationRequested();
+            if (_innerTracer.IsTracingAccess)
+            {
+                _innerTracer.ReportAccess(accessedAddresses, accessedStorageCells);
             }
         }
     }

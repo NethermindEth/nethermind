@@ -87,7 +87,8 @@ namespace Nethermind.Evm.Tracing.ParityStyle
         public bool IsTracingState { get; }
         public bool IsTracingStorage { get; }
         public bool IsTracingBlockHash => false;
-        
+        public bool IsTracingAccess => false;
+
         private static string GetCallType(ExecutionType executionType)
         {
             switch (executionType)
@@ -515,6 +516,11 @@ namespace Nethermind.Evm.Tracing.ParityStyle
         public void ReportExtraGasPressure(long extraGasPressure)
         {
             throw new NotSupportedException();
+        }
+
+        public void ReportAccess(IReadOnlySet<Address> accessedAddresses, IReadOnlySet<StorageCell> accessedStorageCells)
+        {
+            throw new NotImplementedException();
         }
     }
 }
