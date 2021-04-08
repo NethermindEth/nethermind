@@ -267,6 +267,11 @@ namespace Nethermind.Evm
 
                     substate = _virtualMachine.Run(state, txTracer);
                     unspentGas = state.GasAvailable;
+
+                    if (txTracer.IsTracingAccess)
+                    {
+                        txTracer.ReportAccess(state.AccessedAddresses, state.AccessedStorageCells);
+                    }
                 }
 
                 if (substate.ShouldRevert || substate.IsError)
