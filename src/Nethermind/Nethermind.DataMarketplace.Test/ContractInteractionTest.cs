@@ -259,6 +259,11 @@ namespace Nethermind.DataMarketplace.Test
                 throw new NotImplementedException();
             }
 
+            public Facade.BlockchainBridge.CallOutput CreateAccessList(BlockHeader header, Transaction tx, CancellationToken cancellationToken)
+            {
+                throw new NotImplementedException();
+            }
+
             public ulong GetChainId()
             {
                 return 1;
