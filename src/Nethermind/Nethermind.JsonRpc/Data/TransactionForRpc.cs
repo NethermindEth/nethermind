@@ -117,7 +117,7 @@ namespace Nethermind.JsonRpc.Data
 
         public UInt256? R { get; set; }
 
-        public Transaction ToTransactionWithDefaults()
+        public Transaction ToTransactionWithDefaults(ulong? chainId = null)
         {
             Transaction tx = new();
             tx.GasLimit = Gas ?? 90000;
@@ -129,11 +129,12 @@ namespace Nethermind.JsonRpc.Data
             tx.Data = Data ?? Input;
             tx.Type = Type;
             tx.AccessList = TryGetAccessList();
+            tx.ChainId = chainId;
             
             return tx;
         }
 
-        public Transaction ToTransaction()
+        public Transaction ToTransaction(ulong? chainId = null)
         {
             Transaction tx = new();
             tx.GasLimit = Gas ?? 0;
@@ -145,6 +146,7 @@ namespace Nethermind.JsonRpc.Data
             tx.Data = Data ?? Input;
             tx.Type = Type;
             tx.AccessList = TryGetAccessList();
+            tx.ChainId = chainId;
 
             return tx;
         }
