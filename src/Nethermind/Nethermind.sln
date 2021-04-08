@@ -190,7 +190,7 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Api.Test", "Neth
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Merge.Plugin", "Nethermind.Merge.Plugin\Nethermind.Merge.Plugin.csproj", "{889ED383-C21B-471C-A8B6-9339FD397394}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Merge.Plugin.Tests", "Nethermind.Merge.Plugin.Tests\Nethermind.Merge.Plugin.Tests.csproj", "{87ECA5BD-8DB0-4ED6-82FF-9F68D576A8E8}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Merge.Plugin.Test", "Nethermind.Merge.Plugin.Test\Nethermind.Merge.Plugin.Test.csproj", "{87ECA5BD-8DB0-4ED6-82FF-9F68D576A8E8}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

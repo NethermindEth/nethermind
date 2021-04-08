@@ -20,7 +20,7 @@ using NUnit.Framework;
 using Nethermind.Runner.Test.Ethereum;
 using NSubstitute;
 
-namespace Nethermind.Merge.Plugin.Tests
+namespace Nethermind.Merge.Plugin.Test
 {
     public class MergePluginTests
     {

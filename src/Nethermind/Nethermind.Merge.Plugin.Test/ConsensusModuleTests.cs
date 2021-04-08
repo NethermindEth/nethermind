@@ -19,7 +19,7 @@ using System;
 using Nethermind.Merge.Plugin.Data;
 using NUnit.Framework;
 
-namespace Nethermind.Merge.Plugin.Tests
+namespace Nethermind.Merge.Plugin.Test
 {
     public class ConsensusModuleTests
     {
