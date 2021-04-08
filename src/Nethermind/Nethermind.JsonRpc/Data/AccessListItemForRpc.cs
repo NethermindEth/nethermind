@@ -15,9 +15,11 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
+using Nethermind.Core.Eip2930;
 using Nethermind.Int256;
 
 namespace Nethermind.JsonRpc.Data
@@ -32,5 +34,27 @@ namespace Nethermind.JsonRpc.Data
         
         public Address Address { get; set; }
         public UInt256[]? StorageKeys { get; set; }
+
+
+        public static AccessListItemForRpc[] FromAccessList(AccessList accessList) => 
+            accessList.Data.Select(kvp => new AccessListItemForRpc(kvp.Key, kvp.Value)).ToArray();
+
+        public static AccessList ToAccessList(AccessListItemForRpc[] accessList)
+        {
+            AccessListBuilder accessListBuilder = new();
+            for (int i = 0; i < accessList.Length; i++)
+            {
+                var accessListItem = accessList[i];
+                accessListBuilder.AddAddress(accessListItem.Address);
+                if (accessListItem.StorageKeys is not null)
+                {
+                    for (int j = 0; j < accessListItem.StorageKeys.Length; j++)
+                    {
+                        accessListBuilder.AddStorage(accessListItem.StorageKeys[j]);
+                    }
+                }
+            }
+            return accessListBuilder.ToAccessList();
+        }
     }
 }
