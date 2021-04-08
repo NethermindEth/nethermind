@@ -319,7 +319,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
         public Task<ResultWrapper<Keccak>> eth_sendTransaction(TransactionForRpc rpcTx)
         {
-            Transaction tx = rpcTx.ToTransactionWithDefaults();
+            Transaction tx = rpcTx.ToTransactionWithDefaults(_blockchainBridge.GetChainId());
             TxHandlingOptions options = rpcTx.Nonce == null ? TxHandlingOptions.ManagedNonce : TxHandlingOptions.None;
             return SendTx(tx, options);
         }
@@ -376,7 +376,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
             using CancellationTokenSource cancellationTokenSource = new(_cancellationTokenTimeout);
             CancellationToken cancellationToken = cancellationTokenSource.Token;
-            Transaction tx = transactionCall.ToTransaction();
+            Transaction tx = transactionCall.ToTransaction(_blockchainBridge.GetChainId());
             BlockchainBridge.CallOutput result = _blockchainBridge.Call(header, tx, cancellationToken);
 
             if (result.Error == null)
@@ -443,7 +443,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             // using CancellationTokenSource cancellationTokenSource = new(_cancellationTokenTimeout);
             CancellationToken cancellationToken = CancellationToken.None;
             BlockchainBridge.CallOutput result =
-                _blockchainBridge.EstimateGas(head, transactionCall.ToTransaction(), cancellationToken);
+                _blockchainBridge.EstimateGas(head, transactionCall.ToTransaction(_blockchainBridge.GetChainId()), cancellationToken);
 
             if (result.Error == null)
             {

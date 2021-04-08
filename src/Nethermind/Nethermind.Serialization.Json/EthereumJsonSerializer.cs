@@ -52,7 +52,8 @@ namespace Nethermind.Serialization.Json
                 new NullableUInt256Converter(),
                 new BigIntegerConverter(),
                 new NullableBigIntegerConverter(),
-                new PublicKeyConverter()
+                new PublicKeyConverter(),
+                new TxTypeConverter()
             });
 
         public IList<JsonConverter> BasicConverters { get; } = CommonConverters.ToList();
@@ -70,7 +71,8 @@ namespace Nethermind.Serialization.Json
             new NullableUInt256Converter(NumberConversion.Decimal),
             new BigIntegerConverter(NumberConversion.Decimal),
             new NullableBigIntegerConverter(NumberConversion.Decimal),
-            new PublicKeyConverter()
+            new PublicKeyConverter(),
+            new TxTypeConverter()
         };
 
         public T Deserialize<T>(Stream stream)
