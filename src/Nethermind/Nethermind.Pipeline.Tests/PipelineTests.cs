@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Core;
 using Nethermind.TxPool;
@@ -37,9 +38,26 @@ namespace Nethermind.Pipeline.Tests
         }
 
         [Test]
-        public void Will_emit_transactions_to_givien_address()
+        public void Will_emit_transaction_with_givien_address()
         {
-            
+            var sourceElement = new TxPoolPipelineSource<Transaction>(_txPool);
+            var element = new TxPoolPipelineElement<Transaction, Transaction>();
+
+            var builder = new PipelineBuilder<Transaction, Transaction>(sourceElement);
+            var pipeline = builder.AddElement(element); 
+
+            Action<Transaction> mockAction = Substitute.For<Action<Transaction>>();
+            element.Emit = mockAction;
+
+            Transaction transactionToEmit = new Transaction { To = new Address("0x92A3c5e7Cee811C3402b933A6D43aAF2e56f2823")};
+            Transaction transactionToIgnore = new Transaction { To = new Address("0x719839373E2C69aB619Acd18Ad5f6A6eF055d762")};
+
+            _txPool.NewPending += Raise.EventWith<TxEventArgs>(new object(), new TxEventArgs(transactionToIgnore));
+            _txPool.NewPending += Raise.EventWith<TxEventArgs>(new object(), new TxEventArgs(transactionToEmit));
+        
+            Transaction emitedTx = (Transaction)mockAction.ReceivedCalls().First().GetArguments().First();
+
+            Assert.AreEqual(transactionToEmit, emitedTx);
         }
 
         private class TxPoolPipelineSource<TOut> : IPipelineElement<TOut> where TOut : Transaction
@@ -49,13 +67,31 @@ namespace Nethermind.Pipeline.Tests
             public TxPoolPipelineSource(ITxPool txPool)
             {
                 _txPool = txPool; 
+                _txPool.NewPending += OnNewPending;
             }
 
             public Action<TOut> Emit { private get; set; }
 
-            private void OnNewPending(TxEventArgs args)
+            private void OnNewPending(object? sender, TxEventArgs args)
             {
                 Emit((TOut)args.Transaction);
+            }
+        }
+
+        private class TxPoolPipelineElement<TIn, TOut> : IPipelineElement<TIn, TOut>
+        where TIn : Transaction
+        where TOut : Transaction
+        {
+            public Action<TOut> Emit { private get; set; }
+            private Address addressToWatchFor = new Address("0x92A3c5e7Cee811C3402b933A6D43aAF2e56f2823");
+
+            public void SubscribeToData(TIn data)
+            {
+                if(data.To == addressToWatchFor)
+                {
+                    TOut output = (TOut)(Transaction)data; //No idea right now on how to make it better
+                    Emit(output);
+                }
             }
         }
     }
