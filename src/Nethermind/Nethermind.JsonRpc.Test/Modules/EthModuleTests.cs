@@ -29,11 +29,15 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
+using Nethermind.Evm;
 using Nethermind.Facade;
+using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Specs;
+using Nethermind.Specs.Forks;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
@@ -734,7 +738,96 @@ namespace Nethermind.JsonRpc.Test.Modules
             await txSender.Received().SendTransaction(Arg.Any<Transaction>(), TxHandlingOptions.PersistentBroadcast | TxHandlingOptions.ManagedNonce);
             Assert.AreEqual($"{{\"jsonrpc\":\"2.0\",\"result\":\"{TestItem.KeccakA.Bytes.ToHexString(true)}\",\"id\":67}}", serialized);
         }
+
+        public enum AccessListProvided
+        {
+            None,
+            Partial,
+            Full
+        }
         
+        [TestCase(AccessListProvided.None, "{\"jsonrpc\":\"2.0\",\"result\":{\"accessList\":[{\"address\":\"0xfffffffffffffffffffffffffffffffffffffffe\",\"storageKeys\":[\"0xa\",\"0x1\"]},{\"address\":\"0x76e68a8696537e4141926f3e528733af9e237d69\"}],\"gasUsed\":\"0xf71b\"},\"id\":67}")]
+        [TestCase(AccessListProvided.Full, "{\"jsonrpc\":\"2.0\",\"result\":{\"accessList\":[{\"address\":\"0xfffffffffffffffffffffffffffffffffffffffe\",\"storageKeys\":[\"0xa\",\"0x1\"]},{\"address\":\"0x76e68a8696537e4141926f3e528733af9e237d69\"}],\"gasUsed\":\"0xf71b\"},\"id\":67}")]
+        [TestCase(AccessListProvided.Partial, "{\"jsonrpc\":\"2.0\",\"result\":{\"accessList\":[{\"address\":\"0x76e68a8696537e4141926f3e528733af9e237d69\"},{\"address\":\"0xfffffffffffffffffffffffffffffffffffffffe\",\"storageKeys\":[\"0xa\",\"0x1\"]}],\"gasUsed\":\"0xf71b\"},\"id\":67}")]
+        public async Task Eth_create_access_list_sample(AccessListProvided accessListProvided, string expected)
+        {
+            var test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(new TestSpecProvider(Berlin.Instance));
+            
+            (byte[] code, AccessListItemForRpc[] accessList) = GetTestAccessList();
+
+            TransactionForRpc transaction = test.JsonSerializer.Deserialize<TransactionForRpc>($"{{\"type\":\"0x1\", \"data\": \"{code.ToHexString(true)}\"}}");
+
+            if (accessListProvided != AccessListProvided.None)
+            {
+                transaction.AccessList = GetTestAccessList(accessListProvided == AccessListProvided.Full).AccessList;
+            }
+            
+            string serialized = test.TestEthRpc("eth_createAccessList", test.JsonSerializer.Serialize(transaction), "0x0");
+            Assert.AreEqual(expected, serialized);
+        }
+
+        [TestCase(true, 0xeee7, 0xf71b)]
+        [TestCase(false, 0xeee7, 0xee83)]
+        public async Task Eth_estimate_gas_with_accessList(bool senderAccessList, long gasPriceWithoutAccessList, long gasPriceWithAccessList)
+        {
+            var test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(new TestSpecProvider(Berlin.Instance));
+            
+            (byte[] code, AccessListItemForRpc[] accessList) = GetTestAccessList(senderAccessList);
+            
+            TransactionForRpc transaction = test.JsonSerializer.Deserialize<TransactionForRpc>($"{{\"type\":\"0x1\", \"data\": \"{code.ToHexString(true)}\"}}");
+            string serialized = test.TestEthRpc("eth_estimateGas", test.JsonSerializer.Serialize(transaction), "0x0");
+            Assert.AreEqual($"{{\"jsonrpc\":\"2.0\",\"result\":\"{gasPriceWithoutAccessList.ToHexString(true)}\",\"id\":67}}", serialized);
+
+            transaction.AccessList = accessList;
+            serialized = test.TestEthRpc("eth_estimateGas", test.JsonSerializer.Serialize(transaction), "0x0");
+            Assert.AreEqual($"{{\"jsonrpc\":\"2.0\",\"result\":\"{gasPriceWithAccessList.ToHexString(true)}\",\"id\":67}}", serialized);
+        }
+        
+        [TestCase()]
+        public async Task Eth_call_with_accessList()
+        {
+            var test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(new TestSpecProvider(Berlin.Instance));
+            
+            (byte[] code, AccessListItemForRpc[] accessList) = GetTestAccessList();
+            
+            TransactionForRpc transaction = test.JsonSerializer.Deserialize<TransactionForRpc>($"{{\"type\":\"0x1\", \"data\": \"{code.ToHexString(true)}\"}}");
+
+            transaction.AccessList = accessList;
+            string serialized = test.TestEthRpc("eth_call", test.JsonSerializer.Serialize(transaction), "0x0");
+            Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":\"0x010203\",\"id\":67}", serialized);
+        }
+
+        private static (byte[] ByteCode, AccessListItemForRpc[] AccessList) GetTestAccessList(bool allowSystemUser = true)
+        {
+            AccessListItemForRpc[] accessList = allowSystemUser
+                ? new[] {
+                    new AccessListItemForRpc(Address.SystemUser, new UInt256[] {10, 1}), 
+                    new AccessListItemForRpc(TestItem.AddressC, Array.Empty<UInt256>()),
+                }
+                : new[] {new AccessListItemForRpc(TestItem.AddressC, Array.Empty<UInt256>())};
+            
+
+            byte[] byteCode = Prepare.EvmCode
+                // accesses Address.SystemUser storage 0xa and 0x1
+                .PushData(10)
+                .Op(Instruction.SLOAD)
+                .PushData(1)
+                .Op(Instruction.SLOAD)
+                // accesses TestItem.AddressC without storage
+                .PushData(TestItem.AddressC)
+                .Op(Instruction.BALANCE)
+                // return
+                .PushData(new byte[]{1, 2, 3}.PadRight(32))
+                .PushData(0)
+                .Op(Instruction.MSTORE)
+                .PushData(3)
+                .PushData(0)
+                .Op(Instruction.RETURN)
+                .Done;
+            return (byteCode, accessList);
+        }
+
+
         private class Context : IDisposable
         {
             public TestRpcBlockchain _test;
