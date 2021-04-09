@@ -10,12 +10,12 @@ using Nethermind.WebSockets;
 
 namespace Nethermind.Pipeline.Publishers
 {
-    public class WebSocketsPublisher<T> : IPipelineElement<T> ,IPublisher, IWebSocketsModule
+    public class WebSocketsPublisher<TIn, TOut> : IPipelineElement<TIn, TOut> ,IPublisher, IWebSocketsModule
     {
         private readonly ConcurrentDictionary<string, IWebSocketsClient> _clients = new();
         private IJsonSerializer _jsonSerializer;
         public string Name { get; }
-        public Action<T> Emit { private get; set; }
+        public Action<TOut> Emit { private get; set; }
 
         public WebSocketsPublisher(IJsonSerializer jsonSerializer)
         {
@@ -59,9 +59,9 @@ namespace Nethermind.Pipeline.Publishers
         {
         }
 
-        public async void SubscribeToData(T data)
+        public async void SubscribeToData(TIn data)
         {
-            var message = new WebSocketsMessage(nameof(T), null, data);
+            var message = new WebSocketsMessage(nameof(TIn), null, data);
             await Task.WhenAll(_clients.Values.Select(v => v.SendAsync(message)));
         }
     }
