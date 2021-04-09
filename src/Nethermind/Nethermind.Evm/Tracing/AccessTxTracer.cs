@@ -29,8 +29,10 @@ namespace Nethermind.Evm.Tracing
     {
         private const long ColdVsWarmSloadDelta = GasCostOf.ColdSLoad - GasCostOf.AccessStorageListEntry;
         public const long MaxStorageAccessToOptimize = GasCostOf.AccessAccountListEntry / ColdVsWarmSloadDelta;
-        
+
+        private readonly AccessList? _accessList;
         private readonly Address[] _addressesToOptimize;
+        
         public bool IsTracingState => false;
         public bool IsTracingStorage => false;
         public bool IsTracingReceipt => true;
@@ -81,12 +83,12 @@ namespace Nethermind.Evm.Tracing
 
         public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak? stateRoot = null)
         {
-            GasSpent = gasSpent;
+            GasSpent += gasSpent;
         }
 
         public void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Keccak? stateRoot = null)
         {
-            GasSpent = gasSpent;
+            GasSpent += gasSpent;
         }
 
         public void StartOperation(int depth, long gas, Instruction opcode, int pc)
@@ -212,7 +214,7 @@ namespace Nethermind.Evm.Tracing
                 Address address = _addressesToOptimize[i];
                 if (dictionary.TryGetValue(address, out ISet<UInt256> set) && set.Count <= MaxStorageAccessToOptimize)
                 {
-                    GasSpent -= GasCostOf.AccessAccountListEntry + ColdVsWarmSloadDelta * set.Count;
+                    GasSpent += (GasCostOf.ColdSLoad - GasCostOf.WarmStateRead) * set.Count;
                     dictionary.Remove(address);
                 }
             }

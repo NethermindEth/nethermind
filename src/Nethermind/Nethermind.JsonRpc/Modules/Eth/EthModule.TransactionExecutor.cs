@@ -168,8 +168,9 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 if (result.AccessList is not null)
                 {
                     // if we generated access list, we need to fix actual gas cost, as all storage was considered warm 
-                    gas = gas - IntrinsicGasCalculator.AccessListCost(transaction.AccessList, Berlin.Instance)
-                          + IntrinsicGasCalculator.AccessListCost(result.AccessList, Berlin.Instance);
+                    gas -= IntrinsicGasCalculator.Calculate(transaction, Berlin.Instance);
+                    transaction.AccessList = result.AccessList;
+                    gas += IntrinsicGasCalculator.Calculate(transaction, Berlin.Instance);
                 }
 
                 return (UInt256) gas;

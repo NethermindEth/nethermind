@@ -60,11 +60,9 @@ namespace Nethermind.Evm
             return dataCost;
         }
         
-        private static long AccessListCost(Transaction transaction, IReleaseSpec releaseSpec) => 
-            AccessListCost(transaction.AccessList, releaseSpec);
-
-        public static long AccessListCost(AccessList? accessList, IReleaseSpec releaseSpec)
+        private static long AccessListCost(Transaction transaction, IReleaseSpec releaseSpec)
         {
+            AccessList? accessList = transaction.AccessList;
             long accessListCost = 0;
             if (accessList is not null)
             {
