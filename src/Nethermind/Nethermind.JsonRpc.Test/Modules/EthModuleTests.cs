@@ -17,6 +17,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
@@ -40,6 +41,7 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.TxPool;
+using Newtonsoft.Json.Linq;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -772,6 +774,24 @@ namespace Nethermind.JsonRpc.Test.Modules
             
             string serialized = test.TestEthRpc("eth_createAccessList", test.JsonSerializer.Serialize(transaction), "0x0", optimize.ToString().ToLower());
             Assert.AreEqual(expected, serialized);
+        }
+        
+        [TestCase(false, 2)]
+        [TestCase(true, AccessTxTracer.MaxStorageAccessToOptimize + 5)]
+        public async Task Eth_create_access_list_calculates_proper_gas(bool optimize, long loads)
+        {
+            var test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(new TestSpecProvider(Berlin.Instance));
+            
+            (byte[] code, AccessListItemForRpc[] accessList) = GetTestAccessList(loads);
+
+            TransactionForRpc transaction = test.JsonSerializer.Deserialize<TransactionForRpc>($"{{\"type\":\"0x1\", \"data\": \"{code.ToHexString(true)}\"}}");
+            transaction.AccessList = accessList;
+            
+            string serializedCreateAccessList = test.TestEthRpc("eth_createAccessList", test.JsonSerializer.Serialize(transaction), "0x0", optimize.ToString().ToLower());
+            string serializedEstimateGas = test.TestEthRpc("eth_estimateGas", test.JsonSerializer.Serialize(transaction), "0x0");
+            string gasUsedEstimateGas = JToken.Parse(serializedEstimateGas).Value<string>("result");
+            string gasUsedCreateAccessList = JToken.Parse(serializedCreateAccessList).SelectToken("result.gasUsed").Value<string>();
+            gasUsedCreateAccessList.Should().Be(gasUsedEstimateGas);
         }
 
         [TestCase(true, 0xeee7, 0xf71b)]
