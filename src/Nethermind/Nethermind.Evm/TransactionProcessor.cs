@@ -207,13 +207,9 @@ namespace Nethermind.Evm
             Address? recipientOrNull = null;
             try
             {
-                Address recipient;
+                Address recipient = transaction.GetRecipient(transaction.IsContractCreation ? _stateProvider.GetNonce(caller) : 0);
                 if (transaction.IsContractCreation)
                 {
-                    recipient = transaction.IsSystem() 
-                        ? caller
-                        : ContractAddress.From(caller, _stateProvider.GetNonce(caller) - 1);
-
                     if (_stateProvider.AccountExists(recipient))
                     {
                         if (_virtualMachine.GetCachedCodeInfo(recipient, spec).MachineCode.Length != 0 || _stateProvider.GetNonce(recipient) != 0)
@@ -228,10 +224,6 @@ namespace Nethermind.Evm
 
                         _stateProvider.UpdateStorageRoot(recipient, Keccak.EmptyTreeHash);
                     }
-                }
-                else
-                {
-                    recipient = transaction.To!;
                 }
 
                 if (recipient == null)

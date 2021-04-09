@@ -203,10 +203,13 @@ namespace Nethermind.Facade
             };
         }
 
-        public CallOutput CreateAccessList(BlockHeader header, Transaction tx, CancellationToken cancellationToken)
+        public CallOutput CreateAccessList(BlockHeader header, Transaction tx, CancellationToken cancellationToken, bool optimize)
         {
             CallOutputTracer callOutputTracer = new();
-            AccessTxTracer accessTxTracer = new();
+            AccessTxTracer accessTxTracer = optimize 
+                ? new(tx.SenderAddress, 
+                    tx.GetRecipient(tx.IsContractCreation ? _stateReader.GetNonce(header.StateRoot, tx.SenderAddress) : 0)) 
+                : new();
 
             (bool Success, string Error) tryCallResult = TryCallAndRestore(header, header.Number, header.Timestamp, tx,
                 new CancellationTxTracer(new CompositeTxTracer(callOutputTracer, accessTxTracer), cancellationToken)
@@ -219,7 +222,7 @@ namespace Nethermind.Facade
             return new CallOutput
             {
                 Error = tryCallResult.Success ? callOutputTracer.Error : tryCallResult.Error,
-                GasSpent = callOutputTracer.GasSpent,
+                GasSpent = accessTxTracer.GasSpent,
                 OutputData = callOutputTracer.ReturnValue,
                 InputError = !tryCallResult.Success,
                 AccessList = accessTxTracer.AccessList

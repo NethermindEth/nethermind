@@ -30,6 +30,7 @@ using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Evm;
+using Nethermind.Evm.Tracing;
 using Nethermind.Facade;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
@@ -746,23 +747,30 @@ namespace Nethermind.JsonRpc.Test.Modules
             Full
         }
         
-        [TestCase(AccessListProvided.None, "{\"jsonrpc\":\"2.0\",\"result\":{\"accessList\":[{\"address\":\"0xfffffffffffffffffffffffffffffffffffffffe\",\"storageKeys\":[\"0xa\",\"0x1\"]},{\"address\":\"0x76e68a8696537e4141926f3e528733af9e237d69\"}],\"gasUsed\":\"0xf71b\"},\"id\":67}")]
-        [TestCase(AccessListProvided.Full, "{\"jsonrpc\":\"2.0\",\"result\":{\"accessList\":[{\"address\":\"0xfffffffffffffffffffffffffffffffffffffffe\",\"storageKeys\":[\"0xa\",\"0x1\"]},{\"address\":\"0x76e68a8696537e4141926f3e528733af9e237d69\"}],\"gasUsed\":\"0xf71b\"},\"id\":67}")]
-        [TestCase(AccessListProvided.Partial, "{\"jsonrpc\":\"2.0\",\"result\":{\"accessList\":[{\"address\":\"0x76e68a8696537e4141926f3e528733af9e237d69\"},{\"address\":\"0xfffffffffffffffffffffffffffffffffffffffe\",\"storageKeys\":[\"0xa\",\"0x1\"]}],\"gasUsed\":\"0xf71b\"},\"id\":67}")]
-        public async Task Eth_create_access_list_sample(AccessListProvided accessListProvided, string expected)
+        [TestCase(AccessListProvided.None, false, 2, "{\"jsonrpc\":\"2.0\",\"result\":{\"accessList\":[{\"address\":\"0xfffffffffffffffffffffffffffffffffffffffe\",\"storageKeys\":[\"0x1\",\"0x2\"]},{\"address\":\"0x76e68a8696537e4141926f3e528733af9e237d69\"}],\"gasUsed\":\"0xf71b\"},\"id\":67}")]
+        [TestCase(AccessListProvided.Full, false, 2, "{\"jsonrpc\":\"2.0\",\"result\":{\"accessList\":[{\"address\":\"0xfffffffffffffffffffffffffffffffffffffffe\",\"storageKeys\":[\"0x1\",\"0x2\"]},{\"address\":\"0x76e68a8696537e4141926f3e528733af9e237d69\"}],\"gasUsed\":\"0xf71b\"},\"id\":67}")]
+        [TestCase(AccessListProvided.Partial, false, 2, "{\"jsonrpc\":\"2.0\",\"result\":{\"accessList\":[{\"address\":\"0x76e68a8696537e4141926f3e528733af9e237d69\"},{\"address\":\"0xfffffffffffffffffffffffffffffffffffffffe\",\"storageKeys\":[\"0x1\",\"0x2\"]}],\"gasUsed\":\"0xf71b\"},\"id\":67}")]
+        [TestCase(AccessListProvided.None, true, AccessTxTracer.MaxStorageAccessToOptimize, "{\"jsonrpc\":\"2.0\",\"result\":{\"accessList\":[{\"address\":\"0x76e68a8696537e4141926f3e528733af9e237d69\"}],\"gasUsed\":\"0xe4c9\"},\"id\":67}")]
+        [TestCase(AccessListProvided.Full, true, AccessTxTracer.MaxStorageAccessToOptimize, "{\"jsonrpc\":\"2.0\",\"result\":{\"accessList\":[{\"address\":\"0x76e68a8696537e4141926f3e528733af9e237d69\"}],\"gasUsed\":\"0xe4c9\"},\"id\":67}")]
+        [TestCase(AccessListProvided.Partial, true, AccessTxTracer.MaxStorageAccessToOptimize, "{\"jsonrpc\":\"2.0\",\"result\":{\"accessList\":[{\"address\":\"0x76e68a8696537e4141926f3e528733af9e237d69\"}],\"gasUsed\":\"0xe4c9\"},\"id\":67}")]
+        [TestCase(AccessListProvided.None, true, AccessTxTracer.MaxStorageAccessToOptimize + 5, "{\"jsonrpc\":\"2.0\",\"result\":{\"accessList\":[{\"address\":\"0xfffffffffffffffffffffffffffffffffffffffe\",\"storageKeys\":[\"0x1\",\"0x2\",\"0x3\",\"0x4\",\"0x5\",\"0x6\",\"0x7\",\"0x8\",\"0x9\",\"0xa\",\"0xb\",\"0xc\",\"0xd\",\"0xe\",\"0xf\",\"0x10\",\"0x11\"]},{\"address\":\"0x76e68a8696537e4141926f3e528733af9e237d69\"}],\"gasUsed\":\"0x16f48\"},\"id\":67}")]
+        [TestCase(AccessListProvided.Full, true, AccessTxTracer.MaxStorageAccessToOptimize + 5, "{\"jsonrpc\":\"2.0\",\"result\":{\"accessList\":[{\"address\":\"0xfffffffffffffffffffffffffffffffffffffffe\",\"storageKeys\":[\"0x1\",\"0x2\",\"0x3\",\"0x4\",\"0x5\",\"0x6\",\"0x7\",\"0x8\",\"0x9\",\"0xa\",\"0xb\",\"0xc\",\"0xd\",\"0xe\",\"0xf\",\"0x10\",\"0x11\"]},{\"address\":\"0x76e68a8696537e4141926f3e528733af9e237d69\"}],\"gasUsed\":\"0x16f48\"},\"id\":67}")]
+        [TestCase(AccessListProvided.Partial, true, AccessTxTracer.MaxStorageAccessToOptimize + 5, "{\"jsonrpc\":\"2.0\",\"result\":{\"accessList\":[{\"address\":\"0x76e68a8696537e4141926f3e528733af9e237d69\"},{\"address\":\"0xfffffffffffffffffffffffffffffffffffffffe\",\"storageKeys\":[\"0x1\",\"0x2\",\"0x3\",\"0x4\",\"0x5\",\"0x6\",\"0x7\",\"0x8\",\"0x9\",\"0xa\",\"0xb\",\"0xc\",\"0xd\",\"0xe\",\"0xf\",\"0x10\",\"0x11\"]}],\"gasUsed\":\"0x16f48\"},\"id\":67}")]        
+
+        public async Task Eth_create_access_list_sample(AccessListProvided accessListProvided, bool optimize, long loads, string expected)
         {
             var test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(new TestSpecProvider(Berlin.Instance));
             
-            (byte[] code, AccessListItemForRpc[] accessList) = GetTestAccessList();
+            (byte[] code, AccessListItemForRpc[] _) = GetTestAccessList(loads);
 
             TransactionForRpc transaction = test.JsonSerializer.Deserialize<TransactionForRpc>($"{{\"type\":\"0x1\", \"data\": \"{code.ToHexString(true)}\"}}");
 
             if (accessListProvided != AccessListProvided.None)
             {
-                transaction.AccessList = GetTestAccessList(accessListProvided == AccessListProvided.Full).AccessList;
+                transaction.AccessList = GetTestAccessList(2, accessListProvided == AccessListProvided.Full).AccessList;
             }
             
-            string serialized = test.TestEthRpc("eth_createAccessList", test.JsonSerializer.Serialize(transaction), "0x0");
+            string serialized = test.TestEthRpc("eth_createAccessList", test.JsonSerializer.Serialize(transaction), "0x0", optimize.ToString().ToLower());
             Assert.AreEqual(expected, serialized);
         }
 
@@ -772,7 +780,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         {
             var test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(new TestSpecProvider(Berlin.Instance));
             
-            (byte[] code, AccessListItemForRpc[] accessList) = GetTestAccessList(senderAccessList);
+            (byte[] code, AccessListItemForRpc[] accessList) = GetTestAccessList(2, senderAccessList);
             
             TransactionForRpc transaction = test.JsonSerializer.Deserialize<TransactionForRpc>($"{{\"type\":\"0x1\", \"data\": \"{code.ToHexString(true)}\"}}");
             string serialized = test.TestEthRpc("eth_estimateGas", test.JsonSerializer.Serialize(transaction), "0x0");
@@ -797,22 +805,25 @@ namespace Nethermind.JsonRpc.Test.Modules
             Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":\"0x010203\",\"id\":67}", serialized);
         }
 
-        private static (byte[] ByteCode, AccessListItemForRpc[] AccessList) GetTestAccessList(bool allowSystemUser = true)
+        private static (byte[] ByteCode, AccessListItemForRpc[] AccessList) GetTestAccessList(long loads = 2, bool allowSystemUser = true)
         {
             AccessListItemForRpc[] accessList = allowSystemUser
                 ? new[] {
-                    new AccessListItemForRpc(Address.SystemUser, new UInt256[] {10, 1}), 
+                    new AccessListItemForRpc(Address.SystemUser, Enumerable.Range(1, (int)loads).Select(i => (UInt256)i).ToArray()),
                     new AccessListItemForRpc(TestItem.AddressC, Array.Empty<UInt256>()),
                 }
                 : new[] {new AccessListItemForRpc(TestItem.AddressC, Array.Empty<UInt256>())};
-            
 
-            byte[] byteCode = Prepare.EvmCode
-                // accesses Address.SystemUser storage 0xa and 0x1
-                .PushData(10)
-                .Op(Instruction.SLOAD)
-                .PushData(1)
-                .Op(Instruction.SLOAD)
+            Prepare code = Prepare.EvmCode;
+            
+            for (int i = 1; i <= loads; i++)
+            {
+                // accesses Address.SystemUser with storage
+                code = code.PushData(i)
+                    .Op(Instruction.SLOAD);
+            }
+
+            byte[] byteCode = code
                 // accesses TestItem.AddressC without storage
                 .PushData(TestItem.AddressC)
                 .Op(Instruction.BALANCE)

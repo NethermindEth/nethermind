@@ -366,8 +366,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
             new EstimateGasTransactionExecutor(_blockchainBridge, _blockFinder, _cancellationTokenTimeout, _rpcConfig)
                 .ExecuteTx(transactionCall, blockParameter);
 
-        public ResultWrapper<AccessListForRpc> eth_createAccessList(TransactionForRpc transactionCall, BlockParameter blockParameter = null) =>
-            new CreateAccessListTransactionExecutor(_blockchainBridge, _blockFinder, _cancellationTokenTimeout, _rpcConfig)
+        public ResultWrapper<AccessListForRpc> eth_createAccessList(TransactionForRpc transactionCall, BlockParameter? blockParameter = null, bool optimize = true) =>
+            new CreateAccessListTransactionExecutor(_blockchainBridge, _blockFinder, _cancellationTokenTimeout, _rpcConfig, optimize)
                 .ExecuteTx(transactionCall, blockParameter);
 
         public ResultWrapper<BlockForRpc> eth_getBlockByHash(Keccak blockHash, bool returnFullTransactionObjects)

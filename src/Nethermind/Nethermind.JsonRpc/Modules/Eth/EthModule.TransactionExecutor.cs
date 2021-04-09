@@ -138,13 +138,16 @@ namespace Nethermind.JsonRpc.Modules.Eth
         
         private class CreateAccessListTransactionExecutor : TransactionExecutor<AccessListForRpc>
         {
-            public CreateAccessListTransactionExecutor(IBlockchainBridge blockchainBridge, IBlockFinder blockFinder, TimeSpan cancellationTokenTimeout, IJsonRpcConfig rpcConfig) 
+            private readonly bool _optimize;
+
+            public CreateAccessListTransactionExecutor(IBlockchainBridge blockchainBridge, IBlockFinder blockFinder, TimeSpan cancellationTokenTimeout, IJsonRpcConfig rpcConfig, bool optimize) 
                 : base(blockchainBridge, blockFinder, cancellationTokenTimeout, rpcConfig)
             {
+                _optimize = optimize;
             }
 
             protected override BlockchainBridge.CallOutput ExecuteTx(BlockHeader header, Transaction tx, CancellationToken token) => 
-                _blockchainBridge.CreateAccessList(header, tx, token);
+                _blockchainBridge.CreateAccessList(header, tx, token, _optimize);
 
             protected override AccessListForRpc GetResult(Transaction tx, BlockchainBridge.CallOutput result) =>
                 new(GetResultAccessList(tx, result), GetResultGas(tx, result));

@@ -27,9 +27,13 @@ namespace Nethermind.Evm.Tracing
 {
     public class AccessTxTracer : ITxTracer
     {
+        private const long ColdVsWarmSloadDelta = GasCostOf.ColdSLoad - GasCostOf.AccessStorageListEntry;
+        public const long MaxStorageAccessToOptimize = GasCostOf.AccessAccountListEntry / ColdVsWarmSloadDelta;
+        
+        private readonly Address[] _addressesToOptimize;
         public bool IsTracingState => false;
         public bool IsTracingStorage => false;
-        public bool IsTracingReceipt => false;
+        public bool IsTracingReceipt => true;
         public bool IsTracingActions => false;
         public bool IsTracingOpLevelStorage => false;
         public bool IsTracingMemory => false;
@@ -39,6 +43,11 @@ namespace Nethermind.Evm.Tracing
         public bool IsTracingStack => false;
         public bool IsTracingBlockHash => false;
         public bool IsTracingAccess => true;
+
+        public AccessTxTracer(params Address[] addressesToOptimize)
+        {
+            _addressesToOptimize = addressesToOptimize;
+        }
         
         public void ReportBalanceChange(Address address, UInt256? before, UInt256? after)
         {
@@ -72,12 +81,12 @@ namespace Nethermind.Evm.Tracing
 
         public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak? stateRoot = null)
         {
-            throw new NotImplementedException();
+            GasSpent = gasSpent;
         }
 
         public void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Keccak? stateRoot = null)
         {
-            throw new NotImplementedException();
+            GasSpent = gasSpent;
         }
 
         public void StartOperation(int depth, long gas, Instruction opcode, int pc)
@@ -198,9 +207,20 @@ namespace Nethermind.Evm.Tracing
                 set.Add(storageCell.Index);
             }
 
+            for (int i = 0; i < _addressesToOptimize.Length; i++)
+            {
+                Address address = _addressesToOptimize[i];
+                if (dictionary.TryGetValue(address, out ISet<UInt256> set) && set.Count <= MaxStorageAccessToOptimize)
+                {
+                    GasSpent -= GasCostOf.AccessAccountListEntry + ColdVsWarmSloadDelta * set.Count;
+                    dictionary.Remove(address);
+                }
+            }
+
             AccessList = new AccessList(dictionary.ToDictionary(k => k.Key, v => (IReadOnlySet<UInt256>)v.Value));
         }
         
+        public long GasSpent { get; set; }
         public AccessList? AccessList { get; private set; }
     }
 }
