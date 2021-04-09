@@ -162,7 +162,12 @@ namespace Nethermind.JsonRpc.Modules.Eth
             TransactionForRpc transactionCall,
             BlockParameter? blockParameter = null)
         {
-            throw new NotImplementedException();
+            throw new NotSupportedException();
+        }
+
+        public ResultWrapper<AccessListForRpc> eth_createAccessList(TransactionForRpc transactionCall, BlockParameter? blockParameter = null, bool optimize = true)
+        {
+            throw new NotSupportedException();
         }
 
         public ResultWrapper<BlockForRpc> eth_getBlockByHash(Keccak blockHash, bool returnFullTransactionObjects)

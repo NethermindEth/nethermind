@@ -37,6 +37,7 @@ namespace Nethermind.Evm.Test
         public bool IsTracingState => true;
         public bool IsTracingStorage => true;
         public bool IsTracingBlockHash => true;
+        public bool IsTracingAccess { get; set; } = true;
 
         public byte[] ReturnValue { get; set; }
 
@@ -162,6 +163,10 @@ namespace Nethermind.Evm.Test
         }
 
         public void ReportExtraGasPressure(long extraGasPressure)
+        {
+        }
+
+        public void ReportAccess(IReadOnlySet<Address> accessedAddresses, IReadOnlySet<StorageCell> accessedStorageCells)
         {
         }
     }

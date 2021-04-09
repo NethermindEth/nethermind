@@ -93,10 +93,13 @@ namespace Nethermind.JsonRpc.Modules.Eth
         Task<ResultWrapper<Keccak>> eth_sendRawTransaction(byte[] transaction);
         
         [JsonRpcMethod(IsImplemented = true, Description = "Executes a tx call (does not create a transaction)", IsSharable = false)]
-        ResultWrapper<string> eth_call(TransactionForRpc transactionCall, BlockParameter blockParameter = null);
+        ResultWrapper<string> eth_call(TransactionForRpc transactionCall, BlockParameter? blockParameter = null);
         
         [JsonRpcMethod(IsImplemented = true, Description = "Executes a tx call and returns gas used (does not create a transaction)", IsSharable = false)]
-        ResultWrapper<UInt256?> eth_estimateGas(TransactionForRpc transactionCall, BlockParameter blockParameter = null);
+        ResultWrapper<UInt256?> eth_estimateGas(TransactionForRpc transactionCall, BlockParameter? blockParameter = null);
+        
+        [JsonRpcMethod(IsImplemented = true, Description = "CreateAccessList creates a EIP-2930 type AccessList for the given transaction", IsSharable = false)]
+        ResultWrapper<AccessListForRpc> eth_createAccessList(TransactionForRpc transactionCall, BlockParameter? blockParameter = null, bool optimize = true);
         
         [JsonRpcMethod(IsImplemented = true, Description = "Retrieves a block by hash", IsSharable = true)]
         ResultWrapper<BlockForRpc> eth_getBlockByHash(Keccak blockHash, bool returnFullTransactionObjects = false);

@@ -47,7 +47,8 @@ namespace Nethermind.Evm.Tracing.GethStyle
         public bool IsTracingCode => false;
         public bool IsTracingStack { get; }
         public bool IsTracingBlockHash => false;
-        
+        public bool IsTracingAccess => false;
+
         public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak? stateRoot = null)
         {
             _trace.ReturnValue = output;
@@ -217,6 +218,11 @@ namespace Nethermind.Evm.Tracing.GethStyle
         }
 
         public void ReportExtraGasPressure(long extraGasPressure)
+        {
+            throw new NotImplementedException();
+        }
+
+        public void ReportAccess(IReadOnlySet<Address> accessedAddresses, IReadOnlySet<StorageCell> accessedStorageCells)
         {
             throw new NotImplementedException();
         }

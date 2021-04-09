@@ -442,13 +442,18 @@ namespace Nethermind.Evm
             gasAvailable += refund;
         }
         
-        private static bool ChargeAccountAccessGas(ref long gasAvailable, EvmState vmState, Address address, IReleaseSpec spec, bool chargeForWarm = true)
+        private bool ChargeAccountAccessGas(ref long gasAvailable, EvmState vmState, Address address, IReleaseSpec spec, bool chargeForWarm = true)
         {
             // Console.WriteLine($"Accessing {address}");
             
             bool result = true;
             if (spec.UseHotAndColdStorage)
             {
+                if (_txTracer.IsTracingAccess) // when tracing access we want cost as if it was warmed up from access list
+                {
+                    vmState.WarmUp(address);
+                }
+                
                 if (vmState.IsCold(address) && !address.IsPrecompile(spec))
                 {
                     result = UpdateGas(GasCostOf.ColdAccountAccess, ref gasAvailable);
@@ -469,7 +474,7 @@ namespace Nethermind.Evm
             SSTORE
         }
         
-        private static bool ChargeStorageAccessGas(
+        private bool ChargeStorageAccessGas(
             ref long gasAvailable,
             EvmState vmState,
             StorageCell storageCell,
@@ -481,6 +486,11 @@ namespace Nethermind.Evm
             bool result = true;
             if (spec.UseHotAndColdStorage)
             {
+                if (_txTracer.IsTracingAccess) // when tracing access we want cost as if it was warmed up from access list
+                {
+                    vmState.WarmUp(storageCell);
+                }
+
                 if (vmState.IsCold(storageCell))
                 {
                     result = UpdateGas(GasCostOf.ColdSLoad, ref gasAvailable);

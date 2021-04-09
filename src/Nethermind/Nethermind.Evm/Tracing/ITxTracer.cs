@@ -59,6 +59,11 @@ namespace Nethermind.Evm.Tracing
         /// Traces blockhash calls
         /// </summary>
         bool IsTracingBlockHash { get; }
+        
+        /// <summary>
+        /// Traces storage access
+        /// </summary>
+        bool IsTracingAccess { get; }
 
         void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak? stateRoot = null);
 
@@ -127,5 +132,6 @@ namespace Nethermind.Evm.Tracing
 
         void ReportRefund(long refund);
         void ReportExtraGasPressure(long extraGasPressure);
+        void ReportAccess(IReadOnlySet<Address> accessedAddresses, IReadOnlySet<StorageCell> accessedStorageCells);
     }
 }

@@ -97,6 +97,12 @@ namespace Nethermind.Cli.Modules
         {
             return NodeManager.Post<string>("eth_estimateGas", json, blockParameter ?? "latest").Result;
         }
+        
+        [CliFunction("eth", "createAccessList")]
+        public string? CreateAccessList(object tx, string? blockParameter = null, bool optimize = true)
+        {
+            return NodeManager.Post<string>("eth_createAccessList", tx, blockParameter ?? "latest", optimize).Result;
+        }
 
         [CliFunction("eth", "sendWei")]
         public string? SendWei(string from, string to, BigInteger amountInWei)

@@ -26,6 +26,7 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Facade;
@@ -44,7 +45,7 @@ using Transaction = Nethermind.Core.Transaction;
 
 namespace Nethermind.JsonRpc.Modules.Eth
 {
-    public class EthModule : IEthModule
+    public partial class EthModule : IEthModule
     {
         private readonly Encoding _messageEncoding = Encoding.UTF8;
 
@@ -59,10 +60,10 @@ namespace Nethermind.JsonRpc.Modules.Eth
         private readonly ILogger _logger;
         private readonly TimeSpan _cancellationTokenTimeout;
 
-        private bool HasStateForBlock(BlockHeader header)
+        private static bool HasStateForBlock(IBlockchainBridge blockchainBridge, BlockHeader header)
         {
             RootCheckVisitor rootCheckVisitor = new();
-            _blockchainBridge.RunTreeVisitor(rootCheckVisitor, header.StateRoot);
+            blockchainBridge.RunTreeVisitor(rootCheckVisitor, header.StateRoot);
             return rootCheckVisitor.HasRoot;
         }
 
@@ -173,7 +174,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             }
 
             BlockHeader header = searchResult.Object;
-            if (!HasStateForBlock(header))
+            if (!HasStateForBlock(_blockchainBridge, header))
             {
                 return Task.FromResult(ResultWrapper<UInt256?>.Fail($"No state available for block {header.Hash}",
                     ErrorCodes.ResourceUnavailable));
@@ -212,7 +213,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             }
 
             BlockHeader header = searchResult.Object;
-            if (!HasStateForBlock(header))
+            if (!HasStateForBlock(_blockchainBridge, header))
             {
                 return Task.FromResult(ResultWrapper<UInt256?>.Fail($"No state available for block {header.Hash}",
                     ErrorCodes.ResourceUnavailable));
@@ -277,7 +278,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             }
 
             BlockHeader header = searchResult.Object;
-            if (!HasStateForBlock(header))
+            if (!HasStateForBlock(_blockchainBridge, header))
             {
                 return ResultWrapper<byte[]>.Fail($"No state available for block {header.Hash}",
                     ErrorCodes.ResourceUnavailable);
@@ -357,101 +358,17 @@ namespace Nethermind.JsonRpc.Modules.Eth
             }
         }
 
-        public ResultWrapper<string> eth_call(TransactionForRpc transactionCall, BlockParameter blockParameter = null)
-        {
-            SearchResult<BlockHeader> searchResult = _blockFinder.SearchForHeader(blockParameter);
-            if (searchResult.IsError)
-            {
-                return ResultWrapper<string>.Fail(searchResult);
-            }
+        public ResultWrapper<string> eth_call(TransactionForRpc transactionCall, BlockParameter? blockParameter = null) =>
+            new CallTransactionExecutor(_blockchainBridge, _blockFinder, _cancellationTokenTimeout, _rpcConfig)
+                .ExecuteTx(transactionCall, blockParameter);
 
-            BlockHeader header = searchResult.Object;
-            if (!HasStateForBlock(header))
-            {
-                return ResultWrapper<string>.Fail($"No state available for block {header.Hash}",
-                    ErrorCodes.ResourceUnavailable);
-            }
+        public ResultWrapper<UInt256?> eth_estimateGas(TransactionForRpc transactionCall, BlockParameter blockParameter) =>
+            new EstimateGasTransactionExecutor(_blockchainBridge, _blockFinder, _cancellationTokenTimeout, _rpcConfig)
+                .ExecuteTx(transactionCall, blockParameter);
 
-            FixCallTx(transactionCall);
-
-            using CancellationTokenSource cancellationTokenSource = new(_cancellationTokenTimeout);
-            CancellationToken cancellationToken = cancellationTokenSource.Token;
-            Transaction tx = transactionCall.ToTransaction(_blockchainBridge.GetChainId());
-            BlockchainBridge.CallOutput result = _blockchainBridge.Call(header, tx, cancellationToken);
-
-            if (result.Error == null)
-            {
-                return ResultWrapper<string>.Success(result.OutputData.ToHexString(true));
-            }
-
-            return result.InputError 
-                ? ResultWrapper<string>.Fail(result.Error, ErrorCodes.InvalidInput)
-                :  ResultWrapper<string>.Fail("VM execution error.", ErrorCodes.ExecutionError, result.Error);
-        }
-
-        private void FixCallTx(TransactionForRpc transactionCall)
-        {
-            if (transactionCall.Gas == null || transactionCall.Gas == 0)
-            {
-                transactionCall.Gas = _rpcConfig.GasCap ?? long.MaxValue;
-            }
-            else
-            {
-                transactionCall.Gas = Math.Min(_rpcConfig.GasCap ?? long.MaxValue, transactionCall.Gas.Value);
-            }
-
-            transactionCall.From ??= Address.SystemUser;
-        }
-
-        public ResultWrapper<UInt256?> eth_estimateGas(TransactionForRpc transactionCall, BlockParameter blockParameter)
-        {
-            SearchResult<BlockHeader> searchResult = _blockFinder.SearchForHeader(blockParameter);
-            if (searchResult.IsError)
-            {
-                return ResultWrapper<UInt256?>.Fail(searchResult);
-            }
-
-            BlockHeader header = searchResult.Object;
-
-            if (!HasStateForBlock(header))
-            {
-                return ResultWrapper<UInt256?>.Fail($"No state available for block {header.Hash}",
-                    ErrorCodes.ResourceUnavailable);
-            }
-
-            return EstimateGas(transactionCall, header);
-        }
-
-        private ResultWrapper<UInt256?> EstimateGas(TransactionForRpc transactionCall, BlockHeader head)
-        {
-            // 2021-03-04 08:54:18.6489|DEBUG|101|Responded to ID 40, eth_estimateGas({
-            //     "from": "0x2b5ad5c4795c026514f8317c7a215e218dccd6cf",
-            //     "to": "0xa28afda14be5789564ae5fa03665c4180e3c680b",
-            //     "data": "0x25936984"
-            // }) 
-            
-            // 2021-03-04 08:54:18.6533|DEBUG|13|Responded to ID 41, eth_sendTransaction({
-            //     "gas": "0x1f815f1",
-            //     "from": "0x2b5ad5c4795c026514f8317c7a215e218dccd6cf",
-            //     "to": "0xa28afda14be5789564ae5fa03665c4180e3c680b",
-            //     "data": "0x25936984",
-            //     "gasPrice": "0x4a817c800"
-            // }) 
-            
-            FixCallTx(transactionCall);
-
-            // using CancellationTokenSource cancellationTokenSource = new(_cancellationTokenTimeout);
-            CancellationToken cancellationToken = CancellationToken.None;
-            BlockchainBridge.CallOutput result =
-                _blockchainBridge.EstimateGas(head, transactionCall.ToTransaction(_blockchainBridge.GetChainId()), cancellationToken);
-
-            if (result.Error == null)
-            {
-                return ResultWrapper<UInt256?>.Success((UInt256)result.GasSpent);
-            }
-
-            return ResultWrapper<UInt256?>.Fail(result.Error, result.InputError ? ErrorCodes.InvalidInput : ErrorCodes.InternalError);
-        }
+        public ResultWrapper<AccessListForRpc> eth_createAccessList(TransactionForRpc transactionCall, BlockParameter? blockParameter = null, bool optimize = true) =>
+            new CreateAccessListTransactionExecutor(_blockchainBridge, _blockFinder, _cancellationTokenTimeout, _rpcConfig, optimize)
+                .ExecuteTx(transactionCall, blockParameter);
 
         public ResultWrapper<BlockForRpc> eth_getBlockByHash(Keccak blockHash, bool returnFullTransactionObjects)
         {
@@ -747,7 +664,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                         ErrorCodes.ResourceNotFound, null);
                 }
 
-                if (!HasStateForBlock(header))
+                if (!HasStateForBlock(_blockchainBridge, header))
                 {
                     return ResultWrapper<AccountProof>.Fail($"No state available for block {header.Hash}",
                         ErrorCodes.ResourceUnavailable);

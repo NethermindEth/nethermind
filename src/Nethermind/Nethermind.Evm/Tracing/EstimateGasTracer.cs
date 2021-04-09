@@ -41,6 +41,7 @@ namespace Nethermind.Evm.Tracing
         public bool IsTracingState => false;
         public bool IsTracingStorage => false;
         public bool IsTracingBlockHash => false;
+        public bool IsTracingAccess => false;
 
         public byte[] ReturnValue { get; set; }
 
@@ -287,6 +288,11 @@ namespace Nethermind.Evm.Tracing
         public void ReportExtraGasPressure(long extraGasPressure)
         {
             _currentGasAndNesting.Peek().ExtraGasPressure = Math.Max(_currentGasAndNesting.Peek().ExtraGasPressure, extraGasPressure);
+        }
+
+        public void ReportAccess(IReadOnlySet<Address> accessedAddresses, IReadOnlySet<StorageCell> accessedStorageCells)
+        {
+            throw new NotImplementedException();
         }
     }
 }

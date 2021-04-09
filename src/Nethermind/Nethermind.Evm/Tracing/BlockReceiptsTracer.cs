@@ -38,6 +38,7 @@ namespace Nethermind.Evm.Tracing
         public bool IsTracingStorage => _currentTxTracer.IsTracingStorage;
         
         public bool IsTracingBlockHash => _currentTxTracer.IsTracingBlockHash;
+        public bool IsTracingAccess => _currentTxTracer.IsTracingAccess;
 
         private IBlockTracer _otherTracer;
 
@@ -218,6 +219,11 @@ namespace Nethermind.Evm.Tracing
         public void ReportExtraGasPressure(long extraGasPressure)
         {
             _currentTxTracer.ReportExtraGasPressure(extraGasPressure);
+        }
+
+        public void ReportAccess(IReadOnlySet<Address> accessedAddresses, IReadOnlySet<StorageCell> accessedStorageCells)
+        {
+            _currentTxTracer.ReportAccess(accessedAddresses, accessedStorageCells);
         }
 
         public void SetOperationStack(List<string> stackTrace)

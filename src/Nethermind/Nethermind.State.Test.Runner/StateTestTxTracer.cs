@@ -45,6 +45,7 @@ namespace Nethermind.State.Test.Runner
         bool IStateTracer.IsTracingState => false;
         bool IStorageTracer.IsTracingStorage => false;
         public bool IsTracingBlockHash { get; } = false;
+        public bool IsTracingAccess { get; } = false;
 
         public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak stateRoot = null)
         {
@@ -203,6 +204,11 @@ namespace Nethermind.State.Test.Runner
         }
 
         public void ReportExtraGasPressure(long extraGasPressure)
+        {
+            throw new NotImplementedException();
+        }
+
+        public void ReportAccess(IReadOnlySet<Address> accessedAddresses, IReadOnlySet<StorageCell> accessedStorageCells)
         {
             throw new NotImplementedException();
         }
