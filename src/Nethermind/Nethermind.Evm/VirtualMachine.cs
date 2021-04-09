@@ -2550,7 +2550,11 @@ namespace Nethermind.Evm
                         Metrics.SelfDestructs++;
 
                         Address inheritor = stack.PopAddress();
-                        ChargeAccountAccessGas(ref gasAvailable, vmState, inheritor, spec, false);
+                        if (!ChargeAccountAccessGas(ref gasAvailable, vmState, inheritor, spec, false))
+                        {
+                            EndInstructionTraceError(EvmExceptionType.OutOfGas);
+                            return CallResult.OutOfGasException;
+                        }
                         
                         vmState.DestroyList.Add(env.ExecutingAccount);
 
