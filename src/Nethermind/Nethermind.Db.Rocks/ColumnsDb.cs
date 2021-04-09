@@ -23,11 +23,11 @@ using RocksDbSharp;
 
 namespace Nethermind.Db.Rocks
 {
-    public abstract class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : notnull
+    public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : notnull
     {
         private readonly IDictionary<T, IDbWithSpan> _columnDbs = new Dictionary<T, IDbWithSpan>();
         
-        protected ColumnsDb(string basePath, RocksDbSettings settings, IDbConfig dbConfig, ILogManager logManager, params T[] keys) 
+        public ColumnsDb(string basePath, RocksDbSettings settings, IDbConfig dbConfig, ILogManager logManager, params T[] keys) 
             : base(basePath, settings, dbConfig, logManager, GetColumnFamilies(dbConfig, settings.DbName, GetEnumKeys(keys)))
         {
             Name = settings.DbName;
@@ -39,7 +39,7 @@ namespace Nethermind.Db.Rocks
             }
         }
 
-        public override string Name { get; protected set; }
+        public string Name { get; }
 
         private static T[] GetEnumKeys(T[] keys)
         {
@@ -72,7 +72,7 @@ namespace Nethermind.Db.Rocks
 
         protected override DbOptions BuildOptions(IDbConfig dbConfig)
         {
-            var options = base.BuildOptions(dbConfig);
+            DbOptions options = base.BuildOptions(dbConfig);
             options.SetCreateMissingColumnFamilies();
             return options;
         }

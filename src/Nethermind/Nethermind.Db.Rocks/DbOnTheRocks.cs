@@ -27,7 +27,7 @@ using RocksDbSharp;
 
 namespace Nethermind.Db.Rocks
 {
-    public abstract class DbOnTheRocks : IDbWithSpan
+    public class DbOnTheRocks : IDbWithSpan
     {
         private ILogger _logger;
         
@@ -42,7 +42,7 @@ namespace Nethermind.Db.Rocks
         internal readonly RocksDb? Db;
         internal WriteOptions? WriteOptions { get; private set; }
 
-        public abstract string Name { get; protected set; }
+        public string Name { get; }
 
         private static long _maxRocksSize;
 
@@ -176,7 +176,7 @@ namespace Nethermind.Db.Rocks
             // IntPtr cache = RocksDbSharp.Native.Instance.rocksdb_cache_create_lru(new UIntPtr(blockCacheSize));
             // tableOptions.SetBlockCache(cache);
 
-            DbOptions options = new DbOptions();
+            DbOptions options = new();
             options.SetCreateIfMissing(true);
             options.SetAdviseRandomOnOpen(true);
             options.OptimizeForPointLookup(
@@ -468,7 +468,7 @@ namespace Nethermind.Db.Rocks
 
         private class FlushOptions
         {
-            internal static FlushOptions DefaultFlushOptions { get; } = new FlushOptions();
+            internal static FlushOptions DefaultFlushOptions { get; } = new();
 
             public FlushOptions()
             {

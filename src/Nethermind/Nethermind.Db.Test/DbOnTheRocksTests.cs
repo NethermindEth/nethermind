@@ -32,7 +32,7 @@ namespace Nethermind.Db.Test
         public void Smoke_test()
         {
             IDbConfig config = new DbConfig();
-            DbOnTheRocks db = new SimpleRocksDb("blocks", GetRocksDbSettings("blocks", "Blocks"), config, LimboLogs.Instance);
+            DbOnTheRocks db = new ("blocks", GetRocksDbSettings("blocks", "Blocks"), config, LimboLogs.Instance);
             db[new byte[] {1, 2, 3}] = new byte[] {4, 5, 6};
             Assert.AreEqual(new byte[] {4, 5, 6}, db[new byte[] {1, 2, 3}]);
         }
@@ -41,10 +41,11 @@ namespace Nethermind.Db.Test
         public void Can_get_all_on_empty()
         {
             IDbConfig config = new DbConfig();
-            DbOnTheRocks db = new SimpleRocksDb("testIterator", GetRocksDbSettings("testIterator", "TestIterator"), config, LimboLogs.Instance);
+            DbOnTheRocks db = new ("testIterator", GetRocksDbSettings("testIterator", "TestIterator"), config, LimboLogs.Instance);
             try
             {
-                db.GetAll().ToList();
+                // ReSharper disable once ReturnValueOfPureMethodIsNotUsed
+                _ = db.GetAll().ToList();
             }
             finally
             {
@@ -57,14 +58,17 @@ namespace Nethermind.Db.Test
         public async Task Dispose_while_writing_does_not_cause_access_violation_exception()
         {
             IDbConfig config = new DbConfig();
-            DbOnTheRocks db = new SimpleRocksDb("testDispose1", GetRocksDbSettings("testDispose1", "TestDispose1"), config, LimboLogs.Instance);
+            DbOnTheRocks db = new ("testDispose1", GetRocksDbSettings("testDispose1", "TestDispose1"), config, LimboLogs.Instance);
 
-            Task task = new Task(() =>
+            Task task = new (() =>
             {
                 while (true)
                 {
+                    // ReSharper disable once AccessToDisposedClosure
                     db.Set(Keccak.Zero, new byte[] {1, 2, 3});
                 }
+                
+                // ReSharper disable once FunctionNeverReturns
             });
 
             task.Start();
@@ -80,7 +84,7 @@ namespace Nethermind.Db.Test
 
         private RocksDbSettings GetRocksDbSettings(string dbPath, string dbName)
         {
-            return new RocksDbSettings()
+            return new()
             {
                 DbName = dbName,
                 DbPath = dbPath,
