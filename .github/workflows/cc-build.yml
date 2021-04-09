@@ -95,6 +95,9 @@ jobs:
     - name: Nethermind.Mining.Test
       run: |
         dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.Mining.Test
+    - name: Nethermind.Merge.Plugin.Test
+      run: |
+        dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.Merge.Plugin.Test
     - name: Nethermind.Network.Test
       run: |
         dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.Network.Test

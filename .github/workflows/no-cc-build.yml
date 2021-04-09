@@ -134,6 +134,9 @@ jobs:
     - name: Nethermind.JsonRpc.Test
       run: |
         dotnet test -c Release src/Nethermind/Nethermind.JsonRpc.Test
+    - name: Nethermind.Merge.Plugin.Test
+      run: |
+        dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.Merge.Plugin.Test
     - name: Nethermind.Mining.Test
       run: |
         dotnet test -c Release src/Nethermind/Nethermind.Mining.Test

@@ -13,47 +13,35 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using System;
-using Nethermind.Core.Attributes;
+using Nethermind.Core.Crypto;
+using Nethermind.JsonRpc;
+using Nethermind.JsonRpc.Modules.Eth;
+using Nethermind.Merge.Plugin.Data;
 
-namespace Nethermind.JsonRpc.Modules
+namespace Nethermind.Merge.Plugin
 {
-    [Todo(Improve.Refactor, "Can we use string instead to avoid coupling and introduce conventions?")]
-    public enum ModuleType
+    public class ConsensusModule : IConsensusModule
     {
-        Admin,
-        Clique,
-        Consensus,
-        Db,
-        Debug,
-        Erc20,
-        Eth,
-        Evm,
-        NdmProvider,
-        NdmConsumer,
-        Net,
-        Nft,
-        Parity,
-        Personal,
-        Proof,
-        Subscribe,
-        Trace,
-        TxPool,
-        Web3,
-        Baseline,
-        Vault,
-        Deposit,
-        Health
-    }
-
-    public class RpcModuleAttribute : Attribute
-    {
-        public ModuleType ModuleType { get; }
-
-        public RpcModuleAttribute(ModuleType moduleType)
+        public ResultWrapper<BlockForRpc> consensus_assembleBlock(AssembleBlockRequest request)
         {
-            ModuleType = moduleType;
+            throw new System.NotImplementedException();
+        }
+
+        public ResultWrapper<bool> consensus_newBlock(BlockForRpc request)
+        {
+            throw new System.NotImplementedException();
+        }
+
+        public ResultWrapper<bool> consensus_setHead(Keccak blockHash)
+        {
+            throw new System.NotImplementedException();
+        }
+
+        public ResultWrapper<bool> consensus_finaliseBlock(Keccak blockHash)
+        {
+            throw new System.NotImplementedException();
         }
     }
 }

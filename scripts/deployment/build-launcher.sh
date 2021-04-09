@@ -16,7 +16,6 @@ pkg index.js -t node13-win -o $APP_NAME.exe && mv $APP_NAME.exe $RELEASE_DIRECTO
 
 ncc build index.js -o build
 cp build/index.js $RELEASE_DIRECTORY/$LIN_ARM64_RELEASE/$APP_NAME.js
-cp build/index.js $RELEASE_DIRECTORY/$LIN_ARM_RELEASE/$APP_NAME.js
 
 echo =======================================================
 echo Building Nethermind Launcher completed

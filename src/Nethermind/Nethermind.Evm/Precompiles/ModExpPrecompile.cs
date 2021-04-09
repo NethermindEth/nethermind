@@ -75,7 +75,7 @@ namespace Nethermind.Evm.Precompiles
                 UInt256 expLengthUpTo32 = UInt256.Min(32, expLength);
                 UInt256 startIndex = 96 + baseLength; //+ expLength - expLengthUpTo32; // Geth takes head here, why?
                 UInt256 exp = new(
-                    inputData.SliceWithZeroPaddingEmptyOnError((BigInteger)startIndex, (int)expLengthUpTo32), true);
+                    inputData.SliceWithZeroPaddingEmptyOnError((int)startIndex, (int)expLengthUpTo32), true);
                 UInt256 iterationCount = CalculateIterationCount(expLength, exp);
 
                 return Math.Max(200L, (long)(complexity * iterationCount / 3));
