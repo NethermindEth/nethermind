@@ -13,47 +13,28 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
 using System;
-using Nethermind.Core.Attributes;
+using Nethermind.Core;
+using Nethermind.TxPool;
 
-namespace Nethermind.JsonRpc.Modules
+namespace Nethermind.Pipeline.TestPlugin
 {
-    [Todo(Improve.Refactor, "Can we use string instead to avoid coupling and introduce conventions?")]
-    public enum ModuleType
+    public class PipelineElement<TOut> : IPipelineElement<TOut> where TOut : Transaction
     {
-        Admin,
-        Clique,
-        Consensus,
-        Db,
-        Debug,
-        Erc20,
-        Eth,
-        Evm,
-        NdmProvider,
-        NdmConsumer,
-        Net,
-        Nft,
-        Parity,
-        Personal,
-        Proof,
-        Subscribe,
-        Trace,
-        TxPool,
-        Web3,
-        Baseline,
-        Vault,
-        Deposit,
-        Health
-    }
+        public Action<TOut> Emit { get; set; }
+        private readonly ITxPool _txPool;
 
-    public class RpcModuleAttribute : Attribute
-    {
-        public ModuleType ModuleType { get; }
-
-        public RpcModuleAttribute(ModuleType moduleType)
+        public PipelineElement(ITxPool txPool)
         {
-            ModuleType = moduleType;
+            _txPool = txPool;
+            _txPool.NewPending += OnNewPending;
+        }
+
+        private void OnNewPending(object? sender, TxEventArgs args)
+        {
+            Emit((TOut)args.Transaction);
         }
     }
 }
