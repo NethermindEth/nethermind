@@ -144,7 +144,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             }
 
             protected override BlockchainBridge.CallOutput ExecuteTx(BlockHeader header, Transaction tx, CancellationToken token) => 
-                _blockchainBridge.EstimateGas(header, tx, token);
+                _blockchainBridge.CreateAccessList(header, tx, token);
 
             protected override AccessListForRpc GetResult(Transaction tx, BlockchainBridge.CallOutput result) =>
                 new(GetResultAccessList(tx, result), GetResultGas(tx, result));
