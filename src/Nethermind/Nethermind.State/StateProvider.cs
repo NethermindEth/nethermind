@@ -28,6 +28,8 @@ using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 using Metrics = Nethermind.Db.Metrics;
 
+[assembly: InternalsVisibleTo("Ethereum.Test.Base")]
+[assembly: InternalsVisibleTo("Ethereum.Blockchain.Test")]
 [assembly: InternalsVisibleTo("Nethermind.State.Test")]
 [assembly: InternalsVisibleTo("Nethermind.Benchmark")]
 [assembly: InternalsVisibleTo("Nethermind.Blockchain.Test")]
@@ -253,6 +255,20 @@ namespace Nethermind.State
             }
         }
 
+        internal void SetNonce(Address address, UInt256 nonce)
+        {
+            _needsStateRootUpdate = true;
+            Account? account = GetThroughCache(address);
+            if (account is null)
+            {
+                throw new InvalidOperationException($"Account {address} is null when incrementing nonce");
+            }
+            
+            Account changedAccount = account.WithChangedNonce(nonce);
+            if (_logger.IsTrace) _logger.Trace($"  Update {address} N {account.Nonce} -> {changedAccount.Nonce}");
+            PushUpdate(address, changedAccount);
+        }
+        
         public void IncrementNonce(Address address)
         {
             _needsStateRootUpdate = true;
