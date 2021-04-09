@@ -87,20 +87,20 @@ namespace Nethermind.Core.Test.Encoding
             decoded.Should().BeEquivalentTo(testCase.Tx, testCase.Description);
         }
 
-        [TestCaseSource(nameof(YoloV3TestCases))]
-        public void Roundtrip_yolo_v3((string IncomingRlpHex, Keccak Hash) testCase)
-        {
-            TestContext.Out.WriteLine($"Testing {testCase.Hash}");
-            RlpStream incomingTxRlp = Bytes.FromHexString(testCase.IncomingRlpHex).AsRlpStream();
-            Transaction decoded = _txDecoder.Decode(incomingTxRlp);
-            decoded.CalculateHash().Should().Be(testCase.Hash);
-
-            RlpStream ourRlpOutput = new RlpStream(incomingTxRlp.Length * 2);
-            _txDecoder.Encode(ourRlpOutput, decoded);
-
-            string ourRlpHex = ourRlpOutput.Data.AsSpan(0, incomingTxRlp.Length).ToHexString();
-            ourRlpHex.Should().BeEquivalentTo(testCase.IncomingRlpHex);
-        }
+        // [TestCaseSource(nameof(YoloV3TestCases))]
+        // public void Roundtrip_yolo_v3((string IncomingRlpHex, Keccak Hash) testCase)
+        // {
+        //     TestContext.Out.WriteLine($"Testing {testCase.Hash}");
+        //     RlpStream incomingTxRlp = Bytes.FromHexString(testCase.IncomingRlpHex).AsRlpStream();
+        //     Transaction decoded = _txDecoder.Decode(incomingTxRlp);
+        //     decoded.CalculateHash().Should().Be(testCase.Hash);
+        //
+        //     RlpStream ourRlpOutput = new RlpStream(incomingTxRlp.Length * 2);
+        //     _txDecoder.Encode(ourRlpOutput, decoded);
+        //
+        //     string ourRlpHex = ourRlpOutput.Data.AsSpan(0, incomingTxRlp.Length).ToHexString();
+        //     ourRlpHex.Should().BeEquivalentTo(testCase.IncomingRlpHex);
+        // }
         
         [TestCaseSource(nameof(TestCaseSource))]
         public void Rlp_encode_should_return_the_same_as_rlp_stream_encoding((Transaction Tx, string Description) testCase)
@@ -110,6 +110,7 @@ namespace Nethermind.Core.Test.Encoding
             Transaction decodedRlpStream = _txDecoder.Decode(new RlpStream(rlpStreamResult.Bytes), RlpBehaviors.ForTreeRoot);
             Transaction decodedRlp = _txDecoder.Decode(new RlpStream(rlpResult.Bytes), RlpBehaviors.ForTreeRoot);
             Assert.AreEqual(decodedRlp?.Hash, decodedRlpStream?.Hash);
+            Assert.AreEqual(decodedRlp?.Data, decodedRlpStream?.Data);
         }
         
         public static IEnumerable<(string, Keccak)> YoloV3TestCases()
