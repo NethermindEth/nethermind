@@ -68,6 +68,7 @@ namespace Nethermind.Core.Test.Encoding
         {
             TestContext.Out.WriteLine($"Testing {testCase.Hash}");
             RlpStream incomingTxRlp = Bytes.FromHexString(testCase.IncomingRlpHex).AsRlpStream();
+
             Transaction decoded = _txDecoder.Decode(incomingTxRlp);
             decoded.CalculateHash().Should().Be(testCase.Hash);
 
@@ -94,7 +95,7 @@ namespace Nethermind.Core.Test.Encoding
             yield return
             (
                 "b8a701f8a486796f6c6f763380843b9aca008262d4948a8eafb1cf62bfbeb1741769dae1a9dd479961928080f838f7940000000000000000000000000000000000001337e1a0000000000000000000000000000000000000000000000000000000000000000080a0775101f92dcca278a56bfe4d613428624a1ebfc3cd9e0bcc1de80c41455b9021a06c9deac205afe7b124907d4ba54a9f46161498bd3990b90d175aac12c9a40ee9",
-                new Keccak("0x8d6c458a40d2b06f56310eb1e1322138ee4fb2d78a1dc35e96ac166600529ce6")
+                new Keccak("0x212a85be428a85d00fb5335b013bc8d3cf7511ffdd8938de768f4ca8bf1caf50")
             );
             yield return
             (
@@ -121,6 +122,11 @@ namespace Nethermind.Core.Test.Encoding
             (
                 "f86905843b9aca00825208948a8eafb1cf62bfbeb1741769dae1a9dd47996192018086f2ded8deec8aa04135bba08382dae6a1d5ec4b557f2460e1d63fb6f93773a7a951ce38a28a31ada03d36a791688f311252df622a48a9acfb0500fd3584a8305ee004d895c0257400",
                 new Keccak("0x593dd0e1bf113b762674470741817c4d823c73fb7377da4f6073c7885585ae92")
+            );
+            yield return
+            (
+                "b8a801f8a587796f6c6f76337880843b9aca008262d4948a8eafb1cf62bfbeb1741769dae1a9dd479961928080f838f7940000000000000000000000000000000000001337e1a0000000000000000000000000000000000000000000000000000000000000000001a0e0bfceab9cadc44aa4a2c7f985f773586e2976d19cc54620e95f7d5e24bfeb6aa03225ae7b7ef42716ee5cae1b0f7f05d9777b1d4882d387e4da88cae65095bef8",
+                new Keccak("0xb2006fc4c0bcc5bebef35b29a93b2cab216c0f2aa4c0a974f333a9b0c3905e60")
             );
         }
     }
