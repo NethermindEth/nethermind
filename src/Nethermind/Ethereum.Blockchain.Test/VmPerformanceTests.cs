@@ -23,19 +23,16 @@ using NUnit.Framework;
 namespace Ethereum.Blockchain.Test
 {
     [TestFixture][Parallelizable(ParallelScope.All)]
-    public class SubroutineTests : GeneralStateTestBase
+    // ReSharper disable once InconsistentNaming
+    public class VmPerformanceTests : GeneralStateTestBase
     {
         [TestCaseSource(nameof(LoadTests))]
         public void Test(GeneralStateTest test)
-        {
-            return; // 2315 disabled for now
+        {    
             Assert.True(RunTest(test).Pass);
         }
         
-        public static IEnumerable<GeneralStateTest> LoadTests()
-        {
-            var loader = new TestsSourceLoader(new LoadGeneralStateTestsStrategy(), "stSubroutine");
-            return (IEnumerable<GeneralStateTest>)loader.LoadTests();
-        }
+        public static IEnumerable<GeneralStateTest> LoadTests() { var loader = new TestsSourceLoader(new LoadGeneralStateTestsStrategy(), "vmPerformance");
+            return (IEnumerable<GeneralStateTest>)loader.LoadTests(); }
     }
 }
