@@ -13,6 +13,6 @@ namespace Nethermind.Pipeline
            Elements = new Stack<IPipelineElement>(elements); 
         }
 
-        public Stack<IPipelineElement> Elements { get; }
+        public Stack<IPipelineElement> Elements { get; private set; }
     }
 }
