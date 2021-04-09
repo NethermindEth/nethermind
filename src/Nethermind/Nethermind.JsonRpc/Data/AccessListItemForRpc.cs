@@ -26,10 +26,13 @@ namespace Nethermind.JsonRpc.Data
 {
     public class AccessListItemForRpc
     {
-        public AccessListItemForRpc(Address address, IEnumerable<UInt256>? storageKeys)
+        public AccessListItemForRpc(Address address, IReadOnlyCollection<UInt256>? storageKeys)
         {
             Address = address;
-            StorageKeys = storageKeys?.ToArray();
+            if (storageKeys?.Count > 0)
+            {
+                StorageKeys = storageKeys.ToArray();
+            }
         }
         
         public Address Address { get; set; }
