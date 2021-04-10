@@ -305,7 +305,7 @@ namespace Nethermind.State
             }
         }
 
-        public Keccak UpdateCode(byte[] code)
+        public Keccak UpdateCode(ReadOnlyMemory<byte> code)
         {
             _needsStateRootUpdate = true;
             if (code.Length == 0)
@@ -313,9 +313,9 @@ namespace Nethermind.State
                 return Keccak.OfAnEmptyString;
             }
 
-            Keccak codeHash = Keccak.Compute(code);
+            Keccak codeHash = Keccak.Compute(code.Span);
             
-            _codeDb[codeHash.Bytes] = code;
+            _codeDb[codeHash.Bytes] = code.ToArray();
 
             return codeHash;
         }

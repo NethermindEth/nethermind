@@ -37,20 +37,14 @@ namespace Nethermind.Evm.Precompiles.Snarks.Shamatar
             return releaseSpec.IsEip1108Enabled ? 45000L : 100000L;
         }
 
-        public long DataGasCost(byte[] inputData, IReleaseSpec releaseSpec)
+        public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
         {
-            if (inputData == null)
-            {
-                return 0L;
-            }
-
             return (releaseSpec.IsEip1108Enabled ? 34000L : 80000L) * (inputData.Length / PairSize);
         }
 
-        public (byte[], bool) Run(byte[] inputData, IReleaseSpec releaseSpec)
+        public (ReadOnlyMemory<byte>, bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
         {
             Metrics.Bn256PairingPrecompile++;
-            inputData ??= Array.Empty<byte>();
 
             (byte[], bool) result;
             if (inputData.Length % PairSize > 0)
@@ -63,7 +57,7 @@ namespace Nethermind.Evm.Precompiles.Snarks.Shamatar
                 /* we modify input in place here and this is save for EVM but not
                    safe in benchmarks so we need to remember to clone */
                 Span<byte> output = stackalloc byte[64];
-                Span<byte> inputDataSpan = inputData.AsSpan();
+                Span<byte> inputDataSpan = inputData.ToArray().AsSpan();
                 Span<byte> inputReshuffled = stackalloc byte[PairSize];
                 for (int i = 0; i < inputData.Length / PairSize; i++)
                 {
@@ -75,7 +69,7 @@ namespace Nethermind.Evm.Precompiles.Snarks.Shamatar
                     inputReshuffled.CopyTo(inputDataSpan.Slice(i * PairSize, PairSize));
                 }
                 
-                bool success = ShamatarLib.Bn256Pairing(inputData.AsSpan(), output);
+                bool success = ShamatarLib.Bn256Pairing(inputDataSpan, output);
 
                 if (success)
                 {

@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System;
 using System.Collections.Generic;
 using FluentAssertions;
 using Nethermind.Core.Extensions;
@@ -34,8 +35,8 @@ namespace Nethermind.Evm.Test
             foreach (var (input, expectedResult) in Inputs)
             {
                 IPrecompile precompile = G1AddPrecompile.Instance;
-                (byte[] output, bool success) = precompile.Run(input, MuirGlacier.Instance);
-                output.Should().BeEquivalentTo(expectedResult);
+                (ReadOnlyMemory<byte> output, bool success) = precompile.Run(input, MuirGlacier.Instance);
+                output.ToArray().Should().BeEquivalentTo(expectedResult.ToArray());
                 success.Should().BeTrue();
             }
         }
@@ -43,7 +44,7 @@ namespace Nethermind.Evm.Test
         /// <summary>
         /// https://github.com/matter-labs/eip1962/tree/master/src/test/test_vectors/eip2537
         /// </summary>
-        private static readonly Dictionary<byte[], byte[]> Inputs = new()
+        private static readonly Dictionary<byte[], ReadOnlyMemory<byte>> Inputs = new()
         {
                 {Bytes.FromHexString("0000000000000000000000000000000012196c5a43d69224d8713389285f26b98f86ee910ab3dd668e413738282003cc5b7357af9a7af54bb713d62255e80f560000000000000000000000000000000006ba8102bfbeea4416b710c73e8cce3032c31c6269c44906f8ac4f7874ce99fb17559992486528963884ce429a992fee000000000000000000000000000000000001101098f5c39893765766af4512a0c74e1bb89bc7e6fdf14e3e7337d257cc0f94658179d83320b99f31ff94cd2bac0000000000000000000000000000000003e1a9f9f44ca2cdab4f43a1a3ee3470fdf90b2fc228eb3b709fcd72f014838ac82a6d797aeefed9a0804b22ed1ce8f7"), Bytes.FromHexString("000000000000000000000000000000001466e1373ae4a7e7ba885c5f0c3ccfa48cdb50661646ac6b779952f466ac9fc92730dcaed9be831cd1f8c4fefffd5209000000000000000000000000000000000c1fb750d2285d4ca0378e1e8cdbf6044151867c34a711b73ae818aee6dbe9e886f53d7928cc6ed9c851e0422f609b11")},
                 {Bytes.FromHexString("00000000000000000000000000000000117dbe419018f67844f6a5e1b78a1e597283ad7b8ee7ac5e58846f5a5fd68d0da99ce235a91db3ec1cf340fe6b7afcdb0000000000000000000000000000000013316f23de032d25e912ae8dc9b54c8dba1be7cecdbb9d2228d7e8f652011d46be79089dd0a6080a73c82256ce5e4ed2000000000000000000000000000000000441e7f7f96198e4c23bd5eb16f1a7f045dbc8c53219ab2bcea91d3a027e2dfe659feac64905f8b9add7e4bfc91bec2b0000000000000000000000000000000005fc51bb1b40c87cd4292d4b66f8ca5ce4ef9abd2b69d4464b4879064203bda7c9fc3f896a3844ebc713f7bb20951d95"), Bytes.FromHexString("0000000000000000000000000000000016b8ab56b45a9294466809b8e858c1ad15ad0d52cfcb62f8f5753dc94cee1de6efaaebce10701e3ec2ecaa9551024ea600000000000000000000000000000000124571eec37c0b1361023188d66ec17c1ec230d31b515e0e81e599ec19e40c8a7c8cdea9735bc3d8b4e37ca7e5dd71f6")},

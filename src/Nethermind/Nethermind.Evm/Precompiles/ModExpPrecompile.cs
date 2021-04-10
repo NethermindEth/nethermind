@@ -53,7 +53,7 @@ namespace Nethermind.Evm.Precompiles
         /// <param name="inputData"></param>
         /// <param name="releaseSpec"></param>
         /// <returns>Gas cost of the MODEXP operation in the context of EIP2565</returns>
-        public long DataGasCost(byte[] inputData, IReleaseSpec releaseSpec)
+        public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
         {
             if (!releaseSpec.IsEip2565Enabled)
             {
@@ -65,7 +65,7 @@ namespace Nethermind.Evm.Precompiles
             try
             {
                 Span<byte> extendedInput = stackalloc byte[96];
-                inputData.Slice(0, Math.Min(96, inputData.Length))
+                inputData.Slice(0, Math.Min(96, inputData.Length)).Span
                     .CopyTo(extendedInput.Slice(0, Math.Min(96, inputData.Length)));
 
                 UInt256 baseLength = new(extendedInput.Slice(0, 32), true);
@@ -77,7 +77,7 @@ namespace Nethermind.Evm.Precompiles
                 UInt256 expLengthUpTo32 = UInt256.Min(32, expLength);
                 UInt256 startIndex = 96 + baseLength; //+ expLength - expLengthUpTo32; // Geth takes head here, why?
                 UInt256 exp = new(
-                    inputData.SliceWithZeroPaddingEmptyOnError((int)startIndex, (int)expLengthUpTo32), true);
+                    inputData.Span.SliceWithZeroPaddingEmptyOnError((int)startIndex, (int)expLengthUpTo32), true);
                 UInt256 iterationCount = CalculateIterationCount(expLength, exp);
 
                 return Math.Max(200L, (long)(complexity * iterationCount / 3));
@@ -88,7 +88,7 @@ namespace Nethermind.Evm.Precompiles
             }
         }
 
-        private mpz_t ImportDataToGmp(byte[] data)
+        private static mpz_t ImportDataToGmp(byte[] data)
         {
             mpz_t result = new();
             gmp_lib.mpz_init(result);
@@ -101,27 +101,27 @@ namespace Nethermind.Evm.Precompiles
             return result;
         }
 
-        private static (int, int, int) GetInputLengths(byte[] inputData)
+        private static (int, int, int) GetInputLengths(ReadOnlyMemory<byte> inputData)
         {
             Span<byte> extendedInput = stackalloc byte[96];
-            inputData.Slice(0, Math.Min(96, inputData.Length))
+            inputData.Slice(0, Math.Min(96, inputData.Length)).Span
                 .CopyTo(extendedInput.Slice(0, Math.Min(96, inputData.Length)));
 
             int baseLength = (int)new UInt256(extendedInput.Slice(0, 32), true);
-            UInt256 expLengthUint256 = new UInt256(extendedInput.Slice(32, 32), true);
+            UInt256 expLengthUint256 = new(extendedInput.Slice(32, 32), true);
             int expLength = expLengthUint256 > int.MaxValue ? int.MaxValue : (int)expLengthUint256;
             int modulusLength = (int)new UInt256(extendedInput.Slice(64, 32), true);
 
             return (baseLength, expLength, modulusLength);
         }
 
-        public (byte[], bool) Run(byte[] inputData, IReleaseSpec releaseSpec)
+        public (ReadOnlyMemory<byte>, bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
         {
             Metrics.ModExpPrecompile++;
 
             (int baseLength, int expLength, int modulusLength) = GetInputLengths(inputData);
 
-            byte[] modulusData = inputData.SliceWithZeroPaddingEmptyOnError(96 + baseLength + expLength, modulusLength);
+            byte[] modulusData = inputData.Span.SliceWithZeroPaddingEmptyOnError(96 + baseLength + expLength, modulusLength);
             using mpz_t modulusInt = ImportDataToGmp(modulusData);
 
             if (gmp_lib.mpz_sgn(modulusInt) == 0)
@@ -129,10 +129,10 @@ namespace Nethermind.Evm.Precompiles
                 return (new byte[modulusLength], true);
             }
 
-            byte[] baseData = inputData.SliceWithZeroPaddingEmptyOnError(96, baseLength);
+            byte[] baseData = inputData.Span.SliceWithZeroPaddingEmptyOnError(96, baseLength);
             using mpz_t baseInt = ImportDataToGmp(baseData);
             
-            byte[] expData = inputData.SliceWithZeroPaddingEmptyOnError(96 + baseLength, expLength);
+            byte[] expData = inputData.Span.SliceWithZeroPaddingEmptyOnError(96 + baseLength, expLength);
             using mpz_t expInt = ImportDataToGmp(expData);
 
             using mpz_t powmResult = new();
@@ -153,7 +153,7 @@ namespace Nethermind.Evm.Precompiles
         }
         
         [Obsolete("This is a previous implementation using BigInteger instead of GMP")]
-        public static (byte[], bool) OldRun(byte[] inputData)
+        public static (ReadOnlyMemory<byte>, bool) OldRun(byte[] inputData)
         {
             Metrics.ModExpPrecompile++;
             

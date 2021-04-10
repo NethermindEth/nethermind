@@ -135,7 +135,7 @@ namespace Nethermind.Core.Crypto
         }
 
         [DebuggerStepThrough]
-        public static Keccak Compute(Span<byte> input)
+        public static Keccak Compute(ReadOnlySpan<byte> input)
         {
             if (input.Length == 0)
             {
