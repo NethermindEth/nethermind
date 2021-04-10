@@ -33,13 +33,13 @@ namespace Nethermind.Db.Rocks
         
         private string? _fullPath;
         
-        private static readonly ConcurrentDictionary<string, RocksDb> DbsByPath = new();
+        private static readonly ConcurrentDictionary<string, RocksDb> _dbsByPath = new();
 
         private bool _isDisposed;
 
         private readonly HashSet<IBatch> _currentBatches = new();
         
-        internal readonly RocksDb? Db;
+        internal readonly RocksDb _db;
         internal WriteOptions? WriteOptions { get; private set; }
 
         public string Name { get; }
@@ -69,7 +69,7 @@ namespace Nethermind.Db.Rocks
             _logger = logManager.GetClassLogger();
             _settings = rocksDbSettings;
             Name = _settings.DbName;
-            Db = Init(basePath, rocksDbSettings.DbPath, dbConfig, logManager, columnFamilies, deleteOnStart);
+            _db = Init(basePath, rocksDbSettings.DbPath, dbConfig, logManager, columnFamilies, deleteOnStart);
         }
 
         private RocksDb Init(string basePath, string dbPath, IDbConfig dbConfig, ILogManager? logManager,
@@ -103,7 +103,7 @@ namespace Nethermind.Db.Rocks
                 if (_logger.IsDebug)
                     _logger.Debug(
                         $"Loading DB {Name.PadRight(13)} from {_fullPath} with max memory footprint of {_maxThisDbSize / 1000 / 1000}MB");
-                return DbsByPath.GetOrAdd(_fullPath, Open, (options, columnFamilies));
+                return _dbsByPath.GetOrAdd(_fullPath, Open, (options, columnFamilies));
             }
             catch (DllNotFoundException e) when (e.Message.Contains("libdl"))
             {
@@ -129,7 +129,7 @@ namespace Nethermind.Db.Rocks
                 Metrics.OtherDbReads++;
         }
 
-        protected internal virtual void UpdateWriteMetrics()
+        protected internal void UpdateWriteMetrics()
         {
             if (_settings.UpdateWriteMetrics != null)
                 _settings.UpdateWriteMetrics?.Invoke();
@@ -201,7 +201,7 @@ namespace Nethermind.Db.Rocks
             options.SetMaxWriteBufferNumber(writeBufferNumber);
             options.SetMinWriteBufferNumberToMerge(2);
 
-            lock (DbsByPath)
+            lock (_dbsByPath)
             {
                 _maxThisDbSize += (long)writeBufferSize * writeBufferNumber;
                 Interlocked.Add(ref _maxRocksSize, _maxThisDbSize);
@@ -266,7 +266,7 @@ namespace Nethermind.Db.Rocks
                 }
 
                 UpdateReadMetrics();
-                return Db.Get(key);
+                return _db.Get(key);
             }
             set
             {
@@ -278,16 +278,16 @@ namespace Nethermind.Db.Rocks
                 UpdateWriteMetrics();
                 if (value == null)
                 {
-                    Db.Remove(key, null, WriteOptions);
+                    _db.Remove(key, null, WriteOptions);
                 }
                 else
                 {
-                    Db.Put(key, value, null, WriteOptions);
+                    _db.Put(key, value, null, WriteOptions);
                 }
             }
         }
 
-        public KeyValuePair<byte[], byte[]?>[] this[byte[][] keys] => Db.MultiGet(keys);
+        public KeyValuePair<byte[], byte[]?>[] this[byte[][] keys] => _db.MultiGet(keys);
 
         public Span<byte> GetSpan(byte[] key)
         {
@@ -297,12 +297,12 @@ namespace Nethermind.Db.Rocks
             }
 
             UpdateReadMetrics();
-            return Db.GetSpan(key);
+            return _db.GetSpan(key);
         }
 
         public void DangerousReleaseMemory(in Span<byte> span)
         {
-            Db.DangerousReleaseMemory(in span);
+            _db.DangerousReleaseMemory(in span);
         }
 
         public void Remove(byte[] key)
@@ -312,7 +312,7 @@ namespace Nethermind.Db.Rocks
                 throw new ObjectDisposedException($"Attempted to delete form a disposed database {Name}");
             }
 
-            Db.Remove(key, null, WriteOptions);
+            _db.Remove(key, null, WriteOptions);
         }
 
         public IEnumerable<KeyValuePair<byte[], byte[]>> GetAll(bool ordered = false)
@@ -330,7 +330,7 @@ namespace Nethermind.Db.Rocks
         {
             ReadOptions readOptions = new();
             readOptions.SetTailing(!ordered);
-            return Db.NewIterator(ch, readOptions);
+            return _db.NewIterator(ch, readOptions);
         }
 
         public IEnumerable<byte[]> GetAllValues(bool ordered = false)
@@ -381,7 +381,7 @@ namespace Nethermind.Db.Rocks
             }
 
             // seems it has no performance impact
-            return Db.Get(key) != null;
+            return _db.Get(key) != null;
 //            return _db.Get(key, 32, _keyExistsBuffer, 0, 0, null, null) != -1;
         }
 
@@ -419,7 +419,7 @@ namespace Nethermind.Db.Rocks
                     throw new ObjectDisposedException($"Attempted to commit a batch on a disposed database {_dbOnTheRocks.Name}");
                 }
 
-                _dbOnTheRocks.Db.Write(_rocksBatch, _dbOnTheRocks.WriteOptions);
+                _dbOnTheRocks._db.Write(_rocksBatch, _dbOnTheRocks.WriteOptions);
                 _dbOnTheRocks._currentBatches.Remove(this);
                 _rocksBatch.Dispose();
                 GC.SuppressFinalize(this);
@@ -449,7 +449,7 @@ namespace Nethermind.Db.Rocks
                 throw new ObjectDisposedException($"Attempted to flush a disposed database {Name}");
             }
 
-            RocksDbSharp.Native.Instance.rocksdb_flush(Db.Handle, FlushOptions.DefaultFlushOptions.Handle);
+            RocksDbSharp.Native.Instance.rocksdb_flush(_db.Handle, FlushOptions.DefaultFlushOptions.Handle);
         }
 
         public void Clear()
@@ -489,7 +489,7 @@ namespace Nethermind.Db.Rocks
 
         private void ReleaseUnmanagedResources()
         {
-            Db?.Dispose();
+            _db.Dispose();
             foreach (IBatch batch in _currentBatches)
             {
                 batch.Dispose();
@@ -512,7 +512,7 @@ namespace Nethermind.Db.Rocks
                 ReleaseUnmanagedResources();
                 if (disposing)
                 {
-                    DbsByPath.Remove(_fullPath!, out _);
+                    _dbsByPath.Remove(_fullPath!, out _);
                 }
             }
         }

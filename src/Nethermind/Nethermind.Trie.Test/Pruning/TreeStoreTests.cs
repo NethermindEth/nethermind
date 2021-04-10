@@ -596,7 +596,7 @@ namespace Nethermind.Trie.Test.Pruning
                     {
                         trieStore.FindCachedOrUnknown(trieNode.Keccak).GetChildHash(i % 16).Should().BeEquivalentTo(TestItem.Keccaks[i % 16], i.ToString());
                     }
-                    catch (Exception e)
+                    catch (Exception)
                     {
                         throw new AssertionException("Failed");
                     }

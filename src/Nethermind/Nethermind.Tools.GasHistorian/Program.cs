@@ -10,9 +10,7 @@ namespace Nethermind.Tools.GasHistorian
     {
         static void Main(string[] args)
         {
-            RocksDbSettings rocksDbSettings = new();
-            rocksDbSettings.DbName = "BlockInfos";
-            rocksDbSettings.DbPath = "BlockInfos";
+            RocksDbSettings rocksDbSettings = new("BlockInfos", "BlockInfos");
 
             DbOnTheRocks dbOnTheRocks = new(
                 "/Users/nethermind/db/",

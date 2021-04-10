@@ -61,13 +61,13 @@ namespace Nethermind.Facade
 
         public BlockchainBridge(
             ReadOnlyTxProcessingEnv processingEnv,
-            ITxPool txPool,
-            IReceiptFinder receiptStorage,
-            IFilterStore filterStore,
-            IFilterManager filterManager,
-            IEthereumEcdsa ecdsa,
-            ITimestamper timestamper,
-            ILogFinder logFinder,
+            ITxPool? txPool,
+            IReceiptFinder? receiptStorage,
+            IFilterStore? filterStore,
+            IFilterManager? filterManager,
+            IEthereumEcdsa? ecdsa,
+            ITimestamper? timestamper,
+            ILogFinder? logFinder,
             bool isMining,
             bool isBeamSyncing)
         {

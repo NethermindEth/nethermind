@@ -82,12 +82,10 @@ namespace Nethermind.Db.Test
             task.Dispose();
         }
 
-        private RocksDbSettings GetRocksDbSettings(string dbPath, string dbName)
+        private static RocksDbSettings GetRocksDbSettings(string dbPath, string dbName)
         {
-            return new()
+            return new(dbName, dbPath)
             {
-                DbName = dbName,
-                DbPath = dbPath,
                 BlockCacheSize = (ulong)1.KiB(),
                 CacheIndexAndFilterBlocks = false,
                 WriteBufferNumber = 4,

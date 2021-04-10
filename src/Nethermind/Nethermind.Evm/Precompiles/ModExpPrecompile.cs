@@ -57,7 +57,9 @@ namespace Nethermind.Evm.Precompiles
         {
             if (!releaseSpec.IsEip2565Enabled)
             {
+#pragma warning disable 618
                 return ModExpPrecompilePreEip2565.Instance.DataGasCost(inputData, releaseSpec);
+#pragma warning restore 618
             }
             
             try

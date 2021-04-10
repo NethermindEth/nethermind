@@ -30,16 +30,13 @@ namespace Nethermind.Db.Rocks
         public ColumnsDb(string basePath, RocksDbSettings settings, IDbConfig dbConfig, ILogManager logManager, params T[] keys) 
             : base(basePath, settings, dbConfig, logManager, GetColumnFamilies(dbConfig, settings.DbName, GetEnumKeys(keys)))
         {
-            Name = settings.DbName;
             keys = GetEnumKeys(keys);
 
             foreach (T key in keys)
             {
-                _columnDbs[key] = new ColumnDb(Db, this, key.ToString()!); 
+                _columnDbs[key] = new ColumnDb(_db, this, key.ToString()!); 
             }
         }
-
-        public string Name { get; }
 
         private static T[] GetEnumKeys(T[] keys)
         {
