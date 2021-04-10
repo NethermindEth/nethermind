@@ -373,11 +373,11 @@ namespace Nethermind.Evm
 
                 if (statusCode == StatusCode.Failure)
                 {
-                    txTracer.MarkAsFailed(recipientOrNull, spentGas, (substate?.ShouldRevert ?? false) ? substate.Output : Array.Empty<byte>(), substate?.Error, stateRoot);
+                    txTracer.MarkAsFailed(recipientOrNull, spentGas, (substate?.ShouldRevert ?? false) ? substate.Output.ToArray() : Array.Empty<byte>(), substate?.Error, stateRoot);
                 }
                 else
                 {
-                    txTracer.MarkAsSuccess(recipientOrNull, spentGas, substate.Output, substate.Logs.Any() ? substate.Logs.ToArray() : Array.Empty<LogEntry>(), stateRoot);
+                    txTracer.MarkAsSuccess(recipientOrNull, spentGas, substate.Output.ToArray(), substate.Logs.Any() ? substate.Logs.ToArray() : Array.Empty<LogEntry>(), stateRoot);
                 }
             }
         }

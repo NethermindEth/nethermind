@@ -1,4 +1,5 @@
 using System;
+using System.Buffers;
 using System.Runtime.InteropServices;
 
 namespace Nethermind.Crypto.Bls
@@ -30,7 +31,7 @@ namespace Nethermind.Crypto.Bls
             byte* error,
             ref int errorLength);
 
-        private static unsafe bool Bn256Op(byte operation, Span<byte> input, Span<byte> output)
+        private static unsafe bool Bn256Op(byte operation, ReadOnlySpan<byte> input, Span<byte> output)
         {
             int outputLength = output.Length;
             int errorLength = 256;
@@ -48,7 +49,7 @@ namespace Nethermind.Crypto.Bls
             return externalCallResult == 0;
         }
 
-        private static unsafe bool BlsOp(byte operation, Span<byte> input, Span<byte> output)
+        private static unsafe bool BlsOp(byte operation, ReadOnlySpan<byte> input, Span<byte> output)
         {
             int outputLength = output.Length;
             int errorLength = 256;
@@ -66,62 +67,62 @@ namespace Nethermind.Crypto.Bls
             return externalCallResult == 0;
         }
 
-        public static bool Bn256Add(Span<byte> input, Span<byte> output)
+        public static bool Bn256Add(ReadOnlySpan<byte> input, Span<byte> output)
         {
             return Bn256Op(1, input, output);
         }
 
-        public static bool Bn256Mul(Span<byte> input, Span<byte> output)
+        public static bool Bn256Mul(ReadOnlySpan<byte> input, Span<byte> output)
         {
             return Bn256Op(2, input, output);
         }
 
-        public static bool Bn256Pairing(Span<byte> input, Span<byte> output)
+        public static bool Bn256Pairing(ReadOnlySpan<byte> input, Span<byte> output)
         {
             return Bn256Op(3, input, output);
         }
 
-        public static bool BlsG1Add(Span<byte> input, Span<byte> output)
+        public static bool BlsG1Add(ReadOnlySpan<byte> input, Span<byte> output)
         {
             return BlsOp(1, input, output);
         }
 
-        public static bool BlsG1Mul(Span<byte> input, Span<byte> output)
+        public static bool BlsG1Mul(ReadOnlySpan<byte> input, Span<byte> output)
         {
             return BlsOp(2, input, output);
         }
 
-        public static bool BlsG1MultiExp(Span<byte> input, Span<byte> output)
+        public static bool BlsG1MultiExp(ReadOnlySpan<byte> input, Span<byte> output)
         {
             return BlsOp(3, input, output);
         }
 
-        public static bool BlsG2Add(Span<byte> input, Span<byte> output)
+        public static bool BlsG2Add(ReadOnlySpan<byte> input, Span<byte> output)
         {
             return BlsOp(4, input, output);
         }
 
-        public static bool BlsG2Mul(Span<byte> input, Span<byte> output)
+        public static bool BlsG2Mul(ReadOnlySpan<byte> input, Span<byte> output)
         {
             return BlsOp(5, input, output);
         }
 
-        public static bool BlsG2MultiExp(Span<byte> input, Span<byte> output)
+        public static bool BlsG2MultiExp(ReadOnlySpan<byte> input, Span<byte> output)
         {
             return BlsOp(6, input, output);
         }
 
-        public static bool BlsPairing(Span<byte> input, Span<byte> output)
+        public static bool BlsPairing(ReadOnlySpan<byte> input, Span<byte> output)
         {
             return BlsOp(7, input, output);
         }
 
-        public static bool BlsMapToG1(Span<byte> input, Span<byte> output)
+        public static bool BlsMapToG1(ReadOnlySpan<byte> input, Span<byte> output)
         {
             return BlsOp(8, input, output);
         }
 
-        public static bool BlsMapToG2(Span<byte> input, Span<byte> output)
+        public static bool BlsMapToG2(ReadOnlySpan<byte> input, Span<byte> output)
         {
             return BlsOp(9, input, output);
         }

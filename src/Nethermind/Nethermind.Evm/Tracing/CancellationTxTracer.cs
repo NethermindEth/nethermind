@@ -329,7 +329,7 @@ namespace Nethermind.Evm.Tracing
             }
         }
 
-        public void ReportAction(long gas, UInt256 value, Address @from, Address to, byte[] input, ExecutionType callType, bool isPrecompileCall = false)
+        public void ReportAction(long gas, UInt256 value, Address @from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
         {
             _token.ThrowIfCancellationRequested();
             if (_innerTracer.IsTracingActions)
@@ -338,7 +338,7 @@ namespace Nethermind.Evm.Tracing
             }
         }
 
-        public void ReportActionEnd(long gas, byte[] output)
+        public void ReportActionEnd(long gas, ReadOnlyMemory<byte> output)
         {
             _token.ThrowIfCancellationRequested();
             if (_innerTracer.IsTracingActions)
@@ -356,7 +356,7 @@ namespace Nethermind.Evm.Tracing
             }
         }
 
-        public void ReportActionEnd(long gas, Address deploymentAddress, byte[] deployedCode)
+        public void ReportActionEnd(long gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode)
         {
             _token.ThrowIfCancellationRequested();
             if (_innerTracer.IsTracingActions)

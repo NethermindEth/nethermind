@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Specs.Forks;
@@ -45,7 +46,7 @@ namespace Nethermind.Evm.Test
             for (int i = 0; i < inputs.Length; i++)
             {
                 IPrecompile shamatar = Precompiles.Snarks.Shamatar.Bn256MulPrecompile.Instance;
-                (byte[], bool) resultShamatar = shamatar.Run(inputs[i], MuirGlacier.Instance);
+                (ReadOnlyMemory<byte>, bool) resultShamatar = shamatar.Run(inputs[i], MuirGlacier.Instance);
             }
         }
     }

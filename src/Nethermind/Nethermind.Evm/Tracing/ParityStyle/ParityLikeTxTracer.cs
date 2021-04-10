@@ -418,7 +418,7 @@ namespace Nethermind.Evm.Tracing.ParityStyle
         {
         }
 
-        public void ReportAction(long gas, UInt256 value, Address @from, Address to, byte[] input, ExecutionType callType, bool isPrecompileCall = false)
+        public void ReportAction(long gas, UInt256 value, Address @from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
         {
             ParityTraceAction action = new();
             action.IsPrecompiled = isPrecompileCall;
@@ -426,7 +426,7 @@ namespace Nethermind.Evm.Tracing.ParityStyle
             action.From = @from;
             action.To = to;
             action.Value = value;
-            action.Input = input;
+            action.Input = input.ToArray();
             action.Gas = gas;
             action.CallType = GetCallType(callType);
             action.Type = GetActionType(callType);
@@ -459,15 +459,15 @@ namespace Nethermind.Evm.Tracing.ParityStyle
             PopAction();
         }
 
-        public void ReportActionEnd(long gas, byte[]? output)
+        public void ReportActionEnd(long gas, ReadOnlyMemory<byte> output)
         {
             if (_currentAction.Result is null)
             {
                 throw new InvalidOperationException(
                     $"{nameof(ReportActionEnd)} called when result is not yet prepared.");
             }
-            
-            _currentAction.Result.Output = output ?? Array.Empty<byte>();
+
+            _currentAction.Result.Output = output.ToArray();
             _currentAction.Result.GasUsed = _currentAction.Gas - gas;
             PopAction();
         }
@@ -479,7 +479,7 @@ namespace Nethermind.Evm.Tracing.ParityStyle
             PopAction();
         }
 
-        public void ReportActionEnd(long gas, Address deploymentAddress, byte[] deployedCode)
+        public void ReportActionEnd(long gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode)
         {
             if (_currentAction.Result is null)
             {
@@ -488,7 +488,7 @@ namespace Nethermind.Evm.Tracing.ParityStyle
             }
             
             _currentAction.Result.Address = deploymentAddress;
-            _currentAction.Result.Code = deployedCode;
+            _currentAction.Result.Code = deployedCode.ToArray();
             _currentAction.Result.GasUsed = _currentAction.Gas - gas;
             PopAction();
         }

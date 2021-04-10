@@ -29,7 +29,7 @@ namespace Nethermind.Evm
         void Save(in UInt256 location, byte[] value);
         Span<byte> LoadSpan(in UInt256 location);
         Span<byte> LoadSpan(in UInt256 location, in UInt256 length);
-        byte[] Load(in UInt256 location, in UInt256 length);
+        ReadOnlyMemory<byte> Load(in UInt256 location, in UInt256 length);
         long CalculateMemoryCost(in UInt256 location, in UInt256 length);
         List<string> GetTrace();
     }
@@ -101,7 +101,7 @@ namespace Nethermind.Evm
             throw new NotImplementedException();
         }
 
-        public byte[] Load(in UInt256 location, in UInt256 length)
+        public ReadOnlyMemory<byte> Load(in UInt256 location, in UInt256 length)
         {
             // obvious
             throw new NotImplementedException();
