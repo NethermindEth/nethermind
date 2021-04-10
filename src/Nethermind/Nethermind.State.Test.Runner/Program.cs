@@ -50,8 +50,7 @@ namespace Nethermind.State.Test.Runner
         public static void Main(params string[] args)
         {
             ParserResult<Options> result = Parser.Default.ParseArguments<Options>(args);
-            Parsed<Options> options = result as Parsed<Options>;
-            if (options != null)
+            if (result is Parsed<Options> options)
             {
                 Run(options.Value);
             }

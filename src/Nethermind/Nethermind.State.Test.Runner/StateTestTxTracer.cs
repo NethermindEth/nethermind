@@ -77,7 +77,7 @@ namespace Nethermind.State.Test.Runner
             _traceEntry.Error = GetErrorDescription(error);
         }
         
-        private static string GetErrorDescription(EvmExceptionType evmExceptionType)
+        private static string? GetErrorDescription(EvmExceptionType evmExceptionType)
         {
             return evmExceptionType switch
             {

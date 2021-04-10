@@ -60,7 +60,6 @@ namespace Ethereum.Test.Base
         protected EthereumTestResult RunTest(GeneralStateTest test, ITxTracer txTracer)
         {
             TestContext.Write($"Running {test.Name} at {DateTime.UtcNow:HH:mm:ss.ffffff}");
-            Stopwatch stopwatch = Stopwatch.StartNew();
             Assert.IsNull(test.LoadFailure, "test data loading failure");
 
             IDb stateDb = new MemDb();
@@ -100,7 +99,9 @@ namespace Ethereum.Test.Base
             header.StateRoot = test.PostHash;
             header.Hash = Keccak.Compute("1");
 
+            Stopwatch stopwatch = Stopwatch.StartNew();
             transactionProcessor.Execute(test.Transaction, header, txTracer);
+            stopwatch.Stop();
 
             stateProvider.Commit(specProvider.GenesisSpec);
             stateProvider.CommitTree(1);
