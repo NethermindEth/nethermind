@@ -566,7 +566,7 @@ namespace Nethermind.Evm
             try
             {
                 (ReadOnlyMemory<byte> output, bool success) = precompile.Run(callData, spec);
-                CallResult callResult = new(Array.Empty<byte>(), success, !success);
+                CallResult callResult = new(output.ToArray(), success, !success);
                 return callResult;
             }
             catch (Exception)
