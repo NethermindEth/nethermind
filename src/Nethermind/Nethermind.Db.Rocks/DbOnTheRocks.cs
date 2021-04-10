@@ -121,7 +121,7 @@ namespace Nethermind.Db.Rocks
             }
         }
 
-        protected internal virtual void UpdateReadMetrics()
+        protected internal void UpdateReadMetrics()
         {
             if (_settings.UpdateReadMetrics != null)
                 _settings.UpdateReadMetrics?.Invoke();
@@ -489,7 +489,9 @@ namespace Nethermind.Db.Rocks
 
         private void ReleaseUnmanagedResources()
         {
-            _db.Dispose();
+            // ReSharper disable once ConstantConditionalAccessQualifier
+            // running in finalizer, potentially not fully constructed
+            _db?.Dispose();
             foreach (IBatch batch in _currentBatches)
             {
                 batch.Dispose();
