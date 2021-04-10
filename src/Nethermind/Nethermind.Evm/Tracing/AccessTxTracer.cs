@@ -29,8 +29,7 @@ namespace Nethermind.Evm.Tracing
     {
         private const long ColdVsWarmSloadDelta = GasCostOf.ColdSLoad - GasCostOf.AccessStorageListEntry;
         public const long MaxStorageAccessToOptimize = GasCostOf.AccessAccountListEntry / ColdVsWarmSloadDelta;
-
-        private readonly AccessList? _accessList;
+        
         private readonly Address[] _addressesToOptimize;
         
         public bool IsTracingState => false;

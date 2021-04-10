@@ -38,12 +38,12 @@ namespace Nethermind.Blockchain.Processing
         public IVirtualMachine Machine { get; }
 
         public ReadOnlyTxProcessingEnv(
-            IDbProvider dbProvider,
-            IReadOnlyTrieStore trieStore,
-            IBlockTree blockTree,
-            ISpecProvider specProvider,
-            ILogManager logManager) 
-            : this(dbProvider.AsReadOnly(false), trieStore, blockTree.AsReadOnly(), specProvider, logManager)
+            IDbProvider? dbProvider,
+            IReadOnlyTrieStore? trieStore,
+            IBlockTree? blockTree,
+            ISpecProvider? specProvider,
+            ILogManager? logManager) 
+            : this(dbProvider?.AsReadOnly(false), trieStore, blockTree?.AsReadOnly(), specProvider, logManager)
         {
         }
 

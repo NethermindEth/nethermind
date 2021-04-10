@@ -192,6 +192,10 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Merge.Plugin", "
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Merge.Plugin.Test", "Nethermind.Merge.Plugin.Test\Nethermind.Merge.Plugin.Test.csproj", "{87ECA5BD-8DB0-4ED6-82FF-9F68D576A8E8}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Tools", "Tools", "{ABB7AC7F-0FFE-4C2F-857C-C776E6764A76}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Tools.GasHistorian", "Nethermind.Tools.GasHistorian\Nethermind.Tools.GasHistorian.csproj", "{169ECB38-2AB5-4AEC-B90D-819A3B0ABB89}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -514,6 +518,10 @@ Global
 		{87ECA5BD-8DB0-4ED6-82FF-9F68D576A8E8}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{87ECA5BD-8DB0-4ED6-82FF-9F68D576A8E8}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{87ECA5BD-8DB0-4ED6-82FF-9F68D576A8E8}.Release|Any CPU.Build.0 = Release|Any CPU
+		{169ECB38-2AB5-4AEC-B90D-819A3B0ABB89}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{169ECB38-2AB5-4AEC-B90D-819A3B0ABB89}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{169ECB38-2AB5-4AEC-B90D-819A3B0ABB89}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{169ECB38-2AB5-4AEC-B90D-819A3B0ABB89}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -580,6 +588,7 @@ Global
 		{0EC840BB-CC6A-4AB1-9E2A-625C777EBAB6} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
 		{DF891F59-5764-4F39-B42B-6263499B0464} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
 		{87ECA5BD-8DB0-4ED6-82FF-9F68D576A8E8} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
+		{169ECB38-2AB5-4AEC-B90D-819A3B0ABB89} = {ABB7AC7F-0FFE-4C2F-857C-C776E6764A76}
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

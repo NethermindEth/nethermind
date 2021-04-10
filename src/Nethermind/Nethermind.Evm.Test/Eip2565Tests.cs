@@ -38,7 +38,9 @@ namespace Nethermind.Evm.Test
             Prepare input = Prepare.EvmCode.FromCode(randomInput);
             
             (byte[], bool) gmpPair = ModExpPrecompile.Instance.Run(input.Done, Berlin.Instance);
+#pragma warning disable 618
             (byte[], bool) bigIntPair = ModExpPrecompile.OldRun(input.Done);
+#pragma warning restore 618
             
             Assert.AreEqual(gmpPair.Item1, bigIntPair.Item1);
         }
