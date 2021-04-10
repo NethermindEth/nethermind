@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Numerics;
 using System.Runtime.CompilerServices;
@@ -75,7 +76,7 @@ namespace Nethermind.Evm
         private readonly IStorageProvider _storage;
         private Address? _parityTouchBugAccount;
         private Dictionary<Address, CodeInfo>? _precompiles;
-        private ReadOnlyMemory<byte> _returnDataBuffer = new byte[0];
+        private byte[] _returnDataBuffer = Array.Empty<byte>();
         private ITxTracer _txTracer = NullTxTracer.Instance;
 
         public VirtualMachine(
@@ -102,7 +103,7 @@ namespace Nethermind.Evm
             IReleaseSpec spec = _specProvider.GetSpec(state.Env.TxExecutionContext.Header.Number);
             EvmState currentState = state;
             byte[] previousCallResult = null;
-            ZeroPaddedMemory previousCallOutput = ZeroPaddedMemory.Empty;
+            ZeroPaddedSpan previousCallOutput = ZeroPaddedSpan.Empty;
             UInt256 previousCallOutputDestination = UInt256.Zero;
             while (true)
             {
@@ -151,7 +152,7 @@ namespace Nethermind.Evm
                             currentState = callResult.StateToExecute;
                             previousCallResult = null; // TODO: testing on ropsten sync, write VirtualMachineTest for this case as it was not covered by Ethereum tests (failing block 9411 on Ropsten https://ropsten.etherscan.io/vmtrace?txhash=0x666194d15c14c54fffafab1a04c08064af165870ef9a87f65711dcce7ed27fe1)
                             _returnDataBuffer = Array.Empty<byte>();
-                            previousCallOutput = ZeroPaddedMemory.Empty;
+                            previousCallOutput = ZeroPaddedSpan.Empty;
                             continue;
                         }
 
@@ -175,7 +176,7 @@ namespace Nethermind.Evm
                             previousCallResult = StatusCode.FailureBytes;
                             previousCallOutputDestination = UInt256.Zero;
                             _returnDataBuffer = Array.Empty<byte>();
-                            previousCallOutput = ZeroPaddedMemory.Empty;
+                            previousCallOutput = ZeroPaddedSpan.Empty;
 
                             currentState.Dispose();
                             currentState = _stateStack.Pop();
@@ -235,7 +236,7 @@ namespace Nethermind.Evm
                             previousCallResult = callCodeOwner.Bytes;
                             previousCallOutputDestination = UInt256.Zero;
                             _returnDataBuffer = Array.Empty<byte>();
-                            previousCallOutput = ZeroPaddedMemory.Empty;
+                            previousCallOutput = ZeroPaddedSpan.Empty;
 
                             long codeDepositGasCost = CodeDepositHandler.CalculateCost(callResult.Output.Length, spec);
                             if (gasAvailableForCodeDeposit >= codeDepositGasCost)
@@ -275,7 +276,7 @@ namespace Nethermind.Evm
                         {
                             _returnDataBuffer = callResult.Output;
                             previousCallResult = callResult.PrecompileSuccess.HasValue ? (callResult.PrecompileSuccess.Value ? StatusCode.SuccessBytes : StatusCode.FailureBytes) : StatusCode.SuccessBytes;
-                            previousCallOutput = callResult.Output.SliceWithZeroPadding(0, Math.Min(callResult.Output.Length, (int) previousState.OutputLength));
+                            previousCallOutput = callResult.Output.AsSpan().SliceWithZeroPadding(0, Math.Min(callResult.Output.Length, (int) previousState.OutputLength));
                             previousCallOutputDestination = (ulong) previousState.OutputDestination;
                             if (previousState.IsPrecompile)
                             {
@@ -303,7 +304,7 @@ namespace Nethermind.Evm
                         _storage.Restore(previousState.StorageSnapshot);
                         _returnDataBuffer = callResult.Output;
                         previousCallResult = StatusCode.FailureBytes;
-                        previousCallOutput = callResult.Output.SliceWithZeroPadding(0, Math.Min(callResult.Output.Length, (int) previousState.OutputLength));
+                        previousCallOutput = callResult.Output.AsSpan().SliceWithZeroPadding(0, Math.Min(callResult.Output.Length, (int) previousState.OutputLength));
                         previousCallOutputDestination = (ulong) previousState.OutputDestination;
 
 
@@ -348,7 +349,7 @@ namespace Nethermind.Evm
                     previousCallResult = StatusCode.FailureBytes;
                     previousCallOutputDestination = UInt256.Zero;
                     _returnDataBuffer = Array.Empty<byte>();
-                    previousCallOutput = new ZeroPaddedMemory(Memory<byte>.Empty, 0, PadDirection.Right);
+                    previousCallOutput = ZeroPaddedSpan.Empty;
 
                     currentState.Dispose();
                     currentState = _stateStack.Pop();
@@ -565,7 +566,7 @@ namespace Nethermind.Evm
             try
             {
                 (ReadOnlyMemory<byte> output, bool success) = precompile.Run(callData, spec);
-                CallResult callResult = new(output, success, !success);
+                CallResult callResult = new(Array.Empty<byte>(), success, !success);
                 return callResult;
             }
             catch (Exception)
@@ -575,7 +576,7 @@ namespace Nethermind.Evm
             }
         }
 
-        private CallResult ExecuteCall(EvmState vmState, byte[]? previousCallResult, ZeroPaddedMemory previousCallOutput, in UInt256 previousCallOutputDestination, IReleaseSpec spec)
+        private CallResult ExecuteCall(EvmState vmState, byte[]? previousCallResult, ZeroPaddedSpan previousCallOutput, in UInt256 previousCallOutputDestination, IReleaseSpec spec)
         {
             bool isTrace = _logger.IsTrace;
             bool traceOpcodes = _txTracer.IsTracingInstructions;
@@ -1565,7 +1566,7 @@ namespace Nethermind.Evm
                         {
                             UpdateMemoryCost(in dest, length);
 
-                            ZeroPaddedMemory returnDataSlice = _returnDataBuffer.SliceWithZeroPadding(src, (int)length);
+                            ZeroPaddedSpan returnDataSlice = _returnDataBuffer.AsSpan().SliceWithZeroPadding(src, (int)length);
                             vmState.Memory.Save(in dest, returnDataSlice);
                             if (_txTracer.IsTracingInstructions)
                             {
@@ -2306,7 +2307,7 @@ namespace Nethermind.Evm
                         callEnv.ExecutingAccount = contractAddress;
                         callEnv.CodeSource = null;
                         callEnv.CodeInfo = new CodeInfo(initCode.ToArray());
-                        callEnv.InputData = Array.Empty<byte>();
+                        callEnv.InputData = ReadOnlyMemory<byte>.Empty;
                         callEnv.TransferValue = value;
                         callEnv.Value = value;
                         
@@ -2337,7 +2338,7 @@ namespace Nethermind.Evm
 
                         UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head);
                         EndInstructionTrace();
-                        return new CallResult(returnData, null);
+                        return new CallResult(returnData.ToArray(), null);
                     }
                     case Instruction.CALL:
                     case Instruction.CALLCODE:
@@ -2530,7 +2531,7 @@ namespace Nethermind.Evm
 
                         UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head);
                         EndInstructionTrace();
-                        return new CallResult(errorDetails, null, true);
+                        return new CallResult(errorDetails.ToArray(), null, true);
                     }
                     case Instruction.INVALID:
                     {
@@ -2879,7 +2880,7 @@ namespace Nethermind.Evm
                 ExceptionType = exceptionType;
             }
 
-            public CallResult(ReadOnlyMemory<byte> output, bool? precompileSuccess, bool shouldRevert = false, EvmExceptionType exceptionType = EvmExceptionType.None)
+            public CallResult(byte[] output, bool? precompileSuccess, bool shouldRevert = false, EvmExceptionType exceptionType = EvmExceptionType.None)
             {
                 StateToExecute = null;
                 Output = output;
@@ -2889,7 +2890,7 @@ namespace Nethermind.Evm
             }
 
             public EvmState? StateToExecute { get; }
-            public ReadOnlyMemory<byte> Output { get; }
+            public byte[] Output { get; }
             public EvmExceptionType ExceptionType { get; }
             public bool ShouldRevert { get; }
             public bool? PrecompileSuccess { get; } // TODO: check this behaviour as it seems it is required and previously that was not the case

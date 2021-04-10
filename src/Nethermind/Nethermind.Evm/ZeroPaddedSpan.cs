@@ -49,7 +49,7 @@ namespace Nethermind.Evm
     public ref struct ZeroPaddedMemory
     {
         public static ZeroPaddedMemory Empty => new(Memory<byte>.Empty, 0, PadDirection.Right);
-        
+
         public ZeroPaddedMemory(ReadOnlyMemory<byte> memory, int paddingLength, PadDirection padDirection)
         {
             PadDirection = padDirection;
