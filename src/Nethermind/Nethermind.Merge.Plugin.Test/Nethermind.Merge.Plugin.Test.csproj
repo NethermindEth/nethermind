@@ -2,7 +2,6 @@
 
     <PropertyGroup>
         <TargetFramework>net5.0</TargetFramework>
-        <RootNamespace>Nethermind.Merge.Plugin.Tests</RootNamespace>
     </PropertyGroup>
 
     <ItemGroup>
@@ -14,6 +13,7 @@
         <PackageReference Include="NUnit" Version="3.13.0" />
         <PackageReference Include="NUnit3TestAdapter" Version="3.17.0" />
         <PackageReference Include="Microsoft.NET.Test.Sdk" Version="16.8.3" />
+        <ProjectReference Include="..\Nethermind.JsonRpc.Test\Nethermind.JsonRpc.Test.csproj" />
       <ProjectReference Include="..\Nethermind.Merge.Plugin\Nethermind.Merge.Plugin.csproj" />
       <ProjectReference Include="..\Nethermind.Runner.Test\Nethermind.Runner.Test.csproj" />
     </ItemGroup>

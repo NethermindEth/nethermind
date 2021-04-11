@@ -19,7 +19,7 @@ using System.Threading.Tasks;
 
 namespace Nethermind.JsonRpc.Modules
 {
-    public class SingletonModulePool<T> : IRpcModulePool<T> where T : IModule
+    public class SingletonModulePool<T> : IRpcModulePool<T> where T : IRpcModule
     {
         private readonly T _onlyInstance;
         private readonly Task<T> _onlyInstanceAsTask;

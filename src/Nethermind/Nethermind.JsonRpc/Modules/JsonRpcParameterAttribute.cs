@@ -19,6 +19,7 @@ using System;
 
 namespace Nethermind.JsonRpc.Modules
 {
+    [AttributeUsage(AttributeTargets.Parameter)]
     public class JsonRpcParameterAttribute : Attribute
     {
         public string? Description { get; set; }

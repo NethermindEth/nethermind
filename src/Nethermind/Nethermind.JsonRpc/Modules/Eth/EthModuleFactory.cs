@@ -28,7 +28,7 @@ using Newtonsoft.Json;
 
 namespace Nethermind.JsonRpc.Modules.Eth
 {
-    public class EthModuleFactory : ModuleFactoryBase<IEthModule>
+    public class EthModuleFactory : ModuleFactoryBase<IEthRpcModule>
     {
         private readonly ReadOnlyBlockTree _blockTree;
         private readonly ILogManager _logManager;
@@ -59,9 +59,9 @@ namespace Nethermind.JsonRpc.Modules.Eth
             _blockTree = blockTree.AsReadOnly();
         }
         
-        public override IEthModule Create()
+        public override IEthRpcModule Create()
         {
-            return new EthModule(
+            return new EthRpcModule(
                 _rpcConfig,
                 _blockchainBridgeFactory.CreateBlockchainBridge(),
                 _blockTree,

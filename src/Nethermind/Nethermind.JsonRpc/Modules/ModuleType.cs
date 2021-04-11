@@ -30,6 +30,7 @@ namespace Nethermind.JsonRpc.Modules
         Erc20,
         Eth,
         Evm,
+        Mev,
         NdmProvider,
         NdmConsumer,
         Net,

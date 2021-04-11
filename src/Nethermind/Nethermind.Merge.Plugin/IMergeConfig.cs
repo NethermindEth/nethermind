@@ -21,6 +21,9 @@ namespace Nethermind.Merge.Plugin
 {
     public interface IMergeConfig : IConfig
     {
+        [ConfigItem(
+            Description = "Defines whether the MEV bundles are allowed.",
+            DefaultValue = "false")]
         bool Enabled { get; set; }
     }
 }
