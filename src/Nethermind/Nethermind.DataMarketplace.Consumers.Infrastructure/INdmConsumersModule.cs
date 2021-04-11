@@ -21,7 +21,7 @@ using Nethermind.JsonRpc.Modules;
 namespace Nethermind.DataMarketplace.Consumers.Infrastructure
 {
     [RpcModule(ModuleType.NdmConsumer)]
-    public interface INdmConsumersModule : IModule
+    public interface INdmConsumersModule : IRpcModule
     {
         Task Init();
         void InitRpcModules();
