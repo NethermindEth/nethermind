@@ -54,7 +54,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
     {
         private readonly bool _createSystemAccount;
         private readonly bool _useNonZeroGasPrice;
-        private IProofModule _proofModule;
+        private IProofRpcModule _proofRpcModule;
         private IBlockTree _blockTree;
         private IDbProvider _dbProvider;
         private TestSpecProvider _specProvider;
@@ -82,7 +82,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
                 _specProvider,
                 LimboLogs.Instance);
 
-            _proofModule = moduleFactory.Create();
+            _proofRpcModule = moduleFactory.Create();
         }
 
         [TestCase(true)]
@@ -90,7 +90,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
         public void Can_get_transaction(bool withHeader)
         {
             Keccak txHash = _blockTree.FindBlock(1).Transactions[0].Hash;
-            TransactionWithProof txWithProof = _proofModule.proof_getTransactionByHash(txHash, withHeader).Data;
+            TransactionWithProof txWithProof = _proofRpcModule.proof_getTransactionByHash(txHash, withHeader).Data;
             Assert.NotNull(txWithProof.Transaction);
             Assert.AreEqual(2, txWithProof.TxProof.Length);
             if (withHeader)
@@ -102,7 +102,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
                 Assert.Null(txWithProof.BlockHeader);
             }
 
-            string response = RpcTest.TestSerializedRequest(_proofModule, "proof_getTransactionByHash", $"{txHash}", $"{withHeader}");
+            string response = RpcTest.TestSerializedRequest(_proofRpcModule, "proof_getTransactionByHash", $"{txHash}", $"{withHeader}");
             Assert.True(response.Contains("\"result\""));
         }
 
@@ -111,7 +111,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
         public void When_getting_non_existing_tx_correct_error_code_is_returned(bool withHeader)
         {
             Keccak txHash = TestItem.KeccakH;
-            string response = RpcTest.TestSerializedRequest(_proofModule, "proof_getTransactionByHash", $"{txHash}", $"{withHeader}");
+            string response = RpcTest.TestSerializedRequest(_proofRpcModule, "proof_getTransactionByHash", $"{txHash}", $"{withHeader}");
             Assert.True(response.Contains($"{ErrorCodes.ResourceNotFound}"));
         }
 
@@ -120,7 +120,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
         public void When_getting_non_existing_receipt_correct_error_code_is_returned(bool withHeader)
         {
             Keccak txHash = TestItem.KeccakH;
-            string response = RpcTest.TestSerializedRequest(_proofModule, "proof_getTransactionReceipt", $"{txHash}", $"{withHeader}");
+            string response = RpcTest.TestSerializedRequest(_proofRpcModule, "proof_getTransactionReceipt", $"{txHash}", $"{withHeader}");
             Assert.True(response.Contains($"{ErrorCodes.ResourceNotFound}"));
         }
 
@@ -130,23 +130,23 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
             Keccak txHash = TestItem.KeccakH;
 
             // missing with header
-            string response = RpcTest.TestSerializedRequest(_proofModule, "proof_getTransactionReceipt", $"{txHash}");
+            string response = RpcTest.TestSerializedRequest(_proofRpcModule, "proof_getTransactionReceipt", $"{txHash}");
             Assert.True(response.Contains($"{ErrorCodes.InvalidParams}"), "missing");
 
             // too many
-            response = RpcTest.TestSerializedRequest(_proofModule, "proof_getTransactionReceipt", $"{txHash}", "true", "false");
+            response = RpcTest.TestSerializedRequest(_proofRpcModule, "proof_getTransactionReceipt", $"{txHash}", "true", "false");
             Assert.True(response.Contains($"{ErrorCodes.InvalidParams}"), "too many");
 
             // missing with header
-            response = RpcTest.TestSerializedRequest(_proofModule, "proof_getTransactionByHash", $"{txHash}");
+            response = RpcTest.TestSerializedRequest(_proofRpcModule, "proof_getTransactionByHash", $"{txHash}");
             Assert.True(response.Contains($"{ErrorCodes.InvalidParams}"), "missing");
 
             // too many
-            response = RpcTest.TestSerializedRequest(_proofModule, "proof_getTransactionByHash", $"{txHash}", "true", "false");
+            response = RpcTest.TestSerializedRequest(_proofRpcModule, "proof_getTransactionByHash", $"{txHash}", "true", "false");
             Assert.True(response.Contains($"{ErrorCodes.InvalidParams}"), "too many");
 
             // all wrong
-            response = RpcTest.TestSerializedRequest(_proofModule, "proof_call", $"{txHash}");
+            response = RpcTest.TestSerializedRequest(_proofRpcModule, "proof_call", $"{txHash}");
             Assert.True(response.Contains($"{ErrorCodes.InvalidParams}"), "missing");
         }
 
@@ -155,7 +155,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
         public void Can_get_receipt(bool withHeader)
         {
             Keccak txHash = _blockTree.FindBlock(1).Transactions[0].Hash;
-            ReceiptWithProof receiptWithProof = _proofModule.proof_getTransactionReceipt(txHash, withHeader).Data;
+            ReceiptWithProof receiptWithProof = _proofRpcModule.proof_getTransactionReceipt(txHash, withHeader).Data;
             Assert.NotNull(receiptWithProof.Receipt);
             Assert.AreEqual(2, receiptWithProof.ReceiptProof.Length);
             Assert.GreaterOrEqual(receiptWithProof.ReceiptProof.Last().Length, 256 /* bloom length */);
@@ -168,7 +168,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
                 Assert.Null(receiptWithProof.BlockHeader);
             }
 
-            string response = RpcTest.TestSerializedRequest(_proofModule, "proof_getTransactionReceipt", $"{txHash}", $"{withHeader}");
+            string response = RpcTest.TestSerializedRequest(_proofRpcModule, "proof_getTransactionReceipt", $"{txHash}", $"{withHeader}");
             Assert.True(response.Contains("\"result\""));
         }
 
@@ -190,10 +190,10 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
                 GasPrice = _useNonZeroGasPrice ? 10.GWei() : 0
             };
             
-            _proofModule.proof_call(tx, new BlockParameter(block.Number));
+            _proofRpcModule.proof_call(tx, new BlockParameter(block.Number));
 
             EthereumJsonSerializer serializer = new EthereumJsonSerializer();
-            string response = RpcTest.TestSerializedRequest(_proofModule, "proof_call", $"{serializer.Serialize(tx)}", $"{block.Number}");
+            string response = RpcTest.TestSerializedRequest(_proofRpcModule, "proof_call", $"{serializer.Serialize(tx)}", $"{block.Number}");
             Assert.True(response.Contains("\"result\""));
         }
 
@@ -214,10 +214,10 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
                 To = TestItem.AddressB,
                 GasPrice = _useNonZeroGasPrice ? 10.GWei() : 0
             };
-            _proofModule.proof_call(tx, new BlockParameter(block.Hash));
+            _proofRpcModule.proof_call(tx, new BlockParameter(block.Hash));
 
             EthereumJsonSerializer serializer = new EthereumJsonSerializer();
-            string response = RpcTest.TestSerializedRequest(_proofModule, "proof_call", $"{serializer.Serialize(tx)}", $"{block.Hash}");
+            string response = RpcTest.TestSerializedRequest(_proofRpcModule, "proof_call", $"{serializer.Serialize(tx)}", $"{block.Hash}");
             Assert.True(response.Contains("\"result\""));
         }
 
@@ -240,10 +240,10 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
             };
 
             EthereumJsonSerializer serializer = new EthereumJsonSerializer();
-            string response = RpcTest.TestSerializedRequest(_proofModule, "proof_call", $"{serializer.Serialize(tx)}", $"{{\"blockHash\" : \"{block.Hash}\", \"requireCanonical\" : true}}");
+            string response = RpcTest.TestSerializedRequest(_proofRpcModule, "proof_call", $"{serializer.Serialize(tx)}", $"{{\"blockHash\" : \"{block.Hash}\", \"requireCanonical\" : true}}");
             Assert.True(response.Contains("-32000"));
 
-            response = RpcTest.TestSerializedRequest(_proofModule, "proof_call", $"{serializer.Serialize(tx)}", $"{{\"blockHash\" : \"{TestItem.KeccakG}\", \"requireCanonical\" : true}}");
+            response = RpcTest.TestSerializedRequest(_proofRpcModule, "proof_call", $"{serializer.Serialize(tx)}", $"{{\"blockHash\" : \"{TestItem.KeccakG}\", \"requireCanonical\" : true}}");
             Assert.True(response.Contains("-32001"));
         }
 
@@ -719,7 +719,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
                 GasPrice = _useNonZeroGasPrice ? 10.GWei() : 0
             };
 
-            CallResultWithProof callResultWithProof = _proofModule.proof_call(tx, new BlockParameter(blockOnTop.Number)).Data;
+            CallResultWithProof callResultWithProof = _proofRpcModule.proof_call(tx, new BlockParameter(blockOnTop.Number)).Data;
             Assert.Greater(callResultWithProof.Accounts.Length, 0);
 
             foreach (AccountProof accountProof in callResultWithProof.Accounts)
@@ -732,7 +732,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
             }
 
             EthereumJsonSerializer serializer = new EthereumJsonSerializer();
-            string response = RpcTest.TestSerializedRequest(_proofModule, "proof_call", $"{serializer.Serialize(tx)}", $"{blockOnTop.Number}");
+            string response = RpcTest.TestSerializedRequest(_proofRpcModule, "proof_call", $"{serializer.Serialize(tx)}", $"{blockOnTop.Number}");
             Assert.True(response.Contains("\"result\""));
             
             return callResultWithProof;
@@ -772,7 +772,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
                 Nonce = 1000
             };
 
-            CallResultWithProof callResultWithProof = _proofModule.proof_call(tx, new BlockParameter(blockOnTop.Number)).Data;
+            CallResultWithProof callResultWithProof = _proofRpcModule.proof_call(tx, new BlockParameter(blockOnTop.Number)).Data;
             Assert.Greater(callResultWithProof.Accounts.Length, 0);
 
             // just the keys for debugging
@@ -811,7 +811,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
             }
 
             EthereumJsonSerializer serializer = new EthereumJsonSerializer();
-            string response = RpcTest.TestSerializedRequest(_proofModule, "proof_call", $"{serializer.Serialize(tx)}", $"{blockOnTop.Number}");
+            string response = RpcTest.TestSerializedRequest(_proofRpcModule, "proof_call", $"{serializer.Serialize(tx)}", $"{blockOnTop.Number}");
             Assert.True(response.Contains("\"result\""));
         }
 

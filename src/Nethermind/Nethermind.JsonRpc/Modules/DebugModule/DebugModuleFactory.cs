@@ -31,7 +31,7 @@ using Newtonsoft.Json;
 
 namespace Nethermind.JsonRpc.Modules.DebugModule
 {
-    public class DebugModuleFactory : ModuleFactoryBase<IDebugModule>
+    public class DebugModuleFactory : ModuleFactoryBase<IDebugRpcModule>
     {
         private readonly IJsonRpcConfig _jsonRpcConfig;
         private readonly IBlockValidator _blockValidator;
@@ -76,7 +76,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
             _logger = logManager.GetClassLogger();
         }
 
-        public override IDebugModule Create()
+        public override IDebugRpcModule Create()
         {
             ReadOnlyTxProcessingEnv txEnv = new(
                 _dbProvider,
@@ -109,7 +109,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
                 _receiptsMigration,
                 _specProvider);
 
-            return new DebugModule(_logManager, debugBridge, _jsonRpcConfig);
+            return new DebugRpcModule(_logManager, debugBridge, _jsonRpcConfig);
         }
 
         public static JsonConverter[] Converters = {new GethLikeTxTraceConverter()};

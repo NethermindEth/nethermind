@@ -26,7 +26,7 @@ using Nethermind.JsonRpc.Modules;
 namespace Nethermind.Baseline
 {
     [RpcModule(ModuleType.Baseline)]
-    public interface IBaselineModule : IModule
+    public interface IBaselineModule : IRpcModule
     {
         [JsonRpcMethod(
             Description = "(DEV only - not part of Baseline standard) Inserts a single leaf to a tree at the given 'address'",

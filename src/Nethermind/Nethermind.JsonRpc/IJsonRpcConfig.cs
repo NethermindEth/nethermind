@@ -93,13 +93,13 @@ namespace Nethermind.JsonRpc
 
         [ConfigItem(
             Description = "Number of concurrent instances for non-sharable calls (" + 
-                          nameof(IEthModule.eth_call) + ", " +
-                          nameof(IEthModule.eth_estimateGas) + ", " +
-                          nameof(IEthModule.eth_getLogs) + ", " +
-                          nameof(IEthModule.eth_newFilter) + ", " +
-                          nameof(IEthModule.eth_newBlockFilter) + ", " +
-                          nameof(IEthModule.eth_newPendingTransactionFilter) + ", " +
-                          nameof(IEthModule.eth_uninstallFilter) + "). " +
+                          nameof(IEthRpcModule.eth_call) + ", " +
+                          nameof(IEthRpcModule.eth_estimateGas) + ", " +
+                          nameof(IEthRpcModule.eth_getLogs) + ", " +
+                          nameof(IEthRpcModule.eth_newFilter) + ", " +
+                          nameof(IEthRpcModule.eth_newBlockFilter) + ", " +
+                          nameof(IEthRpcModule.eth_newPendingTransactionFilter) + ", " +
+                          nameof(IEthRpcModule.eth_uninstallFilter) + "). " +
                           "This will limit load on the node CPU and IO to reasonable levels. " +
                           "If this limit is exceeded on Http calls 503 Service Unavailable will be returned along with Json RPC error. " +
                           "Defaults to number of logical processes.")]

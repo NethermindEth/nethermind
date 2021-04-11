@@ -31,7 +31,7 @@ using Nethermind.JsonRpc.Modules;
 namespace Nethermind.DataMarketplace.Providers.Infrastructure.Rpc
 {
     [RpcModule(ModuleType.NdmProvider)]
-    public interface INdmRpcProviderModule : IModule
+    public interface INdmRpcProviderModule : IRpcModule
     {
         ResultWrapper<string[]> ndm_getProviderPlugins();
         ResultWrapper<Address> ndm_getProviderAddress();

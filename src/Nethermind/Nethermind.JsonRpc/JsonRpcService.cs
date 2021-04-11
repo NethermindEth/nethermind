@@ -159,19 +159,19 @@ namespace Nethermind.JsonRpc
 
             //execute method
             IResultWrapper resultWrapper = null;
-            IModule module = await _rpcModuleProvider.Rent(methodName, method.ReadOnly);
-            if (module is IContextAwareModule contextAwareModule)
+            IRpcModule rpcModule = await _rpcModuleProvider.Rent(methodName, method.ReadOnly);
+            if (rpcModule is IContextAwareRpcModule contextAwareModule)
             {
                 contextAwareModule.Context = context;
             }
             bool returnImmediately = methodName != "eth_getLogs";
-            Action? returnAction = returnImmediately ? (Action) null : () => _rpcModuleProvider.Return(methodName, module);
+            Action? returnAction = returnImmediately ? (Action) null : () => _rpcModuleProvider.Return(methodName, rpcModule);
             try
             {
                 BeamSyncContext.LastFetchUtc.Value = DateTime.UtcNow;
                 BeamSyncContext.Description.Value = $"[JSON RPC {methodName}]";
 
-                object invocationResult = method.Info.Invoke(module, parameters);
+                object invocationResult = method.Info.Invoke(rpcModule, parameters);
                 switch (invocationResult)
                 {
                     case IResultWrapper wrapper:
@@ -200,7 +200,7 @@ namespace Nethermind.JsonRpc
             {
                 if (returnImmediately)
                 {
-                    _rpcModuleProvider.Return(methodName, module);
+                    _rpcModuleProvider.Return(methodName, rpcModule);
                 }
             }
 

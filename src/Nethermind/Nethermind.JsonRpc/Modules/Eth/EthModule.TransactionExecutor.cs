@@ -29,7 +29,7 @@ using Nethermind.Specs.Forks;
 
 namespace Nethermind.JsonRpc.Modules.Eth
 {
-    public partial class EthModule
+    public partial class EthRpcModule
     {
         private abstract class TransactionExecutor<T>
         {

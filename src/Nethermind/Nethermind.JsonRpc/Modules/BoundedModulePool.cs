@@ -21,7 +21,7 @@ using System.Threading.Tasks;
 
 namespace Nethermind.JsonRpc.Modules
 {
-    public class BoundedModulePool<T> : IRpcModulePool<T> where T : IModule
+    public class BoundedModulePool<T> : IRpcModulePool<T> where T : IRpcModule
     {
         private readonly int _timeout;
         private readonly T _shared;
