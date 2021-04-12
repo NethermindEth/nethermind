@@ -43,7 +43,8 @@ namespace Nethermind.Serialization.Rlp
             Transaction transaction = new();
             if (!rlpStream.IsSequenceNext())
             {
-                rlpStream.SkipLength();
+                (int PrefixLength, int ContentLength) prefixAndContentLength = rlpStream.ReadPrefixAndContentLength();
+                transactionSequence = rlpStream.Peek(prefixAndContentLength.ContentLength);
                 transaction.Type = (TxType)rlpStream.ReadByte();
             }
 
@@ -112,7 +113,8 @@ namespace Nethermind.Serialization.Rlp
             Transaction transaction = new();
             if (!decoderContext.IsSequenceNext())
             {
-                decoderContext.SkipLength();
+                (int PrefixLength, int ContentLength) prefixAndContentLength = decoderContext.ReadPrefixAndContentLength();
+                transactionSequence = decoderContext.Peek(prefixAndContentLength.ContentLength);
                 transaction.Type = (TxType)decoderContext.ReadByte();
             }
 

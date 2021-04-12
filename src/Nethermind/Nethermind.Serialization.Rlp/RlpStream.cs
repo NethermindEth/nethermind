@@ -780,6 +780,11 @@ namespace Nethermind.Serialization.Rlp
         public Span<byte> PeekNextItem()
         {
             int length = PeekNextRlpLength();
+            return Peek(length);
+        }
+        
+        public Span<byte> Peek(int length)
+        {
             Span<byte> item = Read(length);
             Position -= item.Length;
             return item;

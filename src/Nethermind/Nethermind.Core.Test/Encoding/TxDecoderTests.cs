@@ -70,6 +70,7 @@ namespace Nethermind.Core.Test.Encoding
             RlpStream incomingTxRlp = Bytes.FromHexString(testCase.IncomingRlpHex).AsRlpStream();
 
             Transaction decoded = _txDecoder.Decode(incomingTxRlp);
+          //  Rlp.Encode(decoded.).Bytes)
             decoded.CalculateHash().Should().Be(testCase.Hash);
 
             RlpStream ourRlpOutput = new RlpStream(incomingTxRlp.Length * 2);
@@ -78,6 +79,23 @@ namespace Nethermind.Core.Test.Encoding
             string ourRlpHex = ourRlpOutput.Data.AsSpan(0, incomingTxRlp.Length).ToHexString();
             ourRlpHex.Should().BeEquivalentTo(testCase.IncomingRlpHex);
         }
+        
+//         [TestCaseSource(nameof(YoloV3TestCases))]
+//         public void Roundtrip_yolo_v33((string IncomingRlpHex, Keccak Hash) testCase)
+//         {
+//             TestContext.Out.WriteLine($"Testing {testCase.Hash}");
+//             RlpStream incomingTxRlp = Bytes.FromHexString(testCase.IncomingRlpHex).AsRlpStream();
+//             Transaction decoded = _txDecoder.Decode(incomingTxRlp);
+//             var encoded = _txDecoder.Encode(decoded, RlpBehaviors.ForTreeRoot);
+//             var rlpBytes = Rlp.Encode(decoded).Bytes;
+// //            Assert.AreEqual(encoded.Bytes, incomingTxRlp.Data);
+//             var rlpStream2 = Bytes.FromHexString(testCase.IncomingRlpHex).AsRlpStream();
+//             var transactionSequence = rlpStream2.PeekNextItem();
+//             Assert.AreEqual(transactionSequence.ToArray(), incomingTxRlp.Data);
+//             Assert.AreEqual(rlpBytes, encoded.Bytes);
+//             decoded.Hash.Should().Be(Keccak.Compute(encoded.Bytes));
+//             // decoded.CalculateHash().Should().Be(Keccak.Compute(encoded.Bytes));
+//         }
         
         [TestCaseSource(nameof(TestCaseSource))]
         public void Rlp_encode_should_return_the_same_as_rlp_stream_encoding((Transaction Tx, string Description) testCase)
@@ -95,7 +113,7 @@ namespace Nethermind.Core.Test.Encoding
             yield return
             (
                 "b8a701f8a486796f6c6f763380843b9aca008262d4948a8eafb1cf62bfbeb1741769dae1a9dd479961928080f838f7940000000000000000000000000000000000001337e1a0000000000000000000000000000000000000000000000000000000000000000080a0775101f92dcca278a56bfe4d613428624a1ebfc3cd9e0bcc1de80c41455b9021a06c9deac205afe7b124907d4ba54a9f46161498bd3990b90d175aac12c9a40ee9",
-                new Keccak("0x212a85be428a85d00fb5335b013bc8d3cf7511ffdd8938de768f4ca8bf1caf50")
+                new Keccak("0x8d6c458a40d2b06f56310eb1e1322138ee4fb2d78a1dc35e96ac166600529ce6")
             );
             yield return
             (
@@ -126,8 +144,19 @@ namespace Nethermind.Core.Test.Encoding
             yield return
             (
                 "b8a801f8a587796f6c6f76337880843b9aca008262d4948a8eafb1cf62bfbeb1741769dae1a9dd479961928080f838f7940000000000000000000000000000000000001337e1a0000000000000000000000000000000000000000000000000000000000000000001a0e0bfceab9cadc44aa4a2c7f985f773586e2976d19cc54620e95f7d5e24bfeb6aa03225ae7b7ef42716ee5cae1b0f7f05d9777b1d4882d387e4da88cae65095bef8",
-                new Keccak("0xb2006fc4c0bcc5bebef35b29a93b2cab216c0f2aa4c0a974f333a9b0c3905e60")
+                new Keccak("0x5cb00d928abf074cb81fc5e54dd49ef541afa7fc014b8a53fb8c29f3ecb5cadb")
             );
+            yield return
+            (
+                "b8cb01f8c887796f6c6f76337801843b9aca00826a40948a8eafb1cf62bfbeb1741769dae1a9dd479961928080f85bf859940000000000000000000000000000000000001337f842a00000000000000000000000000000000000000000000000000000000000000000a0000000000000000000000000000000000000013370000000000000000000000001a0cb68184d42bd56b82abc9fc7cde0190308205264d6af4224d40fb504eee00d5aa036a483e4fd876a9a7817dee78f12decc534d124a55ae2c89c65e6c45452eb2ce",
+                new Keccak("0xd570bbb09f5bd9abf8fdc6ec7e036612bcb6b02b25f51ef0e1544f2a539ca3ac")
+            );
+            yield return
+            (
+                "b8cb01f8c887796f6c6f76337803843b9aca00826a40948a8eafb1cf62bfbeb1741769dae1a9dd479961928080f85bf859940000000000000000000000000000000000001337f842a00000000000000000000000000000000000000000000000000000000000000000a0000000000000000000000000000000000000013370000000000000000000000080a094f3a6bbf5039b1a794e5be7628809bdf757c4ff59e5399dec74c61137074f80a049baf92bb5fb2d6c6bf8287fcd75eaea80ad38d1b8d29ce242c4ac51e1067d52",
+                new Keccak("0x0a956694228afe4577bd94fcf8a3aa8544bbadcecfe0d66ccad8ec7ae56c025f")
+            );
+            
         }
     }
 }
