@@ -13,27 +13,31 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using System.Collections.Generic;
+using System;
 using System.IO;
-using Newtonsoft.Json;
+using System.Threading.Tasks;
+using Nethermind.Serialization.Json;
 
-namespace Nethermind.Serialization.Json
+namespace Nethermind.JsonRpc.Test
 {
-    public interface IJsonSerializer
+    public partial class ConsensusHelperTests
     {
-        T Deserialize<T>(Stream stream);
-        T Deserialize<T>(string json);
-        string Serialize<T>(T value, bool indented = false);
-        long Serialize<T>(Stream stream, T value, bool indented = false);
-        void RegisterConverter(JsonConverter converter);
-
-        void RegisterConverters(IEnumerable<JsonConverter> converters)
+        private class FileConsensusDataSource<T> : IConsensusDataSource<T>, IDisposable
         {
-            foreach (JsonConverter converter in converters)
+            private readonly Uri _file;
+            private readonly IJsonSerializer _serializer;
+            
+            public FileConsensusDataSource(Uri file, IJsonSerializer serializer)
             {
-                RegisterConverter(converter);
+                _file = file;
+                _serializer = serializer;
             }
+            
+            public async Task<T> GetData() => _serializer.Deserialize<T>(await File.ReadAllTextAsync(_file.AbsolutePath));
+
+            public void Dispose() { }
         }
     }
 }

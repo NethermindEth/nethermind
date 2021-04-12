@@ -81,12 +81,8 @@ namespace Nethermind.Runner.JsonRpc
             }
 
             _jsonSerializer = CreateJsonSerializer();
+            _jsonSerializer.RegisterConverters(jsonRpcService.Converters);
             
-            foreach (JsonConverter converter in jsonRpcService.Converters)
-            {
-                _jsonSerializer.RegisterConverter(converter);
-            }
-
             if (env.IsDevelopment())
             {
                 app.UseDeveloperExceptionPage();
