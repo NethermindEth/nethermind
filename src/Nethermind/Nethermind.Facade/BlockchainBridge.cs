@@ -152,7 +152,7 @@ namespace Nethermind.Facade
                 InputError = inputError;
             }
 
-            public string Error { get; set; }
+            public string? Error { get; set; }
 
             public byte[] OutputData { get; set; }
 
@@ -167,13 +167,7 @@ namespace Nethermind.Facade
         {
             CallOutputTracer callOutputTracer = new();
             (bool Success, string Error) tryCallResult = TryCallAndRestore(header, header.Number, header.Timestamp, tx,
-                new CancellationTxTracer(callOutputTracer, cancellationToken)
-                {
-                    IsTracingActions = true, 
-                    IsTracingOpLevelStorage = true,
-                    IsTracingInstructions = true, // a little bit costly but almost all are simple calls
-                    IsTracingRefunds = true
-                });
+                callOutputTracer.WithCancellation(cancellationToken));
             return new CallOutput
             {
                 Error = tryCallResult.Success ? callOutputTracer.Error : tryCallResult.Error,
@@ -212,13 +206,8 @@ namespace Nethermind.Facade
                 : new();
 
             (bool Success, string Error) tryCallResult = TryCallAndRestore(header, header.Number, header.Timestamp, tx,
-                new CancellationTxTracer(new CompositeTxTracer(callOutputTracer, accessTxTracer), cancellationToken)
-                {
-                    IsTracingActions = true, 
-                    IsTracingOpLevelStorage = true,
-                    IsTracingInstructions = true, // a little bit costly but almost all are simple calls
-                    IsTracingRefunds = true
-                });
+                new CompositeTxTracer(callOutputTracer, accessTxTracer).WithCancellation(cancellationToken));
+            
             return new CallOutput
             {
                 Error = tryCallResult.Success ? callOutputTracer.Error : tryCallResult.Error,

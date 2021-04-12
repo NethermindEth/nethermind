@@ -28,8 +28,8 @@ namespace Nethermind.Vault.Config
         public string VaultSealUnsealKey { get; set; }
         public string NChainHost { get; set; }
         public string NChainToken { get; set; }
-        public string NChainScheme { get; set; } = "https";
-        public string NChainPath { get; set; } = "api/v1";
+        public string NChainScheme { get; set; }
+        public string NChainPath { get; set; }
         public string NChainNetworkId { get; set; }
         public string NChainAccountId { get; set; }
     }

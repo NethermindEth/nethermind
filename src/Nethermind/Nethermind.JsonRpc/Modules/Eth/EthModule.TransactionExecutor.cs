@@ -31,63 +31,48 @@ namespace Nethermind.JsonRpc.Modules.Eth
 {
     public partial class EthRpcModule
     {
-        private abstract class TransactionExecutor<T>
+        private abstract class TxExecutor<TResult>
         {
             protected readonly IBlockchainBridge _blockchainBridge;
             private readonly IBlockFinder _blockFinder;
-            private readonly TimeSpan _cancellationTokenTimeout;
             private readonly IJsonRpcConfig _rpcConfig;
 
-            protected TransactionExecutor(IBlockchainBridge blockchainBridge, IBlockFinder blockFinder, TimeSpan cancellationTokenTimeout, IJsonRpcConfig rpcConfig)
+            protected TxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder blockFinder, IJsonRpcConfig rpcConfig)
             {
                 _blockchainBridge = blockchainBridge;
                 _blockFinder = blockFinder;
-                _cancellationTokenTimeout = cancellationTokenTimeout;
                 _rpcConfig = rpcConfig;
             }
             
-            public ResultWrapper<T> ExecuteTx(
+            public ResultWrapper<TResult> ExecuteTx(
                 TransactionForRpc transactionCall, 
                 BlockParameter? blockParameter)
             {
                 SearchResult<BlockHeader> searchResult = _blockFinder.SearchForHeader(blockParameter);
                 if (searchResult.IsError)
                 {
-                    return ResultWrapper<T>.Fail(searchResult);
+                    return ResultWrapper<TResult>.Fail(searchResult);
                 }
 
                 BlockHeader header = searchResult.Object;
                 if (!HasStateForBlock(_blockchainBridge, header))
                 {
-                    return ResultWrapper<T>.Fail($"No state available for block {header.Hash}",
+                    return ResultWrapper<TResult>.Fail($"No state available for block {header.Hash}",
                         ErrorCodes.ResourceUnavailable);
                 }
 
                 FixCallTx(transactionCall);
 
-                using CancellationTokenSource cancellationTokenSource = new(_cancellationTokenTimeout);
+                using CancellationTokenSource cancellationTokenSource = new(_rpcConfig.Timeout);
                 Transaction tx = transactionCall.ToTransaction(_blockchainBridge.GetChainId());
-                BlockchainBridge.CallOutput result = ExecuteTx(header, tx, cancellationTokenSource.Token);
-
-                if (result.Error == null)
-                {
-                    return ResultWrapper<T>.Success(GetResult(tx, result));
-                }
-
-                return result.InputError
-                    ? GetInputError(result)
-                    : GetExecutionError(tx, result);
+                return ExecuteTx(header, tx, cancellationTokenSource.Token);
             }
 
-            private ResultWrapper<T> GetInputError(BlockchainBridge.CallOutput result) => 
-                ResultWrapper<T>.Fail(result.Error, ErrorCodes.InvalidInput);
+            protected abstract ResultWrapper<TResult> ExecuteTx(BlockHeader header, Transaction tx, CancellationToken token);
 
-            protected abstract BlockchainBridge.CallOutput ExecuteTx(BlockHeader header, Transaction tx, CancellationToken token);
+            protected ResultWrapper<TResult> GetInputError(BlockchainBridge.CallOutput result) => 
+                ResultWrapper<TResult>.Fail(result.Error, ErrorCodes.InvalidInput);
             
-            protected abstract T GetResult(Transaction tx, BlockchainBridge.CallOutput result);
-            
-            protected abstract ResultWrapper<T> GetExecutionError(Transaction tx, BlockchainBridge.CallOutput result);
-
             private void FixCallTx(TransactionForRpc transactionCall)
             {
                 if (transactionCall.Gas == null || transactionCall.Gas == 0)
@@ -103,59 +88,74 @@ namespace Nethermind.JsonRpc.Modules.Eth
             }
         }
 
-        private class CallTransactionExecutor : TransactionExecutor<string>
+        private class CallTxExecutor : TxExecutor<string>
         {
-            public CallTransactionExecutor(IBlockchainBridge blockchainBridge, IBlockFinder blockFinder, TimeSpan cancellationTokenTimeout, IJsonRpcConfig rpcConfig)
-                : base(blockchainBridge, blockFinder, cancellationTokenTimeout, rpcConfig)
+            public CallTxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder blockFinder, IJsonRpcConfig rpcConfig)
+                : base(blockchainBridge, blockFinder, rpcConfig)
             {
             }
 
-            protected override ResultWrapper<string> GetExecutionError(Transaction tx, BlockchainBridge.CallOutput result) => 
-                ResultWrapper<string>.Fail("VM execution error.", ErrorCodes.ExecutionError, result.Error);
+            protected override ResultWrapper<string> ExecuteTx(BlockHeader header, Transaction tx, CancellationToken token)
+            {
+                BlockchainBridge.CallOutput result = _blockchainBridge.Call(header, tx, token);
+            
+                if (result.Error is null)
+                {
+                    return ResultWrapper<string>.Success(result.OutputData.ToHexString(true));
+                }
 
-            protected override string GetResult(Transaction tx, BlockchainBridge.CallOutput result) => 
-                result.OutputData.ToHexString(true);
-
-            protected override BlockchainBridge.CallOutput ExecuteTx(BlockHeader header, Transaction tx, CancellationToken token) => 
-                _blockchainBridge.Call(header, tx, token);
+                return result.InputError
+                    ? GetInputError(result)
+                    : ResultWrapper<string>.Fail("VM execution error.", ErrorCodes.ExecutionError, result.Error);
+            }
         }
 
-        private class EstimateGasTransactionExecutor : TransactionExecutor<UInt256?>
+        private class EstimateGasTxExecutor : TxExecutor<UInt256?>
         {
-            public EstimateGasTransactionExecutor(IBlockchainBridge blockchainBridge, IBlockFinder blockFinder, TimeSpan cancellationTokenTimeout, IJsonRpcConfig rpcConfig) 
-                : base(blockchainBridge, blockFinder, cancellationTokenTimeout, rpcConfig)
+            public EstimateGasTxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder blockFinder, IJsonRpcConfig rpcConfig) 
+                : base(blockchainBridge, blockFinder, rpcConfig)
             {
             }
+            
+            protected override ResultWrapper<UInt256?> ExecuteTx(BlockHeader header, Transaction tx, CancellationToken token)
+            {
+                BlockchainBridge.CallOutput result = _blockchainBridge.EstimateGas(header, tx, token);
+            
+                if (result.Error is null)
+                {
+                    return ResultWrapper<UInt256?>.Success((UInt256)result.GasSpent);
+                }
 
-            protected override BlockchainBridge.CallOutput ExecuteTx(BlockHeader header, Transaction tx, CancellationToken token) => 
-                _blockchainBridge.EstimateGas(header, tx, token);
-
-            protected override UInt256? GetResult(Transaction tx, BlockchainBridge.CallOutput result) => (UInt256)result.GasSpent;
-
-            protected override ResultWrapper<UInt256?> GetExecutionError(Transaction tx, BlockchainBridge.CallOutput result) => 
-                ResultWrapper<UInt256?>.Fail(result.Error, ErrorCodes.InternalError);
+                return result.InputError
+                    ? GetInputError(result)
+                    : ResultWrapper<UInt256?>.Fail(result.Error, ErrorCodes.InternalError);
+            }
         }
         
-        private class CreateAccessListTransactionExecutor : TransactionExecutor<AccessListForRpc>
+        private class CreateAccessListTxExecutor : TxExecutor<AccessListForRpc>
         {
             private readonly bool _optimize;
 
-            public CreateAccessListTransactionExecutor(IBlockchainBridge blockchainBridge, IBlockFinder blockFinder, TimeSpan cancellationTokenTimeout, IJsonRpcConfig rpcConfig, bool optimize) 
-                : base(blockchainBridge, blockFinder, cancellationTokenTimeout, rpcConfig)
+            public CreateAccessListTxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder blockFinder, IJsonRpcConfig rpcConfig, bool optimize) 
+                : base(blockchainBridge, blockFinder, rpcConfig)
             {
                 _optimize = optimize;
             }
-
-            protected override BlockchainBridge.CallOutput ExecuteTx(BlockHeader header, Transaction tx, CancellationToken token) => 
-                _blockchainBridge.CreateAccessList(header, tx, token, _optimize);
-
-            protected override AccessListForRpc GetResult(Transaction tx, BlockchainBridge.CallOutput result) =>
-                new(GetResultAccessList(tx, result), GetResultGas(tx, result));
             
-
-            protected override ResultWrapper<AccessListForRpc> GetExecutionError(Transaction tx, BlockchainBridge.CallOutput result) => 
-                ResultWrapper<AccessListForRpc>.Fail(result.Error, ErrorCodes.InternalError, new(GetResultAccessList(tx, result), GetResultGas(tx, result)));
+            protected override ResultWrapper<AccessListForRpc> ExecuteTx(BlockHeader header, Transaction tx, CancellationToken token)
+            {
+                BlockchainBridge.CallOutput result = _blockchainBridge.CreateAccessList(header, tx, token, _optimize);
             
+                if (result.Error is null)
+                {
+                    return ResultWrapper<AccessListForRpc>.Success(new(GetResultAccessList(tx, result), GetResultGas(tx, result)));
+                }
+
+                return result.InputError
+                    ? GetInputError(result)
+                    : ResultWrapper<AccessListForRpc>.Fail(result.Error, ErrorCodes.InternalError, new(GetResultAccessList(tx, result), GetResultGas(tx, result)));
+            }
+
             private static AccessListItemForRpc[] GetResultAccessList(Transaction tx, BlockchainBridge.CallOutput result)
             {
                 AccessList? accessList = result.AccessList ?? tx.AccessList;

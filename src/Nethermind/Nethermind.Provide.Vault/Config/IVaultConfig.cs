@@ -50,10 +50,10 @@ namespace Nethermind.Vault.Config
         [ConfigItem(Description = "Authorization token required to access Provide Services NChain", DefaultValue = "null")]
         string NChainToken { get; set; }
 
-        [ConfigItem(Description = "The NChain URI scheme", DefaultValue = "https")]
+        [ConfigItem(Description = "The NChain URI scheme", DefaultValue = "null")]
         string NChainScheme { get; set; }
 
-        [ConfigItem(Description = "Path to the NChain API", DefaultValue = "api/v1")]
+        [ConfigItem(Description = "Path to the NChain API", DefaultValue = "null")]
         string NChainPath { get; set; }
 
         [ConfigItem(Description = "NChain network ID to be used.", DefaultValue = "null")]
