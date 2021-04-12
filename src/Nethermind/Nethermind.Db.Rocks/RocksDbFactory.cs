@@ -41,7 +41,7 @@ namespace Nethermind.Db.Rocks
 
         public IColumnsDb<T> CreateColumnsDb<T>(RocksDbSettings rocksDbSettings) where T : notnull
         {
-            return new ColumnsDb<T>(_basePath, rocksDbSettings, _dbConfig, _logManager);
+            return new SimpleColumnRocksDb<T>(_basePath, rocksDbSettings, _dbConfig, _logManager);
         }
     }
 }

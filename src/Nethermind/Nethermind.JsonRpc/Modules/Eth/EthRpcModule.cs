@@ -58,8 +58,6 @@ namespace Nethermind.JsonRpc.Modules.Eth
         private readonly IWallet _wallet;
 
         private readonly ILogger _logger;
-        private readonly TimeSpan _cancellationTokenTimeout;
-
         private static bool HasStateForBlock(IBlockchainBridge blockchainBridge, BlockHeader header)
         {
             RootCheckVisitor rootCheckVisitor = new();
@@ -85,7 +83,6 @@ namespace Nethermind.JsonRpc.Modules.Eth
             _txPoolBridge = txPool ?? throw new ArgumentNullException(nameof(txPool));
             _txSender = txSender ?? throw new ArgumentNullException(nameof(txSender));
             _wallet = wallet ?? throw new ArgumentNullException(nameof(wallet));
-            _cancellationTokenTimeout = TimeSpan.FromMilliseconds(rpcConfig.Timeout);
         }
 
         public ResultWrapper<string> eth_protocolVersion()
@@ -359,15 +356,15 @@ namespace Nethermind.JsonRpc.Modules.Eth
         }
 
         public ResultWrapper<string> eth_call(TransactionForRpc transactionCall, BlockParameter? blockParameter = null) =>
-            new CallTransactionExecutor(_blockchainBridge, _blockFinder, _cancellationTokenTimeout, _rpcConfig)
+            new CallTxExecutor(_blockchainBridge, _blockFinder, _rpcConfig)
                 .ExecuteTx(transactionCall, blockParameter);
 
         public ResultWrapper<UInt256?> eth_estimateGas(TransactionForRpc transactionCall, BlockParameter blockParameter) =>
-            new EstimateGasTransactionExecutor(_blockchainBridge, _blockFinder, _cancellationTokenTimeout, _rpcConfig)
+            new EstimateGasTxExecutor(_blockchainBridge, _blockFinder, _rpcConfig)
                 .ExecuteTx(transactionCall, blockParameter);
 
         public ResultWrapper<AccessListForRpc> eth_createAccessList(TransactionForRpc transactionCall, BlockParameter? blockParameter = null, bool optimize = true) =>
-            new CreateAccessListTransactionExecutor(_blockchainBridge, _blockFinder, _cancellationTokenTimeout, _rpcConfig, optimize)
+            new CreateAccessListTxExecutor(_blockchainBridge, _blockFinder, _rpcConfig, optimize)
                 .ExecuteTx(transactionCall, blockParameter);
 
         public ResultWrapper<BlockForRpc> eth_getBlockByHash(Keccak blockHash, bool returnFullTransactionObjects)
@@ -619,7 +616,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
             try
             {
-                CancellationTokenSource cancellationTokenSource = new(_cancellationTokenTimeout);
+                CancellationTokenSource cancellationTokenSource = new(_rpcConfig.Timeout);
                 return ResultWrapper<IEnumerable<FilterLog>>.Success(GetLogs(fromBlock, toBlock,
                     cancellationTokenSource, cancellationTokenSource.Token));
             }
