@@ -32,6 +32,8 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Evm;
+using Nethermind.JsonRpc.Modules.DebugModule;
+using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.State.Witnesses;
@@ -65,6 +67,9 @@ namespace Nethermind.Runner.Ethereum.Steps
         [Todo(Improve.Refactor, "Use chain spec for all chain configuration")]
         private Task InitBlockchain()
         {
+            BlockTraceDumper.Converters.AddRange(DebugModuleFactory.Converters);
+            BlockTraceDumper.Converters.AddRange(TraceModuleFactory.Converters);
+            
             var (getApi, setApi) = _api.ForBlockchain;
             
             if (getApi.ChainSpec == null) throw new StepDependencyException(nameof(getApi.ChainSpec));
