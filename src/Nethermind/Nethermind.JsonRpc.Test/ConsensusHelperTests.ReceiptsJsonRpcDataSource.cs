@@ -30,7 +30,7 @@ namespace Nethermind.JsonRpc.Test
 {
     public partial class ConsensusHelperTests
     {
-        private class ReceiptsJsonRpcDataSource : JsonRpcDataSource, IConsensusDataSource<IEnumerable<ReceiptForRpc>>, IConsensusDataSourceWithParameter<Keccak>
+        private class ReceiptsJsonRpcDataSource : JsonRpcDataSource<IEnumerable<ReceiptForRpc>>, IConsensusDataSource<IEnumerable<ReceiptForRpc>>, IConsensusDataSourceWithParameter<Keccak>
         {
             public ReceiptsJsonRpcDataSource(Uri uri, IJsonSerializer serializer) : base(uri, serializer)
             {
@@ -38,15 +38,33 @@ namespace Nethermind.JsonRpc.Test
 
             public Keccak Parameter { get; set; }
             
-            public async Task<IEnumerable<ReceiptForRpc>> GetData()
+            public override async Task<string> GetJsonData() => GetJson(await GetJsonDatas());
+
+            private string GetJson(IEnumerable<string> jsons) => $"[{string.Join(',', jsons)}]";
+
+            private async Task<IEnumerable<string>> GetJsonDatas()
             {
-                JsonRpcRequest request = CreateRequest("eth_getBlockByHash", Parameter.ToString(), false.ToString().ToLowerInvariant());
-                BlockForRpc block = await SendRequest<BlockForRpc>(request);
-                return await Task.WhenAll(block.Transactions.OfType<string>().Select(async t =>
+                JsonRpcRequest request = CreateRequest("eth_getBlockByHash", Parameter.ToString(), false);
+                string blockJson = await SendRequest(request);
+                BlockForRpcTxHashes block = _serializer.Deserialize<JsonRpcSuccessResponse<BlockForRpcTxHashes>>(blockJson).Result;
+                List<string> transactionsJsons = new List<string>(block.Transactions.Length);
+                foreach (string tx in block.Transactions)
                 {
-                    request = CreateRequest("eth_getTransactionReceipt", t);
-                    return await SendRequest<ReceiptForRpc>(request);
-                }));
+                    transactionsJsons.Add(await SendRequest(CreateRequest("eth_getTransactionReceipt", tx)));
+                }
+
+                return transactionsJsons;
+            }
+
+            public override async Task<(IEnumerable<ReceiptForRpc>, string)> GetData()
+            {
+                IEnumerable<string> receiptJsons = (await GetJsonDatas()).ToArray();
+                return (receiptJsons.Select(j => _serializer.Deserialize<JsonRpcSuccessResponse<ReceiptForRpc>>(j).Result), GetJson(receiptJsons));
+            }
+
+            private class BlockForRpcTxHashes : BlockForRpc
+            {
+                public new string[] Transactions { get; set; }
             }
         }
     }

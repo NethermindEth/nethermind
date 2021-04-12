@@ -26,17 +26,16 @@ namespace Nethermind.JsonRpc.Test
 {
     public partial class ConsensusHelperTests
     {
-        private class ParityLikeBlockTraceJsonRpcDataSource : JsonRpcDataSource, IConsensusDataSource<IEnumerable<ParityTxTraceFromStore>>, IConsensusDataSourceWithParameter<long>
+        private class ParityLikeBlockTraceJsonRpcDataSource : JsonRpcDataSource<IEnumerable<ParityTxTraceFromStore>>, 
+            IConsensusDataSource<IEnumerable<ParityTxTraceFromStore>>, 
+            IConsensusDataSourceWithParameter<long>
         {
             public ParityLikeBlockTraceJsonRpcDataSource(Uri uri, IJsonSerializer serializer) : base(uri, serializer)
             {
             }
 
-            public async Task<IEnumerable<ParityTxTraceFromStore>> GetData()
-            {
-                JsonRpcRequest request = CreateRequest("trace_block", Parameter.ToHexString(true));
-                return await SendRequest<ParityTxTraceFromStore[]>(request);
-            }
+            public override async Task<string> GetJsonData() => 
+                await SendRequest(CreateRequest("trace_block", Parameter.ToHexString(true)));
 
             public long Parameter { get; set; }
         }

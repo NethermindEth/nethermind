@@ -30,7 +30,7 @@ namespace Nethermind.JsonRpc.Test
 {
     public partial class ConsensusHelperTests
     {
-        private class ReceiptJsonRpcDataSource : JsonRpcDataSource, IConsensusDataSource<ReceiptForRpc>, IConsensusDataSourceWithParameter<Keccak>
+        private class ReceiptJsonRpcDataSource : JsonRpcDataSource<ReceiptForRpc>, IConsensusDataSource<ReceiptForRpc>, IConsensusDataSourceWithParameter<Keccak>
         {
             public ReceiptJsonRpcDataSource(Uri uri, IJsonSerializer serializer) : base(uri, serializer)
             {
@@ -38,11 +38,8 @@ namespace Nethermind.JsonRpc.Test
 
             public Keccak Parameter { get; set; }
             
-            public async Task<ReceiptForRpc> GetData()
-            {
-                var request = CreateRequest("eth_getTransactionReceipt", Parameter.ToString());
-                return await SendRequest<ReceiptForRpc>(request);
-            }
+            public override async Task<string> GetJsonData() => 
+                await SendRequest(CreateRequest("eth_getTransactionReceipt", Parameter.ToString()));
         }
     }
 }

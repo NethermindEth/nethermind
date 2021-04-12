@@ -31,7 +31,10 @@ namespace Nethermind.JsonRpc.Test
 {
     public partial class ConsensusHelperTests
     {
-        private class GethLikeBlockTraceJsonRpcDataSource : JsonRpcDataSource, IConsensusDataSource<IEnumerable<GethLikeTxTrace>>, IConsensusDataSourceWithParameter<Keccak>, IConsensusDataSourceWithParameter<GethTraceOptions>
+        private class GethLikeBlockTraceJsonRpcDataSource : JsonRpcDataSource<IEnumerable<GethLikeTxTrace>>, 
+            IConsensusDataSource<IEnumerable<GethLikeTxTrace>>, 
+            IConsensusDataSourceWithParameter<Keccak>,
+            IConsensusDataSourceWithParameter<GethTraceOptions>
         {
             private Keccak _blockHash;
             private GethTraceOptions _options;
@@ -52,11 +55,8 @@ namespace Nethermind.JsonRpc.Test
                 set => _options = value;
             }
 
-            public async Task<IEnumerable<GethLikeTxTrace>> GetData()
-            {
-                JsonRpcRequest request = CreateRequest("debug_traceBlockByHash", _blockHash.ToString(), _serializer.Serialize(_options));
-                return await SendRequest<GethLikeTxTrace[]>(request);
-            }
+            public override async Task<string> GetJsonData() => 
+                await SendRequest(CreateRequest("debug_traceBlockByHash", _blockHash.ToString(), _serializer.Serialize(_options)));
         }
     }
 }

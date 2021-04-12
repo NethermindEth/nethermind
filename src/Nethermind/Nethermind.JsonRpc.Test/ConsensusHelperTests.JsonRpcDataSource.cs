@@ -20,17 +20,19 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
+using System.Text;
 using System.Threading.Tasks;
 using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Serialization.Json;
+using Newtonsoft.Json;
 
 namespace Nethermind.JsonRpc.Test
 {
     public partial class ConsensusHelperTests
     {
-        private abstract class JsonRpcDataSource : IDisposable
+        private abstract class JsonRpcDataSource<T> : IConsensusDataSource<T>
         {
             private readonly Uri _uri;
             protected readonly IJsonSerializer _serializer;
@@ -43,18 +45,20 @@ namespace Nethermind.JsonRpc.Test
                 _httpClient = new HttpClient();
             }
             
-            protected async Task<TResult> SendRequest<TResult>(JsonRpcRequest request)
+            protected async Task<string> SendRequest(JsonRpcRequest request)
             {
                 using HttpRequestMessage message = new HttpRequestMessage(HttpMethod.Post, _uri)
                 {
-                    Content = new StringContent(_serializer.Serialize(request))
+                    Content = new StringContent(_serializer.Serialize(request), Encoding.UTF8, "application/json")
+                    
                 };
                 using HttpResponseMessage result = await _httpClient.SendAsync(message);
-                return _serializer.Deserialize<TResult>(await result.Content.ReadAsStringAsync());
+                string content = await result.Content.ReadAsStringAsync();
+                return content;
             }
 
-            protected JsonRpcRequest CreateRequest(string methodName, params string[] parameters) =>
-                new JsonRpcRequest()
+            protected JsonRpcRequestWithParams CreateRequest(string methodName, params object[] parameters) =>
+                new JsonRpcRequestWithParams()
                 {
                     Id = 1,
                     JsonRpc = "2.0",
@@ -65,6 +69,26 @@ namespace Nethermind.JsonRpc.Test
             public void Dispose()
             {
                 _httpClient?.Dispose();
+            }
+
+            protected class JsonRpcSuccessResponse<T> : JsonRpcSuccessResponse
+            {
+                [JsonProperty(PropertyName = "result", NullValueHandling = NullValueHandling.Include, Order = 1)]
+                public new T Result { get { return (T)base.Result;} set { base.Result = value; } }
+            }
+
+            public virtual async Task<(T, string)> GetData()
+            {
+                string jsonData = await GetJsonData();
+                return (_serializer.Deserialize<JsonRpcSuccessResponse<T>>(jsonData).Result, jsonData);
+            }
+
+            public abstract Task<string> GetJsonData();
+            
+            public class JsonRpcRequestWithParams : JsonRpcRequest
+            {
+                [JsonProperty(Required = Required.Default)]
+                public new object[]? Params { get; set; }
             }
         }
     }
