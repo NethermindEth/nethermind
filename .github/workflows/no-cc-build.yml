@@ -25,10 +25,11 @@ jobs:
       run: |
         brew install gmp lz4 zstd
         git clone https://github.com/google/snappy.git
+        cd snappy/
         git submodule update --init
         mkdir build
         cd build && cmake ../ && make -j8
-        make install    
+        make install     
     - name: Nethermind.Abi.Test
       run: |
         dotnet test -c Release src/Nethermind/Nethermind.Abi.Test;
@@ -76,10 +77,11 @@ jobs:
       run: |
         brew install gmp lz4 zstd
         git clone https://github.com/google/snappy.git
+        cd snappy/
         git submodule update --init
         mkdir build
         cd build && cmake ../ && make -j8
-        make install    
+        make install     
     - name: Nethermind.Clique.Test
       run: |
         dotnet test -c Release src/Nethermind/Nethermind.Clique.Test
@@ -130,6 +132,7 @@ jobs:
       run: |
         brew install gmp lz4 zstd
         git clone https://github.com/google/snappy.git
+        cd snappy/
         git submodule update --init
         mkdir build
         cd build && cmake ../ && make -j8
@@ -181,10 +184,11 @@ jobs:
       run: |
         brew install gmp lz4 zstd
         git clone https://github.com/google/snappy.git
+        cd snappy/
         git submodule update --init
         mkdir build
         cd build && cmake ../ && make -j8
-        make install    
+        make install     
     - name: Nethermind.Secp256k1.Test.Linux
       run: |
         dotnet test -c Release src/Nethermind/Nethermind.Secp256k1.Test
@@ -220,6 +224,7 @@ jobs:
       run: |
         brew install gmp lz4 zstd
         git clone https://github.com/google/snappy.git
+        cd snappy/
         git submodule update --init
         mkdir build
         cd build && cmake ../ && make -j8
@@ -277,10 +282,11 @@ jobs:
       run: |
         brew install gmp lz4 zstd
         git clone https://github.com/google/snappy.git
+        cd snappy/
         git submodule update --init
         mkdir build
         cd build && cmake ../ && make -j8
-        make install    
+        make install     
     - name: Nethermind.Runner.Test
       run: |
         dotnet test -c Release src/Nethermind/Nethermind.Runner.Test
