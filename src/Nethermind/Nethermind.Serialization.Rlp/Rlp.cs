@@ -294,7 +294,6 @@ namespace Nethermind.Serialization.Rlp
                 else
                 {
                     sequence[position++] = Encode(transaction.Type == TxType.Legacy ? signature.V : (ulong)signature.RecoveryId);
-                   // sequence[position++] = Encode(signature.V);
                     sequence[position++] = Encode(signature.RAsSpan.WithoutLeadingZeros());
                     sequence[position++] = Encode(signature.SAsSpan.WithoutLeadingZeros());   
                 }
