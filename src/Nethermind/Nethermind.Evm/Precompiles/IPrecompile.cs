@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 
@@ -25,8 +26,8 @@ namespace Nethermind.Evm.Precompiles
 
         long BaseGasCost(IReleaseSpec releaseSpec);
 
-        long DataGasCost(byte[] inputData, IReleaseSpec releaseSpec);
+        long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec);
 
-        (byte[], bool) Run(byte[] inputData, IReleaseSpec releaseSpec);
+        (ReadOnlyMemory<byte>, bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec);
     }
 }

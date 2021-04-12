@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Linq;
 using MathNet.Numerics.Random;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm.Precompiles;
@@ -37,10 +38,12 @@ namespace Nethermind.Evm.Test
 
             Prepare input = Prepare.EvmCode.FromCode(randomInput);
             
-            (byte[], bool) gmpPair = ModExpPrecompile.Instance.Run(input.Done, Berlin.Instance);
-            (byte[], bool) bigIntPair = ModExpPrecompile.OldRun(input.Done);
+            (ReadOnlyMemory<byte>, bool) gmpPair = ModExpPrecompile.Instance.Run(input.Done.ToArray(), Berlin.Instance);
+#pragma warning disable 618
+            (ReadOnlyMemory<byte>, bool) bigIntPair = ModExpPrecompile.OldRun(input.Done.ToArray());
+#pragma warning restore 618
             
-            Assert.AreEqual(gmpPair.Item1, bigIntPair.Item1);
+            Assert.AreEqual(gmpPair.Item1.ToArray(), bigIntPair.Item1.ToArray());
         }
     }
 }

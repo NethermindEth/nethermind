@@ -28,6 +28,8 @@ using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 using Metrics = Nethermind.Db.Metrics;
 
+[assembly: InternalsVisibleTo("Ethereum.Test.Base")]
+[assembly: InternalsVisibleTo("Ethereum.Blockchain.Test")]
 [assembly: InternalsVisibleTo("Nethermind.State.Test")]
 [assembly: InternalsVisibleTo("Nethermind.Benchmark")]
 [assembly: InternalsVisibleTo("Nethermind.Blockchain.Test")]
@@ -253,6 +255,20 @@ namespace Nethermind.State
             }
         }
 
+        internal void SetNonce(Address address, UInt256 nonce)
+        {
+            _needsStateRootUpdate = true;
+            Account? account = GetThroughCache(address);
+            if (account is null)
+            {
+                throw new InvalidOperationException($"Account {address} is null when incrementing nonce");
+            }
+            
+            Account changedAccount = account.WithChangedNonce(nonce);
+            if (_logger.IsTrace) _logger.Trace($"  Update {address} N {account.Nonce} -> {changedAccount.Nonce}");
+            PushUpdate(address, changedAccount);
+        }
+        
         public void IncrementNonce(Address address)
         {
             _needsStateRootUpdate = true;
@@ -289,7 +305,7 @@ namespace Nethermind.State
             }
         }
 
-        public Keccak UpdateCode(byte[] code)
+        public Keccak UpdateCode(ReadOnlyMemory<byte> code)
         {
             _needsStateRootUpdate = true;
             if (code.Length == 0)
@@ -297,9 +313,9 @@ namespace Nethermind.State
                 return Keccak.OfAnEmptyString;
             }
 
-            Keccak codeHash = Keccak.Compute(code);
+            Keccak codeHash = Keccak.Compute(code.Span);
             
-            _codeDb[codeHash.Bytes] = code;
+            _codeDb[codeHash.Bytes] = code.ToArray();
 
             return codeHash;
         }

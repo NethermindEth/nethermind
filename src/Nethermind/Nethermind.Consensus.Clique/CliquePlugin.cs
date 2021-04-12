@@ -171,12 +171,12 @@ namespace Nethermind.Consensus.Clique
             }
 
             var (getFromApi, _) = _nethermindApi!.ForRpc;
-            CliqueRpcModule cliqueRpcModule = new CliqueRpcModule(
+            CliqueRpcRpcModule cliqueRpcRpcModule = new CliqueRpcRpcModule(
                 getFromApi!.BlockProducer as ICliqueBlockProducer,
                 _snapshotManager!,
                 getFromApi.BlockTree!);
 
-            var modulePool = new SingletonModulePool<ICliqueModule>(cliqueRpcModule);
+            var modulePool = new SingletonModulePool<ICliqueRpcModule>(cliqueRpcRpcModule);
             getFromApi.RpcModuleProvider.Register(modulePool);
 
             return Task.CompletedTask;

@@ -4,7 +4,7 @@ using System.Threading.Tasks;
 
 namespace Nethermind.DataMarketplace.Providers.Infrastructure.Persistence.Rocks
 {
-    public class ProviderDbNames
+    public static class ProviderDbNames
     {
         public const string Consumers = "consumers";
         public const string DataAssets = "dataAssets";
@@ -28,11 +28,8 @@ namespace Nethermind.DataMarketplace.Providers.Infrastructure.Persistence.Rocks
         }
         public async Task Init()
         {
-            RegisterDb(new RocksDbSettings()
+            RegisterDb(new RocksDbSettings(GetTitleDbName(ProviderDbNames.Consumers), ProviderDbNames.Consumers)
             {
-                DbName = GetTitleDbName(ProviderDbNames.Consumers),
-                DbPath = ProviderDbNames.Consumers,
-
                 CacheIndexAndFilterBlocks = _providerConfig.ConsumersDbCacheIndexAndFilterBlocks,
                 BlockCacheSize = _providerConfig.ConsumersDbBlockCacheSize,
                 WriteBufferNumber = _providerConfig.ConsumersDbWriteBufferNumber,
@@ -41,11 +38,8 @@ namespace Nethermind.DataMarketplace.Providers.Infrastructure.Persistence.Rocks
                 UpdateReadMetrics = () => ProviderMetrics.ConsumersDbReads++,
                 UpdateWriteMetrics = () => ProviderMetrics.ConsumersDbWrites++,
             });
-            RegisterDb(new RocksDbSettings()
+            RegisterDb(new RocksDbSettings(GetTitleDbName(ProviderDbNames.DataAssets), ProviderDbNames.DataAssets)
             {
-                DbName = GetTitleDbName(ProviderDbNames.DataAssets),
-                DbPath = ProviderDbNames.DataAssets,
-
                 CacheIndexAndFilterBlocks = _providerConfig.DataAssetsDbCacheIndexAndFilterBlocks,
                 BlockCacheSize = _providerConfig.DataAssetsDbBlockCacheSize,
                 WriteBufferNumber = _providerConfig.DataAssetsDbWriteBufferNumber,
@@ -54,11 +48,8 @@ namespace Nethermind.DataMarketplace.Providers.Infrastructure.Persistence.Rocks
                 UpdateReadMetrics = () => ProviderMetrics.DataAssetsDbReads++,
                 UpdateWriteMetrics = () => ProviderMetrics.DataAssetsDbWrites++,
             });
-            RegisterDb(new RocksDbSettings()
+            RegisterDb(new RocksDbSettings(GetTitleDbName(ProviderDbNames.PaymentClaims), ProviderDbNames.PaymentClaims)
             {
-                DbName = GetTitleDbName(ProviderDbNames.PaymentClaims),
-                DbPath = ProviderDbNames.PaymentClaims,
-
                 CacheIndexAndFilterBlocks = _providerConfig.PaymentClaimsDbCacheIndexAndFilterBlocks,
                 BlockCacheSize = _providerConfig.PaymentClaimsDbBlockCacheSize,
                 WriteBufferNumber = _providerConfig.PaymentClaimsDbWriteBufferNumber,
@@ -67,11 +58,8 @@ namespace Nethermind.DataMarketplace.Providers.Infrastructure.Persistence.Rocks
                 UpdateReadMetrics = () => ProviderMetrics.PaymentClaimsDbReads++,
                 UpdateWriteMetrics = () => ProviderMetrics.PaymentClaimsDbWrites++,
             });
-            RegisterDb(new RocksDbSettings()
+            RegisterDb(new RocksDbSettings(GetTitleDbName(ProviderDbNames.ProviderDepositApprovals), ProviderDbNames.ProviderDepositApprovals)
             {
-                DbName = GetTitleDbName(ProviderDbNames.ProviderDepositApprovals),
-                DbPath = ProviderDbNames.ProviderDepositApprovals,
-
                 CacheIndexAndFilterBlocks = _providerConfig.ProviderDepositApprovalsDbCacheIndexAndFilterBlocks,
                 BlockCacheSize = _providerConfig.ProviderDepositApprovalsDbBlockCacheSize,
                 WriteBufferNumber = _providerConfig.ProviderDepositApprovalsDbWriteBufferNumber,
@@ -80,11 +68,8 @@ namespace Nethermind.DataMarketplace.Providers.Infrastructure.Persistence.Rocks
                 UpdateReadMetrics = () => ProviderMetrics.ProviderDepositApprovalsDbReads++,
                 UpdateWriteMetrics = () => ProviderMetrics.ProviderDepositApprovalsDbWrites++,
             });
-            RegisterDb(new RocksDbSettings()
+            RegisterDb(new RocksDbSettings(GetTitleDbName(ProviderDbNames.ProviderReceipts), ProviderDbNames.ProviderReceipts)
             {
-                DbName = GetTitleDbName(ProviderDbNames.ProviderReceipts),
-                DbPath = ProviderDbNames.ProviderReceipts,
-
                 CacheIndexAndFilterBlocks = _providerConfig.ProviderReceiptsDbCacheIndexAndFilterBlocks,
                 BlockCacheSize = _providerConfig.ProviderReceiptsDbBlockCacheSize,
                 WriteBufferNumber = _providerConfig.ProviderReceiptsDbWriteBufferNumber,
@@ -93,11 +78,8 @@ namespace Nethermind.DataMarketplace.Providers.Infrastructure.Persistence.Rocks
                 UpdateReadMetrics = () => ProviderMetrics.ProviderReceiptsDbReads++,
                 UpdateWriteMetrics = () => ProviderMetrics.ProviderReceiptsDbWrites++,
             });
-            RegisterDb(new RocksDbSettings()
+            RegisterDb(new RocksDbSettings(GetTitleDbName(ProviderDbNames.ProviderSessions), ProviderDbNames.ProviderSessions)
             {
-                DbName = GetTitleDbName(ProviderDbNames.ProviderSessions),
-                DbPath = ProviderDbNames.ProviderSessions,
-
                 CacheIndexAndFilterBlocks = _providerConfig.ProviderSessionsDbCacheIndexAndFilterBlocks,
                 BlockCacheSize = _providerConfig.ProviderSessionsDbBlockCacheSize,
                 WriteBufferNumber = _providerConfig.ProviderSessionsDbWriteBufferNumber,

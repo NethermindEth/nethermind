@@ -64,15 +64,8 @@ namespace Nethermind.Db
 
         private RocksDbSettings BuildRocksDbSettings(string dbName, Action updateReadsMetrics, Action updateWriteMetrics)
         {
-            return BuildRocksDbSettings(GetTitleDbName(dbName), dbName, updateReadsMetrics, updateWriteMetrics);
-        }
-
-        private RocksDbSettings BuildRocksDbSettings(string dbName, string dbPath, Action updateReadsMetrics, Action updateWriteMetrics)
-        {
-            return new()
+            return new(GetTitleDbName(dbName), dbName)
             {
-                DbName = dbName,
-                DbPath = dbPath,
                 UpdateReadMetrics = updateReadsMetrics,
                 UpdateWriteMetrics = updateWriteMetrics
             };

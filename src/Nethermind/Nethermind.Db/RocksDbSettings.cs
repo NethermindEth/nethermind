@@ -21,15 +21,21 @@ namespace Nethermind.Db
 {
     public class RocksDbSettings
     {
-        public string? DbName { get; set; }
-        public string? DbPath { get; set; }
+        public RocksDbSettings(string name, string path)
+        {
+            DbName = name;
+            DbPath = path;
+        }
+        
+        public string DbName { get; }
+        public string DbPath { get; }
 
-        public Action? UpdateReadMetrics { get; set; }
-        public Action? UpdateWriteMetrics { get; set; }
+        public Action? UpdateReadMetrics { get; init; }
+        public Action? UpdateWriteMetrics { get; init; }
 
-        public ulong? WriteBufferSize { get; set; }
-        public uint? WriteBufferNumber { get; set; }
-        public ulong? BlockCacheSize { get; set; }
-        public bool? CacheIndexAndFilterBlocks { get; set; }
+        public ulong? WriteBufferSize { get; init; }
+        public uint? WriteBufferNumber { get; init; }
+        public ulong? BlockCacheSize { get; init; }
+        public bool? CacheIndexAndFilterBlocks { get; init; }
     }
 }

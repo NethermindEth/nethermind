@@ -24,6 +24,11 @@ namespace Nethermind.Serialization.Rlp
     {
         public ChainLevelInfo? Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
+            if (rlpStream.Length == 0)
+            {
+                throw new RlpException($"Received a 0 length stream when decoding a {nameof(ChainLevelInfo)}");
+            }
+            
             if (rlpStream.IsNextItemNull())
             {
                 return null;

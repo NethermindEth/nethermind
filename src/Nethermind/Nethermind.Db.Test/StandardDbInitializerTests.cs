@@ -16,15 +16,10 @@
 
 using System;
 using System.IO;
-using System.Linq;
 using System.Threading.Tasks;
-using Nethermind.Blockchain.Synchronization;
 using Nethermind.Db.Rocks;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Logging;
-using Nethermind.Synchronization.BeamSync;
-using Nethermind.Synchronization.ParallelSync;
-using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Db.Test
@@ -62,7 +57,7 @@ namespace Nethermind.Db.Test
                 StandardDbInitializer initializer = new(dbProvider, rocksDbFactory, new MemDbFactory());
                 await initializer.InitStandardDbsAsync(useReceipts);
                 Type receiptsType = useReceipts ? typeof(SimpleColumnRocksDb<ReceiptsColumns>) : typeof(ReadOnlyColumnsDb<ReceiptsColumns>);
-                AssertStandardDbs(dbProvider, typeof(SimpleRocksDb), receiptsType);
+                AssertStandardDbs(dbProvider, typeof(DbOnTheRocks), receiptsType);
             }
         }
 
@@ -78,12 +73,12 @@ namespace Nethermind.Db.Test
                 using (ReadOnlyDbProvider readonlyDbProvider = new(dbProvider, true))
                 {
                     Type receiptsType = useReceipts ? typeof(SimpleColumnRocksDb<ReceiptsColumns>) : typeof(ReadOnlyColumnsDb<ReceiptsColumns>);
-                    AssertStandardDbs(dbProvider, typeof(SimpleRocksDb), receiptsType);
+                    AssertStandardDbs(dbProvider, typeof(DbOnTheRocks), receiptsType);
                     AssertStandardDbs(readonlyDbProvider, typeof(ReadOnlyDb), typeof(ReadOnlyColumnsDb<ReceiptsColumns>));
                 }
             }
         }
-
+        
         private void AssertStandardDbs(IDbProvider dbProvider, Type dbType, Type receiptsDb)
         {
             Assert.IsTrue(dbProvider.BlockInfosDb.GetType() == dbType);

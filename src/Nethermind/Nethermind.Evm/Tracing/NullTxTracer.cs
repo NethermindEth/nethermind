@@ -40,6 +40,7 @@ namespace Nethermind.Evm.Tracing
         public bool IsTracingState => false;
         public bool IsTracingStorage => false;
         public bool IsTracingBlockHash => false;
+        public bool IsTracingAccess => false;
 
         public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak? stateRoot = null)
             => throw new InvalidOperationException(ErrorMessage);
@@ -96,15 +97,15 @@ namespace Nethermind.Evm.Tracing
         public void ReportStorageRead(StorageCell storageCell)
             => throw new InvalidOperationException(ErrorMessage);
 
-        public void ReportAction(long gas, UInt256 value, Address @from, Address to, byte[] input, ExecutionType callType, bool isPrecompileCall = false)
+        public void ReportAction(long gas, UInt256 value, Address @from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
             => throw new InvalidOperationException(ErrorMessage);
 
-        public void ReportActionEnd(long gas, byte[] output)
+        public void ReportActionEnd(long gas, ReadOnlyMemory<byte> output)
             => throw new InvalidOperationException(ErrorMessage);
         public void ReportActionError(EvmExceptionType exceptionType)
             => throw new InvalidOperationException(ErrorMessage);
 
-        public void ReportActionEnd(long gas, Address deploymentAddress, byte[] deployedCode)
+        public void ReportActionEnd(long gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode)
             => throw new InvalidOperationException(ErrorMessage);
         public void ReportBlockHash(Keccak blockHash)
             => throw new InvalidOperationException(ErrorMessage);
@@ -116,6 +117,9 @@ namespace Nethermind.Evm.Tracing
         public void ReportRefund(long refund)
             => throw new InvalidOperationException(ErrorMessage);
         public void ReportExtraGasPressure(long extraGasPressure)
+            => throw new InvalidOperationException(ErrorMessage);
+
+        public void ReportAccess(IReadOnlySet<Address> accessedAddresses, IReadOnlySet<StorageCell> accessedStorageCells)
             => throw new InvalidOperationException(ErrorMessage);
     }
 }

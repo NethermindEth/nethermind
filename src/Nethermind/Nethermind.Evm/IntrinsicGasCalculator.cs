@@ -59,13 +59,13 @@ namespace Nethermind.Evm
 
             return dataCost;
         }
-
+        
         private static long AccessListCost(Transaction transaction, IReleaseSpec releaseSpec)
         {
+            AccessList? accessList = transaction.AccessList;
             long accessListCost = 0;
-            if (transaction.AccessList is not null)
+            if (accessList is not null)
             {
-                AccessList accessList = transaction.AccessList;
                 if (releaseSpec.UseTxAccessLists)
                 {
                     if (accessList.IsNormalized)
@@ -92,7 +92,7 @@ namespace Nethermind.Evm
                 else
                 {
                     throw new InvalidDataException(
-                        $"Transaction with an access list received within the context of {releaseSpec.Name}");
+                        $"Transaction with an access list received within the context of {releaseSpec.Name}. Eip-2930 is not enabled.");
                 }
             }
 

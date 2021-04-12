@@ -79,7 +79,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
             RegisterRpcModules registerRpcModules = new RegisterRpcModules(context);
             await registerRpcModules.Execute(CancellationToken.None);
             
-            context.RpcModuleProvider.DidNotReceiveWithAnyArgs().Register<IProofModule>(null);
+            context.RpcModuleProvider.DidNotReceiveWithAnyArgs().Register<IProofRpcModule>(null);
         }
     }
 }
