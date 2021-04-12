@@ -58,7 +58,7 @@
       }
     }
   },
-  "nodes": [
+  "nodes": [	"enode://0c72e2b7873e4342d725b5990c17adb2b159aad2ff5853de7e4910b25522a1f9e78f9cd802a8a3225b8fae4e994e522b50d6bd5a163eb3a7b49a0a73ca9a1c7e@3.12.166.199:30303"
   ],
   "accounts": {
    "fe3b557e8fb62b89f4916b721be55ceb828dbd73":{
