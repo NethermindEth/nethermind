@@ -1,0 +1,38 @@
+Cover scenarios:
+
+node running in Docker
+node running as a process
+node running to serve Eth2
+
+# Upgrading Nethermind for Berlin fork update
+
+All details regarding the upgrade can be found on the official EF announcement https://blog.ethereum.org/2021/03/08/ethereum-berlin-upgrade-announcement/
+
+## Upgrading Nethermind for Docker users
+
+Pull the latest version of Nethermind using the `latest` or `1.10.*` version tag.
+
+```
+docker pull nethermind/nethermind:1.10.*
+```
+
+or pull with docker-compose if `nethermind/nethermind` base image is specified
+
+```
+docker-compose pull
+```
+
+
+## Upgrading Nethermind for Systemd users
+
+Simply download the latest Nethermind package either from https://downloads.nethermind.io or https://github.com/NethermindEth/nethermind/releases
+and make sure that the package is extracted in the `WorkingDirectory` path defined in your systemd service.
+
+```
+WorkingDirectory=/home/nethermind/nethermind
+```
+
+## Upgrading Nethermind when running as a background process
+
+Download the latest Nethermind package either from https://downloads.nethermind.io or https://github.com/NethermindEth/nethermind/releases 
+and extract the package in the folder you currently use for running Nethermind.

@@ -115,7 +115,13 @@ jobs:
         sudo apt-get install libsnappy-dev libc6-dev libc6
     - name: Installing macOS packages
       if: matrix.os == 'macOS-latest'
-      run: brew install gmp && brew install snappy && brew install lz4 && brew install zstd
+      run: |
+        brew install gmp lz4 zstd
+        git clone https://github.com/google/snappy.git
+        git submodule update --init
+        mkdir build
+        cd build && cmake ../ && make -j8
+        make install
     - name: Nethermind.HealthChecks.Test
       run: |
         dotnet test -c Release src/Nethermind/Nethermind.HealthChecks.Test
