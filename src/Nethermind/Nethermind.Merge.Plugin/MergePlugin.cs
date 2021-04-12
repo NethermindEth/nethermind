@@ -49,8 +49,8 @@ namespace Nethermind.Merge.Plugin
         {
             if (_mergeConfig.Enabled)
             {
-                ConsensusModule consensusModule = new ConsensusModule();
-                _api.RpcModuleProvider!.Register(new SingletonModulePool<IConsensusModule>(consensusModule, true));
+                IConsensusRpcModule consensusRpcModule = new ConsensusRpcModule();
+                _api.RpcModuleProvider!.RegisterSingle<IConsensusRpcModule>(consensusRpcModule);
                 if (_logger.IsInfo) _logger.Info("Consensus Module has been enabled");
             }
 

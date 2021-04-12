@@ -37,7 +37,7 @@ namespace Nethermind.JsonRpc.Modules
         private Dictionary<string, ResolvedMethodInfo> _methods
             = new(StringComparer.InvariantCulture);
         
-        private Dictionary<ModuleType, (Func<bool, Task<IModule>> RentModule, Action<IModule> ReturnModule)> _pools
+        private Dictionary<ModuleType, (Func<bool, Task<IRpcModule>> RentModule, Action<IRpcModule> ReturnModule)> _pools
             = new();
         
         private IRpcMethodFilter _filter = NullRpcMethodFilter.Instance;
@@ -59,7 +59,7 @@ namespace Nethermind.JsonRpc.Modules
 
         public IReadOnlyCollection<ModuleType> All => _modules;
 
-        public void Register<T>(IRpcModulePool<T> pool) where T : IModule
+        public void Register<T>(IRpcModulePool<T> pool) where T : IRpcModule
         {
             RpcModuleAttribute attribute = typeof(T).GetCustomAttribute<RpcModuleAttribute>();
             if (attribute == null)
@@ -107,19 +107,19 @@ namespace Nethermind.JsonRpc.Modules
             return (result.MethodInfo, result.ReadOnly);
         }
 
-        public Task<IModule> Rent(string methodName, bool canBeShared)
+        public Task<IRpcModule> Rent(string methodName, bool canBeShared)
         {
             if (!_methods.TryGetValue(methodName, out ResolvedMethodInfo result)) return null;
 
             return _pools[result.ModuleType].RentModule(canBeShared);
         }
 
-        public void Return(string methodName, IModule module)
+        public void Return(string methodName, IRpcModule rpcModule)
         {
             if (!_methods.TryGetValue(methodName, out ResolvedMethodInfo result))
                 throw new InvalidOperationException("Not possible to return an unresolved module");
 
-            _pools[result.ModuleType].ReturnModule(module);
+            _pools[result.ModuleType].ReturnModule(rpcModule);
         }
 
         private IDictionary<string, (MethodInfo, bool, RpcEndpoint)> GetMethodDict(Type type)

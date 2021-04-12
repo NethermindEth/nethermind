@@ -80,7 +80,7 @@ namespace Nethermind.DataMarketplace.Initializers
                 EthModuleProxyFactory proxyFactory = new(
                     _ndmApi.EthJsonRpcClientProxy,
                     _ndmApi.Wallet);
-                _ndmApi.RpcModuleProvider?.Register(new SingletonModulePool<IEthModule>(proxyFactory, true));
+                _ndmApi.RpcModuleProvider?.Register(new SingletonModulePool<IEthRpcModule>(proxyFactory, true));
                 if (logger.IsInfo) logger.Info("Enabled JSON RPC Proxy for NDM.");
             }
 

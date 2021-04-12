@@ -27,7 +27,7 @@ namespace Nethermind.Db
         private readonly IMemDbFactory _memDbFactory;
         private readonly List<Action> _registrations = new();
 
-        public RocksDbInitializer(IDbProvider? dbProvider, IRocksDbFactory? rocksDbFactory, IMemDbFactory? memDbFactory)
+        protected RocksDbInitializer(IDbProvider? dbProvider, IRocksDbFactory? rocksDbFactory, IMemDbFactory? memDbFactory)
         {
             _dbProvider = dbProvider ?? throw new ArgumentNullException(nameof(dbProvider));
             _rocksDbFactory = rocksDbFactory ?? NullRocksDbFactory.Instance;
@@ -90,7 +90,7 @@ namespace Nethermind.Db
             await Task.WhenAll(allInitializers);
         }
 
-        public string GetTitleDbName(string dbName)
+        protected static string GetTitleDbName(string dbName)
         {
             return char.ToUpper(dbName[0]) + dbName.Substring(1);
         }

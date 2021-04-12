@@ -86,5 +86,12 @@ namespace Nethermind.Evm.Test
             result.StatusCode.Should().Be(1);
             AssertGas(result, GasCostOf.Transaction + 2869);
         }
+
+        protected override TestAllTracerWithOutput CreateTracer()
+        {
+            TestAllTracerWithOutput tracer = base.CreateTracer();
+            tracer.IsTracingAccess = false;
+            return tracer;
+        }
     }
 }

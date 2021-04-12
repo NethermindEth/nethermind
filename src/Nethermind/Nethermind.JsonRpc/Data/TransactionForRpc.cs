@@ -43,7 +43,7 @@ namespace Nethermind.JsonRpc.Data
             Gas = transaction.GasLimit;
             Input = Data = transaction.Data;
             Type = transaction.Type;
-            AccessList = TryGetAccessListItems();
+            AccessList = transaction.AccessList is null ? null : AccessListItemForRpc.FromAccessList(transaction.AccessList);
 
             Signature? signature = transaction.Signature;
             if (signature != null)
@@ -51,29 +51,6 @@ namespace Nethermind.JsonRpc.Data
                 R = new UInt256(signature.R, true);
                 S = new UInt256(signature.S, true);
                 V = (UInt256?)signature.V;
-            }
-            
-            
-            AccessListItemForRpc[]? TryGetAccessListItems()
-            {
-                int? accessListLength = transaction.AccessList?.Data.Count;
-                if (accessListLength == null)
-                {
-                    return null;
-                }
-                
-                AccessListItemForRpc[] accessList = new AccessListItemForRpc[(int)accessListLength];
-                for (int i = 0; i < accessListLength; i++)
-                {
-                    Address address = transaction.AccessList.Data.Keys.ElementAt(i);
-                    IEnumerable<UInt256>? keys = TryGetHashSet(transaction.AccessList.Data.Values.ElementAt(i));
-                    accessList[i] = new AccessListItemForRpc(address, keys);
-                }
-                return accessList;
-                
-                
-                IEnumerable<UInt256>? TryGetHashSet(IReadOnlySet<UInt256> argValue)
-                    => argValue != null ? new HashSet<UInt256>(argValue) : null;
             }
         }
 
@@ -151,23 +128,9 @@ namespace Nethermind.JsonRpc.Data
             return tx;
         }
 
-        private AccessList? TryGetAccessList()
-        {
-            if (Type != TxType.AccessList || AccessList == null)
-            {
-                return null;
-            }
-
-            AccessListBuilder accessListBuilder = new();
-            for (int i = 0; i < AccessList.Length; i++)
-            {
-                accessListBuilder.AddAddress(AccessList[i].Address);
-                for (int j = 0; j < AccessList[i].StorageKeys.Length; j++)
-                {
-                    accessListBuilder.AddStorage(AccessList[i].StorageKeys[j]);
-                }
-            }
-            return accessListBuilder.ToAccessList();
-        }
+        private AccessList? TryGetAccessList() =>
+            Type != TxType.AccessList || AccessList == null 
+                ? null 
+                : AccessListItemForRpc.ToAccessList(AccessList);
     }
 }

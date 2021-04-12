@@ -37,7 +37,7 @@ namespace Nethermind.JsonRpc.Test.Modules
     [TestFixture]
     public class AdminModuleTests
     {
-        private IAdminModule _adminModule;
+        private IAdminRpcModule _adminRpcModule;
         private EthereumJsonSerializer _serializer;
         private NetworkConfig _networkConfig;
         private IBlockTree _blockTree;
@@ -54,14 +54,14 @@ namespace Nethermind.JsonRpc.Test.Modules
             
             IStaticNodesManager staticNodesManager = Substitute.For<IStaticNodesManager>();
             Enode enode = new Enode(_enodeString);
-            _adminModule = new AdminModule(_blockTree, _networkConfig, peerManager, staticNodesManager, enode, _exampleDataDir);
+            _adminRpcModule = new AdminRpcModule(_blockTree, _networkConfig, peerManager, staticNodesManager, enode, _exampleDataDir);
             _serializer = new EthereumJsonSerializer();
         }
         
         [Test]
         public void Test_node_info()
         {
-            string serialized = RpcTest.TestSerializedRequest(_adminModule, "admin_nodeInfo");
+            string serialized = RpcTest.TestSerializedRequest(_adminRpcModule, "admin_nodeInfo");
             JsonRpcSuccessResponse response = _serializer.Deserialize<JsonRpcSuccessResponse>(serialized);
             JsonSerializerSettings settings = new JsonSerializerSettings();
             settings.Converters = EthereumJsonSerializer.CommonConverters.ToList();
@@ -85,7 +85,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public void Test_data_dir()
         {
-            string serialized = RpcTest.TestSerializedRequest(_adminModule, "admin_dataDir");
+            string serialized = RpcTest.TestSerializedRequest(_adminRpcModule, "admin_dataDir");
             JsonRpcSuccessResponse response = _serializer.Deserialize<JsonRpcSuccessResponse>(serialized);
             response.Result.Should().Be(_exampleDataDir);
         }
@@ -93,17 +93,17 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public void Smoke_solc()
         {
-            string serialized = RpcTest.TestSerializedRequest(_adminModule, "admin_setSolc");
+            string serialized = RpcTest.TestSerializedRequest(_adminRpcModule, "admin_setSolc");
         }
         
         [Test]
         public void Smoke_test_peers()
         {
-            string serialized0 = RpcTest.TestSerializedRequest(_adminModule, "admin_addPeer", _enodeString);
-            string serialized1 = RpcTest.TestSerializedRequest(_adminModule, "admin_removePeer", _enodeString);
-            string serialized2 = RpcTest.TestSerializedRequest(_adminModule, "admin_addPeer", _enodeString, "true");
-            string serialized3 = RpcTest.TestSerializedRequest(_adminModule, "admin_removePeer", _enodeString, "true");
-            string serialized4 = RpcTest.TestSerializedRequest(_adminModule, "admin_peers");
+            string serialized0 = RpcTest.TestSerializedRequest(_adminRpcModule, "admin_addPeer", _enodeString);
+            string serialized1 = RpcTest.TestSerializedRequest(_adminRpcModule, "admin_removePeer", _enodeString);
+            string serialized2 = RpcTest.TestSerializedRequest(_adminRpcModule, "admin_addPeer", _enodeString, "true");
+            string serialized3 = RpcTest.TestSerializedRequest(_adminRpcModule, "admin_removePeer", _enodeString, "true");
+            string serialized4 = RpcTest.TestSerializedRequest(_adminRpcModule, "admin_peers");
         }
     }
 }

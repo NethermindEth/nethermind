@@ -26,13 +26,13 @@ namespace Nethermind.Merge.Plugin.Test
         [Test]
         public void consensus_assembleBlock_should_return_expected_results()
         {
-            IConsensusModule consensusModule = CreateConsensusModule();
-            Assert.Throws<NotImplementedException> (() => consensusModule.consensus_assembleBlock(new AssembleBlockRequest()));
+            IConsensusRpcModule consensusRpcModule = CreateConsensusModule();
+            Assert.Throws<NotImplementedException> (() => consensusRpcModule.consensus_assembleBlock(new AssembleBlockRequest()));
         }
 
-        private IConsensusModule CreateConsensusModule()
+        private IConsensusRpcModule CreateConsensusModule()
         {
-            return new ConsensusModule();
+            return new ConsensusRpcModule();
         }
     }
 }

@@ -124,7 +124,7 @@ namespace Nethermind.Cli
 
         public async Task<T?> Post<T>(string method, params object?[] parameters)
         {
-            T result = default;
+            T? result = default;
             try
             {
                 if (_currentClient == null)

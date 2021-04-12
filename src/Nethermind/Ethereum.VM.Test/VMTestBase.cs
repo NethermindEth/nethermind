@@ -205,8 +205,8 @@ namespace Ethereum.VM.Test
                 return;
             }
 
-            Assert.True(Bytes.AreEqual(test.Out, substate.Output),
-                $"Exp: {test.Out.ToHexString(true)} != Actual: {substate.Output.ToHexString(true)}");
+            Assert.True(Bytes.AreEqual(test.Out, substate.Output.ToArray()),
+                $"Exp: {test.Out.ToHexString(true)} != Actual: {substate.Output.ToArray().ToHexString(true)}");
             Assert.AreEqual((long)test.Gas, state.GasAvailable, "gas available");
             foreach (KeyValuePair<Address, AccountState> accountState in test.Post)
             {

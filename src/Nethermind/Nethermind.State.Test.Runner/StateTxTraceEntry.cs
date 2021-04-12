@@ -56,10 +56,10 @@ namespace Nethermind.State.Test.Runner
         public int Refund { get; set; }
 
         [JsonProperty(PropertyName = "opname")]
-        public string OperationName { get; set; }
+        public string? OperationName { get; set; }
         
         [JsonProperty(PropertyName = "error")]
-        public string Error { get; set; } = string.Empty;
+        public string? Error { get; set; } = string.Empty;
 
 //        public Dictionary<string, string> Storage { get; set; }
 

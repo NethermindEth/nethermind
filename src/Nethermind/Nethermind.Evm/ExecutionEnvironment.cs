@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using Nethermind.Core;
 using Nethermind.Int256;
 
@@ -44,7 +45,7 @@ namespace Nethermind.Evm
         /// <summary>
         /// Parameters / arguments of the current call.
         /// </summary>
-        public byte[] InputData { get; set; }
+        public ReadOnlyMemory<byte> InputData { get; set; }
 
         /// <summary>
         /// ETH value transferred in this call.

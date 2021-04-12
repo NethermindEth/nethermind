@@ -39,7 +39,6 @@ using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
-using Nethermind.Trie;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;

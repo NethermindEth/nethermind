@@ -874,7 +874,7 @@ namespace Nethermind.Trie.Test
                     {
                         trieNode.GetChildHash(i % 16).Should().BeEquivalentTo(TestItem.Keccaks[i % 16], i.ToString());
                     }
-                    catch (Exception e)
+                    catch (Exception)
                     {
                         throw new AssertionException("Failed");
                     }
@@ -890,6 +890,7 @@ namespace Nethermind.Trie.Test
             }
             
             Assert.ThrowsAsync<AssertionException>(() => Task.WhenAll(tasks));
+            await Task.CompletedTask;
         }
 
         [Test]

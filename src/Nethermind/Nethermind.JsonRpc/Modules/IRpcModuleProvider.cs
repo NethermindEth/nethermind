@@ -25,7 +25,7 @@ namespace Nethermind.JsonRpc.Modules
 
     public interface IRpcModuleProvider
     {
-        void Register<T>(IRpcModulePool<T> pool) where T : IModule;
+        void Register<T>(IRpcModulePool<T> pool) where T : IRpcModule;
 
         IReadOnlyCollection<JsonConverter> Converters { get; }
 
@@ -37,8 +37,8 @@ namespace Nethermind.JsonRpc.Modules
         
         (MethodInfo MethodInfo, bool ReadOnly) Resolve(string methodName);
         
-        Task<IModule> Rent(string methodName, bool canBeShared);
+        Task<IRpcModule> Rent(string methodName, bool canBeShared);
         
-        void Return(string methodName, IModule module);
+        void Return(string methodName, IRpcModule rpcModule);
     }
 }

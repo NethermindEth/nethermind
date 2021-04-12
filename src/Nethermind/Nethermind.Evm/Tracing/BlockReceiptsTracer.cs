@@ -23,7 +23,7 @@ using Nethermind.State;
 
 namespace Nethermind.Evm.Tracing
 {
-    public class BlockReceiptsTracer : IBlockTracer,  ITxTracer
+    public class BlockReceiptsTracer : IBlockTracer, ITxTracer
     {
         private Block? _block;
         public bool IsTracingReceipt => true;
@@ -38,6 +38,7 @@ namespace Nethermind.Evm.Tracing
         public bool IsTracingStorage => _currentTxTracer.IsTracingStorage;
         
         public bool IsTracingBlockHash => _currentTxTracer.IsTracingBlockHash;
+        public bool IsTracingAccess => _currentTxTracer.IsTracingAccess;
 
         private IBlockTracer _otherTracer;
 
@@ -180,12 +181,12 @@ namespace Nethermind.Evm.Tracing
             _currentTxTracer.ReportStorageRead(storageCell);
         }
 
-        public void ReportAction(long gas, UInt256 value, Address @from, Address to, byte[] input, ExecutionType callType, bool isPrecompileCall = false)
+        public void ReportAction(long gas, UInt256 value, Address @from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
         {
             _currentTxTracer.ReportAction(gas, value, @from, to, input, callType, isPrecompileCall);
         }
 
-        public void ReportActionEnd(long gas, byte[] output)
+        public void ReportActionEnd(long gas, ReadOnlyMemory<byte> output)
         {
             _currentTxTracer.ReportActionEnd(gas, output);
         }
@@ -195,7 +196,7 @@ namespace Nethermind.Evm.Tracing
             _currentTxTracer.ReportActionError(exceptionType);
         }
 
-        public void ReportActionEnd(long gas, Address deploymentAddress, byte[] deployedCode)
+        public void ReportActionEnd(long gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode)
         {
             _currentTxTracer.ReportActionEnd(gas, deploymentAddress, deployedCode);
         }
@@ -218,6 +219,11 @@ namespace Nethermind.Evm.Tracing
         public void ReportExtraGasPressure(long extraGasPressure)
         {
             _currentTxTracer.ReportExtraGasPressure(extraGasPressure);
+        }
+
+        public void ReportAccess(IReadOnlySet<Address> accessedAddresses, IReadOnlySet<StorageCell> accessedStorageCells)
+        {
+            _currentTxTracer.ReportAccess(accessedAddresses, accessedStorageCells);
         }
 
         public void SetOperationStack(List<string> stackTrace)

@@ -34,8 +34,6 @@ namespace Nethermind.Plugin.Baseline
         
         private IBaselineConfig _baselineConfig;
 
-        public void Dispose() { }
-
         public string Name => "Baseline";
         
         public string Description => "Ethereum Baseline for Enterprise";

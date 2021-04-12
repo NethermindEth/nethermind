@@ -21,9 +21,9 @@ namespace Nethermind.Evm
 {
     public static class ByteArrayExtensions
     {
-        private static ZeroPaddedSpan SliceWithZeroPadding(this Span<byte> bytes, int startIndex, int length, PadDirection padDirection)
+        private static ZeroPaddedSpan SliceWithZeroPadding(this Span<byte> span, int startIndex, int length, PadDirection padDirection)
         {
-            if (startIndex >= bytes.Length)
+            if (startIndex >= span.Length)
             {
                 return new ZeroPaddedSpan(Span<byte>.Empty, length, padDirection);
             }
@@ -33,22 +33,52 @@ namespace Nethermind.Evm
                 // why do we return zero length here?
                 // it was passing all the tests like this...
                 // return bytes.Length == 0 ? new byte[0] : new[] {bytes[startIndex]};
-                return bytes.Length == 0 ? new ZeroPaddedSpan(Span<byte>.Empty, 0, padDirection) : new ZeroPaddedSpan(bytes.Slice(startIndex, 1), 0, padDirection);
+                return span.Length == 0 ? new ZeroPaddedSpan(Span<byte>.Empty, 0, padDirection) : new ZeroPaddedSpan(span.Slice(startIndex, 1), 0, padDirection);
                 // return bytes.Length == 0 ? new ZeroPaddedSpan(Span<byte>.Empty, 1) : new ZeroPaddedSpan(bytes.Slice(startIndex, 1), 0);
             }
             
-            int copiedLength = Math.Min(bytes.Length - startIndex, length);
-            return new ZeroPaddedSpan(bytes.Slice(startIndex, copiedLength), length - copiedLength, padDirection);
+            int copiedLength = Math.Min(span.Length - startIndex, length);
+            return new ZeroPaddedSpan(span.Slice(startIndex, copiedLength), length - copiedLength, padDirection);
+        }
+        
+        private static ZeroPaddedMemory MemoryWithZeroPadding(this ReadOnlyMemory<byte> memory, int startIndex, int length, PadDirection padDirection)
+        {
+            if (startIndex >= memory.Length)
+            {
+                return new ZeroPaddedMemory(ReadOnlyMemory<byte>.Empty, length, padDirection);
+            }
+
+            if (length == 1)
+            {
+                // why do we return zero length here?
+                // it was passing all the tests like this...
+                // return bytes.Length == 0 ? new byte[0] : new[] {bytes[startIndex]};
+                return memory.Length == 0 ? new ZeroPaddedMemory(ReadOnlyMemory<byte>.Empty, 0, padDirection) : new ZeroPaddedMemory(memory.Slice(startIndex, 1), 0, padDirection);
+                // return bytes.Length == 0 ? new ZeroPaddedSpan(Span<byte>.Empty, 1) : new ZeroPaddedSpan(bytes.Slice(startIndex, 1), 0);
+            }
+            
+            int copiedLength = Math.Min(memory.Length - startIndex, length);
+            return new ZeroPaddedMemory(memory.Slice(startIndex, copiedLength), length - copiedLength, padDirection);
         }
 
-        public static ZeroPaddedSpan SliceWithZeroPadding(this Span<byte> bytes, UInt256 startIndex, int length, PadDirection padDirection = PadDirection.Right)
+        public static ZeroPaddedSpan SliceWithZeroPadding(this Span<byte> span, UInt256 startIndex, int length, PadDirection padDirection = PadDirection.Right)
         {
-            if (startIndex >= bytes.Length || startIndex > int.MaxValue)
+            if (startIndex >= span.Length || startIndex > int.MaxValue)
             {
                 return new ZeroPaddedSpan(Span<byte>.Empty, length, PadDirection.Right);
             }
 
-            return SliceWithZeroPadding(bytes, (int) startIndex, length, padDirection);
+            return SliceWithZeroPadding(span, (int) startIndex, length, padDirection);
+        }
+        
+        public static ZeroPaddedMemory SliceWithZeroPadding(this ReadOnlyMemory<byte> bytes, UInt256 startIndex, int length, PadDirection padDirection = PadDirection.Right)
+        {
+            if (startIndex >= bytes.Length || startIndex > int.MaxValue)
+            {
+                return new ZeroPaddedMemory(ReadOnlyMemory<byte>.Empty, length, PadDirection.Right);
+            }
+
+            return MemoryWithZeroPadding(bytes, (int) startIndex, length, padDirection);
         }
         
         public static ZeroPaddedSpan SliceWithZeroPadding(this byte[] bytes, UInt256 startIndex, int length, PadDirection padDirection = PadDirection.Right) => 

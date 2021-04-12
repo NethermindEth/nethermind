@@ -106,6 +106,21 @@ namespace Nethermind.Evm
             value.Span.CopyTo(_memory.AsSpan().Slice(intLocation, value.Span.Length));
             _memory.AsSpan().Slice(intLocation + value.Span.Length, value.PaddingLength).Clear();
         }
+        
+        public void Save(in UInt256 location, ZeroPaddedMemory value)
+        {
+            if (value.Length == 0)
+            {
+                return;
+            }
+            
+            CheckMemoryAccessViolation(in location, (UInt256)value.Length);
+            UpdateSize(in location, (UInt256)value.Length);
+
+            int intLocation = (int) location;
+            value.Memory.CopyTo(_memory.AsMemory().Slice(intLocation, value.Memory.Length));
+            _memory.AsSpan().Slice(intLocation + value.Memory.Length, value.PaddingLength).Clear();
+        }
 
         public Span<byte> LoadSpan(in UInt256 location)
         {
@@ -128,23 +143,21 @@ namespace Nethermind.Evm
             return _memory.AsSpan((int)location, (int)length);
         }
 
-        public byte[] Load(in UInt256 location, in UInt256 length)
+        public ReadOnlyMemory<byte> Load(in UInt256 location, in UInt256 length)
         {
             if (length.IsZero)
             {
-                return Array.Empty<byte>();
+                return ReadOnlyMemory<byte>.Empty;
             }
 
-            if (location > long.MaxValue)
+            if (location > int.MaxValue)
             {
                 return new byte[(long)length];
             }
             
             UpdateSize(in location, length);
 
-            byte[] buffer = new byte[(int)length];
-            Array.Copy(_memory, (long)location, buffer, 0, buffer.Length);
-            return buffer;
+            return _memory.AsMemory((int)location, (int)length);
         }
 
         public long CalculateMemoryCost(in UInt256 location, in UInt256 length)

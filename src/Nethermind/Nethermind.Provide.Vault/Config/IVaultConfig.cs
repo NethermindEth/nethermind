@@ -41,22 +41,25 @@ namespace Nethermind.Vault.Config
         [ConfigItem(Description = "The file with Vault's passphrase for sealing and unsealing", DefaultValue = "null")]
         string VaultKeyFile { get; set; }
 
+        [ConfigItem(Description = "The directly used key for sealing and unsealing (used when key file is not provided)", DefaultValue = "null")]
         string VaultSealUnsealKey { get; set; }
 
-        [ConfigItem(Description = "Address of the Nchain service endpoint", DefaultValue = "vault.provide.services")]
+        [ConfigItem(Description = "Address of the NChain service endpoint", DefaultValue = "null")]
         string NChainHost { get; set; }
 
-        [ConfigItem(Description = "Authorization token required to access Provide Services Nchain", DefaultValue = "null")]
+        [ConfigItem(Description = "Authorization token required to access Provide Services NChain", DefaultValue = "null")]
         string NChainToken { get; set; }
 
-        [ConfigItem(Description = "The Nchain'd URI scheme", DefaultValue = "https")]
+        [ConfigItem(Description = "The NChain URI scheme", DefaultValue = "https")]
         string NChainScheme { get; set; }
 
-        [ConfigItem(Description = "Path to the Nchain'd api", DefaultValue = "api/v1")]
+        [ConfigItem(Description = "Path to the NChain API", DefaultValue = "api/v1")]
         string NChainPath { get; set; }
 
+        [ConfigItem(Description = "NChain network ID to be used.", DefaultValue = "null")]
         string NChainNetworkId { get; set; }
 
+        [ConfigItem(Description = "NChain user account ID to be used.", DefaultValue = "null")]
         string NChainAccountId { get; set; }
     }
 }

@@ -45,7 +45,7 @@ namespace Nethermind.JsonRpc.Test.Modules
     [TestFixture]
     public class SingletonModulePoolTests
     {
-        private SingletonModulePool<IEthModule> _modulePool;
+        private SingletonModulePool<IEthRpcModule> _modulePool;
         private EthModuleFactory _factory;
 
         [SetUp]
@@ -70,21 +70,21 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public void Cannot_return_exclusive_if_not_allowed()
         {
-            _modulePool = new SingletonModulePool<IEthModule>(_factory.Create(), false);
+            _modulePool = new SingletonModulePool<IEthRpcModule>(_factory.Create(), false);
             Assert.Throws<InvalidOperationException>(() => _modulePool.GetModule(false));
         }
         
         [Test]
         public void Can_return_exclusive_if_allowed()
         {
-            _modulePool = new SingletonModulePool<IEthModule>(_factory.Create(), true);
+            _modulePool = new SingletonModulePool<IEthRpcModule>(_factory.Create(), true);
             _modulePool.GetModule(false);
         }
         
         [Test]
         public void Ensure_unlimited_shared()
         {
-            _modulePool = new SingletonModulePool<IEthModule>(_factory.Create(), true);
+            _modulePool = new SingletonModulePool<IEthRpcModule>(_factory.Create(), true);
             _modulePool.GetModule(true);
         }
     }

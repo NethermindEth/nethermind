@@ -38,6 +38,7 @@ namespace Nethermind.Core.Test.Encoding
         public static IEnumerable<(Transaction, string)> TestCaseSource()
         {
             yield return (Build.A.Transaction.SignedAndResolved().TestObject, "basic");
+            yield return (Build.A.Transaction.SignedAndResolved().WithNonce(0).TestObject, "basic");
             yield return (Build.A.Transaction
                 .WithData(new byte[] {1, 2, 3})
                 .WithType(TxType.AccessList)
