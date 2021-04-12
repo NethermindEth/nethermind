@@ -22,7 +22,13 @@ jobs:
         sudo apt-get install libsnappy-dev libc6-dev libc6
     - name: Installing macOS packages
       if: matrix.os == 'macOS-latest'
-      run: brew install gmp && brew install snappy && brew install lz4 && brew install zstd
+      run: |
+        brew install gmp lz4 zstd
+        git clone https://github.com/google/snappy.git
+        git submodule update --init
+        mkdir build
+        cd build && cmake ../ && make -j8
+        make install    
     - name: Nethermind.Abi.Test
       run: |
         dotnet test -c Release src/Nethermind/Nethermind.Abi.Test;
@@ -67,7 +73,13 @@ jobs:
         sudo apt-get install libsnappy-dev libc6-dev libc6
     - name: Installing macOS packages
       if: matrix.os == 'macOS-latest'
-      run: brew install gmp && brew install snappy && brew install lz4 && brew install zstd
+      run: |
+        brew install gmp lz4 zstd
+        git clone https://github.com/google/snappy.git
+        git submodule update --init
+        mkdir build
+        cd build && cmake ../ && make -j8
+        make install    
     - name: Nethermind.Clique.Test
       run: |
         dotnet test -c Release src/Nethermind/Nethermind.Clique.Test
@@ -166,7 +178,13 @@ jobs:
         sudo apt-get install libsnappy-dev libc6-dev libc6
     - name: Installing macOS packages
       if: matrix.os == 'macOS-latest'
-      run: brew install gmp && brew install snappy && brew install lz4 && brew install zstd
+      run: |
+        brew install gmp lz4 zstd
+        git clone https://github.com/google/snappy.git
+        git submodule update --init
+        mkdir build
+        cd build && cmake ../ && make -j8
+        make install    
     - name: Nethermind.Secp256k1.Test.Linux
       run: |
         dotnet test -c Release src/Nethermind/Nethermind.Secp256k1.Test
@@ -199,7 +217,13 @@ jobs:
         sudo apt-get install libsnappy-dev libc6-dev libc6
     - name: Installing macOS packages
       if: matrix.os == 'macOS-latest'
-      run: brew install gmp && brew install snappy && brew install lz4 && brew install zstd
+      run: |
+        brew install gmp lz4 zstd
+        git clone https://github.com/google/snappy.git
+        git submodule update --init
+        mkdir build
+        cd build && cmake ../ && make -j8
+        make install    
     - name: Nethermind.Ssz.Test
       run: |
         dotnet test -c Release src/Nethermind/Nethermind.Ssz.Test
@@ -250,7 +274,13 @@ jobs:
         sudo apt-get install libsnappy-dev libc6-dev libc6
     - name: Installing macOS packages
       if: matrix.os == 'macOS-latest'
-      run: brew install gmp && brew install snappy && brew install lz4 && brew install zstd
+      run: |
+        brew install gmp lz4 zstd
+        git clone https://github.com/google/snappy.git
+        git submodule update --init
+        mkdir build
+        cd build && cmake ../ && make -j8
+        make install    
     - name: Nethermind.Runner.Test
       run: |
         dotnet test -c Release src/Nethermind/Nethermind.Runner.Test
