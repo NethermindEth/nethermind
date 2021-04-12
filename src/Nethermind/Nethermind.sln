@@ -192,7 +192,6 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Pipeline", "Neth
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Pipeline.Tests", "Nethermind.Pipeline.Tests\Nethermind.Pipeline.Tests.csproj", "{C59AF707-0A1C-42FB-A8D2-F9B9F84D71EC}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Pipeline.TestPlugin", "Nethermind.Pipeline.TestPlugin\Nethermind.Pipeline.TestPlugin.csproj", "{6E358E52-CDA6-4716-AEBC-A94E2F779AE3}"
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Merge.Plugin", "Nethermind.Merge.Plugin\Nethermind.Merge.Plugin.csproj", "{889ED383-C21B-471C-A8B6-9339FD397394}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Merge.Plugin.Test", "Nethermind.Merge.Plugin.Test\Nethermind.Merge.Plugin.Test.csproj", "{87ECA5BD-8DB0-4ED6-82FF-9F68D576A8E8}"
