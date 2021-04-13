@@ -307,6 +307,9 @@ namespace Nethermind.Specs.ChainSpecStyle
             byte[] extraData = chainSpecJson.Genesis.ExtraData ?? Array.Empty<byte>();
             UInt256 gasLimit = chainSpecJson.Genesis.GasLimit;
             Address beneficiary = chainSpecJson.Genesis.Author ?? Address.Zero;
+            UInt256 baseFee = UInt256.Zero;
+            if (chainSpecJson.Params.Eip1559Transition != null)
+                baseFee = chainSpecJson.Params.Eip1559Transition == 0 ? Eip1559Constants.ForkBaseFee : UInt256.Zero; 
 
             BlockHeader genesisHeader = new(
                 parentHash,
@@ -326,6 +329,7 @@ namespace Nethermind.Specs.ChainSpecStyle
             genesisHeader.ReceiptsRoot = Keccak.EmptyTreeHash;
             genesisHeader.StateRoot = Keccak.EmptyTreeHash;
             genesisHeader.TxRoot = Keccak.EmptyTreeHash;
+            genesisHeader.BaseFee = baseFee;
             
             genesisHeader.AuRaStep = step;
             genesisHeader.AuRaSignature = auRaSignature;
