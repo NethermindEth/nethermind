@@ -4,7 +4,6 @@ using System.Linq;
 using System.Net.WebSockets;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
-using Nethermind.PubSub;
 using Nethermind.Serialization.Json;
 using Nethermind.WebSockets;
 
