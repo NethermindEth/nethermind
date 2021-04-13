@@ -56,7 +56,7 @@ namespace Nethermind.Db.Test
                 RocksDbFactory rocksDbFactory = new(new DbConfig(), LimboLogs.Instance, Path.Combine(_folderWithDbs, $"rocks_{useReceipts}"));
                 StandardDbInitializer initializer = new(dbProvider, rocksDbFactory, new MemDbFactory());
                 await initializer.InitStandardDbsAsync(useReceipts);
-                Type receiptsType = useReceipts ? typeof(SimpleColumnRocksDb<ReceiptsColumns>) : typeof(ReadOnlyColumnsDb<ReceiptsColumns>);
+                Type receiptsType = useReceipts ? typeof(ColumnsDb<ReceiptsColumns>) : typeof(ReadOnlyColumnsDb<ReceiptsColumns>);
                 AssertStandardDbs(dbProvider, typeof(DbOnTheRocks), receiptsType);
             }
         }
@@ -72,7 +72,7 @@ namespace Nethermind.Db.Test
                 await initializer.InitStandardDbsAsync(useReceipts);
                 using (ReadOnlyDbProvider readonlyDbProvider = new(dbProvider, true))
                 {
-                    Type receiptsType = useReceipts ? typeof(SimpleColumnRocksDb<ReceiptsColumns>) : typeof(ReadOnlyColumnsDb<ReceiptsColumns>);
+                    Type receiptsType = useReceipts ? typeof(ColumnsDb<ReceiptsColumns>) : typeof(ReadOnlyColumnsDb<ReceiptsColumns>);
                     AssertStandardDbs(dbProvider, typeof(DbOnTheRocks), receiptsType);
                     AssertStandardDbs(readonlyDbProvider, typeof(ReadOnlyDb), typeof(ReadOnlyColumnsDb<ReceiptsColumns>));
                 }

@@ -46,8 +46,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 
         public TransactionsMessage Deserialize(IByteBuffer byteBuffer)
         {
-            NettyRlpStream rlpStream = new NettyRlpStream(byteBuffer);
-            var txs = DeserializeTxs(rlpStream);
+            NettyRlpStream rlpStream = new(byteBuffer);
+            Transaction[] txs = DeserializeTxs(rlpStream);
             return new TransactionsMessage(txs);
         }
 

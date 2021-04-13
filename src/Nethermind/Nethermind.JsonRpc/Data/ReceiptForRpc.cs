@@ -44,6 +44,7 @@ namespace Nethermind.JsonRpc.Data
             Root = receipt.PostTransactionState;
             Status = receipt.StatusCode;
             Error = receipt.Error;
+            Type = receipt.TxType;
         }
         
         public Keccak TransactionHash { get; set; }
@@ -64,6 +65,7 @@ namespace Nethermind.JsonRpc.Data
         public Keccak Root { get; set; }
         public long Status { get; set; }
         public string Error { get; set; }
+        public TxType Type { get; set; }
 
         public TxReceipt ToReceipt()
         {
@@ -82,6 +84,7 @@ namespace Nethermind.JsonRpc.Data
             receipt.TxHash = TransactionHash;
             receipt.GasUsedTotal = CumulativeGasUsed;
             receipt.PostTransactionState = Root;
+            receipt.TxType = Type;
             return receipt;
         }
     }

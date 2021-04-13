@@ -13,27 +13,31 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
+using System;
 using System.Collections.Generic;
-using System.IO;
-using Newtonsoft.Json;
+using System.Threading.Tasks;
+using Nethermind.Core.Extensions;
+using Nethermind.JsonRpc.Modules.Trace;
+using Nethermind.Serialization.Json;
 
-namespace Nethermind.Serialization.Json
+namespace Nethermind.JsonRpc.Test
 {
-    public interface IJsonSerializer
+    public partial class ConsensusHelperTests
     {
-        T Deserialize<T>(Stream stream);
-        T Deserialize<T>(string json);
-        string Serialize<T>(T value, bool indented = false);
-        long Serialize<T>(Stream stream, T value, bool indented = false);
-        void RegisterConverter(JsonConverter converter);
-
-        void RegisterConverters(IEnumerable<JsonConverter> converters)
+        private class ParityLikeBlockTraceJsonRpcDataSource : JsonRpcDataSource<IEnumerable<ParityTxTraceFromStore>>, 
+            IConsensusDataSource<IEnumerable<ParityTxTraceFromStore>>, 
+            IConsensusDataSourceWithParameter<long>
         {
-            foreach (JsonConverter converter in converters)
+            public ParityLikeBlockTraceJsonRpcDataSource(Uri uri, IJsonSerializer serializer) : base(uri, serializer)
             {
-                RegisterConverter(converter);
             }
+
+            public override async Task<string> GetJsonData() => 
+                await SendRequest(CreateRequest("trace_block", Parameter.ToHexString(true)));
+
+            public long Parameter { get; set; }
         }
     }
 }
