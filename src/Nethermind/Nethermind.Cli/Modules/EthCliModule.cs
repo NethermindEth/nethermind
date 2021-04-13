@@ -99,9 +99,17 @@ namespace Nethermind.Cli.Modules
         }
         
         [CliFunction("eth", "createAccessList")]
-        public string? CreateAccessList(object tx, string? blockParameter = null, bool optimize = true)
+        public JsValue CreateAccessList(object tx, string? blockParameter = null, bool optimize = true)
         {
-            return NodeManager.Post<string>("eth_createAccessList", tx, blockParameter ?? "latest", optimize).Result;
+            if (optimize)
+            {
+                // to support Geth
+                return NodeManager.PostJint("eth_createAccessList", tx, blockParameter ?? "latest").Result;
+            }
+            else
+            {
+                return NodeManager.PostJint("eth_createAccessList", tx, blockParameter ?? "latest", optimize).Result;
+            }
         }
 
         [CliFunction("eth", "sendWei")]
