@@ -18,6 +18,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.Network.P2P.Subprotocols.Eth.V64;
@@ -66,9 +67,34 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
                     Handle(getPooledTxMsg);
                     break;
                 case Eth65MessageCode.NewPooledTransactionHashes:
-                    Metrics.Eth65NewPooledTransactionHashesReceived++;
+                    NewPooledTransactionHashesMessage newPooledTxMsg =
+                        Deserialize<NewPooledTransactionHashesMessage>(message.Content);
+                    ReportIn(newPooledTxMsg);
+                    Handle(newPooledTxMsg);
                     break;
             }
+        }
+
+        private void Handle(NewPooledTransactionHashesMessage msg)
+        {
+            Metrics.Eth65NewPooledTransactionHashesReceived++;
+            
+            Stopwatch stopwatch = Stopwatch.StartNew();
+            List<Keccak> discoveredTxHashes = new();
+            
+            for (int i = 0; i < msg.Hashes.Count; i++)
+            {
+                if (!_txPool.TryGetPendingTransaction(msg.Hashes[i], out _))
+                {
+                    discoveredTxHashes.Add(msg.Hashes[i]);
+                }
+            }
+            
+            Send(new GetPooledTransactionsMessage(discoveredTxHashes.ToArray()));
+            stopwatch.Stop();
+            if (Logger.IsTrace)
+                Logger.Trace($"OUT {Counter:D5} {nameof(NewPooledTransactionHashesMessage)} to {Node:c} " +
+                             $"in {stopwatch.Elapsed.TotalMilliseconds}ms");
         }
 
         private void Handle(GetPooledTransactionsMessage msg)
