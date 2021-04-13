@@ -16,6 +16,7 @@
 // 
 
 using System;
+using System.IO;
 using System.Threading.Tasks;
 using Nethermind.Logging;
 using Nethermind.PubSub;
@@ -25,28 +26,34 @@ namespace Nethermind.Pipeline.Publishers
 {
     public class LogPublisher<TIn, TOut> : IPipelineElement<TIn, TOut>, IPublisher
     {
+        private readonly ILogger _logger;
+        private readonly IJsonSerializer _jsonSerializer;
+        private readonly string _logsDir;
+        private const string FolderData = "pipeline";
+        private const string FileName = "pipeline_data.txt";
         public Action<TOut> Emit { get; set; }
-        private ILogger _logger;
-        private IJsonSerializer _jsonSerializer;
-        
-        public LogPublisher(IJsonSerializer jsonSerializer, ILogManager logManager)
-        {
-            _logger = logManager.GetClassLogger<LogPublisher<TIn, TOut>>();
-            _jsonSerializer = jsonSerializer;
-        }
 
+        public LogPublisher(IJsonSerializer jsonSerializer, ILogManager logger)
+        {
+            _logger = logger.GetClassLogger<LogPublisher<TIn, TOut>>();
+            _jsonSerializer = jsonSerializer;
+            _logsDir = FolderData.GetApplicationResourcePath();
+            if (!Directory.Exists(_logsDir))
+            {
+                Directory.CreateDirectory(_logsDir);
+            }
+        }
+        
         public void Dispose()
         {
         }
 
-        public Task PublishAsync<T>(T data) where T : class
-        {
-            throw new NotImplementedException();
-        }
+        public Task PublishAsync<T>(T data) where T : class => Task.CompletedTask;
 
         public void SubscribeToData(TIn data)
         {
-            if (_logger.IsWarn) _logger.Info(_jsonSerializer.Serialize(data));
+            if (_logger.IsWarn) _logger.Warn(_jsonSerializer.Serialize(data));
+            File.AppendAllText(Path.Combine(_logsDir, FileName), _jsonSerializer.Serialize(data, true));
         }
     }
 }
