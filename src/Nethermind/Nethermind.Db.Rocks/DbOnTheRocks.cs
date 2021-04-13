@@ -502,7 +502,8 @@ namespace Nethermind.Db.Rocks
         {
             if (!_isDisposed)
             {
-                _logger.Info($"Disposing DB {Name}");
+                // ReSharper disable once ConstantConditionalAccessQualifier
+                _logger?.Info($"Disposing DB {Name}");
 
                 if (disposing)
                 {
