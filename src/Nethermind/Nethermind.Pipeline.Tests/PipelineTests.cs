@@ -1,7 +1,11 @@
 using System;
 using System.Linq;
+using System.Net.WebSockets;
+using System.Threading;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Core;
+using Nethermind.Pipeline.Publishers;
+using Nethermind.Serialization.Json;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
@@ -44,20 +48,42 @@ namespace Nethermind.Pipeline.Tests
             var element = new TxPoolPipelineElement<Transaction, Transaction>();
 
             var builder = new PipelineBuilder<Transaction, Transaction>(sourceElement);
-            var pipeline = builder.AddElement(element); 
+            var pipeline = builder.AddElement(element);
 
             Action<Transaction> mockAction = Substitute.For<Action<Transaction>>();
             element.Emit = mockAction;
 
-            Transaction transactionToEmit = new Transaction { To = new Address("0x92A3c5e7Cee811C3402b933A6D43aAF2e56f2823")};
-            Transaction transactionToIgnore = new Transaction { To = new Address("0x719839373E2C69aB619Acd18Ad5f6A6eF055d762")};
+            Transaction transactionToEmit = new Transaction { To = new Address("0x92A3c5e7Cee811C3402b933A6D43aAF2e56f2823") };
+            Transaction transactionToIgnore = new Transaction { To = new Address("0x719839373E2C69aB619Acd18Ad5f6A6eF055d762") };
 
             _txPool.NewPending += Raise.EventWith<TxEventArgs>(new object(), new TxEventArgs(transactionToIgnore));
             _txPool.NewPending += Raise.EventWith<TxEventArgs>(new object(), new TxEventArgs(transactionToEmit));
-        
+
             Transaction emitedTx = (Transaction)mockAction.ReceivedCalls().First().GetArguments().First();
 
             Assert.AreEqual(transactionToEmit, emitedTx);
+        }
+
+        [Test]
+        public void Will_send_data_through_publisher_at_the_end_of_the_pipeline()
+        {
+            var sourceElement = new TxPoolPipelineSource<Transaction>(_txPool);
+            var element = new TxPoolPipelineElement<Transaction, Transaction>();
+            var publisher = new WebSocketsPublisher<Transaction, Transaction>("testPublisher", Substitute.For<IJsonSerializer>());
+
+            var mockWebSocket = Substitute.For<WebSocket>();
+            mockWebSocket.State.Returns(WebSocketState.Open);
+            publisher.CreateClient(mockWebSocket, "testClient");
+
+            Transaction transactionToEmit = new Transaction { To = new Address("0x92A3c5e7Cee811C3402b933A6D43aAF2e56f2823") };
+
+            var builder = new PipelineBuilder<Transaction, Transaction>(sourceElement);
+            builder.AddElement(element).AddElement(publisher);
+            var pipeline = builder.Build();
+            
+            _txPool.NewPending += Raise.EventWith<TxEventArgs>(new object(), new TxEventArgs(transactionToEmit));
+
+            mockWebSocket.Received().SendAsync(Arg.Any<ArraySegment<byte>>(), WebSocketMessageType.Text, true, CancellationToken.None);
         }
 
         private class TxPoolPipelineSource<TOut> : IPipelineElement<TOut> where TOut : Transaction

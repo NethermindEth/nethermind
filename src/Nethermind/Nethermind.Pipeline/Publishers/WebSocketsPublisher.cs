@@ -10,15 +10,16 @@ using Nethermind.WebSockets;
 
 namespace Nethermind.Pipeline.Publishers
 {
-    public class WebSocketsPublisher<TIn, TOut> : IPipelineElement<TIn, TOut>, IPublisher, IWebSocketsModule
+    public class WebSocketsPublisher<TIn, TOut> : IPipelineElement<TIn, TOut>, IWebSocketsModule
     {
         private readonly ConcurrentDictionary<string, IWebSocketsClient> _clients = new();
         private IJsonSerializer _jsonSerializer;
-        public string Name { get; } = "pipeline";
+        public string Name { private set; get; }
         public Action<TOut> Emit { private get; set; }
 
-        public WebSocketsPublisher(IJsonSerializer jsonSerializer)
+        public WebSocketsPublisher(string name, IJsonSerializer jsonSerializer)
         {
+            Name = name;
             _jsonSerializer = jsonSerializer;
         }
 
@@ -28,11 +29,6 @@ namespace Nethermind.Pipeline.Publishers
             _clients.TryAdd(client, newClient);
 
             return newClient;
-        }
-
-        public async Task PublishAsync<T>(T data) where T : class
-        {
-            await SendAsync(new WebSocketsMessage(nameof(T), null, data));
         }
 
         public void RemoveClient(string clientId)
@@ -55,10 +51,6 @@ namespace Nethermind.Pipeline.Publishers
             return true; 
         }
         
-        public void Dispose()
-        {
-        }
-
         public async void SubscribeToData(TIn data)
         {
             var message = new WebSocketsMessage(nameof(TIn), null, data);
