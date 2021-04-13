@@ -19,12 +19,11 @@ using System;
 using System.IO;
 using System.Threading.Tasks;
 using Nethermind.Logging;
-using Nethermind.PubSub;
 using Nethermind.Serialization.Json;
 
 namespace Nethermind.Pipeline.Publishers
 {
-    public class LogPublisher<TIn, TOut> : IPipelineElement<TIn, TOut>, IPublisher
+    public class LogPublisher<TIn, TOut> : IPipelineElement<TIn, TOut>
     {
         private readonly ILogger _logger;
         private readonly IJsonSerializer _jsonSerializer;
@@ -44,12 +43,6 @@ namespace Nethermind.Pipeline.Publishers
             }
         }
         
-        public void Dispose()
-        {
-        }
-
-        public Task PublishAsync<T>(T data) where T : class => Task.CompletedTask;
-
         public void SubscribeToData(TIn data)
         {
             if (_logger.IsWarn) _logger.Warn(_jsonSerializer.Serialize(data));
