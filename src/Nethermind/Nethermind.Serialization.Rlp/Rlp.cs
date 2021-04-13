@@ -293,7 +293,7 @@ namespace Nethermind.Serialization.Rlp
                 }
                 else
                 {
-                    sequence[position++] = Encode(signature.V);
+                    sequence[position++] = Encode(transaction.Type == TxType.Legacy ? signature.V : (ulong)signature.RecoveryId);
                     sequence[position++] = Encode(signature.RAsSpan.WithoutLeadingZeros());
                     sequence[position++] = Encode(signature.SAsSpan.WithoutLeadingZeros());   
                 }
@@ -854,10 +854,16 @@ namespace Nethermind.Serialization.Rlp
                 (int a, int b) = PeekPrefixAndContentLength();
                 return a + b;
             }
-
-            public (int PrefixLength, int ContentLength) PeekPrefixAndContentLength()
+            
+            public Span<byte> Peek(int length)
             {
-                int memorizedPosition = Position;
+                Span<byte> item = Read(length);
+                Position -= item.Length;
+                return item;
+            }
+            
+            public (int PrefixLength, int ContentLength) ReadPrefixAndContentLength()
+            {
                 (int prefixLength, int contentLengt) result;
                 int prefix = ReadByte();
                 if (prefix <= 128)
@@ -901,7 +907,16 @@ namespace Nethermind.Serialization.Rlp
 
                     result = (lengthOfContentLength + 1, contentLength);
                 }
+                
+                return result;
+            }
+            
 
+            public (int PrefixLength, int ContentLength) PeekPrefixAndContentLength()
+            {
+                int memorizedPosition = Position;
+                (int PrefixLength, int ContentLength) result = ReadPrefixAndContentLength();
+            
                 Position = memorizedPosition;
                 return result;
             }
