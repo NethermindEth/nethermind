@@ -68,12 +68,15 @@ namespace Nethermind.Consensus.AuRa.Transactions
             
             if (cache.TryGetValue(sender, out bool isCertified))
             {
+                tx.IsServiceTransaction = isCertified;
                 return isCertified;
             }
 
             try
             {
-                return cache[sender] = _certifierContract.Certified(parentHeader, sender);
+                bool isCertifiedByContract = _certifierContract.Certified(parentHeader, sender);
+                tx.IsServiceTransaction = isCertifiedByContract;
+                return cache[sender] = isCertifiedByContract;
             }
             catch (AbiException e)
             {

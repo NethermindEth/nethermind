@@ -148,6 +148,13 @@ namespace Nethermind.Blockchain.Validators
                     if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.ToString(BlockHeader.Format.Short)}) incorrect base fee. Expected base fee: {expectedBaseFee}, Current base fee: {header.BaseFee} ");
                     isEip1559Correct = false;
                 }
+
+                long maximumGasUsed = Eip1559Constants.ElasticityMultiplier * header.GasLimit;
+                if (header.GasUsed > maximumGasUsed)
+                {
+                    if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.ToString(BlockHeader.Format.Short)}) too much gas used. Maximum gas usage: {maximumGasUsed}, Current gas used: {header.GasUsed} ");
+                    isEip1559Correct = false;
+                }
             }
 
             return

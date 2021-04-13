@@ -57,6 +57,8 @@ namespace Nethermind.Core
 
         public AccessList? AccessList { get; set; } // eip2930
         
+        public bool IsServiceTransaction { get; set; }
+        
         /// <summary>
         /// In-memory only property, representing order of transactions going to TxPool.
         /// </summary>

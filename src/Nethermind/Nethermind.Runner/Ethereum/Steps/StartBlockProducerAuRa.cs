@@ -108,6 +108,7 @@ namespace Nethermind.Runner.Ethereum.Steps
 
             var chainSpecAuRa = _api.ChainSpec.AuRa;
             _txPermissionFilter = TxFilterBuilders.CreateTxPermissionFilter(_api, readOnlyTxProcessorSource);
+            var txFilter = CreateAuraTxFilter(readOnlyTxProcessorSource, _api.SpecProvider);
 
             _validator = new AuRaValidatorFactory(
                     readOnlyTxProcessingEnv.StateProvider,
@@ -145,7 +146,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.ReceiptStorage,
                 _api.LogManager,
                 readOnlyTxProcessingEnv.BlockTree,
-                _txPermissionFilter,
+                txFilter,
                 CreateGasLimitCalculator(readOnlyTxProcessorSource) as AuRaContractGasLimitOverride)
             {
                 AuRaValidator = _validator
@@ -186,7 +187,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.DisposeStack.Push(prioritiesContractDataStore);
 
                 ITxFilter auraTxFilter =
-                    CreateTxSourceFilter(processingEnv, readOnlyTxProcessorSource, _api.SpecProvider);
+                    CreateAuraTxFilter(readOnlyTxProcessorSource, _api.SpecProvider);
                 ITxFilterPipeline txFilterPipeline = new TxFilterPipelineBuilder(_api.LogManager)
                     .WithCustomTxFilter(auraTxFilter)
                     .WithBaseFeeFilter(_blockPreparationContextService, _api.SpecProvider)
@@ -256,7 +257,7 @@ namespace Nethermind.Runner.Ethereum.Steps
 
         private TxPoolTxSource CreateStandardTxPoolTxSource(ReadOnlyTxProcessingEnv processingEnv, IReadOnlyTxProcessorSource readOnlyTxProcessorSource)
         {
-            ITxFilter txSourceFilter = CreateTxSourceFilter(processingEnv, readOnlyTxProcessorSource,_api.SpecProvider);
+            ITxFilter txSourceFilter = CreateAuraTxFilter(readOnlyTxProcessorSource,_api.SpecProvider);
             ITxFilterPipeline txFilterPipeline = new TxFilterPipelineBuilder(_api.LogManager)
                 .WithCustomTxFilter(txSourceFilter)
                 .WithBaseFeeFilter(_blockPreparationContextService, _api.SpecProvider)
@@ -339,7 +340,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             return txSource;
         }
 
-        private ITxFilter CreateTxSourceFilter(ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv, IReadOnlyTxProcessorSource readOnlyTxProcessorSource, ISpecProvider specProvider) => 
+        private ITxFilter CreateAuraTxFilter(IReadOnlyTxProcessorSource readOnlyTxProcessorSource, ISpecProvider specProvider) => 
             TxFilterBuilders.CreateAuRaTxFilter(
                 NethermindApi.Config<IMiningConfig>(),
                 _api,
