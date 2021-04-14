@@ -143,15 +143,15 @@ namespace Nethermind.Core.Test.Caching
                 cache.Get(_addresses[i]).Should().Be(_accounts[MapForRefill(i)]);
             }
         }
-        
+
         [Test]
         public void Delete_keeps_internal_structure()
         {
             int maxCapacity = 32;
             int itemsToKeep = 10;
             int iterations = 40;
-                
-            LruCache<int, int> cache = new LruCache<int, int>(maxCapacity, "test");
+
+            LruCache<int, int> cache = new LruCache<int, int>(maxCapacity);
 
             for (int i = 0; i < iterations; i++)
             {
@@ -160,7 +160,7 @@ namespace Nethermind.Core.Test.Caching
             }
 
             int count = 0;
-            
+
             for (int i = 0; i < iterations; i++)
             {
                 if (cache.TryGet(i, out int val))

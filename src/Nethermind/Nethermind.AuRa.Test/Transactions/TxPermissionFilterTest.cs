@@ -232,7 +232,7 @@ namespace Nethermind.AuRa.Test.Transactions
             var transactionPermissionContract = new VersionedTransactionPermissionContract(new AbiEncoder(), 
                 TestItem.AddressA,
                 5, 
-                Substitute.For<IReadOnlyTxProcessorSource>(), new LruCache<Keccak, UInt256>(100, "TestCache"),
+                Substitute.For<IReadOnlyTxProcessorSource>(), new LruCache<Keccak, UInt256>(100),
                 LimboLogs.Instance);
             
             var filter = new PermissionBasedTxFilter(transactionPermissionContract, new PermissionBasedTxFilter.Cache(), LimboLogs.Instance);
@@ -254,8 +254,7 @@ namespace Nethermind.AuRa.Test.Transactions
                     ValidatorType = AuRaParameters.ValidatorType.List
                 };
 
-                TransactionPermissionContractVersions =
-                    new LruCache<Keccak, UInt256>(PermissionBasedTxFilter.Cache.MaxCacheSize, nameof(TransactionPermissionContract));
+                TransactionPermissionContractVersions = new LruCache<Keccak, UInt256>(PermissionBasedTxFilter.Cache.MaxCacheSize);
 
                 var trieStore = new TrieStore(DbProvider.StateDb, LimboLogs.Instance).AsReadOnly();
                 IReadOnlyTxProcessorSource txProcessorSource = new ReadOnlyTxProcessingEnv(

@@ -33,7 +33,7 @@ namespace Nethermind.State.Witnesses
     public class WitnessCollector : IWitnessCollector
     {
         private readonly LruCache<Keccak, Keccak[]> _witnessCache
-            = new(256, "Witnesses");
+            = new(256);
         
         public IReadOnlyCollection<Keccak> Collected => _collected;
 

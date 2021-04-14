@@ -36,7 +36,7 @@ namespace Nethermind.Trie
         public CachingStore(IKeyValueStoreWithBatching wrappedStore, int maxCapacity)
         {
             _wrappedStore = wrappedStore ?? throw new ArgumentNullException(nameof(wrappedStore));
-            _cache = new LruCache<byte[], byte[]>(maxCapacity, "RLP Cache");
+            _cache = new LruCache<byte[], byte[]>(maxCapacity);
         }
 
         private readonly LruCache<byte[], byte[]> _cache;
