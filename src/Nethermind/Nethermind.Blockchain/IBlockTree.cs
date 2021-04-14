@@ -116,7 +116,8 @@ namespace Nethermind.Blockchain
         /// </summary>
         /// <param name="processedBlocks">Blocks that will now be at the top of the chain</param>
         /// <param name="wereProcessed"></param>
-        void UpdateMainChain(Block[] processedBlocks, bool wereProcessed);
+        /// <param name="forceHeadBlock">Force updating head block regardless of difficulty</param>
+        void UpdateMainChain(Block[] processedBlocks, bool wereProcessed, bool forceHeadBlock = false);
 
         bool CanAcceptNewBlocks { get; }
 

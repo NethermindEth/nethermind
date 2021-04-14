@@ -15,17 +15,51 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+using Nethermind.Blockchain;
+using Nethermind.Core;
 using Nethermind.JsonRpc;
-using Nethermind.JsonRpc.Modules.Eth;
+using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
 
 namespace Nethermind.Merge.Plugin.Handlers
 {
-    public class AssembleBlockHandler : IHandler<AssembleBlockRequest, BlockRequestResult>
+    public class AssembleBlockHandler : IHandlerAsync<AssembleBlockRequest, BlockRequestResult>
     {
-        public ResultWrapper<BlockRequestResult> Handle(AssembleBlockRequest request)
+        private readonly IBlockTree _blockTree;
+        private readonly IEth2BlockProducer _blockProducer;
+        private readonly ILogger _logger;
+        private static readonly TimeSpan _timeout = TimeSpan.FromSeconds(10);
+
+        public AssembleBlockHandler(IBlockTree blockTree, IEth2BlockProducer blockProducer, ILogManager logManager)
         {
-            throw new System.NotImplementedException();
+            _blockTree = blockTree;
+            _blockProducer = blockProducer;
+            _logger = logManager.GetClassLogger();
+        }
+        
+        public async Task<ResultWrapper<BlockRequestResult>> HandleAsync(AssembleBlockRequest request)
+        {
+            BlockHeader? parentHeader = _blockTree.FindHeader(request.ParentHash);
+            if (parentHeader is null)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Parent block {request.ParentHash} cannot be found. New block will not be produced.");
+                return ResultWrapper<BlockRequestResult>.Success(BlockRequestResult.Empty);
+            }
+
+            using CancellationTokenSource cts = new(_timeout);
+            Block? block = await _blockProducer.TryProduceBlock(parentHeader, request.Timestamp, cts.Token);
+            if (block == null)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Block production on parent {request.ParentHash} with timestamp {request.Timestamp} failed.");
+                return ResultWrapper<BlockRequestResult>.Success(BlockRequestResult.Empty);
+            }
+            else
+            {
+                return ResultWrapper<BlockRequestResult>.Success(new BlockRequestResult(block));
+            }
         }
     }
 }

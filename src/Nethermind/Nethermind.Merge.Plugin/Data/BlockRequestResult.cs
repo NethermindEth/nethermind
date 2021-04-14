@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Linq;
@@ -31,6 +32,8 @@ namespace Nethermind.Merge.Plugin.Data
 {
     public class BlockRequestResult
     {
+        public static readonly BlockRequestResult Empty = new BlockRequestResult();
+        
         public BlockRequestResult()
         {
             
@@ -52,33 +55,40 @@ namespace Nethermind.Merge.Plugin.Data
             Nonce = block.Nonce;
             ExtraData = block.ExtraData;
             MixHash = block.MixHash;
-            Uncles = block.Ommers.Select(o => o.Hash);
+            Uncles = block.Ommers.Select(o => o.Hash!);
             Timestamp = block.Timestamp;
+        }
+
+        public Block ToBlock()
+        {
+            BlockHeader header = new(ParentHash, Keccak.EmptyTreeHash, Miner, Difficulty, Number, GasLimit, Timestamp, ExtraData);
+            return new Block(header, Rlp.DecodeArray<Transaction>(new RlpStream(Transactions)), Array.Empty<BlockHeader>());
         }
         
         public UInt256 Difficulty { get; set; }
-        public byte[] ExtraData { get; set; }
+        public byte[]? ExtraData { get; set; }
         public long GasLimit { get; set; }
         public long GasUsed { get; set; }
         
         [JsonProperty(NullValueHandling = NullValueHandling.Include)]
-        public Keccak BlockHash { get; set; }
+        public Keccak? BlockHash { get; set; }
         
         [JsonProperty(NullValueHandling = NullValueHandling.Include)]
-        public Bloom LogsBloom { get; set; }
-        public Address Miner { get; set; }
-        public Keccak MixHash { get; set; }
+        public Bloom? LogsBloom { get; set; }
+        public Address? Miner { get; set; }
+        public Keccak? MixHash { get; set; }
 
         [JsonProperty(NullValueHandling = NullValueHandling.Include)]
         public ulong Nonce { get; set; }
         [JsonProperty(NullValueHandling = NullValueHandling.Include)]
-        public long? Number { get; set; }
-        public Keccak ParentHash { get; set; }
-        public Keccak ReceiptsRoot { get; set; }
-        public Keccak StateRoot { get; set; }
-        public byte[] Transactions { get; set; }
-        public IEnumerable<Keccak> Uncles { get; set; }
+        public long Number { get; set; }
+        public Keccak? ParentHash { get; set; }
+        public Keccak? ReceiptsRoot { get; set; }
+        public Keccak? StateRoot { get; set; }
+        public byte[]? Transactions { get; set; }
+        public IEnumerable<Keccak>? Uncles { get; set; }
         public UInt256 Timestamp { get; set; }
 
+        public override string ToString() => BlockHash == null ? $"{Number} null" : $"{Number} ({BlockHash})";
     }
 }

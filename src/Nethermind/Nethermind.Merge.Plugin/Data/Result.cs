@@ -1,4 +1,4 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -13,30 +13,20 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using System;
+using System.Text.Json.Serialization;
 
-namespace Nethermind.Core
+namespace Nethermind.Merge.Plugin.Data
 {
-    public class ManualTimestamper : ITimestamper
+    public class Result
     {
-        public ManualTimestamper() : this(DateTime.UtcNow) { }
+        public static readonly Result Success = new Result() {Value = true};
+        public static readonly Result Fail = new Result() {Value = false};
 
-        public ManualTimestamper(DateTime initialValue)
-        {
-            UtcNow = initialValue;
-        }
-        
-        public DateTime UtcNow { get; set; }
+        public static implicit operator Result(bool value) => value ? Success : Fail;
 
-        public void Add(TimeSpan timeSpan)
-        {
-            UtcNow += timeSpan;
-        }
-        
-        public void Set(DateTime utcNow)
-        {
-            UtcNow = utcNow;
-        }
+        [JsonPropertyName("success")]
+        public bool Value { get; init; }
     }
 }

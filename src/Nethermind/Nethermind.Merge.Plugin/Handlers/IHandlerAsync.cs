@@ -13,30 +13,15 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using System;
+using System.Threading.Tasks;
+using Nethermind.JsonRpc;
 
-namespace Nethermind.Core
+namespace Nethermind.Merge.Plugin.Handlers
 {
-    public class ManualTimestamper : ITimestamper
+    public interface IHandlerAsync<in TRequest, TResult>
     {
-        public ManualTimestamper() : this(DateTime.UtcNow) { }
-
-        public ManualTimestamper(DateTime initialValue)
-        {
-            UtcNow = initialValue;
-        }
-        
-        public DateTime UtcNow { get; set; }
-
-        public void Add(TimeSpan timeSpan)
-        {
-            UtcNow += timeSpan;
-        }
-        
-        public void Set(DateTime utcNow)
-        {
-            UtcNow = utcNow;
-        }
+        Task<ResultWrapper<TResult>> HandleAsync(TRequest request);
     }
 }

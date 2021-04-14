@@ -15,10 +15,16 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-namespace Nethermind.Merge.Plugin.Data
+using System.Threading;
+using System.Threading.Tasks;
+using Nethermind.Consensus;
+using Nethermind.Core;
+using Nethermind.Int256;
+
+namespace Nethermind.Merge.Plugin.Handlers
 {
-    public class SuccessResult
+    public interface IEth2BlockProducer : IBlockProducer
     {
-        public bool Success { get; set; }
+        Task<Block?> TryProduceBlock(BlockHeader parentHeader, UInt256 timestamp, CancellationToken cancellationToken = default);
     }
 }

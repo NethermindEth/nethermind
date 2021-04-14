@@ -169,6 +169,6 @@ namespace Nethermind.Blockchain
 
         }
 
-        public void UpdateMainChain(Block[] processedBlocks, bool wereProcessed) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(UpdateMainChain)} calls");
+        public void UpdateMainChain(Block[] processedBlocks, bool wereProcessed, bool forceHeadBlock = false) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(UpdateMainChain)} calls");
     }
 }

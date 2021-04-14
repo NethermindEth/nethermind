@@ -1017,7 +1017,7 @@ namespace Nethermind.Blockchain
             return levelInfo.BlockInfos[index.Value].WasProcessed;
         }
 
-        public void UpdateMainChain(Block[] processedBlocks, bool wereProcessed)
+        public void UpdateMainChain(Block[] processedBlocks, bool wereProcessed, bool forceUpdateHeadBlock = false)
         {
             if (processedBlocks.Length == 0)
             {
@@ -1078,12 +1078,12 @@ namespace Nethermind.Blockchain
                     _headerCache.Set(block.Hash, block.Header);
                 }
 
-                MoveToMain(processedBlocks[i], batch, wereProcessed);
+                MoveToMain(processedBlocks[i], batch, wereProcessed, forceUpdateHeadBlock && i == processedBlocks.Length - 1);
             }
         }
 
         [Todo(Improve.MissingFunctionality, "Recalculate bloom storage on reorg.")]
-        private void MoveToMain(Block block, BatchWrite batch, bool wasProcessed)
+        private void MoveToMain(Block block, BatchWrite batch, bool wasProcessed, bool forceUpdateHeadBlock)
         {
             if (block.Hash is null)
             {
@@ -1121,7 +1121,7 @@ namespace Nethermind.Blockchain
 
             BlockAddedToMain?.Invoke(this, new BlockReplacementEventArgs(block, previous));
 
-            if (block.IsGenesis || block.TotalDifficulty > (Head?.TotalDifficulty ?? 0))
+            if (forceUpdateHeadBlock || block.IsGenesis || block.TotalDifficulty > (Head?.TotalDifficulty ?? 0))
             {
                 if (block.Number == 0)
                 {

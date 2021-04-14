@@ -21,11 +21,11 @@ using Nethermind.Merge.Plugin.Data;
 
 namespace Nethermind.Merge.Plugin.Handlers
 {
-    public class FinaliseBlockHandler : IHandler<Keccak, SuccessResult>
+    public class FinaliseBlockHandler : IHandler<Keccak, Result>
     {
-        public ResultWrapper<SuccessResult> Handle(Keccak request)
+        public ResultWrapper<Result> Handle(Keccak request)
         {
-            return ResultWrapper<SuccessResult>.Success(new SuccessResult() {Success = true});
+            return ResultWrapper<Result>.Success(Result.Success);
         }
     }
 }

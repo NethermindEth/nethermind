@@ -16,45 +16,39 @@
 // 
 
 using System;
-using Nethermind.Blockchain;
+using System.Threading.Tasks;
 using Nethermind.Core.Crypto;
-using Nethermind.Int256;
 using Nethermind.JsonRpc;
-using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Handlers;
-using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Merge.Plugin
 {
     public class ConsensusRpcModule : IConsensusRpcModule
     {
-        private readonly IHandler<AssembleBlockRequest, BlockRequestResult> _assembleBlockHandler;
+        private readonly IHandlerAsync<AssembleBlockRequest, BlockRequestResult> _assembleBlockHandler;
         private readonly IHandler<BlockRequestResult, NewBlockResult>_newBlockHandler;
-        private readonly IHandler<Keccak, SuccessResult> _setHeadHandler;
-        private readonly IHandler<Keccak, SuccessResult> _finaliseBlockHandler;
-        private readonly IBlockTree _blockTree;
+        private readonly IHandler<Keccak, Result> _setHeadHandler;
+        private readonly IHandler<Keccak, Result> _finaliseBlockHandler;
 
         // temp
         public ConsensusRpcModule() {}
         
         public ConsensusRpcModule(
-            IHandler<AssembleBlockRequest, BlockRequestResult> assembleBlockHandler,
+            IHandlerAsync<AssembleBlockRequest, BlockRequestResult> assembleBlockHandler,
             IHandler<BlockRequestResult, NewBlockResult> newBlockHandler,
-            IHandler<Keccak, SuccessResult> setHeadHandler,
-            IHandler<Keccak, SuccessResult> finaliseBlockHandler,
-            IBlockTree blockTree)
+            IHandler<Keccak, Result> setHeadHandler,
+            IHandler<Keccak, Result> finaliseBlockHandler)
         {
             _assembleBlockHandler = assembleBlockHandler;
             _newBlockHandler = newBlockHandler;
             _setHeadHandler = setHeadHandler;
             _finaliseBlockHandler = finaliseBlockHandler;
-            _blockTree = blockTree;
         }
         
-        public ResultWrapper<BlockRequestResult> consensus_assembleBlock(AssembleBlockRequest request)
+        public Task<ResultWrapper<BlockRequestResult>> consensus_assembleBlock(AssembleBlockRequest request)
         {
-            return _assembleBlockHandler.Handle(request);
+            return _assembleBlockHandler.HandleAsync(request);
         }
 
         public ResultWrapper<NewBlockResult> consensus_newBlock(BlockRequestResult requestResult)
@@ -62,12 +56,12 @@ namespace Nethermind.Merge.Plugin
             return _newBlockHandler.Handle(requestResult);
         }
 
-        public ResultWrapper<SuccessResult> consensus_setHead(Keccak blockHash)
+        public ResultWrapper<Result> consensus_setHead(Keccak blockHash)
         {
             return _setHeadHandler.Handle(blockHash);
         }
 
-        public ResultWrapper<SuccessResult> consensus_finaliseBlock(Keccak blockHash)
+        public ResultWrapper<Result> consensus_finaliseBlock(Keccak blockHash)
         {
             return _finaliseBlockHandler.Handle(blockHash);
         }
