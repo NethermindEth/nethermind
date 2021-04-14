@@ -117,6 +117,8 @@ namespace Nethermind.JsonRpc.Data
             tx.AccessList = TryGetAccessList();
             tx.ChainId = chainId;
             tx.DecodedFeeCap = MaxFeePerGas ?? 0;
+            if (tx.IsEip1559)
+                tx.GasPrice = MaxInclusionFeePerGas ?? 0;
 
             return tx;
         }
@@ -134,6 +136,12 @@ namespace Nethermind.JsonRpc.Data
             tx.Type = Type;
             tx.AccessList = TryGetAccessList();
             tx.ChainId = chainId;
+            tx.Type = Type;
+            if (tx.IsEip1559)
+            {
+                tx.GasPrice = MaxInclusionFeePerGas ?? 0;
+                tx.DecodedFeeCap = MaxFeePerGas ?? 0;
+            }
 
             return tx;
         }
