@@ -50,13 +50,30 @@ namespace Nethermind.Runner.Ethereum.Steps
             Address? registrar = api.ChainSpec?.Parameters.Registrar;
             if (registrar != null)
             {
-                RegisterContract registerContract = new RegisterContract(api.AbiEncoder, registrar, readOnlyTxProcessorSource);
-                CertifierContract certifierContract = new CertifierContract(api.AbiEncoder, registerContract, readOnlyTxProcessorSource);
+                RegisterContract registerContract = new(api.AbiEncoder, registrar, readOnlyTxProcessorSource);
+                CertifierContract certifierContract = new(api.AbiEncoder, registerContract, readOnlyTxProcessorSource);
                 return new TxCertifierFilter(certifierContract, gasPriceTxFilter, specProvider, api.LogManager);
             }
 
             return gasPriceTxFilter;
         }
+        
+        private static ITxFilter CreateBaseAuRaTxFilter(
+            AuRaNethermindApi api,
+            IReadOnlyTxProcessorSource readOnlyTxProcessorSource,
+            ISpecProvider specProvider)
+        {
+            Address? registrar = api.ChainSpec?.Parameters.Registrar;
+            if (registrar != null)
+            {
+                RegisterContract registerContract = new(api.AbiEncoder, registrar, readOnlyTxProcessorSource);
+                CertifierContract certifierContract = new(api.AbiEncoder, registerContract, readOnlyTxProcessorSource);
+                return new TxCertifierFilter(certifierContract, NullTxFilter.Instance, specProvider, api.LogManager);
+            }
+
+            return NullTxFilter.Instance;
+        }
+        
         
         public static ITxFilter? CreateTxPermissionFilter(AuRaNethermindApi api, IReadOnlyTxProcessorSource readOnlyTxProcessorSource)
         {
@@ -83,8 +100,8 @@ namespace Nethermind.Runner.Ethereum.Steps
 
             return null;
         }
-
-        public static ITxFilter CreateAuRaTxFilter(
+        
+        public static ITxFilter CreateAuRaTxFilterForProducer(
             IMiningConfig miningConfig,
             AuRaNethermindApi api,
             IReadOnlyTxProcessorSource readOnlyTxProcessorSource,
@@ -92,6 +109,18 @@ namespace Nethermind.Runner.Ethereum.Steps
             ISpecProvider specProvider)
         {
             ITxFilter baseAuRaTxFilter = CreateBaseAuRaTxFilter(miningConfig, api, readOnlyTxProcessorSource, minGasPricesContractDataStore, specProvider);
+            ITxFilter? txPermissionFilter = CreateTxPermissionFilter(api, readOnlyTxProcessorSource);
+            return txPermissionFilter != null
+                ? new CompositeTxFilter(baseAuRaTxFilter, txPermissionFilter) 
+                : baseAuRaTxFilter;
+        }
+
+        public static ITxFilter CreateAuRaTxFilter(
+            AuRaNethermindApi api,
+            IReadOnlyTxProcessorSource readOnlyTxProcessorSource,
+            ISpecProvider specProvider)
+        {
+            ITxFilter baseAuRaTxFilter = CreateBaseAuRaTxFilter(api, readOnlyTxProcessorSource, specProvider);
             ITxFilter? txPermissionFilter = CreateTxPermissionFilter(api, readOnlyTxProcessorSource);
             return txPermissionFilter != null
                 ? new CompositeTxFilter(baseAuRaTxFilter, txPermissionFilter) 

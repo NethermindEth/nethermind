@@ -266,7 +266,7 @@ namespace Nethermind.Runner.Ethereum.Steps
 
             var minGasPricesContractDataStore = TxFilterBuilders.CreateMinGasPricesDataStore(_api, txPriorityContract, localDataSource);
 
-            ITxFilter txPoolFilter = TxFilterBuilders.CreateAuRaTxFilter(
+            ITxFilter txPoolFilter = TxFilterBuilders.CreateAuRaTxFilterForProducer(
                 NethermindApi.Config<IMiningConfig>(),
                 _api,
                 txPoolReadOnlyTransactionProcessorSource,

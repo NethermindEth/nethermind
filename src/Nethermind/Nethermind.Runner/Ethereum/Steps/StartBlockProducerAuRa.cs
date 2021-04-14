@@ -57,7 +57,6 @@ namespace Nethermind.Runner.Ethereum.Steps
         private DictionaryContractDataStore<TxPriorityContract.Destination>? _minGasPricesContractDataStore;
         private TxPriorityContract? _txPriorityContract;
         private TxPriorityContract.LocalDataSource? _localDataSource;
-        private ITxFilter? _txPermissionFilter;
         private IBlockPreparationContextService _blockPreparationContextService;
 
         public StartBlockProducerAuRa(AuRaNethermindApi api) : base(api)
@@ -107,8 +106,11 @@ namespace Nethermind.Runner.Ethereum.Steps
             if (_api.SpecProvider == null) throw new StepDependencyException(nameof(_api.SpecProvider));
 
             var chainSpecAuRa = _api.ChainSpec.AuRa;
-            _txPermissionFilter = TxFilterBuilders.CreateTxPermissionFilter(_api, readOnlyTxProcessorSource);
-            var txFilter = CreateAuraTxFilter(readOnlyTxProcessorSource, _api.SpecProvider);
+
+            ITxFilter auRaTxFilter = TxFilterBuilders.CreateAuRaTxFilter(
+                _api,
+                readOnlyTxProcessorSource,
+                _api.SpecProvider);;
 
             _validator = new AuRaValidatorFactory(
                     readOnlyTxProcessingEnv.StateProvider,
@@ -146,7 +148,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.ReceiptStorage,
                 _api.LogManager,
                 readOnlyTxProcessingEnv.BlockTree,
-                txFilter,
+                auRaTxFilter,
                 CreateGasLimitCalculator(readOnlyTxProcessorSource) as AuRaContractGasLimitOverride)
             {
                 AuRaValidator = _validator
@@ -187,7 +189,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.DisposeStack.Push(prioritiesContractDataStore);
 
                 ITxFilter auraTxFilter =
-                    CreateAuraTxFilter(readOnlyTxProcessorSource, _api.SpecProvider);
+                    CreateAuraTxFilterForProducer(readOnlyTxProcessorSource, _api.SpecProvider);
                 ITxFilterPipeline txFilterPipeline = new TxFilterPipelineBuilder(_api.LogManager)
                     .WithCustomTxFilter(auraTxFilter)
                     .WithBaseFeeFilter(_blockPreparationContextService, _api.SpecProvider)
@@ -257,7 +259,7 @@ namespace Nethermind.Runner.Ethereum.Steps
 
         private TxPoolTxSource CreateStandardTxPoolTxSource(ReadOnlyTxProcessingEnv processingEnv, IReadOnlyTxProcessorSource readOnlyTxProcessorSource)
         {
-            ITxFilter txSourceFilter = CreateAuraTxFilter(readOnlyTxProcessorSource,_api.SpecProvider);
+            ITxFilter txSourceFilter = CreateAuraTxFilterForProducer(readOnlyTxProcessorSource,_api.SpecProvider);
             ITxFilterPipeline txFilterPipeline = new TxFilterPipelineBuilder(_api.LogManager)
                 .WithCustomTxFilter(txSourceFilter)
                 .WithBaseFeeFilter(_blockPreparationContextService, _api.SpecProvider)
@@ -296,7 +298,7 @@ namespace Nethermind.Runner.Ethereum.Steps
 
                 if (randomnessContractAddress?.Any() == true)
                 {
-                    var randomContractTxSource = new RandomContractTxSource(
+                    RandomContractTxSource randomContractTxSource = new RandomContractTxSource(
                         GetRandomContracts(randomnessContractAddress, _api.AbiEncoder,
                             readOnlyTxProcessorSource,
                             signer),
@@ -331,17 +333,24 @@ namespace Nethermind.Runner.Ethereum.Steps
                 txSource = new GeneratedTxSource(txSource, transactionSealer, processingEnv.StateReader, _api.LogManager);
             }
             
-            if (_txPermissionFilter != null)
+            ITxFilter? txPermissionFilter = TxFilterBuilders.CreateTxPermissionFilter(_api, readOnlyTxProcessorSource);
+            if (txPermissionFilter != null)
             {
                 // we now only need to filter generated transactions here, as regular ones are filtered on TxPoolTxSource filter based on CreateTxSourceFilter method
-                txSource = new FilteredTxSource<GeneratedTransaction>(txSource, _txPermissionFilter, _api.LogManager);
+                txSource = new FilteredTxSource<GeneratedTransaction>(txSource, txPermissionFilter, _api.LogManager);
             }
 
             return txSource;
         }
-
+        
         private ITxFilter CreateAuraTxFilter(IReadOnlyTxProcessorSource readOnlyTxProcessorSource, ISpecProvider specProvider) => 
             TxFilterBuilders.CreateAuRaTxFilter(
+                _api,
+                readOnlyTxProcessorSource,
+                specProvider);
+
+        private ITxFilter CreateAuraTxFilterForProducer(IReadOnlyTxProcessorSource readOnlyTxProcessorSource, ISpecProvider specProvider) => 
+            TxFilterBuilders.CreateAuRaTxFilterForProducer(
                 NethermindApi.Config<IMiningConfig>(),
                 _api,
                 readOnlyTxProcessorSource,
