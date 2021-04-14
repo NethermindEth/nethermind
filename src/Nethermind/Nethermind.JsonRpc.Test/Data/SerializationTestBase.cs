@@ -37,7 +37,7 @@ namespace Nethermind.JsonRpc.Test.Data
     {
         protected void TestRoundtrip<T>(T item, Func<T, T, bool> equalityComparer, JsonConverter<T> converter = null, string description = null)
         {
-            EthereumJsonSerializer serializer = BuildSerializer();
+            IJsonSerializer serializer = BuildSerializer();
             if (converter != null)
             {
                 serializer.RegisterConverter(converter);
@@ -73,7 +73,7 @@ namespace Nethermind.JsonRpc.Test.Data
 
         protected void TestRoundtrip<T>(string json, JsonConverter converter = null)
         {
-            EthereumJsonSerializer serializer = BuildSerializer();
+            IJsonSerializer serializer = BuildSerializer();
             if (converter != null)
             {
                 serializer.RegisterConverter(converter);
@@ -86,7 +86,7 @@ namespace Nethermind.JsonRpc.Test.Data
 
         private void TestToJson<T>(T item, JsonConverter<T> converter, string expectedResult)
         {
-            EthereumJsonSerializer serializer = BuildSerializer();
+            IJsonSerializer serializer = BuildSerializer();
             if (converter != null)
             {
                 serializer.RegisterConverter(converter);
@@ -101,21 +101,12 @@ namespace Nethermind.JsonRpc.Test.Data
             TestToJson(item, null, expectedResult);
         }
 
-        private static EthereumJsonSerializer BuildSerializer()
+        private static IJsonSerializer BuildSerializer()
         {
-            EthereumJsonSerializer serializer = new EthereumJsonSerializer();
-            foreach (JsonConverter converter in EthModuleFactory.Converters)
-            {
-                serializer.RegisterConverter(converter);
-            }
-
-            foreach (JsonConverter converter in TraceModuleFactory.Converters)
-            {
-                serializer.RegisterConverter(converter);
-            }
-
+            IJsonSerializer serializer = new EthereumJsonSerializer();
+            serializer.RegisterConverters(EthModuleFactory.Converters);
+            serializer.RegisterConverters(TraceModuleFactory.Converters);
             serializer.RegisterConverter(new BlockParameterConverter());
-
             return serializer;
         }
     }

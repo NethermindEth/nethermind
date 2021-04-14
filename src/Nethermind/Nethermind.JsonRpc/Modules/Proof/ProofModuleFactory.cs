@@ -31,7 +31,7 @@ using Newtonsoft.Json;
 
 namespace Nethermind.JsonRpc.Modules.Proof
 {
-    public class ProofModuleFactory : ModuleFactoryBase<IProofModule>
+    public class ProofModuleFactory : ModuleFactoryBase<IProofRpcModule>
     {
         private readonly IBlockPreprocessorStep _recoveryStep;
         private readonly IReceiptFinder _receiptFinder;
@@ -59,7 +59,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
             _trieStore = trieStore;
         }
 
-        public override IProofModule Create()
+        public override IProofRpcModule Create()
         {
             ReadOnlyTxProcessingEnv txProcessingEnv = new(
                 _dbProvider, _trieStore, _blockTree, _specProvider, _logManager);
@@ -71,7 +71,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
                 txProcessingEnv.StateProvider,
                 chainProcessingEnv.ChainProcessor);
 
-            return new ProofModule(tracer, _blockTree, _receiptFinder, _specProvider, _logManager);
+            return new ProofRpcModule(tracer, _blockTree, _receiptFinder, _specProvider, _logManager);
         }
 
         private static readonly List<JsonConverter> _converters = new()

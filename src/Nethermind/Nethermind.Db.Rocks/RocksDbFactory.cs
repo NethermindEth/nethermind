@@ -22,8 +22,11 @@ namespace Nethermind.Db.Rocks
     public class RocksDbFactory : IRocksDbFactory
     {
         private readonly IDbConfig _dbConfig;
+        
         private readonly ILogManager _logManager;
+        
         private readonly string _basePath;
+        
         public RocksDbFactory(IDbConfig dbConfig, ILogManager logManager, string basePath)
         {
             _dbConfig = dbConfig;
@@ -33,18 +36,12 @@ namespace Nethermind.Db.Rocks
 
         public IDb CreateDb(RocksDbSettings rocksDbSettings)
         { 
-            return new SimpleRocksDb(_basePath, 
-                rocksDbSettings,
-                _dbConfig, 
-                _logManager);
+            return new DbOnTheRocks(_basePath, rocksDbSettings, _dbConfig, _logManager);
         }
 
         public IColumnsDb<T> CreateColumnsDb<T>(RocksDbSettings rocksDbSettings) where T : notnull
         {
-            return new SimpleColumnRocksDb<T>(_basePath,
-                rocksDbSettings,
-                _dbConfig,
-                _logManager);
+            return new ColumnsDb<T>(_basePath, rocksDbSettings, _dbConfig, _logManager);
         }
     }
 }

@@ -467,6 +467,44 @@ namespace Nethermind.Blockchain.Test.TxPools
             AddTransactionsToPool(transactionsPerPeer: 5); //generates 50 tx with 1..9 gasprice per 5 peers, only 8 up will be kept 
             _txPool.GetOwnPendingTransactions().Min(t => t.GasPrice).Should().Be(8);
         }
+        
+        [Test]
+        public void should_accept_access_list_transactions_only_when_eip2930_enabled([Values(false, true)] bool eip2930Enabled)
+        {
+            if (!eip2930Enabled)
+            {
+                _blockFinder.FindBestSuggestedHeader().Returns(Build.A.BlockHeader.WithNumber(RopstenSpecProvider.BerlinBlockNumber - 1).TestObject);
+            }
+            
+            _txPool = CreatePool(_noTxStorage);
+            Transaction tx = Build.A.Transaction
+                .WithType(TxType.AccessList)
+                .WithChainId(ChainId.Mainnet)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            EnsureSenderBalance(tx);
+            AddTxResult result = _txPool.AddTransaction(tx, TxHandlingOptions.PersistentBroadcast);
+            _txPool.GetPendingTransactions().Length.Should().Be(eip2930Enabled ? 1 : 0);
+            result.Should().Be(eip2930Enabled ? AddTxResult.Added : AddTxResult.Invalid);
+        }
+
+        [Test]
+        public void should_return_true_when_asking_for_txHash_existing_in_pool()
+        {
+            _txPool = CreatePool(_noTxStorage);
+            Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            EnsureSenderBalance(tx);
+            _txPool.AddTransaction(tx, TxHandlingOptions.PersistentBroadcast);
+            _txPool.IsInHashCache(tx.Hash).Should().Be(true);
+            _txPool.RemoveTransaction(tx.Hash).Should().Be(true);
+        }
+        
+        [Test]
+        public void should_return_false_when_asking_for_not_known_txHash()
+        {
+            _txPool = CreatePool(_noTxStorage);
+            _txPool.IsInHashCache(TestItem.KeccakA).Should().Be(false);
+            _txPool.RemoveTransaction(TestItem.KeccakA).Should().Be(false);
+        }
 
         private Transactions AddTransactions(ITxStorage storage)
         {

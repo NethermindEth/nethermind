@@ -25,7 +25,7 @@ namespace Nethermind.Benchmarks.Core
 {
     [MemoryDiagnoser]
     [DisassemblyDiagnoser]
-    [SimpleJob(RuntimeMoniker.NetCoreApp31)]
+    [SimpleJob(RuntimeMoniker.NetCoreApp50)]
     public class Keccak256Benchmarks
     {
         private static HashLib.Crypto.SHA3.Keccak256 _hash = HashFactory.Crypto.SHA3.CreateKeccak256();

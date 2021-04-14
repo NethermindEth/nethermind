@@ -40,6 +40,7 @@ namespace Nethermind.Evm.Tracing.Proofs
         public byte[]? Output { get; private set; }
 
         public bool IsTracingBlockHash => true;
+        public bool IsTracingAccess => false;
         public bool IsTracingReceipt => true;
         public bool IsTracingActions => false;
         public bool IsTracingOpLevelStorage => false;
@@ -51,7 +52,7 @@ namespace Nethermind.Evm.Tracing.Proofs
         public bool IsTracingState => true;
         public bool IsTracingStorage => true;
 
-        public void ReportActionEnd(long gas, Address deploymentAddress, byte[] deployedCode)
+        public void ReportActionEnd(long gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode)
         {
             throw new NotSupportedException();
         }
@@ -79,6 +80,11 @@ namespace Nethermind.Evm.Tracing.Proofs
         public void ReportExtraGasPressure(long extraGasPressure)
         {
             throw new NotSupportedException();
+        }
+
+        public void ReportAccess(IReadOnlySet<Address> accessedAddresses, IReadOnlySet<StorageCell> accessedStorageCells)
+        {
+            throw new NotImplementedException();
         }
 
         public void ReportBalanceChange(Address address, UInt256? before, UInt256? after)
@@ -203,12 +209,12 @@ namespace Nethermind.Evm.Tracing.Proofs
             throw new NotSupportedException();
         }
 
-        public void ReportAction(long gas, UInt256 value, Address @from, Address to, byte[] input, ExecutionType callType, bool isPrecompileCall = false)
+        public void ReportAction(long gas, UInt256 value, Address @from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
         {
             throw new NotSupportedException();
         }
 
-        public void ReportActionEnd(long gas, byte[] output)
+        public void ReportActionEnd(long gas, ReadOnlyMemory<byte> output)
         {
             throw new NotSupportedException();
         }

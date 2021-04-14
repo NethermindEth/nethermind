@@ -12,7 +12,6 @@ mkdir $LIN_RELEASE
 mkdir $OSX_RELEASE
 mkdir $WIN_RELEASE
 mkdir $LIN_ARM64_RELEASE
-mkdir $LIN_ARM_RELEASE
 
 
 echo =======================================================

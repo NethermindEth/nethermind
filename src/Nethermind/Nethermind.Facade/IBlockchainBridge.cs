@@ -33,8 +33,9 @@ namespace Nethermind.Facade
         void RecoverTxSender(Transaction tx);
         TxReceipt GetReceipt(Keccak txHash);
         (TxReceipt Receipt, Transaction Transaction) GetTransaction(Keccak txHash);
-        BlockchainBridge.CallOutput Call(BlockHeader blockHeader, Transaction transaction, CancellationToken cancellationToken);
+        BlockchainBridge.CallOutput Call(BlockHeader header, Transaction tx, CancellationToken cancellationToken);
         BlockchainBridge.CallOutput EstimateGas(BlockHeader header, Transaction tx, CancellationToken cancellationToken);
+        BlockchainBridge.CallOutput CreateAccessList(BlockHeader header, Transaction tx, CancellationToken cancellationToken, bool optimize);
         ulong GetChainId();
 
         int NewBlockFilter();

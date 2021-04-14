@@ -107,10 +107,12 @@ namespace Nethermind.Evm.Test
         protected TestAllTracerWithOutput Execute(params byte[] code)
         {
             (var block, var transaction) = PrepareTx(BlockNumber, 100000, code);
-            TestAllTracerWithOutput tracer = new();
+            TestAllTracerWithOutput tracer = CreateTracer();
             _processor.Execute(transaction, block.Header, tracer);
             return tracer;
         }
+
+        protected virtual TestAllTracerWithOutput CreateTracer() => new();
 
         protected T Execute<T>(T tracer, params byte[] code) where T : ITxTracer
         {
@@ -122,7 +124,7 @@ namespace Nethermind.Evm.Test
         protected TestAllTracerWithOutput Execute(long blockNumber, long gasLimit, byte[] code)
         {
             (Block block, Transaction transaction) = PrepareTx(blockNumber, gasLimit, code);
-            TestAllTracerWithOutput tracer = new();
+            TestAllTracerWithOutput tracer = CreateTracer();
             _processor.Execute(transaction, block.Header, tracer);
             return tracer;
         }

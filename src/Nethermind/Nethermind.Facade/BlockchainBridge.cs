@@ -32,6 +32,7 @@ using Nethermind.TxPool;
 using Block = Nethermind.Core.Block;
 using System.Threading;
 using Nethermind.Blockchain.Processing;
+using Nethermind.Core.Eip2930;
 using Nethermind.State;
 
 namespace Nethermind.Facade
@@ -60,13 +61,13 @@ namespace Nethermind.Facade
 
         public BlockchainBridge(
             ReadOnlyTxProcessingEnv processingEnv,
-            ITxPool txPool,
-            IReceiptFinder receiptStorage,
-            IFilterStore filterStore,
-            IFilterManager filterManager,
-            IEthereumEcdsa ecdsa,
-            ITimestamper timestamper,
-            ILogFinder logFinder,
+            ITxPool? txPool,
+            IReceiptFinder? receiptStorage,
+            IFilterStore? filterStore,
+            IFilterManager? filterManager,
+            IEthereumEcdsa? ecdsa,
+            ITimestamper? timestamper,
+            ILogFinder? logFinder,
             bool isMining,
             bool isBeamSyncing)
         {
@@ -151,26 +152,22 @@ namespace Nethermind.Facade
                 InputError = inputError;
             }
 
-            public string Error { get; set; }
+            public string? Error { get; set; }
 
             public byte[] OutputData { get; set; }
 
             public long GasSpent { get; set; }
             
             public bool InputError { get; set; }
+            
+            public AccessList? AccessList { get; set; }
         }
 
-        public CallOutput Call(BlockHeader blockHeader, Transaction transaction, CancellationToken cancellationToken)
+        public CallOutput Call(BlockHeader header, Transaction tx, CancellationToken cancellationToken)
         {
             CallOutputTracer callOutputTracer = new();
-            (bool Success, string Error) tryCallResult = TryCallAndRestore(blockHeader, blockHeader.Number, blockHeader.Timestamp, transaction,
-                new CancellationTxTracer(callOutputTracer, cancellationToken)
-                {
-                    IsTracingActions = true, 
-                    IsTracingOpLevelStorage = true,
-                    IsTracingInstructions = true, // a little bit costly but almost all are simple calls
-                    IsTracingRefunds = true
-                });
+            (bool Success, string Error) tryCallResult = TryCallAndRestore(header, header.Number, header.Timestamp, tx,
+                callOutputTracer.WithCancellation(cancellationToken));
             return new CallOutput
             {
                 Error = tryCallResult.Success ? callOutputTracer.Error : tryCallResult.Error,
@@ -191,7 +188,34 @@ namespace Nethermind.Facade
                 estimateGasTracer.WithCancellation(cancellationToken));
             
             long estimate = estimateGasTracer.CalculateEstimate(tx);
-            return new CallOutput {Error = tryCallResult.Success ? estimateGasTracer.Error : tryCallResult.Error, GasSpent = estimate, InputError = !tryCallResult.Success};
+            
+            return new CallOutput 
+            {
+                Error = tryCallResult.Success ? estimateGasTracer.Error : tryCallResult.Error, 
+                GasSpent = estimate, 
+                InputError = !tryCallResult.Success
+            };
+        }
+
+        public CallOutput CreateAccessList(BlockHeader header, Transaction tx, CancellationToken cancellationToken, bool optimize)
+        {
+            CallOutputTracer callOutputTracer = new();
+            AccessTxTracer accessTxTracer = optimize 
+                ? new(tx.SenderAddress, 
+                    tx.GetRecipient(tx.IsContractCreation ? _stateReader.GetNonce(header.StateRoot, tx.SenderAddress) : 0)) 
+                : new();
+
+            (bool Success, string Error) tryCallResult = TryCallAndRestore(header, header.Number, header.Timestamp, tx,
+                new CompositeTxTracer(callOutputTracer, accessTxTracer).WithCancellation(cancellationToken));
+            
+            return new CallOutput
+            {
+                Error = tryCallResult.Success ? callOutputTracer.Error : tryCallResult.Error,
+                GasSpent = accessTxTracer.GasSpent,
+                OutputData = callOutputTracer.ReturnValue,
+                InputError = !tryCallResult.Success,
+                AccessList = accessTxTracer.AccessList
+            };
         }
 
         private (bool Success, string Error) TryCallAndRestore(

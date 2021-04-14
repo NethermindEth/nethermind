@@ -40,7 +40,7 @@ namespace Nethermind.JsonRpc.Test.Modules
     [TestFixture]
     public class BoundedModulePoolTests
     {
-        private BoundedModulePool<IEthModule> _modulePool;
+        private BoundedModulePool<IEthRpcModule> _modulePool;
 
         [SetUp]
         public async Task Initialize()
@@ -59,7 +59,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 new SyncConfig(),
                 LimboLogs.Instance);
             
-            _modulePool = new BoundedModulePool<IEthModule>(new EthModuleFactory(
+            _modulePool = new BoundedModulePool<IEthRpcModule>(new EthModuleFactory(
                 txPool,
                 Substitute.For<ITxSender>(),
                 NullWallet.Instance,
@@ -88,7 +88,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public async Task Ensure_returning_shared_does_not_change_concurrency()
         {
-            IEthModule shared = await _modulePool.GetModule(true);
+            IEthRpcModule shared = await _modulePool.GetModule(true);
             _modulePool.ReturnModule(shared);
             await _modulePool.GetModule(false);
             Assert.ThrowsAsync<ModuleRentalTimeoutException>(() => _modulePool.GetModule(false));
@@ -106,8 +106,8 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public async Task Ensure_that_shared_is_never_returned_as_exclusive()
         {
-            IEthModule sharedModule = await _modulePool.GetModule(true);
-            _modulePool.ReturnModule(sharedModule);
+            IEthRpcModule sharedRpcModule = await _modulePool.GetModule(true);
+            _modulePool.ReturnModule(sharedRpcModule);
 
             const int iterations = 1000;
             Func<Task> rentReturnShared = async () =>
@@ -115,9 +115,9 @@ namespace Nethermind.JsonRpc.Test.Modules
                 for (int i = 0; i < iterations; i++)
                 {
                     TestContext.Out.WriteLine($"Rent shared {i}");
-                    IEthModule ethModule = await _modulePool.GetModule(true);
-                    Assert.AreSame(sharedModule, ethModule);
-                    _modulePool.ReturnModule(ethModule);
+                    IEthRpcModule ethRpcModule = await _modulePool.GetModule(true);
+                    Assert.AreSame(sharedRpcModule, ethRpcModule);
+                    _modulePool.ReturnModule(ethRpcModule);
                     TestContext.Out.WriteLine($"Return shared {i}");
                 }
             };
@@ -127,9 +127,9 @@ namespace Nethermind.JsonRpc.Test.Modules
                 for (int i = 0; i < iterations; i++)
                 {
                     TestContext.Out.WriteLine($"Rent exclusive {i}");
-                    IEthModule ethModule = await _modulePool.GetModule(false);
-                    Assert.AreNotSame(sharedModule, ethModule);
-                    _modulePool.ReturnModule(ethModule);
+                    IEthRpcModule ethRpcModule = await _modulePool.GetModule(false);
+                    Assert.AreNotSame(sharedRpcModule, ethRpcModule);
+                    _modulePool.ReturnModule(ethRpcModule);
                     TestContext.Out.WriteLine($"Return exclusive {i}");
                 }
             };
@@ -146,8 +146,8 @@ namespace Nethermind.JsonRpc.Test.Modules
         [TestCase(false)]
         public async Task Can_rent_and_return(bool canBeShared)
         {
-            IEthModule ethModule = await _modulePool.GetModule(canBeShared);
-            _modulePool.ReturnModule(ethModule);
+            IEthRpcModule ethRpcModule = await _modulePool.GetModule(canBeShared);
+            _modulePool.ReturnModule(ethRpcModule);
         }
 
         [TestCase(true)]
@@ -156,8 +156,8 @@ namespace Nethermind.JsonRpc.Test.Modules
         {
             for (int i = 0; i < 1000; i++)
             {
-                IEthModule ethModule = await _modulePool.GetModule(canBeShared);
-                _modulePool.ReturnModule(ethModule);
+                IEthRpcModule ethRpcModule = await _modulePool.GetModule(canBeShared);
+                _modulePool.ReturnModule(ethRpcModule);
             }
         }
     }

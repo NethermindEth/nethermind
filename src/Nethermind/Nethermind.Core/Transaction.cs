@@ -31,11 +31,12 @@ namespace Nethermind.Core
         public const int BaseTxGasCost = 21000;
         
         public ulong? ChainId { get; set; }
-        
+
         /// <summary>
         /// EIP-2718 transaction type
         /// </summary>
         public TxType Type { get; set; }
+
         public UInt256 Nonce { get; set; }
         public UInt256 GasPrice { get; set; }
         public UInt256 GasPremium => GasPrice; 

@@ -41,11 +41,10 @@ namespace Nethermind.Baseline.Database
         }
         public async Task Init()
         {
-            RegisterDb(new RocksDbSettings()
+            RegisterDb(
+                new RocksDbSettings(
+                    GetTitleDbName(BaselineDbNames.BaselineTree), BaselineDbNames.BaselineTree)
             {
-                DbName = GetTitleDbName(BaselineDbNames.BaselineTree),
-                DbPath = BaselineDbNames.BaselineTree,
-
                 CacheIndexAndFilterBlocks = _baselineConfig.BaselineTreeDbCacheIndexAndFilterBlocks,
                 BlockCacheSize = _baselineConfig.BaselineTreeDbBlockCacheSize,
                 WriteBufferNumber = _baselineConfig.BaselineTreeDbWriteBufferNumber,
@@ -54,11 +53,10 @@ namespace Nethermind.Baseline.Database
                 UpdateReadMetrics = () => Metrics.BaselineTreeDbReads++,
                 UpdateWriteMetrics = () => Metrics.BaselineTreeDbWrites++,
             });
-            RegisterDb(new RocksDbSettings()
+            RegisterDb(
+                new RocksDbSettings(
+                    GetTitleDbName(BaselineDbNames.BaselineTreeMetadata), BaselineDbNames.BaselineTreeMetadata)
             {
-                DbName = GetTitleDbName(BaselineDbNames.BaselineTreeMetadata),
-                DbPath = BaselineDbNames.BaselineTreeMetadata,
-
                 CacheIndexAndFilterBlocks = _baselineConfig.BaselineTreeMetadataDbCacheIndexAndFilterBlocks,
                 BlockCacheSize = _baselineConfig.BaselineTreeMetadataDbBlockCacheSize,
                 WriteBufferNumber = _baselineConfig.BaselineTreeMetadataDbWriteBufferNumber,

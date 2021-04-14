@@ -31,7 +31,7 @@ using Nethermind.Specs.Forks;
 namespace Nethermind.Network.Benchmarks
 {
     [MemoryDiagnoser]
-    [SimpleJob(RuntimeMoniker.NetCoreApp31)]
+    [SimpleJob(RuntimeMoniker.NetCoreApp50)]
     public class OutFlowBenchmarks
     {
         private static byte[] _expectedResult = Bytes.FromHexString("96cf8b950a261eae89f0e0cd0432c7d16aa615fd0633fb0375a5db932fd65a23fc4acc5efc408b693073fe8bfb82068dfcf279d80dafce41dbc4f658d92add3bb276063415c4dbacf81bbd2b0a1254eb858522b77417c9e3d6d36d67454c6c45188c642657ffdd5a67c0e2dabd5db24cd8702662f6d041ff896dcf1ef958fa37ef49187302c9ec43ea5cf3828119e84658d397b4646316636dbe4295c5e5b2df69e72c75b32fc03a1e0ec227d3b94fcd4e1f5b593e3dca74d0d327cc2a31402e57f2e62d3b721a8131d40a35e7c2d1babfe3578814f51444b518917e940721eebeabac4b70ad82c21e5270c7434907a92543914698a0cc6c692a33ad6fafc591be2de18e6c297d07a5992cc68adb27cec4705dc9ac0acb01b65674577932766c");
@@ -70,7 +70,7 @@ namespace Nethermind.Network.Benchmarks
             _zeroSnappyEncoder = new TestZeroSnappy();
             Transaction a = Build.A.Transaction.TestObject;
             Transaction b = Build.A.Transaction.TestObject;
-            _block = Build.A.Block.WithTransactions(Berlin.Instance, a, b).TestObject;
+            _block = Build.A.Block.WithTransactions(a, b).TestObject;
             _newBlockMessageSerializer = new NewBlockMessageSerializer();
             if (useLimboOutput)
             {

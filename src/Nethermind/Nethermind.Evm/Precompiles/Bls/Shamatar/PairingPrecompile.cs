@@ -36,19 +36,13 @@ namespace Nethermind.Evm.Precompiles.Bls.Shamatar
 
         public long BaseGasCost(IReleaseSpec releaseSpec) => 115000L;
 
-        public long DataGasCost(byte[] inputData, IReleaseSpec releaseSpec)
+        public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
         {
-            if (inputData == null)
-            {
-                return 0L;
-            }
-
             return 23000L * (inputData.Length / PairSize);
         }
 
-        public (byte[], bool) Run(byte[] inputData, IReleaseSpec releaseSpec)
+        public (ReadOnlyMemory<byte>, bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
         {
-            inputData ??= Array.Empty<byte>();
             if (inputData.Length % PairSize > 0 || inputData.Length == 0)
             {
                 return (Array.Empty<byte>(), false);
@@ -57,7 +51,7 @@ namespace Nethermind.Evm.Precompiles.Bls.Shamatar
             (byte[], bool) result;
             
             Span<byte> output = stackalloc byte[32];
-            bool success = ShamatarLib.BlsPairing(inputData, output);
+            bool success = ShamatarLib.BlsPairing(inputData.Span, output);
             if (success)
             {
                 result = (output.ToArray(), true);

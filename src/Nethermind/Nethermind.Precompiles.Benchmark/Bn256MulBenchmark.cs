@@ -6,9 +6,9 @@ using Nethermind.Evm.Precompiles;
 namespace Nethermind.Precompiles.Benchmark
 {
     [HtmlExporter]
-    // [ShortRunJob(RuntimeMoniker.NetCoreApp31)]
-    [SimpleJob(RuntimeMoniker.NetCoreApp31)]
-    // [DryJob(RuntimeMoniker.NetCoreApp31)]
+    // [ShortRunJob(RuntimeMoniker.NetCoreApp50)]
+    [SimpleJob(RuntimeMoniker.NetCoreApp50)]
+    // [DryJob(RuntimeMoniker.NetCoreApp50)]
     // [MemoryDiagnoser]
     // [NativeMemoryProfiler]
     public class Bn256MulBenchmark : PrecompileBenchmarkBase

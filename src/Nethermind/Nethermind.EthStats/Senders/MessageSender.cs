@@ -25,7 +25,7 @@ namespace Nethermind.EthStats.Senders
 {
     public class MessageSender : IMessageSender
     {
-        private static readonly JsonSerializerSettings SerializerSettings = new JsonSerializerSettings
+        private static readonly JsonSerializerSettings SerializerSettings = new()
         {
             ContractResolver = new CamelCasePropertyNamesContractResolver()
         };
@@ -39,25 +39,25 @@ namespace Nethermind.EthStats.Senders
             _logger = logManager.GetClassLogger();
         }
 
-        public Task SendAsync<T>(IWebsocketClient client, T message, string type = null) where T : IMessage
+        public Task SendAsync<T>(IWebsocketClient? client, T message, string? type = null) where T : IMessage
         {
             if (client is null)
             {
                 return Task.CompletedTask;
             }
             
-            var (emitMessage, messageType) = CreateMessage(message, type);
-            var payload = JsonConvert.SerializeObject(emitMessage, SerializerSettings);
+            (EmitMessage? emitMessage, string? messageType) = CreateMessage(message, type);
+            string payload = JsonConvert.SerializeObject(emitMessage, SerializerSettings);
             if (_logger.IsTrace) _logger.Trace($"Sending ETH stats message '{messageType}': {payload}");
 
             client.Send(payload);
             return Task.CompletedTask;
         }
 
-        private (EmitMessage message, string type) CreateMessage<T>(T message, string type = null) where T : IMessage
+        private (EmitMessage message, string type) CreateMessage<T>(T message, string? type = null) where T : IMessage
         {
             message.Id = _instanceId;
-            var messageType = string.IsNullOrWhiteSpace(type)
+            string messageType = string.IsNullOrWhiteSpace(type)
                 ? typeof(T).Name.ToLowerInvariant().Replace("message", string.Empty)
                 : type;
 
@@ -66,7 +66,9 @@ namespace Nethermind.EthStats.Senders
 
         private class EmitMessage
         {
-            public List<object> Emit { get; } = new List<object>();
+            // ReSharper disable once CollectionNeverQueried.Local
+            // ReSharper disable once MemberCanBePrivate.Local
+            public List<object> Emit { get; } = new();
 
             public EmitMessage(string type, object message)
             {

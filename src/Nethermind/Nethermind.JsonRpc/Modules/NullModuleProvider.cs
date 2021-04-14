@@ -25,13 +25,13 @@ namespace Nethermind.JsonRpc.Modules
     public class NullModuleProvider : IRpcModuleProvider
     {
         public static NullModuleProvider Instance = new();
-        private static Task<IModule> Null = Task.FromResult(default(IModule));
+        private static Task<IRpcModule> Null = Task.FromResult(default(IRpcModule));
 
         private NullModuleProvider()
         {
         }
 
-        public void Register<T>(IRpcModulePool<T> pool) where T : IModule
+        public void Register<T>(IRpcModulePool<T> pool) where T : IRpcModule
         {
         }
 
@@ -51,12 +51,12 @@ namespace Nethermind.JsonRpc.Modules
             return (null, false);
         }
 
-        public Task<IModule> Rent(string methodName, bool canBeShared)
+        public Task<IRpcModule> Rent(string methodName, bool canBeShared)
         {
             return Null;
         }
 
-        public void Return(string methodName, IModule module)
+        public void Return(string methodName, IRpcModule rpcModule)
         {
         }
     }

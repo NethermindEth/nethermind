@@ -103,9 +103,9 @@ namespace Nethermind.Analytics
         public Task InitRpcModules()
         {
             var (getFromAPi, _) = _api.ForRpc;
-            AnalyticsModule analyticsModule = new AnalyticsModule(
+            AnalyticsRpcModule analyticsRpcModule = new AnalyticsRpcModule(
                 getFromAPi.BlockTree, getFromAPi.StateReader, getFromAPi.LogManager);
-            getFromAPi.RpcModuleProvider.Register(new SingletonModulePool<IAnalyticsModule>(analyticsModule));
+            getFromAPi.RpcModuleProvider.Register(new SingletonModulePool<IAnalyticsRpcModule>(analyticsRpcModule));
             return Task.CompletedTask;
         }
     }

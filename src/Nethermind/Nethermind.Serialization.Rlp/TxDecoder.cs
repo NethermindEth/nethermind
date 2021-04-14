@@ -43,7 +43,8 @@ namespace Nethermind.Serialization.Rlp
             Transaction transaction = new();
             if (!rlpStream.IsSequenceNext())
             {
-                rlpStream.SkipLength();
+                (int PrefixLength, int ContentLength) prefixAndContentLength = rlpStream.ReadPrefixAndContentLength();
+                transactionSequence = rlpStream.Peek(prefixAndContentLength.ContentLength);
                 transaction.Type = (TxType)rlpStream.ReadByte();
             }
 
@@ -200,7 +201,8 @@ namespace Nethermind.Serialization.Rlp
             Transaction transaction = new();
             if (!decoderContext.IsSequenceNext())
             {
-                decoderContext.SkipLength();
+                (int PrefixLength, int ContentLength) prefixAndContentLength = decoderContext.ReadPrefixAndContentLength();
+                transactionSequence = decoderContext.Peek(prefixAndContentLength.ContentLength);
                 transaction.Type = (TxType)decoderContext.ReadByte();
             }
 
@@ -431,7 +433,7 @@ namespace Nethermind.Serialization.Rlp
             else
             {
                 bool signatureIsNull = item.Signature == null;
-                contentLength += signatureIsNull ? 1 : Rlp.LengthOf(item.Signature.V);
+                contentLength += signatureIsNull ? 1 : Rlp.LengthOf(item.Type == TxType.Legacy ? item.Signature.V : item.Signature.RecoveryId);
                 contentLength += signatureIsNull ? 1 : Rlp.LengthOf(item.Signature.RAsSpan.WithoutLeadingZeros());
                 contentLength += signatureIsNull ? 1 : Rlp.LengthOf(item.Signature.SAsSpan.WithoutLeadingZeros());
             }

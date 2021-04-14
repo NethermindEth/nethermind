@@ -31,6 +31,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Database
     public class NdmDbInitializer : RocksDbInitializer
     {
         private readonly INdmConfig _ndmConfig;
+
         public NdmDbInitializer(
             INdmConfig ndmConfig,
             IDbProvider dbProvider,
@@ -40,31 +41,26 @@ namespace Nethermind.DataMarketplace.Infrastructure.Database
         {
             _ndmConfig = ndmConfig ?? throw new ArgumentNullException(nameof(ndmConfig));
         }
+
         public async Task Init()
         {
-            RegisterDb(new RocksDbSettings()
+            RegisterDb(new RocksDbSettings(
+                GetTitleDbName(NdmDbNames.Configs), NdmDbNames.Configs)
             {
-                DbName = GetTitleDbName(NdmDbNames.Configs),
-                DbPath = NdmDbNames.Configs,
-
                 CacheIndexAndFilterBlocks = _ndmConfig.ConfigsDbCacheIndexAndFilterBlocks,
                 BlockCacheSize = _ndmConfig.ConfigsDbBlockCacheSize,
                 WriteBufferNumber = _ndmConfig.ConfigsDbWriteBufferNumber,
                 WriteBufferSize = _ndmConfig.ConfigsDbWriteBufferSize,
-
                 UpdateReadMetrics = () => Metrics.ConfigsDbReads++,
                 UpdateWriteMetrics = () => Metrics.ConfigsDbWrites++,
             });
-            RegisterDb(new RocksDbSettings()
+            RegisterDb(new RocksDbSettings(
+                GetTitleDbName(NdmDbNames.EthRequests),NdmDbNames.EthRequests)
             {
-                DbName = GetTitleDbName(NdmDbNames.EthRequests),
-                DbPath = NdmDbNames.EthRequests,
-
                 CacheIndexAndFilterBlocks = _ndmConfig.EthRequestsDbCacheIndexAndFilterBlocks,
                 BlockCacheSize = _ndmConfig.EthRequestsDbBlockCacheSize,
                 WriteBufferNumber = _ndmConfig.EthRequestsDbWriteBufferNumber,
                 WriteBufferSize = _ndmConfig.EthRequestsDbWriteBufferSize,
-
                 UpdateReadMetrics = () => Metrics.EthRequestsDbReads++,
                 UpdateWriteMetrics = () => Metrics.EthRequestsDbWrites++,
             });
