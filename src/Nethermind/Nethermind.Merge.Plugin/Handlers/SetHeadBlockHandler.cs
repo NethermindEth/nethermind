@@ -15,17 +15,47 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using Nethermind.Blockchain;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc;
-using Nethermind.Merge.Plugin.Data;
+using Nethermind.Logging;
+using Result = Nethermind.Merge.Plugin.Data.Result;
 
 namespace Nethermind.Merge.Plugin.Handlers
 {
-    public class SetHeadBlockHandler : IHandler<Keccak, SuccessResult>
+    public class SetHeadBlockHandler : IHandler<Keccak, Result>
     {
-        public ResultWrapper<SuccessResult> Handle(Keccak request)
+        private readonly IBlockTree _blockTree;
+        private readonly ILogger _logger;
+
+        public SetHeadBlockHandler(IBlockTree blockTree, ILogManager logManager)
         {
-            throw new System.NotImplementedException();
+            _blockTree = blockTree;
+            _logger = logManager.GetClassLogger();
+        }
+        
+        public ResultWrapper<Result> Handle(Keccak blockHash)
+        {
+            Block? block = _blockTree.FindBlock(blockHash);
+            if (block == null)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Block {blockHash} cannot be found and will not be set as head.");
+                ResultWrapper<Result>.Success(Result.Fail);
+            }
+            
+            _blockTree.UpdateMainChain(new[] {block!}, true, true);
+            bool success = _blockTree.Head == block;
+            if (success)
+            {
+                if (_logger.IsInfo) _logger.Info($"Block {blockHash} was set as head.");
+            }
+            else
+            {
+                if (_logger.IsWarn) _logger.Warn($"Block {blockHash} was not set as head.");
+            }
+            
+            return ResultWrapper<Result>.Success(success);
         }
     }
 }
