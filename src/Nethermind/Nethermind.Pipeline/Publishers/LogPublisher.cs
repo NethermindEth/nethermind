@@ -17,6 +17,7 @@
 
 using System;
 using System.IO;
+using System.IO.Abstractions;
 using System.Threading.Tasks;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
@@ -27,26 +28,28 @@ namespace Nethermind.Pipeline.Publishers
     {
         private readonly ILogger _logger;
         private readonly IJsonSerializer _jsonSerializer;
+        private readonly IFileSystem _fileSystem;
         private readonly string _logsDir;
         private const string FolderData = "pipeline";
         private const string FileName = "pipeline_data.txt";
         public Action<TOut> Emit { get; set; }
 
-        public LogPublisher(IJsonSerializer jsonSerializer, ILogManager logger)
+        public LogPublisher(IJsonSerializer jsonSerializer, ILogManager logger, IFileSystem fileSystem = null)
         {
             _logger = logger.GetClassLogger<LogPublisher<TIn, TOut>>();
             _jsonSerializer = jsonSerializer;
+            _fileSystem = fileSystem ?? new FileSystem();
             _logsDir = FolderData.GetApplicationResourcePath();
-            if (!Directory.Exists(_logsDir))
+            if (!_fileSystem.Directory.Exists(_logsDir))
             {
-                Directory.CreateDirectory(_logsDir);
+                _fileSystem.Directory.CreateDirectory(_logsDir);
             }
         }
         
         public void SubscribeToData(TIn data)
         {
             if (_logger.IsWarn) _logger.Warn(_jsonSerializer.Serialize(data));
-            File.AppendAllText(Path.Combine(_logsDir, FileName), _jsonSerializer.Serialize(data, true));
+            _fileSystem.File.AppendAllText(Path.Combine(_logsDir, FileName), _jsonSerializer.Serialize(data, true));
         }
     }
 }

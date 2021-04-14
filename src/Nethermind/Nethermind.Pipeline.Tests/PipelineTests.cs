@@ -1,14 +1,17 @@
 using System;
+using System.IO.Abstractions;
 using System.Linq;
 using System.Net.WebSockets;
 using System.Threading;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Core;
+using Nethermind.Logging;
 using Nethermind.Pipeline.Publishers;
 using Nethermind.Serialization.Json;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
+using NUnit.Framework.Internal;
 
 namespace Nethermind.Pipeline.Tests
 {
@@ -65,7 +68,7 @@ namespace Nethermind.Pipeline.Tests
         }
 
         [Test]
-        public void Will_send_data_through_publisher_at_the_end_of_the_pipeline()
+        public void Will_send_data_through_ws_publisher_at_the_end_of_the_pipeline()
         {
             var sourceElement = new TxPoolPipelineSource<Transaction>(_txPool);
             var element = new TxPoolPipelineElement<Transaction, Transaction>();
@@ -75,15 +78,37 @@ namespace Nethermind.Pipeline.Tests
             mockWebSocket.State.Returns(WebSocketState.Open);
             publisher.CreateClient(mockWebSocket, "testClient");
 
-            Transaction transactionToEmit = new Transaction { To = new Address("0x92A3c5e7Cee811C3402b933A6D43aAF2e56f2823") };
+            Transaction transactionToEmit = new() {To = new Address("0x92A3c5e7Cee811C3402b933A6D43aAF2e56f2823")};
 
             var builder = new PipelineBuilder<Transaction, Transaction>(sourceElement);
             builder.AddElement(element).AddElement(publisher);
             var pipeline = builder.Build();
-            
-            _txPool.NewPending += Raise.EventWith<TxEventArgs>(new object(), new TxEventArgs(transactionToEmit));
+
+            _txPool.NewPending += Raise.EventWith(new object(), new TxEventArgs(transactionToEmit));
 
             mockWebSocket.Received().SendAsync(Arg.Any<ArraySegment<byte>>(), WebSocketMessageType.Text, true, CancellationToken.None);
+        }
+
+        [Test]
+        public void Will_send_data_through_log_publisher_at_the_end_of_the_pipeline()
+        {
+            string filePath = "path";
+            Transaction transaction = new() {To = new Address("0x92A3c5e7Cee811C3402b933A6D43aAF2e56f2823")};
+            
+            IFileSystem fileSystemSub = Substitute.For<IFileSystem>();
+            fileSystemSub.File.Exists(filePath).Returns(true);
+            fileSystemSub.File.ReadLines(filePath).Returns(new[] {"0x92A3c5e7Cee811C3402b933A6D43aAF2e56f2823"});
+
+            var sourceElement = new TxPoolPipelineSource<Transaction>(_txPool);
+            var element = new TxPoolPipelineElement<Transaction, Transaction>();
+            var publisher = new LogPublisher<Transaction, Transaction>(Substitute.For<IJsonSerializer>(), Substitute.For<ILogManager>(), fileSystemSub);
+            
+            var builder = new PipelineBuilder<Transaction, Transaction>(sourceElement);
+            builder.AddElement(element).AddElement(publisher);
+            var pipeline = builder.Build();
+            
+            _txPool.NewPending += Raise.EventWith(new object(), new TxEventArgs(transaction));
+            fileSystemSub.Received().File.AppendAllText(filePath, "0x92A3c5e7Cee811C3402b933A6D43aAF2e56f2823");
         }
 
         private class TxPoolPipelineSource<TOut> : IPipelineElement<TOut> where TOut : Transaction
