@@ -4,32 +4,32 @@ namespace Nethermind.Pipeline
 {
     public class PipelineBuilder<TSource, TOutput> : IPipelineBuilder<TSource, TOutput>
     {
-        private readonly Stack<IPipelineElement> Elements; 
-        private readonly IPipelineElement<TOutput> LastElement;
+        private readonly Stack<IPipelineElement> _elements; 
+        private readonly IPipelineElement<TOutput> _lastElement;
         
         public PipelineBuilder(IPipelineElement<TOutput> sourceElement)
         {
-            LastElement = sourceElement; 
-            Elements = new Stack<IPipelineElement>();
-            Elements.Push(LastElement);
+            _lastElement = sourceElement; 
+            _elements = new Stack<IPipelineElement>();
+            _elements.Push(_lastElement);
         }
 
         private PipelineBuilder(IPipelineElement<TOutput> element, IEnumerable<IPipelineElement> elements)
         {
-            LastElement = element;
-            Elements = new Stack<IPipelineElement>(elements);
-            Elements.Push(element);
+            _lastElement = element;
+            _elements = new Stack<IPipelineElement>(elements);
+            _elements.Push(element);
         }
 
         public IPipelineBuilder<TSource, TOut> AddElement<TOut>(IPipelineElement<TOutput, TOut> element)
         {
-            LastElement.Emit = element.SubscribeToData;
-            return new PipelineBuilder<TSource, TOut>(element, Elements);
+            _lastElement.Emit = element.SubscribeToData;
+            return new PipelineBuilder<TSource, TOut>(element, _elements);
         }
 
         public IPipeline Build()
         {
-            return new Pipeline(Elements);
+            return new Pipeline(_elements);
         }
     }
 }

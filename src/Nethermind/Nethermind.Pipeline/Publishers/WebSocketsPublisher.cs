@@ -12,7 +12,7 @@ namespace Nethermind.Pipeline.Publishers
     public class WebSocketsPublisher<TIn, TOut> : IPipelineElement<TIn, TOut>, IWebSocketsModule
     {
         private readonly ConcurrentDictionary<string, IWebSocketsClient> _clients = new();
-        private IJsonSerializer _jsonSerializer;
+        private readonly IJsonSerializer _jsonSerializer;
         public string Name { private set; get; }
         public Action<TOut> Emit { private get; set; }
 
