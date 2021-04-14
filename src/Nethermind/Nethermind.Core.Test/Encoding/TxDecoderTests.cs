@@ -38,6 +38,7 @@ namespace Nethermind.Core.Test.Encoding
         public static IEnumerable<(Transaction, string)> TestCaseSource()
         {
             yield return (Build.A.Transaction.SignedAndResolved().TestObject, "basic");
+            yield return (Build.A.Transaction.SignedAndResolved().WithNonce(0).TestObject, "basic");
             yield return (Build.A.Transaction
                 .WithData(new byte[] {1, 2, 3})
                 .WithType(TxType.AccessList)
@@ -87,30 +88,76 @@ namespace Nethermind.Core.Test.Encoding
             decoded.Should().BeEquivalentTo(testCase.Tx, testCase.Description);
         }
 
-        // [TestCaseSource(nameof(YoloV3TestCases))]
-        // public void Roundtrip_yolo_v3((string IncomingRlpHex, Keccak Hash) testCase)
-        // {
-        //     TestContext.Out.WriteLine($"Testing {testCase.Hash}");
-        //     RlpStream incomingTxRlp = Bytes.FromHexString(testCase.IncomingRlpHex).AsRlpStream();
-        //     Transaction decoded = _txDecoder.Decode(incomingTxRlp);
-        //     decoded.CalculateHash().Should().Be(testCase.Hash);
-        //
-        //     RlpStream ourRlpOutput = new RlpStream(incomingTxRlp.Length * 2);
-        //     _txDecoder.Encode(ourRlpOutput, decoded);
-        //
-        //     string ourRlpHex = ourRlpOutput.Data.AsSpan(0, incomingTxRlp.Length).ToHexString();
-        //     ourRlpHex.Should().BeEquivalentTo(testCase.IncomingRlpHex);
-        // }
+        [TestCaseSource(nameof(YoloV3TestCases))]
+        public void Roundtrip_yolo_v3((string IncomingRlpHex, Keccak Hash) testCase)
+        {
+            TestContext.Out.WriteLine($"Testing {testCase.Hash}");
+            RlpStream incomingTxRlp = Bytes.FromHexString(testCase.IncomingRlpHex).AsRlpStream();
+        
+            Transaction decoded = _txDecoder.Decode(incomingTxRlp);
+            decoded.CalculateHash().Should().Be(testCase.Hash);
+        
+            RlpStream ourRlpOutput = new RlpStream(incomingTxRlp.Length * 2);
+            _txDecoder.Encode(ourRlpOutput, decoded);
+        
+            string ourRlpHex = ourRlpOutput.Data.AsSpan(0, incomingTxRlp.Length).ToHexString();
+            ourRlpHex.Should().BeEquivalentTo(testCase.IncomingRlpHex);
+        }
+        
+        [TestCaseSource(nameof(YoloV3TestCases))]
+        public void CalculateHash_and_tx_hash_after_decoding_return_the_same_value((string IncomingRlpHex, Keccak Hash) testCase)
+        {
+            TestContext.Out.WriteLine($"Testing {testCase.Hash}");
+            RlpStream incomingTxRlp = Bytes.FromHexString(testCase.IncomingRlpHex).AsRlpStream();
+            Transaction decoded = _txDecoder.Decode(incomingTxRlp);
+            Rlp encodedForTreeRoot = _txDecoder.Encode(decoded, RlpBehaviors.ForTreeRoot);
+            
+            decoded.CalculateHash().Should().Be(decoded.Hash);
+            decoded.Hash.Should().Be(Keccak.Compute(encodedForTreeRoot.Bytes));
+        }
+        
+        [TestCaseSource(nameof(YoloV3TestCases))]
+        public void Hash_calculation_do_not_change_after_roundtrip((string IncomingRlpHex, Keccak Hash) testCase)
+        {
+            TestContext.Out.WriteLine($"Testing {testCase.Hash}");
+            RlpStream incomingTxRlp = Bytes.FromHexString(testCase.IncomingRlpHex).AsRlpStream();
+            Transaction decoded = _txDecoder.Decode(incomingTxRlp);
+            Rlp encodedForTreeRoot = _txDecoder.Encode(decoded, RlpBehaviors.ForTreeRoot);
+            decoded.Hash.Should().Be(Keccak.Compute(encodedForTreeRoot.Bytes));
+        }
+        
+        [TestCaseSource(nameof(YoloV3TestCases))]
+        public void Hash_calculation_do_not_change_after_roundtrip2((string IncomingRlpHex, Keccak Hash) testCase)
+        {
+            TestContext.Out.WriteLine($"Testing {testCase.Hash}");
+            RlpStream incomingTxRlp = Bytes.FromHexString(testCase.IncomingRlpHex).AsRlpStream();
+            Transaction decoded = _txDecoder.Decode(incomingTxRlp);
+            Rlp encodedForTreeRoot = _txDecoder.Encode(decoded, RlpBehaviors.ForTreeRoot);
+            decoded.Hash.Should().Be(Keccak.Compute(encodedForTreeRoot.Bytes));
+        }
+        
+        [TestCaseSource(nameof(YoloV3TestCases))]
+        public void ValueDecoderContext_return_the_same_transaction_as_rlp_stream((string IncomingRlpHex, Keccak Hash) testCase)
+        {
+            TestContext.Out.WriteLine($"Testing {testCase.Hash}");
+            RlpStream incomingTxRlp = Bytes.FromHexString(testCase.IncomingRlpHex).AsRlpStream();
+            Span<byte> spanIncomingTxRlp = Bytes.FromHexString(testCase.IncomingRlpHex).AsSpan();
+            Rlp.ValueDecoderContext decoderContext = new Rlp.ValueDecoderContext(spanIncomingTxRlp);
+            Transaction decodedByValueDecoderContext = _txDecoder.Decode(ref decoderContext);
+            Transaction decoded = _txDecoder.Decode(incomingTxRlp);
+            Rlp encoded = _txDecoder.Encode(decoded!);
+            Rlp encodedWithDecodedByValueDecoderContext = _txDecoder.Encode(decodedByValueDecoderContext!);
+            decoded!.Hash.Should().Be(decodedByValueDecoderContext!.Hash);
+            Assert.AreEqual(encoded.Bytes, encodedWithDecodedByValueDecoderContext.Bytes);
+        }
+
         
         [TestCaseSource(nameof(TestCaseSource))]
         public void Rlp_encode_should_return_the_same_as_rlp_stream_encoding((Transaction Tx, string Description) testCase)
         {
             Rlp rlpStreamResult = _txDecoder.Encode(testCase.Tx, RlpBehaviors.ForTreeRoot);
             Rlp rlpResult = Rlp.Encode(testCase.Tx, false, true, testCase.Tx.ChainId ?? 0);
-            Transaction decodedRlpStream = _txDecoder.Decode(new RlpStream(rlpStreamResult.Bytes), RlpBehaviors.ForTreeRoot);
-            Transaction decodedRlp = _txDecoder.Decode(new RlpStream(rlpResult.Bytes), RlpBehaviors.ForTreeRoot);
-            Assert.AreEqual(decodedRlp?.Hash, decodedRlpStream?.Hash);
-            Assert.AreEqual(decodedRlp?.Data, decodedRlpStream?.Data);
+            Assert.AreEqual(rlpResult.Bytes, rlpStreamResult.Bytes);
         }
         
         public static IEnumerable<(string, Keccak)> YoloV3TestCases()
@@ -118,34 +165,50 @@ namespace Nethermind.Core.Test.Encoding
             yield return
             (
                 "b8a701f8a486796f6c6f763380843b9aca008262d4948a8eafb1cf62bfbeb1741769dae1a9dd479961928080f838f7940000000000000000000000000000000000001337e1a0000000000000000000000000000000000000000000000000000000000000000080a0775101f92dcca278a56bfe4d613428624a1ebfc3cd9e0bcc1de80c41455b9021a06c9deac205afe7b124907d4ba54a9f46161498bd3990b90d175aac12c9a40ee9",
-                new Keccak("0x8d6c458a40d2b06f56310eb1e1322138ee4fb2d78a1dc35e96ac166600529ce6")
+                new Keccak("0x212a85be428a85d00fb5335b013bc8d3cf7511ffdd8938de768f4ca8bf1caf50")
             );
             yield return
             (
                 "b8ca01f8c786796f6c6f763301843b9aca00826a40948a8eafb1cf62bfbeb1741769dae1a9dd479961928080f85bf859940000000000000000000000000000000000001337f842a00000000000000000000000000000000000000000000000000000000000000000a0000000000000000000000000000000000000013370000000000000000000000080a01feaff3227c4fe4954fe5297898027d71eb9ae2291e2b967f00b2f5ccd0597baa053bfeb53c31024700b8d3b226eb60766178b17f215c3a5b5bd7fa2c45db86fb8",
-                new Keccak("0x7b967be8cc1c3a899f25a7285dd8be24212b25502f2f31828fe10c8db0d24073")
+                new Keccak("0x8204f9c9043f170ab4c061c60e690a79f3bdb88d4af69c69d67248b25fb6a4a7")
             );
             yield return
             (
                 "b8ca01f8c786796f6c6f763302843b9aca00826a40948a8eafb1cf62bfbeb1741769dae1a9dd479961928080f85bf859940000000000000000000000000000000000001337f842a00000000000000000000000000000000000000000000000000000000000000000a0000000000000000000000000000000000000013370000000000000000000000001a05dd874c3cbf30fa22f2612c4dda995e53dda6f3aad335760bccd0fe3ae65dadda056208b02dac8246ecbf4624c8b49302e4869781e630ebba356e13d532166ba5d",
-                new Keccak("0x80f26aceb2e3b0812329adb03c666a8bb3cd9b5aa0355712e6b44be3a6f975d3")
+                new Keccak("0x2c876e955d2b656d858cdad0400920fba877b807c70b36ca18b67db96865f6a0")
             );
 
             yield return
             (
                 "b8ca01f8c786796f6c6f763303843b9aca00826a40948a8eafb1cf62bfbeb1741769dae1a9dd479961928080f85bf859940000000000000000000000000000000000001337f842a00000000000000000000000000000000000000000000000000000000000000000a0000000000000000000000000000000000000013370000000000000000000000080a072515bdc69de9eb8e5067ffcd069ec84745ea629cfc60b854edccdd6a9d1d80fa063bb9c012fdb80aabdb915bea8e3c99b574e88cf37daea4dcc535627b48b56f0",
-                new Keccak("0x9efbb6d928c6ad37efef58c98ebfd2bc3dd22f75955a6f171a4dbcf27f47d067")
+                new Keccak("0x449556a7ee5a1e708a0afcc5110507c6a45e894a3ad6d7e21c50bbe521626229")
             );
             yield return
             (
                 "b9018201f9017e86796f6c6f763304843b9aca00829ab0948a8eafb1cf62bfbeb1741769dae1a9dd479961928080f90111f859940000000000000000000000000000000000001337f842a00000000000000000000000000000000000000000000000000000000000000000a00000000000000000000000000000000000000133700000000000000000000000f859940000000000000000000000000000000000001337f842a00000000000000000000000000000000000000000000000000000000000000000a00000000000000000000000000000000000000133700000000000000000000000f859940000000000000000000000000000000000001337f842a00000000000000000000000000000000000000000000000000000000000000000a0000000000000000000000000000000000000013370000000000000000000000080a09e41e382c76d2913521d7191ecced4a1a16fe0f3e5e22d83d50dd58adbe409e1a07c0e036eff80f9ca192ac26d533fc49c280d90c8b62e90c1a1457b50e51e6144",
-                new Keccak("0xe81972d75cfec02375e7ddf3a38f2da80719d1d2b87ae973f6dc06bffc26db7e")
+                new Keccak("0x70c0d568f790ee752c9f86073f7687e286b919add9e1d768dc6c5f1812a364f7")
             );
             yield return
             (
                 "f86905843b9aca00825208948a8eafb1cf62bfbeb1741769dae1a9dd47996192018086f2ded8deec8aa04135bba08382dae6a1d5ec4b557f2460e1d63fb6f93773a7a951ce38a28a31ada03d36a791688f311252df622a48a9acfb0500fd3584a8305ee004d895c0257400",
                 new Keccak("0x593dd0e1bf113b762674470741817c4d823c73fb7377da4f6073c7885585ae92")
             );
+            yield return
+            (
+                "b8a801f8a587796f6c6f76337880843b9aca008262d4948a8eafb1cf62bfbeb1741769dae1a9dd479961928080f838f7940000000000000000000000000000000000001337e1a0000000000000000000000000000000000000000000000000000000000000000001a0e0bfceab9cadc44aa4a2c7f985f773586e2976d19cc54620e95f7d5e24bfeb6aa03225ae7b7ef42716ee5cae1b0f7f05d9777b1d4882d387e4da88cae65095bef8",
+                new Keccak("0x5cb00d928abf074cb81fc5e54dd49ef541afa7fc014b8a53fb8c29f3ecb5cadb")
+            );
+            yield return
+            (
+                "b8cb01f8c887796f6c6f76337801843b9aca00826a40948a8eafb1cf62bfbeb1741769dae1a9dd479961928080f85bf859940000000000000000000000000000000000001337f842a00000000000000000000000000000000000000000000000000000000000000000a0000000000000000000000000000000000000013370000000000000000000000001a0cb68184d42bd56b82abc9fc7cde0190308205264d6af4224d40fb504eee00d5aa036a483e4fd876a9a7817dee78f12decc534d124a55ae2c89c65e6c45452eb2ce",
+                new Keccak("0xd570bbb09f5bd9abf8fdc6ec7e036612bcb6b02b25f51ef0e1544f2a539ca3ac")
+            );
+            yield return
+            (
+                "b8cb01f8c887796f6c6f76337803843b9aca00826a40948a8eafb1cf62bfbeb1741769dae1a9dd479961928080f85bf859940000000000000000000000000000000000001337f842a00000000000000000000000000000000000000000000000000000000000000000a0000000000000000000000000000000000000013370000000000000000000000080a094f3a6bbf5039b1a794e5be7628809bdf757c4ff59e5399dec74c61137074f80a049baf92bb5fb2d6c6bf8287fcd75eaea80ad38d1b8d29ce242c4ac51e1067d52",
+                new Keccak("0x0a956694228afe4577bd94fcf8a3aa8544bbadcecfe0d66ccad8ec7ae56c025f")
+            );
+            
         }
     }
 }

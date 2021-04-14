@@ -208,13 +208,9 @@ namespace Nethermind.Evm
             Address? recipientOrNull = null;
             try
             {
-                Address recipient;
+                Address recipient = transaction.GetRecipient(transaction.IsContractCreation ? _stateProvider.GetNonce(caller) : 0);
                 if (transaction.IsContractCreation)
                 {
-                    recipient = transaction.IsSystem() 
-                        ? caller
-                        : ContractAddress.From(caller, _stateProvider.GetNonce(caller) - 1);
-
                     if (_stateProvider.AccountExists(recipient))
                     {
                         if (_virtualMachine.GetCachedCodeInfo(recipient, spec).MachineCode.Length != 0 || _stateProvider.GetNonce(recipient) != 0)
@@ -229,10 +225,6 @@ namespace Nethermind.Evm
 
                         _stateProvider.UpdateStorageRoot(recipient, Keccak.EmptyTreeHash);
                     }
-                }
-                else
-                {
-                    recipient = transaction.To!;
                 }
 
                 if (recipient == null)
@@ -268,6 +260,11 @@ namespace Nethermind.Evm
 
                     substate = _virtualMachine.Run(state, txTracer);
                     unspentGas = state.GasAvailable;
+
+                    if (txTracer.IsTracingAccess)
+                    {
+                        txTracer.ReportAccess(state.AccessedAddresses, state.AccessedStorageCells);
+                    }
                 }
 
                 if (substate.ShouldRevert || substate.IsError)
@@ -377,11 +374,11 @@ namespace Nethermind.Evm
 
                 if (statusCode == StatusCode.Failure)
                 {
-                    txTracer.MarkAsFailed(recipientOrNull, spentGas, (substate?.ShouldRevert ?? false) ? substate.Output : Array.Empty<byte>(), substate?.Error, stateRoot);
+                    txTracer.MarkAsFailed(recipientOrNull, spentGas, (substate?.ShouldRevert ?? false) ? substate.Output.ToArray() : Array.Empty<byte>(), substate?.Error, stateRoot);
                 }
                 else
                 {
-                    txTracer.MarkAsSuccess(recipientOrNull, spentGas, substate.Output, substate.Logs.Any() ? substate.Logs.ToArray() : Array.Empty<LogEntry>(), stateRoot);
+                    txTracer.MarkAsSuccess(recipientOrNull, spentGas, substate.Output.ToArray(), substate.Logs.Any() ? substate.Logs.ToArray() : Array.Empty<LogEntry>(), stateRoot);
                 }
             }
         }

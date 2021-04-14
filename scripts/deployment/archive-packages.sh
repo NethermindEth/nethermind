@@ -5,7 +5,6 @@ LIN=nethermind-linux-amd64
 OSX=nethermind-darwin-amd64
 WIN=nethermind-windows-amd64
 LIN_ARM64=nethermind-linux-arm64
-LIN_ARM=nethermind-linux-arm
 
 echo =======================================================
 echo Archiving Nethermind packages
@@ -28,8 +27,6 @@ mkdir -p $WIN_RELEASE/plugins
 rm -rf $WIN_RELEASE/ndm-plugins
 mkdir -p $LIN_ARM64_RELEASE/plugins
 rm -rf $LIN_ARM64_RELEASE/ndm-plugins
-mkdir -p $LIN_ARM_RELEASE/plugins
-rm -rf $LIN_ARM_RELEASE/ndm-plugins
 
 cd nethermind/src/Nethermind/
 dotnet build -c Release Nethermind.sln
@@ -50,33 +47,27 @@ zip -r plugins-$GIT_SHORT_TAG-$GIT_HASH.zip . && cd ..
 cp $RELEASE_DIRECTORY/plugins/Nethermind.HealthChecks.dll $LIN_RELEASE/plugins/
 cp $RELEASE_DIRECTORY/plugins/Nethermind.HealthChecks.dll $OSX_RELEASE/plugins/
 cp $RELEASE_DIRECTORY/plugins/Nethermind.HealthChecks.dll $WIN_RELEASE/plugins/
-cp $RELEASE_DIRECTORY/plugins/Nethermind.HealthChecks.dll $LIN_ARM_RELEASE/plugins/
 cp $RELEASE_DIRECTORY/plugins/Nethermind.HealthChecks.dll $LIN_ARM64_RELEASE/plugins/
 
 cp $RELEASE_DIRECTORY/plugins/Microsoft.Extensions.Diagnostics.HealthChecks.Abstractions.dll $LIN_RELEASE/plugins/
 cp $RELEASE_DIRECTORY/plugins/Microsoft.Extensions.Diagnostics.HealthChecks.Abstractions.dll $OSX_RELEASE/plugins/
 cp $RELEASE_DIRECTORY/plugins/Microsoft.Extensions.Diagnostics.HealthChecks.Abstractions.dll $WIN_RELEASE/plugins/
-cp $RELEASE_DIRECTORY/plugins/Microsoft.Extensions.Diagnostics.HealthChecks.Abstractions.dll $LIN_ARM_RELEASE/plugins/
 cp $RELEASE_DIRECTORY/plugins/Microsoft.Extensions.Diagnostics.HealthChecks.Abstractions.dll $LIN_ARM64_RELEASE/plugins/
 
 cp $RELEASE_DIRECTORY/plugins/Microsoft.Extensions.Diagnostics.HealthChecks.dll $LIN_RELEASE/plugins/
 cp $RELEASE_DIRECTORY/plugins/Microsoft.Extensions.Diagnostics.HealthChecks.dll $OSX_RELEASE/plugins/
 cp $RELEASE_DIRECTORY/plugins/Microsoft.Extensions.Diagnostics.HealthChecks.dll $WIN_RELEASE/plugins/
-cp $RELEASE_DIRECTORY/plugins/Microsoft.Extensions.Diagnostics.HealthChecks.dll $LIN_ARM_RELEASE/plugins/
 cp $RELEASE_DIRECTORY/plugins/Microsoft.Extensions.Diagnostics.HealthChecks.dll $LIN_ARM64_RELEASE/plugins/
 
 cp $RELEASE_DIRECTORY/plugins/Nethermind.Api.dll $LIN_RELEASE/plugins/
 cp $RELEASE_DIRECTORY/plugins/Nethermind.Api.dll $OSX_RELEASE/plugins/
 cp $RELEASE_DIRECTORY/plugins/Nethermind.Api.dll $WIN_RELEASE/plugins/
-cp $RELEASE_DIRECTORY/plugins/Nethermind.Api.dll $LIN_ARM_RELEASE/plugins/
 cp $RELEASE_DIRECTORY/plugins/Nethermind.Api.dll $LIN_ARM64_RELEASE/plugins/
 
 cd $LIN_RELEASE && zip -r $LIN-$GIT_SHORT_TAG-$GIT_HASH.zip . && cd ..
 cd $OSX_RELEASE && zip -r $OSX-$GIT_SHORT_TAG-$GIT_HASH.zip . && cd ..
 cd $WIN_RELEASE && zip -r $WIN-$GIT_SHORT_TAG-$GIT_HASH.zip . && cd ..
 cd $LIN_ARM64_RELEASE && zip -r $LIN_ARM64-$GIT_SHORT_TAG-$GIT_HASH.zip . && cd ..
-cd $LIN_ARM_RELEASE && zip -r $LIN_ARM-$GIT_SHORT_TAG-$GIT_HASH.zip . && cd ..
-
 
 echo =======================================================
 echo Archiving Nethermind packages completed

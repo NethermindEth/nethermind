@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.Collections.Generic;
 using System.IO;
 using Newtonsoft.Json;
 
@@ -26,5 +27,13 @@ namespace Nethermind.Serialization.Json
         string Serialize<T>(T value, bool indented = false);
         long Serialize<T>(Stream stream, T value, bool indented = false);
         void RegisterConverter(JsonConverter converter);
+
+        void RegisterConverters(IEnumerable<JsonConverter> converters)
+        {
+            foreach (JsonConverter converter in converters)
+            {
+                RegisterConverter(converter);
+            }
+        }
     }
 }

@@ -61,7 +61,7 @@ namespace Nethermind.Clique.Test
             
             SnapshotManager snapshotManager = new SnapshotManager(CliqueConfig.Default, new MemDb(), Substitute.For<IBlockTree>(), NullEthereumEcdsa.Instance, LimboLogs.Instance);
             
-            CliqueRpcModule bridge = new CliqueRpcModule(producer, snapshotManager, blockTree);
+            CliqueRpcRpcModule bridge = new CliqueRpcRpcModule(producer, snapshotManager, blockTree);
             Assert.DoesNotThrow(() => bridge.CastVote(TestItem.AddressB, true));
             Assert.DoesNotThrow(() => bridge.UncastVote(TestItem.AddressB));
             Assert.DoesNotThrow(() => bridge.CastVote(TestItem.AddressB, false));
@@ -76,9 +76,9 @@ namespace Nethermind.Clique.Test
             BlockHeader header = Build.A.BlockHeader.TestObject;
             blockFinder.FindHeader(Arg.Any<Keccak>()).Returns(header);
             snapshotManager.GetBlockSealer(header).Returns(TestItem.AddressA);
-            CliqueRpcModule module = new CliqueRpcModule(Substitute.For<ICliqueBlockProducer>(), snapshotManager, blockFinder);
-            module.clique_getBlockSigner(Keccak.Zero).Result.ResultType.Should().Be(ResultType.Success);
-            module.clique_getBlockSigner(Keccak.Zero).Data.Should().Be(TestItem.AddressA);
+            CliqueRpcRpcModule rpcModule = new CliqueRpcRpcModule(Substitute.For<ICliqueBlockProducer>(), snapshotManager, blockFinder);
+            rpcModule.clique_getBlockSigner(Keccak.Zero).Result.ResultType.Should().Be(ResultType.Success);
+            rpcModule.clique_getBlockSigner(Keccak.Zero).Data.Should().Be(TestItem.AddressA);
         }
         
         [Test]
@@ -87,8 +87,8 @@ namespace Nethermind.Clique.Test
             ISnapshotManager snapshotManager = Substitute.For<ISnapshotManager>();
             IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
             blockFinder.FindHeader(Arg.Any<Keccak>()).Returns((BlockHeader)null);
-            CliqueRpcModule module = new CliqueRpcModule(Substitute.For<ICliqueBlockProducer>(), snapshotManager, blockFinder);
-            module.clique_getBlockSigner(Keccak.Zero).Result.ResultType.Should().Be(ResultType.Failure);
+            CliqueRpcRpcModule rpcModule = new CliqueRpcRpcModule(Substitute.For<ICliqueBlockProducer>(), snapshotManager, blockFinder);
+            rpcModule.clique_getBlockSigner(Keccak.Zero).Result.ResultType.Should().Be(ResultType.Failure);
         }
         
         [Test]
@@ -96,8 +96,8 @@ namespace Nethermind.Clique.Test
         {
             ISnapshotManager snapshotManager = Substitute.For<ISnapshotManager>();
             IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
-            CliqueRpcModule module = new CliqueRpcModule(Substitute.For<ICliqueBlockProducer>(), snapshotManager, blockFinder);
-            module.clique_getBlockSigner(null).Result.ResultType.Should().Be(ResultType.Failure);
+            CliqueRpcRpcModule rpcModule = new CliqueRpcRpcModule(Substitute.For<ICliqueBlockProducer>(), snapshotManager, blockFinder);
+            rpcModule.clique_getBlockSigner(null).Result.ResultType.Should().Be(ResultType.Failure);
         }
     }
 }

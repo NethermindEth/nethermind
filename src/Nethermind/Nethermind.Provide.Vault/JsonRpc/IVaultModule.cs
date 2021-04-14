@@ -22,7 +22,7 @@ using provide.Model.Vault;
 namespace Nethermind.Vault.JsonRpc
 {
     [RpcModule(ModuleType.Vault)]
-    public interface IVaultModule: IModule
+    public interface IVaultModule: IRpcModule
     {
         [JsonRpcMethod(
             Description = "Displays a list of Vaults",

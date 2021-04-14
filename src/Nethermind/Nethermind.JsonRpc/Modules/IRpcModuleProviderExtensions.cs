@@ -28,7 +28,7 @@ namespace Nethermind.JsonRpc.Modules
             ModuleFactoryBase<T> factory,
             int maxCount,
             int timeout)
-            where T : IModule
+            where T : IRpcModule
         {
             rpcModuleProvider.Register(new BoundedModulePool<T>(factory, maxCount, timeout));
         }
@@ -37,7 +37,7 @@ namespace Nethermind.JsonRpc.Modules
             this IRpcModuleProvider rpcModuleProvider,
             ModuleFactoryBase<T> factory,
             int timeout)
-            where T : IModule
+            where T : IRpcModule
         {
             RegisterBounded(rpcModuleProvider, factory, _cpuCount, timeout);
         }
@@ -46,7 +46,7 @@ namespace Nethermind.JsonRpc.Modules
             this IRpcModuleProvider rpcModuleProvider,
             T module,
             bool allowExclusive = true)
-            where T : IModule
+            where T : IRpcModule
         {
             rpcModuleProvider.Register(new SingletonModulePool<T>(module, allowExclusive));
         }

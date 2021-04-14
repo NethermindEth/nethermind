@@ -43,14 +43,21 @@ namespace Nethermind.Blockchain.Validators
            just before the execution of the block / tx. */
         public bool IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec)
         {
-            return 
+            // validate type before calculating intrinsic gas to avoid exception
+            return ValidateTxType(transaction, releaseSpec) &&
                    /* This is unnecessarily calculated twice - at validation and execution times. */
                    transaction.GasLimit >= IntrinsicGasCalculator.Calculate(transaction, releaseSpec) &&
                    /* if it is a call or a transfer then we require the 'To' field to have a value
                       while for an init it will be empty */
                    ValidateSignature(transaction.Signature, releaseSpec);
         }
-        
+
+        private bool ValidateTxType(Transaction transaction, IReleaseSpec releaseSpec)
+        {
+            return transaction.Type == TxType.Legacy || 
+                   (transaction.Type == TxType.AccessList && releaseSpec.UseTxAccessLists);
+        }
+
         private bool ValidateSignature(Signature signature, IReleaseSpec spec)
         {
             BigInteger sValue = signature.SAsSpan.ToUnsignedBigInteger();

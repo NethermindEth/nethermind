@@ -44,7 +44,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 {
     public class TestRpcBlockchain : TestBlockchain
     {
-        public IEthModule EthModule { get; private set; }
+        public IEthRpcModule EthRpcModule { get; private set; }
         public IBlockchainBridge Bridge { get; private set; }
         public ITxSender TxSender { get; private set; }
         public ILogFinder LogFinder { get; private set; }
@@ -123,7 +123,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             ITxSealer txSealer1 = new NonceReservingTxSealer(txSigner, Timestamper, TxPool);
             TxSender ??= new TxPoolSender(TxPool, txSealer0, txSealer1);
             
-            EthModule = new EthModule(
+            EthRpcModule = new EthRpcModule(
                 new JsonRpcConfig(),
                 Bridge,
                 BlockFinder,
@@ -139,10 +139,10 @@ namespace Nethermind.JsonRpc.Test.Modules
 
         public string TestEthRpc(string method, params string[] parameters)
         {
-            return RpcTest.TestSerializedRequest(EthModuleFactory.Converters, EthModule, method, parameters);
+            return RpcTest.TestSerializedRequest(EthModuleFactory.Converters, EthRpcModule, method, parameters);
         }
 
-        public string TestSerializedRequest<T>(T module, string method, params string[] parameters) where T : class, IModule
+        public string TestSerializedRequest<T>(T module, string method, params string[] parameters) where T : class, IRpcModule
         {
             return RpcTest.TestSerializedRequest(new JsonConverter[0], module, method, parameters);
         }

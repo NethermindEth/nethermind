@@ -14,8 +14,11 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Newtonsoft.Json;
@@ -44,6 +47,8 @@ namespace Nethermind.JsonRpc.Data
                 MaxFeePerGas = transaction.FeeCap;
                 MaxInclusionFeePerGas = transaction.GasPremium;
             }
+            Type = transaction.Type;
+            AccessList = transaction.AccessList is null ? null : AccessListItemForRpc.FromAccessList(transaction.AccessList);
 
             Signature? signature = transaction.Signature;
             if (signature != null)
@@ -82,13 +87,15 @@ namespace Nethermind.JsonRpc.Data
         public UInt256? MaxInclusionFeePerGas { get; set; }
         
         public UInt256? MaxFeePerGas { get; set; }
-        
-        public int? Type { get; set; }
         public long? Gas { get; set; }
         public byte[]? Data { get; set; }
 
         [JsonProperty(NullValueHandling = NullValueHandling.Include)]
         public byte[]? Input { get; set; }
+
+        public TxType Type { get; set; }
+        
+        public AccessListItemForRpc[]? AccessList { get; set; }
 
         public UInt256? V { get; set; }
 
@@ -96,7 +103,7 @@ namespace Nethermind.JsonRpc.Data
 
         public UInt256? R { get; set; }
 
-        public Transaction ToTransactionWithDefaults()
+        public Transaction ToTransactionWithDefaults(ulong? chainId = null)
         {
             Transaction tx = new();
             tx.GasLimit = Gas ?? 90000;
@@ -106,13 +113,15 @@ namespace Nethermind.JsonRpc.Data
             tx.SenderAddress = From;
             tx.Value = Value ?? 0;
             tx.Data = Data ?? Input;
+            tx.Type = Type;
+            tx.AccessList = TryGetAccessList();
+            tx.ChainId = chainId;
             tx.DecodedFeeCap = MaxFeePerGas ?? 0;
-            tx.Type = (TxType?)Type ?? TxType.Legacy;
 
             return tx;
         }
 
-        public Transaction ToTransaction()
+        public Transaction ToTransaction(ulong? chainId = null)
         {
             Transaction tx = new();
             tx.GasLimit = Gas ?? 0;
@@ -122,10 +131,16 @@ namespace Nethermind.JsonRpc.Data
             tx.SenderAddress = From;
             tx.Value = Value ?? 0;
             tx.Data = Data ?? Input;
-            tx.DecodedFeeCap = MaxFeePerGas ?? 0;
-            tx.Type = (TxType?)Type ?? TxType.Legacy;
+            tx.Type = Type;
+            tx.AccessList = TryGetAccessList();
+            tx.ChainId = chainId;
 
             return tx;
         }
+
+        private AccessList? TryGetAccessList() =>
+            Type != TxType.AccessList || AccessList == null 
+                ? null 
+                : AccessListItemForRpc.ToAccessList(AccessList);
     }
 }

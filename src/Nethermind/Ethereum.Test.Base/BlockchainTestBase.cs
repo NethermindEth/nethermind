@@ -360,7 +360,7 @@ namespace Ethereum.Test.Base
 
                 if (accountState.Balance != balance)
                 {
-                    differences.Add($"{acountAddress} balance exp: {accountState.Balance}, actual: {balance}, diff: {balance - accountState.Balance}");
+                    differences.Add($"{acountAddress} balance exp: {accountState.Balance}, actual: {balance}, diff: {(balance > accountState.Balance ? balance - accountState.Balance : accountState.Balance - balance)}");
                 }
 
                 if (accountState.Nonce != nonce)

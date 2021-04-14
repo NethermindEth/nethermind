@@ -52,6 +52,7 @@ namespace Nethermind.Evm.Tracing
         public bool IsTracingState => true;
         public bool IsTracingStorage => true;
         public bool IsTracingBlockHash => true;
+        public bool IsTracingAccess => true;
 
         public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak stateRoot = null) => throw new OperationCanceledException(ErrorMessage);
 
@@ -90,20 +91,18 @@ namespace Nethermind.Evm.Tracing
         
         public void ReportStorageRead(StorageCell storageCell) => throw new OperationCanceledException(ErrorMessage);
 
-        public void ReportAction(long gas, UInt256 value, Address @from, Address to, byte[] input, ExecutionType callType, bool isPrecompileCall = false) => throw new OperationCanceledException(ErrorMessage);
+        public void ReportAction(long gas, UInt256 value, Address @from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false) => throw new OperationCanceledException(ErrorMessage);
 
-        public void ReportActionEnd(long gas, byte[] output) => throw new OperationCanceledException(ErrorMessage);
+        public void ReportActionEnd(long gas, ReadOnlyMemory<byte> output) => throw new OperationCanceledException(ErrorMessage);
         public void ReportActionError(EvmExceptionType exceptionType) => throw new OperationCanceledException(ErrorMessage);
 
-        public void ReportActionEnd(long gas, Address deploymentAddress, byte[] deployedCode) => throw new OperationCanceledException(ErrorMessage);
+        public void ReportActionEnd(long gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode) => throw new OperationCanceledException(ErrorMessage);
         public void ReportBlockHash(Keccak blockHash) => throw new OperationCanceledException(ErrorMessage);
 
         public void ReportByteCode(byte[] byteCode) => throw new OperationCanceledException(ErrorMessage);
         public void ReportGasUpdateForVmTrace(long refund, long gasAvailable)=> throw new OperationCanceledException(ErrorMessage);
         public void ReportRefund(long refund) => throw new OperationCanceledException(ErrorMessage);
-        public void ReportExtraGasPressure(long extraGasPressure)
-        {
-            throw new NotImplementedException();
-        }
+        public void ReportExtraGasPressure(long extraGasPressure) => throw new OperationCanceledException(ErrorMessage); 
+        public void ReportAccess(IReadOnlySet<Address> accessedAddresses, IReadOnlySet<StorageCell> accessedStorageCells) => throw new OperationCanceledException(ErrorMessage);
     }
 }

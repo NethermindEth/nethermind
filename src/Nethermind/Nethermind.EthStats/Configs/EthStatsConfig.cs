@@ -19,9 +19,9 @@ namespace Nethermind.EthStats.Configs
     public class EthStatsConfig : IEthStatsConfig
     {
         public bool Enabled { get; set; }
-        public string Server { get; set; }
-        public string Name { get; set; }
-        public string Secret { get; set; }
-        public string Contact { get; set; }
+        public string? Server { get; set; }
+        public string? Name { get; set; }
+        public string? Secret { get; set; }
+        public string? Contact { get; set; }
     }
 }

@@ -20,7 +20,7 @@ using Nethermind.Wallet;
 
 namespace Nethermind.JsonRpc.Modules.Eth
 {
-    public class EthModuleProxyFactory : ModuleFactoryBase<IEthModule>
+    public class EthModuleProxyFactory : ModuleFactoryBase<IEthRpcModule>
     {
         private readonly IEthJsonRpcClientProxy _ethJsonRpcClientProxy;
         private readonly IWallet _wallet;
@@ -31,6 +31,6 @@ namespace Nethermind.JsonRpc.Modules.Eth
             _wallet = wallet ?? throw new ArgumentNullException(nameof(wallet));
         }
 
-        public override IEthModule Create() => new EthModuleProxy(_ethJsonRpcClientProxy, _wallet);
+        public override IEthRpcModule Create() => new EthRpcModuleProxy(_ethJsonRpcClientProxy, _wallet);
     }
 }

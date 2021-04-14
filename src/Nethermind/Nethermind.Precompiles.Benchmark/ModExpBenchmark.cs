@@ -16,7 +16,6 @@
 
 using System.Collections.Generic;
 using BenchmarkDotNet.Attributes;
-using BenchmarkDotNet.Diagnostics.Windows.Configs;
 using BenchmarkDotNet.Jobs;
 using Nethermind.Evm.Precompiles;
 
@@ -25,11 +24,17 @@ namespace Nethermind.Precompiles.Benchmark
     [HtmlExporter]
     // [NativeMemoryProfiler]
     // [MemoryDiagnoser]
-    // [ShortRunJob(RuntimeMoniker.NetCoreApp31)]
-    [SimpleJob(RuntimeMoniker.NetCoreApp31)]
+    // [ShortRunJob(RuntimeMoniker.NetCoreApp50)]
+    [SimpleJob(RuntimeMoniker.NetCoreApp50)]
     public class ModExpBenchmark : PrecompileBenchmarkBase
     {
         protected override IEnumerable<IPrecompile> Precompiles => new[] {ModExpPrecompile.Instance};
         protected override string InputsDirectory => "modexp";
+        
+        [Benchmark]
+        public (byte[], bool) BigInt()
+        {
+            return ModExpPrecompile.OldRun(Input.Bytes);
+        }
     }
 }

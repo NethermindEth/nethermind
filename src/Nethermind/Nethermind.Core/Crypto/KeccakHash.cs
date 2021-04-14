@@ -381,7 +381,7 @@ namespace Nethermind.Core.Crypto
             return output;
         }
 
-        public static byte[] ComputeHashBytes(Span<byte> input, int size = HASH_SIZE)
+        public static byte[] ComputeHashBytes(ReadOnlySpan<byte> input, int size = HASH_SIZE)
         {
             var output = new byte[HASH_SIZE];
             ComputeHash(input, output);

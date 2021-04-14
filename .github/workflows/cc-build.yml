@@ -11,14 +11,14 @@ jobs:
     if: github.repository_owner == 'NethermindEth'
     name: Nethermind Tests CC
     env:
-      EXCLUDE_TEST_PROJECTS: '/p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*%2c[Nethermind.Core.Test]*%2c[Nethermind.Blockchain.Test]*%2c[Nethermind.DataMarketplace.Test]*%2c[Ethereum.Test.Base]*%2c[Nethermind.JsonRpc.Test]*%2c[Nethermind.Config.Test]*"'
+      EXCLUDE_TEST_PROJECTS: '/p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*%2c[*Test*]*"'
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v2.3.3
     - name: Unshallow fetching
       run: git fetch --unshallow --progress --prune origin +refs/heads/*:refs/remotes/origin/*
     - name: Updating submodules
-      run: git submodule update --init src/int256 src/rocksdb-sharp src/Dirichlet
+      run: git submodule update --init src/int256 src/rocksdb-sharp src/Dirichlet src/Math.Gmp.Native
     - name: Installing Linux packages
       run: |
         sudo apt-get update
@@ -26,6 +26,9 @@ jobs:
     - name: Nethermind.Abi.Test
       run: |
         dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.Abi.Test
+    - name: Nethermind.Api.Test
+      run: |
+        dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.Api.Test
     - name: Nethermind.AuRa.Test
       run: |
         dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.AuRa.Test
@@ -92,6 +95,9 @@ jobs:
     - name: Nethermind.Mining.Test
       run: |
         dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.Mining.Test
+    - name: Nethermind.Merge.Plugin.Test
+      run: |
+        dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.Merge.Plugin.Test
     - name: Nethermind.Network.Test
       run: |
         dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.Network.Test
@@ -140,6 +146,9 @@ jobs:
     - name: Nethermind.DataMarketplace.WebSockets.Test
       run: |
         dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.DataMarketplace.WebSockets.Test
+    - name: MathGmp.Native
+      run: |
+        dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Math.Gmp.Native/MathGmp.Native.UnitTests                
     - name: Upload Codecov Report
       uses: actions/upload-artifact@v2
       with:

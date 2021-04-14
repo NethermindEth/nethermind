@@ -30,7 +30,7 @@ using Nethermind.JsonRpc.Modules.Personal;
 namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc
 {
     [RpcModule(ModuleType.NdmConsumer)]
-    public interface INdmRpcConsumerModule : IModule
+    public interface INdmRpcConsumerModule : IRpcModule
     {
         ResultWrapper<AccountForRpc[]> ndm_listAccounts();
         ResultWrapper<Address> ndm_getConsumerAddress();

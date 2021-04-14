@@ -15,12 +15,14 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using Nethermind.EthStats.Messages.Models;
+// ReSharper disable MemberCanBePrivate.Global
+// ReSharper disable UnusedAutoPropertyAccessor.Global
 
 namespace Nethermind.EthStats.Messages
 {
     public class HelloMessage : IMessage
     {
-        public string Id { get; set; }
+        public string? Id { get; set; }
         public string Secret { get; }
         public Info Info { get; }
 

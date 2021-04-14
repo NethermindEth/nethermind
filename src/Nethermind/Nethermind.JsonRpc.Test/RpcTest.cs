@@ -30,20 +30,20 @@ namespace Nethermind.JsonRpc.Test
 {
     public static class RpcTest
     {
-        public static JsonRpcResponse TestRequest<T>(T module, string method, params string[] parameters) where T : class, IModule
+        public static JsonRpcResponse TestRequest<T>(T module, string method, params string[] parameters) where T : class, IRpcModule
         {
             IJsonRpcService service = BuildRpcService(module);
             JsonRpcRequest request = GetJsonRequest(method, parameters);
             return service.SendRequestAsync(request, JsonRpcContext.Http).Result;
         }
         
-        public static string TestSerializedRequest<T>(IReadOnlyCollection<JsonConverter> converters, T module, string method, params string[] parameters) where T : class, IModule
+        public static string TestSerializedRequest<T>(IReadOnlyCollection<JsonConverter> converters, T module, string method, params string[] parameters) where T : class, IRpcModule
         {
             IJsonRpcService service = BuildRpcService(module);
             JsonRpcRequest request = GetJsonRequest(method, parameters);
             
             JsonRpcContext context = JsonRpcContext.Http;
-            if (module is IContextAwareModule contextAwareModule
+            if (module is IContextAwareRpcModule contextAwareModule
                 && contextAwareModule.Context != null)
             {
                 context = contextAwareModule.Context;
@@ -73,12 +73,12 @@ namespace Nethermind.JsonRpc.Test
             return serialized;
         }
         
-        public static string TestSerializedRequest<T>(T module, string method, params string[] parameters) where T : class, IModule
+        public static string TestSerializedRequest<T>(T module, string method, params string[] parameters) where T : class, IRpcModule
         {
             return TestSerializedRequest(new JsonConverter[0], module, method, parameters);
         }
         
-        public static IJsonRpcService BuildRpcService<T>(T module) where T : class, IModule
+        public static IJsonRpcService BuildRpcService<T>(T module) where T : class, IRpcModule
         {
             var moduleProvider = new TestRpcModuleProvider<T>(module);
             moduleProvider.Register(new SingletonModulePool<T>(new SingletonFactory<T>(module), true));

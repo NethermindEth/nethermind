@@ -48,11 +48,9 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Rocks
         {
             if (Interlocked.CompareExchange(ref _initialized, 1, 0) == 0)
             {
-                RegisterDb(new RocksDbSettings()
+                RegisterDb(
+                    new RocksDbSettings(GetTitleDbName(ConsumerNdmDbNames.ConsumerDepositApprovals), ConsumerNdmDbNames.ConsumerDepositApprovals)
                 {
-                    DbName = GetTitleDbName(ConsumerNdmDbNames.ConsumerDepositApprovals),
-                    DbPath = ConsumerNdmDbNames.ConsumerDepositApprovals,
-
                     CacheIndexAndFilterBlocks = _ndmConfig.ConsumerDepositApprovalsDbCacheIndexAndFilterBlocks,
                     BlockCacheSize = _ndmConfig.ConsumerDepositApprovalsDbBlockCacheSize,
                     WriteBufferNumber = _ndmConfig.ConsumerDepositApprovalsDbWriteBufferNumber,
@@ -61,11 +59,8 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Rocks
                     UpdateReadMetrics = () => ConsumerMetrics.ConsumerDepositApprovalsDbReads++,
                     UpdateWriteMetrics = () => ConsumerMetrics.ConsumerDepositApprovalsDbWrites++,
                 });
-                RegisterDb(new RocksDbSettings()
+                RegisterDb(new RocksDbSettings(GetTitleDbName(ConsumerNdmDbNames.ConsumerReceipts), ConsumerNdmDbNames.ConsumerReceipts)
                 {
-                    DbName = GetTitleDbName(ConsumerNdmDbNames.ConsumerReceipts),
-                    DbPath = ConsumerNdmDbNames.ConsumerReceipts,
-
                     CacheIndexAndFilterBlocks = _ndmConfig.ConsumerReceiptsDbCacheIndexAndFilterBlocks,
                     BlockCacheSize = _ndmConfig.ConsumerReceiptsDbBlockCacheSize,
                     WriteBufferNumber = _ndmConfig.ConsumerReceiptsDbWriteBufferNumber,
@@ -74,11 +69,8 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Rocks
                     UpdateReadMetrics = () => ConsumerMetrics.ConsumerReceiptsDbReads++,
                     UpdateWriteMetrics = () => ConsumerMetrics.ConsumerReceiptsDbWrites++,
                 });
-                RegisterDb(new RocksDbSettings()
+                RegisterDb(new RocksDbSettings(GetTitleDbName(ConsumerNdmDbNames.ConsumerSessions), ConsumerNdmDbNames.ConsumerSessions)
                 {
-                    DbName = GetTitleDbName(ConsumerNdmDbNames.ConsumerSessions),
-                    DbPath = ConsumerNdmDbNames.ConsumerSessions,
-
                     CacheIndexAndFilterBlocks = _ndmConfig.ConsumerSessionsDbCacheIndexAndFilterBlocks,
                     BlockCacheSize = _ndmConfig.ConsumerSessionsDbBlockCacheSize,
                     WriteBufferNumber = _ndmConfig.ConsumerSessionsDbWriteBufferNumber,
@@ -87,11 +79,8 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Rocks
                     UpdateReadMetrics = () => ConsumerMetrics.ConsumerSessionsDbReads++,
                     UpdateWriteMetrics = () => ConsumerMetrics.ConsumerSessionsDbWrites++,
                 });
-                RegisterDb(new RocksDbSettings()
+                RegisterDb(new RocksDbSettings(GetTitleDbName(ConsumerNdmDbNames.Deposits), ConsumerNdmDbNames.Deposits)
                 {
-                    DbName = GetTitleDbName(ConsumerNdmDbNames.Deposits),
-                    DbPath = ConsumerNdmDbNames.Deposits,
-
                     CacheIndexAndFilterBlocks = _ndmConfig.DepositsDbCacheIndexAndFilterBlocks,
                     BlockCacheSize = _ndmConfig.DepositsDbBlockCacheSize,
                     WriteBufferNumber = _ndmConfig.DepositsDbWriteBufferNumber,

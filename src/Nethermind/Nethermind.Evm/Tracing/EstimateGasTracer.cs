@@ -41,6 +41,7 @@ namespace Nethermind.Evm.Tracing
         public bool IsTracingState => false;
         public bool IsTracingStorage => false;
         public bool IsTracingBlockHash => false;
+        public bool IsTracingAccess => false;
 
         public byte[] ReturnValue { get; set; }
 
@@ -204,7 +205,7 @@ namespace Nethermind.Evm.Tracing
 
         private Stack<GasAndNesting> _currentGasAndNesting = new();
 
-        public void ReportAction(long gas, UInt256 value, Address @from, Address to, byte[] input, ExecutionType callType, bool isPrecompileCall = false)
+        public void ReportAction(long gas, UInt256 value, Address @from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
         {
             if (_currentNestingLevel == -1)
             {
@@ -222,7 +223,7 @@ namespace Nethermind.Evm.Tracing
             }
         }
 
-        public void ReportActionEnd(long gas, byte[] output)
+        public void ReportActionEnd(long gas, ReadOnlyMemory<byte> output)
         {
             if (!_isInPrecompile)
             {
@@ -234,7 +235,7 @@ namespace Nethermind.Evm.Tracing
             }
         }
 
-        public void ReportActionEnd(long gas, Address deploymentAddress, byte[] deployedCode)
+        public void ReportActionEnd(long gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode)
         {
             if (!_isInPrecompile)
             {
@@ -287,6 +288,11 @@ namespace Nethermind.Evm.Tracing
         public void ReportExtraGasPressure(long extraGasPressure)
         {
             _currentGasAndNesting.Peek().ExtraGasPressure = Math.Max(_currentGasAndNesting.Peek().ExtraGasPressure, extraGasPressure);
+        }
+
+        public void ReportAccess(IReadOnlySet<Address> accessedAddresses, IReadOnlySet<StorageCell> accessedStorageCells)
+        {
+            throw new NotImplementedException();
         }
     }
 }

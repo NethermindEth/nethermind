@@ -65,7 +65,6 @@ namespace Nethermind.Specs
         public bool IsEip2565Enabled { get; set; }
         public bool IsEip2929Enabled { get; set; }
         public bool IsEip2930Enabled { get; set; }
-        public bool IsEip2718Enabled { get; set; }
         public bool IsEip158IgnoredAccount(Address address) => address == Address.SystemUser;
         public bool IsEip1559Enabled { get; set; }
         public bool ValidateChainId { get; set; }
