@@ -134,8 +134,10 @@ namespace Nethermind.Synchronization
 
         private Guid _sealValidatorUserGuid = Guid.NewGuid();
 
-        public void AddNewBlock(Block block, ISyncPeer nodeWhoSentTheBlock)
+        public virtual void AddNewBlock(Block block, ISyncPeer nodeWhoSentTheBlock)
         {
+            if (!_syncConfig.BlockGossipEnabled) return;
+            
             if (block.TotalDifficulty == null)
             {
                 throw new InvalidDataException("Cannot add a block with unknown total difficulty");
@@ -301,6 +303,8 @@ namespace Nethermind.Synchronization
 
         public void HintBlock(Keccak hash, long number, ISyncPeer syncPeer)
         {
+            if (!_syncConfig.BlockGossipEnabled) return;
+            
             if (number > syncPeer.HeadNumber)
             {
                 if (_logger.IsTrace)
@@ -430,18 +434,6 @@ namespace Nethermind.Synchronization
         [Todo(Improve.Refactor, "This may not be desired if the other node is just syncing now too")]
         private void OnNewHeadBlock(object? sender, BlockEventArgs blockEventArgs)
         {
-            void NotifyOfNewBlock(PeerInfo peerInfo, Block broadcastedBlock, SendBlockPriority priority)
-            {
-                try
-                {
-                    peerInfo.SyncPeer.NotifyOfNewBlock(broadcastedBlock, priority);
-                }
-                catch (Exception e)
-                {
-                    if (_logger.IsError) _logger.Error($"Error while broadcasting block {broadcastedBlock.ToString(Block.Format.Short)} to peer {peerInfo}.", e);
-                }
-            }
-
             Block block = blockEventArgs.Block;
             if ((_blockTree.BestSuggestedHeader?.TotalDifficulty ?? 0) <= block.TotalDifficulty)
             {
@@ -487,6 +479,20 @@ namespace Nethermind.Synchronization
                         })
                     , TaskContinuationOptions.OnlyOnFaulted
                 );
+            }
+        }
+
+        protected virtual void NotifyOfNewBlock(PeerInfo peerInfo, Block broadcastedBlock, SendBlockPriority priority)
+        {
+            if (!_syncConfig.BlockGossipEnabled) return;
+            
+            try
+            {
+                peerInfo.SyncPeer.NotifyOfNewBlock(broadcastedBlock, priority);
+            }
+            catch (Exception e)
+            {
+                if (_logger.IsError) _logger.Error($"Error while broadcasting block {broadcastedBlock.ToString(Block.Format.Short)} to peer {peerInfo}.", e);
             }
         }
 

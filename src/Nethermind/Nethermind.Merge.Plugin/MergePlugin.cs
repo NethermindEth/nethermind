@@ -49,7 +49,9 @@ namespace Nethermind.Merge.Plugin
         {
             if (_mergeConfig.Enabled)
             {
-                _api.Config<ISyncConfig>().SynchronizationEnabled = false;
+                ISyncConfig syncConfig = _api.Config<ISyncConfig>();
+                syncConfig.SynchronizationEnabled = false;
+                syncConfig.BlockGossipEnabled = false;
             }
             return Task.CompletedTask;
         }
