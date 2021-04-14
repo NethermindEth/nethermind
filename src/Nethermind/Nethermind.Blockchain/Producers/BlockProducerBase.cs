@@ -52,7 +52,7 @@ namespace Nethermind.Blockchain.Producers
 
         protected virtual BlockHeader? GetCurrentBlockParent() => BlockTree.Head?.Header;
 
-        private readonly ISealer _sealer;
+        protected ISealer Sealer { get; }
         private readonly IStateProvider _stateProvider;
         private readonly IGasLimitCalculator _gasLimitCalculator;
         private readonly ITxSource _txSource;
@@ -73,7 +73,7 @@ namespace Nethermind.Blockchain.Producers
         {
             _txSource = txSource ?? throw new ArgumentNullException(nameof(txSource));
             Processor = processor ?? throw new ArgumentNullException(nameof(processor));
-            _sealer = sealer ?? throw new ArgumentNullException(nameof(sealer));
+            Sealer = sealer ?? throw new ArgumentNullException(nameof(sealer));
             BlockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             BlockProcessingQueue = blockProcessingQueue ?? throw new ArgumentNullException(nameof(blockProcessingQueue));
             _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
@@ -114,7 +114,7 @@ namespace Nethermind.Blockchain.Producers
                 }
                 else
                 {
-                    if (_sealer.CanSeal(parentHeader.Number + 1, parentHeader.Hash))
+                    if (Sealer.CanSeal(parentHeader.Number + 1, parentHeader.Hash))
                     {
                         Interlocked.Exchange(ref Metrics.CanProduceBlocks, 1);
                         return ProduceNewBlock(parentHeader, token);
@@ -187,7 +187,7 @@ namespace Nethermind.Blockchain.Producers
         protected virtual void ConsumeProducedBlock(Block block) => BlockTree.SuggestBlock(block);
 
         protected virtual Task<Block> SealBlock(Block block, BlockHeader parent, CancellationToken token) =>
-            _sealer.SealBlock(block, token);
+            Sealer.SealBlock(block, token);
 
         protected virtual Block? ProcessPreparedBlock(Block block) =>
             Processor.Process(block, ProcessingOptions.ProducingBlock, NullBlockTracer.Instance);
@@ -226,14 +226,14 @@ namespace Nethermind.Blockchain.Producers
             BlockHeader header = new(
                 parent.Hash!,
                 Keccak.OfAnEmptySequenceRlp,
-                _sealer.Address,
+                Sealer.Address,
                 difficulty,
                 parent.Number + 1,
                 _gasLimitCalculator.GetGasLimit(parent),
                 timestamp,
                 Encoding.UTF8.GetBytes("Nethermind"))
             {
-                TotalDifficulty = parent.TotalDifficulty + difficulty, Author = _sealer.Address
+                TotalDifficulty = parent.TotalDifficulty + difficulty, Author = Sealer.Address
             };
 
             if (Logger.IsDebug) Logger.Debug($"Setting total difficulty to {parent.TotalDifficulty} + {difficulty}.");

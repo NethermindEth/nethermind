@@ -17,21 +17,26 @@
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
+using Nethermind.Blockchain.Synchronization;
+using Nethermind.Core;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
+using Nethermind.Merge.Plugin.Handlers;
+using Nethermind.Network.Config;
+using Nethermind.Runner.Ethereum.Steps;
 
 namespace Nethermind.Merge.Plugin
 {
-    public class MergePlugin : INethermindPlugin
+    public partial class MergePlugin : IConsensusPlugin
     {
-        private INethermindApi _api;
-        private ILogger _logger;
-        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
-
-        private IMergeConfig _mergeConfig;
+        private INethermindApi _api = null!;
+        private ILogger _logger = null!;
+        private IMergeConfig _mergeConfig = null!;
+        
         public string Name => "Merge";
         public string Description => "Merge plugin for ETH1-ETH2";
         public string Author => "Nethermind";
+        
         public Task Init(INethermindApi nethermindApi)
         {
             _api = nethermindApi;
@@ -42,6 +47,10 @@ namespace Nethermind.Merge.Plugin
 
         public Task InitNetworkProtocol()
         {
+            if (_mergeConfig.Enabled)
+            {
+                _api.Config<ISyncConfig>().SynchronizationEnabled = false;
+            }
             return Task.CompletedTask;
         }
 
@@ -49,12 +58,28 @@ namespace Nethermind.Merge.Plugin
         {
             if (_mergeConfig.Enabled)
             {
-                IConsensusRpcModule consensusRpcModule = new ConsensusRpcModule();
-                _api.RpcModuleProvider!.RegisterSingle<IConsensusRpcModule>(consensusRpcModule);
+                if (_api.RpcModuleProvider is null) throw new StepDependencyException(nameof(_api.RpcModuleProvider));
+                if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.BlockTree));
+                if (_api.BlockchainProcessor is null) throw new StepDependencyException(nameof(_api.BlockchainProcessor));
+                if (_api.StateProvider is null) throw new StepDependencyException(nameof(_api.StateProvider));
+                if (_api.StateProvider is null) throw new StepDependencyException(nameof(_api.StateProvider));
+                
+                IConsensusRpcModule consensusRpcModule = new ConsensusRpcModule(
+                    new AssembleBlockHandler(_api.BlockTree, _blockProducer, _api.LogManager),
+                    new NewBlockHandler(_api.BlockTree, _api.BlockchainProcessor, _api.StateProvider, _api.LogManager),
+                    new SetHeadBlockHandler(_api.BlockTree, _api.LogManager),
+                    new FinaliseBlockHandler());
+                
+                _api.RpcModuleProvider.RegisterSingle<IConsensusRpcModule>(consensusRpcModule);
                 if (_logger.IsInfo) _logger.Info("Consensus Module has been enabled");
             }
 
             return Task.CompletedTask;
         }
+        
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
+        public SealEngineType SealEngineType => SealEngineType.Custom;
+        
     }
 }

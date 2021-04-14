@@ -16,7 +16,10 @@
 // 
 
 using System;
+using Nethermind.Blockchain;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Merge.Plugin.Data;
+using Nethermind.Merge.Plugin.Handlers;
 using NUnit.Framework;
 
 namespace Nethermind.Merge.Plugin.Test
@@ -32,7 +35,12 @@ namespace Nethermind.Merge.Plugin.Test
 
         private IConsensusRpcModule CreateConsensusModule()
         {
-            return new ConsensusRpcModule();
+            // IBlockTree blockTree = Build.A.BlockTree().TestObject;
+            // return new ConsensusRpcModule(
+            //     new AssembleBlockHandler(blockTree, )
+            //     );
+
+            return null;
         }
     }
 }

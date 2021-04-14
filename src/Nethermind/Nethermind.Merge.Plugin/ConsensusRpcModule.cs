@@ -31,9 +31,6 @@ namespace Nethermind.Merge.Plugin
         private readonly IHandler<Keccak, Result> _setHeadHandler;
         private readonly IHandler<Keccak, Result> _finaliseBlockHandler;
 
-        // temp
-        public ConsensusRpcModule() {}
-        
         public ConsensusRpcModule(
             IHandlerAsync<AssembleBlockRequest, BlockRequestResult> assembleBlockHandler,
             IHandler<BlockRequestResult, NewBlockResult> newBlockHandler,
