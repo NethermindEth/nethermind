@@ -25,7 +25,7 @@ namespace Nethermind.Merge.Plugin.Handlers
     {
         public ResultWrapper<SuccessResult> Handle(Keccak request)
         {
-            throw new System.NotImplementedException();
+            return ResultWrapper<SuccessResult>.Success(new SuccessResult() {Success = true});
         }
     }
 }
