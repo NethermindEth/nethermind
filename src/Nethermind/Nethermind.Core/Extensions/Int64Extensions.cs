@@ -165,14 +165,17 @@ namespace Nethermind.Core.Extensions
 
         public static string ToHexString(this UInt256 value, bool skipLeadingZeros)
         {
-            if (value == UInt256.Zero)
+            if (skipLeadingZeros)
             {
-                return "0x";
-            }
+                if (value == UInt256.Zero)
+                {
+                    return "0x";
+                }
 
-            if (value == UInt256.One)
-            {
-                return "0x1";
+                if (value == UInt256.One)
+                {
+                    return "0x1";
+                }
             }
 
             byte[] bytes = new byte[32];

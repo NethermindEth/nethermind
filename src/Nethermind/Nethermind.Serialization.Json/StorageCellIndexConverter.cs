@@ -13,27 +13,23 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using System.Collections.Generic;
-using System.IO;
+using System;
+using Nethermind.Core.Extensions;
+using Nethermind.Int256;
 using Newtonsoft.Json;
 
 namespace Nethermind.Serialization.Json
 {
-    public interface IJsonSerializer
+    public class StorageCellIndexConverter : JsonConverter<UInt256>
     {
-        T Deserialize<T>(Stream stream);
-        T Deserialize<T>(string json);
-        string Serialize<T>(T value, bool indented = false);
-        long Serialize<T>(Stream stream, T value, bool indented = false);
-        void RegisterConverter(JsonConverter converter);
-
-        void RegisterConverters(IEnumerable<JsonConverter> converters)
+        public override void WriteJson(JsonWriter writer, UInt256 value, JsonSerializer serializer)
         {
-            foreach (JsonConverter converter in converters)
-            {
-                RegisterConverter(converter);
-            }
+            writer.WriteValue(value.ToHexString(false));
         }
+
+        public override UInt256 ReadJson(JsonReader reader, Type objectType, UInt256 existingValue, bool hasExistingValue, JsonSerializer serializer) => 
+            UInt256Converter.ReaderJson(reader);
     }
 }
