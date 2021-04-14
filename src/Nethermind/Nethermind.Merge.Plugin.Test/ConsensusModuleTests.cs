@@ -16,23 +16,61 @@
 // 
 
 using System;
+using Nethermind.Blockchain;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Test.Builders;
+using Nethermind.Db;
+using Nethermind.Db.Blooms;
+using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
+using Nethermind.Merge.Plugin.Handlers;
+using Nethermind.Specs;
+using Nethermind.State.Repositories;
 using NUnit.Framework;
 
 namespace Nethermind.Merge.Plugin.Test
 {
     public class ConsensusModuleTests
     {
+        private BlockTree BuildBlockTree()
+        {
+            MemDb blocksDb = new();
+            MemDb headersDb = new();
+            MemDb blocksInfosDb = new();
+            ChainLevelInfoRepository chainLevelInfoRepository = new(blocksInfosDb);
+            return new BlockTree(blocksDb, headersDb, blocksInfosDb, chainLevelInfoRepository, MainnetSpecProvider.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
+        }
+        
         [Test]
         public void consensus_assembleBlock_should_return_expected_results()
         {
             IConsensusRpcModule consensusRpcModule = CreateConsensusModule();
             Assert.Throws<NotImplementedException> (() => consensusRpcModule.consensus_assembleBlock(new AssembleBlockRequest()));
         }
-
+        
+        [Test]
+        public void consensus_newBlock_should_return_expected_results()
+        {
+            IConsensusRpcModule consensusRpcModule = CreateConsensusModule();
+            Assert.Throws<NotImplementedException> (() => consensusRpcModule.consensus_newBlock(new BlockRequestResult()));
+        }
+        
+        [Test]
+        public void consensus_finaliseBlock_should_return_true()
+        {
+            IConsensusRpcModule consensusRpcModule = CreateConsensusModule();
+            var result = consensusRpcModule.consensus_finaliseBlock(TestItem.KeccakA);
+            Assert.AreEqual(true, result.Data.Success);
+        }
+        
         private IConsensusRpcModule CreateConsensusModule()
         {
-            return new ConsensusRpcModule();
+            return new ConsensusRpcModule(
+                new AssembleBlockHandler(),
+                new NewBlockHandler(),
+                new FinaliseBlockHandler(),
+                new SetHeadBlockHandler(),
+                BuildBlockTree());
         }
     }
 }

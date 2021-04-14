@@ -16,6 +16,7 @@
 // 
 
 using System;
+using Nethermind.Blockchain;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
@@ -32,6 +33,7 @@ namespace Nethermind.Merge.Plugin
         private readonly IHandler<BlockRequestResult, NewBlockResult>_newBlockHandler;
         private readonly IHandler<Keccak, SuccessResult> _setHeadHandler;
         private readonly IHandler<Keccak, SuccessResult> _finaliseBlockHandler;
+        private readonly IBlockTree _blockTree;
 
         // temp
         public ConsensusRpcModule() {}
@@ -40,12 +42,14 @@ namespace Nethermind.Merge.Plugin
             IHandler<AssembleBlockRequest, BlockRequestResult> assembleBlockHandler,
             IHandler<BlockRequestResult, NewBlockResult> newBlockHandler,
             IHandler<Keccak, SuccessResult> setHeadHandler,
-            IHandler<Keccak, SuccessResult> finaliseBlockHandler)
+            IHandler<Keccak, SuccessResult> finaliseBlockHandler,
+            IBlockTree blockTree)
         {
             _assembleBlockHandler = assembleBlockHandler;
             _newBlockHandler = newBlockHandler;
             _setHeadHandler = setHeadHandler;
             _finaliseBlockHandler = finaliseBlockHandler;
+            _blockTree = blockTree;
         }
         
         public ResultWrapper<BlockRequestResult> consensus_assembleBlock(AssembleBlockRequest request)
