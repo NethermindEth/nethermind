@@ -60,17 +60,20 @@ namespace Nethermind.Merge.Plugin.Test
         {
             IConsensusRpcModule consensusRpcModule = CreateConsensusModule();
             var result = consensusRpcModule.consensus_finaliseBlock(TestItem.KeccakA);
-            Assert.AreEqual(true, result.Data.Success);
+            Assert.AreEqual(true, result.Data.Value);
         }
         
         private IConsensusRpcModule CreateConsensusModule()
         {
+            var blockTree = BuildBlockTree();
+            
+            // ToDo temp
+            var eth2BlockProducer = new Eth2BlockProducer(null, null, null, blockTree, null, null, null, LimboLogs.Instance);
             return new ConsensusRpcModule(
-                new AssembleBlockHandler(),
-                new NewBlockHandler(),
+                new AssembleBlockHandler(blockTree, eth2BlockProducer, LimboLogs.Instance),
+                new NewBlockHandler(blockTree, null, null, LimboLogs.Instance),
                 new FinaliseBlockHandler(),
-                new SetHeadBlockHandler(),
-                BuildBlockTree());
+                new SetHeadBlockHandler(blockTree, LimboLogs.Instance));
         }
     }
 }
