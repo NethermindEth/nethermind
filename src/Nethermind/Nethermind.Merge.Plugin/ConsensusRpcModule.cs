@@ -15,33 +15,57 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System;
 using Nethermind.Core.Crypto;
+using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Merge.Plugin.Data;
+using Nethermind.Merge.Plugin.Handlers;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Merge.Plugin
 {
     public class ConsensusRpcModule : IConsensusRpcModule
     {
-        public ResultWrapper<BlockForRpc> consensus_assembleBlock(AssembleBlockRequest request)
+        private readonly IHandler<AssembleBlockRequest, BlockRequestResult> _assembleBlockHandler;
+        private readonly IHandler<BlockRequestResult, NewBlockResult>_newBlockHandler;
+        private readonly IHandler<Keccak, SuccessResult> _setHeadHandler;
+        private readonly IHandler<Keccak, SuccessResult> _finaliseBlockHandler;
+
+        // temp
+        public ConsensusRpcModule() {}
+        
+        public ConsensusRpcModule(
+            IHandler<AssembleBlockRequest, BlockRequestResult> assembleBlockHandler,
+            IHandler<BlockRequestResult, NewBlockResult> newBlockHandler,
+            IHandler<Keccak, SuccessResult> setHeadHandler,
+            IHandler<Keccak, SuccessResult> finaliseBlockHandler)
         {
-            throw new System.NotImplementedException();
+            _assembleBlockHandler = assembleBlockHandler;
+            _newBlockHandler = newBlockHandler;
+            _setHeadHandler = setHeadHandler;
+            _finaliseBlockHandler = finaliseBlockHandler;
+        }
+        
+        public ResultWrapper<BlockRequestResult> consensus_assembleBlock(AssembleBlockRequest request)
+        {
+            return _assembleBlockHandler.Handle(request);
         }
 
-        public ResultWrapper<bool> consensus_newBlock(BlockForRpc request)
+        public ResultWrapper<NewBlockResult> consensus_newBlock(BlockRequestResult requestResult)
         {
-            throw new System.NotImplementedException();
+            return _newBlockHandler.Handle(requestResult);
         }
 
-        public ResultWrapper<bool> consensus_setHead(Keccak blockHash)
+        public ResultWrapper<SuccessResult> consensus_setHead(Keccak blockHash)
         {
-            throw new System.NotImplementedException();
+            return _setHeadHandler.Handle(blockHash);
         }
 
-        public ResultWrapper<bool> consensus_finaliseBlock(Keccak blockHash)
+        public ResultWrapper<SuccessResult> consensus_finaliseBlock(Keccak blockHash)
         {
-            throw new System.NotImplementedException();
+            return _finaliseBlockHandler.Handle(blockHash);
         }
     }
 }
