@@ -107,6 +107,30 @@ namespace Nethermind.Merge.Plugin.Test
             Keccak? bestSuggestedHeaderHash = blockTree.BestSuggestedHeader!.Hash;
             Assert.AreEqual(assembleBlockResult.Data.BlockHash, bestSuggestedHeaderHash);
             Assert.AreNotEqual(startingBestSuggestedHeader!.Hash, bestSuggestedHeaderHash);
+        } 
+        
+        [Test]
+        public async Task setHead_should_changeHead()
+        {
+            MergeTestBlockchain chain = CreateBlockChain();
+            IConsensusRpcModule consensusRpcModule = CreateConsensusModule(chain);
+            IBlockTree blockTree = _chain.BlockTree;
+            Block? startingHead = blockTree.Head;
+            BlockHeader? startingBestSuggestedHeader = blockTree.BestSuggestedHeader;
+            ResultWrapper<BlockRequestResult> assembleBlockResult = await consensusRpcModule.consensus_assembleBlock(new AssembleBlockRequest()
+            {
+                ParentHash = blockTree.Head!.Hash!,
+                Timestamp = UInt256.Zero
+            });
+            Assert.AreEqual(startingHead!.Hash!, assembleBlockResult.Data.ParentHash);
+            ResultWrapper<NewBlockResult> newBlockResult = consensusRpcModule.consensus_newBlock(assembleBlockResult.Data);
+            Keccak? newHeadHash = assembleBlockResult.Data!.BlockHash!;
+            ResultWrapper<Result> setHeadResult = consensusRpcModule.consensus_setHead(assembleBlockResult.Data!.BlockHash!);
+            Assert.AreEqual(true, setHeadResult.Data.Value);
+            
+            Keccak? actualHead = blockTree.Head!.Hash;
+            Assert.AreNotEqual(newHeadHash, startingHead.Hash);
+            Assert.AreEqual(newHeadHash, actualHead);
         }
 
         [Test]
