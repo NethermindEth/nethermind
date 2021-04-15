@@ -48,7 +48,7 @@ namespace Nethermind.Merge.Plugin
                 if (_api.SpecProvider == null) throw new StepDependencyException(nameof(_api.SpecProvider));
 
                 ILogger logger = _api.LogManager.GetClassLogger();
-                if (logger.IsWarn) logger.Warn("Starting AuRa block producer & sealer");
+                if (logger.IsWarn) logger.Warn("Starting ETH2 block producer & sealer");
 
                 BlockProducerContext producerContext = GetProducerChain();
                 _api.BlockProducer = _blockProducer = new Eth2BlockProducer(
