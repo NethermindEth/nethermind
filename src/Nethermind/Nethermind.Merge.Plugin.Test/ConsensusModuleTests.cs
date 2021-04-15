@@ -87,6 +87,27 @@ namespace Nethermind.Merge.Plugin.Test
             });
             Assert.AreNotEqual(notExistingHash, response.Result);
         }
+        
+        [Test]
+        public async Task newBlock_should_move_best_suggestedBlock()
+        {
+            MergeTestBlockchain chain = CreateBlockChain();
+            IConsensusRpcModule consensusRpcModule = CreateConsensusModule(chain);
+            IBlockTree blockTree = _chain.BlockTree;
+            Block? startingHead = blockTree.Head;
+            BlockHeader? startingBestSuggestedHeader = blockTree.BestSuggestedHeader;
+            ResultWrapper<BlockRequestResult> assembleBlockResult = await consensusRpcModule.consensus_assembleBlock(new AssembleBlockRequest()
+            {
+                ParentHash = blockTree.Head!.Hash!,
+                Timestamp = UInt256.Zero
+            });
+            Assert.AreEqual(startingHead!.Hash!, assembleBlockResult.Data.ParentHash);
+            ResultWrapper<NewBlockResult> newBlockResult = consensusRpcModule.consensus_newBlock(assembleBlockResult.Data);
+            Assert.AreEqual(true, newBlockResult.Data.Valid);
+            Keccak? bestSuggestedHeaderHash = blockTree.BestSuggestedHeader!.Hash;
+            Assert.AreEqual(assembleBlockResult.Data.BlockHash, bestSuggestedHeaderHash);
+            Assert.AreNotEqual(startingBestSuggestedHeader!.Hash, bestSuggestedHeaderHash);
+        }
 
         [Test]
         public void consensus_finaliseBlock_should_succeed()
