@@ -17,12 +17,9 @@
 
 using System;
 using Nethermind.Blockchain;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Db;
-using Nethermind.Db.Blooms;
-using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
+using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Specs;
 using Nethermind.State.Repositories;
@@ -66,7 +63,8 @@ namespace Nethermind.Merge.Plugin.Test
         private IConsensusRpcModule CreateConsensusModule()
         {
             var blockTree = BuildBlockTree();
-            
+            // IBlockTree blockTree = Build.A.BlockTree().TestObject;
+
             // ToDo temp
             var eth2BlockProducer = new Eth2BlockProducer(null, null, null, blockTree, null, null, null, LimboLogs.Instance);
             return new ConsensusRpcModule(

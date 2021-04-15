@@ -46,5 +46,6 @@ namespace Nethermind.Blockchain.Synchronization
         public bool BeamSyncVerifiedMode { get; set; } = false;
         public bool WitnessProtocolEnabled { get; set; } = false;
         public bool FixReceipts { get; set; } = false;
+        public bool BlockGossipEnabled { get; set; } = true;
     }
 }

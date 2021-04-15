@@ -24,6 +24,7 @@ using Nethermind.Blockchain.Producers;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
@@ -37,18 +38,36 @@ namespace Nethermind.Merge.Plugin.Handlers
         private Block? _blockProduced;
         private readonly SemaphoreSlim _locker = new(1, 1);
         private readonly ManualTimestamper _timestamper;
+        private readonly Eth2Sealer _sealer;
 
         public Eth2BlockProducer(ITxSource txSource,
             IBlockchainProcessor processor,
-            ISealer sealer,
             IBlockTree blockTree,
             IBlockProcessingQueue blockProcessingQueue,
             IStateProvider stateProvider,
             IGasLimitCalculator gasLimitCalculator,
+            ISigner signer,
             ILogManager logManager) 
-            : base(txSource, processor, sealer, blockTree, blockProcessingQueue, stateProvider, gasLimitCalculator, new ManualTimestamper(), logManager)
+            : base(txSource, processor, new Eth2Sealer(signer), blockTree, blockProcessingQueue, stateProvider, gasLimitCalculator, new ManualTimestamper(), logManager)
         {
             _timestamper = (ManualTimestamper)Timestamper;
+            _sealer = (Eth2Sealer)Sealer;
+        }
+
+        private class Eth2Sealer : ISealer
+        {
+            private readonly ISigner _signer;
+
+            public Eth2Sealer(ISigner signer)
+            {
+                _signer = signer;
+            }
+            
+            public Task<Block> SealBlock(Block block, CancellationToken cancellationToken) => Task.FromResult(block);
+
+            public bool CanSeal(long blockNumber, Keccak parentHash) => true;
+
+            public Address Address => _signer.Address;
         }
 
         public override void Start() => Interlocked.Exchange(ref _stated, 1);
