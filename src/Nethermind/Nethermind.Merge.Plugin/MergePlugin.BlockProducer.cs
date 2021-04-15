@@ -16,17 +16,11 @@
 // 
 
 using System.Threading.Tasks;
-using Nethermind.Blockchain;
-using Nethermind.Blockchain.Processing;
-using Nethermind.Blockchain.Producers;
 using Nethermind.Consensus;
-using Nethermind.Consensus.Transactions;
-using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Runner.Ethereum.Steps;
-using Nethermind.State;
 
 namespace Nethermind.Merge.Plugin
 {
@@ -46,97 +40,35 @@ namespace Nethermind.Merge.Plugin
                 if (_api.BlockProcessingQueue == null) throw new StepDependencyException(nameof(_api.BlockProcessingQueue));
                 if (_api.StateProvider == null) throw new StepDependencyException(nameof(_api.StateProvider));
                 if (_api.SpecProvider == null) throw new StepDependencyException(nameof(_api.SpecProvider));
+                if (_api.BlockValidator == null) throw new StepDependencyException(nameof(_api.BlockValidator));
+                if (_api.RewardCalculatorSource == null) throw new StepDependencyException(nameof(_api.RewardCalculatorSource));
+                if (_api.ReceiptStorage == null) throw new StepDependencyException(nameof(_api.ReceiptStorage));
+                if (_api.TxPool == null) throw new StepDependencyException(nameof(_api.TxPool));
+                if (_api.DbProvider == null) throw new StepDependencyException(nameof(_api.DbProvider));
+                if (_api.ReadOnlyTrieStore == null) throw new StepDependencyException(nameof(_api.ReadOnlyTrieStore));
 
                 ILogger logger = _api.LogManager.GetClassLogger();
                 if (logger.IsWarn) logger.Warn("Starting ETH2 block producer & sealer");
 
-                BlockProducerContext producerContext = GetProducerChain();
-                _api.BlockProducer = _blockProducer = new Eth2BlockProducer(
-                    producerContext.TxSource,
-                    producerContext.ChainProcessor,
+                _api.BlockProducer = _blockProducer = new Eth2BlockProducerFactory().Create(
                     _api.BlockTree,
+                    _api.DbProvider,
+                    _api.ReadOnlyTrieStore,
+                    _api.BlockPreprocessor,
+                    _api.TxPool,
+                    _api.BlockValidator,
+                    _api.RewardCalculatorSource,
+                    _api.ReceiptStorage,
                     _api.BlockProcessingQueue,
                     _api.StateProvider,
-                    new TargetAdjustedGasLimitCalculator(_api.SpecProvider, _miningConfig),
+                    _api.SpecProvider,
                     _api.EngineSigner,
-                    _api.LogManager);
+                    _miningConfig,
+                    _api.LogManager
+                );
             }
             
             return Task.CompletedTask;
         }
-        
-        private BlockProducerContext GetProducerChain()
-        {
-            BlockProducerContext Create()
-            {
-                ReadOnlyDbProvider dbProvider = _api.DbProvider.AsReadOnly(false);
-                ReadOnlyBlockTree blockTree = _api.BlockTree.AsReadOnly();
-
-                ReadOnlyTxProcessingEnv txProcessingEnv =
-                    new(dbProvider, _api.ReadOnlyTrieStore, blockTree, _api.SpecProvider, _api.LogManager);
-                
-                BlockProcessor blockProcessor =
-                    CreateBlockProcessor(txProcessingEnv);
-
-                IBlockchainProcessor blockchainProcessor =
-                    new BlockchainProcessor(
-                        blockTree,
-                        blockProcessor,
-                        _api.BlockPreprocessor,
-                        _api.LogManager,
-                        BlockchainProcessor.Options.NoReceipts);
-
-                OneTimeChainProcessor chainProcessor = new(
-                    dbProvider,
-                    blockchainProcessor);
-
-                return new BlockProducerContext
-                {
-                    ChainProcessor = chainProcessor,
-                    ReadOnlyStateProvider = txProcessingEnv.StateProvider,
-                    TxSource = CreateTxSourceForProducer(txProcessingEnv, txProcessingEnv),
-                    ReadOnlyTxProcessingEnv = txProcessingEnv
-                };
-            }
-
-            return Create();
-        }
-
-        private ITxSource CreateTxSourceForProducer(
-            ReadOnlyTxProcessingEnv processingEnv,
-            IReadOnlyTxProcessorSource readOnlyTxProcessorSource) =>
-            CreateTxPoolTxSource(processingEnv, readOnlyTxProcessorSource);
-
-        private TxPoolTxSource CreateTxPoolTxSource(ReadOnlyTxProcessingEnv processingEnv, IReadOnlyTxProcessorSource readOnlyTxProcessorSource)
-        {
-            ITxFilter txSourceFilter = CreateTxSourceFilter();
-            return new TxPoolTxSource(_api.TxPool, processingEnv.StateReader, _api.LogManager, txSourceFilter);
-        }
-
-        private ITxFilter CreateTxSourceFilter() =>
-            TxFilterBuilders.CreateStandardTxFilter(_miningConfig);
-
-        private BlockProcessor CreateBlockProcessor(
-            ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv)
-        {
-            if (_api.SpecProvider == null) throw new StepDependencyException(nameof(_api.SpecProvider));
-            if (_api.BlockValidator == null) throw new StepDependencyException(nameof(_api.BlockValidator));
-            if (_api.RewardCalculatorSource == null) throw new StepDependencyException(nameof(_api.RewardCalculatorSource));
-            if (_api.ReceiptStorage == null) throw new StepDependencyException(nameof(_api.ReceiptStorage));
-            if (_api.TxPool == null) throw new StepDependencyException(nameof(_api.TxPool));
-
-            return new BlockProcessor(
-                _api.SpecProvider,
-                _api.BlockValidator,
-                _api.RewardCalculatorSource.Get(readOnlyTxProcessingEnv.TransactionProcessor),
-                readOnlyTxProcessingEnv.TransactionProcessor,
-                readOnlyTxProcessingEnv.StateProvider,
-                readOnlyTxProcessingEnv.StorageProvider,
-                _api.TxPool,
-                _api.ReceiptStorage,
-                NullWitnessCollector.Instance,
-                _api.LogManager);
-        }
-        
     }
 }

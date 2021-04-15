@@ -15,7 +15,10 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc;
@@ -43,8 +46,18 @@ namespace Nethermind.Merge.Plugin.Handlers
                 if (_logger.IsWarn) _logger.Warn($"Block {blockHash} cannot be found and will not be set as head.");
                 ResultWrapper<Result>.Success(Result.Fail);
             }
+
+            List<Block> blocks = new();
             
-            _blockTree.UpdateMainChain(new[] {block!}, true, true);
+            while (!_blockTree.IsMainChain(block!.Header))
+            {
+                blocks.Add(block);
+                block = _blockTree.FindParent(block, BlockTreeLookupOptions.None);
+            }
+
+            blocks.Reverse();
+            
+            _blockTree.UpdateMainChain(blocks.ToArray(), true, true);
             bool success = _blockTree.Head == block;
             if (success)
             {

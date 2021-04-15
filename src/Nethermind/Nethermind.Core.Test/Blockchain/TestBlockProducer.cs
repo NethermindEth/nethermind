@@ -30,7 +30,7 @@ using Nethermind.State;
 
 namespace Nethermind.Core.Test.Blockchain
 {
-    public class TestBlockProducer : LoopBlockProducerBase
+    public class TestBlockProducer : LoopBlockProducerBase, ITestBlockProducer
     {
         public TestBlockProducer(
             ITxSource transactionSource,
@@ -56,7 +56,7 @@ namespace Nethermind.Core.Test.Blockchain
         {
         }
 
-        public Block LastProducedBlock;
+        public Block LastProducedBlock { get; private set; }
         public event EventHandler<BlockEventArgs> LastProducedBlockChanged;
 
         private SemaphoreSlim _newBlockArrived = new SemaphoreSlim(0);

@@ -24,7 +24,6 @@ using Nethermind.Blockchain.Producers;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
@@ -35,11 +34,10 @@ namespace Nethermind.Merge.Plugin.Handlers
     {
         private int _stated;
         private BlockHeader? _parentHeader;
-        private Block? _blockProduced;
+        protected virtual Block? BlockProduced { get; set; }
         private readonly SemaphoreSlim _locker = new(1, 1);
         private readonly ManualTimestamper _timestamper;
-        private readonly Eth2Sealer _sealer;
-
+        
         public Eth2BlockProducer(ITxSource txSource,
             IBlockchainProcessor processor,
             IBlockTree blockTree,
@@ -48,26 +46,9 @@ namespace Nethermind.Merge.Plugin.Handlers
             IGasLimitCalculator gasLimitCalculator,
             ISigner signer,
             ILogManager logManager) 
-            : base(txSource, processor, new Eth2Sealer(signer), blockTree, blockProcessingQueue, stateProvider, gasLimitCalculator, new ManualTimestamper(), logManager)
+            : base(txSource, processor, new Eth2SealEngine(signer), blockTree, blockProcessingQueue, stateProvider, gasLimitCalculator, new ManualTimestamper(), logManager)
         {
             _timestamper = (ManualTimestamper)Timestamper;
-            _sealer = (Eth2Sealer)Sealer;
-        }
-
-        private class Eth2Sealer : ISealer
-        {
-            private readonly ISigner _signer;
-
-            public Eth2Sealer(ISigner signer)
-            {
-                _signer = signer;
-            }
-            
-            public Task<Block> SealBlock(Block block, CancellationToken cancellationToken) => Task.FromResult(block);
-
-            public bool CanSeal(long blockNumber, Keccak parentHash) => true;
-
-            public Address Address => _signer.Address;
         }
 
         public override void Start() => Interlocked.Exchange(ref _stated, 1);
@@ -84,10 +65,10 @@ namespace Nethermind.Merge.Plugin.Handlers
             try
             {
                 _timestamper.Set(DateTimeOffset.FromUnixTimeSeconds((long) timestamp).UtcDateTime);
-                _blockProduced = null;
+                BlockProduced = null;
                 _parentHeader = parentHeader;
                 await TryProduceNewBlock(cancellationToken);
-                return _blockProduced;
+                return BlockProduced;
             }
             finally
             {
@@ -97,7 +78,7 @@ namespace Nethermind.Merge.Plugin.Handlers
 
         protected override bool IsRunning() => _stated == 1;
 
-        protected override void ConsumeProducedBlock(Block block) => _blockProduced = block;
+        protected override void ConsumeProducedBlock(Block block) => BlockProduced = block;
 
         protected override UInt256 CalculateDifficulty(BlockHeader parent, UInt256 timestamp) => UInt256.One;
 

@@ -22,6 +22,7 @@ using System.Linq;
 using Google.Protobuf.WellKnownTypes;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Serialization.Json;
@@ -34,9 +35,16 @@ namespace Nethermind.Merge.Plugin.Data
     {
         public static readonly BlockRequestResult Empty = new BlockRequestResult();
         
-        public BlockRequestResult()
+        public BlockRequestResult(bool setDefaults = false)
         {
-            
+            if (setDefaults)
+            {
+                Difficulty = UInt256.One;
+                Nonce = 0;
+                ExtraData = Bytes.Empty;
+                MixHash = Keccak.Zero;
+                Uncles = Array.Empty<Keccak>();
+            }
         }
         
         public BlockRequestResult(Block block)
