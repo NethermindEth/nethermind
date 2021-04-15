@@ -53,7 +53,6 @@ namespace Nethermind.Merge.Plugin.Test
     public class ConsensusModuleTests
     {
         private MergeTestBlockchain _chain;
-
         private IConsensusRpcModule _consensusRpcModule;
 
         [SetUp]
@@ -64,16 +63,16 @@ namespace Nethermind.Merge.Plugin.Test
         }
         
         [Test]
-        public async Task assembleBlock_should_create_block_on_block_tree_head()
+        public async Task assembleBlock_should_create_block_on_top_of_genesis()
         {
             IBlockTree blockTree = _chain.BlockTree;
-            Block? startingHead = blockTree.Head;
+            Keccak startingHead = blockTree.HeadHash;
             ResultWrapper<BlockRequestResult> response = await _consensusRpcModule.consensus_assembleBlock(new AssembleBlockRequest()
             {
-                ParentHash = blockTree.Head!.Hash!,
+                ParentHash = startingHead,
                 Timestamp = UInt256.Zero
             });
-            Assert.AreEqual(startingHead!.Hash!, response.Data.ParentHash);
+            startingHead.Should().Be(response.Data.ParentHash);
         }
         
         [Test]
@@ -85,62 +84,65 @@ namespace Nethermind.Merge.Plugin.Test
                 ParentHash = notExistingHash,
                 Timestamp = UInt256.Zero
             });
-            Assert.AreNotEqual(notExistingHash, response.Result);
+            response.Data.Should().BeNull();
         }
         
         [Test]
-        public async Task newBlock_should_move_best_suggestedBlock()
+        public async Task newBlock_accepts_previously_assembled_block()
         {
             IBlockTree blockTree = _chain.BlockTree;
-            Block? startingHead = blockTree.Head;
-            BlockHeader? startingBestSuggestedHeader = blockTree.BestSuggestedHeader;
+            Keccak startingHead = blockTree.HeadHash;
+            BlockHeader startingBestSuggestedHeader = blockTree.BestSuggestedHeader;
             ResultWrapper<BlockRequestResult> assembleBlockResult = await _consensusRpcModule.consensus_assembleBlock(new AssembleBlockRequest()
             {
-                ParentHash = blockTree.Head!.Hash!,
+                ParentHash = startingHead,
                 Timestamp = UInt256.Zero
             });
-            Assert.AreEqual(startingHead!.Hash!, assembleBlockResult.Data.ParentHash);
-            ResultWrapper<NewBlockResult> newBlockResult = _consensusRpcModule.consensus_newBlock(assembleBlockResult.Data);
-            Assert.AreEqual(true, newBlockResult.Data.Valid);
-            Keccak? bestSuggestedHeaderHash = blockTree.BestSuggestedHeader!.Hash;
-            Assert.AreEqual(assembleBlockResult.Data.BlockHash, bestSuggestedHeaderHash);
-            Assert.AreNotEqual(startingBestSuggestedHeader!.Hash, bestSuggestedHeaderHash);
+            assembleBlockResult.Data.ParentHash.Should().Be(startingHead);
+            
+            ResultWrapper<NewBlockResult> newBlockResult = await _consensusRpcModule.consensus_newBlock(assembleBlockResult.Data);
+            newBlockResult.Data.Valid.Should().BeTrue();
+            
+            Keccak bestSuggestedHeaderHash = blockTree.BestSuggestedHeader!.Hash;
+            bestSuggestedHeaderHash.Should().Be(assembleBlockResult.Data.BlockHash);
+            bestSuggestedHeaderHash.Should().NotBe(startingBestSuggestedHeader!.Hash);
         } 
         
         [Test]
         public async Task setHead_should_changeHead()
         {
             IBlockTree blockTree = _chain.BlockTree;
-            Block? startingHead = blockTree.Head;
-            ResultWrapper<BlockRequestResult> assembleBlockResult = await _consensusRpcModule.consensus_assembleBlock(new AssembleBlockRequest()
-            {
-                ParentHash = blockTree.Head!.Hash!,
-                Timestamp = UInt256.Zero
-            });
-            Assert.AreEqual(startingHead!.Hash!, assembleBlockResult.Data.ParentHash);
-            Keccak? newHeadHash = assembleBlockResult.Data!.BlockHash!;
-            ResultWrapper<Result> setHeadResult = _consensusRpcModule.consensus_setHead(assembleBlockResult.Data!.BlockHash!);
-            Assert.AreEqual(true, setHeadResult.Data.Value);
+            Keccak startingHead = blockTree.HeadHash;
+
+            BlockRequestResult blockRequestResult = CreateBlockRequest(
+                CreateParentBlockRequestOnHead(), 
+                TestItem.AddressD);
+            ResultWrapper<NewBlockResult> newBlockResult = await _consensusRpcModule.consensus_newBlock(blockRequestResult);
+            newBlockResult.Data.Valid.Should().BeTrue();
             
-            Keccak? actualHead = blockTree.Head!.Hash;
-            Assert.AreNotEqual(newHeadHash, startingHead.Hash);
-            Assert.AreEqual(newHeadHash, actualHead);
+            Keccak newHeadHash = blockRequestResult.BlockHash;
+            ResultWrapper<Result> setHeadResult = await _consensusRpcModule.consensus_setHead(newHeadHash!);
+            setHeadResult.Data.Should().Be(Result.Success);
+            
+            Keccak actualHead = blockTree.HeadHash;
+            actualHead.Should().NotBe(startingHead);
+            actualHead.Should().Be(newHeadHash); 
         }
 
         [Test]
-        public void consensus_finaliseBlock_should_succeed()
+        public async Task consensus_finaliseBlock_should_succeed()
         {
-            ResultWrapper<Result> resultWrapper = _consensusRpcModule.consensus_finaliseBlock(TestItem.KeccakE);
+            ResultWrapper<Result> resultWrapper = await _consensusRpcModule.consensus_finaliseBlock(TestItem.KeccakE);
             resultWrapper.Data.Should().Be(Result.Success);
         }
         
         [Test]
-        public void consensus_newBlock_accepts_first_block()
+        public async Task consensus_newBlock_accepts_first_block()
         {
             BlockRequestResult blockRequestResult = CreateBlockRequest(
                 CreateParentBlockRequestOnHead(), 
                 TestItem.AddressD);
-            ResultWrapper<NewBlockResult> resultWrapper = _consensusRpcModule.consensus_newBlock(blockRequestResult);
+            ResultWrapper<NewBlockResult> resultWrapper = await _consensusRpcModule.consensus_newBlock(blockRequestResult);
             resultWrapper.Data.Valid.Should().BeTrue();
             new BlockRequestResult(_chain.BlockTree.BestSuggestedBody).Should().BeEquivalentTo(blockRequestResult);
         }
@@ -176,12 +178,11 @@ namespace Nethermind.Merge.Plugin.Test
 
         private IConsensusRpcModule CreateConsensusModule(MergeTestBlockchain chain)
         {
-            SemaphoreSlim locker = new(1, 1);
             return new ConsensusRpcModule(
-                new AssembleBlockHandler(chain.BlockTree, (IEth2BlockProducer) chain.BlockProducer, chain.LogManager, locker),
-                new NewBlockHandler(chain.BlockTree, chain.BlockchainProcessor, chain.State, chain.LogManager, locker),
-                new SetHeadBlockHandler(chain.BlockTree, chain.LogManager, locker),
-                new FinaliseBlockHandler(locker));
+                new AssembleBlockHandler(chain.BlockTree, (IEth2BlockProducer) chain.BlockProducer, chain.LogManager),
+                new NewBlockHandler(chain.BlockTree, chain.BlockchainProcessor, chain.State, chain.LogManager),
+                new SetHeadBlockHandler(chain.BlockTree, chain.LogManager),
+                new FinaliseBlockHandler());
         }
 
         private class MergeTestBlockchain : TestBlockchain
