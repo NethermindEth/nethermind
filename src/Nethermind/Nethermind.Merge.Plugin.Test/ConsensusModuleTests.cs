@@ -122,7 +122,6 @@ namespace Nethermind.Merge.Plugin.Test
                 Timestamp = UInt256.Zero
             });
             Assert.AreEqual(startingHead!.Hash!, assembleBlockResult.Data.ParentHash);
-            ResultWrapper<NewBlockResult> newBlockResult = consensusRpcModule.consensus_newBlock(assembleBlockResult.Data);
             Keccak? newHeadHash = assembleBlockResult.Data!.BlockHash!;
             ResultWrapper<Result> setHeadResult = consensusRpcModule.consensus_setHead(assembleBlockResult.Data!.BlockHash!);
             Assert.AreEqual(true, setHeadResult.Data.Value);
