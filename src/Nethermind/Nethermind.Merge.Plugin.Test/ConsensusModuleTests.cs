@@ -18,6 +18,7 @@
 using System;
 using System.Threading.Tasks;
 using FluentAssertions;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Producers;
 using Nethermind.Blockchain.Rewards;
@@ -61,26 +62,25 @@ namespace Nethermind.Merge.Plugin.Test
         [Test]
         public async Task assembleBlock_should_create_block_on_block_tree_head()
         {
-            var chain = CreateBlockChain();
-            var consensusRpcModule = CreateConsensusModule(_chain);
-            var blockTree = _chain.BlockTree;
-            var startingHead = blockTree.Head;
-            var response = await consensusRpcModule.consensus_assembleBlock(new AssembleBlockRequest()
+            MergeTestBlockchain chain = CreateBlockChain();
+            IConsensusRpcModule consensusRpcModule = CreateConsensusModule(chain);
+            IBlockTree blockTree = _chain.BlockTree;
+            Block? startingHead = blockTree.Head;
+            ResultWrapper<BlockRequestResult> response = await consensusRpcModule.consensus_assembleBlock(new AssembleBlockRequest()
             {
-                ParentHash = blockTree.Head.Hash,
+                ParentHash = blockTree.Head!.Hash!,
                 Timestamp = UInt256.Zero
             });
-            Assert.AreEqual(startingHead.Hash, response.Data.ParentHash);
+            Assert.AreEqual(startingHead!.Hash!, response.Data.ParentHash);
         }
-
+        
         [Test]
         public async Task assembleBlock_should_not_create_block_with_unknown_parent()
         {
-            var chain = CreateBlockChain();
-            var consensusRpcModule = CreateConsensusModule(_chain);
-            var blockTree = _chain.BlockTree;
-            var notExistingHash = TestItem.KeccakH;
-            var response = await consensusRpcModule.consensus_assembleBlock(new AssembleBlockRequest()
+            MergeTestBlockchain chain = CreateBlockChain();
+            IConsensusRpcModule consensusRpcModule = CreateConsensusModule(chain);
+            Keccak notExistingHash = TestItem.KeccakH;
+            ResultWrapper<BlockRequestResult> response = await consensusRpcModule.consensus_assembleBlock(new AssembleBlockRequest()
             {
                 ParentHash = notExistingHash,
                 Timestamp = UInt256.Zero
