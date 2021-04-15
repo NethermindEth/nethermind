@@ -231,7 +231,7 @@ namespace Nethermind.Blockchain.Producers
                 parent.Number + 1,
                 _gasLimitCalculator.GetGasLimit(parent),
                 timestamp,
-                Encoding.UTF8.GetBytes("Nethermind"))
+                GetExtraData(parent))
             {
                 TotalDifficulty = parent.TotalDifficulty + difficulty, Author = Sealer.Address
             };
@@ -243,6 +243,8 @@ namespace Nethermind.Blockchain.Producers
             header.TxRoot = new TxTrie(block.Transactions).RootHash;
             return block;
         }
+
+        protected virtual byte[] GetExtraData(BlockHeader parent) => Encoding.UTF8.GetBytes("Nethermind");
 
         protected abstract UInt256 CalculateDifficulty(BlockHeader parent, UInt256 timestamp);
     }

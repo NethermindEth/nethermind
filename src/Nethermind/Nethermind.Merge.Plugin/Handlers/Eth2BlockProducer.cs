@@ -24,6 +24,8 @@ using Nethermind.Blockchain.Producers;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
@@ -83,5 +85,14 @@ namespace Nethermind.Merge.Plugin.Handlers
         protected override UInt256 CalculateDifficulty(BlockHeader parent, UInt256 timestamp) => UInt256.One;
 
         protected override BlockHeader GetCurrentBlockParent() => _parentHeader!;
+
+        protected override byte[] GetExtraData(BlockHeader parent) => Bytes.Empty;
+
+        protected override Block PrepareBlock(BlockHeader parent)
+        {
+            Block block = base.PrepareBlock(parent);
+            block.Header.MixHash = Keccak.Zero;
+            return block;
+        }
     }
 }
