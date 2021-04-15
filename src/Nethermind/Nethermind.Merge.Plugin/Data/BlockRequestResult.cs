@@ -27,14 +27,13 @@ using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
+using Nethermind.State.Proofs;
 using Newtonsoft.Json;
 
 namespace Nethermind.Merge.Plugin.Data
 {
     public class BlockRequestResult
     {
-        public static readonly BlockRequestResult Empty = new BlockRequestResult();
-        
         public BlockRequestResult(bool setDefaults = false)
         {
             if (setDefaults)
@@ -69,7 +68,7 @@ namespace Nethermind.Merge.Plugin.Data
 
         public Block ToBlock()
         {
-            BlockHeader header = new(ParentHash, Keccak.EmptyTreeHash, Miner, Difficulty, Number, GasLimit, Timestamp, ExtraData)
+            BlockHeader header = new(ParentHash, Keccak.OfAnEmptySequenceRlp, Miner, Difficulty, Number, GasLimit, Timestamp, ExtraData)
             {
                 Hash = BlockHash,
                 ReceiptsRoot = ReceiptsRoot,
@@ -77,30 +76,33 @@ namespace Nethermind.Merge.Plugin.Data
                 MixHash = MixHash,
                 Bloom = Bloom.Empty
             };
-            return new Block(header, Rlp.DecodeArray<Transaction>(new RlpStream(Transactions)), Array.Empty<BlockHeader>());
+            Transaction[] transactions = Rlp.DecodeArray<Transaction>(new RlpStream(Transactions));
+            header.TxRoot = new TxTrie(transactions).RootHash;
+            return new Block(header, transactions, Array.Empty<BlockHeader>());
         }
         
         public UInt256 Difficulty { get; set; }
-        public byte[]? ExtraData { get; set; }
+        public byte[] ExtraData { get; set; } = null!;
         public long GasLimit { get; set; }
         public long GasUsed { get; set; }
         
         [JsonProperty(NullValueHandling = NullValueHandling.Include)]
-        public Keccak? BlockHash { get; set; }
-        
+        public Keccak BlockHash { get; set; } = null!;
+
         [JsonProperty(NullValueHandling = NullValueHandling.Include)]
-        public Bloom? LogsBloom { get; set; }
+        public Bloom LogsBloom { get; set; } = null!;
+
         public Address? Miner { get; set; }
-        public Keccak? MixHash { get; set; }
+        public Keccak MixHash { get; set; } = null!;
 
         [JsonProperty(NullValueHandling = NullValueHandling.Include)]
         public ulong Nonce { get; set; }
         [JsonProperty(NullValueHandling = NullValueHandling.Include)]
         public long Number { get; set; }
-        public Keccak? ParentHash { get; set; }
-        public Keccak? ReceiptsRoot { get; set; }
-        public Keccak? StateRoot { get; set; }
-        public byte[]? Transactions { get; set; }
+        public Keccak ParentHash { get; set; } = null!;
+        public Keccak ReceiptsRoot { get; set; } = null!;
+        public Keccak StateRoot { get; set; } = null!;
+        public byte[] Transactions { get; set; } = null!;
         public IEnumerable<Keccak>? Uncles { get; set; }
         public UInt256 Timestamp { get; set; }
 
