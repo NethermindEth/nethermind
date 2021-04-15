@@ -116,7 +116,6 @@ namespace Nethermind.Merge.Plugin.Test
             IConsensusRpcModule consensusRpcModule = CreateConsensusModule(chain);
             IBlockTree blockTree = _chain.BlockTree;
             Block? startingHead = blockTree.Head;
-            BlockHeader? startingBestSuggestedHeader = blockTree.BestSuggestedHeader;
             ResultWrapper<BlockRequestResult> assembleBlockResult = await consensusRpcModule.consensus_assembleBlock(new AssembleBlockRequest()
             {
                 ParentHash = blockTree.Head!.Hash!,
