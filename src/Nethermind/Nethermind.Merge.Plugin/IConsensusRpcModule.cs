@@ -31,27 +31,27 @@ namespace Nethermind.Merge.Plugin
             Description = "Requests a block to be assembled from the tx pool transactions.",
             IsSharable = true,
             IsImplemented = true)]
-        Task<ResultWrapper<BlockRequestResult>> consensus_assembleBlock(AssembleBlockRequest request);
+        Task<ResultWrapper<BlockRequestResult?>> consensus_assembleBlock(AssembleBlockRequest request);
         
         [JsonRpcMethod(
             Description = "Injects a new block from the consensus layer.",
             IsSharable = true,
             IsImplemented = true)]
-        ResultWrapper<NewBlockResult> consensus_newBlock(
+        Task<ResultWrapper<NewBlockResult>> consensus_newBlock(
             BlockRequestResult requestResult);
         
         [JsonRpcMethod(
             Description = "Changes consensus layer head block.",
             IsSharable = true,
             IsImplemented = true)]
-        ResultWrapper<Result> consensus_setHead(
+        Task<ResultWrapper<Result>> consensus_setHead(
             Keccak blockHash);        
         
         [JsonRpcMethod(
             Description = "Marks consensus layer block as finalized.",
             IsSharable = true,
             IsImplemented = true)]
-        ResultWrapper<Result> consensus_finaliseBlock(
+        Task<ResultWrapper<Result>> consensus_finaliseBlock(
             Keccak blockHash);
     }
 }

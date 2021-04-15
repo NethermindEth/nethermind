@@ -70,13 +70,11 @@ namespace Nethermind.Merge.Plugin
                 
                 await _api.BlockchainProcessor.StopAsync();
                 
-                SemaphoreSlim locker = new(1, 1);
-                
                 IConsensusRpcModule consensusRpcModule = new ConsensusRpcModule(
-                    new AssembleBlockHandler(_api.BlockTree, _blockProducer, _api.LogManager, locker),
-                    new NewBlockHandler(_api.BlockTree, _api.BlockchainProcessor, _api.StateProvider, _api.LogManager, locker),
-                    new SetHeadBlockHandler(_api.BlockTree, _api.LogManager, locker),
-                    new FinaliseBlockHandler(locker));
+                    new AssembleBlockHandler(_api.BlockTree, _blockProducer, _api.LogManager),
+                    new NewBlockHandler(_api.BlockTree, _api.BlockchainProcessor, _api.StateProvider, _api.LogManager),
+                    new SetHeadBlockHandler(_api.BlockTree, _api.LogManager),
+                    new FinaliseBlockHandler());
                 
                 _api.RpcModuleProvider.RegisterSingle<IConsensusRpcModule>(consensusRpcModule);
                 if (_logger.IsInfo) _logger.Info("Consensus Module has been enabled");

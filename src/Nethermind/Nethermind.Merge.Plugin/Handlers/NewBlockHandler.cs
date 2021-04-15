@@ -39,37 +39,27 @@ namespace Nethermind.Merge.Plugin.Handlers
         private readonly IBlockchainProcessor _processor;
         private readonly IStateProvider _stateProvider;
         private readonly ILogger _logger;
-        private readonly SemaphoreSlim _locker;
-
-        public NewBlockHandler(IBlockTree blockTree, IBlockchainProcessor processor, IStateProvider stateProvider, ILogManager logManager, SemaphoreSlim locker)
+        
+        public NewBlockHandler(IBlockTree blockTree, IBlockchainProcessor processor, IStateProvider stateProvider, ILogManager logManager)
         {
-            _locker = locker;
             _blockTree = blockTree;
             _processor = processor;
             _stateProvider = stateProvider;
             _logger = logManager.GetClassLogger();
         }
-        
+
         public ResultWrapper<NewBlockResult> Handle(BlockRequestResult request)
         {
-            _locker.Wait();
-            try
-            {
-                Block block = request.ToBlock();
+            Block block = request.ToBlock();
 
-                if (!ValidateRequestAndProcess(request, block, out Block? processedBlock) || processedBlock is null)
-                {
-                    return ResultWrapper<NewBlockResult>.Success(new NewBlockResult {Valid = false});
-                }
-
-                AddBlockResult blockResult = _blockTree.SuggestBlock(processedBlock);
-                bool isValid = blockResult is AddBlockResult.Added or AddBlockResult.AlreadyKnown;
-                return ResultWrapper<NewBlockResult>.Success(new NewBlockResult {Valid = isValid});
-            }
-            finally
+            if (!ValidateRequestAndProcess(request, block, out Block? processedBlock) || processedBlock is null)
             {
-                _locker.Release();
+                return ResultWrapper<NewBlockResult>.Success(new NewBlockResult {Valid = false});
             }
+
+            AddBlockResult blockResult = _blockTree.SuggestBlock(processedBlock);
+            bool isValid = blockResult is AddBlockResult.Added or AddBlockResult.AlreadyKnown;
+            return ResultWrapper<NewBlockResult>.Success(new NewBlockResult {Valid = isValid});
         }
 
         private bool ValidateRequestAndProcess(BlockRequestResult request, Block block, out Block? processedBlock)

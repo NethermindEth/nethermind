@@ -16,23 +16,27 @@
 // 
 
 using System;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Handlers;
+using Org.BouncyCastle.Asn1.Cms;
 
 namespace Nethermind.Merge.Plugin
 {
     public class ConsensusRpcModule : IConsensusRpcModule
     {
-        private readonly IHandlerAsync<AssembleBlockRequest, BlockRequestResult> _assembleBlockHandler;
-        private readonly IHandler<BlockRequestResult, NewBlockResult>_newBlockHandler;
+        private readonly IHandlerAsync<AssembleBlockRequest, BlockRequestResult?> _assembleBlockHandler;
+        private readonly IHandler<BlockRequestResult, NewBlockResult> _newBlockHandler;
         private readonly IHandler<Keccak, Result> _setHeadHandler;
         private readonly IHandler<Keccak, Result> _finaliseBlockHandler;
+        private readonly SemaphoreSlim _locker = new(1, 1);
+        private readonly TimeSpan Timeout = TimeSpan.FromSeconds(10);
 
         public ConsensusRpcModule(
-            IHandlerAsync<AssembleBlockRequest, BlockRequestResult> assembleBlockHandler,
+            IHandlerAsync<AssembleBlockRequest, BlockRequestResult?> assembleBlockHandler,
             IHandler<BlockRequestResult, NewBlockResult> newBlockHandler,
             IHandler<Keccak, Result> setHeadHandler,
             IHandler<Keccak, Result> finaliseBlockHandler)
@@ -42,25 +46,39 @@ namespace Nethermind.Merge.Plugin
             _setHeadHandler = setHeadHandler;
             _finaliseBlockHandler = finaliseBlockHandler;
         }
-        
-        public Task<ResultWrapper<BlockRequestResult>> consensus_assembleBlock(AssembleBlockRequest request)
+
+        public Task<ResultWrapper<BlockRequestResult?>> consensus_assembleBlock(AssembleBlockRequest request)
         {
             return _assembleBlockHandler.HandleAsync(request);
         }
 
-        public ResultWrapper<NewBlockResult> consensus_newBlock(BlockRequestResult requestResult)
+        public async Task<ResultWrapper<NewBlockResult>> consensus_newBlock(BlockRequestResult requestResult)
         {
-            return _newBlockHandler.Handle(requestResult);
+            await _locker.WaitAsync(Timeout);
+            try
+            {
+                return _newBlockHandler.Handle(requestResult);
+            }
+            finally
+            {
+                _locker.Release();
+            }
         }
 
-        public ResultWrapper<Result> consensus_setHead(Keccak blockHash)
+        public async Task<ResultWrapper<Result>> consensus_setHead(Keccak blockHash)
         {
-            return _setHeadHandler.Handle(blockHash);
+            await _locker.WaitAsync(Timeout);
+            try
+            {
+                return _setHeadHandler.Handle(blockHash);
+            }
+            finally
+            {
+                _locker.Release();
+            }
         }
 
-        public ResultWrapper<Result> consensus_finaliseBlock(Keccak blockHash)
-        {
-            return _finaliseBlockHandler.Handle(blockHash);
-        }
+        public Task<ResultWrapper<Result>> consensus_finaliseBlock(Keccak blockHash) => 
+            Task.FromResult(_finaliseBlockHandler.Handle(blockHash));
     }
 }
