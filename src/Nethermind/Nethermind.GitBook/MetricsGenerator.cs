@@ -44,20 +44,20 @@ namespace Nethermind.GitBook
                 Assembly assembly = Assembly.LoadFile(dll);
                 Type[] modules  = assembly.GetExportedTypes().Where(t => t.Name == "Metrics").ToArray();
                 
-                
                 foreach (Type module in modules)
                 {
-                    string name = module.FullName.Replace("Nethermind.", "").Replace(".Metrics", "");
-                    GenerateDocFileContent(module, name, docsDir);
+                    GenerateDocFileContent(module, docsDir);
                 }
             }
         }
 
-        private void GenerateDocFileContent(Type metricsType, string moduleName, string docsDir)
+        private void GenerateDocFileContent(Type metricsType, string docsDir)
         {
             StringBuilder docBuilder = new StringBuilder();
 
             PropertyInfo[] moduleProperties = metricsType.GetProperties().OrderBy(x => x.Name).ToArray();
+            
+            string moduleName = metricsType.FullName.Replace("Nethermind.", "").Replace(".Metrics", "");
 
             docBuilder.AppendLine(@$"# {moduleName}");
             docBuilder.AppendLine();
