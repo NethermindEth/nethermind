@@ -16,6 +16,7 @@
 // 
 
 using System;
+using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain;
@@ -26,6 +27,7 @@ using Nethermind.Blockchain.Validators;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
@@ -43,6 +45,8 @@ using Nethermind.State;
 using NUnit.Framework;
 using Result = Nethermind.Merge.Plugin.Data.Result;
 using Nethermind.Int256;
+using Nethermind.JsonRpc.Test.Modules;
+using Nethermind.Specs.Forks;
 
 namespace Nethermind.Merge.Plugin.Test
 {
@@ -53,20 +57,18 @@ namespace Nethermind.Merge.Plugin.Test
         private IConsensusRpcModule _consensusRpcModule;
 
         [SetUp]
-        public void Setup()
+        public async Task Setup()
         {
-            _chain = CreateBlockChain();
+            _chain = await CreateBlockChain();
             _consensusRpcModule = CreateConsensusModule(_chain);
         }
         
         [Test]
         public async Task assembleBlock_should_create_block_on_block_tree_head()
         {
-            MergeTestBlockchain chain = CreateBlockChain();
-            IConsensusRpcModule consensusRpcModule = CreateConsensusModule(chain);
             IBlockTree blockTree = _chain.BlockTree;
             Block? startingHead = blockTree.Head;
-            ResultWrapper<BlockRequestResult> response = await consensusRpcModule.consensus_assembleBlock(new AssembleBlockRequest()
+            ResultWrapper<BlockRequestResult> response = await _consensusRpcModule.consensus_assembleBlock(new AssembleBlockRequest()
             {
                 ParentHash = blockTree.Head!.Hash!,
                 Timestamp = UInt256.Zero
@@ -77,10 +79,8 @@ namespace Nethermind.Merge.Plugin.Test
         [Test]
         public async Task assembleBlock_should_not_create_block_with_unknown_parent()
         {
-            MergeTestBlockchain chain = CreateBlockChain();
-            IConsensusRpcModule consensusRpcModule = CreateConsensusModule(chain);
             Keccak notExistingHash = TestItem.KeccakH;
-            ResultWrapper<BlockRequestResult> response = await consensusRpcModule.consensus_assembleBlock(new AssembleBlockRequest()
+            ResultWrapper<BlockRequestResult> response = await _consensusRpcModule.consensus_assembleBlock(new AssembleBlockRequest()
             {
                 ParentHash = notExistingHash,
                 Timestamp = UInt256.Zero
@@ -142,10 +142,19 @@ namespace Nethermind.Merge.Plugin.Test
         public void consensus_newBlock_accepts_first_block()
         {
             BlockRequestResult blockRequestResult = CreateBlockRequest(
-                new BlockRequestResult(true) {Number = 0, ParentHash = _chain.BlockTree.GenesisHash}, 
+                CreateParentBlockRequestOnHead(), 
                 TestItem.AddressD);
             ResultWrapper<NewBlockResult> resultWrapper = _consensusRpcModule.consensus_newBlock(blockRequestResult);
-            resultWrapper.Data.Should().Be(Result.Success);
+            resultWrapper.Data.Valid.Should().BeTrue();
+            new BlockRequestResult(_chain.BlockTree.BestSuggestedBody).Should().BeEquivalentTo(blockRequestResult);
+        }
+
+        private BlockRequestResult CreateParentBlockRequestOnHead()
+        {
+            Block head = _chain.BlockTree.Head;
+            if (head == null) throw new NotSupportedException();
+
+            return new BlockRequestResult(true) {Number = 0, BlockHash = head.Hash, StateRoot = head.StateRoot, ReceiptsRoot = head.ReceiptsRoot};
         }
 
         private static BlockRequestResult CreateBlockRequest(BlockRequestResult parent, Address miner)
@@ -163,30 +172,36 @@ namespace Nethermind.Merge.Plugin.Test
                 Transactions = Rlp.Encode(Array.Empty<Transaction>()).Bytes
             };
             
-            blockRequest.BlockHash = new Keccak(Rlp.Encode(blockRequest.ToBlock().Header, RlpBehaviors.ForSealing).Bytes);
+            blockRequest.BlockHash = blockRequest.ToBlock().CalculateHash();
             return blockRequest;
         }
 
-        private MergeTestBlockchain CreateBlockChain() => new MergeTestBlockchain();
+        private Task<MergeTestBlockchain> CreateBlockChain() => MergeTestBlockchain.Build(new SingleReleaseSpecProvider(Berlin.Instance, 1));
 
         private IConsensusRpcModule CreateConsensusModule(MergeTestBlockchain chain)
         {
+            SemaphoreSlim locker = new(1, 1);
             return new ConsensusRpcModule(
-                new AssembleBlockHandler(chain.BlockTree, (IEth2BlockProducer) chain.BlockProducer, chain.LogManager),
-                new NewBlockHandler(chain.BlockTree, chain.BlockchainProcessor, chain.State, chain.LogManager),
-                new SetHeadBlockHandler(chain.BlockTree, chain.LogManager),
-                new FinaliseBlockHandler());
+                new AssembleBlockHandler(chain.BlockTree, (IEth2BlockProducer) chain.BlockProducer, chain.LogManager, locker),
+                new NewBlockHandler(chain.BlockTree, chain.BlockchainProcessor, chain.State, chain.LogManager, locker),
+                new SetHeadBlockHandler(chain.BlockTree, chain.LogManager, locker),
+                new FinaliseBlockHandler(locker));
         }
 
         private class MergeTestBlockchain : TestBlockchain
         {
+            private MergeTestBlockchain() { }
+            
             protected override Task AddBlocksOnStart() => Task.CompletedTask;
 
             public override ILogManager LogManager { get; } = new NUnitLogManager();
+            
+            private BlockValidator BlockValidator { get; set; }
+            
+            private Signer Signer { get; set; }
 
             protected override ITestBlockProducer CreateTestBlockProducer(TxPoolTxSource txPoolTxSource, BlockchainProcessor chainProcessor, IStateProvider producerStateProvider, ISealer sealer)
             {
-                Signer signer = new Signer(SpecProvider.ChainId, TestItem.PrivateKeyA, LogManager);
                 return (ITestBlockProducer) new Eth2TestBlockProducerFactory().Create(
                     BlockTree,
                     DbProvider,
@@ -195,19 +210,49 @@ namespace Nethermind.Merge.Plugin.Test
                     TxPool,
                     new BlockValidator(
                         new TxValidator(SpecProvider.ChainId),
-                        new HeaderValidator(BlockTree, new Eth2SealEngine(signer), SpecProvider, LogManager),
+                        new HeaderValidator(BlockTree, new Eth2SealEngine(Signer), SpecProvider, LogManager),
                         Always.Valid,
                         SpecProvider,
                         LogManager),
-                    new RewardCalculator(SpecProvider),
+                    NoBlockRewards.Instance,
                     ReceiptStorage,
                     BlockProcessingQueue,
                     State,
                     SpecProvider,
-                    signer,
+                    Signer,
                     new MiningConfig(),
                     LogManager);
             }
+            
+            protected override BlockProcessor CreateBlockProcessor()
+            {
+                Signer = new(SpecProvider.ChainId, TestItem.PrivateKeyA, LogManager);
+                HeaderValidator headerValidator = new HeaderValidator(BlockTree, new Eth2SealEngine(Signer), SpecProvider, LogManager);
+                BlockValidator = new BlockValidator(
+                    new TxValidator(SpecProvider.ChainId),
+                    headerValidator,
+                    new OmmersValidator(BlockTree, headerValidator, LogManager),
+                    SpecProvider,
+                    LogManager);
+                    
+                return new BlockProcessor(
+                    SpecProvider,
+                    BlockValidator,
+                    NoBlockRewards.Instance,
+                    TxProcessor,
+                    State,
+                    Storage,
+                    TxPool,
+                    ReceiptStorage,
+                    NullWitnessCollector.Instance,
+                    LogManager);
+            }
+
+            private async Task<MergeTestBlockchain> BuildInternal(ISpecProvider specProvider = null) => 
+                (MergeTestBlockchain) await base.Build(specProvider);
+
+            public static async Task<MergeTestBlockchain> Build(ISpecProvider specProvider = null) => 
+                await new MergeTestBlockchain().BuildInternal(specProvider);
         }
     }
 }

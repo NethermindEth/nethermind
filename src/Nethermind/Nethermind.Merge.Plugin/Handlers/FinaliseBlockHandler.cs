@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System.Threading;
 using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc;
 using Nethermind.Merge.Plugin.Data;
@@ -23,6 +24,13 @@ namespace Nethermind.Merge.Plugin.Handlers
 {
     public class FinaliseBlockHandler : IHandler<Keccak, Result>
     {
+        private readonly SemaphoreSlim _locker;
+
+        public FinaliseBlockHandler(SemaphoreSlim locker)
+        {
+            _locker = locker;
+        }
+
         public ResultWrapper<Result> Handle(Keccak request)
         {
             return ResultWrapper<Result>.Success(Result.Success);

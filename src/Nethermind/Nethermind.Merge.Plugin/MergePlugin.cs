@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
@@ -53,10 +54,11 @@ namespace Nethermind.Merge.Plugin
                 syncConfig.SynchronizationEnabled = false;
                 syncConfig.BlockGossipEnabled = false;
             }
+            
             return Task.CompletedTask;
         }
 
-        public Task InitRpcModules()
+        public async Task InitRpcModules()
         {
             if (_mergeConfig.Enabled)
             {
@@ -66,17 +68,19 @@ namespace Nethermind.Merge.Plugin
                 if (_api.StateProvider is null) throw new StepDependencyException(nameof(_api.StateProvider));
                 if (_api.StateProvider is null) throw new StepDependencyException(nameof(_api.StateProvider));
                 
+                await _api.BlockchainProcessor.StopAsync();
+                
+                SemaphoreSlim locker = new(1, 1);
+                
                 IConsensusRpcModule consensusRpcModule = new ConsensusRpcModule(
-                    new AssembleBlockHandler(_api.BlockTree, _blockProducer, _api.LogManager),
-                    new NewBlockHandler(_api.BlockTree, _api.BlockchainProcessor, _api.StateProvider, _api.LogManager),
-                    new SetHeadBlockHandler(_api.BlockTree, _api.LogManager),
-                    new FinaliseBlockHandler());
+                    new AssembleBlockHandler(_api.BlockTree, _blockProducer, _api.LogManager, locker),
+                    new NewBlockHandler(_api.BlockTree, _api.BlockchainProcessor, _api.StateProvider, _api.LogManager, locker),
+                    new SetHeadBlockHandler(_api.BlockTree, _api.LogManager, locker),
+                    new FinaliseBlockHandler(locker));
                 
                 _api.RpcModuleProvider.RegisterSingle<IConsensusRpcModule>(consensusRpcModule);
                 if (_logger.IsInfo) _logger.Info("Consensus Module has been enabled");
             }
-
-            return Task.CompletedTask;
         }
         
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;

@@ -16,6 +16,9 @@
 // 
 
 using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Core;
@@ -36,10 +39,11 @@ namespace Nethermind.Merge.Plugin.Handlers
         private readonly IBlockchainProcessor _processor;
         private readonly IStateProvider _stateProvider;
         private readonly ILogger _logger;
-        private readonly object _locker = new();
+        private readonly SemaphoreSlim _locker;
 
-        public NewBlockHandler(IBlockTree blockTree, IBlockchainProcessor processor, IStateProvider stateProvider, ILogManager logManager)
+        public NewBlockHandler(IBlockTree blockTree, IBlockchainProcessor processor, IStateProvider stateProvider, ILogManager logManager, SemaphoreSlim locker)
         {
+            _locker = locker;
             _blockTree = blockTree;
             _processor = processor;
             _stateProvider = stateProvider;
@@ -48,34 +52,54 @@ namespace Nethermind.Merge.Plugin.Handlers
         
         public ResultWrapper<NewBlockResult> Handle(BlockRequestResult request)
         {
-            lock (_locker)
+            _locker.Wait();
+            try
             {
                 Block block = request.ToBlock();
 
-                if (!ValidateRequest(request, block))
+                if (!ValidateRequestAndProcess(request, block, out Block? processedBlock) || processedBlock is null)
                 {
                     return ResultWrapper<NewBlockResult>.Success(new NewBlockResult {Valid = false});
                 }
 
-                AddBlockResult blockResult = _blockTree.SuggestBlock(block);
+                AddBlockResult blockResult = _blockTree.SuggestBlock(processedBlock);
                 bool isValid = blockResult is AddBlockResult.Added or AddBlockResult.AlreadyKnown;
                 return ResultWrapper<NewBlockResult>.Success(new NewBlockResult {Valid = isValid});
             }
+            finally
+            {
+                _locker.Release();
+            }
         }
 
-        private bool ValidateRequest(BlockRequestResult request, Block block)
+        private bool ValidateRequestAndProcess(BlockRequestResult request, Block block, out Block? processedBlock)
         {
-            return CheckInput(request) && CheckParent(request.ParentHash) && Process(block);
+            processedBlock = null;
+            return CheckInput(request) && CheckParent(request.ParentHash, out BlockHeader? parent) && Process(block, parent!, out processedBlock);
         }
 
-        private bool CheckParent(Keccak? parentHash) => parentHash != null && _blockTree.FindHeader(parentHash) != null;
-
-        private bool Process(Block block)
+        private bool CheckParent(Keccak? parentHash, out BlockHeader? parent)
         {
+            if (parentHash == null)
+            {
+                parent = null;
+                return false;
+            }
+            else
+            {
+                parent = _blockTree.FindHeader(parentHash);
+                return parent != null;
+            }
+        }
+
+        private bool Process(Block block, BlockHeader parent, out Block? processedBlock)
+        {
+            block.Header.TotalDifficulty = parent.TotalDifficulty + block.Difficulty;
+            
             Keccak currentStateRoot = _stateProvider.StateRoot;
             try
             {
-                Block? processedBlock = _processor.Process(block, ProcessingOptions.EthereumMerge, NullBlockTracer.Instance);
+                processedBlock = _processor.Process(block, ProcessingOptions.EthereumMerge, NullBlockTracer.Instance);
                 if (processedBlock == null)
                 {
                     if (_logger.IsWarn)
@@ -98,7 +122,7 @@ namespace Nethermind.Merge.Plugin.Handlers
         private bool CheckInput(BlockRequestResult request) =>
             CheckInputIs(request, request.Difficulty, UInt256.One, nameof(request.Difficulty))
             && CheckInputIs(request, request.Nonce, 0ul, nameof(request.Nonce))
-            && CheckInputIs(request, request.ExtraData, Array.Empty<byte>(), nameof(request.ExtraData))
+            && CheckInputIs<byte>(request, request.ExtraData, Array.Empty<byte>(), nameof(request.ExtraData))
             && CheckInputIs(request, request.MixHash, Keccak.Zero, nameof(request.MixHash))
             && CheckInputIs(request, request.Uncles, Array.Empty<Keccak>(), nameof(request.Uncles))
             && CheckInputIsNot(request, request.BlockHash, Keccak.Zero, nameof(request.BlockHash));
@@ -117,6 +141,17 @@ namespace Nethermind.Merge.Plugin.Handlers
         private bool CheckInputIs<T>(BlockRequestResult request, T value, T expected, string name)
         {
             if (!Equals(value, expected))
+            {
+                if (_logger.IsWarn) _logger.Warn($"Block {request} has invalid {name}, expected {expected}, got {value} {AndWontBeAcceptedToTheTree}.");
+                return false;
+            }
+
+            return true;
+        }
+        
+        private bool CheckInputIs<T>(BlockRequestResult request, IEnumerable<T>? value, IEnumerable<T> expected, string name)
+        {
+            if (!(value ?? Array.Empty<T>()).SequenceEqual(expected))
             {
                 if (_logger.IsWarn) _logger.Warn($"Block {request} has invalid {name}, expected {expected}, got {value} {AndWontBeAcceptedToTheTree}.");
                 return false;

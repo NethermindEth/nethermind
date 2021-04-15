@@ -30,35 +30,45 @@ namespace Nethermind.Merge.Plugin.Handlers
     {
         private readonly IBlockTree _blockTree;
         private readonly IEth2BlockProducer _blockProducer;
+        private readonly SemaphoreSlim _locker;
         private readonly ILogger _logger;
         private static readonly TimeSpan _timeout = TimeSpan.FromSeconds(10);
 
-        public AssembleBlockHandler(IBlockTree blockTree, IEth2BlockProducer blockProducer, ILogManager logManager)
+        public AssembleBlockHandler(IBlockTree blockTree, IEth2BlockProducer blockProducer, ILogManager logManager, SemaphoreSlim locker)
         {
             _blockTree = blockTree;
             _blockProducer = blockProducer;
+            _locker = locker;
             _logger = logManager.GetClassLogger();
         }
         
         public async Task<ResultWrapper<BlockRequestResult>> HandleAsync(AssembleBlockRequest request)
         {
-            BlockHeader? parentHeader = _blockTree.FindHeader(request.ParentHash);
-            if (parentHeader is null)
+            await _locker.WaitAsync();
+            try
             {
-                if (_logger.IsWarn) _logger.Warn($"Parent block {request.ParentHash} cannot be found. New block will not be produced.");
-                return ResultWrapper<BlockRequestResult>.Success(BlockRequestResult.Empty);
-            }
+                BlockHeader? parentHeader = _blockTree.FindHeader(request.ParentHash);
+                if (parentHeader is null)
+                {
+                    if (_logger.IsWarn) _logger.Warn($"Parent block {request.ParentHash} cannot be found. New block will not be produced.");
+                    return ResultWrapper<BlockRequestResult>.Success(BlockRequestResult.Empty);
+                }
 
-            using CancellationTokenSource cts = new(_timeout);
-            Block? block = await _blockProducer.TryProduceBlock(parentHeader, request.Timestamp, cts.Token);
-            if (block == null)
-            {
-                if (_logger.IsWarn) _logger.Warn($"Block production on parent {request.ParentHash} with timestamp {request.Timestamp} failed.");
-                return ResultWrapper<BlockRequestResult>.Success(BlockRequestResult.Empty);
+                using CancellationTokenSource cts = new(_timeout);
+                Block? block = await _blockProducer.TryProduceBlock(parentHeader, request.Timestamp, cts.Token);
+                if (block == null)
+                {
+                    if (_logger.IsWarn) _logger.Warn($"Block production on parent {request.ParentHash} with timestamp {request.Timestamp} failed.");
+                    return ResultWrapper<BlockRequestResult>.Success(BlockRequestResult.Empty);
+                }
+                else
+                {
+                    return ResultWrapper<BlockRequestResult>.Success(new BlockRequestResult(block));
+                }
             }
-            else
+            finally
             {
-                return ResultWrapper<BlockRequestResult>.Success(new BlockRequestResult(block));
+                _locker.Release();
             }
         }
     }

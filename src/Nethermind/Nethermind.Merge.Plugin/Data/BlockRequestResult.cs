@@ -69,7 +69,14 @@ namespace Nethermind.Merge.Plugin.Data
 
         public Block ToBlock()
         {
-            BlockHeader header = new(ParentHash, Keccak.EmptyTreeHash, Miner, Difficulty, Number, GasLimit, Timestamp, ExtraData);
+            BlockHeader header = new(ParentHash, Keccak.EmptyTreeHash, Miner, Difficulty, Number, GasLimit, Timestamp, ExtraData)
+            {
+                Hash = BlockHash,
+                ReceiptsRoot = ReceiptsRoot,
+                StateRoot = StateRoot,
+                MixHash = MixHash,
+                Bloom = Bloom.Empty
+            };
             return new Block(header, Rlp.DecodeArray<Transaction>(new RlpStream(Transactions)), Array.Empty<BlockHeader>());
         }
         

@@ -16,6 +16,7 @@
 // 
 
 using System.Collections.Generic;
+using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
@@ -29,45 +30,55 @@ namespace Nethermind.Merge.Plugin.Handlers
     public class SetHeadBlockHandler : IHandler<Keccak, Result>
     {
         private readonly IBlockTree _blockTree;
+        private readonly SemaphoreSlim _locker;
         private readonly ILogger _logger;
 
-        public SetHeadBlockHandler(IBlockTree blockTree, ILogManager logManager)
+        public SetHeadBlockHandler(IBlockTree blockTree, ILogManager logManager, SemaphoreSlim locker)
         {
             _blockTree = blockTree;
+            _locker = locker;
             _logger = logManager.GetClassLogger();
         }
         
         public ResultWrapper<Result> Handle(Keccak blockHash)
         {
-            Block? block = _blockTree.FindBlock(blockHash);
-            if (block == null)
+            _locker.Wait();
+            try
             {
-                if (_logger.IsWarn) _logger.Warn($"Block {blockHash} cannot be found and will not be set as head.");
-                ResultWrapper<Result>.Success(Result.Fail);
-            }
+                Block? block = _blockTree.FindBlock(blockHash);
+                if (block == null)
+                {
+                    if (_logger.IsWarn) _logger.Warn($"Block {blockHash} cannot be found and will not be set as head.");
+                    ResultWrapper<Result>.Success(Result.Fail);
+                }
 
-            List<Block> blocks = new();
-            
-            while (!_blockTree.IsMainChain(block!.Header))
-            {
-                blocks.Add(block);
-                block = _blockTree.FindParent(block, BlockTreeLookupOptions.None);
-            }
+                List<Block> blocks = new();
 
-            blocks.Reverse();
-            
-            _blockTree.UpdateMainChain(blocks.ToArray(), true, true);
-            bool success = _blockTree.Head == block;
-            if (success)
-            {
-                if (_logger.IsInfo) _logger.Info($"Block {blockHash} was set as head.");
+                while (!_blockTree.IsMainChain(block!.Header))
+                {
+                    blocks.Add(block);
+                    block = _blockTree.FindParent(block, BlockTreeLookupOptions.None);
+                }
+
+                blocks.Reverse();
+
+                _blockTree.UpdateMainChain(blocks.ToArray(), true, true);
+                bool success = _blockTree.Head == block;
+                if (success)
+                {
+                    if (_logger.IsInfo) _logger.Info($"Block {blockHash} was set as head.");
+                }
+                else
+                {
+                    if (_logger.IsWarn) _logger.Warn($"Block {blockHash} was not set as head.");
+                }
+
+                return ResultWrapper<Result>.Success(success);
             }
-            else
+            finally
             {
-                if (_logger.IsWarn) _logger.Warn($"Block {blockHash} was not set as head.");
+                _locker.Release();
             }
-            
-            return ResultWrapper<Result>.Success(success);
         }
     }
 }
