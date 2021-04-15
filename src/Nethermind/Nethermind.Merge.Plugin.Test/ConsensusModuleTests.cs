@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -18,8 +18,10 @@
 using System;
 using Nethermind.Blockchain;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Db;
+using Nethermind.Db.Blooms;
+using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
-using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Specs;
 using Nethermind.State.Repositories;
@@ -31,6 +33,7 @@ namespace Nethermind.Merge.Plugin.Test
     {
         private BlockTree BuildBlockTree()
         {
+            // IBlockTree blockTree = Build.A.BlockTree().TestObject;
             MemDb blocksDb = new();
             MemDb headersDb = new();
             MemDb blocksInfosDb = new();
@@ -62,11 +65,10 @@ namespace Nethermind.Merge.Plugin.Test
         
         private IConsensusRpcModule CreateConsensusModule()
         {
-            var blockTree = BuildBlockTree();
-            // IBlockTree blockTree = Build.A.BlockTree().TestObject;
+            IBlockTree blockTree = BuildBlockTree();
 
             // ToDo temp
-            var eth2BlockProducer = new Eth2BlockProducer(null, null, null, blockTree, null, null, null, LimboLogs.Instance);
+            var eth2BlockProducer = new Eth2BlockProducer(null, null, blockTree, null, null, null, null, LimboLogs.Instance);
             return new ConsensusRpcModule(
                 new AssembleBlockHandler(blockTree, eth2BlockProducer, LimboLogs.Instance),
                 new NewBlockHandler(blockTree, null, null, LimboLogs.Instance),
