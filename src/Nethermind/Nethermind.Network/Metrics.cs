@@ -161,11 +161,27 @@ namespace Nethermind.Network
         [Description("Number of eth.63 NodeData messages received")]
         public static long Eth63NodeDataReceived { get; set; }
         
+        [Description("Number of eth.65 NewPooledTransactionHashes messages received")]
+        public static long Eth65NewPooledTransactionHashesReceived { get; set; }
+        
+        [Description("")]
+        public static long Eth65NewPooledTransactionHashesReceivedAtOnce { get; set; }
+        
         [Description("Number of eth.65 GetPooledTransactions messages received")]
         public static long Eth65GetPooledTransactionsReceived { get; set; }
         
-        [Description("Number of eth.65 NewPooledTransactionHashes messages received")]
-        public static long Eth65NewPooledTransactionHashesReceived { get; set; }
+        [Description("")]
+        public static long Eth65GetPooledTransactionsSent { get; set; }
+        
+        [Description("")]
+        public static long Eth65GetPooledTransactionsSentAtOnce { get; set; }
+        
+        [Description("")]
+        public static long Eth65PooledTransactionsReceived { get; set; }
+        
+        [Description("")]
+        public static long Eth65PooledTransactionsReceivedAtOnce { get; set; }
+
 
         [Description("Number of bytes sent through P2P (TCP).")]
         public static long P2PBytesSent;

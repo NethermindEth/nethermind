@@ -57,6 +57,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
                 case Eth65MessageCode.PooledTransactions:
                     PooledTransactionsMessage pooledTxMsg
                         = Deserialize<PooledTransactionsMessage>(message.Content);
+                    Metrics.Eth65PooledTransactionsReceived++;
+                    Metrics.Eth65PooledTransactionsReceivedAtOnce = pooledTxMsg.Transactions.Count;
                     ReportIn(pooledTxMsg);
                     Handle(pooledTxMsg);
                     break;
@@ -78,7 +80,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
         private void Handle(NewPooledTransactionHashesMessage msg)
         {
             Metrics.Eth65NewPooledTransactionHashesReceived++;
-            
+            Metrics.Eth65NewPooledTransactionHashesReceivedAtOnce = msg.Hashes.Count;
             Stopwatch stopwatch = Stopwatch.StartNew();
             List<Keccak> discoveredTxHashes = new();
             
@@ -89,8 +91,15 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
                     discoveredTxHashes.Add(msg.Hashes[i]);
                 }
             }
-            
-            Send(new GetPooledTransactionsMessage(discoveredTxHashes.ToArray()));
+
+            int discoveredTxHashesCount = discoveredTxHashes.Count;
+
+            if (discoveredTxHashesCount != 0)
+            {
+                Send(new GetPooledTransactionsMessage(discoveredTxHashes.ToArray()));
+                Metrics.Eth65GetPooledTransactionsSent++;
+                Metrics.Eth65GetPooledTransactionsSentAtOnce = discoveredTxHashesCount;
+            }
             stopwatch.Stop();
             if (Logger.IsTrace)
                 Logger.Trace($"OUT {Counter:D5} {nameof(NewPooledTransactionHashesMessage)} to {Node:c} " +
