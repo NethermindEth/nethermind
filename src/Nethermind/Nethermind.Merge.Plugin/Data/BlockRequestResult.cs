@@ -23,6 +23,7 @@ using Google.Protobuf.WellKnownTypes;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Serialization.Json;
@@ -57,7 +58,7 @@ namespace Nethermind.Merge.Plugin.Data
             GasUsed = block.GasUsed;
             ReceiptsRoot = block.ReceiptsRoot;
             LogsBloom = block.Bloom;
-            Transactions = Rlp.Encode(block.Transactions).Bytes;
+            SetTransactions(block.Transactions);
             Difficulty = block.Difficulty;
             Nonce = block.Nonce;
             ExtraData = block.ExtraData;
@@ -74,7 +75,8 @@ namespace Nethermind.Merge.Plugin.Data
                 ReceiptsRoot = ReceiptsRoot,
                 StateRoot = StateRoot,
                 MixHash = MixHash,
-                Bloom = Bloom.Empty
+                Bloom = LogsBloom,
+                GasUsed = GasUsed
             };
             Transaction[] transactions = Rlp.DecodeArray<Transaction>(new RlpStream(Transactions));
             header.TxRoot = new TxTrie(transactions).RootHash;
@@ -90,7 +92,7 @@ namespace Nethermind.Merge.Plugin.Data
         public Keccak BlockHash { get; set; } = null!;
 
         [JsonProperty(NullValueHandling = NullValueHandling.Include)]
-        public Bloom LogsBloom { get; set; } = null!;
+        public Bloom LogsBloom { get; set; } = Bloom.Empty;
 
         public Address? Miner { get; set; }
         public Keccak MixHash { get; set; } = null!;
@@ -107,5 +109,10 @@ namespace Nethermind.Merge.Plugin.Data
         public UInt256 Timestamp { get; set; }
 
         public override string ToString() => BlockHash == null ? $"{Number} null" : $"{Number} ({BlockHash})";
+
+        public Keccak CalculateHash() => ToBlock().CalculateHash();
+        public void SetTransactions(params Transaction[] transactions) => Transactions = Rlp.Encode(transactions).Bytes;
+
+        public Transaction[] GetTransactions() => Rlp.DecodeArray<Transaction>(new RlpStream(Transactions));
     }
 }

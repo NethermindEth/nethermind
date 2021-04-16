@@ -24,48 +24,55 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
+using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
+using Nethermind.Evm;
 using Nethermind.JsonRpc;
 using Nethermind.Merge.Plugin.Data;
-using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 using Result = Nethermind.Merge.Plugin.Data.Result;
 using Nethermind.Int256;
+using Nethermind.Specs;
+using Nethermind.Specs.Forks;
+using Nethermind.Trie;
 
 namespace Nethermind.Merge.Plugin.Test
 {
     public partial class ConsensusModuleTests
     {
-        private MergeTestBlockchain _chain = null!;
-        private IConsensusRpcModule _consensusRpcModule = null!;
-        private readonly DateTime _firstBerlinBLockDateTime = new DateTime(2021, 4, 15, 10, 7, 3);
-        private IBlockTree BlockTree => _chain.BlockTree;
+        private static readonly DateTime FirstBerlinBLockDateTime = new DateTime(2021, 4, 15, 10, 7, 3);
+
+        private MergeTestBlockchain Chain { get; set; } = null!;
+        private IConsensusRpcModule Rpc { get; set; } = null!;
+        private IBlockTree BlockTree => Chain.BlockTree;
+        private ITimestamper BerlinTimestamper { get; } = new ManualTimestamper(FirstBerlinBLockDateTime); 
+        
 
         [SetUp]
         public async Task Setup()
         {
-            _chain = await CreateBlockChain();
-            _consensusRpcModule = CreateConsensusModule(_chain);
+            Chain = await CreateBlockChain();
+            Rpc = CreateConsensusModule(Chain);
         }
         
         [Test]
         public async Task assembleBlock_should_create_block_on_top_of_genesis()
         {
             Keccak startingHead = BlockTree.HeadHash;
-            ITimestamper timestamper = new ManualTimestamper(_firstBerlinBLockDateTime); 
-            UInt256 timestamp = timestamper.UnixTime.Seconds;
+            UInt256 timestamp = BerlinTimestamper.UnixTime.Seconds;
             AssembleBlockRequest assembleBlockRequest = new() {ParentHash = startingHead, Timestamp = timestamp};
-            ResultWrapper<BlockRequestResult?> response = await _consensusRpcModule.consensus_assembleBlock(assembleBlockRequest);
+            ResultWrapper<BlockRequestResult?> response = await Rpc.consensus_assembleBlock(assembleBlockRequest);
 
             BlockRequestResult expected = CreateParentBlockRequestOnHead();
             expected.GasLimit = 4000000L;
             expected.BlockHash = new Keccak("0x43ec3679c59522fca8351cab097870a5793f63518fb55f49bab8c6e6cca7f9fa");
             expected.LogsBloom = Bloom.Empty;
-            expected.Miner = _chain.MinerAddress;
+            expected.Miner = Chain.MinerAddress;
             expected.Number = 1;
             expected.ParentHash = startingHead;
-            expected.Transactions = Rlp.Encode(Array.Empty<Transaction>()).Bytes;
+            expected.SetTransactions(Array.Empty<Transaction>());
             expected.Timestamp = timestamp;
             
             response.Data.Should().BeEquivalentTo(expected);
@@ -76,7 +83,7 @@ namespace Nethermind.Merge.Plugin.Test
         {
             Keccak notExistingHash = TestItem.KeccakH;
             AssembleBlockRequest assembleBlockRequest = new() {ParentHash = notExistingHash};
-            ResultWrapper<BlockRequestResult?> response = await _consensusRpcModule.consensus_assembleBlock(assembleBlockRequest);
+            ResultWrapper<BlockRequestResult?> response = await Rpc.consensus_assembleBlock(assembleBlockRequest);
             response.Data.Should().BeNull();
         }
         
@@ -86,10 +93,10 @@ namespace Nethermind.Merge.Plugin.Test
             Keccak startingHead = BlockTree.HeadHash;
             BlockHeader startingBestSuggestedHeader = BlockTree.BestSuggestedHeader!;
             AssembleBlockRequest assembleBlockRequest = new() {ParentHash = startingHead};
-            ResultWrapper<BlockRequestResult?> assembleBlockResult = await _consensusRpcModule.consensus_assembleBlock(assembleBlockRequest);
+            ResultWrapper<BlockRequestResult?> assembleBlockResult = await Rpc.consensus_assembleBlock(assembleBlockRequest);
             assembleBlockResult.Data!.ParentHash.Should().Be(startingHead);
             
-            ResultWrapper<NewBlockResult> newBlockResult = await _consensusRpcModule.consensus_newBlock(assembleBlockResult.Data!);
+            ResultWrapper<NewBlockResult> newBlockResult = await Rpc.consensus_newBlock(assembleBlockResult.Data!);
             newBlockResult.Data.Valid.Should().BeTrue();
             
             Keccak bestSuggestedHeaderHash = BlockTree.BestSuggestedHeader!.Hash!;
@@ -105,11 +112,11 @@ namespace Nethermind.Merge.Plugin.Test
             BlockRequestResult blockRequestResult = CreateBlockRequest(
                 CreateParentBlockRequestOnHead(), 
                 TestItem.AddressD);
-            ResultWrapper<NewBlockResult> newBlockResult = await _consensusRpcModule.consensus_newBlock(blockRequestResult);
+            ResultWrapper<NewBlockResult> newBlockResult = await Rpc.consensus_newBlock(blockRequestResult);
             newBlockResult.Data.Valid.Should().BeTrue();
             
             Keccak newHeadHash = blockRequestResult.BlockHash;
-            ResultWrapper<Result> setHeadResult = await _consensusRpcModule.consensus_setHead(newHeadHash!);
+            ResultWrapper<Result> setHeadResult = await Rpc.consensus_setHead(newHeadHash!);
             setHeadResult.Data.Should().Be(Result.Success);
             
             Keccak actualHead = BlockTree.HeadHash;
@@ -120,7 +127,7 @@ namespace Nethermind.Merge.Plugin.Test
         [Test]
         public async Task finaliseBlock_should_succeed()
         {
-            ResultWrapper<Result> resultWrapper = await _consensusRpcModule.consensus_finaliseBlock(TestItem.KeccakE);
+            ResultWrapper<Result> resultWrapper = await Rpc.consensus_finaliseBlock(TestItem.KeccakE);
             resultWrapper.Data.Should().Be(Result.Success);
         }
         
@@ -130,7 +137,7 @@ namespace Nethermind.Merge.Plugin.Test
             BlockRequestResult blockRequestResult = CreateBlockRequest(
                 CreateParentBlockRequestOnHead(), 
                 TestItem.AddressD);
-            ResultWrapper<NewBlockResult> resultWrapper = await _consensusRpcModule.consensus_newBlock(blockRequestResult);
+            ResultWrapper<NewBlockResult> resultWrapper = await Rpc.consensus_newBlock(blockRequestResult);
             resultWrapper.Data.Valid.Should().BeTrue();
             new BlockRequestResult(BlockTree.BestSuggestedBody).Should().BeEquivalentTo(blockRequestResult);
         }
@@ -138,7 +145,7 @@ namespace Nethermind.Merge.Plugin.Test
         [TestCase(30)]
         public async Task can_progress_chain_one_by_one(int count)
         {
-            Keccak lastHash = (await ProduceBranch(count, BlockTree.HeadHash, true)).Last().Hash;
+            Keccak lastHash = (await ProduceBranch(count, BlockTree.HeadHash, true)).Last().BlockHash;
             BlockTree.HeadHash.Should().Be(lastHash);
             Block? last = RunForAllBlocksInBranch(BlockTree.HeadHash, b => b.IsGenesis, true);
             last.Should().NotBeNull();
@@ -148,16 +155,16 @@ namespace Nethermind.Merge.Plugin.Test
         [Test]
         public async Task setHead_can_reorganize_to_any_block()
         {
-            async Task CanReorganizeToBlock((Keccak Hash, long Number) block)
+            async Task CanReorganizeToBlock(BlockRequestResult block)
             {
-                ResultWrapper<Result> result = await _consensusRpcModule.consensus_setHead(block.Hash);
+                ResultWrapper<Result> result = await Rpc.consensus_setHead(block.BlockHash);
                 result.Data.Should().Be(Result.Success);
-                BlockTree.HeadHash.Should().Be(block.Hash);
+                BlockTree.HeadHash.Should().Be(block.BlockHash);
                 BlockTree.Head!.Number.Should().Be(block.Number);
-                _chain.State.StateRoot.Should().Be(BlockTree.Head!.StateRoot!);
+                Chain.State.StateRoot.Should().Be(BlockTree.Head!.StateRoot!);
             }
             
-            async Task CanReorganizeToAnyBlock(params IReadOnlyList<(Keccak Hash, long Number)>[] branches)
+            async Task CanReorganizeToAnyBlock(params IReadOnlyList<BlockRequestResult>[] branches)
             {
                 foreach (var branch in branches)
                 {
@@ -166,39 +173,165 @@ namespace Nethermind.Merge.Plugin.Test
                 
                 foreach (var branch in branches)
                 {
-                    foreach ((Keccak Hash, long Number) block in branch)
+                    foreach (BlockRequestResult block in branch)
                     {
                         await CanReorganizeToBlock(block);
                     }
                     
-                    foreach ((Keccak Hash, long Number) block in branch.Reverse())
+                    foreach (BlockRequestResult block in branch.Reverse())
                     {
                         await CanReorganizeToBlock(block);
                     }
                 }
             }
             
-            IReadOnlyList<(Keccak Hash, long Number)> branch1 = await ProduceBranch(10, BlockTree.HeadHash, false);
-            IReadOnlyList<(Keccak Hash, long Number)> branch2 = await ProduceBranch(5, branch1[3].Hash, false);
+            IReadOnlyList<BlockRequestResult> branch1 = await ProduceBranch(10, BlockTree.HeadHash, false);
+            IReadOnlyList<BlockRequestResult> branch2 = await ProduceBranch(5, branch1[3].BlockHash, false);
             branch2.Last().Number.Should().Be(1 + 3 + 5);
-            IReadOnlyList<(Keccak Hash, long Number)> branch3 = await ProduceBranch(7, branch1[7].Hash, false);
+            IReadOnlyList<BlockRequestResult> branch3 = await ProduceBranch(7, branch1[7].BlockHash, false);
             branch3.Last().Number.Should().Be(1 + 7 + 7);
-            IReadOnlyList<(Keccak Hash, long Number)> branch4 = await ProduceBranch(3, branch3[4].Hash, false);
+            IReadOnlyList<BlockRequestResult> branch4 = await ProduceBranch(3, branch3[4].BlockHash, false);
             branch3.Last().Number.Should().Be(1 + 7 + 4 + 3);
 
             await CanReorganizeToAnyBlock(branch1, branch2, branch3, branch4);
         }
 
         [Test]
-        public async Task newBlock_processes_passed_transactions()
+        public async Task assembleBlock_can_build_on_any_block()
         {
+            async Task CanAssembleOnBlock(BlockRequestResult block)
+            {
+                UInt256 timestamp = BerlinTimestamper.UnixTime.Seconds;
+                AssembleBlockRequest assembleBlockRequest = new() {ParentHash = block.BlockHash, Timestamp = timestamp};
+                ResultWrapper<BlockRequestResult?> response = await Rpc.consensus_assembleBlock(assembleBlockRequest);
+
+                response.Data.Should().NotBeNull();
+                response.Data!.ParentHash.Should().Be(block.BlockHash);
+            }
             
+            async Task CanAssembleOnAnyBlock(params IReadOnlyList<BlockRequestResult>[] branches)
+            {
+                foreach (var branch in branches)
+                {
+                    await CanAssembleOnBlock(branch.Last());
+                }
+                
+                foreach (var branch in branches)
+                {
+                    foreach (BlockRequestResult block in branch)
+                    {
+                        await CanAssembleOnBlock(block);
+                    }
+                    
+                    foreach (BlockRequestResult block in branch.Reverse())
+                    {
+                        await CanAssembleOnBlock(block);
+                    }
+                }
+            }
+
+            IReadOnlyList<BlockRequestResult> branch1 = await ProduceBranch(10, BlockTree.HeadHash, false);
+            IReadOnlyList<BlockRequestResult> branch2 = await ProduceBranch(5, branch1[3].BlockHash, false);
+            branch2.Last().Number.Should().Be(1 + 3 + 5);
+            IReadOnlyList<BlockRequestResult> branch3 = await ProduceBranch(7, branch1[7].BlockHash, false);
+            branch3.Last().Number.Should().Be(1 + 7 + 7);
+            IReadOnlyList<BlockRequestResult> branch4 = await ProduceBranch(3, branch3[4].BlockHash, false);
+            branch3.Last().Number.Should().Be(1 + 7 + 4 + 3);
+            
+            await CanAssembleOnAnyBlock(branch1, branch2, branch3, branch4);
         }
         
         [Test]
-        public async Task assembleBlock_picks_transactions_from_pool()
+        public async Task newBlock_processes_passed_transactions([Values(false, true)] bool moveHead)
         {
             
+            IReadOnlyList<BlockRequestResult> branch = await ProduceBranch(10, BlockTree.HeadHash, moveHead);
+
+            foreach (BlockRequestResult block in branch)
+            {
+                uint count = 10;
+                BlockRequestResult newBlockRequest = CreateBlockRequest(block, TestItem.AddressA);
+                PrivateKey from = TestItem.PrivateKeyB;
+                Address to = TestItem.AddressD;
+                var (fromBalanceAfter, toBalanceAfter) = AddTransactions(newBlockRequest, from, to, count, 1, out var parentHeader);
+
+                newBlockRequest.GasUsed = GasCostOf.Transaction * count;
+                newBlockRequest.StateRoot = new Keccak("0x3d2e3ced6da0d1e94e65894dc091190480f045647610ef614e1cab4241ca66e0");
+                newBlockRequest.ReceiptsRoot = new Keccak("0xc538d36ed1acf6c28187110a2de3e5df707d6d38982f436eb0db7a623f9dc2cd");
+                newBlockRequest.BlockHash = newBlockRequest.CalculateHash();
+                ResultWrapper<NewBlockResult> result = await Rpc.consensus_newBlock(newBlockRequest);
+
+                result.Data.Valid.Should().BeTrue();
+                RootCheckVisitor rootCheckVisitor = new();
+                Chain.StateReader.RunTreeVisitor(rootCheckVisitor, newBlockRequest.StateRoot);
+                rootCheckVisitor.HasRoot.Should().BeTrue();
+                // Chain.StateReader.GetBalance(newBlockRequest.StateRoot, from.Address).Should().Be(fromBalanceAfter);
+                Chain.StateReader.GetBalance(newBlockRequest.StateRoot, to).Should().Be(toBalanceAfter);
+                if (moveHead)
+                {
+                    await Rpc.consensus_setHead(newBlockRequest.BlockHash);
+                    Chain.State.StateRoot.Should().Be(newBlockRequest.StateRoot);
+                    Chain.State.StateRoot.Should().NotBe(parentHeader.StateRoot!);
+                }
+            }
+        }
+
+        [Test]
+        public async Task assembleBlock_picks_transactions_from_pool()
+        {
+            Keccak startingHead = BlockTree.HeadHash;
+            uint count = 3;
+            int value = 10;
+            Address recipient = TestItem.AddressD;
+            PrivateKey sender = TestItem.PrivateKeyB;
+            Transaction[] transactions = BuildTransactions(startingHead, sender, recipient, count, value, out _, out _);
+            Chain.AddTransactions(transactions);
+            AssembleBlockRequest assembleBlockRequest = new() {ParentHash = startingHead};
+            BlockRequestResult assembleBlockResult = (await Rpc.consensus_assembleBlock(assembleBlockRequest)).Data!;
+
+            assembleBlockResult.StateRoot.Should().NotBe(BlockTree.Genesis!.StateRoot!);
+            
+            Transaction[] transactionsInBlock = assembleBlockResult.GetTransactions();
+            transactionsInBlock.Should().BeEquivalentTo(transactions, 
+                o => o.Excluding(t => t.ChainId)
+                    .Excluding(t => t.SenderAddress)
+                    .Excluding(t => t.Timestamp)
+                    .Excluding(t => t.PoolIndex));
+
+            ResultWrapper<NewBlockResult> newBlockResult = await Rpc.consensus_newBlock(assembleBlockResult);
+            newBlockResult.Data.Valid.Should().BeTrue();
+
+            UInt256 totalValue = ((int)(count * value)).GWei();
+            Chain.StateReader.GetBalance(assembleBlockResult.StateRoot, recipient).Should().Be(totalValue);
+        }
+        
+        private (UInt256, UInt256) AddTransactions(BlockRequestResult newBlockRequest, PrivateKey from, Address to, uint count, int value, out BlockHeader parentHeader)
+        {
+            Transaction[] transactions = BuildTransactions(newBlockRequest.ParentHash, from, to, count, value, out Account accountFrom, out parentHeader);
+            newBlockRequest.SetTransactions(transactions);
+            UInt256 totalValue = ((int)(count * value)).GWei();
+            return (accountFrom.Balance - totalValue, Chain.StateReader.GetBalance(parentHeader.StateRoot!, to) + totalValue);
+        }
+
+        private Transaction[] BuildTransactions(Keccak parentHash, PrivateKey from, Address to, uint count, int value, out Account accountFrom, out BlockHeader parentHeader)
+        {
+            Transaction BuildTransaction(uint index, Account senderAccount) =>
+                Build.A.Transaction.WithNonce(senderAccount.Nonce + index)
+                    .WithTimestamp(BerlinTimestamper.UnixTime.Seconds)
+                    .WithTo(to)
+                    .WithValue(value.GWei())
+                    .WithGasPrice(1.GWei())
+                    .WithChainId(Chain.SpecProvider.ChainId)
+                    .WithSenderAddress(from.Address)
+                    .SignedAndResolved(from)
+                    .TestObject;
+
+            parentHeader = BlockTree.FindHeader(parentHash, BlockTreeLookupOptions.None)!;
+            Account account = Chain.StateReader.GetAccount(parentHeader.StateRoot!, @from.Address)!;
+            accountFrom = account;
+
+            return Enumerable.Range(0, (int)count)
+                .Select(i => BuildTransaction((uint)i, account)).ToArray();
         }
 
         private BlockRequestResult CreateParentBlockRequestOnHead()
@@ -219,32 +352,32 @@ namespace Nethermind.Merge.Plugin.Test
                 GasLimit = 1_000_000,
                 GasUsed = 0,
                 ReceiptsRoot = Keccak.EmptyTreeHash,
-                LogsBloom = Bloom.Empty,
-                Transactions = Rlp.Encode(Array.Empty<Transaction>()).Bytes
+                LogsBloom = Bloom.Empty
             };
             
-            blockRequest.BlockHash = blockRequest.ToBlock().CalculateHash();
+            blockRequest.SetTransactions(Array.Empty<Transaction>());
+            blockRequest.BlockHash = blockRequest.CalculateHash();
             return blockRequest;
         }
         
-        private async Task<IReadOnlyList<(Keccak Hash, long Number)>> ProduceBranch(int count, Keccak parentBlockHash, bool setHead)
+        private async Task<IReadOnlyList<BlockRequestResult>> ProduceBranch(int count, Keccak parentBlockHash, bool setHead)
         {
-            List<(Keccak, long)> blocks = new();
-            ManualTimestamper timestamper = new(_firstBerlinBLockDateTime);
+            List<BlockRequestResult> blocks = new();
+            ManualTimestamper timestamper = new(FirstBerlinBLockDateTime);
             for (int i = 0; i < count; i++)
             {
                 AssembleBlockRequest assembleBlockRequest = new() {ParentHash = parentBlockHash, Timestamp = ((ITimestamper) timestamper).UnixTime.Seconds};
-                BlockRequestResult assembleBlockResponse = (await _consensusRpcModule.consensus_assembleBlock(assembleBlockRequest)).Data!;
-                NewBlockResult newBlockResponse = (await _consensusRpcModule.consensus_newBlock(assembleBlockResponse!)).Data;
+                BlockRequestResult assembleBlockResponse = (await Rpc.consensus_assembleBlock(assembleBlockRequest)).Data!;
+                NewBlockResult newBlockResponse = (await Rpc.consensus_newBlock(assembleBlockResponse!)).Data;
                 newBlockResponse.Valid.Should().BeTrue();
                 if (setHead)
                 {
                     Keccak newHead = assembleBlockResponse.BlockHash;
-                    ResultWrapper<Result> setHeadResponse = await _consensusRpcModule.consensus_setHead(newHead);
+                    ResultWrapper<Result> setHeadResponse = await Rpc.consensus_setHead(newHead);
                     setHeadResponse.Data.Should().Be(Result.Success);
                     BlockTree.HeadHash.Should().Be(newHead);
                 }
-                blocks.Add((assembleBlockResponse.BlockHash, assembleBlockResponse.Number));
+                blocks.Add((assembleBlockResponse));
                 parentBlockHash = assembleBlockResponse.BlockHash;
                 timestamper.Add(TimeSpan.FromSeconds(12));
             }

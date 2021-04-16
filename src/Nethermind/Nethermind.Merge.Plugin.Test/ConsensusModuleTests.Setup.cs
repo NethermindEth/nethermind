@@ -38,7 +38,7 @@ namespace Nethermind.Merge.Plugin.Test
 {
     public partial class ConsensusModuleTests
     {
-        private Task<MergeTestBlockchain> CreateBlockChain() => MergeTestBlockchain.Build(new SingleReleaseSpecProvider(Berlin.Instance, 1));
+        private async Task<MergeTestBlockchain> CreateBlockChain() => await new MergeTestBlockchain().Build(new SingleReleaseSpecProvider(Berlin.Instance, 1));
 
         private IConsensusRpcModule CreateConsensusModule(MergeTestBlockchain chain)
         {
@@ -51,13 +51,11 @@ namespace Nethermind.Merge.Plugin.Test
 
         private class MergeTestBlockchain : TestBlockchain
         {
-            private MergeTestBlockchain() { }
-            
             protected override Task AddBlocksOnStart() => Task.CompletedTask;
 
             public override ILogManager LogManager { get; } = new NUnitLogManager();
             
-            private BlockValidator BlockValidator { get; set; } = null!;
+            private IBlockValidator BlockValidator { get; set; } = null!;
 
             private Signer Signer { get; set; } = null!;
 
@@ -88,13 +86,8 @@ namespace Nethermind.Merge.Plugin.Test
             protected override BlockProcessor CreateBlockProcessor()
             {
                 Signer = new(SpecProvider.ChainId, MinerKey, LogManager);
-                HeaderValidator headerValidator = new HeaderValidator(BlockTree, new Eth2SealEngine(Signer), SpecProvider, LogManager);
-                BlockValidator = new BlockValidator(
-                    new TxValidator(SpecProvider.ChainId),
-                    headerValidator,
-                    new OmmersValidator(BlockTree, headerValidator, LogManager),
-                    SpecProvider,
-                    LogManager);
+                HeaderValidator headerValidator = new(BlockTree, new Eth2SealEngine(Signer), SpecProvider, LogManager);
+                BlockValidator = CreateBlockValidator(headerValidator);
                     
                 return new BlockProcessor(
                     SpecProvider,
@@ -109,6 +102,14 @@ namespace Nethermind.Merge.Plugin.Test
                     LogManager);
             }
 
+            private IBlockValidator CreateBlockValidator(HeaderValidator headerValidator) =>
+                new BlockValidator(
+                    new TxValidator(SpecProvider.ChainId),
+                    headerValidator,
+                    new OmmersValidator(BlockTree, headerValidator, LogManager),
+                    SpecProvider,
+                    LogManager);
+
             public PrivateKey MinerKey => TestItem.PrivateKeyA;
             public Address MinerAddress => MinerKey.Address;
 
@@ -119,11 +120,8 @@ namespace Nethermind.Merge.Plugin.Test
                 return chain;
             }
 
-            private async Task<MergeTestBlockchain> BuildInternal(ISpecProvider? specProvider = null) => 
+            public async Task<MergeTestBlockchain> Build(ISpecProvider? specProvider = null) => 
                 (MergeTestBlockchain) await Build(specProvider, null);
-
-            public static async Task<MergeTestBlockchain> Build(ISpecProvider? specProvider = null) => 
-                await new MergeTestBlockchain().BuildInternal(specProvider);
         }
     }
 }

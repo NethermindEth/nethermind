@@ -84,6 +84,8 @@ namespace Nethermind.Core.Test.Blockchain
         private ManualResetEvent _suggestedBlockResetEvent;
         private AutoResetEvent _oneAtATime = new AutoResetEvent(true);
         
+        public static readonly UInt256 InitialValue = 1000.Ether();
+
         public IReadOnlyTrieStore ReadOnlyTrieStore { get; private set; }
 
         public ManualTimestamper Timestamper { get; private set; }
@@ -100,9 +102,9 @@ namespace Nethermind.Core.Test.Blockchain
             DbProvider = await TestMemDbProvider.InitAsync();
             TrieStore = new TrieStore(StateDb.Innermost, LogManager);
             State = new StateProvider(TrieStore, DbProvider.CodeDb, LogManager);
-            State.CreateAccount(TestItem.AddressA, (initialValues ?? 1000.Ether()));
-            State.CreateAccount(TestItem.AddressB, (initialValues ?? 1000.Ether()));
-            State.CreateAccount(TestItem.AddressC, (initialValues ?? 1000.Ether()));
+            State.CreateAccount(TestItem.AddressA, (initialValues ?? InitialValue));
+            State.CreateAccount(TestItem.AddressB, (initialValues ?? InitialValue));
+            State.CreateAccount(TestItem.AddressC, (initialValues ?? InitialValue));
             byte[] code = Bytes.FromHexString("0xabcd");
             Keccak codeHash = Keccak.Compute(code);
             State.UpdateCode(code);
@@ -266,9 +268,12 @@ namespace Nethermind.Core.Test.Blockchain
             BlockProducer.BuildNewBlock();
         }
 
-        public void AddTransaction(Transaction testObject)
+        public void AddTransactions(params Transaction[] txs)
         {
-            TxPool.AddTransaction(testObject, TxHandlingOptions.None);
+            for (int i = 0; i < txs.Length; i++)
+            {
+                TxPool.AddTransaction(txs[i], TxHandlingOptions.None);
+            }
         }
 
         public virtual void Dispose()
