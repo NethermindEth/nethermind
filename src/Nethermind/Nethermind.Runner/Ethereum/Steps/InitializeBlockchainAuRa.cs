@@ -76,7 +76,10 @@ namespace Nethermind.Runner.Ethereum.Steps
        
             var processingReadOnlyTransactionProcessorSource = CreateReadOnlyTransactionProcessorSource();
             var txPermissionFilterOnlyTxProcessorSource = CreateReadOnlyTransactionProcessorSource();
-            ITxFilter? txPermissionFilter = TxFilterBuilders.CreateTxPermissionFilter(_api, txPermissionFilterOnlyTxProcessorSource);
+            ITxFilter auRaTxFilter = TxFilterBuilders.CreateAuRaTxFilter(
+                _api,
+                txPermissionFilterOnlyTxProcessorSource,
+                _api.SpecProvider);;
             
             var processor = new AuRaBlockProcessor(
                 _api.SpecProvider,
@@ -89,7 +92,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.ReceiptStorage,
                 _api.LogManager,
                 _api.BlockTree,
-                txPermissionFilter,
+                auRaTxFilter,
                 GetGasLimitCalculator());
             
             var auRaValidator = CreateAuRaValidator(processor, processingReadOnlyTransactionProcessorSource);
