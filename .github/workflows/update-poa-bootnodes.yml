@@ -1,4 +1,4 @@
-name: '[UPDATE] Update Bootnodes'
+name: '[UPDATE] POA Bootnodes'
 
 on:
   repository_dispatch:
