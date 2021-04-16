@@ -20,6 +20,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using FluentAssertions;
+using FluentAssertions.Extensions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
@@ -42,7 +43,7 @@ namespace Nethermind.Merge.Plugin.Test
 {
     public partial class ConsensusModuleTests
     {
-        private static readonly DateTime FirstBerlinBLockDateTime = new DateTime(2021, 4, 15, 10, 7, 3);
+        private static readonly DateTime FirstBerlinBLockDateTime = new DateTime(2021, 4, 15, 10, 7, 3).ToUniversalTime();
 
         private MergeTestBlockchain Chain { get; set; } = null!;
         private IConsensusRpcModule Rpc { get; set; } = null!;
