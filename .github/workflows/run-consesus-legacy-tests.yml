@@ -1,4 +1,4 @@
-name: Consensus Legacy Tests
+name: '[RUN] Consensus Legacy Tests'
 
 on:
   push:
@@ -6,18 +6,13 @@ on:
     - '*'
 
 jobs:
-  blockchain-tests:
-    name: Blockchain Tests
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [ubuntu-latest]
+  run-legacy-tests:
+    name: Running Blockchain Tests
+    runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v2
-    - name: Unshallow fetching
-      run: git fetch --unshallow --progress --prune origin +refs/heads/*:refs/remotes/origin/*
-    - name: Updating submodules
-      run: git submodule update --init
+      with:
+        submodules: recursive
     - name: Installing Linux packages
       if: matrix.os == 'ubuntu-latest'
       run: |
@@ -26,16 +21,14 @@ jobs:
     - name: Ethereum.Blockchain.Block.Legacy
       run: |
         dotnet test -c Release src/Nethermind/Ethereum.Blockchain.Block.Legacy.Test
-  general-state-tests:
-    name: General State Tests
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [ubuntu-latest]
+
+  run-general-state-tests:
+    name: Running General State Tests
+    runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v2
-    - name: Unshallow fetching
-      run: git fetch --unshallow
+      with:
+        submodules: recursive
     - name: Updating submodules
       run: git submodule update --init
     - name: Ethereum.Blockchain.Legacy

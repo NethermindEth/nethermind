@@ -1,13 +1,11 @@
-name: GMP Build
+name: '[BUILD] GMP Libraries'
 
 on:
-  repository_dispatch:
-    types: gmp_build
   workflow_dispatch:
 
 jobs:
-  gmp-build:
-    name: Building GMP lib
+  build-gmp:
+    name: Building GMP libs
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
