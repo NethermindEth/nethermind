@@ -1,4 +1,4 @@
-name: "CodeQL"
+name: '[RUN] CodeQL code analysis'
 
 on:
   push:
@@ -6,16 +6,15 @@ on:
     - '*'
 
 jobs:
-  analyze:
-    name: Analyze Nethermind code
+  run-analysis:
+    name: Analysing Nethermind code
     runs-on: ubuntu-latest
-
     strategy:
       fail-fast: false
       matrix:
         language: ['csharp']
     steps:
-    - name: Checkout repository
+    - name: Checking out repository
       uses: actions/checkout@v2
       with:
         fetch-depth: 2
@@ -25,9 +24,9 @@ jobs:
       uses: github/codeql-action/init@v1
       with:
         languages: ${{ matrix.language }}
-    - name: Build Nethermind solution
+    - name: Building Nethermind solution
       run: |
         cd src/Nethermind
         dotnet build Nethermind.sln -c Release
-    - name: Perform CodeQL Analysis
+    - name: Performing CodeQL Analysis
       uses: github/codeql-action/analyze@v1

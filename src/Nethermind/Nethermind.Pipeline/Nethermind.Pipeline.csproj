@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\Nethermind.PubSub\Nethermind.PubSub.csproj" />
+    <ProjectReference Include="..\Nethermind.WebSockets\Nethermind.WebSockets.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net5.0</TargetFramework>
+  </PropertyGroup>
+
+</Project>
