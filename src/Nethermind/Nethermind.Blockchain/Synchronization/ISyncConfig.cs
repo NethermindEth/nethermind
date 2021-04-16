@@ -104,7 +104,7 @@ namespace Nethermind.Blockchain.Synchronization
                                   "If used please check that PivotNumber is same as original used when syncing the node as its used as a cut-off point.", DefaultValue = "false")]
         public bool FixReceipts { get; set; }
         
-        [ConfigItem(HiddenFromDocs = true)]
+        [ConfigItem(HiddenFromDocs = true, DefaultValue = "true")]
         public bool BlockGossipEnabled { get; set; }
     }
 }

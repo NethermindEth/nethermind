@@ -57,9 +57,9 @@ namespace Nethermind.Merge.Plugin.Test
 
             public override ILogManager LogManager { get; } = new NUnitLogManager();
             
-            private BlockValidator BlockValidator { get; set; }
-            
-            private Signer Signer { get; set; }
+            private BlockValidator BlockValidator { get; set; } = null!;
+
+            private Signer Signer { get; set; } = null!;
 
             protected override ITestBlockProducer CreateTestBlockProducer(TxPoolTxSource txPoolTxSource, BlockchainProcessor chainProcessor, IStateProvider producerStateProvider, ISealer sealer)
             {
@@ -112,17 +112,17 @@ namespace Nethermind.Merge.Plugin.Test
             public PrivateKey MinerKey => TestItem.PrivateKeyA;
             public Address MinerAddress => MinerKey.Address;
 
-            protected override async Task<TestBlockchain> Build(ISpecProvider specProvider = null, UInt256? initialValues = null)
+            protected override async Task<TestBlockchain> Build(ISpecProvider? specProvider = null, UInt256? initialValues = null)
             {
                 TestBlockchain chain = await base.Build(specProvider, initialValues);
                 await chain.BlockchainProcessor.StopAsync(true);
                 return chain;
             }
 
-            private async Task<MergeTestBlockchain> BuildInternal(ISpecProvider specProvider = null) => 
+            private async Task<MergeTestBlockchain> BuildInternal(ISpecProvider? specProvider = null) => 
                 (MergeTestBlockchain) await Build(specProvider, null);
 
-            public static async Task<MergeTestBlockchain> Build(ISpecProvider specProvider = null) => 
+            public static async Task<MergeTestBlockchain> Build(ISpecProvider? specProvider = null) => 
                 await new MergeTestBlockchain().BuildInternal(specProvider);
         }
     }
