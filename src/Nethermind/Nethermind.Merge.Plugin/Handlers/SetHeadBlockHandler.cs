@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System;
 using System.Collections.Generic;
 using System.Threading;
 using Nethermind.Blockchain;
@@ -23,6 +24,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
+using Nethermind.State;
 using Result = Nethermind.Merge.Plugin.Data.Result;
 
 namespace Nethermind.Merge.Plugin.Handlers
@@ -30,37 +32,39 @@ namespace Nethermind.Merge.Plugin.Handlers
     public class SetHeadBlockHandler : IHandler<Keccak, Result>
     {
         private readonly IBlockTree _blockTree;
+        private readonly IStateProvider _stateProvider;
         private readonly ILogger _logger;
 
-        public SetHeadBlockHandler(IBlockTree blockTree, ILogManager logManager)
+        public SetHeadBlockHandler(IBlockTree blockTree, IStateProvider stateProvider, ILogManager logManager)
         {
             _blockTree = blockTree;
+            _stateProvider = stateProvider;
             _logger = logManager.GetClassLogger();
         }
 
         public ResultWrapper<Result> Handle(Keccak blockHash)
         {
-            Block? block = _blockTree.FindBlock(blockHash, BlockTreeLookupOptions.None);
-            if (block == null)
+            Block? newHeadBlock = _blockTree.FindBlock(blockHash, BlockTreeLookupOptions.None);
+            if (newHeadBlock == null)
             {
-                if (_logger.IsWarn) _logger.Warn($"Block {blockHash} cannot be found and will not be set as head.");
+                if (_logger.IsWarn) _logger.Warn($"Block {blockHash} cannot be found and it will not be set as head.");
                 return ResultWrapper<Result>.Success(Result.Fail);
             }
 
-            List<Block> blocks = new();
-
-            while (!_blockTree.IsMainChain(block!.Header))
+            if (!TryGetBranch(newHeadBlock, out Block[] blocks))
             {
-                blocks.Add(block);
-                block = _blockTree.FindParent(block, BlockTreeLookupOptions.None);
+                if (_logger.IsWarn) _logger.Warn($"Block's {blockHash} main chain predecessor cannot be found and it will not be set as head.");
+                return ResultWrapper<Result>.Success(Result.Fail);
             }
 
-            blocks.Reverse();
+            _blockTree.UpdateMainChain(blocks, true, true);
 
-            _blockTree.UpdateMainChain(blocks.ToArray(), true, true);
-            bool success = _blockTree.Head == block;
+            bool success = _blockTree.Head == newHeadBlock;
             if (success)
             {
+                _stateProvider.StateRoot = newHeadBlock.StateRoot!;
+                _stateProvider.RecalculateStateRoot();
+                
                 if (_logger.IsInfo) _logger.Info($"Block {blockHash} was set as head.");
             }
             else
@@ -69,6 +73,28 @@ namespace Nethermind.Merge.Plugin.Handlers
             }
 
             return ResultWrapper<Result>.Success(success);
+        }
+
+        private bool TryGetBranch(Block block, out Block[] blocks)
+        {
+            List<Block> blocksList = new() {block};
+            Block? predecessor = block;
+            
+            do
+            {
+                predecessor = _blockTree.FindParent(predecessor, BlockTreeLookupOptions.None);
+                if (predecessor == null)
+                {
+                    blocks = Array.Empty<Block>();
+                    return false;
+                }
+                blocksList.Add(predecessor);
+                
+            } while (!_blockTree.IsMainChain(predecessor.Header));
+            
+            blocksList.Reverse();
+            blocks = blocksList.ToArray();
+            return true;
         }
     }
 }
