@@ -51,6 +51,12 @@ namespace Nethermind.Merge.Plugin.Test
 
         private class MergeTestBlockchain : TestBlockchain
         {
+            public MergeTestBlockchain()
+            {
+                GenesisBlockBuilder = Core.Test.Builders.Build.A.Block.Genesis.Genesis
+                    .WithTimestamp(UInt256.One);
+            }
+            
             protected override Task AddBlocksOnStart() => Task.CompletedTask;
 
             public override ILogManager LogManager { get; } = new NUnitLogManager();
