@@ -1,4 +1,4 @@
-name: Update GitBook Docs
+name: '[UPDATE] GitBook Docs'
 
 on:
   push:
@@ -8,10 +8,10 @@ on:
     
 jobs:
   update-gitbook:
-    name: Trigger the GitBook Docs update
+    name: Triggering GitBook Docs update
     runs-on: ubuntu-latest
     steps:
-    - name: Send dispatch event to Nethermind docs repository
+    - name: Sending dispatch event to Nethermind docs repository
       env: 
         DISPATCH_REPO: NethermindEth/docs
       run: |
