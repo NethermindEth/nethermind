@@ -167,6 +167,8 @@ namespace Nethermind.Synchronization.Peers
         }
 
         public PeerInfo? GetPeer(Node node) => _peers.TryGetValue(node.Id, out PeerInfo? peerInfo) ? peerInfo : null;
+        public event EventHandler<PeerBlockNotificationEventArgs>? NotifyPeerBlock;
+            
 
         public void WakeUpAll()
         {
@@ -253,7 +255,7 @@ namespace Nethermind.Synchronization.Peers
 
             if (_logger.IsDebug) _logger.Debug($"Adding {syncPeer.Node:c} to refresh queue");
             if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportInterestingEvent(syncPeer.Node.Address, "adding node to refresh queue");
-            _peerRefreshQueue.Add(new RefreshTotalDiffTask(syncPeer) {AllowNotifyOfNewBlock = false});
+            _peerRefreshQueue.Add(new RefreshTotalDiffTask(syncPeer));
         }
 
         public void RemovePeer(ISyncPeer syncPeer)
@@ -383,17 +385,14 @@ namespace Nethermind.Synchronization.Peers
                     else
                     {
                         UpgradeAllocations();
-                        if (refreshTask.AllowNotifyOfNewBlock)
+                        // cases when we want other nodes to resolve the impasse (check Goerli discussion on 5 out of 9 validators)
+                        if (syncPeer.TotalDifficulty == _blockTree.BestSuggestedHeader?.TotalDifficulty && syncPeer.HeadHash != _blockTree.BestSuggestedHeader?.Hash)
                         {
-                            // cases when we want other nodes to resolve the impasse (check Goerli discussion on 5 out of 9 validators)
-                            if (syncPeer.TotalDifficulty == _blockTree.BestSuggestedHeader?.TotalDifficulty && syncPeer.HeadHash != _blockTree.BestSuggestedHeader?.Hash)
+                            Block block = _blockTree.FindBlock(_blockTree.BestSuggestedHeader.Hash!, BlockTreeLookupOptions.None);
+                            if (block != null) // can be null if fast syncing headers only
                             {
-                                Block block = _blockTree.FindBlock(_blockTree.BestSuggestedHeader?.Hash, BlockTreeLookupOptions.None);
-                                if (block != null) // can be null if fast syncing headers only
-                                {
-                                    syncPeer.NotifyOfNewBlock(block, SendBlockPriority.High);
-                                    if (_logger.IsDebug) _logger.Debug($"Sending my best block {block} to {syncPeer}");
-                                }
+                                if (_logger.IsDebug) _logger.Debug($"Sending my best block {block} to {syncPeer}");
+                                NotifyPeerBlock?.Invoke(this, new PeerBlockNotificationEventArgs(syncPeer, block));
                             }
                         }
                     }
@@ -652,8 +651,6 @@ namespace Nethermind.Synchronization.Peers
             public Keccak? BlockHash { get; }
 
             public ISyncPeer SyncPeer { get; }
-
-            public bool AllowNotifyOfNewBlock { get; set; } = true;
         }
 
         public void Dispose()

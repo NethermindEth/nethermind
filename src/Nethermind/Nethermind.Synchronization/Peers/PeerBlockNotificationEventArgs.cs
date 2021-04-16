@@ -1,4 +1,4 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -13,13 +13,23 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-namespace Nethermind.Synchronization.Test
+using System;
+using Nethermind.Blockchain.Synchronization;
+using Nethermind.Core;
+
+namespace Nethermind.Synchronization.Peers
 {
-    public enum SynchronizerType
+    public class PeerBlockNotificationEventArgs : EventArgs
     {
-        Full,
-        Fast,
-        Eth2Merge
+        public ISyncPeer SyncPeer { get; }
+        public Block Block { get; }
+
+        public PeerBlockNotificationEventArgs(ISyncPeer syncPeer, Block block)
+        {
+            SyncPeer = syncPeer;
+            Block = block;
+        }
     }
 }

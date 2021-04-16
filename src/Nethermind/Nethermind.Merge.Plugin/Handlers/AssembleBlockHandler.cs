@@ -59,7 +59,6 @@ namespace Nethermind.Merge.Plugin.Handlers
             }
             else
             {
-                // block.Header.MixHash = Keccak.Zero;
                 return ResultWrapper<BlockRequestResult?>.Success(new BlockRequestResult(block));
             }
         }

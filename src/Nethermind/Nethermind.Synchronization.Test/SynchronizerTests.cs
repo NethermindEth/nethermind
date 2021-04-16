@@ -50,6 +50,7 @@ namespace Nethermind.Synchronization.Test
 {
     [TestFixture(SynchronizerType.Fast)]
     [TestFixture(SynchronizerType.Full)]
+    [TestFixture(SynchronizerType.Eth2Merge)]
     [Parallelizable(ParallelScope.All)]
     public class SynchronizerTests
     {
@@ -273,8 +274,17 @@ namespace Nethermind.Synchronization.Test
 
             public SyncingContext(SynchronizerType synchronizerType)
             {
+                ISyncConfig GetSyncConfig() =>
+                    synchronizerType switch
+                    {
+                        SynchronizerType.Fast => SyncConfig.WithFastSync,
+                        SynchronizerType.Eth2Merge => SyncConfig.WithEth2Merge,
+                        SynchronizerType.Full => SyncConfig.WithFullSyncOnly,
+                        _ => throw new ArgumentOutOfRangeException(nameof(synchronizerType), synchronizerType, null)
+                    };
+
                 _logger = _logManager.GetClassLogger();
-                ISyncConfig syncConfig = synchronizerType == SynchronizerType.Fast ? SyncConfig.WithFastSync : SyncConfig.WithFullSyncOnly;
+                ISyncConfig syncConfig = GetSyncConfig();
                 IDbProvider dbProvider = TestMemDbProvider.Init();
                 IDb stateDb = new MemDb();
                 IDb codeDb = dbProvider.CodeDb;
@@ -685,14 +695,22 @@ namespace Nethermind.Synchronization.Test
 
             Assert.AreNotEqual(peerB.HeadBlock.Hash, peerA.HeadBlock.Hash);
 
-            Block block = null;
+            Block peerBNewBlock = null;
             SpinWait.SpinUntil(() =>
             {
-                bool receivedBlock = peerB.ReceivedBlocks.TryPeek(out block);
-                return receivedBlock && block.Hash == peerA.HeadBlock.Hash;
+                bool receivedBlock = peerB.ReceivedBlocks.TryPeek(out peerBNewBlock);
+                return receivedBlock && peerBNewBlock.Hash == peerA.HeadBlock.Hash;
             }, WaitTime);
-            
-            Assert.AreEqual(block?.Header.Hash, peerA.HeadBlock.Hash);
+
+            if (_synchronizerType == SynchronizerType.Eth2Merge)
+            {
+                Assert.IsNull(peerBNewBlock);
+                Assert.AreNotEqual(peerB.HeadBlock.Hash, peerA.HeadBlock.Hash);
+            }
+            else
+            {
+                Assert.AreEqual(peerBNewBlock?.Header.Hash!, peerA.HeadBlock.Hash);
+            }
         }
 
         [Test, Retry(3)]
