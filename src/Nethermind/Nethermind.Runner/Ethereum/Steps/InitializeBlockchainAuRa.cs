@@ -79,7 +79,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             ITxFilter auRaTxFilter = TxFilterBuilders.CreateAuRaTxFilter(
                 _api,
                 txPermissionFilterOnlyTxProcessorSource,
-                _api.SpecProvider);;
+                _api.SpecProvider);
             
             var processor = new AuRaBlockProcessor(
                 _api.SpecProvider,
