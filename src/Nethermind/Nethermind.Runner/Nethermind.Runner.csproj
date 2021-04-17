@@ -121,4 +121,7 @@
   <Target Name="StoreGitHash" BeforeTargets="BeforePublish">
     <Exec Command="git describe --tags --long --always &gt; git-hash" />
   </Target>
- </Project>
+  <Target Name="CopyMergePluginOnBuild" AfterTargets="AfterBuild">
+    <Copy SourceFiles="$(SolutionDir)Nethermind.Merge.Plugin\bin\$(Configuration)\$(TargetFramework)\Nethermind.Merge.Plugin.dll" DestinationFolder="$(OutDir)plugins" />
+  </Target>
+</Project>
