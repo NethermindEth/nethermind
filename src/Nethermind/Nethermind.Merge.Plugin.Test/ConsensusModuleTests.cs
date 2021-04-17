@@ -43,12 +43,11 @@ namespace Nethermind.Merge.Plugin.Test
 {
     public partial class ConsensusModuleTests
     {
-        private static readonly DateTime FirstBerlinBLockDateTime = new DateTime(2021, 4, 15, 10, 7, 3).ToUniversalTime();
-
+        private static readonly DateTime Timestamp = DateTimeOffset.FromUnixTimeSeconds(1000).UtcDateTime;
         private MergeTestBlockchain Chain { get; set; } = null!;
         private IConsensusRpcModule Rpc { get; set; } = null!;
         private IBlockTree BlockTree => Chain.BlockTree;
-        private ITimestamper BerlinTimestamper { get; } = new ManualTimestamper(FirstBerlinBLockDateTime); 
+        private ITimestamper Timestamper { get; } = new ManualTimestamper(Timestamp); 
         
 
         [SetUp]
@@ -62,13 +61,13 @@ namespace Nethermind.Merge.Plugin.Test
         public async Task assembleBlock_should_create_block_on_top_of_genesis()
         {
             Keccak startingHead = BlockTree.HeadHash;
-            UInt256 timestamp = BerlinTimestamper.UnixTime.Seconds;
+            UInt256 timestamp = Timestamper.UnixTime.Seconds;
             AssembleBlockRequest assembleBlockRequest = new() {ParentHash = startingHead, Timestamp = timestamp};
             ResultWrapper<BlockRequestResult?> response = await Rpc.consensus_assembleBlock(assembleBlockRequest);
 
             BlockRequestResult expected = CreateParentBlockRequestOnHead();
             expected.GasLimit = 4000000L;
-            expected.BlockHash = new Keccak("0x69217828558fc6f98b3601bb1d1b93f5a6ba66ce32128ed9b4fe3e7922f09828");
+            expected.BlockHash = new Keccak("0xfe37027d377e75ffb161f11733d8880083378fe6236270c7a2ee1fc7efe71cfd");
             expected.LogsBloom = Bloom.Empty;
             expected.Miner = Chain.MinerAddress;
             expected.Number = 1;
@@ -202,7 +201,7 @@ namespace Nethermind.Merge.Plugin.Test
         {
             async Task CanAssembleOnBlock(BlockRequestResult block)
             {
-                UInt256 timestamp = BerlinTimestamper.UnixTime.Seconds;
+                UInt256 timestamp = Timestamper.UnixTime.Seconds;
                 AssembleBlockRequest assembleBlockRequest = new() {ParentHash = block.BlockHash, Timestamp = timestamp};
                 ResultWrapper<BlockRequestResult?> response = await Rpc.consensus_assembleBlock(assembleBlockRequest);
 
@@ -318,7 +317,7 @@ namespace Nethermind.Merge.Plugin.Test
         {
             Transaction BuildTransaction(uint index, Account senderAccount) =>
                 Build.A.Transaction.WithNonce(senderAccount.Nonce + index)
-                    .WithTimestamp(BerlinTimestamper.UnixTime.Seconds)
+                    .WithTimestamp(Timestamper.UnixTime.Seconds)
                     .WithTo(to)
                     .WithValue(value.GWei())
                     .WithGasPrice(1.GWei())
@@ -364,7 +363,7 @@ namespace Nethermind.Merge.Plugin.Test
         private async Task<IReadOnlyList<BlockRequestResult>> ProduceBranch(int count, Keccak parentBlockHash, bool setHead)
         {
             List<BlockRequestResult> blocks = new();
-            ManualTimestamper timestamper = new(FirstBerlinBLockDateTime);
+            ManualTimestamper timestamper = new(Timestamp);
             for (int i = 0; i < count; i++)
             {
                 AssembleBlockRequest assembleBlockRequest = new() {ParentHash = parentBlockHash, Timestamp = ((ITimestamper) timestamper).UnixTime.Seconds};
