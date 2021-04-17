@@ -15,7 +15,14 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System.Threading.Tasks;
+using Nethermind.Api;
+using Nethermind.Blockchain.Synchronization;
+using Nethermind.Consensus;
 using Nethermind.Db;
+using Nethermind.JsonRpc.Modules;
+using Nethermind.Merge.Plugin.Handlers;
+using Nethermind.Runner.Ethereum.Api;
 using NUnit.Framework;
 using Nethermind.Runner.Test.Ethereum;
 using NSubstitute;
@@ -24,19 +31,47 @@ namespace Nethermind.Merge.Plugin.Test
 {
     public class MergePluginTests
     {
+        private MergeConfig _mergeConfig = null!;
+        private NethermindApi _context = null!;
+        private MergePlugin _plugin = null!;
+
+        [SetUp]
+        public void Setup()
+        {
+            _mergeConfig = new MergeConfig() {Enabled = true};
+            _context = Build.ContextWithMocks();
+            _context.ConfigProvider.GetConfig<IMergeConfig>().Returns(_mergeConfig);
+            _context.MemDbFactory = new MemDbFactory();
+            _plugin = new MergePlugin();
+        }
+        
         [TestCase(true)]
         [TestCase(false)]
-        public void Init_merge_plugin_does_not_throw_exception(bool enabled)
+        public async Task Init_merge_plugin_does_not_throw_exception(bool enabled)
         {
-            MergeConfig mergeConfig = new() {Enabled = enabled};
-            Runner.Ethereum.Api.NethermindApi context = Build.ContextWithMocks();
-            context.ConfigProvider.GetConfig<IMergeConfig>().Returns(mergeConfig);
-            context.MemDbFactory = new MemDbFactory();
-            MergePlugin plugin = new();
-            Assert.DoesNotThrowAsync(async () => { await plugin.Init(context); });
-            Assert.DoesNotThrow(() => { plugin.InitNetworkProtocol(); });
-            Assert.DoesNotThrowAsync(async () => { await plugin.InitRpcModules(); });
-            Assert.DoesNotThrowAsync(async () => { await plugin.DisposeAsync(); });
+            _mergeConfig.Enabled = enabled;
+            Assert.DoesNotThrowAsync(async () => await _plugin.Init(_context));
+            Assert.DoesNotThrowAsync(async () => await _plugin.InitNetworkProtocol());
+            Assert.DoesNotThrowAsync(async () => await _plugin.InitBlockProducer());
+            Assert.DoesNotThrowAsync(async () => await _plugin.InitRpcModules());
+            Assert.DoesNotThrowAsync(async () => await _plugin.DisposeAsync());
+        }
+        
+        [Test]
+        public async Task Initializes_correctly()
+        {
+            _context.Config<IMiningConfig>().Enabled = true;
+            await _plugin.Init(_context);
+            await _plugin.InitNetworkProtocol();
+            ISyncConfig syncConfig = _context.Config<ISyncConfig>();
+            Assert.IsFalse(syncConfig.SynchronizationEnabled);
+            Assert.IsFalse(syncConfig.BlockGossipEnabled);
+            await _plugin.InitBlockProducer();
+            Assert.IsInstanceOf<Eth2BlockProducer>(_context.BlockProducer);
+            await _plugin.InitRpcModules();
+            _context.RpcModuleProvider.Received().Register(Arg.Is<IRpcModulePool<IConsensusRpcModule>>(m => m is SingletonModulePool<IConsensusRpcModule>));
+            await _context.BlockchainProcessor!.Received().StopAsync();
+            await _plugin.DisposeAsync();
         }
     }
 }
