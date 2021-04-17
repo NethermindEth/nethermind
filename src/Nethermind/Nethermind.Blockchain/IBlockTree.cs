@@ -112,12 +112,12 @@ namespace Nethermind.Blockchain
         bool WasProcessed(long number, Keccak blockHash);
 
         /// <summary>
-        /// Marks all <paramref name="processedBlocks"/> as processed, changes chain head to the last of them and updates all the chain levels./>
+        /// Marks all <paramref name="blocks"/> as processed, changes chain head to the last of them and updates all the chain levels./>
         /// </summary>
-        /// <param name="processedBlocks">Blocks that will now be at the top of the chain</param>
+        /// <param name="blocks">Blocks that will now be at the top of the chain</param>
         /// <param name="wereProcessed"></param>
-        /// <param name="forceHeadBlock">Force updating head block regardless of difficulty</param>
-        void UpdateMainChain(Block[] processedBlocks, bool wereProcessed, bool forceHeadBlock = false);
+        /// <param name="forceHeadBlock">Force updating <seealso cref="IBlockFinder.Head"/> block regardless of <see cref="Block.TotalDifficulty"/></param>
+        void UpdateMainChain(Block[] blocks, bool wereProcessed, bool forceHeadBlock = false);
 
         bool CanAcceptNewBlocks { get; }
 
