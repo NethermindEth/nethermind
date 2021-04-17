@@ -16,6 +16,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Text;
@@ -35,48 +36,22 @@ namespace Nethermind.GitBook
         public void Generate()
         {
             string docsDir = DocsDirFinder.FindDocsDir();
-            List<Type> configTypes = GetConfigModules();
-        
-            foreach (Type configType in configTypes)
+            
+            string[] dlls = Directory.GetFiles(AppDomain.CurrentDomain.BaseDirectory, "Nethermind.*.dll")
+                .OrderBy(n => n).ToArray();
+            
+            foreach (string dll in dlls)
             {
+                Assembly assembly = Assembly.LoadFile(dll);
+                Type[] modules  = assembly.GetExportedTypes().Where(t => typeof(IConfig).IsAssignableFrom(t) && t.IsInterface).ToArray();
                 
-                GenerateDocFileContent(configType, docsDir);
-            }
-        }
-        
-        private List<Type> GetConfigModules()
-        {
-            IEnumerable<Assembly> nethermindAssemblies = AppDomain.CurrentDomain.GetAssemblies()
-                .Where(a => a.GetName().ToString().StartsWith("Nethermind"));
-            
-            List<Type> configModules = new List<Type>();
-            
-            foreach (Assembly assembly in nethermindAssemblies)
-            {
-                foreach (Type type in assembly.GetTypes()
-                    .Where(t => typeof(IConfig).IsAssignableFrom(t))
-                    .Where(t => t.IsInterface && t != typeof(IConfig)))
+                foreach (Type module in modules)
                 {
-                    configModules.Add(type);
+                    GenerateDocFileContent(module, docsDir);
                 }
             }
-
-            // ToFix: algorithm above is not creating .md files for some modules. Below added manually
-             configModules.Add(Assembly.Load("Nethermind.EthStats").GetTypes()
-                 .Where(t => typeof(IConfig).IsAssignableFrom(t))
-                 .First(t => t.IsInterface && t != typeof(IConfig)));
-             
-             configModules.Add(Assembly.Load("Nethermind.HealthChecks").GetTypes()
-                 .Where(t => typeof(IConfig).IsAssignableFrom(t))
-                 .First(t => t.IsInterface && t != typeof(IConfig)));
-             
-             configModules.Add(Assembly.Load("Nethermind.Seq").GetTypes()
-                 .Where(t => typeof(IConfig).IsAssignableFrom(t))
-                 .First(t => t.IsInterface && t != typeof(IConfig)));
-            
-            return configModules;
         }
-        
+
         private void GenerateDocFileContent(Type configType, string docsDir)
         {
             Attribute attribute = configType.GetCustomAttribute(typeof(ConfigCategoryAttribute));
