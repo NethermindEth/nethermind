@@ -41,6 +41,7 @@ namespace Nethermind.Merge.Plugin.Test
             _mergeConfig = new MergeConfig() {Enabled = true};
             _context = Build.ContextWithMocks();
             _context.ConfigProvider.GetConfig<IMergeConfig>().Returns(_mergeConfig);
+            _context.ConfigProvider.GetConfig<ISyncConfig>().Returns(new SyncConfig());
             _context.MemDbFactory = new MemDbFactory();
             _plugin = new MergePlugin();
         }
@@ -64,6 +65,7 @@ namespace Nethermind.Merge.Plugin.Test
             await _plugin.InitNetworkProtocol();
             ISyncConfig syncConfig = _context.Config<ISyncConfig>();
             Assert.IsFalse(syncConfig.SynchronizationEnabled);
+            Assert.IsTrue(syncConfig.NetworkingEnabled);
             Assert.IsFalse(syncConfig.BlockGossipEnabled);
             await _plugin.InitBlockProducer();
             Assert.IsInstanceOf<Eth2BlockProducer>(_context.BlockProducer);

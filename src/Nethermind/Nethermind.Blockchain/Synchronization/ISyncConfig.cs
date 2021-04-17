@@ -25,7 +25,10 @@ namespace Nethermind.Blockchain.Synchronization
 {
     public interface ISyncConfig : IConfig
     {
-        [ConfigItem(Description = "If 'false' then the node does not download/process new blocks..", DefaultValue = "true")]
+        [ConfigItem(Description = "If 'false' then the node does not connect to peers.", DefaultValue = "true")]
+        bool NetworkingEnabled { get; set; }
+        
+        [ConfigItem(Description = "If 'false' then the node does not download/process new blocks.", DefaultValue = "true")]
         bool SynchronizationEnabled { get; set; }
         
         [ConfigItem(Description = "Enables beam sync that can be useful to create some JSON RPC queries while the node is fast syncing in the background.", DefaultValue = "false")]
