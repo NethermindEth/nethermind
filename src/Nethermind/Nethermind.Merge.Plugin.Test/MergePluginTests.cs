@@ -41,7 +41,6 @@ namespace Nethermind.Merge.Plugin.Test
             _mergeConfig = new MergeConfig() {Enabled = true};
             _context = Build.ContextWithMocks();
             _context.ConfigProvider.GetConfig<IMergeConfig>().Returns(_mergeConfig);
-            _context.ConfigProvider.GetConfig<IMiningConfig>();
             _context.MemDbFactory = new MemDbFactory();
             _plugin = new MergePlugin();
         }
