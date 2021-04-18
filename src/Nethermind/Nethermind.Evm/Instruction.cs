@@ -76,6 +76,7 @@ namespace Nethermind.Evm
         GASLIMIT = 0x45,
         CHAINID = 0x46,
         SELFBALANCE = 0x47,
+        BASEFEE = 0x48,
 
         POP = 0x50,
         MLOAD = 0x51,
