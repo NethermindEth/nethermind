@@ -49,7 +49,7 @@ namespace Nethermind.JsonRpc.Benchmark
     {
         private IVirtualMachine _virtualMachine;
         private IBlockhashProvider _blockhashProvider;
-        private EthModule _ethModule;
+        private EthRpcModule _ethModule;
 
         [GlobalSetup]
         public void GlobalSetup()
@@ -128,7 +128,7 @@ namespace Nethermind.JsonRpc.Benchmark
                 false,
                 false);
             
-            _ethModule = new EthModule(
+            _ethModule = new EthRpcModule(
                 new JsonRpcConfig(),
                 bridge,
                 blockTree,
