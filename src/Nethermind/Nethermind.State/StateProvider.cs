@@ -50,7 +50,7 @@ namespace Nethermind.State
         private int _capacity = StartCapacity;
         private Change?[] _changes = new Change?[StartCapacity];
         private int _currentPosition = -1;
-        
+
         public StateProvider(ITrieStore? trieStore, IKeyValueStore? codeDb, ILogManager? logManager)
         {
             _logger = logManager?.GetClassLogger<StateProvider>() ?? throw new ArgumentNullException(nameof(logManager));
@@ -268,7 +268,7 @@ namespace Nethermind.State
             if (_logger.IsTrace) _logger.Trace($"  Update {address} N {account.Nonce} -> {changedAccount.Nonce}");
             PushUpdate(address, changedAccount);
         }
-        
+
         public void IncrementNonce(Address address)
         {
             _needsStateRootUpdate = true;
@@ -809,7 +809,7 @@ namespace Nethermind.State
 
             _tree.Commit(blockNumber);
         }
-        
+
         public void CommitBranch()
         {
             // placeholder for the three level Commit->CommitBlock->CommitBranch

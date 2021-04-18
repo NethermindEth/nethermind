@@ -285,6 +285,11 @@ namespace Nethermind.Evm.Tracing
             _currentIndex++;
         }
 
+        public void EndBlockTrace()
+        {
+            _otherTracer.EndBlockTrace();
+        }
+        
         public void SetOtherTracer(IBlockTracer blockTracer)
         {
             _otherTracer = blockTracer;

@@ -232,6 +232,8 @@ namespace Nethermind.Blockchain.Processing
                 TransactionProcessed?.Invoke(this, new TxProcessedEventArgs(i, currentTx, _receiptsTracer.TxReceipts[i]));
             }
 
+            _receiptsTracer.EndBlockTrace();
+
             return _receiptsTracer.TxReceipts;
         }
 

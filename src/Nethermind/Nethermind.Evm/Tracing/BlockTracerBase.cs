@@ -71,6 +71,8 @@ namespace Nethermind.Evm.Tracing
             }
         }
 
+        public abstract void EndBlockTrace();
+
         protected List<TTrace> TxTraces { get; }
 
         public IReadOnlyCollection<TTrace> BuildResult()

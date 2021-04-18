@@ -23,6 +23,8 @@ namespace Nethermind.Blockchain.Processing
 {
     public interface IBlockchainProcessor : IDisposable
     {
+        public CompositeBlockTracerFactory BlockTracerFactory { get; }
+
         void Start();
         
         Task StopAsync(bool processRemainingBlocks = false);

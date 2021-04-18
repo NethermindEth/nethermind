@@ -48,5 +48,9 @@ namespace Nethermind.Evm.Tracing.Proofs
         public override void StartNewBlockTrace(Block block)
         {
         }
+
+        public override void EndBlockTrace()
+        {
+        }
     }
 }

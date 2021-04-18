@@ -66,5 +66,10 @@ namespace Nethermind.Evm.Tracing
             _token.ThrowIfCancellationRequested();
             _innerTracer.EndTxTrace();
         }
+
+        public void EndBlockTrace()
+        {
+            _innerTracer.EndBlockTrace();
+        }
     }
 }
