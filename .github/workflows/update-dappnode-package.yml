@@ -1,18 +1,18 @@
-name: Update DAppNode package
+name: '[UPDATE] DAppNode package'
 
 on:
   repository_dispatch:
     types: dappnode
     
 jobs:
-  dappnode-update-nethermind:
-    name: Trigger the DAppNode Package update
+  update-dappnode:
+    name: Triggering the DAppNode Package update
     runs-on: ubuntu-latest
     steps:
-    - name: Get the tag
+    - name: Getting Tag
       id: get_tag
       run: echo ::set-output name=TAG::${{ github.event.client_payload.tag }}
-    - name: Send dispatch event to nethermind DAppNode Package repository
+    - name: Sending dispatch event to nethermind DAppNode Package repository
       env: 
         DISPATCH_REPO: dappnode/DAppNodePackage-nethermind
       run: |
