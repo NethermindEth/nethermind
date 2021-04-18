@@ -36,8 +36,8 @@ namespace Nethermind.JsonRpc.Benchmark
 
         public ParamInfoBenchmarks()
         {
-            Scenarios[0] = typeof(EthModule).GetMethod("eth_getStorageAt", BindingFlags.Public | BindingFlags.Instance);
-            Scenarios[1] = typeof(EthModule).GetMethod("eth_blockNumber", BindingFlags.Public | BindingFlags.Instance);
+            Scenarios[0] = typeof(EthRpcModule).GetMethod("eth_getStorageAt", BindingFlags.Public | BindingFlags.Instance);
+            Scenarios[1] = typeof(EthRpcModule).GetMethod("eth_blockNumber", BindingFlags.Public | BindingFlags.Instance);
         }
 
         [Benchmark(Baseline = true)]
