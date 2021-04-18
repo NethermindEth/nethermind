@@ -23,6 +23,8 @@ namespace Nethermind.Mev.Test
 {
     public class TestJson : ICloneable
     {
+        public string? Name { get; set; }
+        
         public string? Description { get; set; }
         
         public TxForTest?[]? Txs { get; set; }
@@ -37,26 +39,26 @@ namespace Nethermind.Mev.Test
         
         public TailGasType TailGasType { get; set; }
 
-        public long MinOptimalProfitRatio { get; set; } = 100;
-
         public long MaxGasLimitRatio { get; set; } = 100;
         
         public object Clone()
         {
             TestJson testJson = new ();
+            testJson.Name = Name;
             testJson.Description = Description;
             testJson.Bundles = Bundles;
             testJson.Txs = Txs;
             testJson.OptimalProfit = OptimalProfit;
             testJson.GasLimit = GasLimit;
             testJson.SelectorType = SelectorType;
-            testJson.MinOptimalProfitRatio = MinOptimalProfitRatio;
+            testJson.TailGasType = TailGasType;
+            testJson.MaxGasLimitRatio = MaxGasLimitRatio;
             return testJson;
         }
 
         public override string ToString()
         {
-            return $"{Description} {SelectorType} tail {TailGasType} gas {MaxGasLimitRatio}% profit {MinOptimalProfitRatio}%";
+            return $"{Name} {SelectorType} tail {TailGasType} gas {MaxGasLimitRatio}%";
         }
     }
 }

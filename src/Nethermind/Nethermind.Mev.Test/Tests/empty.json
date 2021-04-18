@@ -1,5 +1,6 @@
 {
-  "description" : "empty",
+  "name" : "empty",
+  "description" : "no bundles and no transactions give a 0 profit block",
   "txs" : [
   ],
   "bundles" : [

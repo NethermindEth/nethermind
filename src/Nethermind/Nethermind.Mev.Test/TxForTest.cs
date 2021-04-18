@@ -29,5 +29,7 @@ namespace Nethermind.Mev.Test
         public UInt256 GasPrice { get; set; }
         
         public UInt256 CoinbasePayment { get; set; }
+
+        public TxVisibility Visibility { get; set; }
     }
 }

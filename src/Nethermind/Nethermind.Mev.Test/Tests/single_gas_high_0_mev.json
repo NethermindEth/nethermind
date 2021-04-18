@@ -1,5 +1,6 @@
 {
-  "description" : "single_gas_high_0_mev",
+  "name" : "single_gas_high_0_mev",
+  "description" : "single bundle with a high gas price and 0 MEV",
   "txs" : [
     {
       "hash": "0x0000000000000000000000000000000000000000000000000000000000000000",

@@ -1,5 +1,6 @@
 {
-  "description" : "single_gas_0_high_mev",
+  "name" : "single_gas_0_high_mev",
+  "description" : "single bundle with a 0 gas price but high MEV value that beats a typical tail gas",
   "txs" : [
     {
       "hash": "0x0000000000000000000000000000000000000000000000000000000000000000",

@@ -58,7 +58,8 @@ namespace Nethermind.Mev.Test
             return simulatedMevBundle;
         }
 
-        public IEnumerable<SimulatedMevBundle> Simulate(BlockHeader parent, long gasLimit, IEnumerable<MevBundle> bundles)
+        public IEnumerable<SimulatedMevBundle> Simulate(BlockHeader parent, long gasLimit,
+            IEnumerable<MevBundle> bundles)
         {
             foreach (MevBundle mevBundle in bundles)
             {
@@ -74,9 +75,10 @@ namespace Nethermind.Mev.Test
 
         public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit)
         {
-            return _testJson.Txs!.Select(tx => ToTx(tx!.Hash));
+            return _testJson.Txs!.Where(tx => tx.Visibility != TxVisibility.Relay)
+                .Select(tx => ToTx(tx!.Hash));
         }
-        
+
         /// <summary>
         /// Would be nicer with schema but let us keep it simple here.
         /// </summary>
@@ -90,21 +92,26 @@ namespace Nethermind.Mev.Test
                 Assert.Fail("Gas limit not specified");
             }
 
+            if (testJson.Name is null)
+            {
+                Assert.Fail("Name missing");
+            }
+
             if (testJson.Description is null)
             {
                 Assert.Fail("Description missing");
             }
-            
+
             if (testJson.Bundles is null)
             {
                 Assert.Fail("Bundles missing");
             }
-            
+
             if (testJson.Txs is null)
             {
                 Assert.Fail("Transactions missing");
             }
-            
+
             if (testJson.OptimalProfit is null)
             {
                 Assert.Fail("Optimal profit not specified");
@@ -114,7 +121,7 @@ namespace Nethermind.Mev.Test
             {
                 Assert.Fail("One of the bundles is null");
             }
-            
+
             if (testJson.Txs!.Any(item => item is null))
             {
                 Assert.Fail("One of the transactions is null");
@@ -127,9 +134,10 @@ namespace Nethermind.Mev.Test
             return new(bundleForTest.Txs.Select(ToTx).ToArray());
         }
 
-        private static Transaction ToTx(Keccak hash)
+        private Transaction ToTx(Keccak txs)
         {
-            return new() {Hash = hash};
+            TxForTest txForTest = _testJson.Txs!.Single(t => t!.Hash == txs)!; 
+            return new() {Hash = txForTest.Hash, GasLimit = txForTest.GasUsed, GasPrice = txForTest.GasPrice};
         }
     }
 }

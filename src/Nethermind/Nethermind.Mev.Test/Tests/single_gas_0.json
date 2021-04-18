@@ -1,5 +1,6 @@
 {
-  "description" : "single_gas_0",
+  "name" : "single_gas_0",
+  "description" : "single bundle with a 0 payment giving 0 profit - we do not care whether it is included or not",
   "txs" : [
     {
       "hash": "0x0000000000000000000000000000000000000000000000000000000000000000",

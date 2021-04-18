@@ -1,5 +1,6 @@
 {
-  "description" : "single_gas_1",
+  "name" : "single_gas_1",
+  "description" : "single bundle with a 1 gas price - can be excluded if we make tail gas assumptions",
   "txs" : [
     {
       "hash": "0x0000000000000000000000000000000000000000000000000000000000000000",
@@ -16,6 +17,6 @@
       ]
     }
   ],
-  "optimalProfit" : 0,
+  "optimalProfit" : 21000,
   "gasLimit" : 12000000
 }

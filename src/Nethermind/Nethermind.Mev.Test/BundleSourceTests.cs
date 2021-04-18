@@ -39,14 +39,14 @@ namespace Nethermind.Mev.Test
         public void Test(TestJson testJson)
         {
             TestSimulator sim = new(testJson);
-            
+
             ITailGasPriceCalculator tailGas = testJson.TailGasType switch
             {
                 TailGasType.Any => new ConstantTailGasPriceCalculator(0.GWei()),
                 TailGasType.Constant80 => new ConstantTailGasPriceCalculator(80.GWei()),
                 _ => throw new ArgumentOutOfRangeException()
             };
-            
+
             IBundleSource selector = testJson.SelectorType switch
             {
                 SelectorType.V1 => new V1Selector(sim, sim),
@@ -55,25 +55,17 @@ namespace Nethermind.Mev.Test
             };
 
             IEnumerable<MevBundle> selected = selector.GetBundles(_blockHeader, testJson.GasLimit!.Value);
-            IEnumerable<SimulatedMevBundle> simulated = sim.Simulate(_blockHeader, testJson.GasLimit!.Value, selected);
-            UInt256 totalProfit = simulated.Aggregate<SimulatedMevBundle, UInt256>(0, (profit, s) => profit + s.Profit);
-            bool minRatioReached =
-                ((UInt256)testJson.MinOptimalProfitRatio * testJson.OptimalProfit / 100) <= totalProfit;
-            minRatioReached.Should().BeTrue();
+            SimulatedMevBundle[]? simulated = sim.Simulate(_blockHeader, testJson.GasLimit!.Value, selected).ToArray();
+            long totalGasUsedByBundles = simulated.Sum(s => s.GasUsed);
+            long gasLeftForTransactions = testJson.GasLimit!.Value - totalGasUsedByBundles;
+            IEnumerable<Transaction>? txs = sim.GetTransactions(_blockHeader, gasLeftForTransactions);
+            
+            UInt256 totalProfit = simulated.Aggregate<SimulatedMevBundle, UInt256>(0, (profit, x) => profit + x.Profit);
+            totalProfit += txs.Aggregate<Transaction, UInt256>(0, (profit, x) => profit + (x.GasPrice * (UInt256)x.GasLimit));
+            
+            totalProfit.Should().Be(testJson.OptimalProfit!.Value, testJson.Description);
         }
 
-        private static IEnumerable<TestJson> AllProfitLevels(TestJson testJson)
-        {
-            long[] ratios = {50L, 75L, 100L};
-
-            foreach (long ratio in ratios)
-            {
-                TestJson withRatio = (TestJson)testJson.Clone();
-                withRatio.MinOptimalProfitRatio = ratio;
-                yield return withRatio;
-            }
-        }
-        
         private static IEnumerable<TestJson> AllGasLimits(TestJson testJson)
         {
             long[] ratios = {33, 100};
@@ -85,24 +77,24 @@ namespace Nethermind.Mev.Test
                 yield return withRatio;
             }
         }
-        
+
         private static IEnumerable<TestJson> AllTailGasTypes(TestJson testJson)
         {
             foreach (TailGasType value in Enum.GetValues<TailGasType>())
             {
                 TestJson withSelector = (TestJson)testJson.Clone();
                 withSelector.TailGasType = value;
-                yield return withSelector;    
+                yield return withSelector;
             }
         }
-        
+
         private static IEnumerable<TestJson> AllSelectors(TestJson testJson)
         {
             foreach (SelectorType value in Enum.GetValues<SelectorType>())
             {
                 TestJson withSelector = (TestJson)testJson.Clone();
                 withSelector.SelectorType = value;
-                yield return withSelector;    
+                yield return withSelector;
             }
         }
 
@@ -119,14 +111,11 @@ namespace Nethermind.Mev.Test
                 {
                     foreach (TestJson withSelector in AllSelectors(testJson))
                     {
-                        foreach (TestJson withProfitLevel in AllProfitLevels(withSelector))
+                        foreach (TestJson withGasLimit in AllGasLimits(withSelector))
                         {
-                            foreach (TestJson withGasLimit in AllGasLimits(withProfitLevel))
+                            foreach (TestJson withTailGasType in AllTailGasTypes(withGasLimit))
                             {
-                                foreach (TestJson withTailGasType in AllTailGasTypes(withGasLimit))
-                                {
-                                    yield return withTailGasType;
-                                }
+                                yield return withTailGasType;
                             }
                         }
                     }
