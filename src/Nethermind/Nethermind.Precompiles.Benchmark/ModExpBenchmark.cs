@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Collections.Generic;
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Jobs;
@@ -32,7 +33,7 @@ namespace Nethermind.Precompiles.Benchmark
         protected override string InputsDirectory => "modexp";
         
         [Benchmark]
-        public (byte[], bool) BigInt()
+        public (ReadOnlyMemory<byte>, bool) BigInt()
         {
             return ModExpPrecompile.OldRun(Input.Bytes);
         }

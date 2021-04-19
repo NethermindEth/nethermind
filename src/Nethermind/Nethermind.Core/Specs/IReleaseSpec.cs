@@ -231,6 +231,11 @@ namespace Nethermind.Core.Specs
         bool IsEip1559Enabled { get; }
         
         /// <summary>
+        /// BaseFee opcode
+        /// </summary>
+        bool IsEip3198Enabled { get; }
+        
+        /// <summary>
         /// Should transactions be validated against chainId.
         /// </summary>
         /// <remarks>Backward compatibility for early Kovan blocks.</remarks>
@@ -301,5 +306,7 @@ namespace Nethermind.Core.Specs
         public bool UseNetGasMeteringWithAStipendFix => UseIstanbulNetGasMetering;
         
         public bool Use63Over64Rule => UseShanghaiDDosProtection;
+        
+        public bool BaseFeeEnabled => IsEip3198Enabled;
     }
 }
