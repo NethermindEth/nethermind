@@ -21,7 +21,7 @@ using Nethermind.Core;
 namespace Nethermind.TxPool
 {
     /// <summary>
-    /// Default ordering by <see cref="Transaction.Timestamp"/> asc
+    /// Default ordering by <see cref="Transaction.Timestamp"/> desc
     /// </summary>
     public class CompareTxByTimestamp : IComparer<Transaction>
     {
@@ -35,7 +35,7 @@ namespace Nethermind.TxPool
             if (ReferenceEquals(null, y)) return 1;
             if (ReferenceEquals(null, x)) return -1;
             
-            return x.Timestamp.CompareTo(y.Timestamp);
+            return y.Timestamp.CompareTo(x.Timestamp);
         }
     }
 }

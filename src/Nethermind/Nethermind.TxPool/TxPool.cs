@@ -57,6 +57,8 @@ namespace Nethermind.TxPool
         private readonly LruKeyCache<Keccak> _hashCache = new(MemoryAllowance.TxHashCacheSize,
             Math.Min(1024 * 16, MemoryAllowance.TxHashCacheSize), "tx hashes");
 
+        private readonly ConcurrentDictionary<Keccak, byte> _pendingHashes = new();
+
         /// <summary>
         /// Number of blocks after which own transaction will not be resurrected any more
         /// </summary>
@@ -185,6 +187,16 @@ namespace Nethermind.TxPool
 
             if (_logger.IsTrace) _logger.Trace($"Removed a peer from TX pool: {nodeId}");
         }
+        
+        public bool TryAddToPendingHashes(Keccak hash)
+        {
+            return _pendingHashes.TryAdd(hash, 0);
+        }
+
+        public void ResetPendingHashes()
+        {
+            _pendingHashes.Clear();
+        }
 
         public AddTxResult AddTransaction(Transaction tx, TxHandlingOptions handlingOptions)
         {
@@ -194,6 +206,7 @@ namespace Nethermind.TxPool
             }
             
             tx.PoolIndex = Interlocked.Increment(ref _txIndex);
+            _pendingHashes.TryRemove(tx.Hash, out _);
 
             NewDiscovered?.Invoke(this, new TxEventArgs(tx));
 
