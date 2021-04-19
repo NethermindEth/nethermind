@@ -193,11 +193,6 @@ namespace Nethermind.TxPool
             return _pendingHashes.TryAdd(hash, 0);
         }
 
-        public void ResetPendingHashes()
-        {
-            _pendingHashes.Clear();
-        }
-
         public AddTxResult AddTransaction(Transaction tx, TxHandlingOptions handlingOptions)
         {
             if (tx.Hash is null)

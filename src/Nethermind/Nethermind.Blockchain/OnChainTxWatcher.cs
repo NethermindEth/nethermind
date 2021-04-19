@@ -76,8 +76,6 @@ namespace Nethermind.Blockchain
             TxPool.Metrics.DarkPoolRatioLevel1 = transactionsInBlock == 0 ? 0 : (float)discoveredForHashCache / transactionsInBlock;
             TxPool.Metrics.DarkPoolRatioLevel2 = transactionsInBlock == 0 ? 0 : (float)discoveredForPendingTxs / transactionsInBlock;
             
-            _txPool.ResetPendingHashes();
-
             // the hash will only be the same during perf test runs / modified DB states
             if (previousBlock is not null)
             {

@@ -41,9 +41,7 @@ namespace Nethermind.TxPool
         public void RemovePeer(PublicKey nodeId) { }
         
         public bool TryAddToPendingHashes(Keccak hash) => false;
-
-        public void ResetPendingHashes() { }
-
+        
         public AddTxResult AddTransaction(Transaction tx, TxHandlingOptions txHandlingOptions) => AddTxResult.Added;
 
         public bool RemoveTransaction(Keccak hash, bool removeBelowThisTxNonce) => false;
