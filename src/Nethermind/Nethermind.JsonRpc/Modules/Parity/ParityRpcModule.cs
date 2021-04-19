@@ -80,7 +80,21 @@ namespace Nethermind.JsonRpc.Modules.Parity
             Block block = searchResult.Object;
             TxReceipt[] receipts = _receiptFinder.Get(block) ?? new TxReceipt[block.Transactions.Length];
             IEnumerable<ReceiptForRpc> result = receipts.Zip(block.Transactions, (r, t) => new ReceiptForRpc(t.Hash, r));
-            return ResultWrapper<ReceiptForRpc[]>.Success(result.ToArray());
+            ReceiptForRpc[] resultAsArray = result.ToArray();
+            MakeLogIndexesUniqueInBlock(resultAsArray);
+            return ResultWrapper<ReceiptForRpc[]>.Success(resultAsArray);
+        }
+
+        private static void MakeLogIndexesUniqueInBlock(ReceiptForRpc[] resultAsArray)
+        {
+            int logIndexInBlock = 0;
+            for (int receiptIndex = 0; receiptIndex < resultAsArray.Length; receiptIndex++)
+            {
+                for (int logIndexInTx = 0; logIndexInTx < resultAsArray[receiptIndex].Logs.Length; logIndexInTx++)
+                {
+                    resultAsArray[receiptIndex].Logs[logIndexInTx].LogIndex = logIndexInBlock++;
+                }
+            }
         }
 
         public ResultWrapper<bool> parity_setEngineSigner(Address address, string password)
