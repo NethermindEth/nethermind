@@ -64,7 +64,7 @@ namespace Nethermind.Merge.Plugin.Test
             
             private IBlockValidator BlockValidator { get; set; } = null!;
 
-            private Signer Signer { get; set; } = null!;
+            private ISigner Signer { get; set; } = null!;
 
             protected override ITestBlockProducer CreateTestBlockProducer(TxPoolTxSource txPoolTxSource, BlockchainProcessor chainProcessor, IStateProvider producerStateProvider, ISealer sealer)
             {
@@ -92,7 +92,7 @@ namespace Nethermind.Merge.Plugin.Test
             
             protected override BlockProcessor CreateBlockProcessor()
             {
-                Signer = new(SpecProvider.ChainId, MinerKey, LogManager);
+                Signer = new Eth2Signer(MinerAddress);
                 HeaderValidator headerValidator = new(BlockTree, new Eth2SealEngine(Signer), SpecProvider, LogManager);
                 BlockValidator = CreateBlockValidator(headerValidator);
                     
@@ -117,8 +117,7 @@ namespace Nethermind.Merge.Plugin.Test
                     SpecProvider,
                     LogManager);
 
-            public PrivateKey MinerKey => TestItem.PrivateKeyA;
-            public Address MinerAddress => MinerKey.Address;
+            public Address MinerAddress => TestItem.PrivateKeyA.Address;
 
             protected override async Task<TestBlockchain> Build(ISpecProvider? specProvider = null, UInt256? initialValues = null)
             {

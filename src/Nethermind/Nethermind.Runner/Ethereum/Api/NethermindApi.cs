@@ -188,7 +188,11 @@ namespace Nethermind.Runner.Ethereum.Api
         public IWebSocketsManager WebSocketsManager { get; set; } = new WebSocketsManager();
 
         public ProtectedPrivateKey? NodeKey { get; set; }
-        public ProtectedPrivateKey? OriginalSignerKey { get; set; } // TODO: please explain what it does
+        
+        /// <summary>
+        /// Key used for signing blocks. Original as its loaded on startup. This can later be changed via RPC in <see cref="Signer"/>. 
+        /// </summary>
+        public ProtectedPrivateKey? OriginalSignerKey { get; set; }
 
         public ChainSpec? ChainSpec { get; set; }
         public DisposableStack DisposeStack { get; } = new();

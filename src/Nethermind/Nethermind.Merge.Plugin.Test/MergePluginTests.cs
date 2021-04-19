@@ -19,13 +19,14 @@ using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Runner.Ethereum.Api;
 using NUnit.Framework;
-using Nethermind.Runner.Test.Ethereum;
 using NSubstitute;
+using Build = Nethermind.Runner.Test.Ethereum.Build;
 
 namespace Nethermind.Merge.Plugin.Test
 {
@@ -38,7 +39,7 @@ namespace Nethermind.Merge.Plugin.Test
         [SetUp]
         public void Setup()
         {
-            _mergeConfig = new MergeConfig() {Enabled = true};
+            _mergeConfig = new MergeConfig() {Enabled = true, BlockAuthorAccount = TestItem.AddressA.ToString()};
             _context = Build.ContextWithMocks();
             _context.ConfigProvider.GetConfig<IMergeConfig>().Returns(_mergeConfig);
             _context.ConfigProvider.GetConfig<ISyncConfig>().Returns(new SyncConfig());
@@ -48,7 +49,7 @@ namespace Nethermind.Merge.Plugin.Test
         
         [TestCase(true)]
         [TestCase(false)]
-        public async Task Init_merge_plugin_does_not_throw_exception(bool enabled)
+        public void Init_merge_plugin_does_not_throw_exception(bool enabled)
         {
             _mergeConfig.Enabled = enabled;
             Assert.DoesNotThrowAsync(async () => await _plugin.Init(_context));

@@ -55,9 +55,9 @@ namespace Nethermind.Merge.Plugin.Test
             }
         }
 
-        public Block LastProducedBlock => BlockProduced;
+        public Block LastProducedBlock => BlockProduced!;
 
-        public event EventHandler<BlockEventArgs> LastProducedBlockChanged;
+        public event EventHandler<BlockEventArgs> LastProducedBlockChanged = null!;
         
         public void BuildNewBlock()
         {

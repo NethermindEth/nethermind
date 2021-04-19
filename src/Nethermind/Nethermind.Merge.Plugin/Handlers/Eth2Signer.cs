@@ -15,18 +15,25 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using Nethermind.Config;
+using System.Threading.Tasks;
+using Nethermind.Consensus;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Crypto;
 
-namespace Nethermind.Merge.Plugin
+namespace Nethermind.Merge.Plugin.Handlers
 {
-    public interface IMergeConfig : IConfig
+    public class Eth2Signer : ISigner
     {
-        [ConfigItem(
-            Description = "Defines whether the MEV bundles are allowed.",
-            DefaultValue = "false")]
-        bool Enabled { get; set; }
+        public Eth2Signer(Address blockAuthorAddress)
+        {
+            Address = blockAuthorAddress;
+        }
         
-        [ConfigItem(Description = "Account to be used by the block author / coinbase.", DefaultValue = "")]
-        public string BlockAuthorAccount { get; set; }
+        public ValueTask Sign(Transaction tx) => default;
+        public ProtectedPrivateKey Key => null!;
+        public Address Address { get; }
+        public Signature Sign(Keccak message) => null!;
+        public bool CanSign { get; } = true;
     }
 }

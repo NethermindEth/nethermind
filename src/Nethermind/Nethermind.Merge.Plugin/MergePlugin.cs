@@ -14,11 +14,14 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
+using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
@@ -43,6 +46,18 @@ namespace Nethermind.Merge.Plugin
             _api = nethermindApi;
             _mergeConfig = nethermindApi.Config<IMergeConfig>();
             _logger = _api.LogManager.GetClassLogger();
+
+            if (_mergeConfig.Enabled)
+            {
+                if (string.IsNullOrEmpty(_mergeConfig.BlockAuthorAccount))
+                {
+                    if (_logger.IsError) _logger.Error($"{nameof(MergeConfig)}.{nameof(_mergeConfig.BlockAuthorAccount)} is not set up. Cannot create blocks. Stopping.");
+                    Environment.Exit(13); // ERROR_INVALID_DATA
+                }
+                
+                _api.EngineSigner = new Eth2Signer(new Address(_mergeConfig.BlockAuthorAccount));
+            }
+
             return Task.CompletedTask;
         }
 
@@ -85,6 +100,5 @@ namespace Nethermind.Merge.Plugin
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 
         public SealEngineType SealEngineType => SealEngineType.Custom;
-        
     }
 }
