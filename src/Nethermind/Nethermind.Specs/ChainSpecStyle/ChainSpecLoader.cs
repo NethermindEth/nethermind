@@ -276,11 +276,13 @@ namespace Nethermind.Specs.ChainSpecStyle
             {
                 chainSpec.SealEngineType = SealEngineType.NethDev;
             }
-            else if (!string.IsNullOrEmpty(chainSpecJson.Engine?.Type))
+            
+            if (!string.IsNullOrEmpty(chainSpecJson.Engine?.Type))
             {
                 chainSpec.SealEngineType = chainSpecJson.Engine.Type;
             }
-            else
+            
+            if (string.IsNullOrEmpty(chainSpec.SealEngineType))
             {
                 throw new NotSupportedException("unknown seal engine in chainspec");
             }

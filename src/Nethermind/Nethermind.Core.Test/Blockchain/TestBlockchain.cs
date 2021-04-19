@@ -75,7 +75,7 @@ namespace Nethermind.Core.Test.Blockchain
         {
         }
         
-        public SealEngineType SealEngineType { get; set; }
+        public string SealEngineType { get; set; }
 
         public static Address AccountA = TestItem.AddressA;
         public static Address AccountB = TestItem.AddressB;
@@ -197,7 +197,7 @@ namespace Nethermind.Core.Test.Blockchain
             }
             
             genesisBlockBuilder.WithStateRoot(State.StateRoot);
-            if (SealEngineType == SealEngineType.AuRa)
+            if (SealEngineType == Nethermind.Core.SealEngineType.AuRa)
             {
                 genesisBlockBuilder.WithAura(0, new byte[65]);
             }

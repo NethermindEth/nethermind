@@ -1,6 +1,7 @@
 {
   "name": "Catalyst",
   "engine": {
+    "Type": "Eth2Merge",
     "Ethash": {
       "params": {
         "minimumDifficulty": "0x20000",

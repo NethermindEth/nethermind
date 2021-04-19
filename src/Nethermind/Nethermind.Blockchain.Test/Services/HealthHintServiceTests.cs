@@ -64,7 +64,7 @@ namespace Nethermind.Blockchain.Test.Services
                 };
                 yield return new BlockProcessorIntervalHint()
                 {
-                    ChainSpec = new ChainSpec() {SealEngineType = SealEngineType.Custom }
+                    ChainSpec = new ChainSpec() {SealEngineType = "Interval" }
                 };
                 yield return new BlockProcessorIntervalHint()
                 {

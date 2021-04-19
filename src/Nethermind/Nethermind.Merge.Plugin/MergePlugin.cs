@@ -99,6 +99,6 @@ namespace Nethermind.Merge.Plugin
         
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 
-        public SealEngineType SealEngineType => SealEngineType.Custom;
+        public string SealEngineType => "Eth2Merge";
     }
 }

@@ -35,6 +35,11 @@ namespace Nethermind.Merge.Plugin.Data
 {
     public class BlockRequestResult
     {
+        public BlockRequestResult()
+        {
+            
+        }
+        
         public BlockRequestResult(bool setDefaults = false)
         {
             if (setDefaults)
