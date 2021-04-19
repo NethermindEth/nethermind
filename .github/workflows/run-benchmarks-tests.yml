@@ -1,0 +1,24 @@
+name: '[RUN] Benchmark Performance Tests'
+
+on:
+  pull_request:
+    branches: [ master ]
+
+jobs:
+  run-benchmarks:
+    if: github.repository_owner == 'NethermindEth'
+    name: Triggering Nethermind Benchmark Performance Run
+    runs-on: ubuntu-latest
+    steps:
+    - name: Configure AWS Credentials
+      uses: aws-actions/configure-aws-credentials@v1
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: eu-central-1
+    - name: Deploying Amazon EC2 instance for Benchmarking
+      uses: aws-actions/aws-cloudformation-github-deploy@master
+      with:
+        name: Benchmark-${GITHUB_HEAD_REF}
+        template: template-url-goes-here
+        parameter-overrides: "CommitSHA=${GITHUB_SHA}"
