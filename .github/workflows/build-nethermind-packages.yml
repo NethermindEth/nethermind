@@ -1,0 +1,69 @@
+name: '[BUILD] Nethermind packages'
+
+on: workflow_dispatch
+
+jobs:
+  build-nethermind:
+    name: Building Nethermind Packages
+    runs-on: ubuntu-latest
+    env: 
+      RELEASE_DIRECTORY: /home/runner/work/nethermind/nethermind
+      LIN_RELEASE: nethermind-lin-x64
+      OSX_RELEASE: nethermind-osx-x64
+      WIN_RELEASE: nethermind-win-x64
+      LIN_ARM64_RELEASE: nethermind-lin-arm64
+      LINUX: linux-x64
+      OSX: osx-x64
+      WIN10: win10-x64
+      LINUX_ARM64: linux-arm64
+    steps:
+    - name: Checking out Nethermind repository
+      uses: actions/checkout@master
+      with:
+        submodules: recursive
+        path: nethermind
+        fetch-depth: 0
+    - name: Checking out Nethermind Launcher repository
+      uses: actions/checkout@master
+      with:
+        repository: NethermindEth/nethermind.launcher
+        path: launcher
+    - name: Setting up Node.js
+      uses: actions/setup-node@master
+      with:
+        node-version: "13"
+    - name: Setting up Build Environment
+      run: |
+        npm i -g @vercel/ncc pkg
+    - name: Setting up Packages
+      run: ./nethermind/scripts/deployment/setup-packages.sh
+    - name: Building Runner
+      run: ./nethermind/scripts/deployment/build-runner.sh
+    - name: Building BeamWallet
+      run: ./nethermind/scripts/deployment/build-wallet.sh
+    - name: Building Cli
+      run: ./nethermind/scripts/deployment/build-cli.sh
+    - name: Building Launcher
+      run: ./nethermind/scripts/deployment/build-launcher.sh
+    - name: Archiving packages
+      run: ./nethermind/scripts/deployment/archive-packages.sh
+    - uses: actions/upload-artifact@master
+      name: Uploading Nethermind darwin package
+      with:
+        name: nethermind-darwin-package
+        path: ${{ env.RELEASE_DIRECTORY }}/${{ env.OSX_RELEASE }}/nethermind-darwin-amd64-*
+    - uses: actions/upload-artifact@master
+      name: Uploading Nethermind linux package
+      with:
+        name: nethermind-linux-package
+        path: ${{ env.RELEASE_DIRECTORY }}/${{ env.LIN_RELEASE }}/nethermind-linux-amd64-*
+    - uses: actions/upload-artifact@master
+      name: Uploading Nethermind windows package
+      with:
+        name: nethermind-windows-package
+        path: ${{ env.RELEASE_DIRECTORY }}/${{ env.WIN_RELEASE }}/nethermind-windows-amd64-*
+    - uses: actions/upload-artifact@master
+      name: Uploading Nethermind linux arm64 package
+      with:
+        name: nethermind-linux-arm64-package
+        path: ${{ env.RELEASE_DIRECTORY }}/${{ env.LIN_ARM64_RELEASE }}/nethermind-linux-arm64-*

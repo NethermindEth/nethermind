@@ -1695,6 +1695,24 @@ namespace Nethermind.Evm
                         stack.PushUInt256(in balance);
                         break;
                     }
+                    case Instruction.BASEFEE:
+                    {
+                        if (!spec.BaseFeeEnabled)
+                        {
+                            EndInstructionTraceError(EvmExceptionType.BadInstruction);
+                            return CallResult.InvalidInstructionException;
+                        }
+
+                        if (!UpdateGas(GasCostOf.Base, ref gasAvailable))
+                        {
+                            EndInstructionTraceError(EvmExceptionType.OutOfGas);
+                            return CallResult.OutOfGasException;
+                        }
+
+                        UInt256 baseFee = vmState.Env.TxExecutionContext.Header.BaseFee;
+                        stack.PushUInt256(in baseFee);
+                        break;
+                    }
                     case Instruction.POP:
                     {
                         if (!UpdateGas(GasCostOf.Base, ref gasAvailable))

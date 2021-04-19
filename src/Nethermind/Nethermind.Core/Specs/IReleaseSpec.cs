@@ -301,5 +301,7 @@ namespace Nethermind.Core.Specs
         public bool UseNetGasMeteringWithAStipendFix => UseIstanbulNetGasMetering;
         
         public bool Use63Over64Rule => UseShanghaiDDosProtection;
+        
+        public bool BaseFeeEnabled => false;
     }
 }

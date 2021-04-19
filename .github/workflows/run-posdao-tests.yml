@@ -1,0 +1,68 @@
+name: '[RUN] POSDAO Tests'
+
+on:
+  push:
+    tags:
+    - '*'
+    inputs:
+      branch:
+        description: 'Branch to get tests from'
+        required: false
+        default: 'master'
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: 'Branch to get tests from'
+        required: false
+        default: 'master'
+
+jobs:
+  run-posdao-tests:
+    name: Running Nethermind POSDAO Tests
+    runs-on: ubuntu-latest
+    steps:
+    - name: Installing Linux packages
+      run: |
+        sudo apt-get update
+        sudo apt-get install libsnappy-dev libc6-dev libc6
+    - name: Cloning Nethermind repo
+      uses: actions/checkout@v2
+      with:
+        submodules: recursive
+        path: nethermind
+    - name: Cloning posdao-test-setup repo from Nethermind
+      uses: actions/checkout@v2
+      with:
+        repository: NethermindEth/posdao-test-setup
+        ref: ${{ github.event.inputs.branch }}
+        submodules: recursive
+        path: posdao-test-setup
+    - name: Building Nethermind binary
+      run: |
+        cd nethermind
+        mkdir bin
+        cd src/Nethermind
+        dotnet build Nethermind.sln -c Release
+        cp -r Nethermind.Runner/bin/Release/net5.0/* /home/runner/work/nethermind/nethermind/nethermind/bin/
+    - name: Setup the Node.js
+      uses: actions/setup-node@v1.4.4
+      with:
+        node-version: '12'
+    - name: Running POSDAO tests
+      run: |
+        cd posdao-test-setup
+        npm run all-nethermind-no-watcher
+    - name: Stopping and compressing logs
+      if: ${{ failure() }}
+      run: |
+        cd posdao-test-setup
+        npm run stop-test-setup
+        zip -r node-logs.zip data/node0/log data/node1/log data/node2/log \
+          data/node3/log data/node4/log data/node5/log data/node6/log data/node1/checkRandomSeed.log
+    - uses: actions/upload-artifact@master
+      if: ${{ failure() }}
+      name: Upload post-failure nodes logs
+      with:
+        name: posdao-tests-failure-logs
+        path: |
+          posdao-test-setup/node-logs.zip

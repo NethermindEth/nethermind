@@ -336,7 +336,13 @@ namespace Nethermind.Evm
         {
             EnsureDepth(depth);
 
-            _bytes.Slice((Head - depth) * 32, 32).CopyTo(_bytes.Slice(Head * 32, 32));
+            ref byte bytes = ref MemoryMarshal.GetReference(_bytes);
+
+            ref byte from = ref Unsafe.Add(ref bytes, (Head - depth) * 32);
+            ref byte to = ref Unsafe.Add(ref bytes, Head * 32);
+
+            Unsafe.WriteUnaligned(ref to, Unsafe.ReadUnaligned<Word>(ref from));
+
             if (_tracer.IsTracingInstructions)
             {
                 for (int i = depth; i >= 0; i--)
@@ -363,16 +369,16 @@ namespace Nethermind.Evm
 
         public void Swap(int depth)
         {
-            Span<byte> buffer = stackalloc byte[32];
-
             EnsureDepth(depth);
 
-            Span<byte> bottomSpan = _bytes.Slice((Head - depth) * 32, 32);
-            Span<byte> topSpan = _bytes.Slice((Head - 1) * 32, 32);
+            ref byte bytes = ref MemoryMarshal.GetReference(_bytes);
 
-            bottomSpan.CopyTo(buffer);
-            topSpan.CopyTo(bottomSpan);
-            buffer.CopyTo(topSpan);
+            ref byte bottom = ref Unsafe.Add(ref bytes, (Head - depth) * 32);
+            ref byte top = ref Unsafe.Add(ref bytes, (Head - 1) * 32);
+            
+            Word buffer = Unsafe.ReadUnaligned<Word>(ref bottom);
+            Unsafe.WriteUnaligned(ref bottom, Unsafe.ReadUnaligned<Word>(ref top));
+            Unsafe.WriteUnaligned(ref top, buffer);
 
             if (_tracer.IsTracingInstructions)
             {
@@ -383,6 +389,9 @@ namespace Nethermind.Evm
             }
         }
 
+        [StructLayout(LayoutKind.Explicit, Size = 32)]
+        struct Word { }
+        
         public List<string> GetStackTrace()
         {
             List<string> stackTrace = new();

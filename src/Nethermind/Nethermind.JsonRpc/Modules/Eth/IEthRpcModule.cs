@@ -98,8 +98,17 @@ namespace Nethermind.JsonRpc.Modules.Eth
         [JsonRpcMethod(IsImplemented = true, Description = "Executes a tx call and returns gas used (does not create a transaction)", IsSharable = false)]
         ResultWrapper<UInt256?> eth_estimateGas(TransactionForRpc transactionCall, BlockParameter? blockParameter = null);
         
-        [JsonRpcMethod(IsImplemented = true, Description = "CreateAccessList creates a EIP-2930 type AccessList for the given transaction", IsSharable = false)]
-        ResultWrapper<AccessListForRpc> eth_createAccessList(TransactionForRpc transactionCall, BlockParameter? blockParameter = null, bool optimize = true);
+        [JsonRpcMethod(IsImplemented = true,
+            Description = "Creates an [EIP2930](https://eips.ethereum.org/EIPS/eip-2930) type AccessList for the given transaction",
+            EdgeCaseHint = "If your transaction has code executed, then you can generate transaction access list with eth_createAccessList. If you send it with your transaction then it will lower your gas cost on Ethereum",
+            IsSharable = false)]
+        ResultWrapper<AccessListForRpc> eth_createAccessList(
+            [JsonRpcParameter(Description = "Transaction's details")]
+            TransactionForRpc transactionCall,
+            [JsonRpcParameter(Description = "(optional)")]
+            BlockParameter? blockParameter = null,
+            [JsonRpcParameter(Description = "(optional)")]
+            bool optimize = true);
         
         [JsonRpcMethod(IsImplemented = true, Description = "Retrieves a block by hash", IsSharable = true)]
         ResultWrapper<BlockForRpc> eth_getBlockByHash(Keccak blockHash, bool returnFullTransactionObjects = false);
