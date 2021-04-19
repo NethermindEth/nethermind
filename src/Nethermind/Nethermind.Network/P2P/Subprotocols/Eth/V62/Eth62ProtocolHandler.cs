@@ -125,12 +125,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                     break;
                 case Eth62MessageCode.Transactions:
                     Metrics.Eth62TransactionsReceived++;
-                    if (_floodController.IsAllowed())
-                    {
-                        TransactionsMessage txMsg = Deserialize<TransactionsMessage>(message.Content);
-                        ReportIn(txMsg);
-                        Handle(txMsg);
-                    }
+                    // if (_floodController.IsAllowed())
+                    // {
+                    //     TransactionsMessage txMsg = Deserialize<TransactionsMessage>(message.Content);
+                    //     ReportIn(txMsg);
+                    //     Handle(txMsg);
+                    // }
                     break;
                 case Eth62MessageCode.GetBlockHeaders:
                     GetBlockHeadersMessage getBlockHeadersMessage
