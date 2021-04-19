@@ -1,4 +1,4 @@
-name: Standard Build
+name: '[RUN] Nethermind/Ethereum Tests'
 
 on: 
   push:
@@ -6,13 +6,13 @@ on:
 
 jobs:
   neth-tests:
-    name: Nethermind Tests
+    name: Running Nethermind Tests 1
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest, macOS-latest]
     steps:
-    - uses: actions/checkout@v2.3.3
+    - uses: actions/checkout@v2
     - name: Updating submodules
       run: git submodule update --init src/rocksdb-sharp src/int256 src/Dirichlet src/Math.Gmp.Native
     - name: Installing Linux packages
@@ -22,7 +22,7 @@ jobs:
         sudo apt-get install libsnappy-dev libc6-dev libc6
     - name: Installing macOS packages
       if: matrix.os == 'macOS-latest'
-      run: brew install gmp && brew install snappy && brew install lz4 && brew install zstd
+      run: brew install snappy lz4 zstd
     - name: Nethermind.Abi.Test
       run: |
         dotnet test -c Release src/Nethermind/Nethermind.Abi.Test;
@@ -51,13 +51,13 @@ jobs:
       run: |
         dotnet test -c Release src/Nethermind/Nethermind.Cli.Test
   neth-tests2:
-    name: Nethermind Tests 2
+    name: Running Nethermind Tests 2
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest, macOS-latest]
     steps:
-    - uses: actions/checkout@v2.3.3
+    - uses: actions/checkout@v2
     - name: Updating submodules
       run: git submodule update --init src/rocksdb-sharp src/int256 src/Dirichlet src/Math.Gmp.Native
     - name: Installing Linux packages
@@ -67,7 +67,7 @@ jobs:
         sudo apt-get install libsnappy-dev libc6-dev libc6
     - name: Installing macOS packages
       if: matrix.os == 'macOS-latest'
-      run: brew install gmp && brew install snappy && brew install lz4 && brew install zstd
+      run: brew install snappy lz4 zstd
     - name: Nethermind.Clique.Test
       run: |
         dotnet test -c Release src/Nethermind/Nethermind.Clique.Test
@@ -99,13 +99,13 @@ jobs:
       run: |
         dotnet test -c Release src/Math.Gmp.Native/MathGmp.Native.UnitTests                
   neth-tests3:
-    name: Nethermind Tests 3
+    name: Running Nethermind Tests 3
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest, macOS-latest]
     steps:
-    - uses: actions/checkout@v2.3.3
+    - uses: actions/checkout@v2
     - name: Updating submodules
       run: git submodule update --init src/rocksdb-sharp src/int256 src/Dirichlet src/Math.Gmp.Native
     - name: Installing Linux packages
@@ -115,7 +115,7 @@ jobs:
         sudo apt-get install libsnappy-dev libc6-dev libc6
     - name: Installing macOS packages
       if: matrix.os == 'macOS-latest'
-      run: brew install gmp && brew install snappy && brew install lz4 && brew install zstd
+      run: brew install snappy lz4 zstd
     - name: Nethermind.HealthChecks.Test
       run: |
         dotnet test -c Release src/Nethermind/Nethermind.HealthChecks.Test
@@ -136,7 +136,7 @@ jobs:
         dotnet test -c Release src/Nethermind/Nethermind.JsonRpc.Test
     - name: Nethermind.Merge.Plugin.Test
       run: |
-        dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.Merge.Plugin.Test
+        dotnet test -c Release src/Nethermind/Nethermind.Merge.Plugin.Test
     - name: Nethermind.Mining.Test
       run: |
         dotnet test -c Release src/Nethermind/Nethermind.Mining.Test
@@ -144,13 +144,13 @@ jobs:
       run: |
         dotnet test -c Release src/Nethermind/Nethermind.Specs.Test
   neth-tests4:
-    name: Nethermind Tests 4
+    name: Running Nethermind Tests 4
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest, macOS-latest]
     steps:
-    - uses: actions/checkout@v2.3.3
+    - uses: actions/checkout@v2
     - name: Updating submodules
       run: git submodule update --init src/rocksdb-sharp src/int256 src/Math.Gmp.Native
     - name: Installing Linux packages
@@ -160,7 +160,7 @@ jobs:
         sudo apt-get install libsnappy-dev libc6-dev libc6
     - name: Installing macOS packages
       if: matrix.os == 'macOS-latest'
-      run: brew install gmp && brew install snappy && brew install lz4 && brew install zstd
+      run: brew install snappy lz4 zstd
     - name: Nethermind.Secp256k1.Test.Linux
       run: |
         dotnet test -c Release src/Nethermind/Nethermind.Secp256k1.Test
@@ -177,13 +177,13 @@ jobs:
       run: |
         dotnet test -c Release src/Nethermind/Nethermind.Synchronization.Test
   neth-tests5:
-    name: Nethermind Tests 5
+    name: Running Nethermind Tests 5
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest, macOS-latest]
     steps:
-    - uses: actions/checkout@v2.3.3
+    - uses: actions/checkout@v2
     - name: Updating submodules
       run: git submodule update --init src/rocksdb-sharp src/int256 src/Dirichlet src/Math.Gmp.Native
     - name: Installing Linux packages
@@ -193,7 +193,7 @@ jobs:
         sudo apt-get install libsnappy-dev libc6-dev libc6
     - name: Installing macOS packages
       if: matrix.os == 'macOS-latest'
-      run: brew install gmp && brew install snappy && brew install lz4 && brew install zstd
+      run: brew install snappy lz4 zstd
     - name: Nethermind.Ssz.Test
       run: |
         dotnet test -c Release src/Nethermind/Nethermind.Ssz.Test
@@ -234,7 +234,7 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest, macOS-latest]
     steps:
-    - uses: actions/checkout@v2.3.3
+    - uses: actions/checkout@v2
     - name: Updating submodules
       run: git submodule update --init src/rocksdb-sharp src/int256 src/Dirichlet src/Math.Gmp.Native
     - name: Installing Linux packages
@@ -248,14 +248,17 @@ jobs:
     - name: Nethermind.Runner.Test
       run: |
         dotnet test -c Release src/Nethermind/Nethermind.Runner.Test
+    - name: Nethermind.State.Test.Runner.Test
+      run : |
+        dotnet test -c Release src/Nethermind/Nethermind.State.Test.Runner.Test
   eth-tests:
-    name: Ethereum Tests
+    name: Running Ethereum Tests
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest, macOS-latest]
     steps:
-    - uses: actions/checkout@v2.3.3
+    - uses: actions/checkout@v2
     - name: Unshallow fetching
       run: git fetch --unshallow
     - name: Updating submodules
@@ -296,24 +299,3 @@ jobs:
     - name: Ethereum.Trie.Test
       run: |
         dotnet test -c Release src/Nethermind/Ethereum.Trie.Test
-    - name: Nethermind.State.Test.Runner.Test
-      run : |
-        dotnet test -c Release src/Nethermind/Nethermind.State.Test.Runner.Test
-#  eth2-tests:
-#    name: Ethereum 2.0 Tests
-#    runs-on: ${{ matrix.os }}
-#    strategy:
-#      matrix:
-#        os: [ubuntu-latest, windows-latest, macOS]
-#    steps:
-#    - uses: actions/checkout@v2.3.3
-#      with:
-#        lfs: true
-#    - name: Updating submodules
-#      run: git -c submodule."src/tests".update=none submodule update --init
-#    - name: Ethereum.Bls.Test
-#      run: |
-#        dotnet test -c Release src/Nethermind/Ethereum2.Bls.Test
-#    - name: Ethereum.Ssz.Test
-#      run: |
-#        dotnet test -c Release src/Nethermind/Ethereum2.Ssz.Test

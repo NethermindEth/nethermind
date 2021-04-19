@@ -21,6 +21,7 @@ using System.Linq;
 using System.Reflection;
 using System.Text;
 using Nethermind.Blockchain.Find;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.GitBook.Extensions;
 
@@ -69,6 +70,13 @@ namespace Nethermind.GitBook
                 if(type == typeof(BlockParameterType))
                 {
                     moduleBuilder.AppendLine("- `Quantity` or `String` (latest, earliest, pending)");
+                    moduleBuilder.AppendLine();
+                    continue;
+                }
+                
+                if(type == typeof(TxType))
+                {
+                    moduleBuilder.AppendLine("- [EIP2718](https://eips.ethereum.org/EIPS/eip-2718) transaction type");
                     moduleBuilder.AppendLine();
                     continue;
                 }

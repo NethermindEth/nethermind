@@ -22,7 +22,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.TxPool
 {
-    public interface ITxPool
+    public interface ITxPool 
     {
         int GetPendingTransactionsCount();
         Transaction[] GetPendingTransactions();
