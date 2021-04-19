@@ -29,6 +29,7 @@ using NSubstitute;
 
 namespace Nethermind.Merge.Plugin.Test
 {
+    [Parallelizable(ParallelScope.All)]
     public class MergePluginTests
     {
         private MergeConfig _mergeConfig = null!;
