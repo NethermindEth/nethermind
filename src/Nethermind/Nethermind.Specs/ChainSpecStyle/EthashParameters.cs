@@ -47,8 +47,8 @@ namespace Nethermind.Specs.ChainSpecStyle
         
         public long? FixedDifficulty { get; set; }
 
-        public Dictionary<long, UInt256> BlockRewards { get; set; }
+        public IDictionary<long, UInt256> BlockRewards { get; set; }
 
-        public Dictionary<long, long> DifficultyBombDelays { get; set; }
+        public IDictionary<long, long> DifficultyBombDelays { get; set; }
     }
 }
