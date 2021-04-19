@@ -72,7 +72,7 @@ namespace Nethermind.AuRa.Test.Contract
             Action action =
                 () => new ValidatorContract(
                     _transactionProcessor,
-                    new AbiEncoder(),
+                    AbiEncoder.Instance,
                     null,
                     _stateProvider,
                     _readOnlyTxProcessorSource,
@@ -98,7 +98,7 @@ namespace Nethermind.AuRa.Test.Contract
             
             var contract = new ValidatorContract(
                 _transactionProcessor,
-                new AbiEncoder(),
+                AbiEncoder.Instance,
                 _contractAddress,
                 _stateProvider,
                 _readOnlyTxProcessorSource,

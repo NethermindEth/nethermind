@@ -43,7 +43,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
         protected override Transaction GenerateTransaction<T>(byte[] transactionData, Address sender, long gasLimit = DefaultContractGasLimit, BlockHeader header = null)
         {
             Address contractAddress = GetContractAddress(header);
-            return GenerateTransaction<T>(transactionData, sender, contractAddress, gasLimit);
+            return GenerateTransaction<T>(contractAddress, transactionData, sender, gasLimit);
         }
 
         private Address GetContractAddress(BlockHeader? header)
