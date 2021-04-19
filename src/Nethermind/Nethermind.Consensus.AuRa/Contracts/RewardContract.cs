@@ -52,7 +52,8 @@ namespace Nethermind.Consensus.AuRa.Contracts
     {
         public long Activation { get; }
 
-        public RewardContract(ITransactionProcessor transactionProcessor, IAbiEncoder abiEncoder, Address contractAddress, long transitionBlock) : base(transactionProcessor, abiEncoder, contractAddress)
+        public RewardContract(ITransactionProcessor transactionProcessor, IAbiEncoder abiEncoder, Address contractAddress, long transitionBlock) 
+            : base(transactionProcessor, abiEncoder, contractAddress?? throw new ArgumentNullException(nameof(contractAddress)))
         {
             Activation = transitionBlock;
         }
