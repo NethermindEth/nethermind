@@ -46,16 +46,16 @@ namespace Nethermind.GitBook
             List<Type> jsonRpcModules = new List<Type>();
         
             foreach (Type type in assembly.GetTypes()
-                .Where(t => typeof(IModule).IsAssignableFrom(t))
-                .Where(t => !typeof(IContextAwareModule).IsAssignableFrom(t))
-                .Where(t => t.IsInterface && t != typeof(IModule)))
+                .Where(t => typeof(IRpcModule).IsAssignableFrom(t))
+                .Where(t => !typeof(IContextAwareRpcModule).IsAssignableFrom(t))
+                .Where(t => t.IsInterface && t != typeof(IRpcModule)))
             {
                 jsonRpcModules.Add(type);
             }
             
             jsonRpcModules.Add( Assembly.Load("Nethermind.Consensus.Clique").GetTypes()
-                .Where(t => typeof(IModule).IsAssignableFrom(t))
-                .First(t => t.IsInterface && t != typeof(IModule)));
+                .Where(t => typeof(IRpcModule).IsAssignableFrom(t))
+                .First(t => t.IsInterface && t != typeof(IRpcModule)));
             
             return jsonRpcModules;
         }
@@ -78,7 +78,7 @@ namespace Nethermind.GitBook
         {
             foreach (Type rpcType in rpcTypes)
             {
-                string rpcModuleName = rpcType.Name.Substring(1).Replace("Module", "").ToLower();
+                string rpcModuleName = rpcType.Name.Substring(1).Replace("RpcModule", "").ToLower();
                 
                 MethodInfo[] moduleMethods = rpcType.GetMethods();
                 Dictionary<string, MethodData> methods =

@@ -1,4 +1,4 @@
-name: Alert when issue is opened by external contributor
+name: '[ALERT] When issue is opened by an external contributor'
 
 on: 
   issues:

@@ -102,7 +102,7 @@ namespace Nethermind.Precompiles.Benchmark
         }
 
         [Benchmark(Baseline = true)]
-        public (byte[], bool) Baseline()
+        public (ReadOnlyMemory<byte>, bool) Baseline()
         {
             return Input.Precompile.Run(Input.Bytes, Berlin.Instance);
         }
