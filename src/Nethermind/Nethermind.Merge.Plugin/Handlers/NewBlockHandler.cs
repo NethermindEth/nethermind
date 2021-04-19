@@ -36,13 +36,15 @@ namespace Nethermind.Merge.Plugin.Handlers
     {
         private const string AndWontBeAcceptedToTheTree = "and wont be accepted to the tree";
         private readonly IBlockTree _blockTree;
+        private readonly IBlockPreprocessorStep _preprocessor;
         private readonly IBlockchainProcessor _processor;
         private readonly IStateProvider _stateProvider;
         private readonly ILogger _logger;
         
-        public NewBlockHandler(IBlockTree blockTree, IBlockchainProcessor processor, IStateProvider stateProvider, ILogManager logManager)
+        public NewBlockHandler(IBlockTree blockTree, IBlockPreprocessorStep preprocessor, IBlockchainProcessor processor, IStateProvider stateProvider, ILogManager logManager)
         {
             _blockTree = blockTree;
+            _preprocessor = preprocessor;
             _processor = processor;
             _stateProvider = stateProvider;
             _logger = logManager.GetClassLogger();
@@ -90,6 +92,7 @@ namespace Nethermind.Merge.Plugin.Handlers
             Keccak currentStateRoot = _stateProvider.StateRoot;
             try
             {
+                _preprocessor.RecoverData(block);
                 processedBlock = _processor.Process(block, ProcessingOptions.EthereumMerge, NullBlockTracer.Instance);
                 if (processedBlock == null)
                 {

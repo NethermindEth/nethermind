@@ -29,7 +29,6 @@ using NSubstitute;
 
 namespace Nethermind.Merge.Plugin.Test
 {
-    [Parallelizable(ParallelScope.All)]
     public class MergePluginTests
     {
         private MergeConfig _mergeConfig = null!;
@@ -72,7 +71,7 @@ namespace Nethermind.Merge.Plugin.Test
             Assert.IsInstanceOf<Eth2BlockProducer>(_context.BlockProducer);
             await _plugin.InitRpcModules();
             _context.RpcModuleProvider.Received().Register(Arg.Is<IRpcModulePool<IConsensusRpcModule>>(m => m is SingletonModulePool<IConsensusRpcModule>));
-            await _context.BlockchainProcessor!.Received().StopAsync();
+            await _context.BlockchainProcessor!.Received().StopAsync(true);
             await _plugin.DisposeAsync();
         }
     }

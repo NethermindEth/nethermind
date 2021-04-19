@@ -68,11 +68,11 @@ namespace Nethermind.Merge.Plugin
                 if (_api.StateProvider is null) throw new StepDependencyException(nameof(_api.StateProvider));
                 if (_api.StateProvider is null) throw new StepDependencyException(nameof(_api.StateProvider));
                 
-                await _api.BlockchainProcessor.StopAsync();
+                await _api.BlockchainProcessor.StopAsync(true);
                 
                 IConsensusRpcModule consensusRpcModule = new ConsensusRpcModule(
                     new AssembleBlockHandler(_api.BlockTree, _blockProducer, _api.LogManager),
-                    new NewBlockHandler(_api.BlockTree, _api.BlockchainProcessor, _api.StateProvider, _api.LogManager),
+                    new NewBlockHandler(_api.BlockTree, _api.BlockPreprocessor, _api.BlockchainProcessor, _api.StateProvider, _api.LogManager),
                     new SetHeadBlockHandler(_api.BlockTree, _api.StateProvider, _api.LogManager),
                     new FinaliseBlockHandler());
                 

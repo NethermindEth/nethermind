@@ -44,7 +44,7 @@ namespace Nethermind.Merge.Plugin.Test
         {
             return new ConsensusRpcModule(
                 new AssembleBlockHandler(chain.BlockTree, (IEth2BlockProducer) chain.BlockProducer, chain.LogManager),
-                new NewBlockHandler(chain.BlockTree, chain.BlockchainProcessor, chain.State, chain.LogManager),
+                new NewBlockHandler(chain.BlockTree, chain.BlockPreprocessorStep, chain.BlockchainProcessor, chain.State, chain.LogManager),
                 new SetHeadBlockHandler(chain.BlockTree, chain.State, chain.LogManager),
                 new FinaliseBlockHandler());
         }
