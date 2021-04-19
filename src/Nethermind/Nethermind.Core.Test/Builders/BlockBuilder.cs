@@ -106,6 +106,12 @@ namespace Nethermind.Core.Test.Builders
             TestObjectInternal.Header.TxRoot = trie.RootHash;
             return this;
         }
+        
+        public BlockBuilder WithBaseFee(UInt256 baseFee)
+        {
+            TestObjectInternal.Header.BaseFee = baseFee;
+            return this;
+        }
 
         public BlockBuilder WithBeneficiary(Address address)
         {

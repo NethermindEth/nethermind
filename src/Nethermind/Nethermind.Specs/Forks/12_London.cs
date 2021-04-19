@@ -1,4 +1,4 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -13,6 +13,7 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
 using System.Threading;
 using Nethermind.Core;
@@ -21,23 +22,23 @@ using Nethermind.Int256;
 
 namespace Nethermind.Specs.Forks
 {
-    public class Byzantium : IReleaseSpec
+    public class London : IReleaseSpec
     {
         private static IReleaseSpec _instance;
 
-        private Byzantium()
+        private London()
         {
         }
 
-        public static IReleaseSpec Instance => LazyInitializer.EnsureInitialized(ref _instance, () => new Byzantium());
+        public static IReleaseSpec Instance => LazyInitializer.EnsureInitialized(ref _instance, () => new London());
 
-        public string Name => "Byzantium";
+        public string Name => "London";
         public long MaximumExtraDataSize => 32;
         public long MaxCodeSize => 24576;
         public long MinGasLimit => 5000;
         public long GasLimitBoundDivisor => 0x0400;
-        public UInt256 BlockReward { get; } = UInt256.Parse("3000000000000000000");
-        public long DifficultyBombDelay => 3000000L;
+        public UInt256 BlockReward { get; } = UInt256.Parse("2000000000000000000");
+        public long DifficultyBombDelay => 9000000L;
         public long DifficultyBoundDivisor => 0x0800;
         public long? FixedDifficulty => null;
         public int MaximumUncleCount => 2;
@@ -58,25 +59,25 @@ namespace Nethermind.Specs.Forks
         public bool IsEip214Enabled => true;
         public bool IsEip649Enabled => true;
         public bool IsEip658Enabled => true;
-        public bool IsEip145Enabled => false;
-        public bool IsEip1014Enabled => false;
-        public bool IsEip1052Enabled => false;
+        public bool IsEip145Enabled => true;
+        public bool IsEip1014Enabled => true;
+        public bool IsEip1052Enabled => true;
         public bool IsEip1283Enabled => false;
-        public bool IsEip1234Enabled => false;
-        public bool IsEip1344Enabled => false;
-        public bool IsEip2028Enabled => false;
-        public bool IsEip152Enabled => false;
-        public bool IsEip1108Enabled => false;
-        public bool IsEip1884Enabled => false;
-        public bool IsEip2200Enabled => false;
+        public bool IsEip1234Enabled => true;
+        public bool IsEip1344Enabled => true;
+        public bool IsEip2028Enabled => true;
+        public bool IsEip152Enabled => true;
+        public bool IsEip1108Enabled => true;
+        public bool IsEip1884Enabled => true;
+        public bool IsEip2200Enabled => true;
         public bool IsEip2315Enabled => false;
         public bool IsEip2537Enabled => false;
-        public bool IsEip2565Enabled => false;
-        public bool IsEip1559Enabled => false;
-        public bool IsEip3198Enabled => false;
-        public long Eip1559TransitionBlock => long.MaxValue;
-        public bool IsEip2929Enabled => false;
-        public bool IsEip2930Enabled => false;
+        public bool IsEip2565Enabled => true;
+        public bool IsEip2929Enabled => true;
+        public bool IsEip2930Enabled => true;
         public bool IsEip158IgnoredAccount(Address address) => false;
+        public bool IsEip1559Enabled => true;
+        public bool IsEip3198Enabled => true;
+        public long Eip1559TransitionBlock => long.MaxValue;
     }
 }
