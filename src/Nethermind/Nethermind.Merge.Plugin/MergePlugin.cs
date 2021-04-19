@@ -74,7 +74,8 @@ namespace Nethermind.Merge.Plugin
                     new AssembleBlockHandler(_api.BlockTree, _blockProducer, _api.LogManager),
                     new NewBlockHandler(_api.BlockTree, _api.BlockPreprocessor, _api.BlockchainProcessor, _api.StateProvider, _api.LogManager),
                     new SetHeadBlockHandler(_api.BlockTree, _api.StateProvider, _api.LogManager),
-                    new FinaliseBlockHandler());
+                    new FinaliseBlockHandler(),
+                    _api.LogManager);
                 
                 _api.RpcModuleProvider.RegisterSingle(consensusRpcModule);
                 if (_logger.IsInfo) _logger.Info("Consensus Module has been enabled");

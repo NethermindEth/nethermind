@@ -88,8 +88,7 @@ namespace Nethermind.Merge.Plugin.Handlers
         {
             block.Header.TotalDifficulty = parent.TotalDifficulty + block.Difficulty;
             
-            _stateProvider.Reset();
-            Keccak currentStateRoot = _stateProvider.StateRoot;
+            Keccak currentStateRoot = _stateProvider.ResetStateTo(parent.StateRoot!);
             try
             {
                 _preprocessor.RecoverData(block);
@@ -106,9 +105,7 @@ namespace Nethermind.Merge.Plugin.Handlers
             }
             finally
             {
-                _stateProvider.Reset();
-                _stateProvider.StateRoot = currentStateRoot;
-                _stateProvider.RecalculateStateRoot();
+                _stateProvider.ResetStateTo(currentStateRoot);
             }
 
             return true;

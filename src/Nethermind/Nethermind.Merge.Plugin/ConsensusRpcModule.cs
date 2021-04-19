@@ -20,6 +20,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc;
+using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Handlers;
 using Org.BouncyCastle.Asn1.Cms;
@@ -34,17 +35,20 @@ namespace Nethermind.Merge.Plugin
         private readonly IHandler<Keccak, Result> _finaliseBlockHandler;
         private readonly SemaphoreSlim _locker = new(1, 1);
         private readonly TimeSpan Timeout = TimeSpan.FromSeconds(10);
+        private readonly ILogger _logger;
 
         public ConsensusRpcModule(
             IHandlerAsync<AssembleBlockRequest, BlockRequestResult?> assembleBlockHandler,
             IHandler<BlockRequestResult, NewBlockResult> newBlockHandler,
             IHandler<Keccak, Result> setHeadHandler,
-            IHandler<Keccak, Result> finaliseBlockHandler)
+            IHandler<Keccak, Result> finaliseBlockHandler,
+            ILogManager logManager)
         {
             _assembleBlockHandler = assembleBlockHandler;
             _newBlockHandler = newBlockHandler;
             _setHeadHandler = setHeadHandler;
             _finaliseBlockHandler = finaliseBlockHandler;
+            _logger = logManager.GetClassLogger();
         }
 
         public Task<ResultWrapper<BlockRequestResult?>> consensus_assembleBlock(AssembleBlockRequest request)
@@ -54,27 +58,41 @@ namespace Nethermind.Merge.Plugin
 
         public async Task<ResultWrapper<NewBlockResult>> consensus_newBlock(BlockRequestResult requestResult)
         {
-            await _locker.WaitAsync(Timeout);
-            try
+            if (await _locker.WaitAsync(Timeout))
             {
-                return _newBlockHandler.Handle(requestResult);
+                try
+                {
+                    return _newBlockHandler.Handle(requestResult);
+                }
+                finally
+                {
+                    _locker.Release();
+                }
             }
-            finally
+            else
             {
-                _locker.Release();
+                if (_logger.IsWarn) _logger.Warn($"{nameof(consensus_newBlock)} timeout.");
+                return ResultWrapper<NewBlockResult>.Success(new NewBlockResult {Valid = false});
             }
         }
 
         public async Task<ResultWrapper<Result>> consensus_setHead(Keccak blockHash)
         {
-            await _locker.WaitAsync(Timeout);
-            try
+            if (await _locker.WaitAsync(Timeout))
             {
-                return _setHeadHandler.Handle(blockHash);
+                try
+                {
+                    return _setHeadHandler.Handle(blockHash);
+                }
+                finally
+                {
+                    _locker.Release();
+                }
             }
-            finally
+            else
             {
-                _locker.Release();
+                if (_logger.IsWarn) _logger.Warn($"{nameof(consensus_setHead)} timeout.");
+                return ResultWrapper<Result>.Success(Result.Fail);
             }
         }
 
