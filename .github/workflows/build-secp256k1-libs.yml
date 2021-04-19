@@ -1,11 +1,10 @@
-name: Secp256k1 Build
+name: '[BUILD] Secp256k1 Libraries'
 
 on:
-  repository_dispatch:
-    types: secp_build
+  workflow_dispatch:
 
 jobs:
-  secp256k1-building:
+  build-secp256k1:
     name: Building Secp256k1
     runs-on: ${{ matrix.os }}
     strategy:

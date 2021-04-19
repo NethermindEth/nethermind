@@ -22,6 +22,9 @@ namespace Nethermind.Benchmarks.Core
 {
     [EvaluateOverhead(false)]
     [MemoryDiagnoser]
+    [HtmlExporter]
+    [RPlotExporter]
+    [MarkdownExporter]
     [SimpleJob(1, 1, 1, 1)]
     public class LruCacheBenchmarks
     {
