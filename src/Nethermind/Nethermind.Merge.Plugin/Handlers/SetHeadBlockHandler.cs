@@ -64,6 +64,7 @@ namespace Nethermind.Merge.Plugin.Handlers
             {
                 _stateProvider.StateRoot = newHeadBlock.StateRoot!;
                 _stateProvider.RecalculateStateRoot();
+                _stateProvider.Reset();
                 
                 if (_logger.IsInfo) _logger.Info($"Block {blockHash} was set as head.");
             }
