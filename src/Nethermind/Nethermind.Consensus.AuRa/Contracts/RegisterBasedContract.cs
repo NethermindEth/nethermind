@@ -34,16 +34,15 @@ namespace Nethermind.Consensus.AuRa.Contracts
             IRegisterContract registerContract,
             string registryKey,
             AbiDefinition? abiDefinition = null) 
-            : base(abiEncoder, Address.Zero, abiDefinition)
+            : base(abiEncoder, abiDefinition:abiDefinition)
         {
             _registerContract = registerContract;
             _registryKey = registryKey;
         }
 
-        protected override Transaction GenerateTransaction<T>(byte[] transactionData, Address sender, long gasLimit = DefaultContractGasLimit, BlockHeader header = null)
+        protected override Transaction GenerateTransaction<T>(Address? contractAddress, byte[] transactionData, Address sender, long gasLimit = DefaultContractGasLimit, BlockHeader header = null)
         {
-            Address contractAddress = GetContractAddress(header);
-            return GenerateTransaction<T>(contractAddress, transactionData, sender, gasLimit);
+            return GenerateTransaction<T>(GetContractAddress(header), transactionData, sender, gasLimit);
         }
 
         private Address GetContractAddress(BlockHeader? header)
