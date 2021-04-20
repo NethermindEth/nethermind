@@ -19,8 +19,8 @@ jobs:
     - name: Configure environments
       id: envs
       env:
-        SHA8: ${GITHUB_SHA::8}
-        BRANCH: ${GITHUB_REF}
+        SHA8: $GITHUB_SHA
+        BRANCH: $GITHUB_REF
       run: |
         echo "::set-output name=sha8::$SHA8"
         echo "::set-output name=branch::$BRANCH"
