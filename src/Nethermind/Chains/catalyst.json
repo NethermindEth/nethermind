@@ -1,16 +1,7 @@
 {
   "name": "Catalyst",
   "engine": {
-    "Type": "Eth2Merge",
-    "Ethash": {
-      "params": {
-        "minimumDifficulty": "0x20000",
-        "difficultyBoundDivisor": "0x800",
-        "durationLimit": "0xd",
-        "blockReward": "0x4563918244F40000",
-        "registrar": "0x81a4b044831c4f12ba601adb9274516939e9b8a2",
-        "homesteadTransition": 0
-      }
+    "Eth2Merge": {
     }
   },
   "params": {
@@ -32,6 +23,8 @@
     "eip145Transition": "0x0",
     "eip1014Transition": "0x0",
     "eip1052Transition": "0x0",
+    "eip1283Transition": "0x0",
+    "eip1283DisableTransition": "0x0",    
     "eip152Transition": "0x0",
     "eip1108Transition": "0x0",
     "eip1344Transition": "0x0",

@@ -276,10 +276,12 @@ namespace Nethermind.Specs.ChainSpecStyle
             {
                 chainSpec.SealEngineType = SealEngineType.NethDev;
             }
+
+            string? customEngineType = chainSpecJson.Engine?.CustomEngineData?.FirstOrDefault().Key;
             
-            if (!string.IsNullOrEmpty(chainSpecJson.Engine?.Type))
+            if (!string.IsNullOrEmpty(customEngineType))
             {
-                chainSpec.SealEngineType = chainSpecJson.Engine.Type;
+                chainSpec.SealEngineType = customEngineType;
             }
             
             if (string.IsNullOrEmpty(chainSpec.SealEngineType))

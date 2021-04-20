@@ -19,6 +19,8 @@ using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Int256;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 
 namespace Nethermind.Specs.ChainSpecStyle.Json
 {
@@ -174,11 +176,13 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
     
         internal class EngineJson
         {
-            public string? Type { get; set; } = null;
             public EthashEngineJson Ethash { get; set; }
             public CliqueEngineJson Clique { get; set; }
             public AuraEngineJson AuthorityRound { get; set; }
             public NethDevJson NethDev { get; set; }
+            
+            [JsonExtensionData]
+            public IDictionary<string, JToken> CustomEngineData { get; set; }
         }
     }
 }
