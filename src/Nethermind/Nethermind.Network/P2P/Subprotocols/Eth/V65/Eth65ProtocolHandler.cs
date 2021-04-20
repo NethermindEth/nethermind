@@ -97,7 +97,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
             if (discoveredTxHashesCount != 0)
             {
                 Send(new GetPooledTransactionsMessage(discoveredTxHashes.ToArray()));
-                Metrics.Eth65GetPooledTransactionsSent++;
+                Metrics.Eth65GetPooledTransactionsRequested++;
             }
             stopwatch.Stop();
             if (Logger.IsTrace)

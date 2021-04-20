@@ -168,7 +168,7 @@ namespace Nethermind.Network
         public static long Eth65GetPooledTransactionsReceived { get; set; }
         
         [Description("Number of eth.65 GetPooledTransactions messages sent")]
-        public static long Eth65GetPooledTransactionsSent { get; set; }
+        public static long Eth65GetPooledTransactionsRequested { get; set; }
         
         [Description("Number of eth.65 PooledTransactions messages received")]
         public static long Eth65PooledTransactionsReceived { get; set; }
