@@ -22,7 +22,9 @@ using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Core;
+using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
+using Nethermind.Crypto;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
@@ -40,6 +42,7 @@ namespace Nethermind.Merge.Plugin.Handlers
         private readonly IBlockchainProcessor _processor;
         private readonly IStateProvider _stateProvider;
         private readonly ILogger _logger;
+        private readonly LruCache<Keccak, bool> _latestBlocks = new LruCache<Keccak, bool>(50, "LatestBlocks");
         
         public NewBlockHandler(IBlockTree blockTree, IBlockPreprocessorStep preprocessor, IBlockchainProcessor processor, IStateProvider stateProvider, ILogManager logManager)
         {
@@ -67,7 +70,28 @@ namespace Nethermind.Merge.Plugin.Handlers
         private bool ValidateRequestAndProcess(BlockRequestResult request, Block block, out Block? processedBlock)
         {
             processedBlock = null;
-            return CheckInput(request) && CheckParent(request.ParentHash, out BlockHeader? parent) && Process(block, parent!, out processedBlock);
+            bool hashValid = CheckInputIs(request, request.BlockHash, block.CalculateHash(), nameof(request.BlockHash));
+
+            if (hashValid)
+            {
+                if (_latestBlocks.TryGet(request.BlockHash, out bool isValid))
+                {
+                    return isValid;
+                }
+                else
+                {
+                    bool validateRequestAndProcess =
+                        CheckInput(request)
+                        && CheckParent(request.ParentHash, out BlockHeader? parent)
+                        && Process(block, parent!, out processedBlock);
+
+                    _latestBlocks.Set(request.BlockHash, validateRequestAndProcess);
+            
+                    return validateRequestAndProcess;
+                }
+            }
+
+            return false;
         }
 
         private bool CheckParent(Keccak? parentHash, out BlockHeader? parent)
@@ -111,23 +135,19 @@ namespace Nethermind.Merge.Plugin.Handlers
             return true;
         }
 
-        private bool CheckInput(BlockRequestResult request) =>
-            CheckInputIs(request, request.Difficulty, UInt256.One, nameof(request.Difficulty))
-            && CheckInputIs(request, request.Nonce, 0ul, nameof(request.Nonce))
-            && CheckInputIs<byte>(request, request.ExtraData, Array.Empty<byte>(), nameof(request.ExtraData))
-            && CheckInputIs(request, request.MixHash, Keccak.Zero, nameof(request.MixHash))
-            && CheckInputIs(request, request.Uncles, Array.Empty<Keccak>(), nameof(request.Uncles))
-            && CheckInputIsNot(request, request.BlockHash, Keccak.Zero, nameof(request.BlockHash));
-
-        private bool CheckInputIsNot<T>(BlockRequestResult request, T value, T expected, string name)
+        private bool CheckInput(BlockRequestResult request)
         {
-            if (Equals(value, expected))
-            {
-                if (_logger.IsWarn) _logger.Warn($"Block {request} has invalid {name}, expected not to be {expected}, got {value} {AndWontBeAcceptedToTheTree}.");
-                return false;
-            }
-
-            return true;
+            bool validDifficulty = CheckInputIs(request, request.Difficulty, UInt256.One, nameof(request.Difficulty));
+            bool validNonce = CheckInputIs(request, request.Nonce, 0ul, nameof(request.Nonce));
+            bool validExtraData = CheckInputIs<byte>(request, request.ExtraData, Array.Empty<byte>(), nameof(request.ExtraData));
+            bool validMixHash = CheckInputIs(request, request.MixHash, Keccak.Zero, nameof(request.MixHash));
+            bool validUncles = CheckInputIs(request, request.Uncles, Array.Empty<Keccak>(), nameof(request.Uncles));
+            
+            return validDifficulty
+                   && validNonce
+                   && validExtraData
+                   && validMixHash
+                   && validUncles;
         }
 
         private bool CheckInputIs<T>(BlockRequestResult request, T value, T expected, string name)
