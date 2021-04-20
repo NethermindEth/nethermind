@@ -49,7 +49,7 @@ namespace Nethermind.AuRa.Test.Transactions
     public class TxPermissionFilterTest
     {
         private const string ContractAddress = "0xAB5b100cf7C8deFB3c8f3C48474223997A50fB13";
-        private static readonly Address _contractAddress = new Address(ContractAddress);
+        private static readonly Address _contractAddress = new(ContractAddress);
         
         private static readonly ITransactionPermissionContract.TxPermissions[] TxTypes = new[]
         {
@@ -62,10 +62,10 @@ namespace Nethermind.AuRa.Test.Transactions
         {
             IList<Test> tests = new List<Test>()
             {
-                new Test() {SenderKey = GetPrivateKey(1), ContractPermissions = ITransactionPermissionContract.TxPermissions.All},
-                new Test() {SenderKey = GetPrivateKey(2), ContractPermissions = ITransactionPermissionContract.TxPermissions.Basic | ITransactionPermissionContract.TxPermissions.Call},
-                new Test() {SenderKey = GetPrivateKey(3), ContractPermissions = ITransactionPermissionContract.TxPermissions.Basic, To = _contractAddress},
-                new Test() {SenderKey = GetPrivateKey(4), ContractPermissions = ITransactionPermissionContract.TxPermissions.None},
+                new() {SenderKey = GetPrivateKey(1), ContractPermissions = ITransactionPermissionContract.TxPermissions.All},
+                new() {SenderKey = GetPrivateKey(2), ContractPermissions = ITransactionPermissionContract.TxPermissions.Basic | ITransactionPermissionContract.TxPermissions.Call},
+                new() {SenderKey = GetPrivateKey(3), ContractPermissions = ITransactionPermissionContract.TxPermissions.Basic, To = _contractAddress},
+                new() {SenderKey = GetPrivateKey(4), ContractPermissions = ITransactionPermissionContract.TxPermissions.None},
             };
 
             return GetTestCases(tests, nameof(V1), CreateV1Transaction);
@@ -97,32 +97,32 @@ namespace Nethermind.AuRa.Test.Transactions
         {
             IList<Test> tests = new List<Test>()
             {
-                new Test() {SenderKey = GetPrivateKey(1), ContractPermissions = ITransactionPermissionContract.TxPermissions.All, Cache = true},
-                new Test() {SenderKey = GetPrivateKey(2), ContractPermissions = ITransactionPermissionContract.TxPermissions.Basic | ITransactionPermissionContract.TxPermissions.Call, Cache = true},
-                new Test() {SenderKey = GetPrivateKey(3), ContractPermissions = ITransactionPermissionContract.TxPermissions.Basic, Cache = true, To = _contractAddress},
-                new Test() {SenderKey = GetPrivateKey(4), ContractPermissions = ITransactionPermissionContract.TxPermissions.None, Cache = true},
+                new() {SenderKey = GetPrivateKey(1), ContractPermissions = ITransactionPermissionContract.TxPermissions.All, Cache = true},
+                new() {SenderKey = GetPrivateKey(2), ContractPermissions = ITransactionPermissionContract.TxPermissions.Basic | ITransactionPermissionContract.TxPermissions.Call, Cache = true},
+                new() {SenderKey = GetPrivateKey(3), ContractPermissions = ITransactionPermissionContract.TxPermissions.Basic, Cache = true, To = _contractAddress},
+                new() {SenderKey = GetPrivateKey(4), ContractPermissions = ITransactionPermissionContract.TxPermissions.None, Cache = true},
                 
-                new Test() {SenderKey = GetPrivateKey(5), ContractPermissions = ITransactionPermissionContract.TxPermissions.None, Cache = true},
-                new Test() {SenderKey = GetPrivateKey(5), ContractPermissions = ITransactionPermissionContract.TxPermissions.All, Cache = false, Value = 0},
+                new() {SenderKey = GetPrivateKey(5), ContractPermissions = ITransactionPermissionContract.TxPermissions.None, Cache = true},
+                new() {SenderKey = GetPrivateKey(5), ContractPermissions = ITransactionPermissionContract.TxPermissions.All, Cache = false, Value = 0},
                 
-                new Test() {SenderKey = GetPrivateKey(6), ContractPermissions = ITransactionPermissionContract.TxPermissions.None, Cache = true},
-                new Test() {SenderKey = GetPrivateKey(6), ContractPermissions = ITransactionPermissionContract.TxPermissions.Basic, Cache = false, ToKey = GetPrivateKey(7)},
+                new() {SenderKey = GetPrivateKey(6), ContractPermissions = ITransactionPermissionContract.TxPermissions.None, Cache = true},
+                new() {SenderKey = GetPrivateKey(6), ContractPermissions = ITransactionPermissionContract.TxPermissions.Basic, Cache = false, ToKey = GetPrivateKey(7)},
                 
-                new Test() {SenderKey = GetPrivateKey(7), ContractPermissions = ITransactionPermissionContract.TxPermissions.None, Cache = true},
-                new Test() {SenderKey = GetPrivateKey(7), ContractPermissions = ITransactionPermissionContract.TxPermissions.None, Cache = true, Value = 0},
-                new Test() {SenderKey = GetPrivateKey(7), ContractPermissions = ITransactionPermissionContract.TxPermissions.None, Cache = true, ToKey = GetPrivateKey(6)},
-                new Test() {SenderKey = GetPrivateKey(7), ContractPermissions = ITransactionPermissionContract.TxPermissions.Basic | ITransactionPermissionContract.TxPermissions.Call, Cache = false, ToKey = GetPrivateKey(6), Value = 0},
+                new() {SenderKey = GetPrivateKey(7), ContractPermissions = ITransactionPermissionContract.TxPermissions.None, Cache = true},
+                new() {SenderKey = GetPrivateKey(7), ContractPermissions = ITransactionPermissionContract.TxPermissions.None, Cache = true, Value = 0},
+                new() {SenderKey = GetPrivateKey(7), ContractPermissions = ITransactionPermissionContract.TxPermissions.None, Cache = true, ToKey = GetPrivateKey(6)},
+                new() {SenderKey = GetPrivateKey(7), ContractPermissions = ITransactionPermissionContract.TxPermissions.Basic | ITransactionPermissionContract.TxPermissions.Call, Cache = false, ToKey = GetPrivateKey(6), Value = 0},
             };
 
             return GetTestCases(tests, nameof(V2), CreateV2Transaction);
         }
         
-        private static TransactionBuilder<Transaction> CreateV2Transaction(Test test, ITransactionPermissionContract.TxPermissions txType)
+        private static TransactionBuilder<Transaction> CreateV2Transaction(Test test, ITransactionPermissionContract.TxPermissions txPermissions)
         {
-            var transactionBuilder = CreateV1Transaction(test, txType);
+            var transactionBuilder = CreateV1Transaction(test, txPermissions);
             transactionBuilder.To(test.To);
             
-            switch (txType)
+            switch (txPermissions)
             {
                 case ITransactionPermissionContract.TxPermissions.Basic:
                 {
@@ -163,18 +163,18 @@ namespace Nethermind.AuRa.Test.Transactions
         {
             IList<Test> tests = new List<Test>()
             {
-                new Test() {SenderKey = GetPrivateKey(1), ContractPermissions = ITransactionPermissionContract.TxPermissions.None, Cache = false},
-                new Test() {SenderKey = GetPrivateKey(1), ContractPermissions = ITransactionPermissionContract.TxPermissions.All, Cache = false, GasPrice = 1},
-                new Test() {SenderKey = GetPrivateKey(1), ContractPermissions = ITransactionPermissionContract.TxPermissions.All, Cache = false, Data = new byte[]{0, 1}},
-                new Test() {SenderKey = GetPrivateKey(1), ContractPermissions = ITransactionPermissionContract.TxPermissions.All, Cache = false, GasPrice = 5, Data = new byte[]{0, 2, 3}},
+                new() {SenderKey = GetPrivateKey(1), ContractPermissions = ITransactionPermissionContract.TxPermissions.None, Cache = false},
+                new() {SenderKey = GetPrivateKey(1), ContractPermissions = ITransactionPermissionContract.TxPermissions.All, Cache = false, GasPrice = 1},
+                new() {SenderKey = GetPrivateKey(1), ContractPermissions = ITransactionPermissionContract.TxPermissions.All, Cache = false, Data = new byte[]{0, 1}},
+                new() {SenderKey = GetPrivateKey(1), ContractPermissions = ITransactionPermissionContract.TxPermissions.All, Cache = false, GasPrice = 5, Data = new byte[]{0, 2, 3}},
             };
 
             return GetTestCases(tests, nameof(V3), CreateV3Transaction);
         }
         
-        private static TransactionBuilder<Transaction> CreateV3Transaction(Test test, ITransactionPermissionContract.TxPermissions txType)
+        private static TransactionBuilder<Transaction> CreateV3Transaction(Test test, ITransactionPermissionContract.TxPermissions txPermissions)
         {
-            var transactionBuilder = CreateV2Transaction(test, txType);
+            var transactionBuilder = CreateV2Transaction(test, txPermissions);
             transactionBuilder.WithData(test.Data);
             transactionBuilder.WithGasPrice(test.GasPrice);
             return transactionBuilder;
@@ -183,6 +183,28 @@ namespace Nethermind.AuRa.Test.Transactions
         [TestCaseSource(nameof(V3Tests))]
         public async Task<(bool IsAllowed, bool Cache)> V3(Func<Task<TestTxPermissionsBlockchain>> chainFactory, Transaction tx) => await ChainTest(chainFactory, tx, 3);
 
+        private static TransactionBuilder<Transaction> CreateV4Transaction(Test test, ITransactionPermissionContract.TxPermissions txPermissions)
+        {
+            TransactionBuilder<Transaction> transactionBuilder = CreateV3Transaction(test, txPermissions);
+            transactionBuilder.WithGasPremium(test.GasPremium);
+            transactionBuilder.WithFeeCap(test.FeeCap);
+            transactionBuilder.WithType(test.TxType);
+            return transactionBuilder;
+        }
+        public static IEnumerable<TestCaseData> V4Tests()
+        {
+            IList<Test> tests = new List<Test>()
+            {
+                new() {SenderKey = GetPrivateKey(1), ContractPermissions = ITransactionPermissionContract.TxPermissions.None, Cache = false},
+                new() {SenderKey = GetPrivateKey(1), ContractPermissions = ITransactionPermissionContract.TxPermissions.All, Cache = false, GasPrice = 1},
+                new() {SenderKey = GetPrivateKey(1), ContractPermissions = ITransactionPermissionContract.TxPermissions.All, Cache = false, Data = new byte[]{0, 1}},
+                new() {SenderKey = GetPrivateKey(1), ContractPermissions = ITransactionPermissionContract.TxPermissions.All, Cache = false, GasPrice = 5, Data = new byte[]{0, 2, 3}},
+            };
+
+            return GetTestCases(tests, nameof(V4), CreateV4Transaction);
+        }
+        [TestCaseSource(nameof(V4Tests))]
+        public async Task<(bool IsAllowed, bool Cache)> V4(Func<Task<TestTxPermissionsBlockchain>> chainFactory, Transaction tx) => await ChainTest(chainFactory, tx, 4);
         private static async Task<(bool IsAllowed, bool Cache)> ChainTest(Func<Task<TestTxPermissionsBlockchain>> chainFactory, Transaction tx, UInt256 version)
         {
             using var chain = await chainFactory();
@@ -224,7 +246,7 @@ namespace Nethermind.AuRa.Test.Transactions
             }
         }
 
-        private static PrivateKey GetPrivateKey(int key) => new PrivateKey(key.ToString("X64"));
+        private static PrivateKey GetPrivateKey(int key) => new(key.ToString("X64"));
 
         [TestCase(1, ExpectedResult = true)]
         [TestCase(3, ExpectedResult = true)]
@@ -298,6 +320,10 @@ namespace Nethermind.AuRa.Test.Transactions
             public UInt256 Value { get; set; } = 1;
             public byte[] Data { get; set; } = Bytes.Zero32;
             public UInt256 GasPrice { get; set; } = 0;
+            
+            public UInt256 GasPremium { get; set; } = 0;
+            public UInt256 FeeCap { get; set; } = 0;
+            public TxType TxType { get; set; } = TxType.Legacy;
             public Address Sender => SenderKey.Address;
             public Address To
             {

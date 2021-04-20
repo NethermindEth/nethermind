@@ -33,6 +33,8 @@
       <EmbeddedResource Include="Transactions\TxPermissionFilterTest.V3.json" />
       <None Remove="Transactions\TxPermissionsFilterTest.V1.json" />
       <EmbeddedResource Include="Transactions\TxPermissionFilterTest.V1.json" />
+      <None Remove="Transactions\TxPermissionFilterTest.V4.json" />
+      <EmbeddedResource Include="Transactions\TxPermissionFilterTest.V4.json" />
     </ItemGroup>
 
 </Project>

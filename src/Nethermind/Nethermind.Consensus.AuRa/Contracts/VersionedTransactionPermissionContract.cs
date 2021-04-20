@@ -116,12 +116,12 @@ namespace Nethermind.Consensus.AuRa.Contracts
                         readOnlyTxProcessorSource,
                         specProvider)
                 },
-                // {
-                //     4, CreateV4(abiEncoder,
-                //         contractAddress,
-                //         readOnlyTxProcessorSource,
-                //         specProvider)
-                // },
+                {
+                    4, CreateV4(abiEncoder,
+                        contractAddress,
+                        readOnlyTxProcessorSource,
+                        specProvider)
+                },
             };
         }
     }
