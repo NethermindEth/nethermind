@@ -1,0 +1,28 @@
+token literal names:
+null
+null
+'SOURCE'
+'WATCH'
+'WHERE'
+'PUBLISH'
+null
+null
+null
+
+token symbolic names:
+null
+OPERATOR
+SOURCE
+WATCH
+WHERE
+PUBLISH
+ID
+DIGIT
+WS
+
+rule names:
+expression
+
+
+atn:
+[3, 24715, 42794, 33075, 47597, 16764, 15335, 30598, 22884, 3, 10, 8, 4, 2, 9, 2, 3, 2, 3, 2, 3, 2, 3, 2, 2, 2, 3, 2, 2, 2, 2, 6, 2, 4, 3, 2, 2, 2, 4, 5, 7, 3, 2, 2, 5, 6, 7, 8, 2, 2, 6, 3, 3, 2, 2, 2, 2]
