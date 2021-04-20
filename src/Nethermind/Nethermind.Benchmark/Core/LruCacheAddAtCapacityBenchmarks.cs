@@ -20,6 +20,8 @@ using Nethermind.Core.Caching;
 namespace Nethermind.Benchmarks.Core
 {
     [MemoryDiagnoser]
+    [JsonExporterAttribute.Full]
+    [JsonExporterAttribute.FullCompressed]
     public class LruCacheAddAtCapacityBenchmarks
     {
         const int Capacity = 16;
