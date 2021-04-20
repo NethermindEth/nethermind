@@ -184,6 +184,7 @@ namespace Nethermind.Specs.ChainSpecStyle
                 chainSpec.Ethash?.DifficultyBombDelays.Keys.ToArray()[2]
                 : null;
             chainSpec.BerlinBlockNumber = chainSpec.Parameters.Eip2929Transition ?? (long.MaxValue - 1);
+            chainSpec.LondonBlockNumber = chainSpec.Parameters.Eip1559Transition ?? (long.MaxValue - 1);
         }
 
         private static void LoadEngine(ChainSpecJson chainSpecJson, ChainSpec chainSpec)
