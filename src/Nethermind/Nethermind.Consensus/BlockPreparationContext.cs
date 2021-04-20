@@ -19,6 +19,8 @@ using Nethermind.Int256;
 
 namespace Nethermind.Consensus
 {
+    /// <summary>Block producer is setting current context and thanks to this context
+    /// other classes like gas price comparison know what base fee they should be used</summary>
     public readonly struct BlockPreparationContext
     {
         public UInt256 BaseFee { get; }

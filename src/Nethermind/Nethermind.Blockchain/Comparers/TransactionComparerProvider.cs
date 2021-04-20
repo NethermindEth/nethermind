@@ -27,6 +27,8 @@ namespace Nethermind.Blockchain.Comparers
     {
         private readonly ISpecProvider _specProvider;
         private readonly IBlockTree _blockTree;
+        
+        // we're caching default comparer
         private IComparer<Transaction>? _defaultComparer = null;
 
         public TransactionComparerProvider(ISpecProvider specProvider, IBlockTree blockTree)

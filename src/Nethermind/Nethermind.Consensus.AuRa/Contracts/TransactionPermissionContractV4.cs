@@ -24,6 +24,7 @@ using Nethermind.Evm;
 
 namespace Nethermind.Consensus.AuRa.Contracts
 {
+    /// <summary>Version four of the contract. Created to adjust EIP1559 changes.</summary>
     public sealed class TransactionPermissionContractV4 : TransactionPermissionContract
     {
         private readonly ISpecProvider _specProvider;
@@ -46,7 +47,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
             // _to Transaction recipient address. If creating a contract, the `_to` address is zero.
             // _value Transaction amount in wei.
             // _maxFeePerGas instead of the legacy _gasPrice
-            // _maxInclusionFeePerGas
+            // _maxInclusionFeePerGas instead of the legacy _gasPrice
             // _gasLimit
             // _data Transaction data.
             

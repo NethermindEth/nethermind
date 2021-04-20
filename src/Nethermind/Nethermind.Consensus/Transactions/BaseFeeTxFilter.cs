@@ -21,6 +21,7 @@ using Nethermind.Logging;
 
 namespace Nethermind.Consensus.Transactions
 {
+    /// <summary>Filtering transactions that have lower FeeCap than BaseFee</summary>
     public class BaseFeeTxFilter : ITxFilter
     {
         private readonly IBlockPreparationContextService _blockPreparationContextService;
@@ -45,7 +46,9 @@ namespace Nethermind.Consensus.Transactions
             }
             
             bool isEip1559Enabled = _specProvider.GetSpec(_blockPreparationContextService.BlockNumber).IsEip1559Enabled;
-            bool allowed = tx.IsServiceTransaction || !isEip1559Enabled || tx.FeeCap >= _blockPreparationContextService.BaseFee;
+
+            bool skipCheck = tx.IsServiceTransaction || !isEip1559Enabled;
+            bool allowed = skipCheck || tx.FeeCap >= _blockPreparationContextService.BaseFee;
             return (allowed,
                 allowed
                     ? string.Empty

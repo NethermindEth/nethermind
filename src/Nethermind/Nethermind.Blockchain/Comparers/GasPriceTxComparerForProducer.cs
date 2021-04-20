@@ -22,6 +22,8 @@ using Nethermind.Core.Specs;
 
 namespace Nethermind.Blockchain.Comparers
 {
+    /// <summary>Block producer knows what will be base fee of next block. We can extract it from blockPreparationContextService and
+    /// use to order transactions</summary>
     public class GasPriceTxComparerForProducer : IComparer<Transaction>
     {
         private readonly IBlockPreparationContextService _blockPreparationContextService;
