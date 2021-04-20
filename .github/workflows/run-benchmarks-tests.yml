@@ -22,7 +22,7 @@ jobs:
         SHA8: ${{ env.GITHUB_SHA }}
         BRANCH: ${{ env.GITHUB_REF }}
       run: |
-        echo $GITHUB_SHA
+        echo $SHA8
         echo ${GITHUB_SHA}
         echo ${{ GITHUB_SHA }}
         echo ${{ env.GITHUB_SHA }}
