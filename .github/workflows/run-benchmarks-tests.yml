@@ -19,6 +19,6 @@ jobs:
     - name: Deploying Amazon EC2 instance for Benchmarking
       uses: aws-actions/aws-cloudformation-github-deploy@v1
       with:
-        name: Benchmark-${GITHUB_HEAD_REF}
+        name: Benchmark${GITHUB_SHA}
         template: https://cf-templates-1tzgi56hs2v4n-eu-central-1.s3.eu-central-1.amazonaws.com/performance-test.yaml
         parameter-overrides: "BranchName=${GITHUB_REF}"
