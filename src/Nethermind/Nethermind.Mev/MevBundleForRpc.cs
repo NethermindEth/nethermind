@@ -14,11 +14,22 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
+using Nethermind.Core;
+using System.Collections.Generic;
+using System.Numerics;
 
 namespace Nethermind.Mev
 {
     // ReSharper disable once ClassNeverInstantiated.Global
     public class MevBundleForRpc
     {
+        public List<Transaction> Transactions { get; set; }
+        public BigInteger BlockNumber { get; set; } 
+        public BigInteger MinTimestamp { get; set; }
+        public BigInteger MaxTimestamp { get; set; }
+
+        public MevBundleForRpc(List<Transaction> transactions, BigInteger blockNumber, BigInteger minTimestamp, BigInteger maxTimestamp) {
+            (Transactions, BlockNumber, MinTimestamp, MaxTimestamp) = (transactions, blockNumber, minTimestamp, maxTimestamp);
+        } 
     }
 }

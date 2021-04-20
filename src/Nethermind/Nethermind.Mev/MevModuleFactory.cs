@@ -24,16 +24,18 @@ namespace Nethermind.Mev
     {
         private readonly IMevConfig _mevConfig;
         private readonly IJsonRpcConfig _jsonRpcConfig;
+        private readonly MevPlugin _mevPlugin;
 
-        public MevModuleFactory(IMevConfig mevConfig, IJsonRpcConfig jsonRpcConfig)
+        public MevModuleFactory(IMevConfig mevConfig, IJsonRpcConfig jsonRpcConfig, MevPlugin mevPlugin)
         {
             _mevConfig = mevConfig;
             _jsonRpcConfig = jsonRpcConfig;
+            _mevPlugin = mevPlugin;
         }
         
         public override IMevRpcModule Create()
         {
-            return new MevRpcModule(_mevConfig, _jsonRpcConfig);
+            return new MevRpcModule(_mevConfig, _jsonRpcConfig, _mevPlugin);
         }
     }
 }

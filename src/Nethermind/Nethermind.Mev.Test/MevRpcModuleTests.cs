@@ -45,5 +45,11 @@ namespace Nethermind.Mev.Test
             mevConfig.Enabled = false;
             mevConfig.Enabled.Should().BeFalse();
         }
+
+        [Test]
+        public void Eth_add_bundle_works() 
+        {
+            // TODO?
+        }
     }
 }

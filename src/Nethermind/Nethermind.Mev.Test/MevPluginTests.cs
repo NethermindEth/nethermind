@@ -16,11 +16,15 @@
 //
 
 using System;
+using System.Numerics;
 using Nethermind.Api;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using NSubstitute;
 using NUnit.Framework;
+using System.Collections.Generic;
+using Nethermind.Core;
+using FluentAssertions;
 
 namespace Nethermind.Mev.Test
 {
@@ -71,5 +75,56 @@ namespace Nethermind.Mev.Test
             plugin.Init(api);
             plugin.InitRpcModules();
         }
+
+        private record BundleTestData(ulong block, ulong testTimestamp, int expectedRes, int expectedRemaining, Action action);
+
+        private MevBundleForRpc BundleHelper(List<Transaction> txs, ulong bNum, ulong minT, ulong maxT)
+        {
+            return new MevBundleForRpc(txs, new BigInteger(bNum), new BigInteger(minT), new BigInteger(maxT));
+        }
+
+        [Test]
+        public void should_calculate_appropriate_number_of_bundles()
+        {
+            INethermindApi api = Substitute.For<INethermindApi>();
+            api.Config<IMevConfig>().Returns(MevConfig.Default);
+            api.LogManager.Returns(LimboLogs.Instance);
+
+            MevPlugin plugin = new();
+            plugin.Init(api);
+
+            var empty = new List<Transaction>();
+
+            plugin.AddMevBundle(BundleHelper(empty, 4, 0, 0));
+            plugin.AddMevBundle(BundleHelper(empty, 5, 0, 0));
+            plugin.AddMevBundle(BundleHelper(empty, 6, 0, 0));
+            plugin.AddMevBundle(BundleHelper(empty, 9, 0, 0));
+            plugin.AddMevBundle(BundleHelper(empty, 9, 0, 0));
+            plugin.AddMevBundle(BundleHelper(empty, 12, 0, 0));
+            plugin.AddMevBundle(BundleHelper(empty, 15, 0, 0));
+
+            var testBundles = new BundleTestData[] 
+            {
+                new BundleTestData(8, 0, 0, 4, null),
+                new BundleTestData(9, 0, 2, 4, null),
+                new BundleTestData(10, 8, 0, 2, () => plugin.AddMevBundle(BundleHelper(empty, 10, 5, 7))),
+                new BundleTestData(11, 0, 0, 2, null),
+                new BundleTestData(12, 0, 1, 2, null),
+                new BundleTestData(13, 0, 0, 1, null),
+                new BundleTestData(14, 0, 0, 1, null),
+                new BundleTestData(15, 0, 1, 1, null),
+                new BundleTestData(16, 0, 0, 0, null),
+            };
+
+            foreach(var testBundle in testBundles) 
+            {
+                if(testBundle.action != null) testBundle.action();
+                
+                var res = plugin.GetCurrentMevTxBundles(testBundle.block, testBundle.testTimestamp);
+                res.Count.Should().Be(testBundle.expectedRes);
+                plugin.MevBundles.Count.Should().Be(testBundle.expectedRemaining);
+            }
+        }
+
     }
 }

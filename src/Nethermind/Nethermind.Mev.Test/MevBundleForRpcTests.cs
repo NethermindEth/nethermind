@@ -16,6 +16,8 @@
 // 
 
 using NUnit.Framework;
+using Nethermind.Core;
+using System.Collections.Generic;
 
 namespace Nethermind.Mev.Test
 {
@@ -25,7 +27,7 @@ namespace Nethermind.Mev.Test
         [Test]
         public void Can_create()
         {
-            _ = new MevBundleForRpc();
+            _ = new MevBundleForRpc(new List<Transaction>(), 0, 0, 0);
         }
     }
 }

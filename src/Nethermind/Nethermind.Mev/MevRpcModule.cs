@@ -15,30 +15,66 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Numerics;
+using System.Linq;
+using System.Collections.Generic;
 using Nethermind.Blockchain.Find;
 using Nethermind.JsonRpc;
+using Nethermind.JsonRpc.Data;
+using Nethermind.Int256;
+using Nethermind.Core;
+using Nethermind.Facade;
 
 namespace Nethermind.Mev
 {
-    public class MevRpcModule : IMevRpcModule
+    public partial class MevRpcModule : IMevRpcModule
     {
+        // from constructor arguments
         private readonly IMevConfig _mevConfig;
         private readonly IJsonRpcConfig _jsonRpcConfig;
+        private readonly MevPlugin _mevPlugin;
 
-        public MevRpcModule(IMevConfig mevConfig, IJsonRpcConfig jsonRpcConfig)
+        // from mevplugin nethermind api
+        private readonly ILogger _logger;
+        private readonly IBlockTree _blockTree;
+        private readonly IBlockchainBridge _blockchainBridge; 
+        private readonly IStateReader _stateReader;
+
+        public MevRpcModule(IMevConfig mevConfig, IJsonRpcConfig jsonRpcConfig, MevPlugin mevPlugin)
         {
             _mevConfig = mevConfig;
             _jsonRpcConfig = jsonRpcConfig;
+            _mevPlugin = mevPlugin;
+
+            _logger = mevPlugin.NethermindApi.LogManager.GetClassLogger();
+            _blockTree = mevPlugin.NethermindApi.BlockTree;
+            _blockchainBridge = mevPlugin.NethermindApi.CreateBlockchainBridge();
+            _stateReader = mevPlugin.NethermindApi.StateReader;
         }
 
-        public ResultWrapper<bool> eth_addBundle(object bundle)
+        public ResultWrapper<bool> eth_sendBundle(TransactionForRpc[] transactions, UInt256 blockNumber, UInt256 minTimestamp, UInt256 maxTimestamp)
         {
-            throw new NotImplementedException();
+            ulong chainId = _blockchainBridge.GetChainId();
+            var transactions_ = transactions.Select(tx => tx.ToTransaction(chainId)).ToList<Transaction>(); 
+
+            BigInteger blockNumber_;
+            blockNumber.Convert(out blockNumber_);
+            BigInteger minTimestamp_;
+            minTimestamp.Convert(out minTimestamp_);
+            BigInteger maxTimestamp_;
+            maxTimestamp.Convert(out maxTimestamp_);
+
+            MevBundleForRpc bundle = new MevBundleForRpc(transactions_, blockNumber_, minTimestamp_, maxTimestamp_);
+            
+            _mevPlugin.AddMevBundle(bundle);
+            return ResultWrapper<bool>.Success(true);
         }
 
-        public ResultWrapper<bool> eth_callBundle(MevBundleForRpc mevBundleForRpc, BlockParameter blockParameter)
+        
+        public ResultWrapper<TxToResult> eth_callBundle(TransactionForRpc[] transactions, BlockParameter blockParameter, UInt256? blockTimestamp)
         {
             throw new NotImplementedException();
         }
     }
+
 }

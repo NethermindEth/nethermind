@@ -16,22 +16,37 @@
 // 
 
 using System;
+using System.Numerics;
 using System.Threading.Tasks;
+using System.Collections.Generic;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
+using Nethermind.Core;
 
 namespace Nethermind.Mev
 {
     public class MevPlugin : INethermindPlugin
     {
-        private INethermindApi? _nethermindApi;
+        private INethermindApi? _nethermindApi
+        { 
+            get { ThrowIfNotInitialized(); return _nethermindApi!; } 
+        }
 
         private IMevConfig? _mevConfig;
 
         private ILogger? _logger;
+
+        private List<MevBundleForRpc> _mevBundles = new List<MevBundleForRpc>();
+
+        public List<MevBundleForRpc> MevBundles 
+        { 
+            get { ThrowIfNotInitialized(); return _mevBundles!; } 
+        }
+
+        private readonly object _locker = new();
 
         public string Name => "MEV";
 
@@ -55,10 +70,20 @@ namespace Nethermind.Mev
         public Task InitRpcModules()
         {
             ThrowIfNotInitialized();
-            (IApiWithNetwork getFromApi, _) = _nethermindApi!.ForRpc;
-            IJsonRpcConfig rpcConfig = getFromApi.Config<IJsonRpcConfig>();
-            MevModuleFactory mevModuleFactory = new(_mevConfig!, rpcConfig);
-            getFromApi.RpcModuleProvider!.RegisterBoundedByCpuCount(mevModuleFactory, rpcConfig.Timeout);
+            if (_mevConfig!.Enabled) 
+            {   
+                (IApiWithNetwork getFromApi, _) = _nethermindApi!.ForRpc;
+                IJsonRpcConfig rpcConfig = getFromApi.Config<IJsonRpcConfig>();
+                MevModuleFactory mevModuleFactory = new(_mevConfig!, rpcConfig, this);
+                getFromApi.RpcModuleProvider!.RegisterBoundedByCpuCount(mevModuleFactory, rpcConfig.Timeout);
+
+                if (_logger!.IsInfo) _logger.Info("Flashbots RPC plugin enabled");
+            } 
+            else 
+            {
+                if (_logger!.IsWarn) _logger.Info("Skipping Flashbots RPC plugin");
+            }
+
             return Task.CompletedTask;
         }
 
@@ -72,6 +97,41 @@ namespace Nethermind.Mev
             if (_nethermindApi is null || _mevConfig is null || _logger is null)
             {
                 throw new InvalidOperationException($"{nameof(MevPlugin)} not yet initialized");
+            }
+        }
+
+        public List<List<Transaction>> GetCurrentMevTxBundles(BigInteger blockNumber, BigInteger blockTimestamp) {
+            ThrowIfNotInitialized();
+            lock (_locker) 
+            {
+                var currentAndFutureMevBundles = new List<MevBundleForRpc>();
+                var currentTxBundles = new List<List<Transaction>>();
+
+                foreach (var mevBundle in _mevBundles!) 
+                {
+                    if ((mevBundle.MaxTimestamp != 0 && blockTimestamp > mevBundle.MaxTimestamp) || (blockNumber > mevBundle.BlockNumber)) continue;
+
+                    if ((mevBundle.MinTimestamp != 0 && blockTimestamp < mevBundle.MinTimestamp) || (blockNumber < mevBundle.BlockNumber)) 
+                    {
+                        currentAndFutureMevBundles.Add(mevBundle);
+                        continue;
+                    }
+
+                    currentTxBundles.Add(mevBundle.Transactions);
+                    currentAndFutureMevBundles.Add(mevBundle);
+                }
+
+                _mevBundles = currentAndFutureMevBundles;
+                return currentTxBundles;
+            }
+        }
+
+        public void AddMevBundle(MevBundleForRpc mevBundle) 
+        {
+            ThrowIfNotInitialized();
+            lock (_locker) 
+            {
+                _mevBundles!.Add(mevBundle);
             }
         }
     }

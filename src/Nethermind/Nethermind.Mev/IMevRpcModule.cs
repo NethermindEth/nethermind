@@ -17,6 +17,8 @@
 using Nethermind.Blockchain.Find;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
+using Nethermind.JsonRpc.Data;
+using Nethermind.Int256;
 
 namespace Nethermind.Mev
 {
@@ -26,9 +28,9 @@ namespace Nethermind.Mev
     public interface IMevRpcModule : IRpcModule
     {        
         [JsonRpcMethod(Description = "Adds bundle to the tx pool.", IsImplemented = true)]
-        ResultWrapper<bool> eth_addBundle(object bundle);
+        ResultWrapper<bool> eth_sendBundle(TransactionForRpc[] transactions, UInt256 blockNumber, UInt256 minTimestamp, UInt256 maxTimestamp);
         
         [JsonRpcMethod(Description = "Simulates the bundle behaviour.", IsImplemented = true)]
-        ResultWrapper<bool> eth_callBundle(MevBundleForRpc mevBundleForRpc, BlockParameter blockParameter);
+        ResultWrapper<bool> eth_callBundle(TransactionForRpc[] transactions, BlockParameter blockParameter, UInt256 timestamp);
     }
 }
