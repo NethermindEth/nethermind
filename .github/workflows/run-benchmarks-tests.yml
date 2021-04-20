@@ -19,14 +19,12 @@ jobs:
     - name: Configure environments
       id: envs
       env:
-        SHA8: ${{ env.GITHUB_SHA }}
-        BRANCH: ${{ env.GITHUB_REF }}
+        SHA8: ${{ github.sha }}
+        BRANCH: ${{ github.ref }}
       run: |
         echo $SHA8
-        echo ${GITHUB_SHA}
-        echo ${{ GITHUB_SHA }}
-        echo ${{ env.GITHUB_SHA }}
-        echo $GITHUB_REF
+        echo ${{ github.ref }}
+        echo $BRANCH
         echo "::set-output name=sha8::$SHA8"
         echo "::set-output name=branch::$BRANCH"
     - name: Deploy Amazon EC2 instance for Benchmarking
