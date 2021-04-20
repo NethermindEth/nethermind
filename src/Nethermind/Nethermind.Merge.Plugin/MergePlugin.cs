@@ -20,6 +20,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
+using Nethermind.Blockchain.Rewards;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Core;
@@ -56,6 +57,7 @@ namespace Nethermind.Merge.Plugin
                 }
                 
                 _api.EngineSigner = new Eth2Signer(new Address(_mergeConfig.BlockAuthorAccount));
+                _api.RewardCalculatorSource = NoBlockRewards.Instance;
             }
 
             return Task.CompletedTask;
