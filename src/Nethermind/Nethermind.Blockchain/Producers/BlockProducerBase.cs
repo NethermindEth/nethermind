@@ -25,7 +25,6 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
@@ -49,14 +48,13 @@ namespace Nethermind.Blockchain.Producers
         private IBlockchainProcessor Processor { get; }
         protected IBlockTree BlockTree { get; }
         protected IBlockProcessingQueue BlockProcessingQueue { get; }
+        protected ITimestamper Timestamper { get; }
 
         protected virtual BlockHeader? GetCurrentBlockParent() => BlockTree.Head?.Header;
 
-        private readonly ISealer _sealer;
+        protected ISealer Sealer { get; }
         private readonly IStateProvider _stateProvider;
         private readonly IGasLimitCalculator _gasLimitCalculator;
-        private readonly ITimestamper _timestamper;
-        private readonly ISpecProvider _spec;
         private readonly ITxSource _txSource;
 
         protected DateTime _lastProducedBlock;
@@ -71,19 +69,16 @@ namespace Nethermind.Blockchain.Producers
             IStateProvider? stateProvider,
             IGasLimitCalculator? gasLimitCalculator,
             ITimestamper? timestamper,
-            ISpecProvider? specProvider,
             ILogManager? logManager)
         {
             _txSource = txSource ?? throw new ArgumentNullException(nameof(txSource));
             Processor = processor ?? throw new ArgumentNullException(nameof(processor));
-            _sealer = sealer ?? throw new ArgumentNullException(nameof(sealer));
+            Sealer = sealer ?? throw new ArgumentNullException(nameof(sealer));
             BlockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
-            BlockProcessingQueue =
-                blockProcessingQueue ?? throw new ArgumentNullException(nameof(blockProcessingQueue));
+            BlockProcessingQueue = blockProcessingQueue ?? throw new ArgumentNullException(nameof(blockProcessingQueue));
             _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
             _gasLimitCalculator = gasLimitCalculator ?? throw new ArgumentNullException(nameof(gasLimitCalculator));
-            _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
-            _spec = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
+            Timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
             Logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
@@ -119,7 +114,7 @@ namespace Nethermind.Blockchain.Producers
                 }
                 else
                 {
-                    if (_sealer.CanSeal(parentHeader.Number + 1, parentHeader.Hash))
+                    if (Sealer.CanSeal(parentHeader.Number + 1, parentHeader.Hash))
                     {
                         Interlocked.Exchange(ref Metrics.CanProduceBlocks, 1);
                         return ProduceNewBlock(parentHeader, token);
@@ -157,7 +152,7 @@ namespace Nethermind.Blockchain.Producers
                             {
                                 if (Logger.IsInfo)
                                     Logger.Info($"Sealed block {t.Result.ToString(Block.Format.HashNumberDiffAndTx)}");
-                                BlockTree.SuggestBlock(t.Result);
+                                ConsumeProducedBlock(t.Result);
                                 Metrics.BlocksSealed++;
                                 _lastProducedBlock = DateTime.UtcNow;
                                 return true;
@@ -189,8 +184,10 @@ namespace Nethermind.Blockchain.Producers
             return Task.FromResult(false);
         }
 
+        protected virtual void ConsumeProducedBlock(Block block) => BlockTree.SuggestBlock(block);
+
         protected virtual Task<Block> SealBlock(Block block, BlockHeader parent, CancellationToken token) =>
-            _sealer.SealBlock(block, token);
+            Sealer.SealBlock(block, token);
 
         protected virtual Block? ProcessPreparedBlock(Block block) =>
             Processor.Process(block, ProcessingOptions.ProducingBlock, NullBlockTracer.Instance);
@@ -224,19 +221,19 @@ namespace Nethermind.Blockchain.Producers
 
         protected virtual Block PrepareBlock(BlockHeader parent)
         {
-            UInt256 timestamp = UInt256.Max(parent.Timestamp + 1, _timestamper.UnixTime.Seconds);
+            UInt256 timestamp = UInt256.Max(parent.Timestamp + 1, Timestamper.UnixTime.Seconds);
             UInt256 difficulty = CalculateDifficulty(parent, timestamp);
             BlockHeader header = new(
-                parent.Hash,
+                parent.Hash!,
                 Keccak.OfAnEmptySequenceRlp,
-                _sealer.Address,
+                Sealer.Address,
                 difficulty,
                 parent.Number + 1,
                 _gasLimitCalculator.GetGasLimit(parent),
                 timestamp,
-                Encoding.UTF8.GetBytes("Nethermind"))
+                GetExtraData(parent))
             {
-                TotalDifficulty = parent.TotalDifficulty + difficulty, Author = _sealer.Address
+                TotalDifficulty = parent.TotalDifficulty + difficulty, Author = Sealer.Address
             };
 
             if (Logger.IsDebug) Logger.Debug($"Setting total difficulty to {parent.TotalDifficulty} + {difficulty}.");
@@ -246,6 +243,8 @@ namespace Nethermind.Blockchain.Producers
             header.TxRoot = new TxTrie(block.Transactions).RootHash;
             return block;
         }
+
+        protected virtual byte[] GetExtraData(BlockHeader parent) => Encoding.UTF8.GetBytes("Nethermind");
 
         protected abstract UInt256 CalculateDifficulty(BlockHeader parent, UInt256 timestamp);
     }

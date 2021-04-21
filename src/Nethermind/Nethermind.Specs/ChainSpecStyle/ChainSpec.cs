@@ -41,7 +41,7 @@ namespace Nethermind.Specs.ChainSpecStyle
         
         public Block Genesis { get; set; }
         
-        public SealEngineType SealEngineType { get; set; }
+        public string SealEngineType { get; set; }
         
         public AuRaParameters AuRa { get; set; }
         

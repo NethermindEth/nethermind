@@ -365,7 +365,7 @@ namespace Nethermind.DataMarketplace.Infrastructure
             set => _nethermindApi.EngineSignerStore = value;
         }
 
-        public SealEngineType SealEngineType      {
+        public string SealEngineType      {
             get => _nethermindApi.SealEngineType;
         }
         public ISpecProvider? SpecProvider

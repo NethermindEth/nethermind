@@ -24,6 +24,6 @@ namespace Nethermind.Api.Extensions
     {
         Task InitBlockProducer();
         
-        SealEngineType SealEngineType { get; }
+        string SealEngineType { get; }
     }
 }

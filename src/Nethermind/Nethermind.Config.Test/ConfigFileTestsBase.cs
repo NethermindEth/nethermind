@@ -20,10 +20,12 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Linq.Expressions;
 using System.Reflection;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using NUnit.Framework;
 
 namespace Nethermind.Config.Test
@@ -175,12 +177,12 @@ namespace Nethermind.Config.Test
             return intersection;
         }
         
-        protected void Test<T, TProperty>(string configWildcard, Func<T, TProperty> getter, TProperty expectedValue) where T : IConfig
+        protected void Test<T, TProperty>(string configWildcard, Expression<Func<T, TProperty>> getter, TProperty expectedValue) where T : IConfig
         {
-            Test(configWildcard, getter, (s, propertyValue) => propertyValue.Should().Be(expectedValue, s));
+            Test(configWildcard, getter, (s, propertyValue) => propertyValue.Should().Be(expectedValue, s + ": " + typeof(T).Name + "." + getter.GetName()));
         }
 
-        protected void Test<T, TProperty>(string configWildcard, Func<T, TProperty> getter, Action<string, TProperty> expectedValue) where T : IConfig
+        protected void Test<T, TProperty>(string configWildcard, Expression<Func<T, TProperty>> getter, Action<string, TProperty> expectedValue) where T : IConfig
         {
             foreach (string configFile in Resolve(configWildcard))
             {
@@ -191,7 +193,7 @@ namespace Nethermind.Config.Test
                 }
 
                 T config = configProvider.GetConfig<T>();
-                expectedValue(configFile, getter(config));
+                expectedValue(configFile, getter.Compile()(config));
             }
         }
         

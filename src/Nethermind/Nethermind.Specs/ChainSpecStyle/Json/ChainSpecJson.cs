@@ -19,6 +19,8 @@ using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Int256;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 
 namespace Nethermind.Specs.ChainSpecStyle.Json
 {
@@ -46,8 +48,8 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
             public long? DifficultyBoundDivisor => Params?.DifficultyBoundDivisor;
             public long? DurationLimit => Params?.DurationLimit;
             public UInt256? MinimumDifficulty => Params?.MinimumDifficulty;
-            public Dictionary<string, UInt256> BlockReward => Params?.BlockReward;
-            public Dictionary<string, long> DifficultyBombDelays => Params?.DifficultyBombDelays;
+            public IDictionary<long, UInt256> BlockReward => Params?.BlockReward;
+            public IDictionary<string, long> DifficultyBombDelays => Params?.DifficultyBombDelays;
             public EthashEngineParamsJson Params { get; set; }
         }
         
@@ -62,7 +64,7 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
             public Address[] DaoHardforkAccounts { get; set; }
             public long Eip100bTransition { get; set; }
             public long? FixedDifficulty { get; set; }
-            public Dictionary<string, UInt256> BlockReward { get; set; }
+            public BlockRewardJson BlockReward { get; set; }
             public Dictionary<string, long> DifficultyBombDelays { get; set; }
         }
     
@@ -99,8 +101,9 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
             public long? PosdaoTransition { get; set; }
 
             public class StepDurationJson : SortedDictionary<long, long> { }
-            public class BlockRewardJson : SortedDictionary<long, UInt256> { }
         }
+        
+        public class BlockRewardJson : SortedDictionary<long, UInt256> { }
 
         internal class AuRaValidatorJson
         {
@@ -177,6 +180,9 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
             public CliqueEngineJson Clique { get; set; }
             public AuraEngineJson AuthorityRound { get; set; }
             public NethDevJson NethDev { get; set; }
+            
+            [JsonExtensionData]
+            public IDictionary<string, JToken> CustomEngineData { get; set; }
         }
     }
 }

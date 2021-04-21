@@ -25,7 +25,10 @@ namespace Nethermind.Blockchain.Synchronization
 {
     public interface ISyncConfig : IConfig
     {
-        [ConfigItem(Description = "If 'false' then the node does not download/process new blocks..", DefaultValue = "true")]
+        [ConfigItem(Description = "If 'false' then the node does not connect to peers.", DefaultValue = "true")]
+        bool NetworkingEnabled { get; set; }
+        
+        [ConfigItem(Description = "If 'false' then the node does not download/process new blocks.", DefaultValue = "true")]
         bool SynchronizationEnabled { get; set; }
         
         [ConfigItem(Description = "Enables beam sync that can be useful to create some JSON RPC queries while the node is fast syncing in the background.", DefaultValue = "false")]
@@ -103,5 +106,8 @@ namespace Nethermind.Blockchain.Synchronization
         [ConfigItem(Description = "[ONLY FOR MISSING RECEIPTS ISSUE] Turns on receipts validation that checks for ones that might be missing due to previous bug. It downloads them from network if needed." +
                                   "If used please check that PivotNumber is same as original used when syncing the node as its used as a cut-off point.", DefaultValue = "false")]
         public bool FixReceipts { get; set; }
+        
+        [ConfigItem(HiddenFromDocs = true, DefaultValue = "true")]
+        public bool BlockGossipEnabled { get; set; }
     }
 }
