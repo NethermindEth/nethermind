@@ -1,3 +1,4 @@
+using System.Linq;
 using Antlr4.Runtime.Misc;
 
 namespace Nethermind.Dsl.ANTLR
@@ -6,7 +7,12 @@ namespace Nethermind.Dsl.ANTLR
     {
         public override void EnterInit([NotNull] DslGrammarParser.InitContext context)
         {
-            base.EnterInit(context);
+            var expressionContext = context.expression().First();
+
+            if(expressionContext.OPERATOR().GetText() == "SOURCE")
+            {
+                
+            }
         }
 
         public override void EnterExpression([NotNull] DslGrammarParser.ExpressionContext context)
