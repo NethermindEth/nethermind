@@ -36,6 +36,18 @@ using ParserRuleContext = Antlr4.Runtime.ParserRuleContext;
 [System.CLSCompliant(false)]
 public partial class DslGrammarBaseListener : IDslGrammarListener {
 	/// <summary>
+	/// Enter a parse tree produced by <see cref="DslGrammarParser.init"/>.
+	/// <para>The default implementation does nothing.</para>
+	/// </summary>
+	/// <param name="context">The parse tree.</param>
+	public virtual void EnterInit([NotNull] DslGrammarParser.InitContext context) { }
+	/// <summary>
+	/// Exit a parse tree produced by <see cref="DslGrammarParser.init"/>.
+	/// <para>The default implementation does nothing.</para>
+	/// </summary>
+	/// <param name="context">The parse tree.</param>
+	public virtual void ExitInit([NotNull] DslGrammarParser.InitContext context) { }
+	/// <summary>
 	/// Enter a parse tree produced by <see cref="DslGrammarParser.expression"/>.
 	/// <para>The default implementation does nothing.</para>
 	/// </summary>
@@ -47,6 +59,18 @@ public partial class DslGrammarBaseListener : IDslGrammarListener {
 	/// </summary>
 	/// <param name="context">The parse tree.</param>
 	public virtual void ExitExpression([NotNull] DslGrammarParser.ExpressionContext context) { }
+	/// <summary>
+	/// Enter a parse tree produced by <see cref="DslGrammarParser.assign"/>.
+	/// <para>The default implementation does nothing.</para>
+	/// </summary>
+	/// <param name="context">The parse tree.</param>
+	public virtual void EnterAssign([NotNull] DslGrammarParser.AssignContext context) { }
+	/// <summary>
+	/// Exit a parse tree produced by <see cref="DslGrammarParser.assign"/>.
+	/// <para>The default implementation does nothing.</para>
+	/// </summary>
+	/// <param name="context">The parse tree.</param>
+	public virtual void ExitAssign([NotNull] DslGrammarParser.AssignContext context) { }
 
 	/// <inheritdoc/>
 	/// <remarks>The default implementation does nothing.</remarks>

@@ -1,6 +1,8 @@
 grammar DslGrammar;
 
-expression : OPERATOR ID ;
+init: (expression)* ;
+expression : OPERATOR (OPERATOR_VALUE | assign) ;
+assign : OPERATOR_VALUE '==' (DIGIT | OPERATOR_VALUE | ADDRESS) ; 
 
 OPERATOR : SOURCE | WATCH | WHERE | PUBLISH ;
 
@@ -9,6 +11,7 @@ WATCH : 'WATCH' ;
 WHERE : 'WHERE' ;
 PUBLISH : 'PUBLISH' ;
 
-ID : [a-z]+ ;
+OPERATOR_VALUE : [a-zA-Z]+ ;
 DIGIT: [0-9]+;
+ADDRESS : '0x'[a-fA-F0-9]* ;
 WS : [ \t\r\n]+ -> skip ; // skip spaces, tabs, newlines
