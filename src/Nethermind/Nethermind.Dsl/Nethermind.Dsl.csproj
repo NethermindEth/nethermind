@@ -8,4 +8,8 @@
     <PackageReference Include="Antlr4.Runtime.Standard" Version="4.9.2" />
   </ItemGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\Nethermind.Api\Nethermind.Api.csproj" />
+  </ItemGroup>
+
 </Project>

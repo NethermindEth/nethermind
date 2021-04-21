@@ -9,6 +9,11 @@ namespace Nethermind.Dsl.ANTLR
             base.EnterInit(context);
         }
 
+        public override void EnterExpression([NotNull] DslGrammarParser.ExpressionContext context)
+        {
+            base.EnterExpression(context);
+        }
+
         public override void EnterAssign([NotNull] DslGrammarParser.AssignContext context)
         {
             base.EnterAssign(context);
