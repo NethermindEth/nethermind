@@ -42,7 +42,7 @@ namespace Nethermind.Merge.Plugin.Handlers
         private readonly IBlockchainProcessor _processor;
         private readonly IStateProvider _stateProvider;
         private readonly ILogger _logger;
-        private readonly LruCache<Keccak, bool> _latestBlocks = new LruCache<Keccak, bool>(50, "LatestBlocks");
+        private readonly LruCache<Keccak, bool> _latestBlocks = new(50, "LatestBlocks");
         
         public NewBlockHandler(IBlockTree blockTree, IBlockPreprocessorStep preprocessor, IBlockchainProcessor processor, IStateProvider stateProvider, ILogManager logManager)
         {
@@ -76,6 +76,11 @@ namespace Nethermind.Merge.Plugin.Handlers
             {
                 if (_latestBlocks.TryGet(request.BlockHash, out bool isValid))
                 {
+                    if (isValid)
+                    {
+                        processedBlock = _blockTree.FindBlock(request.BlockHash, BlockTreeLookupOptions.None);
+                    }
+
                     return isValid;
                 }
                 else

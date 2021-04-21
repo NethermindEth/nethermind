@@ -35,7 +35,7 @@ namespace Nethermind.Merge.Plugin.Data
 {
     public class BlockRequestResult
     {
-        public BlockRequestResult()
+        public BlockRequestResult() : this(true)
         {
             
         }
@@ -83,41 +83,58 @@ namespace Nethermind.Merge.Plugin.Data
                 Bloom = LogsBloom,
                 GasUsed = GasUsed
             };
-            Transaction[] transactions = Rlp.DecodeArray<Transaction>(new RlpStream(Transactions));
+            Transaction[] transactions = GetTransactions();
             header.TxRoot = new TxTrie(transactions).RootHash;
             return new Block(header, transactions, Array.Empty<BlockHeader>());
         }
         
         public UInt256 Difficulty { get; set; }
+        public bool ShouldSerializeDifficulty() => false;
         public byte[] ExtraData { get; set; } = null!;
+        public bool ShouldSerializeExtraData() => false;
         public long GasLimit { get; set; }
         public long GasUsed { get; set; }
-        
+       
         [JsonProperty(NullValueHandling = NullValueHandling.Include)]
         public Keccak BlockHash { get; set; } = null!;
-
         [JsonProperty(NullValueHandling = NullValueHandling.Include)]
         public Bloom LogsBloom { get; set; } = Bloom.Empty;
-
         public Address? Miner { get; set; }
         public Keccak MixHash { get; set; } = null!;
-
+        public bool ShouldSerializeMixHash() => false;
         [JsonProperty(NullValueHandling = NullValueHandling.Include)]
         public ulong Nonce { get; set; }
+        public bool ShouldSerializeNonce() => false;
         [JsonProperty(NullValueHandling = NullValueHandling.Include)]
         public long Number { get; set; }
         public Keccak ParentHash { get; set; } = null!;
         public Keccak ReceiptsRoot { get; set; } = null!;
         public Keccak StateRoot { get; set; } = null!;
-        public byte[] Transactions { get; set; } = null!;
+        public byte[][] Transactions { get; set; } = Array.Empty<byte[]>();
         public IEnumerable<Keccak>? Uncles { get; set; }
+        public bool ShouldSerializeUncles() => false;
         public UInt256 Timestamp { get; set; }
 
         public override string ToString() => BlockHash == null ? $"{Number} null" : $"{Number} ({BlockHash})";
 
         public Keccak CalculateHash() => ToBlock().CalculateHash();
-        public void SetTransactions(params Transaction[] transactions) => Transactions = Rlp.Encode(transactions).Bytes;
+        public void SetTransactions(params Transaction[] transactions)
+        {
+            Transactions = new byte[transactions.Length][];
+            for (int i = 0; i < Transactions.Length; i++)
+            {
+                Transactions[i] = Rlp.Encode(transactions[i]).Bytes;
+            }
+        }
 
-        public Transaction[] GetTransactions() => Rlp.DecodeArray<Transaction>(new RlpStream(Transactions));
+        public Transaction[] GetTransactions()
+        {
+            Transaction[] transactions = new Transaction[Transactions.Length];
+            for (int i = 0; i < Transactions.Length; i++)
+            {
+                transactions[i] = Rlp.Decode<Transaction>(Transactions[i]);
+            }
+            return transactions;
+        }
     }
 }
