@@ -26,6 +26,7 @@ using Nethermind.Network.Discovery.RoutingTable;
 using Nethermind.Network.Discovery.Serializers;
 using Nethermind.Network.P2P.Subprotocols.Eth;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62;
+using Nethermind.Network.P2P.Subprotocols.Eth.V65;
 using Nethermind.Network.Rlpx.Handshake;
 using Nethermind.Stats;
 
@@ -79,6 +80,14 @@ namespace Nethermind.Network.Test.Builders
                 .With(new NewBlockMessageSerializer())
                 .With(new TransactionsMessageSerializer())
                 .With(new StatusMessageSerializer());
+        }
+
+        public SerializationBuilder WithEth65()
+        {
+            return WithEth()
+                .With(new NewPooledTransactionHashesMessageSerializer())
+                .With(new GetPooledTransactionsMessageSerializer())
+                .With(new PooledTransactionsMessageSerializer());
         }
 
         public SerializationBuilder WithDiscovery(PrivateKey privateKey)
