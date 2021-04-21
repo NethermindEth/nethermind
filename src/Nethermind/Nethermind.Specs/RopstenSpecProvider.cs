@@ -71,6 +71,7 @@ namespace Nethermind.Specs
         public const long IstanbulBlockNumber  = 6_485_846;
         public const long MuirGlacierBlockNumber  = 7_117_117;
         public const long BerlinBlockNumber  = 9_812_189;
+        public const long LondonBlockNumber = long.MaxValue;
 
         public ulong ChainId => Core.ChainId.Ropsten;
         public long[] TransitionBlocks => new[]

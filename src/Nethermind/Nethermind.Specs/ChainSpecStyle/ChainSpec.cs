@@ -74,5 +74,7 @@ namespace Nethermind.Specs.ChainSpecStyle
         public long? MuirGlacierNumber { get; set; }
         
         public long? BerlinBlockNumber { get; set; }
+        
+        public long? LondonBlockNumber { get; set; }
     }
 }
