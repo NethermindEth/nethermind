@@ -113,7 +113,7 @@ namespace Nethermind.Runner.Ethereum.Api
             );
         }
 
-        public IAbiEncoder AbiEncoder { get; } = new AbiEncoder();
+        public IAbiEncoder AbiEncoder { get; } = Nethermind.Abi.AbiEncoder.Instance;
         public IBlockchainProcessor? BlockchainProcessor { get; set; }
         public CompositeBlockPreprocessorStep BlockPreprocessor { get; } = new(); 
         public IBlockProcessingQueue? BlockProcessingQueue { get; set; }
