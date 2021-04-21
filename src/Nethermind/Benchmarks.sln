@@ -64,6 +64,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.EthStats", "Neth
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MathGmp.Native", "..\Math.Gmp.Native\MathGmp.Native\MathGmp.Native.csproj", "{D4589F63-8AA4-4ED9-8A03-2556F697642A}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Benchmark.Runner", "Nethermind.Benchmark.Runner\Nethermind.Benchmark.Runner.csproj", "{148F09BA-EA52-4FA4-A6CE-9B7D450D8561}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -194,6 +196,10 @@ Global
 		{D4589F63-8AA4-4ED9-8A03-2556F697642A}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{D4589F63-8AA4-4ED9-8A03-2556F697642A}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{D4589F63-8AA4-4ED9-8A03-2556F697642A}.Release|Any CPU.Build.0 = Release|Any CPU
+		{148F09BA-EA52-4FA4-A6CE-9B7D450D8561}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{148F09BA-EA52-4FA4-A6CE-9B7D450D8561}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{148F09BA-EA52-4FA4-A6CE-9B7D450D8561}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{148F09BA-EA52-4FA4-A6CE-9B7D450D8561}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{0F53A016-3141-4384-A81F-6444AD116E39} = {57CE427C-455B-47A9-85D6-CEF379DC00F6}
