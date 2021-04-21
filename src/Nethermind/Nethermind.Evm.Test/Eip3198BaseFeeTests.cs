@@ -60,6 +60,7 @@ namespace Nethermind.Evm.Test
             (Block block, Transaction transaction) = PrepareTx(blockNumber, 100000, code);
             block.Header.BaseFee = (UInt256)baseFee;
             transaction.DecodedFeeCap = (UInt256)baseFee;
+            transaction.Type = TxType.EIP1559;
             TestAllTracerWithOutput tracer = CreateTracer();
             _processor.Execute(transaction, block.Header, tracer);
 
