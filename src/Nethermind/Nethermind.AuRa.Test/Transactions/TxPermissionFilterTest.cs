@@ -48,10 +48,10 @@ namespace Nethermind.AuRa.Test.Transactions
 {
     public class TxPermissionFilterTest
     {
-        private const string ContractAddress = "0xAB5b100cf7C8deFB3c8f3C48474223997A50fB13";
+        private const string ContractAddress = "0x4000000000000000000000000000000000000001";
         private static readonly Address _contractAddress = new(ContractAddress);
         
-        private static readonly ITransactionPermissionContract.TxPermissions[] TxTypes = new[]
+        private static readonly ITransactionPermissionContract.TxPermissions[] TxPermissionsTypes = new[]
         {
             ITransactionPermissionContract.TxPermissions.Basic,
             ITransactionPermissionContract.TxPermissions.Call,
@@ -239,7 +239,7 @@ namespace Nethermind.AuRa.Test.Transactions
 
             foreach (var test in tests)
             {
-                foreach (var txType in TxTypes)
+                foreach (var txType in TxPermissionsTypes)
                 {
                     yield return GetTestCase(testFactory, test, txType);
                 }
