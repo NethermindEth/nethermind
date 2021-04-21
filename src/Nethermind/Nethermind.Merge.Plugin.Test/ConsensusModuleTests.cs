@@ -252,7 +252,7 @@ namespace Nethermind.Merge.Plugin.Test
         }
         
         [Test]
-        // [Repeat(1000)] to test multi-thread issue
+        // [Repeat(1000)] // to test multi-thread issue, warning - long and eliminated in test already
         public async Task newBlock_processes_passed_transactions([Values(false, true)] bool moveHead)
         {
             using MergeTestBlockchain chain = await CreateBlockChain();
@@ -265,13 +265,14 @@ namespace Nethermind.Merge.Plugin.Test
                 BlockRequestResult newBlockRequest = CreateBlockRequest(block, TestItem.AddressA);
                 PrivateKey from = TestItem.PrivateKeyB;
                 Address to = TestItem.AddressD;
-                var (fromBalanceAfter, toBalanceAfter) = AddTransactions(chain, newBlockRequest, from, to, count, 1, out var parentHeader);
+                var (_, toBalanceAfter) = AddTransactions(chain, newBlockRequest, from, to, count, 1, out var parentHeader);
 
                 newBlockRequest.GasUsed = GasCostOf.Transaction * count;
                 newBlockRequest.StateRoot = new Keccak("0x3d2e3ced6da0d1e94e65894dc091190480f045647610ef614e1cab4241ca66e0");
                 newBlockRequest.ReceiptsRoot = new Keccak("0xc538d36ed1acf6c28187110a2de3e5df707d6d38982f436eb0db7a623f9dc2cd");
                 newBlockRequest.BlockHash = newBlockRequest.CalculateHash();
                 ResultWrapper<NewBlockResult> result = await rpc.consensus_newBlock(newBlockRequest);
+                await Task.Delay(10);
 
                 result.Data.Valid.Should().BeTrue();
                 RootCheckVisitor rootCheckVisitor = new();
@@ -282,6 +283,7 @@ namespace Nethermind.Merge.Plugin.Test
                 if (moveHead)
                 {
                     await rpc.consensus_setHead(newBlockRequest.BlockHash);
+                    await Task.Delay(10);
                     chain.State.StateRoot.Should().Be(newBlockRequest.StateRoot);
                     chain.State.StateRoot.Should().NotBe(parentHeader.StateRoot!);
                 }
