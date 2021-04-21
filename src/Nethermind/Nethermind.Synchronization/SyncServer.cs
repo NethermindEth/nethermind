@@ -60,7 +60,7 @@ namespace Nethermind.Synchronization
         private object _dummyValue = new();
 
         private ICache<Keccak, object> _recentlySuggested =
-            new LruCache<Keccak, object>(128, 128, "recently suggested blocks");
+            new LruCache<Keccak, object>(128);
 
         private long _pivotNumber;
         private Keccak _pivotHash;

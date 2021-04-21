@@ -42,13 +42,13 @@ namespace Nethermind.Consensus.Clique
         private readonly IEthereumEcdsa _ecdsa;
         private IDb _blocksDb;
         private ulong _lastSignersCount = 0;
-        private ICache<Keccak, Snapshot> _snapshotCache = new LruCache<Keccak, Snapshot>(Clique.InMemorySnapshots, "clique snapshots");
+        private ICache<Keccak, Snapshot> _snapshotCache = new LruCache<Keccak, Snapshot>(Clique.InMemorySnapshots);
 
         public SnapshotManager(ICliqueConfig cliqueConfig, IDb blocksDb, IBlockTree blockTree, IEthereumEcdsa ecdsa, ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _cliqueConfig = cliqueConfig ?? throw new ArgumentNullException(nameof(cliqueConfig));
-            _signatures = new LruCache<Keccak, Address>(Clique.InMemorySignatures, Clique.InMemorySignatures, "signatures");
+            _signatures = new LruCache<Keccak, Address>(Clique.InMemorySignatures);
             _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
             _blocksDb = blocksDb ?? throw new ArgumentNullException(nameof(blocksDb));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));

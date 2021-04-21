@@ -14,150 +14,38 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System;
 using System.Collections.Generic;
-using System.Runtime.CompilerServices;
-using Nethermind.Core.Extensions;
+using BitFaster.Caching.Lru;
 
 namespace Nethermind.Core.Caching
 {
-    /// <remarks>
-    /// The array based solution is preferred to lower the overall memory management overhead. The <see cref="LinkedListNode{T}"/> based approach is very costly.
-    /// </remarks>
-    /// <summary>
-    /// https://stackoverflow.com/questions/754233/is-it-there-any-lru-implementation-of-idictionary
-    /// </summary>
     public class LruCache<TKey, TValue> : ICache<TKey, TValue> where TKey : notnull
     {
+        private ConcurrentLru<TKey, TValue> _internalCache;
         private readonly int _maxCapacity;
-        private readonly Dictionary<TKey, LinkedListNode<LruCacheItem>> _cacheMap;
-        private readonly LinkedList<LruCacheItem> _lruList;
+        public void Clear() => _internalCache = new(_maxCapacity);
 
-        [MethodImpl(MethodImplOptions.Synchronized)]
-        public void Clear()
-        {
-            _cacheMap?.Clear();
-            _lruList?.Clear();
-        }
-
-        public LruCache(int maxCapacity, int startCapacity, string name)
+        public LruCache(int maxCapacity)
         {
             _maxCapacity = maxCapacity;
-            _cacheMap = typeof(TKey) == typeof(byte[])
-                ? new Dictionary<TKey, LinkedListNode<LruCacheItem>>((IEqualityComparer<TKey>)Bytes.EqualityComparer)
-                : new Dictionary<TKey, LinkedListNode<LruCacheItem>>(startCapacity); // do not initialize it at the full capacity
-            _lruList = new LinkedList<LruCacheItem>();
+            _internalCache = new(maxCapacity);
         }
 
-        public LruCache(int maxCapacity, string name)
-            : this(maxCapacity, 0, name)
-        {
-        }
-
-        [MethodImpl(MethodImplOptions.Synchronized)]
         public TValue Get(TKey key)
         {
-            if (_cacheMap.TryGetValue(key, out LinkedListNode<LruCacheItem>? node))
-            {
-                TValue value = node.Value.Value;
-                _lruList.Remove(node);
-                _lruList.AddLast(node);
-                return value;
-            }
-
-#pragma warning disable 8603
-            // fixed C# 9
-            return default;
-#pragma warning restore 8603
+            _ = _internalCache.TryGet(key, out TValue node);
+            return node;
         }
 
-        [MethodImpl(MethodImplOptions.Synchronized)]
-        public bool TryGet(TKey key, out TValue value)
-        {
-            if (_cacheMap.TryGetValue(key, out LinkedListNode<LruCacheItem>? node))
-            {
-                value = node.Value.Value;
-                _lruList.Remove(node);
-                _lruList.AddLast(node);
-                return true;
-            }
+        public bool TryGet(TKey key, out TValue value) => _internalCache.TryGet(key, out value);
 
-#pragma warning disable 8601
-            // fixed C# 9
-            value = default;
-#pragma warning restore 8601
-            return false;
-        }
+        public void Set(TKey key, TValue val) => _internalCache.AddOrUpdate(key, val);
 
-        [MethodImpl(MethodImplOptions.Synchronized)]
-        public void Set(TKey key, TValue val)
-        {
-            if (val is null)
-            {
-                Delete(key);
-                return;
-            }
+        public void Delete(TKey key) => _internalCache.TryRemove(key);
 
-            if (_cacheMap.TryGetValue(key, out LinkedListNode<LruCacheItem>? node))
-            {
-                node.Value.Value = val;
-                _lruList.Remove(node);
-                _lruList.AddLast(node);
-            }
-            else
-            {
-                if (_cacheMap.Count >= _maxCapacity)
-                {
-                    Replace(key, val);
-                }
-                else
-                {
-                    LruCacheItem cacheItem = new LruCacheItem(key, val);
-                    LinkedListNode<LruCacheItem> newNode = new LinkedListNode<LruCacheItem>(cacheItem);
-                    _lruList.AddLast(newNode);
-                    _cacheMap.Add(key, newNode);
-                }
-            }
-        }
+        public bool Contains(TKey key) => _internalCache.TryGet(key, out _);// _cacheMap.ContainsKey(key);
 
-        [MethodImpl(MethodImplOptions.Synchronized)]
-        public void Delete(TKey key)
-        {
-            if (_cacheMap.TryGetValue(key, out LinkedListNode<LruCacheItem>? node))
-            {
-                _lruList.Remove(node);
-                _cacheMap.Remove(key);
-            }
-        }
-
-        [MethodImpl(MethodImplOptions.Synchronized)]
-        public bool Contains(TKey key) => _cacheMap.ContainsKey(key);
-
-        private void Replace(TKey key, TValue value)
-        {
-            LinkedListNode<LruCacheItem>? node = _lruList.First;
-            _lruList.RemoveFirst();
-            _cacheMap.Remove(node.Value.Key);
-
-            node.Value.Value = value;
-            node.Value.Key = key;
-            _lruList.AddLast(node);
-            _cacheMap.Add(key, node);
-        }
-
-        private class LruCacheItem
-        {
-            public LruCacheItem(TKey k, TValue v)
-            {
-                Key = k;
-                Value = v;
-            }
-
-            public TKey Key;
-            public TValue Value;
-        }
-
-        public long MemorySize => CalculateMemorySize(0, _cacheMap.Count);
+        public long MemorySize => CalculateMemorySize(0, _internalCache.Count);
 
         public static long CalculateMemorySize(int keyPlusValueSize, int currentItemsCount)
         {
