@@ -23,7 +23,11 @@ using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Int256;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Facade;
+using Nethermind.Logging;
+using Nethermind.Blockchain;
+using Nethermind.State;
 
 namespace Nethermind.Mev
 {
@@ -47,9 +51,9 @@ namespace Nethermind.Mev
             _mevPlugin = mevPlugin;
 
             _logger = mevPlugin.NethermindApi.LogManager.GetClassLogger();
-            _blockTree = mevPlugin.NethermindApi.BlockTree;
+            _blockTree = mevPlugin.NethermindApi.BlockTree ?? throw new NullReferenceException("BlockTree");
             _blockchainBridge = mevPlugin.NethermindApi.CreateBlockchainBridge();
-            _stateReader = mevPlugin.NethermindApi.StateReader;
+            _stateReader = mevPlugin.NethermindApi.StateReader ?? throw new NullReferenceException("StateReader");
         }
 
         public ResultWrapper<bool> eth_sendBundle(TransactionForRpc[] transactions, UInt256 blockNumber, UInt256 minTimestamp, UInt256 maxTimestamp)
@@ -70,11 +74,24 @@ namespace Nethermind.Mev
             return ResultWrapper<bool>.Success(true);
         }
 
-        
-        public ResultWrapper<TxToResult> eth_callBundle(TransactionForRpc[] transactions, BlockParameter blockParameter, UInt256? blockTimestamp)
+        public ResultWrapper<FeeToFrequency> mev_feeDistribution()
         {
             throw new NotImplementedException();
         }
+            
+        public ResultWrapper<TxToResult> eth_callBundle(TransactionForRpc[] transactionCalls, BlockParameter blockParameter, UInt256? blockTimestamp) => throw new NotImplementedException();
+            // new CallBundleTxExecutor(_blockchainBridge, _blockTree, _jsonRpcConfig).ExecuteBundleTx(transactionCalls, blockParameter, blockTimestamp);
+    }
+
+    // TODO move and write serializers, eg. syncingResultConverter
+    public class TxToResult
+    {
+        public List<(Keccak, string)> pairs { get; set; } = new List<(Keccak, string)>();
+    }
+
+    public class FeeToFrequency
+    {
+
     }
 
 }

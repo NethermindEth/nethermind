@@ -30,7 +30,9 @@ namespace Nethermind.Mev
 {
     public class MevPlugin : INethermindPlugin
     {
-        private INethermindApi? _nethermindApi
+        private INethermindApi? _nethermindApi;
+
+        public INethermindApi NethermindApi 
         { 
             get { ThrowIfNotInitialized(); return _nethermindApi!; } 
         }
