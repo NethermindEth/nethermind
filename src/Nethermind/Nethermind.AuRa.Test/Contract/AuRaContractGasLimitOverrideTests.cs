@@ -94,7 +94,7 @@ namespace Nethermind.AuRa.Test.Contract
             protected override BlockProcessor CreateBlockProcessor()
             {
                 var blockGasLimitContractTransition = ChainSpec.AuRa.BlockGasLimitContractTransitions.First();
-                var gasLimitContract = new BlockGasLimitContract(new AbiEncoder(), blockGasLimitContractTransition.Value, blockGasLimitContractTransition.Key,
+                var gasLimitContract = new BlockGasLimitContract(AbiEncoder.Instance, blockGasLimitContractTransition.Value, blockGasLimitContractTransition.Key,
                     new ReadOnlyTxProcessingEnv(
                         DbProvider,
                         new TrieStore(DbProvider.StateDb, LimboLogs.Instance).AsReadOnly(),

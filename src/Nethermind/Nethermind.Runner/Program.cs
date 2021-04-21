@@ -33,6 +33,7 @@ using Nethermind.Core;
 using Nethermind.KeyStore.Config;
 using Nethermind.Logging;
 using Nethermind.Logging.NLog;
+using Nethermind.Mev;
 using Nethermind.Runner.Ethereum;
 using Nethermind.Runner.Ethereum.Api;
 using Nethermind.Runner.Logging;
@@ -92,9 +93,12 @@ namespace Nethermind.Runner
             _logger.Info("Nethermind starting initialization.");
 
             AppDomain.CurrentDomain.ProcessExit += CurrentDomainOnProcessExit;
-            IFileSystem fileSystem = new FileSystem(); ;
-
-            PluginLoader pluginLoader = new("plugins", fileSystem, typeof(CliquePlugin), typeof(EthashPlugin), typeof(NethDevPlugin));
+            IFileSystem fileSystem = new FileSystem();
+            
+            PluginLoader filePluginLoader = new("plugins", fileSystem, typeof(CliquePlugin), typeof(EthashPlugin), typeof(NethDevPlugin));
+            IPluginLoader mevLoader = SinglePluginLoader<MevPlugin>.Instance;
+            
+            CompositePluginLoader pluginLoader = new (filePluginLoader, mevLoader);
             pluginLoader.Load(SimpleConsoleLogManager.Instance);
 
             Type configurationType = typeof(IConfig);

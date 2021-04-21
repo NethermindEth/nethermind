@@ -129,7 +129,7 @@ namespace Nethermind.AuRa.Test.Transactions
         public async Task registry_contract_returns_not_found_when_contract_doesnt_exist()
         {
             using var chain = await TestContractBlockchain.ForTest<TestTxPermissionsBlockchain, TxCertifierFilterTests>();
-            var contract = new RegisterContract(new AbiEncoder(), Address.FromNumber(1000), chain.ReadOnlyTransactionProcessorSource);
+            var contract = new RegisterContract(AbiEncoder.Instance, Address.FromNumber(1000), chain.ReadOnlyTransactionProcessorSource);
             contract.TryGetAddress(chain.BlockTree.Head.Header, CertifierContract.ServiceTransactionContractRegistryName, out Address _).Should().BeFalse();
         }
         
@@ -141,7 +141,7 @@ namespace Nethermind.AuRa.Test.Transactions
             
             protected override BlockProcessor CreateBlockProcessor()
             {
-                AbiEncoder abiEncoder = new AbiEncoder();
+                AbiEncoder abiEncoder = AbiEncoder.Instance;
                 ReadOnlyTransactionProcessorSource = new(
                     DbProvider,
                     new TrieStore(DbProvider.StateDb, LimboLogs.Instance).AsReadOnly(),

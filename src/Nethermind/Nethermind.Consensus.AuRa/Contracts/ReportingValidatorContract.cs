@@ -64,7 +64,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
             IAbiEncoder abiEncoder, 
             Address contractAddress,
             ISigner signer)
-            : base(abiEncoder, contractAddress)
+            : base(abiEncoder, contractAddress ?? throw new ArgumentNullException(nameof(contractAddress)))
         {
             _signer = signer ?? throw new ArgumentNullException(nameof(signer));
         }
