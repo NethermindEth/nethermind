@@ -31,13 +31,13 @@ namespace Nethermind.JsonRpc.Modules
         private ILogger _logger;
         private IJsonRpcConfig _jsonRpcConfig;
         
-        private List<ModuleType> _modules = new();
-        private List<ModuleType> _enabledModules = new();
+        private List<string> _modules = new();
+        private List<string> _enabledModules = new();
         
         private Dictionary<string, ResolvedMethodInfo> _methods
             = new(StringComparer.InvariantCulture);
         
-        private Dictionary<ModuleType, (Func<bool, Task<IRpcModule>> RentModule, Action<IRpcModule> ReturnModule)> _pools
+        private readonly Dictionary<string, (Func<bool, Task<IRpcModule>> RentModule, Action<IRpcModule> ReturnModule)> _pools
             = new();
         
         private IRpcMethodFilter _filter = NullRpcMethodFilter.Instance;
@@ -55,9 +55,9 @@ namespace Nethermind.JsonRpc.Modules
 
         public IReadOnlyCollection<JsonConverter> Converters { get; } = new List<JsonConverter>();
 
-        public IReadOnlyCollection<ModuleType> Enabled => _enabledModules;
+        public IReadOnlyCollection<string> Enabled => _enabledModules;
 
-        public IReadOnlyCollection<ModuleType> All => _modules;
+        public IReadOnlyCollection<string> All => _modules;
 
         public void Register<T>(IRpcModulePool<T> pool) where T : IRpcModule
         {
@@ -69,7 +69,7 @@ namespace Nethermind.JsonRpc.Modules
                 return;
             }
             
-            ModuleType moduleType = attribute.ModuleType;
+            string moduleType = attribute.ModuleType;
 
             _pools[moduleType] = (async canBeShared => await pool.GetModule(canBeShared), m => pool.ReturnModule((T) m));
             _modules.Add(moduleType);
@@ -137,7 +137,7 @@ namespace Nethermind.JsonRpc.Modules
         private class ResolvedMethodInfo
         {
             public ResolvedMethodInfo(
-                ModuleType moduleType,
+                string moduleType,
                 MethodInfo methodInfo,
                 bool readOnly,
                 RpcEndpoint availability)
@@ -148,7 +148,7 @@ namespace Nethermind.JsonRpc.Modules
                 Availability = availability;
             }
             
-            public ModuleType ModuleType { get; }
+            public string ModuleType { get; }
             public MethodInfo MethodInfo { get; }
             public bool ReadOnly { get; }
             public RpcEndpoint Availability { get; }

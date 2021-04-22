@@ -39,7 +39,7 @@ namespace Nethermind.JsonRpc
             set => _webSocketsPort = value;
         }
 
-        public string[] EnabledModules { get; set; } = Enum.GetValues(typeof(ModuleType)).OfType<ModuleType>().Select(mt => mt.ToString()).ToArray();
+        public string[] EnabledModules { get; set; } = ModuleType.DefaultModules.ToArray();
         public int FindLogBlockDepthLimit { get; set; } = 1000;
         public long? GasCap { get; set; } = 100000000;
         public int ReportIntervalSeconds { get; set; } = 300;
