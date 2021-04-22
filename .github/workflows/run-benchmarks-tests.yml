@@ -9,7 +9,7 @@ jobs:
     if: github.repository_owner == 'NethermindEth'
     name: Triggering Nethermind Benchmark Performance Run
     runs-on: ubuntu-latest
-    steps:dotnet
+    steps:
     - name: Configure AWS Credentials
       uses: aws-actions/configure-aws-credentials@v1
       with:
