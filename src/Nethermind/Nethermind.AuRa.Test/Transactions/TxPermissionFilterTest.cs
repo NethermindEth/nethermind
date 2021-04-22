@@ -48,7 +48,7 @@ namespace Nethermind.AuRa.Test.Transactions
 {
     public class TxPermissionFilterTest
     {
-        private const string ContractAddress = "0x4000000000000000000000000000000000000001";
+        private const string ContractAddress = "0xAB5b100cf7C8deFB3c8f3C48474223997A50fB13";
         private static readonly Address _contractAddress = new(ContractAddress);
         
         private static readonly ITransactionPermissionContract.TxPermissions[] TxPermissionsTypes = new[]
@@ -195,10 +195,10 @@ namespace Nethermind.AuRa.Test.Transactions
         {
             IList<Test> tests = new List<Test>()
             {
-                new() {SenderKey = GetPrivateKey(1), ContractPermissions = ITransactionPermissionContract.TxPermissions.None, Cache = false},
-                new() {SenderKey = GetPrivateKey(1), ContractPermissions = ITransactionPermissionContract.TxPermissions.All, Cache = false, GasPrice = 1},
-                new() {SenderKey = GetPrivateKey(1), ContractPermissions = ITransactionPermissionContract.TxPermissions.All, Cache = false, Data = new byte[]{0, 1}},
-                new() {SenderKey = GetPrivateKey(1), ContractPermissions = ITransactionPermissionContract.TxPermissions.All, Cache = false, GasPrice = 5, Data = new byte[]{0, 2, 3}},
+                // new() {SenderKey = GetPrivateKey(1), ContractPermissions = ITransactionPermissionContract.TxPermissions.None, Cache = false},
+                // new() {SenderKey = GetPrivateKey(1), ContractPermissions = ITransactionPermissionContract.TxPermissions.All, Cache = false, GasPrice = 1},
+                // new() {SenderKey = GetPrivateKey(1), ContractPermissions = ITransactionPermissionContract.TxPermissions.All, Cache = false, Data = new byte[]{0, 1}},
+                // new() {SenderKey = GetPrivateKey(1), ContractPermissions = ITransactionPermissionContract.TxPermissions.All, Cache = false, GasPrice = 5, Data = new byte[]{0, 2, 3}},
             };
 
             return GetTestCases(tests, nameof(V4), CreateV4Transaction);
