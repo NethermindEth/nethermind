@@ -72,20 +72,29 @@ namespace Nethermind.Merge.Plugin.Data
             Timestamp = block.Timestamp;
         }
 
-        public Block ToBlock()
+        public bool TryGetBlock(out Block? block)
         {
-            BlockHeader header = new(ParentHash, Keccak.OfAnEmptySequenceRlp, Miner, Difficulty, Number, GasLimit, Timestamp, ExtraData)
+            try
             {
-                Hash = BlockHash,
-                ReceiptsRoot = ReceiptsRoot,
-                StateRoot = StateRoot,
-                MixHash = MixHash,
-                Bloom = LogsBloom,
-                GasUsed = GasUsed
-            };
-            Transaction[] transactions = GetTransactions();
-            header.TxRoot = new TxTrie(transactions).RootHash;
-            return new Block(header, transactions, Array.Empty<BlockHeader>());
+                BlockHeader header = new(ParentHash, Keccak.OfAnEmptySequenceRlp, Miner, Difficulty, Number, GasLimit, Timestamp, ExtraData)
+                {
+                    Hash = BlockHash,
+                    ReceiptsRoot = ReceiptsRoot,
+                    StateRoot = StateRoot,
+                    MixHash = MixHash,
+                    Bloom = LogsBloom,
+                    GasUsed = GasUsed
+                };
+                Transaction[] transactions = GetTransactions();
+                header.TxRoot = new TxTrie(transactions).RootHash;
+                block = new Block(header, transactions, Array.Empty<BlockHeader>());
+                return true;
+            }
+            catch (Exception e)
+            {
+                block = null;
+                return false;
+            }
         }
         
         public UInt256 Difficulty { get; set; }
@@ -117,7 +126,6 @@ namespace Nethermind.Merge.Plugin.Data
 
         public override string ToString() => BlockHash == null ? $"{Number} null" : $"{Number} ({BlockHash})";
 
-        public Keccak CalculateHash() => ToBlock().CalculateHash();
         public void SetTransactions(params Transaction[] transactions)
         {
             Transactions = new byte[transactions.Length][];
