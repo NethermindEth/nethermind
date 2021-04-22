@@ -20,5 +20,7 @@ namespace Nethermind.Merge.Plugin.Data
     public class NewBlockResult
     {
         public bool Valid { get; set; }
+
+        public static implicit operator NewBlockResult(bool value) => new() {Valid = value};
     }
 }
