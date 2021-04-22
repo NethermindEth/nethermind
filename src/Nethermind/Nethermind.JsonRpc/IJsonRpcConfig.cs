@@ -77,7 +77,7 @@ namespace Nethermind.JsonRpc
         int ReportIntervalSeconds { get; set; }
         
         [ConfigItem(
-            Description = "Buffer responses before sending them to client. This allows to set Content-Length in response instead of using Transfer-Encoding: chunked. This may degrade performance on big responses.",
+            Description = "Buffer responses before sending them to client. This allows to set Content-Length in response instead of using Transfer-Encoding: chunked. This may degrade performance on big responses. Max buffered response size is 2GB, chunked responses can be bigger.",
             DefaultValue = "false")]
         bool BufferResponses { get; set; }
         
