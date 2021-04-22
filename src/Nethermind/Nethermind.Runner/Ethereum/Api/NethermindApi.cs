@@ -113,7 +113,7 @@ namespace Nethermind.Runner.Ethereum.Api
             );
         }
 
-        public IAbiEncoder AbiEncoder { get; } = new AbiEncoder();
+        public IAbiEncoder AbiEncoder { get; } = Nethermind.Abi.AbiEncoder.Instance;
         public IBlockchainProcessor? BlockchainProcessor { get; set; }
         public CompositeBlockPreprocessorStep BlockPreprocessor { get; } = new(); 
         public IBlockProcessingQueue? BlockProcessingQueue { get; set; }
@@ -161,7 +161,7 @@ namespace Nethermind.Runner.Ethereum.Api
         public IRlpxPeer? RlpxPeer { get; set; }
         public IRpcModuleProvider RpcModuleProvider { get; set; } = NullModuleProvider.Instance;
         public ISealer? Sealer { get; set; } = NullSealEngine.Instance;
-        public SealEngineType SealEngineType { get; set; } = SealEngineType.None;
+        public string SealEngineType { get; set; } = Nethermind.Core.SealEngineType.None;
         public ISealValidator? SealValidator { get; set; } = NullSealEngine.Instance;
         public ISessionMonitor? SessionMonitor { get; set; }
         public ISpecProvider? SpecProvider { get; set; }
@@ -188,7 +188,11 @@ namespace Nethermind.Runner.Ethereum.Api
         public IWebSocketsManager WebSocketsManager { get; set; } = new WebSocketsManager();
 
         public ProtectedPrivateKey? NodeKey { get; set; }
-        public ProtectedPrivateKey? OriginalSignerKey { get; set; } // TODO: please explain what it does
+        
+        /// <summary>
+        /// Key used for signing blocks. Original as its loaded on startup. This can later be changed via RPC in <see cref="Signer"/>. 
+        /// </summary>
+        public ProtectedPrivateKey? OriginalSignerKey { get; set; }
 
         public ChainSpec? ChainSpec { get; set; }
         public DisposableStack DisposeStack { get; } = new();

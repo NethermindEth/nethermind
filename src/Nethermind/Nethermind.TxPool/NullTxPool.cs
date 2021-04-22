@@ -19,6 +19,7 @@ using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
+using Nethermind.TxPool.Collections;
 
 namespace Nethermind.TxPool
 {
@@ -38,7 +39,9 @@ namespace Nethermind.TxPool
         public void AddPeer(ITxPoolPeer peer) { }
 
         public void RemovePeer(PublicKey nodeId) { }
-
+        
+        public bool TryAddToPendingHashes(Keccak hash) => false;
+        
         public AddTxResult AddTransaction(Transaction tx, TxHandlingOptions txHandlingOptions) => AddTxResult.Added;
 
         public bool RemoveTransaction(Keccak hash, bool removeBelowThisTxNonce) => false;

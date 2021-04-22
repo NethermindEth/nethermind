@@ -59,7 +59,6 @@ namespace Nethermind.Blockchain.Producers
                 stateProvider,
                 gasLimitCalculator,
                 timestamper,
-                specProvider,
                 logManager)
         {
             _name = name;

@@ -141,6 +141,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                     SyncConfig.PivotNumber = Pivot.Number.ToString();
                     SyncConfig.PivotHash = Keccak.Zero.ToString();
                     SyncConfig.SynchronizationEnabled = true;
+                    SyncConfig.NetworkingEnabled = true;
                     SyncConfig.DownloadBodiesInFastSync = true;
                     SyncConfig.DownloadReceiptsInFastSync = true;
                     SyncConfig.FastSyncCatchUpHeightDelta = FastSyncCatchUpHeightDelta;

@@ -16,13 +16,12 @@
 
 namespace Nethermind.Core
 {
-    public enum SealEngineType
+    public static class SealEngineType
     {
-        None,
-        AuRa,
-        Clique,
-        NethDev,
-        Ethash,
-        Custom // need to support parameterization of this in the plugins
+        public static readonly string None = nameof(None);
+        public static readonly string AuRa = nameof(AuRa);
+        public static readonly string Clique = nameof(Clique);
+        public static readonly string NethDev = nameof(NethDev);
+        public static readonly string Ethash = nameof(Ethash);
     }
 }

@@ -53,9 +53,9 @@ namespace Nethermind.JsonRpc.Test.Modules
         public IKeyStore KeyStore { get; } = new MemKeyStore(TestItem.PrivateKeys);
         public IWallet TestWallet { get; } = new DevKeyStoreWallet(new MemKeyStore(TestItem.PrivateKeys), LimboLogs.Instance);
 
-        public static Builder<TestRpcBlockchain> ForTest(SealEngineType sealEngineType) => ForTest<TestRpcBlockchain>(sealEngineType);
+        public static Builder<TestRpcBlockchain> ForTest(string sealEngineType) => ForTest<TestRpcBlockchain>(sealEngineType);
 
-        public static Builder<T> ForTest<T>(SealEngineType sealEngineType) where T : TestRpcBlockchain, new()
+        public static Builder<T> ForTest<T>(string sealEngineType) where T : TestRpcBlockchain, new()
         {
             return new Builder<T>(sealEngineType);
         }
@@ -64,7 +64,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         {
             private readonly TestRpcBlockchain _blockchain;
             
-            public Builder(SealEngineType sealEngineType)
+            public Builder(string sealEngineType)
             {
                 _blockchain = new T {SealEngineType = sealEngineType};
             }

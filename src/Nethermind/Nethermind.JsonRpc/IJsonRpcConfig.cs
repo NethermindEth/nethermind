@@ -42,9 +42,9 @@ namespace Nethermind.JsonRpc
         string RpcRecorderBaseFilePath { get; set; }
 
         [ConfigItem(
-            Description = "Defines whether the JSON RPC diagnostic recording is enabled on node startup. Do not enable unless you are a DEV diagnosing issues with JSON RPC.",
-            DefaultValue = "false")]
-        bool RpcRecorderEnabled { get; set; }
+            Description = "Defines whether the JSON RPC diagnostic recording is enabled on node startup. Do not enable unless you are a DEV diagnosing issues with JSON RPC. Possible values: None/Request/Response/All.",
+            DefaultValue = "None")]
+        RpcRecorderState RpcRecorderState { get; set; }
 
         [ConfigItem(
             Description = "Port number for JSON RPC calls. Ensure the firewall is configured when enabling JSON RPC.",

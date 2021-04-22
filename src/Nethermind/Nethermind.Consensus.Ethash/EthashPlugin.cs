@@ -38,7 +38,7 @@ namespace Nethermind.Consensus.Ethash
         public Task Init(INethermindApi nethermindApi)
         {
             _nethermindApi = nethermindApi;
-            if (_nethermindApi!.SealEngineType != SealEngineType.Ethash)
+            if (_nethermindApi!.SealEngineType != Nethermind.Core.SealEngineType.Ethash)
             {
                 return Task.CompletedTask;
             }
@@ -73,6 +73,6 @@ namespace Nethermind.Consensus.Ethash
             return Task.CompletedTask;
         }
         
-        public SealEngineType SealEngineType => SealEngineType.Ethash;
+        public string SealEngineType => Nethermind.Core.SealEngineType.Ethash;
     }
 }

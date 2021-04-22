@@ -167,6 +167,8 @@ namespace Nethermind.Synchronization.Peers
         }
 
         public PeerInfo? GetPeer(Node node) => _peers.TryGetValue(node.Id, out PeerInfo? peerInfo) ? peerInfo : null;
+        public event EventHandler<PeerBlockNotificationEventArgs>? NotifyPeerBlock;
+            
 
         public void WakeUpAll()
         {
@@ -386,11 +388,11 @@ namespace Nethermind.Synchronization.Peers
                         // cases when we want other nodes to resolve the impasse (check Goerli discussion on 5 out of 9 validators)
                         if (syncPeer.TotalDifficulty == _blockTree.BestSuggestedHeader?.TotalDifficulty && syncPeer.HeadHash != _blockTree.BestSuggestedHeader?.Hash)
                         {
-                            Block block = _blockTree.FindBlock(_blockTree.BestSuggestedHeader?.Hash, BlockTreeLookupOptions.None);
+                            Block block = _blockTree.FindBlock(_blockTree.BestSuggestedHeader.Hash!, BlockTreeLookupOptions.None);
                             if (block != null) // can be null if fast syncing headers only
                             {
-                                syncPeer.NotifyOfNewBlock(block, SendBlockPriority.High);
                                 if (_logger.IsDebug) _logger.Debug($"Sending my best block {block} to {syncPeer}");
+                                NotifyPeerBlock?.Invoke(this, new PeerBlockNotificationEventArgs(syncPeer, block));
                             }
                         }
                     }

@@ -23,16 +23,16 @@ using Newtonsoft.Json;
 
 namespace Nethermind.Specs.ChainSpecStyle.Json
 {
-    internal class BlockRewardJsonConverter : JsonConverter<ChainSpecJson.AuraEngineParamsJson.BlockRewardJson>
+    internal class BlockRewardJsonConverter : JsonConverter<ChainSpecJson.BlockRewardJson>
     {
-        public override void WriteJson(JsonWriter writer, ChainSpecJson.AuraEngineParamsJson.BlockRewardJson value, JsonSerializer serializer)
+        public override void WriteJson(JsonWriter writer, ChainSpecJson.BlockRewardJson value, JsonSerializer serializer)
         {
             throw new NotImplementedException();
         }
 
-        public override ChainSpecJson.AuraEngineParamsJson.BlockRewardJson ReadJson(JsonReader reader, Type objectType, ChainSpecJson.AuraEngineParamsJson.BlockRewardJson existingValue, bool hasExistingValue, JsonSerializer serializer)
+        public override ChainSpecJson.BlockRewardJson ReadJson(JsonReader reader, Type objectType, ChainSpecJson.BlockRewardJson existingValue, bool hasExistingValue, JsonSerializer serializer)
         {
-            existingValue ??= new ChainSpecJson.AuraEngineParamsJson.BlockRewardJson();
+            existingValue ??= new ChainSpecJson.BlockRewardJson();
             if (reader.TokenType == JsonToken.String || reader.TokenType == JsonToken.Integer)
             {
                 var blockReward = serializer.Deserialize<UInt256>(reader);
