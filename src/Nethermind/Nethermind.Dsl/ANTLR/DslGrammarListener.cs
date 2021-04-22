@@ -7,8 +7,8 @@ namespace Nethermind.Dsl.ANTLR
     public class DslGrammarListener : DslGrammarBaseListener
     {
         private AntlrTokenType _tokens;
-        public Action<AntlrTokenType> OnEnterInit { private get; set; }
-        public Action<AntlrTokenType> OnEnterExpression { private get; set; }
+        public Action<AntlrTokenType, string> OnEnterInit { private get; set; }
+        public Action<AntlrTokenType, string> OnEnterExpression { private get; set; }
         public Action<AntlrTokenType> OnEnterCondition { private get; set; }
 
         public override void EnterInit([NotNull] DslGrammarParser.InitContext context)
@@ -21,13 +21,14 @@ namespace Nethermind.Dsl.ANTLR
             var sourceNode = context.expression().First();
             var nodeText = sourceNode.OPERATOR().GetText();
             var isTokenType = Enum.IsDefined(typeof(AntlrTokenType), nodeText);
+            var tokenValue = sourceNode.OPERATOR_VALUE().GetText();
 
             if(isTokenType && nodeText.Equals("SOURCE"))
             {
                 AntlrTokenType type; 
                 AntlrTokenType.TryParse(nodeText, out type);
 
-                OnEnterInit(type);
+                OnEnterInit(type, tokenValue);
             }
         }
 
