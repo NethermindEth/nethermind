@@ -9,7 +9,7 @@ jobs:
     if: github.repository_owner == 'NethermindEth'
     name: Triggering Nethermind Benchmark Performance Run
     runs-on: ubuntu-latest
-    steps:
+    steps:dotnet
     - name: Configure AWS Credentials
       uses: aws-actions/configure-aws-credentials@v1
       with:
@@ -21,4 +21,4 @@ jobs:
       with:
         name: Benchmark-${{ github.sha }}
         template: https://cf-templates-1tzgi56hs2v4n-eu-central-1.s3.eu-central-1.amazonaws.com/performance-test.yaml
-        parameter-overrides: "BranchName=${{ github.head_ref }}"
+        parameter-overrides: "BranchName=${{ github.head_ref }},CommitSha=${{ github.sha }}"
