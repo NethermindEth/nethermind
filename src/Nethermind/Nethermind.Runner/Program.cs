@@ -94,22 +94,23 @@ namespace Nethermind.Runner
 
             AppDomain.CurrentDomain.ProcessExit += CurrentDomainOnProcessExit;
             
+            GlobalDiagnosticsContext.Set("version", ClientVersion.Version);
             CommandLineApplication app = new() { Name = "Nethermind.Runner" };
             _ = app.HelpOption("-?|-h|--help");
             _ = app.VersionOption("-v|--version", () => ClientVersion.Version, () => ClientVersion.Description);
-
-            GlobalDiagnosticsContext.Set("version", ClientVersion.Version);
+            
             CommandOption dataDir = app.Option("-dd|--datadir <dataDir>", "data directory", CommandOptionType.SingleValue);
             CommandOption configFile = app.Option("-c|--config <configFile>", "config file path", CommandOptionType.SingleValue);
             CommandOption dbBasePath = app.Option("-d|--baseDbPath <baseDbPath>", "base db path", CommandOptionType.SingleValue);
             CommandOption logLevelOverride = app.Option("-l|--log <logLevel>", "log level", CommandOptionType.SingleValue);
             CommandOption configsDirectory = app.Option("-cd|--configsDirectory <configsDirectory>", "configs directory", CommandOptionType.SingleValue);
-            CommandOption pluginsDirectory = app.Option("-pd|--pluginsDirectory <pluginsDirectory>", "plugins directory", CommandOptionType.SingleValue);
             CommandOption loggerConfigSource = app.Option("-lcs|--loggerConfigSource <loggerConfigSource>", "path to the NLog config file", CommandOptionType.SingleValue);
+            _ = app.Option("-pd|--pluginsDirectory <pluginsDirectory>", "plugins directory", CommandOptionType.SingleValue);
             
             IFileSystem fileSystem = new FileSystem();
             
-            PluginLoader filePluginLoader = new(pluginsDirectory.HasValue() ? pluginsDirectory.Value() : "plugins", fileSystem, 
+            string pluginsDirectoryPath = LoadPluginsDirectory(args);
+            PluginLoader filePluginLoader = new(pluginsDirectoryPath, fileSystem, 
                 typeof(CliquePlugin), typeof(EthashPlugin), typeof(NethDevPlugin));
             
             IPluginLoader mevLoader = SinglePluginLoader<MevPlugin>.Instance;
@@ -199,6 +200,41 @@ namespace Nethermind.Runner
 
             _ = app.Execute(args);
             appClosed.Wait();
+        }
+
+        private static string LoadPluginsDirectory(string[] args)
+        {
+            string shortCommand = "-pd";
+            string longCommand = "--pluginsDirectory";
+            
+            string[] GetPluginArgs()
+            {
+                for (int i = 0; i < args.Length; i++)
+                {
+                    string arg = args[i];
+                    if (arg == shortCommand || arg == longCommand)
+                    {
+                        return i == args.Length - 1 ? new[] {arg} : new[] {arg, args[i + 1]};
+                    }
+                }
+
+                return Array.Empty<string>();
+            }
+            
+            CommandLineApplication pluginsApp = new() {Name = "Nethermind.Runner.Plugins"};
+            CommandOption pluginsAppDirectory = pluginsApp.Option($"{shortCommand}|{longCommand} <pluginsDirectory>", "plugins directory", CommandOptionType.SingleValue);
+            string pluginDirectory = "plugins";
+            pluginsApp.OnExecute(() =>
+            {
+                if (pluginsAppDirectory.HasValue())
+                {
+                    pluginDirectory = pluginsAppDirectory.Value();
+                }
+
+                return 0;
+            });
+            pluginsApp.Execute(GetPluginArgs());
+            return pluginDirectory;
         }
 
         private static IConfigProvider BuildConfigProvider(
