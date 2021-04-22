@@ -1,10 +1,11 @@
 grammar DslGrammar;
 
 init: (expression)* ;
-expression : OPERATOR (OPERATOR_VALUE | assign) ;
-assign : OPERATOR_VALUE '==' (DIGIT | OPERATOR_VALUE | ADDRESS) ; 
+expression : OPERATOR OPERATOR_VALUE | condition ;
+condition : WHERE OPERATOR_VALUE ARITHMETIC_SYMBOL (DIGIT | OPERATOR_VALUE | ADDRESS) ; 
 
 OPERATOR : SOURCE | WATCH | WHERE | PUBLISH ;
+ARITHMETIC_SYMBOL : '==' | '!=' | '<' | '>' | '<=' | '>=' ;
 
 SOURCE : 'SOURCE' ;
 WATCH : 'WATCH' ;

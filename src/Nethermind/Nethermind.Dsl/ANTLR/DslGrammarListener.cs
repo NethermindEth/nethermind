@@ -1,3 +1,4 @@
+using System;
 using System.Linq;
 using Antlr4.Runtime.Misc;
 
@@ -5,24 +6,45 @@ namespace Nethermind.Dsl.ANTLR
 {
     public class DslGrammarListener : DslGrammarBaseListener
     {
+        private AntlrTokenType _tokens;
+        public Action<AntlrTokenType> OnEnterInit { private get; set; }
+        public Action<AntlrTokenType> OnEnterExpression { private get; set; }
+        public Action<AntlrTokenType> OnEnterCondition { private get; set; }
+
         public override void EnterInit([NotNull] DslGrammarParser.InitContext context)
         {
-            var expressionContext = context.expression().First();
-
-            if(expressionContext.OPERATOR().GetText() == "SOURCE")
+            if(OnEnterInit == null)
             {
-                
+                return; 
+            }
+
+            var sourceNode = context.expression().First();
+            var nodeText = sourceNode.OPERATOR().GetText();
+            var isTokenType = Enum.IsDefined(typeof(AntlrTokenType), nodeText);
+
+            if(isTokenType && nodeText.Equals("SOURCE"))
+            {
+                AntlrTokenType type; 
+                AntlrTokenType.TryParse(nodeText, out type);
+
+                OnEnterInit(type);
             }
         }
 
         public override void EnterExpression([NotNull] DslGrammarParser.ExpressionContext context)
         {
-            base.EnterExpression(context);
+            if(OnEnterExpression == null)
+            {
+                return;
+            }
         }
 
-        public override void EnterAssign([NotNull] DslGrammarParser.AssignContext context)
+        public override void EnterCondition([NotNull] DslGrammarParser.ConditionContext context)
         {
-            base.EnterAssign(context);
+            if(OnEnterCondition == null)
+            {
+                return;
+            }
         }
     }
 }

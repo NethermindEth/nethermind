@@ -31,6 +31,16 @@ using IToken = Antlr4.Runtime.IToken;
 [System.CLSCompliant(false)]
 public interface IDslGrammarListener : IParseTreeListener {
 	/// <summary>
+	/// Enter a parse tree produced by <see cref="DslGrammarParser.init"/>.
+	/// </summary>
+	/// <param name="context">The parse tree.</param>
+	void EnterInit([NotNull] DslGrammarParser.InitContext context);
+	/// <summary>
+	/// Exit a parse tree produced by <see cref="DslGrammarParser.init"/>.
+	/// </summary>
+	/// <param name="context">The parse tree.</param>
+	void ExitInit([NotNull] DslGrammarParser.InitContext context);
+	/// <summary>
 	/// Enter a parse tree produced by <see cref="DslGrammarParser.expression"/>.
 	/// </summary>
 	/// <param name="context">The parse tree.</param>
@@ -40,4 +50,14 @@ public interface IDslGrammarListener : IParseTreeListener {
 	/// </summary>
 	/// <param name="context">The parse tree.</param>
 	void ExitExpression([NotNull] DslGrammarParser.ExpressionContext context);
+	/// <summary>
+	/// Enter a parse tree produced by <see cref="DslGrammarParser.condition"/>.
+	/// </summary>
+	/// <param name="context">The parse tree.</param>
+	void EnterCondition([NotNull] DslGrammarParser.ConditionContext context);
+	/// <summary>
+	/// Exit a parse tree produced by <see cref="DslGrammarParser.condition"/>.
+	/// </summary>
+	/// <param name="context">The parse tree.</param>
+	void ExitCondition([NotNull] DslGrammarParser.ConditionContext context);
 }

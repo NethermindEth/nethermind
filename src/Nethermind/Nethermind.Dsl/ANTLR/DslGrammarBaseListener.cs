@@ -60,17 +60,17 @@ public partial class DslGrammarBaseListener : IDslGrammarListener {
 	/// <param name="context">The parse tree.</param>
 	public virtual void ExitExpression([NotNull] DslGrammarParser.ExpressionContext context) { }
 	/// <summary>
-	/// Enter a parse tree produced by <see cref="DslGrammarParser.assign"/>.
+	/// Enter a parse tree produced by <see cref="DslGrammarParser.condition"/>.
 	/// <para>The default implementation does nothing.</para>
 	/// </summary>
 	/// <param name="context">The parse tree.</param>
-	public virtual void EnterAssign([NotNull] DslGrammarParser.AssignContext context) { }
+	public virtual void EnterCondition([NotNull] DslGrammarParser.ConditionContext context) { }
 	/// <summary>
-	/// Exit a parse tree produced by <see cref="DslGrammarParser.assign"/>.
+	/// Exit a parse tree produced by <see cref="DslGrammarParser.condition"/>.
 	/// <para>The default implementation does nothing.</para>
 	/// </summary>
 	/// <param name="context">The parse tree.</param>
-	public virtual void ExitAssign([NotNull] DslGrammarParser.AssignContext context) { }
+	public virtual void ExitCondition([NotNull] DslGrammarParser.ConditionContext context) { }
 
 	/// <inheritdoc/>
 	/// <remarks>The default implementation does nothing.</remarks>
