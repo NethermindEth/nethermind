@@ -16,8 +16,10 @@
 // 
 
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using System.Linq.Expressions;
 using System.Threading.Tasks;
 using FluentAssertions;
 using FluentAssertions.Extensions;
@@ -82,7 +84,7 @@ namespace Nethermind.Merge.Plugin.Test
         }
         
         [Test]
-        public async Task newBlock_accepts_previously_assembled_block()
+        public async Task newBlock_accepts_previously_assembled_block_multiple_times([Values(1, 3)] int times)
         {
             using MergeTestBlockchain chain = await CreateBlockChain();
             IConsensusRpcModule rpc = CreateConsensusModule(chain);
@@ -91,15 +93,71 @@ namespace Nethermind.Merge.Plugin.Test
             AssembleBlockRequest assembleBlockRequest = new() {ParentHash = startingHead};
             ResultWrapper<BlockRequestResult?> assembleBlockResult = await rpc.consensus_assembleBlock(assembleBlockRequest);
             assembleBlockResult.Data!.ParentHash.Should().Be(startingHead);
-            
-            ResultWrapper<NewBlockResult> newBlockResult = await rpc.consensus_newBlock(assembleBlockResult.Data!);
-            newBlockResult.Data.Valid.Should().BeTrue();
-            
+
+            for (int i = 0; i < times; i++)
+            {
+                ResultWrapper<NewBlockResult> newBlockResult = await rpc.consensus_newBlock(assembleBlockResult.Data!);
+                newBlockResult.Data.Valid.Should().BeTrue();
+            }
+
             Keccak bestSuggestedHeaderHash = chain.BlockTree.BestSuggestedHeader!.Hash!;
             bestSuggestedHeaderHash.Should().Be(assembleBlockResult.Data!.BlockHash);
             bestSuggestedHeaderHash.Should().NotBe(startingBestSuggestedHeader!.Hash!);
-        } 
+        }
+
+        public static IEnumerable WrongInputTests
+        {
+            get
+            {
+                yield return GetNewBlockRequestBadDataTestCase(r => r.BlockHash, TestItem.KeccakA);
+                yield return GetNewBlockRequestBadDataTestCase(r => r.Difficulty, UInt256.Zero);
+                yield return GetNewBlockRequestBadDataTestCase(r => r.Difficulty, 2ul);
+                yield return GetNewBlockRequestBadDataTestCase(r => r.Nonce, 1ul);
+                yield return GetNewBlockRequestBadDataTestCase(r => r.ExtraData, new byte[] {1});
+                yield return GetNewBlockRequestBadDataTestCase(r => r.MixHash, TestItem.KeccakC);
+                yield return GetNewBlockRequestBadDataTestCase(r => r.Uncles, new Keccak[] {TestItem.KeccakB});
+                yield return GetNewBlockRequestBadDataTestCase(r => r.ParentHash, TestItem.KeccakD);
+                yield return GetNewBlockRequestBadDataTestCase(r => r.ReceiptsRoot, TestItem.KeccakD);
+                yield return GetNewBlockRequestBadDataTestCase(r => r.StateRoot, TestItem.KeccakD);
+                
+                Bloom bloom = new();
+                bloom.Add(new[] {Build.A.LogEntry.WithAddress(TestItem.AddressA).WithTopics(TestItem.KeccakG).TestObject});
+                yield return GetNewBlockRequestBadDataTestCase(r => r.LogsBloom, bloom);
+                yield return GetNewBlockRequestBadDataTestCase(r => r.Transactions, new byte[][] {new byte[] {1}});
+                yield return GetNewBlockRequestBadDataTestCase(r => r.GasUsed, 1);
+            }
+        }
         
+        [TestCaseSource(nameof(WrongInputTests))]
+        public async Task newBlock_rejects_incorrect_input(Action<BlockRequestResult> breakerAction)
+        {
+            using MergeTestBlockchain chain = await CreateBlockChain();
+            IConsensusRpcModule rpc = CreateConsensusModule(chain);
+            BlockRequestResult assembleBlockResult = await GetAssembleBlockResult(chain, rpc);
+            Keccak blockHash = assembleBlockResult.BlockHash;
+            breakerAction(assembleBlockResult);
+            if (blockHash == assembleBlockResult.BlockHash && TryCalculateHash(assembleBlockResult, out var hash))
+            {
+                assembleBlockResult.BlockHash = hash;
+            }
+            
+            ResultWrapper<NewBlockResult> newBlockResult = await rpc.consensus_newBlock(assembleBlockResult);
+            newBlockResult.Data.Valid.Should().BeFalse();
+        }
+
+        [Test]
+        public async Task newBlock_accepts_already_known_block()
+        {
+            using MergeTestBlockchain chain = await CreateBlockChain();
+            IConsensusRpcModule rpc = CreateConsensusModule(chain);
+            Block block = Build.A.Block.WithNumber(1).WithParent(chain.BlockTree.Head).TestObject;
+            block.Header.Hash = new Keccak("0xdc3419cbd81455372f3e576f930560b35ec828cd6cdfbd4958499e43c68effdf");
+            chain.BlockTree.SuggestBlock(block);
+            
+            ResultWrapper<NewBlockResult> newBlockResult = await rpc.consensus_newBlock(new BlockRequestResult(block));
+            newBlockResult.Data.Valid.Should().BeTrue();
+        } 
+
         [Test]
         public async Task setHead_should_change_head()
         {
@@ -120,6 +178,28 @@ namespace Nethermind.Merge.Plugin.Test
             Keccak actualHead = chain.BlockTree.HeadHash;
             actualHead.Should().NotBe(startingHead);
             actualHead.Should().Be(newHeadHash); 
+        }
+
+        [Test]
+        public async Task setHead_to_unknown_block_fails()
+        {
+            using MergeTestBlockchain chain = await CreateBlockChain();
+            IConsensusRpcModule rpc = CreateConsensusModule(chain);
+            ResultWrapper<Result> setHeadResult = await rpc.consensus_setHead(TestItem.KeccakF);
+            setHeadResult.Data.Value.Should().BeFalse();
+        }
+        
+        [Test]
+        public async Task setHead_no_common_branch_fails()
+        {
+            using MergeTestBlockchain chain = await CreateBlockChain();
+            IConsensusRpcModule rpc = CreateConsensusModule(chain);
+            BlockHeader parent = Build.A.BlockHeader.WithNumber(1).WithHash(TestItem.KeccakA).TestObject;
+            Block block = Build.A.Block.WithNumber(2).WithParent(parent).TestObject;
+            chain.BlockTree.SuggestBlock(block);
+            
+            ResultWrapper<Result> setHeadResult = await rpc.consensus_setHead(block.Hash!);
+            setHeadResult.Data.Value.Should().BeFalse();
         }
 
         [Test]
@@ -270,7 +350,8 @@ namespace Nethermind.Merge.Plugin.Test
                 newBlockRequest.GasUsed = GasCostOf.Transaction * count;
                 newBlockRequest.StateRoot = new Keccak("0x3d2e3ced6da0d1e94e65894dc091190480f045647610ef614e1cab4241ca66e0");
                 newBlockRequest.ReceiptsRoot = new Keccak("0xc538d36ed1acf6c28187110a2de3e5df707d6d38982f436eb0db7a623f9dc2cd");
-                newBlockRequest.BlockHash = newBlockRequest.CalculateHash();
+                TryCalculateHash(newBlockRequest, out var hash);
+                newBlockRequest.BlockHash = hash;
                 ResultWrapper<NewBlockResult> result = await rpc.consensus_newBlock(newBlockRequest);
                 await Task.Delay(10);
 
@@ -372,7 +453,8 @@ namespace Nethermind.Merge.Plugin.Test
             };
             
             blockRequest.SetTransactions(Array.Empty<Transaction>());
-            blockRequest.BlockHash = blockRequest.CalculateHash();
+            TryCalculateHash(blockRequest, out var hash);
+            blockRequest.BlockHash = hash;
             return blockRequest;
         }
         
@@ -411,6 +493,36 @@ namespace Nethermind.Merge.Plugin.Test
             }
 
             return current;
+        }
+        
+        private static async Task<BlockRequestResult> GetAssembleBlockResult(MergeTestBlockchain chain, IConsensusRpcModule rpc)
+        {
+            Keccak startingHead = chain.BlockTree.HeadHash;
+            AssembleBlockRequest assembleBlockRequest = new() {ParentHash = startingHead};
+            ResultWrapper<BlockRequestResult?> assembleBlockResult = await rpc.consensus_assembleBlock(assembleBlockRequest);
+            return assembleBlockResult.Data!;
+        }
+        
+        private static TestCaseData GetNewBlockRequestBadDataTestCase<T>(Expression<Func<BlockRequestResult, T>> propertyAccess, T wrongValue)
+        {
+            Action<BlockRequestResult,T> setter = propertyAccess.GetSetter();
+            // ReSharper disable once ConvertToLocalFunction
+            Action<BlockRequestResult> wrongValueSetter = r => setter(r, wrongValue);
+            return new TestCaseData(wrongValueSetter) {TestName = $"newBlock_rejects_incorrect_{propertyAccess.GetName().ToLower()}({wrongValue?.ToString()})"};
+        }
+        
+        private static bool TryCalculateHash(BlockRequestResult request, out Keccak hash)
+        {
+            if (request.TryGetBlock(out Block? block) && block != null)
+            {
+                hash = block.CalculateHash();
+                return true;
+            }
+            else
+            {
+                hash = Keccak.Zero;
+                return false;
+            }
         }
     }
 }
