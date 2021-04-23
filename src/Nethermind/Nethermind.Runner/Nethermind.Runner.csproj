@@ -13,6 +13,7 @@
     <WarningsAsErrors />
   </PropertyGroup>
   <ItemGroup>
+    <PackageReference Include="Antlr4.Runtime.Standard" Version="4.9.2" />
     <PackageReference Include="AspNetCore.HealthChecks.UI" Version="5.0.1" />
     <PackageReference Include="AspNetCore.HealthChecks.UI.Client" Version="5.0.1" />
     <PackageReference Include="AspNetCore.HealthChecks.UI.InMemory.Storage" Version="5.0.1" />
@@ -49,6 +50,7 @@
     <ProjectReference Include="..\Nethermind.WebSockets\Nethermind.WebSockets.csproj" />
     <ProjectReference Include="..\Nethermind.Seq\Nethermind.Seq.csproj" />
     <ProjectReference Include="..\Nethermind.HealthChecks\Nethermind.HealthChecks.csproj" />
+    <ProjectReference Include="..\Nethermind.Pipeline\Nethermind.Pipeline.csproj" />
   </ItemGroup>
   <ItemGroup>
     <Content Include="..\..\..\Nethermind Data Marketplace - Terms and Conditions 20190831.pdf">
@@ -123,13 +125,7 @@
     <Exec Command="git describe --tags --long --always &gt; git-hash" />
   </Target>
   <Target Name="CopyDslPluginOnBuild" AfterTargets="AfterBuild">
-   <Copy SourceFiles="$(SolutionDir)Nethermind.Dsl\bin\$(Configuration)\$(TargetFramework)\Nethermind.Dsl.dll" 
-      DestinationFolder="$(OutDir)plugins" 
-      Condition="Exists('$(SolutionDir)Nethermind.Dsl\bin\$(Configuration)\$(TargetFramework)\Nethermind.Dsl.dll')" 
-      SkipUnchangedFiles="true" />
-   <Copy SourceFiles="$(SolutionDir)Nethermind.Dsl\bin\$(Configuration)\$(TargetFramework)\Nethermind.Dsl.pdb" 
-    DestinationFolder="$(OutDir)plugins" 
-    Condition="Exists('$(SolutionDir)Nethermind.Dsl\bin\$(Configuration)\$(TargetFramework)\Nethermind.Dsl.pdb')" 
-    SkipUnchangedFiles="true"/>
+   <Copy SourceFiles="$(SolutionDir)Nethermind.Dsl\bin\$(Configuration)\$(TargetFramework)\Nethermind.Dsl.dll" DestinationFolder="$(OutDir)plugins" Condition="Exists('$(SolutionDir)Nethermind.Dsl\bin\$(Configuration)\$(TargetFramework)\Nethermind.Dsl.dll')" SkipUnchangedFiles="true" />
+   <Copy SourceFiles="$(SolutionDir)Nethermind.Dsl\bin\$(Configuration)\$(TargetFramework)\Nethermind.Dsl.pdb" DestinationFolder="$(OutDir)plugins" Condition="Exists('$(SolutionDir)Nethermind.Dsl\bin\$(Configuration)\$(TargetFramework)\Nethermind.Dsl.pdb')" SkipUnchangedFiles="true" />
   </Target>
  </Project>
