@@ -11,7 +11,6 @@ using Nethermind.Dsl.Pipeline;
 using Nethermind.Core;
 using System;
 using Nethermind.Pipeline.Publishers;
-using Nethermind.Blockchain.Find;
 using Nethermind.Int256;
 using System.IO;
 using Nethermind.Logging;
