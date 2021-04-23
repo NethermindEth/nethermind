@@ -1016,34 +1016,34 @@ namespace Nethermind.Blockchain
 
             return levelInfo.BlockInfos[index.Value].WasProcessed;
         }
-
-        public void UpdateMainChain(Block[] processedBlocks, bool wereProcessed)
+        
+        public void UpdateMainChain(Block[] blocks, bool wereProcessed, bool forceUpdateHeadBlock = false)
         {
-            if (processedBlocks.Length == 0)
+            if (blocks.Length == 0)
             {
                 return;
             }
 
             bool ascendingOrder = true;
-            if (processedBlocks.Length > 1)
+            if (blocks.Length > 1)
             {
-                if (processedBlocks[^1].Number < processedBlocks[0].Number)
+                if (blocks[^1].Number < blocks[0].Number)
                 {
                     ascendingOrder = false;
                 }
             }
 
 #if DEBUG
-            for (int i = 0; i < processedBlocks.Length; i++)
+            for (int i = 0; i < blocks.Length; i++)
             {
                 if (i != 0)
                 {
-                    if (ascendingOrder && processedBlocks[i].Number != processedBlocks[i - 1].Number + 1)
+                    if (ascendingOrder && blocks[i].Number != blocks[i - 1].Number + 1)
                     {
                         throw new InvalidOperationException("Update main chain invoked with gaps");
                     }
 
-                    if (!ascendingOrder && processedBlocks[i - 1].Number != processedBlocks[i].Number + 1)
+                    if (!ascendingOrder && blocks[i - 1].Number != blocks[i].Number + 1)
                     {
                         throw new InvalidOperationException("Update main chain invoked with gaps");
                     }
@@ -1051,7 +1051,7 @@ namespace Nethermind.Blockchain
             }
 #endif
 
-            long lastNumber = ascendingOrder ? processedBlocks[^1].Number : processedBlocks[0].Number;
+            long lastNumber = ascendingOrder ? blocks[^1].Number : blocks[0].Number;
             long previousHeadNumber = Head?.Number ?? 0L;
             using BatchWrite batch = _chainLevelInfoRepository.StartBatch();
             if (previousHeadNumber > lastNumber)
@@ -1069,21 +1069,32 @@ namespace Nethermind.Blockchain
                 }
             }
 
-            for (int i = 0; i < processedBlocks.Length; i++)
+            for (int i = 0; i < blocks.Length; i++)
             {
-                Block block = processedBlocks[i];
+                Block block = blocks[i];
                 if (ShouldCache(block.Number))
                 {
-                    _blockCache.Set(block.Hash, processedBlocks[i]);
+                    _blockCache.Set(block.Hash, blocks[i]);
                     _headerCache.Set(block.Hash, block.Header);
                 }
 
-                MoveToMain(processedBlocks[i], batch, wereProcessed);
+                // we only force update head block for last block in processed blocks
+                bool lastProcessedBlock = i == blocks.Length - 1;
+                MoveToMain(blocks[i], batch, wereProcessed, forceUpdateHeadBlock && lastProcessedBlock);
             }
         }
 
+        
+        /// <summary>
+        /// Moves block to main chain.
+        /// </summary>
+        /// <param name="block">Block to move</param>
+        /// <param name="batch">Db batch</param>
+        /// <param name="wasProcessed">Was block processed (full sync), or not (fast sync)</param>
+        /// <param name="forceUpdateHeadBlock">Force updating <see cref="Head"/> to this block, even when <see cref="Block.TotalDifficulty"/> is not higher than previous head.</param>
+        /// <exception cref="InvalidOperationException">Invalid block</exception>
         [Todo(Improve.MissingFunctionality, "Recalculate bloom storage on reorg.")]
-        private void MoveToMain(Block block, BatchWrite batch, bool wasProcessed)
+        private void MoveToMain(Block block, BatchWrite batch, bool wasProcessed, bool forceUpdateHeadBlock)
         {
             if (block.Hash is null)
             {
@@ -1121,7 +1132,7 @@ namespace Nethermind.Blockchain
 
             BlockAddedToMain?.Invoke(this, new BlockReplacementEventArgs(block, previous));
 
-            if (block.IsGenesis || block.TotalDifficulty > (Head?.TotalDifficulty ?? 0))
+            if (forceUpdateHeadBlock || block.IsGenesis || block.TotalDifficulty > (Head?.TotalDifficulty ?? 0))
             {
                 if (block.Number == 0)
                 {

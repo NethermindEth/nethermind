@@ -98,5 +98,7 @@ namespace Nethermind.Synchronization.Peers
         Task StopAsync();
         
         PeerInfo? GetPeer(Node node);
+
+        event EventHandler<PeerBlockNotificationEventArgs> NotifyPeerBlock;
     }
 }

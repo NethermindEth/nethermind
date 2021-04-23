@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -13,19 +13,18 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using BenchmarkDotNet.Configs;
-using BenchmarkDotNet.Environments;
-using BenchmarkDotNet.Jobs;
-using BenchmarkDotNet.Running;
+using System.Threading;
+using System.Threading.Tasks;
+using Nethermind.Consensus;
+using Nethermind.Core;
+using Nethermind.Int256;
 
-namespace Nethermind.Evm.Benchmark
+namespace Nethermind.Merge.Plugin.Handlers
 {
-    static class Program
+    public interface IEth2BlockProducer : IBlockProducer
     {
-        static void Main(string[] args)
-        {
-            BenchmarkSwitcher.FromAssembly(typeof(Program).Assembly).Run(args, DefaultConfig.Instance);
-        }   
+        Task<Block?> TryProduceBlock(BlockHeader parentHeader, UInt256 timestamp, CancellationToken cancellationToken = default);
     }
 }
