@@ -50,20 +50,26 @@ namespace Nethermind.Mev
             }
             
             public ResultWrapper<TResult> ExecuteBundleTx(
-                TransactionForRpc[] transactionCalls, 
+                TransactionForRpc[] transactions, 
                 BlockParameter blockParameter,
                 UInt256? blockTimestamp)
             { 
-                foreach(var txForRpc in transactionCalls)
+                Transaction[] txs = transactions.Select(txForRpc =>
                 {
                     FixCallTx(txForRpc);
-                }
+                    return txForRpc.ToTransaction(_blockchainBridge.GetChainId());
+                }).ToArray();
+                
+                return ExecuteBundleTx(txs, blockParameter, blockTimestamp);
+            }
+
+            public ResultWrapper<TResult> ExecuteBundleTx(Transaction[] transactions, BlockParameter blockParameter, UInt256? blockTimestamp)
+            {
                 using CancellationTokenSource cancellationTokenSource = new(_rpcConfig.Timeout);
-                Transaction[] transactions = transactionCalls.Select(txForRpc => txForRpc.ToTransaction(_blockchainBridge.GetChainId())).ToArray();
                 return ExecuteBundleTx(transactions, blockParameter, blockTimestamp, cancellationTokenSource.Token);
             }
 
-            protected abstract ResultWrapper<TResult> ExecuteBundleTx(Transaction[] transactionCalls, BlockParameter blockParameter, UInt256? blockTimestamp, CancellationToken token);
+            protected abstract ResultWrapper<TResult> ExecuteBundleTx(Transaction[] transactions, BlockParameter blockParameter, UInt256? blockTimestamp, CancellationToken token);
 
             protected ResultWrapper<TResult> GetInputError(BlockchainBridge.CallOutput result) => 
                 ResultWrapper<TResult>.Fail(result.Error ?? "", ErrorCodes.InvalidInput);
