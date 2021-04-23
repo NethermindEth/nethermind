@@ -47,7 +47,7 @@ namespace Nethermind.Evm.Test
         [TestCase(true, 20)]
         [TestCase(false, 20)]
         [TestCase(false, 0)]
-        public void Basefee_opcode_should_return_expected_results(bool eip3198Enabled, int baseFee)
+        public void Base_fee_opcode_should_return_expected_results(bool eip3198Enabled, int baseFee)
         {
            _processor = new TransactionProcessor(SpecProvider, TestState, Storage, Machine, LimboLogs.Instance);
             byte[] code = Prepare.EvmCode

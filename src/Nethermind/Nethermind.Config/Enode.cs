@@ -45,14 +45,28 @@ namespace Nethermind.Config
             var host = enodeParts2[1];
             try
             {
-                HostIp = IPAddress.TryParse(host, out var ip) ? ip : Dns.GetHostAddresses(host).FirstOrDefault() ?? throw GetDnsException(host);
+                HostIp = IPAddress.TryParse(host, out IPAddress ip) ? ip : GetHostIpFromDnsAddresses(Dns.GetHostAddresses(host)) ?? throw GetDnsException(host);
             }
             catch (SocketException e)
             {
                 throw GetDnsException(host, e);
             }
         }
-        
+
+        public static IPAddress? GetHostIpFromDnsAddresses(params IPAddress[] hostAddresses)
+        {
+            for (var index = 0; index < hostAddresses.Length; index++)
+            {
+                var hostAddress = hostAddresses[index];
+                if (Equals(hostAddress, hostAddress.MapToIPv4()))
+                {
+                    return hostAddress;
+                }
+            }
+
+            return hostAddresses.FirstOrDefault()?.MapToIPv4();
+        }
+
         public PublicKey PublicKey => _nodeKey;
         public Address Address => _nodeKey.Address;
         public IPAddress HostIp { get; }

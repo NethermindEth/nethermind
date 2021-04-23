@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System.Threading.Tasks;
 using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
@@ -30,28 +31,27 @@ namespace Nethermind.Merge.Plugin
             Description = "Requests a block to be assembled from the tx pool transactions.",
             IsSharable = true,
             IsImplemented = true)]
-        ResultWrapper<BlockForRpc>  consensus_assembleBlock(
-            AssembleBlockRequest request);
+        Task<ResultWrapper<BlockRequestResult?>> consensus_assembleBlock(AssembleBlockRequest request);
         
         [JsonRpcMethod(
             Description = "Injects a new block from the consensus layer.",
             IsSharable = true,
             IsImplemented = true)]
-        ResultWrapper<bool>  consensus_newBlock(
-            BlockForRpc request);
+        Task<ResultWrapper<NewBlockResult>> consensus_newBlock(
+            BlockRequestResult requestResult);
         
         [JsonRpcMethod(
             Description = "Changes consensus layer head block.",
             IsSharable = true,
             IsImplemented = true)]
-        ResultWrapper<bool>  consensus_setHead(
+        Task<ResultWrapper<Result>> consensus_setHead(
             Keccak blockHash);        
         
         [JsonRpcMethod(
             Description = "Marks consensus layer block as finalized.",
             IsSharable = true,
             IsImplemented = true)]
-        ResultWrapper<bool>  consensus_finaliseBlock(
+        Task<ResultWrapper<Result>> consensus_finaliseBlock(
             Keccak blockHash);
     }
 }

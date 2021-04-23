@@ -21,12 +21,22 @@ namespace Nethermind.Blockchain.Synchronization
     [ConfigCategory(Description = "Configuration of the synchronization modes.")]
     public class SyncConfig : ISyncConfig
     {
+        private bool _synchronizationEnabled = true;
+        
         public static ISyncConfig Default { get; } = new SyncConfig();
         public static ISyncConfig WithFullSyncOnly { get; } = new SyncConfig {FastSync = false, FastBlocks = false};
         public static ISyncConfig WithFastSync { get; } = new SyncConfig {FastSync = true};
         public static ISyncConfig WithFastBlocks { get; } = new SyncConfig {FastSync = true, FastBlocks = true};
+        public static ISyncConfig WithEth2Merge { get; } = new SyncConfig {FastSync = false, FastBlocks = false, BlockGossipEnabled = false};
 
-        public bool SynchronizationEnabled { get; set; } = true;
+        public bool NetworkingEnabled { get; set; } = true;
+
+        public bool SynchronizationEnabled
+        {
+            get => NetworkingEnabled && _synchronizationEnabled;
+            set => _synchronizationEnabled = value;
+        }
+
         public long? FastSyncCatchUpHeightDelta { get; set; } = 8192;
         public bool FastBlocks { get; set; }
         public bool UseGethLimitsInFastBlocks { get; set; } = true;
@@ -46,5 +56,6 @@ namespace Nethermind.Blockchain.Synchronization
         public bool BeamSyncVerifiedMode { get; set; } = false;
         public bool WitnessProtocolEnabled { get; set; } = false;
         public bool FixReceipts { get; set; } = false;
+        public bool BlockGossipEnabled { get; set; } = true;
     }
 }
