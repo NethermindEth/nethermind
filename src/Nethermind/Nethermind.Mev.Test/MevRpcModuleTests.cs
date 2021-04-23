@@ -15,7 +15,18 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 //
 
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
 using FluentAssertions;
+using Google.Protobuf.WellKnownTypes;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Test.Blockchain;
+using Nethermind.Core.Test.Builders;
+using Nethermind.Serialization.Rlp;
+using Nethermind.TxPool;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Mev.Test
@@ -23,6 +34,16 @@ namespace Nethermind.Mev.Test
     [TestFixture]
     public class MevRpcModuleTests
     {
+        private class MevTestBlockchain : TestBlockchain
+        {
+            public IMevRpcModule MevRpcModule { get; set; } = Substitute.For<IMevRpcModule>();
+        }
+        
+        private MevTestBlockchain CreateChain()
+        {
+            return new MevTestBlockchain();
+        }
+
         [Test]
         public void Can_create()
         {
@@ -51,5 +72,20 @@ namespace Nethermind.Mev.Test
         {
             // TODO?
         }
+        
+        [Test]
+        public async Task Should_pick_more_profitable_bundle()
+        {
+            var chain = CreateChain();
+            Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA);
+            Transaction[] bundle1Txs = null;
+            Transaction[] bundle2Txs = null;
+            // chain.MevRpcModule.eth_sendBundle()
+            // chain.MevRpcModule.eth_sendBundle()
+            await chain.AddBlock();
+            GetHashes(chain.BlockTree.Head.Transactions.Take(bundle2Txs.Length)).Should().Equal(GetHashes(bundle2Txs));
+        }
+
+        private static IEnumerable<Keccak?> GetHashes(IEnumerable<Transaction> bundle2Txs) => bundle2Txs.Select(t => t.Hash);
     }
 }
