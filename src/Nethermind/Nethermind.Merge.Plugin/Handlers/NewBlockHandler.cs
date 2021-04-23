@@ -55,48 +55,62 @@ namespace Nethermind.Merge.Plugin.Handlers
 
         public ResultWrapper<NewBlockResult> Handle(BlockRequestResult request)
         {
-            Block block = request.ToBlock();
-
-            if (!ValidateRequestAndProcess(request, block, out Block? processedBlock) || processedBlock is null)
+            ValidationResult result = ValidateRequestAndProcess(request, out Block? processedBlock);
+            if ((result & ValidationResult.AlreadyKnown) != 0 || result == ValidationResult.Invalid)
             {
-                return ResultWrapper<NewBlockResult>.Success(new NewBlockResult {Valid = false});
+                return ResultWrapper<NewBlockResult>.Success((result & ValidationResult.Valid) != 0);
+            }
+            else if (processedBlock == null)
+            {
+                return ResultWrapper<NewBlockResult>.Success(false);
             }
 
             AddBlockResult blockResult = _blockTree.SuggestBlock(processedBlock);
             bool isValid = blockResult is AddBlockResult.Added or AddBlockResult.AlreadyKnown;
-            return ResultWrapper<NewBlockResult>.Success(new NewBlockResult {Valid = isValid});
+            return ResultWrapper<NewBlockResult>.Success(isValid);
         }
 
-        private bool ValidateRequestAndProcess(BlockRequestResult request, Block block, out Block? processedBlock)
+        private ValidationResult ValidateRequestAndProcess(BlockRequestResult request, out Block? processedBlock)
         {
             processedBlock = null;
-            bool hashValid = CheckInputIs(request, request.BlockHash, block.CalculateHash(), nameof(request.BlockHash));
-
-            if (hashValid)
+            
+            if (request.TryGetBlock(out Block? block) && block != null)
             {
-                if (_latestBlocks.TryGet(request.BlockHash, out bool isValid))
+                bool hashValid = CheckInputIs(request, request.BlockHash, block.CalculateHash(), nameof(request.BlockHash));
+
+                if (hashValid)
                 {
-                    if (isValid)
+                    bool isRecentBlock = _latestBlocks.TryGet(request.BlockHash, out bool isValid);
+                    if (isRecentBlock)
+                    {
+                        return ValidationResult.AlreadyKnown | (isValid ? ValidationResult.Valid : ValidationResult.Invalid);
+                    }
+                    else
                     {
                         processedBlock = _blockTree.FindBlock(request.BlockHash, BlockTreeLookupOptions.None);
+
+                        if (processedBlock != null)
+                        {
+                            return ValidationResult.Valid | ValidationResult.AlreadyKnown;
+                        }
+
+                        bool validAndProcessed =
+                            CheckInput(request)
+                            && CheckParent(request.ParentHash, out BlockHeader? parent)
+                            && Process(block, parent!, out processedBlock);
+
+                        _latestBlocks.Set(request.BlockHash, validAndProcessed);
+
+                        return validAndProcessed ? ValidationResult.Valid : ValidationResult.Invalid;
                     }
-
-                    return isValid;
-                }
-                else
-                {
-                    bool validateRequestAndProcess =
-                        CheckInput(request)
-                        && CheckParent(request.ParentHash, out BlockHeader? parent)
-                        && Process(block, parent!, out processedBlock);
-
-                    _latestBlocks.Set(request.BlockHash, validateRequestAndProcess);
-            
-                    return validateRequestAndProcess;
                 }
             }
+            else
+            {
+                if (_logger.IsWarn) _logger.Warn($"Block {request} could not be parsed as block {AndWontBeAcceptedToTheTree}.");
+            }
 
-            return false;
+            return ValidationResult.Invalid;
         }
 
         private bool CheckParent(Keccak? parentHash, out BlockHeader? parent)
@@ -175,6 +189,14 @@ namespace Nethermind.Merge.Plugin.Handlers
             }
 
             return true;
+        }
+        
+        [Flags]
+        private enum ValidationResult
+        {
+            Invalid = 0,
+            Valid = 1,
+            AlreadyKnown = 2
         }
     }
 }

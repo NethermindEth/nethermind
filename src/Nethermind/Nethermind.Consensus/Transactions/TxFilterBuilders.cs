@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -15,12 +15,11 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-namespace Nethermind.Merge.Plugin.Data
+namespace Nethermind.Consensus.Transactions
 {
-    public class NewBlockResult
+    public static class TxFilterBuilders
     {
-        public bool Valid { get; set; }
-
-        public static implicit operator NewBlockResult(bool value) => new() {Valid = value};
+        public static ITxFilter CreateStandardTxFilter(IMiningConfig miningConfig)
+            => new MinGasPriceTxFilter(miningConfig.MinGasPrice);
     }
 }
