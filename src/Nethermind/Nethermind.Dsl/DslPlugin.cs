@@ -99,6 +99,8 @@ namespace Nethermind.Dsl
             {
                 case AntlrTokenType.SOURCE:
                     break;
+                case AntlrTokenType.WHERE: 
+                    break;
                 case AntlrTokenType.WATCH:
                     SetWatchOnPipeline(tokenValue);
                     break;

@@ -22,7 +22,7 @@ namespace Nethermind.Dsl.ANTLR
             var sourceNode = context.expression().First();
             var nodeText = sourceNode.OPERATOR().GetText();
             var isTokenType = Enum.IsDefined(typeof(AntlrTokenType), nodeText);
-            var tokenValue = sourceNode.OPERATOR_VALUE().GetText();
+            var tokenValue = sourceNode.WORD().GetText();
 
             if(isTokenType && nodeText.Equals("SOURCE"))
             {
@@ -40,8 +40,8 @@ namespace Nethermind.Dsl.ANTLR
                 return;
             }
 
-            AntlrTokenType tokenType = (AntlrTokenType)Enum.Parse(typeof(AntlrTokenType), context.OPERATOR_VALUE().GetText());
-            OnEnterExpression(tokenType, context.OPERATOR_VALUE().GetText());
+            AntlrTokenType tokenType = (AntlrTokenType)Enum.Parse(typeof(AntlrTokenType), context.OPERATOR().GetText());
+            OnEnterExpression(tokenType, context.WORD().GetText());
         }
 
         public override void EnterCondition([NotNull] DslGrammarParser.ConditionContext context)
@@ -51,7 +51,7 @@ namespace Nethermind.Dsl.ANTLR
                 return;
             }
 
-            OnEnterCondition(context.OPERATOR_VALUE().GetText(), context.ARITHMETIC_SYMBOL().GetText(), context.CONDITION_MATCHER().GetText());
+            OnEnterCondition(context.WORD().First().GetText(), context.ARITHMETIC_SYMBOL().GetText(), context.ADDRESS().GetText());
         }
 
         public override void ExitInit([NotNull] DslGrammarParser.InitContext context)
