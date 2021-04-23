@@ -39,6 +39,7 @@ using Nethermind.Network.Discovery;
 using Nethermind.Network.Rlpx;
 using Nethermind.Runner.Ethereum.Api;
 using Nethermind.Serialization.Json;
+using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
 using Nethermind.State.Repositories;
 using Nethermind.Stats;
@@ -111,7 +112,8 @@ namespace Nethermind.Runner.Test.Ethereum
                 WebSocketsManager = Substitute.For<IWebSocketsManager>(),
                 ChainLevelInfoRepository = Substitute.For<IChainLevelInfoRepository>(),
                 TrieStore = Substitute.For<ITrieStore>(),
-                ReadOnlyTrieStore = Substitute.For<IReadOnlyTrieStore>()
+                ReadOnlyTrieStore = Substitute.For<IReadOnlyTrieStore>(),
+                ChainSpec = new ChainSpec(),
             };
     }
 }

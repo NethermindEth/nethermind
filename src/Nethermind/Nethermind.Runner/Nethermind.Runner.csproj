@@ -38,6 +38,7 @@
     <ProjectReference Include="..\Nethermind.Grpc\Nethermind.Grpc.csproj" />
     <ProjectReference Include="..\Nethermind.JsonRpc\Nethermind.JsonRpc.csproj" />
     <ProjectReference Include="..\Nethermind.Logging.NLog\Nethermind.Logging.NLog.csproj" />
+    <ProjectReference Include="..\Nethermind.Mev\Nethermind.Mev.csproj" />
     <ProjectReference Include="..\Nethermind.Monitoring\Nethermind.Monitoring.csproj" />
     <ProjectReference Include="..\Nethermind.Network\Nethermind.Network.csproj" />
     <ProjectReference Include="..\Nethermind.PubSub.Kafka\Nethermind.PubSub.Kafka.csproj" />
@@ -121,4 +122,14 @@
   <Target Name="StoreGitHash" BeforeTargets="BeforePublish">
     <Exec Command="git describe --tags --long --always &gt; git-hash" />
   </Target>
- </Project>
+  <Target Name="CopyMergePluginOnBuild" AfterTargets="AfterBuild">
+    <Copy SourceFiles="$(SolutionDir)Nethermind.Merge.Plugin\bin\$(Configuration)\$(TargetFramework)\Nethermind.Merge.Plugin.dll" 
+          DestinationFolder="$(OutDir)plugins" 
+          Condition="Exists('$(SolutionDir)Nethermind.Merge.Plugin\bin\$(Configuration)\$(TargetFramework)\Nethermind.Merge.Plugin.dll')" 
+          SkipUnchangedFiles="true" />
+    <Copy SourceFiles="$(SolutionDir)Nethermind.Merge.Plugin\bin\$(Configuration)\$(TargetFramework)\Nethermind.Merge.Plugin.pdb" 
+          DestinationFolder="$(OutDir)plugins" 
+          Condition="Exists('$(SolutionDir)Nethermind.Merge.Plugin\bin\$(Configuration)\$(TargetFramework)\Nethermind.Merge.Plugin.pdb')" 
+          SkipUnchangedFiles="true"/>
+  </Target>
+</Project>

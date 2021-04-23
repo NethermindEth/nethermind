@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -13,24 +13,13 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using System.Diagnostics;
-using BenchmarkDotNet.Configs;
-using BenchmarkDotNet.Running;
-using Nethermind.Benchmarks.Core;
-using Nethermind.Core.Caching;
-
-namespace Nethermind.Benchmarks
+namespace Nethermind.Mev.Test
 {
-    public class Program
+    public enum SelectorType
     {
-        public static void Main(string[] args)
-        {
-            IConfig config = Debugger.IsAttached ? new DebugInProcessConfig() : null;
-            BenchmarkRunner.Run<LruCacheAddAtCapacityBenchmarks>(config);
-            // BenchmarkRunner.Run<LruCacheBenchmarks>(config);
-            // BenchmarkRunner.Run<LruCacheKeccakBytesBenchmarks>(config);
-            // BenchmarkSwitcher.FromAssembly(typeof(Program).Assembly).Run(args, config);
-        }
+        V1,
+        V2,
     }
 }

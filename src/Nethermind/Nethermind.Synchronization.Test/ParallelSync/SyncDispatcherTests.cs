@@ -110,6 +110,8 @@ namespace Nethermind.Synchronization.Test.ParallelSync
             {
                 return null;
             }
+
+            public event EventHandler<PeerBlockNotificationEventArgs> NotifyPeerBlock;
         }
 
         private class TestBatch

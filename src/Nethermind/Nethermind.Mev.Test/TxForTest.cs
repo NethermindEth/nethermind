@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -13,19 +13,23 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using BenchmarkDotNet.Configs;
-using BenchmarkDotNet.Environments;
-using BenchmarkDotNet.Jobs;
-using BenchmarkDotNet.Running;
+using Nethermind.Core.Crypto;
+using Nethermind.Int256;
 
-namespace Nethermind.Evm.Benchmark
+namespace Nethermind.Mev.Test
 {
-    static class Program
+    public class TxForTest
     {
-        static void Main(string[] args)
-        {
-            BenchmarkSwitcher.FromAssembly(typeof(Program).Assembly).Run(args, DefaultConfig.Instance);
-        }   
+        public Keccak Hash { get; set; }
+
+        public long GasUsed { get; set; }
+        
+        public UInt256 GasPrice { get; set; }
+        
+        public UInt256 CoinbasePayment { get; set; }
+
+        public TxVisibility Visibility { get; set; }
     }
 }

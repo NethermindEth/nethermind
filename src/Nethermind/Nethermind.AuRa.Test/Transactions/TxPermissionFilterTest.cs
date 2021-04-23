@@ -229,7 +229,7 @@ namespace Nethermind.AuRa.Test.Transactions
         [TestCase(3, ExpectedResult = true)]
         public bool allows_transactions_before_transitions(long blockNumber)
         {
-            var transactionPermissionContract = new VersionedTransactionPermissionContract(new AbiEncoder(), 
+            var transactionPermissionContract = new VersionedTransactionPermissionContract(AbiEncoder.Instance, 
                 TestItem.AddressA,
                 5, 
                 Substitute.For<IReadOnlyTxProcessorSource>(), new LruCache<Keccak, UInt256>(100, "TestCache"),
@@ -265,7 +265,7 @@ namespace Nethermind.AuRa.Test.Transactions
                     SpecProvider,
                     LimboLogs.Instance);
 
-                var transactionPermissionContract = new VersionedTransactionPermissionContract(new AbiEncoder(), _contractAddress, 1,
+                var transactionPermissionContract = new VersionedTransactionPermissionContract(AbiEncoder.Instance, _contractAddress, 1,
                     new ReadOnlyTxProcessingEnv(DbProvider, trieStore, BlockTree, SpecProvider, LimboLogs.Instance), TransactionPermissionContractVersions, LimboLogs.Instance);
 
                 TxPermissionFilterCache = new PermissionBasedTxFilter.Cache();

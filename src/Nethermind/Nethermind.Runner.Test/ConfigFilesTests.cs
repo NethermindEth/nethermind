@@ -84,6 +84,21 @@ namespace Nethermind.Runner.Test
         {
             Test<ISyncConfig, bool>(configWildcard, c => c.SynchronizationEnabled, isSyncEnabled);
         }
+        
+        [TestCase("archive", true)]
+        [TestCase("fast", true)]
+        [TestCase("beam", true)]
+        [TestCase("spaceneth", false)]
+        [TestCase("baseline", true)]
+        [TestCase("ndm_consumer_goerli.cfg", true)]
+        [TestCase("ndm_consumer_local.cfg", true)]
+        [TestCase("ndm_consumer_mainnet_proxy.cfg", false)]
+        [TestCase("ndm_consumer_ropsten.cfg", true)]
+        [TestCase("ndm_consumer_ropsten_proxy.cfg", false)]
+        public void Networking_is_disabled_when_needed(string configWildcard, bool isEnabled)
+        {
+            Test<ISyncConfig, bool>(configWildcard, c => c.NetworkingEnabled, isEnabled);
+        }
 
         [TestCase("ropsten", "ws://ropsten-stats.parity.io/api")]
         [TestCase("rinkeby", "ws://localhost:3000/api")]

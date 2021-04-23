@@ -78,6 +78,7 @@ namespace Nethermind.Specs
         public const long ConstantinopleFixBlockNumber  = 4_321_234;
         public const long IstanbulBlockNumber  = 5_435_345;
         public const long BerlinBlockNumber  = 8_290_928;
+        public const long LondonBlockNumber = long.MaxValue;
 
         public ulong ChainId => Core.ChainId.Rinkeby;
 

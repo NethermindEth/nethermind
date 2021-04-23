@@ -53,8 +53,7 @@ namespace Nethermind.JsonRpc.Test
             /* we enable recorder always to have an easy smoke test for recording
              * and this is fine because recorder is non-critical component
              */
-            JsonRpcConfig configWithRecorder = new JsonRpcConfig();
-            configWithRecorder.RpcRecorderEnabled = true;
+            JsonRpcConfig configWithRecorder = new JsonRpcConfig {RpcRecorderState = RpcRecorderState.All};
 
             _jsonRpcProcessor = new JsonRpcProcessor(service, new EthereumJsonSerializer(), configWithRecorder, _fileSystem, LimboLogs.Instance);
         }

@@ -130,6 +130,7 @@ namespace Nethermind.Specs.ChainSpecStyle
                 Eip2565Transition = chainSpecJson.Params.Eip2565Transition,
                 Eip2929Transition = chainSpecJson.Params.Eip2929Transition,
                 Eip2930Transition = chainSpecJson.Params.Eip2930Transition,
+                Eip3198Transition = chainSpecJson.Params.Eip3198Transition,
                 TransactionPermissionContract = chainSpecJson.Params.TransactionPermissionContract,
                 TransactionPermissionContractTransition = chainSpecJson.Params.TransactionPermissionContractTransition,
                 ValidateChainIdTransition = chainSpecJson.Params.ValidateChainIdTransition,
@@ -183,6 +184,7 @@ namespace Nethermind.Specs.ChainSpecStyle
                 chainSpec.Ethash?.DifficultyBombDelays.Keys.ToArray()[2]
                 : null;
             chainSpec.BerlinBlockNumber = chainSpec.Parameters.Eip2929Transition ?? (long.MaxValue - 1);
+            chainSpec.LondonBlockNumber = chainSpec.Parameters.Eip1559Transition ?? (long.MaxValue - 1);
         }
 
         private static void LoadEngine(ChainSpecJson chainSpecJson, ChainSpec chainSpec)
@@ -260,13 +262,8 @@ namespace Nethermind.Specs.ChainSpecStyle
                     DaoHardforkAccounts = chainSpecJson.Engine.Ethash.DaoHardforkAccounts ?? Array.Empty<Address>(),
                     Eip100bTransition = chainSpecJson.Engine.Ethash.Eip100bTransition ?? 0L,
                     FixedDifficulty = chainSpecJson.Engine.Ethash.FixedDifficulty,
-                    BlockRewards = new Dictionary<long, UInt256>()
+                    BlockRewards = chainSpecJson.Engine.Ethash.BlockReward
                 };
-
-                foreach (KeyValuePair<string, UInt256> reward in chainSpecJson.Engine.Ethash.BlockReward)
-                {
-                    chainSpec.Ethash.BlockRewards.Add(LongConverter.FromString(reward.Key), reward.Value);
-                }
 
                 chainSpec.Ethash.DifficultyBombDelays = new Dictionary<long, long>();
                 if (chainSpecJson.Engine.Ethash.DifficultyBombDelays != null)
@@ -281,7 +278,15 @@ namespace Nethermind.Specs.ChainSpecStyle
             {
                 chainSpec.SealEngineType = SealEngineType.NethDev;
             }
-            else
+
+            string? customEngineType = chainSpecJson.Engine?.CustomEngineData?.FirstOrDefault().Key;
+            
+            if (!string.IsNullOrEmpty(customEngineType))
+            {
+                chainSpec.SealEngineType = customEngineType;
+            }
+            
+            if (string.IsNullOrEmpty(chainSpec.SealEngineType))
             {
                 throw new NotSupportedException("unknown seal engine in chainspec");
             }

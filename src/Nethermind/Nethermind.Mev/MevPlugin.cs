@@ -16,15 +16,16 @@
 // 
 
 using System;
-using System.Numerics;
 using System.Threading.Tasks;
 using System.Collections.Generic;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
+using Nethermind.Evm.Tracing;
+using Nethermind.Facade;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
-using Nethermind.Core;
+using Nethermind.TxPool;
 
 namespace Nethermind.Mev
 {
@@ -87,6 +88,13 @@ namespace Nethermind.Mev
             }
 
             return Task.CompletedTask;
+        }
+
+        private void TxPoolOnNewPending(object? sender, TxEventArgs e)
+        {
+            IBlockchainBridge bridge = _nethermindApi!.CreateBlockchainBridge();
+            // create a bundle
+            // submit the bundle to Flashbots MEV-Relay
         }
 
         public ValueTask DisposeAsync()
