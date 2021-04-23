@@ -16,6 +16,7 @@
 // 
 
 using System;
+using System.Collections.Concurrent;
 using System.Threading.Tasks;
 using System.Collections.Generic;
 using Nethermind.Api;
@@ -44,11 +45,12 @@ namespace Nethermind.Mev
 
         private ILogger? _logger;
 
-        private List<MevBundleForRpc> _mevBundles = new List<MevBundleForRpc>();
+        // TODO: Keep sorted by block, then timestamp?
+        private ConcurrentBag<MevBundle> _mevBundles = new();
 
-        public List<MevBundleForRpc> MevBundles 
+        public IReadOnlyList<MevBundle> MevBundles 
         { 
-            get { ThrowIfNotInitialized(); return _mevBundles!; } 
+            get { ThrowIfNotInitialized(); return _mevBundles.ToArray(); } 
         }
 
         private readonly object _locker = new();
@@ -82,6 +84,11 @@ namespace Nethermind.Mev
                 MevModuleFactory mevModuleFactory = new(_mevConfig!, rpcConfig, this);
                 getFromApi.RpcModuleProvider!.RegisterBoundedByCpuCount(mevModuleFactory, rpcConfig.Timeout);
 
+                if (getFromApi.TxPool != null)
+                {
+                    getFromApi.TxPool.NewPending += TxPoolOnNewPending;
+                }
+
                 if (_logger!.IsInfo) _logger.Info("Flashbots RPC plugin enabled");
             } 
             else 
@@ -113,39 +120,30 @@ namespace Nethermind.Mev
         }
 
         // TODO alias nested list
-        public IReadOnlyList<IReadOnlyList<Transaction>> GetCurrentMevTxBundles(UInt256 blockNumber, UInt256 blockTimestamp) {
-            ThrowIfNotInitialized();
-            lock (_locker) 
-            {
-                var currentAndFutureMevBundles = new List<MevBundleForRpc>();
-                var currentTxBundles = new List<IReadOnlyList<Transaction>>();
-
-                foreach (var mevBundle in _mevBundles!) 
-                {
-                    if ((mevBundle.MaxTimestamp != 0 && blockTimestamp > mevBundle.MaxTimestamp) || (blockNumber > mevBundle.BlockNumber)) continue;
-
-                    if ((mevBundle.MinTimestamp != 0 && blockTimestamp < mevBundle.MinTimestamp) || (blockNumber < mevBundle.BlockNumber)) 
-                    {
-                        currentAndFutureMevBundles.Add(mevBundle);
-                        continue;
-                    }
-
-                    currentTxBundles.Add(mevBundle.Transactions);
-                    currentAndFutureMevBundles.Add(mevBundle);
-                }
-
-                _mevBundles = currentAndFutureMevBundles;
-                return currentTxBundles;
-            }
-        }
-
-        public void AddMevBundle(MevBundleForRpc mevBundle) 
+        public IReadOnlyList<IReadOnlyList<Transaction>> GetCurrentMevTxBundles(UInt256 blockNumber, UInt256 blockTimestamp) 
         {
             ThrowIfNotInitialized();
-            lock (_locker) 
+            List<IReadOnlyList<Transaction>>? currentTxBundles = new();
+
+            foreach (var mevBundle in _mevBundles) 
             {
-                _mevBundles!.Add(mevBundle);
+                // We shouldn't remove until finalized block
+                bool bundleIsTooOld = (mevBundle.MaxTimestamp == 0 || !(blockTimestamp > mevBundle.MaxTimestamp)) && (!(blockNumber > mevBundle.BlockNumber));
+                bool bundleIsFuture = (mevBundle.MinTimestamp != 0 && blockTimestamp < mevBundle.MinTimestamp) || (blockNumber < mevBundle.BlockNumber);
+                
+                if (!bundleIsFuture && !bundleIsTooOld)
+                {
+                    currentTxBundles.Add(mevBundle.Transactions);
+                }
             }
+                
+            return currentTxBundles;
+        }
+
+        public void AddMevBundle(MevBundle mevBundle) 
+        {
+            ThrowIfNotInitialized();
+            _mevBundles.Add(mevBundle);
         }
     }
 }

@@ -59,10 +59,10 @@ namespace Nethermind.Mev
             _stateReader = mevPlugin.NethermindApi.StateReader ?? throw new NullReferenceException("StateReader");
         }
 
-        public ResultWrapper<bool> eth_sendBundle(byte[][] transactions, UInt256 blockNumber, UInt256 minTimestamp, UInt256 maxTimestamp)
+        public ResultWrapper<bool> eth_sendBundle(byte[][] transactions, long blockNumber, UInt256? minTimestamp = null, UInt256? maxTimestamp = null)
         {
             Transaction[] txs = Decode(transactions);
-            MevBundleForRpc bundle = new(txs, blockNumber, minTimestamp, maxTimestamp);
+            MevBundle bundle = new(txs, blockNumber, minTimestamp, maxTimestamp);
             _mevPlugin.AddMevBundle(bundle); // abstract
             return ResultWrapper<bool>.Success(true);
         }

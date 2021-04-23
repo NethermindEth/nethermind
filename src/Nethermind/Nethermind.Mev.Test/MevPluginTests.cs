@@ -88,21 +88,19 @@ namespace Nethermind.Mev.Test
             MevPlugin plugin = new();
             plugin.Init(api);
 
-            var empty = new List<Transaction>();
-
-            plugin.AddMevBundle(new MevBundleForRpc(empty, 4, 0, 0));
-            plugin.AddMevBundle(new MevBundleForRpc(empty, 5, 0, 0));
-            plugin.AddMevBundle(new MevBundleForRpc(empty, 6, 0, 0));
-            plugin.AddMevBundle(new MevBundleForRpc(empty, 9, 0, 0));
-            plugin.AddMevBundle(new MevBundleForRpc(empty, 9, 0, 0));
-            plugin.AddMevBundle(new MevBundleForRpc(empty, 12, 0, 0));
-            plugin.AddMevBundle(new MevBundleForRpc(empty, 15, 0, 0));
+            plugin.AddMevBundle(new MevBundle(Array.Empty<Transaction>(), 4, 0, 0));
+            plugin.AddMevBundle(new MevBundle(Array.Empty<Transaction>(), 5, 0, 0));
+            plugin.AddMevBundle(new MevBundle(Array.Empty<Transaction>(), 6, 0, 0));
+            plugin.AddMevBundle(new MevBundle(Array.Empty<Transaction>(), 9, 0, 0));
+            plugin.AddMevBundle(new MevBundle(Array.Empty<Transaction>(), 9, 0, 0));
+            plugin.AddMevBundle(new MevBundle(Array.Empty<Transaction>(), 12, 0, 0));
+            plugin.AddMevBundle(new MevBundle(Array.Empty<Transaction>(), 15, 0, 0));
 
             var testBundles = new BundleTestData[] 
             {
                 new BundleTestData(8, 0, 0, 4, null),
                 new BundleTestData(9, 0, 2, 4, null),
-                new BundleTestData(10, 8, 0, 2, () => plugin.AddMevBundle(new MevBundleForRpc(empty, 10, 5, 7))),
+                new BundleTestData(10, 8, 0, 2, () => plugin.AddMevBundle(new MevBundle(Array.Empty<Transaction>(), 10, 5, 7))),
                 new BundleTestData(11, 0, 0, 2, null),
                 new BundleTestData(12, 0, 1, 2, null),
                 new BundleTestData(13, 0, 0, 1, null),

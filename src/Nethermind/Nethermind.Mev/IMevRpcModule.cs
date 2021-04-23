@@ -28,7 +28,7 @@ namespace Nethermind.Mev
     public interface IMevRpcModule : IRpcModule
     {        
         [JsonRpcMethod(Description = "Adds bundle to the tx pool.", IsImplemented = true)]
-        ResultWrapper<bool> eth_sendBundle(byte[][] transactions, UInt256 blockNumber, UInt256 minTimestamp, UInt256 maxTimestamp);
+        ResultWrapper<bool> eth_sendBundle(byte[][] transactions, long blockNumber, UInt256? minTimestamp = null, UInt256? maxTimestamp = null);
         
         [JsonRpcMethod(Description = "Simulates the bundle behaviour.", IsImplemented = true, IsSharable = false)]
         ResultWrapper<TxsToResults> eth_callBundle(byte[][] transactions, BlockParameter? blockParameter = null, UInt256? timestamp = null);

@@ -41,7 +41,7 @@ namespace Nethermind.Mev.Test
             long gasUsed = 0;
             UInt256 txFees = 0;
             UInt256 coinbasePayments = 0;
-            foreach (Transaction transaction in bundle.Txs)
+            foreach (Transaction transaction in bundle.Transactions)
             {
                 foreach (TxForTest? txForTest in _testJson.Txs!)
                 {
@@ -131,7 +131,7 @@ namespace Nethermind.Mev.Test
         private MevBundle ToBundle(MevBundleForTest? bundleForTest)
         {
             if (bundleForTest == null) throw new ArgumentNullException(nameof(bundleForTest));
-            return new(bundleForTest.Txs.Select(ToTx).ToArray());
+            return new(bundleForTest.Txs.Select(ToTx).ToArray(), 1, UInt256.Zero, UInt256.Zero);
         }
 
         private Transaction ToTx(Keccak txs)

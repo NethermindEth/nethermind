@@ -15,26 +15,28 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System.Collections.Generic;
 using Nethermind.Core;
+using Nethermind.Int256;
 
 namespace Nethermind.Mev
 {
     public class MevBundle
     {
-        public MevBundle(Transaction[] txs, long? blockNumber = null, long? minTimestamp = null, long? maxTimestamp = null)
+        public MevBundle(IReadOnlyList<Transaction> transactions, long blockNumber, UInt256? minTimestamp, UInt256? maxTimestamp)
         {
-            Txs = txs;
+            Transactions = transactions;
             BlockNumber = blockNumber;
-            MinTimestamp = minTimestamp;
-            MaxTimestamp = maxTimestamp;
+            MinTimestamp = minTimestamp ?? UInt256.Zero;
+            MaxTimestamp = maxTimestamp ?? UInt256.Zero;
         }
 
-        public Transaction[] Txs { get; }
+        public IReadOnlyList<Transaction> Transactions { get; }
 
-        public long? BlockNumber { get; set; }
+        public long BlockNumber { get; }
         
-        public long? MaxTimestamp { get; set; }
+        public UInt256 MaxTimestamp { get; }
         
-        public long? MinTimestamp { get; set; }
+        public UInt256 MinTimestamp { get; }
     }
 }
