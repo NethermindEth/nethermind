@@ -25,7 +25,7 @@ namespace Nethermind.Dsl
 
         public string Author { get; }
 
-        private DslGrammarListener _listener;
+        private ParseTreeListener _listener;
         private INethermindApi _api;
         private ITxPool _txPool;
         private IBlockProcessor _blockProcessor;
@@ -46,7 +46,7 @@ namespace Nethermind.Dsl
             parser.BuildParseTree = true;
             IParseTree tree = parser.init();
 
-            _listener = new DslGrammarListener();
+            _listener = new ParseTreeListener();
             _listener.OnEnterInit = OnInitEntry;
             _listener.OnEnterExpression = OnExpressionEntry;
             _listener.OnEnterCondition = OnConditionEntry;
