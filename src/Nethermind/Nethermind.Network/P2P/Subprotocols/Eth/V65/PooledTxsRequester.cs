@@ -24,13 +24,13 @@ using Nethermind.TxPool;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
 {
-    public class PooledTxsFetcher : IPooledTxsFetcher
+    public class PooledTxsRequester : IPooledTxsRequester
     {
         private readonly ITxPool _txPool;
         private readonly LruKeyCache<Keccak> _pendingHashes = new(MemoryAllowance.TxHashCacheSize,
             Math.Min(1024 * 16, MemoryAllowance.TxHashCacheSize), "pending tx hashes");
 
-        public PooledTxsFetcher(ITxPool txPool)
+        public PooledTxsRequester(ITxPool txPool)
         {
             _txPool = txPool;
         }

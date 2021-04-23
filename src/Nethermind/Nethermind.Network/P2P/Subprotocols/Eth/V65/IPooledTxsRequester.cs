@@ -21,7 +21,7 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
 {
-    public interface IPooledTxsFetcher 
+    public interface IPooledTxsRequester 
     {
         void RequestTransactions(Action<GetPooledTransactionsMessage> send, IList<Keccak> hashes);
     }

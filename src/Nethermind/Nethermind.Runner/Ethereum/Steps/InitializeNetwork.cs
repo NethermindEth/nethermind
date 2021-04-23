@@ -434,12 +434,12 @@ namespace Nethermind.Runner.Ethereum.Steps
             NetworkStorage peerStorage = new(peersDb, _api.LogManager);
 
             ProtocolValidator protocolValidator = new(_api.NodeStatsManager, _api.BlockTree, _api.LogManager);
-            PooledTxsFetcher pooledTxsFetcher = new(_api.TxPool);
+            PooledTxsRequester pooledTxsRequester = new(_api.TxPool);
             _api.ProtocolsManager = new ProtocolsManager(
                 _api.SyncPeerPool,
                 _api.SyncServer,
                 _api.TxPool,
-                pooledTxsFetcher,
+                pooledTxsRequester,
                 _api.DiscoveryApp,
                 _api.MessageSerializationService,
                 _api.RlpxPeer,

@@ -38,7 +38,7 @@ using NUnit.Framework;
 namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
 {
     [TestFixture, Parallelizable(ParallelScope.All)]
-    public class PooledTxsFetcherTests
+    public class PooledTxsRequesterTests
     {
         private readonly ITxPool _txPool = Substitute.For<ITxPool>();
         
@@ -46,43 +46,43 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
         [Test]
         public void filter_properly_newPooledTxHashes()
         {
-            PooledTxsFetcher fetcher = new PooledTxsFetcher(_txPool);
-            fetcher.FilterHashes(new List<Keccak>{TestItem.KeccakA, TestItem.KeccakD});
+            PooledTxsRequester requester = new PooledTxsRequester(_txPool);
+            requester.FilterHashes(new List<Keccak>{TestItem.KeccakA, TestItem.KeccakD});
 
             IList<Keccak> request = new List<Keccak>{TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC};
             IList<Keccak> expected = new List<Keccak>{TestItem.KeccakB, TestItem.KeccakC};
-            IList<Keccak> response = fetcher.FilterHashes(request);
+            IList<Keccak> response = requester.FilterHashes(request);
             response.Should().BeEquivalentTo(expected);
         }
         
         [Test]
         public void filter_properly_already_pending_hashes()
         {
-            PooledTxsFetcher fetcher = new PooledTxsFetcher(_txPool);
-            fetcher.FilterHashes(new List<Keccak>{TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC});
+            PooledTxsRequester requester = new PooledTxsRequester(_txPool);
+            requester.FilterHashes(new List<Keccak>{TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC});
             
             IList<Keccak> request = new List<Keccak>{TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC};
             IList<Keccak> expected = new List<Keccak>{};
-            IList<Keccak> response = fetcher.FilterHashes(request);
+            IList<Keccak> response = requester.FilterHashes(request);
             response.Should().BeEquivalentTo(expected);
         }
         
         [Test]
         public void filter_properly_discovered_hashes()
         {
-            PooledTxsFetcher fetcher = new PooledTxsFetcher(_txPool);
+            PooledTxsRequester requester = new PooledTxsRequester(_txPool);
 
             IList<Keccak> request = new List<Keccak>{TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC};
             IList<Keccak> expected = new List<Keccak>{TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC};
-            IList<Keccak> response = fetcher.FilterHashes(request);
+            IList<Keccak> response = requester.FilterHashes(request);
             response.Should().BeEquivalentTo(expected);
         }
 
         [Test]
         public void can_handle_empty_argument()
         {
-            PooledTxsFetcher fetcher = new PooledTxsFetcher(_txPool);
-            fetcher.FilterHashes(new List<Keccak>()).Should().BeEmpty();
+            PooledTxsRequester requester = new PooledTxsRequester(_txPool);
+            requester.FilterHashes(new List<Keccak>()).Should().BeEmpty();
         }
 
         [Test]
@@ -90,18 +90,18 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
         {
             ITxPool txPool = Substitute.For<ITxPool>();
             txPool.IsInHashCache(Arg.Any<Keccak>()).Returns(true);
-            PooledTxsFetcher fetcher = new PooledTxsFetcher(txPool);
+            PooledTxsRequester requester = new PooledTxsRequester(txPool);
             
             IList<Keccak> request = new List<Keccak>{TestItem.KeccakA, TestItem.KeccakB};
             IList<Keccak> expected = new List<Keccak>{};
-            IList<Keccak> response = fetcher.FilterHashes(request);
+            IList<Keccak> response = requester.FilterHashes(request);
             response.Should().BeEquivalentTo(expected);
         }
 
         [Test]
         public void can_request_transactions()
         {
-            PooledTxsFetcher fetcher = new PooledTxsFetcher(_txPool);
+            PooledTxsRequester requester = new PooledTxsRequester(_txPool);
             ISession session = Substitute.For<ISession>();
             IMessageSerializationService svc = Build.A.SerializationService().WithEth65().TestObject;
 
@@ -111,7 +111,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
                 Substitute.For<INodeStatsManager>(),
                 Substitute.For<ISyncServer>(),
                 _txPool,
-                fetcher,
+                requester,
                 Substitute.For<ISpecProvider>(),
                 Substitute.For<ILogManager>());
 

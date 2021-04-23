@@ -70,7 +70,7 @@ namespace Nethermind.Network.Test
             private ISyncServer _syncServer;
             private ISyncPeerPool _syncPeerPool;
             private ITxPool _txPool;
-            private IPooledTxsFetcher _pooledTxsFetcher;
+            private IPooledTxsRequester _pooledTxsRequester;
             private IChannelHandlerContext _channelHandlerContext;
             private IChannel _channel;
             private IChannelPipeline _pipeline;
@@ -91,7 +91,7 @@ namespace Nethermind.Network.Test
                 _syncServer.Genesis.Returns(Build.A.Block.Genesis.TestObject.Header);
                 _syncServer.Head.Returns(Build.A.BlockHeader.TestObject);
                 _txPool = Substitute.For<ITxPool>();
-                _pooledTxsFetcher = Substitute.For<IPooledTxsFetcher>();
+                _pooledTxsRequester = Substitute.For<IPooledTxsRequester>();
                 _discoveryApp = Substitute.For<IDiscoveryApp>();
                 _serializer = new MessageSerializationService();
                 _localPeer = Substitute.For<IRlpxPeer>();
@@ -109,7 +109,7 @@ namespace Nethermind.Network.Test
                     _syncPeerPool,
                     _syncServer,
                     _txPool,
-                    _pooledTxsFetcher,
+                    _pooledTxsRequester,
                     _discoveryApp,
                     _serializer,
                     _localPeer,
