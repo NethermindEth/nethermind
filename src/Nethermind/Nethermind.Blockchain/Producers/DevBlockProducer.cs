@@ -55,7 +55,6 @@ namespace Nethermind.Blockchain.Producers
                 stateProvider,
                 FollowOtherMiners.Instance,
                 timestamper,
-                specProvider,
                 logManager)
         {
             _trigger = trigger ?? throw new ArgumentNullException(nameof(trigger));

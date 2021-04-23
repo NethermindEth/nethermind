@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -13,18 +13,23 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using BenchmarkDotNet.Running;
+using System;
+using Nethermind.Blockchain.Synchronization;
+using Nethermind.Core;
 
-namespace Nethermind.JsonRpc.Benchmark
+namespace Nethermind.Synchronization.Peers
 {
-    class Program
+    public class PeerBlockNotificationEventArgs : EventArgs
     {
-        static void Main(string[] args)
+        public ISyncPeer SyncPeer { get; }
+        public Block Block { get; }
+
+        public PeerBlockNotificationEventArgs(ISyncPeer syncPeer, Block block)
         {
-//            BenchmarkSwitcher.FromAssembly(typeof(Program).Assembly).Run(args, new DebugInProcessConfig());
-//            BenchmarkRunner.Run<EthModuleBenchmarks>();
-            BenchmarkRunner.Run<ParamInfoBenchmarks>();
+            SyncPeer = syncPeer;
+            Block = block;
         }
     }
 }

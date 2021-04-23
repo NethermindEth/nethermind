@@ -33,6 +33,8 @@ namespace Nethermind.Abi
     
     public class AbiEncoder : IAbiEncoder
     {
+        public static readonly AbiEncoder Instance = new();
+
         public byte[] Encode(AbiEncodingStyle encodingStyle, AbiSignature signature, params object[] arguments)
         {
             bool packed = (encodingStyle & AbiEncodingStyle.Packed) == AbiEncodingStyle.Packed;

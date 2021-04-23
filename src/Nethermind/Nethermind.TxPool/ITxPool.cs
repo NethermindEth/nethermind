@@ -36,6 +36,7 @@ namespace Nethermind.TxPool
         IDictionary<Address, Transaction[]> GetPendingTransactionsBySender();
         void AddPeer(ITxPoolPeer peer);
         void RemovePeer(PublicKey nodeId);
+        bool TryAddToPendingHashes(Keccak hash);
         AddTxResult AddTransaction(Transaction tx, TxHandlingOptions handlingOptions);
         bool RemoveTransaction(Keccak? hash, bool removeBelowThisTxNonce = false);
         bool IsInHashCache(Keccak? hash);

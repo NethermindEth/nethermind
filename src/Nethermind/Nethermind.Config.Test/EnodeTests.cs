@@ -16,6 +16,7 @@
 // 
 
 using System;
+using System.Collections;
 using System.Net;
 using FluentAssertions;
 using Nethermind.Core.Crypto;
@@ -55,5 +56,22 @@ namespace Nethermind.Config.Test
             Action action = () => new Enode($"enode://{publicKey.ToString(false)}@{domain}:{1234}");
             action.Should().Throw<ArgumentException>();
         }
+
+        public static IEnumerable Ipv4vs6TestCases
+        {
+            get
+            {
+                var ipv6_1 = IPAddress.Parse("2607:f8b0:4002:c02::6a");
+                var ipv6_2 = IPAddress.Parse("2607:f8b0:4002:c02::67");
+                var ipv4 = IPAddress.Parse("172.217.12.36");
+                yield return new TestCaseData(new object[] {new[] {ipv4}}).Returns(ipv4);
+                yield return new TestCaseData(new object[] {new[] {ipv6_1, ipv6_2, ipv4}}).Returns(ipv4);
+                yield return new TestCaseData(new object[] {new[] {ipv4, ipv6_1, ipv6_2}}).Returns(ipv4);
+                yield return new TestCaseData(new object[] {new[] {ipv6_1, ipv6_2}}).Returns(ipv6_1.MapToIPv4());
+            }
+        }
+
+        [TestCaseSource(nameof(Ipv4vs6TestCases))]
+        public IPAddress can_find_ipv4_host(IPAddress[] ips) => Enode.GetHostIpFromDnsAddresses(ips);
     }
 }

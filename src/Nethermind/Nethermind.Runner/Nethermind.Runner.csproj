@@ -49,6 +49,7 @@
     <ProjectReference Include="..\Nethermind.WebSockets\Nethermind.WebSockets.csproj" />
     <ProjectReference Include="..\Nethermind.Seq\Nethermind.Seq.csproj" />
     <ProjectReference Include="..\Nethermind.HealthChecks\Nethermind.HealthChecks.csproj" />
+    <ProjectReference Include="..\Nethermind.Merge.Plugin\Nethermind.Merge.Plugin.csproj" />
   </ItemGroup>
   <ItemGroup>
     <Content Include="..\..\..\Nethermind Data Marketplace - Terms and Conditions 20190831.pdf">
@@ -113,8 +114,19 @@
   <Target Name="CreateNdmPluginsFolder" AfterTargets="AfterPublish">
     <MakeDir Directories="$(PublishDir)ndm-plugins" Condition="!Exists('$(PublishDir)ndm-plugins')" /> 
   </Target>
-  <Target Name="CopyHealthChecksPluginOnPublish" AfterTargets="AfterPublish">
+    <Target Name="CopyMergePluginOnBuildOrPublish" AfterTargets="AfterBuild;AfterPublish">
+    <Copy SourceFiles="$(SolutionDir)Nethermind.Merge.Plugin\bin\$(Configuration)\$(TargetFramework)\Nethermind.Merge.Plugin.dll" 
+          DestinationFolder="$(OutDir)plugins" 
+          Condition="Exists('$(SolutionDir)Nethermind.Merge.Plugin\bin\$(Configuration)\$(TargetFramework)\Nethermind.Merge.Plugin.dll')" 
+          SkipUnchangedFiles="true" />
+    <Copy SourceFiles="$(SolutionDir)Nethermind.Merge.Plugin\bin\$(Configuration)\$(TargetFramework)\Nethermind.Merge.Plugin.pdb" 
+          DestinationFolder="$(OutDir)plugins" 
+          Condition="Exists('$(SolutionDir)Nethermind.Merge.Plugin\bin\$(Configuration)\$(TargetFramework)\Nethermind.Merge.Plugin.pdb')" 
+          SkipUnchangedFiles="true"/>
+  </Target>
+  <Target Name="CopyPluginsOnPublish" AfterTargets="AfterPublish">
     <Copy SourceFiles="$(OutputPath)Nethermind.HealthChecks.dll" DestinationFolder="$(PublishDir)plugins" />
+    <Copy SourceFiles="$(OutputPath)Nethermind.Merge.Plugin.dll" DestinationFolder="$(PublishDir)plugins" />
   </Target>
   <Target Name="StoreGitHashBeforeBuild" BeforeTargets="BeforeBuild">
     <Exec Command="git describe --tags --long --always &gt; git-hash" />
@@ -122,4 +134,4 @@
   <Target Name="StoreGitHash" BeforeTargets="BeforePublish">
     <Exec Command="git describe --tags --long --always &gt; git-hash" />
   </Target>
- </Project>
+</Project>

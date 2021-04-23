@@ -348,16 +348,24 @@ namespace Nethermind.Runner.Ethereum.Steps
             if (_api.Synchronizer == null) throw new StepDependencyException(nameof(_api.Synchronizer));
             if (_api.BlockTree == null) throw new StepDependencyException(nameof(_api.BlockTree));
 
-            if (!_api.Config<ISyncConfig>().SynchronizationEnabled)
+            ISyncConfig syncConfig = _api.Config<ISyncConfig>();
+            if (syncConfig.NetworkingEnabled)
             {
-                if (_logger.IsWarn) _logger.Warn($"Skipping blockchain synchronization init due to {nameof(ISyncConfig.SynchronizationEnabled)} set to false");
-                return Task.CompletedTask;
+                _api.SyncPeerPool!.Start();
+
+                if (syncConfig.SynchronizationEnabled)
+                {
+                    if (_logger.IsDebug) _logger.Debug($"Starting synchronization from block {_api.BlockTree.Head?.Header?.ToString(BlockHeader.Format.Short)}.");
+                    _api.Synchronizer!.Start();
+                }
+                else
+                {
+                    if (_logger.IsWarn) _logger.Warn($"Skipping blockchain synchronization init due to {nameof(ISyncConfig.SynchronizationEnabled)} set to false");
+                }
             }
+            else if (_logger.IsWarn) _logger.Warn($"Skipping connecting to peers due to {nameof(ISyncConfig.NetworkingEnabled)} set to false");
 
-            if (_logger.IsDebug) _logger.Debug($"Starting synchronization from block {_api.BlockTree.Head?.Header?.ToString(BlockHeader.Format.Short)}.");
-
-            _api.SyncPeerPool.Start();
-            _api.Synchronizer.Start();
+            
             return Task.CompletedTask;
         }
 

@@ -31,6 +31,7 @@ using NUnit.Framework;
 namespace Nethermind.Mev.Test
 {
     [TestFixture]
+    [Explicit("Those are simulations and not unit tests and shouldn't be considered for CI purposes.")]
     public class BundleSourceTests
     {
         private readonly BlockHeader _blockHeader = Build.A.BlockHeader.WithNumber(1).TestObject;
