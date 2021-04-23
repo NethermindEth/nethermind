@@ -114,31 +114,16 @@ namespace Nethermind.Mev
                     return ResultWrapper<TxsToResults>.Fail($"No state available for block {header.Hash}", ErrorCodes.ResourceUnavailable);
                 }
 
-                Keccak? parentHash = header.ParentHash;
-                if (parentHash == null)
-                {
-                    return ResultWrapper<TxsToResults>.Fail($"No parent hash for block {header.Hash}", ErrorCodes.ResourceUnavailable);
-                }
-                SearchResult<BlockHeader> searchResultParent = _blockTree.SearchForHeader(new BlockParameter(parentHash!));
-                if (searchResultParent.IsError) 
-                {
-                    return ResultWrapper<TxsToResults>.Fail(searchResultParent);
-                } 
-                BlockHeader headerParent = searchResultParent.Object!;
-                if (!HasStateForBlock(_blockchainBridge, headerParent))
-                {
-                    return ResultWrapper<TxsToResults>.Fail($"No state available for block {headerParent.Hash}", ErrorCodes.ResourceUnavailable);
-                }
-                Keccak stateRoot = headerParent.StateRoot!;
-
-                long blockNumber = headerParent.Number + 1;
-                UInt256 timestamp = blockTimestamp ?? headerParent.Timestamp;
-                long gasLimit = headerParent.GasLimit;
+                Keccak stateRoot = header.StateRoot!;
+                long blockNumber = header.Number + 1;
+                UInt256 timestamp = blockTimestamp ?? header.Timestamp;
+                long gasLimit = header.GasLimit;
                 Keccak ommersHash = Keccak.OfAnEmptySequenceRlp;
                 Address beneficiary = Address.Zero;
-                UInt256 difficulty = headerParent.Difficulty;
+                UInt256 difficulty = header.Difficulty;
+                Keccak parentHash = header.Hash ?? Keccak.OfAnEmptySequenceRlp;
 
-                BlockHeader headerNew = new BlockHeader(parentHash!, ommersHash, beneficiary, difficulty, blockNumber, gasLimit, timestamp, new byte[0]);  
+                BlockHeader headerNew = new BlockHeader(parentHash, ommersHash, beneficiary, difficulty, blockNumber, gasLimit, timestamp, new byte[0]);  
 
                 // ITimer timer = _mevPlugin.NethermindApi.TimerFactory.CreateTimer(TimeSpan.FromSeconds(5));
                 // timer.Elapsed += (object sender, EventArgs e) => {
