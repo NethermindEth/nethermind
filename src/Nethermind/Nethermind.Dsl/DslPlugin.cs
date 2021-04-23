@@ -14,6 +14,8 @@ using Nethermind.Pipeline.Publishers;
 using Nethermind.Blockchain.Find;
 using Nethermind.Int256;
 using System.IO;
+using Nethermind.Logging;
+using System.Linq;
 
 namespace Nethermind.Dsl
 {
@@ -33,13 +35,15 @@ namespace Nethermind.Dsl
         private IPipelineBuilder<Block, Block> _blockProcessorPipelineBuilder;
         private bool blockSource;
 
-        public Task Init(INethermindApi nethermindApi)
+        public async Task Init(INethermindApi nethermindApi)
         {
             _api = nethermindApi;
             _txPool = _api.TxPool;
             _blockProcessor = _api.MainBlockProcessor;
+            
+            var dslScript = await LoadDSLScript(); 
 
-            var inputStream = new AntlrInputStream("SOURCE BlockProcessor WATCH Blocks WHERE Author == 0xbCC817f057950b0df41206C5D7125E6225Cae18e PUBLISH WebSockets");
+            var inputStream = new AntlrInputStream(dslScript);
             var lexer = new DslGrammarLexer(inputStream);
             var tokens = new CommonTokenStream(lexer);
             var parser = new DslGrammarParser(tokens);
@@ -51,8 +55,6 @@ namespace Nethermind.Dsl
             _listener.OnEnterExpression = OnExpressionEntry;
             _listener.OnEnterCondition = OnConditionEntry;
             ParseTreeWalker.Default.Walk(_listener, tree);
-
-            return Task.CompletedTask;
         }
 
         public Task InitNetworkProtocol()
@@ -197,12 +199,18 @@ namespace Nethermind.Dsl
                 }
             }
 
-            private string LoadDSLScript()
+            private async Task<string> LoadDSLScript()
             {
-                if(Directory.Exists("DSL"))
+                var dirPath = Path.Combine(PathUtils.ExecutingDirectory, "DSL");
+
+                if(Directory.Exists(dirPath))
                 {
-                   var files = Directory.GetFiles("DSL", "*.g4"); 
+                    var file = Directory.GetFiles("DSL", "*.txt").First(); 
+
+                    return await File.ReadAllTextAsync(file);
                 }
+
+                throw new FileLoadException($"Could not find DSL directory at {dirPath} or the directory is empty");
             }
         }
     }

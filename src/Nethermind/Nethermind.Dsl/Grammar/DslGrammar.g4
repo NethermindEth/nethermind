@@ -1,12 +1,11 @@
 grammar DslGrammar;
 
-init: (expression)* ;
-expression : OPERATOR WORD | condition ;
-condition : WHERE WORD ARITHMETIC_SYMBOL CONDITION_MATCHER; 
+init: (expression | condition)* ;
+expression : OPERATOR WORD ;
+condition : WHERE WORD ARITHMETIC_SYMBOL (DIGIT | WORD | ADDRESS); 
 
 OPERATOR : SOURCE | WATCH | WHERE | PUBLISH ;
 ARITHMETIC_SYMBOL : '==' | '!=' | '<' | '>' | '<=' | '>=' ;
-CONDITION_MATCHER : DIGIT | WORD | ADDRESS ;
 
 SOURCE : 'SOURCE' ;
 WATCH : 'WATCH' ;

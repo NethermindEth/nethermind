@@ -9,7 +9,8 @@ namespace Nethermind.Dsl.ANTLR
         private AntlrTokenType _tokens;
         public Action<AntlrTokenType, string> OnEnterInit { private get; set; }
         public Action<AntlrTokenType, string> OnEnterExpression { private get; set; }
-        public Action<AntlrTokenType> OnEnterCondition { private get; set; }
+        public Action<string, string, string> OnEnterCondition { private get; set; }
+        public Action OnExitInit { private get; set; }
 
         public override void EnterInit([NotNull] DslGrammarParser.InitContext context)
         {
@@ -38,6 +39,9 @@ namespace Nethermind.Dsl.ANTLR
             {
                 return;
             }
+
+            AntlrTokenType tokenType = (AntlrTokenType)Enum.Parse(typeof(AntlrTokenType), context.OPERATOR_VALUE().GetText());
+            OnEnterExpression(tokenType, context.OPERATOR_VALUE().GetText());
         }
 
         public override void EnterCondition([NotNull] DslGrammarParser.ConditionContext context)
@@ -46,6 +50,13 @@ namespace Nethermind.Dsl.ANTLR
             {
                 return;
             }
+
+            OnEnterCondition(context.OPERATOR_VALUE().GetText(), context.ARITHMETIC_SYMBOL().GetText(), context.CONDITION_MATCHER().GetText());
+        }
+
+        public override void ExitInit([NotNull] DslGrammarParser.InitContext context)
+        {
+           OnExitInit(); 
         }
     }
 }
