@@ -1,5 +1,6 @@
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
+using Nethermind.Int256;
 using NSubstitute;
 using NUnit.Framework;
 

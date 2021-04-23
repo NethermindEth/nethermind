@@ -12,6 +12,8 @@ using Nethermind.Core;
 using System;
 using Nethermind.Pipeline.Publishers;
 using Nethermind.Blockchain.Find;
+using Nethermind.Int256;
+using System.IO;
 
 namespace Nethermind.Dsl
 {
@@ -29,6 +31,7 @@ namespace Nethermind.Dsl
         private IBlockProcessor _blockProcessor;
         private IPipeline _pipeline;
         private IPipelineBuilder<Block, Block> _blockProcessorPipelineBuilder;
+        private bool blockSource;
 
         public Task Init(INethermindApi nethermindApi)
         {
@@ -36,7 +39,7 @@ namespace Nethermind.Dsl
             _txPool = _api.TxPool;
             _blockProcessor = _api.MainBlockProcessor;
 
-            var inputStream = new AntlrInputStream("SOURCE BlockProcessor WATCH Transactions WHERE To = 0x9cea2ed9e47059260c97d697f82b8a14efa61ea5 PUBLISH WebSockets");
+            var inputStream = new AntlrInputStream("SOURCE BlockProcessor WATCH Blocks WHERE Author == 0xbCC817f057950b0df41206C5D7125E6225Cae18e PUBLISH WebSockets");
             var lexer = new DslGrammarLexer(inputStream);
             var tokens = new CommonTokenStream(lexer);
             var parser = new DslGrammarParser(tokens);
@@ -46,6 +49,7 @@ namespace Nethermind.Dsl
             _listener = new DslGrammarListener();
             _listener.OnEnterInit = OnInitEntry;
             _listener.OnEnterExpression = OnExpressionEntry;
+            _listener.OnEnterCondition = OnConditionEntry;
             ParseTreeWalker.Default.Walk(_listener, tree);
 
             return Task.CompletedTask;
@@ -85,11 +89,10 @@ namespace Nethermind.Dsl
         {
             switch (tokenType)
             {
+                case AntlrTokenType.SOURCE:
+                    break;
                 case AntlrTokenType.WATCH:
                     SetWatchOnPipeline(tokenValue);
-                    break;
-                case AntlrTokenType.WHERE:
-                    
                     break;
                 case AntlrTokenType.PUBLISH:
                     AddPublisher(tokenValue);
@@ -98,42 +101,108 @@ namespace Nethermind.Dsl
             }
         }
 
-        private void SetWatchOnPipeline(string value)
+        private void OnConditionEntry(string key, string symbol, string value)
         {
-            value = value.ToLowerInvariant();
-            switch (value)
+            if (blockSource)
             {
-                case "blocks":
-                    _blockProcessorPipelineBuilder.AddElement(new PipelineElement<Block, Block>(block => block));
-                    break;
-                case "transactions":
-                    _blockProcessorPipelineBuilder.AddElement(new PipelineElement<Block, Transaction[]>(block => block.Transactions));
-                    break;
+                switch (key)
+                {
+                    case "==":
+                        _blockProcessorPipelineBuilder.AddElement(
+                            new PipelineElement<Block, Block>(
+                                condition: (b => b.GetType().GetProperty(key).GetValue(b).ToString() == value),
+                                transformData: (b => b)
+                            )
+                        );
+                        return;
+                    case "!=":
+                        _blockProcessorPipelineBuilder.AddElement(
+                            new PipelineElement<Block, Block>(
+                                condition: (b => b.GetType().GetProperty(key).GetValue(b).ToString() != value),
+                                transformData: (b => b)
+                            )
+                        );
+                        return;
+                    case ">":
+                        _blockProcessorPipelineBuilder.AddElement(
+                            new PipelineElement<Block, Block>(
+                                condition: (b => (UInt256)b.GetType().GetProperty(key).GetValue(b) > UInt256.Parse(value)),
+                                transformData: (b => b)
+                            )
+                        );
+                        return;
+                    case "<":
+                        _blockProcessorPipelineBuilder.AddElement(
+                            new PipelineElement<Block, Block>(
+                                condition: (b => (UInt256)b.GetType().GetProperty(key).GetValue(b) < UInt256.Parse(value)),
+                                transformData: (b => b)
+                            )
+                        );
+                        return;
+                    case ">=":
+                        _blockProcessorPipelineBuilder.AddElement(
+                            new PipelineElement<Block, Block>(
+                                condition: (b => (UInt256)b.GetType().GetProperty(key).GetValue(b) >= UInt256.Parse(value)),
+                                transformData: (b => b)
+                            )
+                        );
+                        return;
+                    case "<=":
+                        _blockProcessorPipelineBuilder.AddElement(
+                            new PipelineElement<Block, Block>(
+                                condition: (b => (UInt256)b.GetType().GetProperty(key).GetValue(b) <= UInt256.Parse(value)),
+                                transformData: (b => b)
+                            )
+                        );
+                        return;
+                }
             }
         }
 
-        private void AddCondition(string condition)
-        {
-
-        }
-
-        private void AddPublisher(string publisherType)
-        {
-            if (publisherType.Equals("WebSockets", StringComparison.InvariantCultureIgnoreCase))
+            private void SetWatchOnPipeline(string value)
             {
-                if (_blockProcessorPipelineBuilder != null)
+                value = value.ToLowerInvariant();
+                switch (value)
                 {
-                    _blockProcessorPipelineBuilder.AddElement(new WebSocketsPublisher<Block, Block>("dsl", _api.EthereumJsonSerializer));
+                    case "blocks":
+                        _blockProcessorPipelineBuilder.AddElement(new PipelineElement<Block, Block>((block => true), (b => b)));
+                        blockSource = true;
+                        break;
+                    case "transactions":
+                        _blockProcessorPipelineBuilder.AddElement(new PipelineElement<Block, Transaction[]>(
+                            (b => true),
+                            (block => block.Transactions)
+                        ));
+                        blockSource = false;
+                        break;
                 }
             }
 
-            if (publisherType.Equals("LogPublisher", StringComparison.InvariantCultureIgnoreCase))
+            private void AddPublisher(string publisherType)
             {
-                if (_blockProcessorPipelineBuilder != null)
+                if (publisherType.Equals("WebSockets", StringComparison.InvariantCultureIgnoreCase))
                 {
-                    _blockProcessorPipelineBuilder.AddElement(new LogPublisher<Block, Block>(_api.EthereumJsonSerializer, _api.LogManager));
+                    if (_blockProcessorPipelineBuilder != null)
+                    {
+                        _blockProcessorPipelineBuilder.AddElement(new WebSocketsPublisher<Block, Block>("dsl", _api.EthereumJsonSerializer));
+                    }
+                }
+
+                if (publisherType.Equals("LogPublisher", StringComparison.InvariantCultureIgnoreCase))
+                {
+                    if (_blockProcessorPipelineBuilder != null)
+                    {
+                        _blockProcessorPipelineBuilder.AddElement(new LogPublisher<Block, Block>(_api.EthereumJsonSerializer, _api.LogManager));
+                    }
+                }
+            }
+
+            private string LoadDSLScript()
+            {
+                if(Directory.Exists("DSL"))
+                {
+                   var files = Directory.GetFiles("DSL", "*.g4"); 
                 }
             }
         }
     }
-}

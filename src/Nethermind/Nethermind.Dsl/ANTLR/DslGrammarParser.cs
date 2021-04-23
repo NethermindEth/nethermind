@@ -36,8 +36,8 @@ public partial class DslGrammarParser : Parser {
 	protected static DFA[] decisionToDFA;
 	protected static PredictionContextCache sharedContextCache = new PredictionContextCache();
 	public const int
-		OPERATOR=1, ARITHMETIC_SYMBOL=2, SOURCE=3, WATCH=4, WHERE=5, PUBLISH=6, 
-		OPERATOR_VALUE=7, DIGIT=8, ADDRESS=9, WS=10;
+		OPERATOR=1, ARITHMETIC_SYMBOL=2, CONDITION_MATCHER=3, SOURCE=4, WATCH=5, 
+		WHERE=6, PUBLISH=7, OPERATOR_VALUE=8, DIGIT=9, ADDRESS=10, WS=11;
 	public const int
 		RULE_init = 0, RULE_expression = 1, RULE_condition = 2;
 	public static readonly string[] ruleNames = {
@@ -45,11 +45,11 @@ public partial class DslGrammarParser : Parser {
 	};
 
 	private static readonly string[] _LiteralNames = {
-		null, null, null, "'SOURCE'", "'WATCH'", "'WHERE'", "'PUBLISH'"
+		null, null, null, null, "'SOURCE'", "'WATCH'", "'WHERE'", "'PUBLISH'"
 	};
 	private static readonly string[] _SymbolicNames = {
-		null, "OPERATOR", "ARITHMETIC_SYMBOL", "SOURCE", "WATCH", "WHERE", "PUBLISH", 
-		"OPERATOR_VALUE", "DIGIT", "ADDRESS", "WS"
+		null, "OPERATOR", "ARITHMETIC_SYMBOL", "CONDITION_MATCHER", "SOURCE", 
+		"WATCH", "WHERE", "PUBLISH", "OPERATOR_VALUE", "DIGIT", "ADDRESS", "WS"
 	};
 	public static readonly IVocabulary DefaultVocabulary = new Vocabulary(_LiteralNames, _SymbolicNames);
 
@@ -118,7 +118,7 @@ public partial class DslGrammarParser : Parser {
 			State = 9;
 			ErrorHandler.Sync(this);
 			_la = TokenStream.LA(1);
-			while (_la==OPERATOR || _la==WHERE) {
+			while (_la==OPERATOR) {
 				{
 				{
 				State = 6;
@@ -145,9 +145,6 @@ public partial class DslGrammarParser : Parser {
 	public partial class ExpressionContext : ParserRuleContext {
 		[System.Diagnostics.DebuggerNonUserCode] public ITerminalNode OPERATOR() { return GetToken(DslGrammarParser.OPERATOR, 0); }
 		[System.Diagnostics.DebuggerNonUserCode] public ITerminalNode OPERATOR_VALUE() { return GetToken(DslGrammarParser.OPERATOR_VALUE, 0); }
-		[System.Diagnostics.DebuggerNonUserCode] public ConditionContext condition() {
-			return GetRuleContext<ConditionContext>(0);
-		}
 		public ExpressionContext(ParserRuleContext parent, int invokingState)
 			: base(parent, invokingState)
 		{
@@ -170,27 +167,12 @@ public partial class DslGrammarParser : Parser {
 		ExpressionContext _localctx = new ExpressionContext(Context, State);
 		EnterRule(_localctx, 2, RULE_expression);
 		try {
-			State = 15;
-			ErrorHandler.Sync(this);
-			switch (TokenStream.LA(1)) {
-			case OPERATOR:
-				EnterOuterAlt(_localctx, 1);
-				{
-				State = 12;
-				Match(OPERATOR);
-				State = 13;
-				Match(OPERATOR_VALUE);
-				}
-				break;
-			case WHERE:
-				EnterOuterAlt(_localctx, 2);
-				{
-				State = 14;
-				condition();
-				}
-				break;
-			default:
-				throw new NoViableAltException(this);
+			EnterOuterAlt(_localctx, 1);
+			{
+			State = 12;
+			Match(OPERATOR);
+			State = 13;
+			Match(OPERATOR_VALUE);
 			}
 		}
 		catch (RecognitionException re) {
@@ -206,13 +188,9 @@ public partial class DslGrammarParser : Parser {
 
 	public partial class ConditionContext : ParserRuleContext {
 		[System.Diagnostics.DebuggerNonUserCode] public ITerminalNode WHERE() { return GetToken(DslGrammarParser.WHERE, 0); }
-		[System.Diagnostics.DebuggerNonUserCode] public ITerminalNode[] OPERATOR_VALUE() { return GetTokens(DslGrammarParser.OPERATOR_VALUE); }
-		[System.Diagnostics.DebuggerNonUserCode] public ITerminalNode OPERATOR_VALUE(int i) {
-			return GetToken(DslGrammarParser.OPERATOR_VALUE, i);
-		}
+		[System.Diagnostics.DebuggerNonUserCode] public ITerminalNode OPERATOR_VALUE() { return GetToken(DslGrammarParser.OPERATOR_VALUE, 0); }
 		[System.Diagnostics.DebuggerNonUserCode] public ITerminalNode ARITHMETIC_SYMBOL() { return GetToken(DslGrammarParser.ARITHMETIC_SYMBOL, 0); }
-		[System.Diagnostics.DebuggerNonUserCode] public ITerminalNode DIGIT() { return GetToken(DslGrammarParser.DIGIT, 0); }
-		[System.Diagnostics.DebuggerNonUserCode] public ITerminalNode ADDRESS() { return GetToken(DslGrammarParser.ADDRESS, 0); }
+		[System.Diagnostics.DebuggerNonUserCode] public ITerminalNode CONDITION_MATCHER() { return GetToken(DslGrammarParser.CONDITION_MATCHER, 0); }
 		public ConditionContext(ParserRuleContext parent, int invokingState)
 			: base(parent, invokingState)
 		{
@@ -234,25 +212,17 @@ public partial class DslGrammarParser : Parser {
 	public ConditionContext condition() {
 		ConditionContext _localctx = new ConditionContext(Context, State);
 		EnterRule(_localctx, 4, RULE_condition);
-		int _la;
 		try {
 			EnterOuterAlt(_localctx, 1);
 			{
-			State = 17;
+			State = 15;
 			Match(WHERE);
-			State = 18;
+			State = 16;
 			Match(OPERATOR_VALUE);
-			State = 19;
+			State = 17;
 			Match(ARITHMETIC_SYMBOL);
-			State = 20;
-			_la = TokenStream.LA(1);
-			if ( !((((_la) & ~0x3f) == 0 && ((1L << _la) & ((1L << OPERATOR_VALUE) | (1L << DIGIT) | (1L << ADDRESS))) != 0)) ) {
-			ErrorHandler.RecoverInline(this);
-			}
-			else {
-				ErrorHandler.ReportMatch(this);
-			    Consume();
-			}
+			State = 18;
+			Match(CONDITION_MATCHER);
 			}
 		}
 		catch (RecognitionException re) {
@@ -268,25 +238,22 @@ public partial class DslGrammarParser : Parser {
 
 	private static char[] _serializedATN = {
 		'\x3', '\x608B', '\xA72A', '\x8133', '\xB9ED', '\x417C', '\x3BE7', '\x7786', 
-		'\x5964', '\x3', '\f', '\x19', '\x4', '\x2', '\t', '\x2', '\x4', '\x3', 
+		'\x5964', '\x3', '\r', '\x17', '\x4', '\x2', '\t', '\x2', '\x4', '\x3', 
 		'\t', '\x3', '\x4', '\x4', '\t', '\x4', '\x3', '\x2', '\a', '\x2', '\n', 
 		'\n', '\x2', '\f', '\x2', '\xE', '\x2', '\r', '\v', '\x2', '\x3', '\x3', 
-		'\x3', '\x3', '\x3', '\x3', '\x5', '\x3', '\x12', '\n', '\x3', '\x3', 
-		'\x4', '\x3', '\x4', '\x3', '\x4', '\x3', '\x4', '\x3', '\x4', '\x3', 
-		'\x4', '\x2', '\x2', '\x5', '\x2', '\x4', '\x6', '\x2', '\x3', '\x3', 
-		'\x2', '\t', '\v', '\x2', '\x17', '\x2', '\v', '\x3', '\x2', '\x2', '\x2', 
-		'\x4', '\x11', '\x3', '\x2', '\x2', '\x2', '\x6', '\x13', '\x3', '\x2', 
-		'\x2', '\x2', '\b', '\n', '\x5', '\x4', '\x3', '\x2', '\t', '\b', '\x3', 
-		'\x2', '\x2', '\x2', '\n', '\r', '\x3', '\x2', '\x2', '\x2', '\v', '\t', 
-		'\x3', '\x2', '\x2', '\x2', '\v', '\f', '\x3', '\x2', '\x2', '\x2', '\f', 
-		'\x3', '\x3', '\x2', '\x2', '\x2', '\r', '\v', '\x3', '\x2', '\x2', '\x2', 
-		'\xE', '\xF', '\a', '\x3', '\x2', '\x2', '\xF', '\x12', '\a', '\t', '\x2', 
-		'\x2', '\x10', '\x12', '\x5', '\x6', '\x4', '\x2', '\x11', '\xE', '\x3', 
-		'\x2', '\x2', '\x2', '\x11', '\x10', '\x3', '\x2', '\x2', '\x2', '\x12', 
-		'\x5', '\x3', '\x2', '\x2', '\x2', '\x13', '\x14', '\a', '\a', '\x2', 
-		'\x2', '\x14', '\x15', '\a', '\t', '\x2', '\x2', '\x15', '\x16', '\a', 
-		'\x4', '\x2', '\x2', '\x16', '\x17', '\t', '\x2', '\x2', '\x2', '\x17', 
-		'\a', '\x3', '\x2', '\x2', '\x2', '\x4', '\v', '\x11',
+		'\x3', '\x3', '\x3', '\x3', '\x3', '\x4', '\x3', '\x4', '\x3', '\x4', 
+		'\x3', '\x4', '\x3', '\x4', '\x3', '\x4', '\x2', '\x2', '\x5', '\x2', 
+		'\x4', '\x6', '\x2', '\x2', '\x2', '\x14', '\x2', '\v', '\x3', '\x2', 
+		'\x2', '\x2', '\x4', '\xE', '\x3', '\x2', '\x2', '\x2', '\x6', '\x11', 
+		'\x3', '\x2', '\x2', '\x2', '\b', '\n', '\x5', '\x4', '\x3', '\x2', '\t', 
+		'\b', '\x3', '\x2', '\x2', '\x2', '\n', '\r', '\x3', '\x2', '\x2', '\x2', 
+		'\v', '\t', '\x3', '\x2', '\x2', '\x2', '\v', '\f', '\x3', '\x2', '\x2', 
+		'\x2', '\f', '\x3', '\x3', '\x2', '\x2', '\x2', '\r', '\v', '\x3', '\x2', 
+		'\x2', '\x2', '\xE', '\xF', '\a', '\x3', '\x2', '\x2', '\xF', '\x10', 
+		'\a', '\n', '\x2', '\x2', '\x10', '\x5', '\x3', '\x2', '\x2', '\x2', '\x11', 
+		'\x12', '\a', '\b', '\x2', '\x2', '\x12', '\x13', '\a', '\n', '\x2', '\x2', 
+		'\x13', '\x14', '\a', '\x4', '\x2', '\x2', '\x14', '\x15', '\a', '\x5', 
+		'\x2', '\x2', '\x15', '\a', '\x3', '\x2', '\x2', '\x2', '\x3', '\v',
 	};
 
 	public static readonly ATN _ATN =
