@@ -34,13 +34,17 @@ namespace Nethermind.Dsl
         private IPipeline _pipeline;
         private IPipelineBuilder<Block, Block> _blockProcessorPipelineBuilder;
         private bool blockSource;
+        private ILogger _logger; 
 
         public async Task Init(INethermindApi nethermindApi)
         {
             _api = nethermindApi;
             _txPool = _api.TxPool;
             _blockProcessor = _api.MainBlockProcessor;
-            
+
+            _logger = _api.LogManager.GetClassLogger();
+            if(_logger.IsInfo) _logger.Info("Initializing DSL plugin ...");            
+
             var dslScript = await LoadDSLScript(); 
 
             var inputStream = new AntlrInputStream(dslScript);
@@ -55,6 +59,8 @@ namespace Nethermind.Dsl
             _listener.OnEnterExpression = OnExpressionEntry;
             _listener.OnEnterCondition = OnConditionEntry;
             ParseTreeWalker.Default.Walk(_listener, tree);
+
+            if(_logger.IsInfo) _logger.Info("DSL plugin initialized.");
         }
 
         public Task InitNetworkProtocol()
@@ -202,6 +208,7 @@ namespace Nethermind.Dsl
             private async Task<string> LoadDSLScript()
             {
                 var dirPath = Path.Combine(PathUtils.ExecutingDirectory, "DSL");
+                if(_logger.IsInfo) _logger.Info($"Loading dsl script from {dirPath}");
 
                 if(Directory.Exists(dirPath))
                 {
