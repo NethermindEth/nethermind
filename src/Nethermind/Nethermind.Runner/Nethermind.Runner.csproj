@@ -122,4 +122,14 @@
   <Target Name="StoreGitHash" BeforeTargets="BeforePublish">
     <Exec Command="git describe --tags --long --always &gt; git-hash" />
   </Target>
+  <Target Name="CopyDslPluginOnBuild" AfterTargets="AfterBuild">
+   <Copy SourceFiles="$(SolutionDir)Nethermind.Dsl\bin\$(Configuration)\$(TargetFramework)\Nethermind.Dsl.dll" 
+      DestinationFolder="$(OutDir)plugins" 
+      Condition="Exists('$(SolutionDir)Nethermind.Dsl\bin\$(Configuration)\$(TargetFramework)\Nethermind.Dsl.dll')" 
+      SkipUnchangedFiles="true" />
+   <Copy SourceFiles="$(SolutionDir)Nethermind.Dsl\bin\$(Configuration)\$(TargetFramework)\Nethermind.Dsl.pdb" 
+    DestinationFolder="$(OutDir)plugins" 
+    Condition="Exists('$(SolutionDir)Nethermind.Dsl\bin\$(Configuration)\$(TargetFramework)\Nethermind.Dsl.pdb')" 
+    SkipUnchangedFiles="true"/>
+  </Target>
  </Project>
