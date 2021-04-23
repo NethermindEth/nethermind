@@ -58,6 +58,7 @@ namespace Nethermind.Dsl
             _listener.OnEnterInit = OnInitEntry;
             _listener.OnEnterExpression = OnExpressionEntry;
             _listener.OnEnterCondition = OnConditionEntry;
+            _listener.OnExitInit = BuildPipeline;
             ParseTreeWalker.Default.Walk(_listener, tree);
 
             if(_logger.IsInfo) _logger.Info("DSL plugin initialized.");
@@ -203,6 +204,11 @@ namespace Nethermind.Dsl
                         _blockProcessorPipelineBuilder.AddElement(new LogPublisher<Block, Block>(_api.EthereumJsonSerializer, _api.LogManager));
                     }
                 }
+            }
+
+            private void BuildPipeline()
+            {
+                _pipeline = _blockProcessorPipelineBuilder.Build();
             }
 
             private async Task<string> LoadDSLScript()
