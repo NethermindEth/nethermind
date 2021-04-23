@@ -19,4 +19,8 @@
       <ProjectReference Include="..\Nethermind.JsonRpc\Nethermind.JsonRpc.csproj" />
     </ItemGroup>
 
+    <ItemGroup>
+      <Folder Include="Data" />
+    </ItemGroup>
+
 </Project>

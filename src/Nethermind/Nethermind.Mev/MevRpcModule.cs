@@ -62,30 +62,16 @@ namespace Nethermind.Mev
         public ResultWrapper<bool> eth_sendBundle(byte[][] transactions, UInt256 blockNumber, UInt256 minTimestamp, UInt256 maxTimestamp)
         {
             Transaction[] txs = Decode(transactions);
-            ulong chainId = _blockchainBridge.GetChainId();
-            var transactions_ = transactions.Select(tx => tx.ToTransaction(chainId)).ToList<Transaction>(); 
-
-            BigInteger blockNumber_;
-            blockNumber.Convert(out blockNumber_);
-            BigInteger minTimestamp_;
-            minTimestamp.Convert(out minTimestamp_);
-            BigInteger maxTimestamp_;
-            maxTimestamp.Convert(out maxTimestamp_);
-
-            MevBundleForRpc bundle = new MevBundleForRpc(transactions_, blockNumber_, minTimestamp_, maxTimestamp_);
-            
-            _mevPlugin.AddMevBundle(bundle);
+            MevBundleForRpc bundle = new(txs, blockNumber, minTimestamp, maxTimestamp);
+            _mevPlugin.AddMevBundle(bundle); // abstract
             return ResultWrapper<bool>.Success(true);
         }
 
-        private Transaction[] Decode(byte[][] transactions)
+        public ResultWrapper<TxsToResults> eth_callBundle(byte[][] transactions, BlockParameter? blockParameter = null, UInt256? timestamp = null)
         {
-            Rlp.Decode<Transaction>()
-        }
-
-        public ResultWrapper<TxsToResults> eth_callBundle(byte[][] transactions, BlockParameter blockParameter, UInt256? timestamp)
-        {
-            
+            Transaction[] txs = Decode(transactions);
+            return new CallBundleTxExecutor(_blockchainBridge, _blockTree, _jsonRpcConfig, _logger, _mevPlugin.NethermindApi.MainBlockProcessor! /*NOOO!*/)
+                .ExecuteBundleTx(txs, blockParameter, timestamp);
         }
 
         public ResultWrapper<FeeToFrequency> neth_feeDistribution()
@@ -96,22 +82,32 @@ namespace Nethermind.Mev
             throw new NotImplementedException();
         }
             
-        public ResultWrapper<TxsToResults> eth_callBundle2(TransactionForRpc[] transactions, BlockParameter blockParameter, UInt256? blockTimestamp) 
+        public ResultWrapper<TxsToResults> eth_callBundleJSon(TransactionForRpc[] transactions, BlockParameter? blockParameter = null, UInt256? timestamp = null) 
         {
             // WRONG
             if (_mevPlugin.NethermindApi.MainBlockProcessor == null)
                 return ResultWrapper<TxsToResults>.Fail("No block processor for eth_callBundle");
                 
             return new CallBundleTxExecutor(_blockchainBridge, _blockTree, _jsonRpcConfig, _logger, _mevPlugin.NethermindApi.MainBlockProcessor! /*NOOO!*/)
-                .ExecuteBundleTx(transactions, blockParameter, blockTimestamp);
+                .ExecuteBundleTx(transactions, blockParameter, timestamp);
         }
-            
+        
+        private static Transaction[] Decode(byte[][] transactions)
+        {
+            Transaction[] txs = new Transaction[transactions.Length];
+            for (int i = 0; i < transactions.Length; i++)
+            {
+                txs[i] = Rlp.Decode<Transaction>(transactions[i]);
+            }
+
+            return txs;
+        }
     }
 
     public class TxsToResults
     {
-        public List<(Keccak, byte[])> Pairs { get; set; }
-        public TxsToResults(List<(Keccak, byte[])> pairs)
+        public (Keccak, byte[])[] Pairs { get; }
+        public TxsToResults((Keccak, byte[])[] pairs)
         {
             Pairs = pairs;
         }

@@ -78,11 +78,6 @@ namespace Nethermind.Mev.Test
 
         private record BundleTestData(ulong block, ulong testTimestamp, int expectedRes, int expectedRemaining, Action action);
 
-        private MevBundleForRpc BundleHelper(List<Transaction> txs, ulong bNum, ulong minT, ulong maxT)
-        {
-            return new MevBundleForRpc(txs, new BigInteger(bNum), new BigInteger(minT), new BigInteger(maxT));
-        }
-
         [Test]
         public void should_calculate_appropriate_number_of_bundles()
         {
@@ -95,19 +90,19 @@ namespace Nethermind.Mev.Test
 
             var empty = new List<Transaction>();
 
-            plugin.AddMevBundle(BundleHelper(empty, 4, 0, 0));
-            plugin.AddMevBundle(BundleHelper(empty, 5, 0, 0));
-            plugin.AddMevBundle(BundleHelper(empty, 6, 0, 0));
-            plugin.AddMevBundle(BundleHelper(empty, 9, 0, 0));
-            plugin.AddMevBundle(BundleHelper(empty, 9, 0, 0));
-            plugin.AddMevBundle(BundleHelper(empty, 12, 0, 0));
-            plugin.AddMevBundle(BundleHelper(empty, 15, 0, 0));
+            plugin.AddMevBundle(new MevBundleForRpc(empty, 4, 0, 0));
+            plugin.AddMevBundle(new MevBundleForRpc(empty, 5, 0, 0));
+            plugin.AddMevBundle(new MevBundleForRpc(empty, 6, 0, 0));
+            plugin.AddMevBundle(new MevBundleForRpc(empty, 9, 0, 0));
+            plugin.AddMevBundle(new MevBundleForRpc(empty, 9, 0, 0));
+            plugin.AddMevBundle(new MevBundleForRpc(empty, 12, 0, 0));
+            plugin.AddMevBundle(new MevBundleForRpc(empty, 15, 0, 0));
 
             var testBundles = new BundleTestData[] 
             {
                 new BundleTestData(8, 0, 0, 4, null),
                 new BundleTestData(9, 0, 2, 4, null),
-                new BundleTestData(10, 8, 0, 2, () => plugin.AddMevBundle(BundleHelper(empty, 10, 5, 7))),
+                new BundleTestData(10, 8, 0, 2, () => plugin.AddMevBundle(new MevBundleForRpc(empty, 10, 5, 7))),
                 new BundleTestData(11, 0, 0, 2, null),
                 new BundleTestData(12, 0, 1, 2, null),
                 new BundleTestData(13, 0, 0, 1, null),

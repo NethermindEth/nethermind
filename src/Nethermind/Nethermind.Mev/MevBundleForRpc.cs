@@ -17,18 +17,19 @@
 using Nethermind.Core;
 using System.Collections.Generic;
 using System.Numerics;
+using Nethermind.Int256;
 
 namespace Nethermind.Mev
 {
     // ReSharper disable once ClassNeverInstantiated.Global
     public class MevBundleForRpc
     {
-        public List<Transaction> Transactions { get; set; }
-        public BigInteger BlockNumber { get; set; } 
-        public BigInteger MinTimestamp { get; set; }
-        public BigInteger MaxTimestamp { get; set; }
+        public IReadOnlyList<Transaction> Transactions { get; set; }
+        public UInt256 BlockNumber { get; set; } 
+        public UInt256 MinTimestamp { get; set; }
+        public UInt256 MaxTimestamp { get; set; }
 
-        public MevBundleForRpc(List<Transaction> transactions, BigInteger blockNumber, BigInteger minTimestamp, BigInteger maxTimestamp) {
+        public MevBundleForRpc(IReadOnlyList<Transaction> transactions, UInt256 blockNumber, UInt256 minTimestamp, UInt256 maxTimestamp) {
             (Transactions, BlockNumber, MinTimestamp, MaxTimestamp) = (transactions, blockNumber, minTimestamp, maxTimestamp);
         } 
     }

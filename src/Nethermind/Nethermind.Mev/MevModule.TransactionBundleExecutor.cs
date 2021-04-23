@@ -51,7 +51,7 @@ namespace Nethermind.Mev
             
             public ResultWrapper<TResult> ExecuteBundleTx(
                 TransactionForRpc[] transactions, 
-                BlockParameter blockParameter,
+                BlockParameter? blockParameter,
                 UInt256? blockTimestamp)
             { 
                 Transaction[] txs = transactions.Select(txForRpc =>
@@ -63,13 +63,13 @@ namespace Nethermind.Mev
                 return ExecuteBundleTx(txs, blockParameter, blockTimestamp);
             }
 
-            public ResultWrapper<TResult> ExecuteBundleTx(Transaction[] transactions, BlockParameter blockParameter, UInt256? blockTimestamp)
+            public ResultWrapper<TResult> ExecuteBundleTx(Transaction[] transactions, BlockParameter? blockParameter, UInt256? blockTimestamp)
             {
                 using CancellationTokenSource cancellationTokenSource = new(_rpcConfig.Timeout);
                 return ExecuteBundleTx(transactions, blockParameter, blockTimestamp, cancellationTokenSource.Token);
             }
 
-            protected abstract ResultWrapper<TResult> ExecuteBundleTx(Transaction[] transactions, BlockParameter blockParameter, UInt256? blockTimestamp, CancellationToken token);
+            protected abstract ResultWrapper<TResult> ExecuteBundleTx(Transaction[] transactions, BlockParameter? blockParameter, UInt256? blockTimestamp, CancellationToken token);
 
             protected ResultWrapper<TResult> GetInputError(BlockchainBridge.CallOutput result) => 
                 ResultWrapper<TResult>.Fail(result.Error ?? "", ErrorCodes.InvalidInput);
@@ -96,8 +96,10 @@ namespace Nethermind.Mev
             {
             }
 
-            protected override ResultWrapper<TxsToResults> ExecuteBundleTx(Transaction[] transactionCalls, BlockParameter blockParameter, UInt256? blockTimestamp, CancellationToken token)
+            protected override ResultWrapper<TxsToResults> ExecuteBundleTx(Transaction[] transactionCalls, BlockParameter? blockParameter, UInt256? blockTimestamp, CancellationToken token)
             {
+                blockParameter ??= BlockParameter.Latest;
+
                 if (transactionCalls.Length == 0) 
                     return ResultWrapper<TxsToResults>.Fail("no tx specified in bundle");
 
@@ -174,7 +176,7 @@ namespace Nethermind.Mev
                 stopwatch.Stop();
                 if (_logger.IsDebug) _logger.Debug($"Simulating eth_callBundle finished with runtime {stopwatch.Elapsed}");
 
-                return ResultWrapper<TxsToResults>.Success(new TxsToResults(pairs));
+                return ResultWrapper<TxsToResults>.Success(new TxsToResults(pairs.ToArray()));
             }
         }
     

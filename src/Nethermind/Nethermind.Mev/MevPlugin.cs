@@ -20,8 +20,10 @@ using System.Threading.Tasks;
 using System.Collections.Generic;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
+using Nethermind.Core;
 using Nethermind.Evm.Tracing;
 using Nethermind.Facade;
+using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
@@ -111,12 +113,12 @@ namespace Nethermind.Mev
         }
 
         // TODO alias nested list
-        public List<List<Transaction>> GetCurrentMevTxBundles(BigInteger blockNumber, BigInteger blockTimestamp) {
+        public IReadOnlyList<IReadOnlyList<Transaction>> GetCurrentMevTxBundles(UInt256 blockNumber, UInt256 blockTimestamp) {
             ThrowIfNotInitialized();
             lock (_locker) 
             {
                 var currentAndFutureMevBundles = new List<MevBundleForRpc>();
-                var currentTxBundles = new List<List<Transaction>>();
+                var currentTxBundles = new List<IReadOnlyList<Transaction>>();
 
                 foreach (var mevBundle in _mevBundles!) 
                 {
