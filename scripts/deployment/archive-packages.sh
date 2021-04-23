@@ -40,7 +40,6 @@ cp $RELEASE_DIRECTORY/nethermind/src/Nethermind/Nethermind.Baseline/bin/Release/
 cp $RELEASE_DIRECTORY/nethermind/src/Nethermind/Nethermind.Api/bin/Release/net5.0/Nethermind.Api.dll .
 cp $RELEASE_DIRECTORY/nethermind/src/Nethermind/Nethermind.HealthChecks/bin/Release/net5.0/Nethermind.HealthChecks.dll .
 cp $RELEASE_DIRECTORY/nethermind/src/Nethermind/Nethermind.Runner/bin/Release/net5.0/Microsoft.Extensions.Diagnostics.HealthChecks.Abstractions.dll .
-cp $RELEASE_DIRECTORY/nethermind/src/Nethermind/Nethermind.Dls/bin/Release/net5.0/Nethermind.Dsl.dll .
 cp $RELEASE_DIRECTORY/nethermind/src/Nethermind/Nethermind.Runner/bin/Release/net5.0/Microsoft.Extensions.Diagnostics.HealthChecks.dll .
 cp $RELEASE_DIRECTORY/nethermind/src/Nethermind/Nethermind.Merge.Plugin/bin/Release/net5.0/Nethermind.Merge.Plugin.dll .
 cp $RELEASE_DIRECTORY/nethermind/src/Nethermind/Nethermind.Dsl/bin/Release/net5.0/Nethermind.Dsl.dll .
