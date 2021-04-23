@@ -42,6 +42,7 @@ cp $RELEASE_DIRECTORY/nethermind/src/Nethermind/Nethermind.HealthChecks/bin/Rele
 cp $RELEASE_DIRECTORY/nethermind/src/Nethermind/Nethermind.Runner/bin/Release/net5.0/Microsoft.Extensions.Diagnostics.HealthChecks.Abstractions.dll .
 cp $RELEASE_DIRECTORY/nethermind/src/Nethermind/Nethermind.Runner/bin/Release/net5.0/Microsoft.Extensions.Diagnostics.HealthChecks.dll .
 cp $RELEASE_DIRECTORY/nethermind/src/Nethermind/Nethermind.Merge.Plugin/bin/Release/net5.0/Nethermind.Merge.Plugin.dll .
+cp $RELEASE_DIRECTORY/nethermind/src/Nethermind/Nethermind.Dsl/bin/Release/net5.0/Nethermind.Dsl.dll .
 
 zip -r plugins-$GIT_SHORT_TAG-$GIT_HASH.zip . && cd ..
 
@@ -69,6 +70,11 @@ cp $RELEASE_DIRECTORY/plugins/Nethermind.Merge.Plugin.dll $LIN_RELEASE/plugins/
 cp $RELEASE_DIRECTORY/plugins/Nethermind.Merge.Plugin.dll $OSX_RELEASE/plugins/
 cp $RELEASE_DIRECTORY/plugins/Nethermind.Merge.Plugin.dll $WIN_RELEASE/plugins/
 cp $RELEASE_DIRECTORY/plugins/Nethermind.Merge.Plugin.dll $LIN_ARM64_RELEASE/plugins/
+
+cp $RELEASE_DIRECTORY/plugins/Nethermind.Dsl.dll $LIN_RELEASE/plugins/
+cp $RELEASE_DIRECTORY/plugins/Nethermind.Dsl.dll $OSX_RELEASE/plugins/
+cp $RELEASE_DIRECTORY/plugins/Nethermind.Dsl.dll $WIN_RELEASE/plugins/
+cp $RELEASE_DIRECTORY/plugins/Nethermind.Dsl.dll $LIN_ARM64_RELEASE/plugins/
 
 cd $LIN_RELEASE && zip -r $LIN-$GIT_SHORT_TAG-$GIT_HASH.zip . && cd ..
 cd $OSX_RELEASE && zip -r $OSX-$GIT_SHORT_TAG-$GIT_HASH.zip . && cd ..
