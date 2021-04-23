@@ -52,7 +52,7 @@ namespace Nethermind.Network
         private readonly ISyncPeerPool _syncPool;
         private readonly ISyncServer _syncServer;
         private readonly ITxPool _txPool;
-        private readonly IPooledTxsRequester _pooledTxsRequester;
+        private readonly IPooledTxsRequestor _pooledTxsRequestor;
         private readonly IDiscoveryApp _discoveryApp;
         private readonly IMessageSerializationService _serializer;
         private readonly IRlpxPeer _localPeer;
@@ -70,7 +70,7 @@ namespace Nethermind.Network
             ISyncPeerPool syncPeerPool,
             ISyncServer syncServer,
             ITxPool txPool,
-            IPooledTxsRequester pooledTxsRequester,
+            IPooledTxsRequestor pooledTxsRequestor,
             IDiscoveryApp discoveryApp,
             IMessageSerializationService serializationService,
             IRlpxPeer localPeer,
@@ -83,7 +83,7 @@ namespace Nethermind.Network
             _syncPool = syncPeerPool ?? throw new ArgumentNullException(nameof(syncPeerPool));
             _syncServer = syncServer ?? throw new ArgumentNullException(nameof(syncServer));
             _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
-            _pooledTxsRequester = pooledTxsRequester ?? throw new ArgumentNullException(nameof(pooledTxsRequester));
+            _pooledTxsRequestor = pooledTxsRequestor ?? throw new ArgumentNullException(nameof(pooledTxsRequestor));
             _discoveryApp = discoveryApp ?? throw new ArgumentNullException(nameof(discoveryApp));
             _serializer = serializationService ?? throw new ArgumentNullException(nameof(serializationService));
             _localPeer = localPeer ?? throw new ArgumentNullException(nameof(localPeer));
@@ -195,7 +195,7 @@ namespace Nethermind.Network
                         62 => new Eth62ProtocolHandler(session, _serializer, _stats, _syncServer, _txPool, _logManager),
                         63 => new Eth63ProtocolHandler(session, _serializer, _stats, _syncServer, _txPool, _logManager),
                         64 => new Eth64ProtocolHandler(session, _serializer, _stats, _syncServer, _txPool, _specProvider, _logManager),
-                        65 => new Eth65ProtocolHandler(session, _serializer, _stats, _syncServer, _txPool, _pooledTxsRequester, _specProvider, _logManager),
+                        65 => new Eth65ProtocolHandler(session, _serializer, _stats, _syncServer, _txPool, _pooledTxsRequestor, _specProvider, _logManager),
                         _ => throw new NotSupportedException($"Eth protocol version {version} is not supported.")
                     };
 

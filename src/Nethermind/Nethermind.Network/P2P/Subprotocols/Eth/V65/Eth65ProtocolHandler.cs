@@ -33,19 +33,19 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
     /// </summary>
     public class Eth65ProtocolHandler : Eth64ProtocolHandler
     {
-        private readonly IPooledTxsRequester _pooledTxsRequester;
+        private readonly IPooledTxsRequestor _pooledTxsRequestor;
 
         public Eth65ProtocolHandler(ISession session,
             IMessageSerializationService serializer,
             INodeStatsManager nodeStatsManager,
             ISyncServer syncServer,
             ITxPool txPool,
-            IPooledTxsRequester pooledTxsRequester,
+            IPooledTxsRequestor pooledTxsRequestor,
             ISpecProvider specProvider,
             ILogManager logManager)
             : base(session, serializer, nodeStatsManager, syncServer, txPool, specProvider, logManager)
         {
-            _pooledTxsRequester = pooledTxsRequester;
+            _pooledTxsRequestor = pooledTxsRequestor;
         }
 
         public override string Name => "eth65";
@@ -84,7 +84,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
             Metrics.Eth65NewPooledTransactionHashesReceived++;
             Stopwatch stopwatch = Stopwatch.StartNew();
 
-            _pooledTxsRequester.RequestTransactions(Send, msg.Hashes);
+            _pooledTxsRequestor.RequestTransactions(Send, msg.Hashes);
             
             stopwatch.Stop();
             if (Logger.IsTrace)
