@@ -78,6 +78,7 @@ namespace Nethermind.Runner.JsonRpc
                 options.Providers.Add<BrotliCompressionProvider>();
                 options.Providers.Add<GzipCompressionProvider>();
                 options.MimeTypes = ResponseCompressionDefaults.MimeTypes;
+                options.EnableForHttps = true;
             });
         }
 
