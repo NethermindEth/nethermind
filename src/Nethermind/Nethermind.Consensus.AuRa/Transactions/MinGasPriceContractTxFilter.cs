@@ -44,7 +44,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
             }
             else if (_minGasPrices.TryGetValue(parentHeader, tx, out TxPriorityContract.Destination @override))
             {
-                return _minGasPriceFilter.IsAllowed(tx, parentHeader.Number + 1, @override.Value);
+                return _minGasPriceFilter.IsAllowed(tx, parentHeader, @override.Value);
             }
             
             return (true, string.Empty);

@@ -22,6 +22,6 @@ namespace Nethermind.Consensus.Transactions
 {
     public interface IMinGasPriceTxFilter : ITxFilter
     {
-        (bool Allowed, string Reason) IsAllowed(Transaction tx, long blockNumber, UInt256 minGasPriceFloor);
+        (bool Allowed, string Reason) IsAllowed(Transaction tx, BlockHeader parentHeader, UInt256 minGasPriceFloor);
     }
 }

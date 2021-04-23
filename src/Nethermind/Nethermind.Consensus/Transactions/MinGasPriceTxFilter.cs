@@ -37,15 +37,18 @@ namespace Nethermind.Consensus.Transactions
         public (bool Allowed, string Reason) IsAllowed(Transaction tx, BlockHeader parentHeader)
         {
             long number = (parentHeader?.Number ?? 0) + 1;
-            return IsAllowed(tx, number, _minGasPrice);
+            return IsAllowed(tx, parentHeader, _minGasPrice);
         }
 
-        public (bool Allowed, string Reason) IsAllowed(Transaction tx, long blockNumber, UInt256 minGasPriceFloor)
+        public (bool Allowed, string Reason) IsAllowed(Transaction tx, BlockHeader parentHeader, UInt256 minGasPriceFloor)
         {
             UInt256 gasPrice = tx.GasPrice;
-            if (_specProvider.GetSpec(blockNumber).IsEip1559Enabled)
+            long blockNumber = parentHeader.Number + 1;
+            IReleaseSpec spec = _specProvider.GetSpec(blockNumber);
+            if (spec.IsEip1559Enabled && tx.IsEip1559)
             {
-                gasPrice = tx.FeeCap;
+                UInt256 baseFee = BlockHeader.CalculateBaseFee(parentHeader, spec);
+                gasPrice = tx.GetEffectiveGasPrice(true, baseFee);
             }
 
             bool allowed = gasPrice >= minGasPriceFloor;
