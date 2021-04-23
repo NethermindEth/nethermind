@@ -15,12 +15,12 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System;
 using System.Threading.Tasks;
 using Nethermind.Consensus;
 using Nethermind.Evm;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Handlers;
-using Nethermind.Runner.Ethereum.Steps;
 
 namespace Nethermind.Merge.Plugin
 {
@@ -34,18 +34,18 @@ namespace Nethermind.Merge.Plugin
             if (_mergeConfig.Enabled)
             {
                 _miningConfig = _api.Config<IMiningConfig>();
-                if (_api.EngineSigner == null) throw new StepDependencyException(nameof(_api.EngineSigner));
-                if (_api.ChainSpec == null) throw new StepDependencyException(nameof(_api.ChainSpec));
-                if (_api.BlockTree == null) throw new StepDependencyException(nameof(_api.BlockTree));
-                if (_api.BlockProcessingQueue == null) throw new StepDependencyException(nameof(_api.BlockProcessingQueue));
-                if (_api.StateProvider == null) throw new StepDependencyException(nameof(_api.StateProvider));
-                if (_api.SpecProvider == null) throw new StepDependencyException(nameof(_api.SpecProvider));
-                if (_api.BlockValidator == null) throw new StepDependencyException(nameof(_api.BlockValidator));
-                if (_api.RewardCalculatorSource == null) throw new StepDependencyException(nameof(_api.RewardCalculatorSource));
-                if (_api.ReceiptStorage == null) throw new StepDependencyException(nameof(_api.ReceiptStorage));
-                if (_api.TxPool == null) throw new StepDependencyException(nameof(_api.TxPool));
-                if (_api.DbProvider == null) throw new StepDependencyException(nameof(_api.DbProvider));
-                if (_api.ReadOnlyTrieStore == null) throw new StepDependencyException(nameof(_api.ReadOnlyTrieStore));
+                if (_api.EngineSigner == null) throw new ArgumentException(nameof(_api.EngineSigner));
+                if (_api.ChainSpec == null) throw new ArgumentException(nameof(_api.ChainSpec));
+                if (_api.BlockTree == null) throw new ArgumentException(nameof(_api.BlockTree));
+                if (_api.BlockProcessingQueue == null) throw new ArgumentException(nameof(_api.BlockProcessingQueue));
+                if (_api.StateProvider == null) throw new ArgumentException(nameof(_api.StateProvider));
+                if (_api.SpecProvider == null) throw new ArgumentException(nameof(_api.SpecProvider));
+                if (_api.BlockValidator == null) throw new ArgumentException(nameof(_api.BlockValidator));
+                if (_api.RewardCalculatorSource == null) throw new ArgumentException(nameof(_api.RewardCalculatorSource));
+                if (_api.ReceiptStorage == null) throw new ArgumentException(nameof(_api.ReceiptStorage));
+                if (_api.TxPool == null) throw new ArgumentException(nameof(_api.TxPool));
+                if (_api.DbProvider == null) throw new ArgumentException(nameof(_api.DbProvider));
+                if (_api.ReadOnlyTrieStore == null) throw new ArgumentException(nameof(_api.ReadOnlyTrieStore));
 
                 ILogger logger = _api.LogManager.GetClassLogger();
                 if (logger.IsWarn) logger.Warn("Starting ETH2 block producer & sealer");

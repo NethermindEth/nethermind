@@ -28,7 +28,6 @@ using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Network.Config;
-using Nethermind.Runner.Ethereum.Steps;
 
 namespace Nethermind.Merge.Plugin
 {
@@ -79,11 +78,11 @@ namespace Nethermind.Merge.Plugin
         {
             if (_mergeConfig.Enabled)
             {
-                if (_api.RpcModuleProvider is null) throw new StepDependencyException(nameof(_api.RpcModuleProvider));
-                if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.BlockTree));
-                if (_api.BlockchainProcessor is null) throw new StepDependencyException(nameof(_api.BlockchainProcessor));
-                if (_api.StateProvider is null) throw new StepDependencyException(nameof(_api.StateProvider));
-                if (_api.StateProvider is null) throw new StepDependencyException(nameof(_api.StateProvider));
+                if (_api.RpcModuleProvider is null) throw new ArgumentException(nameof(_api.RpcModuleProvider));
+                if (_api.BlockTree is null) throw new ArgumentException(nameof(_api.BlockTree));
+                if (_api.BlockchainProcessor is null) throw new ArgumentException(nameof(_api.BlockchainProcessor));
+                if (_api.StateProvider is null) throw new ArgumentException(nameof(_api.StateProvider));
+                if (_api.StateProvider is null) throw new ArgumentException(nameof(_api.StateProvider));
                 
                 await _api.BlockchainProcessor.StopAsync(true);
                 
