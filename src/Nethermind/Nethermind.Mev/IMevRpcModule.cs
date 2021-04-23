@@ -31,6 +31,6 @@ namespace Nethermind.Mev
         ResultWrapper<bool> eth_sendBundle(TransactionForRpc[] transactions, UInt256 blockNumber, UInt256 minTimestamp, UInt256 maxTimestamp);
         
         [JsonRpcMethod(Description = "Simulates the bundle behaviour.", IsImplemented = true)]
-        ResultWrapper<TxToResult> eth_callBundle(TransactionForRpc[] transactionCalls, BlockParameter blockParameter, UInt256? timestamp);
+        ResultWrapper<TxsToResults> eth_callBundle(TransactionForRpc[] transactionCalls, BlockParameter blockParameter, UInt256? timestamp);
     }
 }

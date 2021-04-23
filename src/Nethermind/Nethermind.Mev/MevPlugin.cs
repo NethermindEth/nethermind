@@ -102,6 +102,7 @@ namespace Nethermind.Mev
             }
         }
 
+        // TODO alias nested list
         public List<List<Transaction>> GetCurrentMevTxBundles(BigInteger blockNumber, BigInteger blockTimestamp) {
             ThrowIfNotInitialized();
             lock (_locker) 

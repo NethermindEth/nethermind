@@ -28,6 +28,7 @@ using Nethermind.Facade;
 using Nethermind.Logging;
 using Nethermind.Blockchain;
 using Nethermind.State;
+using Newtonsoft.Json;
 
 namespace Nethermind.Mev
 {
@@ -74,20 +75,52 @@ namespace Nethermind.Mev
             return ResultWrapper<bool>.Success(true);
         }
 
-        public ResultWrapper<FeeToFrequency> mev_feeDistribution()
+        public ResultWrapper<FeeToFrequency> neth_feeDistribution()
         {
+            // decentralize mev_relay first?
+            // integration with ndm
+            // eth_subscribe
             throw new NotImplementedException();
         }
             
-        public ResultWrapper<TxToResult> eth_callBundle(TransactionForRpc[] transactionCalls, BlockParameter blockParameter, UInt256? blockTimestamp) => throw new NotImplementedException();
-            // new CallBundleTxExecutor(_blockchainBridge, _blockTree, _jsonRpcConfig).ExecuteBundleTx(transactionCalls, blockParameter, blockTimestamp);
+        public ResultWrapper<TxsToResults> eth_callBundle(TransactionForRpc[] transactionCalls, BlockParameter blockParameter, UInt256? blockTimestamp) 
+        {
+            if (_mevPlugin.NethermindApi.MainBlockProcessor == null)
+                return ResultWrapper<TxsToResults>.Fail("No block processer for eth_callBundle");
+                
+            return new CallBundleTxExecutor(_blockchainBridge, _blockTree, _jsonRpcConfig, _logger, _mevPlugin.NethermindApi.MainBlockProcessor!).ExecuteBundleTx(transactionCalls, blockParameter, blockTimestamp);
+        }
+            
     }
 
-    // TODO move and write serializers, eg. syncingResultConverter
-    public class TxToResult
+    public class TxsToResults
     {
-        public List<(Keccak, string)> pairs { get; set; } = new List<(Keccak, string)>();
+        public List<(Keccak, byte[])> Pairs { get; set; }
+        public TxsToResults(List<(Keccak, byte[])> pairs)
+        {
+            Pairs = pairs;
+        }
     }
+
+    // public class TxToResultConverter : JsonConverter<TxsToResults>
+    // {
+    //     public override void WriteJson(JsonWriter writer, TxsToResults value, JsonSerializer serializer)
+    //     {
+    //         writer.WriteStartObject();
+
+    //         foreach(var (txHash, output) in value.Pairs)
+    //         {
+    //             writer.WriteProperty($"{txHash.ToString()}", output, serializer);    
+    //         }
+                        
+    //         writer.WriteEndObject();
+    //     }
+
+    //     public override TxsToResults ReadJson(JsonReader reader, Type objectType, TxsToResults existingValue, bool hasExistingValue, JsonSerializer serializer)
+    //     {
+    //         throw new NotSupportedException();
+    //     }
+    // }
 
     public class FeeToFrequency
     {
