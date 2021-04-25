@@ -23,8 +23,6 @@ using Nethermind.Core.Test.Builders;
 
 namespace Nethermind.Benchmarks.Core
 {
-    [MemoryDiagnoser]
-    [SimpleJob(RuntimeMoniker.NetCoreApp50)]
     public class BytesIsZeroBenchmarks
     {
         private byte[] _a;

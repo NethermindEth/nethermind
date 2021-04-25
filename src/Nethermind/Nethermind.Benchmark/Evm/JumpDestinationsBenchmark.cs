@@ -21,8 +21,6 @@ using Nethermind.Evm;
 
 namespace Nethermind.Benchmarks.Evm
 {
-    [MemoryDiagnoser]
-    [SimpleJob(RuntimeMoniker.NetCoreApp50)]
     public class JumpDestinationsBenchmark
     {
         private byte[][] _scenarios = new[]
@@ -40,12 +38,6 @@ namespace Nethermind.Benchmarks.Evm
         public void Setup()
         {
             _codeInfo = new CodeInfo(_scenarios[ScenarioIndex]);
-        }
-
-        [Benchmark]
-        public bool Improved()
-        {
-            return _codeInfo.ValidateJump(0, false);
         }
 
         [Benchmark]
