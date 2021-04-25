@@ -24,8 +24,6 @@ using Nethermind.Logging;
 
 namespace Nethermind.Benchmarks.Mining
 {
-    [MemoryDiagnoser]
-    [SimpleJob(RuntimeMoniker.NetCoreApp50)]
     public class EthashHashimotoBenchmarks
     {
         private Ethash _ethash = new Ethash(LimboLogs.Instance);

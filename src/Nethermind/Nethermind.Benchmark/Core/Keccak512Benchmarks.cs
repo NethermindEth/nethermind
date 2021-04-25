@@ -24,8 +24,6 @@ using Nethermind.HashLib;
 
 namespace Nethermind.Benchmarks.Core
 {
-    [MemoryDiagnoser]
-    [SimpleJob(RuntimeMoniker.NetCoreApp50)]
     public class Keccak512Benchmarks
     {
         private static HashLib.Crypto.SHA3.Keccak512 _hash = HashFactory.Crypto.SHA3.CreateKeccak512();
