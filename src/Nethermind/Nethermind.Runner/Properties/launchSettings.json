@@ -70,6 +70,10 @@
     "Kovan": {
       "commandName": "Project",
       "commandLineArgs": "--config configs\\kovan.cfg"
+    },
+    "xdai1559": {
+      "commandName": "Project",
+      "commandLineArgs": "--config configs\\xdai1559.cfg --Init.DiagnosticMode MemDb"
     }
   }
 }
