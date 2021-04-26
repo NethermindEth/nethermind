@@ -35,9 +35,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
             _txPool = txPool;
         }
         
-        public void RequestTransactions(Action<GetPooledTransactionsMessage> send, IList<Keccak> hashes)
+        public void RequestTransactions(Action<GetPooledTransactionsMessage> send, IReadOnlyList<Keccak> hashes)
         {
-            IList<Keccak> discoveredTxHashes = FilterHashes(hashes);
+            IList<Keccak> discoveredTxHashes = GetAndMarkUnknownHashes(hashes);
             
             if (discoveredTxHashes.Count != 0)
             {
@@ -46,7 +46,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
             }
         }
 
-        public IList<Keccak> FilterHashes(IList<Keccak> hashes)
+        public IList<Keccak> GetAndMarkUnknownHashes(IReadOnlyList<Keccak> hashes)
         {
             List<Keccak> discoveredTxHashes = new();
             

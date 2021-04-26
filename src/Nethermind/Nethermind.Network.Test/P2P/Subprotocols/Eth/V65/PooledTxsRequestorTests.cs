@@ -47,11 +47,11 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
         public void filter_properly_newPooledTxHashes()
         {
             PooledTxsRequestor requestor = new PooledTxsRequestor(_txPool);
-            requestor.FilterHashes(new List<Keccak>{TestItem.KeccakA, TestItem.KeccakD});
+            requestor.GetAndMarkUnknownHashes(new List<Keccak>{TestItem.KeccakA, TestItem.KeccakD});
 
-            IList<Keccak> request = new List<Keccak>{TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC};
+            IReadOnlyList<Keccak> request = new List<Keccak>{TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC};
             IList<Keccak> expected = new List<Keccak>{TestItem.KeccakB, TestItem.KeccakC};
-            IList<Keccak> response = requestor.FilterHashes(request);
+            IList<Keccak> response = requestor.GetAndMarkUnknownHashes(request);
             response.Should().BeEquivalentTo(expected);
         }
         
@@ -59,11 +59,11 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
         public void filter_properly_already_pending_hashes()
         {
             PooledTxsRequestor requestor = new PooledTxsRequestor(_txPool);
-            requestor.FilterHashes(new List<Keccak>{TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC});
+            requestor.GetAndMarkUnknownHashes(new List<Keccak>{TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC});
             
-            IList<Keccak> request = new List<Keccak>{TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC};
+            IReadOnlyList<Keccak> request = new List<Keccak>{TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC};
             IList<Keccak> expected = new List<Keccak>{};
-            IList<Keccak> response = requestor.FilterHashes(request);
+            IList<Keccak> response = requestor.GetAndMarkUnknownHashes(request);
             response.Should().BeEquivalentTo(expected);
         }
         
@@ -72,9 +72,9 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
         {
             PooledTxsRequestor requestor = new PooledTxsRequestor(_txPool);
 
-            IList<Keccak> request = new List<Keccak>{TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC};
+            IReadOnlyList<Keccak> request = new List<Keccak>{TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC};
             IList<Keccak> expected = new List<Keccak>{TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC};
-            IList<Keccak> response = requestor.FilterHashes(request);
+            IList<Keccak> response = requestor.GetAndMarkUnknownHashes(request);
             response.Should().BeEquivalentTo(expected);
         }
 
@@ -82,7 +82,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
         public void can_handle_empty_argument()
         {
             PooledTxsRequestor requestor = new PooledTxsRequestor(_txPool);
-            requestor.FilterHashes(new List<Keccak>()).Should().BeEmpty();
+            requestor.GetAndMarkUnknownHashes(new List<Keccak>()).Should().BeEmpty();
         }
 
         [Test]
@@ -92,9 +92,9 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
             txPool.IsInHashCache(Arg.Any<Keccak>()).Returns(true);
             PooledTxsRequestor requestor = new PooledTxsRequestor(txPool);
             
-            IList<Keccak> request = new List<Keccak>{TestItem.KeccakA, TestItem.KeccakB};
+            IReadOnlyList<Keccak> request = new List<Keccak>{TestItem.KeccakA, TestItem.KeccakB};
             IList<Keccak> expected = new List<Keccak>{};
-            IList<Keccak> response = requestor.FilterHashes(request);
+            IList<Keccak> response = requestor.GetAndMarkUnknownHashes(request);
             response.Should().BeEquivalentTo(expected);
         }
 

@@ -17,6 +17,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
@@ -84,7 +85,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
             Metrics.Eth65NewPooledTransactionHashesReceived++;
             Stopwatch stopwatch = Stopwatch.StartNew();
 
-            _pooledTxsRequestor.RequestTransactions(Send, msg.Hashes);
+            _pooledTxsRequestor.RequestTransactions(Send, msg.Hashes.ToArray());
             
             stopwatch.Stop();
             if (Logger.IsTrace)

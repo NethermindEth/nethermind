@@ -23,6 +23,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
 {
     public interface IPooledTxsRequestor 
     {
-        void RequestTransactions(Action<GetPooledTransactionsMessage> send, IList<Keccak> hashes);
+        void RequestTransactions(Action<GetPooledTransactionsMessage> send, IReadOnlyList<Keccak> hashes);
     }
 }
