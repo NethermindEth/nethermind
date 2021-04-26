@@ -15,20 +15,47 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using Nethermind.Blockchain;
+using Nethermind.Blockchain.Find;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc;
-using Nethermind.Merge.Plugin.Data;
+using Nethermind.Logging;
+using Result = Nethermind.Merge.Plugin.Data.Result;
 
 namespace Nethermind.Merge.Plugin.Handlers
 {
     public class FinaliseBlockHandler : IHandler<Keccak, Result>
     {
-        public FinaliseBlockHandler()
+        private readonly IBlockFinder _blockFinder;
+        private readonly IEth2FinalizationManager _eth2FinalizationManager;
+        private readonly ILogger _logger;
+
+        public FinaliseBlockHandler(IBlockFinder blockFinder, IEth2FinalizationManager eth2FinalizationManager, ILogManager logManager)
         {
+            _blockFinder = blockFinder;
+            _eth2FinalizationManager = eth2FinalizationManager;
+            _logger = logManager.GetClassLogger();
         }
 
         public ResultWrapper<Result> Handle(Keccak request)
         {
+            BlockHeader? blockHeader = _blockFinder.FindHeader(request, BlockTreeLookupOptions.None);
+            if (blockHeader is null)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Block {request} not found for finalization.");
+                return ResultWrapper<Result>.Success(Result.Fail);
+            }
+            
+            BlockHeader? headHeader = _blockFinder.Head?.Header;
+
+            if (headHeader is null)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Can't finalize block {request}. Head is null.");
+                return ResultWrapper<Result>.Success(Result.Fail);                
+            }
+            
+            _eth2FinalizationManager.MarkFinalized(headHeader, blockHeader);
             return ResultWrapper<Result>.Success(Result.Success);
         }
     }

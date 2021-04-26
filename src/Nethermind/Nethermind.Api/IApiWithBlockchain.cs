@@ -74,5 +74,13 @@ namespace Nethermind.Api
         IWitnessCollector? WitnessCollector { get; set; }
         IHealthHintService? HealthHintService { get; set; }
         TxValidator? TxValidator { get; set; }
+        
+        /// <summary>
+        /// Manager of block finalization
+        /// </summary>
+        /// <remarks>
+        /// Currently supported in <see cref="SealEngineType.AuRa"/> and Eth2Merge.
+        /// </remarks>
+        IBlockFinalizationManager? FinalizationManager { get; set; }
     }
 }

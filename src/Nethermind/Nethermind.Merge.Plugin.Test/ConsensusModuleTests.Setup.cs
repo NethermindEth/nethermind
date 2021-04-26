@@ -46,7 +46,7 @@ namespace Nethermind.Merge.Plugin.Test
                 new AssembleBlockHandler(chain.BlockTree, (IEth2BlockProducer) chain.BlockProducer, chain.LogManager),
                 new NewBlockHandler(chain.BlockTree, chain.BlockPreprocessorStep, chain.BlockchainProcessor, chain.State, chain.LogManager),
                 new SetHeadBlockHandler(chain.BlockTree, chain.State, chain.LogManager),
-                new FinaliseBlockHandler(),
+                new FinaliseBlockHandler(chain.BlockFinder, chain.FinalizationManager, chain.LogManager),
                 chain.LogManager);
         }
 
@@ -118,6 +118,7 @@ namespace Nethermind.Merge.Plugin.Test
                     LogManager);
 
             public Address MinerAddress => TestItem.PrivateKeyA.Address;
+            public IEth2FinalizationManager FinalizationManager { get; } = new Eth2FinalizationManager();
 
             protected override async Task<TestBlockchain> Build(ISpecProvider? specProvider = null, UInt256? initialValues = null)
             {

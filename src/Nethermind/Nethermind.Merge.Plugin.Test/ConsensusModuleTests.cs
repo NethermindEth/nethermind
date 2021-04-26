@@ -207,7 +207,9 @@ namespace Nethermind.Merge.Plugin.Test
         {
             using MergeTestBlockchain chain = await CreateBlockChain();
             IConsensusRpcModule rpc = CreateConsensusModule(chain);
-            ResultWrapper<Result> resultWrapper = await rpc.consensus_finaliseBlock(TestItem.KeccakE);
+            Block block = Build.A.Block.WithParent(chain.BlockTree.Head).TestObject;
+            chain.BlockTree.SuggestBlock(block);
+            ResultWrapper<Result> resultWrapper = await rpc.consensus_finaliseBlock(block.Hash!);
             resultWrapper.Data.Should().Be(Result.Success);
         }
         

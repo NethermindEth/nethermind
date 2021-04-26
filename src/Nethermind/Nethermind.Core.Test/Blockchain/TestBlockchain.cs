@@ -62,7 +62,13 @@ namespace Nethermind.Core.Test.Blockchain
         
         public IBlockProcessingQueue BlockProcessingQueue { get; set; }
         public IBlockTree BlockTree { get; set; }
-        public IBlockFinder BlockFinder { get; set; }
+
+        public IBlockFinder BlockFinder
+        {
+            get => _blockFinder ?? BlockTree;
+            set => _blockFinder = value;
+        }
+
         public IJsonSerializer JsonSerializer { get; set; }
         public IStateProvider State { get; set; }
         public IDb StateDb => DbProvider.StateDb;
@@ -83,7 +89,8 @@ namespace Nethermind.Core.Test.Blockchain
         public SemaphoreSlim _resetEvent;
         private ManualResetEvent _suggestedBlockResetEvent;
         private AutoResetEvent _oneAtATime = new AutoResetEvent(true);
-        
+        private IBlockFinder _blockFinder;
+
         public static readonly UInt256 InitialValue = 1000.Ether();
 
         public IReadOnlyTrieStore ReadOnlyTrieStore { get; private set; }
