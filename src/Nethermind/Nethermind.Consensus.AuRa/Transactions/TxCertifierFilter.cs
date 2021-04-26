@@ -53,11 +53,12 @@ namespace Nethermind.Consensus.AuRa.Transactions
         private bool IsCertified(Transaction tx, BlockHeader parentHeader)
         {
             bool isEip1559Enabled = _specProvider.GetSpec(parentHeader.Number + 1).IsEip1559Enabled;
-            if (isEip1559Enabled && tx.IsEip1559 && !tx.FeeCap.IsZero) // only 0 gas price transactions are system transactions and can be whitelissted
+            bool checkByFeeCap = isEip1559Enabled && tx.IsEip1559;
+            if (checkByFeeCap && !tx.FeeCap.IsZero) // only 0 gas price transactions are system transactions and can be whitelissted
             {
                 return false;
             }
-            else if (!tx.GasPrice.IsZero)
+            else if (!tx.GasPrice.IsZero && !checkByFeeCap)
             {
                 return false;
             }
