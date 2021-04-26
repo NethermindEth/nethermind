@@ -110,6 +110,9 @@ namespace Nethermind.Core
             {
                 UInt256 gasPrice = baseFee + GasPremium;
                 gasPrice = UInt256.Min(gasPrice, FeeCap);
+                if (IsServiceTransaction)
+                    gasPrice = UInt256.Zero;;
+                
                 return gasPrice * (ulong)GasLimit + Value;
             }
 

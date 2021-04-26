@@ -314,7 +314,7 @@ namespace Nethermind.TxPool
                     _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, cost overflow.");
                 return AddTxResult.BalanceOverflow;
             }
-            else if ((account?.Balance ?? UInt256.Zero) < cost)
+            else if ((account?.Balance ?? UInt256.Zero) < cost && !tx.IsEip1559)
             {
                 if (_logger.IsTrace)
                     _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, insufficient funds.");
