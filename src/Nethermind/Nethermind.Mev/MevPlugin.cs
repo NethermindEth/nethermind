@@ -21,39 +21,26 @@ using System.Threading.Tasks;
 using System.Collections.Generic;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
+using Nethermind.Blockchain;
 using Nethermind.Core;
+using Nethermind.Db;
 using Nethermind.Evm.Tracing;
 using Nethermind.Facade;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
+using Nethermind.Mev.Source;
 using Nethermind.TxPool;
 
 namespace Nethermind.Mev
 {
     public class MevPlugin : INethermindPlugin
     {
-        private INethermindApi? _nethermindApi;
-
-        public INethermindApi NethermindApi 
-        { 
-            get { ThrowIfNotInitialized(); return _nethermindApi!; } 
-        }
-
         private IMevConfig? _mevConfig;
-
         private ILogger? _logger;
-
-        // TODO: Keep sorted by block, then timestamp?
-        private ConcurrentBag<MevBundle> _mevBundles = new();
-
-        public IReadOnlyList<MevBundle> MevBundles 
-        { 
-            get { ThrowIfNotInitialized(); return _mevBundles.ToArray(); } 
-        }
-
-        private readonly object _locker = new();
+        private INethermindApi _nethermindApi = null!;
+        private IBundlePool? _bundlePool;
 
         public string Name => "MEV";
 
@@ -64,8 +51,13 @@ namespace Nethermind.Mev
         public Task Init(INethermindApi? nethermindApi)
         {
             _nethermindApi = nethermindApi ?? throw new ArgumentNullException(nameof(nethermindApi));
-            _mevConfig = nethermindApi.Config<IMevConfig>();
+            _mevConfig = _nethermindApi.Config<IMevConfig>();
             _logger = _nethermindApi.LogManager.GetClassLogger();
+            if (_mevConfig.Enabled)
+            {
+                _bundlePool = new BundlePool();
+            }
+
             return Task.CompletedTask;
         }
 
@@ -76,12 +68,23 @@ namespace Nethermind.Mev
 
         public Task InitRpcModules()
         {
-            ThrowIfNotInitialized();
             if (_mevConfig!.Enabled) 
             {   
                 (IApiWithNetwork getFromApi, _) = _nethermindApi!.ForRpc;
                 IJsonRpcConfig rpcConfig = getFromApi.Config<IJsonRpcConfig>();
-                MevModuleFactory mevModuleFactory = new(_mevConfig!, rpcConfig, this);
+                
+                MevModuleFactory mevModuleFactory = new(
+                    _mevConfig!, 
+                    rpcConfig, 
+                    _bundlePool!, 
+                    getFromApi.BlockTree!.AsReadOnly(),
+                    getFromApi.DbProvider!.AsReadOnly(false), 
+                    getFromApi.ReadOnlyTrieStore!,
+                    getFromApi.BlockPreprocessor!,
+                    getFromApi.SpecProvider!, 
+                    getFromApi.LogManager!,
+                    getFromApi.ChainSpec!.ChainId);
+                
                 getFromApi.RpcModuleProvider!.RegisterBoundedByCpuCount(mevModuleFactory, rpcConfig.Timeout);
 
                 if (getFromApi.TxPool != null)
@@ -109,41 +112,6 @@ namespace Nethermind.Mev
         public ValueTask DisposeAsync()
         {
             return ValueTask.CompletedTask;
-        }
-
-        private void ThrowIfNotInitialized()
-        {
-            if (_nethermindApi is null || _mevConfig is null || _logger is null)
-            {
-                throw new InvalidOperationException($"{nameof(MevPlugin)} not yet initialized");
-            }
-        }
-
-        // TODO alias nested list
-        public IReadOnlyList<IReadOnlyList<Transaction>> GetCurrentMevTxBundles(UInt256 blockNumber, UInt256 blockTimestamp) 
-        {
-            ThrowIfNotInitialized();
-            List<IReadOnlyList<Transaction>>? currentTxBundles = new();
-
-            foreach (var mevBundle in _mevBundles) 
-            {
-                // We shouldn't remove until finalized block
-                bool bundleIsTooOld = (mevBundle.MaxTimestamp == 0 || !(blockTimestamp > mevBundle.MaxTimestamp)) && (!(blockNumber > mevBundle.BlockNumber));
-                bool bundleIsFuture = (mevBundle.MinTimestamp != 0 && blockTimestamp < mevBundle.MinTimestamp) || (blockNumber < mevBundle.BlockNumber);
-                
-                if (!bundleIsFuture && !bundleIsTooOld)
-                {
-                    currentTxBundles.Add(mevBundle.Transactions);
-                }
-            }
-                
-            return currentTxBundles;
-        }
-
-        public void AddMevBundle(MevBundle mevBundle) 
-        {
-            ThrowIfNotInitialized();
-            _mevBundles.Add(mevBundle);
         }
     }
 }

@@ -31,6 +31,7 @@ using Nethermind.Consensus.AuRa.Transactions;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm;
 using Nethermind.Logging;

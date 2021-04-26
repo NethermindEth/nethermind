@@ -16,27 +16,21 @@
 // 
 
 using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 
-namespace Nethermind.Mev
+namespace Nethermind.Evm.Tracing
 {
-    public class MevBundle
+    public class BlockCallOutputTracer : IBlockTracer
     {
-        public MevBundle(IReadOnlyList<Transaction> transactions, long blockNumber, UInt256? minTimestamp, UInt256? maxTimestamp)
-        {
-            Transactions = transactions;
-            BlockNumber = blockNumber;
-            MinTimestamp = minTimestamp ?? UInt256.Zero;
-            MaxTimestamp = maxTimestamp ?? UInt256.Zero;
-        }
-
-        public IReadOnlyList<Transaction> Transactions { get; }
-
-        public long BlockNumber { get; }
-        
-        public UInt256 MaxTimestamp { get; }
-        
-        public UInt256 MinTimestamp { get; }
+        private readonly Dictionary<Keccak, CallOutputTracer> _results = new Dictionary<Keccak, CallOutputTracer>();
+        public bool IsTracingRewards => false;
+        public void ReportReward(Address author, string rewardType, UInt256 rewardValue) { }
+        public void StartNewBlockTrace(Block block) { }
+        public ITxTracer StartNewTxTrace(Keccak txHash) => _results[txHash] = new CallOutputTracer();
+        public void EndTxTrace() { }
+        public IReadOnlyDictionary<Keccak, CallOutputTracer> BuildResults() => _results;
     }
 }

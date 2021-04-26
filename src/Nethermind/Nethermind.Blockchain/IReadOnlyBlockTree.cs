@@ -15,15 +15,9 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System.Collections.Generic;
-using Nethermind.Core;
-
-namespace Nethermind.Mev
+namespace Nethermind.Blockchain
 {
-    public interface IBundleSimulator
+    public interface IReadOnlyBlockTree : IBlockTree
     {
-        SimulatedMevBundle Simulate(BlockHeader parent, long gasLimit, MevBundle bundle);
-        
-        IEnumerable<SimulatedMevBundle> Simulate(BlockHeader parent, long gasLimit, IEnumerable<MevBundle> bundles);
     }
 }

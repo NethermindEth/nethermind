@@ -17,9 +17,13 @@
 
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Int256;
+using Nethermind.Mev.Data;
+using Nethermind.Mev.Execution;
 
-namespace Nethermind.Mev
+namespace Nethermind.Mev.Source
 {
     public class V1Selector : IBundleSource
     {
@@ -32,25 +36,21 @@ namespace Nethermind.Mev
             _bundleSimulator = bundleSimulator;
         }
         
-        public IEnumerable<MevBundle> GetBundles(BlockHeader parent, long gasLimit)
+        public async Task<IEnumerable<MevBundle>> GetBundles(BlockHeader parent, UInt256 timestamp, long gasLimit)
         {
-            MevBundle? bestBundle = null;
+            SimulatedMevBundle? bestBundle = null;
             long bestAdjustedGasPrice = 0;
-            foreach (var bundle in _bundleSource.GetBundles(parent, gasLimit))
+            IEnumerable<MevBundle> bundles = await _bundleSource.GetBundles(parent, timestamp, gasLimit);
+            IEnumerable<SimulatedMevBundle> simulatedBundles = await _bundleSimulator.Simulate(bundles, parent, gasLimit);
+            foreach (var simulatedBundle in simulatedBundles)
             {
-                SimulatedMevBundle simulatedMevBundle = _bundleSimulator.Simulate(parent, gasLimit, bundle);
-                if (simulatedMevBundle.AdjustedGasPrice > bestAdjustedGasPrice)
+                if (simulatedBundle.AdjustedGasPrice > bestAdjustedGasPrice)
                 {
-                    bestBundle = bundle;
+                    bestBundle = simulatedBundle;
                 }
             }
 
-            if (bestBundle is null)
-            {
-                return Enumerable.Empty<MevBundle>();
-            }
-
-            return Enumerable.Repeat(bestBundle, 1);
+            return bestBundle is null ? Enumerable.Empty<MevBundle>() : Enumerable.Repeat(bestBundle.Bundle, 1);
         }
     }
 }

@@ -16,12 +16,12 @@
 // 
 
 using System.Collections.Generic;
-using Nethermind.Core;
+using Nethermind.Core.Crypto;
 
-namespace Nethermind.Mev
+namespace Nethermind.Mev.Data
 {
-    public interface IBundleSource
+    public class TxsResults : Dictionary<Keccak, TxResult>
     {
-        IEnumerable<MevBundle> GetBundles(BlockHeader parent, long gasLimit);
+        public TxsResults(IDictionary<Keccak, TxResult> dictionary) : base(dictionary) { }
     }
 }

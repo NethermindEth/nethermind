@@ -15,10 +15,12 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-namespace Nethermind.Mev
+using Nethermind.Mev.Data;
+
+namespace Nethermind.Mev.Source
 {
-    public interface IBundleFilter
+    public interface ISimulatedBundleFilter
     {
-        bool Filter(MevBundle bundle);
+        bool Filter(SimulatedMevBundle bundle);
     }
 }

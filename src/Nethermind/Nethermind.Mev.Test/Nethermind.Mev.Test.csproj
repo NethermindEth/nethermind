@@ -22,6 +22,7 @@
       <ProjectReference Include="..\Nethermind.JsonRpc.Test\Nethermind.JsonRpc.Test.csproj" />
       <ProjectReference Include="..\Nethermind.Mev\Nethermind.Mev.csproj" />
       <ProjectReference Include="..\Nethermind.Monitoring.Test\Nethermind.Monitoring.Test.csproj" />
+      <ProjectReference Include="..\Nethermind.Runner.Test\Nethermind.Runner.Test.csproj" />
     </ItemGroup>
 
     <ItemGroup>

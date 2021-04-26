@@ -163,12 +163,6 @@ namespace Nethermind.Facade
             public AccessList? AccessList { get; set; }
         }
 
-        public CallOutput CallBundle(BlockHeader header, Transaction[] tx, CancellationToken cancellationToken)
-        {
-            throw new NotImplementedException();
-            // TransactionProcessor.CallAndRestoreMultiple();
-        }
-
         public CallOutput Call(BlockHeader header, Transaction tx, CancellationToken cancellationToken)
         {
             CallOutputTracer callOutputTracer = new();

@@ -23,6 +23,7 @@ using Nethermind.Blockchain.Processing;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Logging;

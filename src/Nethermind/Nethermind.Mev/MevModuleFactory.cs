@@ -15,8 +15,20 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using Nethermind.Blockchain;
+using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.Processing;
+using Nethermind.Blockchain.Receipts;
+using Nethermind.Blockchain.Rewards;
+using Nethermind.Blockchain.Tracing;
+using Nethermind.Blockchain.Validators;
+using Nethermind.Core.Specs;
+using Nethermind.Db;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
+using Nethermind.Logging;
+using Nethermind.Mev.Source;
+using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Mev
 {
@@ -24,18 +36,60 @@ namespace Nethermind.Mev
     {
         private readonly IMevConfig _mevConfig;
         private readonly IJsonRpcConfig _jsonRpcConfig;
-        private readonly MevPlugin _mevPlugin;
+        private readonly IBundlePool _bundlePool;
+        private readonly IReadOnlyBlockTree _blockTree;
+        private readonly IReadOnlyDbProvider _dbProvider;
+        private readonly IReadOnlyTrieStore _trieStore;
+        private readonly IBlockPreprocessorStep _recoveryStep;
+        private readonly ISpecProvider _specProvider;
+        private readonly ILogManager _logManager;
+        private readonly ulong _chainId;
 
-        public MevModuleFactory(IMevConfig mevConfig, IJsonRpcConfig jsonRpcConfig, MevPlugin mevPlugin)
+        public MevModuleFactory(
+            IMevConfig mevConfig, 
+            IJsonRpcConfig jsonRpcConfig,
+            IBundlePool bundlePool, 
+            IReadOnlyBlockTree blockTree, 
+            IReadOnlyDbProvider dbProvider,
+            IReadOnlyTrieStore trieStore,
+            IBlockPreprocessorStep recoveryStep,
+            ISpecProvider specProvider,
+            ILogManager logManager,
+            ulong chainId)
+
         {
             _mevConfig = mevConfig;
             _jsonRpcConfig = jsonRpcConfig;
-            _mevPlugin = mevPlugin;
+            _bundlePool = bundlePool;
+            _blockTree = blockTree;
+            _dbProvider = dbProvider;
+            _trieStore = trieStore;
+            _recoveryStep = recoveryStep;
+            _specProvider = specProvider;
+            _logManager = logManager;
+            _chainId = chainId;
         }
         
         public override IMevRpcModule Create()
         {
-            return new MevRpcModule(_mevConfig, _jsonRpcConfig, _mevPlugin);
+            ReadOnlyTxProcessingEnv txProcessingEnv = new(
+                _dbProvider, _trieStore, _blockTree, _specProvider, _logManager);
+            
+            ReadOnlyChainProcessingEnv chainProcessingEnv = new(
+                txProcessingEnv, Always.Valid, _recoveryStep, NoBlockRewards.Instance, new InMemoryReceiptStorage(), _dbProvider, _specProvider, _logManager);
+
+            Tracer tracer = new(
+                txProcessingEnv.StateProvider,
+                chainProcessingEnv.ChainProcessor);
+            
+            return new MevRpcModule(
+                _mevConfig,
+                _jsonRpcConfig, 
+                _bundlePool,
+                _blockTree,
+                txProcessingEnv.StateReader, 
+                tracer, 
+                _chainId);
         }
     }
 }

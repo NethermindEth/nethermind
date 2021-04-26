@@ -16,6 +16,7 @@
 // 
 
 using Nethermind.Core;
+using Nethermind.Mev.Data;
 
 namespace Nethermind.Mev.Test
 {

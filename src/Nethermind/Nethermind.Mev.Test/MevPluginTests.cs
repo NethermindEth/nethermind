@@ -25,6 +25,8 @@ using NUnit.Framework;
 using System.Collections.Generic;
 using Nethermind.Core;
 using FluentAssertions;
+using Nethermind.Core.Test.Builders;
+using Nethermind.Mev.Data;
 
 namespace Nethermind.Mev.Test
 {
@@ -47,77 +49,9 @@ namespace Nethermind.Mev.Test
         [Test]
         public void Can_initialize()
         {
-            INethermindApi api = Substitute.For<INethermindApi>();
-            api.Config<IMevConfig>().Returns(MevConfig.Default);
-            api.LogManager.Returns(LimboLogs.Instance);
-
             MevPlugin plugin = new();
-            plugin.Init(api);
-        }
-        
-        [Test]
-        public void Throws_if_not_initialized_before_rpc_registration()
-        {
-            MevPlugin plugin = new();
-            Assert.Throws<InvalidOperationException>(() => plugin.InitRpcModules());
-        }
-        
-        [Test]
-        public void Can_register_json_rpc()
-        {
-            INethermindApi api = Substitute.For<INethermindApi>();
-            api.ForRpc.Returns((api, api));
-            api.Config<IMevConfig>().Returns(MevConfig.Default);
-            api.Config<IJsonRpcConfig>().Returns(JsonRpcConfig.Default);
-            api.LogManager.Returns(LimboLogs.Instance);
-
-            MevPlugin plugin = new();
-            plugin.Init(api);
+            plugin.Init(Runner.Test.Ethereum.Build.ContextWithMocks());
             plugin.InitRpcModules();
         }
-
-        private record BundleTestData(ulong block, ulong testTimestamp, int expectedRes, int expectedRemaining, Action action);
-
-        [Test]
-        public void should_calculate_appropriate_number_of_bundles()
-        {
-            INethermindApi api = Substitute.For<INethermindApi>();
-            api.Config<IMevConfig>().Returns(MevConfig.Default);
-            api.LogManager.Returns(LimboLogs.Instance);
-
-            MevPlugin plugin = new();
-            plugin.Init(api);
-
-            plugin.AddMevBundle(new MevBundle(Array.Empty<Transaction>(), 4, 0, 0));
-            plugin.AddMevBundle(new MevBundle(Array.Empty<Transaction>(), 5, 0, 0));
-            plugin.AddMevBundle(new MevBundle(Array.Empty<Transaction>(), 6, 0, 0));
-            plugin.AddMevBundle(new MevBundle(Array.Empty<Transaction>(), 9, 0, 0));
-            plugin.AddMevBundle(new MevBundle(Array.Empty<Transaction>(), 9, 0, 0));
-            plugin.AddMevBundle(new MevBundle(Array.Empty<Transaction>(), 12, 0, 0));
-            plugin.AddMevBundle(new MevBundle(Array.Empty<Transaction>(), 15, 0, 0));
-
-            var testBundles = new BundleTestData[] 
-            {
-                new BundleTestData(8, 0, 0, 4, null),
-                new BundleTestData(9, 0, 2, 4, null),
-                new BundleTestData(10, 8, 0, 2, () => plugin.AddMevBundle(new MevBundle(Array.Empty<Transaction>(), 10, 5, 7))),
-                new BundleTestData(11, 0, 0, 2, null),
-                new BundleTestData(12, 0, 1, 2, null),
-                new BundleTestData(13, 0, 0, 1, null),
-                new BundleTestData(14, 0, 0, 1, null),
-                new BundleTestData(15, 0, 1, 1, null),
-                new BundleTestData(16, 0, 0, 0, null),
-            };
-
-            foreach(var testBundle in testBundles) 
-            {
-                if(testBundle.action != null) testBundle.action();
-                
-                var res = plugin.GetCurrentMevTxBundles(testBundle.block, testBundle.testTimestamp);
-                res.Count.Should().Be(testBundle.expectedRes);
-                plugin.MevBundles.Count.Should().Be(testBundle.expectedRemaining);
-            }
-        }
-
     }
 }

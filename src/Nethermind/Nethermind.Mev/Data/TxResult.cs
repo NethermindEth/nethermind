@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -13,15 +13,13 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using System.Collections.Generic;
-using Nethermind.Core;
-using Nethermind.Core.Collections;
-
-namespace Nethermind.Consensus.AuRa.Validators
+namespace Nethermind.Mev.Data
 {
-    public class ValidSealerStrategy : IValidSealerStrategy
+    public class TxResult
     {
-        public bool IsValidSealer(IList<Address> validators, Address address, long step) => validators.GetItemRoundRobin(step) == address;
+        public byte[]? Value { get; set; }
+        public byte[]? Error { get; set; }
     }
 }

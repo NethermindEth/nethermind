@@ -15,20 +15,32 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using NUnit.Framework;
-using Nethermind.Core;
-using System.Collections.Generic;
-using Nethermind.Mev.Data;
+using Nethermind.Int256;
 
-namespace Nethermind.Mev.Test
+namespace Nethermind.Mev.Data
 {
-    [TestFixture]
-    public class MevBundleForRpcTests
+    public class SimulatedMevBundle
     {
-        [Test]
-        public void Can_create()
+        public SimulatedMevBundle(MevBundle bundle, long gasUsed, UInt256 txFees, UInt256 coinbasePayments)
         {
-            _ = new MevBundle(new List<Transaction>(), 0, 0, 0);
+            Bundle = bundle;
+            GasUsed = gasUsed;
+            TxFees = txFees;
+            CoinbasePayments = coinbasePayments;
         }
+
+        public UInt256 CoinbasePayments { get; set; }
+        
+        public UInt256 TxFees { get; set; }
+
+        public UInt256 Profit => TxFees + CoinbasePayments;
+
+        public MevBundle Bundle { get; }
+        
+        public long GasUsed { get; set; }
+
+        public UInt256 AdjustedGasPrice => Profit / (UInt256)GasUsed;
+        
+        public UInt256 MevEquivalentGasPrice => CoinbasePayments / (UInt256)GasUsed;
     }
 }

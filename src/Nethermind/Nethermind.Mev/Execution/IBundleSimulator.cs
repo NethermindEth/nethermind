@@ -15,10 +15,28 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-namespace Nethermind.Mev
+using System.Collections.Generic;
+using System.Threading.Tasks;
+using Nethermind.Core;
+using Nethermind.Mev.Data;
+
+namespace Nethermind.Mev.Execution
 {
-    public interface ISimulatedBundleFilter
+    public interface IBundleSimulator
     {
-        bool Filter(SimulatedMevBundle bundle);
+        SimulatedMevBundle Simulate(MevBundle bundle, BlockHeader parent, long gasLimit);
+
+        // Todo add timeout
+        public async Task<IEnumerable<SimulatedMevBundle>> Simulate(IEnumerable<MevBundle> bundles, BlockHeader parent, long gasLimit)
+        {
+            List<Task<SimulatedMevBundle>> simulations = new();
+            foreach (MevBundle bundle in bundles)
+            {
+                simulations.Add(Task.Run(() => Simulate(bundle, parent, gasLimit)));
+            }
+
+            return await Task.WhenAll(simulations);
+        }
+        
     }
 }

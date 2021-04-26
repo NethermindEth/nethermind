@@ -17,79 +17,108 @@
 using System;
 using System.Numerics;
 using System.Linq;
-using System.Collections.Generic;
 using System.Text;
+using System.Threading;
 using Nethermind.Blockchain.Find;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Int256;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Facade;
 using Nethermind.Logging;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Tracing;
+using Nethermind.JsonRpc.Modules;
+using Nethermind.Mev.Data;
+using Nethermind.Mev.Execution;
+using Nethermind.Mev.Source;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
+using Nethermind.Trie;
 using Newtonsoft.Json;
 
 namespace Nethermind.Mev
 {
-    public partial class MevRpcModule : IMevRpcModule
+    public class MevRpcModule : IMevRpcModule
     {
-        // from constructor arguments
         private readonly IMevConfig _mevConfig;
         private readonly IJsonRpcConfig _jsonRpcConfig;
-        private readonly MevPlugin _mevPlugin;
-
-        // from mevplugin nethermind api
-        private readonly ILogger _logger;
-        private readonly IBlockTree _blockTree;
-        private readonly IBlockchainBridge _blockchainBridge; 
+        private readonly IBundlePool _bundlePool;
+        private readonly IBlockFinder _blockFinder;
         private readonly IStateReader _stateReader;
+        private readonly ITracer _tracer;
+        private readonly ulong _chainId;
 
-        public MevRpcModule(IMevConfig mevConfig, IJsonRpcConfig jsonRpcConfig, MevPlugin mevPlugin)
+        public MevRpcModule(
+            IMevConfig mevConfig, 
+            IJsonRpcConfig jsonRpcConfig, 
+            IBundlePool bundlePool, 
+            IBlockFinder blockFinder, 
+            IStateReader stateReader,
+            ITracer tracer,
+            ulong chainId)
         {
             _mevConfig = mevConfig;
             _jsonRpcConfig = jsonRpcConfig;
-            _mevPlugin = mevPlugin;
-
-            _logger = mevPlugin.NethermindApi.LogManager.GetClassLogger();
-            _blockTree = mevPlugin.NethermindApi.BlockTree ?? throw new NullReferenceException("BlockTree");
-            _blockchainBridge = mevPlugin.NethermindApi.CreateBlockchainBridge();
-            _stateReader = mevPlugin.NethermindApi.StateReader ?? throw new NullReferenceException("StateReader");
+            _bundlePool = bundlePool;
+            _blockFinder = blockFinder;
+            _stateReader = stateReader;
+            _tracer = tracer;
+            _chainId = chainId;
         }
 
         public ResultWrapper<bool> eth_sendBundle(byte[][] transactions, long blockNumber, UInt256? minTimestamp = null, UInt256? maxTimestamp = null)
         {
             Transaction[] txs = Decode(transactions);
             MevBundle bundle = new(txs, blockNumber, minTimestamp, maxTimestamp);
-            _mevPlugin.AddMevBundle(bundle); // abstract
+            _bundlePool.AddBundle(bundle);
             return ResultWrapper<bool>.Success(true);
         }
 
-        public ResultWrapper<TxsToResults> eth_callBundle(byte[][] transactions, BlockParameter? blockParameter = null, UInt256? timestamp = null)
+        public ResultWrapper<TxsResults> eth_callBundle(byte[][] transactions, BlockParameter? blockParameter = null, UInt256? timestamp = null)
         {
             Transaction[] txs = Decode(transactions);
-            return new CallBundleTxExecutor(_blockchainBridge, _blockTree, _jsonRpcConfig, _logger, _mevPlugin.NethermindApi.MainBlockProcessor! /*NOOO!*/)
-                .ExecuteBundleTx(txs, blockParameter, timestamp);
+            return CallBundle(txs, blockParameter, timestamp);
         }
 
-        public ResultWrapper<FeeToFrequency> neth_feeDistribution()
+        private ResultWrapper<TxsResults> CallBundle(Transaction[] txs, BlockParameter? blockParameter, UInt256? timestamp)
         {
-            // decentralize mev_relay first?
-            // integration with ndm
-            // eth_subscribe
-            throw new NotImplementedException();
-        }
+            blockParameter ??= BlockParameter.Latest;
+            if (txs.Length == 0)
+                return ResultWrapper<TxsResults>.Fail("no tx specified in bundle");
+
+            SearchResult<BlockHeader> searchResult = _blockFinder.SearchForHeader(blockParameter);
+            if (searchResult.IsError)
+            {
+                return ResultWrapper<TxsResults>.Fail(searchResult);
+            }
+
+            BlockHeader header = searchResult.Object!;
+            if (!HasStateForBlock(header!))
+            {
+                return ResultWrapper<TxsResults>.Fail($"No state available for block {header.Hash}", ErrorCodes.ResourceUnavailable);
+            }
+
+            using CancellationTokenSource cancellationTokenSource = new(_jsonRpcConfig.Timeout);
+
+            TxsResults results = new CallTxBundleExecutor(_tracer).ExecuteBundle(
+                new MevBundle(txs, header.Number, timestamp, timestamp),
+                header,
+                cancellationTokenSource.Token,
+                timestamp);
             
-        public ResultWrapper<TxsToResults> eth_callBundleJSon(TransactionForRpc[] transactions, BlockParameter? blockParameter = null, UInt256? timestamp = null) 
+            return ResultWrapper<TxsResults>.Success(results);
+        }
+
+        public ResultWrapper<TxsResults> eth_callBundleJSon(TransactionForRpc[] transactions, BlockParameter? blockParameter = null, UInt256? timestamp = null) 
         {
-            // WRONG
-            if (_mevPlugin.NethermindApi.MainBlockProcessor == null)
-                return ResultWrapper<TxsToResults>.Fail("No block processor for eth_callBundle");
-                
-            return new CallBundleTxExecutor(_blockchainBridge, _blockTree, _jsonRpcConfig, _logger, _mevPlugin.NethermindApi.MainBlockProcessor! /*NOOO!*/)
-                .ExecuteBundleTx(transactions, blockParameter, timestamp);
+            Transaction[] txs = transactions.Select(txForRpc =>
+            {
+                FixCallTx(txForRpc);
+                return txForRpc.ToTransaction(_chainId);
+            }).ToArray();
+            
+            return CallBundle(txs, blockParameter, timestamp);
         }
         
         private static Transaction[] Decode(byte[][] transactions)
@@ -102,40 +131,35 @@ namespace Nethermind.Mev
 
             return txs;
         }
-    }
-
-    public class TxsToResults
-    {
-        public (Keccak, byte[])[] Pairs { get; }
-        public TxsToResults((Keccak, byte[])[] pairs)
+        
+        private bool HasStateForBlock(BlockHeader header)
         {
-            Pairs = pairs;
+            RootCheckVisitor rootCheckVisitor = new();
+            if (header.StateRoot == null) return false;
+            _stateReader.RunTreeVisitor(rootCheckVisitor, header.StateRoot!);
+            return rootCheckVisitor.HasRoot;
+        }
+        
+        private void FixCallTx(TransactionForRpc transactionCall)
+        {
+            transactionCall.Gas = transactionCall.Gas == null || transactionCall.Gas == 0 
+                ? _jsonRpcConfig.GasCap ?? long.MaxValue 
+                : Math.Min(_jsonRpcConfig.GasCap ?? long.MaxValue, transactionCall.Gas.Value);
+
+            transactionCall.From ??= Address.SystemUser;
+        }
+        
+        public ResultWrapper<FeeToFrequency> neth_feeDistribution()
+        {
+            // decentralize mev_relay first?
+            // integration with ndm
+            // eth_subscribe
+            throw new NotImplementedException();
         }
     }
-
-    // public class TxToResultConverter : JsonConverter<TxsToResults>
-    // {
-    //     public override void WriteJson(JsonWriter writer, TxsToResults value, JsonSerializer serializer)
-    //     {
-    //         writer.WriteStartObject();
-
-    //         foreach(var (txHash, output) in value.Pairs)
-    //         {
-    //             writer.WriteProperty($"{txHash.ToString()}", output, serializer);    
-    //         }
-                        
-    //         writer.WriteEndObject();
-    //     }
-
-    //     public override TxsToResults ReadJson(JsonReader reader, Type objectType, TxsToResults existingValue, bool hasExistingValue, JsonSerializer serializer)
-    //     {
-    //         throw new NotSupportedException();
-    //     }
-    // }
 
     public class FeeToFrequency
     {
 
     }
-
 }

@@ -18,10 +18,14 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
+using Nethermind.Mev.Data;
+using Nethermind.Mev.Execution;
+using Nethermind.Mev.Source;
 using NUnit.Framework;
 
 namespace Nethermind.Mev.Test
@@ -36,7 +40,7 @@ namespace Nethermind.Mev.Test
             _testJson = testJson;
         }
 
-        public SimulatedMevBundle Simulate(BlockHeader parent, long gasLimit, MevBundle bundle)
+        public SimulatedMevBundle Simulate(MevBundle bundle, BlockHeader parent, long gasLimit)
         {
             long gasUsed = 0;
             UInt256 txFees = 0;
@@ -54,24 +58,12 @@ namespace Nethermind.Mev.Test
                 }
             }
 
-            SimulatedMevBundle simulatedMevBundle = new(gasUsed, txFees, coinbasePayments);
+            SimulatedMevBundle simulatedMevBundle = new(bundle, gasUsed, txFees, coinbasePayments);
             return simulatedMevBundle;
         }
 
-        public IEnumerable<SimulatedMevBundle> Simulate(BlockHeader parent, long gasLimit,
-            IEnumerable<MevBundle> bundles)
-        {
-            foreach (MevBundle mevBundle in bundles)
-            {
-                // TODO: apply all the interactions
-                yield return Simulate(parent, gasLimit, mevBundle);
-            }
-        }
-
-        public IEnumerable<MevBundle> GetBundles(BlockHeader parent, long gasLimit)
-        {
-            return _testJson.Bundles!.Select(ToBundle);
-        }
+        public Task<IEnumerable<MevBundle>> GetBundles(BlockHeader parent, UInt256 timestamp, long gasLimit) => 
+            Task.FromResult(_testJson.Bundles!.Select(ToBundle));
 
         public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit)
         {
