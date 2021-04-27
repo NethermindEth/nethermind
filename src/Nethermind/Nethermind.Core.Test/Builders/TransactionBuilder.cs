@@ -141,7 +141,7 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
         
-        private EthereumEcdsa _ecdsa = new EthereumEcdsa(ChainId.Mainnet, LimboLogs.Instance);
+         EthereumEcdsa _ecdsa = new EthereumEcdsa(ChainId.Mainnet, LimboLogs.Instance);
         
         public TransactionBuilder<T> SignedAndResolved(PrivateKey privateKey)
         {
