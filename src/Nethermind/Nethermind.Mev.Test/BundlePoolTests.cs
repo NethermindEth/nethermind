@@ -19,10 +19,14 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using Avro.File;
 using FluentAssertions;
+using Nethermind.Blockchain;
 using Nethermind.Core;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Mev.Data;
 using Nethermind.Mev.Source;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Mev.Test
@@ -52,7 +56,33 @@ namespace Nethermind.Mev.Test
         [TestCaseSource(nameof(BundleRetrievalTest))]
         public void should_retrieve_right_bundles_from_pool(BundleTest test)
         {
-            BundlePool bundlePool = new();
+            BundlePool bundlePool = CreateBundlePool();
+            if(test.action != null) test.action(bundlePool);
+            List<MevBundle> result = bundlePool.GetBundles(test.block, test.testTimestamp).ToList();
+            result.Count.Should().Be(test.expectedCount);
+        }
+        
+        [TestCaseSource(nameof(BundleRetrievalTest))]
+        public void should_retire_bundles_from_pool_after_finalization(BundleTest test)
+        {
+            IBlockFinalizationManager blockFinalizationManager = Substitute.For<IBlockFinalizationManager>();
+            BundlePool bundlePool = CreateBundlePool(blockFinalizationManager);
+            
+            FinalizeEventArgs finalizeEventArgs = new(
+                Build.A.BlockHeader.WithNumber(20).TestObject,
+                Build.A.BlockHeader.WithNumber(7).TestObject,
+                Build.A.BlockHeader.WithNumber(10).TestObject
+            );
+            
+            blockFinalizationManager.BlocksFinalized += Raise.EventWith(finalizeEventArgs);
+            if(test.action != null) test.action(bundlePool);
+            List<MevBundle> result = bundlePool.GetBundles(test.block, test.testTimestamp).ToList();
+            result.Count.Should().Be(test.block <= 10 ? 0 : test.expectedCount);
+        }
+
+        private static BundlePool CreateBundlePool(IBlockFinalizationManager? blockFinalizationManager = null)
+        {
+            BundlePool bundlePool = new(blockFinalizationManager ?? Substitute.For<IBlockFinalizationManager>());
 
             bundlePool.AddBundle(new MevBundle(Array.Empty<Transaction>(), 4, 0, 0));
             bundlePool.AddBundle(new MevBundle(Array.Empty<Transaction>(), 5, 0, 0));
@@ -63,10 +93,9 @@ namespace Nethermind.Mev.Test
             bundlePool.AddBundle(new MevBundle(Array.Empty<Transaction>(), 12, 0, 0));
             bundlePool.AddBundle(new MevBundle(Array.Empty<Transaction>(), 15, 0, 0));
             
-            if(test.action != null) test.action(bundlePool);
-            List<MevBundle> result = bundlePool.GetBundles(test.block, test.testTimestamp).ToList();
-            result.Count.Should().Be(test.expectedCount);
+            return bundlePool;
         }
+
         public record BundleTest(long block, ulong testTimestamp, int expectedCount, int expectedRemaining, Action<BundlePool>? action);
     }
 }

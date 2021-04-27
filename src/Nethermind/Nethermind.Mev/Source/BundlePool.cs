@@ -15,8 +15,11 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
+using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Int256;
@@ -24,10 +27,20 @@ using Nethermind.Mev.Data;
 
 namespace Nethermind.Mev.Source
 {
-    public class BundlePool : IBundlePool
+    public class BundlePool : IBundlePool, IDisposable
     {
+        private readonly IBlockFinalizationManager? _finalizationManager;
         private readonly SortedRealList<MevBundle, MevBundle> _bundles = new(MevBundleComparer.Default);
-        
+
+        public BundlePool(IBlockFinalizationManager? finalizationManager)
+        {
+            _finalizationManager = finalizationManager;
+            if (_finalizationManager != null)
+            {
+                _finalizationManager.BlocksFinalized += OnBlocksFinalized;
+            }
+        }
+
         public Task<IEnumerable<MevBundle>> GetBundles(BlockHeader parent, UInt256 timestamp, long gasLimit) => 
             Task.FromResult(GetBundles(parent.Number + 1, timestamp));
 
@@ -88,6 +101,26 @@ namespace Nethermind.Mev.Source
             
                 // max timestamp decreasing
                 return y.MaxTimestamp.CompareTo(x.MaxTimestamp);
+            }
+        }
+
+        private void OnBlocksFinalized(object? sender, FinalizeEventArgs e)
+        {
+            long maxFinalizedBlockNumber = e.FinalizedBlocks.Select(b => b.Number).Max();
+            lock (_bundles)
+            {
+                while (_bundles.Keys[0].BlockNumber <= maxFinalizedBlockNumber)
+                {
+                    _bundles.RemoveAt(0);
+                }
+            }
+        }
+        
+        public void Dispose()
+        {
+            if (_finalizationManager != null)
+            {
+                _finalizationManager.BlocksFinalized -= OnBlocksFinalized;
             }
         }
     }

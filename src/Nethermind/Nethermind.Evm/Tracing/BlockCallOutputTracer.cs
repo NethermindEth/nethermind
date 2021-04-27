@@ -25,7 +25,7 @@ namespace Nethermind.Evm.Tracing
 {
     public class BlockCallOutputTracer : IBlockTracer
     {
-        private readonly Dictionary<Keccak, CallOutputTracer> _results = new Dictionary<Keccak, CallOutputTracer>();
+        private readonly Dictionary<Keccak, CallOutputTracer> _results = new();
         public bool IsTracingRewards => false;
         public void ReportReward(Address author, string rewardType, UInt256 rewardValue) { }
         public void StartNewBlockTrace(Block block) { }
