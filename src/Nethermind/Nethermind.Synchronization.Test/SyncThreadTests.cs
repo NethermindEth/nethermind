@@ -306,7 +306,6 @@ namespace Nethermind.Synchronization.Test
                 txProcessor,
                 stateProvider,
                 storageProvider,
-                txPool,
                 receiptStorage,
                 NullWitnessCollector.Instance,
                 logManager);
@@ -331,7 +330,6 @@ namespace Nethermind.Synchronization.Test
                 devTxProcessor,
                 devState,
                 devStorage,
-                txPool,
                 receiptStorage,
                 NullWitnessCollector.Instance,
                 logManager);

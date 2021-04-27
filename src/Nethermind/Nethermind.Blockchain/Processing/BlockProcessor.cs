@@ -31,14 +31,12 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
-using Nethermind.TxPool;
 
 namespace Nethermind.Blockchain.Processing
 {
     public class BlockProcessor : IBlockProcessor
     {
         private readonly ILogger _logger;
-        private readonly ITxPool _txPool;
         private readonly ISpecProvider _specProvider;
         private readonly IStateProvider _stateProvider;
         private readonly IReceiptStorage _receiptStorage;
@@ -63,7 +61,6 @@ namespace Nethermind.Blockchain.Processing
             ITransactionProcessor? transactionProcessor,
             IStateProvider? stateProvider,
             IStorageProvider? storageProvider,
-            ITxPool? txPool,
             IReceiptStorage? receiptStorage,
             IWitnessCollector? witnessCollector,
             ILogManager? logManager)
@@ -73,7 +70,6 @@ namespace Nethermind.Blockchain.Processing
             _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
             _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
             _storageProvider = storageProvider ?? throw new ArgumentNullException(nameof(storageProvider));
-            _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
             _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
             _witnessCollector = witnessCollector ?? throw new ArgumentNullException(nameof(witnessCollector));
             _rewardCalculator = rewardCalculator ?? throw new ArgumentNullException(nameof(rewardCalculator));

@@ -103,7 +103,6 @@ namespace Nethermind.Merge.Plugin.Test
                     TxProcessor,
                     State,
                     Storage,
-                    TxPool,
                     ReceiptStorage,
                     NullWitnessCollector.Instance,
                     LogManager);

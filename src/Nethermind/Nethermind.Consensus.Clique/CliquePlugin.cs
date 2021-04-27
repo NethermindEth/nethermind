@@ -31,7 +31,6 @@ using Nethermind.Db;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.State;
 using Nethermind.Trie.Pruning;
-using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.Clique
 {
@@ -116,8 +115,7 @@ namespace Nethermind.Consensus.Clique
                 NoBlockRewards.Instance,
                 producerEnv.TransactionProcessor,
                 producerEnv.StateProvider,
-                producerEnv.StorageProvider,
-                NullTxPool.Instance, // do not remove transactions from the pool when preprocessing
+                producerEnv.StorageProvider, // do not remove transactions from the pool when preprocessing
                 NullReceiptStorage.Instance,
                 NullWitnessCollector.Instance,
                 getFromApi.LogManager);

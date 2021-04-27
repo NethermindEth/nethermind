@@ -97,7 +97,6 @@ namespace Nethermind.Merge.Plugin.Handlers
                     specProvider, 
                     blockValidator, 
                     rewardCalculatorSource, 
-                    txPool, 
                     receiptStorage, 
                     logManager);
 
@@ -139,7 +138,6 @@ namespace Nethermind.Merge.Plugin.Handlers
             ISpecProvider specProvider, 
             IBlockValidator blockValidator, 
             IRewardCalculatorSource rewardCalculatorSource, 
-            ITxPool txPool, 
             IReceiptStorage receiptStorage, 
             ILogManager logManager) =>
             new(
@@ -149,7 +147,6 @@ namespace Nethermind.Merge.Plugin.Handlers
                 readOnlyTxProcessingEnv.TransactionProcessor,
                 readOnlyTxProcessingEnv.StateProvider,
                 readOnlyTxProcessingEnv.StorageProvider,
-                txPool,
                 receiptStorage,
                 NullWitnessCollector.Instance,
                 logManager);

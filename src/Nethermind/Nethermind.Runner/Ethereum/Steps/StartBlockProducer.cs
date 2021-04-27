@@ -146,7 +146,6 @@ namespace Nethermind.Runner.Ethereum.Steps
                 readOnlyTxProcessingEnv.TransactionProcessor,
                 readOnlyTxProcessingEnv.StateProvider,
                 readOnlyTxProcessingEnv.StorageProvider,
-                _api.TxPool,
                 _api.ReceiptStorage,
                 NullWitnessCollector.Instance,
                 _api.LogManager);

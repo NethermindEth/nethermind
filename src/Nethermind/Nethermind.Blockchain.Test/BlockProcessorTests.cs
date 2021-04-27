@@ -31,7 +31,6 @@ using Nethermind.Logging;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
 using Nethermind.Trie.Pruning;
-using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
 using System.Security;
@@ -60,7 +59,6 @@ namespace Nethermind.Blockchain.Test
                 transactionProcessor,
                 stateProvider,
                 new StorageProvider(trieStore, stateProvider, LimboLogs.Instance),
-                NullTxPool.Instance,
                 NullReceiptStorage.Instance,
                 NullWitnessCollector.Instance,
                 LimboLogs.Instance);
@@ -93,7 +91,6 @@ namespace Nethermind.Blockchain.Test
                 transactionProcessor,
                 stateProvider,
                 new StorageProvider(trieStore, stateProvider, LimboLogs.Instance),
-                NullTxPool.Instance,
                 NullReceiptStorage.Instance,
                 witnessCollector,
                 LimboLogs.Instance);
@@ -124,7 +121,6 @@ namespace Nethermind.Blockchain.Test
                 transactionProcessor,
                 stateProvider,
                 new StorageProvider(trieStore, stateProvider, LimboLogs.Instance),
-                NullTxPool.Instance,
                 NullReceiptStorage.Instance,
                 NullWitnessCollector.Instance,
                 LimboLogs.Instance);

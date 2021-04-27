@@ -106,7 +106,6 @@ namespace Nethermind.JsonRpc.Test.Modules
                 txProcessor,
                 _stateProvider,
                 storageProvider,
-                txPool,
                 receiptStorage,
                 NullWitnessCollector.Instance, 
                 LimboLogs.Instance);

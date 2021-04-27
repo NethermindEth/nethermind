@@ -145,7 +145,6 @@ namespace Nethermind.Clique.Test
                     transactionProcessor,
                     stateProvider,
                     storageProvider,
-                    txPool,
                     NullReceiptStorage.Instance,
                     NullWitnessCollector.Instance,
                     nodeLogManager);
@@ -167,7 +166,6 @@ namespace Nethermind.Clique.Test
                     minerTransactionProcessor,
                     minerStateProvider,
                     minerStorageProvider,
-                    txPool,
                     NullReceiptStorage.Instance,
                     NullWitnessCollector.Instance,
                     nodeLogManager);

@@ -227,7 +227,6 @@ namespace Nethermind.Core.Test.Blockchain
                 TxProcessor,
                 State,
                 Storage,
-                TxPool,
                 ReceiptStorage,
                 NullWitnessCollector.Instance, 
                 LogManager);

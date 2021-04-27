@@ -29,7 +29,6 @@ using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State;
-using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.Ethash
 {
@@ -83,7 +82,6 @@ namespace Nethermind.Consensus.Ethash
                 producerEnv.TransactionProcessor,
                 producerEnv.StateProvider,
                 producerEnv.StorageProvider,
-                NullTxPool.Instance,
                 NullReceiptStorage.Instance,
                 NullWitnessCollector.Instance,
                 getFromApi.LogManager);
