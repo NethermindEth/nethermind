@@ -54,7 +54,7 @@ namespace Nethermind.Consensus.Ethash
 
         public Task InitBlockProducer()
         {
-            if (_nethermindApi!.SealEngineType != SealEngineType.NethDev)
+            if (_nethermindApi!.SealEngineType != Nethermind.Core.SealEngineType.NethDev)
             {
                 return Task.CompletedTask;
             }
@@ -128,7 +128,7 @@ namespace Nethermind.Consensus.Ethash
             return Task.CompletedTask;
         }
 
-        public SealEngineType SealEngineType => SealEngineType.NethDev;
+        public string SealEngineType => Nethermind.Core.SealEngineType.NethDev;
 
         public Task InitNetworkProtocol()
         {

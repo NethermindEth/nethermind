@@ -15,10 +15,14 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using Nethermind.Config;
+
 namespace Nethermind.Merge.Plugin
 {
     public class MergeConfig : IMergeConfig
     {
         public bool Enabled { get; set; }
+
+        public string BlockAuthorAccount { get; set; } = string.Empty;
     }
 }

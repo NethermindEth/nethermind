@@ -175,7 +175,7 @@ namespace Nethermind.Synchronization.Reporting
                 }
             }
 
-            if (currentSyncMode == SyncMode.Disconnected)
+            if (currentSyncMode == SyncMode.Disconnected && _syncConfig.SynchronizationEnabled)
             {
                 WriteNotStartedReport();
             }

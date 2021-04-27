@@ -48,7 +48,7 @@ namespace Nethermind.Consensus.Clique
         public Task Init(INethermindApi nethermindApi)
         {
             _nethermindApi = nethermindApi;
-            if (_nethermindApi!.SealEngineType != SealEngineType.Clique)
+            if (_nethermindApi!.SealEngineType != Nethermind.Core.SealEngineType.Clique)
             {
                 return Task.CompletedTask;
             }
@@ -83,7 +83,7 @@ namespace Nethermind.Consensus.Clique
 
         public Task InitBlockProducer()
         {
-            if (_nethermindApi!.SealEngineType != SealEngineType.Clique)
+            if (_nethermindApi!.SealEngineType != Nethermind.Core.SealEngineType.Clique)
             {
                 return Task.CompletedTask;
             }
@@ -177,7 +177,7 @@ namespace Nethermind.Consensus.Clique
 
         public Task InitRpcModules()
         {
-            if (_nethermindApi!.SealEngineType != SealEngineType.Clique)
+            if (_nethermindApi!.SealEngineType != Nethermind.Core.SealEngineType.Clique)
             {
                 return Task.CompletedTask;
             }
@@ -194,7 +194,7 @@ namespace Nethermind.Consensus.Clique
             return Task.CompletedTask;
         }
 
-        public SealEngineType SealEngineType => SealEngineType.Clique;
+        public string SealEngineType => Nethermind.Core.SealEngineType.Clique;
 
         public ValueTask DisposeAsync() { return ValueTask.CompletedTask; }
 

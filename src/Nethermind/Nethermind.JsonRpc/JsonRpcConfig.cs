@@ -27,8 +27,10 @@ namespace Nethermind.JsonRpc
         public bool Enabled { get; set; }
         public string Host { get; set; } = "127.0.0.1";
         public int Timeout { get; set; } = 20000;
-        public string RpcRecorderBaseFilePath { get; set; } = "logs/rpc.{counter}.txt"; 
-        public bool RpcRecorderEnabled { get; set; }
+        public string RpcRecorderBaseFilePath { get; set; } = "logs/rpc.{counter}.txt";
+        
+        public RpcRecorderState RpcRecorderState { get; set; } = RpcRecorderState.None;
+
         public int Port { get; set; } = 8545;
  
         public int WebSocketsPort

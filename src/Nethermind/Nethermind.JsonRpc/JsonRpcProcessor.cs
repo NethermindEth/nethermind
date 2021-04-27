@@ -50,7 +50,7 @@ namespace Nethermind.JsonRpc
             _jsonRpcService = jsonRpcService ?? throw new ArgumentNullException(nameof(jsonRpcService));
             _jsonSerializer = jsonSerializer ?? throw new ArgumentNullException(nameof(jsonSerializer));
 
-            if (_jsonRpcConfig.RpcRecorderEnabled)
+            if (_jsonRpcConfig.RpcRecorderState != RpcRecorderState.None)
             {
                 if (_logger.IsWarn) _logger.Warn("Enabling JSON RPC diagnostics recorder - this will affect performance and should be only used in a diagnostics mode.");
                 string recorderBaseFilePath = _jsonRpcConfig.RpcRecorderBaseFilePath.GetApplicationResourcePath();
@@ -127,11 +127,7 @@ namespace Nethermind.JsonRpc
 
         public async Task<JsonRpcResult> ProcessAsync(string request, JsonRpcContext context)
         {
-            if (_jsonRpcConfig.RpcRecorderEnabled)
-            {
-                _recorder.RecordRequest(request);
-            }
-
+            RecordRequest(request);
             Stopwatch stopwatch = Stopwatch.StartNew();
             (JsonRpcRequest Model, List<JsonRpcRequest> Collection) rpcRequest;
             try
@@ -145,7 +141,7 @@ namespace Nethermind.JsonRpc
                 JsonRpcResponse response = _jsonRpcService.GetErrorResponse(ErrorCodes.ParseError, "Incorrect message");
                 TraceResult(response);
                 stopwatch.Stop();
-                return JsonRpcResult.Single(response, new RpcReport("# parsing error #", stopwatch.ElapsedMicroseconds(), false));
+                return RecordResponse(JsonRpcResult.Single(response, new RpcReport("# parsing error #", stopwatch.ElapsedMicroseconds(), false)));
             }
 
             if (rpcRequest.Model != null)
@@ -170,7 +166,7 @@ namespace Nethermind.JsonRpc
                 TraceResult(response);
                 stopwatch.Stop();
                 if (_logger.IsDebug) _logger.Debug($"  {rpcRequest.Model} handled in {stopwatch.Elapsed.TotalMilliseconds}ms");
-                return JsonRpcResult.Single(response, new RpcReport(rpcRequest.Model.Method, stopwatch.ElapsedMicroseconds(), isSuccess));
+                return RecordResponse(JsonRpcResult.Single(response, new RpcReport(rpcRequest.Model.Method, stopwatch.ElapsedMicroseconds(), isSuccess)));
             }
 
             if (rpcRequest.Collection != null)
@@ -210,7 +206,7 @@ namespace Nethermind.JsonRpc
                 TraceResult(responses);
                 stopwatch.Stop();
                 if (_logger.IsDebug) _logger.Debug($"  {rpcRequest.Collection.Count} requests handled in {stopwatch.Elapsed.TotalMilliseconds}ms");
-                return JsonRpcResult.Collection(responses, reports);
+                return RecordResponse(JsonRpcResult.Collection(responses, reports));
             }
 
             Metrics.JsonRpcInvalidRequests++;
@@ -218,7 +214,25 @@ namespace Nethermind.JsonRpc
             TraceResult(errorResponse);
             stopwatch.Stop();
             if (_logger.IsDebug) _logger.Debug($"  Failed request handled in {stopwatch.Elapsed.TotalMilliseconds}ms");
-            return JsonRpcResult.Single(errorResponse, new RpcReport("# parsing error #", stopwatch.ElapsedMicroseconds(), false));
+            return RecordResponse(JsonRpcResult.Single(errorResponse, new RpcReport("# parsing error #", stopwatch.ElapsedMicroseconds(), false)));
+        }
+
+        private JsonRpcResult RecordResponse(JsonRpcResult result)
+        {
+            if ((_jsonRpcConfig.RpcRecorderState & RpcRecorderState.Response) != 0)
+            {
+                _recorder.RecordResponse(_jsonSerializer.Serialize(result));
+            }
+            
+            return result;
+        }
+
+        private void RecordRequest(string request)
+        {
+            if ((_jsonRpcConfig.RpcRecorderState & RpcRecorderState.Request) != 0)
+            {
+                _recorder.RecordRequest(request);
+            }
         }
 
         private void TraceResult(JsonRpcResponse response)
