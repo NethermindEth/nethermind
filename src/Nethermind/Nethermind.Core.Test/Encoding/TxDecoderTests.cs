@@ -160,6 +160,20 @@ namespace Nethermind.Core.Test.Encoding
             Assert.AreEqual(rlpResult.Bytes, rlpStreamResult.Bytes);
         }
         
+        
+        [Test]
+        [Ignore("posdao")]
+        public void Message_hash_is_the_same_like_in_posdao_tests()
+        {
+            var rlp = "0xb9017502f901716580843b9aca008442413031830aae6094110000000000000000000000000000000000000100b90104e4a9e42e00000000000000000000000000000000000000000000043c33c1937564800000000000000000000000000000f67cc5231c5858ad6cc87b105217426e17b824bb000000000000000000000000000000000000000000000000000000000000008000000000000000000000000000000000000000000000000000000000000000c00000000000000000000000000000000000000000000000000000000000000006506f6f6c203400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000012506f6f6c2034206465736372697074696f6e0000000000000000000000000000c001a049c616981bab18236d08d83912d43310cdae60d683295c8b31a2748fb98ab4bfa06e1503c98ec33a4f0a035a483b40bdf572b8201677e59c2ca3cb097022874d69";
+            RlpStream incomingTxRlp = Bytes.FromHexString(rlp).AsRlpStream();
+            Transaction decoded = _txDecoder.Decode(incomingTxRlp);
+            EthereumEcdsa ethereumEcdsa = new EthereumEcdsa(decoded!.ChainId.Value, LimboLogs.Instance);
+            var result = Keccak.Compute(Rlp.Encode(decoded, true, true, decoded!.ChainId.Value).Bytes);
+            Address address = ethereumEcdsa.RecoverAddress(decoded);
+            Assert.AreEqual("0x7516e5df9df066aca0d720f94726096bf80056d5256a238f3b0782cd24338c80", result);
+        }
+        
         public static IEnumerable<(string, Keccak)> YoloV3TestCases()
         {
             yield return
