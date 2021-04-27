@@ -28,54 +28,32 @@ namespace Nethermind.Mev.Execution
 {
     public class CallTxBundleExecutor : TxBundleExecutor<TxsResults, BlockCallOutputTracer>
     {
-
-        // protected override ResultWrapper<TxsToResults> ExecuteBundle(Transaction[] transactionCalls, BlockParameter? blockParameter, UInt256? blockTimestamp, CancellationToken token)
-        // {
-        //
-        //     Stopwatch stopwatch = new Stopwatch();
-        //     stopwatch.Start();
-        //
-        //     List<Block> suggestedBlocks = new List<Block> {new Block(headerNew, transactionCalls, new BlockHeader[0])};
-        //     ParityLikeBlockTracer tracer = new(ParityTraceTypes.Trace);
-        //     _blockProcessor.Process(stateRoot, suggestedBlocks, ProcessingOptions.Trace, tracer.WithCancellation(token));
-        //     IReadOnlyCollection<ParityLikeTxTrace> results = tracer.BuildResult();
-        //     // results.SelectMany(ParityTxTraceFromStore.FromTxTrace).ToArray();
-        //     List<(Keccak, byte[])> pairs = new();
-        //     foreach(var result in results)
-        //     {
-        //         pairs.Add((result.TransactionHash ?? Keccak.Zero, result.Output ?? new byte[0]));
-        //     }
-        //
-        //     stopwatch.Stop();
-        //     if (_logger.IsDebug) _logger.Debug($"Simulating eth_callBundle finished with runtime {stopwatch.Elapsed}");
-        //
-        //     return ResultWrapper<TxsToResults>.Success(new TxsToResults(pairs.ToArray()));
-        // }
         
-        public CallTxBundleExecutor(ITracer tracer) : base(tracer)
+        public CallTxBundleExecutor(ITracerFactory tracer) : base(tracer)
         {
         }
 
-        protected override TxsResults BuildResult(MevBundle bundle, Block block, BlockCallOutputTracer blockTracer, Keccak resultStateRoot)
+        protected override TxsResults BuildResult(MevBundle bundle, Block block, BlockCallOutputTracer tracer, Keccak resultStateRoot)
         {
             TxResult ToTxResult(CallOutputTracer callOutputTracer)
             {
-                TxResult result = new TxResult();
+                TxResult result = new();
                 if (callOutputTracer.StatusCode == StatusCode.Success)
                 {
                     result.Value = callOutputTracer.ReturnValue;
                 }
                 else
                 {
-                    // Is this right?
-                    result.Error = Encoding.UTF8.GetBytes(callOutputTracer.Error);
+                    result.Error = callOutputTracer.ReturnValue;
                 }
                 return result;
             }
 
-            return new TxsResults(blockTracer.BuildResults().ToDictionary(
+            return new TxsResults(tracer.BuildResults().ToDictionary(
                 kvp => kvp.Key,
                 kvp => ToTxResult(kvp.Value)));
         }
+
+        protected override BlockCallOutputTracer CreateBlockTracer() => new();
     }
 }

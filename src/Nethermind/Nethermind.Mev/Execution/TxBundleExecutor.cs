@@ -29,31 +29,32 @@ using Nethermind.Mev.Data;
 
 namespace Nethermind.Mev.Execution
 {
-    public abstract class TxBundleExecutor<TResult, TBlockTracer> where TBlockTracer : IBlockTracer, new()
+    public abstract class TxBundleExecutor<TResult, TBlockTracer> where TBlockTracer : IBlockTracer
     {
-        private readonly ITracer _tracer;
+        private readonly ITracerFactory _tracerFactory;
 
-        protected TxBundleExecutor(ITracer tracer)
+        protected TxBundleExecutor(ITracerFactory tracerFactory)
         {
-            _tracer = tracer;
+            _tracerFactory = tracerFactory;
         }
             
         public TResult ExecuteBundle(MevBundle bundle, BlockHeader parent, CancellationToken cancellationToken, UInt256? timestamp = null)
         {
             Block block = BuildBlock(bundle, parent, timestamp);
             TBlockTracer blockTracer = CreateBlockTracer();
-            Keccak resultStateRoot = _tracer.Trace(block, blockTracer.WithCancellation(cancellationToken));
+            ITracer tracer = _tracerFactory.Create();
+            Keccak resultStateRoot = tracer.Trace(block, blockTracer.WithCancellation(cancellationToken));
             return BuildResult(bundle, block, blockTracer, resultStateRoot);
         }
 
-        protected abstract TResult BuildResult(MevBundle bundle, Block block, TBlockTracer blockTracer, Keccak resultStateRoot);
+        protected abstract TResult BuildResult(MevBundle bundle, Block block, TBlockTracer tracer, Keccak resultStateRoot);
 
         private Block BuildBlock(MevBundle bundle, BlockHeader parent, UInt256? timestamp)
         {
             BlockHeader header = new(
                 parent.Hash ?? Keccak.OfAnEmptySequenceRlp, 
                 Keccak.OfAnEmptySequenceRlp, 
-                Address.Zero, 
+                Beneficiary, 
                 parent.Difficulty,  
                 parent.Number + 1, 
                 parent.GasLimit, 
@@ -63,7 +64,9 @@ namespace Nethermind.Mev.Execution
             return new Block(header, bundle.Transactions, Array.Empty<BlockHeader>());
         }
 
-        private TBlockTracer CreateBlockTracer() => new();
+        protected virtual Address Beneficiary => Address.Zero;
+
+        protected abstract TBlockTracer CreateBlockTracer();
 
         protected ResultWrapper<TResult> GetInputError(BlockchainBridge.CallOutput result) => 
             ResultWrapper<TResult>.Fail(result.Error ?? "", ErrorCodes.InvalidInput);

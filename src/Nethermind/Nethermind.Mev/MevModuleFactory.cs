@@ -27,7 +27,9 @@ using Nethermind.Db;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
+using Nethermind.Mev.Execution;
 using Nethermind.Mev.Source;
+using Nethermind.State;
 using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Mev
@@ -37,10 +39,11 @@ namespace Nethermind.Mev
         private readonly IMevConfig _mevConfig;
         private readonly IJsonRpcConfig _jsonRpcConfig;
         private readonly IBundlePool _bundlePool;
-        private readonly IReadOnlyBlockTree _blockTree;
-        private readonly IReadOnlyDbProvider _dbProvider;
+        private readonly IBlockTree _blockTree;
+        private readonly IDbProvider _dbProvider;
         private readonly IReadOnlyTrieStore _trieStore;
         private readonly IBlockPreprocessorStep _recoveryStep;
+        private readonly IStateReader _stateReader;
         private readonly ISpecProvider _specProvider;
         private readonly ILogManager _logManager;
         private readonly ulong _chainId;
@@ -49,10 +52,11 @@ namespace Nethermind.Mev
             IMevConfig mevConfig, 
             IJsonRpcConfig jsonRpcConfig,
             IBundlePool bundlePool, 
-            IReadOnlyBlockTree blockTree, 
-            IReadOnlyDbProvider dbProvider,
+            IBlockTree blockTree, 
+            IDbProvider dbProvider,
             IReadOnlyTrieStore trieStore,
             IBlockPreprocessorStep recoveryStep,
+            IStateReader stateReader,
             ISpecProvider specProvider,
             ILogManager logManager,
             ulong chainId)
@@ -65,6 +69,7 @@ namespace Nethermind.Mev
             _dbProvider = dbProvider;
             _trieStore = trieStore;
             _recoveryStep = recoveryStep;
+            _stateReader = stateReader;
             _specProvider = specProvider;
             _logManager = logManager;
             _chainId = chainId;
@@ -72,23 +77,15 @@ namespace Nethermind.Mev
         
         public override IMevRpcModule Create()
         {
-            ReadOnlyTxProcessingEnv txProcessingEnv = new(
-                _dbProvider, _trieStore, _blockTree, _specProvider, _logManager);
-            
-            ReadOnlyChainProcessingEnv chainProcessingEnv = new(
-                txProcessingEnv, Always.Valid, _recoveryStep, NoBlockRewards.Instance, new InMemoryReceiptStorage(), _dbProvider, _specProvider, _logManager);
-
-            Tracer tracer = new(
-                txProcessingEnv.StateProvider,
-                chainProcessingEnv.ChainProcessor);
+            TracerFactory tracerFactory = new(_dbProvider, _blockTree, _trieStore, _recoveryStep, _specProvider, _logManager);
             
             return new MevRpcModule(
                 _mevConfig,
                 _jsonRpcConfig, 
                 _bundlePool,
                 _blockTree,
-                txProcessingEnv.StateReader, 
-                tracer, 
+                _stateReader, 
+                tracerFactory, 
                 _chainId);
         }
     }

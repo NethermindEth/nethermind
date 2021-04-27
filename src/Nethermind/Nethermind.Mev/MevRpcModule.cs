@@ -46,7 +46,7 @@ namespace Nethermind.Mev
         private readonly IBundlePool _bundlePool;
         private readonly IBlockFinder _blockFinder;
         private readonly IStateReader _stateReader;
-        private readonly ITracer _tracer;
+        private readonly ITracerFactory _tracerFactory;
         private readonly ulong _chainId;
 
         public MevRpcModule(
@@ -55,7 +55,7 @@ namespace Nethermind.Mev
             IBundlePool bundlePool, 
             IBlockFinder blockFinder, 
             IStateReader stateReader,
-            ITracer tracer,
+            ITracerFactory tracerFactory,
             ulong chainId)
         {
             _mevConfig = mevConfig;
@@ -63,7 +63,7 @@ namespace Nethermind.Mev
             _bundlePool = bundlePool;
             _blockFinder = blockFinder;
             _stateReader = stateReader;
-            _tracer = tracer;
+            _tracerFactory = tracerFactory;
             _chainId = chainId;
         }
 
@@ -101,7 +101,7 @@ namespace Nethermind.Mev
 
             using CancellationTokenSource cancellationTokenSource = new(_jsonRpcConfig.Timeout);
 
-            TxsResults results = new CallTxBundleExecutor(_tracer).ExecuteBundle(
+            TxsResults results = new CallTxBundleExecutor(_tracerFactory).ExecuteBundle(
                 new MevBundle(txs, header.Number, timestamp, timestamp),
                 header,
                 cancellationTokenSource.Token,

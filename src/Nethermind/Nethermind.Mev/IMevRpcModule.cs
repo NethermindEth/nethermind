@@ -31,10 +31,10 @@ namespace Nethermind.Mev
         [JsonRpcMethod(Description = "Adds bundle to the tx pool.", IsImplemented = true)]
         ResultWrapper<bool> eth_sendBundle(byte[][] transactions, long blockNumber, UInt256? minTimestamp = null, UInt256? maxTimestamp = null);
         
-        [JsonRpcMethod(Description = "Simulates the bundle behaviour.", IsImplemented = true, IsSharable = false)]
+        [JsonRpcMethod(Description = "Simulates the bundle behaviour.", IsImplemented = true)]
         ResultWrapper<TxsResults> eth_callBundle(byte[][] transactions, BlockParameter? blockParameter = null, UInt256? timestamp = null);
         
-        [JsonRpcMethod(Description = "Simulates the bundle behaviour.", IsImplemented = true, IsSharable = false)]
+        [JsonRpcMethod(Description = "Simulates the bundle behaviour.", IsImplemented = true)]
         ResultWrapper<TxsResults> eth_callBundleJSon(TransactionForRpc[] transactions, BlockParameter? blockParameter = null, UInt256? timestamp = null);
     }
 }

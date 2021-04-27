@@ -55,7 +55,7 @@ namespace Nethermind.Mev
             _logger = _nethermindApi.LogManager.GetClassLogger();
             if (_mevConfig.Enabled)
             {
-                _bundlePool = new BundlePool();
+                _bundlePool = new BundlePool(_nethermindApi.FinalizationManager);
             }
 
             return Task.CompletedTask;
@@ -77,10 +77,11 @@ namespace Nethermind.Mev
                     _mevConfig!, 
                     rpcConfig, 
                     _bundlePool!, 
-                    getFromApi.BlockTree!.AsReadOnly(),
-                    getFromApi.DbProvider!.AsReadOnly(false), 
+                    getFromApi.BlockTree!,
+                    getFromApi.DbProvider!, 
                     getFromApi.ReadOnlyTrieStore!,
                     getFromApi.BlockPreprocessor!,
+                    getFromApi.StateReader!,
                     getFromApi.SpecProvider!, 
                     getFromApi.LogManager!,
                     getFromApi.ChainSpec!.ChainId);
