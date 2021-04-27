@@ -103,5 +103,18 @@ namespace Nethermind.Core
         {
             return tx is SystemTransaction || tx.SenderAddress == Address.SystemUser;
         }
+
+        public static bool TryCalculatePremiumPerGas(this Transaction tx, UInt256 blockBaseFee, out UInt256 premiumPerGas)
+        {
+            UInt256 feeCap = tx.IsEip1559 ? tx.FeeCap : tx.GasPrice;
+            if (blockBaseFee > feeCap)
+            {
+                premiumPerGas = UInt256.Zero; 
+                return false;
+            }
+            
+            premiumPerGas = UInt256.Min(tx.GasPremium, feeCap - blockBaseFee);
+            return true;
+        }
     }
 }
