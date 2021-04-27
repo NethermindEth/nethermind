@@ -17,6 +17,7 @@
 
 using System.Threading.Tasks;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Transactions;
 using Nethermind.Evm;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Handlers;
@@ -29,7 +30,7 @@ namespace Nethermind.Merge.Plugin
         private IMiningConfig _miningConfig = null!;
         private Eth2BlockProducer _blockProducer = null!;
 
-        public Task InitBlockProducer()
+        public Task<IBlockProducer> InitBlockProducer(ITxSource? txSource = null)
         {
             if (_mergeConfig.Enabled)
             {
@@ -50,7 +51,7 @@ namespace Nethermind.Merge.Plugin
                 ILogger logger = _api.LogManager.GetClassLogger();
                 if (logger.IsWarn) logger.Warn("Starting ETH2 block producer & sealer");
 
-                _api.BlockProducer = _blockProducer = new Eth2BlockProducerFactory().Create(
+                _api.BlockProducer = _blockProducer = new Eth2BlockProducerFactory(txSource).Create(
                     _api.BlockTree,
                     _api.DbProvider,
                     _api.ReadOnlyTrieStore,
@@ -67,8 +68,8 @@ namespace Nethermind.Merge.Plugin
                     _api.LogManager
                 );
             }
-            
-            return Task.CompletedTask;
+
+            return Task.FromResult((IBlockProducer)_blockProducer);
         }
     }
 }

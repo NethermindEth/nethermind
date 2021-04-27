@@ -78,11 +78,11 @@ namespace Nethermind.Consensus.Clique
             return Task.CompletedTask;
         }
 
-        public Task InitBlockProducer()
+        public Task<IBlockProducer> InitBlockProducer(ITxSource? txSource = null)
         {
             if (_nethermindApi!.SealEngineType != Nethermind.Core.SealEngineType.Clique)
             {
-                return Task.CompletedTask;
+                return Task.FromResult((IBlockProducer)null);
             }
 
             var (getFromApi, setInApi) = _nethermindApi!.ForProducer;
@@ -132,14 +132,14 @@ namespace Nethermind.Consensus.Clique
                 producerChainProcessor);
 
             ITxFilter txFilter = new MinGasPriceTxFilter(_miningConfig!.MinGasPrice);
-            ITxSource txSource = new TxPoolTxSource(
+            txSource ??= new TxPoolTxSource(
                 getFromApi.TxPool,
                 getFromApi.StateReader,
                 getFromApi.LogManager,
                 txFilter);
 
-            var gasLimitCalculator = new TargetAdjustedGasLimitCalculator(getFromApi.SpecProvider, _miningConfig);
-            setInApi.BlockProducer = new CliqueBlockProducer(
+            TargetAdjustedGasLimitCalculator gasLimitCalculator = new(getFromApi.SpecProvider, _miningConfig);
+            IBlockProducer blockProducer = setInApi.BlockProducer = new CliqueBlockProducer(
                 txSource,
                 chainProcessor,
                 producerEnv.StateProvider,
@@ -153,7 +153,7 @@ namespace Nethermind.Consensus.Clique
                 _cliqueConfig!,
                 getFromApi.LogManager);
 
-            return Task.CompletedTask;
+            return Task.FromResult(blockProducer);
         }
 
         public Task InitNetworkProtocol()

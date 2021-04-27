@@ -35,6 +35,13 @@ namespace Nethermind.Merge.Plugin.Handlers
 {
     public class Eth2BlockProducerFactory
     {
+        private readonly ITxSource? _txSource;
+
+        public Eth2BlockProducerFactory(ITxSource? txSource = null)
+        {
+            _txSource = txSource;
+        }
+
         public virtual Eth2BlockProducer Create(IBlockTree blockTree,
             IDbProvider dbProvider, 
             IReadOnlyTrieStore readOnlyTrieStore,
@@ -116,7 +123,7 @@ namespace Nethermind.Merge.Plugin.Handlers
             {
                 ChainProcessor = chainProcessor,
                 ReadOnlyStateProvider = txProcessingEnv.StateProvider,
-                TxSource = CreateTxSourceForProducer(txProcessingEnv, txPool, logManager, miningConfig),
+                TxSource = _txSource ?? CreateTxSourceForProducer(txProcessingEnv, txPool, logManager, miningConfig),
                 ReadOnlyTxProcessingEnv = txProcessingEnv
             };
         }
