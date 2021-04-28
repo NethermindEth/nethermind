@@ -34,7 +34,7 @@ namespace Nethermind.Dsl
         private IBlockProcessor? _blockProcessor;
         private IPipelineBuilder<Block, Block>? _blockProcessorPipelineBuilder;
         private bool blockSource;
-        private ILogger? _logger; 
+        private ILogger? _logger;
 
         public async Task Init(INethermindApi nethermindApi)
         {
@@ -43,9 +43,9 @@ namespace Nethermind.Dsl
             _blockProcessor = _api.MainBlockProcessor;
 
             _logger = _api.LogManager.GetClassLogger();
-            if(_logger.IsInfo) _logger.Info("Initializing DSL plugin ...");            
+            if (_logger.IsInfo) _logger.Info("Initializing DSL plugin ...");
 
-            var dslScript = await LoadDSLScript(); 
+            var dslScript = await LoadDSLScript();
 
             var inputStream = new AntlrInputStream(dslScript);
             var lexer = new DslGrammarLexer(inputStream);
@@ -61,7 +61,7 @@ namespace Nethermind.Dsl
             _listener.OnExitInit = BuildPipeline;
             ParseTreeWalker.Default.Walk(_listener, tree);
 
-            if(_logger.IsInfo) _logger.Info("DSL plugin initialized.");
+            if (_logger.IsInfo) _logger.Info("DSL plugin initialized.");
         }
 
         public Task InitNetworkProtocol()
@@ -100,7 +100,7 @@ namespace Nethermind.Dsl
             {
                 case AntlrTokenType.SOURCE:
                     break;
-                case AntlrTokenType.WHERE: 
+                case AntlrTokenType.WHERE:
                     break;
                 case AntlrTokenType.WATCH:
                     SetWatchOnPipeline(tokenValue);
@@ -116,10 +116,10 @@ namespace Nethermind.Dsl
         {
             if (blockSource)
             {
-                switch (key)
+                switch (symbol)
                 {
                     case "==":
-                        _blockProcessorPipelineBuilder.AddElement(
+                        _blockProcessorPipelineBuilder =_blockProcessorPipelineBuilder.AddElement(
                             new PipelineElement<Block, Block>(
                                 condition: (b => b.GetType().GetProperty(key).GetValue(b).ToString() == value),
                                 transformData: (b => b)
@@ -127,7 +127,7 @@ namespace Nethermind.Dsl
                         );
                         return;
                     case "!=":
-                        _blockProcessorPipelineBuilder.AddElement(
+                        _blockProcessorPipelineBuilder =_blockProcessorPipelineBuilder.AddElement(
                             new PipelineElement<Block, Block>(
                                 condition: (b => b.GetType().GetProperty(key).GetValue(b).ToString() != value),
                                 transformData: (b => b)
@@ -135,7 +135,7 @@ namespace Nethermind.Dsl
                         );
                         return;
                     case ">":
-                        _blockProcessorPipelineBuilder.AddElement(
+                        _blockProcessorPipelineBuilder =_blockProcessorPipelineBuilder.AddElement(
                             new PipelineElement<Block, Block>(
                                 condition: (b => (UInt256)b.GetType().GetProperty(key).GetValue(b) > UInt256.Parse(value)),
                                 transformData: (b => b)
@@ -143,7 +143,7 @@ namespace Nethermind.Dsl
                         );
                         return;
                     case "<":
-                        _blockProcessorPipelineBuilder.AddElement(
+                        _blockProcessorPipelineBuilder =_blockProcessorPipelineBuilder.AddElement(
                             new PipelineElement<Block, Block>(
                                 condition: (b => (UInt256)b.GetType().GetProperty(key).GetValue(b) < UInt256.Parse(value)),
                                 transformData: (b => b)
@@ -151,7 +151,7 @@ namespace Nethermind.Dsl
                         );
                         return;
                     case ">=":
-                        _blockProcessorPipelineBuilder.AddElement(
+                        _blockProcessorPipelineBuilder =_blockProcessorPipelineBuilder.AddElement(
                             new PipelineElement<Block, Block>(
                                 condition: (b => (UInt256)b.GetType().GetProperty(key).GetValue(b) >= UInt256.Parse(value)),
                                 transformData: (b => b)
@@ -159,7 +159,7 @@ namespace Nethermind.Dsl
                         );
                         return;
                     case "<=":
-                        _blockProcessorPipelineBuilder.AddElement(
+                        _blockProcessorPipelineBuilder =_blockProcessorPipelineBuilder.AddElement(
                             new PipelineElement<Block, Block>(
                                 condition: (b => (UInt256)b.GetType().GetProperty(key).GetValue(b) <= UInt256.Parse(value)),
                                 transformData: (b => b)
@@ -170,67 +170,72 @@ namespace Nethermind.Dsl
             }
         }
 
-            private void SetWatchOnPipeline(string value)
+        private void SetWatchOnPipeline(string value)
+        {
+            value = value.ToLowerInvariant();
+            switch (value)
             {
-                value = value.ToLowerInvariant();
-                switch (value)
-                {
-                    case "blocks":
-                        _blockProcessorPipelineBuilder.AddElement(new PipelineElement<Block, Block>((block => true), (b => b)));
-                        blockSource = true;
-                        break;
-                    case "transactions":
-                        _blockProcessorPipelineBuilder.AddElement(new PipelineElement<Block, Transaction[]>(
-                            (b => true),
-                            (block => block.Transactions)
-                        ));
-                        blockSource = false;
-                        break;
-                }
-            }
-
-            private void AddPublisher(string publisherType)
-            {
-                if (publisherType.Equals("WebSockets", StringComparison.InvariantCultureIgnoreCase))
-                {
-                    if (_blockProcessorPipelineBuilder != null)
-                    {
-                        _blockProcessorPipelineBuilder.AddElement(new WebSocketsPublisher<Block, Block>("dsl", _api.EthereumJsonSerializer));
-                    }
-                }
-
-                if (publisherType.Equals("LogPublisher", StringComparison.InvariantCultureIgnoreCase))
-                {
-                    if (_blockProcessorPipelineBuilder != null)
-                    {
-                        _blockProcessorPipelineBuilder.AddElement(new LogPublisher<Block, Block>(_api.EthereumJsonSerializer, _api.LogManager));
-                    }
-                }
-            }
-
-            private void BuildPipeline()
-            {
-                Pipeline = _blockProcessorPipelineBuilder.Build();
-            }
-
-            private async Task<string> LoadDSLScript()
-            {
-                if(FileSystem == null)
-                {
-                    FileSystem = new FileSystem();
-                }
-
-                var dirPath = FileSystem.Path.Combine(PathUtils.ExecutingDirectory, "DSL");
-                if(_logger.IsInfo) _logger.Info($"Loading dsl script from {dirPath}");
-
-                if(FileSystem.Directory.Exists(dirPath))
-                {
-                    var file = FileSystem.Directory.GetFiles("DSL", "*.txt").First(); 
-
-                    return await FileSystem.File.ReadAllTextAsync(file);
-                }
-
-                throw new FileLoadException($"Could not find DSL directory at {dirPath} or the directory is empty");
+                case "blocks":
+                    _blockProcessorPipelineBuilder = _blockProcessorPipelineBuilder.AddElement(
+                        new PipelineElement<Block, Block>(
+                            condition: (block => true),
+                            transformData: (b => b)
+                            )
+                    );
+                    blockSource = true;
+                    break;
+                case "transactions":
+                    _blockProcessorPipelineBuilder.AddElement(new PipelineElement<Block, Transaction[]>(
+                        (b => true),
+                        (block => block.Transactions)
+                    ));
+                    blockSource = false;
+                    break;
             }
         }
+
+        private void AddPublisher(string publisherType)
+        {
+            if (publisherType.Equals("WebSockets", StringComparison.InvariantCultureIgnoreCase))
+            {
+                if (_blockProcessorPipelineBuilder != null)
+                {
+                    _blockProcessorPipelineBuilder =_blockProcessorPipelineBuilder.AddElement(new WebSocketsPublisher<Block, Block>("dsl", _api.EthereumJsonSerializer));
+                }
+            }
+
+            if (publisherType.Equals("LogPublisher", StringComparison.InvariantCultureIgnoreCase))
+            {
+                if (_blockProcessorPipelineBuilder != null)
+                {
+                   _blockProcessorPipelineBuilder = _blockProcessorPipelineBuilder.AddElement(new LogPublisher<Block, Block>(_api.EthereumJsonSerializer, _api.LogManager));
+                }
+            }
+        }
+
+        private void BuildPipeline()
+        {
+            Pipeline = _blockProcessorPipelineBuilder.Build();
+        }
+
+        private async Task<string> LoadDSLScript()
+        {
+            if (FileSystem == null)
+            {
+                FileSystem = new FileSystem();
+            }
+
+            var dirPath = FileSystem.Path.Combine(PathUtils.ExecutingDirectory, "DSL");
+            if (_logger.IsInfo) _logger.Info($"Loading dsl script from {dirPath}");
+
+            if (FileSystem.Directory.Exists(dirPath))
+            {
+                var file = FileSystem.Directory.GetFiles("DSL", "*.txt").First();
+
+                return await FileSystem.File.ReadAllTextAsync(file);
+            }
+
+            throw new FileLoadException($"Could not find DSL directory at {dirPath} or the directory is empty");
+        }
     }
+}
