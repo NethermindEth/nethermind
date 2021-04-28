@@ -38,11 +38,6 @@ namespace Nethermind.Dsl
 
         public async Task Init(INethermindApi nethermindApi)
         {
-            if(FileSystem == null)
-            {
-                FileSystem = new FileSystem();
-            }
-
             _api = nethermindApi;
             _txPool = _api.TxPool;
             _blockProcessor = _api.MainBlockProcessor;
@@ -220,14 +215,19 @@ namespace Nethermind.Dsl
 
             private async Task<string> LoadDSLScript()
             {
-                var dirPath = Path.Combine(PathUtils.ExecutingDirectory, "DSL");
+                if(FileSystem == null)
+                {
+                    FileSystem = new FileSystem();
+                }
+
+                var dirPath = FileSystem.Path.Combine(PathUtils.ExecutingDirectory, "DSL");
                 if(_logger.IsInfo) _logger.Info($"Loading dsl script from {dirPath}");
 
-                if(Directory.Exists(dirPath))
+                if(FileSystem.Directory.Exists(dirPath))
                 {
-                    var file = Directory.GetFiles("DSL", "*.txt").First(); 
+                    var file = FileSystem.Directory.GetFiles("DSL", "*.txt").First(); 
 
-                    return await File.ReadAllTextAsync(file);
+                    return await FileSystem.File.ReadAllTextAsync(file);
                 }
 
                 throw new FileLoadException($"Could not find DSL directory at {dirPath} or the directory is empty");
