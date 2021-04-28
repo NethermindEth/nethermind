@@ -68,7 +68,7 @@ namespace Nethermind.Blockchain
                 {
                     discoveredForHashCache++;
                 }
-                if (!_txPool.RemoveTransaction(txHash, true))
+                if (!_txPool.RemoveTransaction(block.Transactions[i], true))
                 {
                     discoveredForPendingTxs++;
                 }
