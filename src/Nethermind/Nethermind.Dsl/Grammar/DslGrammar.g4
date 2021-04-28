@@ -4,7 +4,7 @@ init: (expression | condition)* ;
 expression : OPERATOR WORD ;
 condition : WHERE WORD ARITHMETIC_SYMBOL (DIGIT | WORD | ADDRESS); 
 
-OPERATOR : SOURCE | WATCH | WHERE | PUBLISH ;
+OPERATOR : SOURCE | WATCH | PUBLISH ;
 ARITHMETIC_SYMBOL : '==' | '!=' | '<' | '>' | '<=' | '>=' ;
 
 SOURCE : 'SOURCE' ;
