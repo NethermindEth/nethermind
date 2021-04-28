@@ -19,6 +19,8 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
+using System.Threading.Tasks;
+using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm;
@@ -30,32 +32,26 @@ namespace Nethermind.Mev.Execution
 {
     public class TxBundleSimulator : TxBundleExecutor<SimulatedMevBundle, TxBundleSimulator.BundleBlockTracer>, IBundleSimulator
     {
+        private readonly IGasLimitCalculator _gasLimitCalculator;
         private readonly ITimestamper _timestamper;
-        private readonly CancellationToken _cancellationToken;
-        private CancellationTokenSource _cancellationTokenSource = null!;
         private long _gasLimit;
 
-        public TxBundleSimulator(ITracerFactory tracerFactory, ITimestamper timestamper, CancellationToken cancellationToken) : base(tracerFactory)
+        public TxBundleSimulator(ITracerFactory tracerFactory, IGasLimitCalculator gasLimitCalculator, ITimestamper timestamper) : base(tracerFactory)
         {
+            _gasLimitCalculator = gasLimitCalculator;
             _timestamper = timestamper;
-            _cancellationToken = cancellationToken;
         }
 
-        public SimulatedMevBundle Simulate(MevBundle bundle, BlockHeader parent, long gasLimit)
+        public Task<SimulatedMevBundle> Simulate(MevBundle bundle, BlockHeader parent, CancellationToken cancellationToken = default)
         {
-            _gasLimit = gasLimit;
-            _cancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(_cancellationToken);
+            _gasLimit = _gasLimitCalculator.GetGasLimit(parent);
             try
             {
-                return ExecuteBundle(bundle, parent, _cancellationTokenSource.Token, _timestamper.UnixTime.Seconds);
+                return Task.FromResult(ExecuteBundle(bundle, parent, cancellationToken, _timestamper.UnixTime.Seconds));
             }
             catch (OperationCanceledException)
             {
-                return new SimulatedMevBundle(bundle, 0, UInt256.Zero, UInt256.Zero);
-            }
-            finally
-            {
-                _cancellationTokenSource.Dispose();
+                return Task.FromResult(new SimulatedMevBundle(bundle, 0, UInt256.Zero, UInt256.Zero));
             }
         }
 

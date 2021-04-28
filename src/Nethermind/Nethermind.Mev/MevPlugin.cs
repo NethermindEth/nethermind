@@ -30,6 +30,7 @@ using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
+using Nethermind.Mev.Execution;
 using Nethermind.Mev.Source;
 using Nethermind.TxPool;
 
@@ -40,8 +41,7 @@ namespace Nethermind.Mev
         private IMevConfig? _mevConfig;
         private ILogger? _logger;
         private INethermindApi _nethermindApi = null!;
-        private IBundlePool? _bundlePool;
-
+        
         public string Name => "MEV";
 
         public string Description => "Flashbots MEV spec implementation";
@@ -53,10 +53,6 @@ namespace Nethermind.Mev
             _nethermindApi = nethermindApi ?? throw new ArgumentNullException(nameof(nethermindApi));
             _mevConfig = _nethermindApi.Config<IMevConfig>();
             _logger = _nethermindApi.LogManager.GetClassLogger();
-            if (_mevConfig.Enabled)
-            {
-                _bundlePool = new BundlePool(_nethermindApi.FinalizationManager);
-            }
 
             return Task.CompletedTask;
         }
@@ -73,17 +69,20 @@ namespace Nethermind.Mev
                 (IApiWithNetwork getFromApi, _) = _nethermindApi!.ForRpc;
                 IJsonRpcConfig rpcConfig = getFromApi.Config<IJsonRpcConfig>();
                 
+                TracerFactory tracerFactory = new(getFromApi.DbProvider!, 
+                    getFromApi.BlockTree!, getFromApi.ReadOnlyTrieStore!, getFromApi.BlockPreprocessor!, getFromApi.SpecProvider!, getFromApi.LogManager!);
+
+                TxBundleSimulator txBundleSimulator = new(tracerFactory, getFromApi.GasLimitCalculator, getFromApi.Timestamper);
+                
+                BundlePool bundlePool = new(getFromApi.BlockTree!, txBundleSimulator, getFromApi.FinalizationManager);
+                
                 MevModuleFactory mevModuleFactory = new(
                     _mevConfig!, 
                     rpcConfig, 
-                    _bundlePool!, 
+                    bundlePool!, 
                     getFromApi.BlockTree!,
-                    getFromApi.DbProvider!, 
-                    getFromApi.ReadOnlyTrieStore!,
-                    getFromApi.BlockPreprocessor!,
                     getFromApi.StateReader!,
-                    getFromApi.SpecProvider!, 
-                    getFromApi.LogManager!,
+                    tracerFactory,
                     getFromApi.ChainSpec!.ChainId);
                 
                 getFromApi.RpcModuleProvider!.RegisterBoundedByCpuCount(mevModuleFactory, rpcConfig.Timeout);

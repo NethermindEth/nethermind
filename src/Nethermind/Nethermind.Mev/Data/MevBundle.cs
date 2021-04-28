@@ -73,8 +73,8 @@ namespace Nethermind.Mev.Data
             return hashCode.ToHashCode();
         }
 
-        public static MevBundle Empty(long blockNumber, UInt256 timestamp) =>
-            new(Array.Empty<Transaction>(), blockNumber, timestamp, timestamp);
+        public static MevBundle Empty(long blockNumber, UInt256 minTimestamp, UInt256 maxTimestamp) =>
+            new(Array.Empty<Transaction>(), blockNumber, minTimestamp, maxTimestamp);
 
         public override string ToString() => $"Block:{BlockNumber}; Min:{MinTimestamp}; Max:{MaxTimestamp}; TxCount:{Transactions.Count};";
     }

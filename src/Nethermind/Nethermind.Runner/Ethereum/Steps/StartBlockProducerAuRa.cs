@@ -72,6 +72,9 @@ namespace Nethermind.Runner.Ethereum.Steps
 
             IAuRaStepCalculator stepCalculator = new AuRaStepCalculator(_api.ChainSpec.AuRa.StepDuration, _api.Timestamper, _api.LogManager);
             BlockProducerContext producerContext = GetProducerChain();
+
+            IGasLimitCalculator gasLimitCalculator = _api.GasLimitCalculator = CreateGasLimitCalculator(producerContext.ReadOnlyTxProcessingEnv);
+            
             _api.BlockProducer = new AuRaBlockProducer(
                 producerContext.TxSource,
                 producerContext.ChainProcessor,
@@ -83,7 +86,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 stepCalculator,
                 _api.ReportingValidator,
                 _auraConfig,
-                CreateGasLimitCalculator(producerContext.ReadOnlyTxProcessingEnv),
+                gasLimitCalculator,
                 _api.SpecProvider,
                 _api.LogManager);
         }
@@ -283,8 +286,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 new TargetAdjustedGasLimitCalculator(_api.SpecProvider, NethermindApi.Config<IMiningConfig>());
             if (blockGasLimitContractTransitions?.Any() == true)
             {
-                AuRaContractGasLimitOverride auRaContractGasLimitOverride =
-                    new AuRaContractGasLimitOverride(
+                AuRaContractGasLimitOverride auRaContractGasLimitOverride = new(
                         blockGasLimitContractTransitions.Select(blockGasLimitContractTransition =>
                                 new BlockGasLimitContract(
                                     _api.AbiEncoder,

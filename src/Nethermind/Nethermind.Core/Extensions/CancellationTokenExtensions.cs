@@ -13,19 +13,20 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using System;
+using System.Threading;
+using System.Threading.Tasks;
 
-namespace Nethermind.Blockchain
+namespace Nethermind.Core.Extensions
 {
-    public interface IBlockFinalizationManager : IDisposable
+    public static class CancellationTokenExtensions
     {
-        /// <summary>
-        /// Last level that was finalize while processing blocks. This level will not be reorganised.
-        /// </summary>
-        long LastFinalizedBlockLevel { get; }
-        event EventHandler<FinalizeEventArgs> BlocksFinalized;
-
-        public bool IsFinalized(long level) => LastFinalizedBlockLevel >= level;
+        public static Task AsTask(this System.Threading.CancellationToken token)
+        {
+            TaskCompletionSource taskCompletionSource = new();
+            token.Register(() => taskCompletionSource.TrySetCanceled(), false);
+            return taskCompletionSource.Task;
+        }
     }
 }

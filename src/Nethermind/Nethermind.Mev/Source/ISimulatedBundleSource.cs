@@ -13,19 +13,19 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using System;
+using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
+using Nethermind.Core;
+using Nethermind.Int256;
+using Nethermind.Mev.Data;
 
-namespace Nethermind.Blockchain
+namespace Nethermind.Mev.Source
 {
-    public interface IBlockFinalizationManager : IDisposable
+    public interface ISimulatedBundleSource
     {
-        /// <summary>
-        /// Last level that was finalize while processing blocks. This level will not be reorganised.
-        /// </summary>
-        long LastFinalizedBlockLevel { get; }
-        event EventHandler<FinalizeEventArgs> BlocksFinalized;
-
-        public bool IsFinalized(long level) => LastFinalizedBlockLevel >= level;
+        Task<IEnumerable<SimulatedMevBundle>> GetBundles(BlockHeader parent, UInt256 timestamp, long gasLimit, CancellationToken token = default);
     }
 }

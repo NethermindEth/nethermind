@@ -43,7 +43,7 @@ namespace Nethermind.Mev.Test
         [TestCaseSource(nameof(LoadTests))]
         public async Task Test(TestJson testJson)
         {
-            TestSimulator testSimulator = new TestSimulator(testJson);
+            TestSimulator testSimulator = new(testJson);
             IBundleSimulator simulator = testSimulator;
 
             ITailGasPriceCalculator tailGas = testJson.TailGasType switch
@@ -55,13 +55,13 @@ namespace Nethermind.Mev.Test
 
             IBundleSource selector = testJson.SelectorType switch
             {
-                SelectorType.V1 => new V1Selector(testSimulator, simulator),
-                SelectorType.V2 => new V2Selector(testSimulator, simulator, tailGas, testJson.MaxGasLimitRatio),
+                SelectorType.V1 => new V1Selector(testSimulator),
+                SelectorType.V2 => new V2Selector(testSimulator, tailGas, testJson.MaxGasLimitRatio),
                 _ => throw new ArgumentOutOfRangeException()
             };
 
             IEnumerable<MevBundle> selected = await selector.GetBundles(_blockHeader, _blockHeader.Timestamp, testJson.GasLimit!.Value);
-            SimulatedMevBundle[] simulated = (await simulator.Simulate(selected, _blockHeader, testJson.GasLimit!.Value)).ToArray();
+            SimulatedMevBundle[] simulated = (await simulator.Simulate(selected, _blockHeader)).ToArray();
             long totalGasUsedByBundles = simulated.Sum(s => s.GasUsed);
             long gasLeftForTransactions = testJson.GasLimit!.Value - totalGasUsedByBundles;
             IEnumerable<Transaction>? txs = testSimulator.GetTransactions(_blockHeader, gasLeftForTransactions);

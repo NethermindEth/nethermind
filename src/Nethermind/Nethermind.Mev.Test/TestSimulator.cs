@@ -18,6 +18,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
@@ -30,7 +31,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Mev.Test
 {
-    public class TestSimulator : IBundleSimulator, IBundleSource, ITxSource
+    public class TestSimulator : IBundleSimulator, IBundleSource, ITxSource, ISimulatedBundleSource
     {
         private readonly TestJson _testJson;
 
@@ -40,7 +41,7 @@ namespace Nethermind.Mev.Test
             _testJson = testJson;
         }
 
-        public SimulatedMevBundle Simulate(MevBundle bundle, BlockHeader parent, long gasLimit)
+        public Task<SimulatedMevBundle> Simulate(MevBundle bundle, BlockHeader parent, CancellationToken cancellationToken = default)
         {
             long gasUsed = 0;
             UInt256 txFees = 0;
@@ -59,10 +60,10 @@ namespace Nethermind.Mev.Test
             }
 
             SimulatedMevBundle simulatedMevBundle = new(bundle, gasUsed, txFees, coinbasePayments);
-            return simulatedMevBundle;
+            return Task.FromResult(simulatedMevBundle);
         }
 
-        public Task<IEnumerable<MevBundle>> GetBundles(BlockHeader parent, UInt256 timestamp, long gasLimit) => 
+        public Task<IEnumerable<MevBundle>> GetBundles(BlockHeader parent, UInt256 timestamp, long gasLimit, CancellationToken cancellationToken = default) => 
             Task.FromResult(_testJson.Bundles!.Select(ToBundle));
 
         public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit)
@@ -130,6 +131,13 @@ namespace Nethermind.Mev.Test
         {
             TxForTest txForTest = _testJson.Txs!.Single(t => t!.Hash == txs)!; 
             return new() {Hash = txForTest.Hash, GasLimit = txForTest.GasUsed, GasPrice = txForTest.GasPrice};
+        }
+
+        async Task<IEnumerable<SimulatedMevBundle>> ISimulatedBundleSource.GetBundles(BlockHeader parent, UInt256 timestamp, long gasLimit, CancellationToken token)
+        {
+            IEnumerable<MevBundle> bundles = await GetBundles(parent, timestamp, gasLimit, token);
+            IEnumerable<Task<SimulatedMevBundle>> simulatedBundles = bundles.Select(b => Simulate(b, parent, token));
+            return await Task.WhenAll(simulatedBundles);
         }
     }
 }

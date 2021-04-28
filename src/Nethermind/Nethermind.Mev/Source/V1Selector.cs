@@ -17,6 +17,7 @@
 
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Int256;
@@ -27,21 +28,18 @@ namespace Nethermind.Mev.Source
 {
     public class V1Selector : IBundleSource
     {
-        private readonly IBundleSource _bundleSource;
-        private readonly IBundleSimulator _bundleSimulator;
+        private readonly ISimulatedBundleSource _simulatedBundleSource;
 
-        public V1Selector(IBundleSource bundleSource, IBundleSimulator bundleSimulator)
+        public V1Selector(ISimulatedBundleSource simulatedBundleSource)
         {
-            _bundleSource = bundleSource;
-            _bundleSimulator = bundleSimulator;
+            _simulatedBundleSource = simulatedBundleSource;
         }
         
-        public async Task<IEnumerable<MevBundle>> GetBundles(BlockHeader parent, UInt256 timestamp, long gasLimit)
+        public async Task<IEnumerable<MevBundle>> GetBundles(BlockHeader parent, UInt256 timestamp, long gasLimit, CancellationToken token = default)
         {
             SimulatedMevBundle? bestBundle = null;
             long bestAdjustedGasPrice = 0;
-            IEnumerable<MevBundle> bundles = await _bundleSource.GetBundles(parent, timestamp, gasLimit);
-            IEnumerable<SimulatedMevBundle> simulatedBundles = await _bundleSimulator.Simulate(bundles, parent, gasLimit);
+            IEnumerable<SimulatedMevBundle> simulatedBundles = await _simulatedBundleSource.GetBundles(parent, timestamp, gasLimit, token);
             foreach (var simulatedBundle in simulatedBundles)
             {
                 if (simulatedBundle.AdjustedGasPrice > bestAdjustedGasPrice)

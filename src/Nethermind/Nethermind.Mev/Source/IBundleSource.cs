@@ -16,6 +16,7 @@
 // 
 
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Int256;
@@ -25,6 +26,6 @@ namespace Nethermind.Mev.Source
 {
     public interface IBundleSource
     {
-        Task<IEnumerable<MevBundle>> GetBundles(BlockHeader parent, UInt256 timestamp, long gasLimit);
+        Task<IEnumerable<MevBundle>> GetBundles(BlockHeader parent, UInt256 timestamp, long gasLimit, CancellationToken token = default);
     }
 }

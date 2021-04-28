@@ -16,6 +16,7 @@
 // 
 
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Mev.Data;
@@ -24,15 +25,15 @@ namespace Nethermind.Mev.Execution
 {
     public interface IBundleSimulator
     {
-        SimulatedMevBundle Simulate(MevBundle bundle, BlockHeader parent, long gasLimit);
+        Task<SimulatedMevBundle> Simulate(MevBundle bundle, BlockHeader parent, CancellationToken cancellationToken = default);
 
         // Todo add timeout
-        public async Task<IEnumerable<SimulatedMevBundle>> Simulate(IEnumerable<MevBundle> bundles, BlockHeader parent, long gasLimit)
+        public async Task<IEnumerable<SimulatedMevBundle>> Simulate(IEnumerable<MevBundle> bundles, BlockHeader parent, CancellationToken cancellationToken = default)
         {
             List<Task<SimulatedMevBundle>> simulations = new();
             foreach (MevBundle bundle in bundles)
             {
-                simulations.Add(Task.Run(() => Simulate(bundle, parent, gasLimit)));
+                simulations.Add(Simulate(bundle, parent, cancellationToken));
             }
 
             return await Task.WhenAll(simulations);

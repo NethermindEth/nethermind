@@ -25,17 +25,13 @@ using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.State;
 
 namespace Nethermind.Mev
 {
     public class MevBlockProducer : MultipleManualBlockProducer
     {
-        private readonly IStateReader _stateReader;
-        
-        public MevBlockProducer(IStateReader stateReader, params IManualBlockProducer[] blockProducers) : base(blockProducers)
+        public MevBlockProducer(params IManualBlockProducer[] blockProducers) : base(blockProducers)
         {
-            _stateReader = stateReader;
         }
 
         protected override BlockProducedContext GetBestBlock(IEnumerable<BlockProducedContext> blocks)

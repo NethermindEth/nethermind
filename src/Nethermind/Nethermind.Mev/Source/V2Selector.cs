@@ -17,6 +17,7 @@
 
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Evm;
@@ -28,35 +29,29 @@ namespace Nethermind.Mev.Source
 {
     public class V2Selector : IBundleSource
     {
-        private readonly IBundleSource _bundleSource;
-        
-        private readonly IBundleSimulator _bundleSimulator;
-
+        private readonly ISimulatedBundleSource _simulatedBundleSource;
         private readonly ITailGasPriceCalculator _tailGasPriceCalculator;
         private readonly long _maxBundlesGasUsedRatio;
+        
 
         public V2Selector(
-            IBundleSource bundleSource,
-            IBundleSimulator bundleSimulator,
+            ISimulatedBundleSource simulatedBundleSource,
             ITailGasPriceCalculator tailGasPriceCalculator,
             long maxBundlesGasUsedRatio = 100)
         {
-            _bundleSource = bundleSource;
-            _bundleSimulator = bundleSimulator;
+            _simulatedBundleSource = simulatedBundleSource;
             _tailGasPriceCalculator = tailGasPriceCalculator;
             _maxBundlesGasUsedRatio = maxBundlesGasUsedRatio;
         }
         
-        public async Task<IEnumerable<MevBundle>> GetBundles(BlockHeader parent, UInt256 timestamp, long gasLimit)
+        public async Task<IEnumerable<MevBundle>> GetBundles(BlockHeader parent, UInt256 timestamp, long gasLimit, CancellationToken token = default)
         {
             SimulatedMevBundle? bestBundle = null;
             UInt256 bestMevEquivalentPrice = 0;
             long totalGasUsed = 0;
             long maxGasUsed = gasLimit * _maxBundlesGasUsedRatio / 100;
             
-            IEnumerable<MevBundle> bundles = await _bundleSource.GetBundles(parent, timestamp, gasLimit);
-            IEnumerable<SimulatedMevBundle> simulatedBundles = await _bundleSimulator.Simulate(bundles, parent, gasLimit);
-            
+            IEnumerable<SimulatedMevBundle> simulatedBundles = await _simulatedBundleSource.GetBundles(parent, timestamp, gasLimit, token);
             foreach (SimulatedMevBundle simulatedBundle in simulatedBundles)
             {
                 if (maxGasUsed - totalGasUsed >= GasCostOf.Transaction)

@@ -40,52 +40,37 @@ namespace Nethermind.Mev
         private readonly IJsonRpcConfig _jsonRpcConfig;
         private readonly IBundlePool _bundlePool;
         private readonly IBlockTree _blockTree;
-        private readonly IDbProvider _dbProvider;
-        private readonly IReadOnlyTrieStore _trieStore;
-        private readonly IBlockPreprocessorStep _recoveryStep;
         private readonly IStateReader _stateReader;
-        private readonly ISpecProvider _specProvider;
-        private readonly ILogManager _logManager;
+        private readonly ITracerFactory _tracerFactory;
         private readonly ulong _chainId;
 
         public MevModuleFactory(
             IMevConfig mevConfig, 
             IJsonRpcConfig jsonRpcConfig,
             IBundlePool bundlePool, 
-            IBlockTree blockTree, 
-            IDbProvider dbProvider,
-            IReadOnlyTrieStore trieStore,
-            IBlockPreprocessorStep recoveryStep,
+            IBlockTree blockTree,
             IStateReader stateReader,
-            ISpecProvider specProvider,
-            ILogManager logManager,
+            ITracerFactory tracerFactory,
             ulong chainId)
-
         {
             _mevConfig = mevConfig;
             _jsonRpcConfig = jsonRpcConfig;
             _bundlePool = bundlePool;
             _blockTree = blockTree;
-            _dbProvider = dbProvider;
-            _trieStore = trieStore;
-            _recoveryStep = recoveryStep;
             _stateReader = stateReader;
-            _specProvider = specProvider;
-            _logManager = logManager;
+            _tracerFactory = tracerFactory;
             _chainId = chainId;
         }
         
         public override IMevRpcModule Create()
         {
-            TracerFactory tracerFactory = new(_dbProvider, _blockTree, _trieStore, _recoveryStep, _specProvider, _logManager);
-            
             return new MevRpcModule(
                 _mevConfig,
                 _jsonRpcConfig, 
                 _bundlePool,
                 _blockTree,
                 _stateReader, 
-                tracerFactory, 
+                _tracerFactory, 
                 _chainId);
         }
     }

@@ -123,7 +123,7 @@ namespace Nethermind.Blockchain
 
         Task Accept(IBlockTreeVisitor blockTreeVisitor, CancellationToken cancellationToken);
 
-        ChainLevelInfo FindLevel(long number);
+        ChainLevelInfo? FindLevel(long number);
 
         BlockInfo FindCanonicalBlockInfo(long blockNumber);
 

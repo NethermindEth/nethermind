@@ -25,6 +25,7 @@ using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Mev.Data;
+using Nethermind.Mev.Execution;
 using Nethermind.Mev.Source;
 using NSubstitute;
 using NUnit.Framework;
@@ -82,7 +83,10 @@ namespace Nethermind.Mev.Test
 
         private static BundlePool CreateBundlePool(IBlockFinalizationManager? blockFinalizationManager = null)
         {
-            BundlePool bundlePool = new(blockFinalizationManager ?? Substitute.For<IBlockFinalizationManager>());
+            BundlePool bundlePool = new(
+                Substitute.For<IBlockTree>(), 
+                Substitute.For<IBundleSimulator>(), 
+                blockFinalizationManager ?? Substitute.For<IBlockFinalizationManager>());
 
             bundlePool.AddBundle(new MevBundle(Array.Empty<Transaction>(), 4, 0, 0));
             bundlePool.AddBundle(new MevBundle(Array.Empty<Transaction>(), 5, 0, 0));
