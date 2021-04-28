@@ -1,6 +1,7 @@
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
+using Nethermind.Blockchain.Processing;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using NSubstitute;
@@ -31,12 +32,14 @@ namespace Nethermind.Dsl.Test
         public async Task will_filter_block_correctly_depending_on_condition()
         {
             var header = Build.A.BlockHeader.WithAuthor(TestItem.AddressA).TestObject;
-            var block = Build.A.Block.WithHeader(header);
+            var block = Build.A.Block.WithHeader(header).TestObject;
 
             var header2 = Build.A.BlockHeader.WithAuthor(TestItem.AddressB).TestObject;
-            var block2 = Build.A.Block.WithHeader(header2);
+            var block2 = Build.A.Block.WithHeader(header2).TestObject;
 
             await _dslPlugin.Init(_api);
+
+            _api.MainBlockProcessor.BlockProcessed += Raise.EventWith(null, new BlockProcessedEventArgs(block, null));
         }
     }
 }

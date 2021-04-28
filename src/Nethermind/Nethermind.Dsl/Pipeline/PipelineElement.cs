@@ -18,6 +18,7 @@ namespace Nethermind.Dsl.Pipeline
 
         public void SubscribeToData(TIn data)
         {
+            throw new Exception();
             if(_condition(data))
             {
                 var dataToEmit = _transformData(data);
