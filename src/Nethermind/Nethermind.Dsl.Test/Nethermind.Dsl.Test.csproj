@@ -17,6 +17,7 @@
     <ProjectReference Include="..\Nethermind.Dsl\Nethermind.Dsl.csproj" />
     <ProjectReference Include="..\Nethermind.Api\Nethermind.Api.csproj" />
     <ProjectReference Include="..\Nethermind.Pipeline\Nethermind.Pipeline.csproj" />
+    <ProjectReference Include="..\Nethermind.Core.Test\Nethermind.Core.Test.csproj" />
   </ItemGroup>
 
 </Project>

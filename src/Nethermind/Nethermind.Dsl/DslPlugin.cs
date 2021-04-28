@@ -15,28 +15,34 @@ using Nethermind.Int256;
 using System.IO;
 using Nethermind.Logging;
 using System.Linq;
+using System.IO.Abstractions;
 
+#nullable enable
 namespace Nethermind.Dsl
 {
     public class DslPlugin : INethermindPlugin
     {
-        public string Name { get; }
+        public string Name { get; } = "DslPlugin";
+        public string Description { get; } = "Plugin created in order to let users create their own DSL scripts used in data extraction from chain";
+        public string Author { get; } = "Nethermind team";
+        public IPipeline? Pipeline;
+        public IFileSystem? FileSystem;
 
-        public string Description { get; }
-
-        public string Author { get; }
-
-        private ParseTreeListener _listener;
-        private INethermindApi _api;
-        private ITxPool _txPool;
-        private IBlockProcessor _blockProcessor;
-        private IPipeline _pipeline;
-        private IPipelineBuilder<Block, Block> _blockProcessorPipelineBuilder;
+        private ParseTreeListener? _listener;
+        private INethermindApi? _api;
+        private ITxPool? _txPool;
+        private IBlockProcessor? _blockProcessor;
+        private IPipelineBuilder<Block, Block>? _blockProcessorPipelineBuilder;
         private bool blockSource;
-        private ILogger _logger; 
+        private ILogger? _logger; 
 
         public async Task Init(INethermindApi nethermindApi)
         {
+            if(FileSystem == null)
+            {
+                FileSystem = new FileSystem();
+            }
+
             _api = nethermindApi;
             _txPool = _api.TxPool;
             _blockProcessor = _api.MainBlockProcessor;
@@ -209,7 +215,7 @@ namespace Nethermind.Dsl
 
             private void BuildPipeline()
             {
-                _pipeline = _blockProcessorPipelineBuilder.Build();
+                Pipeline = _blockProcessorPipelineBuilder.Build();
             }
 
             private async Task<string> LoadDSLScript()
