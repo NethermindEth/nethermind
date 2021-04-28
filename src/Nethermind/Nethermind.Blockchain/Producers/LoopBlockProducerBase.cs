@@ -101,7 +101,7 @@ namespace Nethermind.Blockchain.Producers
         
         protected virtual async ValueTask ProducerLoop()
         {
-            _lastProducedBlock = DateTime.UtcNow;
+            _lastProducedBlockDateTime = DateTime.UtcNow;
             while (!LoopCancellationTokenSource.IsCancellationRequested)
             {
                 if (_canProduce == 1 && BlockProcessingQueue.IsEmpty)
@@ -130,7 +130,11 @@ namespace Nethermind.Blockchain.Producers
 
         protected virtual async ValueTask ProducerLoopStep(CancellationToken cancellationToken)
         {
-            await TryProduceNewBlock(cancellationToken);
+            Block? block = await TryProduceNewBlock(cancellationToken);
+            if (block is not null)
+            {
+                ConsumeProducedBlock(block);
+            }
         }
         
         private void BlockTreeOnNewBestSuggestedBlock(object sender, BlockEventArgs e)

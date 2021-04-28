@@ -173,7 +173,7 @@ namespace Nethermind.Runner
                 {
                     if (Activator.CreateInstance(pluginType) is INethermindPlugin plugin)
                     {
-                        nethermindApi.Plugins.Add(plugin);
+                        ((IList<INethermindPlugin>)nethermindApi.Plugins).Add(plugin);
                     }
                 }
 

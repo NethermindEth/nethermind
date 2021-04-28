@@ -80,14 +80,24 @@ namespace Nethermind.Consensus.Ethash
                 token = _cancellationTokenSource.Token;
             }
 
-            TryProduceNewBlock(token);
+            TryProduceNewBlock(token).ContinueWith(t =>
+            {
+                if (t.IsCompletedSuccessfully)
+                {
+                    Block? block = t.Result;
+                    if (block is not null)
+                    {
+                        ConsumeProducedBlock(block);
+                    }
+                }
+            }, token);
         }
 
         public override void Start()
         {
             BlockProcessingQueue.ProcessingQueueEmpty += OnBlockProcessorQueueEmpty;
             BlockTree.NewBestSuggestedBlock += BlockTreeOnNewBestSuggestedBlock;
-            _lastProducedBlock = DateTime.UtcNow;
+            _lastProducedBlockDateTime = DateTime.UtcNow;
             _isRunning = true;
         }
 

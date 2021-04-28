@@ -23,6 +23,7 @@ using Nethermind.Blockchain.Rewards;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Transactions;
+using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -54,6 +55,7 @@ namespace Nethermind.Merge.Plugin.Handlers
             IStateProvider stateProvider,
             ISpecProvider specProvider,
             ISigner engineSigner,
+            ITimestamper timestamper,
             IMiningConfig miningConfig,
             ILogManager logManager)
         {
@@ -78,6 +80,7 @@ namespace Nethermind.Merge.Plugin.Handlers
                 stateProvider,
                 new TargetAdjustedGasLimitCalculator(specProvider, miningConfig),
                 engineSigner,
+                timestamper,
                 logManager);
         }
         

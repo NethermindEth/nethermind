@@ -30,6 +30,8 @@ namespace Nethermind.Merge.Plugin.Test
 {
     internal class Eth2TestBlockProducer : Eth2BlockProducer, ITestBlockProducer
     {
+        private Block? _lastProducedBlock;
+
         public Eth2TestBlockProducer(
             ITxSource txSource, 
             IBlockchainProcessor processor, 
@@ -37,25 +39,29 @@ namespace Nethermind.Merge.Plugin.Test
             IBlockProcessingQueue blockProcessingQueue, 
             IStateProvider stateProvider, 
             IGasLimitCalculator gasLimitCalculator, 
-            ISigner signer, ILogManager logManager) 
-            : base(txSource, processor, blockTree, blockProcessingQueue, stateProvider, gasLimitCalculator, signer, logManager)
+            ISigner signer,
+            ITimestamper timestamper,
+            ILogManager logManager) 
+            : base(txSource, processor, blockTree, blockProcessingQueue, stateProvider, gasLimitCalculator, signer, timestamper, logManager)
         {
         }
+        
 
-        protected override Block? BlockProduced 
+        public Block? LastProducedBlock
         {
-            get => base.BlockProduced;
-            set
+            get
             {
-                base.BlockProduced = value;
+                return _lastProducedBlock!;
+            }
+            private set
+            {
+                _lastProducedBlock = value;
                 if (value != null)
                 {
                     LastProducedBlockChanged?.Invoke(this, new BlockEventArgs(value));
                 }
             }
         }
-
-        public Block LastProducedBlock => BlockProduced!;
 
         public event EventHandler<BlockEventArgs> LastProducedBlockChanged = null!;
         
