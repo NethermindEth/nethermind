@@ -41,8 +41,9 @@ namespace Nethermind.Merge.Plugin.Test
             IGasLimitCalculator gasLimitCalculator, 
             ISigner signer,
             ITimestamper timestamper,
+            IStateReader stateReader,
             ILogManager logManager) 
-            : base(txSource, processor, blockTree, blockProcessingQueue, stateProvider, gasLimitCalculator, signer, timestamper, logManager)
+            : base(txSource, processor, blockTree, blockProcessingQueue, stateProvider, gasLimitCalculator, signer, timestamper, stateReader, logManager)
         {
         }
         

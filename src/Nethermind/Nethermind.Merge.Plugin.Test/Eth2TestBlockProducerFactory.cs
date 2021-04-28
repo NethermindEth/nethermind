@@ -45,7 +45,6 @@ namespace Nethermind.Merge.Plugin.Test
             IRewardCalculatorSource rewardCalculatorSource,
             IReceiptStorage receiptStorage,
             IBlockProcessingQueue blockProcessingQueue,
-            IStateProvider stateProvider,
             ISpecProvider specProvider, 
             ISigner engineSigner,
             ITimestamper timestamper,
@@ -70,10 +69,11 @@ namespace Nethermind.Merge.Plugin.Test
                 producerContext.ChainProcessor,
                 blockTree,
                 blockProcessingQueue,
-                stateProvider,
+                producerContext.ReadOnlyStateProvider,
                 new TargetAdjustedGasLimitCalculator(specProvider, miningConfig),
                 engineSigner,
                 timestamper,
+                producerContext.ReadOnlyTxProcessingEnv.StateReader,
                 logManager);
         }
     }
