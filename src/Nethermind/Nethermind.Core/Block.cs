@@ -101,6 +101,8 @@ namespace Nethermind.Core
         public UInt256 Difficulty => Header.Difficulty; // do not add setter here
 
         public UInt256? TotalDifficulty => Header.TotalDifficulty; // do not add setter here
+        
+        public UInt256 BaseFee => Header.BaseFee; // do not add setter here
 
         public override string ToString()
         {
