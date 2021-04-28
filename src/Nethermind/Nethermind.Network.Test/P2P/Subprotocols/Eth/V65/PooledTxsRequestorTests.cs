@@ -15,119 +15,91 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System;
 using System.Collections.Generic;
-using System.Linq;
-using DotNetty.Buffers;
 using FluentAssertions;
-using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Logging;
-using Nethermind.Network.P2P;
-using Nethermind.Network.P2P.Subprotocols.Eth.V62;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65;
-using Nethermind.Network.Rlpx;
-using Nethermind.Network.Test.Builders;
-using Nethermind.Stats;
-using Nethermind.Synchronization;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
 {
-    [TestFixture, Parallelizable(ParallelScope.All)]
     public class PooledTxsRequestorTests
     {
         private readonly ITxPool _txPool = Substitute.For<ITxPool>();
+        private readonly Action<GetPooledTransactionsMessage> _doNothing = Substitute.For<Action<GetPooledTransactionsMessage>>();
+        private IPooledTxsRequestor _requestor;
+        private IReadOnlyList<Keccak> _request;
+        private IList<Keccak> _expected;
+        private IList<Keccak> _response;
         
-
+        
         [Test]
         public void filter_properly_newPooledTxHashes()
         {
-            PooledTxsRequestor requestor = new PooledTxsRequestor(_txPool);
-            requestor.GetAndMarkUnknownHashes(new List<Keccak>{TestItem.KeccakA, TestItem.KeccakD});
+            _response = new List<Keccak>();
+            _requestor = new PooledTxsRequestor(_txPool);
+            _requestor.RequestTransactions(_doNothing, new List<Keccak>{TestItem.KeccakA, TestItem.KeccakD});
 
-            IReadOnlyList<Keccak> request = new List<Keccak>{TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC};
-            IList<Keccak> expected = new List<Keccak>{TestItem.KeccakB, TestItem.KeccakC};
-            IList<Keccak> response = requestor.GetAndMarkUnknownHashes(request);
-            response.Should().BeEquivalentTo(expected);
+            _request = new List<Keccak>{TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC};
+            _expected = new List<Keccak>{TestItem.KeccakB, TestItem.KeccakC};
+            _requestor.RequestTransactions(Send, _request);
+            _response.Should().BeEquivalentTo(_expected);
         }
-        
+
         [Test]
         public void filter_properly_already_pending_hashes()
         {
-            PooledTxsRequestor requestor = new PooledTxsRequestor(_txPool);
-            requestor.GetAndMarkUnknownHashes(new List<Keccak>{TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC});
+            _response = new List<Keccak>();
+            _requestor = new PooledTxsRequestor(_txPool);
+            _requestor.RequestTransactions(_doNothing, new List<Keccak>{TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC});
             
-            IReadOnlyList<Keccak> request = new List<Keccak>{TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC};
-            IList<Keccak> expected = new List<Keccak>{};
-            IList<Keccak> response = requestor.GetAndMarkUnknownHashes(request);
-            response.Should().BeEquivalentTo(expected);
+            _request = new List<Keccak>{TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC};
+            _requestor.RequestTransactions(Send, _request);
+            _response.Should().BeEmpty();
         }
         
         [Test]
         public void filter_properly_discovered_hashes()
         {
-            PooledTxsRequestor requestor = new PooledTxsRequestor(_txPool);
-
-            IReadOnlyList<Keccak> request = new List<Keccak>{TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC};
-            IList<Keccak> expected = new List<Keccak>{TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC};
-            IList<Keccak> response = requestor.GetAndMarkUnknownHashes(request);
-            response.Should().BeEquivalentTo(expected);
+            _response = new List<Keccak>();
+            _requestor = new PooledTxsRequestor(_txPool);
+        
+            _request = new List<Keccak>{TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC};
+            _expected = new List<Keccak>{TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC};
+            _requestor.RequestTransactions(Send, _request);
+            _response.Should().BeEquivalentTo(_expected);
         }
-
+        
         [Test]
         public void can_handle_empty_argument()
         {
-            PooledTxsRequestor requestor = new PooledTxsRequestor(_txPool);
-            requestor.GetAndMarkUnknownHashes(new List<Keccak>()).Should().BeEmpty();
+            _response = new List<Keccak>();
+            _requestor = new PooledTxsRequestor(_txPool);
+            _requestor.RequestTransactions(Send, new List<Keccak>());
+            _response.Should().BeEmpty();
         }
-
+        
         [Test]
         public void filter_properly_hashes_present_in_hashCache()
         {
+            _response = new List<Keccak>();
             ITxPool txPool = Substitute.For<ITxPool>();
             txPool.IsInHashCache(Arg.Any<Keccak>()).Returns(true);
-            PooledTxsRequestor requestor = new PooledTxsRequestor(txPool);
+            _requestor = new PooledTxsRequestor(txPool);
             
-            IReadOnlyList<Keccak> request = new List<Keccak>{TestItem.KeccakA, TestItem.KeccakB};
-            IList<Keccak> expected = new List<Keccak>{};
-            IList<Keccak> response = requestor.GetAndMarkUnknownHashes(request);
-            response.Should().BeEquivalentTo(expected);
+            _request = new List<Keccak>{TestItem.KeccakA, TestItem.KeccakB};
+            _expected = new List<Keccak>{};
+            _requestor.RequestTransactions(Send, _request);
+            _response.Should().BeEquivalentTo(_expected);
         }
-
-        [Test]
-        public void can_request_transactions()
+        
+        private void Send(GetPooledTransactionsMessage msg)
         {
-            PooledTxsRequestor requestor = new PooledTxsRequestor(_txPool);
-            ISession session = Substitute.For<ISession>();
-            IMessageSerializationService svc = Build.A.SerializationService().WithEth65().TestObject;
-
-            Eth65ProtocolHandler eth65ProtocolHandler = new Eth65ProtocolHandler(
-                session,
-                svc,
-                Substitute.For<INodeStatsManager>(),
-                Substitute.For<ISyncServer>(),
-                _txPool,
-                requestor,
-                Substitute.For<ISpecProvider>(),
-                Substitute.For<ILogManager>());
-
-            Block genesisBlock = Build.A.Block.Genesis.TestObject;
-            StatusMessage statusMsg = new StatusMessage {GenesisHash = genesisBlock.Hash, BestHash = genesisBlock.Hash};
-            IByteBuffer statusPacket = svc.ZeroSerialize(statusMsg);
-            statusPacket.ReadByte();
-            eth65ProtocolHandler.HandleMessage(new ZeroPacket(statusPacket) {PacketType = 0});
-            
-            IList<Keccak> request = new List<Keccak>{TestItem.KeccakA, TestItem.KeccakB};
-            NewPooledTransactionHashesMessage msg = new NewPooledTransactionHashesMessage(request.ToArray());
-            IByteBuffer packet = svc.ZeroSerialize(msg);
-            packet.ReadByte();
-            eth65ProtocolHandler.HandleMessage(new ZeroPacket(packet) {PacketType = Eth65MessageCode.NewPooledTransactionHashes});
-            
-            session.Received().DeliverMessage(Arg.Is<GetPooledTransactionsMessage>(m => m.Hashes.Count == 2));
+            _response = msg.Hashes;
         }
     }
 }

@@ -46,7 +46,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
             }
         }
 
-        public IList<Keccak> GetAndMarkUnknownHashes(IReadOnlyList<Keccak> hashes)
+        private IList<Keccak> GetAndMarkUnknownHashes(IReadOnlyList<Keccak> hashes)
         {
             List<Keccak> discoveredTxHashes = new();
             
