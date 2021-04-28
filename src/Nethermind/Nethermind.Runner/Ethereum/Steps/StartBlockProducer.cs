@@ -63,9 +63,7 @@ namespace Nethermind.Runner.Ethereum.Steps
         protected virtual void BuildProducer()
         {
             if (_api.ChainSpec == null) throw new StepDependencyException(nameof(_api.ChainSpec));
-            IConsensusPlugin? consensusPlugin = _api.Plugins
-                .OfType<IConsensusPlugin>()
-                .SingleOrDefault(cp => cp.SealEngineType == _api.SealEngineType);
+            IConsensusPlugin? consensusPlugin = _api.GetConsensusPlugin();
 
             if (consensusPlugin != null)
             {

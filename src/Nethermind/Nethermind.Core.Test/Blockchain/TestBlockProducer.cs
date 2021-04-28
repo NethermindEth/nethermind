@@ -59,23 +59,19 @@ namespace Nethermind.Core.Test.Blockchain
         public Block LastProducedBlock { get; private set; }
         public event EventHandler<BlockEventArgs> LastProducedBlockChanged;
 
-        private SemaphoreSlim _newBlockArrived = new SemaphoreSlim(0);
+        private readonly SemaphoreSlim _newBlockArrived = new SemaphoreSlim(0);
         private BlockHeader _blockParent = null;
+        
         public BlockHeader BlockParent
         {
             get
             {
-                return _blockParent ?? base.GetCurrentBlockParent();
+                return _blockParent ?? BlockTree.Head?.Header;
             }
             set
             {
                 _blockParent = value;
             }
-        }
-
-        protected override BlockHeader GetCurrentBlockParent()
-        {
-            return BlockParent;
         }
 
         public void BuildNewBlock()
@@ -85,11 +81,11 @@ namespace Nethermind.Core.Test.Blockchain
 
         protected override async ValueTask ProducerLoop()
         {
-            _lastProducedBlock = DateTime.UtcNow;
+            _lastProducedBlockDateTime = DateTime.UtcNow;
             while (true)
             {
                 await _newBlockArrived.WaitAsync(LoopCancellationTokenSource.Token);
-                bool result = await TryProduceNewBlock(LoopCancellationTokenSource.Token);
+                await TryProduceNewBlock(LoopCancellationTokenSource.Token);
                 // Console.WriteLine($"Produce new block result -> {result}");
             }
 

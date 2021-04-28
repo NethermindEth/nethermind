@@ -38,12 +38,14 @@ namespace Nethermind.Merge.Plugin.Test
 {
     public partial class ConsensusModuleTests
     {
-        private async Task<MergeTestBlockchain> CreateBlockChain() => await new MergeTestBlockchain().Build(new SingleReleaseSpecProvider(Berlin.Instance, 1));
+        private readonly ManualTimestamper _manualTimestamper = new();
+        
+        private async Task<MergeTestBlockchain> CreateBlockChain() => await new MergeTestBlockchain(_manualTimestamper).Build(new SingleReleaseSpecProvider(Berlin.Instance, 1));
 
         private IConsensusRpcModule CreateConsensusModule(MergeTestBlockchain chain)
         {
             return new ConsensusRpcModule(
-                new AssembleBlockHandler(chain.BlockTree, (IEth2BlockProducer) chain.BlockProducer, chain.LogManager),
+                new AssembleBlockHandler(chain.BlockTree, (IManualBlockProducer) chain.BlockProducer, _manualTimestamper, chain.LogManager),
                 new NewBlockHandler(chain.BlockTree, chain.BlockPreprocessorStep, chain.BlockchainProcessor, chain.State, chain.LogManager),
                 new SetHeadBlockHandler(chain.BlockTree, chain.State, chain.LogManager),
                 new FinaliseBlockHandler(chain.BlockFinder, chain.FinalizationManager, chain.LogManager),
@@ -52,8 +54,11 @@ namespace Nethermind.Merge.Plugin.Test
 
         private class MergeTestBlockchain : TestBlockchain
         {
-            public MergeTestBlockchain()
+            private readonly ManualTimestamper _timestamper;
+
+            public MergeTestBlockchain(ManualTimestamper timestamper)
             {
+                _timestamper = timestamper;
                 GenesisBlockBuilder = Core.Test.Builders.Build.A.Block.Genesis.Genesis
                     .WithTimestamp(UInt256.One);
             }
@@ -86,6 +91,7 @@ namespace Nethermind.Merge.Plugin.Test
                     State,
                     SpecProvider,
                     Signer,
+                    _timestamper,
                     new MiningConfig(),
                     LogManager);
             }

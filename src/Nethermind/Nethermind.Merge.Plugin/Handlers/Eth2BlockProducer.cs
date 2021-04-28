@@ -32,13 +32,10 @@ using Nethermind.State;
 
 namespace Nethermind.Merge.Plugin.Handlers
 {
-    public class Eth2BlockProducer : BlockProducerBase, IEth2BlockProducer
+    public class Eth2BlockProducer : BlockProducerBase, IManualBlockProducer
     {
         private int _stated;
-        private BlockHeader? _parentHeader;
-        protected virtual Block? BlockProduced { get; set; }
         private readonly SemaphoreSlim _locker = new(1, 1);
-        private readonly ManualTimestamper _timestamper;
         
         public Eth2BlockProducer(ITxSource txSource,
             IBlockchainProcessor processor,
@@ -47,10 +44,10 @@ namespace Nethermind.Merge.Plugin.Handlers
             IStateProvider stateProvider,
             IGasLimitCalculator gasLimitCalculator,
             ISigner signer,
+            ITimestamper timestamper,
             ILogManager logManager) 
-            : base(txSource, processor, new Eth2SealEngine(signer), blockTree, blockProcessingQueue, stateProvider, gasLimitCalculator, new ManualTimestamper(), logManager)
+            : base(txSource, processor, new Eth2SealEngine(signer), blockTree, blockProcessingQueue, stateProvider, gasLimitCalculator, timestamper, logManager)
         {
-            _timestamper = (ManualTimestamper)Timestamper;
         }
 
         public override void Start() => Interlocked.Exchange(ref _stated, 1);
@@ -61,16 +58,12 @@ namespace Nethermind.Merge.Plugin.Handlers
             return Task.CompletedTask;
         }
 
-        public async Task<Block?> TryProduceBlock(BlockHeader parentHeader, UInt256 timestamp, CancellationToken cancellationToken = default)
+        public async Task<Block?> TryProduceBlock(BlockHeader parentHeader, CancellationToken cancellationToken = default)
         {
             await _locker.WaitAsync(cancellationToken);
             try
             {
-                _timestamper.Set(DateTimeOffset.FromUnixTimeSeconds((long) timestamp).UtcDateTime);
-                BlockProduced = null;
-                _parentHeader = parentHeader;
-                await TryProduceNewBlock(cancellationToken);
-                return BlockProduced;
+                return await TryProduceNewBlock(cancellationToken, parentHeader);
             }
             finally
             {
@@ -80,18 +73,15 @@ namespace Nethermind.Merge.Plugin.Handlers
 
         protected override bool IsRunning() => _stated == 1;
 
-        protected override void ConsumeProducedBlock(Block block) => BlockProduced = block;
+        protected override void ConsumeProducedBlock(Block block) { }
 
         protected override UInt256 CalculateDifficulty(BlockHeader parent, UInt256 timestamp) => UInt256.One;
-
-        protected override BlockHeader GetCurrentBlockParent() => _parentHeader!;
-
-        protected override byte[] GetExtraData(BlockHeader parent) => Bytes.Empty;
-
+        
         protected override Block PrepareBlock(BlockHeader parent)
         {
             Block block = base.PrepareBlock(parent);
             block.Header.MixHash = Keccak.Zero;
+            block.Header.ExtraData = Bytes.Empty;
             return block;
         }
     }
