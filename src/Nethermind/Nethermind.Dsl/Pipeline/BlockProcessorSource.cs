@@ -13,6 +13,7 @@ namespace Nethermind.Dsl.Pipeline
         public BlockProcessorSource(IBlockProcessor blockProcessor)
         {
            _blockProcessor = blockProcessor; 
+           _blockProcessor.BlockProcessed += OnBlockProcessed;
         }
 
         public Action<TOut> Emit { private get; set; }
