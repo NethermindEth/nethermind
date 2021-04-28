@@ -18,11 +18,24 @@
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.State;
 
 namespace Nethermind.Consensus
 {
     public interface IManualBlockProducer : IBlockProducer
     {
-        Task<Block?> TryProduceBlock(BlockHeader parentHeader, CancellationToken cancellationToken = default);
+        Task<BlockProducedContext> TryProduceBlock(BlockHeader parentHeader, CancellationToken cancellationToken = default);
+    }
+    
+    public class BlockProducedContext
+    {
+        public Block? ProducedBlock { get; }
+        public IReadOnlyStateProvider? PostProducedBlockStateProvider { get; }
+
+        public BlockProducedContext(Block? producedBlock, IReadOnlyStateProvider? postProducedBlockStateProvider)
+        {
+            ProducedBlock = producedBlock;
+            PostProducedBlockStateProvider = postProducedBlockStateProvider;
+        }
     }
 }

@@ -55,7 +55,8 @@ namespace Nethermind.Merge.Plugin.Handlers
 
             _timestamper.Set(DateTimeOffset.FromUnixTimeSeconds((long) request.Timestamp).UtcDateTime);
             using CancellationTokenSource cts = new(_timeout);
-            Block? block = await _blockProducer.TryProduceBlock(parentHeader, cts.Token);
+            BlockProducedContext blockProducedContext = await _blockProducer.TryProduceBlock(parentHeader, cts.Token);
+            Block? block = blockProducedContext.ProducedBlock;
             if (block == null)
             {
                 if (_logger.IsWarn) _logger.Warn($"Block production on parent {request.ParentHash} with timestamp {request.Timestamp} failed.");

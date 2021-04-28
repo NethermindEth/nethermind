@@ -15,7 +15,8 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System.Threading.Tasks;
+using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Producers;
@@ -28,40 +29,33 @@ using Nethermind.State;
 
 namespace Nethermind.Mev
 {
-    public class MevBlockProducer : BlockProducerBase
+    public class MevBlockProducer : MultipleManualBlockProducer
     {
-        public MevBlockProducer(
-            ITxSource? txSource, 
-            IBlockchainProcessor? processor, 
-            ISealer? sealer, 
-            IBlockTree? blockTree, 
-            IBlockProcessingQueue? blockProcessingQueue,
-            IStateProvider? stateProvider, 
-            IGasLimitCalculator? gasLimitCalculator, 
-            ITimestamper? timestamper, 
-            ILogManager? logManager) 
-            : base(txSource, processor, sealer, blockTree, blockProcessingQueue, stateProvider, gasLimitCalculator, timestamper, logManager)
+        private readonly IStateReader _stateReader;
+        
+        public MevBlockProducer(IStateReader stateReader, params IManualBlockProducer[] blockProducers) : base(blockProducers)
         {
+            _stateReader = stateReader;
         }
 
-        public override void Start()
+        protected override BlockProducedContext GetBestBlock(IEnumerable<BlockProducedContext> blocks)
         {
-            throw new System.NotImplementedException();
-        }
+            BlockProducedContext? best = null;
+            UInt256 maxBalance = UInt256.Zero;
+            foreach (BlockProducedContext context in blocks)
+            {
+                if (context.ProducedBlock is not null)
+                {
+                    UInt256 balance = context.PostProducedBlockStateProvider!.GetBalance(context.ProducedBlock.Beneficiary!);
+                    if (balance > maxBalance)
+                    {
+                        best = context;
+                        maxBalance = balance;
+                    }
+                }
+            }
 
-        public override Task StopAsync()
-        {
-            throw new System.NotImplementedException();
-        }
-
-        protected override bool IsRunning()
-        {
-            throw new System.NotImplementedException();
-        }
-
-        protected override UInt256 CalculateDifficulty(BlockHeader parent, UInt256 timestamp)
-        {
-            throw new System.NotImplementedException();
+            return best ?? new BlockProducedContext(null, null);
         }
     }
 }
