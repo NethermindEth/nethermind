@@ -248,7 +248,7 @@ namespace Nethermind.Blockchain.Test.TxPools
         {
             _txPool = CreatePool(_noTxStorage);
             var transactions = AddOwnTransactionToPool();
-            _txPool.RemoveTransaction(transactions[0].Hash);
+            _txPool.RemoveTransaction(transactions[0]);
             _txPool.AddTransaction(transactions[0], TxHandlingOptions.Reorganisation);
             Assert.AreEqual(1, _txPool.GetOwnPendingTransactions().Length);
         }
@@ -267,8 +267,10 @@ namespace Nethermind.Blockchain.Test.TxPools
         {
             _txPool = CreatePool(_noTxStorage);
             var transactions = AddOwnTransactionToPool();
-            _txPool.RemoveTransaction(transactions[0].Hash);
-            _txPool.RemoveTransaction(TestItem.KeccakA);
+            _txPool.RemoveTransaction(transactions[0]);
+            Transaction tx = Build.A.Transaction.TestObject;
+            tx.Hash = TestItem.KeccakA;
+            _txPool.RemoveTransaction(tx);
             _txPool.AddTransaction(transactions[0], TxHandlingOptions.None);
             Assert.AreEqual(0, _txPool.GetOwnPendingTransactions().Length);
         }
@@ -489,7 +491,7 @@ namespace Nethermind.Blockchain.Test.TxPools
             EnsureSenderBalance(tx);
             _txPool.AddTransaction(tx, TxHandlingOptions.PersistentBroadcast);
             _txPool.IsInHashCache(tx.Hash).Should().Be(true);
-            _txPool.RemoveTransaction(tx.Hash).Should().Be(true);
+            _txPool.RemoveTransaction(tx).Should().Be(true);
         }
         
         [Test]
@@ -497,7 +499,9 @@ namespace Nethermind.Blockchain.Test.TxPools
         {
             _txPool = CreatePool(_noTxStorage);
             _txPool.IsInHashCache(TestItem.KeccakA).Should().Be(false);
-            _txPool.RemoveTransaction(TestItem.KeccakA).Should().Be(false);
+            Transaction tx = Build.A.Transaction.TestObject;
+            tx.Hash = TestItem.KeccakA;
+            _txPool.RemoveTransaction(tx).Should().Be(false);
         }
 
         private Transactions AddTransactions(ITxStorage storage)
@@ -555,7 +559,7 @@ namespace Nethermind.Blockchain.Test.TxPools
         {
             foreach (var transaction in transactions)
             {
-                _txPool.RemoveTransaction(transaction.Hash, removeSmallerNonces);
+                _txPool.RemoveTransaction(transaction, removeSmallerNonces);
             }
         }
 

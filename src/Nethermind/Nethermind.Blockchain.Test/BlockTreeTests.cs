@@ -1368,7 +1368,7 @@ namespace Nethermind.Blockchain.Test
             
             await Task.Delay(100); // await for OnChainTxWatcher
 
-            txPoolMock.Received().RemoveTransaction(t1.Hash, true);
+            txPoolMock.Received().RemoveTransaction(t1, true);
             txPoolMock.BlockGasLimit.Should().Be(100);
         }
 

@@ -18,6 +18,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Text;
+using System.Text.Json.Serialization;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
@@ -39,6 +40,9 @@ namespace Nethermind.Core
 
         public UInt256 Nonce { get; set; }
         public UInt256 GasPrice { get; set; }
+
+        [JsonIgnore]
+        public UInt256 GasBottleneck { get; set; } = 0;
         public UInt256 GasPremium => GasPrice; 
         public UInt256 FeeCap { get; set; }
         public bool IsEip1559 => FeeCap > UInt256.Zero;

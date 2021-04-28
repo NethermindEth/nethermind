@@ -44,7 +44,8 @@ namespace Nethermind.TxPool
     public class TxPool : ITxPool, IDisposable
     {
         public static IComparer<Transaction> DefaultComparer { get; } =
-            CompareTxByGasPrice.Instance
+            CompareTxByGasBottleneck.Instance
+                .ThenBy(CompareTxByGasPrice.Instance)
                 .ThenBy(CompareTxByTimestamp.Instance)
                 .ThenBy(CompareTxByPoolIndex.Instance)
                 .ThenBy(CompareTxByGasLimit.Instance);
@@ -222,6 +223,11 @@ namespace Nethermind.TxPool
             // !!! do not change it to |=
             bool isKnown = !isReorg && _hashCache.Get(tx.Hash);
 
+            if (!isKnown)
+            {
+                isKnown |= !isReorg && (_txStorage.Get(tx.Hash) is not null);
+            }
+            
             /*
              * we need to make sure that the sender is resolved before adding to the distinct tx pool
              * as the address is used in the distinct value calculation
@@ -231,14 +237,10 @@ namespace Nethermind.TxPool
                 lock (_locker)
                 {
                     isKnown |= !_transactions.TryInsert(tx.Hash, tx);
+                    UpdateGasBottleneckForSenderTransactions(tx);
                 }
             }
-
-            if (!isKnown)
-            {
-                isKnown |= !isReorg && (_txStorage.Get(tx.Hash) is not null);
-            }
-
+            
             if (isKnown)
             {
                 // If transaction is a bit older and already known then it may be stored in the persistent storage.
@@ -253,6 +255,34 @@ namespace Nethermind.TxPool
             StoreTx(tx);
             NewPending?.Invoke(this, new TxEventArgs(tx));
             return AddTxResult.Added;
+        }
+
+        private void UpdateGasBottleneckForSenderTransactions(Transaction tx)
+        {
+            if (_transactions.TryGetBucket(tx, out var bucket))
+            {
+                long currentNonce = (long)_stateProvider.GetNonce(tx.SenderAddress);
+                currentNonce = currentNonce > 0 ? currentNonce : 0;
+                int i = 0;
+                UInt256 previousTxBottleneck = UInt256.MaxValue;
+
+                foreach (Transaction transaction in bucket)
+                {
+                    if (transaction.Nonce == currentNonce + i++)
+                    {
+                        if (transaction.GasPrice < previousTxBottleneck)
+                        {
+                            transaction.GasBottleneck = transaction.GasPrice;
+                        }
+                        else
+                        {
+                            transaction.GasBottleneck = previousTxBottleneck;
+                        }
+                        previousTxBottleneck = transaction.GasBottleneck;
+                        _transactions.NotifyChange(transaction.Hash, transaction);
+                    }
+                }
+            }
         }
 
         protected virtual AddTxResult? FilterTransaction(Transaction tx, in bool managedNonce)
@@ -386,28 +416,32 @@ namespace Nethermind.TxPool
             return false;
         }
 
-        public bool RemoveTransaction(Keccak hash, bool removeBelowThisTxNonce = false)
+        public bool RemoveTransaction(Transaction tx, bool removeBelowThisTxNonce = false)
         {
+            Keccak hash = tx.Hash;
             ICollection<Transaction>? bucket;
             ICollection<Transaction>? persistentBucket = null;
-            Transaction transaction;
             bool isKnown;
             lock (_locker)
             {
-                isKnown = _transactions.TryRemove(hash, out transaction, out bucket);
+                isKnown = _transactions.TryRemove(hash, out bucket);
                 if (isKnown)
                 {
-                    Address address = transaction.SenderAddress;
+                    Address address = tx.SenderAddress;
                     if (_nonces.TryGetValue(address, out AddressNonces addressNonces))
                     {
-                        addressNonces.Nonces.TryRemove(transaction.Nonce, out _);
+                        addressNonces.Nonces.TryRemove(tx.Nonce, out _);
                         if (addressNonces.Nonces.IsEmpty)
                         {
                             _nonces.Remove(address, out _);
                         }
                     }
                     
-                    RemovedPending?.Invoke(this, new TxEventArgs(transaction));
+                    RemovedPending?.Invoke(this, new TxEventArgs(tx));
+                }
+                else
+                {
+                    _transactions.TryGetBucket(tx, out bucket);
                 }
                 
                 if (_persistentBroadcastTransactions.Count != 0)
@@ -429,16 +463,16 @@ namespace Nethermind.TxPool
                 lock (_locker)
                 {
                     Transaction? txWithSmallestNonce = bucket.FirstOrDefault();
-                    while (txWithSmallestNonce != null && txWithSmallestNonce.Nonce <= transaction.Nonce)
+                    while (txWithSmallestNonce != null && txWithSmallestNonce.Nonce <= tx.Nonce)
                     {
-                        RemoveTransaction(txWithSmallestNonce.Hash!);
+                        RemoveTransaction(txWithSmallestNonce);
                         txWithSmallestNonce = bucket.FirstOrDefault();
                     }
 
                     if (persistentBucket != null)
                     {
                         txWithSmallestNonce = persistentBucket.FirstOrDefault();
-                        while (txWithSmallestNonce != null && txWithSmallestNonce.Nonce <= transaction.Nonce)
+                        while (txWithSmallestNonce != null && txWithSmallestNonce.Nonce <= tx.Nonce)
                         {
                             persistentBucket.Remove(txWithSmallestNonce);
                             txWithSmallestNonce = persistentBucket.FirstOrDefault();
@@ -446,6 +480,8 @@ namespace Nethermind.TxPool
                     }
                 }
             }
+            
+            UpdateGasBottleneckForSenderTransactions(tx);
             return isKnown;
         }
 

@@ -114,17 +114,12 @@ namespace Nethermind.TxPool.Collections
             {
                 if (Remove(key, value))
                 {
-                    TGroupKey? groupMapping = MapToGroup(value);
-                    if (groupMapping is not null)
+                    if (TryGetBucket(value, out bucket))
                     {
-                        if (_buckets.TryGetValue(groupMapping, out bucket))
-                        {
-                            bucket!.Remove(value);
-                            return true;
-                        }   
+                        bucket!.Remove(value);
+                        return true;
                     }
                 }
-
             }
 
             value = default;
@@ -132,7 +127,20 @@ namespace Nethermind.TxPool.Collections
             return false;
         }
 
+        public bool TryGetBucket(TValue value, out ICollection<TValue>? bucket)
+        {
+            TGroupKey? groupMapping = MapToGroup(value);
+            if (groupMapping is not null)
+            {
+                return _buckets.TryGetValue(groupMapping, out bucket);
+            }
+            
+            bucket = null;
+            return false;
+        }
+
         public bool TryRemove(TKey key, [MaybeNullWhen(false)] out TValue value) => TryRemove(key, out value, out _);
+        public bool TryRemove(TKey key, [MaybeNullWhen(false)] out ICollection<TValue>? bucket) => TryRemove(key, out _, out bucket);
         public bool TryRemove(TKey key) => TryRemove(key, out _, out _);
 
         /// <summary>
@@ -214,6 +222,15 @@ namespace Nethermind.TxPool.Collections
         {
             _sortedValues.Remove(value);
             return _cacheMap.Remove(key);
+        } 
+        
+        [MethodImpl(MethodImplOptions.Synchronized)]
+        public void NotifyChange(TKey key, TValue value)
+        {
+            if (_sortedValues.Remove(value))
+            {
+                _sortedValues.Add(value, key);
+            }
         }
     }
 }
