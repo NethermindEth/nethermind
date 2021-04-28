@@ -25,5 +25,8 @@ namespace Nethermind.Merge.Plugin
             Description = "Defines whether the MEV bundles are allowed.",
             DefaultValue = "false")]
         bool Enabled { get; set; }
+        
+        [ConfigItem(Description = "Account to be used by the block author / coinbase.", DefaultValue = "")]
+        public string BlockAuthorAccount { get; set; }
     }
 }

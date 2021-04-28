@@ -71,6 +71,10 @@
       "commandName": "Project",
       "commandLineArgs": "--config configs\\kovan.cfg"
     },
+    "Catalyst": {
+      "commandName": "Project",
+      "commandLineArgs": "--config configs\\catalyst.cfg --Merge.BlockAuthorAccount 0x1000000000000000000000000000000000000000"
+    },
     "xdai1559": {
       "commandName": "Project",
       "commandLineArgs": "--config configs\\xdai1559.cfg --Init.DiagnosticMode MemDb"

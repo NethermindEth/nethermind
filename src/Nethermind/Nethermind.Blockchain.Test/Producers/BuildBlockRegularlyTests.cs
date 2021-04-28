@@ -17,6 +17,7 @@
 
 using System;
 using System.Threading;
+using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain.Producers;
 using NUnit.Framework;
@@ -27,12 +28,12 @@ namespace Nethermind.Blockchain.Test.Producers
     public class BuildBlockRegularlyTests
     {
         [Test]
-        public void Regular_trigger_works()
+        public async Task Regular_trigger_works()
         {
             int triggered = 0;
             BuildBlocksRegularly trigger = new BuildBlocksRegularly(TimeSpan.FromMilliseconds(5));
             trigger.TriggerBlockProduction += (s, e) => triggered++;
-            Thread.Sleep(50);
+            await Task.Delay(50);
 
             triggered.Should().BeInRange(1, 20);
         }

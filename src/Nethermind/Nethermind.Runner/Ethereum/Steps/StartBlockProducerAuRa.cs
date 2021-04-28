@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -107,7 +107,7 @@ namespace Nethermind.Runner.Ethereum.Steps
 
             var chainSpecAuRa = _api.ChainSpec.AuRa;
 
-            ITxFilter auRaTxFilter = TxFilterBuilders.CreateAuRaTxFilter(
+            ITxFilter auRaTxFilter = TxAuRaFilterBuilders.CreateAuRaTxFilter(
                 _api,
                 readOnlyTxProcessorSource,
                 _api.SpecProvider);;
@@ -161,11 +161,11 @@ namespace Nethermind.Runner.Ethereum.Steps
             IReadOnlyTxProcessorSource readOnlyTxProcessorSourceForTxPriority = 
                 new ReadOnlyTxProcessingEnv(_api.DbProvider, _api.ReadOnlyTrieStore, _api.BlockTree, _api.SpecProvider, _api.LogManager);
             
-            (_txPriorityContract, _localDataSource) = TxFilterBuilders.CreateTxPrioritySources(_auraConfig, _api, readOnlyTxProcessorSourceForTxPriority);
+            (_txPriorityContract, _localDataSource) = TxAuRaFilterBuilders.CreateTxPrioritySources(_auraConfig, _api, readOnlyTxProcessorSourceForTxPriority);
 
             if (_txPriorityContract != null || _localDataSource != null)
             {
-                _minGasPricesContractDataStore = TxFilterBuilders.CreateMinGasPricesDataStore(_api, _txPriorityContract, _localDataSource)!;
+                _minGasPricesContractDataStore = TxAuRaFilterBuilders.CreateMinGasPricesDataStore(_api, _txPriorityContract, _localDataSource)!;
                 _api.DisposeStack.Push(_minGasPricesContractDataStore);                
 
                 ContractDataStore<Address> whitelistContractDataStore = new ContractDataStoreWithLocalData<Address>(
@@ -267,6 +267,14 @@ namespace Nethermind.Runner.Ethereum.Steps
             return new TxPoolTxSource(_api.TxPool, processingEnv.StateReader, _api.SpecProvider, _api.TransactionComparerProvider.GetDefaultComparer(), _blockPreparationContextService, _api.LogManager, txFilterPipeline);
         }
 
+        private ITxFilter CreateAuraTxFilterForProducer(IReadOnlyTxProcessorSource readOnlyTxProcessorSource, ISpecProvider specProvider) =>
+            TxAuRaFilterBuilders.CreateAuRaTxFilterForProducer(
+                NethermindApi.Config<IMiningConfig>(),
+                _api,
+                readOnlyTxProcessorSource,
+                _minGasPricesContractDataStore,
+                specProvider);
+
         private ITxSource CreateTxSourceForProducer(ReadOnlyTxProcessingEnv processingEnv, IReadOnlyTxProcessorSource readOnlyTxProcessorSource)
         {
             bool CheckAddPosdaoTransactions(IList<ITxSource> list, long auRaPosdaoTransition)
@@ -333,7 +341,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 txSource = new GeneratedTxSource(txSource, transactionSealer, processingEnv.StateReader, _api.LogManager);
             }
             
-            ITxFilter? txPermissionFilter = TxFilterBuilders.CreateTxPermissionFilter(_api, readOnlyTxProcessorSource);
+            ITxFilter? txPermissionFilter = TxAuRaFilterBuilders.CreateTxPermissionFilter(_api, readOnlyTxProcessorSource);
             if (txPermissionFilter != null)
             {
                 // we now only need to filter generated transactions here, as regular ones are filtered on TxPoolTxSource filter based on CreateTxSourceFilter method
@@ -343,18 +351,10 @@ namespace Nethermind.Runner.Ethereum.Steps
             return txSource;
         }
         
-        private ITxFilter CreateAuraTxFilter(IReadOnlyTxProcessorSource readOnlyTxProcessorSource, ISpecProvider specProvider) => 
-            TxFilterBuilders.CreateAuRaTxFilter(
+        private ITxFilter CreateAuraTxFilter(IReadOnlyTxProcessorSource readOnlyTxProcessorSource, ISpecProvider specProvider) =>
+            TxAuRaFilterBuilders.CreateAuRaTxFilter(
                 _api,
                 readOnlyTxProcessorSource,
-                specProvider);
-
-        private ITxFilter CreateAuraTxFilterForProducer(IReadOnlyTxProcessorSource readOnlyTxProcessorSource, ISpecProvider specProvider) => 
-            TxFilterBuilders.CreateAuRaTxFilterForProducer(
-                NethermindApi.Config<IMiningConfig>(),
-                _api,
-                readOnlyTxProcessorSource,
-                _minGasPricesContractDataStore,
                 specProvider);
 
         private IGasLimitCalculator CreateGasLimitCalculator(IReadOnlyTxProcessorSource readOnlyTxProcessorSource)

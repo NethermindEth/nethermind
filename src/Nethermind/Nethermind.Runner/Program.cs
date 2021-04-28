@@ -95,10 +95,11 @@ namespace Nethermind.Runner
             AppDomain.CurrentDomain.ProcessExit += CurrentDomainOnProcessExit;
             IFileSystem fileSystem = new FileSystem();
             
-            PluginLoader filePluginLoader = new("plugins", fileSystem, typeof(CliquePlugin), typeof(EthashPlugin), typeof(NethDevPlugin));
-            IPluginLoader mevLoader = SinglePluginLoader<MevPlugin>.Instance;
+            PluginLoader pluginLoader = new("plugins", fileSystem, typeof(CliquePlugin), typeof(EthashPlugin), typeof(NethDevPlugin));
             
-            CompositePluginLoader pluginLoader = new (filePluginLoader, mevLoader);
+            // leaving here as an example of adding Debug plugin
+            // IPluginLoader mevLoader = SinglePluginLoader<MevPlugin>.Instance;
+            // CompositePluginLoader pluginLoader = new (pluginLoader, mevLoader);
             pluginLoader.Load(SimpleConsoleLogManager.Instance);
 
             Type configurationType = typeof(IConfig);

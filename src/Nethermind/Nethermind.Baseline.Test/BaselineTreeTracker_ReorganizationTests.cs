@@ -21,6 +21,7 @@ using Nethermind.Baseline.Test.Contracts;
 using Nethermind.Baseline.Tree;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm;
 using Nethermind.Int256;
@@ -33,6 +34,7 @@ namespace Nethermind.Baseline.Test
     public partial class BaselineTreeTrackerTests
     {
         [Test]
+        [Retry(3)]
         public async Task Tree_tracker_reorganization([ValueSource(nameof(ReorganizationTestCases))]ReorganizedInsertLeafTest test)
         {
             Address address = TestItem.Addresses[0];
@@ -55,13 +57,14 @@ namespace Nethermind.Baseline.Test
 
             int initBlocksCount = 4;
             int allBlocksCount = initBlocksCount + test.LeavesInBlocksCounts.Length;
-            testRpc.BlockProducer.BlockParent = testRpc.BlockTree.FindHeader(allBlocksCount);
+            TestBlockProducer testRpcBlockProducer = (TestBlockProducer) testRpc.BlockProducer;
+            testRpcBlockProducer.BlockParent = testRpc.BlockTree.FindHeader(allBlocksCount);
 
             nonce = 1L;
             nonce = await InsertLeafFromArray(test.LeavesInMiddleOfReorganization, nonce, testRpc, contract, address);
 
             await testRpc.AddBlock(false);
-            testRpc.BlockProducer.BlockParent = testRpc.BlockProducer.LastProducedBlock.Header;
+            testRpcBlockProducer.BlockParent = testRpcBlockProducer.LastProducedBlock.Header;
 
             await InsertLeafFromArray(test.LeavesInAfterReorganization, nonce, testRpc, contract, address);
 

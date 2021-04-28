@@ -84,7 +84,7 @@ namespace Nethermind.Core
         public UInt256 BaseFee { get; set; }
 
         public bool HasBody => OmmersHash != Keccak.OfAnEmptySequenceRlp || TxRoot != Keccak.EmptyTreeHash;
-        public SealEngineType SealEngineType { get; set; } = SealEngineType.Ethash;
+        public string SealEngineType { get; set; } = Nethermind.Core.SealEngineType.Ethash;
 
         public string ToString(string indent)
         {

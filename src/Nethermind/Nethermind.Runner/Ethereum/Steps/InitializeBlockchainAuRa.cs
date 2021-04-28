@@ -76,7 +76,7 @@ namespace Nethermind.Runner.Ethereum.Steps
        
             var processingReadOnlyTransactionProcessorSource = CreateReadOnlyTransactionProcessorSource();
             var txPermissionFilterOnlyTxProcessorSource = CreateReadOnlyTransactionProcessorSource();
-            ITxFilter auRaTxFilter = TxFilterBuilders.CreateAuRaTxFilter(
+            ITxFilter auRaTxFilter = TxAuRaFilterBuilders.CreateAuRaTxFilter(
                 _api,
                 txPermissionFilterOnlyTxProcessorSource,
                 _api.SpecProvider);
@@ -263,13 +263,13 @@ namespace Nethermind.Runner.Ethereum.Steps
         {
             // This has to be different object than the _processingReadOnlyTransactionProcessorSource as this is in separate thread
             var txPoolReadOnlyTransactionProcessorSource = CreateReadOnlyTransactionProcessorSource();
-            var (txPriorityContract, localDataSource) = TxFilterBuilders.CreateTxPrioritySources(_auraConfig, _api, txPoolReadOnlyTransactionProcessorSource!);
+            var (txPriorityContract, localDataSource) = TxAuRaFilterBuilders.CreateTxPrioritySources(_auraConfig, _api, txPoolReadOnlyTransactionProcessorSource!);
 
             ReportTxPriorityRules(txPriorityContract, localDataSource);
 
-            var minGasPricesContractDataStore = TxFilterBuilders.CreateMinGasPricesDataStore(_api, txPriorityContract, localDataSource);
+            var minGasPricesContractDataStore = TxAuRaFilterBuilders.CreateMinGasPricesDataStore(_api, txPriorityContract, localDataSource);
 
-            ITxFilter txPoolFilter = TxFilterBuilders.CreateAuRaTxFilterForProducer(
+            ITxFilter txPoolFilter = TxAuRaFilterBuilders.CreateAuRaTxFilterForProducer(
                 NethermindApi.Config<IMiningConfig>(),
                 _api,
                 txPoolReadOnlyTransactionProcessorSource,

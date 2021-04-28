@@ -33,5 +33,10 @@ namespace Nethermind.Core
         {
             UtcNow += timeSpan;
         }
+        
+        public void Set(DateTime utcNow)
+        {
+            UtcNow = utcNow;
+        }
     }
 }
