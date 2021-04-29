@@ -42,7 +42,7 @@ namespace Nethermind.Dsl
             _txPool = _api.TxPool;
             _blockProcessor = _api.MainBlockProcessor;
 
-            _config = _api.ConfigProvider.GetConfig<IDslConfig>();
+            _config = _api.Config<IDslConfig>();
             if (_config.Enabled)
             {
                 _logger = _api.LogManager.GetClassLogger();
