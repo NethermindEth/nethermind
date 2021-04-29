@@ -19,9 +19,12 @@ using System;
 using System.Collections.Concurrent;
 using System.Threading.Tasks;
 using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Blockchain;
+using Nethermind.Consensus;
+using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.Evm.Tracing;
@@ -36,12 +39,13 @@ using Nethermind.TxPool;
 
 namespace Nethermind.Mev
 {
-    public class MevPlugin : INethermindPlugin
+    public class MevPlugin : IConsensusWrapperPlugin
     {
         private IMevConfig? _mevConfig;
         private ILogger? _logger;
         private INethermindApi _nethermindApi = null!;
-        
+        private BundlePool _bundlePool = null!;
+
         public string Name => "MEV";
 
         public string Description => "Flashbots MEV spec implementation";
@@ -74,12 +78,12 @@ namespace Nethermind.Mev
 
                 TxBundleSimulator txBundleSimulator = new(tracerFactory, getFromApi.GasLimitCalculator, getFromApi.Timestamper);
                 
-                BundlePool bundlePool = new(getFromApi.BlockTree!, txBundleSimulator, getFromApi.FinalizationManager);
+                _bundlePool = new(getFromApi.BlockTree!, txBundleSimulator, getFromApi.FinalizationManager);
                 
                 MevModuleFactory mevModuleFactory = new(
                     _mevConfig!, 
                     rpcConfig, 
-                    bundlePool!, 
+                    _bundlePool!, 
                     getFromApi.BlockTree!,
                     getFromApi.StateReader!,
                     tracerFactory,
@@ -102,11 +106,20 @@ namespace Nethermind.Mev
             return Task.CompletedTask;
         }
 
+        public async Task<IBlockProducer> InitBlockProducer(IConsensusPlugin consensusPlugin, ITxSource? txSource = null)
+        {
+            IBlockProducer standardProducer = await consensusPlugin.InitBlockProducer();
+            V1Selector v1Selector = new(_bundlePool);
+            IBlockProducer bundleProducer = await consensusPlugin.InitBlockProducer(new BundleTxSource(v1Selector, standardProducer.Timestamper));
+            return _nethermindApi.BlockProducer = new MevBlockProducer(new[] {bundleProducer, standardProducer}.OfType<IManualBlockProducer>().ToArray());
+        }
+
         private void TxPoolOnNewPending(object? sender, TxEventArgs e)
         {
             IBlockchainBridge bridge = _nethermindApi!.CreateBlockchainBridge();
             // create a bundle
             // submit the bundle to Flashbots MEV-Relay
+            // move to other class
         }
 
         public ValueTask DisposeAsync()

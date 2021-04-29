@@ -17,6 +17,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using Nethermind.Abi;
 using Nethermind.Api;
 using Nethermind.Blockchain;
@@ -62,7 +63,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             _auraConfig = NethermindApi.Config<IAuraConfig>();
         }
 
-        protected override void BuildProducer()
+        protected override Task BuildProducer()
         {
             if (_api.EngineSigner == null) throw new StepDependencyException(nameof(_api.EngineSigner));
             if (_api.ChainSpec == null) throw new StepDependencyException(nameof(_api.ChainSpec));
@@ -89,6 +90,8 @@ namespace Nethermind.Runner.Ethereum.Steps
                 gasLimitCalculator,
                 _api.SpecProvider,
                 _api.LogManager);
+            
+            return Task.CompletedTask;
         }
 
         protected override BlockProcessor CreateBlockProcessor(

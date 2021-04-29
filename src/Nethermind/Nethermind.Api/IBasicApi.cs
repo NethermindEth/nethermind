@@ -63,5 +63,8 @@ namespace Nethermind.Api
             Plugins
                 .OfType<IConsensusPlugin>()
                 .SingleOrDefault(cp => cp.SealEngineType == SealEngineType);
+
+        public IEnumerable<IConsensusWrapperPlugin> GetConsensusWrapperPlugins() =>
+            Plugins.OfType<IConsensusWrapperPlugin>();
     }
 }

@@ -70,7 +70,10 @@ namespace Nethermind.Mev.Source
                 int i = _bundles.BinarySearch(searchedBundle, CompareBundles);
                 for (int j = i >= 0 ? i : ~i; j < _bundles.Count; j++)
                 {
-                    token.ThrowIfCancellationRequested();
+                    if (token.IsCancellationRequested)
+                    {
+                        break;
+                    }
                     
                     MevBundle mevBundle = _bundles[j].Key;
                     if (mevBundle.BlockNumber == searchedBundle.BlockNumber)

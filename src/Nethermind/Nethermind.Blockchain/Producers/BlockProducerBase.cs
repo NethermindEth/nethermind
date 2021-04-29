@@ -48,7 +48,7 @@ namespace Nethermind.Blockchain.Producers
         private IBlockchainProcessor Processor { get; }
         protected IBlockTree BlockTree { get; }
         protected IBlockProcessingQueue BlockProcessingQueue { get; }
-        protected ITimestamper Timestamper { get; }
+        public ITimestamper Timestamper { get; }
 
         protected ISealer Sealer { get; }
         private readonly IStateProvider _stateProvider;
@@ -98,7 +98,7 @@ namespace Nethermind.Blockchain.Producers
             else
                 return true;
         }
-
+        
         private readonly object _newBlockLock = new();
 
         protected Task<Block?> TryProduceNewBlock(CancellationToken token, BlockHeader? parentHeader = null)

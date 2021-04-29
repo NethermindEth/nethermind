@@ -30,6 +30,7 @@ namespace Nethermind.Consensus
 
         protected MultipleManualBlockProducer(params IManualBlockProducer[] blockProducers)
         {
+            if (blockProducers.Length == 0) throw new ArgumentException("Collection cannot be empty.", nameof(blockProducers));
             _blockProducers = blockProducers;
         }
         
@@ -64,6 +65,8 @@ namespace Nethermind.Consensus
 
             return false;
         }
+
+        public ITimestamper Timestamper => _blockProducers[0].Timestamper;
 
         public async Task<BlockProducedContext> TryProduceBlock(BlockHeader parentHeader, CancellationToken cancellationToken = default)
         {
