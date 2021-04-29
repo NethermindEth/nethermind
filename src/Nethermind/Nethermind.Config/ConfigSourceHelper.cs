@@ -26,65 +26,67 @@ namespace Nethermind.Config
 {
     internal static class ConfigSourceHelper
     {
-        public static object ParseValue(Type valueType, string valueString)
+        public static object ParseValue(Type valueType, string valueString, string category, string name)
         {
-            object value;
-            if (valueType.IsArray || (valueType.IsGenericType && valueType.GetGenericTypeDefinition() == typeof(IEnumerable<>)))
+            try
             {
-                //supports Arrays, e.g int[] and generic IEnumerable<T>, IList<T>
-                var itemType = valueType.IsGenericType ? valueType.GetGenericArguments()[0] : valueType.GetElementType();
-
-                //In case of collection of objects (more complex config models) we parse entire collection 
-                if (itemType.IsClass && typeof(IConfigModel).IsAssignableFrom(itemType))
+                object value;
+                if (valueType.IsArray || (valueType.IsGenericType && valueType.GetGenericTypeDefinition() == typeof(IEnumerable<>)))
                 {
-                    var objCollection = JsonConvert.DeserializeObject(valueString, valueType);
-                    value = objCollection;
+                    //supports Arrays, e.g int[] and generic IEnumerable<T>, IList<T>
+                    var itemType = valueType.IsGenericType ? valueType.GetGenericArguments()[0] : valueType.GetElementType();
+
+                    //In case of collection of objects (more complex config models) we parse entire collection 
+                    if (itemType.IsClass && typeof(IConfigModel).IsAssignableFrom(itemType))
+                    {
+                        var objCollection = JsonConvert.DeserializeObject(valueString, valueType);
+                        value = objCollection;
+                    }
+                    else
+                    {
+                        valueString = valueString.Trim().RemoveStart('[').RemoveEnd(']');
+                        var valueItems = valueString.Split(',').Select(s => s.Trim()).ToArray();
+                        var collection = valueType.IsGenericType
+                            ? (IList)Activator.CreateInstance(typeof(List<>).MakeGenericType(itemType))
+                            : (IList)Activator.CreateInstance(valueType, valueItems.Length);
+
+                        var i = 0;
+                        foreach (var valueItem in valueItems)
+                        {
+                            string item = valueItem;
+                            if (valueItem.StartsWith('"') && valueItem.EndsWith('"'))
+                            {
+                                item = valueItem.Substring(1, valueItem.Length - 2);
+                            }
+
+                            var itemValue = GetValue(itemType, item);
+                            if (valueType.IsGenericType)
+                            {
+                                collection.Add(itemValue);
+                            }
+                            else
+                            {
+                                collection[i] = itemValue;
+                                i++;
+                            }
+                        }
+
+                        value = collection;
+                    }
                 }
                 else
                 {
-                    valueString = valueString.Trim().RemoveStart('[').RemoveEnd(']');
-                    var valueItems = valueString.Split(',').Select(s => s.Trim()).ToArray();
-                    var collection = valueType.IsGenericType
-                        ? (IList) Activator.CreateInstance(typeof(List<>).MakeGenericType(itemType))
-                        : (IList) Activator.CreateInstance(valueType, valueItems.Length);
-
-                    var i = 0;
-                    foreach (var valueItem in valueItems)
-                    {
-                        string item = valueItem;
-                        if (valueItem.StartsWith('"') && valueItem.EndsWith('"'))
-                        {
-                            item = valueItem.Substring(1, valueItem.Length - 2);
-                        }
-                        
-                        var itemValue = GetValue(itemType, item);
-                        if (valueType.IsGenericType)
-                        {
-                            collection.Add(itemValue);
-                        }
-                        else
-                        {
-                            collection[i] = itemValue;
-                            i++;
-                        }
-                    }
-
-                    value = collection;
+                    value = GetValue(valueType, valueString);
                 }
-            }
-            else
-            {
-                value = GetValue(valueType, valueString);
-            }
 
-            return value;
+                return value;
+            }
+            catch (Exception e)
+            {
+                throw new System.Configuration.ConfigurationErrorsException($"Could not load value {category}.{name}. See inner exception for details.", e);
+            }
         }
-        
-        public static T ParseValue<T>(string valueString)
-        {
-            return (T) ParseValue(typeof(T), valueString);
-        }
-        
+
         public static object GetDefault(Type type)
         {
             return type.IsValueType ? (false, Activator.CreateInstance(type)) : (false, null);
@@ -104,7 +106,7 @@ namespace Nethermind.Config
                     return enumValue;
                 }
 
-                throw new IOException($"Cannot parse enum value: {itemValue}, type: {valueType.Name}");
+                throw new FormatException($"Cannot parse enum value: {itemValue}, type: {valueType.Name}");
             }
 
             var nullableType = Nullable.GetUnderlyingType(valueType);
