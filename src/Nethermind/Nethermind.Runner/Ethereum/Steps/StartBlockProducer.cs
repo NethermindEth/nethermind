@@ -96,7 +96,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                     new ReadOnlyTxProcessingEnv(dbProvider, _api.ReadOnlyTrieStore, blockTree, _api.SpecProvider, _api.LogManager);
                 
                 BlockProcessor blockProcessor =
-                    CreateBlockProcessor(txProcessingEnv, txProcessingEnv, dbProvider);
+                    CreateBlockProcessor(txProcessingEnv, txProcessingEnv);
 
                 IBlockchainProcessor blockchainProcessor =
                     new BlockchainProcessor(
@@ -138,8 +138,7 @@ namespace Nethermind.Runner.Ethereum.Steps
 
         protected virtual BlockProcessor CreateBlockProcessor(
             ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv,
-            IReadOnlyTxProcessorSource readOnlyTxProcessorSource,
-            IReadOnlyDbProvider readOnlyDbProvider)
+            IReadOnlyTxProcessorSource readOnlyTxProcessorSource)
         {
             if (_api.SpecProvider == null) throw new StepDependencyException(nameof(_api.SpecProvider));
             if (_api.BlockValidator == null) throw new StepDependencyException(nameof(_api.BlockValidator));

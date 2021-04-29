@@ -227,9 +227,7 @@ namespace Nethermind.Blockchain.Producers
             if (Logger.IsDebug) Logger.Debug($"Setting total difficulty to {parent.TotalDifficulty} + {difficulty}.");
 
             IEnumerable<Transaction> transactions = GetTransactions(parent);
-            Block block = new(header, transactions, Array.Empty<BlockHeader>());
-            header.TxRoot = new TxTrie(block.Transactions).RootHash;
-            return block;
+            return new(header, transactions, Array.Empty<BlockHeader>());;
         }
 
         protected abstract UInt256 CalculateDifficulty(BlockHeader parent, UInt256 timestamp);

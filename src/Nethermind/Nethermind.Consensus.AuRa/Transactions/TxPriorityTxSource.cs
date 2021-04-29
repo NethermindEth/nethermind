@@ -36,8 +36,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
         private readonly IContractDataStore<Address> _sendersWhitelist;
         private readonly IDictionaryContractDataStore<TxPriorityContract.Destination> _priorities;
         private CompareTxByPriorityOnSpecifiedBlock _comparer;
-
-
+        
         public TxPriorityTxSource(
             ITxPool transactionPool, 
             IStateReader stateReader, 

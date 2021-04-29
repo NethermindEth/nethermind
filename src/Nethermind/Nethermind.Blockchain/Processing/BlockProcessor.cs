@@ -31,6 +31,7 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
+using Nethermind.State.Proofs;
 
 namespace Nethermind.Blockchain.Processing
 {
@@ -210,12 +211,8 @@ namespace Nethermind.Blockchain.Processing
         // TODO: block processor pipeline
         private TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, IBlockTracer blockTracer)
         {
-            _receiptsTracer.SetOtherTracer(blockTracer);
-            _receiptsTracer.StartNewBlockTrace(block);
-
-            for (int i = 0; i < block.Transactions.Length; i++)
+            void ProcessTransaction(Transaction currentTx, int index)
             {
-                Transaction currentTx = block.Transactions[i];
                 if ((processingOptions & ProcessingOptions.DoNotVerifyNonce) != 0)
                 {
                     currentTx.Nonce = _stateProvider.GetNonce(currentTx.SenderAddress);
@@ -225,7 +222,44 @@ namespace Nethermind.Blockchain.Processing
                 _transactionProcessor.Execute(currentTx, block.Header, _receiptsTracer);
                 _receiptsTracer.EndTxTrace();
 
-                TransactionProcessed?.Invoke(this, new TxProcessedEventArgs(i, currentTx, _receiptsTracer.TxReceipts[i]));
+                TransactionProcessed?.Invoke(this, new TxProcessedEventArgs(index, currentTx, _receiptsTracer.TxReceipts[index]));
+            }
+
+            _receiptsTracer.SetOtherTracer(blockTracer);
+            _receiptsTracer.StartNewBlockTrace(block);
+
+            IEnumerable<Transaction> transactions = block.GetTransactions(out bool transactionsChangeable);
+
+            if (transactionsChangeable)
+            {
+                int i = 0;
+                List<Transaction> transactionsForBlock = new();
+                foreach (Transaction currentTx in transactions)
+                {
+                    int snapshot = _stateProvider.TakeSnapshot();
+                    try
+                    {
+                        ProcessTransaction(currentTx, i++);
+                        _stateProvider.Commit(_specProvider.GetSpec(block.Number));
+                        transactionsForBlock.Add(currentTx);
+                    }
+                    catch (OutOfGasException)
+                    {
+                        // TODO: rollback Receipt?
+                        _stateProvider.Restore(snapshot);
+                    }
+                }
+
+                block.TrySetTransactions(transactionsForBlock.ToArray());
+                block.Header.TxRoot = new TxTrie(block.Transactions).RootHash;
+            }
+            else
+            {
+                for (int i = 0; i < block.Transactions.Length; i++)
+                {
+                    Transaction currentTx = block.Transactions[i];
+                    ProcessTransaction(currentTx, i);
+                }
             }
 
             return _receiptsTracer.TxReceipts;
@@ -311,7 +345,10 @@ namespace Nethermind.Blockchain.Processing
                 BaseFee = bh.BaseFee
             };
 
-            return new Block(header, suggestedBlock.Transactions, suggestedBlock.Ommers);
+            IEnumerable<Transaction> transactions = suggestedBlock.GetTransactions(out bool transactionsChangeable);
+            return transactionsChangeable 
+                ? new BlockToProduce(header, transactions, suggestedBlock.Ommers) 
+                : new Block(header, transactions, suggestedBlock.Ommers);
         }
 
         // TODO: block processor pipeline

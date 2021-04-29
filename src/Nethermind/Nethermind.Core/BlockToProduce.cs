@@ -13,42 +13,41 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
 using System;
+using System.Collections.Generic;
 
 namespace Nethermind.Core
 {
-    public class BlockBody
+    public class BlockToProduce : Block
     {
-        public BlockBody(Transaction[]? transactions, BlockHeader[]? ommers)
+        private IEnumerable<Transaction>? _transactions;
+
+        public new IEnumerable<Transaction> Transactions
         {
-            Transactions = transactions ?? Array.Empty<Transaction>();
-            Ommers = ommers ?? Array.Empty<BlockHeader>();
+            get => _transactions ?? base.Transactions;
+            set
+            {
+                _transactions = value;
+                if (_transactions is Transaction[] transactionsArray)
+                {
+                    base.Transactions = transactionsArray;
+                }
+            }
         }
 
-        public BlockBody()
-            : this(null, null)
+        public BlockToProduce(BlockHeader blockHeader, BlockBody body) : base(blockHeader, body)
         {
         }
 
-        public BlockBody WithChangedTransactions(Transaction[] transactions)
+        public BlockToProduce(BlockHeader blockHeader, IEnumerable<Transaction> transactions, IEnumerable<BlockHeader> ommers) : base(blockHeader, Array.Empty<Transaction>(), ommers)
         {
-            return new(transactions, Ommers);
+            Transactions = transactions;
         }
 
-        public BlockBody WithChangedOmmers(BlockHeader[] ommers)
+        public BlockToProduce(BlockHeader blockHeader) : base(blockHeader)
         {
-            return new(Transactions, ommers);
         }
-
-        public static BlockBody WithOneTransactionOnly(Transaction tx)
-        {
-            return new(new[] {tx}, Array.Empty<BlockHeader>());
-        }
-
-        public Transaction[] Transactions { get; internal set; }
-        public BlockHeader[] Ommers { get; }
-
-        public static readonly BlockBody Empty = new();
     }
 }

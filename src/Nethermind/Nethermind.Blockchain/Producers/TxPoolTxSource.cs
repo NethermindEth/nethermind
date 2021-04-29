@@ -112,23 +112,10 @@ namespace Nethermind.Blockchain.Producers
             IDictionary<Address, UInt256> remainingBalance = new Dictionary<Address, UInt256>();
             Dictionary<Address, UInt256> nonces = new();
             List<Transaction> selected = new();
-            long gasRemaining = gasLimit;
-
-            if (_logger.IsDebug) _logger.Debug($"Collecting pending transactions at block gas limit {gasRemaining}.");
+            if (_logger.IsDebug) _logger.Debug($"Collecting pending transactions at block gas limit {gasLimit}.");
 
             foreach (Transaction tx in transactions)
             {
-                if (gasRemaining < Transaction.BaseTxGasCost)
-                {
-                    break;
-                }
-
-                if (tx.GasLimit > gasRemaining)
-                {
-                    if (_logger.IsDebug) _logger.Debug($"Rejecting (tx gas limit {tx.GasLimit} above remaining block gas {gasRemaining}) {tx.ToShortString()}");
-                    continue;
-                }
-                
                 if (tx.SenderAddress == null)
                 {
                     _transactionPool.RemoveTransaction(tx.Hash!);
@@ -171,7 +158,6 @@ namespace Nethermind.Blockchain.Producers
                 selected.Add(tx);
                 if (_logger.IsTrace) _logger.Trace($"Selected {tx.ToShortString()} to be included in block.");
                 nonces[tx.SenderAddress!] = tx.Nonce + 1;
-                gasRemaining -= tx.GasLimit;
             }
 
             if (_logger.IsDebug) _logger.Debug($"Collected {selected.Count} out of {pendingTransactions.Sum(g => g.Value.Length)} pending transactions.");

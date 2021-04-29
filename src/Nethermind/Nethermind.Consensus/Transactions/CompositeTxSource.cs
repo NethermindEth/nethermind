@@ -34,14 +34,10 @@ namespace Nethermind.Consensus.Transactions
         {
             for (int i = 0; i < _transactionSources.Length; i++)
             {
-                var transactions = _transactionSources[i].GetTransactions(parent, gasLimit);
-                if (transactions != null)
+                IEnumerable<Transaction> transactions = _transactionSources[i].GetTransactions(parent, gasLimit);
+                foreach (Transaction tx in transactions)
                 {
-                    foreach (var tx in transactions)
-                    {
-                        gasLimit -= tx.GasLimit;
-                        yield return tx;
-                    }
+                    yield return tx;
                 }
             }
         }

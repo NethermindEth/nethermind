@@ -35,7 +35,6 @@ using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Crypto;
-using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Logging;
 using Nethermind.Runner.Ethereum.Api;
@@ -96,8 +95,7 @@ namespace Nethermind.Runner.Ethereum.Steps
 
         protected override BlockProcessor CreateBlockProcessor(
             ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv,
-            IReadOnlyTxProcessorSource readOnlyTxProcessorSource,
-            IReadOnlyDbProvider readOnlyDbProvider)
+            IReadOnlyTxProcessorSource readOnlyTxProcessorSource)
         {
             if (_api.RewardCalculatorSource == null) throw new StepDependencyException(nameof(_api.RewardCalculatorSource));
             if (_api.ValidatorStore == null) throw new StepDependencyException(nameof(_api.ValidatorStore));

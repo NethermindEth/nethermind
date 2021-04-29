@@ -60,7 +60,7 @@ namespace Nethermind.Core
 
         public bool IsGenesis => Header.IsGenesis;
 
-        public Transaction[] Transactions => Body.Transactions; // do not add setter here
+        public Transaction[] Transactions { get => Body.Transactions; protected set => Body.Transactions = value; } // setter needed to produce blocks with unknown transaction count on start
 
         public BlockHeader[] Ommers => Body.Ommers; // do not add setter here
 
