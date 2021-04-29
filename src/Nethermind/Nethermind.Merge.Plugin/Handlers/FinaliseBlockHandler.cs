@@ -29,7 +29,7 @@ namespace Nethermind.Merge.Plugin.Handlers
 
         public ResultWrapper<Result> Handle(Keccak request)
         {
-            return ResultWrapper<Result>.Success(Result.Success);
+            return ResultWrapper<Result>.Success(Result.OK);
         }
     }
 }
