@@ -78,6 +78,10 @@
     "xdai1559": {
       "commandName": "Project",
       "commandLineArgs": "--config configs\\xdai1559.cfg --Init.DiagnosticMode MemDb"
-    }
+    },
+    "Aleut": {
+      "commandName": "Project",
+      "commandLineArgs": "--config configs\\aleut.cfg"
+    },
   }
 }
