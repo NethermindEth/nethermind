@@ -258,9 +258,11 @@ namespace Nethermind.TxPool
                 return AddTxResult.Invalid;
             }
 
+
+            var spec = _specProvider.GetSpec();
             Metrics.PendingTransactionsReceived++;
             
-            if (!_validator.IsWellFormed(tx, _specProvider.GetSpec()))
+            if (!_validator.IsWellFormed(tx, spec))
             {
                 // It may happen that other nodes send us transactions that were signed for another chain or don't have enough gas.
                 Metrics.PendingTransactionsDiscarded++;
@@ -309,15 +311,17 @@ namespace Nethermind.TxPool
                 return AddTxResult.FutureNonce;
             }
 
-            bool overflow = UInt256.MultiplyOverflow(tx.GasPrice, (UInt256) tx.GasLimit, out UInt256 cost);
+            // we're checking that user can pay what he declared in FeeCap. For this check BaseFee = FeeCap
+            var effectiveGasPrice = tx.GetEffectiveGasPrice(spec.IsEip1559Enabled, tx.FeeCap);
+            bool overflow = UInt256.MultiplyOverflow(effectiveGasPrice, (UInt256) tx.GasLimit, out UInt256 cost);
             overflow |= UInt256.AddOverflow(cost, tx.Value, out cost);
             if (overflow)
             {
                 if (_logger.IsTrace)
                     _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, cost overflow.");
-                return AddTxResult.BalanceOverflow;
+                return AddTxResult.CostOverflow;
             }
-            else if ((account?.Balance ?? UInt256.Zero) < cost && !tx.IsEip1559)
+            else if ((account?.Balance ?? UInt256.Zero) < cost)
             {
                 if (_logger.IsTrace)
                     _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, insufficient funds.");

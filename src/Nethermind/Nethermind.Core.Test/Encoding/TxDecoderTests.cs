@@ -162,7 +162,6 @@ namespace Nethermind.Core.Test.Encoding
         
         
         [Test]
-        [Ignore("posdao")]
         public void Message_hash_is_the_same_like_in_posdao_tests()
         {
             var rlp = "0xb9017502f901716580843b9aca008442413031830aae6094110000000000000000000000000000000000000100b90104e4a9e42e00000000000000000000000000000000000000000000043c33c1937564800000000000000000000000000000f67cc5231c5858ad6cc87b105217426e17b824bb000000000000000000000000000000000000000000000000000000000000008000000000000000000000000000000000000000000000000000000000000000c00000000000000000000000000000000000000000000000000000000000000006506f6f6c203400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000012506f6f6c2034206465736372697074696f6e0000000000000000000000000000c001a049c616981bab18236d08d83912d43310cdae60d683295c8b31a2748fb98ab4bfa06e1503c98ec33a4f0a035a483b40bdf572b8201677e59c2ca3cb097022874d69";
@@ -171,8 +170,70 @@ namespace Nethermind.Core.Test.Encoding
             EthereumEcdsa ethereumEcdsa = new EthereumEcdsa(decoded!.ChainId.Value, LimboLogs.Instance);
             var result = Keccak.Compute(Rlp.Encode(decoded, true, true, decoded!.ChainId.Value).Bytes);
             Address address = ethereumEcdsa.RecoverAddress(decoded);
-            Assert.AreEqual("0x7516e5df9df066aca0d720f94726096bf80056d5256a238f3b0782cd24338c80", result);
+            Assert.AreEqual("0x7516e5df9df066aca0d720f94726096bf80056d5256a238f3b0782cd24338c80", result.ToString());
         }
+        
+        
+        [Test]
+        public void CheckingTransactionRlp()
+        {
+            var tx = Build.A.Transaction
+                .WithNonce(819)
+                .WithGasPremium(75853)
+                .WithValue(43203529)
+                .WithFeeCap(121212)
+                .WithTo(new Address("0x000000000000000000000000000000000000aaaa"))
+                .WithType(TxType.EIP1559)
+                .WithChainId(1).TestObject;
+            
+        }
+        
+        [Test]
+        public void CheckingTransactionRlp2()
+        {
+            var tx = Build.A.Transaction
+                .WithChainId(0x65)
+                .WithNonce(0)
+                .WithGasPremium(0x3b9aca00)
+                .WithValue(0)
+                .WithFeeCap(0x4450d26b)
+                .WithGasLimit(0x0aae60)
+                .WithTo(new Address("0x1100000000000000000000000000000000000001"))
+                .WithData(Bytes.FromHexString("0xe4a9e42e00000000000000000000000000000000000000000000043c33c1937564800000000000000000000000000000f67cc5231c5858ad6cc87b105217426e17b824bb000000000000000000000000000000000000000000000000000000000000008000000000000000000000000000000000000000000000000000000000000000c00000000000000000000000000000000000000000000000000000000000000006506f6f6c203400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000012506f6f6c2034206465736372697074696f6e0000000000000000000000000000"))
+                .WithType(TxType.EIP1559).TestObject;
+            EthereumEcdsa ethereumEcdsa = new EthereumEcdsa(tx!.ChainId.Value, LimboLogs.Instance);
+            var privateKey = new PrivateKey("e2c1df46bbbe3c700ab55def9998521097983a3c79b0015995f1d40c87e0ef05");
+            ethereumEcdsa.Sign(privateKey, tx, true);
+            var expected =
+                "b9017502f901716580843b9aca00844450d26b830aae6094110000000000000000000000000000000000000100b90104e4a9e42e00000000000000000000000000000000000000000000043c33c1937564800000000000000000000000000000f67cc5231c5858ad6cc87b105217426e17b824bb000000000000000000000000000000000000000000000000000000000000008000000000000000000000000000000000000000000000000000000000000000c00000000000000000000000000000000000000000000000000000000000000006506f6f6c203400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000012506f6f6c2034206465736372697074696f6e0000000000000000000000000000c000a01498364cae22ed88047ee49b9ed5784e727f4d53a8421fbcda063564f9bd6f73a010365587fbebef6ae2002c883f5be43b5f51f2eef42024c1a3b5079d39bbfde4";
+            
+            var rlp = _txDecoder.Encode(tx);
+            var decoded = _txDecoder.Decode(Bytes.FromHexString(expected).AsRlpStream());
+            var actual = rlp.Bytes.ToHexString();
+            var address = ethereumEcdsa.RecoverAddress(tx);
+            var expectedAddress= ethereumEcdsa.RecoverAddress(decoded);
+            Assert.AreEqual("b9017502f901716580843b9aca00844450d26b830aae6094110000000000000000000000000000000000000100b90104e4a9e42e00000000000000000000000000000000000000000000043c33c1937564800000000000000000000000000000f67cc5231c5858ad6cc87b105217426e17b824bb000000000000000000000000000000000000000000000000000000000000008000000000000000000000000000000000000000000000000000000000000000c00000000000000000000000000000000000000000000000000000000000000006506f6f6c203400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000012506f6f6c2034206465736372697074696f6e0000000000000000000000000000c000a01498364cae22ed88047ee49b9ed5784e727f4d53a8421fbcda063564f9bd6f73a010365587fbebef6ae2002c883f5be43b5f51f2eef42024c1a3b5079d39bbfde4", actual);
+        }
+        
+        // [Test]
+        // public void CheckingTransactionRlp()
+        // {
+        //     Build.A.Transaction
+        //         .With(819)
+        //         .WithGasPremium(75853)
+        //         .WithValue(43203529)
+        //         .WithFeeCap(121212)
+        //         .WithTo(new Address("0x000000000000000000000000000000000000aaaa"))
+        //         .WithType(TxType.AccessList)
+        //         .WithChainId(1)
+        //         .WithAccessList(
+        //             new AccessList(
+        //                 new Dictionary<Address, IReadOnlySet<UInt256>>
+        //                 {
+        //                     {Address.Zero, new HashSet<UInt256> {(UInt256)1}}
+        //                 }, new Queue<object>(new List<object> {Address.Zero, (UInt256)1})))
+        //         .SignedAndResolved().TestObject, "access list");
+        // }
         
         public static IEnumerable<(string, Keccak)> YoloV3TestCases()
         {

@@ -13,22 +13,11 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-namespace Nethermind.TxPool
+namespace Nethermind.Core.Test
 {
-    public enum AddTxResult
+    public class FixedChainHeadFacade
     {
-        AlreadyKnown,
-        Invalid,
-        OldNonce,
-        PotentiallyUseless,
-        Added,
-        OwnNonceAlreadyUsed,
-        Filtered,
-        InsufficientFunds,
-        CostOverflow,
-        FutureNonce,
-        GasLimitExceeded,
-        FeeToLow
     }
 }

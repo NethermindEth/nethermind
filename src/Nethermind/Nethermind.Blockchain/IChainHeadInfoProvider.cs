@@ -13,22 +13,19 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-namespace Nethermind.TxPool
+using Nethermind.Core.Specs;
+using Nethermind.Int256;
+using Nethermind.State;
+
+namespace Nethermind.Blockchain
 {
-    public enum AddTxResult
+    public interface IChainHeadInfoProvider
     {
-        AlreadyKnown,
-        Invalid,
-        OldNonce,
-        PotentiallyUseless,
-        Added,
-        OwnNonceAlreadyUsed,
-        Filtered,
-        InsufficientFunds,
-        CostOverflow,
-        FutureNonce,
-        GasLimitExceeded,
-        FeeToLow
+        IChainHeadSpecProvider SpecProvider { get; }
+        
+        IReadOnlyStateProvider ReadOnlyStateProvider { get; }
+        UInt256 BaseFee { get; }
     }
 }
