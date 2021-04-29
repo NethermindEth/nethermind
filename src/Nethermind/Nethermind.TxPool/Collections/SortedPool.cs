@@ -176,9 +176,10 @@ namespace Nethermind.TxPool.Collections
 
                 InsertCore(key, value, bucket);
 
-                if (_cacheMap.Count > _capacity)
+                int surplus = _cacheMap.Count - _capacity;
+                if (surplus > 0)
                 {
-                    RemoveLast();
+                    RemoveLast(surplus);
                 }
 
                 return true;
@@ -187,9 +188,12 @@ namespace Nethermind.TxPool.Collections
             return false;
         }
 
-        private void RemoveLast()
+        private void RemoveLast(int surplus)
         {
-            TryRemove(_sortedValues.Max.Value);
+            for (int i = 0; i < surplus; i++)
+            {
+                TryRemove(_sortedValues.Max.Value);
+            }
         }
         
         /// <summary>
@@ -224,7 +228,6 @@ namespace Nethermind.TxPool.Collections
             return _cacheMap.Remove(key);
         } 
         
-        [MethodImpl(MethodImplOptions.Synchronized)]
         public void NotifyChange(TKey key, TValue value)
         {
             if (_sortedValues.Remove(value))
