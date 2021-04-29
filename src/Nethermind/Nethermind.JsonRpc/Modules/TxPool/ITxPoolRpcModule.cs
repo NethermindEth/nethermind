@@ -27,5 +27,9 @@ namespace Nethermind.JsonRpc.Modules.TxPool
         
         [JsonRpcMethod(Description = "Returns a detailed info on tx pool transactions.", IsImplemented = true)]
         ResultWrapper<TxPoolInspection> txpool_inspect();
+
+        [JsonRpcMethod(Description = "Returns string (CSV ready to paste in calc sheet) with all txs in txpool with details: txHash, senderAddress, current nonce of senderAddress, tx nonce, nonces difference, timestamp",
+            IsImplemented = false)]
+        ResultWrapper<string> txpool_snapshot();
     }
 }
