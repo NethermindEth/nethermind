@@ -10,7 +10,7 @@ namespace Nethermind.Dsl.ANTLR
         public Action<AntlrTokenType, string> OnEnterInit { private get; set; }
         public Action<AntlrTokenType, string> OnEnterExpression { private get; set; }
         public Action<string, string, string> OnEnterCondition { private get; set; }
-        public Action OnExitInit { private get; set; }
+        public Action OnExit { private get; set; }
 
         public override void EnterInit([NotNull] DslGrammarParser.InitContext context)
         {
