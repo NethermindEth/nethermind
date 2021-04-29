@@ -34,6 +34,7 @@ namespace Nethermind.Dsl
         private IPipelineBuilder<Block, Block> _blockProcessorPipelineBuilder;
         private bool blockSource;
         private ILogger _logger; 
+        private IDslConfig _config;
 
         public async Task Init(INethermindApi nethermindApi)
         {
@@ -41,26 +42,30 @@ namespace Nethermind.Dsl
             _txPool = _api.TxPool;
             _blockProcessor = _api.MainBlockProcessor;
 
-            _logger = _api.LogManager.GetClassLogger();
-            if(_logger.IsInfo) _logger.Info("Initializing DSL plugin ...");            
+            _config = _api.ConfigProvider.GetConfig<IDslConfig>();
+            if (_config.Enabled)
+            {
+                _logger = _api.LogManager.GetClassLogger();
+                if (_logger.IsInfo) _logger.Info("Initializing DSL plugin ...");
 
-            var dslScript = await LoadDSLScript(); 
+                var dslScript = await LoadDSLScript();
 
-            var inputStream = new AntlrInputStream(dslScript);
-            var lexer = new DslGrammarLexer(inputStream);
-            var tokens = new CommonTokenStream(lexer);
-            var parser = new DslGrammarParser(tokens);
-            parser.BuildParseTree = true;
-            IParseTree tree = parser.init();
+                var inputStream = new AntlrInputStream(dslScript);
+                var lexer = new DslGrammarLexer(inputStream);
+                var tokens = new CommonTokenStream(lexer);
+                var parser = new DslGrammarParser(tokens);
+                parser.BuildParseTree = true;
+                IParseTree tree = parser.init();
 
-            _listener = new ParseTreeListener();
-            _listener.OnEnterInit = OnInitEntry;
-            _listener.OnEnterExpression = OnExpressionEntry;
-            _listener.OnEnterCondition = OnConditionEntry;
-            _listener.OnExitInit = BuildPipeline;
-            ParseTreeWalker.Default.Walk(_listener, tree);
+                _listener = new ParseTreeListener();
+                _listener.OnEnterInit = OnInitEntry;
+                _listener.OnEnterExpression = OnExpressionEntry;
+                _listener.OnEnterCondition = OnConditionEntry;
+                _listener.OnExitInit = BuildPipeline;
+                ParseTreeWalker.Default.Walk(_listener, tree);
 
-            if(_logger.IsInfo) _logger.Info("DSL plugin initialized.");
+                if (_logger.IsInfo) _logger.Info("DSL plugin initialized.");
+            }
         }
 
         public Task InitNetworkProtocol()
