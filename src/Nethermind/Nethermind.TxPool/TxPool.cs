@@ -348,8 +348,9 @@ namespace Nethermind.TxPool
                 return AddTxResult.FutureNonce;
             }
 
-            _transactions.TryGetLast(out var lastTx);
-            if (tx.GasPrice <= lastTx.GasBottleneck)
+            if (_transactions.TryGetLast(out var lastTx)
+                && tx.GasPrice <= lastTx?.GasBottleneck
+                && GetPendingTransactionsCount() > MemoryAllowance.MemPoolSize / 2)
             {
                 if (_logger.IsTrace)
                     _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, too low gasPrice.");
