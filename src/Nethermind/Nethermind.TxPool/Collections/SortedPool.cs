@@ -108,6 +108,19 @@ namespace Nethermind.TxPool.Collections
         }
         
         /// <summary>
+        /// Gets number of items in requested group.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.Synchronized)]
+        public int GetBucketCount(TGroupKey? group)
+        {
+            if (group is null)
+            {
+                return 0;
+            }
+            return _buckets.TryGetValue(@group, out var bucket) ? bucket.Count : 0;
+        }
+        
+        /// <summary>
         /// Gets first element in supplied comparer order.
         /// </summary>
         [MethodImpl(MethodImplOptions.Synchronized)]

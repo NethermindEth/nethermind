@@ -340,6 +340,14 @@ namespace Nethermind.TxPool
                 return AddTxResult.OldNonce;
             }
 
+            int noncesInPending = _transactions.GetBucketCount(tx.SenderAddress);
+            if (tx.Nonce > (long)currentNonce + noncesInPending)
+            {
+                if (_logger.IsTrace)
+                    _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, nonce in future.");
+                return AddTxResult.FutureNonce;
+            }
+
             bool overflow = UInt256.MultiplyOverflow(tx.GasPrice, (UInt256) tx.GasLimit, out UInt256 cost);
             overflow |= UInt256.AddOverflow(cost, tx.Value, out cost);
             if (overflow)
