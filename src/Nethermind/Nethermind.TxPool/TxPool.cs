@@ -223,11 +223,6 @@ namespace Nethermind.TxPool
             // !!! do not change it to |=
             bool isKnown = !isReorg && _hashCache.Get(tx.Hash);
 
-            if (!isKnown)
-            {
-                isKnown |= !isReorg && (_txStorage.Get(tx.Hash) is not null);
-            }
-            
             /*
              * we need to make sure that the sender is resolved before adding to the distinct tx pool
              * as the address is used in the distinct value calculation
@@ -237,10 +232,15 @@ namespace Nethermind.TxPool
                 lock (_locker)
                 {
                     isKnown |= !_transactions.TryInsert(tx.Hash, tx);
-                    UpdateGasBottleneckForSenderTransactions(tx);
+                    UpdateGasBottleneck(tx.SenderAddress);
                 }
             }
-            
+
+            if (!isKnown)
+            {
+                isKnown |= !isReorg && (_txStorage.Get(tx.Hash) is not null);
+            }
+
             if (isKnown)
             {
                 // If transaction is a bit older and already known then it may be stored in the persistent storage.
@@ -257,30 +257,34 @@ namespace Nethermind.TxPool
             return AddTxResult.Added;
         }
 
-        private void UpdateGasBottleneckForSenderTransactions(Transaction tx)
+        private void UpdateGasBottleneck(Address? senderAddress)
         {
-            if (_transactions.TryGetBucket(tx, out var bucket))
+            if (senderAddress is null)
             {
-                long currentNonce = (long)_stateProvider.GetNonce(tx.SenderAddress);
-                currentNonce = currentNonce > 0 ? currentNonce : 0;
-                int i = 0;
-                UInt256 previousTxBottleneck = UInt256.MaxValue;
+                return;
+            }
+            var bucketSnapshot = _transactions.GetBucketSnapshot(senderAddress);
+            long currentNonce = (long)_stateProvider.GetNonce(senderAddress);
+            currentNonce = currentNonce > 0 ? currentNonce : 0;
+            UInt256 previousTxBottleneck = UInt256.MaxValue;
 
-                foreach (Transaction transaction in bucket)
+            for (var i = 0; i < bucketSnapshot.Length; i++)
+            {
+                Transaction tx = bucketSnapshot[i];
+                if (tx.Nonce == currentNonce + i)
                 {
-                    if (transaction.Nonce == currentNonce + i++)
+                    _transactions.NotifyChange(tx.Hash, tx, t => 
                     {
-                        if (transaction.GasPrice < previousTxBottleneck)
-                        {
-                            transaction.GasBottleneck = transaction.GasPrice;
-                        }
-                        else
-                        {
-                            transaction.GasBottleneck = previousTxBottleneck;
-                        }
-                        previousTxBottleneck = transaction.GasBottleneck;
-                        _transactions.NotifyChange(transaction.Hash, transaction);
-                    }
+                        tx.GasBottleneck = tx.GasPrice < previousTxBottleneck ? tx.GasPrice : previousTxBottleneck;
+                        previousTxBottleneck = tx.GasBottleneck;
+                    });
+                }
+                else
+                {
+                    _transactions.NotifyChange(tx.Hash, tx, t => 
+                    {
+                        tx.GasBottleneck = 0;
+                    });
                 }
             }
         }
@@ -334,13 +338,6 @@ namespace Nethermind.TxPool
                 if (_logger.IsTrace)
                     _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, nonce already used.");
                 return AddTxResult.OldNonce;
-            }
-
-            if (tx.Nonce > currentNonce + FutureNonceRetention)
-            {
-                if (_logger.IsTrace)
-                    _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, nonce in far future.");
-                return AddTxResult.FutureNonce;
             }
 
             bool overflow = UInt256.MultiplyOverflow(tx.GasPrice, (UInt256) tx.GasLimit, out UInt256 cost);
@@ -416,9 +413,10 @@ namespace Nethermind.TxPool
             return false;
         }
 
-        public bool RemoveTransaction(Transaction tx, bool removeBelowThisTxNonce = false)
+        public bool RemoveTransaction(Transaction transaction, bool removeBelowThisTxNonce = false)
         {
-            Keccak hash = tx.Hash;
+            Keccak hash = transaction.Hash;
+            Address senderAddress = transaction.SenderAddress;
             ICollection<Transaction>? bucket;
             ICollection<Transaction>? persistentBucket = null;
             bool isKnown;
@@ -427,21 +425,20 @@ namespace Nethermind.TxPool
                 isKnown = _transactions.TryRemove(hash, out bucket);
                 if (isKnown)
                 {
-                    Address address = tx.SenderAddress;
-                    if (_nonces.TryGetValue(address, out AddressNonces addressNonces))
+                    if (_nonces.TryGetValue(senderAddress, out AddressNonces addressNonces))
                     {
-                        addressNonces.Nonces.TryRemove(tx.Nonce, out _);
+                        addressNonces.Nonces.TryRemove(transaction.Nonce, out _);
                         if (addressNonces.Nonces.IsEmpty)
                         {
-                            _nonces.Remove(address, out _);
+                            _nonces.Remove(senderAddress, out _);
                         }
                     }
                     
-                    RemovedPending?.Invoke(this, new TxEventArgs(tx));
+                    RemovedPending?.Invoke(this, new TxEventArgs(transaction));
                 }
                 else
                 {
-                    _transactions.TryGetBucket(tx, out bucket);
+                    _transactions.TryGetBucket(transaction, out bucket);
                 }
                 
                 if (_persistentBroadcastTransactions.Count != 0)
@@ -463,7 +460,7 @@ namespace Nethermind.TxPool
                 lock (_locker)
                 {
                     Transaction? txWithSmallestNonce = bucket.FirstOrDefault();
-                    while (txWithSmallestNonce != null && txWithSmallestNonce.Nonce <= tx.Nonce)
+                    while (txWithSmallestNonce != null && txWithSmallestNonce.Nonce <= transaction.Nonce)
                     {
                         RemoveTransaction(txWithSmallestNonce);
                         txWithSmallestNonce = bucket.FirstOrDefault();
@@ -472,7 +469,7 @@ namespace Nethermind.TxPool
                     if (persistentBucket != null)
                     {
                         txWithSmallestNonce = persistentBucket.FirstOrDefault();
-                        while (txWithSmallestNonce != null && txWithSmallestNonce.Nonce <= tx.Nonce)
+                        while (txWithSmallestNonce != null && txWithSmallestNonce.Nonce <= transaction.Nonce)
                         {
                             persistentBucket.Remove(txWithSmallestNonce);
                             txWithSmallestNonce = persistentBucket.FirstOrDefault();
@@ -481,7 +478,7 @@ namespace Nethermind.TxPool
                 }
             }
             
-            UpdateGasBottleneckForSenderTransactions(tx);
+            UpdateGasBottleneck(senderAddress);
             return isKnown;
         }
 

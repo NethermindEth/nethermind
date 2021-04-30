@@ -42,7 +42,7 @@ namespace Nethermind.Core
         public UInt256 GasPrice { get; set; }
 
         [JsonIgnore]
-        public UInt256 GasBottleneck { get; set; } = 0;
+        public UInt256 GasBottleneck { get; set; } = UInt256.MaxValue;
         public UInt256 GasPremium => GasPrice; 
         public UInt256 FeeCap { get; set; }
         public bool IsEip1559 => FeeCap > UInt256.Zero;

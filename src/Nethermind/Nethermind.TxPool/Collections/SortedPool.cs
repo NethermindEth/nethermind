@@ -95,6 +95,19 @@ namespace Nethermind.TxPool.Collections
         }
         
         /// <summary>
+        /// Gets all items of requested group.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.Synchronized)]
+        public TValue[] GetBucketSnapshot(TGroupKey? group)
+        {
+            if (group is null)
+            {
+                return Array.Empty<TValue>();
+            }
+            return _buckets.TryGetValue(@group, out var bucket) ? bucket.ToArray() : Array.Empty<TValue>();
+        }
+        
+        /// <summary>
         /// Gets first element in supplied comparer order.
         /// </summary>
         [MethodImpl(MethodImplOptions.Synchronized)]
@@ -176,10 +189,9 @@ namespace Nethermind.TxPool.Collections
 
                 InsertCore(key, value, bucket);
 
-                int surplus = _cacheMap.Count - _capacity;
-                if (surplus > 0)
+                if (_cacheMap.Count > _capacity)
                 {
-                    RemoveLast(surplus);
+                    RemoveLast();
                 }
 
                 return true;
@@ -188,12 +200,9 @@ namespace Nethermind.TxPool.Collections
             return false;
         }
 
-        private void RemoveLast(int surplus)
+        private void RemoveLast()
         {
-            for (int i = 0; i < surplus; i++)
-            {
-                TryRemove(_sortedValues.Max.Value);
-            }
+            TryRemove(_sortedValues.Max.Value);
         }
         
         /// <summary>
@@ -228,10 +237,12 @@ namespace Nethermind.TxPool.Collections
             return _cacheMap.Remove(key);
         } 
         
-        public void NotifyChange(TKey key, TValue value)
+        [MethodImpl(MethodImplOptions.Synchronized)]
+        public void NotifyChange(TKey key, TValue value, Action<TValue> changeAction)
         {
             if (_sortedValues.Remove(value))
             {
+                changeAction(value);
                 _sortedValues.Add(value, key);
             }
         }
