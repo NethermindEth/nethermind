@@ -281,9 +281,11 @@ namespace Nethermind.TxPool
                 }
                 else
                 {
-                    _transactions.NotifyChange(tx.Hash, tx, t => 
+                    _transactions.NotifyChange(tx.Hash, tx, t =>
                     {
-                        tx.GasBottleneck = 0;
+                        _transactions.TryGetLast(out var lastTx);
+                        var lastTxGasBottleneck = lastTx.GasBottleneck;
+                        tx.GasBottleneck = lastTxGasBottleneck > 0 ? lastTxGasBottleneck - 1 : 0;
                     });
                 }
             }
@@ -350,7 +352,7 @@ namespace Nethermind.TxPool
 
             if (_transactions.TryGetLast(out var lastTx)
                 && tx.GasPrice <= lastTx?.GasBottleneck
-                && GetPendingTransactionsCount() > MemoryAllowance.MemPoolSize / 2)
+                && GetPendingTransactionsCount() > 2048)
             {
                 if (_logger.IsTrace)
                     _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, too low gasPrice.");
