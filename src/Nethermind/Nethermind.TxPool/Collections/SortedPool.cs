@@ -121,10 +121,20 @@ namespace Nethermind.TxPool.Collections
         }
         
         /// <summary>
-        /// Gets first element in supplied comparer order.
+        /// Takes first element in supplied comparer order.
         /// </summary>
         [MethodImpl(MethodImplOptions.Synchronized)]
         public bool TryTakeFirst(out TValue first) => TryRemove(_sortedValues.Min.Value, out first);
+        
+        /// <summary>
+        /// Gets last element in supplied comparer order.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.Synchronized)]
+        public bool TryGetLast(out TValue last)
+        {
+            last = _sortedValues.Max.Key;
+            return last is not null;
+        }
 
         /// <summary>
         /// Tries to remove element.

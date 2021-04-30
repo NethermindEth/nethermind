@@ -348,6 +348,14 @@ namespace Nethermind.TxPool
                 return AddTxResult.FutureNonce;
             }
 
+            _transactions.TryGetLast(out var lastTx);
+            if (tx.GasPrice <= lastTx.GasBottleneck)
+            {
+                if (_logger.IsTrace)
+                    _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, too low gasPrice.");
+                return AddTxResult.TooLowGasPrice;
+            }
+
             bool overflow = UInt256.MultiplyOverflow(tx.GasPrice, (UInt256) tx.GasLimit, out UInt256 cost);
             overflow |= UInt256.AddOverflow(cost, tx.Value, out cost);
             if (overflow)
