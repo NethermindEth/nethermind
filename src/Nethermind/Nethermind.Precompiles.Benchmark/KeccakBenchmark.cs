@@ -6,11 +6,6 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Precompiles.Benchmark
 {
-    [HtmlExporter]
-    // [NativeMemoryProfiler]
-    // [MemoryDiagnoser]
-    // [ShortRunJob(RuntimeMoniker.NetCoreApp50)]
-    [SimpleJob(RuntimeMoniker.NetCoreApp50)]
     public class KeccakBenchmark
     {
         public readonly struct Param

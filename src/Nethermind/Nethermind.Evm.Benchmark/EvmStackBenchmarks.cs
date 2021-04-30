@@ -23,9 +23,6 @@ using Nethermind.Int256;
 
 namespace Nethermind.Evm.Benchmark
 {
-    [SimpleJob(RuntimeMoniker.NetCoreApp50)]
-    [MemoryDiagnoser]
-    [DisassemblyDiagnoser(3)]
     public class EvmStackBenchmarks
     {
         public IEnumerable<UInt256> ValueSource => new[]

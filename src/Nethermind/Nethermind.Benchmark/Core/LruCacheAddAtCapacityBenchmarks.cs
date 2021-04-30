@@ -19,7 +19,6 @@ using Nethermind.Core.Caching;
 
 namespace Nethermind.Benchmarks.Core
 {
-    [MemoryDiagnoser]
     public class LruCacheAddAtCapacityBenchmarks
     {
         const int Capacity = 16;

@@ -13,6 +13,7 @@
     <WarningsAsErrors />
   </PropertyGroup>
   <ItemGroup>
+    <PackageReference Include="Antlr4.Runtime.Standard" Version="4.9.2" />
     <PackageReference Include="AspNetCore.HealthChecks.UI" Version="5.0.1" />
     <PackageReference Include="AspNetCore.HealthChecks.UI.Client" Version="5.0.1" />
     <PackageReference Include="AspNetCore.HealthChecks.UI.InMemory.Storage" Version="5.0.1" />
@@ -49,7 +50,8 @@
     <ProjectReference Include="..\Nethermind.WebSockets\Nethermind.WebSockets.csproj" />
     <ProjectReference Include="..\Nethermind.Seq\Nethermind.Seq.csproj" />
     <ProjectReference Include="..\Nethermind.HealthChecks\Nethermind.HealthChecks.csproj" />
-    <ProjectReference Include="..\Nethermind.Merge.Plugin\Nethermind.Merge.Plugin.csproj" />
+    <ProjectReference Include="..\Nethermind.Pipeline\Nethermind.Pipeline.csproj" />
+	<ProjectReference Include="..\Nethermind.Merge.Plugin\Nethermind.Merge.Plugin.csproj" />
   </ItemGroup>
   <ItemGroup>
     <Content Include="..\..\..\Nethermind Data Marketplace - Terms and Conditions 20190831.pdf">
@@ -80,6 +82,9 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
     <Content Include="ndm-plugins\**">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="DSL\**">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
     <Content Include="nethermind.css">
@@ -126,7 +131,7 @@
   </Target>
   <Target Name="CopyPluginsOnPublish" AfterTargets="AfterPublish">
     <Copy SourceFiles="$(OutputPath)Nethermind.HealthChecks.dll" DestinationFolder="$(PublishDir)plugins" />
-    <Copy SourceFiles="$(OutputPath)Nethermind.Merge.Plugin.dll" DestinationFolder="$(PublishDir)plugins" />
+	<Copy SourceFiles="$(OutputPath)Nethermind.Merge.Plugin.dll" DestinationFolder="$(PublishDir)plugins" />
   </Target>
   <Target Name="StoreGitHashBeforeBuild" BeforeTargets="BeforeBuild">
     <Exec Command="git describe --tags --long --always &gt; git-hash" />
@@ -134,4 +139,8 @@
   <Target Name="StoreGitHash" BeforeTargets="BeforePublish">
     <Exec Command="git describe --tags --long --always &gt; git-hash" />
   </Target>
-</Project>
+  <Target Name="CopyDslPluginOnBuild" AfterTargets="AfterBuild">
+   <Copy SourceFiles="$(SolutionDir)Nethermind.Dsl\bin\$(Configuration)\$(TargetFramework)\Nethermind.Dsl.dll" DestinationFolder="$(OutDir)plugins" Condition="Exists('$(SolutionDir)Nethermind.Dsl\bin\$(Configuration)\$(TargetFramework)\Nethermind.Dsl.dll')" SkipUnchangedFiles="true" />
+   <Copy SourceFiles="$(SolutionDir)Nethermind.Dsl\bin\$(Configuration)\$(TargetFramework)\Nethermind.Dsl.pdb" DestinationFolder="$(OutDir)plugins" Condition="Exists('$(SolutionDir)Nethermind.Dsl\bin\$(Configuration)\$(TargetFramework)\Nethermind.Dsl.pdb')" SkipUnchangedFiles="true" />
+  </Target>
+ </Project>

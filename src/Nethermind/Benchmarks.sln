@@ -4,8 +4,6 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Benchmark", "Net
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Precompiles.Benchmark", "Nethermind.Precompiles.Benchmark\Nethermind.Precompiles.Benchmark.csproj", "{5CEDB4E0-11E8-40CE-8826-C41DE21FCA8E}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Dirichlet.Benchmark", "Nethermind.Dirichlet.Benchmark\Nethermind.Dirichlet.Benchmark.csproj", "{94476463-ED5B-42FB-BEBA-30CB689D1091}"
-EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.JsonRpc.Benchmark", "Nethermind.JsonRpc.Benchmark\Nethermind.JsonRpc.Benchmark.csproj", "{0225AD8B-B306-4869-BA74-3135C3BB56BC}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Evm.Benchmark", "Nethermind.Evm.Benchmark\Nethermind.Evm.Benchmark.csproj", "{6022468F-9C0C-4951-88DB-15A9DC45AA0F}"
@@ -80,10 +78,6 @@ Global
 		{5CEDB4E0-11E8-40CE-8826-C41DE21FCA8E}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{5CEDB4E0-11E8-40CE-8826-C41DE21FCA8E}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{5CEDB4E0-11E8-40CE-8826-C41DE21FCA8E}.Release|Any CPU.Build.0 = Release|Any CPU
-		{94476463-ED5B-42FB-BEBA-30CB689D1091}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{94476463-ED5B-42FB-BEBA-30CB689D1091}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{94476463-ED5B-42FB-BEBA-30CB689D1091}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{94476463-ED5B-42FB-BEBA-30CB689D1091}.Release|Any CPU.Build.0 = Release|Any CPU
 		{0225AD8B-B306-4869-BA74-3135C3BB56BC}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{0225AD8B-B306-4869-BA74-3135C3BB56BC}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{0225AD8B-B306-4869-BA74-3135C3BB56BC}.Release|Any CPU.ActiveCfg = Release|Any CPU

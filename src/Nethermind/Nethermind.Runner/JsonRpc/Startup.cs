@@ -153,8 +153,18 @@ namespace Nethermind.Runner.JsonRpc
                 if (ctx.Connection.LocalPort == jsonRpcConfig.Port && ctx.Request.Method == "POST")
                 {
                     Stopwatch stopwatch = Stopwatch.StartNew();
-                    using StreamReader reader = new StreamReader(ctx.Request.Body, Encoding.UTF8);
-                    string request = await reader.ReadToEndAsync();
+                    string request;
+                    try
+                    {                    
+                        using StreamReader reader = new(ctx.Request.Body, Encoding.UTF8);
+                        request = await reader.ReadToEndAsync();
+                    }
+                    catch (Microsoft.AspNetCore.Http.BadHttpRequestException e)
+                    {
+                        if (logger.IsDebug) logger.Debug($"Couldn't read request.{Environment.NewLine}{e}");
+                        return;
+                    }
+
                     Interlocked.Add(ref Nethermind.JsonRpc.Metrics.JsonRpcBytesReceivedHttp, ctx.Request.ContentLength ?? request.Length);
                     using JsonRpcResult result = await jsonRpcProcessor.ProcessAsync(request, JsonRpcContext.Http);
 
