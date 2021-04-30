@@ -3,15 +3,7 @@ using Antlr4.Runtime;
 using Antlr4.Runtime.Tree;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
-using Nethermind.Blockchain.Processing;
 using Nethermind.Dsl.ANTLR;
-using Nethermind.TxPool;
-using Nethermind.Pipeline;
-using Nethermind.Dsl.Pipeline;
-using Nethermind.Core;
-using System;
-using Nethermind.Pipeline.Publishers;
-using Nethermind.Int256;
 using System.IO;
 using Nethermind.Logging;
 using System.Linq;
@@ -25,16 +17,11 @@ namespace Nethermind.Dsl
         public string Name { get; } = "DslPlugin";
         public string Description { get; } = "Plugin created in order to let users create their own DSL scripts used in data extraction from chain";
         public string Author { get; } = "Nethermind team";
-        public IPipeline? Pipeline;
         public IFileSystem? FileSystem;
 
         private INethermindApi? _api;
         private ParseTreeListener? _listener;
         private Interpreter? _interpreter;
-        private ITxPool? _txPool;
-        private IBlockProcessor? _blockProcessor;
-        private IPipelineBuilder<Block, Block>? _blockProcessorPipelineBuilder;
-        private bool blockSource;
         private ILogger? _logger;
 
         public async Task Init(INethermindApi nethermindApi)
@@ -62,8 +49,6 @@ namespace Nethermind.Dsl
 
         public Task InitNetworkProtocol()
         {
-            _txPool = _api.TxPool;
-            _blockProcessor = _api.MainBlockProcessor;
             return Task.CompletedTask;
         }
 
