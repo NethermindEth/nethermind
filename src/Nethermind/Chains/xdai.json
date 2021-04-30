@@ -55,7 +55,7 @@
     "eip1706Transition": 7298030,
     "eip1884Transition": 7298030,
     "eip2028Transition": 7298030,
-	"eip2565Transition": 16101500,
+    "eip2565Transition": 16101500,
     "eip2929Transition": 16101500,
     "eip2930Transition": 16101500,
     "registrar": "0x6B53721D4f2Fb9514B85f5C49b197D857e36Cf03",
