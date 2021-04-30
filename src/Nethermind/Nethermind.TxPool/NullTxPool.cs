@@ -48,11 +48,6 @@ namespace Nethermind.TxPool
         
         public bool IsInHashCache(Keccak hash) => false;
 
-        public UInt256 GetNonce(Address address)
-        {
-            throw new NotImplementedException();
-        }
-
         public bool TryGetPendingTransaction(Keccak hash, out Transaction? transaction)
         {
             transaction = null;

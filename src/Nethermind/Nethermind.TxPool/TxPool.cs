@@ -494,12 +494,7 @@ namespace Nethermind.TxPool
         {
             return _hashCache.Get(hash);
         }
-        
-        public UInt256 GetNonce(Address? address)
-        {
-            return address != null ? _stateProvider.GetNonce(address) : 9999999999;
-        }
-        
+
         public bool TryAddToPendingHashes(Keccak hash)
         {
             bool isInPendingHashes = _pendingHashes.Get(hash);
