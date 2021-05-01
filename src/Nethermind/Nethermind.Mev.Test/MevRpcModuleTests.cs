@@ -15,21 +15,18 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 //
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using FluentAssertions;
-using Google.Protobuf.WellKnownTypes;
+
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Serialization.Rlp;
 using Nethermind.TxPool;
-using NSubstitute;
-using NUnit.Framework;
 using Nethermind.JsonRpc.Test;
-using Newtonsoft.Json;
 using Nethermind.Core.Extensions;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Int256;
@@ -38,7 +35,14 @@ using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc;
 using Nethermind.Facade;
 
+using NSubstitute;
+using NUnit.Framework;
+using Newtonsoft.Json;
+using FluentAssertions;
+using Google.Protobuf.WellKnownTypes;
+
 namespace Nethermind.Mev.Test
+
 {
     [TestFixture]
     public class MevRpcModuleTests
@@ -51,10 +55,10 @@ namespace Nethermind.Mev.Test
             public IBlockchainBridge BlockchainBridge { get; set; } = Substitute.For<IBlockchainBridge>();
             public TestMevRpcBlockchain() {}
             // TODO add json converters, rewrite method
-            public async Task<string> TestMevRpcWithSerialization(string method, params string[] parameters)
+            public async Task<string> TestMevRpcWithSerialization(string method, params string?[] parameters)
             {
                 List<JsonConverter> converters = new();
-                uint id = 1337;
+                uint id = 1;
                 // TODO run MevRpcModule method and convert result
                 await this.AddBlock();
                 return "";
@@ -68,10 +72,34 @@ namespace Nethermind.Mev.Test
 
         private static IEnumerable<Keccak?> GetHashes(IEnumerable<Transaction> bundle2Txs) => bundle2Txs.Select(t => t.Hash);
 
+        private static class Generators
+        {
+            public static IEnumerable<Transaction> GenerateRandomTransactions(uint n)
+            {  
+                var rand = new Random();
+                UInt256 baseGasPrice = 50;
+                List<Transaction> transactions = new();
+
+                for(var i = 0; i < n; i++)
+                {
+                    int txType = rand.Next(15);
+                    if (txType <= 0) 
+                    {
+                        Transaction plain = Build.A.Transaction.WithGasLimit(21000).WithGasPrice(baseGasPrice).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+                        transactions.Add(plain);
+                    }
+                    else 
+                    {
+                        // TODO use abi encoder and looper 
+                    }
+                }
+            }
+        }
+
         private static class Contracts
         {
             public static string CoinbaseCode = "608060405234801561001057600080fd5b5060c88061001f6000396000f3fe608060405260043610601f5760003560e01c80631b9265b814602a576025565b36602557005b600080fd5b348015603557600080fd5b50603c603e565b005b60004711604a57600080fd5b4173ffffffffffffffffffffffffffffffffffffffff166108fc479081150290604051600060405180830381858888f19350505050158015608f573d6000803e3d6000fd5b5056fea264697066735822122048c1d2b093a9310a62785518c7e2ffa69957ab33203d01532cfe333493c4e53f64736f6c63430008010033";
-            public static string LooperCode = "608060405234801561001057600080fd5b506101e1806100206000396000f3fe608060405234801561001057600080fd5b506004361061002b5760003560e01c8063a92100cb14610030575b600080fd5b61003861003a565b005b6000805b6107d08110156100755760028161005591906100cf565b826100609190610079565b9150808061006d90610133565b91505061003e565b5050565b600061008482610129565b915061008f83610129565b9250827fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff038211156100c4576100c361017c565b5b828201905092915050565b60006100da82610129565b91506100e583610129565b9250817fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff048311821515161561011e5761011d61017c565b5b828202905092915050565b6000819050919050565b600061013e82610129565b91507fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff8214156101715761017061017c565b5b600182019050919050565b7f4e487b7100000000000000000000000000000000000000000000000000000000600052601160045260246000fdfea2646970667358221220409141cb4095231dcf659c5fd79ec07ef76c17cbc4a7d99cf35360fade1113a264736f6c63430008010033";
+            public static string LooperCode = "608060405234801561001057600080fd5b50610247806100206000396000f3fe608060405234801561001057600080fd5b506004361061002b5760003560e01c80630b7d796e14610030575b600080fd5b61004a6004803603810190610045919061009f565b61004c565b005b6000805b8281101561008557600281610065919061011e565b8261007091906100c8565b9150808061007d90610182565b915050610050565b505050565b600081359050610099816101fa565b92915050565b6000602082840312156100b157600080fd5b60006100bf8482850161008a565b91505092915050565b60006100d382610178565b91506100de83610178565b9250827fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff03821115610113576101126101cb565b5b828201905092915050565b600061012982610178565b915061013483610178565b9250817fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff048311821515161561016d5761016c6101cb565b5b828202905092915050565b6000819050919050565b600061018d82610178565b91507fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff8214156101c0576101bf6101cb565b5b600182019050919050565b7f4e487b7100000000000000000000000000000000000000000000000000000000600052601160045260246000fd5b61020381610178565b811461020e57600080fd5b5056fea26469706673582212204ac106f8c2714cc8c27caef3a9d5261f903748eef1189bb41c7ebdc8e749796864736f6c63430008010033";
             public static string ReverterCode = "6080604052348015600f57600080fd5b50607080601d6000396000f3fe6080604052348015600f57600080fd5b506004361060285760003560e01c8063a9cc471814602d575b600080fd5b60336035565b005b600080fdfea2646970667358221220ac9d93061661e50d3b0b8a1c9f153485bf00459e1ef145ec811bf3ea0ccf134564736f6c63430008010033";
             public static string CallableCode = "608060405234801561001057600080fd5b50600a60008190555060d2806100276000396000f3fe6080604052348015600f57600080fd5b506004361060325760003560e01c80636d4ce63c146037578063b8e010de146051575b600080fd5b603d6059565b604051604891906079565b60405180910390f35b60576062565b005b60008054905090565b600f600081905550565b6073816092565b82525050565b6000602082019050608c6000830184606c565b92915050565b600081905091905056fea26469706673582212209613531dae74fcbd2a6751a86f2f3206d1c690011593ae904e06996b9b48741664736f6c63430008010033";
 
@@ -82,7 +110,7 @@ namespace Nethermind.Mev.Test
             public static int CoinbaseStartingBalanceInWei = 10000000;
             public static long LargeGasLimit = 9000000;
             // 1203367 gas 
-            public static string LooperInvokeLoop = "0xa92100cb";
+            public static string LooperInvokeLoop2000 = "0x0b7d796e00000000000000000000000000000000000000000000000000000000000007d0";
             // 22000 gas about
             public static string ReverterInvokeFail = "0xa9cc4718";
             // 22000
@@ -147,19 +175,24 @@ namespace Nethermind.Mev.Test
         }
 
         [Test]
-        public async Task Should_execute_eth_CallBundle_and_serialize_response_properly() 
+        public async Task Should_execute_eth_callBundle_and_serialize_response_properly() 
         {
             var chain = CreateChain();
 
             Address contractAddress = await Contracts.Deploy(chain, Contracts.CallableCode);
+            Address reverterContractAddress = await Contracts.Deploy(chain, Contracts.ReverterCode);
 
             Transaction getTx = Build.A.Transaction.WithGasLimit(Contracts.LargeGasLimit).WithGasPrice(new UInt256(1)).WithTo(contractAddress).WithData(Bytes.FromHexString(Contracts.CallableInvokeGet)).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
             Transaction setTx = Build.A.Transaction.WithGasLimit(Contracts.LargeGasLimit).WithGasPrice(new UInt256(1)).WithTo(contractAddress).WithData(Bytes.FromHexString(Contracts.CallableInvokeSet)).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+            Transaction failedTx = Build.A.Transaction.WithGasLimit(Contracts.LargeGasLimit).WithGasPrice(new UInt256(1)).WithTo(reverterContractAddress).WithData(Bytes.FromHexString(Contracts.ReverterInvokeFail)).SignedAndResolved(TestItem.PrivateKeyD).TestObject;
+
             string transactions = "[" + Rlp.Encode(setTx).Bytes.ToHexString() + "," + Rlp.Encode(getTx).Bytes.ToHexString() + "]";
+            string result = await chain.TestMevRpcWithSerialization("eth_CallBundle", transactions, Rlp.Encode(2).Bytes.ToHexString(true), null);
+            result.Should().Be($"{{\"jsonrpc\":\"2.0\",\"result\":{{\"{setTx.Hash!}\":{{\"value\":\"0x0\"}},\"{getTx.Hash!}\":{{\"value\":\"{Rlp.Encode(Contracts.CallableGetValueAfterSet)}\"}}}},\"id\":1}}");
 
-            string result = await chain.TestMevRpcWithSerialization("eth_CallBundle", transactions, Rlp.Encode(2).Bytes.ToHexString(true), Rlp.Encode(0).Bytes.ToHexString(true), Rlp.Encode(System.Int64.MaxValue).Bytes.ToHexString(true));
-
-            result.Should().Be($"{{\"jsonrpc\":\"2.0\",\"result\":{{\"{setTx.Hash!}\":{{\"value\":\"0x0\"}},\"{getTx.Hash!}\":{{\"value\":\"{Rlp.Encode(Contracts.CallableGetValueAfterSet)}\"}}}},\"id\":1337}}");
+            string transactions2 = "[" + Rlp.Encode(failedTx).Bytes.ToHexString() + "]";
+            string result2 = await chain.TestMevRpcWithSerialization("eth_callBundle", transactions2, Rlp.Encode(3).Bytes.ToHexString(), null);
+            result2.Should().Be($"{{\"jsonrpc\":\"2.0\",\"result\":{{\"{failedTx.Hash!}\":{{\"error\":\"\"}}}},\"id\":1}}");
         }
 
         [Test]
@@ -176,7 +209,7 @@ namespace Nethermind.Mev.Test
             Transaction tx3 = Build.A.Transaction.WithGasLimit(Contracts.LargeGasLimit).WithData(Bytes.FromHexString(Contracts.CoinbaseInvokePay)).WithTo(contractAddress).WithNonce(1).WithGasPrice(new UInt256(0)).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
 
             Address looperContractAddress = await Contracts.Deploy(chain, Contracts.LooperCode);
-            Transaction tx4 = Build.A.Transaction.WithGasLimit(Contracts.LargeGasLimit).WithGasPrice(new UInt256(110)).WithTo(looperContractAddress).WithData(Bytes.FromHexString(Contracts.LooperInvokeLoop)).SignedAndResolved(TestItem.PrivateKeyD).TestObject;
+            Transaction tx4 = Build.A.Transaction.WithGasLimit(Contracts.LargeGasLimit).WithGasPrice(new UInt256(110)).WithTo(looperContractAddress).WithData(Bytes.FromHexString(Contracts.LooperInvokeLoop2000)).SignedAndResolved(TestItem.PrivateKeyD).TestObject;
 
             Transaction[] bundle1 = new Transaction[] { tx1, tx3 };
             byte[][] bundle1_bytes = new byte[][] { 
