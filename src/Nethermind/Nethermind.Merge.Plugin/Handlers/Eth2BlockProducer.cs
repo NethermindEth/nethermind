@@ -34,7 +34,6 @@ namespace Nethermind.Merge.Plugin.Handlers
 {
     public class Eth2BlockProducer : BlockProducerBase, IManualBlockProducer
     {
-        private readonly IStateReader _stateReader;
         private int _stated;
         private readonly SemaphoreSlim _locker = new(1, 1);
         
@@ -46,11 +45,9 @@ namespace Nethermind.Merge.Plugin.Handlers
             IGasLimitCalculator gasLimitCalculator,
             ISigner signer,
             ITimestamper timestamper,
-            IStateReader stateReader,
             ILogManager logManager) 
             : base(txSource, processor, new Eth2SealEngine(signer), blockTree, blockProcessingQueue, stateProvider, gasLimitCalculator, timestamper, logManager)
         {
-            _stateReader = stateReader;
         }
 
         public override void Start() => Interlocked.Exchange(ref _stated, 1);
@@ -67,7 +64,7 @@ namespace Nethermind.Merge.Plugin.Handlers
             try
             {
                 Block? block = await TryProduceNewBlock(cancellationToken, parentHeader);
-                return new BlockProducedContext(block, new SpecificBlockReadOnlyStateProvider(_stateReader, block?.StateRoot));
+                return new BlockProducedContext(block, StateProvider);
             }
             finally
             {

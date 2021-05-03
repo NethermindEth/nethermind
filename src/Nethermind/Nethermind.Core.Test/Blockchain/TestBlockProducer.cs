@@ -74,9 +74,10 @@ namespace Nethermind.Core.Test.Blockchain
             }
         }
 
-        public void BuildNewBlock()
+        public Task<bool> BuildNewBlock()
         {
             _newBlockArrived.Release(1);
+            return Task.FromResult(true);
         }
 
         protected override async ValueTask ProducerLoop()

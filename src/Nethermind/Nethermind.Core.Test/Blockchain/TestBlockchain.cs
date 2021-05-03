@@ -135,15 +135,16 @@ namespace Nethermind.Core.Test.Blockchain
             ReceiptStorage = new InMemoryReceiptStorage();
             VirtualMachine virtualMachine = new VirtualMachine(State, Storage, new BlockhashProvider(BlockTree, LogManager), SpecProvider, LogManager);
             TxProcessor = new TransactionProcessor(SpecProvider, State, Storage, virtualMachine, LogManager);
-            BlockProcessor = CreateBlockProcessor();
             BlockPreprocessorStep = new RecoverSignatures(EthereumEcdsa, TxPool, SpecProvider, LogManager);
+            ReadOnlyTrieStore = TrieStore.AsReadOnly();
+            
+            BlockProcessor = CreateBlockProcessor();
+            
             BlockchainProcessor chainProcessor = new BlockchainProcessor(BlockTree, BlockProcessor, BlockPreprocessorStep, LogManager, Nethermind.Blockchain.Processing.BlockchainProcessor.Options.Default);
             BlockchainProcessor = chainProcessor;
             BlockProcessingQueue = chainProcessor;
             chainProcessor.Start();
 
-            ReadOnlyTrieStore = TrieStore.AsReadOnly();
-            
             StateReader = new StateReader(ReadOnlyTrieStore, CodeDb, LogManager);
             TxPoolTxSource txPoolTxSource = CreateTxPoolTxSource();
             ISealer sealer = new NethDevSealEngine(TestItem.AddressD);
@@ -271,7 +272,7 @@ namespace Nethermind.Core.Test.Blockchain
             }
 
             Timestamper.Add(TimeSpan.FromSeconds(1));
-            BlockProducer.BuildNewBlock();
+            await BlockProducer.BuildNewBlock();
         }
 
         public void AddTransactions(params Transaction[] txs)

@@ -16,6 +16,7 @@
 // 
 
 using System;
+using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Consensus;
@@ -43,11 +44,10 @@ namespace Nethermind.Merge.Plugin.Test
             ITimestamper timestamper,
             IStateReader stateReader,
             ILogManager logManager) 
-            : base(txSource, processor, blockTree, blockProcessingQueue, stateProvider, gasLimitCalculator, signer, timestamper, stateReader, logManager)
+            : base(txSource, processor, blockTree, blockProcessingQueue, stateProvider, gasLimitCalculator, signer, timestamper, logManager)
         {
         }
         
-
         public Block? LastProducedBlock
         {
             get
@@ -66,7 +66,7 @@ namespace Nethermind.Merge.Plugin.Test
 
         public event EventHandler<BlockEventArgs> LastProducedBlockChanged = null!;
         
-        public void BuildNewBlock()
+        public Task<bool> BuildNewBlock()
         {
             throw new NotSupportedException();
         }

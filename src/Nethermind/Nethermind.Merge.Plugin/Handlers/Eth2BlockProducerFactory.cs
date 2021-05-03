@@ -80,7 +80,6 @@ namespace Nethermind.Merge.Plugin.Handlers
                 new TargetAdjustedGasLimitCalculator(specProvider, miningConfig),
                 engineSigner,
                 timestamper,
-                producerContext.ReadOnlyTxProcessingEnv.StateReader,
                 logManager);
         }
         
@@ -126,9 +125,17 @@ namespace Nethermind.Merge.Plugin.Handlers
             {
                 ChainProcessor = chainProcessor,
                 ReadOnlyStateProvider = txProcessingEnv.StateProvider,
-                TxSource = _txSource ?? CreateTxSourceForProducer(txProcessingEnv, txPool, logManager, miningConfig),
+                TxSource = GetTxSource(txPool, miningConfig, logManager, txProcessingEnv),
                 ReadOnlyTxProcessingEnv = txProcessingEnv
             };
+        }
+
+        private ITxSource GetTxSource(ITxPool txPool, IMiningConfig miningConfig, ILogManager logManager, ReadOnlyTxProcessingEnv txProcessingEnv)
+        {
+            ITxSource txSourceForProducer = CreateTxSourceForProducer(txProcessingEnv, txPool, logManager, miningConfig);
+            return _txSource is null 
+                ? txSourceForProducer 
+                : new CompositeTxSource(_txSource, txSourceForProducer);
         }
 
         private ITxSource CreateTxSourceForProducer(ReadOnlyTxProcessingEnv processingEnv, ITxPool txPool, ILogManager logManager, IMiningConfig miningConfig) =>

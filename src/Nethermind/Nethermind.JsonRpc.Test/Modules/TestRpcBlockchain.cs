@@ -55,18 +55,19 @@ namespace Nethermind.JsonRpc.Test.Modules
 
         public static Builder<TestRpcBlockchain> ForTest(string sealEngineType) => ForTest<TestRpcBlockchain>(sealEngineType);
 
-        public static Builder<T> ForTest<T>(string sealEngineType) where T : TestRpcBlockchain, new()
-        {
-            return new Builder<T>(sealEngineType);
-        }
+        public static Builder<T> ForTest<T>(string sealEngineType) where T : TestRpcBlockchain, new() => 
+            new(new T {SealEngineType = sealEngineType});
+        
+        public static Builder<T> ForTest<T>(T blockchain) where T : TestRpcBlockchain=> 
+            new(blockchain);
 
-        public class Builder<T>  where T : TestRpcBlockchain, new()
+        public class Builder<T>  where T : TestRpcBlockchain
         {
             private readonly TestRpcBlockchain _blockchain;
             
-            public Builder(string sealEngineType)
+            public Builder(T blockchain)
             {
-                _blockchain = new T {SealEngineType = sealEngineType};
+                _blockchain = blockchain;
             }
             
             public Builder<T> WithBlockchainBridge(IBlockchainBridge blockchainBridge)
@@ -93,9 +94,9 @@ namespace Nethermind.JsonRpc.Test.Modules
                 return this;
             }
             
-            public async Task<TestRpcBlockchain> Build(ISpecProvider specProvider = null, UInt256? initialValues = null)
+            public async Task<T> Build(ISpecProvider specProvider = null, UInt256? initialValues = null)
             {
-                return (TestRpcBlockchain)(await _blockchain.Build(specProvider, initialValues));
+                return (T)(await _blockchain.Build(specProvider, initialValues));
             }
         }
 

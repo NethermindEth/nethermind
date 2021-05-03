@@ -16,6 +16,7 @@
 // 
 
 using System.Threading.Tasks;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Producers;
 using Nethermind.Blockchain.Rewards;
@@ -48,7 +49,7 @@ namespace Nethermind.Merge.Plugin.Test
                 new AssembleBlockHandler(chain.BlockTree, (IManualBlockProducer) chain.BlockProducer, _manualTimestamper, chain.LogManager),
                 new NewBlockHandler(chain.BlockTree, chain.BlockPreprocessorStep, chain.BlockchainProcessor, chain.State, chain.LogManager),
                 new SetHeadBlockHandler(chain.BlockTree, chain.State, chain.LogManager),
-                new FinaliseBlockHandler(chain.BlockFinder, chain.FinalizationManager, chain.LogManager),
+                new FinaliseBlockHandler(chain.BlockFinder, chain.BlockFinalizationManager, chain.LogManager),
                 chain.LogManager);
         }
 
@@ -61,6 +62,7 @@ namespace Nethermind.Merge.Plugin.Test
                 _timestamper = timestamper;
                 GenesisBlockBuilder = Core.Test.Builders.Build.A.Block.Genesis.Genesis
                     .WithTimestamp(UInt256.One);
+                Signer = new Eth2Signer(MinerAddress);
             }
             
             protected override Task AddBlocksOnStart() => Task.CompletedTask;
@@ -69,7 +71,7 @@ namespace Nethermind.Merge.Plugin.Test
             
             private IBlockValidator BlockValidator { get; set; } = null!;
 
-            private ISigner Signer { get; set; } = null!;
+            private ISigner Signer { get; }
 
             protected override ITestBlockProducer CreateTestBlockProducer(TxPoolTxSource txPoolTxSource, BlockchainProcessor chainProcessor, IStateProvider producerStateProvider, ISealer sealer)
             {
@@ -77,14 +79,9 @@ namespace Nethermind.Merge.Plugin.Test
                     BlockTree,
                     DbProvider,
                     ReadOnlyTrieStore,
-                    new RecoverSignatures(new EthereumEcdsa(SpecProvider.ChainId, LogManager), TxPool, SpecProvider, LogManager),
+                    BlockPreprocessorStep,
                     TxPool,
-                    new BlockValidator(
-                        new TxValidator(SpecProvider.ChainId),
-                        new HeaderValidator(BlockTree, new Eth2SealEngine(Signer), SpecProvider, LogManager),
-                        Always.Valid,
-                        SpecProvider,
-                        LogManager),
+                    BlockValidator,
                     NoBlockRewards.Instance,
                     ReceiptStorage,
                     BlockProcessingQueue,
@@ -97,10 +94,7 @@ namespace Nethermind.Merge.Plugin.Test
             
             protected override BlockProcessor CreateBlockProcessor()
             {
-                Signer = new Eth2Signer(MinerAddress);
-                HeaderValidator headerValidator = new(BlockTree, new Eth2SealEngine(Signer), SpecProvider, LogManager);
-                BlockValidator = CreateBlockValidator(headerValidator);
-                    
+                BlockValidator = CreateBlockValidator();
                 return new BlockProcessor(
                     SpecProvider,
                     BlockValidator,
@@ -113,16 +107,20 @@ namespace Nethermind.Merge.Plugin.Test
                     LogManager);
             }
 
-            private IBlockValidator CreateBlockValidator(HeaderValidator headerValidator) =>
-                new BlockValidator(
+            private IBlockValidator CreateBlockValidator()
+            {
+                HeaderValidator headerValidator = new(BlockTree, new Eth2SealEngine(Signer), SpecProvider, LogManager);
+                
+                return new BlockValidator(
                     new TxValidator(SpecProvider.ChainId),
                     headerValidator,
-                    new OmmersValidator(BlockTree, headerValidator, LogManager),
+                    Always.Valid,
                     SpecProvider,
                     LogManager);
+            }
 
             public Address MinerAddress => TestItem.PrivateKeyA.Address;
-            public IEth2FinalizationManager FinalizationManager { get; } = new Eth2FinalizationManager();
+            public IManualBlockFinalizationManager BlockFinalizationManager { get; } = new ManualBlockFinalizationManager();
 
             protected override async Task<TestBlockchain> Build(ISpecProvider? specProvider = null, UInt256? initialValues = null)
             {

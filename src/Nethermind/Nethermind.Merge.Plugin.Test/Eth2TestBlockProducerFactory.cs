@@ -33,8 +33,12 @@ using Nethermind.TxPool;
 
 namespace Nethermind.Merge.Plugin.Test
 {
-    internal class Eth2TestBlockProducerFactory : Eth2BlockProducerFactory
+    public class Eth2TestBlockProducerFactory : Eth2BlockProducerFactory
     {
+        public Eth2TestBlockProducerFactory(ITxSource? txSource = null) : base(txSource)
+        {
+        }
+        
         public override Eth2BlockProducer Create(
             IBlockTree blockTree,
             IDbProvider dbProvider,

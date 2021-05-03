@@ -51,7 +51,7 @@ namespace Nethermind.Blockchain.Producers
         public ITimestamper Timestamper { get; }
 
         protected ISealer Sealer { get; }
-        private readonly IStateProvider _stateProvider;
+        protected IStateProvider StateProvider { get; }
         private readonly IGasLimitCalculator _gasLimitCalculator;
         private readonly ITxSource _txSource;
 
@@ -74,7 +74,7 @@ namespace Nethermind.Blockchain.Producers
             Sealer = sealer ?? throw new ArgumentNullException(nameof(sealer));
             BlockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             BlockProcessingQueue = blockProcessingQueue ?? throw new ArgumentNullException(nameof(blockProcessingQueue));
-            _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
+            StateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
             _gasLimitCalculator = gasLimitCalculator ?? throw new ArgumentNullException(nameof(gasLimitCalculator));
             Timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
             Logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
@@ -130,7 +130,7 @@ namespace Nethermind.Blockchain.Producers
 
         private Task<Block?> ProduceNewBlock(BlockHeader parent, CancellationToken token)
         {
-            _stateProvider.StateRoot = parent.StateRoot;
+            StateProvider.StateRoot = parent.StateRoot;
             Block block = PrepareBlock(parent);
             if (PreparedBlockCanBeMined(block))
             {

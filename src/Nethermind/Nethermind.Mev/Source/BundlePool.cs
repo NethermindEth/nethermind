@@ -215,18 +215,24 @@ namespace Nethermind.Mev.Source
             HashSet<MevBundle> bundles = (await GetBundles(parent, timestamp, gasLimit, token)).ToHashSet();
             
             Keccak parentHash = parent.Hash!;
-            ConcurrentDictionary<MevBundle, SimulatedMevBundleContext> simulatedBundle = _simulatedBundles[parentHash];
-            IEnumerable<Task<SimulatedMevBundle>> resultTasks = simulatedBundle
-                .Where(b => bundles.Contains(b.Key))
-                .Select(b => b.Value.Task)
-                .ToArray();
+            if (_simulatedBundles.TryGetValue(parentHash, out ConcurrentDictionary<MevBundle, SimulatedMevBundleContext>? simulatedBundlesForBlock))
+            {
+                IEnumerable<Task<SimulatedMevBundle>> resultTasks = simulatedBundlesForBlock
+                    .Where(b => bundles.Contains(b.Key))
+                    .Select(b => b.Value.Task)
+                    .ToArray();
 
-            await Task.WhenAny(Task.WhenAll(resultTasks), token.AsTask());
+                await Task.WhenAny(Task.WhenAll(resultTasks), token.AsTask());
 
-            return resultTasks
-                .Where(t => t.IsCompletedSuccessfully)
-                .Select(t => t.Result)
-                .Where(s => s.GasUsed <= gasLimit);
+                return resultTasks
+                    .Where(t => t.IsCompletedSuccessfully)
+                    .Select(t => t.Result)
+                    .Where(s => s.GasUsed <= gasLimit);
+            }
+            else
+            {
+                return Enumerable.Empty<SimulatedMevBundle>();
+            }
         }
         
         public void Dispose()

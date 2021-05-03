@@ -41,31 +41,8 @@ using Nethermind.Facade;
 namespace Nethermind.Mev.Test
 {
     [TestFixture]
-    public class MevRpcModuleTests
+    public partial class MevRpcModuleTests
     {
-        private class TestMevRpcBlockchain : TestBlockchain
-        {
-            public IMevRpcModule MevRpcModule { get; set; } = Substitute.For<IMevRpcModule>();
-            public IEthRpcModule EthRpcModule { get; set; } = Substitute.For<IEthRpcModule>();
-            // bad, TODO change to have a receipt field directly without bridge
-            public IBlockchainBridge BlockchainBridge { get; set; } = Substitute.For<IBlockchainBridge>();
-            public TestMevRpcBlockchain() {}
-            // TODO add json converters, rewrite method
-            public async Task<string> TestMevRpcWithSerialization(string method, params string[] parameters)
-            {
-                List<JsonConverter> converters = new();
-                uint id = 1337;
-                // TODO run MevRpcModule method and convert result
-                await this.AddBlock();
-                return "";
-            }
-        }
-
-        private TestMevRpcBlockchain CreateChain()
-        {
-            return new TestMevRpcBlockchain();
-        }
-
         private static IEnumerable<Keccak?> GetHashes(IEnumerable<Transaction> bundle2Txs) => bundle2Txs.Select(t => t.Hash);
 
         private static class Contracts
@@ -101,25 +78,18 @@ namespace Nethermind.Mev.Test
             public static async Task<Address> Deploy(TestMevRpcBlockchain chain, string code)
             {
                 Transaction createContractTx = Build.A.Transaction.WithCode(Bytes.FromHexString(code)).WithGasLimit(Contracts.LargeGasLimit).SignedAndResolved(Contracts.ContractCreatorPrivateKey).TestObject;
-                ResultWrapper<Keccak> resultOfCreate = await chain.EthRpcModule.eth_sendTransaction(new TransactionForRpc(createContractTx));
-                Assert.AreNotEqual(resultOfCreate.GetResult().ResultType, ResultType.Failure);
                 // guarantee state change 
-                await chain.AddBlock();
+                await chain.AddBlock(true, createContractTx);
 
-                Keccak createContractTxHash = (Keccak) resultOfCreate.GetData();
-                TxReceipt createContractTxReceipt = chain.BlockchainBridge.GetReceipt(createContractTxHash);
+                TxReceipt createContractTxReceipt = chain.Bridge.GetReceipt(createContractTx.Hash!);
                 Assert.NotNull(createContractTxReceipt.ContractAddress);
 
                 return createContractTxReceipt.ContractAddress!;
             }
-
             public static async Task SeedCoinbase(TestMevRpcBlockchain chain, Address coinbaseAddress)
             {
                 Transaction seedContractTx = Build.A.Transaction.WithTo(coinbaseAddress).WithValue(Contracts.CoinbaseStartingBalanceInWei).WithNonce(1).WithGasLimit(21000).SignedAndResolved(Contracts.ContractCreatorPrivateKey).TestObject;
-                ResultWrapper<Keccak> resultOfSeed = await chain.EthRpcModule.eth_sendTransaction(new TransactionForRpc(seedContractTx));
-                Assert.AreNotEqual(resultOfSeed.GetResult().ResultType, ResultType.Failure);
-
-                await chain.AddBlock();
+                await chain.AddBlock(true, seedContractTx);
             }
         }
 
@@ -149,7 +119,7 @@ namespace Nethermind.Mev.Test
         [Test]
         public async Task Should_execute_eth_CallBundle_and_serialize_response_properly() 
         {
-            var chain = CreateChain();
+            var chain = await CreateChain();
 
             Address contractAddress = await Contracts.Deploy(chain, Contracts.CallableCode);
 
@@ -157,7 +127,10 @@ namespace Nethermind.Mev.Test
             Transaction setTx = Build.A.Transaction.WithGasLimit(Contracts.LargeGasLimit).WithGasPrice(new UInt256(1)).WithTo(contractAddress).WithData(Bytes.FromHexString(Contracts.CallableInvokeSet)).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
             string transactions = "[" + Rlp.Encode(setTx).Bytes.ToHexString() + "," + Rlp.Encode(getTx).Bytes.ToHexString() + "]";
 
-            string result = await chain.TestMevRpcWithSerialization("eth_CallBundle", transactions, Rlp.Encode(2).Bytes.ToHexString(true), Rlp.Encode(0).Bytes.ToHexString(true), Rlp.Encode(System.Int64.MaxValue).Bytes.ToHexString(true));
+            string result = chain.TestSerializedRequest(chain.MevRpcModule, "eth_callBundle", transactions, 
+                Rlp.Encode(2).Bytes.ToHexString(true), 
+                Rlp.Encode(0).Bytes.ToHexString(true), 
+                Rlp.Encode(long.MaxValue).Bytes.ToHexString(true));
 
             result.Should().Be($"{{\"jsonrpc\":\"2.0\",\"result\":{{\"{setTx.Hash!}\":{{\"value\":\"0x0\"}},\"{getTx.Hash!}\":{{\"value\":\"{Rlp.Encode(Contracts.CallableGetValueAfterSet)}\"}}}},\"id\":1337}}");
         }
@@ -165,7 +138,7 @@ namespace Nethermind.Mev.Test
         [Test]
         public async Task Should_pick_one_and_only_one_highest_score_bundle_of_several_using_v1_score_with_no_vanilla_tx_to_include_in_block()
         {
-            var chain = CreateChain();
+            var chain = await CreateChain();
             chain.TxPool.BlockGasLimit = 10000000;
 
             Address contractAddress = await Contracts.Deploy(chain, Contracts.CoinbaseCode);
@@ -200,64 +173,60 @@ namespace Nethermind.Mev.Test
             Assert.AreNotEqual(resultOfBundle3.GetResult().ResultType, ResultType.Failure);
             Assert.IsTrue((bool) resultOfBundle3.GetData());
 
-            await chain.AddBlock();
+            await chain.AddBlock(true);
 
-            GetHashes(chain.BlockTree.Head.Transactions).Should().Equal(GetHashes(bundle1));
+            GetHashes(chain.BlockTree.Head!.Transactions).Should().Equal(GetHashes(bundle1));
         }
 
         [Test]
         public async Task Should_push_out_tail_gas_price_tx()
         {
-            var chain = CreateChain();
+            var chain = await CreateChain();
             chain.TxPool.BlockGasLimit = 21000;
 
             Transaction tx2 = Build.A.Transaction.WithGasLimit(21000).WithGasPrice(new UInt256(150)).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
             Transaction tx3 = Build.A.Transaction.WithGasLimit(21000).WithGasPrice(new UInt256(200)).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
 
-            byte[][] bundle_bytes = new byte[][] { 
+            byte[][] bundleBytes = new byte[][] { 
                 Rlp.Encode(tx3).Bytes 
             };
-            ResultWrapper<bool> resultOfBundle = chain.MevRpcModule.eth_sendBundle(bundle_bytes, 1);
+            ResultWrapper<bool> resultOfBundle = chain.MevRpcModule.eth_sendBundle(bundleBytes, 1);
             Assert.AreNotEqual(ResultType.Failure, resultOfBundle.GetResult().ResultType);
             Assert.IsTrue((bool) resultOfBundle.GetData());
 
-            ResultWrapper<Keccak> result2 = await chain.EthRpcModule.eth_sendTransaction(new TransactionForRpc(tx2));
-            Assert.AreNotEqual(result2.GetResult().ResultType, ResultType.Failure);
+            await SendSignedTransaction(chain, tx2);
+            await chain.AddBlock(true);
 
-            await chain.AddBlock();
-
-            GetHashes(chain.BlockTree.Head.Transactions).Should().Equal(GetHashes(new Transaction[] { tx3 }));
+            GetHashes(chain.BlockTree.Head!.Transactions).Should().Equal(GetHashes(new Transaction[] { tx3 }));
         }
 
         [Test]
         public async Task Should_choose_between_higher_coinbase_reward_of_vanilla_and_bundle_block()
         {
-            var chain = CreateChain();
+            var chain = await CreateChain();
             chain.TxPool.BlockGasLimit = 21000;
 
             Transaction tx1 = Build.A.Transaction.WithGasLimit(21000).WithGasPrice(new UInt256(100)).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
             Transaction tx4 = Build.A.Transaction.WithGasLimit(21000).WithGasPrice(new UInt256(50)).SignedAndResolved(TestItem.PrivateKeyD).TestObject;
 
-            byte[][] bundle_bytes = new byte[][] { 
+            byte[][] bundleBytes = new byte[][] { 
                 Rlp.Encode(tx4).Bytes 
             };
-            ResultWrapper<bool> resultOfBundle = chain.MevRpcModule.eth_sendBundle(bundle_bytes, 1);
+            ResultWrapper<bool> resultOfBundle = chain.MevRpcModule.eth_sendBundle(bundleBytes, 1);
             Assert.AreNotEqual(ResultType.Failure, resultOfBundle.GetResult().ResultType);
             Assert.IsTrue((bool) resultOfBundle.GetData());
 
-            ResultWrapper<Keccak> result1 = await chain.EthRpcModule.eth_sendTransaction(new TransactionForRpc(tx1));
-            Assert.AreNotEqual(result1.GetResult().ResultType, ResultType.Failure);
+            await SendSignedTransaction(chain, tx1);
+            await chain.AddBlock(true);
 
-            await chain.AddBlock();
-
-            GetHashes(chain.BlockTree.Head.Transactions).Should().Equal(GetHashes(new Transaction[] { tx1 }));
+            GetHashes(chain.BlockTree.Head!.Transactions).Should().Equal(GetHashes(new Transaction[] { tx1 }));
         }
 
         [Test]
         public async Task Includes_0_transactions_from_bundle_with_1_or_more_transaction_failures()
         {
             // ignoring bundles with failed tx takes care of intersecting bundles
-            var chain = CreateChain();
+            var chain = await CreateChain();
             chain.TxPool.BlockGasLimit = 10000000;
 
             Transaction tx1 = Build.A.Transaction.WithGasLimit(21000).WithGasPrice(new UInt256(100)).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
@@ -266,26 +235,24 @@ namespace Nethermind.Mev.Test
             Address contractAddress = await Contracts.Deploy(chain, Contracts.ReverterCode);
             Transaction tx3 = Build.A.Transaction.WithGasLimit(Contracts.LargeGasLimit).WithGasPrice(500).WithTo(contractAddress).WithData(Bytes.FromHexString(Contracts.ReverterInvokeFail)).SignedAndResolved(TestItem.PrivateKeyD).TestObject;
 
-            byte[][] bundle_bytes = new byte[][] { 
+            byte[][] bundleBytes = new byte[][] { 
                 Rlp.Encode(tx2).Bytes, 
                 Rlp.Encode(tx3).Bytes 
             };
-            ResultWrapper<bool> resultOfBundle1 = chain.MevRpcModule.eth_sendBundle(bundle_bytes, 2);
+            ResultWrapper<bool> resultOfBundle1 = chain.MevRpcModule.eth_sendBundle(bundleBytes, 2);
             Assert.AreNotEqual(ResultType.Failure, resultOfBundle1.GetResult().ResultType);
             Assert.IsTrue((bool) resultOfBundle1.GetData());
 
-            ResultWrapper<Keccak> result = await chain.EthRpcModule.eth_sendTransaction(new TransactionForRpc(tx1));
-            Assert.AreNotEqual(result.GetResult().ResultType, ResultType.Failure);
+            await SendSignedTransaction(chain, tx1);
+            await chain.AddBlock(true);
 
-            await chain.AddBlock();
-
-            GetHashes(chain.BlockTree.Head.Transactions).Should().Equal(GetHashes(new Transaction[] { tx1 }));
+            GetHashes(chain.BlockTree.Head!.Transactions).Should().Equal(GetHashes(new Transaction[] { tx1 }));
         }
 
         [Test]
         public async Task Should_include_bundle_transactions_uninterrupted_in_order_from_least_index_at_beginning_of_block()
         {
-            var chain = CreateChain();
+            var chain = await CreateChain();
             chain.TxPool.BlockGasLimit = 10000000;
 
             Address contractAddress = await Contracts.Deploy(chain, Contracts.SetableCode);
@@ -300,22 +267,20 @@ namespace Nethermind.Mev.Test
             Transaction tx5 = Build.A.Transaction.WithGasLimit(21000).WithGasPrice(new UInt256(50)).SignedAndResolved(TestItem.PrivateKeyF).TestObject;
 
             // send regular tx before bundle
-            ResultWrapper<Keccak> result1 = await chain.EthRpcModule.eth_sendTransaction(new TransactionForRpc(tx4));
-            Assert.AreNotEqual(result1.GetResult().ResultType, ResultType.Failure);
-            ResultWrapper<Keccak> result2 = await chain.EthRpcModule.eth_sendTransaction(new TransactionForRpc(tx5));
-            Assert.AreNotEqual(result2.GetResult().ResultType, ResultType.Failure);
-
-            byte[][] bundle_bytes = new byte[][] { 
+            await SendSignedTransaction(chain, tx4);
+            await SendSignedTransaction(chain, tx5);
+            
+            byte[][] bundleBytes = new byte[][] { 
                 Rlp.Encode(set1).Bytes, 
                 Rlp.Encode(set2).Bytes
             };
-            ResultWrapper<bool> resultOfBundle = chain.MevRpcModule.eth_sendBundle(bundle_bytes, 1);
+            ResultWrapper<bool> resultOfBundle = chain.MevRpcModule.eth_sendBundle(bundleBytes, 1);
             Assert.AreNotEqual(ResultType.Failure, resultOfBundle.GetResult().ResultType);
             Assert.IsTrue((bool) resultOfBundle.GetData());
 
-            await chain.AddBlock();
+            await chain.AddBlock(true);
 
-            GetHashes(chain.BlockTree.Head.Transactions).Should().Equal(GetHashes(new Transaction[] { set1, set2, tx4, set3, tx5 }));
+            GetHashes(chain.BlockTree.Head!.Transactions).Should().Equal(GetHashes(new Transaction[] { set1, set2, tx4, set3, tx5 }));
             
             ResultWrapper<string> resultGet = chain.EthRpcModule.eth_call(new TransactionForRpc(get));
             Assert.AreNotEqual(resultGet.GetResult().ResultType, ResultType.Failure);
@@ -329,5 +294,12 @@ namespace Nethermind.Mev.Test
         [Test]
         [Ignore("v0.2")]
         public async Task Should_discard_mempool_tx_in_v2_score() {}
+        
+        private static async Task<Keccak> SendSignedTransaction(TestMevRpcBlockchain chain, Transaction tx)
+        {
+            ResultWrapper<Keccak>? result = await chain.EthRpcModule.eth_sendRawTransaction(Rlp.Encode(tx).Bytes);
+            Assert.AreNotEqual(result.GetResult().ResultType, ResultType.Failure);
+            return result.Data;
+        }
     }
 }
