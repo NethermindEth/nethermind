@@ -28,7 +28,7 @@ namespace Nethermind.Serialization.Rlp
         Storage = 4,
         Eip658Receipts = 8,
         AllowUnsigned = 16,
-        ForTreeRoot = 32,
-        All = AllowExtraData | ForSealing | Storage | Eip658Receipts | AllowUnsigned | ForTreeRoot
+        SkipTypedWrapping = 32,
+        All = AllowExtraData | ForSealing | Storage | Eip658Receipts | AllowUnsigned | SkipTypedWrapping
     }
 }

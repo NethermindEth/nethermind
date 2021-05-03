@@ -326,7 +326,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         {
             try
             {
-                Transaction tx = Rlp.Decode<Transaction>(transaction, RlpBehaviors.AllowUnsigned);
+                Transaction tx = Rlp.Decode<Transaction>(transaction, RlpBehaviors.AllowUnsigned | RlpBehaviors.SkipTypedWrapping);
                 return await SendTx(tx);
             }
             catch (RlpException)

@@ -207,7 +207,7 @@ namespace Nethermind.Serialization.Rlp
 
             if (item.TxType != TxType.Legacy)
             {
-                if ((rlpBehaviors & RlpBehaviors.ForTreeRoot) == RlpBehaviors.None)
+                if ((rlpBehaviors & RlpBehaviors.SkipTypedWrapping) == RlpBehaviors.None)
                 {
                     rlpStream.StartByteArray(sequenceLength + 1, false);
                 }
@@ -332,7 +332,7 @@ namespace Nethermind.Serialization.Rlp
             (int Total, int Logs) length = GetContentLength(item, rlpBehaviors);
             int receiptPayloadLength = Rlp.GetSequenceRlpLength(length.Total);
 
-            bool isForTxRoot = (rlpBehaviors & RlpBehaviors.ForTreeRoot) == RlpBehaviors.ForTreeRoot;
+            bool isForTxRoot = (rlpBehaviors & RlpBehaviors.SkipTypedWrapping) == RlpBehaviors.SkipTypedWrapping;
             int result = item.TxType != TxType.Legacy
                 ? isForTxRoot
                     ? (1 + receiptPayloadLength)
