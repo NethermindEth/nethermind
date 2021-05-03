@@ -28,7 +28,10 @@ namespace Nethermind.Serialization.Rlp
         Storage = 4,
         Eip658Receipts = 8,
         AllowUnsigned = 16,
-        SkipTypedWrapping = 32,
+        SkipTypedWrapping = 32, // introduced after typed transactions. In the network (devp2p) transaction has additional wrapping
+                                // when we're calculating tx hash or sending raw transaction we should skip this wrapping
+                                // with additional wrapping for typed transactions we're decoding Uint8Array([TransactionType, TransactionPayload]
+                                // without wrapping we're decoding (TransactionType || TransactionPayload)
         All = AllowExtraData | ForSealing | Storage | Eip658Receipts | AllowUnsigned | SkipTypedWrapping
     }
 }
