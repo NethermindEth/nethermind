@@ -50,7 +50,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 {
     [Parallelizable(ParallelScope.All)]
     [TestFixture]
-    public class EthModuleTests
+    public class EthRpcModuleTests
     {
         [TestCase("earliest", "0x3635c9adc5dea00000")]
         [TestCase("latest", "0x3635c9adc5de9f09e5")]
@@ -698,6 +698,21 @@ namespace Nethermind.JsonRpc.Test.Modules
             ctx._test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockchainBridge(bridge).WithTxSender(txSender).Build();
             Transaction tx = Build.A.Transaction.Signed(new EthereumEcdsa(ChainId.Mainnet, LimboLogs.Instance), TestItem.PrivateKeyA).TestObject;
             string serialized = ctx._test.TestEthRpc("eth_sendRawTransaction", Rlp.Encode(tx, RlpBehaviors.None).Bytes.ToHexString());
+            
+            await txSender.Received().SendTransaction(Arg.Any<Transaction>(), TxHandlingOptions.PersistentBroadcast);
+            Assert.AreEqual($"{{\"jsonrpc\":\"2.0\",\"result\":\"{TestItem.KeccakA.Bytes.ToHexString(true)}\",\"id\":67}}", serialized);
+        }
+        
+        [TestCase("01f85b821e8e8204d7847735940083030d408080853a60005500c080a0f43e70c79190701347517e283ef63753f6143a5225cbb500b14d98eadfb7616ba070893923d8a1fc97499f426524f9e82f8e0322dfac7c3d7e8a9eee515f0bcdc4")]
+        public async Task Send_raw_transaction_will_send_transaction(string rawTransaction)
+        {
+            using Context ctx = await Context.Create();
+            ITxSender txSender = Substitute.For<ITxSender>();
+            IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
+            txSender.SendTransaction(Arg.Any<Transaction>(), TxHandlingOptions.PersistentBroadcast).Returns(TestItem.KeccakA);
+
+            ctx._test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockchainBridge(bridge).WithTxSender(txSender).Build();
+            string serialized = ctx._test.TestEthRpc("eth_sendRawTransaction", rawTransaction);
             
             await txSender.Received().SendTransaction(Arg.Any<Transaction>(), TxHandlingOptions.PersistentBroadcast);
             Assert.AreEqual($"{{\"jsonrpc\":\"2.0\",\"result\":\"{TestItem.KeccakA.Bytes.ToHexString(true)}\",\"id\":67}}", serialized);
