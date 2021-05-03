@@ -39,6 +39,7 @@ namespace Nethermind.TxPool
         bool TryAddToPendingHashes(Keccak hash);
         AddTxResult AddTransaction(Transaction tx, TxHandlingOptions handlingOptions);
         bool RemoveTransaction(Transaction tx, bool removeBelowThisTxNonce = false);
+        void RemoveOrUpdateBucket(Address? senderAddress);
         bool IsInHashCache(Keccak? hash);
         bool TryGetPendingTransaction(Keccak hash, out Transaction? transaction);
         UInt256 ReserveOwnTransactionNonce(Address address);

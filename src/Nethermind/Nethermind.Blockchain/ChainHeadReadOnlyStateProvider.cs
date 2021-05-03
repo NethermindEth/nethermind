@@ -37,7 +37,7 @@ namespace Nethermind.Blockchain
 
         public Keccak StateRoot => _blockTree.Head?.StateRoot ?? Keccak.EmptyTreeHash;
 
-        public Account GetAccount(Address address) => _stateReader.GetAccount(StateRoot, address);
+        public Account? GetAccount(Address address) => _stateReader.GetAccount(StateRoot, address);
 
         public UInt256 GetNonce(Address address) => _stateReader.GetNonce(StateRoot, address);
 

@@ -72,6 +72,10 @@ namespace Nethermind.Blockchain
                 {
                     discoveredForPendingTxs++;
                 }
+                else
+                {
+                    _txPool.RemoveOrUpdateBucket(block.Transactions[i].SenderAddress);
+                }
             }
             TxPool.Metrics.DarkPoolRatioLevel1 = transactionsInBlock == 0 ? 0 : (float)discoveredForHashCache / transactionsInBlock;
             TxPool.Metrics.DarkPoolRatioLevel2 = transactionsInBlock == 0 ? 0 : (float)discoveredForPendingTxs / transactionsInBlock;

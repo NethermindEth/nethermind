@@ -212,85 +212,7 @@ namespace Nethermind.TxPool
 
             return FilterTransaction(tx, managedNonce) ?? AddCore(tx, isPersistentBroadcast, isReorg);
         }
-
-        private AddTxResult AddCore(Transaction tx, bool isPersistentBroadcast, bool isReorg)
-        {
-            if (tx.Hash is null)
-            {
-                return AddTxResult.Invalid;
-            }
-            
-            // !!! do not change it to |=
-            bool isKnown = !isReorg && _hashCache.Get(tx.Hash);
-
-            /*
-             * we need to make sure that the sender is resolved before adding to the distinct tx pool
-             * as the address is used in the distinct value calculation
-             */
-            if (!isKnown)
-            {
-                lock (_locker)
-                {
-                    isKnown |= !_transactions.TryInsert(tx.Hash, tx);
-                    UpdateGasBottleneck(tx.SenderAddress);
-                }
-            }
-
-            if (!isKnown)
-            {
-                isKnown |= !isReorg && (_txStorage.Get(tx.Hash) is not null);
-            }
-
-            if (isKnown)
-            {
-                // If transaction is a bit older and already known then it may be stored in the persistent storage.
-                Metrics.PendingTransactionsKnown++;
-                if (_logger.IsTrace) _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, already known.");
-                return AddTxResult.AlreadyKnown;
-            }
-            
-            _hashCache.Set(tx.Hash);
-            HandleOwnTransaction(tx, isPersistentBroadcast);
-            NotifySelectedPeers(tx);
-            StoreTx(tx);
-            NewPending?.Invoke(this, new TxEventArgs(tx));
-            return AddTxResult.Added;
-        }
-
-        private void UpdateGasBottleneck(Address? senderAddress)
-        {
-            if (senderAddress is null)
-            {
-                return;
-            }
-            var bucketSnapshot = _transactions.GetBucketSnapshot(senderAddress);
-            long currentNonce = (long)_stateProvider.GetNonce(senderAddress);
-            currentNonce = currentNonce > 0 ? currentNonce : 0;
-            UInt256 previousTxBottleneck = UInt256.MaxValue;
-
-            for (var i = 0; i < bucketSnapshot.Length; i++)
-            {
-                Transaction tx = bucketSnapshot[i];
-                if (tx.Nonce == currentNonce + i)
-                {
-                    _transactions.NotifyChange(tx.Hash, tx, t => 
-                    {
-                        tx.GasBottleneck = tx.GasPrice < previousTxBottleneck ? tx.GasPrice : previousTxBottleneck;
-                        previousTxBottleneck = tx.GasBottleneck;
-                    });
-                }
-                else
-                {
-                    _transactions.NotifyChange(tx.Hash, tx, t =>
-                    {
-                        _transactions.TryGetLast(out var lastTx);
-                        var lastTxGasBottleneck = lastTx.GasBottleneck;
-                        tx.GasBottleneck = lastTxGasBottleneck > 0 ? lastTxGasBottleneck - 1 : 0;
-                    });
-                }
-            }
-        }
-
+        
         protected virtual AddTxResult? FilterTransaction(Transaction tx, in bool managedNonce)
         {
             if (tx.Hash is null)
@@ -343,7 +265,8 @@ namespace Nethermind.TxPool
             }
 
             int noncesInPending = _transactions.GetBucketCount(tx.SenderAddress);
-            if (tx.Nonce > (long)currentNonce + noncesInPending)
+            if (tx.Nonce > (long)currentNonce + noncesInPending
+                || tx.Nonce > currentNonce + FutureNonceRetention)
             {
                 if (_logger.IsTrace)
                     _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, nonce in future.");
@@ -352,7 +275,7 @@ namespace Nethermind.TxPool
 
             if (_transactions.TryGetLast(out var lastTx)
                 && tx.GasPrice <= lastTx?.GasBottleneck
-                && GetPendingTransactionsCount() > 2048)
+                && GetPendingTransactionsCount() == MemoryAllowance.MemPoolSize)
             {
                 if (_logger.IsTrace)
                     _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, too low gasPrice.");
@@ -384,6 +307,122 @@ namespace Nethermind.TxPool
             return null;
         }
 
+        private AddTxResult AddCore(Transaction tx, bool isPersistentBroadcast, bool isReorg)
+        {
+            if (tx.Hash is null)
+            {
+                return AddTxResult.Invalid;
+            }
+
+            bool isInHashCache = _hashCache.Get(tx.Hash);
+            // !!! do not change it to |=
+            bool isKnown = !isReorg && isInHashCache;
+
+            if (!isInHashCache)
+            {
+                _hashCache.Set(tx.Hash);
+            }
+
+            /*
+             * we need to make sure that the sender is resolved before adding to the distinct tx pool
+             * as the address is used in the distinct value calculation
+             */
+            if (!isKnown)
+            {
+                lock (_locker)
+                {
+                    isKnown |= !_transactions.TryInsert(tx.Hash, tx);
+                    UpdateBucket(tx.SenderAddress!);
+                }
+            }
+
+            if (!isKnown)
+            {
+                isKnown |= !isReorg && (_txStorage.Get(tx.Hash) is not null);
+            }
+
+            if (isKnown)
+            {
+                // If transaction is a bit older and already known then it may be stored in the persistent storage.
+                Metrics.PendingTransactionsKnown++;
+                if (_logger.IsTrace) _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, already known.");
+                return AddTxResult.AlreadyKnown;
+            }
+            
+            HandleOwnTransaction(tx, isPersistentBroadcast);
+            NotifySelectedPeers(tx);
+            StoreTx(tx);
+            NewPending?.Invoke(this, new TxEventArgs(tx));
+            return AddTxResult.Added;
+        }
+
+        private void UpdateBucket(Address senderAddress)
+        {
+            var bucketSnapshot = _transactions.GetBucketSnapshot(senderAddress);
+            long currentNonce = (long)_stateProvider.GetNonce(senderAddress);
+
+            UpdateGasBottleneck(bucketSnapshot, currentNonce);
+        }
+
+        private void UpdateGasBottleneck(IReadOnlyList<Transaction> bucketSnapshot, long currentNonce)
+        {
+            UInt256 previousTxBottleneck = UInt256.MaxValue;
+
+            for (int i = 0; i < bucketSnapshot.Count; i++)
+            {
+                Transaction tx = bucketSnapshot[i];
+                UInt256 gasBottleneck = 0;
+                
+                if (tx.Nonce <= currentNonce + i)
+                {
+                    gasBottleneck = tx.GasPrice < previousTxBottleneck ? tx.GasPrice : previousTxBottleneck;
+                }
+                
+                _transactions.NotifyChange(tx.Hash, tx, t =>
+                {
+                    tx.GasBottleneck = gasBottleneck;
+                });
+                
+                previousTxBottleneck = gasBottleneck;
+            }
+        }
+        
+        public void RemoveOrUpdateBucket(Address? senderAddress)
+        {
+            if (senderAddress is null)
+            {
+                return;
+            }
+            
+            var bucketSnapshot = _transactions.GetBucketSnapshot(senderAddress);
+
+            if (bucketSnapshot.Length == 0)
+            {
+                return;
+            }
+            
+            Account? account = _stateProvider.GetAccount(senderAddress);
+            UInt256 balance = account?.Balance ?? UInt256.Zero;
+            long currentNonce = (long)(account?.Nonce ?? UInt256.Zero);
+            Transaction tx = bucketSnapshot[0];
+            
+            bool overflow = UInt256.MultiplyOverflow(tx.GasPrice, (UInt256) tx.GasLimit, out UInt256 cost);
+            overflow |= UInt256.AddOverflow(cost, tx.Value, out cost);
+            
+            if (overflow || balance < cost)
+            {
+                for (int i = 0; i < bucketSnapshot.Length; i++)
+                {
+                    tx = bucketSnapshot[i];
+                    RemoveTransaction(tx);
+                }
+            }
+            else
+            {
+                UpdateGasBottleneck(bucketSnapshot, currentNonce);
+            }
+        }
+        
         private void HandleOwnTransaction(Transaction tx, bool isOwn)
         {
             if (isOwn)
@@ -470,7 +509,8 @@ namespace Nethermind.TxPool
                     }
                 }
             }
-
+            
+            _hashCache.Delete(hash);
             _txStorage.Delete(hash);
             if (_logger.IsTrace) _logger.Trace($"Deleted a transaction: {hash}");
 
@@ -497,7 +537,6 @@ namespace Nethermind.TxPool
                 }
             }
             
-            UpdateGasBottleneck(senderAddress);
             return isKnown;
         }
 
