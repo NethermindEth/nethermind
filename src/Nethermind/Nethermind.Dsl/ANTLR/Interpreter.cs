@@ -12,7 +12,7 @@ namespace Nethermind.Dsl.ANTLR
 {
     public class Interpreter
     {
-        public Stack<IPipeline> Pipelines = new Stack<IPipeline>();
+        public List<IPipeline> Pipelines = new List<IPipeline>();
         private readonly INethermindApi _api;
         private readonly IParseTree _tree;
         private readonly ParseTreeListener _treeListener;
@@ -27,7 +27,7 @@ namespace Nethermind.Dsl.ANTLR
             _treeListener = treeListener ?? throw new ArgumentNullException(nameof(treeListener));
 
             _treeListener.OnEnterExpression = AddExpression; 
-            _treeListener.OnEnterCondition = AddCondition;
+            _treeListener.OnEnterCondition = OnCondition;
             _treeListener.OnExit = BuildPipeline;
         }
 
@@ -81,13 +81,83 @@ namespace Nethermind.Dsl.ANTLR
                             )
                     );
                     break;
+                case "transactions":
+                // with watch on transactions we need to change for transactions pipeline, hence new source
+                    var sourceElement = new TxPoolSource<Transaction>(_api.TxPool);
+                    _transactionPipelineBuilder = new PipelineBuilder<Transaction, Transaction>(sourceElement);
+
+                    _blockSource = false;
+                break;
             }
         }
 
-        private void AddCondition(string key, string symbol, string value)
+        private void OnCondition(string key, string symbol, string value)
         {
-            if (_blockSource)
+            if(_blockSource)
             {
+                BlockCondition(key, symbol, value);
+            }
+
+            TransactionCondition(key, symbol, value);
+        }
+
+        private void TransactionCondition(string key, string symbol, string value)
+        {
+                switch (symbol)
+                {
+                    case "==":
+                        _transactionPipelineBuilder =_transactionPipelineBuilder.AddElement(
+                            new PipelineElement<Transaction, Transaction>(
+                                condition: (t => t.GetType().GetProperty(key).GetValue(t).ToString() == value),
+                                transformData: (t => t)
+                            )
+                        );
+                        return;
+                    case "!=":
+                        _transactionPipelineBuilder = _transactionPipelineBuilder.AddElement(
+                            new PipelineElement<Transaction, Transaction>(
+                                condition: (t => t.GetType().GetProperty(key).GetValue(t).ToString() != value),
+                                transformData: (t => t)
+                            )
+                        );
+                        return;
+                    case ">":
+                        _transactionPipelineBuilder = _transactionPipelineBuilder.AddElement(
+                            new PipelineElement<Transaction, Transaction>(
+                                condition: (t => (UInt256)t.GetType().GetProperty(key).GetValue(t) > UInt256.Parse(value)),
+                                transformData: (t => t)
+                            )
+                        );
+                        return;
+                    case "<":
+                        _transactionPipelineBuilder = _transactionPipelineBuilder.AddElement(
+                            new PipelineElement<Transaction, Transaction>(
+                                condition: (t => (UInt256)t.GetType().GetProperty(key).GetValue(t) < UInt256.Parse(value)),
+                                transformData: (t => t)
+                            )
+                        );
+                        return;
+                    case ">=":
+                        _transactionPipelineBuilder = _transactionPipelineBuilder.AddElement(
+                            new PipelineElement<Transaction, Transaction>(
+                                condition: (t => (UInt256)t.GetType().GetProperty(key).GetValue(t) >= UInt256.Parse(value)),
+                                transformData: (t => t)
+                            )
+                        );
+                        return;
+                    case "<=":
+                        _transactionPipelineBuilder = _transactionPipelineBuilder.AddElement(
+                            new PipelineElement<Transaction, Transaction>(
+                                condition: (t => (UInt256)t.GetType().GetProperty(key).GetValue(t) <= UInt256.Parse(value)),
+                                transformData: (t => t)
+                            )
+                        );
+                        return;
+                }
+        }
+
+        private void BlockCondition(string key, string symbol, string value)
+        {
                 switch (symbol)
                 {
                     case "==":
@@ -139,8 +209,6 @@ namespace Nethermind.Dsl.ANTLR
                         );
                         return;
                 }
-            }
-
         }
 
         private void AddPublisher(string publisher)
@@ -158,11 +226,11 @@ namespace Nethermind.Dsl.ANTLR
         {
             if(_blockSource)
             {
-                Pipelines.Push(_blockPipelineBuilder.Build());
+                Pipelines.Add(_blockPipelineBuilder.Build());
             }
             else
             {
-                Pipelines.Push(_transactionPipelineBuilder.Build());
+                Pipelines.Add(_transactionPipelineBuilder.Build());
             }
         }
     }

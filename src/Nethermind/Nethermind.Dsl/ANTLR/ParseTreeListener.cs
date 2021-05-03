@@ -12,27 +12,6 @@ namespace Nethermind.Dsl.ANTLR
         public Action<string, string, string> OnEnterCondition { private get; set; }
         public Action OnExit { private get; set; }
 
-        public override void EnterInit([NotNull] DslGrammarParser.InitContext context)
-        {
-            if(OnEnterInit == null)
-            {
-                return; 
-            }
-
-            var sourceNode = context.expression().First();
-            var nodeText = sourceNode.OPERATOR().GetText();
-            var isTokenType = Enum.IsDefined(typeof(AntlrTokenType), nodeText);
-            var tokenValue = sourceNode.WORD().GetText();
-
-            if(isTokenType && nodeText.Equals("SOURCE"))
-            {
-                AntlrTokenType type; 
-                AntlrTokenType.TryParse(nodeText, out type);
-
-                OnEnterInit(type, tokenValue);
-            }
-        }
-
         public override void EnterExpression([NotNull] DslGrammarParser.ExpressionContext context)
         {
             if(OnEnterExpression == null)
@@ -56,7 +35,7 @@ namespace Nethermind.Dsl.ANTLR
 
         public override void ExitInit([NotNull] DslGrammarParser.InitContext context)
         {
-           OnExitInit(); 
+           OnExit(); 
         }
     }
 }
