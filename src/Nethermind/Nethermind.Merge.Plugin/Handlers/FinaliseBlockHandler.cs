@@ -28,13 +28,13 @@ namespace Nethermind.Merge.Plugin.Handlers
     public class FinaliseBlockHandler : IHandler<Keccak, Result>
     {
         private readonly IBlockFinder _blockFinder;
-        private readonly IEth2FinalizationManager _eth2FinalizationManager;
+        private readonly IManualBlockFinalizationManager _manualBlockFinalizationManager;
         private readonly ILogger _logger;
 
-        public FinaliseBlockHandler(IBlockFinder blockFinder, IEth2FinalizationManager eth2FinalizationManager, ILogManager logManager)
+        public FinaliseBlockHandler(IBlockFinder blockFinder, IManualBlockFinalizationManager manualBlockFinalizationManager, ILogManager logManager)
         {
             _blockFinder = blockFinder;
-            _eth2FinalizationManager = eth2FinalizationManager;
+            _manualBlockFinalizationManager = manualBlockFinalizationManager;
             _logger = logManager.GetClassLogger();
         }
 
@@ -55,7 +55,7 @@ namespace Nethermind.Merge.Plugin.Handlers
                 return ResultWrapper<Result>.Success(Result.Fail);                
             }
             
-            _eth2FinalizationManager.MarkFinalized(headHeader, blockHeader);
+            _manualBlockFinalizationManager.MarkFinalized(headHeader, blockHeader);
             return ResultWrapper<Result>.Success(Result.Success);
         }
     }

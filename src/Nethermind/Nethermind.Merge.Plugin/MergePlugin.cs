@@ -20,6 +20,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Rewards;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
@@ -37,7 +38,7 @@ namespace Nethermind.Merge.Plugin
         private INethermindApi _api = null!;
         private ILogger _logger = null!;
         private IMergeConfig _mergeConfig = null!;
-        private Eth2FinalizationManager _finalizationManager = null!;
+        private ManualBlockFinalizationManager _blockFinalizationManager = null!;
 
         public string Name => "Merge";
         public string Description => "Merge plugin for ETH1-ETH2";
@@ -71,8 +72,8 @@ namespace Nethermind.Merge.Plugin
                 ISyncConfig syncConfig = _api.Config<ISyncConfig>();
                 syncConfig.SynchronizationEnabled = false;
                 syncConfig.BlockGossipEnabled = false;
-                _finalizationManager = new Eth2FinalizationManager();
-                _api.FinalizationManager = _finalizationManager;
+                _blockFinalizationManager = new ManualBlockFinalizationManager();
+                _api.FinalizationManager = _blockFinalizationManager;
             }
             
             return Task.CompletedTask;
@@ -94,7 +95,7 @@ namespace Nethermind.Merge.Plugin
                     new AssembleBlockHandler(_api.BlockTree, _blockProducer, _manualTimestamper, _api.LogManager),
                     new NewBlockHandler(_api.BlockTree, _api.BlockPreprocessor, _api.BlockchainProcessor, _api.StateProvider, _api.LogManager),
                     new SetHeadBlockHandler(_api.BlockTree, _api.StateProvider, _api.LogManager),
-                    new FinaliseBlockHandler(_api.BlockTree, _finalizationManager, _api.LogManager),
+                    new FinaliseBlockHandler(_api.BlockTree, _blockFinalizationManager, _api.LogManager),
                     _api.LogManager);
                 
                 _api.RpcModuleProvider.RegisterSingle(consensusRpcModule);
