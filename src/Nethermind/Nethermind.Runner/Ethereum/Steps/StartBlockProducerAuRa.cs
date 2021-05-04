@@ -110,7 +110,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             ITxFilter auRaTxFilter = TxAuRaFilterBuilders.CreateAuRaTxFilter(
                 _api,
                 readOnlyTxProcessorSource,
-                _api.SpecProvider);;
+                _api.SpecProvider);
 
             _validator = new AuRaValidatorFactory(
                     readOnlyTxProcessingEnv.StateProvider,

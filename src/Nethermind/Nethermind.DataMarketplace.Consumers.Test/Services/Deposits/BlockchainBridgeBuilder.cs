@@ -54,11 +54,17 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Deposits
             MainnetSpecProvider specProvider = MainnetSpecProvider.Instance;
             ITransactionComparerProvider transactionComparerProvider =
                 new TransactionComparerProvider(MainnetSpecProvider.Instance, blockTree);
-                ITxPool txPool = new TxPool.TxPool(new InMemoryTxStorage(), ecdsa, new ChainHeadSpecProvider(specProvider, blockTree),
-                new TxPoolConfig(), stateProvider, new TxValidator(specProvider.ChainId), LimboLogs.Instance, transactionComparerProvider.GetDefaultComparer());
+            ITxPool txPool = new TxPool.TxPool(
+                new InMemoryTxStorage(), ecdsa,
+                new ChainHeadSpecProvider(specProvider, blockTree),
+                new TxPoolConfig(), stateProvider, 
+                new TxValidator(specProvider.ChainId), 
+                LimboLogs.Instance,
+                transactionComparerProvider.GetDefaultComparer());
             IWallet wallet = new DevWallet(new WalletConfig(), LimboLogs.Instance);
             ReceiptsRecovery receiptsRecovery = new ReceiptsRecovery(ecdsa, specProvider);
-            LogFinder logFinder = new LogFinder(blockTree, new InMemoryReceiptStorage(), NullBloomStorage.Instance, LimboLogs.Instance, receiptsRecovery, 1024);
+            LogFinder logFinder = new LogFinder(blockTree, new InMemoryReceiptStorage(), NullBloomStorage.Instance,
+                LimboLogs.Instance, receiptsRecovery, 1024);
 
             ReadOnlyTxProcessingEnv processingEnv = new ReadOnlyTxProcessingEnv(
                 new ReadOnlyDbProvider(memDbProvider, false),

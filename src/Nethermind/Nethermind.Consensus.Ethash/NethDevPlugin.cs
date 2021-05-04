@@ -64,7 +64,7 @@ namespace Nethermind.Consensus.Ethash
             ReadOnlyBlockTree readOnlyBlockTree = getFromApi.BlockTree.AsReadOnly();
 
             ITransactionComparerProvider transactionComparerProvider =
-                new TransactionComparerProvider(getFromApi.SpecProvider, getFromApi.BlockTree);
+                new TransactionComparerProvider(getFromApi.SpecProvider, readOnlyBlockTree);
             IBlockPreparationContextService blockPreparationContextService = new BlockPreparationContextService(_nethermindApi.LogManager);
             ITxFilterPipeline txFilterPipeline = new TxFilterPipelineBuilder(_nethermindApi.LogManager)
                 .WithBaseFeeFilter(blockPreparationContextService, getFromApi.SpecProvider)
