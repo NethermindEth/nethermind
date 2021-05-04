@@ -60,7 +60,6 @@ namespace Nethermind.Merge.Plugin
                     _api.RewardCalculatorSource,
                     _api.ReceiptStorage,
                     _api.BlockProcessingQueue,
-                    _api.StateProvider,
                     _api.SpecProvider,
                     _api.EngineSigner,
                     _miningConfig,

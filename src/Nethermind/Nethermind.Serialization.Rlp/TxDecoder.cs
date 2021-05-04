@@ -41,11 +41,24 @@ namespace Nethermind.Serialization.Rlp
             Span<byte> transactionSequence = rlpStream.PeekNextItem();
 
             Transaction transaction = new();
-            if (!rlpStream.IsSequenceNext())
+            if ((rlpBehaviors & RlpBehaviors.SkipTypedWrapping) == RlpBehaviors.SkipTypedWrapping)
             {
-                (int PrefixLength, int ContentLength) prefixAndContentLength = rlpStream.ReadPrefixAndContentLength();
-                transactionSequence = rlpStream.Peek(prefixAndContentLength.ContentLength);
-                transaction.Type = (TxType)rlpStream.ReadByte();
+                byte firstByte = rlpStream.PeekByte();
+                if (firstByte <= 0x7f) // it is typed transactions
+                {
+                    transactionSequence = rlpStream.Peek(rlpStream.Length);
+                    transaction.Type = (TxType)rlpStream.ReadByte();
+                }
+            }
+            else
+            {
+                if (!rlpStream.IsSequenceNext())
+                {
+                    (int PrefixLength, int ContentLength) prefixAndContentLength =
+                        rlpStream.ReadPrefixAndContentLength();
+                    transactionSequence = rlpStream.Peek(prefixAndContentLength.ContentLength);
+                    transaction.Type = (TxType)rlpStream.ReadByte();
+                }
             }
 
             int transactionLength = rlpStream.PeekNextRlpLength();
@@ -199,11 +212,24 @@ namespace Nethermind.Serialization.Rlp
             Span<byte> transactionSequence = decoderContext.PeekNextItem();
 
             Transaction transaction = new();
-            if (!decoderContext.IsSequenceNext())
+            if ((rlpBehaviors & RlpBehaviors.SkipTypedWrapping) == RlpBehaviors.SkipTypedWrapping)
             {
-                (int PrefixLength, int ContentLength) prefixAndContentLength = decoderContext.ReadPrefixAndContentLength();
-                transactionSequence = decoderContext.Peek(prefixAndContentLength.ContentLength);
-                transaction.Type = (TxType)decoderContext.ReadByte();
+                byte firstByte = decoderContext.PeekByte();
+                if (firstByte <= 0x7f) // it is typed transactions
+                {
+                    transactionSequence = decoderContext.Peek(decoderContext.Length);
+                    transaction.Type = (TxType)decoderContext.ReadByte();
+                }
+            }
+            else
+            {
+                if (!decoderContext.IsSequenceNext())
+                {
+                    (int PrefixLength, int ContentLength) prefixAndContentLength =
+                        decoderContext.ReadPrefixAndContentLength();
+                    transactionSequence = decoderContext.Peek(prefixAndContentLength.ContentLength);
+                    transaction.Type = (TxType)decoderContext.ReadByte();
+                }
             }
 
             int transactionLength = decoderContext.PeekNextRlpLength();
@@ -332,7 +358,7 @@ namespace Nethermind.Serialization.Rlp
 
             if (item.Type != TxType.Legacy)
             {
-                if ((rlpBehaviors & RlpBehaviors.ForTreeRoot) == RlpBehaviors.None)
+                if ((rlpBehaviors & RlpBehaviors.SkipTypedWrapping) == RlpBehaviors.None)
                 {
                     stream.StartByteArray(sequenceLength + 1, false);
                 }
@@ -449,7 +475,7 @@ namespace Nethermind.Serialization.Rlp
             int txContentLength = GetContentLength(tx, false);
             int txPayloadLength = Rlp.GetSequenceRlpLength(txContentLength);
 
-            bool isForTxRoot = (rlpBehaviors & RlpBehaviors.ForTreeRoot) == RlpBehaviors.ForTreeRoot;
+            bool isForTxRoot = (rlpBehaviors & RlpBehaviors.SkipTypedWrapping) == RlpBehaviors.SkipTypedWrapping;
             int result = tx.Type != TxType.Legacy
                 ? isForTxRoot
                     ? (1 + txPayloadLength)

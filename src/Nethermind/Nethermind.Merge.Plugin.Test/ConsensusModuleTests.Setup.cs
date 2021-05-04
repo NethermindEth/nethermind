@@ -83,7 +83,6 @@ namespace Nethermind.Merge.Plugin.Test
                     NoBlockRewards.Instance,
                     ReceiptStorage,
                     BlockProcessingQueue,
-                    State,
                     SpecProvider,
                     Signer,
                     new MiningConfig(),

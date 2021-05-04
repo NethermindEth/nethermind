@@ -73,19 +73,29 @@ namespace Nethermind.Specs.ChainSpecStyle
 
         private void LoadParameters(ChainSpecJson chainSpecJson, ChainSpec chainSpec)
         {
-            long? GetTransitionForExpectedPricing(string builtInName, string innerPath, long expectedValue)
+            long? GetTransitions(string builtInName, Predicate<KeyValuePair<string, JObject>> predicate)
             {
                 var allocation = chainSpecJson.Accounts.Values.FirstOrDefault(v => v.BuiltIn?.Name.Equals(builtInName, StringComparison.InvariantCultureIgnoreCase) == true);
-                if (allocation != null)
+                if (allocation == null) return null;
+                KeyValuePair<string, JObject>[] pricing = allocation.BuiltIn.Pricing.Where(o => predicate(o)).ToArray();
+                if (pricing.Length > 0)
                 {
-                    var pricing = allocation.BuiltIn.Pricing.Where(o => o.Value.SelectToken(innerPath)?.Value<long>() == expectedValue).ToArray();
-                    if (pricing.Length > 0)
-                    {
-                        return long.Parse(pricing[0].Key);
-                    }
+                    return long.Parse(pricing[0].Key);
                 }
 
                 return null;
+            }
+            
+            long? GetTransitionForExpectedPricing(string builtInName, string innerPath, long expectedValue)
+            {
+                bool GetForExpectedPricing(KeyValuePair<string, JObject> o) => o.Value.SelectToken(innerPath)?.Value<long>() == expectedValue;
+                return GetTransitions(builtInName, GetForExpectedPricing);
+            }
+            
+            long? GetTransitionIfInnerPathExists(string builtInName, string innerPath)
+            {
+                bool GetForInnerPathExistence(KeyValuePair<string, JObject> o) => o.Value.SelectToken(innerPath) != null;
+                return GetTransitions(builtInName, GetForInnerPathExistence);
             }
 
             ValidateParams(chainSpecJson.Params);
@@ -141,6 +151,7 @@ namespace Nethermind.Specs.ChainSpecStyle
             chainSpec.Parameters.Eip1108Transition ??= GetTransitionForExpectedPricing("alt_bn128_add", "price.alt_bn128_const_operations.price", 150)
                                                        ?? GetTransitionForExpectedPricing("alt_bn128_mul", "price.alt_bn128_const_operations.price", 6000)
                                                        ?? GetTransitionForExpectedPricing("alt_bn128_pairing", "price.alt_bn128_pairing.base", 45000);
+            chainSpec.Parameters.Eip2565Transition ??= GetTransitionIfInnerPathExists("modexp", "price.modexp2565");
         }
 
         private static void ValidateParams(ChainSpecParamsJson parameters)
@@ -279,7 +290,7 @@ namespace Nethermind.Specs.ChainSpecStyle
                 chainSpec.SealEngineType = SealEngineType.NethDev;
             }
 
-            string? customEngineType = chainSpecJson.Engine?.CustomEngineData?.FirstOrDefault().Key;
+            var customEngineType = chainSpecJson.Engine?.CustomEngineData?.FirstOrDefault().Key;
             
             if (!string.IsNullOrEmpty(customEngineType))
             {
