@@ -22,6 +22,11 @@ namespace Nethermind.Consensus.Transactions
 {
     public interface IMinGasPriceTxFilter : ITxFilter
     {
+        /*
+         * In standard MinGasPriceTxFilter we're basing on value provided from config.
+         * The additional method allows us to specify a custom min gas price floor.
+         */
+
         (bool Allowed, string Reason) IsAllowed(Transaction tx, BlockHeader parentHeader, UInt256 minGasPriceFloor);
     }
 }
