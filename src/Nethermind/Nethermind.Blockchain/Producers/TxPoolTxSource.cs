@@ -100,7 +100,7 @@ namespace Nethermind.Blockchain.Producers
             bool HasEnoughFounds(IDictionary<Address, UInt256> balances, Transaction transaction, bool isEip1559Enabled, UInt256 baseFee)
             {
                 UInt256 balance = GetRemainingBalance(balances, transaction.SenderAddress!);
-                UInt256 transactionPotentialCost = transaction.GetTransactionPotentialCost(isEip1559Enabled, baseFee);
+                UInt256 transactionPotentialCost = transaction.CalculateTransactionPotentialCost(isEip1559Enabled, baseFee);
 
                 if (balance < transactionPotentialCost)
                 {

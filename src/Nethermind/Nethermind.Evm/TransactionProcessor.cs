@@ -103,7 +103,7 @@ namespace Nethermind.Evm
             }
             
             UInt256 premiumPerGas = (feeCap < baseFee && freeTransaction) ? UInt256.Zero  : UInt256.Min(transaction.GasPremium, feeCap - baseFee);
-            UInt256 gasPrice = transaction.GetEffectiveGasPrice(spec.IsEip1559Enabled, block.BaseFee);
+            UInt256 gasPrice = transaction.CalculateEffectiveGasPrice(spec.IsEip1559Enabled, block.BaseFee);
 
             long gasLimit = transaction.GasLimit;
             byte[] machineCode = transaction.IsContractCreation ? transaction.Data : null;

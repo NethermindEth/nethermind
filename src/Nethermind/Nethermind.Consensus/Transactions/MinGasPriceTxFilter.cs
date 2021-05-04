@@ -47,7 +47,7 @@ namespace Nethermind.Consensus.Transactions
             if (spec.IsEip1559Enabled && tx.IsEip1559)
             {
                 UInt256 baseFee = BlockHeader.CalculateBaseFee(parentHeader, spec);
-                gasPrice = tx.GetEffectiveGasPrice(true, baseFee);
+                gasPrice = tx.CalculateEffectiveGasPrice(true, baseFee);
             }
 
             bool allowed = gasPrice >= minGasPriceFloor;

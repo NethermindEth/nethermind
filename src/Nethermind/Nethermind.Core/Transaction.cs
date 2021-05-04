@@ -104,7 +104,7 @@ namespace Nethermind.Core
 
         public override string ToString() => ToString(string.Empty);
 
-        public UInt256 GetTransactionPotentialCost(bool eip1559Enabled, UInt256 baseFee)
+        public UInt256 CalculateTransactionPotentialCost(bool eip1559Enabled, UInt256 baseFee)
         {
             if (eip1559Enabled)
             {
@@ -119,7 +119,7 @@ namespace Nethermind.Core
             return GasPrice * (ulong)GasLimit + Value;
         }
         
-        public UInt256 GetEffectiveGasPrice(bool eip1559Enabled, UInt256 baseFee)
+        public UInt256 CalculateEffectiveGasPrice(bool eip1559Enabled, UInt256 baseFee)
         {
             return eip1559Enabled ? UInt256.Min(IsEip1559 ? FeeCap : GasPrice, GasPremium + baseFee) : GasPrice;
         }
