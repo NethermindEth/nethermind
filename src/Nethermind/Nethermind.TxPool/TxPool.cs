@@ -52,9 +52,6 @@ namespace Nethermind.TxPool
         private readonly LruKeyCache<Keccak> _hashCache = new(MemoryAllowance.TxHashCacheSize,
             Math.Min(1024 * 16, MemoryAllowance.TxHashCacheSize), "tx hashes");
 
-        private readonly LruKeyCache<Keccak> _pendingHashes = new(MemoryAllowance.TxHashCacheSize,
-            Math.Min(1024 * 16, MemoryAllowance.TxHashCacheSize), "pending tx hashes");
-
         /// <summary>
         /// Number of blocks after which own transaction will not be resurrected any more
         /// </summary>
@@ -448,16 +445,6 @@ namespace Nethermind.TxPool
         public bool IsInHashCache(Keccak hash)
         {
             return _hashCache.Get(hash);
-        }
-        
-        public bool TryAddToPendingHashes(Keccak hash)
-        {
-            bool isInPendingHashes = _pendingHashes.Get(hash);
-            if (!isInPendingHashes)
-            {
-                _pendingHashes.Set(hash);
-            }
-            return !isInPendingHashes;
         }
 
         public bool TryGetPendingTransaction(Keccak hash, out Transaction transaction)
