@@ -15,9 +15,17 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-namespace Nethermind.Core.Test
+using Nethermind.Core.Specs;
+using Nethermind.Int256;
+using Nethermind.State;
+
+namespace Nethermind.TxPool
 {
-    public class FixedChainHeadFacade
+    public interface IChainHeadInfoProvider
     {
+        IChainHeadSpecProvider SpecProvider { get; }
+        
+        IReadOnlyStateProvider ReadOnlyStateProvider { get; }
+        UInt256 BaseFee { get; }
     }
 }

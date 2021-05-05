@@ -56,6 +56,7 @@ namespace Nethermind.Blockchain.Test.TxPools
         private ITxStorage _inMemoryTxStorage;
         private ITxStorage _persistentTxStorage;
         private IStateProvider _stateProvider;
+        private IStateReader _stateReader;
         private IBlockTree _blockTree;
         
         private IBlockFinder _blockFinder;
@@ -71,6 +72,7 @@ namespace Nethermind.Blockchain.Test.TxPools
             _inMemoryTxStorage = new InMemoryTxStorage();
             _persistentTxStorage = new PersistentTxStorage(new MemDb());
             _stateProvider = new StateProvider(new TrieStore(new MemDb(), _logManager), new MemDb(), _logManager);
+            _stateReader =  new StateReader(new TrieStore(new MemDb(), _logManager), new MemDb(), _logManager);
             _blockTree = Substitute.For<IBlockTree>();
             Block block =  Build.A.Block.WithNumber(0).TestObject;
             _blockTree.Head.Returns(block);
@@ -271,7 +273,7 @@ namespace Nethermind.Blockchain.Test.TxPools
             EnsureSenderBalance(tx);
             AddTxResult result = _txPool.AddTransaction(tx, TxHandlingOptions.PersistentBroadcast);
             _txPool.GetPendingTransactions().Length.Should().Be(0);
-            result.Should().Be(AddTxResult.BalanceOverflow);
+            result.Should().Be(AddTxResult.CostOverflow);
         }
         
         [Test]
@@ -585,8 +587,8 @@ namespace Nethermind.Blockchain.Test.TxPools
             specProvider ??= RopstenSpecProvider.Instance;
             ITransactionComparerProvider transactionComparerProvider =
                 new TransactionComparerProvider(specProvider, _blockTree);
-            return new TxPool.TxPool(txStorage, _ethereumEcdsa, new ChainHeadSpecProvider(specProvider, _blockFinder),
-                config ?? new TxPoolConfig() { GasLimit = _txGasLimit }, _stateProvider,
+            return new TxPool.TxPool(txStorage, _ethereumEcdsa, new ChainHeadInfoProvider(specProvider, _blockFinder, _stateReader),
+                config ?? new TxPoolConfig() { GasLimit = _txGasLimit },
                 new TxValidator(_specProvider.ChainId), _logManager, transactionComparerProvider.GetDefaultComparer());
         }
 

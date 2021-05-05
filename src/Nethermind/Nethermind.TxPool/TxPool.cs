@@ -75,6 +75,7 @@ namespace Nethermind.TxPool
         private readonly IReadOnlyStateProvider _stateProvider;
         private readonly ITxValidator _validator;
         private readonly IEthereumEcdsa _ecdsa;
+        private readonly IChainHeadInfoProvider _chainHeadInfoProvider;
         protected readonly ILogger _logger;
 
         /// <summary>
@@ -110,6 +111,7 @@ namespace Nethermind.TxPool
         /// <param name="txStorage">Tx storage used to reject known transactions.</param>
         /// <param name="ecdsa">Used to recover sender addresses from transaction signatures.</param>
         /// <param name="specProvider">Used for retrieving information on EIPs that may affect tx signature scheme.</param>
+        /// <param name="chainHeadInfoProvider"></param>
         /// <param name="txPoolConfig"></param>
         /// <param name="stateProvider"></param>
         /// <param name="transactionComparerProvider"></param>
@@ -118,19 +120,19 @@ namespace Nethermind.TxPool
         /// <param name="comparer"></param>
         public TxPool(ITxStorage txStorage,
             IEthereumEcdsa ecdsa,
-            IChainHeadSpecProvider specProvider,
+            IChainHeadInfoProvider chainHeadInfoProvider,
             ITxPoolConfig txPoolConfig,
-            IReadOnlyStateProvider stateProvider,
             ITxValidator validator,
             ILogManager? logManager,
             IComparer<Transaction> comparer)
         {
             _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
+            _chainHeadInfoProvider = chainHeadInfoProvider ?? throw new ArgumentNullException(nameof(chainHeadInfoProvider));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _txStorage = txStorage ?? throw new ArgumentNullException(nameof(txStorage));
-            _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
+            _specProvider = _chainHeadInfoProvider.SpecProvider;
             _txPoolConfig = txPoolConfig;
-            _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
+            _stateProvider = _chainHeadInfoProvider.ReadOnlyStateProvider;
             _validator = validator ?? throw new ArgumentNullException(nameof(validator));
 
             MemoryAllowance.MemPoolSize = txPoolConfig.Size;
@@ -306,10 +308,11 @@ namespace Nethermind.TxPool
                     _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, nonce in far future.");
                 return AddTxResult.FutureNonce;
             }
-
+            
+            bool overflow = spec.IsEip1559Enabled && UInt256.AddOverflow(tx.GasPremium, tx.FeeCap, out _);
             // we're checking that user can pay what he declared in FeeCap. For this check BaseFee = FeeCap
             UInt256 effectiveGasPrice = tx.CalculateEffectiveGasPrice(spec.IsEip1559Enabled, tx.FeeCap);
-            bool overflow = UInt256.MultiplyOverflow(effectiveGasPrice, (UInt256) tx.GasLimit, out UInt256 cost);
+            overflow |= UInt256.MultiplyOverflow(effectiveGasPrice, (UInt256) tx.GasLimit, out UInt256 cost);
             overflow |= UInt256.AddOverflow(cost, tx.Value, out cost);
             if (overflow)
             {

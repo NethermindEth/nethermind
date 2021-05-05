@@ -185,9 +185,8 @@ namespace Nethermind.Core.Test.Blockchain
             new TxPool.TxPool(
                 txStorage,
                 EthereumEcdsa,
-                new FixedBlockChainHeadSpecProvider(SpecProvider),
+                new ChainHeadInfoProvider(SpecProvider, BlockFinder, StateReader),
                 new TxPoolConfig(),
-                State,
                 new TxValidator(SpecProvider.ChainId),
                 LogManager,
                 TransactionComparerProvider.GetDefaultComparer());

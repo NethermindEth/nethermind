@@ -15,17 +15,29 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.Spec;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.State;
+using Nethermind.TxPool;
 
 namespace Nethermind.Blockchain
 {
-    public interface IChainHeadInfoProvider
+    public class ChainHeadInfoProvider : IChainHeadInfoProvider
     {
-        IChainHeadSpecProvider SpecProvider { get; }
-        
-        IReadOnlyStateProvider ReadOnlyStateProvider { get; }
-        UInt256 BaseFee { get; }
+        private readonly IBlockFinder _blockFinder;
+
+        public ChainHeadInfoProvider(ISpecProvider specProvider, IBlockFinder blockFinder, IStateReader stateReader)
+        {
+            SpecProvider = new ChainHeadSpecProvider(specProvider, blockFinder);
+            ReadOnlyStateProvider = new ChainHeadReadOnlyStateProvider(blockFinder, stateReader);
+            _blockFinder = blockFinder;
+        }
+
+        public IChainHeadSpecProvider SpecProvider { get; }
+        public IReadOnlyStateProvider ReadOnlyStateProvider { get; }
+
+        public UInt256 BaseFee => _blockFinder.Head?.Header.BaseFee ?? UInt256.Zero;
     }
 }
