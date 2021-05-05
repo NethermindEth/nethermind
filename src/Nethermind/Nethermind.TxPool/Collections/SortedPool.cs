@@ -197,9 +197,10 @@ namespace Nethermind.TxPool.Collections
         /// </summary>
         /// <param name="key">Key to be inserted.</param>
         /// <param name="value">Element to insert.</param>
+        /// <param name="removed">Element removed because of exceeding capacity</param>
         /// <returns>If element was inserted. False if element was already present in pool.</returns>
         [MethodImpl(MethodImplOptions.Synchronized)]
-        public bool TryInsert(TKey key, TValue value)
+        public bool TryInsert(TKey key, TValue value, out TValue? removed)
         {
             if (CanInsert(key, value))
             {
@@ -214,18 +215,23 @@ namespace Nethermind.TxPool.Collections
 
                 if (_cacheMap.Count > _capacity)
                 {
-                    RemoveLast();
+                    RemoveLast(out removed);
+                    return true;
                 }
 
+                removed = default;
                 return true;
             }
 
+            removed = default;
             return false;
         }
 
-        private void RemoveLast()
+        public bool TryInsert(TKey key, TValue value) => TryInsert(key, value, out _);
+
+        private void RemoveLast(out TValue? removed)
         {
-            TryRemove(_sortedValues.Max.Value);
+            TryRemove(_sortedValues.Max.Value, out removed);
         }
         
         /// <summary>

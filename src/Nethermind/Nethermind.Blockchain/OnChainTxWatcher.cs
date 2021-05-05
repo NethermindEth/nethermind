@@ -16,6 +16,7 @@
 // 
 
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -60,6 +61,7 @@ namespace Nethermind.Blockchain
             long transactionsInBlock = block.Transactions.Length;
             long discoveredForPendingTxs = 0;
             long discoveredForHashCache = 0;
+            HashSet<Address> senders = new();
             
             for (int i = 0; i < transactionsInBlock; i++)
             {
@@ -71,12 +73,15 @@ namespace Nethermind.Blockchain
                 if (!_txPool.RemoveTransaction(block.Transactions[i], true))
                 {
                     discoveredForPendingTxs++;
-                }
-                else
-                {
-                    _txPool.RemoveOrUpdateBucket(block.Transactions[i].SenderAddress);
+                    senders.Add(block.Transactions[i].SenderAddress);
                 }
             }
+
+            foreach (Address sender in senders)
+            {
+                _txPool.RemoveOrUpdateBucket(sender);
+            }
+            
             TxPool.Metrics.DarkPoolRatioLevel1 = transactionsInBlock == 0 ? 0 : (float)discoveredForHashCache / transactionsInBlock;
             TxPool.Metrics.DarkPoolRatioLevel2 = transactionsInBlock == 0 ? 0 : (float)discoveredForPendingTxs / transactionsInBlock;
             

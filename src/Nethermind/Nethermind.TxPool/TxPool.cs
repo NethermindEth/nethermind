@@ -328,8 +328,17 @@ namespace Nethermind.TxPool
             {
                 lock (_locker)
                 {
-                    isKnown |= !_transactions.TryInsert(tx.Hash, tx);
-                    UpdateBucket(tx.SenderAddress!);
+                    bool inserted = _transactions.TryInsert(tx.Hash, tx, out Transaction? removed);
+                    if (inserted)
+                    {
+                        UpdateBucket(tx.SenderAddress!);
+                        if (removed?.Hash is not null)
+                        {
+                            _hashCache.Delete(removed.Hash);
+                        }
+
+                    }
+                    isKnown |= !inserted;
                 }
             }
 
@@ -370,7 +379,7 @@ namespace Nethermind.TxPool
                 Transaction tx = bucketSnapshot[i];
                 UInt256 gasBottleneck = 0;
                 
-                if (tx.Nonce <= currentNonce + i)
+                if (true)
                 {
                     gasBottleneck = tx.GasPrice < previousTxBottleneck ? tx.GasPrice : previousTxBottleneck;
                 }
