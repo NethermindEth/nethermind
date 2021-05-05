@@ -28,6 +28,7 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Facade;
@@ -35,6 +36,7 @@ using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Test.Modules;
+using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.Test;
 using Nethermind.Mev.Execution;
@@ -71,18 +73,20 @@ namespace Nethermind.Mev.Test
             
             public IMevRpcModule MevRpcModule { get; set; } = Substitute.For<IMevRpcModule>();
             public IManualBlockFinalizationManager FinalizationManager { get; } = new ManualBlockFinalizationManager();
-            public ManualTimestamper ManualTimestamper { get; } = new();
+            public ManualGasLimitCalculator GasLimitCalculator = new();
             public Address MinerAddress => TestItem.PrivateKeyA.Address;
             private IBlockValidator BlockValidator { get; set; } = null!;
             private ISigner Signer { get; }
-            
+
+            public override ILogManager LogManager => NUnitLogManager.Instance;
+
             protected override ITestBlockProducer CreateTestBlockProducer(TxPoolTxSource txPoolTxSource, BlockchainProcessor chainProcessor, IStateProvider producerStateProvider, ISealer sealer)
             {
                 MiningConfig miningConfig = new() {MinGasPrice = UInt256.One};
 
-                Eth2BlockProducer CreateEth2BlockProducer(ITxSource txSource = null)
+                Eth2BlockProducer CreateEth2BlockProducer(ITxSource? txSource = null)
                 {
-                    return new Eth2TestBlockProducerFactory(txSource).Create(
+                    return new Eth2TestBlockProducerFactory(GasLimitCalculator, txSource).Create(
                         BlockTree,
                         DbProvider,
                         ReadOnlyTrieStore,
@@ -100,17 +104,34 @@ namespace Nethermind.Mev.Test
                 }
 
                 IBundleSource bundleSource = _getSelector(BundlePool);
-                BundleTxSource bundleTxSource = new(bundleSource, ManualTimestamper);
+                BundleTxSource bundleTxSource = new(bundleSource, Timestamper);
                 return new MevTestBlockProducer(BlockTree, CreateEth2BlockProducer(bundleTxSource), CreateEth2BlockProducer());
             }
 
             protected override BlockProcessor CreateBlockProcessor()
             {
                 BlockValidator = CreateBlockValidator();
-                BlockProcessor blockProcessor = base.CreateBlockProcessor();
+                BlockProcessor blockProcessor = new BlockProcessor(
+                    SpecProvider,
+                    BlockValidator,
+                    NoBlockRewards.Instance,
+                    TxProcessor,
+                    State,
+                    Storage,
+                    ReceiptStorage,
+                    NullWitnessCollector.Instance,
+                    LogManager);
                 
-                _tracerFactory = new TracerFactory(DbProvider, BlockTree, ReadOnlyTrieStore, BlockPreprocessorStep, SpecProvider, LogManager);
-                TxBundleSimulator txBundleSimulator = new(_tracerFactory, FollowOtherMiners.Instance, ManualTimestamper);
+                _tracerFactory = new TracerFactory(
+                    DbProvider, 
+                    BlockTree, 
+                    ReadOnlyTrieStore, 
+                    BlockPreprocessorStep, 
+                    SpecProvider, 
+                    LogManager,
+                    ProcessingOptions.ProducingBlock);
+                
+                TxBundleSimulator txBundleSimulator = new(_tracerFactory, FollowOtherMiners.Instance, Timestamper);
                 BundlePool = new BundlePool(BlockTree, txBundleSimulator, FinalizationManager);
 
                 return blockProcessor;
@@ -118,7 +139,7 @@ namespace Nethermind.Mev.Test
 
             protected override async Task<TestBlockchain> Build(ISpecProvider specProvider = null, UInt256? initialValues = null)
             {
-                TestBlockchain build = await base.Build(specProvider, initialValues);
+                TestBlockchain chain = await base.Build(specProvider, initialValues);
                 MevRpcModule = new MevRpcModule(
                     new MevConfig {Enabled = true},
                     new JsonRpcConfig(),
@@ -128,7 +149,7 @@ namespace Nethermind.Mev.Test
                     _tracerFactory,
                     SpecProvider.ChainId);
                 
-                return build;
+                return chain;
             }
             
             private IBlockValidator CreateBlockValidator()
@@ -175,10 +196,10 @@ namespace Nethermind.Mev.Test
         
                 public async Task<bool> BuildNewBlock()
                 {
-                    BlockProducedContext tryProduceBlock = await TryProduceBlock(_blockTree.Head!.Header, CancellationToken.None);
-                    if (tryProduceBlock.ProducedBlock is not null)
+                    Block? block = await TryProduceBlock(_blockTree.Head!.Header, CancellationToken.None);
+                    if (block is not null)
                     {
-                        _blockTree.SuggestBlock(tryProduceBlock.ProducedBlock);
+                        _blockTree.SuggestBlock(block);
                         return true;
                     }
 
