@@ -75,7 +75,10 @@ namespace Nethermind.Merge.Plugin.Test
 
             protected override ITestBlockProducer CreateTestBlockProducer(TxPoolTxSource txPoolTxSource, BlockchainProcessor chainProcessor, IStateProvider producerStateProvider, ISealer sealer)
             {
-                return (ITestBlockProducer) new Eth2TestBlockProducerFactory().Create(
+                MiningConfig miningConfig = new();
+                TargetAdjustedGasLimitCalculator targetAdjustedGasLimitCalculator = new(SpecProvider, miningConfig);
+                
+                return (ITestBlockProducer) new Eth2TestBlockProducerFactory(targetAdjustedGasLimitCalculator).Create(
                     BlockTree,
                     DbProvider,
                     ReadOnlyTrieStore,
@@ -88,7 +91,7 @@ namespace Nethermind.Merge.Plugin.Test
                     SpecProvider,
                     Signer,
                     _timestamper,
-                    new MiningConfig(),
+                    miningConfig,
                     LogManager);
             }
             

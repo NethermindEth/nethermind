@@ -35,8 +35,11 @@ namespace Nethermind.Merge.Plugin.Test
 {
     public class Eth2TestBlockProducerFactory : Eth2BlockProducerFactory
     {
-        public Eth2TestBlockProducerFactory(ITxSource? txSource = null) : base(txSource)
+        private readonly IGasLimitCalculator _gasLimitCalculator;
+
+        public Eth2TestBlockProducerFactory(IGasLimitCalculator gasLimitCalculator, ITxSource? txSource = null) : base(txSource)
         {
+            _gasLimitCalculator = gasLimitCalculator;
         }
         
         public override Eth2BlockProducer Create(
@@ -74,7 +77,7 @@ namespace Nethermind.Merge.Plugin.Test
                 blockTree,
                 blockProcessingQueue,
                 producerContext.ReadOnlyStateProvider,
-                new TargetAdjustedGasLimitCalculator(specProvider, miningConfig),
+                _gasLimitCalculator,
                 engineSigner,
                 timestamper,
                 producerContext.ReadOnlyTxProcessingEnv.StateReader,
