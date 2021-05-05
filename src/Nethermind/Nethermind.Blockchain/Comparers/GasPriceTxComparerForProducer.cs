@@ -26,19 +26,19 @@ namespace Nethermind.Blockchain.Comparers
     /// use to order transactions</summary>
     public class GasPriceTxComparerForProducer : IComparer<Transaction>
     {
-        private readonly IBlockPreparationContextService _blockPreparationContextService;
+        private readonly BlockPreparationContext _blockPreparationContext;
         private readonly ISpecProvider _specProvider;
 
-        public GasPriceTxComparerForProducer(IBlockPreparationContextService blockPreparationContextService, ISpecProvider specProvider)
+        public GasPriceTxComparerForProducer(BlockPreparationContext blockPreparationContext, ISpecProvider specProvider)
         {
-            _blockPreparationContextService = blockPreparationContextService;
+            _blockPreparationContext = blockPreparationContext;
             _specProvider = specProvider;
         }
 
         public int Compare(Transaction? x, Transaction? y)
         {
-            bool isEip1559Enabled = _specProvider.GetSpec(_blockPreparationContextService.BlockNumber).IsEip1559Enabled;
-            return GasPriceTxComparerHelper.Compare(x, y, _blockPreparationContextService.BaseFee, isEip1559Enabled);
+            bool isEip1559Enabled = _specProvider.GetSpec(_blockPreparationContext.BlockNumber).IsEip1559Enabled;
+            return GasPriceTxComparerHelper.Compare(x, y, _blockPreparationContext.BaseFee, isEip1559Enabled);
         }
     }
 }

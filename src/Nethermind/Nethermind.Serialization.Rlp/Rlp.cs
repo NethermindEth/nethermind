@@ -237,7 +237,7 @@ namespace Nethermind.Serialization.Rlp
             ulong chainId = 0)
         {
             bool includeSigChainIdHack = isEip155Enabled && chainId != 0 && transaction.Type == TxType.Legacy;
-            int extraItems = transaction.IsEip1559 ? 1 : 0; // 2 extra gas fields for eip-1559
+            int extraItems = transaction.IsEip1559 ? 1 : 0; // one extra gas field for 1559. 1559: GasPremium, FeeCap. Legacy: GasPrice
             if (!forSigning || includeSigChainIdHack)
             {
                 extraItems += 3; // sig fields

@@ -34,6 +34,7 @@
     "eip2028Transition": "0x0",
     "eip2200Transition": "0x0",
     "eip1559Transition": "0xa",
+	"eip2565Transition": "0x0",
     "eip2718Transition": "0x0",
     "eip2929Transition": "0x0",
     "eip2930Transition": "0x0",

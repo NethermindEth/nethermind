@@ -42,12 +42,17 @@ namespace Nethermind.Evm.Test
             }
         }
 
-        [TestCase(true, 0)]
-        [TestCase(true, 100)]
-        [TestCase(true, 20)]
-        [TestCase(false, 20)]
-        [TestCase(false, 0)]
-        public void Base_fee_opcode_should_return_expected_results(bool eip3198Enabled, int baseFee)
+        [TestCase(true, 0, true)]
+        [TestCase(true, 100, true)]
+        [TestCase(true, 20, true)]
+        [TestCase(false, 20, true)]
+        [TestCase(false, 0, true)]
+        [TestCase(true, 0, false)]
+        [TestCase(true, 100, false)]
+        [TestCase(true, 20, false)]
+        [TestCase(false, 20, false)]
+        [TestCase(false, 0, false)]
+        public void Base_fee_opcode_should_return_expected_results(bool eip3198Enabled, int baseFee, bool send1559Tx)
         {
            _processor = new TransactionProcessor(SpecProvider, TestState, Storage, Machine, LimboLogs.Instance);
             byte[] code = Prepare.EvmCode
@@ -59,8 +64,16 @@ namespace Nethermind.Evm.Test
             long blockNumber = eip3198Enabled ? LondonTestBlockNumber : LondonTestBlockNumber - 1;
             (Block block, Transaction transaction) = PrepareTx(blockNumber, 100000, code);
             block.Header.BaseFee = (UInt256)baseFee;
-            transaction.DecodedFeeCap = (UInt256)baseFee;
-            transaction.Type = TxType.EIP1559;
+            if (send1559Tx)
+            {
+                transaction.DecodedFeeCap = (UInt256)baseFee;
+                transaction.Type = TxType.EIP1559;
+            }
+            else
+            {
+                transaction.GasPrice = (UInt256)baseFee;
+            }
+
             TestAllTracerWithOutput tracer = CreateTracer();
             _processor.Execute(transaction, block.Header, tracer);
 

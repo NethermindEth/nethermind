@@ -101,8 +101,7 @@ namespace Nethermind.Consensus.Clique
                 _cliqueConfig!,
                 _snapshotManager!,
                 getFromApi.LogManager);
-
-            IBlockPreparationContextService blockPreparationContextService = new BlockPreparationContextService(getFromApi.LogManager);
+            
             ReadOnlyDbProvider readOnlyDbProvider = getFromApi.DbProvider.AsReadOnly(false);
             ReadOnlyBlockTree readOnlyBlockTree = getFromApi.BlockTree.AsReadOnly();
             ITransactionComparerProvider transactionComparerProvider =
@@ -140,14 +139,13 @@ namespace Nethermind.Consensus.Clique
 
             ITxFilterPipeline txFilterPipeline =
                 TxFilterPipelineBuilder.CreateStandardFilteringPipeline(_nethermindApi.LogManager,
-                    getFromApi.SpecProvider, blockPreparationContextService);
+                    getFromApi.SpecProvider);
             
             ITxSource txSource = new TxPoolTxSource(
                 getFromApi.TxPool,
                 getFromApi.StateReader,
                 getFromApi.SpecProvider,
-                transactionComparerProvider.GetDefaultProducerComparer(blockPreparationContextService),
-                blockPreparationContextService,
+                transactionComparerProvider,
                 getFromApi.LogManager,
                 txFilterPipeline);
 
@@ -164,7 +162,6 @@ namespace Nethermind.Consensus.Clique
                 gasLimitCalculator,
                 getFromApi.SpecProvider,
                 _cliqueConfig!,
-                blockPreparationContextService,
                 getFromApi.LogManager);
 
             return Task.CompletedTask;

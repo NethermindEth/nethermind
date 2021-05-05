@@ -56,7 +56,6 @@ namespace Nethermind.Clique.Test
                 new TargetAdjustedGasLimitCalculator(GoerliSpecProvider.Instance, new MiningConfig()),
                 MainnetSpecProvider.Instance, 
                 cliqueConfig,
-                new BlockPreparationContextService(LimboLogs.Instance),
                 LimboLogs.Instance);
             
             SnapshotManager snapshotManager = new SnapshotManager(CliqueConfig.Default, new MemDb(), Substitute.For<IBlockTree>(), NullEthereumEcdsa.Instance, LimboLogs.Instance);

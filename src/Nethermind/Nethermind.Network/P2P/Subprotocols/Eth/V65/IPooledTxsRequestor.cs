@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -15,10 +15,14 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-namespace Nethermind.Consensus
+using System;
+using System.Collections.Generic;
+using Nethermind.Core.Crypto;
+
+namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
 {
-    public interface IEip1559GasLimitAdjuster
+    public interface IPooledTxsRequestor 
     {
-        long AdjustGasLimit(long blockNumber, long gasLimit);
+        void RequestTransactions(Action<GetPooledTransactionsMessage> send, IReadOnlyList<Keccak> hashes);
     }
 }

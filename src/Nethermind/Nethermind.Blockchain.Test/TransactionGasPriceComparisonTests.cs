@@ -47,8 +47,7 @@ namespace Nethermind.Blockchain.Test
         public void ProducerGasPriceComparer_for_legacy_transactions(int gasPriceX, int gasPriceY, int expectedResult)
         {
             TestingContext context = new TestingContext();
-            IBlockPreparationContextService blockPreparationContextService = new BlockPreparationContextService(LimboLogs.Instance);
-            IComparer<Transaction> comparer = context.GetProducerComparer(blockPreparationContextService);
+            IComparer<Transaction> comparer = context.GetProducerComparer(new BlockPreparationContext(0,0));
             AssertLegacyTransactions(comparer, gasPriceX, gasPriceY, expectedResult);
         }
         
@@ -82,9 +81,7 @@ namespace Nethermind.Blockchain.Test
         {
             long eip1559Transition = 5;
             TestingContext context = new TestingContext(true, eip1559Transition);
-            IBlockPreparationContextService blockPreparationContextService = new BlockPreparationContextService(LimboLogs.Instance);
-            blockPreparationContextService.SetContext((UInt256)headBaseFee, headBlockNumber);
-            IComparer<Transaction> comparer = context.GetProducerComparer(blockPreparationContextService);
+            IComparer<Transaction> comparer = context.GetProducerComparer(new BlockPreparationContext(0,0));
             AssertLegacyTransactions(comparer, gasPriceX, gasPriceY, expectedResult);
         }
 
@@ -124,9 +121,7 @@ namespace Nethermind.Blockchain.Test
         {
             long eip1559Transition = 5;
             TestingContext context = new TestingContext(true, eip1559Transition);
-            IBlockPreparationContextService blockPreparationContextService = new BlockPreparationContextService(LimboLogs.Instance);
-            blockPreparationContextService.SetContext((UInt256)headBaseFee, headBlockNumber);
-            IComparer<Transaction> comparer = context.GetProducerComparer(blockPreparationContextService);
+            IComparer<Transaction> comparer = context.GetProducerComparer(new BlockPreparationContext((UInt256)headBaseFee, headBlockNumber));
             Assert1559Transactions(comparer, feeCapX, gasPremiumX, feeCapY, gasPremiumY, expectedResult);
         }
         
@@ -164,7 +159,7 @@ namespace Nethermind.Blockchain.Test
 
             public IComparer<Transaction> DefaultComparer => _transactionComparerProvider.GetDefaultComparer();
 
-            public IComparer<Transaction> GetProducerComparer(IBlockPreparationContextService blockPreparationContext)
+            public IComparer<Transaction> GetProducerComparer(BlockPreparationContext blockPreparationContext)
             {
                 return _transactionComparerProvider.GetDefaultProducerComparer(blockPreparationContext);
             }

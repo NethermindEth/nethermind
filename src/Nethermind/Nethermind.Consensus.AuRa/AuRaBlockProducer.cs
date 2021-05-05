@@ -51,7 +51,6 @@ namespace Nethermind.Consensus.AuRa
             IAuraConfig config,
             IGasLimitCalculator gasLimitCalculator,
             ISpecProvider specProvider,
-            IBlockPreparationContextService blockPreparationContextService,
             ILogManager logManager) 
             : base(
                 new ValidatedTxSource(txSource, logManager),
@@ -63,7 +62,6 @@ namespace Nethermind.Consensus.AuRa
                 timestamper,
                 gasLimitCalculator,
                 specProvider,
-                blockPreparationContextService,
                 logManager,
                 "AuRa")
         {

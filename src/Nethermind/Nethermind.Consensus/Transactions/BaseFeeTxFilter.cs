@@ -17,6 +17,7 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Int256;
 using Nethermind.Logging;
 
 namespace Nethermind.Consensus.Transactions
@@ -24,35 +25,27 @@ namespace Nethermind.Consensus.Transactions
     /// <summary>Filtering transactions that have lower FeeCap than BaseFee</summary>
     public class BaseFeeTxFilter : ITxFilter
     {
-        private readonly IBlockPreparationContextService _blockPreparationContextService;
         private readonly ISpecProvider _specProvider;
-        private readonly ILogger _logger;
 
         public BaseFeeTxFilter(
-            IBlockPreparationContextService blockPreparationContextService,
-            ISpecProvider specProvider,
-            ILogManager logManager)
+            ISpecProvider specProvider)
         {
-            _blockPreparationContextService = blockPreparationContextService;
             _specProvider = specProvider;
-            _logger = logManager.GetClassLogger();
         }
 
         public (bool Allowed, string Reason) IsAllowed(Transaction tx, BlockHeader parentHeader)
         {
-            if (parentHeader.Number + 1 != _blockPreparationContextService.BlockNumber)
-            {
-                if (_logger.IsWarn) _logger.Warn($"Wrong context was set: Context block number: {_blockPreparationContextService.BlockNumber} Parent header: {parentHeader}");
-            }
-            
-            bool isEip1559Enabled = _specProvider.GetSpec(_blockPreparationContextService.BlockNumber).IsEip1559Enabled;
+            long blockNumber = parentHeader.Number + 1;
+            IReleaseSpec releaseSpec = _specProvider.GetSpec(blockNumber);
+            UInt256 baseFee = BlockHeader.CalculateBaseFee(parentHeader, releaseSpec);
+            bool isEip1559Enabled = releaseSpec.IsEip1559Enabled;
 
             bool skipCheck = tx.IsServiceTransaction || !isEip1559Enabled;
-            bool allowed = skipCheck || tx.FeeCap >= _blockPreparationContextService.BaseFee;
+            bool allowed = skipCheck || tx.FeeCap >= baseFee;
             return (allowed,
                 allowed
                     ? string.Empty
-                    : $"FeeCap too low. FeeCap: {tx.FeeCap}, BaseFee: {_blockPreparationContextService.BaseFee}, GasPremium:{tx.GasPremium}, Context block number: {_blockPreparationContextService.BlockNumber}");
+                    : $"FeeCap too low. FeeCap: {tx.FeeCap}, BaseFee: {baseFee}, GasPremium:{tx.GasPremium}, Block number: {blockNumber}");
         }
     }
 }

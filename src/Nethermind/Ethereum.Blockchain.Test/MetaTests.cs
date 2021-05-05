@@ -27,6 +27,16 @@ namespace Ethereum.Blockchain.Test
     [TestFixture][Parallelizable(ParallelScope.All)]
     public class MetaTests
     {
+        private List<string> excludesDirectories = new List<string>()
+        {
+            "stEWASMTests",
+            "VMTests",
+            "Specs",
+            "runtimes",
+            "ref",
+            "TestFiles"
+        };
+        
         [Test]
         public void All_categories_are_tested()
         {
@@ -39,7 +49,7 @@ namespace Ethereum.Blockchain.Test
             {
                 string expectedTypeName = ExpectedTypeName(directory);
                 Type type = types.SingleOrDefault(t => string.Equals(t.Name, expectedTypeName, StringComparison.InvariantCultureIgnoreCase));
-                if(type == null && directory != "stEWASMTests" && directory != "VMTests" && directory != "Specs" && directory != "runtimes" && directory != "ref" && directory !="TestFiles")
+                if(type == null && !excludesDirectories.Contains(directory))
                 {
                     if (new DirectoryInfo(directory).GetFiles().Any(f => f.Name.Contains(".resources.")))
                     {

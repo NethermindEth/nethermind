@@ -18,6 +18,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Nethermind.Blockchain.Comparers;
 using Nethermind.Blockchain.Producers;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.AuRa.Contracts.DataStore;
@@ -47,18 +48,17 @@ namespace Nethermind.Consensus.AuRa.Transactions
             IContractDataStore<Address> sendersWhitelist, // expected HashSet based
             IDictionaryContractDataStore<TxPriorityContract.Destination> priorities,
             ISpecProvider specProvider,
-            IComparer<Transaction> comparer,
-            IBlockPreparationContextService blockPreparationContextService) // expected SortedList based
-            : base(transactionPool, stateReader, specProvider, comparer, blockPreparationContextService, logManager, txFilterPipeline)
+            ITransactionComparerProvider transactionComparerProvider) // expected SortedList based
+            : base(transactionPool, stateReader, specProvider, transactionComparerProvider, logManager, txFilterPipeline)
         {
             _sendersWhitelist = sendersWhitelist ?? throw new ArgumentNullException(nameof(sendersWhitelist));
             _priorities = priorities ?? throw new ArgumentNullException(nameof(priorities));
         }
 
-        protected override IComparer<Transaction> GetComparer(BlockHeader parent)
+        protected override IComparer<Transaction> GetComparer(BlockHeader parent, BlockPreparationContext blockPreparationContext)
         {
             _comparer = new CompareTxByPriorityOnSpecifiedBlock(_sendersWhitelist, _priorities, parent);
-            return _comparer.ThenBy(base.GetComparer(parent));
+            return _comparer.ThenBy(base.GetComparer(parent, blockPreparationContext));
         }
 
         public override string ToString() => $"{nameof(TxPriorityTxSource)}";

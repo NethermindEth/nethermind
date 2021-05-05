@@ -33,6 +33,7 @@ using Nethermind.Network.Discovery.RoutingTable;
 using Nethermind.Network.Discovery.Serializers;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63;
+using Nethermind.Network.P2P.Subprotocols.Eth.V65;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Rlpx.Handshake;
 using Nethermind.Network.StaticNodes;
@@ -433,10 +434,12 @@ namespace Nethermind.Runner.Ethereum.Steps
             NetworkStorage peerStorage = new(peersDb, _api.LogManager);
 
             ProtocolValidator protocolValidator = new(_api.NodeStatsManager, _api.BlockTree, _api.LogManager);
+            PooledTxsRequestor pooledTxsRequestor = new(_api.TxPool);
             _api.ProtocolsManager = new ProtocolsManager(
                 _api.SyncPeerPool,
                 _api.SyncServer,
                 _api.TxPool,
+                pooledTxsRequestor,
                 _api.DiscoveryApp,
                 _api.MessageSerializationService,
                 _api.RlpxPeer,

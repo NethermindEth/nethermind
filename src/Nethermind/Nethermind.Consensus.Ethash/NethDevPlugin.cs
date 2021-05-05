@@ -62,12 +62,9 @@ namespace Nethermind.Consensus.Ethash
 
             ReadOnlyDbProvider readOnlyDbProvider = getFromApi.DbProvider.AsReadOnly(false);
             ReadOnlyBlockTree readOnlyBlockTree = getFromApi.BlockTree.AsReadOnly();
-
-            ITransactionComparerProvider transactionComparerProvider =
-                new TransactionComparerProvider(getFromApi.SpecProvider, getFromApi.BlockTree);
-            IBlockPreparationContextService blockPreparationContextService = new BlockPreparationContextService(_nethermindApi.LogManager);
+            
             ITxFilterPipeline txFilterPipeline = new TxFilterPipelineBuilder(_nethermindApi.LogManager)
-                .WithBaseFeeFilter(blockPreparationContextService, getFromApi.SpecProvider)
+                .WithBaseFeeFilter(getFromApi.SpecProvider)
                 .WithNullTxFilter()
                 .Build;
             
@@ -75,8 +72,7 @@ namespace Nethermind.Consensus.Ethash
                 getFromApi.TxPool, 
                 getFromApi.StateReader,
                 getFromApi.SpecProvider,
-                transactionComparerProvider.GetDefaultProducerComparer(blockPreparationContextService),
-                blockPreparationContextService,
+                getFromApi.TransactionComparerProvider!,
                 getFromApi.LogManager,
                 txFilterPipeline);
             
@@ -122,7 +118,6 @@ namespace Nethermind.Consensus.Ethash
                 getFromApi.Timestamper,
                 getFromApi.SpecProvider,
                 getFromApi.Config<IMiningConfig>(),
-                blockPreparationContextService,
                 getFromApi.LogManager);
 
             return Task.CompletedTask;
