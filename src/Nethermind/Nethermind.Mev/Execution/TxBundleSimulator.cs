@@ -236,12 +236,10 @@ namespace Nethermind.Mev.Execution
 
             public void ReportNonceChange(Address address, UInt256? before, UInt256? after)
             {
-                throw new NotSupportedException();
             }
 
             public void ReportAccountRead(Address address)
             {
-                throw new NotSupportedException();
             }
 
             public void ReportStorageChange(StorageCell storageCell, byte[] before, byte[] after)
