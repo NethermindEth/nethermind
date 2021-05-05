@@ -54,7 +54,6 @@ namespace Nethermind.Consensus.Clique
         private readonly ISpecProvider _specProvider;
         private readonly ISnapshotManager _snapshotManager;
         private readonly ICliqueConfig _config;
-        private readonly IBlockPreparationContextService _blockPreparationContextService;
         
         private readonly ConcurrentDictionary<Address, bool> _proposals = new();
 
@@ -74,7 +73,6 @@ namespace Nethermind.Consensus.Clique
             IGasLimitCalculator gasLimitCalculator,
             ISpecProvider? specProvider,
             ICliqueConfig config,
-            IBlockPreparationContextService blockPreparationContextService,
             ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
@@ -89,7 +87,6 @@ namespace Nethermind.Consensus.Clique
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _snapshotManager = snapshotManager ?? throw new ArgumentNullException(nameof(snapshotManager));
             _config = config ?? throw new ArgumentNullException(nameof(config));
-            _blockPreparationContextService = blockPreparationContextService;
             _wiggle = new WiggleRandomizer(_cryptoRandom, _snapshotManager);
 
             _timer.AutoReset = false;
@@ -401,7 +398,6 @@ namespace Nethermind.Consensus.Clique
 
             // Set the correct difficulty
             header.BaseFee = BlockHeader.CalculateBaseFee(parentHeader, _specProvider.GetSpec(header.Number));
-            _blockPreparationContextService.SetContext(header.BaseFee, header.Number);
             header.Difficulty = CalculateDifficulty(snapshot, _sealer.Address);
             header.TotalDifficulty = parentBlock.TotalDifficulty + header.Difficulty;
             if (_logger.IsDebug)

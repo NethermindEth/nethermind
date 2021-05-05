@@ -49,9 +49,8 @@ namespace Nethermind.Merge.Plugin.Handlers
             IGasLimitCalculator gasLimitCalculator,
             ISigner signer,
             ISpecProvider specProvider,
-            IBlockPreparationContextService blockPreparationContextService,
             ILogManager logManager) 
-            : base(txSource, processor, new Eth2SealEngine(signer), blockTree, blockProcessingQueue, stateProvider, gasLimitCalculator, new ManualTimestamper(), specProvider, blockPreparationContextService, logManager)
+            : base(txSource, processor, new Eth2SealEngine(signer), blockTree, blockProcessingQueue, stateProvider, gasLimitCalculator, new ManualTimestamper(), specProvider, logManager)
         {
             _timestamper = (ManualTimestamper)Timestamper;
         }

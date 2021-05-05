@@ -323,8 +323,6 @@ namespace Nethermind.Blockchain.Test
             specProvider.GetSpec(Arg.Any<long>()).Returns(spec);
             TransactionComparerProvider transactionComparerProvider =
                 new TransactionComparerProvider(specProvider, blockTree);
-            IBlockPreparationContextService blockPreparationContextService = new BlockPreparationContextService(LimboLogs.Instance);
-            blockPreparationContextService.SetContext(testCase.BaseFee, 0);
             IComparer<Transaction> defaultComparer = transactionComparerProvider.GetDefaultComparer();
             IComparer<Transaction> comparer = CompareTxByNonce.Instance.ThenBy(defaultComparer);
             Dictionary<Address?, Transaction[]> transactions = testCase.Transactions
@@ -336,18 +334,17 @@ namespace Nethermind.Blockchain.Test
             transactionPool.GetPendingTransactionsBySender().Returns(transactions);
             ITxFilterPipeline txFilterPipeline = new TxFilterPipelineBuilder(LimboLogs.Instance)
                 .WithMinGasPriceFilter(testCase.MinGasPriceForMining, specProvider)
-                .WithBaseFeeFilter(blockPreparationContextService, specProvider)
+                .WithBaseFeeFilter(specProvider)
                 .Build;
 
             SetAccountStates(testCase.MissingAddresses);
 
             TxPoolTxSource poolTxSource = new TxPoolTxSource(transactionPool, stateReader, specProvider,
-                transactionComparerProvider.GetDefaultProducerComparer(blockPreparationContextService),
-                blockPreparationContextService, LimboLogs.Instance, txFilterPipeline);
+                transactionComparerProvider, LimboLogs.Instance, txFilterPipeline);
 
 
             IEnumerable<Transaction> selectedTransactions =
-                poolTxSource.GetTransactions(Build.A.BlockHeader.WithStateRoot(stateProvider.StateRoot).TestObject,
+                poolTxSource.GetTransactions(Build.A.BlockHeader.WithStateRoot(stateProvider.StateRoot).WithBaseFee(testCase.BaseFee).TestObject,
                     testCase.GasLimit);
             selectedTransactions.Should()
                 .BeEquivalentTo(testCase.ExpectedSelectedTransactions, o => o.WithStrictOrdering());

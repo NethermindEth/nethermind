@@ -53,14 +53,14 @@ namespace Nethermind.Blockchain.Comparers
             return _defaultComparer;
         }
 
-        public IComparer<Transaction> GetDefaultProducerComparer(IBlockPreparationContextService blockPreparationContextService)
+        public IComparer<Transaction> GetDefaultProducerComparer(BlockPreparationContext blockPreparationContext)
         {
-            IComparer<Transaction> gasPriceComparer =
-                new GasPriceTxComparerForProducer(blockPreparationContextService, _specProvider);
-            return gasPriceComparer
-                .ThenBy(CompareTxByTimestamp.Instance)
-                .ThenBy(CompareTxByPoolIndex.Instance)
-                .ThenBy(CompareTxByGasLimit.Instance);
+                IComparer<Transaction> gasPriceComparer =
+                    new GasPriceTxComparerForProducer(blockPreparationContext, _specProvider);
+                return gasPriceComparer
+                    .ThenBy(CompareTxByTimestamp.Instance)
+                    .ThenBy(CompareTxByPoolIndex.Instance)
+                    .ThenBy(CompareTxByGasLimit.Instance);
         }
     }
 }

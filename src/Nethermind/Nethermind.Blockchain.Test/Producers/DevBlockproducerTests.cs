@@ -53,7 +53,6 @@ namespace Nethermind.Blockchain.Test.Producers
             dbProvider.RegisterDb(DbNames.Headers, new MemDb());
             dbProvider.RegisterDb(DbNames.State, new MemDb());
             dbProvider.RegisterDb(DbNames.Code, new MemDb());
-            IBlockPreparationContextService blockPreparationContextService = new BlockPreparationContextService(LimboLogs.Instance);
 
             BlockTree blockTree = new BlockTree(
                 dbProvider,
@@ -113,7 +112,6 @@ namespace Nethermind.Blockchain.Test.Producers
                 timestamper,
                 specProvider,
                 new MiningConfig {Enabled = true},
-                blockPreparationContextService,
                 LimboLogs.Instance);
 
             blockchainProcessor.Start();

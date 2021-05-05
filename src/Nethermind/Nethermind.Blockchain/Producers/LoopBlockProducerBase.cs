@@ -48,7 +48,6 @@ namespace Nethermind.Blockchain.Producers
             ITimestamper timestamper,
             IGasLimitCalculator gasLimitCalculator,
             ISpecProvider specProvider,
-            IBlockPreparationContextService blockPreparationContextService,
             ILogManager logManager,
             string name) 
             : base(
@@ -61,7 +60,6 @@ namespace Nethermind.Blockchain.Producers
                 gasLimitCalculator,
                 timestamper,
                 specProvider,
-                blockPreparationContextService,
                 logManager)
         {
             _name = name;

@@ -46,7 +46,6 @@ namespace Nethermind.Merge.Plugin.Test
             ISpecProvider specProvider, 
             ISigner engineSigner,
             IMiningConfig miningConfig,
-            IBlockPreparationContextService blockPreparationContextService,
             ILogManager logManager)
         {
             BlockProducerContext producerContext = GetProducerChain(
@@ -60,7 +59,6 @@ namespace Nethermind.Merge.Plugin.Test
                 receiptStorage,
                 specProvider,
                 miningConfig,
-                blockPreparationContextService,
                 logManager);
                 
             return new Eth2TestBlockProducer(
@@ -72,7 +70,6 @@ namespace Nethermind.Merge.Plugin.Test
                 new TargetAdjustedGasLimitCalculator(specProvider, miningConfig),
                 engineSigner,
                 specProvider,
-                blockPreparationContextService,
                 logManager);
         }
     }

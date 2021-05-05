@@ -86,7 +86,6 @@ namespace Nethermind.Merge.Plugin.Test
                     SpecProvider,
                     Signer,
                     new MiningConfig(),
-                    new BlockPreparationContextService(LogManager),
                     LogManager);
             }
             

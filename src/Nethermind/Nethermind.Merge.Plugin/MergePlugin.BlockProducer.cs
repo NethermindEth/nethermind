@@ -63,7 +63,6 @@ namespace Nethermind.Merge.Plugin
                     _api.SpecProvider,
                     _api.EngineSigner,
                     _miningConfig,
-                    new BlockPreparationContextService(_api.LogManager),
                     _api.LogManager
                 );
             }

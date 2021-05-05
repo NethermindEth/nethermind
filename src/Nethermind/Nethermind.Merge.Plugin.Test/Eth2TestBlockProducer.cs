@@ -40,9 +40,8 @@ namespace Nethermind.Merge.Plugin.Test
             IGasLimitCalculator gasLimitCalculator, 
             ISigner signer,
             ISpecProvider specProvider,
-            IBlockPreparationContextService blockPreparationContextService, 
             ILogManager logManager) 
-            : base(txSource, processor, blockTree, blockProcessingQueue, stateProvider, gasLimitCalculator, signer, specProvider, blockPreparationContextService, logManager)
+            : base(txSource, processor, blockTree, blockProcessingQueue, stateProvider, gasLimitCalculator, signer, specProvider, logManager)
         {
         }
 

@@ -74,8 +74,6 @@ namespace Nethermind.Core.Test.Blockchain
         public ISpecProvider SpecProvider { get; set; }
         
         public ITransactionComparerProvider TransactionComparerProvider { get; set; }
-        
-        public IBlockPreparationContextService BlockPreparationContextService { get; set; }
 
         protected TestBlockchain()
         {
@@ -130,7 +128,6 @@ namespace Nethermind.Core.Test.Blockchain
             IDb blockInfoDb = new MemDb();
             BlockTree = new BlockTree(blockDb, headerDb, blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), SpecProvider, NullBloomStorage.Instance, LimboLogs.Instance);
             TransactionComparerProvider = new TransactionComparerProvider(specProvider, BlockTree);
-            BlockPreparationContextService = new BlockPreparationContextService(LimboLogs.Instance);
             TxPool = CreateTxPool(txStorage);
 
             new OnChainTxWatcher(BlockTree, TxPool, SpecProvider, LimboLogs.Instance);
@@ -179,7 +176,7 @@ namespace Nethermind.Core.Test.Blockchain
 
         protected virtual ITestBlockProducer CreateTestBlockProducer(TxPoolTxSource txPoolTxSource, BlockchainProcessor chainProcessor, IStateProvider producerStateProvider, ISealer sealer)
         {
-            return new TestBlockProducer(txPoolTxSource, chainProcessor, producerStateProvider, sealer, BlockTree, chainProcessor, Timestamper, BlockPreparationContextService, SpecProvider, LogManager);
+            return new TestBlockProducer(txPoolTxSource, chainProcessor, producerStateProvider, sealer, BlockTree, chainProcessor, Timestamper, SpecProvider, LogManager);
         }
 
         public virtual ILogManager LogManager => LimboLogs.Instance;
@@ -198,8 +195,8 @@ namespace Nethermind.Core.Test.Blockchain
         protected virtual TxPoolTxSource CreateTxPoolTxSource()
         {
             ITxFilterPipeline txFilterPipeline = TxFilterPipelineBuilder.CreateStandardFilteringPipeline(LimboLogs.Instance,
-                SpecProvider, BlockPreparationContextService);
-            return new TxPoolTxSource(TxPool, StateReader, SpecProvider, TransactionComparerProvider.GetDefaultComparer(), BlockPreparationContextService, LogManager, txFilterPipeline);
+                SpecProvider);
+            return new TxPoolTxSource(TxPool, StateReader, SpecProvider, TransactionComparerProvider, LogManager, txFilterPipeline);
         }
 
         public BlockBuilder GenesisBlockBuilder { get; set; }
