@@ -34,6 +34,7 @@ namespace Nethermind.Mev.Execution
         private readonly IBlockPreprocessorStep _recoveryStep;
         private readonly ISpecProvider _specProvider;
         private readonly ILogManager _logManager;
+        private readonly ProcessingOptions _processingOptions;
         private readonly IReadOnlyBlockTree _blockTree;
         private readonly ReadOnlyDbProvider _dbProvider;
         private readonly IReadOnlyTrieStore _trieStore;
@@ -44,9 +45,11 @@ namespace Nethermind.Mev.Execution
             IReadOnlyTrieStore trieStore,
             IBlockPreprocessorStep recoveryStep,
             ISpecProvider specProvider,
-            ILogManager logManager)
+            ILogManager logManager,
+            ProcessingOptions processingOptions = ProcessingOptions.Trace)
         {
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
+            _processingOptions = processingOptions;
             _recoveryStep = recoveryStep ?? throw new ArgumentNullException(nameof(recoveryStep));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _dbProvider = dbProvider.AsReadOnly(false);
@@ -62,11 +65,10 @@ namespace Nethermind.Mev.Execution
             ReadOnlyChainProcessingEnv chainProcessingEnv = new(
                 txProcessingEnv, Always.Valid, _recoveryStep, NoBlockRewards.Instance, new InMemoryReceiptStorage(), _dbProvider, _specProvider, _logManager);
 
-            Tracer tracer = new(
-                txProcessingEnv.StateProvider,
-                chainProcessingEnv.ChainProcessor);
-
-            return tracer;
+            return CreateTracer(txProcessingEnv, chainProcessingEnv);
         }
+
+        protected virtual ITracer CreateTracer(ReadOnlyTxProcessingEnv txProcessingEnv, ReadOnlyChainProcessingEnv chainProcessingEnv) =>
+            new Tracer(txProcessingEnv.StateProvider, chainProcessingEnv.ChainProcessor, _processingOptions);
     }
 }
