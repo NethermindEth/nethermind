@@ -88,7 +88,7 @@ namespace Nethermind.Mev.Test
             // about 25000 gas?
             public static string CoinbaseInvokePay = "0x1b9265b8";
             public static int CoinbaseStartingBalanceInWei = 10000000;
-            public static long LargeGasLimit = 9000000;
+            public static long LargeGasLimit = 9_000_000;
             // 1203367 gas 
             public static string LooperInvokeLoop2000 = "0x0b7d796e00000000000000000000000000000000000000000000000000000000000007d0";
             // 22000 gas about
@@ -227,9 +227,7 @@ namespace Nethermind.Mev.Test
             Transaction tx2 = Build.A.Transaction.WithGasLimit(GasCostOf.Transaction).WithGasPrice(new UInt256(150)).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
             Transaction tx3 = Build.A.Transaction.WithGasLimit(GasCostOf.Transaction).WithGasPrice(new UInt256(200)).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
 
-            byte[][] bundleBytes = new byte[][] { 
-                Rlp.Encode(tx3).Bytes 
-            };
+            byte[][] bundleBytes = { Rlp.Encode(tx3).Bytes };
              ResultWrapper<bool> resultOfBundle = chain.MevRpcModule.eth_sendBundle(bundleBytes, 1);
             Assert.AreNotEqual(ResultType.Failure, resultOfBundle.GetResult().ResultType);
             Assert.IsTrue((bool) resultOfBundle.GetData());
@@ -248,9 +246,7 @@ namespace Nethermind.Mev.Test
             Transaction tx1 = Build.A.Transaction.WithGasLimit(GasCostOf.Transaction).WithGasPrice(new UInt256(100)).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
             Transaction tx4 = Build.A.Transaction.WithGasLimit(GasCostOf.Transaction).WithGasPrice(new UInt256(50)).SignedAndResolved(TestItem.PrivateKeyD).TestObject;
 
-            byte[][] bundleBytes = new byte[][] { 
-                Rlp.Encode(tx4).Bytes 
-            };
+            byte[][] bundleBytes = { Rlp.Encode(tx4).Bytes };
             ResultWrapper<bool> resultOfBundle = chain.MevRpcModule.eth_sendBundle(bundleBytes, 1);
             Assert.AreNotEqual(ResultType.Failure, resultOfBundle.GetResult().ResultType);
             Assert.IsTrue((bool) resultOfBundle.GetData());
@@ -309,7 +305,8 @@ namespace Nethermind.Mev.Test
             
             byte[][] bundleBytes = { 
                 Rlp.Encode(set1).Bytes, 
-                Rlp.Encode(set2).Bytes
+                Rlp.Encode(set2).Bytes,
+                Rlp.Encode(set3).Bytes
             };
             ResultWrapper<bool> resultOfBundle = chain.MevRpcModule.eth_sendBundle(bundleBytes, 1);
             Assert.AreNotEqual(ResultType.Failure, resultOfBundle.GetResult().ResultType);
@@ -317,7 +314,7 @@ namespace Nethermind.Mev.Test
 
             await chain.AddBlock(true);
 
-            GetHashes(chain.BlockTree.Head!.Transactions).Should().Equal(GetHashes(new Transaction[] { set1, set2, tx4, set3, tx5 }));
+            GetHashes(chain.BlockTree.Head!.Transactions).Should().Equal(GetHashes(new Transaction[] { set1, set2, set3, tx4, tx5 }));
             
             ResultWrapper<string> resultGet = chain.EthRpcModule.eth_call(new TransactionForRpc(get));
             Assert.AreNotEqual(resultGet.GetResult().ResultType, ResultType.Failure);

@@ -68,7 +68,7 @@ namespace Nethermind.Mev.Test
                 Signer = new Eth2Signer(MinerAddress);
                 GenesisBlockBuilder = Core.Test.Builders.Build.A.Block.Genesis.Genesis
                     .WithTimestamp(UInt256.One)
-                    .WithGasLimit(12_000_000);
+                    .WithGasLimit(GasLimitCalculator.GasLimit);
             }
             
             public IMevRpcModule MevRpcModule { get; set; } = Substitute.For<IMevRpcModule>();
