@@ -107,8 +107,8 @@ namespace Nethermind.Mev.Execution
             {
                 _block = block;
             }
-            public ITxTracer StartNewTxTrace(Keccak? txHash) => 
-                _tracer = new BundleTxTracer(_beneficiary, _block!.Transactions.First(t => t.Hash == txHash));
+            public ITxTracer StartNewTxTrace(Transaction tx) => 
+                _tracer = new BundleTxTracer(_beneficiary, _block!.Transactions.First(t => t.Hash == tx.Hash));
 
             public void EndTxTrace()
             {

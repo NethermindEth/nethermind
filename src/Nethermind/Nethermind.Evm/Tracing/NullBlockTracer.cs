@@ -44,7 +44,7 @@ namespace Nethermind.Evm.Tracing
         {
         }
 
-        public ITxTracer StartNewTxTrace(Keccak txHash)
+        public ITxTracer StartNewTxTrace(Transaction tx)
         {
             return NullTxTracer.Instance;
         }
