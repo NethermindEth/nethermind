@@ -25,6 +25,7 @@ using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.State;
 
 namespace Nethermind.Mev
 {
@@ -34,24 +35,24 @@ namespace Nethermind.Mev
         {
         }
 
-        protected override BlockProducedContext GetBestBlock(IEnumerable<BlockProducedContext> blocks)
+        protected override Block? GetBestBlock(IEnumerable<(Block? Block, IReadOnlyStateProvider StateProvider)> blocks)
         {
-            BlockProducedContext? best = null;
+            Block? best = null;
             UInt256 maxBalance = UInt256.Zero;
-            foreach (BlockProducedContext context in blocks)
+            foreach ((Block? Block, IReadOnlyStateProvider StateProvider) context in blocks)
             {
-                if (context.ProducedBlock is not null)
+                if (context.Block is not null)
                 {
-                    UInt256 balance = context.PostProducedBlockStateProvider!.GetBalance(context.ProducedBlock.Beneficiary!);
+                    UInt256 balance = context.StateProvider.GetBalance(context.Block.Beneficiary!);
                     if (balance > maxBalance)
                     {
-                        best = context;
+                        best = context.Block;
                         maxBalance = balance;
                     }
                 }
             }
 
-            return best ?? new BlockProducedContext(null, null);
+            return best;
         }
     }
 }

@@ -23,6 +23,7 @@ using System.Linq;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Processing;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
@@ -73,8 +74,14 @@ namespace Nethermind.Mev
                 (IApiWithNetwork getFromApi, _) = _nethermindApi!.ForRpc;
                 IJsonRpcConfig rpcConfig = getFromApi.Config<IJsonRpcConfig>();
                 
-                TracerFactory tracerFactory = new(getFromApi.DbProvider!, 
-                    getFromApi.BlockTree!, getFromApi.ReadOnlyTrieStore!, getFromApi.BlockPreprocessor!, getFromApi.SpecProvider!, getFromApi.LogManager!);
+                TracerFactory tracerFactory = new(
+                    getFromApi.DbProvider!, 
+                    getFromApi.BlockTree!, 
+                    getFromApi.ReadOnlyTrieStore!, 
+                    getFromApi.BlockPreprocessor!, 
+                    getFromApi.SpecProvider!, 
+                    getFromApi.LogManager!,
+                    ProcessingOptions.ProducingBlock);
 
                 TxBundleSimulator txBundleSimulator = new(tracerFactory, getFromApi.GasLimitCalculator, getFromApi.Timestamper);
                 

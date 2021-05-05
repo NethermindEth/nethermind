@@ -21,6 +21,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.State;
 
 namespace Nethermind.Consensus
 {
@@ -68,29 +69,34 @@ namespace Nethermind.Consensus
 
         public ITimestamper Timestamper => _blockProducers[0].Timestamper;
 
-        public async Task<BlockProducedContext> TryProduceBlock(BlockHeader parentHeader, CancellationToken cancellationToken = default)
+        public async Task<Block?> TryProduceBlock(BlockHeader parentHeader, CancellationToken cancellationToken = default)
         {
-            IList<Task<BlockProducedContext>> produceTasks = new List<Task<BlockProducedContext>>();
+            IList<Task<Block?>> produceTasks = new List<Task<Block?>>();
             for (int i = 0; i < _blockProducers.Length; i++)
             {
                 produceTasks.Add(_blockProducers[i].TryProduceBlock(parentHeader, cancellationToken));
             }
 
+            IReadOnlyStateProvider[] stateProviders = _blockProducers.Select(p => p.StateProvider).ToArray();
+            
             try
             {
-                BlockProducedContext[] blocks = await Task.WhenAll(produceTasks);
-                return GetBestBlock(blocks);
+                Block?[] blocks = await Task.WhenAll(produceTasks);
+                return GetBestBlock(blocks.Zip(stateProviders));
             }
             catch (OperationCanceledException)
             {
-                IEnumerable<BlockProducedContext> blocks  = produceTasks
-                    .Where(t => t.IsCompletedSuccessfully)
-                    .Select(t => t.Result);
+                IEnumerable<(Block? Block, IReadOnlyStateProvider StateProvider)> blocks  = produceTasks
+                    .Zip(stateProviders)
+                    .Where(t => t.First.IsCompletedSuccessfully)
+                    .Select(t => (t.First.Result, t.Second));
                 
                 return GetBestBlock(blocks);
             }
         }
 
-        protected abstract BlockProducedContext GetBestBlock(IEnumerable<BlockProducedContext> blocks);
+        public IReadOnlyStateProvider StateProvider => _blockProducers.FirstOrDefault()?.StateProvider!;
+
+        protected abstract Block? GetBestBlock(IEnumerable<(Block? Block, IReadOnlyStateProvider StateProvider)> blocks);
     }
 }

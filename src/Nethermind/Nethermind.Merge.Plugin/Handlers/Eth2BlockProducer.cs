@@ -58,19 +58,20 @@ namespace Nethermind.Merge.Plugin.Handlers
             return Task.CompletedTask;
         }
 
-        public async Task<BlockProducedContext> TryProduceBlock(BlockHeader parentHeader, CancellationToken cancellationToken = default)
+        public async Task<Block?> TryProduceBlock(BlockHeader parentHeader, CancellationToken cancellationToken = default)
         {
             await _locker.WaitAsync(cancellationToken);
             try
             {
-                Block? block = await TryProduceNewBlock(cancellationToken, parentHeader);
-                return new BlockProducedContext(block, StateProvider);
+                return await TryProduceNewBlock(cancellationToken, parentHeader);
             }
             finally
             {
                 _locker.Release();
             }
         }
+
+        public new IReadOnlyStateProvider StateProvider => base.StateProvider;
 
         protected override bool IsRunning() => _stated == 1;
 

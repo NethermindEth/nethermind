@@ -24,18 +24,8 @@ namespace Nethermind.Consensus
 {
     public interface IManualBlockProducer : IBlockProducer
     {
-        Task<BlockProducedContext> TryProduceBlock(BlockHeader parentHeader, CancellationToken cancellationToken = default);
-    }
-    
-    public class BlockProducedContext
-    {
-        public Block? ProducedBlock { get; }
-        public IReadOnlyStateProvider? PostProducedBlockStateProvider { get; }
-
-        public BlockProducedContext(Block? producedBlock, IReadOnlyStateProvider? postProducedBlockStateProvider)
-        {
-            ProducedBlock = producedBlock;
-            PostProducedBlockStateProvider = postProducedBlockStateProvider;
-        }
+        Task<Block?> TryProduceBlock(BlockHeader parentHeader, CancellationToken cancellationToken = default);
+        
+        IReadOnlyStateProvider StateProvider { get; }
     }
 }
