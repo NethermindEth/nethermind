@@ -59,7 +59,10 @@ namespace Nethermind.Mev.Execution
                 parent.Number + 1, 
                 parent.GasLimit, 
                 timestamp ?? parent.Timestamp, 
-                Bytes.Empty);
+                Bytes.Empty)
+            {
+                TotalDifficulty = parent.TotalDifficulty + parent.Difficulty
+            };
 
             return new Block(header, bundle.Transactions, Array.Empty<BlockHeader>());
         }
