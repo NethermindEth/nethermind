@@ -43,14 +43,9 @@ namespace Nethermind.Merge.Plugin.Handlers
             _txSource = txSource;
         }
 
-        public virtual Eth2BlockProducer Create(IBlockTree blockTree,
-            IDbProvider dbProvider, 
-            IReadOnlyTrieStore readOnlyTrieStore,
-            IBlockPreprocessorStep blockPreprocessor, 
-            ITxPool txPool, 
-            IBlockValidator blockValidator, 
-            IRewardCalculatorSource rewardCalculatorSource,
-            IReceiptStorage receiptStorage,
+        public virtual Eth2BlockProducer Create(
+            IBlockProducerEnvFactory blockProducerEnvFactory,
+            IBlockTree blockTree,
             IBlockProcessingQueue blockProcessingQueue,
             ISpecProvider specProvider,
             ISigner engineSigner,
@@ -58,114 +53,21 @@ namespace Nethermind.Merge.Plugin.Handlers
             IMiningConfig miningConfig,
             ILogManager logManager)
         {
-            BlockProducerContext producerContext = GetProducerChain(
-                blockTree,
-                dbProvider,
-                readOnlyTrieStore,
-                blockPreprocessor,
-                txPool,
-                blockValidator, 
-                rewardCalculatorSource, 
-                receiptStorage,
-                specProvider,
-                miningConfig,
-                logManager);
+            BlockProducerEnv producerEnv = GetProducerEnv(blockProducerEnvFactory);
                 
             return new Eth2BlockProducer(
-                producerContext.TxSource,
-                producerContext.ChainProcessor,
+                producerEnv.TxSource,
+                producerEnv.ChainProcessor,
                 blockTree,
                 blockProcessingQueue,
-                producerContext.ReadOnlyStateProvider,
+                producerEnv.ReadOnlyStateProvider,
                 new TargetAdjustedGasLimitCalculator(specProvider, miningConfig),
                 engineSigner,
                 timestamper,
                 logManager);
         }
-        
-        protected BlockProducerContext GetProducerChain(IBlockTree blockTree,
-            IDbProvider dbProvider,
-            IReadOnlyTrieStore readOnlyTrieStore,
-            IBlockPreprocessorStep blockPreprocessor,
-            ITxPool txPool,
-            IBlockValidator blockValidator, 
-            IRewardCalculatorSource rewardCalculatorSource, 
-            IReceiptStorage receiptStorage,
-            ISpecProvider specProvider,
-            IMiningConfig miningConfig,
-            ILogManager logManager)
-        {
-            ReadOnlyDbProvider readOnlyDbProvider = dbProvider.AsReadOnly(false);
-            ReadOnlyBlockTree readOnlyBlockTree = blockTree.AsReadOnly();
 
-            ReadOnlyTxProcessingEnv txProcessingEnv =
-                new(readOnlyDbProvider, readOnlyTrieStore, readOnlyBlockTree, specProvider, logManager);
-                
-            BlockProcessor blockProcessor =
-                CreateBlockProcessor(txProcessingEnv, 
-                    specProvider, 
-                    blockValidator, 
-                    rewardCalculatorSource, 
-                    receiptStorage, 
-                    logManager);
-
-            IBlockchainProcessor blockchainProcessor =
-                new BlockchainProcessor(
-                    readOnlyBlockTree,
-                    blockProcessor,
-                    blockPreprocessor,
-                    logManager,
-                    BlockchainProcessor.Options.NoReceipts);
-
-            OneTimeChainProcessor chainProcessor = new(
-                readOnlyDbProvider,
-                blockchainProcessor);
-
-            return new BlockProducerContext
-            {
-                ChainProcessor = chainProcessor,
-                ReadOnlyStateProvider = txProcessingEnv.StateProvider,
-                TxSource = GetTxSource(txPool, miningConfig, logManager, txProcessingEnv),
-                ReadOnlyTxProcessingEnv = txProcessingEnv
-            };
-        }
-
-        private ITxSource GetTxSource(ITxPool txPool, IMiningConfig miningConfig, ILogManager logManager, ReadOnlyTxProcessingEnv txProcessingEnv)
-        {
-            ITxSource txSourceForProducer = CreateTxSourceForProducer(txProcessingEnv, txPool, logManager, miningConfig);
-            return _txSource is null 
-                ? txSourceForProducer 
-                : new CompositeTxSource(_txSource, txSourceForProducer);
-        }
-
-        private ITxSource CreateTxSourceForProducer(ReadOnlyTxProcessingEnv processingEnv, ITxPool txPool, ILogManager logManager, IMiningConfig miningConfig) =>
-            CreateTxPoolTxSource(processingEnv, txPool, miningConfig, logManager);
-
-        private TxPoolTxSource CreateTxPoolTxSource(ReadOnlyTxProcessingEnv processingEnv, ITxPool txPool, IMiningConfig miningConfig, ILogManager logManager)
-        {
-            ITxFilter txSourceFilter = CreateTxSourceFilter(miningConfig);
-            return new TxPoolTxSource(txPool, processingEnv.StateReader, logManager, txSourceFilter);
-        }
-
-        private ITxFilter CreateTxSourceFilter(IMiningConfig miningConfig) =>
-            TxFilterBuilders.CreateStandardTxFilter(miningConfig);
-
-        private BlockProcessor CreateBlockProcessor(
-            ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv,
-            ISpecProvider specProvider, 
-            IBlockValidator blockValidator, 
-            IRewardCalculatorSource rewardCalculatorSource, 
-            IReceiptStorage receiptStorage, 
-            ILogManager logManager) =>
-            new(
-                specProvider,
-                blockValidator,
-                rewardCalculatorSource.Get(readOnlyTxProcessingEnv.TransactionProcessor),
-                readOnlyTxProcessingEnv.TransactionProcessor,
-                readOnlyTxProcessingEnv.StateProvider,
-                readOnlyTxProcessingEnv.StorageProvider,
-                receiptStorage,
-                NullWitnessCollector.Instance,
-                logManager);
+        protected BlockProducerEnv GetProducerEnv(IBlockProducerEnvFactory blockProducerEnvFactory) => 
+            blockProducerEnvFactory.Create(_txSource);
     }
 }

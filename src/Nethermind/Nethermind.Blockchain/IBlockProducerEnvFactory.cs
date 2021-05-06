@@ -15,14 +15,12 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System.Threading;
-using System.Threading.Tasks;
-using Nethermind.Core;
+using Nethermind.Consensus.Transactions;
 
-namespace Nethermind.Consensus
+namespace Nethermind.Blockchain
 {
-    public interface IManualBlockProducer : IBlockProducer
+    public interface IBlockProducerEnvFactory
     {
-        Task<Block?> TryProduceBlock(BlockHeader parentHeader, CancellationToken cancellationToken = default);
+        BlockProducerEnv Create(ITxSource? txSource = null);
     }
 }

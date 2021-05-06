@@ -15,14 +15,12 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System.Threading;
-using System.Threading.Tasks;
-using Nethermind.Core;
+using Nethermind.Int256;
 
-namespace Nethermind.Consensus
+namespace Nethermind.Mev
 {
-    public interface IManualBlockProducer : IBlockProducer
+    public interface IBeneficiaryBalanceSource
     {
-        Task<Block?> TryProduceBlock(BlockHeader parentHeader, CancellationToken cancellationToken = default);
+        UInt256 BeneficiaryBalance { get; }
     }
 }

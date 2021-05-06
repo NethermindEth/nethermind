@@ -15,14 +15,14 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System.Threading;
-using System.Threading.Tasks;
-using Nethermind.Core;
+using Nethermind.Consensus;
+using Nethermind.Consensus.Transactions;
 
-namespace Nethermind.Consensus
+namespace Nethermind.Blockchain
 {
-    public interface IManualBlockProducer : IBlockProducer
+    public static class TxFilterBuilders
     {
-        Task<Block?> TryProduceBlock(BlockHeader parentHeader, CancellationToken cancellationToken = default);
+        public static ITxFilter CreateStandardTxFilter(IMiningConfig miningConfig)
+            => new MinGasPriceTxFilter(miningConfig.MinGasPrice);
     }
 }

@@ -186,6 +186,8 @@ namespace Nethermind.Runner.Ethereum.Api
         public TxValidator? TxValidator { get; set; }
         public IBlockFinalizationManager? FinalizationManager { get; set; }
         public IGasLimitCalculator GasLimitCalculator { get; set; } = FollowOtherMiners.Instance;
+        
+        public IBlockProducerEnvFactory BlockProducerEnvFactory { get; set; }
         public IWallet? Wallet { get; set; }
         public IWebSocketsManager WebSocketsManager { get; set; } = new WebSocketsManager();
 

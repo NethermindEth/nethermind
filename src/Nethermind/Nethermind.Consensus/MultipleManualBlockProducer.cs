@@ -21,7 +21,6 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
-using Nethermind.State;
 
 namespace Nethermind.Consensus
 {
@@ -71,32 +70,30 @@ namespace Nethermind.Consensus
 
         public async Task<Block?> TryProduceBlock(BlockHeader parentHeader, CancellationToken cancellationToken = default)
         {
-            IList<Task<Block?>> produceTasks = new List<Task<Block?>>();
+            Task<Block?>[] produceTasks = new Task<Block?>[_blockProducers.Length];
             for (int i = 0; i < _blockProducers.Length; i++)
             {
-                produceTasks.Add(_blockProducers[i].TryProduceBlock(parentHeader, cancellationToken));
+                produceTasks[i] = _blockProducers[i].TryProduceBlock(parentHeader, cancellationToken);
             }
-
-            IStateProvider[] stateProviders = _blockProducers.Select(p => p.StateProvider).ToArray();
+           
+            IEnumerable<(Block? Block, IManualBlockProducer BlockProducer)> blocksWithProducers;
             
             try
             {
                 Block?[] blocks = await Task.WhenAll(produceTasks);
-                return GetBestBlock(blocks.Zip(stateProviders));
+                blocksWithProducers = blocks.Zip(_blockProducers);
             }
             catch (OperationCanceledException)
             {
-                IEnumerable<(Block? Block, IStateProvider StateProvider)> blocks  = produceTasks
-                    .Zip(stateProviders)
+                blocksWithProducers  = produceTasks
+                    .Zip(_blockProducers)
                     .Where(t => t.First.IsCompletedSuccessfully)
                     .Select(t => (t.First.Result, t.Second));
-                
-                return GetBestBlock(blocks);
             }
+            
+            return GetBestBlock(blocksWithProducers);
         }
 
-        public IStateProvider StateProvider => _blockProducers.FirstOrDefault()?.StateProvider!;
-
-        protected abstract Block? GetBestBlock(IEnumerable<(Block? Block, IStateProvider StateProvider)> blocks);
+        protected abstract Block? GetBestBlock(IEnumerable<(Block? Block, IManualBlockProducer BlockProducer)> blocks);
     }
 }

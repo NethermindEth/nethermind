@@ -71,8 +71,6 @@ namespace Nethermind.Merge.Plugin.Handlers
             }
         }
 
-        public new IStateProvider StateProvider => base.StateProvider;
-
         protected override bool IsRunning() => _stated == 1;
 
         protected override void ConsumeProducedBlock(Block block) { }

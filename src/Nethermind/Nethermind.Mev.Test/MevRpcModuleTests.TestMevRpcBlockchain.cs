@@ -41,8 +41,10 @@ using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.Test;
 using Nethermind.Mev.Execution;
 using Nethermind.Mev.Source;
+using Nethermind.Runner.Ethereum;
 using Nethermind.State;
 using Newtonsoft.Json;
+using NLog.Fluent;
 using NSubstitute;
 
 namespace Nethermind.Mev.Test
@@ -83,29 +85,44 @@ namespace Nethermind.Mev.Test
             protected override ITestBlockProducer CreateTestBlockProducer(TxPoolTxSource txPoolTxSource, BlockchainProcessor chainProcessor, IStateProvider producerStateProvider, ISealer sealer)
             {
                 MiningConfig miningConfig = new() {MinGasPrice = UInt256.One};
+                
+                MevBlockProducerEnvFactory blockProducerEnvFactory = new MevBlockProducerEnvFactory(
+                    DbProvider, 
+                    BlockTree, 
+                    ReadOnlyTrieStore, 
+                    SpecProvider, 
+                    BlockValidator,
+                    NoBlockRewards.Instance,
+                    ReceiptStorage,
+                    BlockPreprocessorStep,
+                    TxPool,
+                    miningConfig,
+                    LogManager);
 
-                Eth2BlockProducer CreateEth2BlockProducer(ITxSource? txSource = null)
-                {
-                    return new Eth2TestBlockProducerFactory(GasLimitCalculator, txSource).Create(
+                Eth2BlockProducer CreateEth2BlockProducer(ITxSource? txSource = null) =>
+                    new Eth2TestBlockProducerFactory(GasLimitCalculator, txSource).Create(
+                        blockProducerEnvFactory,
                         BlockTree,
-                        DbProvider,
-                        ReadOnlyTrieStore,
-                        BlockPreprocessorStep,
-                        TxPool,
-                        BlockValidator,
-                        NoBlockRewards.Instance,
-                        ReceiptStorage,
                         BlockProcessingQueue,
                         SpecProvider,
                         Signer,
                         Timestamper,
                         miningConfig,
                         LogManager);
-                }
 
                 IBundleSource bundleSource = _getSelector(BundlePool);
                 BundleTxSource bundleTxSource = new(bundleSource, Timestamper);
-                return new MevTestBlockProducer(BlockTree, CreateEth2BlockProducer(bundleTxSource), CreateEth2BlockProducer());
+                
+                IManualBlockProducer standardProducer = CreateEth2BlockProducer();
+                IBeneficiaryBalanceSource standardProducerBeneficiaryBalanceSource = blockProducerEnvFactory.LastMevBlockProcessor;
+                IManualBlockProducer bundleProducer = CreateEth2BlockProducer(bundleTxSource);
+                IBeneficiaryBalanceSource bundleProducerBeneficiaryBalanceSource = blockProducerEnvFactory.LastMevBlockProcessor;
+                
+                return new MevTestBlockProducer(BlockTree, new Dictionary<IManualBlockProducer, IBeneficiaryBalanceSource>()
+                {
+                    {bundleProducer, bundleProducerBeneficiaryBalanceSource}, 
+                    {standardProducer, standardProducerBeneficiaryBalanceSource}
+                });
             }
 
             protected override BlockProcessor CreateBlockProcessor()
@@ -171,7 +188,7 @@ namespace Nethermind.Mev.Test
                 private readonly IBlockTree _blockTree;
                 private Block? _lastProducedBlock;
                 
-                public MevTestBlockProducer(IBlockTree blockTree, params IManualBlockProducer[] blockProducers) : base(blockProducers)
+                public MevTestBlockProducer(IBlockTree blockTree, IDictionary<IManualBlockProducer, IBeneficiaryBalanceSource> blockProducers) : base(blockProducers)
                 {
                     _blockTree = blockTree;
                 }

@@ -55,14 +55,8 @@ namespace Nethermind.Merge.Plugin
 
                 _manualTimestamper ??= new ManualTimestamper();
                 _api.BlockProducer = _blockProducer = new Eth2BlockProducerFactory(txSource).Create(
+                    _api.BlockProducerEnvFactory,
                     _api.BlockTree,
-                    _api.DbProvider,
-                    _api.ReadOnlyTrieStore,
-                    _api.BlockPreprocessor,
-                    _api.TxPool,
-                    _api.BlockValidator,
-                    _api.RewardCalculatorSource,
-                    _api.ReceiptStorage,
                     _api.BlockProcessingQueue,
                     _api.SpecProvider,
                     _api.EngineSigner,

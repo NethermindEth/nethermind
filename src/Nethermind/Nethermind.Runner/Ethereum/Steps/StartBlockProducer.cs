@@ -38,7 +38,7 @@ namespace Nethermind.Runner.Ethereum.Steps
     public class StartBlockProducer : IStep
     {
         protected IApiWithBlockchain _api;
-        private BlockProducerContext? _blockProducerContext;
+        private BlockProducerEnv? _blockProducerContext;
 
         public StartBlockProducer(INethermindApi api)
         {
@@ -62,6 +62,18 @@ namespace Nethermind.Runner.Ethereum.Steps
 
         protected virtual async Task BuildProducer()
         {
+            _api.BlockProducerEnvFactory = new BlockProducerEnvFactory(_api.DbProvider,
+                _api.BlockTree,
+                _api.ReadOnlyTrieStore,
+                _api.SpecProvider,
+                _api.BlockValidator,
+                _api.RewardCalculatorSource,
+                _api.ReceiptStorage,
+                _api.BlockPreprocessor,
+                _api.TxPool,
+                _api.Config<IMiningConfig>(),
+                _api.LogManager);
+            
             if (_api.ChainSpec == null) throw new StepDependencyException(nameof(_api.ChainSpec));
             IConsensusPlugin? consensusPlugin = _api.GetConsensusPlugin();
             
@@ -85,9 +97,10 @@ namespace Nethermind.Runner.Ethereum.Steps
             }
         }
 
-        protected BlockProducerContext GetProducerChain()
+        // TODO: Use BlockProducerEnvFactory
+        protected BlockProducerEnv GetProducerChain()
         {
-            BlockProducerContext Create()
+            BlockProducerEnv Create()
             {
                 ReadOnlyDbProvider dbProvider = _api.DbProvider.AsReadOnly(false);
                 ReadOnlyBlockTree blockTree = _api.BlockTree.AsReadOnly();
@@ -110,7 +123,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                     dbProvider,
                     blockchainProcessor);
 
-                return new BlockProducerContext
+                return new BlockProducerEnv
                 {
                     ChainProcessor = chainProcessor,
                     ReadOnlyStateProvider = txProcessingEnv.StateProvider,
@@ -134,7 +147,7 @@ namespace Nethermind.Runner.Ethereum.Steps
         }
 
         protected virtual ITxFilter CreateTxSourceFilter(ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv, IReadOnlyTxProcessorSource readOnlyTxProcessorSource) =>
-            TxFilterBuilders.CreateStandardTxFilter(_api.Config<IMiningConfig>());
+            Blockchain.TxFilterBuilders.CreateStandardTxFilter(_api.Config<IMiningConfig>());
 
         protected virtual BlockProcessor CreateBlockProcessor(
             ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv,

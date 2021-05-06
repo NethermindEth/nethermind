@@ -31,19 +31,22 @@ namespace Nethermind.Mev
 {
     public class MevBlockProducer : MultipleManualBlockProducer
     {
-        public MevBlockProducer(params IManualBlockProducer[] blockProducers) : base(blockProducers)
+        private readonly IDictionary<IManualBlockProducer, IBeneficiaryBalanceSource> _blockProducers;
+
+        public MevBlockProducer(IDictionary<IManualBlockProducer, IBeneficiaryBalanceSource> blockProducers) : base(blockProducers.Keys.ToArray())
         {
+            _blockProducers = blockProducers;
         }
 
-        protected override Block? GetBestBlock(IEnumerable<(Block? Block, IStateProvider StateProvider)> blocks)
+        protected override Block? GetBestBlock(IEnumerable<(Block? Block, IManualBlockProducer BlockProducer)> blocks)
         {
             Block? best = null;
             UInt256 maxBalance = UInt256.Zero;
-            foreach ((Block? Block, IStateProvider StateProvider) context in blocks)
+            foreach ((Block? Block, IManualBlockProducer BlockProducer) context in blocks)
             {
                 if (context.Block is not null)
                 {
-                    UInt256 balance = context.StateProvider.GetBalance(context.Block.Header.GasBeneficiary!);
+                    UInt256 balance = _blockProducers[context.BlockProducer].BeneficiaryBalance;
                     if (balance > maxBalance)
                     {
                         best = context.Block;

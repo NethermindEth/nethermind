@@ -41,46 +41,29 @@ namespace Nethermind.Merge.Plugin.Test
         {
             _gasLimitCalculator = gasLimitCalculator;
         }
-        
+
         public override Eth2BlockProducer Create(
-            IBlockTree blockTree,
-            IDbProvider dbProvider,
-            IReadOnlyTrieStore readOnlyTrieStore,
-            IBlockPreprocessorStep blockPreprocessor,
-            ITxPool txPool,
-            IBlockValidator blockValidator,
-            IRewardCalculatorSource rewardCalculatorSource,
-            IReceiptStorage receiptStorage,
-            IBlockProcessingQueue blockProcessingQueue,
+            IBlockProducerEnvFactory blockProducerEnvFactory, 
+            IBlockTree blockTree, 
+            IBlockProcessingQueue blockProcessingQueue, 
             ISpecProvider specProvider, 
-            ISigner engineSigner,
+            ISigner engineSigner, 
             ITimestamper timestamper,
-            IMiningConfig miningConfig,
+            IMiningConfig miningConfig, 
             ILogManager logManager)
         {
-            BlockProducerContext producerContext = GetProducerChain(
-                blockTree,
-                dbProvider,
-                readOnlyTrieStore,
-                blockPreprocessor,
-                txPool,
-                blockValidator, 
-                rewardCalculatorSource, 
-                receiptStorage,
-                specProvider,
-                miningConfig,
-                logManager);
-                
+            BlockProducerEnv producerEnv = GetProducerEnv(blockProducerEnvFactory);
+            
             return new Eth2TestBlockProducer(
-                producerContext.TxSource,
-                producerContext.ChainProcessor,
+                producerEnv.TxSource,
+                producerEnv.ChainProcessor,
                 blockTree,
                 blockProcessingQueue,
-                producerContext.ReadOnlyStateProvider,
+                producerEnv.ReadOnlyStateProvider,
                 _gasLimitCalculator,
                 engineSigner,
                 timestamper,
-                producerContext.ReadOnlyTxProcessingEnv.StateReader,
+                producerEnv.ReadOnlyTxProcessingEnv.StateReader,
                 logManager);
         }
     }

@@ -31,6 +31,7 @@ using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Handlers;
+using Nethermind.Runner.Ethereum;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
@@ -78,15 +79,22 @@ namespace Nethermind.Merge.Plugin.Test
                 MiningConfig miningConfig = new();
                 TargetAdjustedGasLimitCalculator targetAdjustedGasLimitCalculator = new(SpecProvider, miningConfig);
                 
-                return (ITestBlockProducer) new Eth2TestBlockProducerFactory(targetAdjustedGasLimitCalculator).Create(
-                    BlockTree,
-                    DbProvider,
-                    ReadOnlyTrieStore,
-                    BlockPreprocessorStep,
-                    TxPool,
+                BlockProducerEnvFactory blockProducerEnvFactory = new(
+                    DbProvider, 
+                    BlockTree, 
+                    ReadOnlyTrieStore, 
+                    SpecProvider, 
                     BlockValidator,
                     NoBlockRewards.Instance,
                     ReceiptStorage,
+                    BlockPreprocessorStep,
+                    TxPool,
+                    miningConfig,
+                    LogManager);
+                
+                return (ITestBlockProducer) new Eth2TestBlockProducerFactory(targetAdjustedGasLimitCalculator).Create(
+                    blockProducerEnvFactory,
+                    BlockTree,
                     BlockProcessingQueue,
                     SpecProvider,
                     Signer,

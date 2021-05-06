@@ -115,10 +115,30 @@ namespace Nethermind.Mev
 
         public async Task<IBlockProducer> InitBlockProducer(IConsensusPlugin consensusPlugin, ITxSource? txSource = null)
         {
-            IBlockProducer standardProducer = await consensusPlugin.InitBlockProducer();
+            MevBlockProducerEnvFactory producerEnvFactory = new(_nethermindApi.DbProvider!,
+                _nethermindApi.BlockTree!,
+                _nethermindApi.ReadOnlyTrieStore!,
+                _nethermindApi.SpecProvider!,
+                _nethermindApi.BlockValidator!,
+                _nethermindApi.RewardCalculatorSource!,
+                _nethermindApi.ReceiptStorage!,
+                _nethermindApi.BlockPreprocessor,
+                _nethermindApi.TxPool!,
+                _nethermindApi.Config<IMiningConfig>(),
+                _nethermindApi.LogManager);
+            
+            _nethermindApi.BlockProducerEnvFactory = producerEnvFactory;
+
+            IManualBlockProducer standardProducer = (IManualBlockProducer)await consensusPlugin.InitBlockProducer();
+            IBeneficiaryBalanceSource standardProducerBeneficiaryBalanceSource = producerEnvFactory.LastMevBlockProcessor;
             V1Selector v1Selector = new(_bundlePool);
-            IBlockProducer bundleProducer = await consensusPlugin.InitBlockProducer(new BundleTxSource(v1Selector, standardProducer.Timestamper));
-            return _nethermindApi.BlockProducer = new MevBlockProducer(new[] {bundleProducer, standardProducer}.OfType<IManualBlockProducer>().ToArray());
+            IManualBlockProducer bundleProducer = (IManualBlockProducer)await consensusPlugin.InitBlockProducer(new BundleTxSource(v1Selector, standardProducer.Timestamper));
+            IBeneficiaryBalanceSource bundleProducerBeneficiaryBalanceSource = producerEnvFactory.LastMevBlockProcessor;
+            return _nethermindApi.BlockProducer = new MevBlockProducer(new Dictionary<IManualBlockProducer, IBeneficiaryBalanceSource>()
+            {
+                {bundleProducer, bundleProducerBeneficiaryBalanceSource}, 
+                {standardProducer, standardProducerBeneficiaryBalanceSource}
+            });
         }
 
         private void TxPoolOnNewPending(object? sender, TxEventArgs e)

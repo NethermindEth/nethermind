@@ -32,16 +32,13 @@ namespace Nethermind.Runner.Ethereum.Steps
 {
     public static class TxFilterBuilders
     {
-        public static ITxFilter CreateStandardTxFilter(IMiningConfig miningConfig)
-            => new MinGasPriceTxFilter(miningConfig.MinGasPrice);
-        
         private static ITxFilter CreateBaseAuRaTxFilter(
             IMiningConfig miningConfig,
             AuRaNethermindApi api,
             IReadOnlyTxProcessorSource readOnlyTxProcessorSource,
             IDictionaryContractDataStore<TxPriorityContract.Destination>? minGasPricesContractDataStore)
         {
-            ITxFilter gasPriceTxFilter = CreateStandardTxFilter(miningConfig);
+            ITxFilter gasPriceTxFilter = Blockchain.TxFilterBuilders.CreateStandardTxFilter(miningConfig);
 
             if (minGasPricesContractDataStore != null)
             {

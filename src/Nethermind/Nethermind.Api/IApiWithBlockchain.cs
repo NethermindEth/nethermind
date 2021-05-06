@@ -84,5 +84,7 @@ namespace Nethermind.Api
         IBlockFinalizationManager? FinalizationManager { get; set; }
         
         IGasLimitCalculator GasLimitCalculator { get; set; }
+        
+        IBlockProducerEnvFactory BlockProducerEnvFactory { get; set; }
     }
 }
