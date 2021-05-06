@@ -23,7 +23,7 @@ namespace Nethermind.Core
     {
         public static IEnumerable<Transaction> GetTransactions(this Block block, out bool transactionsChangeable)
         {
-            if (block is BlockToProduce blockToProduce)
+            if (block is BlockToProduce {Transactions: not ICollection<Transaction>} blockToProduce)
             {
                 transactionsChangeable = true;
                 return blockToProduce.Transactions;
