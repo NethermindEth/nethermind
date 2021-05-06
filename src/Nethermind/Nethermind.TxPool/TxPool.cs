@@ -309,7 +309,7 @@ namespace Nethermind.TxPool
                 return AddTxResult.FutureNonce;
             }
 
-            if (spec.IsEip1559Enabled && _chainHeadInfoProvider.BaseFee != UInt256.Zero && !tx.IsServiceTransaction && (_chainHeadInfoProvider.BaseFee / 100) * 50 <= tx.FeeCap)
+            if (spec.IsEip1559Enabled && _chainHeadInfoProvider.BaseFee != UInt256.Zero && !tx.IsServiceTransaction && (_chainHeadInfoProvider.BaseFee / 100) * 50 >= tx.FeeCap)
             {
                 if (_logger.IsTrace)
                     _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, fee cap is too low.");
