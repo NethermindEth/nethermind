@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -264,16 +265,13 @@ namespace Nethermind.Core.Test.Blockchain
             _oneAtATime.Set();
         }
 
-        private async Task AddBlockInternal(params Transaction[] transactions)
+        private async Task<AddTxResult[]> AddBlockInternal(params Transaction[] transactions)
         {
             await _oneAtATime.WaitOneAsync(CancellationToken.None);
-            foreach (Transaction transaction in transactions)
-            {
-                TxPool.AddTransaction(transaction, TxHandlingOptions.None);
-            }
-
+            AddTxResult[] txResults = transactions.Select(t => TxPool.AddTransaction(t, TxHandlingOptions.None)).ToArray();
             Timestamper.Add(TimeSpan.FromSeconds(1));
             await BlockProducer.BuildNewBlock();
+            return txResults;
         }
 
         public void AddTransactions(params Transaction[] txs)
