@@ -155,8 +155,8 @@ namespace Nethermind.Mev.Test
 
             Address contractAddress = await Contracts.Deploy(chain, Contracts.CallableCode);
             
-            Transaction getTx = Build.A.Transaction.WithGasLimit(Contracts.LargeGasLimit).WithGasPrice(new UInt256(1)).WithTo(contractAddress).WithData(Bytes.FromHexString(Contracts.CallableInvokeGet)).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
-            Transaction setTx = Build.A.Transaction.WithGasLimit(Contracts.LargeGasLimit).WithGasPrice(new UInt256(1)).WithTo(contractAddress).WithData(Bytes.FromHexString(Contracts.CallableInvokeSet)).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+            Transaction getTx = Build.A.Transaction.WithGasLimit(Contracts.LargeGasLimit).WithGasPrice(1ul).WithTo(contractAddress).WithData(Bytes.FromHexString(Contracts.CallableInvokeGet)).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+            Transaction setTx = Build.A.Transaction.WithGasLimit(Contracts.LargeGasLimit).WithGasPrice(1ul).WithTo(contractAddress).WithData(Bytes.FromHexString(Contracts.CallableInvokeSet)).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
             string transactions = $"[\"{Rlp.Encode(setTx).Bytes.ToHexString()}\",\"{Rlp.Encode(getTx).Bytes.ToHexString()}\"]";
 
             string result = chain.TestSerializedRequest(chain.MevRpcModule, "eth_callBundle", transactions);
@@ -169,7 +169,7 @@ namespace Nethermind.Mev.Test
         {
             var chain = await CreateChain();
             Address reverterContractAddress = await Contracts.Deploy(chain, Contracts.ReverterCode);
-            Transaction failedTx = Build.A.Transaction.WithGasLimit(Contracts.LargeGasLimit).WithGasPrice(new UInt256(1)).WithTo(reverterContractAddress).WithData(Bytes.FromHexString(Contracts.ReverterInvokeFail)).SignedAndResolved(TestItem.PrivateKeyC).TestObject;
+            Transaction failedTx = Build.A.Transaction.WithGasLimit(Contracts.LargeGasLimit).WithGasPrice(1ul).WithTo(reverterContractAddress).WithData(Bytes.FromHexString(Contracts.ReverterInvokeFail)).SignedAndResolved(TestItem.PrivateKeyC).TestObject;
             string transactions = $"[\"{Rlp.Encode(failedTx).Bytes.ToHexString()}\"]";
             string result = chain.TestSerializedRequest(chain.MevRpcModule, "eth_callBundle", transactions);
             result.Should().Be($"{{\"jsonrpc\":\"2.0\",\"result\":{{\"{failedTx.Hash!}\":{{\"error\":\"0x\"}}}},\"id\":67}}");
@@ -184,12 +184,12 @@ namespace Nethermind.Mev.Test
             Address contractAddress = await Contracts.Deploy(chain, Contracts.CoinbaseCode);
             await Contracts.SeedCoinbase(chain, contractAddress);
 
-            Transaction tx1 = Build.A.Transaction.WithGasLimit(GasCostOf.Transaction).WithGasPrice(new UInt256(120)).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
-            Transaction tx1WithLowerGasPrice = Build.A.Transaction.WithGasLimit(GasCostOf.Transaction).WithGasPrice(new UInt256(100)).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
-            Transaction tx3 = Build.A.Transaction.WithGasLimit(Contracts.LargeGasLimit).WithData(Bytes.FromHexString(Contracts.CoinbaseInvokePay)).WithTo(contractAddress).WithNonce(1).WithGasPrice(new UInt256(0)).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+            Transaction tx1 = Build.A.Transaction.WithGasLimit(GasCostOf.Transaction).WithGasPrice(120ul).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+            Transaction tx1WithLowerGasPrice = Build.A.Transaction.WithGasLimit(GasCostOf.Transaction).WithGasPrice(100ul).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+            Transaction tx3 = Build.A.Transaction.WithGasLimit(Contracts.LargeGasLimit).WithData(Bytes.FromHexString(Contracts.CoinbaseInvokePay)).WithTo(contractAddress).WithNonce(1).WithGasPrice(0ul).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
 
             Address looperContractAddress = await Contracts.Deploy(chain, Contracts.LooperCode);
-            Transaction tx4 = Build.A.Transaction.WithGasLimit(Contracts.LargeGasLimit).WithGasPrice(new UInt256(110)).WithTo(looperContractAddress).WithData(Bytes.FromHexString(Contracts.LooperInvokeLoop2000)).SignedAndResolved(TestItem.PrivateKeyD).TestObject;
+            Transaction tx4 = Build.A.Transaction.WithGasLimit(Contracts.LargeGasLimit).WithGasPrice(110ul).WithTo(looperContractAddress).WithData(Bytes.FromHexString(Contracts.LooperInvokeLoop2000)).SignedAndResolved(TestItem.PrivateKeyD).TestObject;
 
             Transaction[] bundle1 = { tx1, tx3 };
             byte[][] bundle1Bytes = { 
@@ -224,8 +224,8 @@ namespace Nethermind.Mev.Test
             var chain = await CreateChain();
             chain.GasLimitCalculator.GasLimit = GasCostOf.Transaction;
 
-            Transaction tx2 = Build.A.Transaction.WithGasLimit(GasCostOf.Transaction).WithGasPrice(new UInt256(150)).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
-            Transaction tx3 = Build.A.Transaction.WithGasLimit(GasCostOf.Transaction).WithGasPrice(new UInt256(200)).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+            Transaction tx2 = Build.A.Transaction.WithGasLimit(GasCostOf.Transaction).WithGasPrice(150ul).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+            Transaction tx3 = Build.A.Transaction.WithGasLimit(GasCostOf.Transaction).WithGasPrice(200ul).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
 
             byte[][] bundleBytes = { Rlp.Encode(tx3).Bytes };
              ResultWrapper<bool> resultOfBundle = chain.MevRpcModule.eth_sendBundle(bundleBytes, 1);
@@ -243,8 +243,8 @@ namespace Nethermind.Mev.Test
             var chain = await CreateChain();
             chain.GasLimitCalculator.GasLimit = GasCostOf.Transaction;
 
-            Transaction tx1 = Build.A.Transaction.WithGasLimit(GasCostOf.Transaction).WithGasPrice(new UInt256(100)).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
-            Transaction tx4 = Build.A.Transaction.WithGasLimit(GasCostOf.Transaction).WithGasPrice(new UInt256(50)).SignedAndResolved(TestItem.PrivateKeyC).TestObject;
+            Transaction tx1 = Build.A.Transaction.WithGasLimit(GasCostOf.Transaction).WithGasPrice(100ul).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+            Transaction tx4 = Build.A.Transaction.WithGasLimit(GasCostOf.Transaction).WithGasPrice(50ul).SignedAndResolved(TestItem.PrivateKeyC).TestObject;
 
             byte[][] bundleBytes = { Rlp.Encode(tx4).Bytes };
             ResultWrapper<bool> resultOfBundle = chain.MevRpcModule.eth_sendBundle(bundleBytes, 1);
@@ -263,8 +263,8 @@ namespace Nethermind.Mev.Test
             var chain = await CreateChain();
             chain.GasLimitCalculator.GasLimit = 10_000_000;
             
-            Transaction tx1 = Build.A.Transaction.WithGasLimit(GasCostOf.Transaction).WithGasPrice(new UInt256(100)).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
-            Transaction tx2 = Build.A.Transaction.WithGasLimit(GasCostOf.Transaction).WithGasPrice(new UInt256(150)).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+            Transaction tx1 = Build.A.Transaction.WithGasLimit(GasCostOf.Transaction).WithGasPrice(100ul).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+            Transaction tx2 = Build.A.Transaction.WithGasLimit(GasCostOf.Transaction).WithGasPrice(150ul).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
             
             Address contractAddress = await Contracts.Deploy(chain, Contracts.ReverterCode);
             Transaction tx3 = Build.A.Transaction.WithGasLimit(Contracts.LargeGasLimit).WithGasPrice(500).WithTo(contractAddress).WithData(Bytes.FromHexString(Contracts.ReverterInvokeFail)).SignedAndResolved(TestItem.PrivateKeyC).TestObject;
@@ -289,15 +289,15 @@ namespace Nethermind.Mev.Test
             chain.GasLimitCalculator.GasLimit = 10_000_000;
 
             Address contractAddress = await Contracts.Deploy(chain, Contracts.SetableCode);
+            
+            TransactionBuilder<Transaction> BuildTx() => Build.A.Transaction.WithGasLimit(Contracts.LargeGasLimit).WithGasPrice(0ul).WithTo(contractAddress);
 
-            var builder = Build.A.Transaction.WithGasLimit(Contracts.LargeGasLimit).WithGasPrice(new UInt256(0)).WithTo(contractAddress);
-            Transaction set1 = builder.WithData(Bytes.FromHexString(Contracts.SetableInvokeSet1)).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
-            Transaction set2 = builder.WithData(Bytes.FromHexString(Contracts.SetableInvokeSet2)).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
-            Transaction set3 = builder.WithData(Bytes.FromHexString(Contracts.SetableInvokeSet3)).WithGasPrice(new UInt256(75)).SignedAndResolved(TestItem.PrivateKeyD).TestObject;
-            Transaction get = Build.A.Transaction.WithTo(contractAddress).WithData(Bytes.FromHexString(Contracts.SetableInvokeGet)).TestObject;
-
-            Transaction tx4 = Build.A.Transaction.WithGasLimit(GasCostOf.Transaction).WithGasPrice(new UInt256(100)).SignedAndResolved(TestItem.PrivateKeyE).TestObject;
-            Transaction tx5 = Build.A.Transaction.WithGasLimit(GasCostOf.Transaction).WithGasPrice(new UInt256(50)).SignedAndResolved(TestItem.PrivateKeyF).TestObject;
+            Transaction set1 = BuildTx().WithData(Bytes.FromHexString(Contracts.SetableInvokeSet1)).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+            Transaction set2 = BuildTx().WithData(Bytes.FromHexString(Contracts.SetableInvokeSet2)).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+            Transaction set3 = BuildTx().WithData(Bytes.FromHexString(Contracts.SetableInvokeSet3)).WithGasPrice(750ul).WithNonce(1).SignedAndResolved(TestItem.PrivateKeyC).TestObject;
+            
+            Transaction tx4 = Build.A.Transaction.WithGasLimit(GasCostOf.Transaction).WithGasPrice(10ul).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+            Transaction tx5 = Build.A.Transaction.WithGasLimit(GasCostOf.Transaction).WithGasPrice(5ul).WithNonce(1).SignedAndResolved(TestItem.PrivateKeyC).TestObject;
 
             // send regular tx before bundle
             await SendSignedTransaction(chain, tx4);
@@ -308,17 +308,13 @@ namespace Nethermind.Mev.Test
                 Rlp.Encode(set2).Bytes,
                 Rlp.Encode(set3).Bytes
             };
-            ResultWrapper<bool> resultOfBundle = chain.MevRpcModule.eth_sendBundle(bundleBytes, 1);
+            ResultWrapper<bool> resultOfBundle = chain.MevRpcModule.eth_sendBundle(bundleBytes, 2);
             Assert.AreNotEqual(ResultType.Failure, resultOfBundle.GetResult().ResultType);
             Assert.IsTrue((bool) resultOfBundle.GetData());
 
             await chain.AddBlock(true);
 
             GetHashes(chain.BlockTree.Head!.Transactions).Should().Equal(GetHashes(new Transaction[] { set1, set2, set3, tx4, tx5 }));
-            
-            ResultWrapper<string> resultGet = chain.EthRpcModule.eth_call(new TransactionForRpc(get));
-            Assert.AreNotEqual(resultGet.GetResult().ResultType, ResultType.Failure);
-            ((string) resultGet.GetData()).Should().Be(Contracts.SetableGetValueAfterSets);
         }
 
         [Test]

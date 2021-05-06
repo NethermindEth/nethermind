@@ -31,7 +31,6 @@ namespace Nethermind.Mev.Source
         
         private readonly IBundleSource _bundleSource;
         private readonly ITimestamper _timestamper;
-        private ISet<MevBundle>? _bundles;
         private readonly TimeSpan _timeout;
 
         public BundleTxSource(IBundleSource bundleSource, ITimestamper timestamper, TimeSpan? timeout = null)
@@ -44,12 +43,10 @@ namespace Nethermind.Mev.Source
         public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit)
         {
             using CancellationTokenSource cancellationTokenSource = new(_timeout);
-            _bundles = new HashSet<MevBundle>();
             Task<IEnumerable<MevBundle>> bundlesTasks = _bundleSource.GetBundles(parent, _timestamper.UnixTime.Seconds, gasLimit, cancellationTokenSource.Token);
             IEnumerable<MevBundle> bundles = bundlesTasks.Result; // Is it ok as it will timeout on cancellation token and not create a deadlock?
             foreach (MevBundle bundle in bundles)
             {
-                _bundles.Add(bundle);
                 foreach (Transaction transaction in bundle.Transactions)
                 {
                     yield return transaction;
