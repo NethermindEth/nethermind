@@ -111,9 +111,10 @@ namespace Nethermind.Blockchain.Producers
             IEnumerable<Transaction> transactions = GetOrderedTransactions(pendingTransactions, comparer);
             IDictionary<Address, UInt256> remainingBalance = new Dictionary<Address, UInt256>();
             Dictionary<Address, UInt256> nonces = new();
-            List<Transaction> selected = new();
             if (_logger.IsDebug) _logger.Debug($"Collecting pending transactions at block gas limit {gasLimit}.");
 
+            int i = 0;
+            
             foreach (Transaction tx in transactions)
             {
                 if (tx.SenderAddress == null)
@@ -154,15 +155,16 @@ namespace Nethermind.Blockchain.Producers
                     if (_logger.IsDebug) _logger.Debug($"Rejecting (sender balance too low) {tx.ToShortString()}");
                     continue;
                 }
-
-                selected.Add(tx);
+                
                 if (_logger.IsTrace) _logger.Trace($"Selected {tx.ToShortString()} to be included in block.");
                 nonces[tx.SenderAddress!] = tx.Nonce + 1;
+
+                i++;
+                yield return tx;
             }
 
-            if (_logger.IsDebug) _logger.Debug($"Collected {selected.Count} out of {pendingTransactions.Sum(g => g.Value.Length)} pending transactions.");
-
-            return selected;
+            if (_logger.IsDebug) _logger.Debug($"Collected {i} out of {pendingTransactions.Sum(g => g.Value.Length)} pending transactions.");
+            
         }
 
         protected virtual IEnumerable<Transaction> GetOrderedTransactions(IDictionary<Address,Transaction[]> pendingTransactions, IComparer<Transaction> comparer) => 
