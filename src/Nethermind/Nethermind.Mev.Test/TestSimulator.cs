@@ -59,7 +59,7 @@ namespace Nethermind.Mev.Test
                 }
             }
 
-            SimulatedMevBundle simulatedMevBundle = new(bundle, gasUsed, txFees, coinbasePayments);
+            SimulatedMevBundle simulatedMevBundle = new(bundle, true, gasUsed, txFees, coinbasePayments);
             return Task.FromResult(simulatedMevBundle);
         }
 

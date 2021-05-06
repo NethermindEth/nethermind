@@ -51,12 +51,12 @@ namespace Nethermind.Mev.Execution
             }
             catch (OperationCanceledException)
             {
-                return Task.FromResult(new SimulatedMevBundle(bundle, 0, UInt256.Zero, UInt256.Zero));
+                return Task.FromResult(new SimulatedMevBundle(bundle, false, 0, UInt256.Zero, UInt256.Zero));
             }
         }
 
         protected override SimulatedMevBundle BuildResult(MevBundle bundle, Block block, BundleBlockTracer tracer, Keccak resultStateRoot) => 
-            new(bundle, tracer.GasUsed, tracer.TxFees, tracer.CoinbasePayments);
+            new(bundle, tracer.Success, tracer.GasUsed, tracer.TxFees, tracer.CoinbasePayments);
 
         protected override BundleBlockTracer CreateBlockTracer() => new(_gasLimit, Beneficiary);
 
@@ -87,13 +87,15 @@ namespace Nethermind.Mev.Execution
                 {
                     UInt256 beneficiaryBalanceAfter = _beneficiaryBalanceAfter ?? UInt256.Zero;
                     UInt256 beneficiaryBalanceBefore = _beneficiaryBalanceBefore ?? UInt256.Zero;
-                    return beneficiaryBalanceAfter > beneficiaryBalanceBefore 
+                    return beneficiaryBalanceAfter > (beneficiaryBalanceBefore + TxFees)
                         ? beneficiaryBalanceAfter - beneficiaryBalanceBefore - TxFees 
                         : UInt256.Zero;
                 }
             }
 
             public UInt256 Reward { get; private set; }
+
+            public bool Success { get; private set; } = true;
 
             public void ReportReward(Address author, string rewardType, UInt256 rewardValue)
             {
@@ -115,6 +117,7 @@ namespace Nethermind.Mev.Execution
                 GasUsed += _tracer!.GasSpent;
                 _beneficiaryBalanceBefore ??= _tracer.BeneficiaryBalanceBefore;
                 _beneficiaryBalanceAfter = _tracer.BeneficiaryBalanceAfter;
+                Success &= _tracer.Success;
                 if (_tracer.Transaction.TryCalculatePremiumPerGas(_block!.BaseFee, out UInt256 premiumPerGas))
                 {
                     TxFees += (UInt256)_tracer.GasSpent * premiumPerGas;
@@ -155,14 +158,18 @@ namespace Nethermind.Mev.Execution
             public UInt256? BeneficiaryBalanceBefore { get; private set; }
             public UInt256? BeneficiaryBalanceAfter { get; private set; }
             
+            public bool Success { get; private set; }
+            
             public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak? stateRoot = null)
             {
                 GasSpent = gasSpent;
+                Success = true;
             }
 
             public void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Keccak? stateRoot = null)
             {
-                GasSpent = gasSpent; 
+                GasSpent = gasSpent;
+                Success = false;
             }
 
             public void StartOperation(int depth, long gas, Instruction opcode, int pc)

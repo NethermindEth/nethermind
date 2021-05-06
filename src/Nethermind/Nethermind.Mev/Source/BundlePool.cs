@@ -227,6 +227,7 @@ namespace Nethermind.Mev.Source
                 return resultTasks
                     .Where(t => t.IsCompletedSuccessfully)
                     .Select(t => t.Result)
+                    .Where(t => t.Success)
                     .Where(s => s.GasUsed <= gasLimit);
             }
             else
