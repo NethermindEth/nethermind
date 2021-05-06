@@ -52,7 +52,7 @@ namespace Nethermind.Mev.Test
         private Task<TestMevRpcBlockchain> CreateChain(Func<ISimulatedBundleSource, IBundleSource>? getSelector = null)
         {
             getSelector ??= source => new V1Selector(source);
-            TestMevRpcBlockchain testMevRpcBlockchain = new TestMevRpcBlockchain(getSelector);
+            TestMevRpcBlockchain testMevRpcBlockchain = new(getSelector);
             return TestRpcBlockchain.ForTest(testMevRpcBlockchain).Build();
         }
         
@@ -73,8 +73,8 @@ namespace Nethermind.Mev.Test
             
             public IMevRpcModule MevRpcModule { get; set; } = Substitute.For<IMevRpcModule>();
             public IManualBlockFinalizationManager FinalizationManager { get; } = new ManualBlockFinalizationManager();
-            public ManualGasLimitCalculator GasLimitCalculator = new();
-            public Address MinerAddress => TestItem.PrivateKeyA.Address;
+            public ManualGasLimitCalculator GasLimitCalculator = new() {GasLimit = 10_000_000};
+            public Address MinerAddress => TestItem.PrivateKeyD.Address;
             private IBlockValidator BlockValidator { get; set; } = null!;
             private ISigner Signer { get; }
 
@@ -111,7 +111,7 @@ namespace Nethermind.Mev.Test
             protected override BlockProcessor CreateBlockProcessor()
             {
                 BlockValidator = CreateBlockValidator();
-                BlockProcessor blockProcessor = new BlockProcessor(
+                BlockProcessor blockProcessor = new(
                     SpecProvider,
                     BlockValidator,
                     NoBlockRewards.Instance,

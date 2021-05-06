@@ -38,11 +38,10 @@ namespace Nethermind.Mev.Source
         public async Task<IEnumerable<MevBundle>> GetBundles(BlockHeader parent, UInt256 timestamp, long gasLimit, CancellationToken token = default)
         {
             SimulatedMevBundle? bestBundle = null;
-            long bestAdjustedGasPrice = 0;
             IEnumerable<SimulatedMevBundle> simulatedBundles = await _simulatedBundleSource.GetBundles(parent, timestamp, gasLimit, token);
             foreach (var simulatedBundle in simulatedBundles)
             {
-                if (simulatedBundle.AdjustedGasPrice > bestAdjustedGasPrice)
+                if (bestBundle is null || simulatedBundle.AdjustedGasPrice > bestBundle.AdjustedGasPrice)
                 {
                     bestBundle = simulatedBundle;
                 }

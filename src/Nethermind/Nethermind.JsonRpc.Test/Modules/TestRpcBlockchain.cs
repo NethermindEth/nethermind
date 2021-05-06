@@ -102,7 +102,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
         protected override async Task<TestBlockchain> Build(ISpecProvider specProvider = null, UInt256? initialValues = null)
         {
-            BloomStorage bloomStorage = new BloomStorage(new BloomConfig(), new MemDb(), new InMemoryDictionaryFileStoreFactory());
+            BloomStorage bloomStorage = new(new BloomConfig(), new MemDb(), new InMemoryDictionaryFileStoreFactory());
             specProvider ??= MainnetSpecProvider.Instance;
             await base.Build(specProvider, initialValues);
             IFilterStore filterStore = new FilterStore();

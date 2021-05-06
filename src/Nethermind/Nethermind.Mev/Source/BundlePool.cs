@@ -68,7 +68,7 @@ namespace Nethermind.Mev.Source
             {
                 MevBundle searchedBundle = MevBundle.Empty(blockNumber, minTimestamp, maxTimestamp);
                 int i = _bundles.BinarySearch(searchedBundle, CompareBundles);
-                for (int j = i >= 0 ? i : ~i; j < _bundles.Count; j++)
+                for (int j = (i >= 0 ? i : ~i); j < _bundles.Count; j++)
                 {
                     if (token.IsCancellationRequested)
                     {

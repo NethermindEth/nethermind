@@ -244,7 +244,7 @@ namespace Nethermind.Mev.Test
             chain.GasLimitCalculator.GasLimit = GasCostOf.Transaction;
 
             Transaction tx1 = Build.A.Transaction.WithGasLimit(GasCostOf.Transaction).WithGasPrice(new UInt256(100)).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
-            Transaction tx4 = Build.A.Transaction.WithGasLimit(GasCostOf.Transaction).WithGasPrice(new UInt256(50)).SignedAndResolved(TestItem.PrivateKeyD).TestObject;
+            Transaction tx4 = Build.A.Transaction.WithGasLimit(GasCostOf.Transaction).WithGasPrice(new UInt256(50)).SignedAndResolved(TestItem.PrivateKeyC).TestObject;
 
             byte[][] bundleBytes = { Rlp.Encode(tx4).Bytes };
             ResultWrapper<bool> resultOfBundle = chain.MevRpcModule.eth_sendBundle(bundleBytes, 1);
