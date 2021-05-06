@@ -169,10 +169,10 @@ namespace Nethermind.Mev.Test
         {
             var chain = await CreateChain();
             Address reverterContractAddress = await Contracts.Deploy(chain, Contracts.ReverterCode);
-            Transaction failedTx = Build.A.Transaction.WithGasLimit(Contracts.LargeGasLimit).WithGasPrice(new UInt256(1)).WithTo(reverterContractAddress).WithData(Bytes.FromHexString(Contracts.ReverterInvokeFail)).SignedAndResolved(TestItem.PrivateKeyD).TestObject;
+            Transaction failedTx = Build.A.Transaction.WithGasLimit(Contracts.LargeGasLimit).WithGasPrice(new UInt256(1)).WithTo(reverterContractAddress).WithData(Bytes.FromHexString(Contracts.ReverterInvokeFail)).SignedAndResolved(TestItem.PrivateKeyC).TestObject;
             string transactions = $"[\"{Rlp.Encode(failedTx).Bytes.ToHexString()}\"]";
             string result = chain.TestSerializedRequest(chain.MevRpcModule, "eth_callBundle", transactions);
-            result.Should().Be($"{{\"jsonrpc\":\"2.0\",\"result\":{{\"{failedTx.Hash!}\":{{\"error\":\"\"}}}},\"id\":1}}");
+            result.Should().Be($"{{\"jsonrpc\":\"2.0\",\"result\":{{\"{failedTx.Hash!}\":{{\"error\":\"0x\"}}}},\"id\":67}}");
         }
 
         [Test]
@@ -267,7 +267,7 @@ namespace Nethermind.Mev.Test
             Transaction tx2 = Build.A.Transaction.WithGasLimit(GasCostOf.Transaction).WithGasPrice(new UInt256(150)).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
             
             Address contractAddress = await Contracts.Deploy(chain, Contracts.ReverterCode);
-            Transaction tx3 = Build.A.Transaction.WithGasLimit(Contracts.LargeGasLimit).WithGasPrice(500).WithTo(contractAddress).WithData(Bytes.FromHexString(Contracts.ReverterInvokeFail)).SignedAndResolved(TestItem.PrivateKeyD).TestObject;
+            Transaction tx3 = Build.A.Transaction.WithGasLimit(Contracts.LargeGasLimit).WithGasPrice(500).WithTo(contractAddress).WithData(Bytes.FromHexString(Contracts.ReverterInvokeFail)).SignedAndResolved(TestItem.PrivateKeyC).TestObject;
 
             byte[][] bundleBytes = { 
                 Rlp.Encode(tx2).Bytes, 
