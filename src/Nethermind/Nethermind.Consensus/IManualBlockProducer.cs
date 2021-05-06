@@ -26,6 +26,6 @@ namespace Nethermind.Consensus
     {
         Task<Block?> TryProduceBlock(BlockHeader parentHeader, CancellationToken cancellationToken = default);
         
-        IReadOnlyStateProvider StateProvider { get; }
+        IStateProvider StateProvider { get; }
     }
 }

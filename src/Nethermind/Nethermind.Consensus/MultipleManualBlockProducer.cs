@@ -77,7 +77,7 @@ namespace Nethermind.Consensus
                 produceTasks.Add(_blockProducers[i].TryProduceBlock(parentHeader, cancellationToken));
             }
 
-            IReadOnlyStateProvider[] stateProviders = _blockProducers.Select(p => p.StateProvider).ToArray();
+            IStateProvider[] stateProviders = _blockProducers.Select(p => p.StateProvider).ToArray();
             
             try
             {
@@ -86,7 +86,7 @@ namespace Nethermind.Consensus
             }
             catch (OperationCanceledException)
             {
-                IEnumerable<(Block? Block, IReadOnlyStateProvider StateProvider)> blocks  = produceTasks
+                IEnumerable<(Block? Block, IStateProvider StateProvider)> blocks  = produceTasks
                     .Zip(stateProviders)
                     .Where(t => t.First.IsCompletedSuccessfully)
                     .Select(t => (t.First.Result, t.Second));
@@ -95,8 +95,8 @@ namespace Nethermind.Consensus
             }
         }
 
-        public IReadOnlyStateProvider StateProvider => _blockProducers.FirstOrDefault()?.StateProvider!;
+        public IStateProvider StateProvider => _blockProducers.FirstOrDefault()?.StateProvider!;
 
-        protected abstract Block? GetBestBlock(IEnumerable<(Block? Block, IReadOnlyStateProvider StateProvider)> blocks);
+        protected abstract Block? GetBestBlock(IEnumerable<(Block? Block, IStateProvider StateProvider)> blocks);
     }
 }

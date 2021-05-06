@@ -35,15 +35,15 @@ namespace Nethermind.Mev
         {
         }
 
-        protected override Block? GetBestBlock(IEnumerable<(Block? Block, IReadOnlyStateProvider StateProvider)> blocks)
+        protected override Block? GetBestBlock(IEnumerable<(Block? Block, IStateProvider StateProvider)> blocks)
         {
             Block? best = null;
             UInt256 maxBalance = UInt256.Zero;
-            foreach ((Block? Block, IReadOnlyStateProvider StateProvider) context in blocks)
+            foreach ((Block? Block, IStateProvider StateProvider) context in blocks)
             {
                 if (context.Block is not null)
                 {
-                    UInt256 balance = context.StateProvider.GetBalance(context.Block.Beneficiary!);
+                    UInt256 balance = context.StateProvider.GetBalance(context.Block.Header.GasBeneficiary!);
                     if (balance > maxBalance)
                     {
                         best = context.Block;

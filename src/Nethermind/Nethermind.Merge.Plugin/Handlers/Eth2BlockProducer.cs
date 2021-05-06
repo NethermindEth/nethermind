@@ -71,7 +71,7 @@ namespace Nethermind.Merge.Plugin.Handlers
             }
         }
 
-        public new IReadOnlyStateProvider StateProvider => base.StateProvider;
+        public new IStateProvider StateProvider => base.StateProvider;
 
         protected override bool IsRunning() => _stated == 1;
 
