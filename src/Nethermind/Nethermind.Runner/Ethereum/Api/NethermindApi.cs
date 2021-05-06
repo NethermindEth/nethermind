@@ -21,6 +21,7 @@ using Nethermind.Abi;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Comparers;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Processing;
@@ -185,6 +186,7 @@ namespace Nethermind.Runner.Ethereum.Api
         public IHealthHintService? HealthHintService { get; set; }
         public TxValidator? TxValidator { get; set; }
         public IWallet? Wallet { get; set; }
+        public ITransactionComparerProvider TransactionComparerProvider { get; set; }
         public IWebSocketsManager WebSocketsManager { get; set; } = new WebSocketsManager();
 
         public ProtectedPrivateKey? NodeKey { get; set; }

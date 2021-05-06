@@ -20,6 +20,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Comparers;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Services;
@@ -112,7 +113,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             else
             {
                 setApi.TrieStore = trieStore = new TrieStore(
-                    setApi.MainStateDbWithCache.WitnessedBy(witnessCollector), // TODO: PRUNING what a hack here just to pass the actual DB
+                    setApi.MainStateDbWithCache.WitnessedBy(witnessCollector),
                     No.Pruning,
                     Persist.EveryBlock,
                     getApi.LogManager);
@@ -132,6 +133,8 @@ namespace Nethermind.Runner.Ethereum.Steps
             PersistentTxStorage txStorage = new(getApi.DbProvider.PendingTxsDb);
             IStateReader stateReader = setApi.StateReader = new StateReader(readOnlyTrieStore, readOnly.GetDb<IDb>(DbNames.Code), getApi.LogManager);
             
+            setApi.TransactionComparerProvider =
+                new TransactionComparerProvider(getApi.SpecProvider!, getApi.BlockTree.AsReadOnly());
             setApi.ChainHeadStateProvider = new ChainHeadReadOnlyStateProvider(getApi.BlockTree, stateReader);
             Account.AccountStartNonce = getApi.ChainSpec.Parameters.AccountStartNonce;
 
@@ -272,7 +275,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.LogManager,
                 CreateTxPoolTxComparer());
 
-        protected IComparer<Transaction> CreateTxPoolTxComparer() => TxPool.TxPool.DefaultComparer;
+        protected IComparer<Transaction> CreateTxPoolTxComparer() => _api.TransactionComparerProvider.GetDefaultComparer();
 
         protected virtual HeaderValidator CreateHeaderValidator() =>
             new HeaderValidator(

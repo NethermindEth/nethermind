@@ -30,6 +30,7 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.State.Proofs;
+using Nethermind.Core.Specs;
 
 namespace Nethermind.Blockchain.Producers
 {
@@ -55,6 +56,8 @@ namespace Nethermind.Blockchain.Producers
         protected ISealer Sealer { get; }
         private readonly IStateProvider _stateProvider;
         private readonly IGasLimitCalculator _gasLimitCalculator;
+        private readonly ITimestamper _timestamper;
+        private readonly ISpecProvider _spec;
         private readonly ITxSource _txSource;
 
         protected DateTime _lastProducedBlock;
@@ -69,6 +72,7 @@ namespace Nethermind.Blockchain.Producers
             IStateProvider? stateProvider,
             IGasLimitCalculator? gasLimitCalculator,
             ITimestamper? timestamper,
+            ISpecProvider? specProvider,
             ILogManager? logManager)
         {
             _txSource = txSource ?? throw new ArgumentNullException(nameof(txSource));
@@ -79,6 +83,7 @@ namespace Nethermind.Blockchain.Producers
             _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
             _gasLimitCalculator = gasLimitCalculator ?? throw new ArgumentNullException(nameof(gasLimitCalculator));
             Timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
+            _spec = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             Logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
@@ -216,7 +221,9 @@ namespace Nethermind.Blockchain.Producers
         private IEnumerable<Transaction> GetTransactions(BlockHeader parent)
         {
             long gasLimit = _gasLimitCalculator.GetGasLimit(parent);
-            return _txSource.GetTransactions(parent, gasLimit);
+            bool isEip1559Enabled = _spec.GetSpec(parent.Number + 1).IsEip1559Enabled;
+            long gasLimitEip1559Adjusted = Eip1559GasLimitAdjuster.AdjustGasLimit(isEip1559Enabled, gasLimit);
+            return _txSource.GetTransactions(parent, gasLimitEip1559Adjusted);
         }
 
         protected virtual Block PrepareBlock(BlockHeader parent)
@@ -237,6 +244,7 @@ namespace Nethermind.Blockchain.Producers
             };
 
             if (Logger.IsDebug) Logger.Debug($"Setting total difficulty to {parent.TotalDifficulty} + {difficulty}.");
+            header.BaseFee = BlockHeader.CalculateBaseFee(parent, _spec.GetSpec(header.Number));
 
             IEnumerable<Transaction> transactions = GetTransactions(parent);
             Block block = new(header, transactions, Array.Empty<BlockHeader>());

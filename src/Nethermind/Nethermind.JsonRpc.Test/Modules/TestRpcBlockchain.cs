@@ -35,12 +35,10 @@ using Nethermind.Db.Blooms;
 using Nethermind.Int256;
 using Nethermind.KeyStore;
 using Nethermind.Specs;
-using Nethermind.Synchronization;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
 using Newtonsoft.Json;
-using NSubstitute;
 
 namespace Nethermind.JsonRpc.Test.Modules
 {
@@ -133,7 +131,8 @@ namespace Nethermind.JsonRpc.Test.Modules
                 TxPool,
                 TxSender,
                 TestWallet,
-                LimboLogs.Instance);
+                LimboLogs.Instance,
+                SpecProvider);
             
             return this;
         }

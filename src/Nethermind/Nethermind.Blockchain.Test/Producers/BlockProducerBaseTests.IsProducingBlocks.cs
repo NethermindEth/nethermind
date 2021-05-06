@@ -45,7 +45,7 @@ using NUnit.Framework;
 namespace Nethermind.Blockchain.Test.Producers
 {
     [Parallelizable(ParallelScope.All)]
-    public class BlockProducerTests
+    public partial class BlockProducerBaseTests
     {
         [Test]
         public async Task DevBlockProducer_IsProducingBlocks_returns_expected_results()
@@ -76,7 +76,8 @@ namespace Nethermind.Blockchain.Test.Producers
                 Substitute.For<ISealer>(),
                 testRpc.BlockTree,
                 Substitute.For<IBlockProcessingQueue>(),
-                testRpc.Timestamper, 
+                testRpc.Timestamper,
+                testRpc.SpecProvider,
                 LimboLogs.Instance);
             await AssertIsProducingBlocks(blockProducer);
         }
@@ -94,7 +95,7 @@ namespace Nethermind.Blockchain.Test.Producers
                 testRpc.State,
                 Substitute.For<IGasLimitCalculator>(),
                 testRpc.Timestamper,
-                testRpc.SpecProvider, 
+                testRpc.SpecProvider,
                 LimboLogs.Instance,
                 Substitute.For<IDifficultyCalculator>());
             await AssertIsProducingBlocks(blockProducer);

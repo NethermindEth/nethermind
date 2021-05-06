@@ -17,6 +17,7 @@
 
 using System.Threading;
 using FluentAssertions;
+using Nethermind.Blockchain.Comparers;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Rewards;
@@ -60,6 +61,8 @@ namespace Nethermind.Blockchain.Test
             ISpecProvider specProvider = MainnetSpecProvider.Instance;
             IBloomStorage bloomStorage = NullBloomStorage.Instance;
             EthereumEcdsa ecdsa = new EthereumEcdsa(1, LimboLogs.Instance);
+            ITransactionComparerProvider transactionComparerProvider =
+                new TransactionComparerProvider(specProvider, _blockTree);
             _blockTree = new BlockTree(
                 memDbProvider,
                 chainLevelInfoRepository,
@@ -74,7 +77,8 @@ namespace Nethermind.Blockchain.Test
                 new TxPoolConfig(),
                 stateProvider,
                 new TxValidator(specProvider.ChainId),
-                LimboLogs.Instance);
+                LimboLogs.Instance, 
+                transactionComparerProvider.GetDefaultComparer());
             BlockhashProvider blockhashProvider = new BlockhashProvider(_blockTree, LimboLogs.Instance);
             VirtualMachine virtualMachine = new VirtualMachine(
                 stateProvider,

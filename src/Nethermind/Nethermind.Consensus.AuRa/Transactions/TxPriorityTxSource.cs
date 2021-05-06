@@ -18,12 +18,14 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Nethermind.Blockchain.Comparers;
 using Nethermind.Blockchain.Producers;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.AuRa.Contracts.DataStore;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
@@ -42,19 +44,21 @@ namespace Nethermind.Consensus.AuRa.Transactions
             ITxPool transactionPool, 
             IStateReader stateReader, 
             ILogManager logManager, 
-            ITxFilter txFilter,
+            ITxFilterPipeline txFilterPipeline,
             IContractDataStore<Address> sendersWhitelist, // expected HashSet based
-            IDictionaryContractDataStore<TxPriorityContract.Destination> priorities) // expected SortedList based
-            : base(transactionPool, stateReader, logManager, txFilter)
+            IDictionaryContractDataStore<TxPriorityContract.Destination> priorities,
+            ISpecProvider specProvider,
+            ITransactionComparerProvider transactionComparerProvider) // expected SortedList based
+            : base(transactionPool, stateReader, specProvider, transactionComparerProvider, logManager, txFilterPipeline)
         {
             _sendersWhitelist = sendersWhitelist ?? throw new ArgumentNullException(nameof(sendersWhitelist));
             _priorities = priorities ?? throw new ArgumentNullException(nameof(priorities));
         }
 
-        protected override IComparer<Transaction> GetComparer(BlockHeader parent)
+        protected override IComparer<Transaction> GetComparer(BlockHeader parent, BlockPreparationContext blockPreparationContext)
         {
             _comparer = new CompareTxByPriorityOnSpecifiedBlock(_sendersWhitelist, _priorities, parent);
-            return _comparer.ThenBy(base.GetComparer(parent));
+            return _comparer.ThenBy(base.GetComparer(parent, blockPreparationContext));
         }
 
         public override string ToString() => $"{nameof(TxPriorityTxSource)}";

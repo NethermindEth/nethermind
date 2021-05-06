@@ -55,7 +55,8 @@ namespace Nethermind.Blockchain.Validators
         private bool ValidateTxType(Transaction transaction, IReleaseSpec releaseSpec)
         {
             return transaction.Type == TxType.Legacy || 
-                   (transaction.Type == TxType.AccessList && releaseSpec.UseTxAccessLists);
+                   (transaction.Type == TxType.AccessList && releaseSpec.UseTxAccessLists) ||
+                   (transaction.Type == TxType.EIP1559 && releaseSpec.IsEip1559Enabled);
         }
 
         private bool ValidateSignature(Signature signature, IReleaseSpec spec)

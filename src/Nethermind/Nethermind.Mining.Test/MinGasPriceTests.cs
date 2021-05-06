@@ -17,8 +17,12 @@
 
 using FluentAssertions;
 using Nethermind.Consensus.Transactions;
+using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
+using Nethermind.Specs;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Mining.Test
@@ -33,9 +37,32 @@ namespace Nethermind.Mining.Test
         [TestCase(2L, 1L, false)]
         public void Test(long minimum, long actual, bool expectedResult)
         {
-            MinGasPriceTxFilter _filter = new MinGasPriceTxFilter((UInt256)minimum);
-            var tx = Build.A.Transaction.WithGasPrice((UInt256)actual).TestObject;
+            ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+            specProvider.GetSpec(Arg.Any<long>()).Returns(new ReleaseSpec()
+            {
+                IsEip1559Enabled = false
+            });
+            MinGasPriceTxFilter _filter = new MinGasPriceTxFilter((UInt256)minimum, specProvider);
+            Transaction tx = Build.A.Transaction.WithGasPrice((UInt256)actual).TestObject;
             _filter.IsAllowed(tx, null).Allowed.Should().Be(expectedResult);
+        }
+        
+        [TestCase(0L, 0L, true)]
+        [TestCase(1L, 0L, false)]
+        [TestCase(1L, 1L, true)]
+        [TestCase(1L, 2L, true)]
+        [TestCase(2L, 1L, false)]
+        public void Test1559(long minimum, long actual, bool expectedResult)
+        {
+            ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+            specProvider.GetSpec(Arg.Any<long>()).Returns(new ReleaseSpec()
+            {
+                IsEip1559Enabled = true
+            });
+            MinGasPriceTxFilter _filter = new MinGasPriceTxFilter((UInt256)minimum, specProvider);
+            Transaction tx = Build.A.Transaction.WithGasPrice(0).WithFeeCap((UInt256)actual).WithType(TxType.EIP1559).TestObject;
+            BlockBuilder blockBuilder = Core.Test.Builders.Build.A.Block.Genesis.WithGasLimit(10000).WithBaseFee((UInt256)actual).WithGasUsed(100);
+            _filter.IsAllowed(tx, blockBuilder.TestObject.Header).Allowed.Should().Be(expectedResult);
         }
     }
 }

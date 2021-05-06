@@ -15,11 +15,13 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using Nethermind.Core.Specs;
+
 namespace Nethermind.Consensus.Transactions
 {
     public static class TxFilterBuilders
     {
-        public static ITxFilter CreateStandardTxFilter(IMiningConfig miningConfig)
-            => new MinGasPriceTxFilter(miningConfig.MinGasPrice);
+        public static ITxFilter CreateStandardTxFilter(IMiningConfig miningConfig, ISpecProvider specProvider)
+            => new MinGasPriceTxFilter(miningConfig.MinGasPrice, specProvider);
     }
 }

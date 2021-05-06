@@ -28,6 +28,7 @@ using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Facade;
 using Nethermind.JsonRpc.Data;
@@ -56,6 +57,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         private readonly ITxPool _txPoolBridge;
         private readonly ITxSender _txSender;
         private readonly IWallet _wallet;
+        private readonly ISpecProvider _specProvider;
 
         private readonly ILogger _logger;
         private static bool HasStateForBlock(IBlockchainBridge blockchainBridge, BlockHeader header)
@@ -73,7 +75,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
             ITxPool txPool,
             ITxSender txSender,
             IWallet wallet,
-            ILogManager logManager)
+            ILogManager logManager,
+            ISpecProvider specProvider)
         {
             _logger = logManager.GetClassLogger();
             _rpcConfig = rpcConfig ?? throw new ArgumentNullException(nameof(rpcConfig));
@@ -83,6 +86,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             _txPoolBridge = txPool ?? throw new ArgumentNullException(nameof(txPool));
             _txSender = txSender ?? throw new ArgumentNullException(nameof(txSender));
             _wallet = wallet ?? throw new ArgumentNullException(nameof(wallet));
+            _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
         }
 
         public ResultWrapper<string> eth_protocolVersion()
@@ -394,7 +398,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
             return ResultWrapper<BlockForRpc>.Success(block == null
                 ? null
-                : new BlockForRpc(block, returnFullTransactionObjects));
+                : new BlockForRpc(block, returnFullTransactionObjects, _specProvider));
         }
 
         public Task<ResultWrapper<TransactionForRpc>> eth_getTransactionByHash(Keccak transactionHash)
@@ -522,7 +526,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             }
 
             BlockHeader ommerHeader = block.Ommers[(int)positionIndex];
-            return ResultWrapper<BlockForRpc>.Success(new BlockForRpc(new Block(ommerHeader, BlockBody.Empty), false));
+            return ResultWrapper<BlockForRpc>.Success(new BlockForRpc(new Block(ommerHeader, BlockBody.Empty), false, _specProvider));
         }
 
         public ResultWrapper<UInt256?> eth_newFilter(Filter filter)

@@ -26,6 +26,7 @@ using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Specs;
 using Nethermind.State;
 using NSubstitute;
 using NUnit.Framework;
@@ -33,12 +34,12 @@ using NUnit.Framework;
 namespace Nethermind.Blockchain.Test.Producers
 {
     [TestFixture]
-    public class BlockProducerBaseTests
+    public partial class BlockProducerBaseTests
     {
         private class ProducerUnderTest : BlockProducerBase
         {
-            public ProducerUnderTest(ITxSource txSource, IBlockchainProcessor processor, ISealer sealer, IBlockTree blockTree, IBlockProcessingQueue blockProcessingQueue, IStateProvider stateProvider, IGasLimitCalculator gasLimitCalculator, ITimestamper timestamper, ILogManager logManager)
-                : base(txSource, processor, sealer, blockTree, blockProcessingQueue, stateProvider, gasLimitCalculator, timestamper, logManager)
+            public ProducerUnderTest(ITxSource txSource, IBlockchainProcessor processor, ISealer sealer, IBlockTree blockTree, IBlockProcessingQueue blockProcessingQueue, IStateProvider stateProvider, IGasLimitCalculator gasLimitCalculator, ITimestamper timestamper,  ILogManager logManager)
+                : base(txSource, processor, sealer, blockTree, blockProcessingQueue, stateProvider, gasLimitCalculator, timestamper, MainnetSpecProvider.Instance, logManager)
             {
             }
 
@@ -102,5 +103,7 @@ namespace Nethermind.Blockchain.Test.Producers
             Block block = producerUnderTest.Prepare(Build.A.BlockHeader.WithTimestamp(futureTime).TestObject);
             block.Timestamp.Should().BeEquivalentTo(block.Difficulty);
         }
+
+      
     }
 }

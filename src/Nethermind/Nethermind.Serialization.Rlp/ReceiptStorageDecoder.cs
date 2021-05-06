@@ -290,7 +290,7 @@ namespace Nethermind.Serialization.Rlp
                 contentLength += Rlp.LengthOf(item.GasUsed);
                 contentLength += 1 + Rlp.LengthOf(item.TxHash);
             }
-
+            
             contentLength += Rlp.LengthOf(item.GasUsedTotal);
             contentLength += Rlp.LengthOf(item.Bloom);
 
