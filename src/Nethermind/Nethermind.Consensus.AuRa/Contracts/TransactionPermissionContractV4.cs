@@ -50,14 +50,11 @@ namespace Nethermind.Consensus.AuRa.Contracts
             // _maxInclusionFeePerGas instead of the legacy _gasPrice
             // _gasLimit
             // _data Transaction data.
-            
-            long number = (parentHeader?.Number ?? 0) + 1;
-            bool isEip1559Enabled = _specProvider.GetSpec(number).IsEip1559Enabled;
-            UInt256 feeCap = isEip1559Enabled && tx.IsEip1559 ? tx.FeeCap : tx.GasPrice;
+
             
             return new object[]
             {
-                tx.SenderAddress, tx.To ?? Address.Zero, tx.Value, feeCap, tx.GasPremium, tx.GasLimit, tx.Data ?? Array.Empty<byte>()
+                tx.SenderAddress, tx.To ?? Address.Zero, tx.Value, tx.FeeCap, tx.GasPremium, tx.GasLimit, tx.Data ?? Array.Empty<byte>()
             };
         }
 
