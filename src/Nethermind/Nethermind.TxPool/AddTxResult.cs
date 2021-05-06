@@ -26,7 +26,7 @@ namespace Nethermind.TxPool
         OwnNonceAlreadyUsed,
         Filtered,
         InsufficientFunds,
-        CostOverflow,
+        BalanceOverflow,
         FutureNonce,
         GasLimitExceeded,
         FeeCapTooLow

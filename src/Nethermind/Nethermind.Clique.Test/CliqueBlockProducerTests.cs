@@ -122,7 +122,7 @@ namespace Nethermind.Clique.Test
                 ITransactionComparerProvider transactionComparerProvider =
                     new TransactionComparerProvider(specProvider, blockTree);
 
-                 TxPool.TxPool txPool = new TxPool.TxPool(new InMemoryTxStorage(), _ethereumEcdsa, new ChainHeadInfoProvider(GoerliSpecProvider.Instance, blockTree, stateReader), new TxPoolConfig(), new TxValidator(goerliSpecProvider.ChainId), _logManager, transactionComparerProvider.GetDefaultComparer());
+                 TxPool.TxPool txPool = new TxPool.TxPool(new InMemoryTxStorage(), _ethereumEcdsa, new ChainHeadInfoProvider(new FixedBlockChainHeadSpecProvider(GoerliSpecProvider.Instance), blockTree, stateProvider), new TxPoolConfig(), new TxValidator(goerliSpecProvider.ChainId), _logManager, transactionComparerProvider.GetDefaultComparer());
                 _pools[privateKey] = txPool;
 
                 BlockhashProvider blockhashProvider = new BlockhashProvider(blockTree, LimboLogs.Instance);

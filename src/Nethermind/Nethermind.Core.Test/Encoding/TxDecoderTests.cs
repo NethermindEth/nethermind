@@ -228,26 +228,6 @@ namespace Nethermind.Core.Test.Encoding
             );
         }
         
-        // [Test]
-        // public void CheckingTransactionRlp()
-        // {
-        //     Build.A.Transaction
-        //         .With(819)
-        //         .WithGasPremium(75853)
-        //         .WithValue(43203529)
-        //         .WithFeeCap(121212)
-        //         .WithTo(new Address("0x000000000000000000000000000000000000aaaa"))
-        //         .WithType(TxType.AccessList)
-        //         .WithChainId(1)
-        //         .WithAccessList(
-        //             new AccessList(
-        //                 new Dictionary<Address, IReadOnlySet<UInt256>>
-        //                 {
-        //                     {Address.Zero, new HashSet<UInt256> {(UInt256)1}}
-        //                 }, new Queue<object>(new List<object> {Address.Zero, (UInt256)1})))
-        //         .SignedAndResolved().TestObject, "access list");
-        // }
-        
         public static IEnumerable<(string, Keccak)> YoloV3TestCases()
         {
             yield return

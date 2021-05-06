@@ -261,7 +261,7 @@ namespace Nethermind.Blockchain.Test.TxPools
             EnsureSenderBalance(tx);
             AddTxResult result = _txPool.AddTransaction(tx, TxHandlingOptions.PersistentBroadcast);
             _txPool.GetPendingTransactions().Length.Should().Be(0);
-            result.Should().Be(AddTxResult.CostOverflow);
+            result.Should().Be(AddTxResult.BalanceOverflow);
         }
         
         [Test]
@@ -280,7 +280,7 @@ namespace Nethermind.Blockchain.Test.TxPools
             EnsureSenderBalance(tx.SenderAddress, UInt256.MaxValue);
             AddTxResult result = txPool.AddTransaction(tx, TxHandlingOptions.PersistentBroadcast);
             txPool.GetPendingTransactions().Length.Should().Be(0);
-            result.Should().Be(AddTxResult.CostOverflow);
+            result.Should().Be(AddTxResult.BalanceOverflow);
         }
         
         [Test]
