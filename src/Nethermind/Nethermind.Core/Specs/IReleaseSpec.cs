@@ -236,6 +236,16 @@ namespace Nethermind.Core.Specs
         bool IsEip3198Enabled { get; }
         
         /// <summary>
+        /// Difficulty Bomb Delay to Q2/2022
+        /// </summary>
+        bool IsEip3238Enabled { get; }
+        
+        /// <summary>
+        /// Reduction in refunds
+        /// </summary>
+        bool IsEip3529Enabled { get; }
+        
+        /// <summary>
         /// Should transactions be validated against chainId.
         /// </summary>
         /// <remarks>Backward compatibility for early Kovan blocks.</remarks>

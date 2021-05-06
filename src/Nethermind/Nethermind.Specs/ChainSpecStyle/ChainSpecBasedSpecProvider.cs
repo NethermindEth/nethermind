@@ -135,6 +135,8 @@ namespace Nethermind.Specs.ChainSpecStyle
                 releaseSpec.IsEip2929Enabled = (_chainSpec.Parameters.Eip2929Transition ?? long.MaxValue) <= releaseStartBlock;
                 releaseSpec.IsEip2930Enabled = (_chainSpec.Parameters.Eip2930Transition ?? long.MaxValue) <= releaseStartBlock;
                 releaseSpec.IsEip3198Enabled = (_chainSpec.Parameters.Eip3198Transition ?? long.MaxValue) <= releaseStartBlock;
+                releaseSpec.IsEip3238Enabled = (_chainSpec.Parameters.Eip3238Transition ?? long.MaxValue) <= releaseStartBlock;
+                releaseSpec.IsEip3529Enabled = (_chainSpec.Parameters.Eip3529Transition ?? long.MaxValue) <= releaseStartBlock;
                 releaseSpec.ValidateChainId = (_chainSpec.Parameters.ValidateChainIdTransition ?? 0) <= releaseStartBlock; 
                 releaseSpec.ValidateReceipts = ((_chainSpec.Parameters.ValidateReceiptsTransition > 0) ? Math.Max(_chainSpec.Parameters.ValidateReceiptsTransition ?? 0, _chainSpec.Parameters.Eip658Transition ?? 0) : 0) <= releaseStartBlock;
 
