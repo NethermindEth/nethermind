@@ -42,7 +42,7 @@ namespace Nethermind.Dsl.ANTLR
                     AddWatch(value);
                 break;
                 case AntlrTokenType.PUBLISH:
-                    AddPublisher(value);
+                    OnPublish(value);
                 break;
             }
         }
@@ -96,6 +96,7 @@ namespace Nethermind.Dsl.ANTLR
             if(_blockSource)
             {
                 BlockCondition(key, symbol, value);
+                return;
             }
 
             TransactionCondition(key, symbol, value);
@@ -211,13 +212,35 @@ namespace Nethermind.Dsl.ANTLR
                 }
         }
 
-        private void AddPublisher(string publisher)
+        private void OnPublish(string publisher)
+        {
+            if(_blockSource)
+            {
+                AddBlockPublisher(publisher);
+                return;
+            }
+
+            AddTransactionPublisher(publisher);
+        }
+
+        private void AddBlockPublisher(string publisher)
         {
             if (publisher.Equals("WebSockets", StringComparison.InvariantCultureIgnoreCase))
             {
                 if (_blockPipelineBuilder != null)
                 {
                     _blockPipelineBuilder =_blockPipelineBuilder.AddElement(new WebSocketsPublisher<Block, Block>("dsl", _api.EthereumJsonSerializer));
+                }
+            }
+        }
+
+        private void AddTransactionPublisher(string publisher)
+        {
+            if (publisher.Equals("WebSockets", StringComparison.InvariantCultureIgnoreCase))
+            {
+                if (_blockPipelineBuilder != null)
+                {
+                    _transactionPipelineBuilder = _transactionPipelineBuilder.AddElement(new WebSocketsPublisher<Transaction, Transaction>("dsl", _api.EthereumJsonSerializer));
                 }
             }
         }
