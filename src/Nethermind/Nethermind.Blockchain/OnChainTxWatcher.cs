@@ -17,6 +17,7 @@
 
 using System;
 using System.Threading.Tasks;
+using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -56,7 +57,8 @@ namespace Nethermind.Blockchain
 
         private void ProcessBlock(Block block, Block? previousBlock)
         {
-            _txPool.BlockGasLimit = block.GasLimit;
+            bool isEip1559Enabled = _specProvider.GetSpec(block.Number).IsEip1559Enabled;
+            _txPool.BlockGasLimit = Eip1559GasLimitAdjuster.AdjustGasLimit(isEip1559Enabled, block.GasLimit);
             long transactionsInBlock = block.Transactions.Length;
             long discoveredForPendingTxs = 0;
             long discoveredForHashCache = 0;

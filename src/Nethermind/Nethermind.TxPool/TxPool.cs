@@ -56,6 +56,7 @@ namespace Nethermind.TxPool
         /// Number of blocks after which own transaction will not be resurrected any more
         /// </summary>
         private const long FadingTimeInBlocks = 64;
+        private const double FeeCapToleranceMultiplier = 1.35d;
 
         /// <summary>
         /// Notification threshold randomizer seed
@@ -308,6 +309,13 @@ namespace Nethermind.TxPool
                     _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, nonce in far future.");
                 return AddTxResult.FutureNonce;
             }
+
+            // if (spec.IsEip1559Enabled && _chainHeadInfoProvider.BaseFee != UInt256.Zero && !tx.IsServiceTransaction && (_chainHeadInfoProvider.BaseFee / 100) * 50 <= tx.FeeCap)
+            // {
+            //     if (_logger.IsTrace)
+            //         _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, fee cap is too low.");
+            //     return AddTxResult.FeeCapTooLow;
+            // }
             
             bool overflow = spec.IsEip1559Enabled && UInt256.AddOverflow(tx.GasPremium, tx.FeeCap, out _);
             // we're checking that user can pay what he declared in FeeCap. For this check BaseFee = FeeCap

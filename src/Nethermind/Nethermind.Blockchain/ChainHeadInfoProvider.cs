@@ -28,6 +28,13 @@ namespace Nethermind.Blockchain
     {
         private readonly IBlockFinder _blockFinder;
 
+        public ChainHeadInfoProvider(ISpecProvider specProvider, IBlockFinder blockFinder, IReadOnlyStateProvider stateProvider)
+        {
+            SpecProvider = new ChainHeadSpecProvider(specProvider, blockFinder);
+            ReadOnlyStateProvider = stateProvider;
+            _blockFinder = blockFinder;
+        }
+        
         public ChainHeadInfoProvider(ISpecProvider specProvider, IBlockFinder blockFinder, IStateReader stateReader)
         {
             SpecProvider = new ChainHeadSpecProvider(specProvider, blockFinder);
