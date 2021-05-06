@@ -23,6 +23,7 @@ using Nethermind.Consensus.AuRa.Contracts.DataStore;
 using Nethermind.Consensus.AuRa.Transactions;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using NSubstitute;
@@ -46,7 +47,7 @@ namespace Nethermind.AuRa.Test.Transactions
         [TestCaseSource(nameof(IsAllowedTestCases))]
         public bool is_allowed_returns_correct(Address address, ulong gasLimit)
         {
-            ITxFilter minGasPriceFilter = new MinGasPriceTxFilter(UInt256.One);
+            IMinGasPriceTxFilter minGasPriceFilter = new MinGasPriceTxFilter(UInt256.One, Substitute.For<ISpecProvider>());
             IDictionaryContractDataStore<TxPriorityContract.Destination> dictionaryContractDataStore = Substitute.For<IDictionaryContractDataStore<TxPriorityContract.Destination>>();
             dictionaryContractDataStore.TryGetValue(
                     Arg.Any<BlockHeader>(),

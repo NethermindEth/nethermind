@@ -57,6 +57,7 @@ namespace Nethermind.Consensus.Ethash
                 stateProvider,
                 gasLimitCalculator,
                 timestamper,
+                specProvider,
                 logManager)
         {
             _difficultyCalculator = difficultyCalculator ?? throw new ArgumentNullException(nameof(difficultyCalculator));

@@ -43,11 +43,6 @@ namespace Nethermind.TxPool
     /// </summary>
     public class TxPool : ITxPool, IDisposable
     {
-        public static IComparer<Transaction> DefaultComparer { get; } =
-            CompareTxByGasPrice.Instance
-                .ThenBy(CompareTxByTimestamp.Instance)
-                .ThenBy(CompareTxByPoolIndex.Instance)
-                .ThenBy(CompareTxByGasLimit.Instance);
 
         private readonly object _locker = new();
 
@@ -117,6 +112,7 @@ namespace Nethermind.TxPool
         /// <param name="specProvider">Used for retrieving information on EIPs that may affect tx signature scheme.</param>
         /// <param name="txPoolConfig"></param>
         /// <param name="stateProvider"></param>
+        /// <param name="transactionComparerProvider"></param>
         /// <param name="validator"></param>
         /// <param name="logManager"></param>
         /// <param name="comparer"></param>
@@ -127,7 +123,7 @@ namespace Nethermind.TxPool
             IReadOnlyStateProvider stateProvider,
             ITxValidator validator,
             ILogManager? logManager,
-            IComparer<Transaction>? comparer = null)
+            IComparer<Transaction> comparer)
         {
             _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
@@ -142,8 +138,8 @@ namespace Nethermind.TxPool
                 $"{(LruCache<Keccak, object>.CalculateMemorySize(32, MemoryAllowance.TxHashCacheSize) + LruCache<Keccak, Transaction>.CalculateMemorySize(4096, MemoryAllowance.MemPoolSize)) / 1000 / 1000}MB"
                     .PadLeft(8));
 
-            _transactions = new TxDistinctSortedPool(MemoryAllowance.MemPoolSize, logManager, comparer ?? DefaultComparer);
-            _persistentBroadcastTransactions = new TxDistinctSortedPool(MemoryAllowance.MemPoolSize, logManager, comparer ?? DefaultComparer);
+            _transactions = new TxDistinctSortedPool(MemoryAllowance.MemPoolSize, logManager, comparer);
+            _persistentBroadcastTransactions = new TxDistinctSortedPool(MemoryAllowance.MemPoolSize, logManager, comparer);
             _ownTimer = new Timer(500);
             _ownTimer.Elapsed += OwnTimerOnElapsed;
             _ownTimer.AutoReset = false;
@@ -259,6 +255,7 @@ namespace Nethermind.TxPool
                 return AddTxResult.Invalid;
             }
 
+            IReleaseSpec spec = _specProvider.GetSpec();
             Metrics.PendingTransactionsReceived++;
             
             if (!_validator.IsWellFormed(tx, _specProvider.GetSpec()))
@@ -269,7 +266,7 @@ namespace Nethermind.TxPool
                 return AddTxResult.Invalid;
             }
             
-            var gasLimit = Math.Min(BlockGasLimit ?? long.MaxValue, _txPoolConfig.GasLimit ?? long.MaxValue);
+            long gasLimit = Math.Min(BlockGasLimit ?? long.MaxValue, _txPoolConfig.GasLimit ?? long.MaxValue);
             if (tx.GasLimit > gasLimit)
             {
                 if (_logger.IsTrace) _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, gas limit exceeded.");
@@ -294,8 +291,8 @@ namespace Nethermind.TxPool
             // high-priority garbage transactions. We need to filter them as much as possible to use the tx pool space
             // efficiently. One call to get account from state is not that costly and it only happens after previous checks.
             // This was modeled by OpenEthereum behavior.
-            var account = _stateProvider.GetAccount(tx.SenderAddress);
-            var currentNonce = account?.Nonce ?? UInt256.Zero;
+            Account account = _stateProvider.GetAccount(tx.SenderAddress);
+            UInt256 currentNonce = account?.Nonce ?? UInt256.Zero;
             if (tx.Nonce < currentNonce)
             {
                 if (_logger.IsTrace)
@@ -310,7 +307,9 @@ namespace Nethermind.TxPool
                 return AddTxResult.FutureNonce;
             }
 
-            bool overflow = UInt256.MultiplyOverflow(tx.GasPrice, (UInt256) tx.GasLimit, out UInt256 cost);
+            // we're checking that user can pay what he declared in FeeCap. For this check BaseFee = FeeCap
+            UInt256 effectiveGasPrice = tx.CalculateEffectiveGasPrice(spec.IsEip1559Enabled, tx.FeeCap);
+            bool overflow = UInt256.MultiplyOverflow(effectiveGasPrice, (UInt256) tx.GasLimit, out UInt256 cost);
             overflow |= UInt256.AddOverflow(cost, tx.Value, out cost);
             if (overflow)
             {

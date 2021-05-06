@@ -173,7 +173,7 @@ namespace Nethermind.Blockchain.Visitors
             AssertNotVisitingAfterGap();
             _blocksCheckedInCurrentLevel++;
             _bodiesInCurrentLevel++;
-
+            
             if (_firstBlockVisited)
             {
                 _suggestBlocks = CanSuggestBlocks(block);
@@ -190,7 +190,7 @@ namespace Nethermind.Blockchain.Visitors
                     _logger.Info(
                         $"Loaded {i + 1} out of {_blocksToLoad} blocks from DB into processing queue, waiting for processor before loading more.");
                 }
-
+            
                 _dbBatchProcessed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
                 await using (cancellationToken.Register(() => _dbBatchProcessed.SetCanceled()))
                 {
@@ -198,6 +198,7 @@ namespace Nethermind.Blockchain.Visitors
                     await _dbBatchProcessed.Task;
                 }
             }
+            
             return BlockVisitOutcome.Suggest;
 
         }

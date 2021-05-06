@@ -69,6 +69,7 @@ namespace Nethermind.Merge.Plugin.Test
                 producerContext.ReadOnlyStateProvider,
                 new TargetAdjustedGasLimitCalculator(specProvider, miningConfig),
                 engineSigner,
+                specProvider,
                 logManager);
         }
     }

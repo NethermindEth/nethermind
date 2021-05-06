@@ -41,7 +41,7 @@ namespace Nethermind.TxPool
             IReadOnlyStateProvider stateProvider,
             ITxValidator txValidator,
             ILogManager logManager, 
-            IComparer<Transaction> comparer = null,
+            IComparer<Transaction> comparer,
             ITxPoolFilter txPoolFilter = null) 
             : base(txStorage, ecdsa, specProvider, txPoolConfig, stateProvider, txValidator, logManager, comparer)
         {

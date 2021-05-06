@@ -16,21 +16,19 @@
 // 
 
 using System;
-using Nethermind.Abi;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.AuRa.Contracts.DataStore;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
-using Nethermind.Int256;
 
 namespace Nethermind.Consensus.AuRa.Transactions
 {
     public class MinGasPriceContractTxFilter : ITxFilter
     {
-        private readonly ITxFilter _minGasPriceFilter;
+        private readonly IMinGasPriceTxFilter _minGasPriceFilter;
         private readonly IDictionaryContractDataStore<TxPriorityContract.Destination> _minGasPrices;
 
-        public MinGasPriceContractTxFilter(ITxFilter minGasPriceFilter, IDictionaryContractDataStore<TxPriorityContract.Destination> minGasPrices)
+        public MinGasPriceContractTxFilter(IMinGasPriceTxFilter minGasPriceFilter, IDictionaryContractDataStore<TxPriorityContract.Destination> minGasPrices)
         {
             _minGasPriceFilter = minGasPriceFilter;
             _minGasPrices = minGasPrices ?? throw new ArgumentNullException(nameof(minGasPrices));
@@ -44,14 +42,12 @@ namespace Nethermind.Consensus.AuRa.Transactions
             {
                 return result;
             }
-            else if (_minGasPrices.TryGetValue(parentHeader, tx, out var @override) && tx.GasPrice < @override.Value)
+            else if (_minGasPrices.TryGetValue(parentHeader, tx, out TxPriorityContract.Destination @override))
             {
-                return (false, $"gas price too low {tx.GasPrice} < {@override.Value} for override");
+                return _minGasPriceFilter.IsAllowed(tx, parentHeader, @override.Value);
             }
-            else
-            {
-                return (true, string.Empty);
-            }
+            
+            return (true, string.Empty);
         }
     }
 }

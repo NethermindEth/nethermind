@@ -15,28 +15,14 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System.Collections.Generic;
 using Nethermind.Core;
 
-namespace Nethermind.TxPool
+namespace Nethermind.Consensus.Transactions
 {
-    /// <summary>
-    /// Default ordering by <see cref="Transaction.GasPrice"/> desc
-    /// </summary>
-    public class CompareTxByGasPrice : IComparer<Transaction>
+    public interface ITxFilterPipeline
     {
-        public static readonly CompareTxByGasPrice Instance = new();
-        
-        private CompareTxByGasPrice() { }
+        public void AddTxFilter(ITxFilter txFilter);
 
-        public int Compare(Transaction x, Transaction y)
-        {
-            if (ReferenceEquals(x, y)) return 0;
-            if (ReferenceEquals(null, y)) return 1;
-            if (ReferenceEquals(null, x)) return -1;
-                
-            // then by gas price descending
-            return y.GasPrice.CompareTo(x.GasPrice);
-        }
+        bool Execute(Transaction tx, BlockHeader parentHeader);
     }
 }
