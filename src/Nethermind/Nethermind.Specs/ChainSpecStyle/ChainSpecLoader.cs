@@ -369,6 +369,7 @@ namespace Nethermind.Specs.ChainSpecStyle
                 
                 chainSpec.Allocations[new Address(account.Key)] = new ChainSpecAllocation(
                     account.Value.Balance,
+                    account.Value.Nonce,
                     account.Value.Code,
                     account.Value.Constructor,
                     account.Value.GetConvertedStorage());
