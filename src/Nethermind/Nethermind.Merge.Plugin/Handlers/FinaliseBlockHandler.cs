@@ -56,7 +56,7 @@ namespace Nethermind.Merge.Plugin.Handlers
             }
             
             _manualBlockFinalizationManager.MarkFinalized(headHeader, blockHeader);
-            return ResultWrapper<Result>.Success(Result.Success);
+            return ResultWrapper<Result>.Success(Result.Ok);
         }
     }
 }

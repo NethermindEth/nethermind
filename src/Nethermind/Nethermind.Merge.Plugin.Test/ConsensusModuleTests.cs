@@ -173,7 +173,7 @@ namespace Nethermind.Merge.Plugin.Test
             
             Keccak newHeadHash = blockRequestResult.BlockHash;
             ResultWrapper<Result> setHeadResult = await rpc.consensus_setHead(newHeadHash!);
-            setHeadResult.Data.Should().Be(Result.Success);
+            setHeadResult.Data.Should().Be(Result.Ok);
             
             Keccak actualHead = chain.BlockTree.HeadHash;
             actualHead.Should().NotBe(startingHead);
@@ -186,7 +186,7 @@ namespace Nethermind.Merge.Plugin.Test
             using MergeTestBlockchain chain = await CreateBlockChain();
             IConsensusRpcModule rpc = CreateConsensusModule(chain);
             ResultWrapper<Result> setHeadResult = await rpc.consensus_setHead(TestItem.KeccakF);
-            setHeadResult.Data.Value.Should().BeFalse();
+            setHeadResult.Data.Success.Should().BeFalse();
         }
         
         [Test]
@@ -199,7 +199,7 @@ namespace Nethermind.Merge.Plugin.Test
             chain.BlockTree.SuggestBlock(block);
             
             ResultWrapper<Result> setHeadResult = await rpc.consensus_setHead(block.Hash!);
-            setHeadResult.Data.Value.Should().BeFalse();
+            setHeadResult.Data.Success.Should().BeFalse();
         }
 
         [Test]
@@ -210,7 +210,7 @@ namespace Nethermind.Merge.Plugin.Test
             Block block = Build.A.Block.WithParent(chain.BlockTree.Head).TestObject;
             chain.BlockTree.SuggestBlock(block);
             ResultWrapper<Result> resultWrapper = await rpc.consensus_finaliseBlock(block.Hash!);
-            resultWrapper.Data.Should().Be(Result.Success);
+            resultWrapper.Data.Should().Be(Result.Ok);
         }
         
         [Test]
@@ -247,7 +247,7 @@ namespace Nethermind.Merge.Plugin.Test
             async Task CanReorganizeToBlock(BlockRequestResult block, MergeTestBlockchain testChain)
             {
                 ResultWrapper<Result> result = await rpc.consensus_setHead(block.BlockHash);
-                result.Data.Should().Be(Result.Success);
+                result.Data.Should().Be(Result.Ok);
                 testChain.BlockTree.HeadHash.Should().Be(block.BlockHash);
                 testChain.BlockTree.Head!.Number.Should().Be(block.Number);
                 testChain.State.StateRoot.Should().Be(testChain.BlockTree.Head!.StateRoot!);
@@ -474,7 +474,7 @@ namespace Nethermind.Merge.Plugin.Test
                 {
                     Keccak newHead = assembleBlockResponse.BlockHash;
                     ResultWrapper<Result> setHeadResponse = await rpc.consensus_setHead(newHead);
-                    setHeadResponse.Data.Should().Be(Result.Success);
+                    setHeadResponse.Data.Should().Be(Result.Ok);
                     blockTree.HeadHash.Should().Be(newHead);
                 }
                 blocks.Add((assembleBlockResponse));
