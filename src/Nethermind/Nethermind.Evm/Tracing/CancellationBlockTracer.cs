@@ -55,7 +55,7 @@ namespace Nethermind.Evm.Tracing
             _innerTracer.StartNewBlockTrace(block);
         }
 
-        public ITxTracer StartNewTxTrace(Transaction tx)
+        public ITxTracer StartNewTxTrace(Transaction? tx)
         {
             _token.ThrowIfCancellationRequested();
             return _innerTracer.StartNewTxTrace(tx).WithCancellation(_token);

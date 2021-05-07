@@ -282,9 +282,9 @@ namespace Nethermind.Evm.Tracing
             _otherTracer.StartNewBlockTrace(block);
         }
 
-        public ITxTracer StartNewTxTrace(Transaction tx)
+        public ITxTracer StartNewTxTrace(Transaction? tx)
         {
-            if (!_isFixedSize)
+            if (!_isFixedSize && tx is not null)
             {
                 _txReceipts.Add(null);
             }

@@ -44,7 +44,7 @@ namespace Nethermind.Evm.Tracing
         {
         }
 
-        public ITxTracer StartNewTxTrace(Transaction tx)
+        public ITxTracer StartNewTxTrace(Transaction? tx)
         {
             return AlwaysCancelTxTracer.Instance;
         }

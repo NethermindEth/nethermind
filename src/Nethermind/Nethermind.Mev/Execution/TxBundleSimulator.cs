@@ -109,8 +109,12 @@ namespace Nethermind.Mev.Execution
             {
                 _block = block;
             }
-            public ITxTracer StartNewTxTrace(Transaction tx) => 
-                _tracer = new BundleTxTracer(_beneficiary, _block!.Transactions.First(t => t.Hash == tx.Hash));
+            public ITxTracer StartNewTxTrace(Transaction? tx)
+            {
+                return tx is null 
+                    ? new BundleTxTracer(_beneficiary, null) 
+                    : _tracer = new BundleTxTracer(_beneficiary, _block!.Transactions.First(t => t.Hash == tx.Hash));
+            }
 
             public void EndTxTrace()
             {
@@ -118,7 +122,8 @@ namespace Nethermind.Mev.Execution
                 _beneficiaryBalanceBefore ??= _tracer.BeneficiaryBalanceBefore;
                 _beneficiaryBalanceAfter = _tracer.BeneficiaryBalanceAfter;
                 Success &= _tracer.Success;
-                if (_tracer.Transaction.TryCalculatePremiumPerGas(_block!.BaseFee, out UInt256 premiumPerGas))
+                UInt256 premiumPerGas = UInt256.Zero;
+                if (_tracer.Transaction?.TryCalculatePremiumPerGas(_block!.BaseFee, out premiumPerGas) == true)
                 {
                     TxFees += (UInt256)_tracer.GasSpent * premiumPerGas;
                 }
@@ -134,7 +139,7 @@ namespace Nethermind.Mev.Execution
         {
             private readonly Address _beneficiary;
 
-            public BundleTxTracer(Address beneficiary, Transaction transaction)
+            public BundleTxTracer(Address beneficiary, Transaction? transaction)
             {
                 Transaction = transaction;
                 _beneficiary = beneficiary;
@@ -153,7 +158,7 @@ namespace Nethermind.Mev.Execution
             public bool IsTracingBlockHash => false;
             public bool IsTracingAccess => false;
 
-            public Transaction Transaction { get; }
+            public Transaction? Transaction { get; }
             public long GasSpent { get; set; }
             public UInt256? BeneficiaryBalanceBefore { get; private set; }
             public UInt256? BeneficiaryBalanceAfter { get; private set; }
