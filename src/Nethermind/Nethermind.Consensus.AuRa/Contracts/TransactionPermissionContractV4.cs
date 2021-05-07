@@ -50,7 +50,6 @@ namespace Nethermind.Consensus.AuRa.Contracts
             // _maxInclusionFeePerGas instead of the legacy _gasPrice
             // _gasLimit
             // _data Transaction data.
-
             
             return new object[]
             {
