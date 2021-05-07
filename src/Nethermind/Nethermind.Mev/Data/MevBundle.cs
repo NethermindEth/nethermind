@@ -67,7 +67,7 @@ namespace Nethermind.Mev.Data
             hashCode.Add(MinTimestamp);
             for (int i = 0; i < Transactions.Count; i++)
             {
-                hashCode.Add(Transactions[i]);
+                hashCode.Add(Transactions[i].Hash);
             }
 
             return hashCode.ToHashCode();
