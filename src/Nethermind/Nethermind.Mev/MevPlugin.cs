@@ -45,7 +45,8 @@ namespace Nethermind.Mev
         private IMevConfig _mevConfig = null!;
         private ILogger? _logger;
         private INethermindApi _nethermindApi = null!;
-        private BundlePool _bundlePool = null!;
+        private BundlePool? _bundlePool;
+        private ITracerFactory? _tracerFactory;
 
         public string Name => "MEV";
 
@@ -62,9 +63,43 @@ namespace Nethermind.Mev
             return Task.CompletedTask;
         }
 
-        public Task InitNetworkProtocol()
+        public Task InitNetworkProtocol() => Task.CompletedTask;
+
+        private BundlePool BundlePool
         {
-            return Task.CompletedTask;
+            get
+            {
+                if (_bundlePool is null)
+                {
+                    var (getFromApi, _) = _nethermindApi!.ForProducer;
+                    TxBundleSimulator txBundleSimulator = new(TracerFactory, getFromApi.GasLimitCalculator, getFromApi.Timestamper);
+                    _bundlePool = new BundlePool(getFromApi.BlockTree!, txBundleSimulator, getFromApi.FinalizationManager);
+                }
+
+                return _bundlePool;
+            }
+        }
+
+        private ITracerFactory TracerFactory
+        {
+            get
+            {
+                if (_tracerFactory is null)
+                {
+                    var (getFromApi, _) = _nethermindApi!.ForProducer;
+
+                    _tracerFactory = new TracerFactory(
+                        getFromApi.DbProvider!,
+                        getFromApi.BlockTree!,
+                        getFromApi.ReadOnlyTrieStore!,
+                        getFromApi.BlockPreprocessor!,
+                        getFromApi.SpecProvider!,
+                        getFromApi.LogManager!,
+                        ProcessingOptions.ProducingBlock);
+                }
+
+                return _tracerFactory;
+            }
         }
 
         public Task InitRpcModules()
@@ -73,27 +108,14 @@ namespace Nethermind.Mev
             {   
                 (IApiWithNetwork getFromApi, _) = _nethermindApi!.ForRpc;
                 IJsonRpcConfig rpcConfig = getFromApi.Config<IJsonRpcConfig>();
-                
-                TracerFactory tracerFactory = new(
-                    getFromApi.DbProvider!, 
-                    getFromApi.BlockTree!, 
-                    getFromApi.ReadOnlyTrieStore!, 
-                    getFromApi.BlockPreprocessor!, 
-                    getFromApi.SpecProvider!, 
-                    getFromApi.LogManager!,
-                    ProcessingOptions.ProducingBlock);
 
-                TxBundleSimulator txBundleSimulator = new(tracerFactory, getFromApi.GasLimitCalculator, getFromApi.Timestamper);
-                
-                _bundlePool = new(getFromApi.BlockTree!, txBundleSimulator, getFromApi.FinalizationManager);
-                
                 MevModuleFactory mevModuleFactory = new(
                     _mevConfig!, 
                     rpcConfig, 
                     _bundlePool!, 
                     getFromApi.BlockTree!,
                     getFromApi.StateReader!,
-                    tracerFactory,
+                    TracerFactory,
                     getFromApi.ChainSpec!.ChainId);
                 
                 getFromApi.RpcModuleProvider!.RegisterBoundedByCpuCount(mevModuleFactory, rpcConfig.Timeout);
@@ -136,7 +158,7 @@ namespace Nethermind.Mev
 
             IManualBlockProducer standardProducer = (IManualBlockProducer)await consensusPlugin.InitBlockProducer();
             IBeneficiaryBalanceSource standardProducerBeneficiaryBalanceSource = producerEnvFactory.LastMevBlockProcessor;
-            V1Selector v1Selector = new(_bundlePool);
+            V1Selector v1Selector = new(BundlePool);
             IManualBlockProducer bundleProducer = (IManualBlockProducer)await consensusPlugin.InitBlockProducer(new BundleTxSource(v1Selector, standardProducer.Timestamper));
             IBeneficiaryBalanceSource bundleProducerBeneficiaryBalanceSource = producerEnvFactory.LastMevBlockProcessor;
             return _nethermindApi.BlockProducer = new MevBlockProducer(new Dictionary<IManualBlockProducer, IBeneficiaryBalanceSource>()
