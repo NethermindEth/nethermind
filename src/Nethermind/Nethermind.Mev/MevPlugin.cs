@@ -42,7 +42,7 @@ namespace Nethermind.Mev
 {
     public class MevPlugin : IConsensusWrapperPlugin
     {
-        private IMevConfig? _mevConfig;
+        private IMevConfig _mevConfig = null!;
         private ILogger? _logger;
         private INethermindApi _nethermindApi = null!;
         private BundlePool _bundlePool = null!;
@@ -69,7 +69,7 @@ namespace Nethermind.Mev
 
         public Task InitRpcModules()
         {
-            if (_mevConfig!.Enabled) 
+            if (_mevConfig.Enabled) 
             {   
                 (IApiWithNetwork getFromApi, _) = _nethermindApi!.ForRpc;
                 IJsonRpcConfig rpcConfig = getFromApi.Config<IJsonRpcConfig>();
@@ -115,6 +115,11 @@ namespace Nethermind.Mev
 
         public async Task<IBlockProducer> InitBlockProducer(IConsensusPlugin consensusPlugin, ITxSource? txSource = null)
         {
+            if (!_mevConfig.Enabled)
+            {
+                throw new InvalidOperationException("Plugin is disabled");
+            }
+
             MevBlockProducerEnvFactory producerEnvFactory = new(_nethermindApi.DbProvider!,
                 _nethermindApi.BlockTree!,
                 _nethermindApi.ReadOnlyTrieStore!,
@@ -126,7 +131,7 @@ namespace Nethermind.Mev
                 _nethermindApi.TxPool!,
                 _nethermindApi.Config<IMiningConfig>(),
                 _nethermindApi.LogManager);
-            
+
             _nethermindApi.BlockProducerEnvFactory = producerEnvFactory;
 
             IManualBlockProducer standardProducer = (IManualBlockProducer)await consensusPlugin.InitBlockProducer();
@@ -136,10 +141,11 @@ namespace Nethermind.Mev
             IBeneficiaryBalanceSource bundleProducerBeneficiaryBalanceSource = producerEnvFactory.LastMevBlockProcessor;
             return _nethermindApi.BlockProducer = new MevBlockProducer(new Dictionary<IManualBlockProducer, IBeneficiaryBalanceSource>()
             {
-                {bundleProducer, bundleProducerBeneficiaryBalanceSource}, 
-                {standardProducer, standardProducerBeneficiaryBalanceSource}
+                {bundleProducer, bundleProducerBeneficiaryBalanceSource}, {standardProducer, standardProducerBeneficiaryBalanceSource}
             });
         }
+
+        public bool Enabled => _mevConfig.Enabled;
 
         private void TxPoolOnNewPending(object? sender, TxEventArgs e)
         {

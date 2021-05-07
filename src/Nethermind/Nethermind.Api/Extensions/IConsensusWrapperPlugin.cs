@@ -24,5 +24,6 @@ namespace Nethermind.Api.Extensions
     public interface IConsensusWrapperPlugin : INethermindPlugin
     {
         Task<IBlockProducer> InitBlockProducer(IConsensusPlugin consensusPlugin, ITxSource? txSource = null);
+        bool Enabled { get; }
     }
 }
