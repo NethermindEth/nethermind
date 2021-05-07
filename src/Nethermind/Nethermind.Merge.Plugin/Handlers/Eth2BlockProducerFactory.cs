@@ -27,7 +27,6 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Logging;
-using Nethermind.Runner.Ethereum.Steps;
 using Nethermind.State;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;

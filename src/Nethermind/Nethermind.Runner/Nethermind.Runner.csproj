@@ -13,6 +13,7 @@
     <WarningsAsErrors />
   </PropertyGroup>
   <ItemGroup>
+    <PackageReference Include="Antlr4.Runtime.Standard" Version="4.9.2" />
     <PackageReference Include="AspNetCore.HealthChecks.UI" Version="5.0.1" />
     <PackageReference Include="AspNetCore.HealthChecks.UI.Client" Version="5.0.1" />
     <PackageReference Include="AspNetCore.HealthChecks.UI.InMemory.Storage" Version="5.0.1" />
@@ -79,6 +80,9 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
     <Content Include="ndm-plugins\**">
+    <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="DSL\**">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
     <Content Include="nethermind.css">
@@ -113,8 +117,35 @@
   <Target Name="CreateNdmPluginsFolder" AfterTargets="AfterPublish">
     <MakeDir Directories="$(PublishDir)ndm-plugins" Condition="!Exists('$(PublishDir)ndm-plugins')" /> 
   </Target>
-  <Target Name="CopyHealthChecksPluginOnPublish" AfterTargets="AfterPublish">
+    <Target Name="CopyPluginsOnBuildOrPublish" AfterTargets="AfterBuild;AfterPublish">
+    <Copy SourceFiles="$(SolutionDir)Nethermind.Merge.Plugin\bin\$(Configuration)\$(TargetFramework)\Nethermind.Merge.Plugin.dll" 
+          DestinationFolder="$(OutDir)plugins" 
+          Condition="Exists('$(SolutionDir)Nethermind.Merge.Plugin\bin\$(Configuration)\$(TargetFramework)\Nethermind.Merge.Plugin.dll')" 
+          SkipUnchangedFiles="true" />
+    <Copy SourceFiles="$(SolutionDir)Nethermind.Merge.Plugin\bin\$(Configuration)\$(TargetFramework)\Nethermind.Merge.Plugin.pdb" 
+          DestinationFolder="$(OutDir)plugins" 
+          Condition="Exists('$(SolutionDir)Nethermind.Merge.Plugin\bin\$(Configuration)\$(TargetFramework)\Nethermind.Merge.Plugin.pdb')" 
+          SkipUnchangedFiles="true"/>
+    <Copy SourceFiles="$(SolutionDir)Nethermind.Dsl\bin\$(Configuration)\$(TargetFramework)\Nethermind.Dsl.dll" 
+          DestinationFolder="$(OutDir)plugins" 
+          Condition="Exists('$(SolutionDir)Nethermind.Dsl\bin\$(Configuration)\$(TargetFramework)\Nethermind.Dsl.dll')" 
+          SkipUnchangedFiles="true" />
+    <Copy SourceFiles="$(SolutionDir)Nethermind.Dsl\bin\$(Configuration)\$(TargetFramework)\Nethermind.Dsl.pdb" 
+          DestinationFolder="$(OutDir)plugins" 
+          Condition="Exists('$(SolutionDir)Nethermind.Dsl\bin\$(Configuration)\$(TargetFramework)\Nethermind.Dsl.pdb')" 
+          SkipUnchangedFiles="true" />
+    <Copy SourceFiles="$(SolutionDir)Nethermind.Mev\bin\$(Configuration)\$(TargetFramework)\Nethermind.Mev.dll"
+          DestinationFolder="$(OutDir)plugins"
+          Condition="Exists('$(SolutionDir)Nethermind.Mev\bin\$(Configuration)\$(TargetFramework)\Nethermind.Mev.dll')"
+          SkipUnchangedFiles="true" />
+    <Copy SourceFiles="$(SolutionDir)Nethermind.Mev\bin\$(Configuration)\$(TargetFramework)\Nethermind.Mev.pdb"
+          DestinationFolder="$(OutDir)plugins"
+          Condition="Exists('$(SolutionDir)Nethermind.Mev\bin\$(Configuration)\$(TargetFramework)\Nethermind.Mev.pdb')"
+          SkipUnchangedFiles="true"/>      
+  </Target>
+  <Target Name="CopyPluginsOnPublish" AfterTargets="AfterPublish">
     <Copy SourceFiles="$(OutputPath)Nethermind.HealthChecks.dll" DestinationFolder="$(PublishDir)plugins" />
+	<Copy SourceFiles="$(OutputPath)Nethermind.Merge.Plugin.dll" DestinationFolder="$(PublishDir)plugins" />
   </Target>
   <Target Name="StoreGitHashBeforeBuild" BeforeTargets="BeforeBuild">
     <Exec Command="git describe --tags --long --always &gt; git-hash" />
@@ -122,8 +153,4 @@
   <Target Name="StoreGitHash" BeforeTargets="BeforePublish">
     <Exec Command="git describe --tags --long --always &gt; git-hash" />
   </Target>
-  <Target Name="CopyMergePluginOnBuild" AfterTargets="AfterBuild">
-    <Copy SourceFiles="$(SolutionDir)Nethermind.Merge.Plugin\bin\$(Configuration)\$(TargetFramework)\Nethermind.Merge.Plugin.dll" DestinationFolder="$(OutDir)plugins" Condition="Exists('$(SolutionDir)Nethermind.Merge.Plugin\bin\$(Configuration)\$(TargetFramework)\Nethermind.Merge.Plugin.dll')" SkipUnchangedFiles="true" />
-    <Copy SourceFiles="$(SolutionDir)Nethermind.Merge.Plugin\bin\$(Configuration)\$(TargetFramework)\Nethermind.Merge.Plugin.pdb" DestinationFolder="$(OutDir)plugins" Condition="Exists('$(SolutionDir)Nethermind.Merge.Plugin\bin\$(Configuration)\$(TargetFramework)\Nethermind.Merge.Plugin.pdb')" SkipUnchangedFiles="true" />
-  </Target>
-</Project>
+ </Project>
