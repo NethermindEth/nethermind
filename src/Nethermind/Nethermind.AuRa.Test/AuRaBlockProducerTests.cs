@@ -16,6 +16,7 @@
 
 using System;
 using System.Diagnostics;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Castle.DynamicProxy.Generators.Emitters.SimpleAST;
@@ -79,7 +80,16 @@ namespace Nethermind.AuRa.Test
                 AuRaStepCalculator.TimeToNextStep.Returns(StepDelay);
                 BlockTree.BestKnownNumber.Returns(1);
                 BlockTree.Head.Returns(Build.A.Block.WithHeader(Build.A.BlockHeader.WithAura(10, Array.Empty<byte>()).TestObject).TestObject);
-                BlockchainProcessor.Process(Arg.Any<Block>(), ProcessingOptions.ProducingBlock, Arg.Any<IBlockTracer>()).Returns(c => c.Arg<Block>());
+                BlockchainProcessor.Process(Arg.Any<Block>(), ProcessingOptions.ProducingBlock, Arg.Any<IBlockTracer>()).Returns(returnThis: c =>
+                {
+                    Block block = c.Arg<Block>();
+                    if (block is BlockToProduce blockToProduce)
+                    {
+                        blockToProduce.Transactions = TransactionSource.GetTransactions(BlockTree.Head!.Header, block.GasLimit).ToArray();
+                    }
+
+                    return block;
+                });
                 InitProducer();
             }
             

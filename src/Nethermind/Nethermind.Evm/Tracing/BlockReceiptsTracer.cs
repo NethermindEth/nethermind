@@ -86,11 +86,19 @@ namespace Nethermind.Evm.Tracing
         {
             Transaction transaction = _currentTx;
             
+            if (logEntries.Length > 0)
+            {
+                if (_block!.Bloom == Bloom.Empty)
+                {
+                    _block.Header.Bloom = new Bloom();
+                }
+            }
+            
             TxReceipt txReceipt = new()
             {
                 Logs = logEntries,
                 TxType = transaction!.Type,
-                Bloom = logEntries.Length == 0 ? Bloom.Empty : new Bloom(logEntries, _block.Bloom),
+                Bloom = logEntries.Length == 0 ? Bloom.Empty : new Bloom(logEntries, _block!.Bloom),
                 GasUsedTotal = _block!.GasUsed,
                 StatusCode = statusCode,
                 Recipient = transaction.IsContractCreation ? null : recipient,
@@ -103,15 +111,7 @@ namespace Nethermind.Evm.Tracing
                 TxHash = transaction.Hash,
                 PostTransactionState = stateRoot
             };
-            
-            if (logEntries.Length > 0)
-            {
-                if (_block!.Bloom == Bloom.Empty)
-                {
-                    _block.Header.Bloom = new Bloom();
-                }
-            }
-            
+
             return txReceipt;
         }
 
