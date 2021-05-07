@@ -62,7 +62,7 @@ namespace Nethermind.AuRa.Test
 
             public Context()
             {
-                StepDelay = TimeSpan.FromMilliseconds(40);
+                StepDelay = TimeSpan.FromMilliseconds(20);
                 TransactionSource = Substitute.For<ITxSource>();
                 BlockchainProcessor = Substitute.For<IBlockchainProcessor>();
                 Sealer = Substitute.For<ISealer>();
@@ -125,7 +125,8 @@ namespace Nethermind.AuRa.Test
             (await StartStop(new Context())).ShouldProduceBlocks(Quantity.AtLeastOne());
         }
         
-        [Test, Retry(3)]
+        [Test]
+        [Explicit]
         public async Task Can_produce_first_block_when_private_chains_allowed()
         {
             var context = new Context();
