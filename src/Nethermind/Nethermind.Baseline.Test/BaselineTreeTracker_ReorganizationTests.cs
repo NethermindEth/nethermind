@@ -35,7 +35,6 @@ namespace Nethermind.Baseline.Test
     {
        
         [Test]
-        [Retry(5)]
         public async Task Tree_tracker_reorganization([ValueSource(nameof(ReorganizationTestCases))]ReorganizedInsertLeafTest test)
         {
             Address address = TestItem.Addresses[0];
