@@ -61,9 +61,11 @@ namespace Nethermind.Mev.Source
 
         private IEnumerable<MevBundle> GetBundles(long blockNumber, UInt256 minTimestamp, UInt256 maxTimestamp, CancellationToken token = default)
         {
-            int CompareBundles(MevBundle searchedBundle, KeyValuePair<MevBundle, ConcurrentBag<Keccak>> potentialBundle) =>
-                searchedBundle.BlockNumber.CompareTo(potentialBundle.Key.BlockNumber);
-            
+            int CompareBundles(MevBundle searchedBundle, KeyValuePair<MevBundle, ConcurrentBag<Keccak>> potentialBundle)
+            {
+                return searchedBundle.BlockNumber <= potentialBundle.Key.BlockNumber ? -1 : 1;
+            }
+
             lock (_bundles)
             {
                 MevBundle searchedBundle = MevBundle.Empty(blockNumber, minTimestamp, maxTimestamp);
@@ -74,7 +76,7 @@ namespace Nethermind.Mev.Source
                     {
                         break;
                     }
-                    
+
                     MevBundle mevBundle = _bundles[j].Key;
                     if (mevBundle.BlockNumber == searchedBundle.BlockNumber)
                     {
@@ -156,11 +158,14 @@ namespace Nethermind.Mev.Source
             long blockNumber = e.Block!.Number;
             if (_finalizationManager?.IsFinalized(blockNumber) != true)
             {
-                IEnumerable<MevBundle> bundles = GetBundles(e.Block.Number + 1, UInt256.MaxValue, UInt256.Zero);
-                foreach (MevBundle bundle in bundles)
+                Task.Run(() =>
                 {
-                    SimulateBundle(bundle, e.Block.Header);
-                }
+                    IEnumerable<MevBundle> bundles = GetBundles(e.Block.Number + 1, UInt256.MaxValue, UInt256.Zero);
+                    foreach (MevBundle bundle in bundles)
+                    {
+                        SimulateBundle(bundle, e.Block.Header);
+                    }
+                });
             }
         }
 
@@ -248,7 +253,7 @@ namespace Nethermind.Mev.Source
         
         private class MevBundleComparer : IComparer<MevBundle>
         {
-            public static readonly MevBundleComparer Default = new MevBundleComparer();
+            public static readonly MevBundleComparer Default = new();
             
             public int Compare(MevBundle? x, MevBundle? y)
             {
@@ -265,7 +270,22 @@ namespace Nethermind.Mev.Source
                 if (minTimestampComparison != 0) return minTimestampComparison;
             
                 // max timestamp decreasing
-                return y.MaxTimestamp.CompareTo(x.MaxTimestamp);
+                int maxTimestampComparison = y.MaxTimestamp.CompareTo(x.MaxTimestamp);
+                if (maxTimestampComparison != 0) return maxTimestampComparison;
+
+                for (int i = 0; i < Math.Max(x.Transactions.Count, y.Transactions.Count); i++)
+                {
+                    Keccak? xHash = x.Transactions.Count > i ? x.Transactions[i].Hash : null;
+                    if (xHash is null) return -1;
+                    
+                    Keccak? yHash = y.Transactions.Count > i ? y.Transactions[i].Hash : null;
+                    if (yHash is null) return 1;
+
+                    int hashComparision = xHash.CompareTo(yHash);
+                    if (hashComparision != 0) return hashComparision;
+                }
+
+                return 0;
             }
         }
         
