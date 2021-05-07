@@ -19,7 +19,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Blockchain;
@@ -34,7 +33,6 @@ using Nethermind.Crypto;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc;
 using Nethermind.Facade;
-
 using NSubstitute;
 using NUnit.Framework;
 using Newtonsoft.Json;
@@ -106,15 +104,15 @@ namespace Nethermind.Mev.Test
             // make sure keys from A to D are funded with test ether
             public static PrivateKey ContractCreatorPrivateKey = TestItem.PrivateKeyC;
 
-            public static async Task<Address> Deploy(TestMevRpcBlockchain chain, string code)
+            public static async Task<Address> Deploy(TestMevRpcBlockchain chain, string code, ulong nonce = 0)
             {
-                Transaction createContractTx = Build.A.Transaction.WithCode(Bytes.FromHexString(code)).WithGasLimit(LargeGasLimit).SignedAndResolved(ContractCreatorPrivateKey).TestObject;
+                Transaction createContractTx = Build.A.Transaction.WithCode(Bytes.FromHexString(code)).WithGasLimit(LargeGasLimit).WithNonce(nonce).SignedAndResolved(ContractCreatorPrivateKey).TestObject;
                 // guarantee state change 
                 await chain.AddBlock(true, createContractTx);
 
                 TxReceipt? createContractTxReceipt = chain.Bridge.GetReceipt(createContractTx.Hash!);
-                Assert.NotNull(createContractTxReceipt?.ContractAddress, $"Contract transaction {createContractTx.Hash!} was not deployed.");
-
+                createContractTxReceipt?.ContractAddress.Should().NotBeNull($"Contract transaction {createContractTx.Hash!} was not deployed.");
+                
                 return createContractTxReceipt!.ContractAddress!;
             }
             
@@ -161,7 +159,7 @@ namespace Nethermind.Mev.Test
 
             string result = chain.TestSerializedRequest(chain.MevRpcModule, "eth_callBundle", transactions);
 
-            result.Should().Be($"{{\"jsonrpc\":\"2.0\",\"result\":{{\"{setTx.Hash!}\":{{\"value\":\"0x0\"}},\"{getTx.Hash!}\":{{\"value\":\"{Rlp.Encode(Contracts.CallableGetValueAfterSet)}\"}}}},\"id\":1337}}");
+            result.Should().Be($"{{\"jsonrpc\":\"2.0\",\"result\":{{\"{setTx.Hash!}\":{{\"value\":\"0x\"}},\"{getTx.Hash!}\":{{\"value\":\"0x\"}}}},\"id\":67}}");
         }
         
         [Test]
@@ -188,30 +186,14 @@ namespace Nethermind.Mev.Test
             Transaction tx1WithLowerGasPrice = Build.A.Transaction.WithGasLimit(GasCostOf.Transaction).WithGasPrice(100ul).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
             Transaction tx3 = Build.A.Transaction.WithGasLimit(Contracts.LargeGasLimit).WithData(Bytes.FromHexString(Contracts.CoinbaseInvokePay)).WithTo(contractAddress).WithNonce(1).WithGasPrice(0ul).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
 
-            Address looperContractAddress = await Contracts.Deploy(chain, Contracts.LooperCode);
-            Transaction tx4 = Build.A.Transaction.WithGasLimit(Contracts.LargeGasLimit).WithGasPrice(110ul).WithTo(looperContractAddress).WithData(Bytes.FromHexString(Contracts.LooperInvokeLoop2000)).SignedAndResolved(TestItem.PrivateKeyD).TestObject;
+            Address looperContractAddress = await Contracts.Deploy(chain, Contracts.LooperCode, 2);
+            Transaction tx4 = Build.A.Transaction.WithGasLimit(Contracts.LargeGasLimit).WithGasPrice(40ul).WithTo(looperContractAddress).WithData(Bytes.FromHexString(Contracts.LooperInvokeLoop2000)).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
 
             Transaction[] bundle1 = { tx1, tx3 };
-            byte[][] bundle1Bytes = { 
-                Rlp.Encode(tx1).Bytes, 
-                Rlp.Encode(tx3).Bytes 
-            };
-            byte[][] bundle2Bytes = { 
-                Rlp.Encode(tx1WithLowerGasPrice).Bytes, 
-                Rlp.Encode(tx3).Bytes 
-            };
-            byte[][] bundle3Bytes = { 
-                Rlp.Encode(tx4).Bytes 
-            };
-            ResultWrapper<bool> resultOfBundle1 = chain.MevRpcModule.eth_sendBundle(bundle1Bytes, 3);
-            Assert.AreNotEqual(ResultType.Failure, resultOfBundle1.GetResult().ResultType);
-            Assert.IsTrue((bool) resultOfBundle1.GetData());
-            ResultWrapper<bool> resultOfBundle2 = chain.MevRpcModule.eth_sendBundle(bundle2Bytes, 3);
-            Assert.AreNotEqual(resultOfBundle2.GetResult().ResultType, ResultType.Failure);
-            Assert.IsTrue((bool) resultOfBundle2.GetData());
-            ResultWrapper<bool> resultOfBundle3 = chain.MevRpcModule.eth_sendBundle(bundle3Bytes, 3);
-            Assert.AreNotEqual(resultOfBundle3.GetResult().ResultType, ResultType.Failure);
-            Assert.IsTrue((bool) resultOfBundle3.GetData());
+
+            SuccessfullySendBundle(chain, 4, bundle1);
+            SuccessfullySendBundle(chain, 4, tx1WithLowerGasPrice, tx3);
+            SuccessfullySendBundle(chain, 4, tx4);
 
             await chain.AddBlock(true);
 
@@ -227,14 +209,11 @@ namespace Nethermind.Mev.Test
             Transaction tx2 = Build.A.Transaction.WithGasLimit(GasCostOf.Transaction).WithGasPrice(150ul).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
             Transaction tx3 = Build.A.Transaction.WithGasLimit(GasCostOf.Transaction).WithGasPrice(200ul).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
 
-            byte[][] bundleBytes = { Rlp.Encode(tx3).Bytes };
-             ResultWrapper<bool> resultOfBundle = chain.MevRpcModule.eth_sendBundle(bundleBytes, 1);
-            Assert.AreNotEqual(ResultType.Failure, resultOfBundle.GetResult().ResultType);
-            Assert.IsTrue((bool) resultOfBundle.GetData());
+            SuccessfullySendBundle(chain, 1, tx3);
 
             await chain.AddBlock(true, tx2);
 
-            GetHashes(chain.BlockTree.Head!.Transactions).Should().Equal(GetHashes(new[] { tx3 }));
+            GetHashes(chain.BlockTree.Head!.Transactions).Should().Equal(GetHashes(new[] {tx3}));
         }
 
         [Test]
@@ -246,10 +225,7 @@ namespace Nethermind.Mev.Test
             Transaction tx1 = Build.A.Transaction.WithGasLimit(GasCostOf.Transaction).WithGasPrice(100ul).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
             Transaction tx4 = Build.A.Transaction.WithGasLimit(GasCostOf.Transaction).WithGasPrice(50ul).SignedAndResolved(TestItem.PrivateKeyC).TestObject;
 
-            byte[][] bundleBytes = { Rlp.Encode(tx4).Bytes };
-            ResultWrapper<bool> resultOfBundle = chain.MevRpcModule.eth_sendBundle(bundleBytes, 1);
-            Assert.AreNotEqual(ResultType.Failure, resultOfBundle.GetResult().ResultType);
-            Assert.IsTrue((bool) resultOfBundle.GetData());
+            SuccessfullySendBundle(chain, 1, tx4);
 
             await chain.AddBlock(true, tx1);
 
@@ -269,13 +245,7 @@ namespace Nethermind.Mev.Test
             Address contractAddress = await Contracts.Deploy(chain, Contracts.ReverterCode);
             Transaction tx3 = Build.A.Transaction.WithGasLimit(Contracts.LargeGasLimit).WithGasPrice(500).WithTo(contractAddress).WithData(Bytes.FromHexString(Contracts.ReverterInvokeFail)).SignedAndResolved(TestItem.PrivateKeyC).TestObject;
 
-            byte[][] bundleBytes = { 
-                Rlp.Encode(tx2).Bytes, 
-                Rlp.Encode(tx3).Bytes 
-            };
-            ResultWrapper<bool> resultOfBundle1 = chain.MevRpcModule.eth_sendBundle(bundleBytes, 2);
-            Assert.AreNotEqual(ResultType.Failure, resultOfBundle1.GetResult().ResultType);
-            Assert.IsTrue((bool) resultOfBundle1.GetData());
+            SuccessfullySendBundle(chain, 2, tx2, tx3);
 
             await chain.AddBlock(true, tx1);
 
@@ -303,18 +273,19 @@ namespace Nethermind.Mev.Test
             await SendSignedTransaction(chain, tx4);
             await SendSignedTransaction(chain, tx5);
             
-            byte[][] bundleBytes = { 
-                Rlp.Encode(set1).Bytes, 
-                Rlp.Encode(set2).Bytes,
-                Rlp.Encode(set3).Bytes
-            };
-            ResultWrapper<bool> resultOfBundle = chain.MevRpcModule.eth_sendBundle(bundleBytes, 2);
-            Assert.AreNotEqual(ResultType.Failure, resultOfBundle.GetResult().ResultType);
-            Assert.IsTrue((bool) resultOfBundle.GetData());
+            SuccessfullySendBundle(chain, 2, set1, set2, set3);
 
             await chain.AddBlock(true);
 
             GetHashes(chain.BlockTree.Head!.Transactions).Should().Equal(GetHashes(new Transaction[] { set1, set2, set3, tx4, tx5 }));
+        }
+
+        private void SuccessfullySendBundle(TestMevRpcBlockchain chain, int blockNumber, params Transaction[] txs)
+        {
+            byte[][] bundleBytes = txs.Select(t => Rlp.Encode(t).Bytes).ToArray();
+            ResultWrapper<bool> resultOfBundle = chain.MevRpcModule.eth_sendBundle(bundleBytes, blockNumber);
+            resultOfBundle.GetResult().ResultType.Should().NotBe(ResultType.Failure);
+            resultOfBundle.GetData().Should().Be(true);
         }
 
         [Test]
