@@ -491,6 +491,24 @@ namespace Nethermind.DataMarketplace.Infrastructure
             set => _nethermindApi.TxValidator = value;
         }
 
+        public IBlockFinalizationManager? FinalizationManager
+        {
+            get => _nethermindApi.FinalizationManager;
+            set => _nethermindApi.FinalizationManager = value;
+        }
+        
+        public IGasLimitCalculator GasLimitCalculator
+        {
+            get => _nethermindApi.GasLimitCalculator;
+            set => _nethermindApi.GasLimitCalculator = value;
+        }
+        
+        public IBlockProducerEnvFactory BlockProducerEnvFactory
+        {
+            get => _nethermindApi.BlockProducerEnvFactory;
+            set => _nethermindApi.BlockProducerEnvFactory = value;
+        }
+
         public IWallet? Wallet
         {
             get => _nethermindApi.Wallet;
@@ -523,7 +541,7 @@ namespace Nethermind.DataMarketplace.Infrastructure
         
         public IList<IPublisher> Publishers => _nethermindApi.Publishers;
         
-        public IList<INethermindPlugin> Plugins => _nethermindApi.Plugins;
+        public IReadOnlyList<INethermindPlugin> Plugins => _nethermindApi.Plugins;
 
         public IBlockchainBridge CreateBlockchainBridge()
         {
