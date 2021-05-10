@@ -80,6 +80,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Deposits
                 ecdsa,
                 Timestamper.Default,
                 logFinder,
+                specProvider,
                 false,
                 false);
 
