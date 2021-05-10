@@ -116,7 +116,6 @@ namespace Nethermind.Evm.Test
         [TestCase(false)]
         public void After_3529_self_destruct_has_zero_refund(bool eip3529Enabled)
         {
-            int gasUsed = 49226;
             TestState.CreateAccount(TestItem.PrivateKeyA.Address, 100.Ether());
             TestState.Commit(SpecProvider.GenesisSpec);
             TestState.CommitTree(0);
@@ -183,6 +182,7 @@ namespace Nethermind.Evm.Test
             Transaction tx2 = Build.A.Transaction.WithCode(byteCode1).WithGasLimit(gasLimit).WithNonce(2).SignedAndResolved(ecdsa, TestItem.PrivateKeyA).TestObject;
             // self destruct contract
             Transaction tx3 = Build.A.Transaction.WithCode(byteCode2).WithGasLimit(gasLimit).WithNonce(3).SignedAndResolved(ecdsa, TestItem.PrivateKeyA).TestObject;
+            int gasUsedByTx3 = 37767;
             
             long blockNumber = eip3529Enabled ? LondonTestBlockNumber : LondonTestBlockNumber - 1;
             Block block = Build.A.Block.WithNumber(blockNumber).WithTransactions(tx0, tx1, tx2, tx3).WithGasLimit(2 * gasLimit).TestObject;
@@ -201,6 +201,7 @@ namespace Nethermind.Evm.Test
             long expectedRefund = eip3529Enabled ? 0 : 24000;
 
             Assert.AreEqual(expectedRefund, tracer.Refund);
+            AssertGas(tracer, gasUsedByTx3 + GasCostOf.Transaction - Math.Min((gasUsedByTx3 + GasCostOf.Transaction) / (eip3529Enabled ? RefundHelper.MaxRefundQuotientEIP3529 : RefundHelper.MaxRefundQuotient), expectedRefund));
         }
     }
 }
