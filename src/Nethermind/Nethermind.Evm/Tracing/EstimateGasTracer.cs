@@ -18,6 +18,7 @@ using System;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.State;
 
@@ -187,16 +188,16 @@ namespace Nethermind.Evm.Tracing
             public long ExtraGasPressure { get; set; }
         }
 
-        internal long CalculateAdditionalGasRequired(Transaction tx)
+        internal long CalculateAdditionalGasRequired(Transaction tx, IReleaseSpec releaseSpec)
         {
             long intrinsicGas = tx.GasLimit - IntrinsicGasAt;
-            return _currentGasAndNesting.Peek().AdditionalGasRequired + RefundHelper.CalculateClaimableRefund(intrinsicGas + NonIntrinsicGasSpentBeforeRefund, TotalRefund);
+            return _currentGasAndNesting.Peek().AdditionalGasRequired + RefundHelper.CalculateClaimableRefund(intrinsicGas + NonIntrinsicGasSpentBeforeRefund, TotalRefund, releaseSpec);
         }
 
-        public long CalculateEstimate(Transaction tx)
+        public long CalculateEstimate(Transaction tx, IReleaseSpec releaseSpec)
         {
             long intrinsicGas = tx.GasLimit - IntrinsicGasAt;
-            return Math.Max(intrinsicGas, GasSpent + CalculateAdditionalGasRequired(tx));
+            return Math.Max(intrinsicGas, GasSpent + CalculateAdditionalGasRequired(tx, releaseSpec));
         }
 
         private int _currentNestingLevel = -1;

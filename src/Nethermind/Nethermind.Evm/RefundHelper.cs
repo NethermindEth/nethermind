@@ -16,15 +16,20 @@
 
 using System;
 using System.Runtime.CompilerServices;
+using Nethermind.Core.Specs;
 
 namespace Nethermind.Evm
 {
     public static class RefundHelper
     {
+        const long MaxRefundQuotient = 2L;
+        
+        const long MaxRefundQuotientEIP3529 = 5L;
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static long CalculateClaimableRefund(long spentGas, long totalRefund)
+        public static long CalculateClaimableRefund(long spentGas, long totalRefund, IReleaseSpec spec)
         {
-            return Math.Min(spentGas / 2L, totalRefund);
+            long maxRefundQuotient = spec.IsEip3529Enabled ? MaxRefundQuotientEIP3529 : MaxRefundQuotient;
+            return Math.Min(spentGas / maxRefundQuotient, totalRefund);
         }
     }
 }

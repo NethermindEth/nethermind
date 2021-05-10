@@ -394,7 +394,7 @@ namespace Nethermind.Evm
             if (!substate.IsError)
             {
                 spentGas -= unspentGas;
-                long refund = substate.ShouldRevert ? 0 : RefundHelper.CalculateClaimableRefund(spentGas, substate.Refund + substate.DestroyList.Count * RefundOf.Destroy);
+                long refund = substate.ShouldRevert ? 0 : RefundHelper.CalculateClaimableRefund(spentGas, substate.Refund + substate.DestroyList.Count * RefundOf.Destroy, spec);
 
                 if (_logger.IsTrace) _logger.Trace("Refunding unused gas of " + unspentGas + " and refund of " + refund);
                 _stateProvider.AddToBalance(sender, (ulong) (unspentGas + refund) * gasPrice, spec);
