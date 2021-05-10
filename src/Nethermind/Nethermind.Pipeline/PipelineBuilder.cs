@@ -6,6 +6,7 @@ namespace Nethermind.Pipeline
     {
         private readonly Stack<IPipelineElement> _elements; 
         private readonly IPipelineElement<TOutput> _lastElement;
+        public IPipelineElement LastElement => _lastElement;
         
         public PipelineBuilder(IPipelineElement<TOutput> sourceElement)
         {

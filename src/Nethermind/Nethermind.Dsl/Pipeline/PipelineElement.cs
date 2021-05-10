@@ -1,28 +1,38 @@
 using System;
-using Nethermind.Core;
+using System.Collections.Generic;
 using Nethermind.Pipeline;
 
 namespace Nethermind.Dsl.Pipeline
 {
     public class PipelineElement<TIn, TOut> : IPipelineElement<TIn, TOut> 
     {
+        private List<Func<TIn, bool>> _conditions;
         private Func<TIn, TOut> _transformData;
-        private Func<TIn, bool> _condition;
         public Action<TOut> Emit { private get; set; }
 
         public PipelineElement(Func<TIn, bool> condition, Func<TIn, TOut> transformData)
         {
-            _condition = condition; 
-            _transformData = transformData;
+            _conditions = new List<Func<TIn, bool>> { condition } ?? throw new ArgumentNullException(nameof(condition));
+            _transformData = transformData ?? throw new ArgumentNullException(nameof(transformData));
         }
 
         public void SubscribeToData(TIn data)
         {
-            if(_condition(data))
+            foreach(var condition in _conditions)
             {
-                var dataToEmit = _transformData(data);
-                Emit(dataToEmit);
+                if(!condition(data))
+                {
+                    return;
+                }
             }
+
+            var dataToEmit = _transformData(data);
+            Emit(dataToEmit);
+        }
+
+        public void AddCondition(Func<TIn, bool> condition)
+        {
+            _conditions.Add(condition);
         }
     }
 }
