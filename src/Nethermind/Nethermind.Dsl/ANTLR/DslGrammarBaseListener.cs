@@ -60,6 +60,54 @@ public partial class DslGrammarBaseListener : IDslGrammarListener {
 	/// <param name="context">The parse tree.</param>
 	public virtual void ExitExpression([NotNull] DslGrammarParser.ExpressionContext context) { }
 	/// <summary>
+	/// Enter a parse tree produced by <see cref="DslGrammarParser.sourceExpression"/>.
+	/// <para>The default implementation does nothing.</para>
+	/// </summary>
+	/// <param name="context">The parse tree.</param>
+	public virtual void EnterSourceExpression([NotNull] DslGrammarParser.SourceExpressionContext context) { }
+	/// <summary>
+	/// Exit a parse tree produced by <see cref="DslGrammarParser.sourceExpression"/>.
+	/// <para>The default implementation does nothing.</para>
+	/// </summary>
+	/// <param name="context">The parse tree.</param>
+	public virtual void ExitSourceExpression([NotNull] DslGrammarParser.SourceExpressionContext context) { }
+	/// <summary>
+	/// Enter a parse tree produced by <see cref="DslGrammarParser.watchExpression"/>.
+	/// <para>The default implementation does nothing.</para>
+	/// </summary>
+	/// <param name="context">The parse tree.</param>
+	public virtual void EnterWatchExpression([NotNull] DslGrammarParser.WatchExpressionContext context) { }
+	/// <summary>
+	/// Exit a parse tree produced by <see cref="DslGrammarParser.watchExpression"/>.
+	/// <para>The default implementation does nothing.</para>
+	/// </summary>
+	/// <param name="context">The parse tree.</param>
+	public virtual void ExitWatchExpression([NotNull] DslGrammarParser.WatchExpressionContext context) { }
+	/// <summary>
+	/// Enter a parse tree produced by <see cref="DslGrammarParser.whereExpression"/>.
+	/// <para>The default implementation does nothing.</para>
+	/// </summary>
+	/// <param name="context">The parse tree.</param>
+	public virtual void EnterWhereExpression([NotNull] DslGrammarParser.WhereExpressionContext context) { }
+	/// <summary>
+	/// Exit a parse tree produced by <see cref="DslGrammarParser.whereExpression"/>.
+	/// <para>The default implementation does nothing.</para>
+	/// </summary>
+	/// <param name="context">The parse tree.</param>
+	public virtual void ExitWhereExpression([NotNull] DslGrammarParser.WhereExpressionContext context) { }
+	/// <summary>
+	/// Enter a parse tree produced by <see cref="DslGrammarParser.publishExpression"/>.
+	/// <para>The default implementation does nothing.</para>
+	/// </summary>
+	/// <param name="context">The parse tree.</param>
+	public virtual void EnterPublishExpression([NotNull] DslGrammarParser.PublishExpressionContext context) { }
+	/// <summary>
+	/// Exit a parse tree produced by <see cref="DslGrammarParser.publishExpression"/>.
+	/// <para>The default implementation does nothing.</para>
+	/// </summary>
+	/// <param name="context">The parse tree.</param>
+	public virtual void ExitPublishExpression([NotNull] DslGrammarParser.PublishExpressionContext context) { }
+	/// <summary>
 	/// Enter a parse tree produced by <see cref="DslGrammarParser.condition"/>.
 	/// <para>The default implementation does nothing.</para>
 	/// </summary>

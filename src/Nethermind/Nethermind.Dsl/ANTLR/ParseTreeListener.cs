@@ -33,6 +33,21 @@ namespace Nethermind.Dsl.ANTLR
             OnEnterCondition(context.WORD().First().GetText(), context.ARITHMETIC_SYMBOL().GetText(), context.ADDRESS().GetText());
         }
 
+        public override void EnterSourceExpression([NotNull] DslGrammarParser.SourceExpressionContext context)
+        {
+            base.EnterSourceExpression(context);
+        }
+
+        public override void EnterWatchExpression([NotNull] DslGrammarParser.WatchExpressionContext context)
+        {
+            base.EnterWatchExpression(context);
+        }
+
+        public override void EnterWhereExpression([NotNull] DslGrammarParser.WhereExpressionContext context)
+        {
+            base.EnterWhereExpression(context);
+        }
+
         public override void ExitInit([NotNull] DslGrammarParser.InitContext context)
         {
            OnExit(); 

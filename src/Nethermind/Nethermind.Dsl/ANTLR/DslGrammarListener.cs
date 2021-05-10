@@ -51,6 +51,46 @@ public interface IDslGrammarListener : IParseTreeListener {
 	/// <param name="context">The parse tree.</param>
 	void ExitExpression([NotNull] DslGrammarParser.ExpressionContext context);
 	/// <summary>
+	/// Enter a parse tree produced by <see cref="DslGrammarParser.sourceExpression"/>.
+	/// </summary>
+	/// <param name="context">The parse tree.</param>
+	void EnterSourceExpression([NotNull] DslGrammarParser.SourceExpressionContext context);
+	/// <summary>
+	/// Exit a parse tree produced by <see cref="DslGrammarParser.sourceExpression"/>.
+	/// </summary>
+	/// <param name="context">The parse tree.</param>
+	void ExitSourceExpression([NotNull] DslGrammarParser.SourceExpressionContext context);
+	/// <summary>
+	/// Enter a parse tree produced by <see cref="DslGrammarParser.watchExpression"/>.
+	/// </summary>
+	/// <param name="context">The parse tree.</param>
+	void EnterWatchExpression([NotNull] DslGrammarParser.WatchExpressionContext context);
+	/// <summary>
+	/// Exit a parse tree produced by <see cref="DslGrammarParser.watchExpression"/>.
+	/// </summary>
+	/// <param name="context">The parse tree.</param>
+	void ExitWatchExpression([NotNull] DslGrammarParser.WatchExpressionContext context);
+	/// <summary>
+	/// Enter a parse tree produced by <see cref="DslGrammarParser.whereExpression"/>.
+	/// </summary>
+	/// <param name="context">The parse tree.</param>
+	void EnterWhereExpression([NotNull] DslGrammarParser.WhereExpressionContext context);
+	/// <summary>
+	/// Exit a parse tree produced by <see cref="DslGrammarParser.whereExpression"/>.
+	/// </summary>
+	/// <param name="context">The parse tree.</param>
+	void ExitWhereExpression([NotNull] DslGrammarParser.WhereExpressionContext context);
+	/// <summary>
+	/// Enter a parse tree produced by <see cref="DslGrammarParser.publishExpression"/>.
+	/// </summary>
+	/// <param name="context">The parse tree.</param>
+	void EnterPublishExpression([NotNull] DslGrammarParser.PublishExpressionContext context);
+	/// <summary>
+	/// Exit a parse tree produced by <see cref="DslGrammarParser.publishExpression"/>.
+	/// </summary>
+	/// <param name="context">The parse tree.</param>
+	void ExitPublishExpression([NotNull] DslGrammarParser.PublishExpressionContext context);
+	/// <summary>
 	/// Enter a parse tree produced by <see cref="DslGrammarParser.condition"/>.
 	/// </summary>
 	/// <param name="context">The parse tree.</param>
