@@ -25,6 +25,6 @@ CONTAINS : 'CONTAINS' ;
 WORD : [a-zA-Z]+ ;
 DIGIT : [0-9]+;
 ADDRESS : '0x'[a-fA-F0-9]* ;
-WEBSOCKETS : (?i)WebSockets ;
-LOG_PUBLISHER : (?i)LogPublisher ;
+WEBSOCKETS : [Ww] [Ee] [Bb] [Ss] [Oo] [Cc] [Kk] [Ee] [Tt] [Ss];
+LOG_PUBLISHER : [Ll] [Oo] [Gg] [Pp] [Uu] [Bb] [Ll] [Ii] [Ss] [Hh] [Ee] [Rr] ;
 WS : [ \t\r\n]+ -> skip ; // skip spaces, tabs, newlines
