@@ -1858,6 +1858,7 @@ namespace Nethermind.Evm
                         bool currentIsZero = currentValue.IsZero();
 
                         bool newSameAsCurrent = (newIsZero && currentIsZero) || Bytes.AreEqual(currentValue, newValue);
+                        long sClearRefunds = spec.IsEip3529Enabled ? RefundOf.SClear3529 : RefundOf.SClear;
 
                         if (!spec.UseNetGasMetering) // note that for this case we already deducted 5000
                         {
@@ -1865,8 +1866,8 @@ namespace Nethermind.Evm
                             {
                                 if (!newSameAsCurrent)
                                 {
-                                    vmState.Refund += RefundOf.SClear;
-                                    if (_txTracer.IsTracingRefunds) _txTracer.ReportRefund(RefundOf.SClear);
+                                    vmState.Refund += sClearRefunds;
+                                    if (_txTracer.IsTracingRefunds) _txTracer.ReportRefund(sClearRefunds);
                                 }
                             }
                             else if (currentIsZero)
@@ -1914,8 +1915,9 @@ namespace Nethermind.Evm
 
                                         if (newIsZero)
                                         {
-                                            vmState.Refund += RefundOf.SClear;
-                                            if (_txTracer.IsTracingRefunds) _txTracer.ReportRefund(RefundOf.SClear);
+                                            // ToDo MM here
+                                            vmState.Refund += sClearRefunds;
+                                            if (_txTracer.IsTracingRefunds) _txTracer.ReportRefund(sClearRefunds);
                                         }
                                     }
                                 }
@@ -1932,14 +1934,16 @@ namespace Nethermind.Evm
                                     {
                                         if (currentIsZero)
                                         {
-                                            vmState.Refund -= RefundOf.SClear;
-                                            if (_txTracer.IsTracingRefunds) _txTracer.ReportRefund(-RefundOf.SClear);
+                                            // ToDo MM here  
+                                            vmState.Refund -= sClearRefunds;
+                                            if (_txTracer.IsTracingRefunds) _txTracer.ReportRefund(-sClearRefunds);
                                         }
 
                                         if (newIsZero)
                                         {
-                                            vmState.Refund += RefundOf.SClear;
-                                            if (_txTracer.IsTracingRefunds) _txTracer.ReportRefund(RefundOf.SClear);
+                                           // ToDo MM here  
+                                            vmState.Refund += sClearRefunds;
+                                            if (_txTracer.IsTracingRefunds) _txTracer.ReportRefund(sClearRefunds);
                                         }
                                     }
 

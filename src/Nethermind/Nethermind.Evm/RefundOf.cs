@@ -24,6 +24,7 @@ namespace Nethermind.Evm
         public const long SResetReversedEip2200 = GasCostOf.SReset - GasCostOf.SStoreNetMeteredEip2200;
         public const long SSetReversedHotCold = GasCostOf.SSet - GasCostOf.WarmStateRead;
         public const long SResetReversedHotCold = GasCostOf.SReset - GasCostOf.ColdSLoad - GasCostOf.WarmStateRead;
+        public const long SClear3529 = GasCostOf.SReset - GasCostOf.ColdSLoad + GasCostOf.AccessStorageListEntry;
         public const long SClear = 15000;
         public const long Destroy = 24000;
     }
