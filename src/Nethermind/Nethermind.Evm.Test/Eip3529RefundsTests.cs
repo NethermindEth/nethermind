@@ -18,12 +18,14 @@
 using System;
 using FluentAssertions;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.Tracing.GethStyle;
+using Nethermind.Evm.Tracing.ParityStyle;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs;
@@ -106,7 +108,99 @@ namespace Nethermind.Evm.Test
             TestAllTracerWithOutput tracer = CreateTracer();
             _processor.Execute(transaction, block.Header, tracer);
             
+            Assert.AreEqual(refund, tracer.Refund);
             AssertGas(tracer, gasUsed + GasCostOf.Transaction - Math.Min((gasUsed + GasCostOf.Transaction) / (eip3529Enabled ? RefundHelper.MaxRefundQuotientEIP3529 : RefundHelper.MaxRefundQuotient), refund));
+        }
+        
+        [TestCase(true)]
+        [TestCase(false)]
+        public void After_3529_self_destruct_has_zero_refund(bool eip3529Enabled)
+        {
+            int gasUsed = 49226;
+            TestState.CreateAccount(TestItem.PrivateKeyA.Address, 100.Ether());
+            TestState.Commit(SpecProvider.GenesisSpec);
+            TestState.CommitTree(0);
+
+            byte[] baseInitCodeStore = Prepare.EvmCode
+                .PushData(2)
+                .PushData(2)
+                .Op(Instruction.SSTORE).Done;
+
+            byte[] baseInitCodeAfterStore = Prepare.EvmCode
+                .ForInitOf(
+                    Prepare.EvmCode
+                        .PushData(1)
+                        .Op(Instruction.SLOAD)
+                        .PushData(1)
+                        .Op(Instruction.EQ)
+                        .PushData(17)
+                        .Op(Instruction.JUMPI)
+                        .PushData(1)
+                        .PushData(1)
+                        .Op(Instruction.SSTORE)
+                        .PushData(21)
+                        .Op(Instruction.JUMP)
+                        .Op(Instruction.JUMPDEST)
+                        .PushData(0)
+                        .Op(Instruction.SELFDESTRUCT)
+                        .Op(Instruction.JUMPDEST)
+                        .Done)
+                .Done;
+
+            byte[] baseInitCode = Bytes.Concat(baseInitCodeStore, baseInitCodeAfterStore);
+
+            byte[] create2Code = Prepare.EvmCode
+                .ForCreate2Of(baseInitCode)
+                .Done;
+
+            byte[] initOfCreate2Code = Prepare.EvmCode
+                .ForInitOf(create2Code)
+                .Done;
+
+            Address deployingContractAddress = ContractAddress.From(TestItem.PrivateKeyA.Address, 0);
+            Address deploymentAddress = ContractAddress.From(deployingContractAddress, new byte[32], baseInitCode);
+
+            byte[] deploy = Prepare.EvmCode
+                .Call(deployingContractAddress, 100000)
+                .Op(Instruction.STOP).Done;
+
+            byte[] byteCode1 = Prepare.EvmCode
+                .Call(deploymentAddress, 100000)
+                .Op(Instruction.STOP).Done;
+
+            byte[] byteCode2 = Prepare.EvmCode
+                .Call(deploymentAddress, 100000)
+                .Op(Instruction.STOP).Done;
+
+            long gasLimit = 1000000;
+
+            EthereumEcdsa ecdsa = new(1, LimboLogs.Instance);
+            // deploy create 2
+            Transaction tx0 = Build.A.Transaction.WithCode(initOfCreate2Code).WithGasLimit(gasLimit).SignedAndResolved(ecdsa, TestItem.PrivateKeyA).TestObject;
+            // invoke create 2 to deploy contract
+            Transaction tx1 = Build.A.Transaction.WithCode(deploy).WithGasLimit(gasLimit).WithNonce(1).SignedAndResolved(ecdsa, TestItem.PrivateKeyA).TestObject;
+            // call contract once
+            Transaction tx2 = Build.A.Transaction.WithCode(byteCode1).WithGasLimit(gasLimit).WithNonce(2).SignedAndResolved(ecdsa, TestItem.PrivateKeyA).TestObject;
+            // self destruct contract
+            Transaction tx3 = Build.A.Transaction.WithCode(byteCode2).WithGasLimit(gasLimit).WithNonce(3).SignedAndResolved(ecdsa, TestItem.PrivateKeyA).TestObject;
+            
+            long blockNumber = eip3529Enabled ? LondonTestBlockNumber : LondonTestBlockNumber - 1;
+            Block block = Build.A.Block.WithNumber(blockNumber).WithTransactions(tx0, tx1, tx2, tx3).WithGasLimit(2 * gasLimit).TestObject;
+
+            ParityLikeTxTracer tracer0 = new(block, tx0, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff);
+            _processor.Execute(tx0, block.Header, tracer0);
+
+            TestAllTracerWithOutput tracer = CreateTracer();
+            _processor.Execute(tx1, block.Header, tracer);
+
+            tracer = CreateTracer();
+            _processor.Execute(tx2, block.Header, tracer);
+
+            tracer = CreateTracer();
+            _processor.Execute(tx3, block.Header, tracer);
+            long expectedRefund = eip3529Enabled ? 0 : 24000;
+
+            Assert.AreEqual(expectedRefund, tracer.Refund);
         }
     }
 }

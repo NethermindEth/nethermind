@@ -1858,7 +1858,7 @@ namespace Nethermind.Evm
                         bool currentIsZero = currentValue.IsZero();
 
                         bool newSameAsCurrent = (newIsZero && currentIsZero) || Bytes.AreEqual(currentValue, newValue);
-                        long sClearRefunds = spec.IsEip3529Enabled ? RefundOf.SClear3529 : RefundOf.SClear;
+                        long sClearRefunds = RefundOf.SClear(spec.IsEip3529Enabled);
 
                         if (!spec.UseNetGasMetering) // note that for this case we already deducted 5000
                         {
@@ -1915,7 +1915,6 @@ namespace Nethermind.Evm
 
                                         if (newIsZero)
                                         {
-                                            // ToDo MM here
                                             vmState.Refund += sClearRefunds;
                                             if (_txTracer.IsTracingRefunds) _txTracer.ReportRefund(sClearRefunds);
                                         }
@@ -1934,14 +1933,12 @@ namespace Nethermind.Evm
                                     {
                                         if (currentIsZero)
                                         {
-                                            // ToDo MM here  
                                             vmState.Refund -= sClearRefunds;
                                             if (_txTracer.IsTracingRefunds) _txTracer.ReportRefund(-sClearRefunds);
                                         }
 
                                         if (newIsZero)
                                         {
-                                           // ToDo MM here  
                                             vmState.Refund += sClearRefunds;
                                             if (_txTracer.IsTracingRefunds) _txTracer.ReportRefund(sClearRefunds);
                                         }
