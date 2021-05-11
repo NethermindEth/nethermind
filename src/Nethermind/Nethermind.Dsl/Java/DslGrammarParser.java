@@ -16,16 +16,16 @@ public class DslGrammarParser extends Parser {
 	protected static final PredictionContextCache _sharedContextCache =
 		new PredictionContextCache();
 	public static final int
-		ARITHMETIC_SYMBOL=1, SOURCE=2, WATCH=3, WHERE=4, PUBLISH=5, AND=6, OR=7, 
-		CONTAINS=8, WEBSOCKETS=9, LOG_PUBLISHER=10, WORD=11, DIGIT=12, ADDRESS=13, 
-		WS=14;
+		BOOLEAN_OPERATOR=1, ARITHMETIC_SYMBOL=2, SOURCE=3, WATCH=4, WHERE=5, PUBLISH=6, 
+		AND=7, OR=8, CONTAINS=9, WEBSOCKETS=10, LOG_PUBLISHER=11, WORD=12, DIGIT=13, 
+		ADDRESS=14, WS=15;
 	public static final int
-		RULE_init = 0, RULE_expression = 1, RULE_sourceExpression = 2, RULE_watchExpression = 3, 
+		RULE_tree = 0, RULE_expression = 1, RULE_sourceExpression = 2, RULE_watchExpression = 3, 
 		RULE_whereExpression = 4, RULE_publishExpression = 5, RULE_andCondition = 6, 
 		RULE_orCondition = 7, RULE_condition = 8;
 	private static String[] makeRuleNames() {
 		return new String[] {
-			"init", "expression", "sourceExpression", "watchExpression", "whereExpression", 
+			"tree", "expression", "sourceExpression", "watchExpression", "whereExpression", 
 			"publishExpression", "andCondition", "orCondition", "condition"
 		};
 	}
@@ -33,16 +33,16 @@ public class DslGrammarParser extends Parser {
 
 	private static String[] makeLiteralNames() {
 		return new String[] {
-			null, null, "'SOURCE'", "'WATCH'", "'WHERE'", "'PUBLISH'", "'AND'", "'OR'", 
-			"'CONTAINS'"
+			null, null, null, "'SOURCE'", "'WATCH'", "'WHERE'", "'PUBLISH'", "'AND'", 
+			"'OR'", "'CONTAINS'"
 		};
 	}
 	private static final String[] _LITERAL_NAMES = makeLiteralNames();
 	private static String[] makeSymbolicNames() {
 		return new String[] {
-			null, "ARITHMETIC_SYMBOL", "SOURCE", "WATCH", "WHERE", "PUBLISH", "AND", 
-			"OR", "CONTAINS", "WEBSOCKETS", "LOG_PUBLISHER", "WORD", "DIGIT", "ADDRESS", 
-			"WS"
+			null, "BOOLEAN_OPERATOR", "ARITHMETIC_SYMBOL", "SOURCE", "WATCH", "WHERE", 
+			"PUBLISH", "AND", "OR", "CONTAINS", "WEBSOCKETS", "LOG_PUBLISHER", "WORD", 
+			"DIGIT", "ADDRESS", "WS"
 		};
 	}
 	private static final String[] _SYMBOLIC_NAMES = makeSymbolicNames();
@@ -96,30 +96,30 @@ public class DslGrammarParser extends Parser {
 		_interp = new ParserATNSimulator(this,_ATN,_decisionToDFA,_sharedContextCache);
 	}
 
-	public static class InitContext extends ParserRuleContext {
+	public static class TreeContext extends ParserRuleContext {
 		public List<ExpressionContext> expression() {
 			return getRuleContexts(ExpressionContext.class);
 		}
 		public ExpressionContext expression(int i) {
 			return getRuleContext(ExpressionContext.class,i);
 		}
-		public InitContext(ParserRuleContext parent, int invokingState) {
+		public TreeContext(ParserRuleContext parent, int invokingState) {
 			super(parent, invokingState);
 		}
-		@Override public int getRuleIndex() { return RULE_init; }
+		@Override public int getRuleIndex() { return RULE_tree; }
 		@Override
 		public void enterRule(ParseTreeListener listener) {
-			if ( listener instanceof DslGrammarListener ) ((DslGrammarListener)listener).enterInit(this);
+			if ( listener instanceof DslGrammarListener ) ((DslGrammarListener)listener).enterTree(this);
 		}
 		@Override
 		public void exitRule(ParseTreeListener listener) {
-			if ( listener instanceof DslGrammarListener ) ((DslGrammarListener)listener).exitInit(this);
+			if ( listener instanceof DslGrammarListener ) ((DslGrammarListener)listener).exitTree(this);
 		}
 	}
 
-	public final InitContext init() throws RecognitionException {
-		InitContext _localctx = new InitContext(_ctx, getState());
-		enterRule(_localctx, 0, RULE_init);
+	public final TreeContext tree() throws RecognitionException {
+		TreeContext _localctx = new TreeContext(_ctx, getState());
+		enterRule(_localctx, 0, RULE_tree);
 		int _la;
 		try {
 			enterOuterAlt(_localctx, 1);
@@ -512,8 +512,7 @@ public class DslGrammarParser extends Parser {
 		public TerminalNode WORD(int i) {
 			return getToken(DslGrammarParser.WORD, i);
 		}
-		public TerminalNode ARITHMETIC_SYMBOL() { return getToken(DslGrammarParser.ARITHMETIC_SYMBOL, 0); }
-		public TerminalNode CONTAINS() { return getToken(DslGrammarParser.CONTAINS, 0); }
+		public TerminalNode BOOLEAN_OPERATOR() { return getToken(DslGrammarParser.BOOLEAN_OPERATOR, 0); }
 		public TerminalNode DIGIT() { return getToken(DslGrammarParser.DIGIT, 0); }
 		public TerminalNode ADDRESS() { return getToken(DslGrammarParser.ADDRESS, 0); }
 		public ConditionContext(ParserRuleContext parent, int invokingState) {
@@ -540,15 +539,7 @@ public class DslGrammarParser extends Parser {
 			setState(51);
 			match(WORD);
 			setState(52);
-			_la = _input.LA(1);
-			if ( !(_la==ARITHMETIC_SYMBOL || _la==CONTAINS) ) {
-			_errHandler.recoverInline(this);
-			}
-			else {
-				if ( _input.LA(1)==Token.EOF ) matchedEOF = true;
-				_errHandler.reportMatch(this);
-				consume();
-			}
+			match(BOOLEAN_OPERATOR);
 			setState(53);
 			_la = _input.LA(1);
 			if ( !((((_la) & ~0x3f) == 0 && ((1L << _la) & ((1L << WORD) | (1L << DIGIT) | (1L << ADDRESS))) != 0)) ) {
@@ -573,21 +564,21 @@ public class DslGrammarParser extends Parser {
 	}
 
 	public static final String _serializedATN =
-		"\3\u608b\ua72a\u8133\ub9ed\u417c\u3be7\u7786\u5964\3\20:\4\2\t\2\4\3\t"+
+		"\3\u608b\ua72a\u8133\ub9ed\u417c\u3be7\u7786\u5964\3\21:\4\2\t\2\4\3\t"+
 		"\3\4\4\t\4\4\5\t\5\4\6\t\6\4\7\t\7\4\b\t\b\4\t\t\t\4\n\t\n\3\2\7\2\26"+
 		"\n\2\f\2\16\2\31\13\2\3\3\3\3\3\3\3\3\3\3\3\3\5\3!\n\3\3\4\3\4\3\4\3\5"+
 		"\3\5\3\5\3\6\3\6\3\6\3\7\3\7\3\7\3\7\3\b\3\b\3\b\3\t\3\t\3\t\3\n\3\n\3"+
-		"\n\3\n\3\n\2\2\13\2\4\6\b\n\f\16\20\22\2\5\3\2\13\f\4\2\3\3\n\n\3\2\r"+
-		"\17\2\66\2\27\3\2\2\2\4 \3\2\2\2\6\"\3\2\2\2\b%\3\2\2\2\n(\3\2\2\2\f+"+
-		"\3\2\2\2\16/\3\2\2\2\20\62\3\2\2\2\22\65\3\2\2\2\24\26\5\4\3\2\25\24\3"+
-		"\2\2\2\26\31\3\2\2\2\27\25\3\2\2\2\27\30\3\2\2\2\30\3\3\2\2\2\31\27\3"+
-		"\2\2\2\32!\5\6\4\2\33!\5\b\5\2\34!\5\n\6\2\35!\5\f\7\2\36!\5\16\b\2\37"+
-		"!\5\20\t\2 \32\3\2\2\2 \33\3\2\2\2 \34\3\2\2\2 \35\3\2\2\2 \36\3\2\2\2"+
-		" \37\3\2\2\2!\5\3\2\2\2\"#\7\4\2\2#$\7\r\2\2$\7\3\2\2\2%&\7\5\2\2&\'\7"+
-		"\r\2\2\'\t\3\2\2\2()\7\6\2\2)*\5\22\n\2*\13\3\2\2\2+,\7\7\2\2,-\t\2\2"+
-		"\2-.\7\r\2\2.\r\3\2\2\2/\60\7\b\2\2\60\61\5\22\n\2\61\17\3\2\2\2\62\63"+
-		"\7\t\2\2\63\64\5\22\n\2\64\21\3\2\2\2\65\66\7\r\2\2\66\67\t\3\2\2\678"+
-		"\t\4\2\28\23\3\2\2\2\4\27 ";
+		"\n\3\n\3\n\2\2\13\2\4\6\b\n\f\16\20\22\2\4\3\2\f\r\3\2\16\20\2\66\2\27"+
+		"\3\2\2\2\4 \3\2\2\2\6\"\3\2\2\2\b%\3\2\2\2\n(\3\2\2\2\f+\3\2\2\2\16/\3"+
+		"\2\2\2\20\62\3\2\2\2\22\65\3\2\2\2\24\26\5\4\3\2\25\24\3\2\2\2\26\31\3"+
+		"\2\2\2\27\25\3\2\2\2\27\30\3\2\2\2\30\3\3\2\2\2\31\27\3\2\2\2\32!\5\6"+
+		"\4\2\33!\5\b\5\2\34!\5\n\6\2\35!\5\f\7\2\36!\5\16\b\2\37!\5\20\t\2 \32"+
+		"\3\2\2\2 \33\3\2\2\2 \34\3\2\2\2 \35\3\2\2\2 \36\3\2\2\2 \37\3\2\2\2!"+
+		"\5\3\2\2\2\"#\7\5\2\2#$\7\16\2\2$\7\3\2\2\2%&\7\6\2\2&\'\7\16\2\2\'\t"+
+		"\3\2\2\2()\7\7\2\2)*\5\22\n\2*\13\3\2\2\2+,\7\b\2\2,-\t\2\2\2-.\7\16\2"+
+		"\2.\r\3\2\2\2/\60\7\t\2\2\60\61\5\22\n\2\61\17\3\2\2\2\62\63\7\n\2\2\63"+
+		"\64\5\22\n\2\64\21\3\2\2\2\65\66\7\16\2\2\66\67\7\3\2\2\678\t\3\2\28\23"+
+		"\3\2\2\2\4\27 ";
 	public static final ATN _ATN =
 		new ATNDeserializer().deserialize(_serializedATN.toCharArray());
 	static {

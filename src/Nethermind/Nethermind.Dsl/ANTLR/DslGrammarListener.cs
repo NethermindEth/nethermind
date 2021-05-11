@@ -31,15 +31,15 @@ using IToken = Antlr4.Runtime.IToken;
 [System.CLSCompliant(false)]
 public interface IDslGrammarListener : IParseTreeListener {
 	/// <summary>
-	/// Enter a parse tree produced by <see cref="DslGrammarParser.init"/>.
+	/// Enter a parse tree produced by <see cref="DslGrammarParser.tree"/>.
 	/// </summary>
 	/// <param name="context">The parse tree.</param>
-	void EnterInit([NotNull] DslGrammarParser.InitContext context);
+	void EnterTree([NotNull] DslGrammarParser.TreeContext context);
 	/// <summary>
-	/// Exit a parse tree produced by <see cref="DslGrammarParser.init"/>.
+	/// Exit a parse tree produced by <see cref="DslGrammarParser.tree"/>.
 	/// </summary>
 	/// <param name="context">The parse tree.</param>
-	void ExitInit([NotNull] DslGrammarParser.InitContext context);
+	void ExitTree([NotNull] DslGrammarParser.TreeContext context);
 	/// <summary>
 	/// Enter a parse tree produced by <see cref="DslGrammarParser.expression"/>.
 	/// </summary>
@@ -100,4 +100,24 @@ public interface IDslGrammarListener : IParseTreeListener {
 	/// </summary>
 	/// <param name="context">The parse tree.</param>
 	void ExitCondition([NotNull] DslGrammarParser.ConditionContext context);
+	/// <summary>
+	/// Enter a parse tree produced by <see cref="DslGrammarParser.andCondition"/>.
+	/// </summary>
+	/// <param name="context">The parse tree.</param>
+	void EnterAndCondition([NotNull] DslGrammarParser.AndConditionContext context);
+	/// <summary>
+	/// Exit a parse tree produced by <see cref="DslGrammarParser.andCondition"/>.
+	/// </summary>
+	/// <param name="context">The parse tree.</param>
+	void ExitAndCondition([NotNull] DslGrammarParser.AndConditionContext context);
+	/// <summary>
+	/// Enter a parse tree produced by <see cref="DslGrammarParser.orCondition"/>.
+	/// </summary>
+	/// <param name="context">The parse tree.</param>
+	void EnterOrCondition([NotNull] DslGrammarParser.OrConditionContext context);
+	/// <summary>
+	/// Exit a parse tree produced by <see cref="DslGrammarParser.orCondition"/>.
+	/// </summary>
+	/// <param name="context">The parse tree.</param>
+	void ExitOrCondition([NotNull] DslGrammarParser.OrConditionContext context);
 }

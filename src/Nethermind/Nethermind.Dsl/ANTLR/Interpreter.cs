@@ -26,8 +26,6 @@ namespace Nethermind.Dsl.ANTLR
             _tree = tree ?? throw new ArgumentNullException(nameof(tree));
             _treeListener = treeListener ?? throw new ArgumentNullException(nameof(treeListener));
 
-            _treeListener.OnEnterExpression = AddExpression; 
-            _treeListener.OnEnterCondition = OnCondition;
             _treeListener.OnExit = BuildPipeline;
         }
 

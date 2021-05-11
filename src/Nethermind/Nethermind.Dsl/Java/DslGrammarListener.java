@@ -7,15 +7,15 @@ import org.antlr.v4.runtime.tree.ParseTreeListener;
  */
 public interface DslGrammarListener extends ParseTreeListener {
 	/**
-	 * Enter a parse tree produced by {@link DslGrammarParser#init}.
+	 * Enter a parse tree produced by {@link DslGrammarParser#tree}.
 	 * @param ctx the parse tree
 	 */
-	void enterInit(DslGrammarParser.InitContext ctx);
+	void enterTree(DslGrammarParser.TreeContext ctx);
 	/**
-	 * Exit a parse tree produced by {@link DslGrammarParser#init}.
+	 * Exit a parse tree produced by {@link DslGrammarParser#tree}.
 	 * @param ctx the parse tree
 	 */
-	void exitInit(DslGrammarParser.InitContext ctx);
+	void exitTree(DslGrammarParser.TreeContext ctx);
 	/**
 	 * Enter a parse tree produced by {@link DslGrammarParser#expression}.
 	 * @param ctx the parse tree

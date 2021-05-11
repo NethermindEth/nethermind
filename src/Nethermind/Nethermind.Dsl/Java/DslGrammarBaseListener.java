@@ -15,13 +15,13 @@ public class DslGrammarBaseListener implements DslGrammarListener {
 	 *
 	 * <p>The default implementation does nothing.</p>
 	 */
-	@Override public void enterInit(DslGrammarParser.InitContext ctx) { }
+	@Override public void enterTree(DslGrammarParser.TreeContext ctx) { }
 	/**
 	 * {@inheritDoc}
 	 *
 	 * <p>The default implementation does nothing.</p>
 	 */
-	@Override public void exitInit(DslGrammarParser.InitContext ctx) { }
+	@Override public void exitTree(DslGrammarParser.TreeContext ctx) { }
 	/**
 	 * {@inheritDoc}
 	 *

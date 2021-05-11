@@ -1,17 +1,23 @@
 grammar DslGrammar;
 
-init: (expression)* ;
+tree: (expression)* ;
 expression : sourceExpression | watchExpression | whereExpression | publishExpression | andCondition | orCondition ;
 sourceExpression : SOURCE WORD ;
 watchExpression : WATCH WORD ;
 whereExpression : WHERE condition ;
-publishExpression : PUBLISH (WEBSOCKETS | LOG_PUBLISHER) WORD ;
+publishExpression : PUBLISH PUBLISH_VALUE WORD ;
+condition : WORD BOOLEAN_OPERATOR  ; 
 andCondition : AND condition ;
 orCondition : OR condition ;
 
-condition : WORD ( ARITHMETIC_SYMBOL | CONTAINS ) (DIGIT | WORD | ADDRESS) ; 
+WORD : [a-zA-Z]+ ;
+DIGIT : [0-9]+;
+ADDRESS : '0x'[a-fA-F0-9]* ;
+WS : [ \t\r\n]+ -> skip ; // skip spaces, tabs, newlines
 
+BOOLEAN_OPERATOR : ARITHMETIC_SYMBOL | CONTAINS ;
 ARITHMETIC_SYMBOL : '==' | '!=' | '<' | '>' | '<=' | '>=' ;
+CONDITION_VALUE : WORD | DIGIT | ADDRESS ;
 
 SOURCE : 'SOURCE' ;
 WATCH : 'WATCH' ;
@@ -21,10 +27,6 @@ AND : 'AND' ;
 OR : 'OR' ;
 CONTAINS : 'CONTAINS' ;
 
+PUBLISH_VALUE : WEBSOCKETS | LOG_PUBLISHER ;
 WEBSOCKETS : 'WebSockets' | 'webSockets' | 'websockets' ;
 LOG_PUBLISHER : 'LogPublisher' | 'logPublisher' | 'logpublisher' ;
-
-WORD : [a-zA-Z]+ ;
-DIGIT : [0-9]+;
-ADDRESS : '0x'[a-fA-F0-9]* ;
-WS : [ \t\r\n]+ -> skip ; // skip spaces, tabs, newlines
