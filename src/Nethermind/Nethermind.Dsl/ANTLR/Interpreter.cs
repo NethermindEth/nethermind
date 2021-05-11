@@ -27,6 +27,12 @@ namespace Nethermind.Dsl.ANTLR
             _tree = tree ?? throw new ArgumentNullException(nameof(tree));
             _treeListener = treeListener ?? throw new ArgumentNullException(nameof(treeListener));
 
+            _treeListener.OnSourceExpression = AddSource;
+            _treeListener.OnWatchExpression = AddWatch;
+            _treeListener.OnCondition = AddCondition;
+            _treeListener.OnAndCondition = AddAndCondition;
+            _treeListener.OnOrCondition = AddOrCondition;
+            _treeListener.OnPublishExpression = AddPublisher;
             _treeListener.OnExit = BuildPipeline;
         }
 
@@ -74,7 +80,7 @@ namespace Nethermind.Dsl.ANTLR
             }
         }
 
-        private void OnCondition(string key, string symbol, string value)
+        private void AddCondition(string key, string symbol, string value)
         {
             if(_blockSource)
             {
@@ -87,13 +93,14 @@ namespace Nethermind.Dsl.ANTLR
             _transactionPipelineBuilder = _transactionPipelineBuilder.AddElement(txElement);
         }
 
-        private void OnAndCondition(string key, string symbol, string value)
+        private void AddAndCondition(string key, string symbol, string value)
         {
-            OnCondition(key, symbol, value); // AND condition is just adding another element to the pipeline
+            AddCondition(key, symbol, value); // AND condition is just adding another element to the pipeline
         }
 
-        private void OnOrCondition(string key, string symbol, string value)
+        private void AddOrCondition(string key, string symbol, string value)
         {
+            // OR operation add conditions to the last element in the pipeline
             if(_blockSource)
             {
                 var blockElement = (PipelineElement<Block, Block>)GetNextBlockElement(key, symbol, value);
@@ -160,7 +167,7 @@ namespace Nethermind.Dsl.ANTLR
             };
         }
 
-        private void OnPublish(string publisher)
+        private void AddPublisher(string publisher)
         {
             if(_blockSource)
             {
