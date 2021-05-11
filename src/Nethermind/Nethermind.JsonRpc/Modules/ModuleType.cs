@@ -76,15 +76,15 @@ namespace Nethermind.JsonRpc.Modules
 
         public static IEnumerable<string> DefaultModules { get; } = new List<string>()
         {
-            Eth,
+            Eth, 
+            Subscribe, 
+            Trace, 
+            TxPool, 
+            Web3, 
+            Personal, 
+            Proof, 
             Net,
             Parity,
-            Personal,
-            Proof,
-            Subscribe,
-            Trace,
-            TxPool,
-            Web3,
             Health
         };
     }

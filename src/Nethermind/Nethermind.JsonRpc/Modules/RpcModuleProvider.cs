@@ -85,7 +85,7 @@ namespace Nethermind.JsonRpc.Modules
                 }
             }
 
-            if (_jsonRpcConfig.EnabledModules.Contains(moduleType.ToString(), StringComparer.InvariantCultureIgnoreCase))
+            if (_jsonRpcConfig.EnabledModules.Contains(moduleType, StringComparer.InvariantCultureIgnoreCase))
             {
                 _enabledModules.Add(moduleType);
             }
