@@ -14,8 +14,10 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Collections.Generic;
 using System.IO.Abstractions;
+using System.Linq;
 using System.Reflection;
 using System.Threading.Tasks;
 using Nethermind.JsonRpc.Modules;
@@ -33,10 +35,15 @@ namespace Nethermind.JsonRpc.Test.Modules
 {
     internal class TestRpcModuleProvider<T> : IRpcModuleProvider where T : class, IRpcModule
     {
-        private RpcModuleProvider _provider = new RpcModuleProvider(new FileSystem(), new JsonRpcConfig(), LimboLogs.Instance);
+        private readonly JsonRpcConfig _jsonRpcConfig;
+        private readonly RpcModuleProvider _provider;
+        
 
         public TestRpcModuleProvider(T module)
         {
+            _jsonRpcConfig = new JsonRpcConfig();
+            _provider = new RpcModuleProvider(new FileSystem(), _jsonRpcConfig, LimboLogs.Instance);
+            
             _provider.Register(new SingletonModulePool<INetRpcModule>(new SingletonFactory<INetRpcModule>(typeof(INetRpcModule).IsAssignableFrom(typeof(T)) ? (INetRpcModule)module : Substitute.For<INetRpcModule>()), true));
             _provider.Register(new SingletonModulePool<IEthRpcModule>(new SingletonFactory<IEthRpcModule>(typeof(IEthRpcModule).IsAssignableFrom(typeof(T)) ? (IEthRpcModule)module : Substitute.For<IEthRpcModule>()), true));
             _provider.Register(new SingletonModulePool<IWeb3RpcModule>(new SingletonFactory<IWeb3RpcModule>(typeof(IWeb3RpcModule).IsAssignableFrom(typeof(T)) ? (IWeb3RpcModule)module : Substitute.For<IWeb3RpcModule>()), true));
@@ -47,7 +54,19 @@ namespace Nethermind.JsonRpc.Test.Modules
 
         public void Register<TOther>(IRpcModulePool<TOther> pool) where TOther : IRpcModule
         {
+            EnableModule<TOther>();
             _provider.Register(pool);
+        }
+
+        private void EnableModule<TOther>() where TOther : IRpcModule
+        {
+            if (Attribute.GetCustomAttribute(typeof(TOther), typeof(RpcModuleAttribute), true) is RpcModuleAttribute rpcModuleAttribute)
+            {
+                if (!_jsonRpcConfig.EnabledModules.Contains(rpcModuleAttribute.ModuleType))
+                {
+                    _jsonRpcConfig.EnabledModules = _jsonRpcConfig.EnabledModules.Union(new[] {rpcModuleAttribute.ModuleType}).ToArray();
+                }
+            }
         }
 
         public IReadOnlyCollection<JsonConverter> Converters => _provider.Converters;
