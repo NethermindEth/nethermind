@@ -6,7 +6,7 @@ sourceExpression : SOURCE WORD ;
 watchExpression : WATCH WORD ;
 whereExpression : WHERE condition ;
 publishExpression : PUBLISH PUBLISH_VALUE WORD ;
-condition : WORD BOOLEAN_OPERATOR  ; 
+condition : WORD BOOLEAN_OPERATOR CONDITION_VALUE; 
 andCondition : AND condition ;
 orCondition : OR condition ;
 

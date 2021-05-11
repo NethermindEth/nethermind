@@ -6,9 +6,10 @@ namespace Nethermind.Dsl.Pipeline
 {
     public class PipelineElement<TIn, TOut> : IPipelineElement<TIn, TOut> 
     {
+        public Action<TOut> Emit { private get; set; }
+        public List<Func<TIn, bool>> Conditions { get => _conditions; }
         private List<Func<TIn, bool>> _conditions;
         private Func<TIn, TOut> _transformData;
-        public Action<TOut> Emit { private get; set; }
 
         public PipelineElement(Func<TIn, bool> condition, Func<TIn, TOut> transformData)
         {
@@ -20,14 +21,12 @@ namespace Nethermind.Dsl.Pipeline
         {
             foreach(var condition in _conditions)
             {
-                if(!condition(data))
+                if (condition(data))
                 {
-                    return;
+                    var dataToEmit = _transformData(data);
+                    Emit(dataToEmit);
                 }
             }
-
-            var dataToEmit = _transformData(data);
-            Emit(dataToEmit);
         }
 
         public void AddCondition(Func<TIn, bool> condition)

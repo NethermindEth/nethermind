@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Antlr4.Runtime.Tree;
 using Nethermind.Api;
 using Nethermind.Core;
@@ -27,22 +28,6 @@ namespace Nethermind.Dsl.ANTLR
             _treeListener = treeListener ?? throw new ArgumentNullException(nameof(treeListener));
 
             _treeListener.OnExit = BuildPipeline;
-        }
-
-        private void AddExpression(AntlrTokenType tokenType, string value)
-        {
-            switch (tokenType)
-            {
-                case AntlrTokenType.SOURCE: 
-                    AddSource(value);
-                break;
-                case AntlrTokenType.WATCH:
-                    AddWatch(value);
-                break;
-                case AntlrTokenType.PUBLISH:
-                    OnPublish(value);
-                break;
-            }
         }
 
         private void AddSource(string value)
@@ -93,121 +78,86 @@ namespace Nethermind.Dsl.ANTLR
         {
             if(_blockSource)
             {
-                BlockCondition(key, symbol, value);
+                var blockElement = GetNextBlockElement(key, symbol, value);
+                _blockPipelineBuilder = _blockPipelineBuilder.AddElement(blockElement);
                 return;
             }
 
-            TransactionCondition(key, symbol, value);
+            var txElement = GetNextTransactionElement(key, symbol, value);
+            _transactionPipelineBuilder = _transactionPipelineBuilder.AddElement(txElement);
         }
 
-        private void TransactionCondition(string key, string symbol, string value)
+        private void OnAndCondition(string key, string symbol, string value)
         {
-                switch (symbol)
-                {
-                    case "==":
-                        _transactionPipelineBuilder =_transactionPipelineBuilder.AddElement(
-                            new PipelineElement<Transaction, Transaction>(
-                                condition: (t => t.GetType().GetProperty(key).GetValue(t).ToString() == value),
-                                transformData: (t => t)
-                            )
-                        );
-                        return;
-                    case "!=":
-                        _transactionPipelineBuilder = _transactionPipelineBuilder.AddElement(
-                            new PipelineElement<Transaction, Transaction>(
-                                condition: (t => t.GetType().GetProperty(key).GetValue(t).ToString() != value),
-                                transformData: (t => t)
-                            )
-                        );
-                        return;
-                    case ">":
-                        _transactionPipelineBuilder = _transactionPipelineBuilder.AddElement(
-                            new PipelineElement<Transaction, Transaction>(
-                                condition: (t => (UInt256)t.GetType().GetProperty(key).GetValue(t) > UInt256.Parse(value)),
-                                transformData: (t => t)
-                            )
-                        );
-                        return;
-                    case "<":
-                        _transactionPipelineBuilder = _transactionPipelineBuilder.AddElement(
-                            new PipelineElement<Transaction, Transaction>(
-                                condition: (t => (UInt256)t.GetType().GetProperty(key).GetValue(t) < UInt256.Parse(value)),
-                                transformData: (t => t)
-                            )
-                        );
-                        return;
-                    case ">=":
-                        _transactionPipelineBuilder = _transactionPipelineBuilder.AddElement(
-                            new PipelineElement<Transaction, Transaction>(
-                                condition: (t => (UInt256)t.GetType().GetProperty(key).GetValue(t) >= UInt256.Parse(value)),
-                                transformData: (t => t)
-                            )
-                        );
-                        return;
-                    case "<=":
-                        _transactionPipelineBuilder = _transactionPipelineBuilder.AddElement(
-                            new PipelineElement<Transaction, Transaction>(
-                                condition: (t => (UInt256)t.GetType().GetProperty(key).GetValue(t) <= UInt256.Parse(value)),
-                                transformData: (t => t)
-                            )
-                        );
-                        return;
-                }
+            OnCondition(key, symbol, value); // AND condition is just adding another element to the pipeline
         }
 
-        private void BlockCondition(string key, string symbol, string value)
+        private void OnOrCondition(string key, string symbol, string value)
         {
-                switch (symbol)
-                {
-                    case "==":
-                        _blockPipelineBuilder =_blockPipelineBuilder.AddElement(
-                            new PipelineElement<Block, Block>(
-                                condition: (b => b.GetType().GetProperty(key).GetValue(b).ToString() == value),
-                                transformData: (b => b)
-                            )
-                        );
-                        return;
-                    case "!=":
-                        _blockPipelineBuilder =_blockPipelineBuilder.AddElement(
-                            new PipelineElement<Block, Block>(
-                                condition: (b => b.GetType().GetProperty(key).GetValue(b).ToString() != value),
-                                transformData: (b => b)
-                            )
-                        );
-                        return;
-                    case ">":
-                        _blockPipelineBuilder =_blockPipelineBuilder.AddElement(
-                            new PipelineElement<Block, Block>(
-                                condition: (b => (UInt256)b.GetType().GetProperty(key).GetValue(b) > UInt256.Parse(value)),
-                                transformData: (b => b)
-                            )
-                        );
-                        return;
-                    case "<":
-                        _blockPipelineBuilder =_blockPipelineBuilder.AddElement(
-                            new PipelineElement<Block, Block>(
-                                condition: (b => (UInt256)b.GetType().GetProperty(key).GetValue(b) < UInt256.Parse(value)),
-                                transformData: (b => b)
-                            )
-                        );
-                        return;
-                    case ">=":
-                        _blockPipelineBuilder =_blockPipelineBuilder.AddElement(
-                            new PipelineElement<Block, Block>(
-                                condition: (b => (UInt256)b.GetType().GetProperty(key).GetValue(b) >= UInt256.Parse(value)),
-                                transformData: (b => b)
-                            )
-                        );
-                        return;
-                    case "<=":
-                        _blockPipelineBuilder =_blockPipelineBuilder.AddElement(
-                            new PipelineElement<Block, Block>(
-                                condition: (b => (UInt256)b.GetType().GetProperty(key).GetValue(b) <= UInt256.Parse(value)),
-                                transformData: (b => b)
-                            )
-                        );
-                        return;
-                }
+            if(_blockSource)
+            {
+                var blockElement = (PipelineElement<Block, Block>)GetNextBlockElement(key, symbol, value);
+                var blockCondition = blockElement.Conditions.Last();
+                var lastBlockElement = (PipelineElement<Block, Block>)_blockPipelineBuilder.LastElement;
+                lastBlockElement.AddCondition(blockCondition);
+            }
+
+            var txElement = (PipelineElement<Block, Block>)GetNextBlockElement(key, symbol, value);
+            var txCondition = txElement.Conditions.Last();
+            var lastTxElement = (PipelineElement<Block, Block>)_blockPipelineBuilder.LastElement;
+            lastTxElement.AddCondition(txCondition);
+        }
+
+        private PipelineElement<Transaction, Transaction> GetNextTransactionElement(string key, string operation, string value)
+        {
+            return operation switch
+            {
+                "==" => new PipelineElement<Transaction, Transaction>(
+                            condition: (t => t.GetType().GetProperty(key).GetValue(t).ToString() == value),
+                            transformData: (t => t)),
+                "!=" => new PipelineElement<Transaction, Transaction>(
+                            condition: (t => t.GetType().GetProperty(key).GetValue(t).ToString() != value),
+                            transformData: (t => t)),
+                ">" => new PipelineElement<Transaction, Transaction>(
+                            condition: (t => (UInt256)t.GetType().GetProperty(key).GetValue(t) > UInt256.Parse(value)),
+                            transformData: (t => t)),
+                "<" => new PipelineElement<Transaction, Transaction>(
+                            condition: (t => (UInt256)t.GetType().GetProperty(key).GetValue(t) < UInt256.Parse(value)),
+                            transformData: (t => t)),
+                ">=" => new PipelineElement<Transaction, Transaction>(
+                            condition: (t => (UInt256)t.GetType().GetProperty(key).GetValue(t) >= UInt256.Parse(value)),
+                            transformData: (t => t)),
+                "<=" => new PipelineElement<Transaction, Transaction>(
+                            condition: (t => (UInt256)t.GetType().GetProperty(key).GetValue(t) <= UInt256.Parse(value)),
+                            transformData: (t => t)),
+                _ => null
+            };
+        }
+
+        private PipelineElement<Block, Block> GetNextBlockElement(string key, string operation, string value)
+        {
+            return operation switch
+            {
+                "==" => new PipelineElement<Block, Block>(
+                            condition: (b => b.GetType().GetProperty(key).GetValue(b).ToString() == value),
+                            transformData: (b => b)),
+                "!=" => new PipelineElement<Block, Block>(
+                            condition: (b => b.GetType().GetProperty(key).GetValue(b).ToString() != value),
+                            transformData: (b => b)),
+                ">" => new PipelineElement<Block, Block>(
+                            condition: (b => (UInt256)b.GetType().GetProperty(key).GetValue(b) > UInt256.Parse(value)),
+                            transformData: (b => b)),
+                "<" => new PipelineElement<Block, Block>(
+                            condition: (b => (UInt256)b.GetType().GetProperty(key).GetValue(b) < UInt256.Parse(value)),
+                            transformData: (b => b)),
+                ">=" => new PipelineElement<Block, Block>(
+                            condition: (b => (UInt256)b.GetType().GetProperty(key).GetValue(b) >= UInt256.Parse(value)),
+                            transformData: (b => b)),
+                "<=" => new PipelineElement<Block, Block>(
+                            condition: (b => (UInt256)b.GetType().GetProperty(key).GetValue(b) <= UInt256.Parse(value)),
+                            transformData: (b => b)),
+                _ => null
+            };
         }
 
         private void OnPublish(string publisher)

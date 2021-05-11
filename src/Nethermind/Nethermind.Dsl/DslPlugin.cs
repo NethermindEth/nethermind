@@ -38,7 +38,7 @@ namespace Nethermind.Dsl
             var tokens = new CommonTokenStream(lexer);
             var parser = new DslGrammarParser(tokens);
             parser.BuildParseTree = true;
-            IParseTree tree = parser.init();
+            IParseTree tree = parser.tree();
 
             _listener = new ParseTreeListener();
             _interpreter = new Interpreter(_api, tree, _listener);
