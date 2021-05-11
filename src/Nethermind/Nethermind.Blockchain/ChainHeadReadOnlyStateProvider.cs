@@ -16,6 +16,7 @@
 // 
 
 using System;
+using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
@@ -26,16 +27,16 @@ namespace Nethermind.Blockchain
 {
     public class ChainHeadReadOnlyStateProvider : IReadOnlyStateProvider
     {
-        private readonly IBlockTree _blockTree;
+        private readonly IBlockFinder _blockFinder;
         private readonly IStateReader _stateReader;
 
-        public ChainHeadReadOnlyStateProvider(IBlockTree blockTree, IStateReader stateReader)
+        public ChainHeadReadOnlyStateProvider(IBlockFinder blockFinder, IStateReader stateReader)
         {
-            _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
+            _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
             _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
         }
 
-        public Keccak StateRoot => _blockTree.Head?.StateRoot ?? Keccak.EmptyTreeHash;
+        public Keccak StateRoot => _blockFinder.Head?.StateRoot ?? Keccak.EmptyTreeHash;
 
         public Account GetAccount(Address address) => _stateReader.GetAccount(StateRoot, address);
 

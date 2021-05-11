@@ -54,7 +54,7 @@ namespace Nethermind.JsonRpc
             public long MaxTimeOfError { get; set; }
             public long MaxTimeOfSuccess { get; set; }
             public decimal TotalSize { get; set; }
-            public decimal AvgSize => TotalSize / Calls;
+            public decimal AvgSize => Calls == 0 ? 0 : TotalSize / Calls;
             public int Calls => Successes + Errors;
         }
 

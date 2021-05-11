@@ -87,6 +87,21 @@ namespace Nethermind.Core.Test.Encoding
             decoded.Hash = decoded.CalculateHash();
             decoded.Should().BeEquivalentTo(testCase.Tx, testCase.Description);
         }
+        
+        [TestCaseSource(nameof(TestCaseSource))]
+        public void Roundtrip_ValueDecoderContext((Transaction Tx, string Description) testCase)
+        {
+            RlpStream rlpStream = new RlpStream(10000);
+            _txDecoder.Encode(rlpStream, testCase.Tx);
+            
+            Span<byte> spanIncomingTxRlp = rlpStream.Data.AsSpan();
+            Rlp.ValueDecoderContext decoderContext = new Rlp.ValueDecoderContext(spanIncomingTxRlp);
+            rlpStream.Position = 0;
+            Transaction decoded = _txDecoder.Decode(ref decoderContext);
+            decoded!.SenderAddress = new EthereumEcdsa(ChainId.Mainnet, LimboLogs.Instance).RecoverAddress(decoded);
+            decoded.Hash = decoded.CalculateHash();
+            decoded.Should().BeEquivalentTo(testCase.Tx, testCase.Description);
+        }
 
         [TestCaseSource(nameof(YoloV3TestCases))]
         public void Roundtrip_yolo_v3((string IncomingRlpHex, Keccak Hash) testCase)

@@ -1,4 +1,4 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -16,12 +16,16 @@
 // 
 
 using Nethermind.Core.Specs;
+using Nethermind.Int256;
+using Nethermind.State;
 
-namespace Nethermind.Consensus.Transactions
+namespace Nethermind.TxPool
 {
-    public static class TxFilterBuilders
+    public interface IChainHeadInfoProvider
     {
-        public static ITxFilter CreateStandardTxFilter(IMiningConfig miningConfig, ISpecProvider specProvider)
-            => new MinGasPriceTxFilter(miningConfig.MinGasPrice, specProvider);
+        IChainHeadSpecProvider SpecProvider { get; }
+        
+        IReadOnlyStateProvider ReadOnlyStateProvider { get; }
+        UInt256 BaseFee { get; }
     }
 }

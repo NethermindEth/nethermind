@@ -27,6 +27,8 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
         
         public UInt256 Balance { get; set; }
         
+        public UInt256 Nonce { get; set; }
+        
         public byte[] Code { get; set; }
         
         public byte[] Constructor { get; set; }
