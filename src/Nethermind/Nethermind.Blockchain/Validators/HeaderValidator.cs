@@ -172,16 +172,16 @@ namespace Nethermind.Blockchain.Validators
 
         protected virtual bool ValidateGasLimitRange(BlockHeader header, BlockHeader parent, IReleaseSpec spec)
         {
-            long maxGasLimitDifference = parent.GasLimit / spec.GasLimitBoundDivisor;
             long adjustedParentGasLimit = Eip1559GasLimitAdjuster.AdjustGasLimit(spec, parent.GasLimit, header.Number);
+            long maxGasLimitDifference = adjustedParentGasLimit / spec.GasLimitBoundDivisor;
 
-            bool gasLimitNotTooHigh = header.GasLimit <= adjustedParentGasLimit + maxGasLimitDifference;
+            bool gasLimitNotTooHigh = header.GasLimit < adjustedParentGasLimit + maxGasLimitDifference;
             if (!gasLimitNotTooHigh)
             {
                 if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - gas limit too high");
             }
 
-            bool gasLimitNotTooLow = header.GasLimit >= adjustedParentGasLimit - maxGasLimitDifference && header.GasLimit >= spec.MinGasLimit;
+            bool gasLimitNotTooLow = header.GasLimit > adjustedParentGasLimit - maxGasLimitDifference && header.GasLimit >= spec.MinGasLimit;
             if (!gasLimitNotTooLow)
             {
                 if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - gas limit too low");
