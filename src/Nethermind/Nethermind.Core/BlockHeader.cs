@@ -143,21 +143,11 @@ namespace Nethermind.Core
                 UInt256 parentBaseFee = parent.BaseFee;
                 long gasDelta;
                 UInt256 feeDelta;
-                long parentGasTarget = parent.GasLimit;
-
-                // # check if the base fee is correct
-                //   if parent_gas_used == parent_gas_target:
-                //   expected_base_fee = parent_base_fee
-                //   elif parent_gas_used > parent_gas_target:
-                //   gas_delta = parent_gas_used - parent_gas_target
-                //   fee_delta = max(parent_base_fee * gas_delta // parent_gas_target // BASE_FEE_MAX_CHANGE_DENOMINATOR, 1)
-                //   expected_base_fee = parent_base_fee + fee_delta
-                //   else:
-                //   gas_delta = parent_gas_target - parent_gas_used
-                //   fee_delta = parent_base_fee * gas_delta // parent_gas_target // BASE_FEE_MAX_CHANGE_DENOMINATOR
-                //   expected_base_fee = parent_base_fee - fee_delta
-                //   assert expected_base_fee == block.base_fee, 'invalid block: base fee not correct'
-
+                bool isForkBlockNumber = spec.Eip1559TransitionBlock == parent.Number + 1;
+                long parentGasTarget = parent.GasLimit / Eip1559Constants.ElasticityMultiplier;
+                if (isForkBlockNumber)
+                    parentGasTarget = parent.GasLimit;
+                
                 if (parent.GasUsed == parentGasTarget)
                 {
                     expectedBaseFee = parent.BaseFee;
@@ -177,7 +167,7 @@ namespace Nethermind.Core
                     expectedBaseFee = UInt256.Max(parentBaseFee - feeDelta, 0);
                 }
 
-                if (spec.Eip1559TransitionBlock == parent.Number + 1)
+                if (isForkBlockNumber)
                 {
                     expectedBaseFee = Eip1559Constants.ForkBaseFee;
                 }

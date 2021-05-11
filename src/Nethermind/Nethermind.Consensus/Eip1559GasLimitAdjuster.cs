@@ -24,10 +24,10 @@ namespace Nethermind.Consensus
     /// The new GasLimit = ElasticityMultiplier * GasTarget </summary>
     public static class Eip1559GasLimitAdjuster
     {
-        public static long AdjustGasLimit(bool isEip1559Enabled, long gasLimit)
+        public static long AdjustGasLimit(IReleaseSpec releaseSpec, long gasLimit, long blockNumber)
         {
             long adjustedGasLimit = gasLimit;
-            if (isEip1559Enabled)
+            if (releaseSpec.Eip1559TransitionBlock == blockNumber)
             {
                 adjustedGasLimit *= Eip1559Constants.ElasticityMultiplier;
             }
