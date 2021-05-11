@@ -56,6 +56,7 @@ namespace Nethermind.Blockchain.Test.TxPools
         private ITxStorage _inMemoryTxStorage;
         private ITxStorage _persistentTxStorage;
         private IStateProvider _stateProvider;
+        private IStateReader _stateReader;
         private IBlockTree _blockTree;
         
         private IBlockFinder _blockFinder;
@@ -70,7 +71,10 @@ namespace Nethermind.Blockchain.Test.TxPools
             _noTxStorage = NullTxStorage.Instance;
             _inMemoryTxStorage = new InMemoryTxStorage();
             _persistentTxStorage = new PersistentTxStorage(new MemDb());
-            _stateProvider = new StateProvider(new TrieStore(new MemDb(), _logManager), new MemDb(), _logManager);
+            var trieStore = new TrieStore(new MemDb(), _logManager);
+            var codeDb = new MemDb();
+            _stateProvider = new StateProvider(trieStore, codeDb, _logManager);
+            _stateReader =  new StateReader(trieStore, codeDb, _logManager);
             _blockTree = Substitute.For<IBlockTree>();
             Block block =  Build.A.Block.WithNumber(0).TestObject;
             _blockTree.Head.Returns(block);
@@ -261,16 +265,21 @@ namespace Nethermind.Blockchain.Test.TxPools
         }
         
         [Test]
-        public void should_ignore_overflow_transactions2()
+        public void should_ignore_overflow_transactions_gas_premium_and_fee_cap()
         {
-            _txPool = CreatePool(_noTxStorage);
+            var specProvider = Substitute.For<ISpecProvider>();
+            specProvider.GetSpec(Arg.Any<long>()).Returns(London.Instance);
+            var txPool = CreatePool(_noTxStorage, null, specProvider);
             Transaction tx = Build.A.Transaction.WithGasPrice(UInt256.MaxValue / Transaction.BaseTxGasCost)
                 .WithGasLimit(Transaction.BaseTxGasCost)
                 .WithValue(Transaction.BaseTxGasCost)
+                .WithFeeCap(UInt256.MaxValue - 10)
+                .WithGasPremium((UInt256)15)
+                .WithType(TxType.EIP1559)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
-            EnsureSenderBalance(tx);
-            AddTxResult result = _txPool.AddTransaction(tx, TxHandlingOptions.PersistentBroadcast);
-            _txPool.GetPendingTransactions().Length.Should().Be(0);
+            EnsureSenderBalance(tx.SenderAddress, UInt256.MaxValue);
+            AddTxResult result = txPool.AddTransaction(tx, TxHandlingOptions.PersistentBroadcast);
+            txPool.GetPendingTransactions().Length.Should().Be(0);
             result.Should().Be(AddTxResult.BalanceOverflow);
         }
         
@@ -585,8 +594,8 @@ namespace Nethermind.Blockchain.Test.TxPools
             specProvider ??= RopstenSpecProvider.Instance;
             ITransactionComparerProvider transactionComparerProvider =
                 new TransactionComparerProvider(specProvider, _blockTree);
-            return new TxPool.TxPool(txStorage, _ethereumEcdsa, new ChainHeadSpecProvider(specProvider, _blockFinder),
-                config ?? new TxPoolConfig() { GasLimit = _txGasLimit }, _stateProvider,
+            return new TxPool.TxPool(txStorage, _ethereumEcdsa, new ChainHeadInfoProvider(specProvider, _blockFinder, _stateProvider),
+                config ?? new TxPoolConfig() { GasLimit = _txGasLimit },
                 new TxValidator(_specProvider.ChainId), _logManager, transactionComparerProvider.GetDefaultComparer());
         }
 

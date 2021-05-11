@@ -129,7 +129,7 @@ namespace Ethereum.Test.Base
             MemDb blockInfoDb = new MemDb();
             IBlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), specProvider, NullBloomStorage.Instance,  _logManager);
             ITransactionComparerProvider transactionComparerProvider = new TransactionComparerProvider(specProvider, blockTree);
-            ITxPool transactionPool = new TxPool(NullTxStorage.Instance, ecdsa, new ChainHeadSpecProvider(specProvider, blockTree), new TxPoolConfig(), stateProvider,  new TxValidator(specProvider.ChainId), _logManager, transactionComparerProvider.GetDefaultComparer());
+            ITxPool transactionPool = new TxPool(NullTxStorage.Instance, ecdsa, new ChainHeadInfoProvider(specProvider, blockTree, stateProvider), new TxPoolConfig(),  new TxValidator(specProvider.ChainId), _logManager, transactionComparerProvider.GetDefaultComparer());
 
             IReceiptStorage receiptStorage = NullReceiptStorage.Instance;
             IBlockhashProvider blockhashProvider = new BlockhashProvider(blockTree, _logManager);
