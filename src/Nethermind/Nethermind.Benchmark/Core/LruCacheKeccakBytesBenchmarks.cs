@@ -22,8 +22,6 @@ using Nethermind.Core.Crypto;
 namespace Nethermind.Benchmarks.Core
 {
     [EvaluateOverhead(false)]
-    [MemoryDiagnoser]
-    [SimpleJob(1, 1, 1, 1)]
     public class LruCacheKeccakBytesBenchmarks
     {
         [GlobalSetup]

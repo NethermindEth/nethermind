@@ -28,6 +28,7 @@ using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.AuRa.Transactions;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using Nethermind.Trie.Pruning;
@@ -42,12 +43,14 @@ namespace Nethermind.AuRa.Test.Transactions
         private ICertifierContract _certifierContract;
         private ITxFilter _notCertifiedFilter;
         private TxCertifierFilter _filter;
+        private ISpecProvider _specProvider;
 
         [SetUp]
         public void SetUp()
         {
             _certifierContract = Substitute.For<ICertifierContract>();
             _notCertifiedFilter = Substitute.For<ITxFilter>();
+            _specProvider = Substitute.For<ISpecProvider>();
             
             _notCertifiedFilter.IsAllowed(Arg.Any<Transaction>(), Arg.Any<BlockHeader>())
                 .Returns((false, string.Empty));
@@ -56,7 +59,7 @@ namespace Nethermind.AuRa.Test.Transactions
                 Arg.Is<Address>(a => TestItem.Addresses.Take(3).Contains(a)))
                 .Returns(true);
             
-            _filter = new TxCertifierFilter(_certifierContract, _notCertifiedFilter, LimboLogs.Instance);
+            _filter = new TxCertifierFilter(_certifierContract, _notCertifiedFilter, _specProvider, LimboLogs.Instance);
         }
         
         [Test]

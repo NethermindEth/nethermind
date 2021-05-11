@@ -22,7 +22,6 @@ using Nethermind.JsonRpc.Modules.Eth;
 
 namespace Nethermind.JsonRpc.Benchmark
 {
-    [MemoryDiagnoser]
     public class ParamInfoBenchmarks
     {
         // ReSharper disable once UnassignedField.Global

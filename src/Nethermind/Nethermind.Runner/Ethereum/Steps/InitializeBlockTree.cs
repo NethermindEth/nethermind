@@ -20,6 +20,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Comparers;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
@@ -68,7 +69,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 bloomStorage,
                 _get.Config<ISyncConfig>(),
                 _get.LogManager);
-
+            
             ISigner signer = NullSigner.Instance;
             ISignerStore signerStore = NullSigner.Instance;
             if (_get.Config<IMiningConfig>().Enabled)

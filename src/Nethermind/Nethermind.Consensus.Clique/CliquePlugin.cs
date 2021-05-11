@@ -20,6 +20,7 @@ using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Comparers;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Producers;
 using Nethermind.Blockchain.Receipts;
@@ -28,6 +29,7 @@ using Nethermind.Blockchain.Services;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Db;
+using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.State;
 using Nethermind.Trie.Pruning;
@@ -99,11 +101,13 @@ namespace Nethermind.Consensus.Clique
                 _cliqueConfig!,
                 _snapshotManager!,
                 getFromApi.LogManager);
-
+            
             ReadOnlyDbProvider readOnlyDbProvider = getFromApi.DbProvider.AsReadOnly(false);
             ReadOnlyBlockTree readOnlyBlockTree = getFromApi.BlockTree.AsReadOnly();
-
-            ReadOnlyTxProcessingEnv producerEnv = new ReadOnlyTxProcessingEnv(
+            ITransactionComparerProvider transactionComparerProvider =
+                new TransactionComparerProvider(getFromApi.SpecProvider, readOnlyBlockTree);
+            
+                ReadOnlyTxProcessingEnv producerEnv = new ReadOnlyTxProcessingEnv(
                 readOnlyDbProvider,
                 getFromApi.ReadOnlyTrieStore,
                 readOnlyBlockTree,
@@ -133,12 +137,17 @@ namespace Nethermind.Consensus.Clique
                 readOnlyDbProvider,
                 producerChainProcessor);
 
-            ITxFilter txFilter = new MinGasPriceTxFilter(_miningConfig!.MinGasPrice);
+            ITxFilterPipeline txFilterPipeline =
+                TxFilterPipelineBuilder.CreateStandardFilteringPipeline(_nethermindApi.LogManager,
+                    getFromApi.SpecProvider);
+            
             ITxSource txSource = new TxPoolTxSource(
                 getFromApi.TxPool,
                 getFromApi.StateReader,
+                getFromApi.SpecProvider,
+                transactionComparerProvider,
                 getFromApi.LogManager,
-                txFilter);
+                txFilterPipeline);
 
             var gasLimitCalculator = new TargetAdjustedGasLimitCalculator(getFromApi.SpecProvider, _miningConfig);
             setInApi.BlockProducer = new CliqueBlockProducer(

@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -26,6 +26,7 @@ using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
@@ -47,8 +48,9 @@ namespace Nethermind.Merge.Plugin.Handlers
             IStateProvider stateProvider,
             IGasLimitCalculator gasLimitCalculator,
             ISigner signer,
+            ISpecProvider specProvider,
             ILogManager logManager) 
-            : base(txSource, processor, new Eth2SealEngine(signer), blockTree, blockProcessingQueue, stateProvider, gasLimitCalculator, new ManualTimestamper(), logManager)
+            : base(txSource, processor, new Eth2SealEngine(signer), blockTree, blockProcessingQueue, stateProvider, gasLimitCalculator, new ManualTimestamper(), specProvider, logManager)
         {
             _timestamper = (ManualTimestamper)Timestamper;
         }

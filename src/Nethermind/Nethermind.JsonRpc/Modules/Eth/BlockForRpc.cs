@@ -19,6 +19,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Serialization.Json;
@@ -37,7 +38,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             
         }
         
-        public BlockForRpc(Block block, bool includeFullTransactionData)
+        public BlockForRpc(Block block, bool includeFullTransactionData, ISpecProvider? specProvider = null)
         {
             _isAuRaBlock = block.Header.AuRaSignature != null;
             Author = block.Author ?? block.Beneficiary;
@@ -58,6 +59,15 @@ namespace Nethermind.JsonRpc.Modules.Eth
             {
                 Step = block.Header.AuRaStep;
                 Signature = block.Header.AuRaSignature;                    
+            }
+
+            if (specProvider != null)
+            {
+                var spec = specProvider.GetSpec(block.Number);
+                if (spec.IsEip1559Enabled)
+                {
+                    BaseFee = block.Header.BaseFee;
+                }
             }
 
             Number = block.Number;
@@ -108,6 +118,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
         public bool ShouldSerializeStep() => _isAuRaBlock;
         public UInt256 TotalDifficulty { get; set; }
         public UInt256 Timestamp { get; set; }
+        
+        public UInt256? BaseFee { get; set; }
         public IEnumerable<object> Transactions { get; set; }
         public Keccak TransactionsRoot { get; set; }
         public IEnumerable<Keccak> Uncles { get; set; }

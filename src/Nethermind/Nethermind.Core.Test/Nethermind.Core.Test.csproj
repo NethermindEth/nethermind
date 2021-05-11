@@ -31,8 +31,12 @@
     </Content>
     <None Remove="Specs\hive.json" />
     <None Remove="Specs\rinkeby.json" />
+    <None Update="TestFiles\BaseFeeTestCases.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
   <ItemGroup>
     <Folder Include="Specs" />
+    <Folder Include="TestFiles" />
   </ItemGroup>
 </Project>

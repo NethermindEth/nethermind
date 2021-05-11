@@ -16,23 +16,42 @@
 // 
 
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Int256;
 
 namespace Nethermind.Consensus.Transactions
 {
-    public class MinGasPriceTxFilter : ITxFilter
+    public class MinGasPriceTxFilter : IMinGasPriceTxFilter
     {
         private readonly UInt256 _minGasPrice;
+        private readonly ISpecProvider _specProvider;
 
-        public MinGasPriceTxFilter(UInt256 minGasPrice)
+        public MinGasPriceTxFilter(
+            UInt256 minGasPrice,
+            ISpecProvider specProvider)
         {
             _minGasPrice = minGasPrice;
+            _specProvider = specProvider;
         }
-        
+
         public (bool Allowed, string Reason) IsAllowed(Transaction tx, BlockHeader parentHeader)
         {
-           // ToDo 1559 tx.FeeCap >= _minGasPrice && tx.FeeCap >= parentHeader.BaseFee
-            return (tx.GasPrice >= _minGasPrice, $"gas price too low {tx.GasPrice} < {_minGasPrice}");
+            return IsAllowed(tx, parentHeader, _minGasPrice);
+        }
+
+        public (bool Allowed, string Reason) IsAllowed(Transaction tx, BlockHeader? parentHeader, UInt256 minGasPriceFloor)
+        {
+            UInt256 gasPrice = tx.GasPrice;
+            long blockNumber = (parentHeader?.Number ?? 0) + 1;
+            IReleaseSpec spec = _specProvider.GetSpec(blockNumber);
+            if (spec.IsEip1559Enabled && tx.IsEip1559)
+            {
+                UInt256 baseFee = BlockHeader.CalculateBaseFee(parentHeader, spec);
+                gasPrice = tx.CalculateEffectiveGasPrice(true, baseFee);
+            }
+
+            bool allowed = gasPrice >= minGasPriceFloor;
+            return (allowed, allowed ? string.Empty : $"gas price too low {gasPrice} < {minGasPriceFloor}");
         }
     }
 }

@@ -19,6 +19,7 @@ using System.Collections.Generic;
 using Nethermind.Abi;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
+using Nethermind.Int256;
 
 namespace Nethermind.Consensus.AuRa.Validators
 {

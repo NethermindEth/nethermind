@@ -15,13 +15,17 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using Nethermind.Blockchain.Comparers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Int256;
+using Nethermind.Specs;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Collections;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.TxPools.Collections
@@ -31,13 +35,20 @@ namespace Nethermind.Blockchain.Test.TxPools.Collections
     {
         private const int Capacity = 16;
 
-        private readonly SortedPool<Keccak, Transaction, Address> _sortedPool = new TxSortedPool(Capacity);
+        private SortedPool<Keccak, Transaction, Address> _sortedPool;
 
         private Transaction[] _transactions = new Transaction[Capacity * 8];
         
         [SetUp]
         public void Setup()
         {
+            ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+            IBlockTree blockTree = Substitute.For<IBlockTree>();
+            Block block =  Build.A.Block.WithNumber(0).TestObject;
+            blockTree.Head.Returns(block);
+            specProvider.GetSpec(Arg.Any<long>()).Returns(new ReleaseSpec() {IsEip1559Enabled = false});
+            ITransactionComparerProvider transactionComparerProvider = new TransactionComparerProvider(specProvider, blockTree);
+            _sortedPool = new TxSortedPool(Capacity, transactionComparerProvider.GetDefaultComparer());
             for (int i = 0; i < _transactions.Length; i++)
             {
                 UInt256 gasPrice = (UInt256)i;

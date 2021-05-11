@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -21,6 +21,7 @@ using Nethermind.Blockchain.Processing;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Handlers;
@@ -29,7 +30,7 @@ using Nethermind.State;
 namespace Nethermind.Merge.Plugin.Test
 {
     internal class Eth2TestBlockProducer : Eth2BlockProducer, ITestBlockProducer
-    {
+    {  
         public Eth2TestBlockProducer(
             ITxSource txSource, 
             IBlockchainProcessor processor, 
@@ -37,8 +38,10 @@ namespace Nethermind.Merge.Plugin.Test
             IBlockProcessingQueue blockProcessingQueue, 
             IStateProvider stateProvider, 
             IGasLimitCalculator gasLimitCalculator, 
-            ISigner signer, ILogManager logManager) 
-            : base(txSource, processor, blockTree, blockProcessingQueue, stateProvider, gasLimitCalculator, signer, logManager)
+            ISigner signer,
+            ISpecProvider specProvider,
+            ILogManager logManager) 
+            : base(txSource, processor, blockTree, blockProcessingQueue, stateProvider, gasLimitCalculator, signer, specProvider, logManager)
         {
         }
 

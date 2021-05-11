@@ -48,7 +48,7 @@ namespace Nethermind.State.Proofs
                 byte[] receiptRlp = Decoder.EncodeNew(currentReceipt,
                     (releaseSpec.IsEip658Enabled
                         ? RlpBehaviors.Eip658Receipts
-                        : RlpBehaviors.None) | RlpBehaviors.ForTreeRoot);
+                        : RlpBehaviors.None) | RlpBehaviors.SkipTypedWrapping);
                 
                 
                 Set(Rlp.Encode(i).Bytes, receiptRlp);
