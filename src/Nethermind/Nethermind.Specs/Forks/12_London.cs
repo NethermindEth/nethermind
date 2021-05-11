@@ -78,8 +78,8 @@ namespace Nethermind.Specs.Forks
         public bool IsEip158IgnoredAccount(Address address) => false;
         public bool IsEip1559Enabled => true;
         public bool IsEip3198Enabled => true;
-        public bool IsEip3238Enabled => true;
         public bool IsEip3529Enabled => true;
+        public bool IsEip3541Enabled => true;
         public long Eip1559TransitionBlock => long.MaxValue;
     }
 }
