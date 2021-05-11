@@ -57,8 +57,8 @@ namespace Nethermind.JsonRpc
         int WebSocketsPort { get; set; }
         
         [ConfigItem(
-            Description = "Defines which RPC modules should be enabled.",
-            DefaultValue = "System.String[]")]
+            Description = "Defines which RPC modules should be enabled. Built in modules are: Admin, Baseline, Clique, Consensus, Db, Debug, Deposit, Erc20, Eth, Evm, Health Mev, NdmConsumer, NdmProvider, Net, Nft, Parity, Personal, Proof, Subscribe, Trace, TxPool, Vault, Web3.",
+            DefaultValue = "[Eth, Subscribe, Trace, TxPool, Web3, Personal, Proof, Net, Parity, Health]")]
         string[] EnabledModules { get; set; }
         
         [ConfigItem(
@@ -77,7 +77,7 @@ namespace Nethermind.JsonRpc
         int ReportIntervalSeconds { get; set; }
         
         [ConfigItem(
-            Description = "Buffer responses before sending them to client. This allows to set Content-Length in response instead of using Transfer-Encoding: chunked. This may degrade performance on big responses.",
+            Description = "Buffer responses before sending them to client. This allows to set Content-Length in response instead of using Transfer-Encoding: chunked. This may degrade performance on big responses. Max buffered response size is 2GB, chunked responses can be bigger.",
             DefaultValue = "false")]
         bool BufferResponses { get; set; }
         

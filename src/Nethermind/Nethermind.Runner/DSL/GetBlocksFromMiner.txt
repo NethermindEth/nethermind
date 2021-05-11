@@ -1,0 +1,4 @@
+SOURCE BlockProcessor
+WATCH Blocks
+WHERE Author == 0x52bc44d5378309EE2abF1539BF71dE1b7d7bE3b5
+PUBLISH WebSockets

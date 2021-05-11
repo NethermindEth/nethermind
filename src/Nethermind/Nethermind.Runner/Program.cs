@@ -110,12 +110,12 @@ namespace Nethermind.Runner
             IFileSystem fileSystem = new FileSystem();
             
             string pluginsDirectoryPath = LoadPluginsDirectory(args);
-            PluginLoader filePluginLoader = new(pluginsDirectoryPath, fileSystem, 
+            PluginLoader pluginLoader = new(pluginsDirectoryPath, fileSystem, 
                 typeof(CliquePlugin), typeof(EthashPlugin), typeof(NethDevPlugin));
-            
-            IPluginLoader mevLoader = SinglePluginLoader<MevPlugin>.Instance;
-            
-            CompositePluginLoader pluginLoader = new (filePluginLoader, mevLoader);
+
+            // leaving here as an example of adding Debug plugin
+            // IPluginLoader mevLoader = SinglePluginLoader<MevPlugin>.Instance;
+            // CompositePluginLoader pluginLoader = new (pluginLoader, mevLoader);
             pluginLoader.Load(SimpleConsoleLogManager.Instance);
 
             Type configurationType = typeof(IConfig);

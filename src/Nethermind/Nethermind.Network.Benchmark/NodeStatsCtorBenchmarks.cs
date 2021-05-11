@@ -16,16 +16,12 @@
 
 using System;
 using BenchmarkDotNet.Attributes;
-using BenchmarkDotNet.Jobs;
 using Nethermind.Core.Crypto;
-using Nethermind.Logging;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.Benchmarks
 {
-    [MemoryDiagnoser]
-    [SimpleJob(RuntimeMoniker.NetCoreApp50)]
     public class NodeStatsCtorBenchmarks
     {
         private Node _node;
@@ -47,13 +43,7 @@ namespace Nethermind.Network.Benchmarks
         {
             NodeStatsLight stats = new NodeStatsLight(_node);
         }
-        
-        [Benchmark]
-        public void ImprovedRep()
-        {
-            throw new NotImplementedException();
-        }
-        
+
         [Benchmark]
         public long LightRep()
         {

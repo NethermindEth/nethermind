@@ -25,6 +25,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
+using Nethermind.TxPool;
 
 namespace Nethermind.Blockchain.Producers
 {
@@ -55,6 +56,7 @@ namespace Nethermind.Blockchain.Producers
                 stateProvider,
                 FollowOtherMiners.Instance,
                 timestamper,
+                specProvider,
                 logManager)
         {
             _trigger = trigger ?? throw new ArgumentNullException(nameof(trigger));

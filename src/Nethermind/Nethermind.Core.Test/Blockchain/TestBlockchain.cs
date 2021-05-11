@@ -18,6 +18,7 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Comparers;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Producers;
@@ -25,6 +26,7 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Rewards;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Transactions;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -70,6 +72,8 @@ namespace Nethermind.Core.Test.Blockchain
         public ITestBlockProducer BlockProducer { get; private set; }
         public IDbProvider DbProvider { get; set; }
         public ISpecProvider SpecProvider { get; set; }
+        
+        public ITransactionComparerProvider TransactionComparerProvider { get; set; }
 
         protected TestBlockchain()
         {
@@ -117,13 +121,16 @@ namespace Nethermind.Core.Test.Blockchain
             State.Commit(SpecProvider.GenesisSpec);
             State.CommitTree(0);
             
-            TxPool = CreateTxPool(txStorage);
+            
             
             IDb blockDb = new MemDb();
             IDb headerDb = new MemDb();
             IDb blockInfoDb = new MemDb();
-            BlockTree = new BlockTree(blockDb, headerDb, blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), SpecProvider, NullBloomStorage.Instance, LogManager);
-            new OnChainTxWatcher(BlockTree, TxPool, SpecProvider, LogManager);
+            BlockTree = new BlockTree(blockDb, headerDb, blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), SpecProvider, NullBloomStorage.Instance, LimboLogs.Instance);
+            TransactionComparerProvider = new TransactionComparerProvider(specProvider, BlockTree);
+            TxPool = CreateTxPool(txStorage);
+
+            new OnChainTxWatcher(BlockTree, TxPool, SpecProvider, LimboLogs.Instance);
 
             ReceiptStorage = new InMemoryReceiptStorage();
             VirtualMachine virtualMachine = new VirtualMachine(State, Storage, new BlockhashProvider(BlockTree, LogManager), SpecProvider, LogManager);
@@ -169,7 +176,7 @@ namespace Nethermind.Core.Test.Blockchain
 
         protected virtual ITestBlockProducer CreateTestBlockProducer(TxPoolTxSource txPoolTxSource, BlockchainProcessor chainProcessor, IStateProvider producerStateProvider, ISealer sealer)
         {
-            return new TestBlockProducer(txPoolTxSource, chainProcessor, producerStateProvider, sealer, BlockTree, chainProcessor, Timestamper, LogManager);
+            return new TestBlockProducer(txPoolTxSource, chainProcessor, producerStateProvider, sealer, BlockTree, chainProcessor, Timestamper, SpecProvider, LogManager);
         }
 
         public virtual ILogManager LogManager => LimboLogs.Instance;
@@ -178,13 +185,18 @@ namespace Nethermind.Core.Test.Blockchain
             new TxPool.TxPool(
                 txStorage,
                 EthereumEcdsa,
-                new FixedBlockChainHeadSpecProvider(SpecProvider),
+                new ChainHeadInfoProvider(new FixedBlockChainHeadSpecProvider(SpecProvider), BlockTree, State),
                 new TxPoolConfig(),
-                State,
                 new TxValidator(SpecProvider.ChainId),
-                LogManager);
+                LogManager,
+                TransactionComparerProvider.GetDefaultComparer());
 
-        protected virtual TxPoolTxSource CreateTxPoolTxSource() => new TxPoolTxSource(TxPool, StateReader, LogManager);
+        protected virtual TxPoolTxSource CreateTxPoolTxSource()
+        {
+            ITxFilterPipeline txFilterPipeline = TxFilterPipelineBuilder.CreateStandardFilteringPipeline(LimboLogs.Instance,
+                SpecProvider);
+            return new TxPoolTxSource(TxPool, StateReader, SpecProvider, TransactionComparerProvider, LogManager, txFilterPipeline);
+        }
 
         public BlockBuilder GenesisBlockBuilder { get; set; }
 

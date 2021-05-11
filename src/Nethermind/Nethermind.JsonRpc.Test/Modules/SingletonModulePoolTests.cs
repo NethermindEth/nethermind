@@ -64,7 +64,8 @@ namespace Nethermind.JsonRpc.Test.Modules
                 new JsonRpcConfig(),
                 LimboLogs.Instance,
                 Substitute.For<IStateReader>(),
-                Substitute.For<IBlockchainBridgeFactory>());
+                Substitute.For<IBlockchainBridgeFactory>(),
+                Substitute.For<ISpecProvider>());
         }
 
         [Test]

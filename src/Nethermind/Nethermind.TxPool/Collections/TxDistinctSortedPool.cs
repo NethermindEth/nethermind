@@ -24,8 +24,8 @@ namespace Nethermind.TxPool.Collections
 {
     public class TxDistinctSortedPool : DistinctValueSortedPool<Keccak, Transaction, Address>
     {
-        public TxDistinctSortedPool(int capacity, ILogManager logManager, IComparer<Transaction> comparer = null) 
-            : base(capacity, comparer ?? TxPool.DefaultComparer, CompetingTransactionEqualityComparer.Instance, logManager)
+        public TxDistinctSortedPool(int capacity, ILogManager logManager, IComparer<Transaction> comparer) 
+            : base(capacity, comparer, CompetingTransactionEqualityComparer.Instance, logManager)
         {
         }
 

@@ -219,6 +219,22 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
         }
         
         [Test]
+        public void Can_load_xdai()
+        {
+            string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../", "Chains/xdai.json");
+            ChainSpec chainSpec = LoadChainSpec(path);
+            
+            Assert.AreEqual(100, chainSpec.ChainId, $"{nameof(chainSpec.ChainId)}");
+            Assert.AreEqual("DaiChain", chainSpec.Name, $"{nameof(chainSpec.Name)}");
+            Assert.AreEqual(SealEngineType.AuRa, chainSpec.SealEngineType, "engine");
+
+            int berlinXdaiBlockNumber = 16101500;
+            chainSpec.Parameters.Eip2565Transition.Should().Be(berlinXdaiBlockNumber);
+            chainSpec.Parameters.Eip2929Transition.Should().Be(berlinXdaiBlockNumber);
+            chainSpec.Parameters.Eip2930Transition.Should().Be(berlinXdaiBlockNumber);
+        }
+        
+        [Test]
         public void Can_load_rinkeby()
         {
             string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../", "Chains/rinkeby.json");

@@ -17,6 +17,7 @@
 
 #nullable enable
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Comparers;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Producers;
@@ -73,6 +74,7 @@ namespace Nethermind.Api
         ITxPoolInfoProvider? TxPoolInfoProvider { get; set; }
         IWitnessCollector? WitnessCollector { get; set; }
         IHealthHintService? HealthHintService { get; set; }
+        ITransactionComparerProvider? TransactionComparerProvider { get; set; }
         TxValidator? TxValidator { get; set; }
     }
 }

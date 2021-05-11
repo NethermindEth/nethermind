@@ -86,7 +86,7 @@ namespace Nethermind.Consensus.AuRa
         {
             ValidateAuRa(block);
             AuRaValidator.OnBlockProcessingStart(block, options);
-            var receipts = base.ProcessBlock(block, blockTracer, options);
+            TxReceipt[] receipts = base.ProcessBlock(block, blockTracer, options);
             AuRaValidator.OnBlockProcessingEnd(block, receipts, options);
             Metrics.AuRaStep = block.Header?.AuRaStep ?? 0;
             return receipts;
@@ -97,7 +97,7 @@ namespace Nethermind.Consensus.AuRa
         {
             if (!block.IsGenesis)
             {
-                var parentHeader = _blockTree.FindParentHeader(block.Header, BlockTreeLookupOptions.None);
+                BlockHeader? parentHeader = _blockTree.FindParentHeader(block.Header, BlockTreeLookupOptions.None);
                 
                 ValidateGasLimit(block.Header, parentHeader);
                 ValidateTxs(block, parentHeader);
@@ -121,7 +121,7 @@ namespace Nethermind.Consensus.AuRa
                 if (tx.Signature != null)
                 {
                     IReleaseSpec spec = _specProvider.GetSpec(block.Number);
-                    var ecdsa = new EthereumEcdsa(_specProvider.ChainId, LimboLogs.Instance);
+                    EthereumEcdsa ecdsa = new(_specProvider.ChainId, LimboLogs.Instance);
                     Address txSenderAddress = ecdsa.RecoverAddress(tx, !spec.ValidateChainId);
                     if (tx.SenderAddress != txSenderAddress)
                     {
@@ -136,8 +136,8 @@ namespace Nethermind.Consensus.AuRa
 
             for (int i = 0; i < block.Transactions.Length; i++)
             {
-                var tx = block.Transactions[i];
-                var txFilterResult = _txFilter.IsAllowed(tx, parentHeader);
+                Transaction tx = block.Transactions[i];
+                (bool Allowed, string Reason) txFilterResult = _txFilter.IsAllowed(tx, parentHeader);
                 if (!txFilterResult.Allowed)
                 {
                     txFilterResult = TryRecoverSenderAddress(tx) ?? txFilterResult;
