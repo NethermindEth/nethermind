@@ -141,6 +141,8 @@ namespace Nethermind.Specs.ChainSpecStyle
                 Eip2929Transition = chainSpecJson.Params.Eip2929Transition,
                 Eip2930Transition = chainSpecJson.Params.Eip2930Transition,
                 Eip3198Transition = chainSpecJson.Params.Eip3198Transition,
+                Eip3541Transition = chainSpecJson.Params.Eip3541Transition,
+                Eip3529Transition = chainSpecJson.Params.Eip3529Transition,
                 TransactionPermissionContract = chainSpecJson.Params.TransactionPermissionContract,
                 TransactionPermissionContractTransition = chainSpecJson.Params.TransactionPermissionContractTransition,
                 ValidateChainIdTransition = chainSpecJson.Params.ValidateChainIdTransition,
