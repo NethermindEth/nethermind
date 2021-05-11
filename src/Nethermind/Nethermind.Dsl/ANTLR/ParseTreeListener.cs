@@ -1,14 +1,13 @@
 using System;
 using System.Linq;
 using Antlr4.Runtime.Misc;
+using static DslGrammarParser;
 
 namespace Nethermind.Dsl.ANTLR
 {
     public class ParseTreeListener : DslGrammarBaseListener
     {
-        private AntlrTokenType _tokens;
-        public Action<AntlrTokenType, string> OnStart { private get; set; }
-        public Action<AntlrTokenType, string> OnExpression { private get; set; }
+        public Action OnStart { private get; set; }
         public Action<string> OnSourceExpression { private get; set; }
         public Action<string> OnWatchExpression { private get; set; }
         public Action<string> OnPublishExpression { private get; set; }
@@ -17,28 +16,17 @@ namespace Nethermind.Dsl.ANTLR
         public Action<string, string, string> OnAndCondition { private get; set; }
         public Action OnExit { private get; set; }
 
-        public override void EnterExpression([NotNull] DslGrammarParser.ExpressionContext context)
+        public override void EnterTree([NotNull] TreeContext context)
         {
-            // if(OnEnterExpression == null)
-            // {
-            //     return;
-            // }
-
-            // AntlrTokenType tokenType = (AntlrTokenType)Enum.Parse(typeof(AntlrTokenType), context.OPERATOR().GetText());
-            // OnEnterExpression(tokenType, context.WORD().GetText());
-        }
-
-        public override void EnterCondition([NotNull] DslGrammarParser.ConditionContext context)
-        {
-            if(OnCondition == null)
+            if(OnStart == null)
             {
-                return;
+                return; 
             }
-
-            OnCondition(context.WORD().First().GetText(), context.ARITHMETIC_SYMBOL().GetText(), context.ADDRESS().GetText());
+            
+            OnStart();
         }
 
-        public override void EnterSourceExpression([NotNull] DslGrammarParser.SourceExpressionContext context)
+        public override void EnterSourceExpression([NotNull] SourceExpressionContext context)
         {
             if(OnSourceExpression == null)
             {
@@ -48,7 +36,7 @@ namespace Nethermind.Dsl.ANTLR
             OnSourceExpression(context.WORD().GetText());
         }
 
-        public override void EnterWatchExpression([NotNull] DslGrammarParser.WatchExpressionContext context)
+        public override void EnterWatchExpression([NotNull] WatchExpressionContext context)
         {
             if(OnWatchExpression == null)
             {
@@ -58,17 +46,51 @@ namespace Nethermind.Dsl.ANTLR
             OnWatchExpression(context.WORD().GetText());
         }
 
-        public override void EnterWhereExpression([NotNull] DslGrammarParser.WhereExpressionContext context)
+        public override void EnterWhereExpression([NotNull] WhereExpressionContext context)
         {
             if(OnCondition == null)
             {
                 return; 
             }
 
-            OnCondition(context.condition().WORD().First().GetText(), context.condition().;
+            ConditionContext condition = context.condition();
+            string key = condition.WORD().GetText();
+            string booleanOperator = condition.BOOLEAN_OPERATOR().GetText();
+            string value = condition.CONDITION_VALUE().GetText();
+
+            OnCondition(key, booleanOperator, value);
         }
 
-        public override void EnterPublishExpression([NotNull] DslGrammarParser.PublishExpressionContext context)
+        public override void EnterOrCondition([NotNull] OrConditionContext context)
+        {
+            if(OnOrCondition == null)
+            {
+                return;
+            }
+
+            var condition = context.condition();
+            string key = condition.WORD().GetText();
+            string booleanOperator = condition.BOOLEAN_OPERATOR().GetText();
+            string value = condition.CONDITION_VALUE().GetText(); 
+
+            OnOrCondition(key, booleanOperator, value);
+        }
+
+        public override void EnterAndCondition([NotNull] AndConditionContext context)
+        {
+            if(OnAndCondition == null)
+            {
+                return;
+            }
+
+            var condition = context.condition();
+            string key = condition.WORD().GetText();
+            string booleanOperator = condition.BOOLEAN_OPERATOR().GetText();
+            string value = condition.CONDITION_VALUE().GetText(); 
+
+            OnAndCondition(key, booleanOperator, value);
+        }
+        public override void EnterPublishExpression([NotNull] PublishExpressionContext context)
         {
             if(OnWatchExpression == null)
             {
@@ -78,9 +100,14 @@ namespace Nethermind.Dsl.ANTLR
             OnWatchExpression(context.WORD().GetText());
         }
 
-        public override void ExitTree([NotNull] DslGrammarParser.TreeContext context)
+        public override void ExitTree([NotNull] TreeContext context)
         {
-            base.ExitTree(context);
+            if(OnExit == null)
+            {
+                return;
+            }
+
+            OnExit();
         }
     }
 }
