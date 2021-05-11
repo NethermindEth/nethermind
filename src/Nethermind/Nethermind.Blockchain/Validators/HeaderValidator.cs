@@ -149,7 +149,7 @@ namespace Nethermind.Blockchain.Validators
                     isEip1559Correct = false;
                 }
 
-                long maximumGasUsed = Eip1559Constants.ElasticityMultiplier * header.GasLimit;
+                long maximumGasUsed = header.GasLimit;
                 if (header.GasUsed > maximumGasUsed)
                 {
                     if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.ToString(BlockHeader.Format.Short)}) too much gas used. Maximum gas usage: {maximumGasUsed}, Current gas used: {header.GasUsed} ");
