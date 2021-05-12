@@ -711,5 +711,40 @@ namespace Nethermind.JsonRpc.Test.Modules
                     newPendingTxId, ".\",\"data\":false},\"id\":67}");
             expectedNewPendingTxUnsub.Should().Be(serializedNewPendingTxUnsub);
         }
+
+        [Test]
+        public void ReceiptCanonicalityMonitor_can_change_removed_flag_of_receipt()
+        {
+            ReceiptCanonicalityMonitor receiptCanonicalityMonitor =
+                new ReceiptCanonicalityMonitor(_blockTree, _receiptStorage, _logManager);
+            
+            LogEntry logEntryA = Build.A.LogEntry.WithAddress(TestItem.AddressA).WithTopics(TestItem.KeccakA).WithData(TestItem.RandomDataA).TestObject;
+            LogEntry logEntryB = Build.A.LogEntry.WithAddress(TestItem.AddressB).WithTopics(TestItem.KeccakB).TestObject;
+            LogEntry logEntryC = Build.A.LogEntry.WithData(TestItem.RandomDataC).TestObject;
+
+            TxReceipt[] txReceipts =
+            {
+                Build.A.Receipt.WithIndex(11).WithLogs(logEntryA).TestObject,
+                Build.A.Receipt.WithIndex(22).WithLogs(logEntryA, logEntryB).TestObject,
+                Build.A.Receipt.WithIndex(33).WithLogs(logEntryB, logEntryC).TestObject
+            };
+            
+            _receiptStorage.Get(Arg.Any<Block>()).Returns(txReceipts);
+
+            Block block = Build.A.Block.TestObject;
+            Block previousBlock = Build.A.Block.WithBloom(new Bloom(txReceipts.Select(r => r.Bloom).ToArray())).TestObject;
+            BlockReplacementEventArgs blockEventArgs = new BlockReplacementEventArgs(block, previousBlock);
+
+            txReceipts[0].Removed.Should().BeFalse();
+            txReceipts[1].Removed.Should().BeFalse();
+            txReceipts[2].Removed.Should().BeFalse();
+            
+            _blockTree.BlockAddedToMain += Raise.EventWith(new object(), blockEventArgs);
+
+            _receiptStorage.Received().Insert(previousBlock, txReceipts);
+            txReceipts[0].Removed.Should().BeTrue();
+            txReceipts[1].Removed.Should().BeTrue();
+            txReceipts[2].Removed.Should().BeTrue();
+        }
     }
 }
