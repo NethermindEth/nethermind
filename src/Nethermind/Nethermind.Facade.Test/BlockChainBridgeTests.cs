@@ -88,6 +88,7 @@ namespace Nethermind.Facade.Test
                 _ethereumEcdsa,
                 _timestamper,
                 Substitute.For<ILogFinder>(),
+                _specProvider,
                 false,
                 false);
         }
@@ -189,6 +190,7 @@ namespace Nethermind.Facade.Test
                 _ethereumEcdsa,
                 _timestamper,
                 Substitute.For<ILogFinder>(),
+                _specProvider,
                 false,
                 isBeam);
 
@@ -224,6 +226,7 @@ namespace Nethermind.Facade.Test
                 _ethereumEcdsa,
                 _timestamper,
                 Substitute.For<ILogFinder>(),
+                _specProvider,
                 false,
                 false);
 

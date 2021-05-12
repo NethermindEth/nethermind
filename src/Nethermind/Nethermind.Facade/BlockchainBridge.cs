@@ -33,6 +33,7 @@ using Block = Nethermind.Core.Block;
 using System.Threading;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Core.Eip2930;
+using Nethermind.Core.Specs;
 using Nethermind.State;
 
 namespace Nethermind.Facade
@@ -58,6 +59,7 @@ namespace Nethermind.Facade
         private readonly IReceiptFinder _receiptFinder;
         private readonly ITransactionProcessor _transactionProcessor;
         private readonly ILogFinder _logFinder;
+        private readonly ISpecProvider _specProvider;
 
         public BlockchainBridge(
             ReadOnlyTxProcessingEnv processingEnv,
@@ -68,6 +70,7 @@ namespace Nethermind.Facade
             IEthereumEcdsa? ecdsa,
             ITimestamper? timestamper,
             ILogFinder? logFinder,
+            ISpecProvider specProvider,
             bool isMining,
             bool isBeamSyncing)
         {
@@ -83,6 +86,7 @@ namespace Nethermind.Facade
             _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
             _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
             _logFinder = logFinder ?? throw new ArgumentNullException(nameof(logFinder));
+            _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _isBeamSyncing = isBeamSyncing;
             IsMining = isMining;
         }
@@ -187,7 +191,7 @@ namespace Nethermind.Facade
                 tx,
                 estimateGasTracer.WithCancellation(cancellationToken));
             
-            long estimate = estimateGasTracer.CalculateEstimate(tx);
+            long estimate = estimateGasTracer.CalculateEstimate(tx, _specProvider.GetSpec(header.Number + 1));
             
             return new CallOutput 
             {

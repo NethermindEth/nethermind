@@ -298,7 +298,7 @@ namespace Nethermind.Evm
                         if (_logger.IsTrace) _logger.Trace($"Destroying account {toBeDestroyed}");
                         _storageProvider.ClearStorage(toBeDestroyed);
                         _stateProvider.DeleteAccount(toBeDestroyed);
-                        if (txTracer.IsTracingRefunds) txTracer.ReportRefund(RefundOf.Destroy);
+                        if (txTracer.IsTracingRefunds) txTracer.ReportRefund(RefundOf.Destroy(spec.IsEip3529Enabled));
                     }
 
                     statusCode = StatusCode.Success;
@@ -394,7 +394,7 @@ namespace Nethermind.Evm
             if (!substate.IsError)
             {
                 spentGas -= unspentGas;
-                long refund = substate.ShouldRevert ? 0 : RefundHelper.CalculateClaimableRefund(spentGas, substate.Refund + substate.DestroyList.Count * RefundOf.Destroy);
+                long refund = substate.ShouldRevert ? 0 : RefundHelper.CalculateClaimableRefund(spentGas, substate.Refund + substate.DestroyList.Count * RefundOf.Destroy(spec.IsEip3529Enabled), spec);
 
                 if (_logger.IsTrace) _logger.Trace("Refunding unused gas of " + unspentGas + " and refund of " + refund);
                 _stateProvider.AddToBalance(sender, (ulong) (unspentGas + refund) * gasPrice, spec);

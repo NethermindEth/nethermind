@@ -46,6 +46,8 @@ namespace Nethermind.Evm.Test
         public string Error { get; set; }
 
         public byte StatusCode { get; set; }
+        
+        public long Refund { get; set; }
 
         public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak stateRoot = null)
         {
@@ -160,6 +162,7 @@ namespace Nethermind.Evm.Test
 
         public void ReportRefund(long refund)
         {
+            Refund += refund;
         }
 
         public void ReportExtraGasPressure(long extraGasPressure)
