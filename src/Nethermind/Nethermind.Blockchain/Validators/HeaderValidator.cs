@@ -113,7 +113,7 @@ namespace Nethermind.Blockchain.Validators
                 if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - seal parameters incorrect");
             }
 
-            bool gasUsedBelowLimit = header.GasUsed <= header.GetActualGasLimit(spec);
+            bool gasUsedBelowLimit = header.GasUsed <= header.GasLimit;
             if (!gasUsedBelowLimit)
             {
                 if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - gas used above gas limit");
@@ -146,13 +146,6 @@ namespace Nethermind.Blockchain.Validators
                 if (expectedBaseFee != header.BaseFee)
                 {
                     if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.ToString(BlockHeader.Format.Short)}) incorrect base fee. Expected base fee: {expectedBaseFee}, Current base fee: {header.BaseFee} ");
-                    isEip1559Correct = false;
-                }
-
-                long maximumGasUsed = header.GasLimit;
-                if (header.GasUsed > maximumGasUsed)
-                {
-                    if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.ToString(BlockHeader.Format.Short)}) too much gas used. Maximum gas usage: {maximumGasUsed}, Current gas used: {header.GasUsed} ");
                     isEip1559Correct = false;
                 }
             }

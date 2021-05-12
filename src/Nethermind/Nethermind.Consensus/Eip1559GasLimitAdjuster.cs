@@ -20,7 +20,7 @@ using Nethermind.Core.Specs;
 
 namespace Nethermind.Consensus
 {
-    /// <summary>In the fork block we are increasing Block.GasLimit. </summary>
+    /// <summary>In the 1559 fork block the new gas limit is gasLimit * Eip1559Constants.ElasticityMultiplier.</summary>
     public static class Eip1559GasLimitAdjuster
     {
         public static long AdjustGasLimit(IReleaseSpec releaseSpec, long gasLimit, long blockNumber)

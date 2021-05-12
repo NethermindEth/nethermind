@@ -65,13 +65,7 @@ namespace Nethermind.Core
         public UInt256 Difficulty { get; set; }
         public long Number { get; set; }
         public long GasUsed { get; set; }
-        public long GasLimit { get; set; } // TODO: does gas limit become the target or limit now?
-
-        public long GetActualGasLimit(IReleaseSpec spec)
-        {
-            return spec.IsEip1559Enabled ? GasLimit * 2 : GasLimit;
-        }
-
+        public long GasLimit { get; set; }
         public UInt256 Timestamp { get; set; }
         public DateTime TimestampDate => DateTimeOffset.FromUnixTimeSeconds((long) Timestamp).LocalDateTime;
         public byte[] ExtraData { get; set; } = Array.Empty<byte>();
