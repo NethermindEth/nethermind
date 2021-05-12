@@ -738,13 +738,20 @@ namespace Nethermind.JsonRpc.Test.Modules
             txReceipts[0].Removed.Should().BeFalse();
             txReceipts[1].Removed.Should().BeFalse();
             txReceipts[2].Removed.Should().BeFalse();
-            
-            _blockTree.BlockAddedToMain += Raise.EventWith(new object(), blockEventArgs);
 
-            _receiptStorage.Received().Insert(previousBlock, txReceipts);
-            txReceipts[0].Removed.Should().BeTrue();
-            txReceipts[1].Removed.Should().BeTrue();
-            txReceipts[2].Removed.Should().BeTrue();
+            TxReceipt[] changedReceipts = Array.Empty<TxReceipt>();
+            ManualResetEvent manualResetEvent = new ManualResetEvent(false);
+            _receiptStorage.Insert(Arg.Any<Block>(), Arg.Do<TxReceipt[]>(r =>
+            {
+                changedReceipts = r;
+                manualResetEvent.Set();
+            }));
+            _blockTree.BlockAddedToMain += Raise.EventWith(new object(), blockEventArgs);
+            manualResetEvent.WaitOne(TimeSpan.FromMilliseconds(200));
+
+            changedReceipts[0].Removed.Should().BeTrue();
+            changedReceipts[1].Removed.Should().BeTrue();
+            changedReceipts[2].Removed.Should().BeTrue();
         }
     }
 }
