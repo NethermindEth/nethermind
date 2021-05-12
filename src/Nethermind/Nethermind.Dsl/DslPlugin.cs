@@ -8,6 +8,7 @@ using System.IO;
 using Nethermind.Logging;
 using System.Linq;
 using System.IO.Abstractions;
+using System.Collections.Generic;
 
 #nullable enable
 namespace Nethermind.Dsl
@@ -21,7 +22,7 @@ namespace Nethermind.Dsl
 
         private INethermindApi? _api;
         private ParseTreeListener? _listener;
-        private Interpreter? _interpreter;
+        private List<Interpreter>? _interpreters;
         private ILogger? _logger;
 
         public async Task Init(INethermindApi nethermindApi)
@@ -31,18 +32,22 @@ namespace Nethermind.Dsl
             _logger = _api.LogManager.GetClassLogger();
             if (_logger.IsInfo) _logger.Info("Initializing DSL plugin ...");
 
-            var dslScript = await LoadDSLScript();
+            IEnumerable<string> dslScripts = LoadDSLScript();
+            _interpreters = new List<Interpreter>();
 
-            var inputStream = new AntlrInputStream(dslScript);
-            var lexer = new DslGrammarLexer(inputStream);
-            var tokens = new CommonTokenStream(lexer);
-            var parser = new DslGrammarParser(tokens);
-            parser.BuildParseTree = true;
-            IParseTree tree = parser.tree();
+            foreach (var script in dslScripts)
+            {
+                var inputStream = new AntlrInputStream(script);
+                var lexer = new DslGrammarLexer(inputStream);
+                var tokens = new CommonTokenStream(lexer);
+                var parser = new DslGrammarParser(tokens);
+                parser.BuildParseTree = true;
+                IParseTree tree = parser.tree();
 
-            _listener = new ParseTreeListener();
-            _interpreter = new Interpreter(_api, tree, _listener);
-            ParseTreeWalker.Default.Walk(_listener, tree);
+                _listener = new ParseTreeListener();
+                _interpreters.Add(new Interpreter(_api, tree, _listener));
+                ParseTreeWalker.Default.Walk(_listener, tree);
+            }
 
             if (_logger.IsInfo) _logger.Info("DSL plugin initialized.");
         }
@@ -59,7 +64,7 @@ namespace Nethermind.Dsl
 
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 
-        private async Task<string> LoadDSLScript()
+        private IEnumerable<string> LoadDSLScript()
         {
             if (FileSystem == null)
             {
@@ -67,13 +72,16 @@ namespace Nethermind.Dsl
             }
 
             var dirPath = FileSystem.Path.Combine(PathUtils.ExecutingDirectory, "DSL");
-            if (_logger.IsInfo) _logger.Info($"Loading dsl script from {dirPath}");
+            if (_logger.IsInfo) _logger.Info($"Loading dsl scripts from {dirPath}");
 
             if (FileSystem.Directory.Exists(dirPath))
             {
-                var file = FileSystem.Directory.GetFiles("DSL", "*.txt").First();
+                string[] files = FileSystem.Directory.GetFiles("DSL", "*.txt");
 
-                return await FileSystem.File.ReadAllTextAsync(file);
+                foreach(var file in files)
+                {
+                    yield return FileSystem.File.ReadAllText(file);
+                }
             }
 
             throw new FileLoadException($"Could not find DSL directory at {dirPath} or the directory is empty");
