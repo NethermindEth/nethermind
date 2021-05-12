@@ -372,6 +372,41 @@ namespace Nethermind.Merge.Plugin.Test
                 }
             }
         }
+        
+        [Test]
+        public async Task newBlock_transactions_produce_receipts()
+        {
+            using MergeTestBlockchain chain = await CreateBlockChain();
+            IConsensusRpcModule rpc = CreateConsensusModule(chain);
+            IReadOnlyList<BlockRequestResult> branch = await ProduceBranch(rpc, chain.BlockTree, 1, chain.BlockTree.HeadHash, false);
+
+            foreach (BlockRequestResult block in branch)
+            {
+                uint count = 10;
+                BlockRequestResult newBlockRequest = CreateBlockRequest(block, TestItem.AddressA);
+                PrivateKey from = TestItem.PrivateKeyB;
+                Address to = TestItem.AddressD;
+                var (_, toBalanceAfter) = AddTransactions(chain, newBlockRequest, from, to, count, 1, out var parentHeader);
+
+                newBlockRequest.GasUsed = GasCostOf.Transaction * count;
+                newBlockRequest.StateRoot = new Keccak("0x3d2e3ced6da0d1e94e65894dc091190480f045647610ef614e1cab4241ca66e0");
+                newBlockRequest.ReceiptsRoot = new Keccak("0xc538d36ed1acf6c28187110a2de3e5df707d6d38982f436eb0db7a623f9dc2cd");
+                TryCalculateHash(newBlockRequest, out var hash);
+                newBlockRequest.BlockHash = hash;
+                ResultWrapper<NewBlockResult> result = await rpc.consensus_newBlock(newBlockRequest);
+                await Task.Delay(10);
+
+                result.Data.Valid.Should().BeTrue();
+                RootCheckVisitor rootCheckVisitor = new();
+                chain.StateReader.RunTreeVisitor(rootCheckVisitor, newBlockRequest.StateRoot);
+                rootCheckVisitor.HasRoot.Should().BeTrue();
+                // Chain.StateReader.GetBalance(newBlockRequest.StateRoot, from.Address).Should().Be(fromBalanceAfter);
+                chain.StateReader.GetBalance(newBlockRequest.StateRoot, to).Should().Be(toBalanceAfter);
+                Block findBlock = chain.BlockTree.FindBlock(newBlockRequest.BlockHash, BlockTreeLookupOptions.None)!;
+                TxReceipt[]? receipts = chain.ReceiptStorage.Get(findBlock);
+                findBlock.Transactions.Select(t => t.Hash).Should().BeEquivalentTo(receipts.Select(r => r.TxHash));
+            }
+        }
 
         [Test]
         public async Task assembleBlock_picks_transactions_from_pool()
