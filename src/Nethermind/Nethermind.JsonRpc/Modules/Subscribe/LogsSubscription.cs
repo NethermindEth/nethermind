@@ -155,6 +155,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         public override void Dispose()
         {
             _receiptStorage.ReceiptsInserted -= OnReceiptsInserted;
+            _blockFinder.NewHeadBlock -= OnNewHeadBlock;
             if(_logger.IsTrace) _logger.Trace($"Logs subscription {Id} will no longer track ReceiptsInserted.");
         }
     }
