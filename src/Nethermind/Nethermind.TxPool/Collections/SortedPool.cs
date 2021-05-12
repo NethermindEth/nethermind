@@ -150,12 +150,17 @@ namespace Nethermind.TxPool.Collections
             {
                 if (Remove(key, value))
                 {
-                    if (TryGetBucket(value, out bucket))
+                    TGroupKey? groupMapping = MapToGroup(value);
+                    if (groupMapping is not null)
                     {
-                        bucket!.Remove(value);
-                        return true;
+                        if (_buckets.TryGetValue(groupMapping, out bucket))
+                        {
+                            bucket!.Remove(value);
+                            return true;
+                        }   
                     }
                 }
+
             }
 
             value = default;
@@ -163,20 +168,23 @@ namespace Nethermind.TxPool.Collections
             return false;
         }
 
-        public bool TryGetBucket(TValue value, out ICollection<TValue>? bucket)
+        public bool TryRemove(TKey key, TGroupKey groupKey, out ICollection<TValue>? bucket)
         {
-            TGroupKey? groupMapping = MapToGroup(value);
-            if (groupMapping is not null)
+            _buckets.TryGetValue(groupKey, out bucket);
+
+            if (_cacheMap.TryGetValue(key, out TValue value))
             {
-                return _buckets.TryGetValue(groupMapping, out bucket);
+                if (Remove(key, value))
+                {
+                    bucket.Remove(value);
+                    return true;
+                }
             }
-            
-            bucket = null;
+
             return false;
         }
 
         public bool TryRemove(TKey key, [MaybeNullWhen(false)] out TValue value) => TryRemove(key, out value, out _);
-        public bool TryRemove(TKey key, [MaybeNullWhen(false)] out ICollection<TValue>? bucket) => TryRemove(key, out _, out bucket);
         public bool TryRemove(TKey key) => TryRemove(key, out _, out _);
 
         /// <summary>

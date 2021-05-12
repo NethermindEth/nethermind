@@ -42,7 +42,7 @@ namespace Nethermind.Blockchain.Comparers
             }
             
             // the old way of sorting transactions
-            return y.GasBottleneck.CompareTo(x.GasBottleneck);
+            return y.GasPrice.CompareTo(x.GasPrice);
         }
 
     }

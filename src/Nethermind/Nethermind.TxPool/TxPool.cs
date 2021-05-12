@@ -149,6 +149,8 @@ namespace Nethermind.TxPool
         public uint FutureNonceRetention  => _txPoolConfig.FutureNonceRetention;
         public long? BlockGasLimit { get; set; } = null;
 
+        public UInt256 CurrentBaseFee { get; set; } = 0;
+
         public Transaction[] GetPendingTransactions() => _transactions.GetSnapshot();
         
         public int GetPendingTransactionsCount() => _transactions.Count;
@@ -212,7 +214,6 @@ namespace Nethermind.TxPool
                 return AddTxResult.Invalid;
             }
 
-            IReleaseSpec spec = _specProvider.GetSpec();
             Metrics.PendingTransactionsReceived++;
             
             if (!_validator.IsWellFormed(tx, _specProvider.GetSpec()))
@@ -257,17 +258,20 @@ namespace Nethermind.TxPool
                 return AddTxResult.OldNonce;
             }
 
-            int noncesInPending = _transactions.GetBucketCount(tx.SenderAddress);
-            if (tx.Nonce > (long)currentNonce + noncesInPending
+            int numberOfSenderTxsInPending = _transactions.GetBucketCount(tx.SenderAddress);
+            if (tx.Nonce > (long)currentNonce + numberOfSenderTxsInPending
                 || tx.Nonce > currentNonce + FutureNonceRetention)
             {
                 if (_logger.IsTrace)
                     _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, nonce in future.");
                 return AddTxResult.FutureNonce;
             }
-            
+
+            UInt256 balance = account?.Balance ?? UInt256.Zero;
+            UInt256 effectiveGasPrice = tx.IsEip1559 ? CalculatePayableGasPrice(tx, balance) : tx.GasPrice;
+
             if (_transactions.TryGetLast(out var lastTx)
-                && tx.GasPrice <= lastTx?.GasBottleneck
+                && effectiveGasPrice <= lastTx?.GasBottleneck
                 && GetPendingTransactionsCount() == MemoryAllowance.MemPoolSize)
             {
                 if (_logger.IsTrace)
@@ -275,8 +279,6 @@ namespace Nethermind.TxPool
                 return AddTxResult.TooLowGasPrice;
             }
 
-            // we're checking that user can pay what he declared in FeeCap. For this check BaseFee = FeeCap
-            UInt256 effectiveGasPrice = tx.CalculateEffectiveGasPrice(spec.IsEip1559Enabled, tx.FeeCap);
             bool overflow = UInt256.MultiplyOverflow(effectiveGasPrice, (UInt256) tx.GasLimit, out UInt256 cost);
             overflow |= UInt256.AddOverflow(cost, tx.Value, out cost);
             if (overflow)
@@ -285,7 +287,7 @@ namespace Nethermind.TxPool
                     _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, cost overflow.");
                 return AddTxResult.BalanceOverflow;
             }
-            else if ((account?.Balance ?? UInt256.Zero) < cost)
+            else if (balance < cost)
             {
                 if (_logger.IsTrace)
                     _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, insufficient funds.");
@@ -332,9 +334,11 @@ namespace Nethermind.TxPool
                         UpdateBucket(tx.SenderAddress!);
                         if (removed?.Hash is not null)
                         {
+                            // transaction which was on last position in sorted TxPool and was deleted to give
+                            // a place for a newly added tx (with higher priority) is now removed from hashCache
+                            // to give it opportunity to come back to TxPool in the future, when fees drops
                             _hashCache.Delete(removed.Hash);
                         }
-
                     }
                     isKnown |= !inserted;
                 }
@@ -363,23 +367,33 @@ namespace Nethermind.TxPool
         private void UpdateBucket(Address senderAddress)
         {
             var bucketSnapshot = _transactions.GetBucketSnapshot(senderAddress);
-            long currentNonce = (long)_stateProvider.GetNonce(senderAddress);
+            
+            if (bucketSnapshot.Length == 0)
+            {
+                return;
+            }
+            
+            Account? account = _stateProvider.GetAccount(senderAddress);
+            UInt256 balance = account?.Balance ?? UInt256.Zero;
+            long currentNonce = (long)(account?.Nonce ?? UInt256.Zero);
 
-            UpdateGasBottleneck(bucketSnapshot, currentNonce);
+            UpdateGasBottleneck(bucketSnapshot, currentNonce, balance);
         }
 
-        private void UpdateGasBottleneck(IReadOnlyList<Transaction> bucketSnapshot, long currentNonce)
+        private void UpdateGasBottleneck(IReadOnlyList<Transaction> bucketSnapshot, long currentNonce, UInt256 balance)
         {
-            UInt256 previousTxBottleneck = UInt256.MaxValue;
+            Transaction tx = bucketSnapshot[0];
+            UInt256 previousTxBottleneck = tx.IsEip1559 ? CalculatePayableGasPrice(tx, balance) : tx.GasPrice;
 
             for (int i = 0; i < bucketSnapshot.Count; i++)
             {
-                Transaction tx = bucketSnapshot[i];
+                tx = bucketSnapshot[i];
                 UInt256 gasBottleneck = 0;
-                
-                if (true)
+
+                if (tx.Nonce == currentNonce + i)
                 {
-                    gasBottleneck = tx.GasPrice < previousTxBottleneck ? tx.GasPrice : previousTxBottleneck;
+                    UInt256 effectiveGasPrice = tx.IsEip1559 ? UInt256.Min(tx.FeeCap, tx.GasPremium + CurrentBaseFee) : tx.GasPrice;
+                    gasBottleneck = UInt256.Min(effectiveGasPrice, previousTxBottleneck);
                 }
                 
                 _transactions.NotifyChange(tx.Hash, tx, t =>
@@ -390,14 +404,28 @@ namespace Nethermind.TxPool
                 previousTxBottleneck = gasBottleneck;
             }
         }
-        
-        public void RemoveOrUpdateBucket(Address? senderAddress)
+
+        private UInt256 CalculatePayableGasPrice(Transaction tx, UInt256 balance)
         {
-            if (senderAddress is null)
-            {
-                return;
-            }
+            UInt256 payableGasPrice;
             
+            if (balance > tx.Value)
+            {
+                UInt256 effectiveGasPrice = UInt256.Min(tx.FeeCap, tx.GasPremium + CurrentBaseFee);
+                UInt256 balanceAvailableForFeePayment = balance - tx.Value;
+                balanceAvailableForFeePayment.Divide((UInt256)tx.GasLimit, out UInt256 maxPayablePricePerGasUnit);
+                payableGasPrice = UInt256.Min(effectiveGasPrice, maxPayablePricePerGasUnit);
+            }
+            else
+            {
+                payableGasPrice = 0;
+            }
+
+            return payableGasPrice;
+        }
+
+        public void RemoveOrUpdateBucket(Address senderAddress)
+        {
             var bucketSnapshot = _transactions.GetBucketSnapshot(senderAddress);
 
             if (bucketSnapshot.Length == 0)
@@ -409,24 +437,38 @@ namespace Nethermind.TxPool
             UInt256 balance = account?.Balance ?? UInt256.Zero;
             long currentNonce = (long)(account?.Nonce ?? UInt256.Zero);
             Transaction tx = bucketSnapshot[0];
+
+            bool insufficientBalance = false;
+
+            if (balance < tx.Value)
+            {
+                insufficientBalance = true;
+            }
+            else if (!tx.IsEip1559)
+            {
+                insufficientBalance = UInt256.MultiplyOverflow(tx.GasPrice, (UInt256) tx.GasLimit, out UInt256 cost);
+                insufficientBalance |= UInt256.AddOverflow(cost, tx.Value, out cost);
+                insufficientBalance |= balance < cost;
+            }
             
-            bool overflow = UInt256.MultiplyOverflow(tx.GasPrice, (UInt256) tx.GasLimit, out UInt256 cost);
-            overflow |= UInt256.AddOverflow(cost, tx.Value, out cost);
-            
-            if (overflow || balance < cost)
+            if (insufficientBalance)
             {
                 for (int i = 0; i < bucketSnapshot.Length; i++)
                 {
                     tx = bucketSnapshot[i];
                     RemoveTransaction(tx);
+                    // after removing transactions from TxPool because of insufficient balance of the transaction with
+                    // first-to-execute nonce, we are removing them from hashCache as well to give them a chance
+                    // to come back in the future, if balance will be sufficient (so address will receive incoming tx)
+                    _hashCache.Delete(tx.Hash);
                 }
             }
             else
             {
-                UpdateGasBottleneck(bucketSnapshot, currentNonce);
+                UpdateGasBottleneck(bucketSnapshot, currentNonce, balance);
             }
         }
-        
+
         private void HandleOwnTransaction(Transaction tx, bool isOwn)
         {
             if (isOwn)
@@ -484,7 +526,7 @@ namespace Nethermind.TxPool
             bool isKnown;
             lock (_locker)
             {
-                isKnown = _transactions.TryRemove(hash, out bucket);
+                isKnown = _transactions.TryRemove(hash, senderAddress, out bucket);
                 if (isKnown)
                 {
                     if (_nonces.TryGetValue(senderAddress, out AddressNonces addressNonces))
@@ -498,11 +540,7 @@ namespace Nethermind.TxPool
                     
                     RemovedPending?.Invoke(this, new TxEventArgs(transaction));
                 }
-                else
-                {
-                    _transactions.TryGetBucket(transaction, out bucket);
-                }
-                
+
                 if (_persistentBroadcastTransactions.Count != 0)
                 {
                     bool ownIncluded = _persistentBroadcastTransactions.TryRemove(hash, out Transaction _, out persistentBucket);
@@ -514,7 +552,6 @@ namespace Nethermind.TxPool
                 }
             }
             
-            _hashCache.Delete(hash);
             _txStorage.Delete(hash);
             if (_logger.IsTrace) _logger.Trace($"Deleted a transaction: {hash}");
 

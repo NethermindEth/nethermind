@@ -58,6 +58,7 @@ namespace Nethermind.Blockchain
         private void ProcessBlock(Block block, Block? previousBlock)
         {
             _txPool.BlockGasLimit = block.GasLimit;
+            _txPool.CurrentBaseFee = block.Header.BaseFee;
             long transactionsInBlock = block.Transactions.Length;
             long discoveredForPendingTxs = 0;
             long discoveredForHashCache = 0;
@@ -65,18 +66,32 @@ namespace Nethermind.Blockchain
             
             for (int i = 0; i < transactionsInBlock; i++)
             {
-                Keccak txHash = block.Transactions[i].Hash;
+                Transaction tx = block.Transactions[i];
+                Keccak txHash = tx.Hash;
+                
                 if (!_txPool.IsInHashCache(txHash))
                 {
                     discoveredForHashCache++;
                 }
-                if (!_txPool.RemoveTransaction(block.Transactions[i], true))
+
+                if (!_txPool.RemoveTransaction(tx, true))
                 {
                     discoveredForPendingTxs++;
-                    senders.Add(block.Transactions[i].SenderAddress);
                 }
+                
+                senders.Add(tx.SenderAddress);
             }
 
+            Transaction[] pendingTxs = _txPool.GetPendingTransactions();
+
+            foreach (Transaction tx in pendingTxs)
+            {
+                if (tx.IsEip1559)
+                {
+                    senders.Add(tx.SenderAddress);
+                }
+            }
+            
             foreach (Address sender in senders)
             {
                 _txPool.RemoveOrUpdateBucket(sender);
