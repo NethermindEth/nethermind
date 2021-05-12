@@ -278,7 +278,7 @@ namespace Nethermind.TxPool
             {
                 if (_logger.IsTrace)
                     _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, too low gasPrice.");
-                return AddTxResult.TooLowGasPrice;
+                return AddTxResult.FeeTooLow;
             }
 
             bool overflow = UInt256.MultiplyOverflow(effectiveGasPrice, (UInt256) tx.GasLimit, out UInt256 cost);
