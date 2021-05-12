@@ -42,12 +42,14 @@ namespace Nethermind.Mev
 {
     public class MevPlugin : IConsensusWrapperPlugin
     {
+        private static readonly ProcessingOptions SimulateBundleProcessingOptions = ProcessingOptions.ProducingBlock | ProcessingOptions.IgnoreParentNotOnMainChain;
+        
         private IMevConfig _mevConfig = null!;
         private ILogger? _logger;
         private INethermindApi _nethermindApi = null!;
         private BundlePool? _bundlePool;
         private ITracerFactory? _tracerFactory;
-
+        
         public string Name => "MEV";
 
         public string Description => "Flashbots MEV spec implementation";
@@ -87,7 +89,7 @@ namespace Nethermind.Mev
                 if (_tracerFactory is null)
                 {
                     var (getFromApi, _) = _nethermindApi!.ForProducer;
-
+                    
                     _tracerFactory = new TracerFactory(
                         getFromApi.DbProvider!,
                         getFromApi.BlockTree!,
@@ -95,7 +97,7 @@ namespace Nethermind.Mev
                         getFromApi.BlockPreprocessor!,
                         getFromApi.SpecProvider!,
                         getFromApi.LogManager!,
-                        ProcessingOptions.ProducingBlock);
+                        SimulateBundleProcessingOptions);
                 }
 
                 return _tracerFactory;
