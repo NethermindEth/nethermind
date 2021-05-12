@@ -118,17 +118,17 @@ namespace Nethermind.Dsl.ANTLR
                 var blockCondition = blockElement.Conditions.Last();
                 var lastBlockElement = (PipelineElement<Block, Block>)_blockPipelineBuilder.LastElement;
                 lastBlockElement.AddCondition(blockCondition);
+                return;
             }
 
-            var txElement = (PipelineElement<Block, Block>)GetNextBlockElement(key, symbol, value);
+            var txElement = (PipelineElement<Transaction, Transaction>)GetNextTransactionElement(key, symbol, value);
             var txCondition = txElement.Conditions.Last();
-            var lastTxElement = (PipelineElement<Block, Block>)_blockPipelineBuilder.LastElement;
+            var lastTxElement = (PipelineElement<Transaction, Transaction>)_transactionPipelineBuilder.LastElement;
             lastTxElement.AddCondition(txCondition);
         }
 
         private PipelineElement<Transaction, Transaction> GetNextTransactionElement(string key, string operation, string value)
         {
-            throw new Exception();
             return operation switch
             {
                 "==" => new PipelineElement<Transaction, Transaction>(
@@ -194,7 +194,6 @@ namespace Nethermind.Dsl.ANTLR
 
         private void AddBlockPublisher(string publisher)
         {
-            throw new Exception();
             if (publisher.Equals("WebSockets", StringComparison.InvariantCultureIgnoreCase))
             {
                 if (_blockPipelineBuilder != null)
