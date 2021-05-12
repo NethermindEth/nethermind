@@ -44,11 +44,21 @@ namespace Nethermind.Dsl.ANTLR
             }
 
             ConditionContext condition = context.condition();
-            string key = condition.WORD().GetText();
+            string key = condition.WORD().First().GetText();
             string booleanOperator = condition.BOOLEAN_OPERATOR().GetText();
-            string value = condition.CONDITION_VALUE().GetText();
 
-            OnCondition(key, booleanOperator, value);
+            if(condition.DIGIT() != null)
+            {
+                OnCondition(key, booleanOperator, condition.DIGIT().GetText());
+            }
+            else if(condition.WORD()[1] != null)
+            {
+                OnCondition(key, booleanOperator, condition.WORD()[1].GetText());
+            }
+            else if(condition.ADDRESS() != null)
+            {
+                OnCondition(key, booleanOperator, condition.ADDRESS().GetText());
+            }
         }
 
         public override void EnterOrCondition([NotNull] OrConditionContext context)
@@ -59,11 +69,21 @@ namespace Nethermind.Dsl.ANTLR
             }
 
             var condition = context.condition();
-            string key = condition.WORD().GetText();
+            string key = condition.WORD().First().GetText();
             string booleanOperator = condition.BOOLEAN_OPERATOR().GetText();
-            string value = condition.CONDITION_VALUE().GetText();
 
-            OnOrCondition(key, booleanOperator, value);
+            if(condition.DIGIT() != null)
+            {
+                OnOrCondition(key, booleanOperator, condition.DIGIT().GetText());
+            }
+            else if(condition.WORD()[1] != null)
+            {
+                OnOrCondition(key, booleanOperator, condition.WORD()[1].GetText());
+            }
+            else if(condition.ADDRESS() != null)
+            {
+                OnOrCondition(key, booleanOperator, condition.ADDRESS().GetText());
+            }
         }
 
         public override void EnterAndCondition([NotNull] AndConditionContext context)
@@ -74,11 +94,21 @@ namespace Nethermind.Dsl.ANTLR
             }
 
             var condition = context.condition();
-            string key = condition.WORD().GetText();
+            string key = condition.WORD().First().GetText();
             string booleanOperator = condition.BOOLEAN_OPERATOR().GetText();
-            string value = condition.CONDITION_VALUE().GetText();
 
-            OnAndCondition(key, booleanOperator, value);
+            if(condition.DIGIT() != null)
+            {
+                OnAndCondition(key, booleanOperator, condition.DIGIT().GetText());
+            }
+            else if(condition.WORD()[1] != null)
+            {
+                OnAndCondition(key, booleanOperator, condition.WORD()[1].GetText());
+            }
+            else if(condition.ADDRESS() != null)
+            {
+                OnAndCondition(key, booleanOperator, condition.ADDRESS().GetText());
+            }
         }
         public override void EnterPublishExpression([NotNull] PublishExpressionContext context)
         {
