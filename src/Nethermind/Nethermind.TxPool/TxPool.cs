@@ -270,7 +270,7 @@ namespace Nethermind.TxPool
             }
 
             UInt256 balance = account?.Balance ?? UInt256.Zero;
-            UInt256 effectiveGasPrice = tx.IsEip1559 ? CalculatePayableGasPrice(tx, balance) : tx.GasPrice;
+            UInt256 effectiveGasPrice = tx.Type == TxType.EIP1559 ? CalculatePayableGasPrice(tx, balance) : tx.GasPrice;
 
             if (_transactions.TryGetLast(out var lastTx)
                 && effectiveGasPrice <= lastTx?.GasBottleneck
@@ -385,7 +385,7 @@ namespace Nethermind.TxPool
         private void UpdateGasBottleneck(IReadOnlyList<Transaction> bucketSnapshot, long currentNonce, UInt256 balance)
         {
             Transaction tx = bucketSnapshot[0];
-            UInt256 previousTxBottleneck = tx.IsEip1559 ? CalculatePayableGasPrice(tx, balance) : tx.GasPrice;
+            UInt256 previousTxBottleneck = tx.Type == TxType.EIP1559 ? CalculatePayableGasPrice(tx, balance) : tx.GasPrice;
 
             for (int i = 0; i < bucketSnapshot.Count; i++)
             {
@@ -394,7 +394,7 @@ namespace Nethermind.TxPool
 
                 if (tx.Nonce == currentNonce + i)
                 {
-                    UInt256 effectiveGasPrice = tx.IsEip1559 ? UInt256.Min(tx.FeeCap, tx.GasPremium + CurrentBaseFee) : tx.GasPrice;
+                    UInt256 effectiveGasPrice = tx.Type == TxType.EIP1559 ? UInt256.Min(tx.FeeCap, tx.GasPremium + CurrentBaseFee) : tx.GasPrice;
                     gasBottleneck = UInt256.Min(effectiveGasPrice, previousTxBottleneck);
                 }
                 
@@ -446,7 +446,7 @@ namespace Nethermind.TxPool
             {
                 insufficientBalance = true;
             }
-            else if (!tx.IsEip1559)
+            else if (tx.Type != TxType.EIP1559)
             {
                 insufficientBalance = UInt256.MultiplyOverflow(tx.GasPrice, (UInt256) tx.GasLimit, out UInt256 cost);
                 insufficientBalance |= UInt256.AddOverflow(cost, tx.Value, out cost);

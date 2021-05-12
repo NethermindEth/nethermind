@@ -87,7 +87,7 @@ namespace Nethermind.Blockchain
 
             foreach (Transaction tx in pendingTxs)
             {
-                if (tx.IsEip1559)
+                if (tx.Type == TxType.EIP1559)
                 {
                     senders.Add(tx.SenderAddress);
                 }
