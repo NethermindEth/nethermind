@@ -179,39 +179,41 @@ namespace Nethermind.Dsl.ANTLR
             };
         }
 
-        private void AddPublisher(string publisher)
+        private void AddPublisher(string publisher, string path)
         {
             if(_blockSource)
             {
-                AddBlockPublisher(publisher);
+                AddBlockPublisher(publisher, path);
                 return;
             }
 
-            AddTransactionPublisher(publisher);
+            AddTransactionPublisher(publisher, path);
 
             BuildPipeline();
         }
 
-        private void AddBlockPublisher(string publisher)
+        private void AddBlockPublisher(string publisher,string path)
         {
             if (publisher.Equals("WebSockets", StringComparison.InvariantCultureIgnoreCase))
             {
                 if (_blockPipelineBuilder != null)
                 {
-                    _blockPipelineBuilder =_blockPipelineBuilder.AddElement(new WebSocketsPublisher<Block, Block>("dsl", _api.EthereumJsonSerializer));
+                    _blockPipelineBuilder =_blockPipelineBuilder.AddElement(new WebSocketsPublisher<Block, Block>(path, _api.EthereumJsonSerializer));
                 }
             }
 
             BuildPipeline();
         }
 
-        private void AddTransactionPublisher(string publisher)
+        private void AddTransactionPublisher(string publisher, string path)
         {
             if (publisher.Equals("WebSockets", StringComparison.InvariantCultureIgnoreCase))
             {
                 if (_blockPipelineBuilder != null)
                 {
-                    _transactionPipelineBuilder = _transactionPipelineBuilder.AddElement(new WebSocketsPublisher<Transaction, Transaction>("dsl", _api.EthereumJsonSerializer));
+                    var webSocketsPublisher = new WebSocketsPublisher<Transaction, Transaction>(path, _api.EthereumJsonSerializer);
+                    _transactionPipelineBuilder = _transactionPipelineBuilder.AddElement(webSocketsPublisher);
+                    _api.WebSocketsManager.AddModule(webSocketsPublisher);
                 }
             }
         }

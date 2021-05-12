@@ -10,7 +10,7 @@ namespace Nethermind.Dsl.ANTLR
         public Action OnStart { private get; set; }
         public Action<string> OnSourceExpression { private get; set; }
         public Action<string> OnWatchExpression { private get; set; }
-        public Action<string> OnPublishExpression { private get; set; }
+        public Action<string, string> OnPublishExpression { private get; set; }
         public Action<string, string, string> OnCondition { private get; set; }
         public Action<string, string, string> OnOrCondition { private get; set; }
         public Action<string, string, string> OnAndCondition { private get; set; }
@@ -150,12 +150,12 @@ namespace Nethermind.Dsl.ANTLR
         }
         public override void EnterPublishExpression([NotNull] PublishExpressionContext context)
         {
-            if (OnWatchExpression == null)
+            if (OnPublishExpression == null)
             {
                 return;
             }
 
-            OnWatchExpression(context.WORD().GetText());
+            OnPublishExpression(context.PUBLISH_VALUE().GetText(), context.WORD().GetText());
         }
     }
 }
