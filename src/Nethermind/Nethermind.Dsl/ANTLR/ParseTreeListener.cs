@@ -50,14 +50,27 @@ namespace Nethermind.Dsl.ANTLR
             if(condition.DIGIT() != null)
             {
                 OnCondition(key, booleanOperator, condition.DIGIT().GetText());
+                return;
             }
-            else if(condition.WORD()[1] != null)
+            try
             {
-                OnCondition(key, booleanOperator, condition.WORD()[1].GetText());
+            if (condition.WORD()[1] != null)
+                {
+                    OnCondition(key, booleanOperator, condition.WORD()[1].GetText());
+                    return;
+                }
             }
-            else if(condition.ADDRESS() != null)
+            catch(IndexOutOfRangeException)
+            {
+            }
+            if(condition.ADDRESS() != null)
             {
                 OnCondition(key, booleanOperator, condition.ADDRESS().GetText());
+                return;
+            }
+            if(condition.BYTECODE() != null)
+            {
+                OnCondition(key, booleanOperator, condition.BYTECODE().GetText());
             }
         }
 
@@ -75,14 +88,28 @@ namespace Nethermind.Dsl.ANTLR
             if(condition.DIGIT() != null)
             {
                 OnOrCondition(key, booleanOperator, condition.DIGIT().GetText());
+                return;
             }
-            else if(condition.WORD()[1] != null)
+            try
             {
-                OnOrCondition(key, booleanOperator, condition.WORD()[1].GetText());
+            if (condition.WORD()[1] != null)
+                {
+                    OnOrCondition(key, booleanOperator, condition.WORD()[1].GetText());
+                    return;
+                }
             }
-            else if(condition.ADDRESS() != null)
+            catch(IndexOutOfRangeException)
+            {
+            }
+            if(condition.ADDRESS() != null)
             {
                 OnOrCondition(key, booleanOperator, condition.ADDRESS().GetText());
+                return;
+            }
+            if (condition.BYTECODE() != null)
+            {
+                OnOrCondition(key, booleanOperator, condition.BYTECODE().GetText());
+                return;
             }
         }
 
@@ -101,13 +128,24 @@ namespace Nethermind.Dsl.ANTLR
             {
                 OnAndCondition(key, booleanOperator, condition.DIGIT().GetText());
             }
-            else if(condition.WORD()[1] != null)
+            try
             {
-                OnAndCondition(key, booleanOperator, condition.WORD()[1].GetText());
+            if (condition.WORD()[1] != null)
+                {
+                    OnAndCondition(key, booleanOperator, condition.WORD()[1].GetText());
+                    return;
+                }
             }
-            else if(condition.ADDRESS() != null)
+            catch(IndexOutOfRangeException)
+            {
+            }
+            if(condition.ADDRESS() != null)
             {
                 OnAndCondition(key, booleanOperator, condition.ADDRESS().GetText());
+            }
+            if (condition.BYTECODE() != null)
+            {
+                OnAndCondition(key, booleanOperator, condition.BYTECODE().GetText());
             }
         }
         public override void EnterPublishExpression([NotNull] PublishExpressionContext context)

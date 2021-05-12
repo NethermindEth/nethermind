@@ -6,7 +6,6 @@ using Nethermind.Api.Extensions;
 using Nethermind.Dsl.ANTLR;
 using System.IO;
 using Nethermind.Logging;
-using System.Linq;
 using System.IO.Abstractions;
 using System.Collections.Generic;
 
