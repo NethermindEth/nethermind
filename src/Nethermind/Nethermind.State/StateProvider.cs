@@ -423,6 +423,15 @@ namespace Nethermind.State
             Account account = balance.IsZero ? Account.TotallyEmpty : new Account(balance);
             PushNew(address, account);
         }
+        
+        
+        public void CreateAccount(Address address, in UInt256 balance, in UInt256 nonce)
+        {
+            _needsStateRootUpdate = true;
+            if (_logger.IsTrace) _logger.Trace($"Creating account: {address} with balance {balance} and nonce {nonce}");
+            Account account = (balance.IsZero && nonce.IsZero) ? Account.TotallyEmpty : new Account(nonce, balance, Keccak.EmptyTreeHash, Keccak.OfAnEmptyString);
+            PushNew(address, account);
+        }
 
         public void Commit(IReleaseSpec releaseSpec)
         {

@@ -20,7 +20,6 @@ using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Receipts;
-using Nethermind.Blockchain.Spec;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
@@ -56,8 +55,8 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Deposits
                 new TransactionComparerProvider(MainnetSpecProvider.Instance, blockTree);
             ITxPool txPool = new TxPool.TxPool(
                 new InMemoryTxStorage(), ecdsa,
-                new ChainHeadSpecProvider(specProvider, blockTree),
-                new TxPoolConfig(), stateProvider, 
+                new ChainHeadInfoProvider(specProvider, blockTree, stateProvider),
+                new TxPoolConfig(),
                 new TxValidator(specProvider.ChainId), 
                 LimboLogs.Instance,
                 transactionComparerProvider.GetDefaultComparer());
@@ -80,6 +79,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Deposits
                 ecdsa,
                 Timestamper.Default,
                 logFinder,
+                specProvider,
                 false,
                 false);
 

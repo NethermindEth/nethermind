@@ -234,6 +234,16 @@ namespace Nethermind.Core.Specs
         /// BaseFee opcode
         /// </summary>
         bool IsEip3198Enabled { get; }
+
+        /// <summary>
+        /// Reduction in refunds
+        /// </summary>
+        bool IsEip3529Enabled { get; }
+        
+        /// <summary>
+        /// Reject new contracts starting with the 0xEF byte 
+        /// </summary>
+        bool IsEip3541Enabled { get; }
         
         /// <summary>
         /// Should transactions be validated against chainId.

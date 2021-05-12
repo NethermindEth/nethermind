@@ -74,8 +74,12 @@ namespace Nethermind.Core
         /// <remarks>Used for sorting in edge cases.</remarks>
         public ulong PoolIndex { get; set; }
 
-        public string ToShortString() => 
-            $"[TX: hash {Hash} from {SenderAddress} to {To} with data {Data?.ToHexString()}, gas price {GasPrice} and limit {GasLimit}, nonce {Nonce}]";
+        public string ToShortString()
+        {
+            string gasPriceString =
+                IsEip1559 ? $"gas premium: {GasPremium}, fee cap: {FeeCap}" : $"gas price {GasPrice}";
+            return $"[TX: hash {Hash} from {SenderAddress} to {To} with data {Data?.ToHexString()}, {gasPriceString} and limit {GasLimit}, nonce {Nonce}]";
+        }
 
         public string ToString(string indent)
         {
@@ -85,7 +89,7 @@ namespace Nethermind.Core
             builder.AppendLine($"{indent}To:        {To}");
             if (IsEip1559)
             {
-                builder.AppendLine($"{indent}Gas premium: {GasLimit}");
+                builder.AppendLine($"{indent}Gas premium: {GasPremium}");
                 builder.AppendLine($"{indent}Fee cap: {FeeCap}");
             }
             else

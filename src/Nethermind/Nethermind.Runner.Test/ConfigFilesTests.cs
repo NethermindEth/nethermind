@@ -377,8 +377,6 @@ namespace Nethermind.Runner.Test
             }
 
             Test<IInitConfig, string>(configWildcard, c => c.LogFileName, (cf, p) => p.Should().Be(cf.Replace("cfg", "logs.txt"), cf));
-
-            Test<IInitConfig, string>(configWildcard, c => c.PluginsDirectory, "plugins");
         }
 
 

@@ -44,7 +44,7 @@ namespace Nethermind.JsonRpc.Modules
 
         public abstract T Create();
 
-        public ModuleType ModuleType { get; }
+        public string ModuleType { get; }
 
         public virtual IReadOnlyCollection<JsonConverter> GetConverters()
         {

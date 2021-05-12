@@ -57,8 +57,8 @@ namespace Nethermind.JsonRpc
         int WebSocketsPort { get; set; }
         
         [ConfigItem(
-            Description = "Defines which RPC modules should be enabled.",
-            DefaultValue = "System.String[]")]
+            Description = "Defines which RPC modules should be enabled. Built in modules are: Admin, Baseline, Clique, Consensus, Db, Debug, Deposit, Erc20, Eth, Evm, Health Mev, NdmConsumer, NdmProvider, Net, Nft, Parity, Personal, Proof, Subscribe, Trace, TxPool, Vault, Web3.",
+            DefaultValue = "[Eth, Subscribe, Trace, TxPool, Web3, Personal, Proof, Net, Parity, Health]")]
         string[] EnabledModules { get; set; }
         
         [ConfigItem(

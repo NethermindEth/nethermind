@@ -55,7 +55,7 @@ namespace Nethermind.Blockchain.Test
         {
             IDbProvider memDbProvider = TestMemDbProvider.Init();
             TrieStore trieStore = new TrieStore(new MemDb(), LimboLogs.Instance);
-            StateProvider stateProvider = new StateProvider(trieStore, new MemDb(), LimboLogs.Instance);
+            StateProvider stateProvider = new StateProvider(trieStore, memDbProvider.CodeDb, LimboLogs.Instance);
             StorageProvider storageProvider = new StorageProvider(trieStore, stateProvider, LimboLogs.Instance);
             ChainLevelInfoRepository chainLevelInfoRepository = new ChainLevelInfoRepository(memDbProvider);
             ISpecProvider specProvider = MainnetSpecProvider.Instance;
@@ -73,9 +73,8 @@ namespace Nethermind.Blockchain.Test
             TxPool.TxPool txPool = new TxPool.TxPool(
                 NullTxStorage.Instance,
                 ecdsa,
-                new ChainHeadSpecProvider(specProvider, _blockTree),
+                new ChainHeadInfoProvider(specProvider, _blockTree, stateProvider),
                 new TxPoolConfig(),
-                stateProvider,
                 new TxValidator(specProvider.ChainId),
                 LimboLogs.Instance, 
                 transactionComparerProvider.GetDefaultComparer());

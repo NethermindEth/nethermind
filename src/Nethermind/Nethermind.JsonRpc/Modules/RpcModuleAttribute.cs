@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -13,30 +13,19 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using System.Collections.Generic;
-using System.Linq;
-using Nethermind.Core.Extensions;
-using Nethermind.Int256;
+using System;
 
-namespace Nethermind.Specs.ChainSpecStyle.Json
+namespace Nethermind.JsonRpc.Modules
 {
-    internal class AllocationJson
+    public class RpcModuleAttribute : Attribute
     {
-        public BuiltInJson BuiltIn { get; set; }
-        
-        public UInt256 Balance { get; set; }
-        
-        public UInt256 Nonce { get; set; }
-        
-        public byte[] Code { get; set; }
-        
-        public byte[] Constructor { get; set; }
-        public Dictionary<string, string> Storage { get; set; }
+        public string ModuleType { get; }
 
-        public Dictionary<UInt256, byte[]> GetConvertedStorage()
+        public RpcModuleAttribute(string moduleType)
         {
-            return Storage?.ToDictionary(s => Bytes.FromHexString(s.Key).ToUInt256(), s => Bytes.FromHexString(s.Value));
+            ModuleType = moduleType;
         }
     }
 }

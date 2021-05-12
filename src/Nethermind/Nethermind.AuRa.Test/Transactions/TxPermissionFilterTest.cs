@@ -186,8 +186,12 @@ namespace Nethermind.AuRa.Test.Transactions
         private static TransactionBuilder<Transaction> CreateV4Transaction(Test test, ITransactionPermissionContract.TxPermissions txPermissions)
         {
             TransactionBuilder<Transaction> transactionBuilder = CreateV3Transaction(test, txPermissions);
-            transactionBuilder.WithGasPremium(test.GasPremium);
-            transactionBuilder.WithFeeCap(test.FeeCap);
+            if (test.TxType == TxType.EIP1559)
+            {
+                transactionBuilder.WithGasPremium(test.GasPremium);
+                transactionBuilder.WithFeeCap(test.FeeCap);
+            }
+
             transactionBuilder.WithType(test.TxType);
             return transactionBuilder;
         }
@@ -195,10 +199,12 @@ namespace Nethermind.AuRa.Test.Transactions
         {
             IList<Test> tests = new List<Test>()
             {
-                // new() {SenderKey = GetPrivateKey(1), ContractPermissions = ITransactionPermissionContract.TxPermissions.None, Cache = false},
-                // new() {SenderKey = GetPrivateKey(1), ContractPermissions = ITransactionPermissionContract.TxPermissions.All, Cache = false, GasPrice = 1},
-                // new() {SenderKey = GetPrivateKey(1), ContractPermissions = ITransactionPermissionContract.TxPermissions.All, Cache = false, Data = new byte[]{0, 1}},
-                // new() {SenderKey = GetPrivateKey(1), ContractPermissions = ITransactionPermissionContract.TxPermissions.All, Cache = false, GasPrice = 5, Data = new byte[]{0, 2, 3}},
+                new() {SenderKey = GetPrivateKey(1), ContractPermissions = ITransactionPermissionContract.TxPermissions.None, Cache = false},
+                new() {SenderKey = GetPrivateKey(1), ContractPermissions = ITransactionPermissionContract.TxPermissions.All, Cache = false, FeeCap = 1, TxType = TxType.EIP1559},
+                new() {SenderKey = GetPrivateKey(1), ContractPermissions = ITransactionPermissionContract.TxPermissions.All, Cache = false, GasPrice = 1, TxType = TxType.Legacy},
+                new() {SenderKey = GetPrivateKey(1), ContractPermissions = ITransactionPermissionContract.TxPermissions.All, Cache = false, Data = new byte[]{0, 1}},
+                new() {SenderKey = GetPrivateKey(1), ContractPermissions = ITransactionPermissionContract.TxPermissions.All, Cache = false, FeeCap = 5, TxType = TxType.EIP1559, Data = new byte[]{0, 2, 3}},
+                new() {SenderKey = GetPrivateKey(1), ContractPermissions = ITransactionPermissionContract.TxPermissions.All, Cache = false, GasPrice = 5, TxType = TxType.Legacy, Data = new byte[]{0, 2, 3}},
             };
 
             return GetTestCases(tests, nameof(V4), CreateV4Transaction);

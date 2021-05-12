@@ -268,9 +268,8 @@ namespace Nethermind.Runner.Ethereum.Steps
             new TxPool.TxPool(
                 txStorage,
                 _api.EthereumEcdsa,
-                new ChainHeadSpecProvider(_api.SpecProvider, _api.BlockTree),
+                new ChainHeadInfoProvider(_api.SpecProvider, _api.BlockTree, _api.StateReader),
                 _api.Config<ITxPoolConfig>(),
-                _api.ChainHeadStateProvider,
                 _api.TxValidator,
                 _api.LogManager,
                 CreateTxPoolTxComparer());
