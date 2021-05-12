@@ -1,6 +1,4 @@
 using System.Threading.Tasks;
-using Antlr4.Runtime;
-using Antlr4.Runtime.Tree;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Dsl.ANTLR;
@@ -8,6 +6,8 @@ using System.IO;
 using Nethermind.Logging;
 using System.IO.Abstractions;
 using System.Collections.Generic;
+using Nethermind.Dsl.Pipeline;
+using Nethermind.Dsl.JsonRpc;
 
 #nullable enable
 namespace Nethermind.Dsl
@@ -18,10 +18,10 @@ namespace Nethermind.Dsl
         public string Description { get; } = "Plugin created in order to let users create their own DSL scripts used in data extraction from chain";
         public string Author { get; } = "Nethermind team";
         public IFileSystem? FileSystem;
-
         private INethermindApi? _api;
         private ParseTreeListener? _listener;
         private List<Interpreter>? _interpreters;
+        private IDslRpcModule? _rpcModule;
         private ILogger? _logger;
 
         public async Task Init(INethermindApi nethermindApi)
@@ -49,6 +49,7 @@ namespace Nethermind.Dsl
 
         public Task InitRpcModules()
         {
+
             return Task.CompletedTask;
         }
 
