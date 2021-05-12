@@ -1,4 +1,4 @@
 SOURCE BlockProcessor
 WATCH Blocks 
 WHERE Author == 0xb7705ae4c6f81b66cdb323c65f4e8133690fc099
-PUBLISH WebSockets
+PUBLISH WebSockets authorTest

@@ -16,21 +16,11 @@ namespace Nethermind.Dsl.ANTLR
         public Action<string, string, string> OnAndCondition { private get; set; }
         public Action OnExit { private get; set; }
 
-        public override void EnterTree([NotNull] TreeContext context)
-        {
-            if(OnStart == null)
-            {
-                return; 
-            }
-            
-            OnStart();
-        }
-
         public override void EnterSourceExpression([NotNull] SourceExpressionContext context)
         {
-            if(OnSourceExpression == null)
+            if (OnSourceExpression == null)
             {
-                return; 
+                return;
             }
 
             OnSourceExpression(context.WORD().GetText());
@@ -38,9 +28,9 @@ namespace Nethermind.Dsl.ANTLR
 
         public override void EnterWatchExpression([NotNull] WatchExpressionContext context)
         {
-            if(OnWatchExpression == null)
+            if (OnWatchExpression == null)
             {
-                return; 
+                return;
             }
 
             OnWatchExpression(context.WORD().GetText());
@@ -48,9 +38,9 @@ namespace Nethermind.Dsl.ANTLR
 
         public override void EnterWhereExpression([NotNull] WhereExpressionContext context)
         {
-            if(OnCondition == null)
+            if (OnCondition == null)
             {
-                return; 
+                return;
             }
 
             ConditionContext condition = context.condition();
@@ -63,7 +53,7 @@ namespace Nethermind.Dsl.ANTLR
 
         public override void EnterOrCondition([NotNull] OrConditionContext context)
         {
-            if(OnOrCondition == null)
+            if (OnOrCondition == null)
             {
                 return;
             }
@@ -71,14 +61,14 @@ namespace Nethermind.Dsl.ANTLR
             var condition = context.condition();
             string key = condition.WORD().GetText();
             string booleanOperator = condition.BOOLEAN_OPERATOR().GetText();
-            string value = condition.CONDITION_VALUE().GetText(); 
+            string value = condition.CONDITION_VALUE().GetText();
 
             OnOrCondition(key, booleanOperator, value);
         }
 
         public override void EnterAndCondition([NotNull] AndConditionContext context)
         {
-            if(OnAndCondition == null)
+            if (OnAndCondition == null)
             {
                 return;
             }
@@ -86,28 +76,18 @@ namespace Nethermind.Dsl.ANTLR
             var condition = context.condition();
             string key = condition.WORD().GetText();
             string booleanOperator = condition.BOOLEAN_OPERATOR().GetText();
-            string value = condition.CONDITION_VALUE().GetText(); 
+            string value = condition.CONDITION_VALUE().GetText();
 
             OnAndCondition(key, booleanOperator, value);
         }
         public override void EnterPublishExpression([NotNull] PublishExpressionContext context)
         {
-            if(OnWatchExpression == null)
-            {
-                return; 
-            }
-
-            OnWatchExpression(context.WORD().GetText());
-        }
-
-        public override void ExitTree([NotNull] TreeContext context)
-        {
-            if(OnExit == null)
+            if (OnWatchExpression == null)
             {
                 return;
             }
 
-            OnExit();
+            OnWatchExpression(context.WORD().GetText());
         }
     }
 }

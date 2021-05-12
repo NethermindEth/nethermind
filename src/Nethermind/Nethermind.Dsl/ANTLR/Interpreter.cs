@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Antlr4.Runtime;
 using Antlr4.Runtime.Tree;
 using Nethermind.Api;
 using Nethermind.Core;
@@ -13,19 +14,27 @@ namespace Nethermind.Dsl.ANTLR
 {
     public class Interpreter
     {
-        public List<IPipeline> Pipelines = new List<IPipeline>();
+        public IPipeline Pipeline; 
         private readonly INethermindApi _api;
         private readonly IParseTree _tree;
         private readonly ParseTreeListener _treeListener;
         private IPipelineBuilder<Block, Block> _blockPipelineBuilder;
         private IPipelineBuilder<Transaction, Transaction> _transactionPipelineBuilder;
+        private readonly ParseTreeWalker _parseTreeWalker;
         private bool _blockSource;
 
-        public Interpreter(INethermindApi api, IParseTree tree, ParseTreeListener treeListener)
+        public Interpreter(INethermindApi api, string script)
         {
             _api = api ?? throw new ArgumentNullException(nameof(api));
-            _tree = tree ?? throw new ArgumentNullException(nameof(tree));
-            _treeListener = treeListener ?? throw new ArgumentNullException(nameof(treeListener));
+
+            var inputStream = new AntlrInputStream(script);
+            var lexer = new DslGrammarLexer(inputStream);
+            var tokens = new CommonTokenStream(lexer);
+            var parser = new DslGrammarParser(tokens);
+            parser.BuildParseTree = true;
+            _tree = parser.tree();
+
+            _treeListener = new ParseTreeListener();
 
             _treeListener.OnSourceExpression = AddSource;
             _treeListener.OnWatchExpression = AddWatch;
@@ -33,11 +42,14 @@ namespace Nethermind.Dsl.ANTLR
             _treeListener.OnAndCondition = AddAndCondition;
             _treeListener.OnOrCondition = AddOrCondition;
             _treeListener.OnPublishExpression = AddPublisher;
-            _treeListener.OnExit = BuildPipeline;
+
+            _parseTreeWalker = new ParseTreeWalker();
+            _parseTreeWalker.Walk(_treeListener, _tree);
         }
 
         private void AddSource(string value)
         {
+            throw new Exception();
             if(value.Equals("BlockProcessor", StringComparison.InvariantCultureIgnoreCase))
             {
                 var sourceElement = new BlockProcessorSource<Block>(_api.MainBlockProcessor);
@@ -60,6 +72,7 @@ namespace Nethermind.Dsl.ANTLR
 
         private void AddWatch(string value)
         {
+            throw new Exception();
             switch (value.ToLowerInvariant())
             {
                 case "blocks":
@@ -82,6 +95,7 @@ namespace Nethermind.Dsl.ANTLR
 
         private void AddCondition(string key, string symbol, string value)
         {
+            throw new Exception();
             if(_blockSource)
             {
                 var blockElement = GetNextBlockElement(key, symbol, value);
@@ -100,6 +114,7 @@ namespace Nethermind.Dsl.ANTLR
 
         private void AddOrCondition(string key, string symbol, string value)
         {
+            throw new Exception();
             // OR operation add conditions to the last element in the pipeline
             if(_blockSource)
             {
@@ -117,6 +132,7 @@ namespace Nethermind.Dsl.ANTLR
 
         private PipelineElement<Transaction, Transaction> GetNextTransactionElement(string key, string operation, string value)
         {
+            throw new Exception();
             return operation switch
             {
                 "==" => new PipelineElement<Transaction, Transaction>(
@@ -143,6 +159,7 @@ namespace Nethermind.Dsl.ANTLR
 
         private PipelineElement<Block, Block> GetNextBlockElement(string key, string operation, string value)
         {
+            throw new Exception();
             return operation switch
             {
                 "==" => new PipelineElement<Block, Block>(
@@ -169,6 +186,7 @@ namespace Nethermind.Dsl.ANTLR
 
         private void AddPublisher(string publisher)
         {
+            throw new Exception();
             if(_blockSource)
             {
                 AddBlockPublisher(publisher);
@@ -176,10 +194,13 @@ namespace Nethermind.Dsl.ANTLR
             }
 
             AddTransactionPublisher(publisher);
+
+            BuildPipeline();
         }
 
         private void AddBlockPublisher(string publisher)
         {
+            throw new Exception();
             if (publisher.Equals("WebSockets", StringComparison.InvariantCultureIgnoreCase))
             {
                 if (_blockPipelineBuilder != null)
@@ -187,10 +208,13 @@ namespace Nethermind.Dsl.ANTLR
                     _blockPipelineBuilder =_blockPipelineBuilder.AddElement(new WebSocketsPublisher<Block, Block>("dsl", _api.EthereumJsonSerializer));
                 }
             }
+
+            BuildPipeline();
         }
 
         private void AddTransactionPublisher(string publisher)
         {
+            throw new Exception();
             if (publisher.Equals("WebSockets", StringComparison.InvariantCultureIgnoreCase))
             {
                 if (_blockPipelineBuilder != null)
@@ -202,13 +226,14 @@ namespace Nethermind.Dsl.ANTLR
 
         private void BuildPipeline()
         {
+            throw new Exception();
             if(_blockSource)
             {
-                Pipelines.Add(_blockPipelineBuilder.Build());
+                Pipeline = _blockPipelineBuilder.Build();
             }
             else
             {
-                Pipelines.Add(_transactionPipelineBuilder.Build());
+                Pipeline = _transactionPipelineBuilder.Build();
             }
         }
     }

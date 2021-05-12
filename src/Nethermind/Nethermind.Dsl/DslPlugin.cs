@@ -37,16 +37,7 @@ namespace Nethermind.Dsl
 
             foreach (var script in dslScripts)
             {
-                var inputStream = new AntlrInputStream(script);
-                var lexer = new DslGrammarLexer(inputStream);
-                var tokens = new CommonTokenStream(lexer);
-                var parser = new DslGrammarParser(tokens);
-                parser.BuildParseTree = true;
-                IParseTree tree = parser.tree();
-
-                _listener = new ParseTreeListener();
-                _interpreters.Add(new Interpreter(_api, tree, _listener));
-                ParseTreeWalker.Default.Walk(_listener, tree);
+                _interpreters.Add(new Interpreter(_api, script));
             }
 
             if (_logger.IsInfo) _logger.Info("DSL plugin initialized.");
@@ -83,8 +74,10 @@ namespace Nethermind.Dsl
                     yield return FileSystem.File.ReadAllText(file);
                 }
             }
-
-            throw new FileLoadException($"Could not find DSL directory at {dirPath} or the directory is empty");
+            else
+            {
+                throw new FileLoadException($"Could not find DSL directory at {dirPath} or the directory is empty");
+            }
         }
     }
 }

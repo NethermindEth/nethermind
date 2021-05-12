@@ -90,10 +90,10 @@ public partial class DslGrammarParser : Parser {
 	}
 
 	public partial class TreeContext : ParserRuleContext {
-		[System.Diagnostics.DebuggerNonUserCode] public ExpressionContext[] expression() {
+		  public ExpressionContext[] expression() {
 			return GetRuleContexts<ExpressionContext>();
 		}
-		[System.Diagnostics.DebuggerNonUserCode] public ExpressionContext expression(int i) {
+		  public ExpressionContext expression(int i) {
 			return GetRuleContext<ExpressionContext>(i);
 		}
 		public TreeContext(ParserRuleContext parent, int invokingState)
@@ -101,12 +101,12 @@ public partial class DslGrammarParser : Parser {
 		{
 		}
 		public override int RuleIndex { get { return RULE_tree; } }
-		[System.Diagnostics.DebuggerNonUserCode]
+		 
 		public override void EnterRule(IParseTreeListener listener) {
 			IDslGrammarListener typedListener = listener as IDslGrammarListener;
 			if (typedListener != null) typedListener.EnterTree(this);
 		}
-		[System.Diagnostics.DebuggerNonUserCode]
+		 
 		public override void ExitRule(IParseTreeListener listener) {
 			IDslGrammarListener typedListener = listener as IDslGrammarListener;
 			if (typedListener != null) typedListener.ExitTree(this);
@@ -149,22 +149,22 @@ public partial class DslGrammarParser : Parser {
 	}
 
 	public partial class ExpressionContext : ParserRuleContext {
-		[System.Diagnostics.DebuggerNonUserCode] public SourceExpressionContext sourceExpression() {
+		  public SourceExpressionContext sourceExpression() {
 			return GetRuleContext<SourceExpressionContext>(0);
 		}
-		[System.Diagnostics.DebuggerNonUserCode] public WatchExpressionContext watchExpression() {
+		  public WatchExpressionContext watchExpression() {
 			return GetRuleContext<WatchExpressionContext>(0);
 		}
-		[System.Diagnostics.DebuggerNonUserCode] public WhereExpressionContext whereExpression() {
+		  public WhereExpressionContext whereExpression() {
 			return GetRuleContext<WhereExpressionContext>(0);
 		}
-		[System.Diagnostics.DebuggerNonUserCode] public PublishExpressionContext publishExpression() {
+		  public PublishExpressionContext publishExpression() {
 			return GetRuleContext<PublishExpressionContext>(0);
 		}
-		[System.Diagnostics.DebuggerNonUserCode] public AndConditionContext andCondition() {
+		  public AndConditionContext andCondition() {
 			return GetRuleContext<AndConditionContext>(0);
 		}
-		[System.Diagnostics.DebuggerNonUserCode] public OrConditionContext orCondition() {
+		  public OrConditionContext orCondition() {
 			return GetRuleContext<OrConditionContext>(0);
 		}
 		public ExpressionContext(ParserRuleContext parent, int invokingState)
@@ -172,12 +172,12 @@ public partial class DslGrammarParser : Parser {
 		{
 		}
 		public override int RuleIndex { get { return RULE_expression; } }
-		[System.Diagnostics.DebuggerNonUserCode]
+		 
 		public override void EnterRule(IParseTreeListener listener) {
 			IDslGrammarListener typedListener = listener as IDslGrammarListener;
 			if (typedListener != null) typedListener.EnterExpression(this);
 		}
-		[System.Diagnostics.DebuggerNonUserCode]
+		 
 		public override void ExitRule(IParseTreeListener listener) {
 			IDslGrammarListener typedListener = listener as IDslGrammarListener;
 			if (typedListener != null) typedListener.ExitExpression(this);
@@ -250,19 +250,19 @@ public partial class DslGrammarParser : Parser {
 	}
 
 	public partial class SourceExpressionContext : ParserRuleContext {
-		[System.Diagnostics.DebuggerNonUserCode] public ITerminalNode SOURCE() { return GetToken(DslGrammarParser.SOURCE, 0); }
-		[System.Diagnostics.DebuggerNonUserCode] public ITerminalNode WORD() { return GetToken(DslGrammarParser.WORD, 0); }
+		  public ITerminalNode SOURCE() { return GetToken(DslGrammarParser.SOURCE, 0); }
+		  public ITerminalNode WORD() { return GetToken(DslGrammarParser.WORD, 0); }
 		public SourceExpressionContext(ParserRuleContext parent, int invokingState)
 			: base(parent, invokingState)
 		{
 		}
 		public override int RuleIndex { get { return RULE_sourceExpression; } }
-		[System.Diagnostics.DebuggerNonUserCode]
+		 
 		public override void EnterRule(IParseTreeListener listener) {
 			IDslGrammarListener typedListener = listener as IDslGrammarListener;
 			if (typedListener != null) typedListener.EnterSourceExpression(this);
 		}
-		[System.Diagnostics.DebuggerNonUserCode]
+		 
 		public override void ExitRule(IParseTreeListener listener) {
 			IDslGrammarListener typedListener = listener as IDslGrammarListener;
 			if (typedListener != null) typedListener.ExitSourceExpression(this);
@@ -294,19 +294,19 @@ public partial class DslGrammarParser : Parser {
 	}
 
 	public partial class WatchExpressionContext : ParserRuleContext {
-		[System.Diagnostics.DebuggerNonUserCode] public ITerminalNode WATCH() { return GetToken(DslGrammarParser.WATCH, 0); }
-		[System.Diagnostics.DebuggerNonUserCode] public ITerminalNode WORD() { return GetToken(DslGrammarParser.WORD, 0); }
+		  public ITerminalNode WATCH() { return GetToken(DslGrammarParser.WATCH, 0); }
+		  public ITerminalNode WORD() { return GetToken(DslGrammarParser.WORD, 0); }
 		public WatchExpressionContext(ParserRuleContext parent, int invokingState)
 			: base(parent, invokingState)
 		{
 		}
 		public override int RuleIndex { get { return RULE_watchExpression; } }
-		[System.Diagnostics.DebuggerNonUserCode]
+		 
 		public override void EnterRule(IParseTreeListener listener) {
 			IDslGrammarListener typedListener = listener as IDslGrammarListener;
 			if (typedListener != null) typedListener.EnterWatchExpression(this);
 		}
-		[System.Diagnostics.DebuggerNonUserCode]
+		 
 		public override void ExitRule(IParseTreeListener listener) {
 			IDslGrammarListener typedListener = listener as IDslGrammarListener;
 			if (typedListener != null) typedListener.ExitWatchExpression(this);
@@ -338,8 +338,8 @@ public partial class DslGrammarParser : Parser {
 	}
 
 	public partial class WhereExpressionContext : ParserRuleContext {
-		[System.Diagnostics.DebuggerNonUserCode] public ITerminalNode WHERE() { return GetToken(DslGrammarParser.WHERE, 0); }
-		[System.Diagnostics.DebuggerNonUserCode] public ConditionContext condition() {
+		  public ITerminalNode WHERE() { return GetToken(DslGrammarParser.WHERE, 0); }
+		  public ConditionContext condition() {
 			return GetRuleContext<ConditionContext>(0);
 		}
 		public WhereExpressionContext(ParserRuleContext parent, int invokingState)
@@ -347,12 +347,12 @@ public partial class DslGrammarParser : Parser {
 		{
 		}
 		public override int RuleIndex { get { return RULE_whereExpression; } }
-		[System.Diagnostics.DebuggerNonUserCode]
+		 
 		public override void EnterRule(IParseTreeListener listener) {
 			IDslGrammarListener typedListener = listener as IDslGrammarListener;
 			if (typedListener != null) typedListener.EnterWhereExpression(this);
 		}
-		[System.Diagnostics.DebuggerNonUserCode]
+		 
 		public override void ExitRule(IParseTreeListener listener) {
 			IDslGrammarListener typedListener = listener as IDslGrammarListener;
 			if (typedListener != null) typedListener.ExitWhereExpression(this);
@@ -384,20 +384,20 @@ public partial class DslGrammarParser : Parser {
 	}
 
 	public partial class PublishExpressionContext : ParserRuleContext {
-		[System.Diagnostics.DebuggerNonUserCode] public ITerminalNode PUBLISH() { return GetToken(DslGrammarParser.PUBLISH, 0); }
-		[System.Diagnostics.DebuggerNonUserCode] public ITerminalNode PUBLISH_VALUE() { return GetToken(DslGrammarParser.PUBLISH_VALUE, 0); }
-		[System.Diagnostics.DebuggerNonUserCode] public ITerminalNode WORD() { return GetToken(DslGrammarParser.WORD, 0); }
+		  public ITerminalNode PUBLISH() { return GetToken(DslGrammarParser.PUBLISH, 0); }
+		  public ITerminalNode PUBLISH_VALUE() { return GetToken(DslGrammarParser.PUBLISH_VALUE, 0); }
+		  public ITerminalNode WORD() { return GetToken(DslGrammarParser.WORD, 0); }
 		public PublishExpressionContext(ParserRuleContext parent, int invokingState)
 			: base(parent, invokingState)
 		{
 		}
 		public override int RuleIndex { get { return RULE_publishExpression; } }
-		[System.Diagnostics.DebuggerNonUserCode]
+		 
 		public override void EnterRule(IParseTreeListener listener) {
 			IDslGrammarListener typedListener = listener as IDslGrammarListener;
 			if (typedListener != null) typedListener.EnterPublishExpression(this);
 		}
-		[System.Diagnostics.DebuggerNonUserCode]
+		 
 		public override void ExitRule(IParseTreeListener listener) {
 			IDslGrammarListener typedListener = listener as IDslGrammarListener;
 			if (typedListener != null) typedListener.ExitPublishExpression(this);
@@ -431,20 +431,20 @@ public partial class DslGrammarParser : Parser {
 	}
 
 	public partial class ConditionContext : ParserRuleContext {
-		[System.Diagnostics.DebuggerNonUserCode] public ITerminalNode WORD() { return GetToken(DslGrammarParser.WORD, 0); }
-		[System.Diagnostics.DebuggerNonUserCode] public ITerminalNode BOOLEAN_OPERATOR() { return GetToken(DslGrammarParser.BOOLEAN_OPERATOR, 0); }
-		[System.Diagnostics.DebuggerNonUserCode] public ITerminalNode CONDITION_VALUE() { return GetToken(DslGrammarParser.CONDITION_VALUE, 0); }
+		  public ITerminalNode WORD() { return GetToken(DslGrammarParser.WORD, 0); }
+		  public ITerminalNode BOOLEAN_OPERATOR() { return GetToken(DslGrammarParser.BOOLEAN_OPERATOR, 0); }
+		  public ITerminalNode CONDITION_VALUE() { return GetToken(DslGrammarParser.CONDITION_VALUE, 0); }
 		public ConditionContext(ParserRuleContext parent, int invokingState)
 			: base(parent, invokingState)
 		{
 		}
 		public override int RuleIndex { get { return RULE_condition; } }
-		[System.Diagnostics.DebuggerNonUserCode]
+		 
 		public override void EnterRule(IParseTreeListener listener) {
 			IDslGrammarListener typedListener = listener as IDslGrammarListener;
 			if (typedListener != null) typedListener.EnterCondition(this);
 		}
-		[System.Diagnostics.DebuggerNonUserCode]
+		 
 		public override void ExitRule(IParseTreeListener listener) {
 			IDslGrammarListener typedListener = listener as IDslGrammarListener;
 			if (typedListener != null) typedListener.ExitCondition(this);
@@ -478,8 +478,8 @@ public partial class DslGrammarParser : Parser {
 	}
 
 	public partial class AndConditionContext : ParserRuleContext {
-		[System.Diagnostics.DebuggerNonUserCode] public ITerminalNode AND() { return GetToken(DslGrammarParser.AND, 0); }
-		[System.Diagnostics.DebuggerNonUserCode] public ConditionContext condition() {
+		  public ITerminalNode AND() { return GetToken(DslGrammarParser.AND, 0); }
+		  public ConditionContext condition() {
 			return GetRuleContext<ConditionContext>(0);
 		}
 		public AndConditionContext(ParserRuleContext parent, int invokingState)
@@ -487,12 +487,12 @@ public partial class DslGrammarParser : Parser {
 		{
 		}
 		public override int RuleIndex { get { return RULE_andCondition; } }
-		[System.Diagnostics.DebuggerNonUserCode]
+		 
 		public override void EnterRule(IParseTreeListener listener) {
 			IDslGrammarListener typedListener = listener as IDslGrammarListener;
 			if (typedListener != null) typedListener.EnterAndCondition(this);
 		}
-		[System.Diagnostics.DebuggerNonUserCode]
+		 
 		public override void ExitRule(IParseTreeListener listener) {
 			IDslGrammarListener typedListener = listener as IDslGrammarListener;
 			if (typedListener != null) typedListener.ExitAndCondition(this);
@@ -524,8 +524,8 @@ public partial class DslGrammarParser : Parser {
 	}
 
 	public partial class OrConditionContext : ParserRuleContext {
-		[System.Diagnostics.DebuggerNonUserCode] public ITerminalNode OR() { return GetToken(DslGrammarParser.OR, 0); }
-		[System.Diagnostics.DebuggerNonUserCode] public ConditionContext condition() {
+		  public ITerminalNode OR() { return GetToken(DslGrammarParser.OR, 0); }
+		  public ConditionContext condition() {
 			return GetRuleContext<ConditionContext>(0);
 		}
 		public OrConditionContext(ParserRuleContext parent, int invokingState)
@@ -533,12 +533,12 @@ public partial class DslGrammarParser : Parser {
 		{
 		}
 		public override int RuleIndex { get { return RULE_orCondition; } }
-		[System.Diagnostics.DebuggerNonUserCode]
+		 
 		public override void EnterRule(IParseTreeListener listener) {
 			IDslGrammarListener typedListener = listener as IDslGrammarListener;
 			if (typedListener != null) typedListener.EnterOrCondition(this);
 		}
-		[System.Diagnostics.DebuggerNonUserCode]
+		 
 		public override void ExitRule(IParseTreeListener listener) {
 			IDslGrammarListener typedListener = listener as IDslGrammarListener;
 			if (typedListener != null) typedListener.ExitOrCondition(this);

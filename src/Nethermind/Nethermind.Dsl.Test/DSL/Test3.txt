@@ -1,0 +1,4 @@
+SOURCE BlockProcessor
+WATCH Blocks
+WHERE GasPrice == 0 OR TxCount == 0 OR GasLimit == 0
+PUBLISH WebSockets blocksTest
