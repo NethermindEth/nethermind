@@ -46,10 +46,7 @@ namespace Nethermind.Api
 
         [ConfigItem(Description = "Path to the chain definition file created by Hive for test purpouse", DefaultValue="chainspec/test.json")]
         string HiveChainSpecPath { get; set; }
-        
-        [ConfigItem(Description = "Directory for Nethermind plugins like NDM.", DefaultValue = "plugins")] 
-        string PluginsDirectory { get; set; }
-        
+
         [ConfigItem(Description = "Base directoy path for all the nethermind databases.", DefaultValue = "\"db\"")]
         string BaseDbPath { get; set; }
         

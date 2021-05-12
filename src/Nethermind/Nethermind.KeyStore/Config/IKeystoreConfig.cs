@@ -78,13 +78,13 @@ namespace Nethermind.KeyStore.Config
                                   "If the file does not exist it will be generated.")]
         string EnodeKeyFile { get; set; }
 
-        [ConfigItem(Description = "Passwords to use to unlock accounts from the UnlockAccounts configuration item. Only used when no PasswordFiles provided.", DefaultValue = "System.String[]")]
+        [ConfigItem(Description = "Passwords to use to unlock accounts from the UnlockAccounts configuration item. Only used when no PasswordFiles provided.", DefaultValue = "[]")]
         string[] Passwords { get; set; }
 
-        [ConfigItem(Description = "Password files storing passwords to unlock the accounts from the UnlockAccounts configuration item", DefaultValue = "System.String[]")]
+        [ConfigItem(Description = "Password files storing passwords to unlock the accounts from the UnlockAccounts configuration item", DefaultValue = "[]")]
         string[] PasswordFiles { get; set; }
 
-        [ConfigItem(Description = "Accounts to unlock on startup using provided PasswordFiles and Passwords", DefaultValue = "System.String[]")]
+        [ConfigItem(Description = "Accounts to unlock on startup using provided PasswordFiles and Passwords", DefaultValue = "[]")]
         string[] UnlockAccounts { get; set; }
     }
 
