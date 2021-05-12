@@ -36,9 +36,9 @@ public partial class DslGrammarParser : Parser {
 	protected static DFA[] decisionToDFA;
 	protected static PredictionContextCache sharedContextCache = new PredictionContextCache();
 	public const int
-		WORD=1, DIGIT=2, ADDRESS=3, WS=4, BOOLEAN_OPERATOR=5, ARITHMETIC_SYMBOL=6, 
-		CONDITION_VALUE=7, SOURCE=8, WATCH=9, WHERE=10, PUBLISH=11, AND=12, OR=13, 
-		CONTAINS=14, PUBLISH_VALUE=15, WEBSOCKETS=16, LOG_PUBLISHER=17;
+		SOURCE=1, WATCH=2, WHERE=3, PUBLISH=4, AND=5, OR=6, CONTAINS=7, BOOLEAN_OPERATOR=8, 
+		ARITHMETIC_SYMBOL=9, PUBLISH_VALUE=10, WEBSOCKETS=11, LOG_PUBLISHER=12, 
+		WORD=13, DIGIT=14, ADDRESS=15, WS=16;
 	public const int
 		RULE_tree = 0, RULE_expression = 1, RULE_sourceExpression = 2, RULE_watchExpression = 3, 
 		RULE_whereExpression = 4, RULE_publishExpression = 5, RULE_condition = 6, 
@@ -49,13 +49,13 @@ public partial class DslGrammarParser : Parser {
 	};
 
 	private static readonly string[] _LiteralNames = {
-		null, null, null, null, null, null, null, null, "'SOURCE'", "'WATCH'", 
-		"'WHERE'", "'PUBLISH'", "'AND'", "'OR'", "'CONTAINS'"
+		null, "'SOURCE'", "'WATCH'", "'WHERE'", "'PUBLISH'", "'AND'", "'OR'", 
+		"'CONTAINS'"
 	};
 	private static readonly string[] _SymbolicNames = {
-		null, "WORD", "DIGIT", "ADDRESS", "WS", "BOOLEAN_OPERATOR", "ARITHMETIC_SYMBOL", 
-		"CONDITION_VALUE", "SOURCE", "WATCH", "WHERE", "PUBLISH", "AND", "OR", 
-		"CONTAINS", "PUBLISH_VALUE", "WEBSOCKETS", "LOG_PUBLISHER"
+		null, "SOURCE", "WATCH", "WHERE", "PUBLISH", "AND", "OR", "CONTAINS", 
+		"BOOLEAN_OPERATOR", "ARITHMETIC_SYMBOL", "PUBLISH_VALUE", "WEBSOCKETS", 
+		"LOG_PUBLISHER", "WORD", "DIGIT", "ADDRESS", "WS"
 	};
 	public static readonly IVocabulary DefaultVocabulary = new Vocabulary(_LiteralNames, _SymbolicNames);
 
@@ -90,10 +90,10 @@ public partial class DslGrammarParser : Parser {
 	}
 
 	public partial class TreeContext : ParserRuleContext {
-		  public ExpressionContext[] expression() {
+		[System.Diagnostics.DebuggerNonUserCode] public ExpressionContext[] expression() {
 			return GetRuleContexts<ExpressionContext>();
 		}
-		  public ExpressionContext expression(int i) {
+		[System.Diagnostics.DebuggerNonUserCode] public ExpressionContext expression(int i) {
 			return GetRuleContext<ExpressionContext>(i);
 		}
 		public TreeContext(ParserRuleContext parent, int invokingState)
@@ -101,12 +101,12 @@ public partial class DslGrammarParser : Parser {
 		{
 		}
 		public override int RuleIndex { get { return RULE_tree; } }
-		 
+		[System.Diagnostics.DebuggerNonUserCode]
 		public override void EnterRule(IParseTreeListener listener) {
 			IDslGrammarListener typedListener = listener as IDslGrammarListener;
 			if (typedListener != null) typedListener.EnterTree(this);
 		}
-		 
+		[System.Diagnostics.DebuggerNonUserCode]
 		public override void ExitRule(IParseTreeListener listener) {
 			IDslGrammarListener typedListener = listener as IDslGrammarListener;
 			if (typedListener != null) typedListener.ExitTree(this);
@@ -149,22 +149,22 @@ public partial class DslGrammarParser : Parser {
 	}
 
 	public partial class ExpressionContext : ParserRuleContext {
-		  public SourceExpressionContext sourceExpression() {
+		[System.Diagnostics.DebuggerNonUserCode] public SourceExpressionContext sourceExpression() {
 			return GetRuleContext<SourceExpressionContext>(0);
 		}
-		  public WatchExpressionContext watchExpression() {
+		[System.Diagnostics.DebuggerNonUserCode] public WatchExpressionContext watchExpression() {
 			return GetRuleContext<WatchExpressionContext>(0);
 		}
-		  public WhereExpressionContext whereExpression() {
+		[System.Diagnostics.DebuggerNonUserCode] public WhereExpressionContext whereExpression() {
 			return GetRuleContext<WhereExpressionContext>(0);
 		}
-		  public PublishExpressionContext publishExpression() {
+		[System.Diagnostics.DebuggerNonUserCode] public PublishExpressionContext publishExpression() {
 			return GetRuleContext<PublishExpressionContext>(0);
 		}
-		  public AndConditionContext andCondition() {
+		[System.Diagnostics.DebuggerNonUserCode] public AndConditionContext andCondition() {
 			return GetRuleContext<AndConditionContext>(0);
 		}
-		  public OrConditionContext orCondition() {
+		[System.Diagnostics.DebuggerNonUserCode] public OrConditionContext orCondition() {
 			return GetRuleContext<OrConditionContext>(0);
 		}
 		public ExpressionContext(ParserRuleContext parent, int invokingState)
@@ -172,12 +172,12 @@ public partial class DslGrammarParser : Parser {
 		{
 		}
 		public override int RuleIndex { get { return RULE_expression; } }
-		 
+		[System.Diagnostics.DebuggerNonUserCode]
 		public override void EnterRule(IParseTreeListener listener) {
 			IDslGrammarListener typedListener = listener as IDslGrammarListener;
 			if (typedListener != null) typedListener.EnterExpression(this);
 		}
-		 
+		[System.Diagnostics.DebuggerNonUserCode]
 		public override void ExitRule(IParseTreeListener listener) {
 			IDslGrammarListener typedListener = listener as IDslGrammarListener;
 			if (typedListener != null) typedListener.ExitExpression(this);
@@ -250,19 +250,19 @@ public partial class DslGrammarParser : Parser {
 	}
 
 	public partial class SourceExpressionContext : ParserRuleContext {
-		  public ITerminalNode SOURCE() { return GetToken(DslGrammarParser.SOURCE, 0); }
-		  public ITerminalNode WORD() { return GetToken(DslGrammarParser.WORD, 0); }
+		[System.Diagnostics.DebuggerNonUserCode] public ITerminalNode SOURCE() { return GetToken(DslGrammarParser.SOURCE, 0); }
+		[System.Diagnostics.DebuggerNonUserCode] public ITerminalNode WORD() { return GetToken(DslGrammarParser.WORD, 0); }
 		public SourceExpressionContext(ParserRuleContext parent, int invokingState)
 			: base(parent, invokingState)
 		{
 		}
 		public override int RuleIndex { get { return RULE_sourceExpression; } }
-		 
+		[System.Diagnostics.DebuggerNonUserCode]
 		public override void EnterRule(IParseTreeListener listener) {
 			IDslGrammarListener typedListener = listener as IDslGrammarListener;
 			if (typedListener != null) typedListener.EnterSourceExpression(this);
 		}
-		 
+		[System.Diagnostics.DebuggerNonUserCode]
 		public override void ExitRule(IParseTreeListener listener) {
 			IDslGrammarListener typedListener = listener as IDslGrammarListener;
 			if (typedListener != null) typedListener.ExitSourceExpression(this);
@@ -294,19 +294,19 @@ public partial class DslGrammarParser : Parser {
 	}
 
 	public partial class WatchExpressionContext : ParserRuleContext {
-		  public ITerminalNode WATCH() { return GetToken(DslGrammarParser.WATCH, 0); }
-		  public ITerminalNode WORD() { return GetToken(DslGrammarParser.WORD, 0); }
+		[System.Diagnostics.DebuggerNonUserCode] public ITerminalNode WATCH() { return GetToken(DslGrammarParser.WATCH, 0); }
+		[System.Diagnostics.DebuggerNonUserCode] public ITerminalNode WORD() { return GetToken(DslGrammarParser.WORD, 0); }
 		public WatchExpressionContext(ParserRuleContext parent, int invokingState)
 			: base(parent, invokingState)
 		{
 		}
 		public override int RuleIndex { get { return RULE_watchExpression; } }
-		 
+		[System.Diagnostics.DebuggerNonUserCode]
 		public override void EnterRule(IParseTreeListener listener) {
 			IDslGrammarListener typedListener = listener as IDslGrammarListener;
 			if (typedListener != null) typedListener.EnterWatchExpression(this);
 		}
-		 
+		[System.Diagnostics.DebuggerNonUserCode]
 		public override void ExitRule(IParseTreeListener listener) {
 			IDslGrammarListener typedListener = listener as IDslGrammarListener;
 			if (typedListener != null) typedListener.ExitWatchExpression(this);
@@ -338,8 +338,8 @@ public partial class DslGrammarParser : Parser {
 	}
 
 	public partial class WhereExpressionContext : ParserRuleContext {
-		  public ITerminalNode WHERE() { return GetToken(DslGrammarParser.WHERE, 0); }
-		  public ConditionContext condition() {
+		[System.Diagnostics.DebuggerNonUserCode] public ITerminalNode WHERE() { return GetToken(DslGrammarParser.WHERE, 0); }
+		[System.Diagnostics.DebuggerNonUserCode] public ConditionContext condition() {
 			return GetRuleContext<ConditionContext>(0);
 		}
 		public WhereExpressionContext(ParserRuleContext parent, int invokingState)
@@ -347,12 +347,12 @@ public partial class DslGrammarParser : Parser {
 		{
 		}
 		public override int RuleIndex { get { return RULE_whereExpression; } }
-		 
+		[System.Diagnostics.DebuggerNonUserCode]
 		public override void EnterRule(IParseTreeListener listener) {
 			IDslGrammarListener typedListener = listener as IDslGrammarListener;
 			if (typedListener != null) typedListener.EnterWhereExpression(this);
 		}
-		 
+		[System.Diagnostics.DebuggerNonUserCode]
 		public override void ExitRule(IParseTreeListener listener) {
 			IDslGrammarListener typedListener = listener as IDslGrammarListener;
 			if (typedListener != null) typedListener.ExitWhereExpression(this);
@@ -384,20 +384,20 @@ public partial class DslGrammarParser : Parser {
 	}
 
 	public partial class PublishExpressionContext : ParserRuleContext {
-		  public ITerminalNode PUBLISH() { return GetToken(DslGrammarParser.PUBLISH, 0); }
-		  public ITerminalNode PUBLISH_VALUE() { return GetToken(DslGrammarParser.PUBLISH_VALUE, 0); }
-		  public ITerminalNode WORD() { return GetToken(DslGrammarParser.WORD, 0); }
+		[System.Diagnostics.DebuggerNonUserCode] public ITerminalNode PUBLISH() { return GetToken(DslGrammarParser.PUBLISH, 0); }
+		[System.Diagnostics.DebuggerNonUserCode] public ITerminalNode PUBLISH_VALUE() { return GetToken(DslGrammarParser.PUBLISH_VALUE, 0); }
+		[System.Diagnostics.DebuggerNonUserCode] public ITerminalNode WORD() { return GetToken(DslGrammarParser.WORD, 0); }
 		public PublishExpressionContext(ParserRuleContext parent, int invokingState)
 			: base(parent, invokingState)
 		{
 		}
 		public override int RuleIndex { get { return RULE_publishExpression; } }
-		 
+		[System.Diagnostics.DebuggerNonUserCode]
 		public override void EnterRule(IParseTreeListener listener) {
 			IDslGrammarListener typedListener = listener as IDslGrammarListener;
 			if (typedListener != null) typedListener.EnterPublishExpression(this);
 		}
-		 
+		[System.Diagnostics.DebuggerNonUserCode]
 		public override void ExitRule(IParseTreeListener listener) {
 			IDslGrammarListener typedListener = listener as IDslGrammarListener;
 			if (typedListener != null) typedListener.ExitPublishExpression(this);
@@ -431,20 +431,24 @@ public partial class DslGrammarParser : Parser {
 	}
 
 	public partial class ConditionContext : ParserRuleContext {
-		  public ITerminalNode WORD() { return GetToken(DslGrammarParser.WORD, 0); }
-		  public ITerminalNode BOOLEAN_OPERATOR() { return GetToken(DslGrammarParser.BOOLEAN_OPERATOR, 0); }
-		  public ITerminalNode CONDITION_VALUE() { return GetToken(DslGrammarParser.CONDITION_VALUE, 0); }
+		[System.Diagnostics.DebuggerNonUserCode] public ITerminalNode[] WORD() { return GetTokens(DslGrammarParser.WORD); }
+		[System.Diagnostics.DebuggerNonUserCode] public ITerminalNode WORD(int i) {
+			return GetToken(DslGrammarParser.WORD, i);
+		}
+		[System.Diagnostics.DebuggerNonUserCode] public ITerminalNode BOOLEAN_OPERATOR() { return GetToken(DslGrammarParser.BOOLEAN_OPERATOR, 0); }
+		[System.Diagnostics.DebuggerNonUserCode] public ITerminalNode DIGIT() { return GetToken(DslGrammarParser.DIGIT, 0); }
+		[System.Diagnostics.DebuggerNonUserCode] public ITerminalNode ADDRESS() { return GetToken(DslGrammarParser.ADDRESS, 0); }
 		public ConditionContext(ParserRuleContext parent, int invokingState)
 			: base(parent, invokingState)
 		{
 		}
 		public override int RuleIndex { get { return RULE_condition; } }
-		 
+		[System.Diagnostics.DebuggerNonUserCode]
 		public override void EnterRule(IParseTreeListener listener) {
 			IDslGrammarListener typedListener = listener as IDslGrammarListener;
 			if (typedListener != null) typedListener.EnterCondition(this);
 		}
-		 
+		[System.Diagnostics.DebuggerNonUserCode]
 		public override void ExitRule(IParseTreeListener listener) {
 			IDslGrammarListener typedListener = listener as IDslGrammarListener;
 			if (typedListener != null) typedListener.ExitCondition(this);
@@ -455,6 +459,7 @@ public partial class DslGrammarParser : Parser {
 	public ConditionContext condition() {
 		ConditionContext _localctx = new ConditionContext(Context, State);
 		EnterRule(_localctx, 12, RULE_condition);
+		int _la;
 		try {
 			EnterOuterAlt(_localctx, 1);
 			{
@@ -463,7 +468,14 @@ public partial class DslGrammarParser : Parser {
 			State = 46;
 			Match(BOOLEAN_OPERATOR);
 			State = 47;
-			Match(CONDITION_VALUE);
+			_la = TokenStream.LA(1);
+			if ( !((((_la) & ~0x3f) == 0 && ((1L << _la) & ((1L << WORD) | (1L << DIGIT) | (1L << ADDRESS))) != 0)) ) {
+			ErrorHandler.RecoverInline(this);
+			}
+			else {
+				ErrorHandler.ReportMatch(this);
+			    Consume();
+			}
 			}
 		}
 		catch (RecognitionException re) {
@@ -478,8 +490,8 @@ public partial class DslGrammarParser : Parser {
 	}
 
 	public partial class AndConditionContext : ParserRuleContext {
-		  public ITerminalNode AND() { return GetToken(DslGrammarParser.AND, 0); }
-		  public ConditionContext condition() {
+		[System.Diagnostics.DebuggerNonUserCode] public ITerminalNode AND() { return GetToken(DslGrammarParser.AND, 0); }
+		[System.Diagnostics.DebuggerNonUserCode] public ConditionContext condition() {
 			return GetRuleContext<ConditionContext>(0);
 		}
 		public AndConditionContext(ParserRuleContext parent, int invokingState)
@@ -487,12 +499,12 @@ public partial class DslGrammarParser : Parser {
 		{
 		}
 		public override int RuleIndex { get { return RULE_andCondition; } }
-		 
+		[System.Diagnostics.DebuggerNonUserCode]
 		public override void EnterRule(IParseTreeListener listener) {
 			IDslGrammarListener typedListener = listener as IDslGrammarListener;
 			if (typedListener != null) typedListener.EnterAndCondition(this);
 		}
-		 
+		[System.Diagnostics.DebuggerNonUserCode]
 		public override void ExitRule(IParseTreeListener listener) {
 			IDslGrammarListener typedListener = listener as IDslGrammarListener;
 			if (typedListener != null) typedListener.ExitAndCondition(this);
@@ -524,8 +536,8 @@ public partial class DslGrammarParser : Parser {
 	}
 
 	public partial class OrConditionContext : ParserRuleContext {
-		  public ITerminalNode OR() { return GetToken(DslGrammarParser.OR, 0); }
-		  public ConditionContext condition() {
+		[System.Diagnostics.DebuggerNonUserCode] public ITerminalNode OR() { return GetToken(DslGrammarParser.OR, 0); }
+		[System.Diagnostics.DebuggerNonUserCode] public ConditionContext condition() {
 			return GetRuleContext<ConditionContext>(0);
 		}
 		public OrConditionContext(ParserRuleContext parent, int invokingState)
@@ -533,12 +545,12 @@ public partial class DslGrammarParser : Parser {
 		{
 		}
 		public override int RuleIndex { get { return RULE_orCondition; } }
-		 
+		[System.Diagnostics.DebuggerNonUserCode]
 		public override void EnterRule(IParseTreeListener listener) {
 			IDslGrammarListener typedListener = listener as IDslGrammarListener;
 			if (typedListener != null) typedListener.EnterOrCondition(this);
 		}
-		 
+		[System.Diagnostics.DebuggerNonUserCode]
 		public override void ExitRule(IParseTreeListener listener) {
 			IDslGrammarListener typedListener = listener as IDslGrammarListener;
 			if (typedListener != null) typedListener.ExitOrCondition(this);
@@ -571,7 +583,7 @@ public partial class DslGrammarParser : Parser {
 
 	private static char[] _serializedATN = {
 		'\x3', '\x608B', '\xA72A', '\x8133', '\xB9ED', '\x417C', '\x3BE7', '\x7786', 
-		'\x5964', '\x3', '\x13', ':', '\x4', '\x2', '\t', '\x2', '\x4', '\x3', 
+		'\x5964', '\x3', '\x12', ':', '\x4', '\x2', '\t', '\x2', '\x4', '\x3', 
 		'\t', '\x3', '\x4', '\x4', '\t', '\x4', '\x4', '\x5', '\t', '\x5', '\x4', 
 		'\x6', '\t', '\x6', '\x4', '\a', '\t', '\a', '\x4', '\b', '\t', '\b', 
 		'\x4', '\t', '\t', '\t', '\x4', '\n', '\t', '\n', '\x3', '\x2', '\a', 
@@ -583,36 +595,37 @@ public partial class DslGrammarParser : Parser {
 		'\a', '\x3', '\b', '\x3', '\b', '\x3', '\b', '\x3', '\b', '\x3', '\t', 
 		'\x3', '\t', '\x3', '\t', '\x3', '\n', '\x3', '\n', '\x3', '\n', '\x3', 
 		'\n', '\x2', '\x2', '\v', '\x2', '\x4', '\x6', '\b', '\n', '\f', '\xE', 
-		'\x10', '\x12', '\x2', '\x2', '\x2', '\x36', '\x2', '\x17', '\x3', '\x2', 
-		'\x2', '\x2', '\x4', ' ', '\x3', '\x2', '\x2', '\x2', '\x6', '\"', '\x3', 
-		'\x2', '\x2', '\x2', '\b', '%', '\x3', '\x2', '\x2', '\x2', '\n', '(', 
-		'\x3', '\x2', '\x2', '\x2', '\f', '+', '\x3', '\x2', '\x2', '\x2', '\xE', 
-		'/', '\x3', '\x2', '\x2', '\x2', '\x10', '\x33', '\x3', '\x2', '\x2', 
-		'\x2', '\x12', '\x36', '\x3', '\x2', '\x2', '\x2', '\x14', '\x16', '\x5', 
-		'\x4', '\x3', '\x2', '\x15', '\x14', '\x3', '\x2', '\x2', '\x2', '\x16', 
-		'\x19', '\x3', '\x2', '\x2', '\x2', '\x17', '\x15', '\x3', '\x2', '\x2', 
-		'\x2', '\x17', '\x18', '\x3', '\x2', '\x2', '\x2', '\x18', '\x3', '\x3', 
-		'\x2', '\x2', '\x2', '\x19', '\x17', '\x3', '\x2', '\x2', '\x2', '\x1A', 
-		'!', '\x5', '\x6', '\x4', '\x2', '\x1B', '!', '\x5', '\b', '\x5', '\x2', 
-		'\x1C', '!', '\x5', '\n', '\x6', '\x2', '\x1D', '!', '\x5', '\f', '\a', 
-		'\x2', '\x1E', '!', '\x5', '\x10', '\t', '\x2', '\x1F', '!', '\x5', '\x12', 
-		'\n', '\x2', ' ', '\x1A', '\x3', '\x2', '\x2', '\x2', ' ', '\x1B', '\x3', 
-		'\x2', '\x2', '\x2', ' ', '\x1C', '\x3', '\x2', '\x2', '\x2', ' ', '\x1D', 
-		'\x3', '\x2', '\x2', '\x2', ' ', '\x1E', '\x3', '\x2', '\x2', '\x2', ' ', 
-		'\x1F', '\x3', '\x2', '\x2', '\x2', '!', '\x5', '\x3', '\x2', '\x2', '\x2', 
-		'\"', '#', '\a', '\n', '\x2', '\x2', '#', '$', '\a', '\x3', '\x2', '\x2', 
-		'$', '\a', '\x3', '\x2', '\x2', '\x2', '%', '&', '\a', '\v', '\x2', '\x2', 
-		'&', '\'', '\a', '\x3', '\x2', '\x2', '\'', '\t', '\x3', '\x2', '\x2', 
-		'\x2', '(', ')', '\a', '\f', '\x2', '\x2', ')', '*', '\x5', '\xE', '\b', 
-		'\x2', '*', '\v', '\x3', '\x2', '\x2', '\x2', '+', ',', '\a', '\r', '\x2', 
-		'\x2', ',', '-', '\a', '\x11', '\x2', '\x2', '-', '.', '\a', '\x3', '\x2', 
-		'\x2', '.', '\r', '\x3', '\x2', '\x2', '\x2', '/', '\x30', '\a', '\x3', 
-		'\x2', '\x2', '\x30', '\x31', '\a', '\a', '\x2', '\x2', '\x31', '\x32', 
-		'\a', '\t', '\x2', '\x2', '\x32', '\xF', '\x3', '\x2', '\x2', '\x2', '\x33', 
-		'\x34', '\a', '\xE', '\x2', '\x2', '\x34', '\x35', '\x5', '\xE', '\b', 
-		'\x2', '\x35', '\x11', '\x3', '\x2', '\x2', '\x2', '\x36', '\x37', '\a', 
-		'\xF', '\x2', '\x2', '\x37', '\x38', '\x5', '\xE', '\b', '\x2', '\x38', 
-		'\x13', '\x3', '\x2', '\x2', '\x2', '\x4', '\x17', ' ',
+		'\x10', '\x12', '\x2', '\x3', '\x3', '\x2', '\xF', '\x11', '\x2', '\x36', 
+		'\x2', '\x17', '\x3', '\x2', '\x2', '\x2', '\x4', ' ', '\x3', '\x2', '\x2', 
+		'\x2', '\x6', '\"', '\x3', '\x2', '\x2', '\x2', '\b', '%', '\x3', '\x2', 
+		'\x2', '\x2', '\n', '(', '\x3', '\x2', '\x2', '\x2', '\f', '+', '\x3', 
+		'\x2', '\x2', '\x2', '\xE', '/', '\x3', '\x2', '\x2', '\x2', '\x10', '\x33', 
+		'\x3', '\x2', '\x2', '\x2', '\x12', '\x36', '\x3', '\x2', '\x2', '\x2', 
+		'\x14', '\x16', '\x5', '\x4', '\x3', '\x2', '\x15', '\x14', '\x3', '\x2', 
+		'\x2', '\x2', '\x16', '\x19', '\x3', '\x2', '\x2', '\x2', '\x17', '\x15', 
+		'\x3', '\x2', '\x2', '\x2', '\x17', '\x18', '\x3', '\x2', '\x2', '\x2', 
+		'\x18', '\x3', '\x3', '\x2', '\x2', '\x2', '\x19', '\x17', '\x3', '\x2', 
+		'\x2', '\x2', '\x1A', '!', '\x5', '\x6', '\x4', '\x2', '\x1B', '!', '\x5', 
+		'\b', '\x5', '\x2', '\x1C', '!', '\x5', '\n', '\x6', '\x2', '\x1D', '!', 
+		'\x5', '\f', '\a', '\x2', '\x1E', '!', '\x5', '\x10', '\t', '\x2', '\x1F', 
+		'!', '\x5', '\x12', '\n', '\x2', ' ', '\x1A', '\x3', '\x2', '\x2', '\x2', 
+		' ', '\x1B', '\x3', '\x2', '\x2', '\x2', ' ', '\x1C', '\x3', '\x2', '\x2', 
+		'\x2', ' ', '\x1D', '\x3', '\x2', '\x2', '\x2', ' ', '\x1E', '\x3', '\x2', 
+		'\x2', '\x2', ' ', '\x1F', '\x3', '\x2', '\x2', '\x2', '!', '\x5', '\x3', 
+		'\x2', '\x2', '\x2', '\"', '#', '\a', '\x3', '\x2', '\x2', '#', '$', '\a', 
+		'\xF', '\x2', '\x2', '$', '\a', '\x3', '\x2', '\x2', '\x2', '%', '&', 
+		'\a', '\x4', '\x2', '\x2', '&', '\'', '\a', '\xF', '\x2', '\x2', '\'', 
+		'\t', '\x3', '\x2', '\x2', '\x2', '(', ')', '\a', '\x5', '\x2', '\x2', 
+		')', '*', '\x5', '\xE', '\b', '\x2', '*', '\v', '\x3', '\x2', '\x2', '\x2', 
+		'+', ',', '\a', '\x6', '\x2', '\x2', ',', '-', '\a', '\f', '\x2', '\x2', 
+		'-', '.', '\a', '\xF', '\x2', '\x2', '.', '\r', '\x3', '\x2', '\x2', '\x2', 
+		'/', '\x30', '\a', '\xF', '\x2', '\x2', '\x30', '\x31', '\a', '\n', '\x2', 
+		'\x2', '\x31', '\x32', '\t', '\x2', '\x2', '\x2', '\x32', '\xF', '\x3', 
+		'\x2', '\x2', '\x2', '\x33', '\x34', '\a', '\a', '\x2', '\x2', '\x34', 
+		'\x35', '\x5', '\xE', '\b', '\x2', '\x35', '\x11', '\x3', '\x2', '\x2', 
+		'\x2', '\x36', '\x37', '\a', '\b', '\x2', '\x2', '\x37', '\x38', '\x5', 
+		'\xE', '\b', '\x2', '\x38', '\x13', '\x3', '\x2', '\x2', '\x2', '\x4', 
+		'\x17', ' ',
 	};
 
 	public static readonly ATN _ATN =

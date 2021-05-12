@@ -35,10 +35,8 @@ namespace Nethermind.Dsl
             IEnumerable<string> dslScripts = LoadDSLScript();
             _interpreters = new List<Interpreter>();
 
-            foreach (var script in dslScripts)
-            {
-                _interpreters.Add(new Interpreter(_api, script));
-            }
+
+            _interpreters.Add(new Interpreter(_api, "SOURCE TxPool WATCH NewPending WHERE To == 0x000000 OR FROM == 0xabc PUBLISH WebSockets dsl"));
 
             if (_logger.IsInfo) _logger.Info("DSL plugin initialized.");
         }

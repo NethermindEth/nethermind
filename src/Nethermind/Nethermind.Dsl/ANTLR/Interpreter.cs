@@ -49,7 +49,6 @@ namespace Nethermind.Dsl.ANTLR
 
         private void AddSource(string value)
         {
-            throw new Exception();
             if(value.Equals("BlockProcessor", StringComparison.InvariantCultureIgnoreCase))
             {
                 var sourceElement = new BlockProcessorSource<Block>(_api.MainBlockProcessor);
@@ -72,7 +71,6 @@ namespace Nethermind.Dsl.ANTLR
 
         private void AddWatch(string value)
         {
-            throw new Exception();
             switch (value.ToLowerInvariant())
             {
                 case "blocks":
@@ -95,7 +93,6 @@ namespace Nethermind.Dsl.ANTLR
 
         private void AddCondition(string key, string symbol, string value)
         {
-            throw new Exception();
             if(_blockSource)
             {
                 var blockElement = GetNextBlockElement(key, symbol, value);
@@ -114,7 +111,6 @@ namespace Nethermind.Dsl.ANTLR
 
         private void AddOrCondition(string key, string symbol, string value)
         {
-            throw new Exception();
             // OR operation add conditions to the last element in the pipeline
             if(_blockSource)
             {
@@ -159,7 +155,6 @@ namespace Nethermind.Dsl.ANTLR
 
         private PipelineElement<Block, Block> GetNextBlockElement(string key, string operation, string value)
         {
-            throw new Exception();
             return operation switch
             {
                 "==" => new PipelineElement<Block, Block>(
@@ -186,7 +181,6 @@ namespace Nethermind.Dsl.ANTLR
 
         private void AddPublisher(string publisher)
         {
-            throw new Exception();
             if(_blockSource)
             {
                 AddBlockPublisher(publisher);
@@ -214,7 +208,6 @@ namespace Nethermind.Dsl.ANTLR
 
         private void AddTransactionPublisher(string publisher)
         {
-            throw new Exception();
             if (publisher.Equals("WebSockets", StringComparison.InvariantCultureIgnoreCase))
             {
                 if (_blockPipelineBuilder != null)
@@ -226,7 +219,6 @@ namespace Nethermind.Dsl.ANTLR
 
         private void BuildPipeline()
         {
-            throw new Exception();
             if(_blockSource)
             {
                 Pipeline = _blockPipelineBuilder.Build();

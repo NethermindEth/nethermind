@@ -16,33 +16,33 @@ public class DslGrammarParser extends Parser {
 	protected static final PredictionContextCache _sharedContextCache =
 		new PredictionContextCache();
 	public static final int
-		BOOLEAN_OPERATOR=1, ARITHMETIC_SYMBOL=2, SOURCE=3, WATCH=4, WHERE=5, PUBLISH=6, 
-		AND=7, OR=8, CONTAINS=9, WEBSOCKETS=10, LOG_PUBLISHER=11, WORD=12, DIGIT=13, 
-		ADDRESS=14, WS=15;
+		SOURCE=1, WATCH=2, WHERE=3, PUBLISH=4, AND=5, OR=6, CONTAINS=7, BOOLEAN_OPERATOR=8, 
+		ARITHMETIC_SYMBOL=9, PUBLISH_VALUE=10, WEBSOCKETS=11, LOG_PUBLISHER=12, 
+		WORD=13, DIGIT=14, ADDRESS=15, WS=16;
 	public static final int
 		RULE_tree = 0, RULE_expression = 1, RULE_sourceExpression = 2, RULE_watchExpression = 3, 
-		RULE_whereExpression = 4, RULE_publishExpression = 5, RULE_andCondition = 6, 
-		RULE_orCondition = 7, RULE_condition = 8;
+		RULE_whereExpression = 4, RULE_publishExpression = 5, RULE_condition = 6, 
+		RULE_andCondition = 7, RULE_orCondition = 8;
 	private static String[] makeRuleNames() {
 		return new String[] {
 			"tree", "expression", "sourceExpression", "watchExpression", "whereExpression", 
-			"publishExpression", "andCondition", "orCondition", "condition"
+			"publishExpression", "condition", "andCondition", "orCondition"
 		};
 	}
 	public static final String[] ruleNames = makeRuleNames();
 
 	private static String[] makeLiteralNames() {
 		return new String[] {
-			null, null, null, "'SOURCE'", "'WATCH'", "'WHERE'", "'PUBLISH'", "'AND'", 
-			"'OR'", "'CONTAINS'"
+			null, "'SOURCE'", "'WATCH'", "'WHERE'", "'PUBLISH'", "'AND'", "'OR'", 
+			"'CONTAINS'"
 		};
 	}
 	private static final String[] _LITERAL_NAMES = makeLiteralNames();
 	private static String[] makeSymbolicNames() {
 		return new String[] {
-			null, "BOOLEAN_OPERATOR", "ARITHMETIC_SYMBOL", "SOURCE", "WATCH", "WHERE", 
-			"PUBLISH", "AND", "OR", "CONTAINS", "WEBSOCKETS", "LOG_PUBLISHER", "WORD", 
-			"DIGIT", "ADDRESS", "WS"
+			null, "SOURCE", "WATCH", "WHERE", "PUBLISH", "AND", "OR", "CONTAINS", 
+			"BOOLEAN_OPERATOR", "ARITHMETIC_SYMBOL", "PUBLISH_VALUE", "WEBSOCKETS", 
+			"LOG_PUBLISHER", "WORD", "DIGIT", "ADDRESS", "WS"
 		};
 	}
 	private static final String[] _SYMBOLIC_NAMES = makeSymbolicNames();
@@ -372,9 +372,8 @@ public class DslGrammarParser extends Parser {
 
 	public static class PublishExpressionContext extends ParserRuleContext {
 		public TerminalNode PUBLISH() { return getToken(DslGrammarParser.PUBLISH, 0); }
+		public TerminalNode PUBLISH_VALUE() { return getToken(DslGrammarParser.PUBLISH_VALUE, 0); }
 		public TerminalNode WORD() { return getToken(DslGrammarParser.WORD, 0); }
-		public TerminalNode WEBSOCKETS() { return getToken(DslGrammarParser.WEBSOCKETS, 0); }
-		public TerminalNode LOG_PUBLISHER() { return getToken(DslGrammarParser.LOG_PUBLISHER, 0); }
 		public PublishExpressionContext(ParserRuleContext parent, int invokingState) {
 			super(parent, invokingState);
 		}
@@ -392,108 +391,15 @@ public class DslGrammarParser extends Parser {
 	public final PublishExpressionContext publishExpression() throws RecognitionException {
 		PublishExpressionContext _localctx = new PublishExpressionContext(_ctx, getState());
 		enterRule(_localctx, 10, RULE_publishExpression);
-		int _la;
 		try {
 			enterOuterAlt(_localctx, 1);
 			{
 			setState(41);
 			match(PUBLISH);
 			setState(42);
-			_la = _input.LA(1);
-			if ( !(_la==WEBSOCKETS || _la==LOG_PUBLISHER) ) {
-			_errHandler.recoverInline(this);
-			}
-			else {
-				if ( _input.LA(1)==Token.EOF ) matchedEOF = true;
-				_errHandler.reportMatch(this);
-				consume();
-			}
+			match(PUBLISH_VALUE);
 			setState(43);
 			match(WORD);
-			}
-		}
-		catch (RecognitionException re) {
-			_localctx.exception = re;
-			_errHandler.reportError(this, re);
-			_errHandler.recover(this, re);
-		}
-		finally {
-			exitRule();
-		}
-		return _localctx;
-	}
-
-	public static class AndConditionContext extends ParserRuleContext {
-		public TerminalNode AND() { return getToken(DslGrammarParser.AND, 0); }
-		public ConditionContext condition() {
-			return getRuleContext(ConditionContext.class,0);
-		}
-		public AndConditionContext(ParserRuleContext parent, int invokingState) {
-			super(parent, invokingState);
-		}
-		@Override public int getRuleIndex() { return RULE_andCondition; }
-		@Override
-		public void enterRule(ParseTreeListener listener) {
-			if ( listener instanceof DslGrammarListener ) ((DslGrammarListener)listener).enterAndCondition(this);
-		}
-		@Override
-		public void exitRule(ParseTreeListener listener) {
-			if ( listener instanceof DslGrammarListener ) ((DslGrammarListener)listener).exitAndCondition(this);
-		}
-	}
-
-	public final AndConditionContext andCondition() throws RecognitionException {
-		AndConditionContext _localctx = new AndConditionContext(_ctx, getState());
-		enterRule(_localctx, 12, RULE_andCondition);
-		try {
-			enterOuterAlt(_localctx, 1);
-			{
-			setState(45);
-			match(AND);
-			setState(46);
-			condition();
-			}
-		}
-		catch (RecognitionException re) {
-			_localctx.exception = re;
-			_errHandler.reportError(this, re);
-			_errHandler.recover(this, re);
-		}
-		finally {
-			exitRule();
-		}
-		return _localctx;
-	}
-
-	public static class OrConditionContext extends ParserRuleContext {
-		public TerminalNode OR() { return getToken(DslGrammarParser.OR, 0); }
-		public ConditionContext condition() {
-			return getRuleContext(ConditionContext.class,0);
-		}
-		public OrConditionContext(ParserRuleContext parent, int invokingState) {
-			super(parent, invokingState);
-		}
-		@Override public int getRuleIndex() { return RULE_orCondition; }
-		@Override
-		public void enterRule(ParseTreeListener listener) {
-			if ( listener instanceof DslGrammarListener ) ((DslGrammarListener)listener).enterOrCondition(this);
-		}
-		@Override
-		public void exitRule(ParseTreeListener listener) {
-			if ( listener instanceof DslGrammarListener ) ((DslGrammarListener)listener).exitOrCondition(this);
-		}
-	}
-
-	public final OrConditionContext orCondition() throws RecognitionException {
-		OrConditionContext _localctx = new OrConditionContext(_ctx, getState());
-		enterRule(_localctx, 14, RULE_orCondition);
-		try {
-			enterOuterAlt(_localctx, 1);
-			{
-			setState(48);
-			match(OR);
-			setState(49);
-			condition();
 			}
 		}
 		catch (RecognitionException re) {
@@ -531,16 +437,16 @@ public class DslGrammarParser extends Parser {
 
 	public final ConditionContext condition() throws RecognitionException {
 		ConditionContext _localctx = new ConditionContext(_ctx, getState());
-		enterRule(_localctx, 16, RULE_condition);
+		enterRule(_localctx, 12, RULE_condition);
 		int _la;
 		try {
 			enterOuterAlt(_localctx, 1);
 			{
-			setState(51);
+			setState(45);
 			match(WORD);
-			setState(52);
+			setState(46);
 			match(BOOLEAN_OPERATOR);
-			setState(53);
+			setState(47);
 			_la = _input.LA(1);
 			if ( !((((_la) & ~0x3f) == 0 && ((1L << _la) & ((1L << WORD) | (1L << DIGIT) | (1L << ADDRESS))) != 0)) ) {
 			_errHandler.recoverInline(this);
@@ -563,22 +469,106 @@ public class DslGrammarParser extends Parser {
 		return _localctx;
 	}
 
+	public static class AndConditionContext extends ParserRuleContext {
+		public TerminalNode AND() { return getToken(DslGrammarParser.AND, 0); }
+		public ConditionContext condition() {
+			return getRuleContext(ConditionContext.class,0);
+		}
+		public AndConditionContext(ParserRuleContext parent, int invokingState) {
+			super(parent, invokingState);
+		}
+		@Override public int getRuleIndex() { return RULE_andCondition; }
+		@Override
+		public void enterRule(ParseTreeListener listener) {
+			if ( listener instanceof DslGrammarListener ) ((DslGrammarListener)listener).enterAndCondition(this);
+		}
+		@Override
+		public void exitRule(ParseTreeListener listener) {
+			if ( listener instanceof DslGrammarListener ) ((DslGrammarListener)listener).exitAndCondition(this);
+		}
+	}
+
+	public final AndConditionContext andCondition() throws RecognitionException {
+		AndConditionContext _localctx = new AndConditionContext(_ctx, getState());
+		enterRule(_localctx, 14, RULE_andCondition);
+		try {
+			enterOuterAlt(_localctx, 1);
+			{
+			setState(49);
+			match(AND);
+			setState(50);
+			condition();
+			}
+		}
+		catch (RecognitionException re) {
+			_localctx.exception = re;
+			_errHandler.reportError(this, re);
+			_errHandler.recover(this, re);
+		}
+		finally {
+			exitRule();
+		}
+		return _localctx;
+	}
+
+	public static class OrConditionContext extends ParserRuleContext {
+		public TerminalNode OR() { return getToken(DslGrammarParser.OR, 0); }
+		public ConditionContext condition() {
+			return getRuleContext(ConditionContext.class,0);
+		}
+		public OrConditionContext(ParserRuleContext parent, int invokingState) {
+			super(parent, invokingState);
+		}
+		@Override public int getRuleIndex() { return RULE_orCondition; }
+		@Override
+		public void enterRule(ParseTreeListener listener) {
+			if ( listener instanceof DslGrammarListener ) ((DslGrammarListener)listener).enterOrCondition(this);
+		}
+		@Override
+		public void exitRule(ParseTreeListener listener) {
+			if ( listener instanceof DslGrammarListener ) ((DslGrammarListener)listener).exitOrCondition(this);
+		}
+	}
+
+	public final OrConditionContext orCondition() throws RecognitionException {
+		OrConditionContext _localctx = new OrConditionContext(_ctx, getState());
+		enterRule(_localctx, 16, RULE_orCondition);
+		try {
+			enterOuterAlt(_localctx, 1);
+			{
+			setState(52);
+			match(OR);
+			setState(53);
+			condition();
+			}
+		}
+		catch (RecognitionException re) {
+			_localctx.exception = re;
+			_errHandler.reportError(this, re);
+			_errHandler.recover(this, re);
+		}
+		finally {
+			exitRule();
+		}
+		return _localctx;
+	}
+
 	public static final String _serializedATN =
-		"\3\u608b\ua72a\u8133\ub9ed\u417c\u3be7\u7786\u5964\3\21:\4\2\t\2\4\3\t"+
+		"\3\u608b\ua72a\u8133\ub9ed\u417c\u3be7\u7786\u5964\3\22:\4\2\t\2\4\3\t"+
 		"\3\4\4\t\4\4\5\t\5\4\6\t\6\4\7\t\7\4\b\t\b\4\t\t\t\4\n\t\n\3\2\7\2\26"+
 		"\n\2\f\2\16\2\31\13\2\3\3\3\3\3\3\3\3\3\3\3\3\5\3!\n\3\3\4\3\4\3\4\3\5"+
-		"\3\5\3\5\3\6\3\6\3\6\3\7\3\7\3\7\3\7\3\b\3\b\3\b\3\t\3\t\3\t\3\n\3\n\3"+
-		"\n\3\n\3\n\2\2\13\2\4\6\b\n\f\16\20\22\2\4\3\2\f\r\3\2\16\20\2\66\2\27"+
-		"\3\2\2\2\4 \3\2\2\2\6\"\3\2\2\2\b%\3\2\2\2\n(\3\2\2\2\f+\3\2\2\2\16/\3"+
-		"\2\2\2\20\62\3\2\2\2\22\65\3\2\2\2\24\26\5\4\3\2\25\24\3\2\2\2\26\31\3"+
-		"\2\2\2\27\25\3\2\2\2\27\30\3\2\2\2\30\3\3\2\2\2\31\27\3\2\2\2\32!\5\6"+
-		"\4\2\33!\5\b\5\2\34!\5\n\6\2\35!\5\f\7\2\36!\5\16\b\2\37!\5\20\t\2 \32"+
-		"\3\2\2\2 \33\3\2\2\2 \34\3\2\2\2 \35\3\2\2\2 \36\3\2\2\2 \37\3\2\2\2!"+
-		"\5\3\2\2\2\"#\7\5\2\2#$\7\16\2\2$\7\3\2\2\2%&\7\6\2\2&\'\7\16\2\2\'\t"+
-		"\3\2\2\2()\7\7\2\2)*\5\22\n\2*\13\3\2\2\2+,\7\b\2\2,-\t\2\2\2-.\7\16\2"+
-		"\2.\r\3\2\2\2/\60\7\t\2\2\60\61\5\22\n\2\61\17\3\2\2\2\62\63\7\n\2\2\63"+
-		"\64\5\22\n\2\64\21\3\2\2\2\65\66\7\16\2\2\66\67\7\3\2\2\678\t\3\2\28\23"+
-		"\3\2\2\2\4\27 ";
+		"\3\5\3\5\3\6\3\6\3\6\3\7\3\7\3\7\3\7\3\b\3\b\3\b\3\b\3\t\3\t\3\t\3\n\3"+
+		"\n\3\n\3\n\2\2\13\2\4\6\b\n\f\16\20\22\2\3\3\2\17\21\2\66\2\27\3\2\2\2"+
+		"\4 \3\2\2\2\6\"\3\2\2\2\b%\3\2\2\2\n(\3\2\2\2\f+\3\2\2\2\16/\3\2\2\2\20"+
+		"\63\3\2\2\2\22\66\3\2\2\2\24\26\5\4\3\2\25\24\3\2\2\2\26\31\3\2\2\2\27"+
+		"\25\3\2\2\2\27\30\3\2\2\2\30\3\3\2\2\2\31\27\3\2\2\2\32!\5\6\4\2\33!\5"+
+		"\b\5\2\34!\5\n\6\2\35!\5\f\7\2\36!\5\20\t\2\37!\5\22\n\2 \32\3\2\2\2 "+
+		"\33\3\2\2\2 \34\3\2\2\2 \35\3\2\2\2 \36\3\2\2\2 \37\3\2\2\2!\5\3\2\2\2"+
+		"\"#\7\3\2\2#$\7\17\2\2$\7\3\2\2\2%&\7\4\2\2&\'\7\17\2\2\'\t\3\2\2\2()"+
+		"\7\5\2\2)*\5\16\b\2*\13\3\2\2\2+,\7\6\2\2,-\7\f\2\2-.\7\17\2\2.\r\3\2"+
+		"\2\2/\60\7\17\2\2\60\61\7\n\2\2\61\62\t\2\2\2\62\17\3\2\2\2\63\64\7\7"+
+		"\2\2\64\65\5\16\b\2\65\21\3\2\2\2\66\67\7\b\2\2\678\5\16\b\28\23\3\2\2"+
+		"\2\4\27 ";
 	public static final ATN _ATN =
 		new ATNDeserializer().deserialize(_serializedATN.toCharArray());
 	static {

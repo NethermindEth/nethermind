@@ -67,6 +67,16 @@ public interface DslGrammarListener extends ParseTreeListener {
 	 */
 	void exitPublishExpression(DslGrammarParser.PublishExpressionContext ctx);
 	/**
+	 * Enter a parse tree produced by {@link DslGrammarParser#condition}.
+	 * @param ctx the parse tree
+	 */
+	void enterCondition(DslGrammarParser.ConditionContext ctx);
+	/**
+	 * Exit a parse tree produced by {@link DslGrammarParser#condition}.
+	 * @param ctx the parse tree
+	 */
+	void exitCondition(DslGrammarParser.ConditionContext ctx);
+	/**
 	 * Enter a parse tree produced by {@link DslGrammarParser#andCondition}.
 	 * @param ctx the parse tree
 	 */
@@ -86,14 +96,4 @@ public interface DslGrammarListener extends ParseTreeListener {
 	 * @param ctx the parse tree
 	 */
 	void exitOrCondition(DslGrammarParser.OrConditionContext ctx);
-	/**
-	 * Enter a parse tree produced by {@link DslGrammarParser#condition}.
-	 * @param ctx the parse tree
-	 */
-	void enterCondition(DslGrammarParser.ConditionContext ctx);
-	/**
-	 * Exit a parse tree produced by {@link DslGrammarParser#condition}.
-	 * @param ctx the parse tree
-	 */
-	void exitCondition(DslGrammarParser.ConditionContext ctx);
 }

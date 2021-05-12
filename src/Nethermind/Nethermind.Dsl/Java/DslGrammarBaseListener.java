@@ -87,6 +87,18 @@ public class DslGrammarBaseListener implements DslGrammarListener {
 	 *
 	 * <p>The default implementation does nothing.</p>
 	 */
+	@Override public void enterCondition(DslGrammarParser.ConditionContext ctx) { }
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>The default implementation does nothing.</p>
+	 */
+	@Override public void exitCondition(DslGrammarParser.ConditionContext ctx) { }
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>The default implementation does nothing.</p>
+	 */
 	@Override public void enterAndCondition(DslGrammarParser.AndConditionContext ctx) { }
 	/**
 	 * {@inheritDoc}
@@ -106,18 +118,6 @@ public class DslGrammarBaseListener implements DslGrammarListener {
 	 * <p>The default implementation does nothing.</p>
 	 */
 	@Override public void exitOrCondition(DslGrammarParser.OrConditionContext ctx) { }
-	/**
-	 * {@inheritDoc}
-	 *
-	 * <p>The default implementation does nothing.</p>
-	 */
-	@Override public void enterCondition(DslGrammarParser.ConditionContext ctx) { }
-	/**
-	 * {@inheritDoc}
-	 *
-	 * <p>The default implementation does nothing.</p>
-	 */
-	@Override public void exitCondition(DslGrammarParser.ConditionContext ctx) { }
 
 	/**
 	 * {@inheritDoc}
