@@ -28,6 +28,7 @@ namespace Nethermind.TxPool
         InsufficientFunds,
         BalanceOverflow,
         FutureNonce,
-        GasLimitExceeded
+        GasLimitExceeded,
+        FeeCapTooLow
     }
 }
