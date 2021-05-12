@@ -17,7 +17,9 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
@@ -60,56 +62,73 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             }
             
             _receiptStorage.ReceiptsInserted += OnReceiptsInserted;
+            _blockFinder.NewHeadBlock += OnNewHeadBlock;
             if(_logger.IsTrace) _logger.Trace($"Logs subscription {Id} will track ReceiptsInserted.");
+        }
+
+        private void OnNewHeadBlock(object? sender, BlockEventArgs e)
+        {
+            if (e.Block is not null)
+            {
+                TryPublishReceiptsInBackground(e.Block.Header, () =>  _receiptStorage.Get(e.Block), nameof(_blockFinder.NewHeadBlock));
+            }
         }
 
         private void OnReceiptsInserted(object? sender, ReceiptsEventArgs e)
         {
-            Task.Run(() =>
+            bool isReceiptRemoved = e.TxReceipts.FirstOrDefault()?.Removed == true;
+            if (isReceiptRemoved)
             {
-                BlockHeader fromBlock = _blockFinder.FindHeader(_filter.FromBlock);
-                BlockHeader toBlock = _blockFinder.FindHeader(_filter.ToBlock, true);
-
-                bool isAfterFromBlock = e.BlockHeader.Number >= fromBlock.Number;
-                bool isBeforeToBlock = e.BlockHeader.Number <= toBlock.Number || _filter.ToBlock.Equals(BlockParameter.Latest) || _filter.ToBlock.Equals(BlockParameter.Pending);
-
-                if (isAfterFromBlock && isBeforeToBlock)
-                {
-                    var filterLogs = GetFilterLogs(e);
-                    
-                    foreach (var filterLog in filterLogs)
-                    {
-                        JsonRpcResult result = CreateSubscriptionMessage(filterLog);
-                        JsonRpcDuplexClient.SendJsonRpcResult(result);
-                        if(_logger.IsTrace) _logger.Trace($"Logs subscription {Id} printed new log.");
-                    }
-                }
-                else
-                {
-                    if(_logger.IsTrace) _logger.Trace($"Logs subscription {Id}: OnReceiptsInserted event happens, but there are no logs matching filter.");
-
-                }
-            }).ContinueWith(
-                t =>
-                    t.Exception?.Handle(ex =>
-                    {
-                        if (_logger.IsDebug) _logger.Debug($"Logs subscription {Id}: Failed Task.Run after ReceiptsInserted event.");
-                        return true;
-                    })
-                , TaskContinuationOptions.OnlyOnFaulted
-            );
+                TryPublishReceiptsInBackground(e.BlockHeader, () => e.TxReceipts, nameof(_receiptStorage.ReceiptsInserted));
+            }
+        }
+        
+        private void TryPublishReceiptsInBackground(BlockHeader blockHeader, Func<TxReceipt[]> getReceipts, string eventName)
+        {
+            Task.Run(() => TryPublishEvent(blockHeader, getReceipts(), eventName))
+                .ContinueWith(t =>
+                        t.Exception?.Handle(ex =>
+                        {
+                            if (_logger.IsDebug) _logger.Debug($"Logs subscription {Id}: Failed Task.Run after {eventName} event.");
+                            return true;
+                        })
+                    , TaskContinuationOptions.OnlyOnFaulted
+                );
         }
 
-        private List<FilterLog> GetFilterLogs(ReceiptsEventArgs e)
+        private void TryPublishEvent(BlockHeader blockHeader, TxReceipt[] receipts, string eventName)
         {
-            List<FilterLog> filterLogs = new();
+            BlockHeader fromBlock = _blockFinder.FindHeader(_filter.FromBlock);
+            BlockHeader toBlock = _blockFinder.FindHeader(_filter.ToBlock, true);
 
-            if (_filter.Matches(e.BlockHeader.Bloom))
+            bool isAfterFromBlock = blockHeader.Number >= fromBlock?.Number;
+            bool isBeforeToBlock = blockHeader.Number <= toBlock?.Number;
+
+            if (isAfterFromBlock && isBeforeToBlock)
+            {
+                var filterLogs = GetFilterLogs(blockHeader, receipts);
+
+                foreach (var filterLog in filterLogs)
+                {
+                    JsonRpcResult result = CreateSubscriptionMessage(filterLog);
+                    JsonRpcDuplexClient.SendJsonRpcResult(result);
+                    if (_logger.IsTrace) _logger.Trace($"Logs subscription {Id} printed new log.");
+                }
+            }
+            else
+            {
+                if (_logger.IsTrace) _logger.Trace($"Logs subscription {Id}: {eventName} event happens, but there are no logs matching filter.");
+            }
+        }
+
+        private IEnumerable<FilterLog> GetFilterLogs(BlockHeader blockHeader, TxReceipt[] receipts)
+        {
+            if (_filter.Matches(blockHeader.Bloom))
             {
                 int logIndex = 0;
-                for (int i = 0; i < e.TxReceipts.Length; i++)
+                for (int i = 0; i < receipts.Length; i++)
                 {
-                    TxReceipt receipt = e.TxReceipts[i];
+                    TxReceipt receipt = receipts[i];
                     if (_filter.Matches(receipt.Bloom))
                     {
                         int transactionLogIndex = 0;
@@ -123,13 +142,13 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
                                     transactionLogIndex++,
                                     receipt,
                                     receiptLog);
-                                filterLogs.Add(filterLog);
+
+                                yield return filterLog;
                             }
                         }
                     }
                 }
             }
-            return filterLogs;
         }
 
         public override SubscriptionType Type => SubscriptionType.Logs;
