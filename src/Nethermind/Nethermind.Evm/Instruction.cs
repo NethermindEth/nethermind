@@ -166,6 +166,8 @@ namespace Nethermind.Evm
         LOG2 = 0xa2,
         LOG3 = 0xa3,
         LOG4 = 0xa4,
+        
+        INVALIDCONTRACTCREATION = 0xEF,
 
         CREATE = 0xf0,
         CALL = 0xf1,

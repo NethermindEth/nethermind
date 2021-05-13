@@ -719,10 +719,10 @@ namespace Nethermind.Evm
             }
             
             // Reject code starting with 0xEF if EIP-3541 is enabled.
-            if (spec.IsEip3541Enabled && code.Length >= 1 && code[0] == 0xEF)
+            if (spec.IsEip3541Enabled && code.Length >= 1 && code[0] == (byte)Instruction.INVALIDCONTRACTCREATION)
             {
-                EndInstructionTraceError(EvmExceptionType.InvalidCode);
-                return CallResult.InvalidCodeException;
+                EndInstructionTraceError(EvmExceptionType.BadInstruction);
+                return CallResult.InvalidInstructionException;
             }
 
 
@@ -2888,8 +2888,6 @@ namespace Nethermind.Evm
             public static CallResult StaticCallViolationException => new(EvmExceptionType.StaticCallViolation);
             public static CallResult StackOverflowException => new(EvmExceptionType.StackOverflow); // TODO: use these to avoid CALL POP attacks
             public static CallResult StackUnderflowException => new(EvmExceptionType.StackUnderflow); // TODO: use these to avoid CALL POP attacks
-            
-            public static CallResult InvalidCodeException => new(EvmExceptionType.InvalidCode);
             public static CallResult Empty => new(Array.Empty<byte>(), null);
 
             public CallResult(EvmState stateToExecute)
