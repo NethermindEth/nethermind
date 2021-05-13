@@ -8,6 +8,8 @@ using System.IO.Abstractions;
 using System.Collections.Generic;
 using Nethermind.Dsl.Pipeline;
 using Nethermind.Dsl.JsonRpc;
+using System.Linq;
+using Nethermind.JsonRpc.Modules;
 
 #nullable enable
 namespace Nethermind.Dsl
@@ -20,7 +22,7 @@ namespace Nethermind.Dsl
         public IFileSystem? FileSystem;
         private INethermindApi? _api;
         private ParseTreeListener? _listener;
-        private List<Interpreter>? _interpreters;
+        private Dictionary<int, Interpreter>? _interpreters;
         private IDslRpcModule? _rpcModule;
         private ILogger? _logger;
 
@@ -32,11 +34,11 @@ namespace Nethermind.Dsl
             if (_logger.IsInfo) _logger.Info("Initializing DSL plugin ...");
 
             IEnumerable<string> dslScripts = LoadDSLScript();
-            _interpreters = new List<Interpreter>();
+            _interpreters = new Dictionary<int, Interpreter>();
 
             foreach(var script in dslScripts)
             {
-                _interpreters.Add(new Interpreter(_api, script));
+                AddInterpreter(new Interpreter(_api, script));
             }
 
             if (_logger.IsInfo) _logger.Info("DSL plugin initialized.");
@@ -49,11 +51,26 @@ namespace Nethermind.Dsl
 
         public Task InitRpcModules()
         {
+            var rpcPool = new SingletonModulePool<IDslRpcModule>(new DslRpcModuleFactory(_api, _logger, _interpreters));
 
+            _api.RpcModuleProvider.Register(rpcPool);
             return Task.CompletedTask;
         }
 
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
+        private int AddInterpreter(Interpreter interpreter)
+        {
+            if(_interpreters?.Count == 0)
+            {
+                _interpreters.Add(1, interpreter);
+                return 1;
+            }
+
+            int index = _interpreters.Last().Key + 1;
+            _interpreters.Add(index, interpreter);
+            return index;
+        }
 
         private IEnumerable<string> LoadDSLScript()
         {

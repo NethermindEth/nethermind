@@ -7,5 +7,6 @@ namespace Nethermind.Dsl.JsonRpc
     public interface IDslRpcModule : IRpcModule
     {
         ResultWrapper<int> dsl_addScript(string script);
+        ResultWrapper<bool> dsl_removeScript(int index);
     }
 }
