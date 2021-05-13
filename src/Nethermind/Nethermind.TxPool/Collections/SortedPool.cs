@@ -168,9 +168,14 @@ namespace Nethermind.TxPool.Collections
             return false;
         }
 
-        public bool TryRemove(TKey key, TGroupKey groupKey, out ICollection<TValue>? bucket)
+        public bool TryRemove(TKey key, TGroupKey? groupKey, out ICollection<TValue>? bucket)
         {
-            _buckets.TryGetValue(groupKey, out bucket);
+            bucket = null;
+            
+            if (groupKey is not null)
+            {
+                _buckets.TryGetValue(groupKey, out bucket);
+            }
 
             if (_cacheMap.TryGetValue(key, out TValue value))
             {

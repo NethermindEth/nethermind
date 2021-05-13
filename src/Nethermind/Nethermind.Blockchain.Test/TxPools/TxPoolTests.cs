@@ -211,10 +211,14 @@ namespace Nethermind.Blockchain.Test.TxPools
                 .WithType(TxType.EIP1559).WithFeeCap(20)
                 .WithChainId(ChainId.Mainnet)
                 .WithValue(5).SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
-            EnsureSenderBalance(tx.SenderAddress, tx.FeeCap * (UInt256)tx.GasLimit); // without tx.Value so we should have InsufficientFunds
+            EnsureSenderBalance(tx.SenderAddress, tx.Value - 1); // we should have InsufficientFunds only when balance < tx.Value
             AddTxResult result = txPool.AddTransaction(tx, TxHandlingOptions.PersistentBroadcast);
             txPool.GetPendingTransactions().Length.Should().Be(0);
             result.Should().Be(AddTxResult.InsufficientFunds);
+            EnsureSenderBalance(tx.SenderAddress, tx.Value);
+            result = txPool.AddTransaction(tx, TxHandlingOptions.PersistentBroadcast);
+            result.Should().Be(AddTxResult.Added);
+            txPool.GetPendingTransactions().Length.Should().Be(1);
         }
         
         [Test]
@@ -522,15 +526,7 @@ namespace Nethermind.Blockchain.Test.TxPools
             await Task.Delay(1000);
             txPoolPeer.Received(1).SendNewTransaction(tx, true);
         }
-        
-        [Test]
-        public void should_drop_own_transaction_over_limit()
-        {
-            _txPool = CreatePool(_noTxStorage, new TxPoolConfig() {Size = 10});
-            AddTransactionsToPool(transactionsPerPeer: 5); //generates 50 tx with 1..9 gasprice per 5 peers, only 8 up will be kept 
-            _txPool.GetOwnPendingTransactions().Min(t => t.GasPrice).Should().Be(8);
-        }
-        
+
         [Test]
         public void should_accept_access_list_transactions_only_when_eip2930_enabled([Values(false, true)] bool eip2930Enabled)
         {

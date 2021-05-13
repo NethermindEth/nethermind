@@ -216,9 +216,10 @@ namespace Nethermind.TxPool
                 return AddTxResult.Invalid;
             }
 
+            IReleaseSpec spec = _specProvider.GetSpec();
             Metrics.PendingTransactionsReceived++;
             
-            if (!_validator.IsWellFormed(tx, _specProvider.GetSpec()))
+            if (!_validator.IsWellFormed(tx, spec))
             {
                 // It may happen that other nodes send us transactions that were signed for another chain or don't have enough gas.
                 Metrics.PendingTransactionsDiscarded++;
@@ -261,7 +262,8 @@ namespace Nethermind.TxPool
             }
 
             int numberOfSenderTxsInPending = _transactions.GetBucketCount(tx.SenderAddress);
-            if (tx.Nonce > (long)currentNonce + numberOfSenderTxsInPending
+            if (GetPendingTransactionsCount() == MemoryAllowance.MemPoolSize
+                && tx.Nonce > (long)currentNonce + numberOfSenderTxsInPending
                 || tx.Nonce > currentNonce + FutureNonceRetention)
             {
                 if (_logger.IsTrace)
@@ -272,18 +274,20 @@ namespace Nethermind.TxPool
             UInt256 balance = account?.Balance ?? UInt256.Zero;
             UInt256 effectiveGasPrice = tx.IsEip1559 ? CalculatePayableGasPrice(tx, balance) : tx.GasPrice;
 
-            if (_transactions.TryGetLast(out var lastTx)
-                && effectiveGasPrice <= lastTx?.GasBottleneck
-                && GetPendingTransactionsCount() == MemoryAllowance.MemPoolSize)
+            if (GetPendingTransactionsCount() == MemoryAllowance.MemPoolSize
+                && _transactions.TryGetLast(out var lastTx)
+                && effectiveGasPrice <= lastTx?.GasBottleneck)
             {
                 if (_logger.IsTrace)
                     _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, too low gasPrice.");
                 return AddTxResult.FeeTooLow;
             }
-
-            bool overflow = UInt256.MultiplyOverflow(effectiveGasPrice, (UInt256) tx.GasLimit, out UInt256 cost);
+            
+            bool overflow = spec.IsEip1559Enabled && UInt256.AddOverflow(tx.GasPremium, tx.FeeCap, out _);
+            // we're checking that user can pay what he declared in FeeCap. For this check BaseFee = FeeCap
+            overflow |= UInt256.MultiplyOverflow(effectiveGasPrice, (UInt256) tx.GasLimit, out UInt256 cost);
             overflow |= UInt256.AddOverflow(cost, tx.Value, out cost);
-            if (overflow)
+                if (overflow)
             {
                 if (_logger.IsTrace)
                     _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, cost overflow.");
