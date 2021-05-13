@@ -506,7 +506,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
 
         [Test]
-        public void LogsSubscription_should_not_send_logs_of_new_txs_on_ReceiptsInserted_event_but_on_NewHead_event()
+        public void LogsSubscription_should_not_send_logs_of_new_txs_on_ReceiptsInserted_event_but_on_NewHeadBlock_event()
         {
             int blockNumber = 55555;
             Filter filter = null;
@@ -533,7 +533,6 @@ namespace Nethermind.JsonRpc.Test.Modules
             
             jsonRpcResults.Count.Should().Be(0);
             
-            manualResetEvent.Reset();
             BlockEventArgs blockEventArgs = new BlockEventArgs(block);
             logsSubscription.JsonRpcDuplexClient.SendJsonRpcResult(Arg.Do<JsonRpcResult>(j =>
             {
