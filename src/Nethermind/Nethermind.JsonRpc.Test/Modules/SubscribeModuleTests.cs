@@ -506,6 +506,50 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
 
         [Test]
+        public void LogsSubscription_should_not_send_logs_of_new_txs_on_ReceiptsInserted_event_but_on_NewHead_event()
+        {
+            int blockNumber = 55555;
+            Filter filter = null;
+            
+            LogsSubscription logsSubscription = new LogsSubscription(_jsonRpcDuplexClient, _receiptStorage, _filterStore, _blockTree, _logManager, filter);
+
+            LogEntry logEntry = Build.A.LogEntry.WithAddress(TestItem.AddressA).WithTopics(TestItem.KeccakA).WithData(TestItem.RandomDataA).TestObject;
+            TxReceipt[] txReceipts = {Build.A.Receipt.WithBlockNumber(blockNumber).WithLogs(logEntry).TestObject};
+            BlockHeader blockHeader = Build.A.BlockHeader.WithNumber(blockNumber).TestObject;
+            Block block = Build.A.Block.WithHeader(blockHeader).TestObject;
+            _receiptStorage.Get(Arg.Any<Block>()).Returns(txReceipts);
+
+            List<JsonRpcResult> jsonRpcResults = new List<JsonRpcResult>();
+            
+            ManualResetEvent manualResetEvent = new ManualResetEvent(false);
+            ReceiptsEventArgs receiptsEventArgs = new ReceiptsEventArgs(blockHeader, txReceipts);
+            logsSubscription.JsonRpcDuplexClient.SendJsonRpcResult(Arg.Do<JsonRpcResult>(j =>
+            {
+                jsonRpcResults.Add(j);
+                manualResetEvent.Set();
+            }));
+            _receiptStorage.ReceiptsInserted += Raise.EventWith(new object(), receiptsEventArgs);
+            manualResetEvent.WaitOne(TimeSpan.FromMilliseconds(200));
+            
+            jsonRpcResults.Count.Should().Be(0);
+            
+            manualResetEvent.Reset();
+            BlockEventArgs blockEventArgs = new BlockEventArgs(block);
+            logsSubscription.JsonRpcDuplexClient.SendJsonRpcResult(Arg.Do<JsonRpcResult>(j =>
+            {
+                jsonRpcResults.Add(j);
+                manualResetEvent.Set();
+            }));
+            _blockTree.NewHeadBlock += Raise.EventWith(new object(), blockEventArgs);
+            manualResetEvent.WaitOne(TimeSpan.FromMilliseconds(200));
+            
+            jsonRpcResults.Count.Should().Be(1);
+            string serialized = _jsonSerializer.Serialize(jsonRpcResults[0].Response);
+            var expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"method\":\"eth_subscription\",\"params\":{\"subscription\":\"", logsSubscription.Id, "\",\"result\":{\"address\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"blockNumber\":\"0xd903\",\"data\":\"0x010203\",\"logIndex\":\"0x0\",\"removed\":false,\"topics\":[\"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760\"],\"transactionIndex\":\"0x0\",\"transactionLogIndex\":\"0x0\"}}}");
+            expectedResult.Should().Be(serialized);
+        }
+
+        [Test]
         public void NewPendingTransactionsSubscription_creating_result()
         {
             string serialized = RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_subscribe", "newPendingTransactions");
@@ -735,9 +779,13 @@ namespace Nethermind.JsonRpc.Test.Modules
             Block previousBlock = Build.A.Block.WithBloom(new Bloom(txReceipts.Select(r => r.Bloom).ToArray())).TestObject;
             BlockReplacementEventArgs blockEventArgs = new BlockReplacementEventArgs(block, previousBlock);
 
-            txReceipts[0].Removed.Should().BeFalse();
-            txReceipts[1].Removed.Should().BeFalse();
-            txReceipts[2].Removed.Should().BeFalse();
+            TxReceipt[] receiptsWithFalseFlag = txReceipts;
+            TxReceipt[] receiptsWithTrueFlag = txReceipts;
+            for (int i = 0; i < txReceipts.Length; i++)
+            {
+                receiptsWithFalseFlag[i].Removed = false;
+                receiptsWithTrueFlag[i].Removed = true;
+            }
 
             TxReceipt[] changedReceipts = Array.Empty<TxReceipt>();
             ManualResetEvent manualResetEvent = new ManualResetEvent(false);
@@ -749,9 +797,50 @@ namespace Nethermind.JsonRpc.Test.Modules
             _blockTree.BlockAddedToMain += Raise.EventWith(new object(), blockEventArgs);
             manualResetEvent.WaitOne(TimeSpan.FromMilliseconds(200));
 
-            changedReceipts[0].Removed.Should().BeTrue();
-            changedReceipts[1].Removed.Should().BeTrue();
-            changedReceipts[2].Removed.Should().BeTrue();
+            txReceipts.Should().BeEquivalentTo(receiptsWithFalseFlag);
+            changedReceipts.Should().BeEquivalentTo(receiptsWithTrueFlag);
+        }
+
+        [Test]
+        public void LogsSubscription_can_send_logs_with_removed_txs_when_inserted()
+        {
+            ReceiptCanonicalityMonitor receiptCanonicalityMonitor =
+                new ReceiptCanonicalityMonitor(_blockTree, _receiptStorage, _logManager);
+            
+            int blockNumber = 55555;
+            Filter filter = null;
+            
+            LogsSubscription logsSubscription = new LogsSubscription(_jsonRpcDuplexClient, _receiptStorage, _filterStore, _blockTree, _logManager, filter);
+
+            LogEntry logEntry = Build.A.LogEntry.WithAddress(TestItem.AddressA).WithTopics(TestItem.KeccakA).WithData(TestItem.RandomDataA).TestObject;
+            TxReceipt[] txReceipts = {Build.A.Receipt.WithLogs(logEntry).WithBlockNumber(blockNumber).TestObject};
+            BlockHeader blockHeader = Build.A.BlockHeader.WithNumber(blockNumber).TestObject;
+            Block block = Build.A.Block.TestObject;
+            Block previousBlock = Build.A.Block.WithHeader(blockHeader).WithBloom(new Bloom(txReceipts.Select(r => r.Bloom).ToArray())).TestObject;
+            _receiptStorage.Get(Arg.Any<Block>()).Returns(txReceipts);
+            List<JsonRpcResult> jsonRpcResults = new List<JsonRpcResult>();
+            
+            ManualResetEvent manualResetEvent = new ManualResetEvent(false);
+            BlockReplacementEventArgs blockEventArgs = new BlockReplacementEventArgs(block, previousBlock);
+            logsSubscription.JsonRpcDuplexClient.SendJsonRpcResult(Arg.Do<JsonRpcResult>(j =>
+            {
+                jsonRpcResults.Add(j);
+                manualResetEvent.Set();
+            }));
+            
+            _receiptStorage.Insert(Arg.Any<Block>(), Arg.Do<TxReceipt[]>(r =>
+            {
+                ReceiptsEventArgs receiptsEventArgs = new ReceiptsEventArgs(blockHeader, r);
+                _receiptStorage.ReceiptsInserted += Raise.EventWith(new object(), receiptsEventArgs);
+            }));
+            
+            _blockTree.BlockAddedToMain += Raise.EventWith(new object(), blockEventArgs);
+            manualResetEvent.WaitOne(TimeSpan.FromMilliseconds(200));
+
+            jsonRpcResults.Count.Should().Be(1);
+            string serialized = _jsonSerializer.Serialize(jsonRpcResults[0].Response);
+            var expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"method\":\"eth_subscription\",\"params\":{\"subscription\":\"", logsSubscription.Id, "\",\"result\":{\"address\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"blockNumber\":\"0xd903\",\"data\":\"0x010203\",\"logIndex\":\"0x0\",\"removed\":true,\"topics\":[\"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760\"],\"transactionIndex\":\"0x0\",\"transactionLogIndex\":\"0x0\"}}}");
+            expectedResult.Should().Be(serialized);
         }
     }
 }
