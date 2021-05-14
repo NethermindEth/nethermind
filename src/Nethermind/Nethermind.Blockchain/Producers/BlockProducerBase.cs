@@ -110,7 +110,7 @@ namespace Nethermind.Blockchain.Producers
         {
             lock (_newBlockLock)
             {
-                parentHeader ??= BlockTree.Head?.Header;
+                parentHeader = GetProducedBlockParent(parentHeader);
                 if (parentHeader == null)
                 {
                     if (Logger.IsWarn) Logger.Warn("Preparing new block - parent header is null");
@@ -132,6 +132,8 @@ namespace Nethermind.Blockchain.Producers
                 return Task.FromResult((Block?)null);
             }
         }
+
+        protected virtual BlockHeader? GetProducedBlockParent(BlockHeader? parentHeader) => parentHeader ?? BlockTree.Head?.Header;
 
         private Task<Block?> ProduceNewBlock(BlockHeader parent, CancellationToken token)
         {

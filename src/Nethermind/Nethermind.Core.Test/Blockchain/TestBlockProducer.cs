@@ -62,9 +62,9 @@ namespace Nethermind.Core.Test.Blockchain
         public event EventHandler<BlockEventArgs> LastProducedBlockChanged;
 
         private readonly SemaphoreSlim _newBlockArrived = new SemaphoreSlim(0);
-        private BlockHeader _blockParent = null;
+        private BlockHeader? _blockParent = null;
         
-        public BlockHeader BlockParent
+        public BlockHeader? BlockParent
         {
             get
             {
@@ -75,6 +75,8 @@ namespace Nethermind.Core.Test.Blockchain
                 _blockParent = value;
             }
         }
+
+        protected override BlockHeader? GetProducedBlockParent(BlockHeader? parentHeader) => parentHeader ?? BlockParent;
 
         public Task<bool> BuildNewBlock()
         {
