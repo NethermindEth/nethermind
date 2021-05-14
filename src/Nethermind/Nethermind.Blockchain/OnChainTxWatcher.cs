@@ -83,7 +83,7 @@ namespace Nethermind.Blockchain
                 senders.Add(tx.SenderAddress);
             }
 
-            Transaction[] pendingTxs = _txPool.GetPendingTransactions();
+            Transaction[]? pendingTxs = _txPool.GetPendingTransactions();
 
             foreach (Transaction tx in pendingTxs)
             {

@@ -567,6 +567,22 @@ namespace Nethermind.Blockchain.Test.TxPools
             _txPool.RemoveTransaction(tx).Should().Be(false);
         }
 
+        [Test]
+        public void should_return_false_when_trying_to_remove_null_txHash()
+        {
+            _txPool = CreatePool(_noTxStorage);
+            Transaction tx = Build.A.Transaction.TestObject;
+            tx.Hash = null;
+            _txPool.RemoveTransaction(tx).Should().Be(false);
+        }
+        
+        [Test]
+        public void should_return_false_when_trying_to_remove_null_tx()
+        {
+            _txPool = CreatePool(_noTxStorage);
+            _txPool.RemoveTransaction(null).Should().Be(false);
+        }
+
         private Transactions AddTransactions(ITxStorage storage)
         {
             _txPool = CreatePool(storage);

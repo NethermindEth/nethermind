@@ -525,6 +525,10 @@ namespace Nethermind.TxPool
 
         public bool RemoveTransaction(Transaction transaction, bool removeBelowThisTxNonce = false)
         {
+            if (transaction?.Hash is null)
+            {
+                return false;
+            }
             Keccak hash = transaction.Hash;
             Address senderAddress = transaction.SenderAddress;
             ICollection<Transaction>? bucket;
