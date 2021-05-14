@@ -22,7 +22,7 @@ using Nethermind.Int256;
 namespace Nethermind.Specs.Test
 {
     /// <summary>Only for testing purposes.
-    // If we want to override only a few properties for tests and based on different releases spec we can use this class.</summary>
+    // If we want to override only a few properties for tests based on different releases spec we can use this class.</summary>
     public class OverridableReleaseSpec : IReleaseSpec
     {
         private readonly IReleaseSpec _spec;
