@@ -2269,7 +2269,7 @@ namespace Nethermind.Evm
                         Span<byte> initCode = vmState.Memory.LoadSpan(in memoryPositionOfInitCode, initCodeLength);
                         
                         // Reject code starting with 0xEF if EIP-3541 is enabled.
-                        if (spec.IsEip3541Enabled && code.Length >= 1 && code[0] == 0xEF)
+                        if (spec.IsEip3541Enabled && initCode.Length >= 1 && initCode[0] == 0xEF)
                         {
                             EndInstructionTraceError(EvmExceptionType.BadInstruction);
                             return CallResult.InvalidInstructionException;
