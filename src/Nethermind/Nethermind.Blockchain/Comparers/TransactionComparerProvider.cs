@@ -45,9 +45,8 @@ namespace Nethermind.Blockchain.Comparers
             {
                 IComparer<Transaction> gasPriceComparer = new GasPriceTxComparer(_blockFinder, _specProvider);
                 
-                _defaultComparer = CompareTxByGasBottleneck.Instance
+                _defaultComparer = gasPriceComparer
                     .ThenBy(CompareTxByNonce.Instance)
-                    .ThenBy(gasPriceComparer)
                     .ThenBy(CompareTxByTimestamp.Instance)
                     .ThenBy(CompareTxByPoolIndex.Instance)
                     .ThenBy(CompareTxByGasLimit.Instance);
