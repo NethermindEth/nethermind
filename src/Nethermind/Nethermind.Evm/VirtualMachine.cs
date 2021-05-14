@@ -718,14 +718,6 @@ namespace Nethermind.Evm
 //                if(_txTracer.IsTracingInstructions) _txTracer.ReportMemoryChange((long)localPreviousDest, previousCallOutput);
             }
             
-            // Reject code starting with 0xEF if EIP-3541 is enabled.
-            if (spec.IsEip3541Enabled && code.Length >= 1 && code[0] == (byte)Instruction.INVALIDCONTRACTCREATION)
-            {
-                EndInstructionTraceError(EvmExceptionType.BadInstruction);
-                return CallResult.InvalidInstructionException;
-            }
-
-
             while (programCounter < code.Length)
             {
                 Instruction instruction = (Instruction) code[programCounter];
@@ -2275,6 +2267,14 @@ namespace Nethermind.Evm
                         }
 
                         Span<byte> initCode = vmState.Memory.LoadSpan(in memoryPositionOfInitCode, initCodeLength);
+                        
+                        // Reject code starting with 0xEF if EIP-3541 is enabled.
+                        if (spec.IsEip3541Enabled && code.Length >= 1 && code[0] == 0xEF)
+                        {
+                            EndInstructionTraceError(EvmExceptionType.BadInstruction);
+                            return CallResult.InvalidInstructionException;
+                        }
+
                         UInt256 balance = _state.GetBalance(env.ExecutingAccount);
                         if (value > balance)
                         {

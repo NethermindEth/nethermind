@@ -50,7 +50,7 @@ namespace Nethermind.Evm.Test
             TestState.CreateAccount(TestItem.AddressC, 100.Ether());
 
             byte[] code = Prepare.EvmCode
-                .Op(Instruction.INVALIDCONTRACTCREATION)
+                .FromCode("0xEF")
                 .Done;
             
             _processor = new TransactionProcessor(SpecProvider, TestState, Storage, Machine, LimboLogs.Instance);
@@ -58,10 +58,12 @@ namespace Nethermind.Evm.Test
             (Block block, Transaction transaction) = PrepareTx(blockNumber, 100000, code);
 
             transaction.GasPrice = 20.GWei();
+            transaction.To = null;
+            transaction.Data = code;
             TestAllTracerWithOutput tracer = CreateTracer();
             _processor.Execute(transaction, block.Header, tracer);
             
-            tracer.Error.Should().Be("BadInstruction");
+            tracer.Error.Should().Be(null);
             tracer.StatusCode.Should().Be(0);
         }
     }
