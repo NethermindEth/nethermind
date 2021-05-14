@@ -87,7 +87,6 @@ namespace Nethermind.Evm
         private void Execute(Transaction transaction, BlockHeader block, ITxTracer txTracer, bool isCall)
         {
             bool notSystemTransaction = !transaction.IsSystem();
-            bool freeTransaction = transaction.IsSystem() || transaction.IsServiceTransaction;
             bool wasSenderAccountCreatedInsideACall = false;
             
             IReleaseSpec spec = _specProvider.GetSpec(block.Number);
@@ -98,14 +97,13 @@ namespace Nethermind.Evm
             
             UInt256 value = transaction.Value;
 
-            if (!transaction.TryCalculatePremiumPerGas(block.BaseFee, freeTransaction, out UInt256 premiumPerGas))
+            if (!transaction.TryCalculatePremiumPerGas(block.BaseFee, out UInt256 premiumPerGas))
             {
                 TraceLogInvalidTx(transaction, "MINER_PREMIUM_IS_NEGATIVE");
                 QuickFail(transaction, block, txTracer, "miner premium is negative");
                 return;
             }
             
-            UInt256 premiumPerGas = (feeCap < baseFee && freeTransaction) ? UInt256.Zero  : UInt256.Min(transaction.GasPremium, feeCap - baseFee);
             UInt256 gasPrice = transaction.CalculateEffectiveGasPrice(spec.IsEip1559Enabled, block.BaseFee);
 
             long gasLimit = transaction.GasLimit;

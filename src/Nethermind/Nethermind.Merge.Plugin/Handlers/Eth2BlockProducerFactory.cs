@@ -64,6 +64,7 @@ namespace Nethermind.Merge.Plugin.Handlers
                 new TargetAdjustedGasLimitCalculator(specProvider, miningConfig),
                 engineSigner,
                 timestamper,
+                specProvider,
                 logManager);
         }
 

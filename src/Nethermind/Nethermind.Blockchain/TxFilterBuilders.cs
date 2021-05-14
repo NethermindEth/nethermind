@@ -17,12 +17,13 @@
 
 using Nethermind.Consensus;
 using Nethermind.Consensus.Transactions;
+using Nethermind.Core.Specs;
 
 namespace Nethermind.Blockchain
 {
     public static class TxFilterBuilders
     {
-        public static ITxFilter CreateStandardTxFilter(IMiningConfig miningConfig)
-            => new MinGasPriceTxFilter(miningConfig.MinGasPrice);
+        public static IMinGasPriceTxFilter CreateStandardMinGasPriceTxFilter(IMiningConfig miningConfig, ISpecProvider specProvider)
+            => new MinGasPriceTxFilter(miningConfig.MinGasPrice, specProvider);
     }
 }

@@ -1,4 +1,4 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -36,6 +36,7 @@ using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
+using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Logging;
 using Nethermind.Runner.Ethereum.Api;
@@ -49,7 +50,7 @@ namespace Nethermind.Runner.Ethereum.Steps
     {
         private new readonly AuRaNethermindApi _api;
         
-        private BlockProducerContext? _blockProducerContext;
+        private BlockProducerEnv? _blockProducerContext;
         private INethermindApi NethermindApi => _api;
         
         private readonly IAuraConfig _auraConfig;
@@ -95,9 +96,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             return Task.CompletedTask;
         }
 
-        private BlockProcessor CreateBlockProcessor(
-            ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv,
-            IReadOnlyTxProcessorSource readOnlyTxProcessorSource)
+        private BlockProcessor CreateBlockProcessor(ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv)
         {
             if (_api.RewardCalculatorSource == null) throw new StepDependencyException(nameof(_api.RewardCalculatorSource));
             if (_api.ValidatorStore == null) throw new StepDependencyException(nameof(_api.ValidatorStore));
@@ -110,14 +109,14 @@ namespace Nethermind.Runner.Ethereum.Steps
 
             ITxFilter auRaTxFilter = TxAuRaFilterBuilders.CreateAuRaTxFilter(
                 _api,
-                readOnlyTxProcessorSource,
+                readOnlyTxProcessingEnv,
                 _api.SpecProvider);
 
             _validator = new AuRaValidatorFactory(
                     readOnlyTxProcessingEnv.StateProvider,
                     _api.AbiEncoder,
                     readOnlyTxProcessingEnv.TransactionProcessor,
-                    readOnlyTxProcessorSource,
+                    readOnlyTxProcessingEnv,
                     readOnlyTxProcessingEnv.BlockTree,
                     _api.ReceiptStorage,
                     _api.ValidatorStore,
@@ -150,7 +149,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.LogManager,
                 readOnlyTxProcessingEnv.BlockTree,
                 auRaTxFilter,
-                CreateGasLimitCalculator(readOnlyTxProcessorSource) as AuRaContractGasLimitOverride)
+                CreateGasLimitCalculator(readOnlyTxProcessingEnv) as AuRaContractGasLimitOverride)
             {
                 AuRaValidator = _validator
             };
@@ -214,10 +213,10 @@ namespace Nethermind.Runner.Ethereum.Steps
             }
         }
         
-        
-        private BlockProducerContext GetProducerChain()
+        // TODO: Use BlockProducerEnvFactory
+        private BlockProducerEnv GetProducerChain()
         {
-            BlockProducerContext Create()
+            BlockProducerEnv Create()
             {
                 ReadOnlyDbProvider dbProvider = _api.DbProvider.AsReadOnly(false);
                 ReadOnlyBlockTree blockTree = _api.BlockTree.AsReadOnly();
@@ -226,7 +225,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                     new ReadOnlyTxProcessingEnv(dbProvider, _api.ReadOnlyTrieStore, blockTree, _api.SpecProvider, _api.LogManager);
                 
                 BlockProcessor blockProcessor =
-                    CreateBlockProcessor(txProcessingEnv, txProcessingEnv, dbProvider);
+                    CreateBlockProcessor(txProcessingEnv);
 
                 IBlockchainProcessor blockchainProcessor =
                     new BlockchainProcessor(
@@ -240,7 +239,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                     dbProvider,
                     blockchainProcessor);
 
-                return new BlockProducerContext
+                return new BlockProducerEnv()
                 {
                     ChainProcessor = chainProcessor,
                     ReadOnlyStateProvider = txProcessingEnv.StateProvider,

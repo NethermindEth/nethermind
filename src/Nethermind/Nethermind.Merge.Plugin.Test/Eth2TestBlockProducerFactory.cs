@@ -64,6 +64,7 @@ namespace Nethermind.Merge.Plugin.Test
                 engineSigner,
                 timestamper,
                 producerEnv.ReadOnlyTxProcessingEnv.StateReader,
+                specProvider,
                 logManager);
         }
     }

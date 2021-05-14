@@ -470,9 +470,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             LogEntry logEntryD = Build.A.LogEntry.WithAddress(TestItem.AddressB).WithTopics(TestItem.KeccakA, TestItem.KeccakD, TestItem.KeccakE).WithData(TestItem.RandomDataB).TestObject;
             LogEntry logEntryE = Build.A.LogEntry.WithTopics(TestItem.KeccakA, TestItem.KeccakD).WithData(TestItem.RandomDataB).TestObject;
 
-            
-
-            TxReceipt[] txReceipts = new TxReceipt[]
+            TxReceipt[] txReceipts = 
             {
                 Build.A.Receipt.WithBlockNumber(blockNumber).WithLogs(logEntryA, logEntryB, logEntryC).TestObject,
                 Build.A.Receipt.WithBlockNumber(blockNumber).WithLogs().TestObject,

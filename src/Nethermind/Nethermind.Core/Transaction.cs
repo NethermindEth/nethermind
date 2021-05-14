@@ -141,21 +141,22 @@ namespace Nethermind.Core
 
     public static class TransactionExtensions
     {
-        public static bool IsSystem(this Transaction tx)
-        {
-            return tx is SystemTransaction || tx.SenderAddress == Address.SystemUser;
-        }
+        public static bool IsSystem(this Transaction tx) => 
+            tx is SystemTransaction || tx.SenderAddress == Address.SystemUser;
 
-        public static bool TryCalculatePremiumPerGas(this Transaction tx, UInt256 blockBaseFee, out UInt256 premiumPerGas)
+        public static bool IsFree(this Transaction tx) => tx.IsSystem() || tx.IsServiceTransaction;
+
+        public static bool TryCalculatePremiumPerGas(this Transaction tx, UInt256 baseFee, out UInt256 premiumPerGas)
         {
+            bool freeTransaction = tx.IsFree();
             UInt256 feeCap = tx.IsEip1559 ? tx.FeeCap : tx.GasPrice;
-            if (blockBaseFee > feeCap)
+            if (baseFee > feeCap)
             {
                 premiumPerGas = UInt256.Zero; 
-                return false;
+                return !freeTransaction;
             }
             
-            premiumPerGas = UInt256.Min(tx.GasPremium, feeCap - blockBaseFee);
+            premiumPerGas = UInt256.Min(tx.GasPremium, feeCap - baseFee);
             return true;
         }
     }

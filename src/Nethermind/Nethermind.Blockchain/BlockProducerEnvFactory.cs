@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using Nethermind.Blockchain.Comparers;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Producers;
 using Nethermind.Blockchain.Receipts;
@@ -99,34 +100,52 @@ namespace Nethermind.Blockchain
                 readOnlyDbProvider,
                 blockchainProcessor);
 
+            TransactionComparerProvider transactionComparerProvider = new(_specProvider, readOnlyBlockTree);
+            
             return new BlockProducerEnv
             {
                 ChainProcessor = chainProcessor,
                 ReadOnlyStateProvider = txProcessingEnv.StateProvider,
-                TxSource = GetTxSource(txSource, _txPool, _miningConfig, _logManager, txProcessingEnv),
+                TxSource = GetTxSource(txSource, txProcessingEnv, _txPool, _miningConfig, transactionComparerProvider, _logManager),
                 ReadOnlyTxProcessingEnv = txProcessingEnv
             };
         }
         
-        protected virtual ITxSource GetTxSource(ITxSource? txSource, ITxPool txPool, IMiningConfig miningConfig, ILogManager logManager, ReadOnlyTxProcessingEnv txProcessingEnv)
+        protected virtual ITxSource GetTxSource(
+            ITxSource? txSource, 
+            ReadOnlyTxProcessingEnv txProcessingEnv, 
+            ITxPool txPool, 
+            IMiningConfig miningConfig,
+            ITransactionComparerProvider transactionComparerProvider,
+            ILogManager logManager)
         {
-            ITxSource txSourceForProducer = CreateTxSourceForProducer(txProcessingEnv, txPool, logManager, miningConfig);
+            ITxSource txSourceForProducer = CreateTxSourceForProducer(txProcessingEnv, txPool, miningConfig, transactionComparerProvider, logManager);
             return txSource is null 
                 ? txSourceForProducer 
                 : new CompositeTxSource(txSource, txSourceForProducer);
         }
 
-        protected virtual ITxSource CreateTxSourceForProducer(ReadOnlyTxProcessingEnv processingEnv, ITxPool txPool, ILogManager logManager, IMiningConfig miningConfig) =>
-            CreateTxPoolTxSource(processingEnv, txPool, miningConfig, logManager);
+        protected virtual ITxSource CreateTxSourceForProducer(
+            ReadOnlyTxProcessingEnv processingEnv, 
+            ITxPool txPool, 
+            IMiningConfig miningConfig, 
+            ITransactionComparerProvider transactionComparerProvider, 
+            ILogManager logManager) =>
+            CreateTxPoolTxSource(processingEnv, txPool, miningConfig, transactionComparerProvider, logManager);
 
-        protected virtual TxPoolTxSource CreateTxPoolTxSource(ReadOnlyTxProcessingEnv processingEnv, ITxPool txPool, IMiningConfig miningConfig, ILogManager logManager)
+        protected virtual TxPoolTxSource CreateTxPoolTxSource(
+            ReadOnlyTxProcessingEnv processingEnv, 
+            ITxPool txPool, 
+            IMiningConfig miningConfig, 
+            ITransactionComparerProvider transactionComparerProvider, 
+            ILogManager logManager)
         {
-            ITxFilter txSourceFilter = CreateTxSourceFilter(miningConfig);
-            return new TxPoolTxSource(txPool, processingEnv.StateReader, logManager, txSourceFilter);
+            ITxFilterPipeline txSourceFilterPipeline  = CreateTxSourceFilter(miningConfig);
+            return new TxPoolTxSource(txPool, processingEnv.StateReader, _specProvider, transactionComparerProvider, logManager, txSourceFilterPipeline);
         }
 
-        protected virtual ITxFilter CreateTxSourceFilter(IMiningConfig miningConfig) =>
-            TxFilterBuilders.CreateStandardTxFilter(miningConfig);
+        protected virtual ITxFilterPipeline CreateTxSourceFilter(IMiningConfig miningConfig) =>
+            TxFilterPipelineBuilder.CreateStandardFilteringPipeline(_logManager, _specProvider, miningConfig);
 
         protected virtual BlockProcessor CreateBlockProcessor(
             ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv,

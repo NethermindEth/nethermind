@@ -136,8 +136,10 @@ namespace Nethermind.Consensus.Clique
                 producerChainProcessor);
 
             ITxFilterPipeline txFilterPipeline =
-                TxFilterPipelineBuilder.CreateStandardFilteringPipeline(_nethermindApi.LogManager,
-                    getFromApi.SpecProvider);
+                TxFilterPipelineBuilder.CreateStandardFilteringPipeline(
+                    _nethermindApi.LogManager,
+                    getFromApi.SpecProvider,
+                    _miningConfig);
             
             txSource ??= new TxPoolTxSource(
                 getFromApi.TxPool,

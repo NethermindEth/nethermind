@@ -45,7 +45,13 @@ namespace Nethermind.Blockchain.Producers
         private readonly ISpecProvider _specProvider;
         protected readonly ILogger _logger;
 
-        public TxPoolTxSource(ITxPool? transactionPool, IStateReader? stateReader, ISpecProvider? specProvider, ITransactionComparerProvider transactionComparerProvider, ILogManager? logManager, ITxFilterPipeline? txFilterPipeline)
+        public TxPoolTxSource(
+            ITxPool? transactionPool, 
+            IStateReader? stateReader, 
+            ISpecProvider? specProvider,
+            ITransactionComparerProvider transactionComparerProvider, 
+            ILogManager? logManager,
+            ITxFilterPipeline? txFilterPipeline)
         {
             _transactionPool = transactionPool ?? throw new ArgumentNullException(nameof(transactionPool));
             _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
