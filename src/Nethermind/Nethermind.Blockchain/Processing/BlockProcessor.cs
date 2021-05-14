@@ -16,11 +16,13 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Numerics;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Rewards;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
@@ -233,7 +235,7 @@ namespace Nethermind.Blockchain.Processing
             if (transactionsChangeable)
             {
                 int i = 0;
-                List<Transaction> transactionsForBlock = new();
+                LinkedHashSet<Transaction> transactionsForBlock = new();
                 foreach (Transaction currentTx in transactions)
                 {
                     // No more gas available in block
