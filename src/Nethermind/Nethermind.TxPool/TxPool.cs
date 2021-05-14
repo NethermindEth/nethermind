@@ -274,15 +274,6 @@ namespace Nethermind.TxPool
             UInt256 balance = account?.Balance ?? UInt256.Zero;
             UInt256 effectiveGasPrice = tx.IsEip1559 ? CalculatePayableGasPrice(tx, balance) : tx.GasPrice;
 
-            if (GetPendingTransactionsCount() == MemoryAllowance.MemPoolSize
-                && _transactions.TryGetLast(out var lastTx)
-                && effectiveGasPrice <= lastTx?.GasBottleneck)
-            {
-                if (_logger.IsTrace)
-                    _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, too low gasPrice.");
-                return AddTxResult.FeeTooLow;
-            }
-            
             bool overflow = spec.IsEip1559Enabled && UInt256.AddOverflow(tx.GasPremium, tx.FeeCap, out _);
             // we're checking that user can pay what he declared in FeeCap. For this check BaseFee = FeeCap
             overflow |= UInt256.MultiplyOverflow(effectiveGasPrice, (UInt256) tx.GasLimit, out UInt256 cost);
@@ -298,6 +289,15 @@ namespace Nethermind.TxPool
                 if (_logger.IsTrace)
                     _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, insufficient funds.");
                 return AddTxResult.InsufficientFunds;
+            }
+                
+            if (GetPendingTransactionsCount() == MemoryAllowance.MemPoolSize
+                && _transactions.TryGetLast(out var lastTx)
+                && effectiveGasPrice <= lastTx?.GasBottleneck)
+            {
+                if (_logger.IsTrace)
+                    _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, too low gasPrice.");
+                return AddTxResult.FeeTooLow;
             }
 
             if (managedNonce && CheckOwnTransactionAlreadyUsed(tx, currentNonce))
