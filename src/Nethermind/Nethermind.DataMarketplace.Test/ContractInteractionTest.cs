@@ -167,6 +167,7 @@ namespace Nethermind.DataMarketplace.Test
                 _headBlock = _headBlock.WithReplacedBody(
                     _headBlock.Body.WithChangedTransactions(new Transaction[100]));
                 _receiptsTracer.StartNewBlockTrace(_headBlock);
+                NewHeadBlock?.Invoke(this, new BlockEventArgs(_headBlock));
             }
 
             public int GetNetworkId()
@@ -193,6 +194,7 @@ namespace Nethermind.DataMarketplace.Test
             private Block _headBlock;
 
             public Block Head => _headBlock;
+            public event EventHandler<BlockEventArgs> NewHeadBlock;
             public long BestKnown { get; }
             public bool IsSyncing { get; }
             public bool IsMining { get; }
