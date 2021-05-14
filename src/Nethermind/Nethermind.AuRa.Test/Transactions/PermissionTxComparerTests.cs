@@ -22,14 +22,18 @@ using System.ComponentModel.Design;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using FluentAssertions;
+using Nethermind.Blockchain;
+using Nethermind.Blockchain.Comparers;
 using Nethermind.Blockchain.Producers;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.AuRa.Contracts.DataStore;
 using Nethermind.Consensus.AuRa.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
+using Nethermind.Specs;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Collections;
 using NSubstitute;
@@ -268,8 +272,15 @@ namespace Nethermind.AuRa.Test.Transactions
             transactions = transactionSelect?.Invoke(transactions) ?? transactions;
             expectation = transactionSelect?.Invoke(expectation) ?? expectation;
 
+            IBlockTree blockTree = Substitute.For<IBlockTree>();
+            Block block =  Build.A.Block.WithNumber(0).TestObject;
+            blockTree.Head.Returns(block);
+            ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+            specProvider.GetSpec(Arg.Any<long>()).Returns(new ReleaseSpec() {IsEip1559Enabled = false});
+            var transactionComparerProvider = new TransactionComparerProvider(specProvider, blockTree);
+            IComparer<Transaction> defaultComparer = transactionComparerProvider.GetDefaultComparer();
             IComparer<Transaction> comparer = new CompareTxByPriorityOnSpecifiedBlock(sendersWhitelist, priorities, blockHeader)
-                .ThenBy(TxPool.TxPool.DefaultComparer); 
+                .ThenBy(defaultComparer); 
             
 
             var txBySender = transactions.GroupBy(t => t.SenderAddress)

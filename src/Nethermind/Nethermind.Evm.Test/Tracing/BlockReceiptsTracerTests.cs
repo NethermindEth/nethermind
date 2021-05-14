@@ -96,7 +96,7 @@ namespace Nethermind.Evm.Test.Tracing
             tracer.StartNewBlockTrace(block);
             tracer.StartNewTxTrace(block.Transactions[0]);
             var logEntries = new LogEntry[0];
-            tracer.MarkAsSuccess(TestItem.AddressA, 100, Array.Empty<byte>(), logEntries, TestItem.KeccakF);
+            tracer.MarkAsSuccess(TestItem.AddressA, 100,Array.Empty<byte>(), logEntries, TestItem.KeccakF);
             
             (otherTracer as ITxTracer).Received().MarkAsSuccess(TestItem.AddressA, 100, Array.Empty<byte>(), logEntries, TestItem.KeccakF);
         }

@@ -23,7 +23,7 @@ namespace Nethermind.Config
         public (bool IsSet, object Value) GetValue(Type type, string category, string name)
         {
             (bool isSet, string value) = GetRawValue(category, name);
-            return (isSet, isSet ? ConfigSourceHelper.ParseValue(type, value) : ConfigSourceHelper.GetDefault(type));
+            return (isSet, isSet ? ConfigSourceHelper.ParseValue(type, value, category, name) : ConfigSourceHelper.GetDefault(type));
         }
 
         public (bool IsSet, string Value) GetRawValue(string category, string name)

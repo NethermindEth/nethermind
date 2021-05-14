@@ -44,7 +44,6 @@ using BlockTree = Nethermind.Blockchain.BlockTree;
 
 namespace Nethermind.JsonRpc.Benchmark
 {
-    [MemoryDiagnoser]
     public class EthModuleBenchmarks
     {
         private IVirtualMachine _virtualMachine;

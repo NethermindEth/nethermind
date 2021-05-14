@@ -27,6 +27,7 @@ using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -217,6 +218,7 @@ namespace Nethermind.AuRa.Test.Validators
                 TxSender = Substitute.For<ITxSender>();
                 var txPool = Substitute.For<ITxPool>();
                 var stateProvider = Substitute.For<IStateProvider>();
+                ISpecProvider specProvider = Substitute.For<ISpecProvider>();
                 stateProvider.GetNonce(ReportingValidatorContract.NodeAddress).Returns(UInt256.One);
                 
                 Validator = new ReportingContractBasedValidator(
@@ -228,6 +230,7 @@ namespace Nethermind.AuRa.Test.Validators
                     new MiningConfig(),
                     stateProvider,
                     cache ?? new ReportingContractBasedValidator.Cache(),
+                    specProvider,
                     LimboLogs.Instance);
             }
         }

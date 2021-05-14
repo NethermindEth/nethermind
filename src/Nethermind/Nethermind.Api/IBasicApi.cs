@@ -20,7 +20,6 @@ using System.IO.Abstractions;
 using System.Linq;
 using Nethermind.Abi;
 using Nethermind.Api.Extensions;
-using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Specs;

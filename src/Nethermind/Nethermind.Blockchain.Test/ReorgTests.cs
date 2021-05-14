@@ -17,6 +17,7 @@
 
 using System.Threading;
 using FluentAssertions;
+using Nethermind.Blockchain.Comparers;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Rewards;
@@ -54,12 +55,14 @@ namespace Nethermind.Blockchain.Test
         {
             IDbProvider memDbProvider = TestMemDbProvider.Init();
             TrieStore trieStore = new TrieStore(new MemDb(), LimboLogs.Instance);
-            StateProvider stateProvider = new StateProvider(trieStore, new MemDb(), LimboLogs.Instance);
+            StateProvider stateProvider = new StateProvider(trieStore, memDbProvider.CodeDb, LimboLogs.Instance);
             StorageProvider storageProvider = new StorageProvider(trieStore, stateProvider, LimboLogs.Instance);
             ChainLevelInfoRepository chainLevelInfoRepository = new ChainLevelInfoRepository(memDbProvider);
             ISpecProvider specProvider = MainnetSpecProvider.Instance;
             IBloomStorage bloomStorage = NullBloomStorage.Instance;
             EthereumEcdsa ecdsa = new EthereumEcdsa(1, LimboLogs.Instance);
+            ITransactionComparerProvider transactionComparerProvider =
+                new TransactionComparerProvider(specProvider, _blockTree);
             _blockTree = new BlockTree(
                 memDbProvider,
                 chainLevelInfoRepository,
@@ -70,11 +73,11 @@ namespace Nethermind.Blockchain.Test
             TxPool.TxPool txPool = new TxPool.TxPool(
                 NullTxStorage.Instance,
                 ecdsa,
-                new ChainHeadSpecProvider(specProvider, _blockTree),
+                new ChainHeadInfoProvider(specProvider, _blockTree, stateProvider),
                 new TxPoolConfig(),
-                stateProvider,
                 new TxValidator(specProvider.ChainId),
-                LimboLogs.Instance);
+                LimboLogs.Instance, 
+                transactionComparerProvider.GetDefaultComparer());
             BlockhashProvider blockhashProvider = new BlockhashProvider(_blockTree, LimboLogs.Instance);
             VirtualMachine virtualMachine = new VirtualMachine(
                 stateProvider,

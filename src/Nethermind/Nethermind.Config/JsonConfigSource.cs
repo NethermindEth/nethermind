@@ -31,10 +31,17 @@ namespace Nethermind.Config
 
         private void ApplyJsonConfig(string jsonContent)
         {
-            var json = (JObject) JToken.Parse(jsonContent);
-            foreach (var moduleEntry in json)
+            try
             {
-                LoadModule(moduleEntry.Key, (JObject)moduleEntry.Value);
+                var json = (JObject)JToken.Parse(jsonContent);
+                foreach (var moduleEntry in json)
+                {
+                    LoadModule(moduleEntry.Key, (JObject)moduleEntry.Value);
+                }
+            }
+            catch (Newtonsoft.Json.JsonReaderException e)
+            {
+                throw new System.Configuration.ConfigurationErrorsException($"Config is not correctly formed JSon. See inner exception for details.", e);
             }
         }
 
@@ -113,7 +120,7 @@ namespace Nethermind.Config
         private void ParseValue(Type type, string category, string name)
         {
             string valueString = _values[category][name];
-            _parsedValues[category][name] = ConfigSourceHelper.ParseValue(type, valueString);
+            _parsedValues[category][name] = ConfigSourceHelper.ParseValue(type, valueString, category, name);
         }
 
         public (bool IsSet, object Value) GetValue(Type type, string category, string name)

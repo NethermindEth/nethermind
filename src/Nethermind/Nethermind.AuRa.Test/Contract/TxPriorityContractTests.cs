@@ -94,7 +94,8 @@ namespace Nethermind.AuRa.Test.Contract
         }
         
         [Test]
-        public async Task priority_should_return_correctly()
+        public async Task 
+            priority_should_return_correctly()
         {
             using var chain = await TestContractBlockchain.ForTest<TxPermissionContractBlockchainWithBlocks, TxPriorityContractTests>();
             var priorities = chain.TxPriorityContract.Priorities.GetAllItemsFromBlock(chain.BlockTree.Head.Header);
@@ -123,6 +124,7 @@ namespace Nethermind.AuRa.Test.Contract
                 new TxPriorityContract.Destination(TestItem.AddressB, FnSignature2, 4, TxPriorityContract.DestinationSource.Contract, 1),
                 new TxPriorityContract.Destination(TestItem.AddressB, FnSignature, 2, TxPriorityContract.DestinationSource.Contract, 2),
             };
+
             minGasPrices.Should().BeEquivalentTo(expected, o => o.ComparingByMembers<TxPriorityContract.Destination>()
                 .Excluding(su => su.SelectedMemberPath.EndsWith("BlockNumber")));
             

@@ -22,8 +22,6 @@ using Nethermind.Core.Extensions;
 
 namespace Nethermind.Benchmarks.Evm
 {
-    [MemoryDiagnoser]
-    [SimpleJob(RuntimeMoniker.NetCoreApp50)]
     public class SignExtendBenchmark
     {
         [GlobalSetup]

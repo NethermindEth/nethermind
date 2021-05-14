@@ -37,6 +37,8 @@
         <EmbeddedResource Include="Contracts\TransactionPermissionContractV2.json" />
         <EmbeddedResource Include="Contracts\TransactionPermissionContractV3.json" />
         <EmbeddedResource Include="Contracts\BlockGasLimitContract.json" />
+        <None Remove="Contracts\TransactionPermissionContractV4.json" />
+        <EmbeddedResource Include="Contracts\TransactionPermissionContractV4.json" />
     </ItemGroup>
 
 </Project>

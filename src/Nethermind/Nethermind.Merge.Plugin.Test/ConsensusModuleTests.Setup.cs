@@ -16,7 +16,8 @@
 // 
 
 using System.Threading.Tasks;
-using Nethermind.Blockchain;
+using Nethermind.Api;
+using Nethermind.Api;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Producers;
 using Nethermind.Blockchain.Rewards;
@@ -48,7 +49,7 @@ namespace Nethermind.Merge.Plugin.Test
         {
             return new ConsensusRpcModule(
                 new AssembleBlockHandler(chain.BlockTree, (IManualBlockProducer) chain.BlockProducer, _manualTimestamper, chain.LogManager),
-                new NewBlockHandler(chain.BlockTree, chain.BlockPreprocessorStep, chain.BlockchainProcessor, chain.State, chain.LogManager),
+                new NewBlockHandler(chain.BlockTree, chain.BlockPreprocessorStep, chain.BlockchainProcessor, chain.State, new InitConfig(), chain.LogManager),
                 new SetHeadBlockHandler(chain.BlockTree, chain.State, chain.LogManager),
                 new FinaliseBlockHandler(chain.BlockFinder, chain.BlockFinalizationManager, chain.LogManager),
                 chain.LogManager);

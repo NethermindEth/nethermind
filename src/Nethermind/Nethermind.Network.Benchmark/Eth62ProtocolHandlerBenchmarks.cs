@@ -16,10 +16,8 @@
 
 using System;
 using BenchmarkDotNet.Attributes;
-using BenchmarkDotNet.Jobs;
 using DotNetty.Buffers;
 using DotNetty.Transport.Channels;
-using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -29,13 +27,11 @@ using Nethermind.Core.Timers;
 using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.P2P;
-using Nethermind.Network.P2P.Subprotocols.Eth;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62;
 using Nethermind.Network.Rlpx;
 using Nethermind.Specs;
 using Nethermind.State;
 using Nethermind.Stats;
-using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Storages;
@@ -43,8 +39,6 @@ using NSubstitute;
 
 namespace Nethermind.Network.Benchmarks
 {
-    [MemoryDiagnoser]
-    [SimpleJob(RuntimeMoniker.NetCoreApp50)]
     public class Eth62ProtocolHandlerBenchmarks
     {
         private Eth62ProtocolHandler _handler;

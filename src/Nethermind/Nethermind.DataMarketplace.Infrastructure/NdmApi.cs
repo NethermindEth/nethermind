@@ -20,6 +20,7 @@ using Nethermind.Abi;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Comparers;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Processing;
@@ -513,6 +514,12 @@ namespace Nethermind.DataMarketplace.Infrastructure
         {
             get => _nethermindApi.Wallet;
             set => _nethermindApi.Wallet = value;
+        }
+
+        public ITransactionComparerProvider TransactionComparerProvider
+        {
+            get => _nethermindApi.TransactionComparerProvider;
+            set => _nethermindApi.TransactionComparerProvider = value;
         }
 
         public IWebSocketsManager? WebSocketsManager

@@ -24,6 +24,7 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Evm;
@@ -59,6 +60,7 @@ namespace Nethermind.AuRa.Test
                 new MiningConfig(), 
                 LimboLogs.Instance,
                 Substitute.For<ISigner>(),
+                Substitute.For<ISpecProvider>(),
                 new ReportingContractBasedValidator.Cache(),
                 long.MaxValue);
 

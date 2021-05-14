@@ -54,7 +54,7 @@ namespace Nethermind.Consensus.Clique
         private readonly ISpecProvider _specProvider;
         private readonly ISnapshotManager _snapshotManager;
         private readonly ICliqueConfig _config;
-
+        
         private readonly ConcurrentDictionary<Address, bool> _proposals = new();
 
         private readonly CancellationTokenSource _cancellationTokenSource = new();
@@ -436,7 +436,9 @@ namespace Nethermind.Consensus.Clique
 
             _stateProvider.StateRoot = parentHeader.StateRoot;
 
-            var selectedTxs = _txSource.GetTransactions(parentBlock.Header, header.GasLimit);
+            bool isEip1559Enabled = _specProvider.GetSpec(number + 1).IsEip1559Enabled;
+            long adjustedGasLimit = Eip1559GasLimitAdjuster.AdjustGasLimit(isEip1559Enabled, header.GasLimit);
+            IEnumerable<Transaction> selectedTxs = _txSource.GetTransactions(parentBlock.Header, adjustedGasLimit);
             Block block = new(header, selectedTxs, Array.Empty<BlockHeader>());
             header.TxRoot = new TxTrie(block.Transactions).RootHash;
             block.Header.Author = _sealer.Address;

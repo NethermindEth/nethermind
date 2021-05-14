@@ -73,19 +73,29 @@ namespace Nethermind.Specs.ChainSpecStyle
 
         private void LoadParameters(ChainSpecJson chainSpecJson, ChainSpec chainSpec)
         {
-            long? GetTransitionForExpectedPricing(string builtInName, string innerPath, long expectedValue)
+            long? GetTransitions(string builtInName, Predicate<KeyValuePair<string, JObject>> predicate)
             {
                 var allocation = chainSpecJson.Accounts.Values.FirstOrDefault(v => v.BuiltIn?.Name.Equals(builtInName, StringComparison.InvariantCultureIgnoreCase) == true);
-                if (allocation != null)
+                if (allocation == null) return null;
+                KeyValuePair<string, JObject>[] pricing = allocation.BuiltIn.Pricing.Where(o => predicate(o)).ToArray();
+                if (pricing.Length > 0)
                 {
-                    var pricing = allocation.BuiltIn.Pricing.Where(o => o.Value.SelectToken(innerPath)?.Value<long>() == expectedValue).ToArray();
-                    if (pricing.Length > 0)
-                    {
-                        return long.Parse(pricing[0].Key);
-                    }
+                    return long.Parse(pricing[0].Key);
                 }
 
                 return null;
+            }
+            
+            long? GetTransitionForExpectedPricing(string builtInName, string innerPath, long expectedValue)
+            {
+                bool GetForExpectedPricing(KeyValuePair<string, JObject> o) => o.Value.SelectToken(innerPath)?.Value<long>() == expectedValue;
+                return GetTransitions(builtInName, GetForExpectedPricing);
+            }
+            
+            long? GetTransitionIfInnerPathExists(string builtInName, string innerPath)
+            {
+                bool GetForInnerPathExistence(KeyValuePair<string, JObject> o) => o.Value.SelectToken(innerPath) != null;
+                return GetTransitions(builtInName, GetForInnerPathExistence);
             }
 
             ValidateParams(chainSpecJson.Params);
@@ -131,6 +141,8 @@ namespace Nethermind.Specs.ChainSpecStyle
                 Eip2929Transition = chainSpecJson.Params.Eip2929Transition,
                 Eip2930Transition = chainSpecJson.Params.Eip2930Transition,
                 Eip3198Transition = chainSpecJson.Params.Eip3198Transition,
+                Eip3541Transition = chainSpecJson.Params.Eip3541Transition,
+                Eip3529Transition = chainSpecJson.Params.Eip3529Transition,
                 TransactionPermissionContract = chainSpecJson.Params.TransactionPermissionContract,
                 TransactionPermissionContractTransition = chainSpecJson.Params.TransactionPermissionContractTransition,
                 ValidateChainIdTransition = chainSpecJson.Params.ValidateChainIdTransition,
@@ -141,6 +153,7 @@ namespace Nethermind.Specs.ChainSpecStyle
             chainSpec.Parameters.Eip1108Transition ??= GetTransitionForExpectedPricing("alt_bn128_add", "price.alt_bn128_const_operations.price", 150)
                                                        ?? GetTransitionForExpectedPricing("alt_bn128_mul", "price.alt_bn128_const_operations.price", 6000)
                                                        ?? GetTransitionForExpectedPricing("alt_bn128_pairing", "price.alt_bn128_pairing.base", 45000);
+            chainSpec.Parameters.Eip2565Transition ??= GetTransitionIfInnerPathExists("modexp", "price.modexp2565");
         }
 
         private static void ValidateParams(ChainSpecParamsJson parameters)
@@ -279,7 +292,7 @@ namespace Nethermind.Specs.ChainSpecStyle
                 chainSpec.SealEngineType = SealEngineType.NethDev;
             }
 
-            string? customEngineType = chainSpecJson.Engine?.CustomEngineData?.FirstOrDefault().Key;
+            var customEngineType = chainSpecJson.Engine?.CustomEngineData?.FirstOrDefault().Key;
             
             if (!string.IsNullOrEmpty(customEngineType))
             {
@@ -311,6 +324,9 @@ namespace Nethermind.Specs.ChainSpecStyle
             byte[] extraData = chainSpecJson.Genesis.ExtraData ?? Array.Empty<byte>();
             UInt256 gasLimit = chainSpecJson.Genesis.GasLimit;
             Address beneficiary = chainSpecJson.Genesis.Author ?? Address.Zero;
+            UInt256 baseFee = UInt256.Zero;
+            if (chainSpecJson.Params.Eip1559Transition != null)
+                baseFee = chainSpecJson.Params.Eip1559Transition == 0 ? Eip1559Constants.ForkBaseFee : UInt256.Zero; 
 
             BlockHeader genesisHeader = new(
                 parentHash,
@@ -330,6 +346,7 @@ namespace Nethermind.Specs.ChainSpecStyle
             genesisHeader.ReceiptsRoot = Keccak.EmptyTreeHash;
             genesisHeader.StateRoot = Keccak.EmptyTreeHash;
             genesisHeader.TxRoot = Keccak.EmptyTreeHash;
+            genesisHeader.BaseFee = baseFee;
             
             genesisHeader.AuRaStep = step;
             genesisHeader.AuRaSignature = auRaSignature;
@@ -354,6 +371,7 @@ namespace Nethermind.Specs.ChainSpecStyle
                 
                 chainSpec.Allocations[new Address(account.Key)] = new ChainSpecAllocation(
                     account.Value.Balance,
+                    account.Value.Nonce,
                     account.Value.Code,
                     account.Value.Constructor,
                     account.Value.GetConvertedStorage());

@@ -52,8 +52,14 @@ namespace Nethermind.Pipeline.Publishers
         
         public async void SubscribeToData(TIn data)
         {
-            var message = new WebSocketsMessage(nameof(TIn), null, data);
-            await Task.WhenAll(_clients.Values.Select(v => v.SendAsync(message)));
+            try
+            {
+                var message = new WebSocketsMessage(nameof(TIn), null, data);
+                await Task.WhenAll(_clients.Values.Select(v => v.SendAsync(message)));
+            }
+            catch (Exception ex)
+            {
+            };
         }
     }
 }

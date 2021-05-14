@@ -279,7 +279,7 @@ namespace Nethermind.Evm.Test
             _transactionProcessor.CallAndRestore(tx, block.Header, tracer);
 
             tracer.GasSpent.Should().Be(21000);
-            tracer.CalculateEstimate(tx).Should().Be(21000);
+            tracer.CalculateEstimate(tx, Berlin.Instance).Should().Be(21000);
         }
 
         [Test]
@@ -311,9 +311,10 @@ namespace Nethermind.Evm.Test
 
             long actualIntrinsic = tx.GasLimit - tracer.IntrinsicGasAt;
             actualIntrinsic.Should().Be(intrinsic);
-            tracer.CalculateAdditionalGasRequired(tx).Should().Be(RefundOf.SSetReversedEip2200 + GasCostOf.CallStipend - GasCostOf.SStoreNetMeteredEip2200 + 1);
+            IReleaseSpec releaseSpec = Berlin.Instance;
+            tracer.CalculateAdditionalGasRequired(tx, releaseSpec).Should().Be(RefundOf.SSetReversedEip2200 + GasCostOf.CallStipend - GasCostOf.SStoreNetMeteredEip2200 + 1);
             tracer.GasSpent.Should().Be(54764L);
-            long estimate = tracer.CalculateEstimate(tx);
+            long estimate = tracer.CalculateEstimate(tx, releaseSpec);
             estimate.Should().Be(75465L);
 
             ConfirmEnoughEstimate(tx, block, estimate);
@@ -335,7 +336,8 @@ namespace Nethermind.Evm.Test
             Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, _isEip155Enabled).WithCode(byteCode).WithGasLimit(gasLimit).WithNonce(1).TestObject;
             Block block = Build.A.Block.WithNumber(MainnetSpecProvider.MuirGlacierBlockNumber).WithTransactions(tx).WithGasLimit(2 * gasLimit).TestObject;
 
-            long intrinsic = IntrinsicGasCalculator.Calculate(tx, MuirGlacier.Instance);
+            IReleaseSpec releaseSpec = MuirGlacier.Instance;
+            long intrinsic = IntrinsicGasCalculator.Calculate(tx, releaseSpec);
 
             _transactionProcessor.Execute(initTx, block.Header, NullTxTracer.Instance);
 
@@ -347,9 +349,9 @@ namespace Nethermind.Evm.Test
 
             long actualIntrinsic = tx.GasLimit - tracer.IntrinsicGasAt;
             actualIntrinsic.Should().Be(intrinsic);
-            tracer.CalculateAdditionalGasRequired(tx).Should().Be(24080);
+            tracer.CalculateAdditionalGasRequired(tx, releaseSpec).Should().Be(24080);
             tracer.GasSpent.Should().Be(35228L);
-            long estimate = tracer.CalculateEstimate(tx);
+            long estimate = tracer.CalculateEstimate(tx, releaseSpec);
             estimate.Should().Be(59308);
 
             ConfirmEnoughEstimate(tx, block, estimate);
@@ -397,7 +399,8 @@ namespace Nethermind.Evm.Test
             Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, _isEip155Enabled).WithCode(initByteCode).WithGasLimit(gasLimit).TestObject;
             Block block = Build.A.Block.WithNumber(MainnetSpecProvider.MuirGlacierBlockNumber).WithTransactions(tx).WithGasLimit(2 * gasLimit).TestObject;
 
-            long intrinsic = IntrinsicGasCalculator.Calculate(tx, MuirGlacier.Instance);
+            IReleaseSpec releaseSpec = MuirGlacier.Instance;
+            long intrinsic = IntrinsicGasCalculator.Calculate(tx, releaseSpec);
 
             GethLikeTxTracer gethTracer = new(GethTraceOptions.Default);
             _transactionProcessor.CallAndRestore(tx, block.Header, gethTracer);
@@ -408,9 +411,9 @@ namespace Nethermind.Evm.Test
 
             long actualIntrinsic = tx.GasLimit - tracer.IntrinsicGasAt;
             actualIntrinsic.Should().Be(intrinsic);
-            tracer.CalculateAdditionalGasRequired(tx).Should().Be(2300);
+            tracer.CalculateAdditionalGasRequired(tx, releaseSpec).Should().Be(2300);
             tracer.GasSpent.Should().Be(85669L);
-            long estimate = tracer.CalculateEstimate(tx);
+            long estimate = tracer.CalculateEstimate(tx, releaseSpec);
             estimate.Should().Be(87969L);
 
             ConfirmEnoughEstimate(tx, block, estimate);
@@ -435,7 +438,8 @@ namespace Nethermind.Evm.Test
             Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, _isEip155Enabled).WithCode(initByteCode).WithGasLimit(gasLimit).TestObject;
             Block block = Build.A.Block.WithNumber(MainnetSpecProvider.MuirGlacierBlockNumber).WithTransactions(tx).WithGasLimit(2 * gasLimit).TestObject;
 
-            long intrinsic = IntrinsicGasCalculator.Calculate(tx, MuirGlacier.Instance);
+            IReleaseSpec releaseSpec = MuirGlacier.Instance;
+            long intrinsic = IntrinsicGasCalculator.Calculate(tx, releaseSpec);
 
             GethLikeTxTracer gethTracer = new(GethTraceOptions.Default);
             _transactionProcessor.CallAndRestore(tx, block.Header, gethTracer);
@@ -446,9 +450,9 @@ namespace Nethermind.Evm.Test
 
             long actualIntrinsic = tx.GasLimit - tracer.IntrinsicGasAt;
             actualIntrinsic.Should().Be(intrinsic);
-            tracer.CalculateAdditionalGasRequired(tx).Should().Be(RefundOf.SSetReversedEip2200 + GasCostOf.CallStipend);
+            tracer.CalculateAdditionalGasRequired(tx, releaseSpec).Should().Be(RefundOf.SSetReversedEip2200 + GasCostOf.CallStipend);
             tracer.GasSpent.Should().Be(87429L);
-            long estimate = tracer.CalculateEstimate(tx);
+            long estimate = tracer.CalculateEstimate(tx, releaseSpec);
             estimate.Should().Be(87429L + RefundOf.SSetReversedEip2200 + GasCostOf.CallStipend);
 
             ConfirmEnoughEstimate(tx, block, estimate);
@@ -471,7 +475,8 @@ namespace Nethermind.Evm.Test
             Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, _isEip155Enabled).WithCode(byteCode).WithGasLimit(gasLimit).WithNonce(1).TestObject;
             Block block = Build.A.Block.WithNumber(MainnetSpecProvider.MuirGlacierBlockNumber).WithTransactions(tx).WithGasLimit(2 * gasLimit).TestObject;
 
-            long intrinsic = IntrinsicGasCalculator.Calculate(tx, MuirGlacier.Instance);
+            IReleaseSpec releaseSpec = Berlin.Instance;
+            long intrinsic = IntrinsicGasCalculator.Calculate(tx, releaseSpec);
 
             _transactionProcessor.Execute(initTx, block.Header, NullTxTracer.Instance);
 
@@ -480,9 +485,9 @@ namespace Nethermind.Evm.Test
 
             long actualIntrinsic = tx.GasLimit - tracer.IntrinsicGasAt;
             actualIntrinsic.Should().Be(intrinsic);
-            tracer.CalculateAdditionalGasRequired(tx).Should().Be(1);
+            tracer.CalculateAdditionalGasRequired(tx, releaseSpec).Should().Be(1);
             tracer.GasSpent.Should().Be(54224L);
-            long estimate = tracer.CalculateEstimate(tx);
+            long estimate = tracer.CalculateEstimate(tx, releaseSpec);
             estimate.Should().Be(54225L);
 
             ConfirmEnoughEstimate(tx, block, estimate);

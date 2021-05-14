@@ -27,6 +27,7 @@ using Nethermind.Blockchain.Producers;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Transactions;
+using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.State;
@@ -38,7 +39,6 @@ namespace Nethermind.Runner.Ethereum.Steps
     public class StartBlockProducer : IStep
     {
         protected IApiWithBlockchain _api;
-        private BlockProducerEnv? _blockProducerContext;
 
         public StartBlockProducer(INethermindApi api)
         {
@@ -95,80 +95,6 @@ namespace Nethermind.Runner.Ethereum.Steps
             {
                 throw new NotSupportedException($"Mining in {_api.ChainSpec.SealEngineType} mode is not supported");    
             }
-        }
-
-        // TODO: Use BlockProducerEnvFactory
-        protected BlockProducerEnv GetProducerChain()
-        {
-            BlockProducerEnv Create()
-            {
-                ReadOnlyDbProvider dbProvider = _api.DbProvider.AsReadOnly(false);
-                ReadOnlyBlockTree blockTree = _api.BlockTree.AsReadOnly();
-
-                ReadOnlyTxProcessingEnv txProcessingEnv =
-                    new ReadOnlyTxProcessingEnv(dbProvider, _api.ReadOnlyTrieStore, blockTree, _api.SpecProvider, _api.LogManager);
-                
-                BlockProcessor blockProcessor =
-                    CreateBlockProcessor(txProcessingEnv, txProcessingEnv);
-
-                IBlockchainProcessor blockchainProcessor =
-                    new BlockchainProcessor(
-                        blockTree,
-                        blockProcessor,
-                        _api.BlockPreprocessor,
-                        _api.LogManager,
-                        BlockchainProcessor.Options.NoReceipts);
-
-                OneTimeChainProcessor chainProcessor = new OneTimeChainProcessor(
-                    dbProvider,
-                    blockchainProcessor);
-
-                return new BlockProducerEnv
-                {
-                    ChainProcessor = chainProcessor,
-                    ReadOnlyStateProvider = txProcessingEnv.StateProvider,
-                    TxSource = CreateTxSourceForProducer(txProcessingEnv, txProcessingEnv),
-                    ReadOnlyTxProcessingEnv = txProcessingEnv
-                };
-            }
-
-            return _blockProducerContext ??= Create();
-        }
-
-        protected virtual ITxSource CreateTxSourceForProducer(
-            ReadOnlyTxProcessingEnv processingEnv,
-            IReadOnlyTxProcessorSource readOnlyTxProcessorSource) =>
-            CreateTxPoolTxSource(processingEnv, readOnlyTxProcessorSource);
-
-        protected virtual TxPoolTxSource CreateTxPoolTxSource(ReadOnlyTxProcessingEnv processingEnv, IReadOnlyTxProcessorSource readOnlyTxProcessorSource)
-        {
-            ITxFilter txSourceFilter = CreateTxSourceFilter(processingEnv, readOnlyTxProcessorSource);
-            return new TxPoolTxSource(_api.TxPool, processingEnv.StateReader, _api.LogManager, txSourceFilter);
-        }
-
-        protected virtual ITxFilter CreateTxSourceFilter(ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv, IReadOnlyTxProcessorSource readOnlyTxProcessorSource) =>
-            Blockchain.TxFilterBuilders.CreateStandardTxFilter(_api.Config<IMiningConfig>());
-
-        protected virtual BlockProcessor CreateBlockProcessor(
-            ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv,
-            IReadOnlyTxProcessorSource readOnlyTxProcessorSource)
-        {
-            if (_api.SpecProvider == null) throw new StepDependencyException(nameof(_api.SpecProvider));
-            if (_api.BlockValidator == null) throw new StepDependencyException(nameof(_api.BlockValidator));
-            if (_api.RewardCalculatorSource == null) throw new StepDependencyException(nameof(_api.RewardCalculatorSource));
-            if (_api.ReceiptStorage == null) throw new StepDependencyException(nameof(_api.ReceiptStorage));
-            if (_api.TxPool == null) throw new StepDependencyException(nameof(_api.TxPool));
-
-            return new BlockProcessor(
-                _api.SpecProvider,
-                _api.BlockValidator,
-                _api.RewardCalculatorSource.Get(readOnlyTxProcessingEnv.TransactionProcessor),
-                readOnlyTxProcessingEnv.TransactionProcessor,
-                readOnlyTxProcessingEnv.StateProvider,
-                readOnlyTxProcessingEnv.StorageProvider,
-                _api.ReceiptStorage,
-                NullWitnessCollector.Instance,
-                _api.LogManager);
         }
     }
 }

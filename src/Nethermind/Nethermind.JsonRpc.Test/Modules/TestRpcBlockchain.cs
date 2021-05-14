@@ -35,12 +35,10 @@ using Nethermind.Db.Blooms;
 using Nethermind.Int256;
 using Nethermind.KeyStore;
 using Nethermind.Specs;
-using Nethermind.Synchronization;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
 using Newtonsoft.Json;
-using NSubstitute;
 
 namespace Nethermind.JsonRpc.Test.Modules
 {
@@ -118,7 +116,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 SpecProvider,
                 LimboLogs.Instance);
             
-            Bridge ??= new BlockchainBridge(processingEnv, TxPool, ReceiptStorage, filterStore, filterManager, EthereumEcdsa, Timestamper, LogFinder, false, false);
+            Bridge ??= new BlockchainBridge(processingEnv, TxPool, ReceiptStorage, filterStore, filterManager, EthereumEcdsa, Timestamper, LogFinder, SpecProvider, false, false);
             BlockFinder ??= BlockTree;
             
             ITxSigner txSigner = new WalletTxSigner(TestWallet, specProvider?.ChainId ?? 0);
@@ -134,7 +132,8 @@ namespace Nethermind.JsonRpc.Test.Modules
                 TxPool,
                 TxSender,
                 TestWallet,
-                LimboLogs.Instance);
+                LimboLogs.Instance,
+                SpecProvider);
             
             return this;
         }

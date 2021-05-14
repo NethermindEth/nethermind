@@ -26,6 +26,7 @@ using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
@@ -45,8 +46,9 @@ namespace Nethermind.Merge.Plugin.Handlers
             IGasLimitCalculator gasLimitCalculator,
             ISigner signer,
             ITimestamper timestamper,
+            ISpecProvider specProvider,
             ILogManager logManager) 
-            : base(txSource, processor, new Eth2SealEngine(signer), blockTree, blockProcessingQueue, stateProvider, gasLimitCalculator, timestamper, logManager)
+            : base(txSource, processor, new Eth2SealEngine(signer), blockTree, blockProcessingQueue, stateProvider, gasLimitCalculator, timestamper, specProvider, logManager)
         {
         }
 

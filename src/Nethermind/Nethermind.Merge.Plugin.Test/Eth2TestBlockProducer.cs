@@ -22,6 +22,7 @@ using Nethermind.Blockchain.Processing;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Handlers;
@@ -43,8 +44,9 @@ namespace Nethermind.Merge.Plugin.Test
             ISigner signer,
             ITimestamper timestamper,
             IStateReader stateReader,
+            ISpecProvider specProvider,			
             ILogManager logManager) 
-            : base(txSource, processor, blockTree, blockProcessingQueue, stateProvider, gasLimitCalculator, signer, timestamper, logManager)
+            : base(txSource, processor, blockTree, blockProcessingQueue, stateProvider, gasLimitCalculator, signer, timestamper, specProvider, logManager)
         {
         }
         

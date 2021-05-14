@@ -36,7 +36,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
         {
         }
 
-        protected override object[] GetAllowedTxTypesParameters(Transaction tx) => 
+        protected override object[] GetAllowedTxTypesParameters(Transaction tx, BlockHeader parentHeader) => 
             new object[] {tx.SenderAddress, tx.To ?? Address.Zero, tx.Value};
 
         public override UInt256 Version => Two;
