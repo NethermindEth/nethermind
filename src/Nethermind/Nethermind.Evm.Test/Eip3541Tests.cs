@@ -43,28 +43,42 @@ namespace Nethermind.Evm.Test
             }
         }
         
-        [TestCase(false)]
-        [TestCase(true)]
-        public void Wrong_contract_creation_should_return_bad_instruction(bool eip3541Enabled)
+        [TestCase(false, false)]
+        [TestCase(true, false)]
+        [TestCase(false, true)]
+        [TestCase(true, true)]
+        public void Wrong_contract_creation_should_return_invalid_code_after_3541(bool eip3541Enabled, bool create2)
         {
             TestState.CreateAccount(TestItem.AddressC, 100.Ether());
-
+            
+            byte[] salt = {4, 5, 6};
             byte[] code = Prepare.EvmCode
                 .FromCode("0xEF")
                 .Done;
+            byte[] createContract = create2 ?
+                    Prepare.EvmCode.Create2(code, salt, UInt256.Zero).Done
+                    : Prepare.EvmCode.Create(code, UInt256.Zero).Done;
             
             _processor = new TransactionProcessor(SpecProvider, TestState, Storage, Machine, LimboLogs.Instance);
             long blockNumber = eip3541Enabled ? LondonTestBlockNumber : LondonTestBlockNumber - 1;
-            (Block block, Transaction transaction) = PrepareTx(blockNumber, 100000, code);
+            (Block block, Transaction transaction) = PrepareTx(blockNumber, 100000, createContract);
 
             transaction.GasPrice = 20.GWei();
             transaction.To = null;
-            transaction.Data = code;
+            transaction.Data = createContract;
             TestAllTracerWithOutput tracer = CreateTracer();
             _processor.Execute(transaction, block.Header, tracer);
-            
-            tracer.Error.Should().Be(null);
-            tracer.StatusCode.Should().Be(0);
+
+            if (eip3541Enabled)
+            {
+                tracer.Error.Should().Be("InvalidCode");
+                tracer.StatusCode.Should().Be(0);
+            }
+            else
+            {
+                tracer.Error.Should().Be(null);
+                tracer.StatusCode.Should().Be(1);
+            }
         }
     }
 }
