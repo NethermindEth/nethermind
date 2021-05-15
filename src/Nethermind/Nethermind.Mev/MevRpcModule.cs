@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections.Generic;
 using System.Numerics;
 using System.Linq;
 using System.Text;
@@ -28,6 +29,7 @@ using Nethermind.Facade;
 using Nethermind.Logging;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Tracing;
+using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Mev.Data;
 using Nethermind.Mev.Execution;
@@ -67,12 +69,12 @@ namespace Nethermind.Mev
             _chainId = chainId;
         }
 
-        public ResultWrapper<bool> eth_sendBundle(byte[][] transactions, long blockNumber, UInt256? minTimestamp = null, UInt256? maxTimestamp = null)
+        public ResultWrapper<bool> eth_sendBundle(byte[][] transactions, long blockNumber, UInt256? minTimestamp = null, UInt256? maxTimestamp = null, Keccak[]? revertingTxHashes = null)
         {
             Transaction[] txs = Decode(transactions);
-            MevBundle bundle = new(txs, blockNumber, minTimestamp, maxTimestamp);
-            _bundlePool.AddBundle(bundle);
-            return ResultWrapper<bool>.Success(true);
+            MevBundle bundle = new(txs, blockNumber, minTimestamp, maxTimestamp, revertingTxHashes);
+            bool result = _bundlePool.AddBundle(bundle);
+            return ResultWrapper<bool>.Success(result);
         }
 
         public ResultWrapper<TxsResults> eth_callBundle(byte[][] transactions, BlockParameter? blockParameter = null, UInt256? timestamp = null)
