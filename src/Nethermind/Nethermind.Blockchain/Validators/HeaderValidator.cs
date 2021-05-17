@@ -140,7 +140,7 @@ namespace Nethermind.Blockchain.Validators
             bool isEip1559Enabled = spec.IsEip1559Enabled;
             if (isEip1559Enabled)
             {
-                UInt256? expectedBaseFee = BlockHeader.CalculateBaseFee(parent, spec);
+                UInt256? expectedBaseFee = BaseFeeCalculator.Calculate(parent, spec);
                 isEip1559Correct = expectedBaseFee == header.BaseFee;
                 
                 if (expectedBaseFee != header.BaseFee)

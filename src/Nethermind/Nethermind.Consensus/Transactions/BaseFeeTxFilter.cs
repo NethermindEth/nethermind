@@ -37,7 +37,7 @@ namespace Nethermind.Consensus.Transactions
         {
             long blockNumber = parentHeader.Number + 1;
             IReleaseSpec releaseSpec = _specProvider.GetSpec(blockNumber);
-            UInt256 baseFee = BlockHeader.CalculateBaseFee(parentHeader, releaseSpec);
+            UInt256 baseFee = BaseFeeCalculator.Calculate(parentHeader, releaseSpec);
             bool isEip1559Enabled = releaseSpec.IsEip1559Enabled;
 
             bool skipCheck = tx.IsServiceTransaction || !isEip1559Enabled;

@@ -67,7 +67,7 @@ namespace Nethermind.Core
         public long GasUsed { get; set; }
         public long GasLimit { get; set; }
         public UInt256 Timestamp { get; set; }
-        public DateTime TimestampDate => DateTimeOffset.FromUnixTimeSeconds((long) Timestamp).LocalDateTime;
+        public DateTime TimestampDate => DateTimeOffset.FromUnixTimeSeconds((long)Timestamp).LocalDateTime;
         public byte[] ExtraData { get; set; } = Array.Empty<byte>();
         public Keccak? MixHash { get; set; }
         public ulong Nonce { get; set; }
@@ -127,47 +127,6 @@ namespace Nethermind.Core
             Full,
             Short,
             FullHashAndNumber
-        }
-        
-        public static UInt256 CalculateBaseFee(BlockHeader parent, IReleaseSpec spec)
-        {
-            UInt256 expectedBaseFee = UInt256.Zero;
-            if (spec.IsEip1559Enabled)
-            {
-                UInt256 parentBaseFee = parent.BaseFee;
-                long gasDelta;
-                UInt256 feeDelta;
-                bool isForkBlockNumber = spec.Eip1559TransitionBlock == parent.Number + 1;
-                long parentGasTarget = parent.GasLimit / Eip1559Constants.ElasticityMultiplier;
-                if (isForkBlockNumber)
-                    parentGasTarget = parent.GasLimit;
-                
-                if (parent.GasUsed == parentGasTarget)
-                {
-                    expectedBaseFee = parent.BaseFee;
-                }
-                else if (parent.GasUsed > parentGasTarget)
-                {
-                    gasDelta = parent.GasUsed - parentGasTarget;
-                    feeDelta = UInt256.Max(
-                        parentBaseFee * (UInt256) gasDelta / (UInt256) parentGasTarget / Eip1559Constants.BaseFeeMaxChangeDenominator,
-                        UInt256.One);
-                    expectedBaseFee = parentBaseFee + feeDelta;
-                }
-                else
-                {
-                    gasDelta = parentGasTarget - parent.GasUsed;
-                    feeDelta = parentBaseFee * (UInt256) gasDelta / (UInt256) parentGasTarget / Eip1559Constants.BaseFeeMaxChangeDenominator;
-                    expectedBaseFee = UInt256.Max(parentBaseFee - feeDelta, 0);
-                }
-
-                if (isForkBlockNumber)
-                {
-                    expectedBaseFee = Eip1559Constants.ForkBaseFee;
-                }
-            }
-
-            return expectedBaseFee;
         }
     }
 }
