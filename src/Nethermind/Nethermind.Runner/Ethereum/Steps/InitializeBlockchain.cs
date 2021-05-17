@@ -248,6 +248,8 @@ namespace Nethermind.Runner.Ethereum.Steps
             var filterStore = setApi.FilterStore = new FilterStore();
             setApi.FilterManager = new FilterManager(filterStore, mainBlockProcessor, txPool, getApi.LogManager);
             setApi.HealthHintService = CreateHealthHintService();
+
+            if(_logger.IsInfo) _logger.Info("Initialize blockchain step finished.");
             return Task.CompletedTask;
         }
         
