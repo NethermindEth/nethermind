@@ -243,7 +243,7 @@ namespace Nethermind.Blockchain.Producers
             };
 
             if (Logger.IsDebug) Logger.Debug($"Setting total difficulty to {parent.TotalDifficulty} + {difficulty}.");
-            header.BaseFee = BaseFeeCalculator.Calculate(parent, _specProvider.GetSpec(header.Number));
+            header.BaseFeePerGas = BaseFeeCalculator.Calculate(parent, _specProvider.GetSpec(header.Number));
 
             IEnumerable<Transaction> transactions = GetTransactions(parent);
             Block block = new(header, transactions, Array.Empty<BlockHeader>());

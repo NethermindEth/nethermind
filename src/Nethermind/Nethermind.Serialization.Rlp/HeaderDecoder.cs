@@ -85,7 +85,7 @@ namespace Nethermind.Serialization.Rlp
 
             if (blockHeader.Number >= Eip1559TransitionBlock)
             {
-                blockHeader.BaseFee = decoderContext.DecodeUInt256();
+                blockHeader.BaseFeePerGas = decoderContext.DecodeUInt256();
             }
 
             if ((rlpBehaviors & RlpBehaviors.AllowExtraData) != RlpBehaviors.AllowExtraData)
@@ -153,7 +153,7 @@ namespace Nethermind.Serialization.Rlp
 
             if (blockHeader.Number >= Eip1559TransitionBlock)
             {
-                blockHeader.BaseFee = rlpStream.DecodeUInt256();
+                blockHeader.BaseFeePerGas = rlpStream.DecodeUInt256();
             }
 
             if ((rlpBehaviors & RlpBehaviors.AllowExtraData) != RlpBehaviors.AllowExtraData)
@@ -205,7 +205,7 @@ namespace Nethermind.Serialization.Rlp
 
             if (header.Number >= Eip1559TransitionBlock)
             {
-                rlpStream.Encode(header.BaseFee);
+                rlpStream.Encode(header.BaseFeePerGas);
             }
         }
 
@@ -244,7 +244,7 @@ namespace Nethermind.Serialization.Rlp
                                 + Rlp.LengthOf(item.GasUsed)
                                 + Rlp.LengthOf(item.Timestamp)
                                 + Rlp.LengthOf(item.ExtraData)
-                                + (item.Number < Eip1559TransitionBlock ? 0 : Rlp.LengthOf(item.BaseFee));
+                                + (item.Number < Eip1559TransitionBlock ? 0 : Rlp.LengthOf(item.BaseFeePerGas));
 
             if (notForSealing)
             {
