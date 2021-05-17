@@ -62,7 +62,6 @@ namespace Nethermind.Runner.Ethereum.Steps
         typeof(SetupKeyStore),
         typeof(InitializeNodeStats),
         typeof(ResolveIps),
-        typeof(InitializePlugins),
         typeof(InitializeBlockchain))]
     public class InitializeNetwork : IStep
     {

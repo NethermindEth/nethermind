@@ -51,9 +51,12 @@ namespace Nethermind.Dsl
 
         public Task InitRpcModules()
         {
+            if(_logger.IsInfo) _logger.Info("Initializing DSL RPC module...");
             var rpcPool = new SingletonModulePool<IDslRpcModule>(new DslRpcModuleFactory(_api, _logger, _interpreters));
 
             _api.RpcModuleProvider.Register(rpcPool);
+
+            if(_logger.IsInfo) _logger.Info("Initialized DSL RPC module correctly.");
             return Task.CompletedTask;
         }
 
