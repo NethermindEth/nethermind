@@ -244,7 +244,9 @@ namespace Nethermind.Evm
                             previousCallOutput = ZeroPaddedSpan.Empty;
 
                             long codeDepositGasCost = CodeDepositHandler.CalculateCost(callResult.Output.Length, spec);
-                            if (gasAvailableForCodeDeposit >= codeDepositGasCost)
+                            bool invalidCode = (currentState.ExecutionType.IsAnyCreate() && spec.IsEip3541Enabled &&
+                                               callResult.Output.Length >= 1 && callResult.Output[0] == 0xEF);
+                            if (gasAvailableForCodeDeposit >= codeDepositGasCost && !invalidCode)
                             {
                                 Keccak codeHash = _state.UpdateCode(callResult.Output);
                                 _state.UpdateCodeHash(callCodeOwner, codeHash, spec);
@@ -257,7 +259,7 @@ namespace Nethermind.Evm
                             }
                             else
                             {
-                                if (spec.FailOnOutOfGasCodeDeposit)
+                                if (spec.FailOnOutOfGasCodeDeposit || invalidCode)
                                 {
                                     currentState.GasAvailable -= gasAvailableForCodeDeposit;
                                     _state.Restore(previousState.StateSnapshot);
