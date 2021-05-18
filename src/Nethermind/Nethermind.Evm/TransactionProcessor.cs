@@ -284,6 +284,11 @@ namespace Nethermind.Evm
                         {
                             throw new OutOfGasException();
                         }
+                        
+                        if (spec.IsEip3541Enabled && substate.Output.Length >= 1 && substate.Output.Span.Slice(0, 1)[0] == 0xEF)
+                        {
+                            throw new InvalidCodeException();
+                        }
 
                         if (unspentGas >= codeDepositGasCost)
                         {

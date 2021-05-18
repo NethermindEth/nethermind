@@ -204,6 +204,11 @@ namespace Nethermind.Evm
                                 {
                                     _txTracer.ReportActionError(EvmExceptionType.OutOfGas);
                                 }
+                                // Reject code starting with 0xEF if EIP-3541 is enabled.
+                                else if (currentState.ExecutionType.IsAnyCreate() && spec.IsEip3541Enabled && callResult.Output.Length >= 1 && callResult.Output[0] == 0xEF)
+                                {
+                                    _txTracer.ReportActionError(EvmExceptionType.InvalidCode);
+                                }
                                 else
                                 {
                                     if (currentState.ExecutionType.IsAnyCreate())
@@ -2268,13 +2273,6 @@ namespace Nethermind.Evm
 
                         Span<byte> initCode = vmState.Memory.LoadSpan(in memoryPositionOfInitCode, initCodeLength);
                         
-                        // Reject code starting with 0xEF if EIP-3541 is enabled.
-                        if (spec.IsEip3541Enabled && initCode.Length >= 1 && initCode[0] == 0xEF)
-                        {
-                            EndInstructionTraceError(EvmExceptionType.InvalidCode);
-                            return CallResult.InvalidCodeException;
-                        }
-
                         UInt256 balance = _state.GetBalance(env.ExecutingAccount);
                         if (value > balance)
                         {
