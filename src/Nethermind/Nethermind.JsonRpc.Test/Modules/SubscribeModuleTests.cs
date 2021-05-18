@@ -758,6 +758,14 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public void ReceiptCanonicalityMonitor_can_change_removed_flag_of_receipt()
         {
+            TxReceipt[] GetTxReceipts(LogEntry logEntry, LogEntry logEntryB1, LogEntry logEntryC1, bool removed = false) =>
+                new[]
+                {
+                    Build.A.Receipt.WithIndex(11).WithLogs(logEntry).WithRemoved(removed).TestObject,
+                    Build.A.Receipt.WithIndex(22).WithLogs(logEntry, logEntryB1).WithRemoved(removed).TestObject,
+                    Build.A.Receipt.WithIndex(33).WithLogs(logEntryB1, logEntryC1).WithRemoved(removed).TestObject
+                };
+
             ReceiptCanonicalityMonitor receiptCanonicalityMonitor =
                 new ReceiptCanonicalityMonitor(_blockTree, _receiptStorage, _logManager);
             
@@ -765,12 +773,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             LogEntry logEntryB = Build.A.LogEntry.WithAddress(TestItem.AddressB).WithTopics(TestItem.KeccakB).TestObject;
             LogEntry logEntryC = Build.A.LogEntry.WithData(TestItem.RandomDataC).TestObject;
 
-            TxReceipt[] txReceipts =
-            {
-                Build.A.Receipt.WithIndex(11).WithLogs(logEntryA).TestObject,
-                Build.A.Receipt.WithIndex(22).WithLogs(logEntryA, logEntryB).TestObject,
-                Build.A.Receipt.WithIndex(33).WithLogs(logEntryB, logEntryC).TestObject
-            };
+            TxReceipt[] txReceipts = GetTxReceipts(logEntryA, logEntryB, logEntryC);
             
             _receiptStorage.Get(Arg.Any<Block>()).Returns(txReceipts);
 
@@ -779,10 +782,9 @@ namespace Nethermind.JsonRpc.Test.Modules
             BlockReplacementEventArgs blockEventArgs = new BlockReplacementEventArgs(block, previousBlock);
 
             TxReceipt[] receiptsWithFalseFlag = txReceipts;
-            TxReceipt[] receiptsWithTrueFlag = txReceipts;
-            for (int i = 0; i < txReceipts.Length; i++)
+            TxReceipt[] receiptsWithTrueFlag = GetTxReceipts(logEntryA, logEntryB, logEntryC);
+            for (int i = 0; i < receiptsWithTrueFlag.Length; i++)
             {
-                receiptsWithFalseFlag[i].Removed = false;
                 receiptsWithTrueFlag[i].Removed = true;
             }
 
