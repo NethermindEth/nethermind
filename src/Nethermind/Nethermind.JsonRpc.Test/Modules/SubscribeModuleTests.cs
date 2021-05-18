@@ -534,11 +534,6 @@ namespace Nethermind.JsonRpc.Test.Modules
             jsonRpcResults.Count.Should().Be(0);
             
             BlockEventArgs blockEventArgs = new BlockEventArgs(block);
-            logsSubscription.JsonRpcDuplexClient.SendJsonRpcResult(Arg.Do<JsonRpcResult>(j =>
-            {
-                jsonRpcResults.Add(j);
-                manualResetEvent.Set();
-            }));
             _blockTree.NewHeadBlock += Raise.EventWith(new object(), blockEventArgs);
             manualResetEvent.WaitOne(TimeSpan.FromMilliseconds(200));
             
