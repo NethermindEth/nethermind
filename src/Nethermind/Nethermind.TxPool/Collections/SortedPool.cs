@@ -168,6 +168,7 @@ namespace Nethermind.TxPool.Collections
             return false;
         }
 
+        [MethodImpl(MethodImplOptions.Synchronized)]
         public bool TryRemove(TKey key, TGroupKey? groupKey, out ICollection<TValue>? bucket)
         {
             bucket = null;
