@@ -45,6 +45,7 @@ namespace Nethermind.JsonRpc.Modules
         public const string Vault = nameof(Vault);
         public const string Deposit = nameof(Deposit);
         public const string Health= nameof(Health);
+        public const string Dsl = nameof(Dsl);
         
         public static IEnumerable<string> AllBuiltInModules { get; } = new List<string>()
         {
@@ -71,7 +72,8 @@ namespace Nethermind.JsonRpc.Modules
             Baseline,
             Vault,
             Deposit,
-            Health
+            Health,
+            Dsl
         };
 
         public static IEnumerable<string> DefaultModules { get; } = new List<string>()
