@@ -96,7 +96,6 @@ namespace Nethermind.Dsl
                 if(files.Length == 0)
                 {
                     if(_logger.IsInfo) _logger.Info($"No DSL scripts were found at the start of the plugin in the {dirPath}");
-                    yield return null;
                     yield break;
                 }
 
