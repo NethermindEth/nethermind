@@ -782,11 +782,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             BlockReplacementEventArgs blockEventArgs = new BlockReplacementEventArgs(block, previousBlock);
 
             TxReceipt[] receiptsWithFalseFlag = txReceipts;
-            TxReceipt[] receiptsWithTrueFlag = GetTxReceipts(logEntryA, logEntryB, logEntryC);
-            for (int i = 0; i < receiptsWithTrueFlag.Length; i++)
-            {
-                receiptsWithTrueFlag[i].Removed = true;
-            }
+            TxReceipt[] receiptsWithTrueFlag = GetTxReceipts(logEntryA, logEntryB, logEntryC, true);
 
             TxReceipt[] changedReceipts = Array.Empty<TxReceipt>();
             ManualResetEvent manualResetEvent = new ManualResetEvent(false);
