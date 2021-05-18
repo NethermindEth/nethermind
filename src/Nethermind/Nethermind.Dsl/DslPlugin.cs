@@ -10,6 +10,7 @@ using Nethermind.Dsl.Pipeline;
 using Nethermind.Dsl.JsonRpc;
 using System.Linq;
 using Nethermind.JsonRpc.Modules;
+using System;
 
 #nullable enable
 namespace Nethermind.Dsl
@@ -36,12 +37,15 @@ namespace Nethermind.Dsl
             IEnumerable<string> dslScripts = LoadDSLScript();
             _interpreters = new Dictionary<int, Interpreter>();
 
-            foreach(var script in dslScripts)
+            if (dslScripts != null && dslScripts.Count() != 0)
             {
-                AddInterpreter(new Interpreter(_api, script));
+                foreach (var script in dslScripts)
+                {
+                    AddInterpreter(new Interpreter(_api, script));
+                }
             }
 
-            if (_logger.IsInfo) _logger.Info("DSL plugin initialized.");
+            if (_logger.IsInfo) _logger.Info($"DSL plugin initialized with {_interpreters.Count} scripts loaded at the start of the node.");
         }
 
         public Task InitNetworkProtocol()
@@ -88,6 +92,13 @@ namespace Nethermind.Dsl
             if (FileSystem.Directory.Exists(dirPath))
             {
                 string[] files = FileSystem.Directory.GetFiles("DSL", "*.txt");
+
+                if(files.Length == 0)
+                {
+                    if(_logger.IsInfo) _logger.Info($"No DSL scripts were found at the start of the plugin in the {dirPath}");
+                    yield return null;
+                    yield break;
+                }
 
                 foreach(var file in files)
                 {
