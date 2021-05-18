@@ -23,6 +23,7 @@ using System.Threading.Tasks;
 using Nethermind.Abi;
 using Nethermind.Baseline.Test.Contracts;
 using Nethermind.Baseline.Tree;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -175,13 +176,12 @@ namespace Nethermind.Baseline.Test
                 public ReorgTxPool(
                     ITxStorage txStorage, 
                     IEthereumEcdsa ecdsa,
-                    IChainHeadSpecProvider specProvider,
+                    IChainHeadInfoProvider chainHeadInfoProvider,
                     ITxPoolConfig txPoolConfig,
-                    IReadOnlyStateProvider stateProvider,
                     ITxValidator validator,
                     ILogManager? logManager,
-                    IComparer<Transaction>? comparer = null) 
-                    : base(txStorage, ecdsa, specProvider, txPoolConfig, stateProvider, validator, logManager, comparer)
+                    IComparer<Transaction> comparer) 
+                    : base(txStorage, ecdsa, chainHeadInfoProvider, txPoolConfig, validator, logManager, comparer)
                 {
                 }
 
@@ -196,11 +196,11 @@ namespace Nethermind.Baseline.Test
                 new ReorgTxPool(
                     txStorage,
                     EthereumEcdsa,
-                    new FixedBlockChainHeadSpecProvider(SpecProvider),
+                    new ChainHeadInfoProvider(new FixedBlockChainHeadSpecProvider(SpecProvider), BlockTree, State),
                     new TxPoolConfig(),
-                    State,
                     new TxValidator(SpecProvider.ChainId),
-                    LimboLogs.Instance);
+                    LimboLogs.Instance,
+                    TransactionComparerProvider.GetDefaultComparer());
         }
 
         private BaselineTree BuildATree(IKeyValueStore keyValueStore = null)

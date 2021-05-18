@@ -68,7 +68,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
         public ResultWrapper<ParityTxTraceFromReplay> trace_rawTransaction(byte[] data, string[] traceTypes)
         {
-            Transaction tx = _txDecoder.Decode(new RlpStream(data));
+            Transaction tx = _txDecoder.Decode(new RlpStream(data), RlpBehaviors.SkipTypedWrapping);
             return TraceTx(tx, traceTypes, BlockParameter.Latest);
         }
 

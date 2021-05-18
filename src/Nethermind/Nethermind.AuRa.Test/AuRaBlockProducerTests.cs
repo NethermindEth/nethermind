@@ -32,6 +32,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.Tracing;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
@@ -104,7 +105,7 @@ namespace Nethermind.AuRa.Test
                             NullReportingValidator.Instance,
                             auraConfig,
                             FollowOtherMiners.Instance,
-                            MainnetSpecProvider.Instance, 
+                            MainnetSpecProvider.Instance,
                             LimboLogs.Instance);
                     }
         }

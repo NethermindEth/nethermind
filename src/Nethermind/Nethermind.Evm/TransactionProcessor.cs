@@ -82,6 +82,7 @@ namespace Nethermind.Evm
         private void Execute(Transaction transaction, BlockHeader block, ITxTracer txTracer, bool isCall)
         {
             bool notSystemTransaction = !transaction.IsSystem();
+            bool freeTransaction = transaction.IsSystem() || transaction.IsServiceTransaction;
             bool wasSenderAccountCreatedInsideACall = false;
             
             IReleaseSpec spec = _specProvider.GetSpec(block.Number);
@@ -92,17 +93,17 @@ namespace Nethermind.Evm
             
             UInt256 value = transaction.Value;
 
-            UInt256 feeCap = transaction.IsEip1559 ? transaction.FeeCap : transaction.GasPrice;
+            UInt256 feeCap = transaction.FeeCap;
             UInt256 baseFee = block.BaseFee;
-            if (baseFee > feeCap)
+            if (baseFee > feeCap && !freeTransaction)
             {
                 TraceLogInvalidTx(transaction, "MINER_PREMIUM_IS_NEGATIVE");
                 QuickFail(transaction, block, txTracer, "miner premium is negative");
                 return;
             }
             
-            UInt256 premiumPerGas = UInt256.Min(transaction.GasPremium, feeCap - baseFee);
-            UInt256 gasPrice = premiumPerGas + baseFee;
+            UInt256 premiumPerGas = (feeCap < baseFee && freeTransaction) ? UInt256.Zero  : UInt256.Min(transaction.GasPremium, feeCap - baseFee);
+            UInt256 gasPrice = transaction.CalculateEffectiveGasPrice(spec.IsEip1559Enabled, block.BaseFee);
 
             long gasLimit = transaction.GasLimit;
             byte[] machineCode = transaction.IsContractCreation ? transaction.Data : null;
@@ -234,7 +235,7 @@ namespace Nethermind.Evm
                 recipientOrNull = recipient;
                 
                 ExecutionEnvironment env = new();
-                env.TxExecutionContext = new TxExecutionContext(block, caller, transaction.GasPrice);
+                env.TxExecutionContext = new TxExecutionContext(block, caller, gasPrice);
                 env.Value = value;
                 env.TransferValue = value;
                 env.Caller = caller;
@@ -297,7 +298,7 @@ namespace Nethermind.Evm
                         if (_logger.IsTrace) _logger.Trace($"Destroying account {toBeDestroyed}");
                         _storageProvider.ClearStorage(toBeDestroyed);
                         _stateProvider.DeleteAccount(toBeDestroyed);
-                        if (txTracer.IsTracingRefunds) txTracer.ReportRefund(RefundOf.Destroy);
+                        if (txTracer.IsTracingRefunds) txTracer.ReportRefund(RefundOf.Destroy(spec.IsEip3529Enabled));
                     }
 
                     statusCode = StatusCode.Success;
@@ -393,7 +394,7 @@ namespace Nethermind.Evm
             if (!substate.IsError)
             {
                 spentGas -= unspentGas;
-                long refund = substate.ShouldRevert ? 0 : RefundHelper.CalculateClaimableRefund(spentGas, substate.Refund + substate.DestroyList.Count * RefundOf.Destroy);
+                long refund = substate.ShouldRevert ? 0 : RefundHelper.CalculateClaimableRefund(spentGas, substate.Refund + substate.DestroyList.Count * RefundOf.Destroy(spec.IsEip3529Enabled), spec);
 
                 if (_logger.IsTrace) _logger.Trace("Refunding unused gas of " + unspentGas + " and refund of " + refund);
                 _stateProvider.AddToBalance(sender, (ulong) (unspentGas + refund) * gasPrice, spec);

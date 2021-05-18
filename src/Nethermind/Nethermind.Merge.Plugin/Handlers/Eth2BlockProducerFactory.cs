@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -16,6 +16,7 @@
 // 
 
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Comparers;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Producers;
 using Nethermind.Blockchain.Receipts;
@@ -43,7 +44,6 @@ namespace Nethermind.Merge.Plugin.Handlers
             IRewardCalculatorSource rewardCalculatorSource,
             IReceiptStorage receiptStorage,
             IBlockProcessingQueue blockProcessingQueue,
-            IStateProvider stateProvider,
             ISpecProvider specProvider,
             ISigner engineSigner,
             IMiningConfig miningConfig,
@@ -67,9 +67,10 @@ namespace Nethermind.Merge.Plugin.Handlers
                 producerContext.ChainProcessor,
                 blockTree,
                 blockProcessingQueue,
-                stateProvider,
+                producerContext.ReadOnlyStateProvider,
                 new TargetAdjustedGasLimitCalculator(specProvider, miningConfig),
                 engineSigner,
+                specProvider,
                 logManager);
         }
         
@@ -90,6 +91,7 @@ namespace Nethermind.Merge.Plugin.Handlers
 
             ReadOnlyTxProcessingEnv txProcessingEnv =
                 new(readOnlyDbProvider, readOnlyTrieStore, readOnlyBlockTree, specProvider, logManager);
+            ITransactionComparerProvider transactionComparerProvider = new TransactionComparerProvider(specProvider, blockTree);
                 
             BlockProcessor blockProcessor =
                 CreateBlockProcessor(txProcessingEnv, 
@@ -116,22 +118,22 @@ namespace Nethermind.Merge.Plugin.Handlers
             {
                 ChainProcessor = chainProcessor,
                 ReadOnlyStateProvider = txProcessingEnv.StateProvider,
-                TxSource = CreateTxSourceForProducer(txProcessingEnv, txPool, logManager, miningConfig),
+                TxSource = CreateTxSourceForProducer(txProcessingEnv, txPool, specProvider, logManager, miningConfig, transactionComparerProvider),
                 ReadOnlyTxProcessingEnv = txProcessingEnv
             };
         }
 
-        private ITxSource CreateTxSourceForProducer(ReadOnlyTxProcessingEnv processingEnv, ITxPool txPool, ILogManager logManager, IMiningConfig miningConfig) =>
-            CreateTxPoolTxSource(processingEnv, txPool, miningConfig, logManager);
+        private ITxSource CreateTxSourceForProducer(ReadOnlyTxProcessingEnv processingEnv, ITxPool txPool, ISpecProvider specProvider, ILogManager logManager, IMiningConfig miningConfig, ITransactionComparerProvider transactionComparerProvider) =>
+            CreateTxPoolTxSource(processingEnv, txPool, miningConfig, specProvider, transactionComparerProvider, logManager);
 
-        private TxPoolTxSource CreateTxPoolTxSource(ReadOnlyTxProcessingEnv processingEnv, ITxPool txPool, IMiningConfig miningConfig, ILogManager logManager)
+        private TxPoolTxSource CreateTxPoolTxSource(ReadOnlyTxProcessingEnv processingEnv, ITxPool txPool, IMiningConfig miningConfig, ISpecProvider specProvider, ITransactionComparerProvider transactionComparerProvider, ILogManager logManager)
         {
-            ITxFilter txSourceFilter = CreateTxSourceFilter(miningConfig);
-            return new TxPoolTxSource(txPool, processingEnv.StateReader, logManager, txSourceFilter);
+            ITxFilterPipeline txSourceFilterPipeline = CreateTxSourceFilter(logManager, specProvider);
+            return new TxPoolTxSource(txPool, processingEnv.StateReader, specProvider, transactionComparerProvider, logManager, txSourceFilterPipeline);
         }
 
-        private ITxFilter CreateTxSourceFilter(IMiningConfig miningConfig) =>
-            TxFilterBuilders.CreateStandardTxFilter(miningConfig);
+        private ITxFilterPipeline CreateTxSourceFilter(ILogManager logManager, ISpecProvider specProvider) =>
+               TxFilterPipelineBuilder.CreateStandardFilteringPipeline(logManager, specProvider);
 
         private BlockProcessor CreateBlockProcessor(
             ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv,

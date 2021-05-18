@@ -16,9 +16,11 @@
 // 
 
 using System;
+using System.Collections;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using FluentAssertions;
 using NUnit.Framework;
 
 namespace Nethermind.Config.Test
@@ -105,20 +107,28 @@ namespace Nethermind.Config.Test
             }
             else if (value is bool)
             {
-                actualValue = value.ToString().ToLowerInvariant();
+                actualValue = value.ToString()?.ToLowerInvariant();
             }
-            else if (value is int[])
+            else if (value is IList actualValueArray)
             {
-                //there is a case when we have default value as [4, 8, 8] and we need to compare this string to int[] so removing brackets and whitespaces
-                int[] items = (int[])value;
-                expectedValue = expectedValue.Trim('[').Trim(']');
-                expectedValue = expectedValue.Replace(" ", "");
-                string[] numbers = expectedValue.Split(',');
+                // there is a case when we have default value as [4, 8, 8] and we need to compare this string to int[] so removing brackets and whitespaces
+                string[] expectedItems = expectedValue
+                    .Trim('[').Trim(']')
+                    .Replace(" ", "")
+                    .Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
 
-                for (int i = 0; i < numbers.Length; i++)
+
+                int length = Math.Min(expectedItems.Length, actualValueArray.Count);
+                for (int i = 0; i < length; i++)
                 {
-                    Assert.AreEqual(items[i].ToString(), numbers[i]);
+                    string? actualValueAtIndex = actualValueArray[i]?.ToString();
+                    string expectedValueAtIndex = expectedItems[i];
+                    Assert.AreEqual(actualValueAtIndex, expectedValueAtIndex,
+                        $"Property: {property.Name}, expected value at index {i}: <{expectedValueAtIndex}> but was <{actualValueAtIndex}>");
                 }
+
+                Assert.AreEqual(actualValueArray.Count, expectedItems.Length,
+                    $"Property: {property.Name}, expected value length: <{expectedItems.Length}> but was <{actualValueArray.Count}>");
 
                 return;
             }
@@ -127,7 +137,7 @@ namespace Nethermind.Config.Test
                 actualValue = value.ToString();
             }
 
-            Assert.AreEqual(expectedValue, actualValue,
+            Assert.AreEqual(actualValue, expectedValue,
                 $"Property: {property.Name}, expected value: <{expectedValue}> but was <{actualValue}>");
         }
     }

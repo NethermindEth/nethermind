@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -60,7 +60,6 @@ namespace Nethermind.Merge.Plugin
                     _api.RewardCalculatorSource,
                     _api.ReceiptStorage,
                     _api.BlockProcessingQueue,
-                    _api.StateProvider,
                     _api.SpecProvider,
                     _api.EngineSigner,
                     _miningConfig,

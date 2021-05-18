@@ -19,6 +19,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
+using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Core;
@@ -41,15 +42,23 @@ namespace Nethermind.Merge.Plugin.Handlers
         private readonly IBlockPreprocessorStep _preprocessor;
         private readonly IBlockchainProcessor _processor;
         private readonly IStateProvider _stateProvider;
+        private readonly IInitConfig _initConfig;
         private readonly ILogger _logger;
         private readonly LruCache<Keccak, bool> _latestBlocks = new(50, "LatestBlocks");
         
-        public NewBlockHandler(IBlockTree blockTree, IBlockPreprocessorStep preprocessor, IBlockchainProcessor processor, IStateProvider stateProvider, ILogManager logManager)
+        public NewBlockHandler(
+            IBlockTree blockTree, 
+            IBlockPreprocessorStep preprocessor, 
+            IBlockchainProcessor processor, 
+            IStateProvider stateProvider, 
+            IInitConfig initConfig,
+            ILogManager logManager)
         {
             _blockTree = blockTree;
             _preprocessor = preprocessor;
             _processor = processor;
             _stateProvider = stateProvider;
+            _initConfig = initConfig;
             _logger = logManager.GetClassLogger();
         }
 
@@ -135,7 +144,7 @@ namespace Nethermind.Merge.Plugin.Handlers
             try
             {
                 _preprocessor.RecoverData(block);
-                processedBlock = _processor.Process(block, ProcessingOptions.EthereumMerge, NullBlockTracer.Instance);
+                processedBlock = _processor.Process(block, GetProcessingOptions(), NullBlockTracer.Instance);
                 if (processedBlock == null)
                 {
                     if (_logger.IsWarn)
@@ -152,6 +161,17 @@ namespace Nethermind.Merge.Plugin.Handlers
             }
 
             return true;
+        }
+
+        private ProcessingOptions GetProcessingOptions()
+        {
+            ProcessingOptions options = ProcessingOptions.EthereumMerge;
+            if (_initConfig.StoreReceipts)
+            {
+                options |= ProcessingOptions.StoreReceipts;
+            }
+
+            return options;
         }
 
         private bool CheckInput(BlockRequestResult request)

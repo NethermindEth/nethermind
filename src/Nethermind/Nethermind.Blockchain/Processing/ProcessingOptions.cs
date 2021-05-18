@@ -75,7 +75,7 @@ namespace Nethermind.Blockchain.Processing
         /// </summary>
         Beam = IgnoreParentNotOnMainChain | DoNotUpdateHead,
         
-        EthereumMerge = ReadOnlyChain | ForceProcessing | DoNotUpdateHead
+        EthereumMerge = ReadOnlyChain | ForceProcessing | DoNotUpdateHead | IgnoreParentNotOnMainChain
     }
 
     public static class ProcessingOptionsExtensions
