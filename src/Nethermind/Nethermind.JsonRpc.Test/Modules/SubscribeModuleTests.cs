@@ -781,9 +781,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             Block previousBlock = Build.A.Block.WithBloom(new Bloom(txReceipts.Select(r => r.Bloom).ToArray())).TestObject;
             BlockReplacementEventArgs blockEventArgs = new BlockReplacementEventArgs(block, previousBlock);
 
-            TxReceipt[] receiptsWithFalseFlag = txReceipts;
-            TxReceipt[] receiptsWithTrueFlag = GetTxReceipts(logEntryA, logEntryB, logEntryC, true);
-
+            TxReceipt[] receiptsRemoved = GetTxReceipts(logEntryA, logEntryB, logEntryC, true);
             TxReceipt[] changedReceipts = Array.Empty<TxReceipt>();
             ManualResetEvent manualResetEvent = new ManualResetEvent(false);
             _receiptStorage.Insert(Arg.Any<Block>(), Arg.Do<TxReceipt[]>(r =>
@@ -794,8 +792,8 @@ namespace Nethermind.JsonRpc.Test.Modules
             _blockTree.BlockAddedToMain += Raise.EventWith(new object(), blockEventArgs);
             manualResetEvent.WaitOne(TimeSpan.FromMilliseconds(200));
 
-            txReceipts.Should().BeEquivalentTo(receiptsWithFalseFlag);
-            changedReceipts.Should().BeEquivalentTo(receiptsWithTrueFlag);
+            txReceipts.Should().BeEquivalentTo(txReceipts);
+            changedReceipts.Should().BeEquivalentTo(receiptsRemoved);
         }
 
         [Test]
