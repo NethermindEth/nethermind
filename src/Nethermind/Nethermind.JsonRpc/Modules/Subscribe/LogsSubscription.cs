@@ -32,15 +32,15 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
     public class LogsSubscription : Subscription
     {
         private readonly IReceiptStorage _receiptStorage;
-        private readonly IBlockFinder _blockFinder;
+        private readonly IBlockTree _blockTree;
         private readonly LogFilter _filter;
         private readonly ILogger _logger;
 
-        public LogsSubscription(IJsonRpcDuplexClient jsonRpcDuplexClient, IReceiptStorage? receiptStorage, IFilterStore? store, IBlockFinder? blockFinder, ILogManager? logManager, Filter? filter = null) 
+        public LogsSubscription(IJsonRpcDuplexClient jsonRpcDuplexClient, IReceiptStorage? receiptStorage, IFilterStore? store, IBlockTree? blockTree, ILogManager? logManager, Filter? filter = null) 
             : base(jsonRpcDuplexClient)
         {
             _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
-            _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
+            _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             IFilterStore filterStore = store ?? throw new ArgumentNullException(nameof(store));
 
@@ -62,7 +62,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             }
             
             _receiptStorage.ReceiptsInserted += OnReceiptsInserted;
-            _blockFinder.NewHeadBlock += OnNewHeadBlock;
+            _blockTree.NewHeadBlock += OnNewHeadBlock;
             if(_logger.IsTrace) _logger.Trace($"Logs subscription {Id} will track ReceiptsInserted.");
         }
 
@@ -70,7 +70,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         {
             if (e.Block is not null)
             {
-                TryPublishReceiptsInBackground(e.Block.Header, () =>  _receiptStorage.Get(e.Block), nameof(_blockFinder.NewHeadBlock));
+                TryPublishReceiptsInBackground(e.Block.Header, () =>  _receiptStorage.Get(e.Block), nameof(_blockTree.NewHeadBlock));
             }
         }
 
@@ -98,8 +98,8 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
 
         private void TryPublishEvent(BlockHeader blockHeader, TxReceipt[] receipts, string eventName)
         {
-            BlockHeader fromBlock = _blockFinder.FindHeader(_filter.FromBlock);
-            BlockHeader toBlock = _blockFinder.FindHeader(_filter.ToBlock, true);
+            BlockHeader fromBlock = _blockTree.FindHeader(_filter.FromBlock);
+            BlockHeader toBlock = _blockTree.FindHeader(_filter.ToBlock, true);
 
             bool isAfterFromBlock = blockHeader.Number >= fromBlock?.Number;
             bool isBeforeToBlock = blockHeader.Number <= toBlock?.Number;
@@ -155,7 +155,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         public override void Dispose()
         {
             _receiptStorage.ReceiptsInserted -= OnReceiptsInserted;
-            _blockFinder.NewHeadBlock -= OnNewHeadBlock;
+            _blockTree.NewHeadBlock -= OnNewHeadBlock;
             if(_logger.IsTrace) _logger.Trace($"Logs subscription {Id} will no longer track ReceiptsInserted.");
         }
     }

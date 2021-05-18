@@ -207,7 +207,6 @@ namespace Nethermind.DataMarketplace.Test
                 throw new NotImplementedException();
             }
 
-            public event EventHandler<BlockEventArgs> NewHeadBlock;
             public Keccak HeadHash => _headBlock.Hash;
             public Keccak GenesisHash => null;
             public Keccak PendingHash => null;
