@@ -64,11 +64,6 @@ namespace Nethermind.Evm
             Execute(transaction, block, txTracer, false);
         }
 
-        public void CallAndRestoreMultiple(Transaction[] transactions, BlockHeader block, ITxTracer txTracer)
-        {
-            throw new NotImplementedException();
-        }
-
         private void QuickFail(Transaction tx, BlockHeader block, ITxTracer txTracer, string? reason)
         {
             block.GasUsed += tx.GasLimit;
