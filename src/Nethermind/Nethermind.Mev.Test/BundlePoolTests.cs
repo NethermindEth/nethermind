@@ -24,6 +24,7 @@ using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Logging;
 using Nethermind.Mev.Data;
 using Nethermind.Mev.Execution;
 using Nethermind.Mev.Source;
@@ -85,9 +86,12 @@ namespace Nethermind.Mev.Test
         private static BundlePool CreateBundlePool(IBlockFinalizationManager? blockFinalizationManager = null)
         {
             BundlePool bundlePool = new(
-                Substitute.For<IBlockTree>(), 
-                Substitute.For<IBundleSimulator>(), 
-                blockFinalizationManager ?? Substitute.For<IBlockFinalizationManager>());
+                Substitute.For<IBlockTree>(),
+                Substitute.For<IBundleSimulator>(),
+                blockFinalizationManager ?? Substitute.For<IBlockFinalizationManager>(),
+                new Timestamper(),
+                new MevConfig(),
+                LimboLogs.Instance);
 
             bundlePool.AddBundle(new MevBundle(Array.Empty<Transaction>(), 4, 0, 0));
             bundlePool.AddBundle(new MevBundle(Array.Empty<Transaction>(), 5, 0, 0));
@@ -102,26 +106,32 @@ namespace Nethermind.Mev.Test
         }
         
         
-        [TestCaseSource(nameof(BundleRetrievalTest))]
-        public static void should_add_bundle_to_bundle_pool(BundleTest test)
+        [Test]
+        public static void should_add_bundle_to_bundle_pool()
         {
-            Timestamper timestamper = new Timestamper();
-            DateTime currTime = timestamper.UtcNow;
-            DateTimeOffset currTimeOffset = currTime;
+            ITimestamper timestamper = new ManualTimestamper(new DateTime(2021, 1, 1));
+            ulong timestamp = timestamper.UnixTime.Seconds;
             
-            BundlePool bundles = new BundlePool(Substitute.For<IBlockTree>(), Substitute.For<IBundleSimulator>(), Substitute.For<IBlockFinalizationManager>());
-            bundles.AddBundle(new MevBundle(Array.Empty<Transaction>(), 0, 0, 0)); //should get added
-            bundles.AddBundle(new MevBundle(Array.Empty<Transaction>(), 1, 5, 0)); //should not get added, min > max
-            bundles.AddBundle(new MevBundle(Array.Empty<Transaction>(), 2,  (UInt64) currTimeOffset.ToUnixTimeSeconds() + 50, (UInt64) currTimeOffset.ToUnixTimeSeconds() + 100)); //should get added
-            bundles.AddBundle(new MevBundle(Array.Empty<Transaction>(), 3,  (UInt64) currTimeOffset.ToUnixTimeSeconds() + 4000, (UInt64) currTimeOffset.ToUnixTimeSeconds() + 5000)); //should not get added, min time too large
-            /*
-            foreach (MevBundle bundle in bundles)
+            BundlePool bundlePool = new(
+                Substitute.For<IBlockTree>(),
+                Substitute.For<IBundleSimulator>(),
+                null,
+                timestamper,
+                new MevConfig(),
+                LimboLogs.Instance);
+
+            Transaction[] txs = Array.Empty<Transaction>();
+            MevBundle[] bundles = new []
             {
-                if (bundle.BlockNumber != 0 && bundle.BlockNumber != 2)
-                {
-                    throw new BlockchainException("Incorrect Block Added.");
-                }
-            } */
+                new MevBundle(txs, 1, 0, 0), //should get added
+                new MevBundle(txs, 1, 5, 0), //should not get added, min > max
+                new MevBundle(txs, 1,  timestamp + 50, timestamp + 100), //should get added
+                new MevBundle(txs, 1,  timestamp + 4000, timestamp + 5000), //should not get added, min time too large
+                
+            };
+
+            bundles.Select(b => bundlePool.AddBundle(b))
+                .Should().BeEquivalentTo(new bool[] {true, false, true, false});
         }
 
         public record BundleTest(long block, ulong testTimestamp, int expectedCount, int expectedRemaining, Action<BundlePool>? action);

@@ -46,6 +46,7 @@ using Nethermind.State;
 using Newtonsoft.Json;
 using NLog.Fluent;
 using NSubstitute;
+using Org.BouncyCastle.Asn1.Cms;
 
 namespace Nethermind.Mev.Test
 {
@@ -76,6 +77,7 @@ namespace Nethermind.Mev.Test
             public IMevRpcModule MevRpcModule { get; set; } = Substitute.For<IMevRpcModule>();
             public IManualBlockFinalizationManager FinalizationManager { get; } = new ManualBlockFinalizationManager();
             public ManualGasLimitCalculator GasLimitCalculator = new() {GasLimit = 10_000_000};
+            private MevConfig _mevConfig = new MevConfig {Enabled = true};
             public Address MinerAddress => TestItem.PrivateKeyD.Address;
             private IBlockValidator BlockValidator { get; set; } = null!;
             private ISigner Signer { get; }
@@ -149,7 +151,7 @@ namespace Nethermind.Mev.Test
                     ProcessingOptions.ProducingBlock);
                 
                 TxBundleSimulator txBundleSimulator = new(_tracerFactory, FollowOtherMiners.Instance, Timestamper);
-                BundlePool = new BundlePool(BlockTree, txBundleSimulator, FinalizationManager);
+                BundlePool = new BundlePool(BlockTree, txBundleSimulator, FinalizationManager, Timestamper, _mevConfig, LogManager);
 
                 return blockProcessor;
             }
@@ -158,7 +160,7 @@ namespace Nethermind.Mev.Test
             {
                 TestBlockchain chain = await base.Build(specProvider, initialValues);
                 MevRpcModule = new MevRpcModule(
-                    new MevConfig {Enabled = true},
+                    _mevConfig,
                     new JsonRpcConfig(),
                     BundlePool,
                     BlockFinder,

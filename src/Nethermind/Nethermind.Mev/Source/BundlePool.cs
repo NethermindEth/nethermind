@@ -34,7 +34,6 @@ using Nethermind.Logging;
 using Nethermind.Mev.Data;
 using Nethermind.Mev.Execution;
 using Nethermind.TxPool.Collections;
-using NSubstitute;
 using Org.BouncyCastle.Security;
 using ILogger = Nethermind.Logging.ILogger;
 
@@ -71,18 +70,30 @@ namespace Nethermind.Mev.Source
     public class BundlePool : IBundlePool, ISimulatedBundleSource, IDisposable
     {
         private readonly IBlockFinalizationManager? _finalizationManager;
+        private readonly ITimestamper _timestamper;
+        private readonly IMevConfig _mevConfig;
         private readonly IBlockTree _blockTree;
         private readonly IBundleSimulator _simulator;
         private readonly SortedRealList<MevBundle, ConcurrentBag<Keccak>> _bundles = new(MevBundleComparer.Default);
         private readonly ConcurrentDictionary<Keccak, ConcurrentDictionary<MevBundle, SimulatedMevBundleContext>> _simulatedBundles = new();
+        private readonly ILogger _logger;
 
- 
-        public BundlePool(IBlockTree blockTree, IBundleSimulator simulator, IBlockFinalizationManager? finalizationManager)
+
+        public BundlePool(
+            IBlockTree blockTree, 
+            IBundleSimulator simulator,
+            IBlockFinalizationManager? finalizationManager,
+            ITimestamper timestamper,
+            IMevConfig mevConfig,
+            ILogManager logManager)
         {
             _finalizationManager = finalizationManager;
+            _timestamper = timestamper;
+            _mevConfig = mevConfig;
             _blockTree = blockTree;
             _simulator = simulator;
             _blockTree.NewSuggestedBlock += OnNewSuggestedBlock;
+            _logger = logManager.GetClassLogger();
             
             if (_finalizationManager != null)
             {
@@ -134,59 +145,52 @@ namespace Nethermind.Mev.Source
 
         public bool AddBundle(MevBundle bundle)
         {
+            if (ValidateBundle(bundle))
+            {
+                bool result;
+
+                lock (_bundles)
+                {
+                    result = _bundles.TryAdd(bundle, new ConcurrentBag<Keccak>());
+                }
+
+                if (result)
+                {
+                    SimulateBundle(bundle);
+                }
+
+                return result;
+            }
+
+            return false;
+        }
+
+        private bool ValidateBundle(MevBundle bundle)
+        {
             if (_finalizationManager?.IsFinalized(bundle.BlockNumber) == true)
             {
                 return false;
             }
 
-            //add validation of bundle here, and write unit tests for it
-            Timestamper? timestamp = new(); //use timestamp from 
-            DateTime currentTime = timestamp.UtcNow; //should I check at time of comparison?
-            DateTimeOffset offsetObj =  currentTime;
-            UInt64 secondsSinceUnixEpoch = (UInt64) offsetObj.ToUnixTimeSeconds();
-            UInt64 delta = 60 * 60; //seconds in an hour
-            ILogManager logManager = Substitute.For<ILogManager>();
-            ILogger logger = logManager?.GetClassLogger(GetType()) ?? throw new ArgumentNullException(nameof(logManager));
-             
-            if (bundle.MaxTimestamp == 0 && bundle.MinTimestamp == 0)
+            UInt256 currentTimestamp = _timestamper.UnixTime.Seconds;
+
+            if (bundle.MaxTimestamp < bundle.MinTimestamp)
             {
+                if (_logger.IsDebug) _logger.Debug($"Bundle rejected, because {nameof(bundle.MaxTimestamp)} {bundle.MaxTimestamp} is < {nameof(bundle.MinTimestamp)} {bundle.MinTimestamp}.");
+                return false;
+            }
+            else if (bundle.MaxTimestamp != 0 && bundle.MaxTimestamp < currentTimestamp)
+            {
+                if (_logger.IsDebug) _logger.Debug($"Bundle rejected, because {nameof(bundle.MaxTimestamp)} {bundle.MaxTimestamp} is < current {currentTimestamp}.");
+                return false;
+            }
+            else if (bundle.MinTimestamp != 0 && bundle.MinTimestamp > currentTimestamp + _mevConfig.BundleHorizon)
+            {
+                if (_logger.IsDebug) _logger.Debug($"Bundle rejected, because {nameof(bundle.MinTimestamp)} {bundle.MaxTimestamp} is further into the future than accepted horizon {_mevConfig.BundleHorizon}.");
+                return false;
             }
 
-            else if (bundle.MaxTimestamp < bundle.MaxTimestamp)
-            {
-                logger.Trace("The bundle is not added because the maximum timestamp is greater than the minimum timestamp.");
-                return false;
-            }
-            
-            else if (bundle.MaxTimestamp < secondsSinceUnixEpoch)
-            {
-                logger.Trace("The bundle is not added because the maximum timestamp is less than the current time.");
-                return false;
-            }
-            
-            else if (bundle.MinTimestamp > secondsSinceUnixEpoch + delta)
-            {
-                string err_msg =
-                    String.Format(
-                        "The bundle is not added because the miminum timestamp is more than {0} seconds from the current time.",
-                        delta);
-                logger.Trace(err_msg);
-                return false;
-            }
-            
-            bool result;
-            
-            lock (_bundles)
-            {
-                result = _bundles.TryAdd(bundle, new ConcurrentBag<Keccak>());
-            }
-            
-            if (result)
-            {
-                SimulateBundle(bundle);
-            }
-
-            return result;
+            return true;
         }
 
         private void SimulateBundle(MevBundle bundle)

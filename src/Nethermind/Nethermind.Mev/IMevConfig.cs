@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using Nethermind.Config;
+using Nethermind.Int256;
 
 namespace Nethermind.Mev
 {
@@ -24,5 +25,7 @@ namespace Nethermind.Mev
             Description = "Defines whether the MEV bundles are allowed.",
             DefaultValue = "false")]
         bool Enabled { get; set; }
+
+        UInt256 BundleHorizon { get; set; }
     }
 }

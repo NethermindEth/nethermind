@@ -17,6 +17,7 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Int256;
 
 namespace Nethermind.Mev
 {
@@ -24,6 +25,7 @@ namespace Nethermind.Mev
     {
         public static readonly MevConfig Default = new();
         public bool Enabled { get; set; }
+        public UInt256 BundleHorizon { get; set; } = 60 * 60;
 
         public int? StrictProfitSwitch { get; set; }
 
