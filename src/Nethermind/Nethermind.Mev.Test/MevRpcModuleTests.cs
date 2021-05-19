@@ -289,14 +289,6 @@ namespace Nethermind.Mev.Test
             resultOfBundle.GetData().Should().Be(true);
         }
 
-        [Test]
-        [Ignore("v0.2")]
-        public async Task Should_merge_disjoint_bundles_with_v2_score() {}
-
-        [Test]
-        [Ignore("v0.2")]
-        public async Task Should_discard_mempool_tx_in_v2_score() {}
-        
         private static async Task<Keccak> SendSignedTransaction(TestMevRpcBlockchain chain, Transaction tx)
         {
             ResultWrapper<Keccak>? result = await chain.EthRpcModule.eth_sendRawTransaction(Rlp.Encode(tx).Bytes);
