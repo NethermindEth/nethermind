@@ -176,14 +176,14 @@ namespace Nethermind.TxPool.Collections
             if (groupKey is not null)
             {
                 _buckets.TryGetValue(groupKey, out bucket);
-            }
-
-            if (_cacheMap.TryGetValue(key, out TValue value))
-            {
-                if (Remove(key, value))
+                
+                if (_cacheMap.TryGetValue(key, out TValue value))
                 {
-                    bucket.Remove(value);
-                    return true;
+                    if (Remove(key, value))
+                    {
+                        bucket.Remove(value);
+                        return true;
+                    }
                 }
             }
 
