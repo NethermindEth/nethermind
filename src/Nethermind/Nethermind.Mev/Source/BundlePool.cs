@@ -18,20 +18,56 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Drawing;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Logging;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
+using Nethermind.JsonRpc;
+using Nethermind.Logging;
 using Nethermind.Mev.Data;
 using Nethermind.Mev.Execution;
+using Nethermind.TxPool.Collections;
+using NSubstitute;
+using Org.BouncyCastle.Security;
+using ILogger = Nethermind.Logging.ILogger;
 
 namespace Nethermind.Mev.Source
 {
+    public class BundleSortedPool : DistinctValueSortedPool<MevBundle, MevBundle, long> {
+        public BundleSortedPool(int capacity, IComparer<MevBundle> comparer, IEqualityComparer<MevBundle> distinctComparer, ILogManager logManager) : base(capacity, comparer, distinctComparer, logManager)
+        {
+        }
+
+        protected override IComparer<MevBundle> GetUniqueComparer(IComparer<MevBundle> comparer) //compares all the bundles to evict the worst one
+        {
+            throw new NotImplementedException();
+        }
+
+        protected override IComparer<MevBundle> GetGroupComparer(IComparer<MevBundle> comparer) //compares two bundles with same block #
+        {
+            throw new NotImplementedException();
+            /*
+             * int compare (MevBundle a, MevBundle b)
+             * {
+             *      SimulateBundle(a);
+             *      SimulateBundle(b);
+             *      Where are the profits?
+             * }
+             */
+        }
+
+        protected override long MapToGroup(MevBundle value)
+        {
+            return value.BlockNumber;
+        }
+    }    
     public class BundlePool : IBundlePool, ISimulatedBundleSource, IDisposable
     {
         private readonly IBlockFinalizationManager? _finalizationManager;
@@ -40,6 +76,7 @@ namespace Nethermind.Mev.Source
         private readonly SortedRealList<MevBundle, ConcurrentBag<Keccak>> _bundles = new(MevBundleComparer.Default);
         private readonly ConcurrentDictionary<Keccak, ConcurrentDictionary<MevBundle, SimulatedMevBundleContext>> _simulatedBundles = new();
 
+ 
         public BundlePool(IBlockTree blockTree, IBundleSimulator simulator, IBlockFinalizationManager? finalizationManager)
         {
             _finalizationManager = finalizationManager;
@@ -102,6 +139,41 @@ namespace Nethermind.Mev.Source
                 return false;
             }
 
+            //add validation of bundle here, and write unit tests for it
+            Timestamper? timestamp = new(); //use timestamp from 
+            DateTime currentTime = timestamp.UtcNow; //should I check at time of comparison?
+            DateTimeOffset offsetObj =  currentTime;
+            UInt64 secondsSinceUnixEpoch = (UInt64) offsetObj.ToUnixTimeSeconds();
+            UInt64 delta = 60 * 60; //seconds in an hour
+            ILogManager logManager = Substitute.For<ILogManager>();
+            ILogger logger = logManager?.GetClassLogger(GetType()) ?? throw new ArgumentNullException(nameof(logManager));
+             
+            if (bundle.MaxTimestamp == 0 && bundle.MinTimestamp == 0)
+            {
+            }
+
+            else if (bundle.MaxTimestamp < bundle.MaxTimestamp)
+            {
+                logger.Trace("The bundle is not added because the maximum timestamp is greater than the minimum timestamp.");
+                return false;
+            }
+            
+            else if (bundle.MaxTimestamp < secondsSinceUnixEpoch)
+            {
+                logger.Trace("The bundle is not added because the maximum timestamp is less than the current time.");
+                return false;
+            }
+            
+            else if (bundle.MinTimestamp > secondsSinceUnixEpoch + delta)
+            {
+                string err_msg =
+                    String.Format(
+                        "The bundle is not added because the miminum timestamp is more than {0} seconds from the current time.",
+                        delta);
+                logger.Trace(err_msg);
+                return false;
+            }
+            
             bool result;
             
             lock (_bundles)
@@ -132,7 +204,7 @@ namespace Nethermind.Mev.Source
                 }
             }
         }
-
+              
         private void SimulateBundle(MevBundle bundle, BlockHeader parent)
         {
             Keccak parentHash = parent.Hash!;
@@ -240,8 +312,8 @@ namespace Nethermind.Mev.Source
                 return Enumerable.Empty<SimulatedMevBundle>();
             }
         }
-        
-        public void Dispose()
+
+        public void Dispose() //is this supposed to be public and shifted right?
         {
             _blockTree.NewSuggestedBlock -= OnNewSuggestedBlock;
             

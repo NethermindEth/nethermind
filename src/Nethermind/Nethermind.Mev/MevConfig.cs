@@ -15,12 +15,30 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
+
 namespace Nethermind.Mev
 {
     public class MevConfig : IMevConfig
     {
-        public static readonly MevConfig Default = new(); 
-        
+        public static readonly MevConfig Default = new();
         public bool Enabled { get; set; }
+
+        public int? StrictProfitSwitch { get; set; }
+
+        //public Address? ProxyContractAddress { get; set; } 
+
+        public int? MaxMergedBundles { get; set; }
+        
+        public string? relayWSURL { get; set; }
+        
+        public string? relayWSSigningKeystoreFile { get; set; }
+        
+        public string? relayWSKeystorePW { get; set; }
+        
+        public Keccak? relayWSSigningKey { get; set; }
+
+        //how to include "relayWSSigningKey"?
     }
 }

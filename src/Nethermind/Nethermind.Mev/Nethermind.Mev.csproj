@@ -19,4 +19,8 @@
       <ProjectReference Include="..\Nethermind.JsonRpc\Nethermind.JsonRpc.csproj" />
     </ItemGroup>
 
+    <ItemGroup>
+      <PackageReference Include="NSubstitute" Version="4.2.2" />
+    </ItemGroup>
+
 </Project>

@@ -132,7 +132,7 @@ namespace Nethermind.JsonRpc
             (JsonRpcRequest Model, List<JsonRpcRequest> Collection) rpcRequest;
             try
             {
-                rpcRequest = DeserializeObjectOrArray(request);
+                rpcRequest = DeserializeObjectOrArray(request); //if object is not a JSON object, catch error
             }
             catch (Exception ex)
             {

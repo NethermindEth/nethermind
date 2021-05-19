@@ -28,6 +28,7 @@ using Nethermind.Mev.Data;
 using Nethermind.Mev.Execution;
 using Nethermind.Mev.Source;
 using NSubstitute;
+using NSubstitute.Exceptions;
 using NUnit.Framework;
 
 namespace Nethermind.Mev.Test
@@ -99,7 +100,31 @@ namespace Nethermind.Mev.Test
             
             return bundlePool;
         }
+        
+        
+        [TestCaseSource(nameof(BundleRetrievalTest))]
+        public static void should_add_bundle_to_bundle_pool(BundleTest test)
+        {
+            Timestamper timestamper = new Timestamper();
+            DateTime currTime = timestamper.UtcNow;
+            DateTimeOffset currTimeOffset = currTime;
+            
+            BundlePool bundles = new BundlePool(Substitute.For<IBlockTree>(), Substitute.For<IBundleSimulator>(), Substitute.For<IBlockFinalizationManager>());
+            bundles.AddBundle(new MevBundle(Array.Empty<Transaction>(), 0, 0, 0)); //should get added
+            bundles.AddBundle(new MevBundle(Array.Empty<Transaction>(), 1, 5, 0)); //should not get added, min > max
+            bundles.AddBundle(new MevBundle(Array.Empty<Transaction>(), 2,  (UInt64) currTimeOffset.ToUnixTimeSeconds() + 50, (UInt64) currTimeOffset.ToUnixTimeSeconds() + 100)); //should get added
+            bundles.AddBundle(new MevBundle(Array.Empty<Transaction>(), 3,  (UInt64) currTimeOffset.ToUnixTimeSeconds() + 4000, (UInt64) currTimeOffset.ToUnixTimeSeconds() + 5000)); //should not get added, min time too large
+            /*
+            foreach (MevBundle bundle in bundles)
+            {
+                if (bundle.BlockNumber != 0 && bundle.BlockNumber != 2)
+                {
+                    throw new BlockchainException("Incorrect Block Added.");
+                }
+            } */
+        }
 
         public record BundleTest(long block, ulong testTimestamp, int expectedCount, int expectedRemaining, Action<BundlePool>? action);
+        
     }
 }
