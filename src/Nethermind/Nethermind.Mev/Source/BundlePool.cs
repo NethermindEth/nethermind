@@ -24,6 +24,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -39,9 +40,10 @@ using ILogger = Nethermind.Logging.ILogger;
 
 namespace Nethermind.Mev.Source
 {
-    public class BundleSortedPool : DistinctValueSortedPool<MevBundle, MevBundle, long> {
-        public BundleSortedPool(int capacity, IComparer<MevBundle> comparer, IEqualityComparer<MevBundle> distinctComparer, ILogManager logManager) 
-            : base(capacity, comparer, distinctComparer, logManager)
+    public class BundleSortedPool : DistinctValueSortedPool<MevBundle, MevBundle, long> 
+    {
+        public BundleSortedPool(int capacity, IComparer<MevBundle> comparer, ILogManager logManager) 
+            : base(capacity, comparer, EqualityComparer<MevBundle>.Default, logManager)
         {
         }
 
@@ -67,7 +69,27 @@ namespace Nethermind.Mev.Source
         {
             return value.BlockNumber;
         }
-    }    
+    }
+
+    public class MevBundleHeaBlockComparer : IComparer<MevBundle>
+    {
+        public long HeaBlockNumber { get; set; }
+        
+        public int Compare(MevBundle? x, MevBundle? y)
+        {
+            if (x is null)
+            {
+                return y is null ? 0 : -1;
+            }
+                
+            if (y is null)
+            {
+                return 1;
+            }
+            
+        }
+    }
+    
     public class BundlePool : IBundlePool, ISimulatedBundleSource, IDisposable
     {
         private readonly IBlockFinalizationManager? _finalizationManager;
@@ -76,6 +98,7 @@ namespace Nethermind.Mev.Source
         private readonly IBlockTree _blockTree;
         private readonly IBundleSimulator _simulator;
         private readonly SortedRealList<MevBundle, ConcurrentBag<Keccak>> _bundles = new(MevBundleComparer.Default);
+        // private readonly SortedPool<MevBundle, MevBundle, long> _bundles;
         private readonly ConcurrentDictionary<Keccak, ConcurrentDictionary<MevBundle, SimulatedMevBundleContext>> _simulatedBundles = new();
         private readonly ILogger _logger;
 
@@ -95,6 +118,8 @@ namespace Nethermind.Mev.Source
             _simulator = simulator;
             _blockTree.NewSuggestedBlock += OnNewSuggestedBlock;
             _logger = logManager.GetClassLogger();
+            
+            // _bundles = new BundleSortedPool(_mevConfig.BundlePoolSize, , logManager);
             
             if (_finalizationManager != null)
             {

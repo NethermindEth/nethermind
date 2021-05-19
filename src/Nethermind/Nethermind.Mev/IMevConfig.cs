@@ -27,5 +27,6 @@ namespace Nethermind.Mev
         bool Enabled { get; set; }
 
         UInt256 BundleHorizon { get; set; }
+        int BundlePoolSize { get; set; }
     }
 }
