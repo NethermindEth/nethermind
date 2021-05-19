@@ -49,11 +49,14 @@ namespace Nethermind.Mev.Source
 
         protected override IComparer<MevBundle> GetUniqueComparer(IComparer<MevBundle> comparer) //compares all the bundles to evict the worst one
         {
+            // Add TIMESTAMP comparision!
+            // comparer.ThenBy()
             throw new NotImplementedException();
         }
 
         protected override IComparer<MevBundle> GetGroupComparer(IComparer<MevBundle> comparer) //compares two bundles with same block #
         {
+            // TIMESTAMP COMPARISON
             throw new NotImplementedException();
             /*
              * int compare (MevBundle a, MevBundle b)
