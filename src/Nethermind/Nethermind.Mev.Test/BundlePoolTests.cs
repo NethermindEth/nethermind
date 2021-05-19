@@ -107,7 +107,7 @@ namespace Nethermind.Mev.Test
         
         
         [Test]
-        public static void should_add_bundle_to_bundle_pool()
+        public static void should_add_bundle_with_correct_timestamps()
         {
             ITimestamper timestamper = new ManualTimestamper(new DateTime(2021, 1, 1));
             ulong timestamp = timestamper.UnixTime.Seconds;
@@ -124,9 +124,9 @@ namespace Nethermind.Mev.Test
             MevBundle[] bundles = new []
             {
                 new MevBundle(txs, 1, 0, 0), //should get added
-                new MevBundle(txs, 1, 5, 0), //should not get added, min > max
-                new MevBundle(txs, 1,  timestamp + 50, timestamp + 100), //should get added
-                new MevBundle(txs, 1,  timestamp + 4000, timestamp + 5000), //should not get added, min time too large
+                new MevBundle(txs, 2, 5, 0), //should not get added, min > max
+                new MevBundle(txs, 3,  timestamp + 50, timestamp + 100), //should get added
+                new MevBundle(txs, 4,  timestamp + 4000, timestamp + 5000), //should not get added, min time too large
                 
             };
 

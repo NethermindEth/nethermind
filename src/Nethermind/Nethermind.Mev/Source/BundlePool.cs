@@ -40,7 +40,8 @@ using ILogger = Nethermind.Logging.ILogger;
 namespace Nethermind.Mev.Source
 {
     public class BundleSortedPool : DistinctValueSortedPool<MevBundle, MevBundle, long> {
-        public BundleSortedPool(int capacity, IComparer<MevBundle> comparer, IEqualityComparer<MevBundle> distinctComparer, ILogManager logManager) : base(capacity, comparer, distinctComparer, logManager)
+        public BundleSortedPool(int capacity, IComparer<MevBundle> comparer, IEqualityComparer<MevBundle> distinctComparer, ILogManager logManager) 
+            : base(capacity, comparer, distinctComparer, logManager)
         {
         }
 
