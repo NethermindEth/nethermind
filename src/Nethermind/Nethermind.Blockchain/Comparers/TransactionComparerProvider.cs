@@ -30,7 +30,7 @@ namespace Nethermind.Blockchain.Comparers
         private readonly IBlockFinder _blockFinder;
         
         // we're caching default comparer
-        private IComparer<Transaction>? _defaultComparer = null;
+        private IComparer<WrappedTransaction>? _defaultComparer = null;
 
         public TransactionComparerProvider(ISpecProvider specProvider, IBlockFinder blockFinder)
         {
@@ -39,11 +39,11 @@ namespace Nethermind.Blockchain.Comparers
 
         }
 
-        public IComparer<Transaction> GetDefaultComparer()
+        public IComparer<WrappedTransaction> GetDefaultComparer()
         {
             if (_defaultComparer == null)
             {
-                IComparer<Transaction> gasPriceComparer = new GasPriceTxComparer(_blockFinder, _specProvider);
+                IComparer<WrappedTransaction> gasPriceComparer = new GasPriceTxComparer(_blockFinder, _specProvider);
                 _defaultComparer = gasPriceComparer
                     .ThenBy(CompareTxByNonce.Instance)
                     .ThenBy(CompareTxByTimestamp.Instance)
@@ -54,14 +54,14 @@ namespace Nethermind.Blockchain.Comparers
             return _defaultComparer;
         }
 
-        public IComparer<Transaction> GetDefaultProducerComparer(BlockPreparationContext blockPreparationContext)
+        public IComparer<WrappedTransaction> GetDefaultProducerComparer(BlockPreparationContext blockPreparationContext)
         {
-                IComparer<Transaction> gasPriceComparer =
+                IComparer<WrappedTransaction> gasPriceComparer =
                     new GasPriceTxComparerForProducer(blockPreparationContext, _specProvider);
                 return gasPriceComparer
-                    .ThenBy(CompareTxByTimestamp.Instance)
-                    .ThenBy(CompareTxByPoolIndex.Instance)
-                    .ThenBy(CompareTxByGasLimit.Instance);
+                .ThenBy(CompareTxByTimestamp.Instance)
+                .ThenBy(CompareTxByPoolIndex.Instance)
+                .ThenBy(CompareTxByGasLimit.Instance);
         }
     }
 }

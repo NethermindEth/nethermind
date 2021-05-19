@@ -55,7 +55,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
             _priorities = priorities ?? throw new ArgumentNullException(nameof(priorities));
         }
 
-        protected override IComparer<Transaction> GetComparer(BlockHeader parent, BlockPreparationContext blockPreparationContext)
+        protected override IComparer<WrappedTransaction> GetComparer(BlockHeader parent, BlockPreparationContext blockPreparationContext)
         {
             _comparer = new CompareTxByPriorityOnSpecifiedBlock(_sendersWhitelist, _priorities, parent);
             return _comparer.ThenBy(base.GetComparer(parent, blockPreparationContext));
@@ -63,12 +63,12 @@ namespace Nethermind.Consensus.AuRa.Transactions
 
         public override string ToString() => $"{nameof(TxPriorityTxSource)}";
 
-        protected override IEnumerable<Transaction> GetOrderedTransactions(IDictionary<Address, Transaction[]> pendingTransactions, IComparer<Transaction> comparer)
+        protected override IEnumerable<WrappedTransaction> GetOrderedTransactions(IDictionary<Address, WrappedTransaction[]> pendingTransactions, IComparer<WrappedTransaction> comparer)
         {
             if (_logger.IsTrace)
             {
                 var transactions = base.GetOrderedTransactions(pendingTransactions, comparer).ToArray();
-                string txString = string.Join(Environment.NewLine, transactions.Select(t => $"{t.ToShortString()}, PoolIndex {t.PoolIndex}, Whitelisted: {_comparer.IsWhiteListed(t)}, Priority: {_comparer.GetPriority(t)}"));
+                string txString = string.Join(Environment.NewLine, transactions.Select(t => $"{t.Tx.ToShortString()}, PoolIndex {t.Tx.PoolIndex}, Whitelisted: {_comparer.IsWhiteListed(t.Tx)}, Priority: {_comparer.GetPriority(t.Tx)}"));
                 _logger.Trace($"Ordered transactions with comparer {comparer} : {Environment.NewLine}{txString}");
                 return transactions;
             }

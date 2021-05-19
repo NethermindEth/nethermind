@@ -17,28 +17,29 @@
 
 using System.Collections.Generic;
 using Nethermind.Core;
+using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.AuRa.Transactions
 {
-    public class CompareTxSameSenderNonce : IComparer<Transaction>
+    public class CompareTxSameSenderNonce : IComparer<WrappedTransaction>
     {
-        private readonly IComparer<Transaction> _sameSenderNoncePriorityComparer;
-        private readonly IComparer<Transaction> _differentSenderNoncePriorityComparer;
+        private readonly IComparer<WrappedTransaction> _sameSenderNoncePriorityComparer;
+        private readonly IComparer<WrappedTransaction> _differentSenderNoncePriorityComparer;
 
         public CompareTxSameSenderNonce(
-            IComparer<Transaction> sameSenderNoncePriorityComparer, 
-            IComparer<Transaction> differentSenderNoncePriorityComparer)
+            IComparer<WrappedTransaction> sameSenderNoncePriorityComparer, 
+            IComparer<WrappedTransaction> differentSenderNoncePriorityComparer)
         {
             _sameSenderNoncePriorityComparer = sameSenderNoncePriorityComparer;
             _differentSenderNoncePriorityComparer = differentSenderNoncePriorityComparer;
         }
             
-        public int Compare(Transaction? x, Transaction? y)
+        public int Compare(WrappedTransaction? x, WrappedTransaction? y)
         {
-            IComparer<Transaction> firstComparer = _differentSenderNoncePriorityComparer;
-            IComparer<Transaction> secondComparer = _sameSenderNoncePriorityComparer;
+            IComparer<WrappedTransaction> firstComparer = _differentSenderNoncePriorityComparer;
+            IComparer<WrappedTransaction> secondComparer = _sameSenderNoncePriorityComparer;
 
-            bool sameNonceAndSender = Equals(x?.Nonce, y?.Nonce) && Equals(x?.SenderAddress, y?.SenderAddress);
+            bool sameNonceAndSender = Equals(x?.Tx?.Nonce, y?.Tx?.Nonce) && Equals(x?.Tx?.SenderAddress, y?.Tx?.SenderAddress);
             if (sameNonceAndSender)
             {
                 

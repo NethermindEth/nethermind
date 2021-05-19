@@ -65,9 +65,9 @@ namespace Nethermind.JsonRpc.Modules.Parity
         }
 
         public ResultWrapper<ParityTransaction[]> parity_pendingTransactions()
-            => ResultWrapper<ParityTransaction[]>.Success(_txPool.GetPendingTransactions().Where(pt => pt.SenderAddress != null)
-                .Select(t => new ParityTransaction(t, Rlp.Encode(t).Bytes,
-                    t.IsSigned ? _ecdsa.RecoverPublicKey(t.Signature, t.Hash) : null)).ToArray());
+            => ResultWrapper<ParityTransaction[]>.Success(_txPool.GetPendingTransactions().Where(pt => pt.Tx.SenderAddress != null)
+                .Select(t => new ParityTransaction(t.Tx, Rlp.Encode(t.Tx).Bytes,
+                    t.Tx.IsSigned ? _ecdsa.RecoverPublicKey(t.Tx.Signature, t.Tx.Hash) : null)).ToArray());
         
         public ResultWrapper<ReceiptForRpc[]> parity_getBlockReceipts(BlockParameter blockParameter)
         {

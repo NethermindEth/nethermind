@@ -23,20 +23,20 @@ namespace Nethermind.TxPool
     /// <summary>
     /// Default ordering by <see cref="Transaction.GasLimit"/> asc
     /// </summary>
-    public class CompareTxByGasLimit : IComparer<Transaction>
+    public class CompareTxByGasLimit : IComparer<WrappedTransaction>
     {
         public static readonly CompareTxByGasLimit Instance = new();
         
         private CompareTxByGasLimit() { }
 
-        public int Compare(Transaction x, Transaction y)
+        public int Compare(WrappedTransaction x, WrappedTransaction y)
         {
             if (ReferenceEquals(x, y)) return 0;
             if (ReferenceEquals(null, y)) return 1;
             if (ReferenceEquals(null, x)) return -1;
 
             // then by gas limit ascending
-            return x.GasLimit.CompareTo(y.GasLimit);
+            return x.Tx.GasLimit.CompareTo(y.Tx.GasLimit);
         }
     }
 }

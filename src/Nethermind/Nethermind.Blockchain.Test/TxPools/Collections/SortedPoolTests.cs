@@ -35,7 +35,7 @@ namespace Nethermind.Blockchain.Test.TxPools.Collections
     {
         private const int Capacity = 16;
 
-        private SortedPool<Keccak, Transaction, Address> _sortedPool;
+        private SortedPool<Keccak, WrappedTransaction, Address> _sortedPool;
 
         private Transaction[] _transactions = new Transaction[Capacity * 8];
         
@@ -64,8 +64,8 @@ namespace Nethermind.Blockchain.Test.TxPools.Collections
             {
                 var tx = _transactions[^(i + 1)];
                 tx.Hash = tx.CalculateHash();
-                _sortedPool.TryInsert(tx.Hash, tx);
-                Assert.AreEqual(i > 15 ? null : tx, _sortedPool.TryGetValue(tx.Hash, out Transaction txOther) ? txOther : null);
+                _sortedPool.TryInsert(tx.Hash, new WrappedTransaction(tx));
+                Assert.AreEqual(i > 15 ? null : tx, _sortedPool.TryGetValue(tx.Hash, out WrappedTransaction txOther) ? txOther.Tx : null);
                 Assert.AreEqual(Math.Min(16, i + 1), _sortedPool.Count);
             }
         
@@ -73,10 +73,10 @@ namespace Nethermind.Blockchain.Test.TxPools.Collections
             
             for (int i = 0; i < Capacity; i++)
             {
-                _sortedPool.TryTakeFirst(out Transaction tx);
+                _sortedPool.TryTakeFirst(out WrappedTransaction tx);
                 UInt256 gasPrice = (UInt256)(_transactions.Length - i - 1);
                 Assert.AreEqual(Capacity - i - 1, _sortedPool.Count);
-                Assert.AreEqual(gasPrice, tx.GasPrice);
+                Assert.AreEqual(gasPrice, tx.Tx.GasPrice);
             }
         }
         
@@ -87,16 +87,16 @@ namespace Nethermind.Blockchain.Test.TxPools.Collections
             {
                 var tx = _transactions[i];
                 tx.Hash = tx.CalculateHash();
-                _sortedPool.TryInsert(tx.Hash, tx);
+                _sortedPool.TryInsert(tx.Hash, new WrappedTransaction(tx));
                 Assert.AreEqual(Math.Min(16, i + 1), _sortedPool.Count);
             }
         
             for (int i = 0; i < Capacity; i++)
             {
-                _sortedPool.TryTakeFirst(out Transaction tx);
+                _sortedPool.TryTakeFirst(out WrappedTransaction tx);
                 UInt256 gasPrice = (UInt256)(_transactions.Length - i - 1);
                 Assert.AreEqual(Capacity - i - 1, _sortedPool.Count);
-                Assert.AreEqual(gasPrice, tx.GasPrice);
+                Assert.AreEqual(gasPrice, tx.Tx.GasPrice);
             }
         }
     }

@@ -40,7 +40,7 @@ namespace Nethermind.TxPool
             ITxPoolConfig txPoolConfig, 
             ITxValidator txValidator,
             ILogManager logManager, 
-            IComparer<Transaction> comparer,
+            IComparer<WrappedTransaction> comparer,
             ITxPoolFilter txPoolFilter = null) 
             : base(txStorage, ecdsa, chainHeadInfoProvider, txPoolConfig, txValidator, logManager, comparer)
         {

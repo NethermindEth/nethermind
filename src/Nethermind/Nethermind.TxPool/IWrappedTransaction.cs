@@ -15,28 +15,14 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System.Collections.Generic;
 using Nethermind.Core;
+using Nethermind.Int256;
 
 namespace Nethermind.TxPool
 {
-    /// <summary>
-    /// Default ordering by <see cref="Transaction.GasBottleneck"/> desc
-    /// </summary>
-    public class CompareTxByGasBottleneck : IComparer<WrappedTransaction>
+    public interface IWrappedTransaction
     {
-        public static readonly CompareTxByGasBottleneck Instance = new();
-        
-        private CompareTxByGasBottleneck() { }
-
-        public int Compare(WrappedTransaction x, WrappedTransaction y)
-        {
-            if (ReferenceEquals(x, y)) return 0;
-            if (ReferenceEquals(null, y)) return 1;
-            if (ReferenceEquals(null, x)) return -1;
-                
-            // by gas bottleneck descending
-            return y.GasBottleneck.CompareTo(x.GasBottleneck);
-        }
+        public Transaction Tx { get; set; }
+        public UInt256 GasBottleneck { get; set; }
     }
 }

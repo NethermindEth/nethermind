@@ -28,7 +28,7 @@ using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.AuRa.Transactions
 {
-    public abstract class CompareTxByPriorityBase : IComparer<Transaction>
+    public abstract class CompareTxByPriorityBase : IComparer<WrappedTransaction>
     {
         private readonly IContractDataStore<Address> _sendersWhitelist;
         private readonly IDictionaryContractDataStore<TxPriorityContract.Destination> _priorities;
@@ -65,7 +65,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
             }
         }
 
-        public int Compare(Transaction x, Transaction y)
+        public int Compare(WrappedTransaction x, WrappedTransaction y)
         {
             if (ReferenceEquals(x, y)) return 0;
             if (ReferenceEquals(null, y)) return 1;
@@ -74,11 +74,11 @@ namespace Nethermind.Consensus.AuRa.Transactions
             // we already have nonce ordered by previous code, we don't deal with it here
                 
             // first order by whitelisted
-            int whitelistedComparision = IsWhiteListed(y).CompareTo(IsWhiteListed(x));
+            int whitelistedComparision = IsWhiteListed(y.Tx).CompareTo(IsWhiteListed(x.Tx));
             if (whitelistedComparision != 0) return whitelistedComparision;
                 
             // then order by priority descending
-            return GetPriority(y).CompareTo(GetPriority(x));
+            return GetPriority(y.Tx).CompareTo(GetPriority(x.Tx));
         }
     }
 }

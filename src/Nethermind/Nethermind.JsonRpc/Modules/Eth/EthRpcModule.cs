@@ -403,10 +403,11 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
         public Task<ResultWrapper<TransactionForRpc>> eth_getTransactionByHash(Keccak transactionHash)
         {
-            _txPoolBridge.TryGetPendingTransaction(transactionHash, out Transaction transaction);
+            _txPoolBridge.TryGetPendingTransaction(transactionHash, out WrappedTransaction wTx);
             TxReceipt receipt = null; // note that if transaction is pending then for sure no receipt is known
-            if (transaction == null)
+            if (wTx == null)
             {
+                Transaction transaction = null;
                 (receipt, transaction) = _blockchainBridge.GetTransaction(transactionHash);
                 if (transaction == null)
                 {
@@ -414,9 +415,9 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 }
             }
 
-            RecoverTxSenderIfNeeded(transaction);
+            RecoverTxSenderIfNeeded(wTx.Tx);
             TransactionForRpc transactionModel =
-                new(receipt?.BlockHash, receipt?.BlockNumber, receipt?.Index, transaction);
+                new(receipt?.BlockHash, receipt?.BlockNumber, receipt?.Index, wTx.Tx);
             if (_logger.IsTrace)
                 _logger.Trace($"eth_getTransactionByHash request {transactionHash}, result: {transactionModel.Hash}");
             return Task.FromResult(ResultWrapper<TransactionForRpc>.Success(transactionModel));
@@ -428,7 +429,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             var transactionsModels = new TransactionForRpc[transactions.Length];
             for (int i = 0; i < transactions.Length; i++)
             {
-                var transaction = transactions[i];
+                var transaction = transactions[i].Tx;
                 RecoverTxSenderIfNeeded(transaction);
                 transactionsModels[i] = new TransactionForRpc(transaction);
                 transactionsModels[i].BlockHash = Keccak.Zero;

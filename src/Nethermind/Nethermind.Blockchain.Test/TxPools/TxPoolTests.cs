@@ -440,7 +440,7 @@ namespace Nethermind.Blockchain.Test.TxPools
             EnsureSenderBalance(higherPriorityTx);
             _txPool.AddTransaction(higherPriorityTx, TxHandlingOptions.PersistentBroadcast);
             
-            _txPool.GetPendingTransactions().Max(t => t.Nonce).Should().Be(3);
+            _txPool.GetPendingTransactions().Max(t => t.Tx.Nonce).Should().Be(3);
             _txPool.GetPendingTransactions().Min(t => t.GasBottleneck).Should().Be(2);
             _txPool.GetPendingTransactions().Max(t => t.GasBottleneck).Should().Be(100);
         }
@@ -610,7 +610,7 @@ namespace Nethermind.Blockchain.Test.TxPools
             AddTransactionsToPool(sameTransactionSenderPerPeer, sameNoncePerPeer);
             _txPool.GetPendingTransactions().Length.Should().Be(expectedTransactions);
 
-            Transaction[] transactions = _txPool.GetPendingTransactions();
+            Transaction[] transactions = _txPool.GetPendingTransactions().Select(w => w.Tx).ToArray();
             Block block = Build.A.Block.WithTransactions(transactions).TestObject;
             BlockReplacementEventArgs blockReplacementEventArgs = new BlockReplacementEventArgs(block, null);
 
@@ -635,7 +635,7 @@ namespace Nethermind.Blockchain.Test.TxPools
             AddTransactionsToPool(sameTransactionSenderPerPeer, sameNoncePerPeer);
             _txPool.GetPendingTransactions().Length.Should().Be(expectedTransactions);
 
-            Transaction[] transactions = _txPool.GetPendingTransactions();
+            Transaction[] transactions = _txPool.GetPendingTransactions().Select(w => w.Tx).ToArray();
             Block block = Build.A.Block.WithTransactions(transactions).TestObject;
             BlockReplacementEventArgs blockReplacementEventArgs = new BlockReplacementEventArgs(block, null);
 
@@ -764,7 +764,7 @@ namespace Nethermind.Blockchain.Test.TxPools
             _txPool = CreatePool(_inMemoryTxStorage);
             _txPool.AddTransaction(transaction, TxHandlingOptions.PersistentBroadcast).Should().Be(AddTxResult.Added);
             _txPool.TryGetPendingTransaction(transaction.Hash, out var retrievedTransaction).Should().BeTrue();
-            retrievedTransaction.Should().BeEquivalentTo(transaction);
+            retrievedTransaction.Tx.Should().BeEquivalentTo(transaction);
         }
         
         [Test]

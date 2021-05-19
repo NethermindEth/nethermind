@@ -25,21 +25,21 @@ namespace Nethermind.TxPool
     public interface ITxPool 
     {
         int GetPendingTransactionsCount();
-        Transaction[] GetPendingTransactions();
-        Transaction[] GetOwnPendingTransactions();
+        WrappedTransaction[] GetPendingTransactions();
+        WrappedTransaction[] GetOwnPendingTransactions();
         
         /// <summary>
         /// Grouped by sender address, sorted by nonce and later tx pool sorting
         /// </summary>
         /// <returns></returns>
-        IDictionary<Address, Transaction[]> GetPendingTransactionsBySender();
+        IDictionary<Address, WrappedTransaction[]> GetPendingTransactionsBySender();
         void AddPeer(ITxPoolPeer peer);
         void RemovePeer(PublicKey nodeId);
         AddTxResult AddTransaction(Transaction tx, TxHandlingOptions handlingOptions);
         bool RemoveTransaction(Transaction tx, bool removeBelowThisTxNonce = false);
         void RemoveOrUpdateBucket(Address senderAddress);
         bool IsInHashCache(Keccak? hash);
-        bool TryGetPendingTransaction(Keccak hash, out Transaction? transaction);
+        bool TryGetPendingTransaction(Keccak hash, out WrappedTransaction? wTx);
         UInt256 ReserveOwnTransactionNonce(Address address);
         event EventHandler<TxEventArgs> NewDiscovered;
         event EventHandler<TxEventArgs> NewPending;

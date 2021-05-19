@@ -91,7 +91,7 @@ namespace Nethermind.Blockchain.Test.TxPools.Collections
 
             foreach (var transaction in transactions)
             {
-                pool.TryInsert(transaction.Hash, transaction);
+                pool.TryInsert(transaction.Hash, new WrappedTransaction(transaction));
             }
 
             pool.Count.Should().Be(expectedCount);
@@ -109,11 +109,11 @@ namespace Nethermind.Blockchain.Test.TxPools.Collections
 
             foreach (var transaction in transactions)
             {
-                pool.TryInsert(transaction.Hash, transaction);
+                pool.TryInsert(transaction.Hash, new WrappedTransaction(transaction));
             }
 
             pool.Count.Should().Be(1);
-            pool.GetSnapshot().First().GasPrice.Should().Be(Capacity - 1);
+            pool.GetSnapshot().First().Tx.GasPrice.Should().Be(Capacity - 1);
         }
 
         private static int _finalizedCount;

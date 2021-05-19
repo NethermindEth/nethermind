@@ -128,9 +128,9 @@ namespace Nethermind.Facade
                 return (txReceipt, block?.Transactions[txReceipt.Index]);
             }
 
-            if (_txPool.TryGetPendingTransaction(txHash, out Transaction? transaction))
+            if (_txPool.TryGetPendingTransaction(txHash, out WrappedTransaction? wTx))
             {
-                return (null, transaction);
+                return (null, wTx?.Tx);
             }
 
             return (null, null);

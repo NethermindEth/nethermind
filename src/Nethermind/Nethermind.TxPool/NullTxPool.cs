@@ -30,11 +30,11 @@ namespace Nethermind.TxPool
 
         public int GetPendingTransactionsCount() => 0;
 
-        public Transaction[] GetPendingTransactions() => Array.Empty<Transaction>();
+        public WrappedTransaction[] GetPendingTransactions() => Array.Empty<WrappedTransaction>();
         
-        public Transaction[] GetOwnPendingTransactions() => Array.Empty<Transaction>();
+        public WrappedTransaction[] GetOwnPendingTransactions() => Array.Empty<WrappedTransaction>();
         
-        public IDictionary<Address, Transaction[]> GetPendingTransactionsBySender() => new Dictionary<Address, Transaction[]>();
+        public IDictionary<Address, WrappedTransaction[]> GetPendingTransactionsBySender() => new Dictionary<Address, WrappedTransaction[]>();
 
         public void AddPeer(ITxPoolPeer peer) { }
 
@@ -48,9 +48,9 @@ namespace Nethermind.TxPool
 
         public bool IsInHashCache(Keccak hash) => false;
 
-        public bool TryGetPendingTransaction(Keccak hash, out Transaction? transaction)
+        public bool TryGetPendingTransaction(Keccak hash, out WrappedTransaction? wTx)
         {
-            transaction = null;
+            wTx = null;
             return false;
         }
 

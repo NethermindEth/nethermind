@@ -428,8 +428,7 @@ namespace Nethermind.Merge.Plugin.Test
                 o => o.Excluding(t => t.ChainId)
                     .Excluding(t => t.SenderAddress)
                     .Excluding(t => t.Timestamp)
-                    .Excluding(t => t.PoolIndex)
-                    .Excluding(t => t.GasBottleneck));
+                    .Excluding(t => t.PoolIndex));
 
             ResultWrapper<NewBlockResult> newBlockResult = await rpc.consensus_newBlock(assembleBlockResult);
             newBlockResult.Data.Valid.Should().BeTrue();

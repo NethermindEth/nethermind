@@ -57,9 +57,9 @@ namespace Nethermind.Blockchain.Processing
             for (int i = 0; i < block.Transactions.Length; i++)
             {
                 Transaction blockTransaction = block.Transactions[i];
-                _txPool.TryGetPendingTransaction(blockTransaction.Hash, out Transaction? transaction);
+                _txPool.TryGetPendingTransaction(blockTransaction.Hash, out WrappedTransaction? transaction);
                 
-                Address sender = transaction?.SenderAddress;
+                Address sender = transaction?.Tx?.SenderAddress;
                 Address blockTransactionAddress = blockTransaction.SenderAddress;
                 
                 blockTransaction.SenderAddress = sender ?? _ecdsa.RecoverAddress(blockTransaction, !releaseSpec.ValidateChainId);

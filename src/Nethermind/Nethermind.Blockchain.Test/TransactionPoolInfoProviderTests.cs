@@ -53,7 +53,7 @@ namespace Nethermind.Blockchain.Test
             var transactions = GetTransactions();
 
             _txPool.GetPendingTransactionsBySender()
-                .Returns(new Dictionary<Address, Transaction[]> {{_address, transactions}});
+                .Returns(new Dictionary<Address, WrappedTransaction[]> {{_address, transactions}});
             var info = _infoProvider.GetInfo(Build.A.BlockHeader.TestObject);
 
             info.Pending.Count.Should().Be(1);
@@ -80,17 +80,17 @@ namespace Nethermind.Blockchain.Test
             transactionNonce[nonce].Nonce.Should().Be(nonce);
         }
 
-        private Transaction[] GetTransactions()
+        private WrappedTransaction[] GetTransactions()
             => new[]
             {
                 GetTransaction(1), GetTransaction(2), GetTransaction(3), GetTransaction(4), GetTransaction(5),
                 GetTransaction(8), GetTransaction(9)
             };
 
-        private Transaction GetTransaction(UInt256 nonce)
-            => Build.A.Transaction
+        private WrappedTransaction GetTransaction(UInt256 nonce)
+            => new WrappedTransaction(Build.A.Transaction
                 .WithNonce(nonce)
                 .WithSenderAddress(_address)
-                .TestObject;
+                .TestObject);
     }
 }

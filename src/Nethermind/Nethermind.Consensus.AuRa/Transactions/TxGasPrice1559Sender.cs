@@ -55,7 +55,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
         {
             UInt256 minFeeCap = UInt256.Zero;
             UInt256 minGasPremium = UInt256.Zero;
-            Transaction[] transactions = _txPool.GetPendingTransactions();
+            WrappedTransaction[] transactions = _txPool.GetPendingTransactions();
             if (transactions.Length == 0)
             {
                 return (TxGasPriceSenderConstants.DefaultGasPrice, UInt256.Zero);
@@ -63,7 +63,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
             
             for (int i = 0; i < transactions.Length; ++i)
             {
-                Transaction transaction = transactions[i];
+                Transaction transaction = transactions[i].Tx;
                 UInt256 currentFeeCap = transaction.FeeCap;
                 UInt256 currentGasPremium = transaction.GasPremium;
                 if (currentFeeCap != UInt256.Zero)

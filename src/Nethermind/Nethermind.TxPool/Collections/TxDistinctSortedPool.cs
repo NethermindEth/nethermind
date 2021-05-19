@@ -22,19 +22,19 @@ using Nethermind.Logging;
 
 namespace Nethermind.TxPool.Collections
 {
-    public class TxDistinctSortedPool : DistinctValueSortedPool<Keccak, Transaction, Address>
+    public class TxDistinctSortedPool : DistinctValueSortedPool<Keccak, WrappedTransaction, Address>
     {
-        public TxDistinctSortedPool(int capacity, ILogManager logManager, IComparer<Transaction> comparer) 
+        public TxDistinctSortedPool(int capacity, ILogManager logManager, IComparer<WrappedTransaction> comparer) 
             : base(capacity, comparer, CompetingTransactionEqualityComparer.Instance, logManager)
         {
         }
 
-        protected override IComparer<Transaction> GetUniqueComparer(IComparer<Transaction> comparer) =>
+        protected override IComparer<WrappedTransaction> GetUniqueComparer(IComparer<WrappedTransaction> comparer) =>
             TxSortedPool.GetPoolUniqueTxComparer(comparer);
 
-        protected override IComparer<Transaction> GetGroupComparer(IComparer<Transaction> comparer) =>
+        protected override IComparer<WrappedTransaction> GetGroupComparer(IComparer<WrappedTransaction> comparer) =>
             TxSortedPool.GetPoolUniqueTxComparerByNonce(comparer);
 
-        protected override Address MapToGroup(Transaction value) => TxSortedPool.MapTxToGroup(value);
+        protected override Address MapToGroup(WrappedTransaction value) => TxSortedPool.MapTxToGroup(value);
     }
 }

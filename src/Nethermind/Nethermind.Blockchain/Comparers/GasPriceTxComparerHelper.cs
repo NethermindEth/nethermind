@@ -17,12 +17,13 @@
 
 using Nethermind.Core;
 using Nethermind.Int256;
+using Nethermind.TxPool;
 
 namespace Nethermind.Blockchain.Comparers
 {
     public static class GasPriceTxComparerHelper
     {
-        public static int Compare(Transaction? x, Transaction? y, UInt256 baseFee, bool isEip1559Enabled)
+        public static int Compare(WrappedTransaction? x, WrappedTransaction? y, UInt256 baseFee, bool isEip1559Enabled)
         {
             if (ReferenceEquals(x, y)) return 0;
             if (ReferenceEquals(null, y)) return 1;
@@ -37,16 +38,16 @@ namespace Nethermind.Blockchain.Comparers
             // EIP1559 changed the way we're sorting transactions. The transaction with a higher miner tip should go first
             if (isEip1559Enabled)
             {
-                UInt256 xGasPrice = UInt256.Min(x.FeeCap, x.GasPremium + baseFee);
-                UInt256 yGasPrice = UInt256.Min(y.FeeCap, y.GasPremium + baseFee);
+                UInt256 xGasPrice = UInt256.Min(x.Tx.FeeCap, x.Tx.GasPremium + baseFee);
+                UInt256 yGasPrice = UInt256.Min(y.Tx.FeeCap, y.Tx.GasPremium + baseFee);
                 if (xGasPrice < yGasPrice) return 1;
                 if (xGasPrice > yGasPrice) return -1;
 
-                return y.FeeCap.CompareTo(x.FeeCap);
+                return y.Tx.FeeCap.CompareTo(x.Tx.FeeCap);
             }
             
             // the old way of sorting transactions
-            return y.GasPrice.CompareTo(x.GasPrice);
+            return y.Tx.GasPrice.CompareTo(x.Tx.GasPrice);
         }
 
     }

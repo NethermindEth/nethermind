@@ -19,10 +19,11 @@ using System.Collections.Generic;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.TxPool;
 
 namespace Nethermind.Blockchain.Comparers
 {
-    public class GasPriceTxComparer : IComparer<Transaction>
+    public class GasPriceTxComparer : IComparer<WrappedTransaction>
     {
         private readonly IBlockFinder _blockFinder;
         private readonly ISpecProvider _specProvider;
@@ -33,7 +34,7 @@ namespace Nethermind.Blockchain.Comparers
             _specProvider = specProvider;
         }
         
-        public int Compare(Transaction? x, Transaction? y)
+        public int Compare(WrappedTransaction? x, WrappedTransaction? y)
         {
             // When we're adding Tx to TxPool we don't know the base fee of the block in which transaction will be added.
             // We can get a base fee from the current head.

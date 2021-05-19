@@ -40,7 +40,7 @@ namespace Nethermind.TxPool
             var groupedTransactions = _txPool.GetPendingTransactionsBySender();
             var pendingTransactions = new Dictionary<Address, IDictionary<ulong, Transaction>>();
             var queuedTransactions = new Dictionary<Address, IDictionary<ulong, Transaction>>();
-            foreach (KeyValuePair<Address, Transaction[]> group in groupedTransactions)
+            foreach (KeyValuePair<Address, WrappedTransaction[]> group in groupedTransactions)
             {
                 Address? address = group.Key;
                 if (address is null)
@@ -52,19 +52,19 @@ namespace Nethermind.TxPool
                 var expectedNonce = accountNonce;
                 var pending = new Dictionary<ulong, Transaction>();
                 var queued = new Dictionary<ulong, Transaction>();
-                var transactionsOrderedByNonce = group.Value.OrderBy(t => t.Nonce);
+                var transactionsOrderedByNonce = group.Value.OrderBy(t => t.Tx.Nonce);
 
                 foreach (var transaction in transactionsOrderedByNonce)
                 {
-                    ulong transactionNonce = (ulong) transaction.Nonce;
-                    if (transaction.Nonce == expectedNonce)
+                    ulong transactionNonce = (ulong) transaction.Tx.Nonce;
+                    if (transaction.Tx.Nonce == expectedNonce)
                     {
-                        pending.Add(transactionNonce, transaction);
-                        expectedNonce = transaction.Nonce + 1;
+                        pending.Add(transactionNonce, transaction.Tx);
+                        expectedNonce = transaction.Tx.Nonce + 1;
                     }
                     else
                     {
-                        queued.Add(transactionNonce, transaction);    
+                        queued.Add(transactionNonce, transaction.Tx);    
                     }
                 }
 
@@ -85,13 +85,13 @@ namespace Nethermind.TxPool
         public string GetSnapshot(BlockHeader head)
         {
             StringBuilder details = new();
-            Transaction[] txpoolContent = _txPool.GetPendingTransactions();
+            WrappedTransaction[] txpoolContent = _txPool.GetPendingTransactions();
 
             for (int i = 0; i < txpoolContent.Length; i++)
             {
-                Transaction tx = txpoolContent[i];
+                WrappedTransaction tx = txpoolContent[i];
 
-                Address senderAddress = tx.SenderAddress;
+                Address senderAddress = tx.Tx.SenderAddress;
                 
                 if (senderAddress is null)
                 {
@@ -99,12 +99,12 @@ namespace Nethermind.TxPool
                 }
                 
                 UInt256 currentNonce = _stateReader.GetNonce(head.StateRoot, senderAddress);
-                UInt256 txNonce = tx.Nonce;
-                UInt256 gasPrice = tx.GasPrice / 1000000000;
+                UInt256 txNonce = tx.Tx.Nonce;
+                UInt256 gasPrice = tx.Tx.GasPrice / 1000000000;
                 UInt256 gasBottleneck = tx.GasBottleneck / 1000000000;
                 long nonceDiff = (long)txNonce - (long)currentNonce;
                 
-                details.Append(tx.Hash);
+                details.Append(tx.Tx.Hash);
                 details.Append(',');
                 details.Append(senderAddress);
                 details.Append(',');
@@ -118,7 +118,7 @@ namespace Nethermind.TxPool
                 details.Append(',');
                 details.Append(nonceDiff);
                 details.Append(',');
-                details.Append(tx.Timestamp);
+                details.Append(tx.Tx.Timestamp);
                 details.Append('\n');
             }
 

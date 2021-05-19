@@ -20,13 +20,14 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Int256;
+using Nethermind.TxPool;
 
 namespace Nethermind.Blockchain.Comparers
 {
     public interface ITransactionComparerProvider
     {
-        IComparer<Transaction> GetDefaultComparer();
+        IComparer<WrappedTransaction> GetDefaultComparer();
 
-        IComparer<Transaction> GetDefaultProducerComparer(BlockPreparationContext blockPreparationContext);
+        IComparer<WrappedTransaction> GetDefaultProducerComparer(BlockPreparationContext blockPreparationContext);
     }
 }

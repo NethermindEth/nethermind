@@ -24,15 +24,15 @@ namespace Nethermind.TxPool
     /// Comparer to check if two pending <see cref="Transaction"/>s compete with each other.
     /// <see cref="Transaction"/>s compete with each other if they have same <see cref="Transaction.SenderAddress"/> and <see cref="Transaction.Nonce"/>. In that case only one transaction can go into chain. 
     /// </summary>
-    public class CompetingTransactionEqualityComparer : IEqualityComparer<Transaction>
+    public class CompetingTransactionEqualityComparer : IEqualityComparer<WrappedTransaction>
     {
         public static readonly CompetingTransactionEqualityComparer Instance = new();
         
         private CompetingTransactionEqualityComparer() { }
         
-        public bool Equals(Transaction x, Transaction y) =>
-            ReferenceEquals(x, y) || !ReferenceEquals(x, null) && !ReferenceEquals(y, null) && x.SenderAddress == y.SenderAddress && x.Nonce == y.Nonce;
+        public bool Equals(WrappedTransaction x, WrappedTransaction y) =>
+            ReferenceEquals(x, y) || !ReferenceEquals(x, null) && !ReferenceEquals(y, null) && x.Tx.SenderAddress == y.Tx.SenderAddress && x.Tx.Nonce == y.Tx.Nonce;
 
-        public int GetHashCode(Transaction obj) => HashCode.Combine(obj?.SenderAddress, obj?.Nonce);
+        public int GetHashCode(WrappedTransaction obj) => HashCode.Combine(obj?.Tx?.SenderAddress, obj?.Tx?.Nonce);
     }
 }

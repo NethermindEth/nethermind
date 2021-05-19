@@ -224,7 +224,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 : base.CreateHeaderValidator();
         }
 
-        private IComparer<Transaction> CreateTxPoolTxComparer(TxPriorityContract? txPriorityContract, TxPriorityContract.LocalDataSource? localDataSource)
+        private IComparer<WrappedTransaction> CreateTxPoolTxComparer(TxPriorityContract? txPriorityContract, TxPriorityContract.LocalDataSource? localDataSource)
         {
             if (txPriorityContract != null || localDataSource != null)
             {
@@ -247,8 +247,8 @@ namespace Nethermind.Runner.Ethereum.Steps
 
                 _api.DisposeStack.Push(whitelistContractDataStore);
                 _api.DisposeStack.Push(prioritiesContractDataStore);
-                IComparer<Transaction> txByPriorityComparer = new CompareTxByPriorityOnHead(whitelistContractDataStore, prioritiesContractDataStore, _api.BlockTree);
-                IComparer<Transaction> sameSenderNonceComparer = new CompareTxSameSenderNonce(new GasPriceTxComparer(_api.BlockTree, _api.SpecProvider!), txByPriorityComparer);
+                IComparer<WrappedTransaction> txByPriorityComparer = new CompareTxByPriorityOnHead(whitelistContractDataStore, prioritiesContractDataStore, _api.BlockTree);
+                IComparer<WrappedTransaction> sameSenderNonceComparer = new CompareTxSameSenderNonce(new GasPriceTxComparer(_api.BlockTree, _api.SpecProvider!), txByPriorityComparer);
                 
                 return sameSenderNonceComparer
                     .ThenBy(CompareTxByTimestamp.Instance)

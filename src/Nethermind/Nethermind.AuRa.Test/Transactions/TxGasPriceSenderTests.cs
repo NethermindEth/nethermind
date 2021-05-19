@@ -81,7 +81,7 @@ namespace Nethermind.AuRa.Test.Transactions
             ITxSender txSender = Substitute.For<ITxSender>();
             ITxPool txPool = Substitute.For<ITxPool>();
             txPool.GetPendingTransactions().Returns(
-                txPoolGasPrices.Select(g => Build.A.Transaction.WithGasPrice(g).TestObject).ToArray());
+                txPoolGasPrices.Select(g => new WrappedTransaction(Build.A.Transaction.WithGasPrice(g).TestObject)).ToArray());
             MiningConfig miningConfig = new() {MinGasPrice = minMiningGasPrice};
             TxGasPriceSender txGasPriceSender = new(txSender, txPool, miningConfig, percentDelta);
 

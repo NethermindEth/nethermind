@@ -50,7 +50,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
 
         private UInt256 CurrentMinGasPrice() =>
             _txPool.GetPendingTransactions()
-                .Select(t => t.GasPrice)
+                .Select(t => t.Tx.GasPrice)
                 .Where(g => g > UInt256.Zero)
                 .DefaultIfEmpty(TxGasPriceSenderConstants.DefaultGasPrice)
                 .Min();

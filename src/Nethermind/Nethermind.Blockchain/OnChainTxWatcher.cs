@@ -83,13 +83,13 @@ namespace Nethermind.Blockchain
                 senders.Add(tx.SenderAddress);
             }
 
-            Transaction[]? pendingTxs = _txPool.GetPendingTransactions();
+            WrappedTransaction[]? pendingTxs = _txPool.GetPendingTransactions();
 
-            foreach (Transaction tx in pendingTxs)
+            foreach (WrappedTransaction wTx in pendingTxs)
             {
-                if (tx?.Type == TxType.EIP1559)
+                if (wTx?.Tx?.Type == TxType.EIP1559)
                 {
-                    senders.Add(tx.SenderAddress);
+                    senders.Add(wTx.Tx.SenderAddress);
                 }
             }
             

@@ -102,9 +102,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
             int responseSize = Math.Min(256, msg.Hashes.Count);
             for (int i = 0; i < responseSize; i++)
             {
-                if (_txPool.TryGetPendingTransaction(msg.Hashes[i], out Transaction tx))
+                if (_txPool.TryGetPendingTransaction(msg.Hashes[i], out WrappedTransaction wTx))
                 {
-                    txs.Add(tx);
+                    txs.Add(wTx?.Tx);
                 }
             }
 

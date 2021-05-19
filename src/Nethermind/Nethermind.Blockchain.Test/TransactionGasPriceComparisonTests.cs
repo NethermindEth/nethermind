@@ -24,6 +24,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
+using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -37,7 +38,7 @@ namespace Nethermind.Blockchain.Test
         public void GasPriceComparer_for_legacy_transactions(int gasPriceX, int gasPriceY, int expectedResult)
         {
             TestingContext context = new TestingContext();
-            IComparer<Transaction> comparer = context.DefaultComparer;
+            IComparer<WrappedTransaction> comparer = context.DefaultComparer;
             AssertLegacyTransactions(comparer, gasPriceX, gasPriceY, expectedResult);
         }
         
@@ -47,7 +48,7 @@ namespace Nethermind.Blockchain.Test
         public void ProducerGasPriceComparer_for_legacy_transactions(int gasPriceX, int gasPriceY, int expectedResult)
         {
             TestingContext context = new TestingContext();
-            IComparer<Transaction> comparer = context.GetProducerComparer(new BlockPreparationContext(0,0));
+            IComparer<WrappedTransaction> comparer = context.GetProducerComparer(new BlockPreparationContext(0,0));
             AssertLegacyTransactions(comparer, gasPriceX, gasPriceY, expectedResult);
         }
         
@@ -65,7 +66,7 @@ namespace Nethermind.Blockchain.Test
             TestingContext context = new TestingContext(true, eip1559Transition)
                 .WithHeadBaseFeeNumber((UInt256)headBaseFee)
                 .WithHeadBlockNumber(headBlockNumber);
-            IComparer<Transaction> comparer = context.DefaultComparer;
+            IComparer<WrappedTransaction> comparer = context.DefaultComparer;
             AssertLegacyTransactions(comparer, gasPriceX, gasPriceY, expectedResult);
         }
         
@@ -81,17 +82,19 @@ namespace Nethermind.Blockchain.Test
         {
             long eip1559Transition = 5;
             TestingContext context = new TestingContext(true, eip1559Transition);
-            IComparer<Transaction> comparer = context.GetProducerComparer(new BlockPreparationContext(0,0));
+            IComparer<WrappedTransaction> comparer = context.GetProducerComparer(new BlockPreparationContext(0,0));
             AssertLegacyTransactions(comparer, gasPriceX, gasPriceY, expectedResult);
         }
 
-        private void AssertLegacyTransactions(IComparer<Transaction> comparer, int gasPriceX, int gasPriceY, int expectedResult)
+        private void AssertLegacyTransactions(IComparer<WrappedTransaction> comparer, int gasPriceX, int gasPriceY, int expectedResult)
         {
             Transaction x = Build.A.Transaction.WithSenderAddress(TestItem.AddressA)
                 .WithGasPrice((UInt256)gasPriceX).TestObject;
             Transaction y = Build.A.Transaction.WithSenderAddress(TestItem.AddressA)
                 .WithGasPrice((UInt256)gasPriceY).TestObject;
-            int result = comparer.Compare(x, y);
+            WrappedTransaction wrX = new WrappedTransaction(x);
+            WrappedTransaction wrY = new WrappedTransaction(y);
+            int result = comparer.Compare(wrX, wrY);
             Assert.AreEqual(expectedResult, result);
         }
         
@@ -107,7 +110,7 @@ namespace Nethermind.Blockchain.Test
             TestingContext context = new TestingContext(true, eip1559Transition)
                 .WithHeadBaseFeeNumber((UInt256)headBaseFee)
                 .WithHeadBlockNumber(headBlockNumber);
-            IComparer<Transaction> comparer = context.DefaultComparer;
+            IComparer<WrappedTransaction> comparer = context.DefaultComparer;
             Assert1559Transactions(comparer, feeCapX, gasPremiumX, feeCapY, gasPremiumY, expectedResult);
         }
         
@@ -121,11 +124,11 @@ namespace Nethermind.Blockchain.Test
         {
             long eip1559Transition = 5;
             TestingContext context = new TestingContext(true, eip1559Transition);
-            IComparer<Transaction> comparer = context.GetProducerComparer(new BlockPreparationContext((UInt256)headBaseFee, headBlockNumber));
+            IComparer<WrappedTransaction> comparer = context.GetProducerComparer(new BlockPreparationContext((UInt256)headBaseFee, headBlockNumber));
             Assert1559Transactions(comparer, feeCapX, gasPremiumX, feeCapY, gasPremiumY, expectedResult);
         }
         
-        private void Assert1559Transactions(IComparer<Transaction> comparer, int feeCapX, int gasPremiumX, int feeCapY, int gasPremiumY, int expectedResult)
+        private void Assert1559Transactions(IComparer<WrappedTransaction> comparer, int feeCapX, int gasPremiumX, int feeCapY, int gasPremiumY, int expectedResult)
         {
             Transaction x = Build.A.Transaction.WithSenderAddress(TestItem.AddressA)
                 .WithFeeCap((UInt256)feeCapX).WithGasPremium((UInt256)gasPremiumX)
@@ -133,7 +136,9 @@ namespace Nethermind.Blockchain.Test
             Transaction y = Build.A.Transaction.WithSenderAddress(TestItem.AddressA)
                 .WithFeeCap((UInt256)feeCapY).WithGasPremium((UInt256)gasPremiumY)
                 .WithType(TxType.EIP1559).TestObject;
-            int result = comparer.Compare(x, y);
+            WrappedTransaction wrX = new WrappedTransaction(x);
+            WrappedTransaction wrY = new WrappedTransaction(y);
+            int result = comparer.Compare(wrX, wrY);
             Assert.AreEqual(expectedResult, result);
         }
 
@@ -157,9 +162,9 @@ namespace Nethermind.Blockchain.Test
                     new TransactionComparerProvider(specProvider, _blockTree);
             }
 
-            public IComparer<Transaction> DefaultComparer => _transactionComparerProvider.GetDefaultComparer();
+            public IComparer<WrappedTransaction> DefaultComparer => _transactionComparerProvider.GetDefaultComparer();
 
-            public IComparer<Transaction> GetProducerComparer(BlockPreparationContext blockPreparationContext)
+            public IComparer<WrappedTransaction> GetProducerComparer(BlockPreparationContext blockPreparationContext)
             {
                 return _transactionComparerProvider.GetDefaultProducerComparer(blockPreparationContext);
             }

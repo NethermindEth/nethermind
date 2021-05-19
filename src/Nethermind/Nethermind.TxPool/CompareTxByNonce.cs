@@ -23,20 +23,20 @@ namespace Nethermind.TxPool
     /// <summary>
     /// Orders first by <see cref="Transaction.Nonce"/> asc and then by inner comparer
     /// </summary>
-    public class CompareTxByNonce : IComparer<Transaction>
+    public class CompareTxByNonce : IComparer<WrappedTransaction>
     {
         public static readonly CompareTxByNonce Instance = new();
         
         private CompareTxByNonce() { }
 
-        public int Compare(Transaction x, Transaction y)
+        public int Compare(WrappedTransaction x, WrappedTransaction y)
         {
             if (ReferenceEquals(x, y)) return 0;
             if (ReferenceEquals(null, y)) return 1;
             if (ReferenceEquals(null, x)) return -1;
                 
             // compare by nonce ascending
-            return x.Nonce.CompareTo(y.Nonce);
+            return x.Tx.Nonce.CompareTo(y.Tx.Nonce);
         }
     }
 }

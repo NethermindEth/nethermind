@@ -23,19 +23,19 @@ namespace Nethermind.TxPool
     /// <summary>
     /// Default ordering by <see cref="Transaction.PoolIndex"/> asc
     /// </summary>
-    public class CompareTxByPoolIndex : IComparer<Transaction>
+    public class CompareTxByPoolIndex : IComparer<WrappedTransaction>
     {
         public static readonly CompareTxByPoolIndex Instance = new();
         
         private CompareTxByPoolIndex() { }
 
-        public int Compare(Transaction x, Transaction y)
+        public int Compare(WrappedTransaction x, WrappedTransaction y)
         {
             if (ReferenceEquals(x, y)) return 0;
             if (ReferenceEquals(null, y)) return 1;
             if (ReferenceEquals(null, x)) return -1;
             
-            return x.PoolIndex.CompareTo(y.PoolIndex);
+            return x.Tx.PoolIndex.CompareTo(y.Tx.PoolIndex);
         }
     }
 }

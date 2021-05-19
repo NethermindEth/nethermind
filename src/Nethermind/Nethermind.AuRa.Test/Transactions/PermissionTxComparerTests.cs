@@ -278,12 +278,13 @@ namespace Nethermind.AuRa.Test.Transactions
             ISpecProvider specProvider = Substitute.For<ISpecProvider>();
             specProvider.GetSpec(Arg.Any<long>()).Returns(new ReleaseSpec() {IsEip1559Enabled = false});
             var transactionComparerProvider = new TransactionComparerProvider(specProvider, blockTree);
-            IComparer<Transaction> defaultComparer = transactionComparerProvider.GetDefaultComparer();
-            IComparer<Transaction> comparer = new CompareTxByPriorityOnSpecifiedBlock(sendersWhitelist, priorities, blockHeader)
-                .ThenBy(defaultComparer); 
-            
+            IComparer<WrappedTransaction> defaultComparer = transactionComparerProvider.GetDefaultComparer();
+            IComparer<WrappedTransaction> comparer = new CompareTxByPriorityOnSpecifiedBlock(sendersWhitelist, priorities, blockHeader)
+                .ThenBy(defaultComparer);
 
-            var txBySender = transactions.GroupBy(t => t.SenderAddress)
+            WrappedTransaction[] wTxs = transactions.Select(t => new WrappedTransaction(t)).ToArray();
+            WrappedTransaction[] wExpectation = expectation.Select(t => new WrappedTransaction(t)).ToArray();
+            var txBySender = wTxs.GroupBy(t => t.Tx.SenderAddress)
                 .ToDictionary(
                     g => g.Key,
                     g => g.OrderBy(t => t,
@@ -292,7 +293,7 @@ namespace Nethermind.AuRa.Test.Transactions
             
             
             var orderedTransactions = TxPoolTxSource.Order(txBySender, comparer).ToArray();
-            orderedTransactions.Should().BeEquivalentTo(expectation, o => o.WithStrictOrdering());
+            orderedTransactions.Should().BeEquivalentTo(wExpectation, o => o.WithStrictOrdering());
         }
 
         private static void SetPriority(

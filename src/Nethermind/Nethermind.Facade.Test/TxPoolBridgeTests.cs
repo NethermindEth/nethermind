@@ -52,7 +52,7 @@ namespace Nethermind.Facade.Test
         [Test]
         public void get_transaction_returns_null_when_transaction_not_found()
         {
-            _txPool.TryGetPendingTransaction(TestItem.KeccakA, out Transaction tx);
+            _txPool.TryGetPendingTransaction(TestItem.KeccakA, out WrappedTransaction tx);
             tx.Should().Be(null);
         }
     }
