@@ -196,6 +196,11 @@ namespace Nethermind.TxPool.Collections
 
             return !_cacheMap.ContainsKey(key);
         }
+
+        public virtual Dictionary<TKey, TValue> GetCacheMap() 
+        {
+            return (Dictionary<TKey, TValue>) _cacheMap;
+        }
         
         /// <summary>
         /// Actual insert mechanism.

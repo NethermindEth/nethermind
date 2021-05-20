@@ -59,7 +59,7 @@ namespace Nethermind.Core.Collections
                 }
             }
 
-            return ~lower;
+            return ~lower; //what we get when our value is not equal
         }
 
         /// <summary>

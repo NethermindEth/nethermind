@@ -52,7 +52,6 @@ namespace Nethermind.Mev.Source
         private readonly ConcurrentDictionary<Keccak, ConcurrentDictionary<MevBundle, SimulatedMevBundleContext>> _simulatedBundles = new();
         private readonly ILogger _logger;
         private readonly CompareMevBundlesByBlock _compareByBlock;
-
         public BundlePool(
             IBlockTree blockTree, 
             IBundleSimulator simulator,
@@ -94,33 +93,39 @@ namespace Nethermind.Mev.Source
                 return searchedBundle.BlockNumber <= potentialBundle.Key.BlockNumber ? -1 : 1;
             }
 
-            lock (_bundles)
+            lock (_bundles2)
             {
                 MevBundle searchedBundle = MevBundle.Empty(blockNumber, minTimestamp, maxTimestamp);
-                int i = _bundles.BinarySearch(searchedBundle, CompareBundles);
-                for (int j = (i >= 0 ? i : ~i); j < _bundles.Count; j++)
+                bool inBundle = _bundles2.TryGetValue(searchedBundle, out searchedBundle); //checking to see if bundle in bundles, where do we see equality of keys?
+                if (inBundle)
                 {
-                    if (token.IsCancellationRequested)
+                    foreach (KeyValuePair<MevBundle, MevBundle> kvp in _bundles2.GetCacheMap()) //is the complement of i to prevent us from checking if i is not in this list?, but ~~of a number is the same number...
                     {
-                        break;
-                    }
-
-                    MevBundle mevBundle = _bundles[j].Key;
-                    if (mevBundle.BlockNumber == searchedBundle.BlockNumber)
-                    {
-                        bool bundleIsInFuture = mevBundle.MinTimestamp != UInt256.Zero && searchedBundle.MinTimestamp < mevBundle.MinTimestamp;
-                        bool bundleIsTooOld = mevBundle.MaxTimestamp != UInt256.Zero && searchedBundle.MaxTimestamp > mevBundle.MaxTimestamp;
-                        if (!bundleIsInFuture && !bundleIsTooOld)
+                        if (token.IsCancellationRequested)
                         {
-                            yield return mevBundle;
+                            break;
                         }
-                    }
-                    else
-                    {
-                        break;
+
+                        MevBundle mevBundle = kvp.Key;
+                        if (mevBundle.BlockNumber == searchedBundle.BlockNumber)
+                        {
+                            bool bundleIsInFuture = mevBundle.MinTimestamp != UInt256.Zero &&
+                                                    searchedBundle.MinTimestamp < mevBundle.MinTimestamp;
+                            bool bundleIsTooOld = mevBundle.MaxTimestamp != UInt256.Zero &&
+                                                  searchedBundle.MaxTimestamp > mevBundle.MaxTimestamp;
+                            if (!bundleIsInFuture && !bundleIsTooOld) 
+                            {
+                                yield return mevBundle;
+                            }
+                        }
+                        else
+                        {
+                            break;
+                        }
                     }
                 }
             }
+            //return Enumerable.Empty<MevBundle>(); do we need something in case nothing returned?
         }
 
         public bool AddBundle(MevBundle bundle)
