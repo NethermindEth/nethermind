@@ -257,7 +257,7 @@ namespace Nethermind.Runner.Ethereum.Steps
         private void ReorgBoundaryReached(object? sender, ReorgBoundaryReached e)
         {
             if (_logger.IsDebug) _logger.Debug($"Saving reorg boundary {e.BlockNumber}");
-            (_api.BlockTree as BlockTree)!.SavePruningReorganizationBoundary(e.BlockNumber);
+            _api.BlockTree!.HighestPersistedState = e.BlockNumber;
         }
         
         protected virtual IHealthHintService CreateHealthHintService() =>

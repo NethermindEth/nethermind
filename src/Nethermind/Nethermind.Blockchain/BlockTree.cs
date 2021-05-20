@@ -76,6 +76,7 @@ namespace Nethermind.Blockchain
         public BlockHeader? LowestInsertedHeader { get; private set; }
 
         private long? _lowestInsertedReceiptBlock;
+        private long? _highestPersistedState;
 
         public long? LowestInsertedBodyNumber
         {
@@ -1156,8 +1157,7 @@ namespace Nethermind.Blockchain
         private void LoadStartBlock()
         {
             Block? startBlock = null;
-            byte[] persistedNumberData = _blockInfoDb.Get(StateHeadHashDbEntryAddress);
-            long? persistedNumber = persistedNumberData is null ? (long?) null : new RlpStream(persistedNumberData).DecodeLong();
+            long? persistedNumber = HighestPersistedState;
             if (persistedNumber is not null)
             {
                 startBlock = FindBlock(persistedNumber.Value, BlockTreeLookupOptions.None);
@@ -1567,9 +1567,23 @@ namespace Nethermind.Blockchain
             Interlocked.Decrement(ref _canAcceptNewBlocksCounter);
         }
 
-        public void SavePruningReorganizationBoundary(long blockNumber)
+        public long? HighestPersistedState
         {
-            _blockInfoDb.Set(StateHeadHashDbEntryAddress, Rlp.Encode(blockNumber).Bytes);
+            get
+            {
+                if (_highestPersistedState is null)
+                {
+                    byte[] persistedNumberData = _blockInfoDb.Get(StateHeadHashDbEntryAddress);
+                    _highestPersistedState = persistedNumberData is null ? null : new RlpStream(persistedNumberData).DecodeLong();
+                }
+
+                return _highestPersistedState;
+            }
+            set
+            {
+                _highestPersistedState = value;
+                _blockInfoDb.Set(StateHeadHashDbEntryAddress, Rlp.Encode(value).Bytes);
+            }
         }
     }
 }
