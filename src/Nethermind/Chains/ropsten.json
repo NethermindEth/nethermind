@@ -56,10 +56,10 @@
         "eip2565Transition": "0x95B8DD",
         "eip2929Transition": "0x95B8DD",
         "eip2930Transition": "0x95B8DD",
-		"eip1559Transition": "0x9EAE45",
-		"eip3198Transition": "0x9EAE45",
-		"eip3529Transition": "0x9EAE45",
-		"eip3541Transition": "0x9EAE45"
+        "eip1559Transition": "0x9EAE45",
+        "eip3198Transition": "0x9EAE45",
+        "eip3529Transition": "0x9EAE45",
+        "eip3541Transition": "0x9EAE45"
     },
 	"genesis": {
 		"seal": {
