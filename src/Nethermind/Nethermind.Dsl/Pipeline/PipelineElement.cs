@@ -18,6 +18,7 @@ namespace Nethermind.Dsl.Pipeline
         {
             _conditions = new List<Func<TIn, bool>> { condition } ?? throw new ArgumentNullException(nameof(condition));
             _transformData = transformData ?? throw new ArgumentNullException(nameof(transformData));
+            _logger = logger;
         }
 
         public void SubscribeToData(TIn data)
