@@ -40,6 +40,8 @@ namespace Nethermind.Mev.Test
         public TailGasType TailGasType { get; set; }
 
         public long MaxGasLimitRatio { get; set; } = 100;
+
+        public int MaxMergedBundles { get; set; } = 5;
         
         public object Clone()
         {
@@ -53,6 +55,7 @@ namespace Nethermind.Mev.Test
             testJson.SelectorType = SelectorType;
             testJson.TailGasType = TailGasType;
             testJson.MaxGasLimitRatio = MaxGasLimitRatio;
+            testJson.MaxMergedBundles = MaxMergedBundles;
             return testJson;
         }
 

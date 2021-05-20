@@ -19,6 +19,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.VisualBasic;
 using Nethermind.Core;
 using Nethermind.Evm;
 using Nethermind.Int256;
@@ -30,44 +31,40 @@ namespace Nethermind.Mev.Source
     public class V2Selector : IBundleSource
     {
         private readonly ISimulatedBundleSource _simulatedBundleSource;
-        private readonly long _maxBundlesGasUsedRatio;
+        private readonly int _maxMergedBundles;
         
 
         public V2Selector(
             ISimulatedBundleSource simulatedBundleSource,
-            long maxBundlesGasUsedRatio = 100)
+            int maxMergedBundles)
         {
             _simulatedBundleSource = simulatedBundleSource;
-            _maxBundlesGasUsedRatio = maxBundlesGasUsedRatio;
+            _maxMergedBundles = maxMergedBundles;
         }
         
         public async Task<IEnumerable<MevBundle>> GetBundles(BlockHeader parent, UInt256 timestamp, long gasLimit, CancellationToken token = default)
         {
-            SimulatedMevBundle? bestBundle = null;
-            UInt256 bestMevEquivalentPrice = 0;
+            ICollection<MevBundle> includedBundles = Enumerable.Empty<MevBundle>().ToList();
             long totalGasUsed = 0;
-            long maxGasUsed = gasLimit * _maxBundlesGasUsedRatio / 100;
             
             IEnumerable<SimulatedMevBundle> simulatedBundles = await _simulatedBundleSource.GetBundles(parent, timestamp, gasLimit, token);
-            foreach (SimulatedMevBundle simulatedBundle in simulatedBundles)
+            foreach (SimulatedMevBundle simulatedBundle in simulatedBundles.OrderByDescending(bundle => bundle.BundleAdjustedGasPrice))
             {
-                if (maxGasUsed - totalGasUsed >= GasCostOf.Transaction)
+                if (includedBundles.Count < _maxMergedBundles)
                 {
-                    UInt256 tailGas = 0;
-                    if (simulatedBundle.MevEquivalentGasPrice > bestMevEquivalentPrice
-                        && simulatedBundle.MevEquivalentGasPrice > tailGas)
+                    if (simulatedBundle.GasUsed <= gasLimit - totalGasUsed)
                     {
-                        if (simulatedBundle.GasUsed + totalGasUsed <= maxGasUsed)
-                        {
-                            totalGasUsed += simulatedBundle.GasUsed;
-                            bestMevEquivalentPrice = simulatedBundle.MevEquivalentGasPrice;
-                            bestBundle = simulatedBundle;
-                        }
+                        includedBundles.Add(simulatedBundle.Bundle);
+                        totalGasUsed += simulatedBundle.GasUsed;
                     }
+                }
+                else
+                {
+                    break;
                 }
             }
 
-            return bestBundle is null ? Enumerable.Empty<MevBundle>() : Enumerable.Repeat(bestBundle.Bundle, 1);
+            return includedBundles.Any() ? includedBundles : Enumerable.Empty<MevBundle>();
         }
     }
 }

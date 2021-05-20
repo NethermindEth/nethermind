@@ -50,7 +50,7 @@ namespace Nethermind.Mev.Test
             IBundleSource selector = testJson.SelectorType switch
             {
                 SelectorType.V1 => new V1Selector(testSimulator),
-                SelectorType.V2 => new V2Selector(testSimulator, testJson.MaxGasLimitRatio),
+                SelectorType.V2 => new V2Selector(testSimulator, testJson.MaxMergedBundles),
                 _ => throw new ArgumentOutOfRangeException()
             };
 
