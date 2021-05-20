@@ -44,10 +44,10 @@ namespace Nethermind.Mev.Source
     {
         public int headBlockNumber { get; set; } //can I set it here?
         public int capacity { get; set; } 
-        public BundleSortedPool(int capacity,MevConfig mevConfig, IComparer<MevBundle> comparer, ILogManager logManager, int headBlockNumber) 
+        public BundleSortedPool(int capacity, MevConfig mevConfig, IComparer<MevBundle> comparer, ILogManager logManager, int headBlockNumber) 
             : base(capacity, comparer, EqualityComparer<MevBundle>.Default, logManager) //why do we need these?
         {
-            this.capacity = mevConfig.BundlePoolSize; //capacity?
+            this.capacity = mevConfig.BundlePoolSize; //capacity needed to be defined?
             this.headBlockNumber = headBlockNumber;
         }
 
@@ -104,7 +104,7 @@ namespace Nethermind.Mev.Source
                 return 1;
             }
 
-            return (0);
+            return (0); //remove this
 
         }
     }

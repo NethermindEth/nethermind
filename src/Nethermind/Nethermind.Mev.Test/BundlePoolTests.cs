@@ -135,28 +135,29 @@ namespace Nethermind.Mev.Test
         }
 
         [Test]
-        public static void sort_bundles_by_increasing_block_number_for_bundles_in_blocks_greater_or_equal_to_head_and_then_decreasing_order_for_rest_then_transaction_id()
+        public static void sort_bundles_by_increasing_block_number_and_then_transaction_id()
         {
             Transaction[] txs = Array.Empty<Transaction>();
-            //IComparer<MevBundle> comparer = Comparer<MevBundle>.Default; //what is Default?
-            /*MevBundle[] bundles = new MevBundle[]
-            {
-                new MevBundle(txs, 1, 0, 0), new MevBundle(txs, 1, 5, 10), new MevBundle(txs, 2, 0, 0),
-                new MevBundle(txs, 3, 4, 10)
-            };*/
-            //List<MevBundle> bundles = new List<MevBundle>();
-            
             BundleSortedPool txPool = new BundleSortedPool(200, new MevConfig(), Comparer<MevBundle>.Default, LimboLogs.Instance, 3);
-            MevBundle bundle;
+            List<MevBundle> bundleList = new List<MevBundle>();
             for (int i = 10; i > 0; i--)
             {
-                bundle = new MevBundle(txs, i, 0, 0);
-                txPool.TryInsert(bundle, bundle); //tkey and tvalue are the same; both bundles, maybe tkey should be hash?
+                bundleList.Add(new MevBundle(txs, i, 0, 0)); //should come back in reverse order
             }
-            bundle = new MevBundle(txs, 1, 10, 20); 
-            txPool.TryInsert(bundle, bundle); //should be ahead of 1,0 but before 2,0
-            bundle = new MevBundle(txs, 4, 5, 10);
-            txPool.TryInsert(bundle, bundle); //should be ahead of 4,0 but before 5,0
+
+            bundleList.Add(new MevBundle(txs, 1, 10, 20));  //should be ahead of 1,0 but before 2,0 
+            bundleList.Add(new MevBundle(txs, 4, 5, 10)); //should be ahead of 4,0 but before 5,0
+            foreach (MevBundle bundle in bundleList)
+            {
+                txPool.TryInsert(bundle, bundle);
+            } 
+            foreach (KeyValuePair<long, MevBundle[]> kvp in txPool.GetBucketSnapshot())
+            {
+                foreach (MevBundle bundleObj in kvp.Value)
+                {
+                    Console.WriteLine("Block: {0}, Start Time: {1}", kvp.Key, bundleObj.MinTimestamp);
+                }
+            }
         }
         
         public record BundleTest(long block, ulong testTimestamp, int expectedCount, int expectedRemaining, Action<BundlePool>? action);
