@@ -144,15 +144,19 @@ namespace Nethermind.Mev.Test
                 new MevBundle(txs, 1, 0, 0), new MevBundle(txs, 1, 5, 10), new MevBundle(txs, 2, 0, 0),
                 new MevBundle(txs, 3, 4, 10)
             };*/
-            List<MevBundle> bundles = new List<MevBundle>();
-            for (int i = 10; i > 0; i--)
-            {
-                bundles.Add(new MevBundle(txs, i, 0, 0));
-            }
-            bundles.Add(new MevBundle(txs, 1, 10, 20)); //should be ahead of 1,0 but before 2,0
-            bundles.Add(new MevBundle(txs, 4, 5, 10)); //should be ahead of 4,0 but before 5,0
+            //List<MevBundle> bundles = new List<MevBundle>();
             
             BundleSortedPool txPool = new BundleSortedPool(200, new MevConfig(), Comparer<MevBundle>.Default, LimboLogs.Instance, 3);
+            MevBundle bundle;
+            for (int i = 10; i > 0; i--)
+            {
+                bundle = new MevBundle(txs, i, 0, 0);
+                txPool.TryInsert(bundle, bundle); //tkey and tvalue are the same; both bundles, maybe tkey should be hash?
+            }
+            bundle = new MevBundle(txs, 1, 10, 20); 
+            txPool.TryInsert(bundle, bundle); //should be ahead of 1,0 but before 2,0
+            bundle = new MevBundle(txs, 4, 5, 10);
+            txPool.TryInsert(bundle, bundle); //should be ahead of 4,0 but before 5,0
         }
         
         public record BundleTest(long block, ulong testTimestamp, int expectedCount, int expectedRemaining, Action<BundlePool>? action);
