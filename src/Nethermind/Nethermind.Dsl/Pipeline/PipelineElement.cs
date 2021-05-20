@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using Nethermind.Core;
+using Nethermind.Logging;
 using Nethermind.Pipeline;
 
 namespace Nethermind.Dsl.Pipeline
@@ -10,8 +12,9 @@ namespace Nethermind.Dsl.Pipeline
         public List<Func<TIn, bool>> Conditions { get => _conditions; }
         private List<Func<TIn, bool>> _conditions;
         private Func<TIn, TOut> _transformData;
+        private readonly ILogger _logger;
 
-        public PipelineElement(Func<TIn, bool> condition, Func<TIn, TOut> transformData)
+        public PipelineElement(Func<TIn, bool> condition, Func<TIn, TOut> transformData, ILogger logger)
         {
             _conditions = new List<Func<TIn, bool>> { condition } ?? throw new ArgumentNullException(nameof(condition));
             _transformData = transformData ?? throw new ArgumentNullException(nameof(transformData));
@@ -19,6 +22,8 @@ namespace Nethermind.Dsl.Pipeline
 
         public void SubscribeToData(TIn data)
         {
+            var block = data as Block;
+            if(_logger.IsInfo) _logger.Info($"Recieved data in pipeline element. Block author: {block.Author}"); 
             foreach(var condition in _conditions)
             {
                 if (condition(data))
@@ -26,6 +31,7 @@ namespace Nethermind.Dsl.Pipeline
                     var dataToEmit = _transformData(data);
                     Emit(dataToEmit);
                 }
+                if(_logger.IsInfo) _logger.Info("Data did not match condition.");
             }
         }
 

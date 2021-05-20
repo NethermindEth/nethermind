@@ -7,6 +7,7 @@ using Nethermind.Api;
 using Nethermind.Core;
 using Nethermind.Dsl.Pipeline;
 using Nethermind.Int256;
+using Nethermind.Logging;
 using Nethermind.Pipeline;
 using Nethermind.Pipeline.Publishers;
 
@@ -22,10 +23,12 @@ namespace Nethermind.Dsl.ANTLR
         private IPipelineBuilder<Transaction, Transaction> _transactionPipelineBuilder;
         private readonly ParseTreeWalker _parseTreeWalker;
         private bool _blockSource;
+        private readonly ILogger _logger;
 
         public Interpreter(INethermindApi api, string script)
         {
             _api = api ?? throw new ArgumentNullException(nameof(api));
+            _logger = api.LogManager.GetClassLogger();
 
             var inputStream = new AntlrInputStream(script);
             var lexer = new DslGrammarLexer(inputStream);
@@ -77,7 +80,8 @@ namespace Nethermind.Dsl.ANTLR
                     _blockPipelineBuilder = _blockPipelineBuilder.AddElement(
                         new PipelineElement<Block, Block>(
                             condition: (block => true),
-                            transformData: (b => b)
+                            transformData: (b => b),
+                            _logger
                             )
                     );
                     break;
@@ -133,22 +137,22 @@ namespace Nethermind.Dsl.ANTLR
             {
                 "==" => new PipelineElement<Transaction, Transaction>(
                             condition: (t => t.GetType().GetProperty(key).GetValue(t).ToString() == value),
-                            transformData: (t => t)),
+                            transformData: (t => t), _logger),
                 "!=" => new PipelineElement<Transaction, Transaction>(
                             condition: (t => t.GetType().GetProperty(key).GetValue(t).ToString() != value),
-                            transformData: (t => t)),
+                            transformData: (t => t), _logger),
                 ">" => new PipelineElement<Transaction, Transaction>(
                             condition: (t => (UInt256)t.GetType().GetProperty(key).GetValue(t) > UInt256.Parse(value)),
-                            transformData: (t => t)),
+                            transformData: (t => t), _logger),
                 "<" => new PipelineElement<Transaction, Transaction>(
                             condition: (t => (UInt256)t.GetType().GetProperty(key).GetValue(t) < UInt256.Parse(value)),
-                            transformData: (t => t)),
+                            transformData: (t => t), _logger),
                 ">=" => new PipelineElement<Transaction, Transaction>(
                             condition: (t => (UInt256)t.GetType().GetProperty(key).GetValue(t) >= UInt256.Parse(value)),
-                            transformData: (t => t)),
+                            transformData: (t => t), _logger),
                 "<=" => new PipelineElement<Transaction, Transaction>(
                             condition: (t => (UInt256)t.GetType().GetProperty(key).GetValue(t) <= UInt256.Parse(value)),
-                            transformData: (t => t)),
+                            transformData: (t => t), _logger),
                 _ => null
             };
         }
@@ -159,22 +163,22 @@ namespace Nethermind.Dsl.ANTLR
             {
                 "==" => new PipelineElement<Block, Block>(
                             condition: (b => b.GetType().GetProperty(key).GetValue(b).ToString() == value),
-                            transformData: (b => b)),
+                            transformData: (b => b), _logger),
                 "!=" => new PipelineElement<Block, Block>(
                             condition: (b => b.GetType().GetProperty(key).GetValue(b).ToString() != value),
-                            transformData: (b => b)),
+                            transformData: (b => b), _logger),
                 ">" => new PipelineElement<Block, Block>(
                             condition: (b => (UInt256)b.GetType().GetProperty(key).GetValue(b) > UInt256.Parse(value)),
-                            transformData: (b => b)),
+                            transformData: (b => b), _logger),
                 "<" => new PipelineElement<Block, Block>(
                             condition: (b => (UInt256)b.GetType().GetProperty(key).GetValue(b) < UInt256.Parse(value)),
-                            transformData: (b => b)),
+                            transformData: (b => b), _logger),
                 ">=" => new PipelineElement<Block, Block>(
                             condition: (b => (UInt256)b.GetType().GetProperty(key).GetValue(b) >= UInt256.Parse(value)),
-                            transformData: (b => b)),
+                            transformData: (b => b), _logger),
                 "<=" => new PipelineElement<Block, Block>(
                             condition: (b => (UInt256)b.GetType().GetProperty(key).GetValue(b) <= UInt256.Parse(value)),
-                            transformData: (b => b)),
+                            transformData: (b => b), _logger),
                 _ => null
             };
         }
@@ -198,6 +202,7 @@ namespace Nethermind.Dsl.ANTLR
             {
                 if (_blockPipelineBuilder != null)
                 {
+                    if(_logger.IsInfo) _logger.Info($"Adding block publisher with path: {path}");
                     _blockPipelineBuilder =_blockPipelineBuilder.AddElement(new WebSocketsPublisher<Block, Block>(path, _api.EthereumJsonSerializer));
                 }
             }
@@ -222,6 +227,7 @@ namespace Nethermind.Dsl.ANTLR
         {
             if(_blockSource)
             {
+                if(_logger.IsInfo) _logger.Info("Building pipeline...");
                 Pipeline = _blockPipelineBuilder.Build();
             }
             else

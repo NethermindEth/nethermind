@@ -4,6 +4,8 @@ using System.Linq;
 using System.Net.WebSockets;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
+using Nethermind.Core;
+using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.WebSockets;
 
@@ -15,6 +17,7 @@ namespace Nethermind.Pipeline.Publishers
         private readonly IJsonSerializer _jsonSerializer;
         public string Name { private set; get; }
         public Action<TOut> Emit { private get; set; }
+        private readonly ILogger _logger;
 
         public WebSocketsPublisher(string name, IJsonSerializer jsonSerializer)
         {
@@ -26,6 +29,8 @@ namespace Nethermind.Pipeline.Publishers
         {
             var newClient = new WebSocketsClient(webSocket, client, _jsonSerializer);
             _clients.TryAdd(client, newClient);
+
+            if(_logger.IsInfo) _logger.Info($"Creating new WS client for {client}");
 
             return newClient;
         }
@@ -52,13 +57,17 @@ namespace Nethermind.Pipeline.Publishers
         
         public async void SubscribeToData(TIn data)
         {
+            var block = data as Block;
+            if(_logger.IsInfo) _logger.Info($"Received block to send with WS: {block.Hash}");
             try
             {
                 var message = new WebSocketsMessage(nameof(TIn), null, data);
                 await Task.WhenAll(_clients.Values.Select(v => v.SendAsync(message)));
+                if(_logger.IsInfo) _logger.Info("Sent data through websockets...");
             }
             catch (Exception ex)
             {
+                if(_logger.IsInfo) _logger.Info($"Exception during sending data with websockets, inner exception: {ex.InnerException}");
             };
         }
     }
