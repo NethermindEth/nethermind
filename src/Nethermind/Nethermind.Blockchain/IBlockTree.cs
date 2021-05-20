@@ -140,7 +140,7 @@ namespace Nethermind.Blockchain
         event EventHandler<BlockEventArgs> NewSuggestedBlock;
         event EventHandler<BlockReplacementEventArgs> BlockAddedToMain;
         event EventHandler<BlockEventArgs> NewHeadBlock;
-
+        
         int DeleteChainSlice(in long startNumber, long? endNumber = null);
 
         bool IsBetterThanHead(BlockHeader? header)
