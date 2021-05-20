@@ -20,14 +20,13 @@ using Nethermind.Core.Specs;
 
 namespace Nethermind.Consensus
 {
-    /// <summary>Block.GasLimit in the context of EIP1559 transactions was renamed to GasTarget.
-    /// The new GasLimit = ElasticityMultiplier * GasTarget </summary>
+    /// <summary>In the 1559 fork block the new gas limit is gasLimit * Eip1559Constants.ElasticityMultiplier.</summary>
     public static class Eip1559GasLimitAdjuster
     {
-        public static long AdjustGasLimit(bool isEip1559Enabled, long gasLimit)
+        public static long AdjustGasLimit(IReleaseSpec releaseSpec, long gasLimit, long blockNumber)
         {
             long adjustedGasLimit = gasLimit;
-            if (isEip1559Enabled)
+            if (releaseSpec.Eip1559TransitionBlock == blockNumber)
             {
                 adjustedGasLimit *= Eip1559Constants.ElasticityMultiplier;
             }

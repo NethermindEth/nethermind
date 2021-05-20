@@ -60,5 +60,3 @@ jobs:
     - name: Checking Outputs
       run: |
         echo "Pull Request Number - ${{ env.PULL_REQUEST_NUMBER }}"
-
-
