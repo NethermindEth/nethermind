@@ -37,10 +37,6 @@ namespace Nethermind.Mev.Test
 
         public SelectorType SelectorType { get; set; }
         
-        public TailGasType TailGasType { get; set; }
-
-        public long MaxGasLimitRatio { get; set; } = 100;
-
         public int MaxMergedBundles { get; set; } = 5;
         
         public object Clone()
@@ -53,15 +49,13 @@ namespace Nethermind.Mev.Test
             testJson.OptimalProfit = OptimalProfit;
             testJson.GasLimit = GasLimit;
             testJson.SelectorType = SelectorType;
-            testJson.TailGasType = TailGasType;
-            testJson.MaxGasLimitRatio = MaxGasLimitRatio;
             testJson.MaxMergedBundles = MaxMergedBundles;
             return testJson;
         }
 
         public override string ToString()
         {
-            return $"{Name} {SelectorType} tail {TailGasType} gas {MaxGasLimitRatio}%";
+            return $"{Name} {SelectorType} maxbundles:{MaxMergedBundles}";
         }
     }
 }

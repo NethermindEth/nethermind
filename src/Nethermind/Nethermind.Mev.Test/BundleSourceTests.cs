@@ -66,25 +66,15 @@ namespace Nethermind.Mev.Test
             totalProfit.Should().Be(testJson.OptimalProfit!.Value, testJson.Description);
         }
 
-        private static IEnumerable<TestJson> AllGasLimits(TestJson testJson)
+        private static IEnumerable<TestJson> AllMaxMergedBundles(TestJson testJson)
         {
-            long[] ratios = {33, 100};
+            int[] bundles = {1, 2, 4};
 
-            foreach (long ratio in ratios)
+            foreach (int bundle in bundles)
             {
-                TestJson withRatio = (TestJson)testJson.Clone();
-                withRatio.MaxGasLimitRatio = ratio;
-                yield return withRatio;
-            }
-        }
-
-        private static IEnumerable<TestJson> AllTailGasTypes(TestJson testJson)
-        {
-            foreach (TailGasType value in Enum.GetValues<TailGasType>())
-            {
-                TestJson withSelector = (TestJson)testJson.Clone();
-                withSelector.TailGasType = value;
-                yield return withSelector;
+                TestJson withBundle = (TestJson)testJson.Clone();
+                withBundle.MaxMergedBundles = bundle;
+                yield return withBundle;
             }
         }
 
@@ -111,12 +101,9 @@ namespace Nethermind.Mev.Test
                 {
                     foreach (TestJson withSelector in AllSelectors(testJson))
                     {
-                        foreach (TestJson withGasLimit in AllGasLimits(withSelector))
+                        foreach (TestJson withMaxMergedBundleCount in AllMaxMergedBundles(withSelector))
                         {
-                            foreach (TestJson withTailGasType in AllTailGasTypes(withGasLimit))
-                            {
-                                yield return withTailGasType;
-                            }
+                            yield return withMaxMergedBundleCount;
                         }
                     }
                 }
