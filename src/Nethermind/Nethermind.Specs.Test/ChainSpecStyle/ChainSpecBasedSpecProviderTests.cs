@@ -81,6 +81,8 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
                 GoerliSpecProvider.IstanbulBlockNumber,
                 GoerliSpecProvider.BerlinBlockNumber - 1,
                 GoerliSpecProvider.BerlinBlockNumber,
+                GoerliSpecProvider.LondonBlockNumber - 1,
+                GoerliSpecProvider.LondonBlockNumber,
                 100000000, // far in the future
             };
 
@@ -193,6 +195,8 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
                 RopstenSpecProvider.MuirGlacierBlockNumber,
                 RopstenSpecProvider.BerlinBlockNumber - 1,
                 RopstenSpecProvider.BerlinBlockNumber,
+                RopstenSpecProvider.LondonBlockNumber - 1,
+                RopstenSpecProvider.LondonBlockNumber,
                 120000000, // far in the future
             };
 
