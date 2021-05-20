@@ -134,6 +134,27 @@ namespace Nethermind.Mev.Test
                 .Should().BeEquivalentTo(new bool[] {true, false, true, false});
         }
 
+        [Test]
+        public static void sort_bundles_by_increasing_block_number_for_bundles_in_blocks_greater_or_equal_to_head_and_then_decreasing_order_for_rest_then_transaction_id()
+        {
+            Transaction[] txs = Array.Empty<Transaction>();
+            //IComparer<MevBundle> comparer = Comparer<MevBundle>.Default; //what is Default?
+            /*MevBundle[] bundles = new MevBundle[]
+            {
+                new MevBundle(txs, 1, 0, 0), new MevBundle(txs, 1, 5, 10), new MevBundle(txs, 2, 0, 0),
+                new MevBundle(txs, 3, 4, 10)
+            };*/
+            List<MevBundle> bundles = new List<MevBundle>();
+            for (int i = 10; i > 0; i--)
+            {
+                bundles.Add(new MevBundle(txs, i, 0, 0));
+            }
+            bundles.Add(new MevBundle(txs, 1, 10, 20)); //should be ahead of 1,0 but before 2,0
+            bundles.Add(new MevBundle(txs, 4, 5, 10)); //should be ahead of 4,0 but before 5,0
+            
+            BundleSortedPool txPool = new BundleSortedPool(200, new MevConfig(), Comparer<MevBundle>.Default, LimboLogs.Instance, 3);
+        }
+        
         public record BundleTest(long block, ulong testTimestamp, int expectedCount, int expectedRemaining, Action<BundlePool>? action);
         
     }

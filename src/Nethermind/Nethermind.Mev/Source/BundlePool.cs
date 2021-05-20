@@ -43,10 +43,12 @@ namespace Nethermind.Mev.Source
     public class BundleSortedPool : DistinctValueSortedPool<MevBundle, MevBundle, long> 
     {
         public int headBlockNumber { get; set; } //can I set it here?
-
-        public BundleSortedPool(int capacity, IComparer<MevBundle> comparer, ILogManager logManager) 
+        public int capacity { get; set; } 
+        public BundleSortedPool(int capacity,MevConfig mevConfig, IComparer<MevBundle> comparer, ILogManager logManager, int headBlockNumber) 
             : base(capacity, comparer, EqualityComparer<MevBundle>.Default, logManager) //why do we need these?
         {
+            this.capacity = mevConfig.BundlePoolSize; //capacity?
+            this.headBlockNumber = headBlockNumber;
         }
 
         protected override IComparer<MevBundle> GetUniqueComparer(IComparer<MevBundle> comparer) //compares all the bundles to evict the worst one
@@ -67,7 +69,7 @@ namespace Nethermind.Mev.Source
                     return bundle2.BlockNumber.CompareTo(bundle1.BlockNumber);
                 }
             });
-
+            return comparer;
         }
 
         protected override IComparer<MevBundle> GetGroupComparer(IComparer<MevBundle> comparer) //compares two bundles with same block #
@@ -77,6 +79,7 @@ namespace Nethermind.Mev.Source
             {
                 return bundle1.MinTimestamp.CompareTo(bundle2.MinTimestamp); //compare to min or max timestamp?
             });
+            return comparer;
         }
 
         protected override long MapToGroup(MevBundle value)
@@ -100,7 +103,9 @@ namespace Nethermind.Mev.Source
             {
                 return 1;
             }
-            
+
+            return (0);
+
         }
     }
     
