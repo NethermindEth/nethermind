@@ -204,6 +204,11 @@ namespace Nethermind.Evm
                                 {
                                     _txTracer.ReportActionError(EvmExceptionType.OutOfGas);
                                 }
+                                // Reject code starting with 0xEF if EIP-3541 is enabled.
+                                else if (currentState.ExecutionType.IsAnyCreate() && CodeDepositHandler.CodeIsInvalid(spec, callResult.Output))
+                                {
+                                    _txTracer.ReportActionError(EvmExceptionType.InvalidCode);
+                                }
                                 else
                                 {
                                     if (currentState.ExecutionType.IsAnyCreate())
@@ -239,7 +244,8 @@ namespace Nethermind.Evm
                             previousCallOutput = ZeroPaddedSpan.Empty;
 
                             long codeDepositGasCost = CodeDepositHandler.CalculateCost(callResult.Output.Length, spec);
-                            if (gasAvailableForCodeDeposit >= codeDepositGasCost)
+                            bool invalidCode = currentState.ExecutionType.IsAnyCreate() && CodeDepositHandler.CodeIsInvalid(spec, callResult.Output);
+                            if (gasAvailableForCodeDeposit >= codeDepositGasCost && !invalidCode)
                             {
                                 Keccak codeHash = _state.UpdateCode(callResult.Output);
                                 _state.UpdateCodeHash(callCodeOwner, codeHash, spec);
@@ -252,7 +258,7 @@ namespace Nethermind.Evm
                             }
                             else
                             {
-                                if (spec.FailOnOutOfGasCodeDeposit)
+                                if (spec.FailOnOutOfGasCodeDeposit || invalidCode)
                                 {
                                     currentState.GasAvailable -= gasAvailableForCodeDeposit;
                                     _state.Restore(previousState.StateSnapshot);
@@ -267,7 +273,10 @@ namespace Nethermind.Evm
 
                                     if (_txTracer.IsTracingActions)
                                     {
-                                        _txTracer.ReportActionError(EvmExceptionType.OutOfGas);
+                                        if (invalidCode)
+                                            _txTracer.ReportActionError(EvmExceptionType.InvalidCode);
+                                        else
+                                            _txTracer.ReportActionError(EvmExceptionType.OutOfGas);
                                     }
                                 }
                             }
@@ -2268,13 +2277,6 @@ namespace Nethermind.Evm
 
                         Span<byte> initCode = vmState.Memory.LoadSpan(in memoryPositionOfInitCode, initCodeLength);
                         
-                        // Reject code starting with 0xEF if EIP-3541 is enabled.
-                        if (spec.IsEip3541Enabled && initCode.Length >= 1 && initCode[0] == 0xEF)
-                        {
-                            EndInstructionTraceError(EvmExceptionType.InvalidCode);
-                            return CallResult.InvalidCodeException;
-                        }
-
                         UInt256 balance = _state.GetBalance(env.ExecutingAccount);
                         if (value > balance)
                         {
