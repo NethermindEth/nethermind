@@ -15,6 +15,8 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System.Collections.Generic;
+using System.Linq;
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -43,42 +45,95 @@ namespace Nethermind.Evm.Test
             }
         }
         
-        [TestCase(false, false)]
-        [TestCase(true, false)]
-        [TestCase(false, true)]
-        [TestCase(true, true)]
-        public void Wrong_contract_creation_should_return_invalid_code_after_3541(bool eip3541Enabled, bool create2)
+        [Test]
+        public void Wrong_contract_creation_should_return_invalid_code_after_3541(
+            [ValueSource(nameof(Eip3541TestCases))] Eip3541TestCase test,
+            [ValueSource(nameof(ContractDeployments))] ContractDeployment contractDeployment)
+        {
+            DeployCodeAndAssertTx(test.Code, true, contractDeployment, test.WithoutAnyInvalidCodeErrors);
+        }
+        
+        [Test]
+        public void All_tx_should_pass_before_3541(
+            [ValueSource(nameof(Eip3541TestCases))] Eip3541TestCase test,
+            [ValueSource(nameof(ContractDeployments))] ContractDeployment contractDeployment)
+        {
+            DeployCodeAndAssertTx(test.Code, false, contractDeployment, true);
+        }
+
+        public enum ContractDeployment
+        {
+            CREATE2,
+            CREATE,
+            InitCode
+        }
+        
+        public static IEnumerable<ContractDeployment> ContractDeployments
+        {
+            get
+            {
+                yield return ContractDeployment.CREATE2;
+                yield return ContractDeployment.CREATE;
+                yield return ContractDeployment.InitCode;
+            }
+        }
+        
+        public class Eip3541TestCase
+        {
+            public string Code { get; set; }
+
+            public bool WithoutAnyInvalidCodeErrors { get; set; }
+            
+            public override string ToString() =>
+                $"Code: {Code}";
+        }
+        
+        public static IEnumerable<Eip3541TestCase> Eip3541TestCases
+        {
+            get
+            {
+                yield return new Eip3541TestCase() { Code = "0x60ef60005360016000f3", WithoutAnyInvalidCodeErrors = false };
+                yield return new Eip3541TestCase() { Code = "0x60ef60005360026000f3", WithoutAnyInvalidCodeErrors = false };
+                yield return new Eip3541TestCase() { Code = "0x60ef60005360036000f3", WithoutAnyInvalidCodeErrors = false };
+                yield return new Eip3541TestCase() { Code = "0x60ef60005360206000f3", WithoutAnyInvalidCodeErrors = false };
+                yield return new Eip3541TestCase() { Code = "0x60fe60005360016000f3", WithoutAnyInvalidCodeErrors = true };
+            }
+        }
+        
+        
+        void DeployCodeAndAssertTx(string code, bool eip3541Enabled, ContractDeployment context, bool withoutAnyInvalidCodeErrors)
         {
             TestState.CreateAccount(TestItem.AddressC, 100.Ether());
             
             byte[] salt = {4, 5, 6};
-            byte[] code = Prepare.EvmCode
-                .FromCode("0xEF")
+            byte[] byteCode = Prepare.EvmCode
+                .FromCode(code)
                 .Done;
-            byte[] createContract = create2 ?
-                    Prepare.EvmCode.Create2(code, salt, UInt256.Zero).Done
-                    : Prepare.EvmCode.Create(code, UInt256.Zero).Done;
+            byte[] createContract;
+            switch (context)
+            {
+                case ContractDeployment.CREATE:
+                    createContract = Prepare.EvmCode.Create(byteCode, UInt256.Zero).Done;
+                    break;
+                case ContractDeployment.CREATE2:
+                    createContract = Prepare.EvmCode.Create2(byteCode, salt, UInt256.Zero).Done;
+                    break;
+                default:
+                   createContract = byteCode;
+                   break;
+            }
             
             _processor = new TransactionProcessor(SpecProvider, TestState, Storage, Machine, LimboLogs.Instance);
             long blockNumber = eip3541Enabled ? LondonTestBlockNumber : LondonTestBlockNumber - 1;
             (Block block, Transaction transaction) = PrepareTx(blockNumber, 100000, createContract);
-
+        
             transaction.GasPrice = 20.GWei();
             transaction.To = null;
             transaction.Data = createContract;
             TestAllTracerWithOutput tracer = CreateTracer();
             _processor.Execute(transaction, block.Header, tracer);
 
-            if (eip3541Enabled)
-            {
-                tracer.Error.Should().Be("InvalidCode");
-                tracer.StatusCode.Should().Be(0);
-            }
-            else
-            {
-                tracer.Error.Should().Be(null);
-                tracer.StatusCode.Should().Be(1);
-            }
+            Assert.AreEqual(withoutAnyInvalidCodeErrors, tracer.ReportedActionErrors.All(x => x != EvmExceptionType.InvalidCode),$"Code {code}, Context {context}");
         }
     }
 }

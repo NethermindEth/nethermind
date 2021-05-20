@@ -284,6 +284,11 @@ namespace Nethermind.Evm
                         {
                             throw new OutOfGasException();
                         }
+                        
+                        if (CodeDepositHandler.CodeIsInvalid(spec, substate.Output))
+                        {
+                            throw new InvalidCodeException();
+                        }
 
                         if (unspentGas >= codeDepositGasCost)
                         {
