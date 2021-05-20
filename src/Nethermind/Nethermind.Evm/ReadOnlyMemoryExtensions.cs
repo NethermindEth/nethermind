@@ -23,7 +23,7 @@ namespace Nethermind.Evm
     {
         public static bool StartsWith(this ReadOnlyMemory<byte> inputData, byte startingByte)
         {
-            return inputData.Span.Slice(0, 1)[0] == startingByte;
+            return inputData.Span[0] == startingByte;
         }
     }
 }
