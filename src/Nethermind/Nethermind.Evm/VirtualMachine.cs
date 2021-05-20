@@ -205,7 +205,7 @@ namespace Nethermind.Evm
                                     _txTracer.ReportActionError(EvmExceptionType.OutOfGas);
                                 }
                                 // Reject code starting with 0xEF if EIP-3541 is enabled.
-                                else if (currentState.ExecutionType.IsAnyCreate() && spec.IsEip3541Enabled && callResult.Output.Length >= 1 && callResult.Output[0] == 0xEF)
+                                else if (currentState.ExecutionType.IsAnyCreate() && CodeDepositHandler.CodeIsInvalid(spec, callResult.Output))
                                 {
                                     _txTracer.ReportActionError(EvmExceptionType.InvalidCode);
                                 }
@@ -244,8 +244,7 @@ namespace Nethermind.Evm
                             previousCallOutput = ZeroPaddedSpan.Empty;
 
                             long codeDepositGasCost = CodeDepositHandler.CalculateCost(callResult.Output.Length, spec);
-                            bool invalidCode = (currentState.ExecutionType.IsAnyCreate() && spec.IsEip3541Enabled &&
-                                               callResult.Output.Length >= 1 && callResult.Output[0] == 0xEF);
+                            bool invalidCode = currentState.ExecutionType.IsAnyCreate() && CodeDepositHandler.CodeIsInvalid(spec, callResult.Output);
                             if (gasAvailableForCodeDeposit >= codeDepositGasCost && !invalidCode)
                             {
                                 Keccak codeHash = _state.UpdateCode(callResult.Output);
@@ -274,7 +273,10 @@ namespace Nethermind.Evm
 
                                     if (_txTracer.IsTracingActions)
                                     {
-                                        _txTracer.ReportActionError(EvmExceptionType.OutOfGas);
+                                        if (invalidCode)
+                                            _txTracer.ReportActionError(EvmExceptionType.InvalidCode);
+                                        else
+                                            _txTracer.ReportActionError(EvmExceptionType.OutOfGas);
                                     }
                                 }
                             }

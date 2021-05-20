@@ -285,7 +285,7 @@ namespace Nethermind.Evm
                             throw new OutOfGasException();
                         }
                         
-                        if (spec.IsEip3541Enabled && substate.Output.Length >= 1 && substate.Output.Span.Slice(0, 1)[0] == 0xEF)
+                        if (CodeDepositHandler.CodeIsInvalid(spec, substate.Output))
                         {
                             throw new InvalidCodeException();
                         }
