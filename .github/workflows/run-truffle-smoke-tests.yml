@@ -11,6 +11,17 @@ jobs:
     name: Running Nethermind Truffle Tests on Spaceneth
     runs-on: ubuntu-latest
     steps:
+    - name: Import Secrets
+      uses: hashicorp/vault-action@v2.1.2
+      with:
+        url: ${{ secrets.VAULT_URL }}
+        method: approle
+        roleId: ${{ secrets.ROLE_ID }}
+        secretId: ${{ secrets.SECRET_ID }}
+        namespace: admin/NethermindEth
+        secrets: |
+            github/nethermind/data/environments/release DOCKER_USERNAME ;
+            github/nethermind/data/environments/release DOCKER_PASSWORD 
     - name: Checking out Nethermind repository
       uses: actions/checkout@v2
     - name: Checking out Truffle repository
@@ -25,10 +36,8 @@ jobs:
       uses: docker/setup-buildx-action@v1
     - name: Logging to Docker Hub
       if: success()
-      env:
-        DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
       run: |
-        echo "${DOCKER_PASSWORD}" | docker login --username "${{ secrets.DOCKER_USERNAME }}" --password-stdin
+        echo "${{ env.DOCKER_PASSWORD }}" | docker login --username "${{ env.DOCKER_USERNAME }}" --password-stdin
     - name: Building Docker image
       run: |
         docker buildx build --platform=linux/amd64 -t nethermindeth/truffle . --push
