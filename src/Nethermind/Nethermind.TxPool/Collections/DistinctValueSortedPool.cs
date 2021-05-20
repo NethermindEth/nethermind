@@ -47,11 +47,14 @@ namespace Nethermind.TxPool.Collections
             ILogManager logManager) 
             : base(capacity, comparer)
         {
-            _comparer = comparer ?? throw new ArgumentNullException(nameof(comparer));
+            // ReSharper disable once VirtualMemberCallInConstructor
+            _comparer = GetSameIdentityComparer(comparer ?? throw new ArgumentNullException(nameof(comparer)));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _distinctDictionary = new Dictionary<TValue, KeyValuePair<TKey, TValue>>(distinctComparer);
         }
-        
+
+        protected virtual IComparer<TValue> GetSameIdentityComparer(IComparer<TValue> comparer) => comparer;
+
         protected override void InsertCore(TKey key, TValue value, ICollection<TValue> bucketCollection)
         {
             base.InsertCore(key, value, bucketCollection);

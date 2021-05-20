@@ -30,17 +30,14 @@ namespace Nethermind.Mev.Source
     public class V2Selector : IBundleSource
     {
         private readonly ISimulatedBundleSource _simulatedBundleSource;
-        private readonly ITailGasPriceCalculator _tailGasPriceCalculator;
         private readonly long _maxBundlesGasUsedRatio;
         
 
         public V2Selector(
             ISimulatedBundleSource simulatedBundleSource,
-            ITailGasPriceCalculator tailGasPriceCalculator,
             long maxBundlesGasUsedRatio = 100)
         {
             _simulatedBundleSource = simulatedBundleSource;
-            _tailGasPriceCalculator = tailGasPriceCalculator;
             _maxBundlesGasUsedRatio = maxBundlesGasUsedRatio;
         }
         
@@ -56,7 +53,7 @@ namespace Nethermind.Mev.Source
             {
                 if (maxGasUsed - totalGasUsed >= GasCostOf.Transaction)
                 {
-                    UInt256 tailGas = _tailGasPriceCalculator.Calculate(parent, 0, simulatedBundle.GasUsed);
+                    UInt256 tailGas = 0;
                     if (simulatedBundle.MevEquivalentGasPrice > bestMevEquivalentPrice
                         && simulatedBundle.MevEquivalentGasPrice > tailGas)
                     {

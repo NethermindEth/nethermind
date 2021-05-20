@@ -29,7 +29,7 @@ namespace Nethermind.TxPool.Collections
     /// <typeparam name="TKey">Type of keys of items, unique in pool.</typeparam>
     /// <typeparam name="TValue">Type of items that are kept.</typeparam>
     /// <typeparam name="TGroupKey">Type of groups in which the items are organized</typeparam>
-    public abstract class SortedPool<TKey, TValue, TGroupKey>
+    public abstract class SortedPool<TKey, TValue, TGroupKey> where TGroupKey : notnull
     {
         private readonly int _capacity;
         private readonly IComparer<TValue> _groupComparer;
@@ -214,6 +214,52 @@ namespace Nethermind.TxPool.Collections
         {
             _sortedValues.Remove(value);
             return _cacheMap.Remove(key);
+        }
+
+        [MethodImpl(MethodImplOptions.Synchronized)]
+        public void NotifyChange(IEnumerable<TGroupKey> keys, Action change)
+        {
+            List<IDictionary<TKey, TValue>> mevBundlesToChange = new();
+
+            foreach (TGroupKey groupKey in keys)
+            {
+                if (_buckets.TryGetValue(groupKey, out ICollection<TValue> bucket))
+                {
+                    IDictionary<TKey, TValue> dictionary = new Dictionary<TKey, TValue>(bucket.Count);
+                    foreach (TValue value in bucket)
+                    {
+                        if (_sortedValues.TryGetValue(value, out TKey key))
+                        {
+                            dictionary.Add(key!, value);
+                            _sortedValues.Remove(value);
+                        }
+                        mevBundlesToChange.Add(dictionary);
+                    }
+                }
+            }
+
+            change();
+
+            for (int i = 0; i < mevBundlesToChange.Count; i++)
+            {
+                foreach (KeyValuePair<TKey, TValue> keyValuePair in mevBundlesToChange[i])
+                {
+                    _sortedValues.Add(keyValuePair.Value, keyValuePair.Key);
+                }
+            }
+        }
+
+        [MethodImpl(MethodImplOptions.Synchronized)]
+        public bool TryGetBucket(TGroupKey groupKey, out TValue[] items)
+        {
+            if (_buckets.TryGetValue(groupKey, out ICollection<TValue> bucket))
+            {
+                items = bucket.ToArray();
+                return true;
+            }
+
+            items = Array.Empty<TValue>();
+            return false;
         }
     }
 }

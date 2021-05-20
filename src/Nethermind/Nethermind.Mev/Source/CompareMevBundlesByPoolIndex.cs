@@ -15,13 +15,22 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using Nethermind.Core;
-using Nethermind.Int256;
+using System.Collections.Generic;
+using Nethermind.Mev.Data;
 
-namespace Nethermind.Mev
+namespace Nethermind.Mev.Source
 {
-    public interface ITailGasPriceCalculator
+    public class CompareMevBundlesByPoolIndex : IComparer<MevBundle>
     {
-        UInt256 Calculate(BlockHeader parent, long gasStart, long gasEnd);
+        public static readonly CompareMevBundlesByPoolIndex Default = new();
+        
+        public int Compare(MevBundle? x, MevBundle? y)
+        {
+            if (ReferenceEquals(x, y)) return 0;
+            if (ReferenceEquals(null, y)) return 1;
+            if (ReferenceEquals(null, x)) return -1;
+            
+            return x.PoolIndex.CompareTo(y.PoolIndex);
+        }
     }
 }

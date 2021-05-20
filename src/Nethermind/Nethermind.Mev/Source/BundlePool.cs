@@ -40,75 +40,6 @@ using ILogger = Nethermind.Logging.ILogger;
 
 namespace Nethermind.Mev.Source
 {
-    public class BundleSortedPool : DistinctValueSortedPool<MevBundle, MevBundle, long> 
-    {
-        public int headBlockNumber { get; set; } //can I set it here?
-        public int capacity { get; set; } 
-        public BundleSortedPool(int capacity, MevConfig mevConfig, IComparer<MevBundle> comparer, ILogManager logManager, int headBlockNumber) 
-            : base(capacity, comparer, EqualityComparer<MevBundle>.Default, logManager) //why do we need these?
-        {
-            this.capacity = mevConfig.BundlePoolSize; //capacity needed to be defined?
-            this.headBlockNumber = headBlockNumber;
-        }
-
-        protected override IComparer<MevBundle> GetUniqueComparer(IComparer<MevBundle> comparer) //compares all the bundles to evict the worst one
-        {
-            // Add TIMESTAMP comparision!
-            comparer = Comparer<MevBundle>.Create((bundle1, bundle2) =>
-            {
-                if (bundle1.BlockNumber == bundle2.BlockNumber)
-                {
-                    return bundle1.MinTimestamp.CompareTo(bundle2.MinTimestamp);
-                }
-                else if (bundle1.BlockNumber >= headBlockNumber && bundle2.BlockNumber >= headBlockNumber)
-                {
-                    return bundle1.BlockNumber.CompareTo(bundle2.BlockNumber);
-                }
-                else //if head is 5, and we have 8 and 4, we want to keep it that way; and if we have 4 and 3 we also want to keep it that way
-                {
-                    return bundle2.BlockNumber.CompareTo(bundle1.BlockNumber);
-                }
-            });
-            return comparer;
-        }
-
-        protected override IComparer<MevBundle> GetGroupComparer(IComparer<MevBundle> comparer) //compares two bundles with same block #
-        {
-            // TIMESTAMP COMPARISON
-            comparer = Comparer<MevBundle>.Create((bundle1, bundle2) =>
-            {
-                return bundle1.MinTimestamp.CompareTo(bundle2.MinTimestamp); //compare to min or max timestamp?
-            });
-            return comparer;
-        }
-
-        protected override long MapToGroup(MevBundle value)
-        {
-            return value.BlockNumber;
-        }
-    }
-
-    public class MevBundleHeadBlockComparer : IComparer<MevBundle>
-    {
-        public long HeadBlockNumber { get; set; }
-        
-        public int Compare(MevBundle? x, MevBundle? y)
-        {
-            if (x is null)
-            {
-                return y is null ? 0 : -1;
-            }
-                
-            if (y is null)
-            {
-                return 1;
-            }
-
-            return (0); //remove this
-
-        }
-    }
-    
     public class BundlePool : IBundlePool, ISimulatedBundleSource, IDisposable
     {
         private readonly IBlockFinalizationManager? _finalizationManager;
@@ -117,10 +48,10 @@ namespace Nethermind.Mev.Source
         private readonly IBlockTree _blockTree;
         private readonly IBundleSimulator _simulator;
         private readonly SortedRealList<MevBundle, ConcurrentBag<Keccak>> _bundles = new(MevBundleComparer.Default);
-        // private readonly SortedPool<MevBundle, MevBundle, long> _bundles;
+        private readonly SortedPool<MevBundle, MevBundle, long> _bundles2;
         private readonly ConcurrentDictionary<Keccak, ConcurrentDictionary<MevBundle, SimulatedMevBundleContext>> _simulatedBundles = new();
         private readonly ILogger _logger;
-
+        private readonly CompareMevBundlesByBlock _compareByBlock;
 
         public BundlePool(
             IBlockTree blockTree, 
@@ -137,8 +68,12 @@ namespace Nethermind.Mev.Source
             _simulator = simulator;
             _blockTree.NewSuggestedBlock += OnNewSuggestedBlock;
             _logger = logManager.GetClassLogger();
-            
-            // _bundles = new BundleSortedPool(_mevConfig.BundlePoolSize, , logManager);
+
+            _compareByBlock = new CompareMevBundlesByBlock {BestBlockNumber = blockTree.BestSuggestedHeader?.Number ?? 0};
+            _bundles2 = new BundleSortedPool(
+                _mevConfig.BundlePoolSize,
+                _compareByBlock.ThenBy(CompareMevBundlesByMinTimestamp.Default),
+                logManager );
             
             if (_finalizationManager != null)
             {
@@ -194,6 +129,8 @@ namespace Nethermind.Mev.Source
             {
                 bool result;
 
+                _bundles2.TryInsert(bundle, bundle);
+                
                 lock (_bundles)
                 {
                     result = _bundles.TryAdd(bundle, new ConcurrentBag<Keccak>());
@@ -277,6 +214,8 @@ namespace Nethermind.Mev.Source
         private void OnNewSuggestedBlock(object? sender, BlockEventArgs e)
         {
             long blockNumber = e.Block!.Number;
+            ResortBundlesByBlock(blockNumber);
+
             if (_finalizationManager?.IsFinalized(blockNumber) != true)
             {
                 Task.Run(() =>
@@ -288,6 +227,22 @@ namespace Nethermind.Mev.Source
                     }
                 });
             }
+        }
+
+        private void ResortBundlesByBlock(long newBlockNumber)
+        {
+            IEnumerable<long> Range(long start, long count)
+            {
+                for (long i = start; i < start + count; i++)
+                {
+                    yield return i;
+                }
+            }
+            
+            long previousBestSuggested = _compareByBlock.BestBlockNumber;
+            long fromBlockNumber = Math.Min(newBlockNumber, previousBestSuggested);
+            long blockDelta = Math.Abs(newBlockNumber - previousBestSuggested);
+            _bundles2.NotifyChange(Range(fromBlockNumber, blockDelta), () => _compareByBlock.BestBlockNumber = newBlockNumber);
         }
 
         private void OnBlocksFinalized(object? sender, FinalizeEventArgs e)

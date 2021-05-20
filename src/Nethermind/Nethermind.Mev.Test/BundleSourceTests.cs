@@ -46,17 +46,11 @@ namespace Nethermind.Mev.Test
             TestSimulator testSimulator = new(testJson);
             IBundleSimulator simulator = testSimulator;
 
-            ITailGasPriceCalculator tailGas = testJson.TailGasType switch
-            {
-                TailGasType.Any => new ConstantTailGasPriceCalculator(0.GWei()),
-                TailGasType.Constant80 => new ConstantTailGasPriceCalculator(80.GWei()),
-                _ => throw new ArgumentOutOfRangeException()
-            };
 
             IBundleSource selector = testJson.SelectorType switch
             {
                 SelectorType.V1 => new V1Selector(testSimulator),
-                SelectorType.V2 => new V2Selector(testSimulator, tailGas, testJson.MaxGasLimitRatio),
+                SelectorType.V2 => new V2Selector(testSimulator, testJson.MaxGasLimitRatio),
                 _ => throw new ArgumentOutOfRangeException()
             };
 

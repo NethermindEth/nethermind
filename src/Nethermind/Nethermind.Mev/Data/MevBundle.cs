@@ -18,6 +18,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
@@ -27,6 +28,8 @@ namespace Nethermind.Mev.Data
 {
     public class MevBundle : IEquatable<MevBundle>
     {
+        private static int _poolIndex = 0;
+        
         public MevBundle(IReadOnlyList<Transaction> transactions, long blockNumber, UInt256? minTimestamp, UInt256? maxTimestamp, Keccak[]? revertingTxHashes = null)
         {
             Transactions = transactions;
@@ -38,6 +41,7 @@ namespace Nethermind.Mev.Data
             RevertingTxHashes = revertingTxHashes ?? Array.Empty<Keccak>();
             MinTimestamp = minTimestamp ?? UInt256.Zero;
             MaxTimestamp = maxTimestamp ?? UInt256.Zero;
+            PoolIndex = Interlocked.Increment(ref _poolIndex);
             
             Keccak[] missingRevertingTxHashes = RevertingTxHashes.Except(transactions.Select(t => t.Hash!)).ToArray();
             if (missingRevertingTxHashes.Length > 0)
@@ -58,6 +62,8 @@ namespace Nethermind.Mev.Data
         public UInt256 MinTimestamp { get; }
         
         public Keccak Hash { get; }
+
+        public int PoolIndex { get; }
 
         public bool Equals(MevBundle? other)
         {

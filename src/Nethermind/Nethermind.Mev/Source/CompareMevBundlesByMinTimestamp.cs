@@ -15,23 +15,22 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using Nethermind.Core;
-using Nethermind.Int256;
+using System.Collections.Generic;
+using Nethermind.Mev.Data;
 
-namespace Nethermind.Mev
+namespace Nethermind.Mev.Source
 {
-    public class ConstantTailGasPriceCalculator : ITailGasPriceCalculator
+    public class CompareMevBundlesByMinTimestamp : IComparer<MevBundle>
     {
-        private readonly UInt256 _tailGasPrice;
-
-        public ConstantTailGasPriceCalculator(UInt256 tailGasPrice)
-        {
-            _tailGasPrice = tailGasPrice;
-        }
+        public static readonly CompareMevBundlesByMinTimestamp Default = new();
         
-        public UInt256 Calculate(BlockHeader parent, long gasStart, long gasEnd)
+        public int Compare(MevBundle? x, MevBundle? y)
         {
-            return _tailGasPrice;
+            if (ReferenceEquals(x, y)) return 0;
+            if (ReferenceEquals(null, y)) return 1;
+            if (ReferenceEquals(null, x)) return -1;
+
+            return x.MinTimestamp.CompareTo(y.MinTimestamp);
         }
     }
 }

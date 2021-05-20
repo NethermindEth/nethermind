@@ -138,7 +138,7 @@ namespace Nethermind.Mev.Test
         public static void sort_bundles_by_increasing_block_number_and_then_transaction_id()
         {
             Transaction[] txs = Array.Empty<Transaction>();
-            BundleSortedPool txPool = new BundleSortedPool(200, new MevConfig(), Comparer<MevBundle>.Default, LimboLogs.Instance, 3);
+            BundleSortedPool txPool = new BundleSortedPool(200, Comparer<MevBundle>.Default, LimboLogs.Instance);
             List<MevBundle> bundleList = new List<MevBundle>();
             for (int i = 10; i > 0; i--)
             {
