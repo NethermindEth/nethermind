@@ -65,7 +65,7 @@ namespace Nethermind.Core.Test.Encoding
             yield return (Build.A.Transaction
                 .WithType(TxType.EIP1559)
                 .WithFeeCap(50)
-                .WithGasPremium(10)
+                .WithMaxPriorityFeePerGas(10)
                 .WithChainId(0)
                 .SignedAndResolved().TestObject, "EIP 1559");
             yield return (Build.A.Transaction

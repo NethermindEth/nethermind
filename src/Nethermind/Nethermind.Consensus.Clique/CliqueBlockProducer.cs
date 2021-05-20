@@ -398,7 +398,7 @@ namespace Nethermind.Consensus.Clique
             }
 
             // Set the correct difficulty
-            header.BaseFee = BaseFeeCalculator.Calculate(parentHeader, _specProvider.GetSpec(header.Number));
+            header.BaseFeePerGas = BaseFeeCalculator.Calculate(parentHeader, _specProvider.GetSpec(header.Number));
             header.Difficulty = CalculateDifficulty(snapshot, _sealer.Address);
             header.TotalDifficulty = parentBlock.TotalDifficulty + header.Difficulty;
             if (_logger.IsDebug)

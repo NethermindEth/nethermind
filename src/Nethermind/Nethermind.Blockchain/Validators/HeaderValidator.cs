@@ -141,11 +141,11 @@ namespace Nethermind.Blockchain.Validators
             if (isEip1559Enabled)
             {
                 UInt256? expectedBaseFee = BaseFeeCalculator.Calculate(parent, spec);
-                isEip1559Correct = expectedBaseFee == header.BaseFee;
+                isEip1559Correct = expectedBaseFee == header.BaseFeePerGas;
                 
-                if (expectedBaseFee != header.BaseFee)
+                if (expectedBaseFee != header.BaseFeePerGas)
                 {
-                    if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.ToString(BlockHeader.Format.Short)}) incorrect base fee. Expected base fee: {expectedBaseFee}, Current base fee: {header.BaseFee} ");
+                    if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.ToString(BlockHeader.Format.Short)}) incorrect base fee. Expected base fee: {expectedBaseFee}, Current base fee: {header.BaseFeePerGas} ");
                     isEip1559Correct = false;
                 }
             }
