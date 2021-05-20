@@ -19,10 +19,11 @@ namespace Nethermind.Pipeline.Publishers
         public Action<TOut> Emit { private get; set; }
         private readonly ILogger _logger;
 
-        public WebSocketsPublisher(string name, IJsonSerializer jsonSerializer)
+        public WebSocketsPublisher(string name, IJsonSerializer jsonSerializer, ILogger logger)
         {
             Name = name;
             _jsonSerializer = jsonSerializer;
+            _logger = logger;
         }
 
         public IWebSocketsClient CreateClient(WebSocket webSocket, string client)
