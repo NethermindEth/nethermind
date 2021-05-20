@@ -42,30 +42,41 @@ namespace Nethermind.Mev.Source
 {
     public class BundleSortedPool : DistinctValueSortedPool<MevBundle, MevBundle, long> 
     {
+        public int headBlockNumber { get; set; } //can I set it here?
+
         public BundleSortedPool(int capacity, IComparer<MevBundle> comparer, ILogManager logManager) 
-            : base(capacity, comparer, EqualityComparer<MevBundle>.Default, logManager)
+            : base(capacity, comparer, EqualityComparer<MevBundle>.Default, logManager) //why do we need these?
         {
         }
 
         protected override IComparer<MevBundle> GetUniqueComparer(IComparer<MevBundle> comparer) //compares all the bundles to evict the worst one
         {
             // Add TIMESTAMP comparision!
-            // comparer.ThenBy()
-            throw new NotImplementedException();
+            comparer = Comparer<MevBundle>.Create((bundle1, bundle2) =>
+            {
+                if (bundle1.BlockNumber == bundle2.BlockNumber)
+                {
+                    return bundle1.MinTimestamp.CompareTo(bundle2.MinTimestamp);
+                }
+                else if (bundle1.BlockNumber >= headBlockNumber && bundle2.BlockNumber >= headBlockNumber)
+                {
+                    return bundle1.BlockNumber.CompareTo(bundle2.BlockNumber);
+                }
+                else //if head is 5, and we have 8 and 4, we want to keep it that way; and if we have 4 and 3 we also want to keep it that way
+                {
+                    return bundle2.BlockNumber.CompareTo(bundle1.BlockNumber);
+                }
+            });
+
         }
 
         protected override IComparer<MevBundle> GetGroupComparer(IComparer<MevBundle> comparer) //compares two bundles with same block #
         {
             // TIMESTAMP COMPARISON
-            throw new NotImplementedException();
-            /*
-             * int compare (MevBundle a, MevBundle b)
-             * {
-             *      SimulateBundle(a);
-             *      SimulateBundle(b);
-             *      Where are the profits?
-             * }
-             */
+            comparer = Comparer<MevBundle>.Create((bundle1, bundle2) =>
+            {
+                return bundle1.MinTimestamp.CompareTo(bundle2.MinTimestamp); //compare to min or max timestamp?
+            });
         }
 
         protected override long MapToGroup(MevBundle value)
@@ -74,9 +85,9 @@ namespace Nethermind.Mev.Source
         }
     }
 
-    public class MevBundleHeaBlockComparer : IComparer<MevBundle>
+    public class MevBundleHeadBlockComparer : IComparer<MevBundle>
     {
-        public long HeaBlockNumber { get; set; }
+        public long HeadBlockNumber { get; set; }
         
         public int Compare(MevBundle? x, MevBundle? y)
         {
