@@ -203,7 +203,9 @@ namespace Nethermind.Dsl.ANTLR
                 if (_blockPipelineBuilder != null)
                 {
                     if(_logger.IsInfo) _logger.Info($"Adding block publisher with path: {path}");
-                    _blockPipelineBuilder =_blockPipelineBuilder.AddElement(new WebSocketsPublisher<Block, Block>(path, _api.EthereumJsonSerializer, _logger));
+                    var webSocketsPublisher = new WebSocketsPublisher<Block, Block>(path, _api.EthereumJsonSerializer, _logger); 
+                    _api.WebSocketsManager.AddModule(webSocketsPublisher);
+                    _blockPipelineBuilder =_blockPipelineBuilder.AddElement(webSocketsPublisher);
                 }
             }
 
@@ -217,8 +219,8 @@ namespace Nethermind.Dsl.ANTLR
                 if (_blockPipelineBuilder != null)
                 {
                     var webSocketsPublisher = new WebSocketsPublisher<Transaction, Transaction>(path, _api.EthereumJsonSerializer, _logger);
-                    _transactionPipelineBuilder = _transactionPipelineBuilder.AddElement(webSocketsPublisher);
                     _api.WebSocketsManager.AddModule(webSocketsPublisher);
+                    _transactionPipelineBuilder = _transactionPipelineBuilder.AddElement(webSocketsPublisher);
                 }
             }
         }
