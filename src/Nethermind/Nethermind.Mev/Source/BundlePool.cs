@@ -96,7 +96,7 @@ namespace Nethermind.Mev.Source
             lock (_bundles2)
             {
                 MevBundle searchedBundle = MevBundle.Empty(blockNumber, minTimestamp, maxTimestamp);
-                bool inBundle = _bundles2.TryGetValue(searchedBundle, out searchedBundle); //does it matter that searchedBundle is same? where do we see equality of keys?
+                bool inBundle = _bundles2.TryGetValue(searchedBundle, out searchedBundle); //does it matter that searchedBundle is same?
                 if (inBundle)
                 {
                     foreach (KeyValuePair<MevBundle, MevBundle> kvp in _bundles2.GetCacheMap()) //is the complement of i to prevent us from checking if i is not in this list?, but ~~of a number is the same number...
@@ -125,7 +125,6 @@ namespace Nethermind.Mev.Source
                     }
                 }
             }
-            //return Enumerable.Empty<MevBundle>(); do we need something in case nothing returned?
         }
 
         public bool AddBundle(MevBundle bundle)
@@ -206,11 +205,11 @@ namespace Nethermind.Mev.Source
                 context.Task = _simulator.Simulate(bundle, parent, context.CancellationTokenSource.Token);
             }
 
-            //ConcurrentBag<Keccak> blocksBag; what is the point of just defining a blocksBag in here and never using it?
+            //ConcurrentBag<Keccak> blocksBag; we get the hashbag of the bundle and we add the hash to it
             bool GetBundle;
             lock (_bundles2)
             {
-                GetBundle = _bundles2.TryGetValue(bundle, out bundle); //we are getting one of the bundles and adding a hash to it?
+                GetBundle = _bundles2.TryGetValue(bundle, out bundle); 
             }
             _bundles2.bundlesToHashesOfBlocksSimulatedOn[bundle].Add(parentHash);
         }
