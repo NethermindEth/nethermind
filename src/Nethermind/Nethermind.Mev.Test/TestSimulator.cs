@@ -105,9 +105,19 @@ namespace Nethermind.Mev.Test
                 Assert.Fail("Transactions missing");
             }
 
-            if (testJson.OptimalProfit is null)
+            if (testJson.OptimalProfitV1 is null)
             {
-                Assert.Fail("Optimal profit not specified");
+                Assert.Fail("Optimal profit for V1 not specified");
+            }
+            
+            if (testJson.OptimalProfitV2_max1bundles is null)
+            {
+                Assert.Fail("Optimal profit for V2 with 1 MaxMergedBundles not specified");
+            }
+            
+            if (testJson.OptimalProfitV2_max3bundles is null)
+            {
+                Assert.Fail("Optimal profit for V2 with 3 MaxMergedBundles not specified");
             }
 
             if (testJson.Bundles!.Any(item => item is null))

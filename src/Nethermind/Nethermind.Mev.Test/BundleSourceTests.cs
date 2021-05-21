@@ -50,7 +50,7 @@ namespace Nethermind.Mev.Test
             IBundleSource selector = testJson.SelectorType switch
             {
                 SelectorType.V1 => new V1Selector(testSimulator),
-                SelectorType.V2 => new V2Selector(testSimulator, testJson.MaxGasLimitRatio),
+                SelectorType.V2 => new V2Selector(testSimulator, testJson.MaxMergedBundles),
                 _ => throw new ArgumentOutOfRangeException()
             };
 
@@ -62,29 +62,35 @@ namespace Nethermind.Mev.Test
             
             UInt256 totalProfit = simulated.Aggregate<SimulatedMevBundle, UInt256>(0, (profit, x) => profit + x.Profit);
             totalProfit += txs.Aggregate<Transaction, UInt256>(0, (profit, x) => profit + (x.GasPrice * (UInt256)x.GasLimit));
-            
-            totalProfit.Should().Be(testJson.OptimalProfit!.Value, testJson.Description);
-        }
 
-        private static IEnumerable<TestJson> AllGasLimits(TestJson testJson)
-        {
-            long[] ratios = {33, 100};
-
-            foreach (long ratio in ratios)
+            if (testJson.SelectorType == SelectorType.V1)
             {
-                TestJson withRatio = (TestJson)testJson.Clone();
-                withRatio.MaxGasLimitRatio = ratio;
-                yield return withRatio;
+                totalProfit.Should().Be(testJson.OptimalProfitV1!.Value, testJson.Description);
+            }
+            else if (testJson.SelectorType == SelectorType.V2 && testJson.MaxMergedBundles == 1)
+            {
+                totalProfit.Should().Be(testJson.OptimalProfitV2_max1bundles!.Value, testJson.Description);
+            }
+            else if (testJson.SelectorType == SelectorType.V2 && testJson.MaxMergedBundles == 3)
+            {
+                totalProfit.Should().Be(testJson.OptimalProfitV2_max3bundles!.Value, testJson.Description);
+            }
+            else
+            {
+                 //Only 1 and 3 MaxMergedBundles are being tested
+                 true.Should().Be(false);
             }
         }
 
-        private static IEnumerable<TestJson> AllTailGasTypes(TestJson testJson)
+        private static IEnumerable<TestJson> AllMaxMergedBundles(TestJson testJson)
         {
-            foreach (TailGasType value in Enum.GetValues<TailGasType>())
+            int[] bundles = {1, 3};
+
+            foreach (int bundle in bundles)
             {
-                TestJson withSelector = (TestJson)testJson.Clone();
-                withSelector.TailGasType = value;
-                yield return withSelector;
+                TestJson withBundle = (TestJson)testJson.Clone();
+                withBundle.MaxMergedBundles = bundle;
+                yield return withBundle;
             }
         }
 
@@ -111,12 +117,9 @@ namespace Nethermind.Mev.Test
                 {
                     foreach (TestJson withSelector in AllSelectors(testJson))
                     {
-                        foreach (TestJson withGasLimit in AllGasLimits(withSelector))
+                        foreach (TestJson withMaxMergedBundleCount in AllMaxMergedBundles(withSelector))
                         {
-                            foreach (TestJson withTailGasType in AllTailGasTypes(withGasLimit))
-                            {
-                                yield return withTailGasType;
-                            }
+                            yield return withMaxMergedBundleCount;
                         }
                     }
                 }

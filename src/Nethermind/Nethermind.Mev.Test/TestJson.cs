@@ -31,15 +31,17 @@ namespace Nethermind.Mev.Test
         
         public MevBundleForTest?[]? Bundles { get; set; }
         
-        public UInt256? OptimalProfit { get; set; }
+        public UInt256? OptimalProfitV1 { get; set; }
+        
+        public UInt256? OptimalProfitV2_max1bundles { get; set; }
+        
+        public UInt256? OptimalProfitV2_max3bundles { get; set; }
 
         public long? GasLimit { get; set; }
 
         public SelectorType SelectorType { get; set; }
         
-        public TailGasType TailGasType { get; set; }
-
-        public long MaxGasLimitRatio { get; set; } = 100;
+        public int MaxMergedBundles { get; set; } = 5;
         
         public object Clone()
         {
@@ -48,17 +50,18 @@ namespace Nethermind.Mev.Test
             testJson.Description = Description;
             testJson.Bundles = Bundles;
             testJson.Txs = Txs;
-            testJson.OptimalProfit = OptimalProfit;
+            testJson.OptimalProfitV1 = OptimalProfitV1;
+            testJson.OptimalProfitV2_max1bundles = OptimalProfitV2_max1bundles;
+            testJson.OptimalProfitV2_max3bundles = OptimalProfitV2_max3bundles;
             testJson.GasLimit = GasLimit;
             testJson.SelectorType = SelectorType;
-            testJson.TailGasType = TailGasType;
-            testJson.MaxGasLimitRatio = MaxGasLimitRatio;
+            testJson.MaxMergedBundles = MaxMergedBundles;
             return testJson;
         }
 
         public override string ToString()
         {
-            return $"{Name} {SelectorType} tail {TailGasType} gas {MaxGasLimitRatio}%";
+            return $"{Name} {SelectorType} maxbundles:{MaxMergedBundles}";
         }
     }
 }
