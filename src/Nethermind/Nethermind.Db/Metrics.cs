@@ -67,6 +67,9 @@ namespace Nethermind.Db
         
         [Description("Number of State DB writes.")]
         public static long StateDbWrites { get; set; }
+
+        [Description("Number of State DB duplicate writes during full pruning.")]
+        public static int StateDbDuplicateWrites;
         
         [Description("Number of storge trie reads.")]
         public static long StorageTreeReads { get; set; }
