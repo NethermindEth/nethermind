@@ -334,6 +334,7 @@ namespace Nethermind.TxPool
             {
                 lock (_locker)
                 {
+                    tx.GasBottleneck = tx.CalculateEffectiveGasPrice(_specProvider.GetSpec().IsEip1559Enabled, CurrentBaseFee);
                     bool inserted = _transactions.TryInsert(tx.Hash, tx, out Transaction? removed);
                     if (inserted)
                     {

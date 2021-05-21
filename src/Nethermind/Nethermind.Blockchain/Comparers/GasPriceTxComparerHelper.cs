@@ -29,7 +29,7 @@ namespace Nethermind.Blockchain.Comparers
             if (ReferenceEquals(null, x)) return -1;
             
             // if gas bottleneck was calculated, it's highest priority for sorting
-            if (x.GasBottleneck != UInt256.MaxValue || y.GasBottleneck != UInt256.MaxValue)
+            if (x.GasBottleneck != 0 || y.GasBottleneck != 0)
             {
                 return y.GasBottleneck.CompareTo(x.GasBottleneck);
             }

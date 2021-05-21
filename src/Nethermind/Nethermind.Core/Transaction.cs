@@ -40,7 +40,7 @@ namespace Nethermind.Core
 
         public UInt256 Nonce { get; set; }
         public UInt256 GasPrice { get; set; }
-        public UInt256 GasBottleneck { get; set; } = UInt256.MaxValue;
+        public UInt256 GasBottleneck { get; set; }
         public UInt256 GasPremium => GasPrice; 
         public UInt256 DecodedFeeCap { get; set; }
         public UInt256 FeeCap => IsEip1559 ? DecodedFeeCap : GasPrice;
