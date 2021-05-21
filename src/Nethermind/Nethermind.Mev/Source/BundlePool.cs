@@ -48,7 +48,7 @@ namespace Nethermind.Mev.Source
         private readonly IBlockTree _blockTree;
         private readonly IBundleSimulator _simulator;
         private readonly SortedRealList<MevBundle, ConcurrentBag<Keccak>> _bundles = new(MevBundleComparer.Default);
-        private readonly SortedPool<MevBundle, MevBundle, long> _bundles2;
+        private readonly SortedPool<MevBundle, MevBundle, long, Keccak> _bundles2;
         private readonly ConcurrentDictionary<Keccak, ConcurrentDictionary<MevBundle, SimulatedMevBundleContext>> _simulatedBundles = new();
         private readonly ILogger _logger;
         private readonly CompareMevBundlesByBlock _compareByBlock;
@@ -206,15 +206,13 @@ namespace Nethermind.Mev.Source
                 context.Task = _simulator.Simulate(bundle, parent, context.CancellationTokenSource.Token);
             }
 
-            //ConcurrentBag<Keccak> blocksBag;
+            //ConcurrentBag<Keccak> blocksBag; what is the point of just defining a blocksBag in here and never using it?
             bool GetBundle;
             lock (_bundles2)
             {
                 GetBundle = _bundles2.TryGetValue(bundle, out bundle); //we are getting one of the bundles and adding a hash to it?
             }
-            /*
-            if (GetBundle)
-                blocksBag.Add(parentHash);*/
+            _bundles2.bundlesToHashesOfBlocksSimulatedOn[bundle].Add(parentHash);
         }
         
         private void OnNewSuggestedBlock(object? sender, BlockEventArgs e)

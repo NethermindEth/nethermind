@@ -29,13 +29,15 @@ namespace Nethermind.TxPool.Collections
     /// <typeparam name="TKey">Type of keys of items, unique in pool.</typeparam>
     /// <typeparam name="TValue">Type of items that are kept.</typeparam>
     /// <typeparam name="TGroupKey">Type of groups in which the items are organized</typeparam>
-    public abstract class SortedPool<TKey, TValue, TGroupKey> where TGroupKey : notnull
+    /// <typeparam name="THash">Type of the value stored for each block in bundlesToBlockHashes</typeparam>
+    public abstract class SortedPool<TKey, TValue, TGroupKey, THash> where TGroupKey : notnull
     {
         private readonly int _capacity;
         private readonly IComparer<TValue> _groupComparer;
         private readonly IDictionary<TGroupKey, ICollection<TValue>> _buckets;
         private readonly DictionarySortedSet<TValue, TKey> _sortedValues;
         private readonly IDictionary<TKey, TValue> _cacheMap;
+        private readonly Dictionary<TKey, List<THash>> _bundlesToBlockHashes;
 
         /// <summary>
         /// Constructor
@@ -50,7 +52,8 @@ namespace Nethermind.TxPool.Collections
             _groupComparer = GetGroupComparer(comparer ?? throw new ArgumentNullException(nameof(comparer)));
             _cacheMap = new Dictionary<TKey, TValue>(); // do not initialize it at the full capacity
             _buckets = new Dictionary<TGroupKey, ICollection<TValue>>();
-            _sortedValues = new DictionarySortedSet<TValue, TKey>(sortedComparer); //how can this take a param?
+            _sortedValues = new DictionarySortedSet<TValue, TKey>(sortedComparer);
+            _bundlesToBlockHashes = new Dictionary<TKey, List<THash>>();
         }
 
         /// <summary>
