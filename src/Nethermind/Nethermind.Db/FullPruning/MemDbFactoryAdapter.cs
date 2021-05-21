@@ -13,13 +13,21 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-namespace Nethermind.Db
+namespace Nethermind.Db.FullPruning
 {
-    public class MemDbFactory : IMemDbFactory
+    public class MemDbFactoryAdapter : IRocksDbFactory
     {
-        public IColumnsDb<T> CreateColumnsDb<T>(string dbName) => new MemColumnsDb<T>(dbName);
+        private readonly IMemDbFactory _memDbFactory;
 
-        public IDb CreateDb(string dbName) => new MemDb(dbName);
+        public MemDbFactoryAdapter(IMemDbFactory memDbFactory)
+        {
+            _memDbFactory = memDbFactory;
+        }
+        
+        public IDb CreateDb(RocksDbSettings rocksDbSettings) => _memDbFactory.CreateDb(rocksDbSettings.DbName);
+
+        public IColumnsDb<T> CreateColumnsDb<T>(RocksDbSettings rocksDbSettings) where T : notnull => _memDbFactory.CreateColumnsDb<T>(rocksDbSettings.DbName);
     }
 }
