@@ -96,7 +96,7 @@ namespace Nethermind.Mev.Source
             lock (_bundles2)
             {
                 MevBundle searchedBundle = MevBundle.Empty(blockNumber, minTimestamp, maxTimestamp);
-                bool inBundle = _bundles2.TryGetValue(searchedBundle, out searchedBundle); //checking to see if bundle in bundles, where do we see equality of keys?
+                bool inBundle = _bundles2.TryGetValue(searchedBundle, out searchedBundle); //does it matter that searchedBundle is same? where do we see equality of keys?
                 if (inBundle)
                 {
                     foreach (KeyValuePair<MevBundle, MevBundle> kvp in _bundles2.GetCacheMap()) //is the complement of i to prevent us from checking if i is not in this list?, but ~~of a number is the same number...
@@ -134,11 +134,9 @@ namespace Nethermind.Mev.Source
             {
                 bool result;
 
-                _bundles2.TryInsert(bundle, bundle);
-                
-                lock (_bundles)
+                lock (_bundles2)
                 {
-                    result = _bundles.TryAdd(bundle, new ConcurrentBag<Keccak>());
+                    result = _bundles2.TryInsert(bundle, bundle);
                 }
 
                 if (result)
@@ -211,7 +209,7 @@ namespace Nethermind.Mev.Source
             ConcurrentBag<Keccak> blocksBag;
             lock (_bundles)
             {
-                blocksBag = _bundles[bundle];
+                blocksBag = _bundles[bundle]; //we are getting one of the bundles and adding a hash to it?
             }
             blocksBag.Add(parentHash);
         }
