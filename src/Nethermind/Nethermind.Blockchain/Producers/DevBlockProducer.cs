@@ -74,10 +74,6 @@ namespace Nethermind.Blockchain.Producers
                     {
                         _newBlockLock.Release();
                     }
-                    else
-                    {
-                        ConsumeProducedBlock(block);
-                    }
                 }
                 catch (Exception exception)
                 {

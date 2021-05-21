@@ -131,11 +131,7 @@ namespace Nethermind.Blockchain.Producers
 
         protected virtual async ValueTask ProducerLoopStep(CancellationToken cancellationToken)
         {
-            Block? block = await TryProduceNewBlock(cancellationToken);
-            if (block is not null)
-            {
-                ConsumeProducedBlock(block);
-            }
+            await TryProduceNewBlock(cancellationToken);
         }
         
         private void BlockTreeOnNewBestSuggestedBlock(object sender, BlockEventArgs e)

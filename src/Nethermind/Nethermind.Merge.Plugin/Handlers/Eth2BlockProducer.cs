@@ -65,7 +65,7 @@ namespace Nethermind.Merge.Plugin.Handlers
             await _locker.WaitAsync(cancellationToken);
             try
             {
-                return await TryProduceNewBlock(cancellationToken, parentHeader);
+                return await TryProduceNewBlock(cancellationToken, false, parentHeader);
             }
             finally
             {
@@ -74,8 +74,6 @@ namespace Nethermind.Merge.Plugin.Handlers
         }
 
         protected override bool IsRunning() => _stated == 1;
-
-        protected override void ConsumeProducedBlock(Block block) { }
 
         protected override UInt256 CalculateDifficulty(BlockHeader parent, UInt256 timestamp) => UInt256.One;
         

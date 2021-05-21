@@ -106,7 +106,18 @@ namespace Nethermind.Blockchain.Producers
         
         private readonly object _newBlockLock = new();
 
-        protected Task<Block?> TryProduceNewBlock(CancellationToken token, BlockHeader? parentHeader = null)
+        protected async Task<Block?> TryProduceNewBlock(CancellationToken token, bool suggest = true, BlockHeader? parentHeader = null)
+        {
+            Block? block = await TryProduceNewBlock(token, parentHeader);
+            if (suggest && block is not null)
+            {
+                BlockTree.SuggestBlock(block);
+            }
+
+            return block;
+        }
+
+        private Task<Block?> TryProduceNewBlock(CancellationToken token, BlockHeader? parentHeader = null)
         {
             lock (_newBlockLock)
             {
@@ -157,7 +168,6 @@ namespace Nethermind.Blockchain.Producers
                             {
                                 if (Logger.IsInfo)
                                     Logger.Info($"Sealed block {t.Result.ToString(Block.Format.HashNumberDiffAndTx)}");
-                                ConsumeProducedBlock(t.Result);
                                 Metrics.BlocksSealed++;
                                 _lastProducedBlockDateTime = DateTime.UtcNow;
                                 return t.Result;
@@ -188,8 +198,7 @@ namespace Nethermind.Blockchain.Producers
 
             return Task.FromResult((Block?)null);
         }
-
-        protected virtual void ConsumeProducedBlock(Block block) => BlockTree.SuggestBlock(block);
+        
 
         protected virtual Task<Block> SealBlock(Block block, BlockHeader parent, CancellationToken token) =>
             Sealer.SealBlock(block, token);
