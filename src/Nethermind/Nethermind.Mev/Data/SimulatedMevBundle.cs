@@ -33,6 +33,10 @@ namespace Nethermind.Mev.Data
         public UInt256 CoinbasePayments { get; set; }
         
         public UInt256 TxFees { get; set; }
+        
+        // Need to implement logic, calculated as TxFees - (gas fee payments from transactions
+        // that can be spotted by the miner in the publicly visible transaction pool)
+        public UInt256 EligibleGasFeePayment { get; set; }
 
         public UInt256 Profit => TxFees + CoinbasePayments;
 
@@ -44,5 +48,9 @@ namespace Nethermind.Mev.Data
         public UInt256 AdjustedGasPrice => Profit / (UInt256)GasUsed;
         
         public UInt256 MevEquivalentGasPrice => CoinbasePayments / (UInt256)GasUsed;
+
+        public UInt256 BundleScoringProfit => EligibleGasFeePayment + CoinbasePayments;
+
+        public UInt256 BundleAdjustedGasPrice => BundleScoringProfit / (UInt256)GasUsed;
     }
 }
