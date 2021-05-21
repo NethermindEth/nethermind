@@ -206,12 +206,15 @@ namespace Nethermind.Mev.Source
                 context.Task = _simulator.Simulate(bundle, parent, context.CancellationTokenSource.Token);
             }
 
-            ConcurrentBag<Keccak> blocksBag;
-            lock (_bundles)
+            //ConcurrentBag<Keccak> blocksBag;
+            bool GetBundle;
+            lock (_bundles2)
             {
-                blocksBag = _bundles[bundle]; //we are getting one of the bundles and adding a hash to it?
+                GetBundle = _bundles2.TryGetValue(bundle, out bundle); //we are getting one of the bundles and adding a hash to it?
             }
-            blocksBag.Add(parentHash);
+            /*
+            if (GetBundle)
+                blocksBag.Add(parentHash);*/
         }
         
         private void OnNewSuggestedBlock(object? sender, BlockEventArgs e)
