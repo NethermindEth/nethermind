@@ -16,7 +16,6 @@
 // 
 
 using System;
-using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Consensus;
 using Nethermind.Core;
@@ -59,7 +58,7 @@ namespace Nethermind.Blockchain
         private void ProcessBlock(Block block, Block? previousBlock)
         {
             _txPool.BlockGasLimit = block.GasLimit;
-            _txPool.CurrentBaseFee = block.Header.BaseFee;
+            _txPool.CurrentBaseFee = block.Header.BaseFeePerGas;
             long transactionsInBlock = block.Transactions.Length;
             long discoveredForPendingTxs = 0;
             long discoveredForHashCache = 0;
