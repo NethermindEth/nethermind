@@ -94,10 +94,10 @@ namespace Nethermind.Baseline.Test
             (TestRpcBlockchain TestRpc, BaselineModule BaselineModule) result = await InitializeTestRpc(address);
             TestRpcBlockchain testRpc = result.TestRpc;
             BaselineTree baselineTree = BuildATree();
-            Address fromContractAdress = ContractAddress.From(address, 0L);
+            Address fromContractAddress = ContractAddress.From(address, 0L);
             BaselineTreeHelper baselineTreeHelper = new BaselineTreeHelper(testRpc.LogFinder, _baselineDb, _metadataBaselineDb, LimboNoErrorLogger.Instance);
 
-            MerkleTreeSHAContract contract = new MerkleTreeSHAContract(_abiEncoder, fromContractAdress);
+            MerkleTreeSHAContract contract = new MerkleTreeSHAContract(_abiEncoder, fromContractAddress);
             UInt256 nonce = 1L;
             for (int i = 0; i < test.ExpectedTreeCounts.Length; i++)
             {
@@ -106,7 +106,7 @@ namespace Nethermind.Baseline.Test
                 await testRpc.AddBlock();
             }
 
-            BaselineTreeTracker tracker = new BaselineTreeTracker(fromContractAdress, baselineTree, testRpc.BlockProcessor, baselineTreeHelper, testRpc.BlockFinder, LimboNoErrorLogger.Instance);
+            BaselineTreeTracker tracker = new BaselineTreeTracker(fromContractAddress, baselineTree, testRpc.BlockProcessor, baselineTreeHelper, testRpc.BlockFinder, LimboNoErrorLogger.Instance);
             Assert.AreEqual(test.ExpectedTreeCounts[test.ExpectedTreeCounts.Length - 1], baselineTree.Count);
             uint afterStartTrackingCount = baselineTree.Count;
             for (int i = 0; i < test.ExpectedTreeCounts.Length; i++)
@@ -127,11 +127,11 @@ namespace Nethermind.Baseline.Test
             (TestRpcBlockchain TestRpc, BaselineModule BaselineModule) result = await InitializeTestRpc(address);
             TestRpcBlockchain testRpc = result.TestRpc;
             BaselineTree baselineTree = BuildATree();
-            Address fromContractAdress = ContractAddress.From(address, 0);
+            Address fromContractAddress = ContractAddress.From(address, 0);
             BaselineTreeHelper baselineTreeHelper = new BaselineTreeHelper(testRpc.LogFinder, _baselineDb, _metadataBaselineDb, LimboNoErrorLogger.Instance);
-            new BaselineTreeTracker(fromContractAdress, baselineTree, testRpc.BlockProcessor, baselineTreeHelper, testRpc.BlockFinder, LimboNoErrorLogger.Instance);
+            new BaselineTreeTracker(fromContractAddress, baselineTree, testRpc.BlockProcessor, baselineTreeHelper, testRpc.BlockFinder, LimboNoErrorLogger.Instance);
 
-            MerkleTreeSHAContract contract = new MerkleTreeSHAContract(_abiEncoder, fromContractAdress);
+            MerkleTreeSHAContract contract = new MerkleTreeSHAContract(_abiEncoder, fromContractAddress);
 
             UInt256 nonce = 1L;
             for (int i = 0; i < test.ExpectedTreeCounts.Length; i++)
@@ -180,7 +180,7 @@ namespace Nethermind.Baseline.Test
                     ITxPoolConfig txPoolConfig,
                     ITxValidator validator,
                     ILogManager? logManager,
-                    IComparer<Transaction> comparer) 
+                    IComparer<WrappedTransaction> comparer) 
                     : base(txStorage, ecdsa, chainHeadInfoProvider, txPoolConfig, validator, logManager, comparer)
                 {
                 }
