@@ -54,12 +54,17 @@ namespace Nethermind.Mev.Execution
             }
             catch (OperationCanceledException)
             {
-                return Task.FromResult(new SimulatedMevBundle(bundle, false, 0, UInt256.Zero, UInt256.Zero, UInt256.Zero));
+                return Task.FromResult(new SimulatedMevBundle(bundle, 
+                    false, 
+                    new List<Keccak>(), 
+                    0, UInt256.Zero, 
+                    UInt256.Zero, 
+                    UInt256.Zero));
             }
         }
 
         protected override SimulatedMevBundle BuildResult(MevBundle bundle, Block block, BundleBlockTracer tracer, Keccak resultStateRoot) => 
-            new(bundle, tracer.Success, tracer.GasUsed, tracer.TxFees, tracer.CoinbasePayments, tracer.EligibleGasFeePayment);
+            new(bundle, tracer.Success, tracer.FailedTransactions, tracer.GasUsed, tracer.TxFees, tracer.CoinbasePayments, tracer.EligibleGasFeePayment);
 
         protected override BundleBlockTracer CreateBlockTracer() => new(_gasLimit, Beneficiary, _txPool);
 
@@ -67,10 +72,11 @@ namespace Nethermind.Mev.Execution
         {
             private readonly long _gasLimit;
             private readonly Address _beneficiary;
-            
-            private BundleTxTracer? _tracer;
             private readonly ITxPool _txPool;
+
+            private BundleTxTracer? _tracer;
             private Block? _block;
+            
             private UInt256? _beneficiaryBalanceBefore;
             private UInt256? _beneficiaryBalanceAfter;
             
@@ -101,8 +107,10 @@ namespace Nethermind.Mev.Execution
             }
 
             public UInt256 Reward { get; private set; }
-
+            
             public bool Success { get; private set; } = true;
+
+            public ICollection<Keccak> FailedTransactions { get; private set; } = new List<Keccak>();
 
             public void ReportReward(Address author, string rewardType, UInt256 rewardValue)
             {
@@ -129,8 +137,11 @@ namespace Nethermind.Mev.Execution
                 _beneficiaryBalanceBefore ??= _tracer.BeneficiaryBalanceBefore;
                 _beneficiaryBalanceAfter = _tracer.BeneficiaryBalanceAfter;
                 Success &= _tracer.Success;
+                if (!_tracer.Success)
+                {
+                    FailedTransactions.Add(_tracer.Transaction?.Hash!);
+                }
                 UInt256 premiumPerGas = UInt256.Zero;
-                Console.WriteLine();
                 if (_tracer.Transaction?.TryCalculatePremiumPerGas(_block!.BaseFee, out premiumPerGas) == true)
                 {
                     TxFees += (UInt256)_tracer.GasSpent * premiumPerGas;
@@ -139,7 +150,7 @@ namespace Nethermind.Mev.Execution
                         EligibleGasFeePayment += (UInt256)_tracer.GasSpent * premiumPerGas;
                     }
                 }
-                
+
                 if (GasUsed > _gasLimit)
                 {
                     throw new OperationCanceledException("Block gas limit exceeded.");

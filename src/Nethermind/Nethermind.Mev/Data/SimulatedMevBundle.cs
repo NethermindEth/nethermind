@@ -15,11 +15,13 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System;
 using System.Linq;
 using Nethermind.Int256;
 using Nethermind.TxPool;
 using Nethermind.Core;
 using System.Collections.Generic;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.Mev.Data
 {
@@ -27,7 +29,8 @@ namespace Nethermind.Mev.Data
     {
 
         public SimulatedMevBundle(MevBundle bundle, 
-            bool success, 
+            bool success,
+            ICollection<Keccak> failedTransactions, 
             long gasUsed, 
             UInt256 txFees, 
             UInt256 coinbasePayments, 
@@ -35,10 +38,17 @@ namespace Nethermind.Mev.Data
         {
             Bundle = bundle;
             Success = success;
+            FailedTransactions = failedTransactions;
             GasUsed = gasUsed;
             TxFees = txFees;
             CoinbasePayments = coinbasePayments;
             EligibleGasFeePayment = eligibleGasFeePayment;
+            IEnumerable<Keccak?> unexpectedFailedTransactions = failedTransactions.Intersect(bundle.Transactions.Select(tx => tx.Hash));
+            if (!unexpectedFailedTransactions.Any())
+            {
+                throw new Exception("Bundle includes failed transaction " + unexpectedFailedTransactions.ToString() + 
+                                    " which is not in RevertingTxHashes");
+            }
         }
 
         public UInt256 CoinbasePayments { get; set; }
@@ -50,7 +60,10 @@ namespace Nethermind.Mev.Data
         public UInt256 Profit => TxFees + CoinbasePayments;
 
         public MevBundle Bundle { get; }
+        
         public bool Success { get; }
+
+        public ICollection<Keccak> FailedTransactions { get; }
 
         public long GasUsed { get; set; }
 
