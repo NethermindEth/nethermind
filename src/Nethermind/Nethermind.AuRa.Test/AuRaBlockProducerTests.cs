@@ -219,7 +219,7 @@ namespace Nethermind.AuRa.Test
             (await StartStop(new Context(), true, true)).ShouldProduceBlocks(Quantity.None());
         }
         
-        private async Task<TestResult> StartStop(Context context, bool processingQueueEmpty = true, bool newBestSuggestedBlock = false, int stepDelayMultiplier = 200)
+        private async Task<TestResult> StartStop(Context context, bool processingQueueEmpty = true, bool newBestSuggestedBlock = false, int stepDelayMultiplier = 100)
         {
             AutoResetEvent processedEvent = new AutoResetEvent(false);
             context.BlockTree.SuggestBlock(Arg.Any<Block>(), Arg.Any<bool>())
