@@ -49,9 +49,9 @@ namespace Nethermind.Core.Test
         public void IsEip1559_returns_expected_results(int decodedFeeCap, bool expectedIsEip1559)
         {
             Transaction transaction = new Transaction();
-            transaction.DecodedFeeCap = (uint)decodedFeeCap;
+            transaction.DecodedMaxFeePerGas = (uint)decodedFeeCap;
             transaction.Type = TxType.EIP1559;
-            Assert.AreEqual(transaction.FeeCap, transaction.DecodedFeeCap);
+            Assert.AreEqual(transaction.MaxFeePerGas, transaction.DecodedMaxFeePerGas);
             Assert.AreEqual(expectedIsEip1559, transaction.IsEip1559);
         }
         
@@ -63,7 +63,7 @@ namespace Nethermind.Core.Test
             transaction.GasPrice = test.GasPrice;
             transaction.GasLimit = test.GasLimit;
             transaction.Value = test.Value;
-            transaction.DecodedFeeCap = test.FeeCap;
+            transaction.DecodedMaxFeePerGas = test.FeeCap;
             transaction.Type = test.Type;
             UInt256 actualResult = transaction.CalculateTransactionPotentialCost(test.IsEip1559Enabled, test.BaseFee);
             UInt256 effectiveGasPrice = transaction.CalculateEffectiveGasPrice(test.IsEip1559Enabled, test.BaseFee);

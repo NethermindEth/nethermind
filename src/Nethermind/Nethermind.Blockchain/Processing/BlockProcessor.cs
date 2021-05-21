@@ -341,7 +341,7 @@ namespace Nethermind.Blockchain.Processing
                 AuRaStep = bh.AuRaStep,
                 AuRaSignature = bh.AuRaSignature,
                 ReceiptsRoot = bh.ReceiptsRoot,
-                BaseFee = bh.BaseFee
+                BaseFeePerGas = bh.BaseFeePerGas
             };
 
             IEnumerable<Transaction> transactions = suggestedBlock.GetTransactions(out bool transactionsChangeable);

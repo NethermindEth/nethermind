@@ -127,10 +127,10 @@ namespace Nethermind.Evm
                     return;
                 }
 
-                if (!isCall && gasLimit > block.GetActualGasLimit(spec) - block.GasUsed)
+                if (!isCall && gasLimit > block.GasLimit - block.GasUsed)
                 {
                     TraceLogInvalidTx(transaction,
-                        $"BLOCK_GAS_LIMIT_EXCEEDED {gasLimit} > {block.GetActualGasLimit(spec)} - {block.GasUsed}");
+                        $"BLOCK_GAS_LIMIT_EXCEEDED {gasLimit} > {block.GasLimit} - {block.GasUsed}");
                     QuickFail(transaction, block, txTracer, "block gas limit exceeded");
                     return;
                 }
@@ -279,6 +279,11 @@ namespace Nethermind.Evm
                         if (unspentGas < codeDepositGasCost && spec.ChargeForTopLevelCreate)
                         {
                             throw new OutOfGasException();
+                        }
+                        
+                        if (CodeDepositHandler.CodeIsInvalid(spec, substate.Output))
+                        {
+                            throw new InvalidCodeException();
                         }
 
                         if (unspentGas >= codeDepositGasCost)

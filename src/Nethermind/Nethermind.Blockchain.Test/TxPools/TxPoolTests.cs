@@ -211,7 +211,7 @@ namespace Nethermind.Blockchain.Test.TxPools
                 .WithType(TxType.EIP1559).WithFeeCap(20)
                 .WithChainId(ChainId.Mainnet)
                 .WithValue(5).SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
-            EnsureSenderBalance(tx.SenderAddress, tx.FeeCap * (UInt256)tx.GasLimit); // without tx.Value so we should have InsufficientFunds
+            EnsureSenderBalance(tx.SenderAddress, tx.MaxFeePerGas * (UInt256)tx.GasLimit); // without tx.Value so we should have InsufficientFunds
             AddTxResult result = txPool.AddTransaction(tx, TxHandlingOptions.PersistentBroadcast);
             txPool.GetPendingTransactions().Length.Should().Be(0);
             result.Should().Be(AddTxResult.InsufficientFunds);
@@ -274,7 +274,7 @@ namespace Nethermind.Blockchain.Test.TxPools
                 .WithGasLimit(Transaction.BaseTxGasCost)
                 .WithValue(Transaction.BaseTxGasCost)
                 .WithFeeCap(UInt256.MaxValue - 10)
-                .WithGasPremium((UInt256)15)
+                .WithMaxPriorityFeePerGas((UInt256)15)
                 .WithType(TxType.EIP1559)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
             EnsureSenderBalance(tx.SenderAddress, UInt256.MaxValue);
