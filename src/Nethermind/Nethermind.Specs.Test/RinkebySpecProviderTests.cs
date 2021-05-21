@@ -42,12 +42,6 @@ namespace Nethermind.Specs.Test
         [TestCase(8_813_188, true)]
         public void London_eips(long blockNumber, bool isEnabled)
         {
-            if (isEnabled)
-                _specProvider.GetSpec(blockNumber).DifficultyBombDelay.Should().Be(London.Instance.DifficultyBombDelay);
-            else
-                _specProvider.GetSpec(blockNumber).DifficultyBombDelay.Should().Be(Berlin.Instance.DifficultyBombDelay);
-            
-            _specProvider.GetSpec(blockNumber).DifficultyBombDelay.Should().Be(Berlin.Instance.DifficultyBombDelay);
             _specProvider.GetSpec(blockNumber).IsEip1559Enabled.Should().Be(isEnabled);
             _specProvider.GetSpec(blockNumber).IsEip3198Enabled.Should().Be(isEnabled);
             _specProvider.GetSpec(blockNumber).IsEip3529Enabled.Should().Be(isEnabled);
