@@ -44,8 +44,8 @@ namespace Nethermind.TxPool
 
         public bool RemoveTransaction(Transaction tx, bool removeBelowThisTxNonce) => false;
         
-        public void RemoveOrUpdateBucket(Address? senderAddress) { }
-
+        public void RemoveOrUpdateBuckets() { }
+        
         public bool IsInHashCache(Keccak hash) => false;
 
         public bool TryGetPendingTransaction(Keccak hash, out Transaction? transaction)

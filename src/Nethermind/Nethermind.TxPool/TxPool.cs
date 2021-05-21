@@ -430,8 +430,19 @@ namespace Nethermind.TxPool
 
             return payableGasPrice;
         }
+        
+        
+        public void RemoveOrUpdateBuckets()
+        {
+            Address[] addresses = _transactions.GetBucketsKeys();
 
-        public void RemoveOrUpdateBucket(Address senderAddress)
+            foreach (Address address in addresses)
+            {
+                RemoveOrUpdateBucket(address);
+            }
+        }
+
+        private void RemoveOrUpdateBucket(Address senderAddress)
         {
             var bucketSnapshot = _transactions.GetBucketSnapshot(senderAddress);
 

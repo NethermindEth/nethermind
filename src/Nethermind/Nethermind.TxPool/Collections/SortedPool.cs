@@ -119,7 +119,16 @@ namespace Nethermind.TxPool.Collections
             }
             return _buckets.TryGetValue(@group, out var bucket) ? bucket.Count : 0;
         }
-        
+
+        /// <summary>
+        /// Gets all groupKeys.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.Synchronized)]
+        public TGroupKey[] GetBucketsKeys()
+        {
+            return _buckets.Keys.ToArray();
+        }
+
         /// <summary>
         /// Takes first element in supplied comparer order.
         /// </summary>

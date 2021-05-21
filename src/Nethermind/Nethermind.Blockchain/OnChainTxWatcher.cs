@@ -63,7 +63,6 @@ namespace Nethermind.Blockchain
             long transactionsInBlock = block.Transactions.Length;
             long discoveredForPendingTxs = 0;
             long discoveredForHashCache = 0;
-            HashSet<Address> senders = new();
             
             for (int i = 0; i < transactionsInBlock; i++)
             {
@@ -79,25 +78,10 @@ namespace Nethermind.Blockchain
                 {
                     discoveredForPendingTxs++;
                 }
-                
-                senders.Add(tx.SenderAddress);
             }
 
-            Transaction[]? pendingTxs = _txPool.GetPendingTransactions();
+            _txPool.RemoveOrUpdateBuckets();
 
-            foreach (Transaction tx in pendingTxs)
-            {
-                if (tx?.Type == TxType.EIP1559)
-                {
-                    senders.Add(tx.SenderAddress);
-                }
-            }
-            
-            foreach (Address sender in senders)
-            {
-                _txPool.RemoveOrUpdateBucket(sender);
-            }
-            
             TxPool.Metrics.DarkPoolRatioLevel1 = transactionsInBlock == 0 ? 0 : (float)discoveredForHashCache / transactionsInBlock;
             TxPool.Metrics.DarkPoolRatioLevel2 = transactionsInBlock == 0 ? 0 : (float)discoveredForPendingTxs / transactionsInBlock;
             

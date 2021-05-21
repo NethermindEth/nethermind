@@ -411,7 +411,7 @@ namespace Nethermind.Blockchain.Test.TxPools
             _txPool.RemoveTransaction(transactions[0]);
             _stateProvider.SubtractFromBalance(TestItem.AddressA, (UInt256)oneTxPrice, new ReleaseSpec());
             
-            _txPool.RemoveOrUpdateBucket(TestItem.AddressA);
+            _txPool.RemoveOrUpdateBuckets();
             _txPool.GetPendingTransactionsCount().Should().Be(expectedPoolCount);
         }
         
@@ -475,7 +475,7 @@ namespace Nethermind.Blockchain.Test.TxPools
             _txPool.RemoveTransaction(transactions[0]);
             _stateProvider.SubtractFromBalance(TestItem.AddressA, (UInt256)oneTxPrice, new ReleaseSpec());
             
-            _txPool.RemoveOrUpdateBucket(TestItem.AddressA);
+            _txPool.RemoveOrUpdateBuckets();
             _txPool.GetPendingTransactionsCount().Should().Be(0);
 
             _txPool.IsInHashCache(transactions[1].Hash).Should().BeFalse();
