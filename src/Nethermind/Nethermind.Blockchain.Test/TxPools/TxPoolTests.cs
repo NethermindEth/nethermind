@@ -279,7 +279,7 @@ namespace Nethermind.Blockchain.Test.TxPools
                 .WithGasLimit(Transaction.BaseTxGasCost)
                 .WithValue(Transaction.BaseTxGasCost)
                 .WithFeeCap(UInt256.MaxValue - 10)
-                .WithGasPremium((UInt256)15)
+                .WithMaxPriorityFeePerGas((UInt256)15)
                 .WithType(TxType.EIP1559)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
             EnsureSenderBalance(tx.SenderAddress, UInt256.MaxValue);
