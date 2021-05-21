@@ -5,6 +5,7 @@ using Antlr4.Runtime;
 using Antlr4.Runtime.Tree;
 using Nethermind.Api;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Dsl.Pipeline;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -153,6 +154,9 @@ namespace Nethermind.Dsl.ANTLR
                 "<=" => new PipelineElement<Transaction, Transaction>(
                             condition: (t => (UInt256)t.GetType().GetProperty(key).GetValue(t) <= UInt256.Parse(value)),
                             transformData: (t => t), _logger),
+                "CONTAINS" => new PipelineElement<Transaction, Transaction>(
+                            condition: (t => Bytes.ToHexString(t.GetType().GetProperty("Data").GetValue(t) as byte[]).Contains(value)),
+                            transformData: (t => t), _logger), 
                 _ => null
             };
         }
