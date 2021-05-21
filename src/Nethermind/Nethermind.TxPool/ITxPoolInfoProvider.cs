@@ -21,6 +21,5 @@ namespace Nethermind.TxPool
     public interface ITxPoolInfoProvider
     {
         TxPoolInfo GetInfo(BlockHeader head);
-        string GetSnapshot(BlockHeader head);
     }
 }
