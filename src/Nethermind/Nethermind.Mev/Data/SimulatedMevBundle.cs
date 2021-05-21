@@ -15,27 +15,36 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System.Linq;
 using Nethermind.Int256;
+using Nethermind.TxPool;
+using Nethermind.Core;
+using System.Collections.Generic;
 
 namespace Nethermind.Mev.Data
 {
     public class SimulatedMevBundle
     {
-        public SimulatedMevBundle(MevBundle bundle, bool success, long gasUsed, UInt256 txFees, UInt256 coinbasePayments)
+
+        public SimulatedMevBundle(MevBundle bundle, 
+            bool success, 
+            long gasUsed, 
+            UInt256 txFees, 
+            UInt256 coinbasePayments, 
+            UInt256 eligibleGasFeePayment)
         {
             Bundle = bundle;
             Success = success;
             GasUsed = gasUsed;
             TxFees = txFees;
             CoinbasePayments = coinbasePayments;
+            EligibleGasFeePayment = eligibleGasFeePayment;
         }
 
         public UInt256 CoinbasePayments { get; set; }
         
         public UInt256 TxFees { get; set; }
         
-        // Need to implement logic, calculated as TxFees - (gas fee payments from transactions
-        // that can be spotted by the miner in the publicly visible transaction pool)
         public UInt256 EligibleGasFeePayment { get; set; }
 
         public UInt256 Profit => TxFees + CoinbasePayments;
@@ -47,8 +56,6 @@ namespace Nethermind.Mev.Data
 
         public UInt256 AdjustedGasPrice => Profit / (UInt256)GasUsed;
         
-        public UInt256 MevEquivalentGasPrice => CoinbasePayments / (UInt256)GasUsed;
-
         public UInt256 BundleScoringProfit => EligibleGasFeePayment + CoinbasePayments;
 
         public UInt256 BundleAdjustedGasPrice => BundleScoringProfit / (UInt256)GasUsed;
