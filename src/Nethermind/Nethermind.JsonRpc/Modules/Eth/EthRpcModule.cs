@@ -405,9 +405,9 @@ namespace Nethermind.JsonRpc.Modules.Eth
         {
             _txPoolBridge.TryGetPendingTransaction(transactionHash, out WrappedTransaction wTx);
             TxReceipt receipt = null; // note that if transaction is pending then for sure no receipt is known
-            if (wTx == null)
+            Transaction transaction = wTx?.Tx;
+            if (transaction == null)
             {
-                Transaction transaction = null;
                 (receipt, transaction) = _blockchainBridge.GetTransaction(transactionHash);
                 if (transaction == null)
                 {
@@ -415,9 +415,9 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 }
             }
 
-            RecoverTxSenderIfNeeded(wTx.Tx);
+            RecoverTxSenderIfNeeded(transaction);
             TransactionForRpc transactionModel =
-                new(receipt?.BlockHash, receipt?.BlockNumber, receipt?.Index, wTx.Tx);
+                new(receipt?.BlockHash, receipt?.BlockNumber, receipt?.Index, transaction);
             if (_logger.IsTrace)
                 _logger.Trace($"eth_getTransactionByHash request {transactionHash}, result: {transactionModel.Hash}");
             return Task.FromResult(ResultWrapper<TransactionForRpc>.Success(transactionModel));
