@@ -123,7 +123,7 @@ namespace Nethermind.Mev.Execution
                 _beneficiaryBalanceAfter = _tracer.BeneficiaryBalanceAfter;
                 Success &= _tracer.Success;
                 UInt256 premiumPerGas = UInt256.Zero;
-                if (_tracer.Transaction?.TryCalculatePremiumPerGas(_block!.BaseFee, out premiumPerGas) == true)
+                if (_tracer.Transaction?.TryCalculatePremiumPerGas(_block!.BaseFeePerGas, out premiumPerGas) == true)
                 {
                     TxFees += (UInt256)_tracer.GasSpent * premiumPerGas;
                 }

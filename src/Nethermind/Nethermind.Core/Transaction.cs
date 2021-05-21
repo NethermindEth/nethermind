@@ -146,17 +146,17 @@ namespace Nethermind.Core
 
         public static bool IsFree(this Transaction tx) => tx.IsSystem() || tx.IsServiceTransaction;
 
-        public static bool TryCalculatePremiumPerGas(this Transaction tx, UInt256 baseFee, out UInt256 premiumPerGas)
+        public static bool TryCalculatePremiumPerGas(this Transaction tx, UInt256 baseFeePerGas, out UInt256 premiumPerGas)
         {
             bool freeTransaction = tx.IsFree();
-            UInt256 feeCap = tx.IsEip1559 ? tx.FeeCap : tx.GasPrice;
-            if (baseFee > feeCap)
+            UInt256 feeCap = tx.IsEip1559 ? tx.MaxFeePerGas : tx.GasPrice;
+            if (baseFeePerGas > feeCap)
             {
                 premiumPerGas = UInt256.Zero; 
                 return !freeTransaction;
             }
             
-            premiumPerGas = UInt256.Min(tx.GasPremium, feeCap - baseFee);
+            premiumPerGas = UInt256.Min(tx.MaxPriorityFeePerGas, feeCap - baseFeePerGas);
             return true;
         }
     }

@@ -92,14 +92,14 @@ namespace Nethermind.Evm
             
             UInt256 value = transaction.Value;
 
-            if (!transaction.TryCalculatePremiumPerGas(block.BaseFee, out UInt256 premiumPerGas))
+            if (!transaction.TryCalculatePremiumPerGas(block.BaseFeePerGas, out UInt256 premiumPerGas))
             {
                 TraceLogInvalidTx(transaction, "MINER_PREMIUM_IS_NEGATIVE");
                 QuickFail(transaction, block, txTracer, "miner premium is negative");
                 return;
             }
             
-            UInt256 gasPrice = transaction.CalculateEffectiveGasPrice(spec.IsEip1559Enabled, block.BaseFee);
+            UInt256 gasPrice = transaction.CalculateEffectiveGasPrice(spec.IsEip1559Enabled, block.BaseFeePerGas);
 
             long gasLimit = transaction.GasLimit;
             byte[] machineCode = transaction.IsContractCreation ? transaction.Data : null;
