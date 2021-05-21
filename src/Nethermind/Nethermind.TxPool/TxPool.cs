@@ -414,21 +414,23 @@ namespace Nethermind.TxPool
 
         private UInt256 CalculatePayableGasPrice(Transaction tx, UInt256 balance)
         {
-            UInt256 payableGasPrice;
-            
             if (balance > tx.Value && tx.GasLimit > 0)
             {
                 UInt256 effectiveGasPrice = tx.CalculateEffectiveGasPrice(_specProvider.GetSpec().IsEip1559Enabled, CurrentBaseFee);
-                UInt256 balanceAvailableForFeePayment = balance - tx.Value;
-                balanceAvailableForFeePayment.Divide((UInt256)tx.GasLimit, out UInt256 maxPayablePricePerGasUnit);
-                payableGasPrice = UInt256.Min(effectiveGasPrice, maxPayablePricePerGasUnit);
-            }
-            else
-            {
-                payableGasPrice = 0;
-            }
+                effectiveGasPrice.Multiply((UInt256)tx.GasLimit, out UInt256 gasCost);
+                
+                if (balance >= tx.Value + gasCost)
+                {
+                    return effectiveGasPrice;
+                }
 
-            return payableGasPrice;
+                UInt256 balanceAvailableForFeePayment = balance - tx.Value;
+                balanceAvailableForFeePayment.Divide((UInt256)tx.GasLimit, out UInt256 payablePricePerGasUnit);
+                return payablePricePerGasUnit;
+
+            }
+            
+            return 0;
         }
         
         
