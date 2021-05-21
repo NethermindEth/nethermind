@@ -62,13 +62,29 @@ namespace Nethermind.Mev.Test
             
             UInt256 totalProfit = simulated.Aggregate<SimulatedMevBundle, UInt256>(0, (profit, x) => profit + x.Profit);
             totalProfit += txs.Aggregate<Transaction, UInt256>(0, (profit, x) => profit + (x.GasPrice * (UInt256)x.GasLimit));
-            
-            totalProfit.Should().Be(testJson.OptimalProfit!.Value, testJson.Description);
+
+            if (testJson.SelectorType == SelectorType.V1)
+            {
+                totalProfit.Should().Be(testJson.OptimalProfitV1!.Value, testJson.Description);
+            }
+            else if (testJson.SelectorType == SelectorType.V2 && testJson.MaxMergedBundles == 1)
+            {
+                totalProfit.Should().Be(testJson.OptimalProfitV2_max1bundles!.Value, testJson.Description);
+            }
+            else if (testJson.SelectorType == SelectorType.V2 && testJson.MaxMergedBundles == 3)
+            {
+                totalProfit.Should().Be(testJson.OptimalProfitV2_max3bundles!.Value, testJson.Description);
+            }
+            else
+            {
+                 //Only 1 and 3 MaxMergedBundles are being tested
+                 true.Should().Be(false);
+            }
         }
 
         private static IEnumerable<TestJson> AllMaxMergedBundles(TestJson testJson)
         {
-            int[] bundles = {1, 2, 4};
+            int[] bundles = {1, 3};
 
             foreach (int bundle in bundles)
             {
