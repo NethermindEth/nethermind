@@ -239,7 +239,7 @@ namespace Nethermind.Blockchain.Processing
                 foreach (Transaction currentTx in transactions)
                 {
                     // No more gas available in block
-                    if (currentTx.GasLimit > block.Header.GetActualGasLimit(spec) - block.GasUsed)
+                    if (currentTx.GasLimit > block.Header.GasLimit - block.GasUsed)
                     {
                         break;
                     }
