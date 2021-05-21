@@ -29,7 +29,7 @@ namespace Nethermind.Pipeline.Publishers
         public IWebSocketsClient CreateClient(WebSocket webSocket, string client)
         {
             var newClient = new WebSocketsClient(webSocket, client, _jsonSerializer);
-            _clients.TryAdd(client, newClient);
+            _clients.TryAdd(newClient.Id, newClient);
 
             if(_logger.IsInfo) _logger.Info($"Creating new WS client for {client}");
 

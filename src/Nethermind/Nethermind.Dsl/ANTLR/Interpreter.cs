@@ -155,7 +155,7 @@ namespace Nethermind.Dsl.ANTLR
                             condition: (t => (UInt256)t.GetType().GetProperty(key).GetValue(t) <= UInt256.Parse(value)),
                             transformData: (t => t), _logger),
                 "CONTAINS" => new PipelineElement<Transaction, Transaction>(
-                            condition: (t => Bytes.ToHexString(t.GetType().GetProperty("Data").GetValue(t) as byte[]).Contains(value)),
+                            condition: (t => Bytes.ToHexString(t.GetType().GetProperty(key).GetValue(t) as byte[]).Contains(value)),
                             transformData: (t => t), _logger), 
                 _ => null
             };
