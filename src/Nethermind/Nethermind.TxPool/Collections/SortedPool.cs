@@ -220,6 +220,14 @@ namespace Nethermind.TxPool.Collections
         /// </summary>
         protected virtual bool Remove(TKey key, TValue value)
         {
+            foreach (KeyValuePair<TGroupKey, ICollection<TValue>> bundles in _buckets) //should we remove from _buckets
+            {
+                if (bundles.Value.Contains(value))
+                {
+                    bundles.Value.Remove(value);
+                    break;
+                }
+            }
             _sortedValues.Remove(value);
             return _cacheMap.Remove(key);
         }

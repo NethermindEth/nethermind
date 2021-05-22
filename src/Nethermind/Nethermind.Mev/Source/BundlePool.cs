@@ -96,7 +96,7 @@ namespace Nethermind.Mev.Source
             lock (_bundles2)
             {
                 MevBundle searchedBundle = MevBundle.Empty(blockNumber, minTimestamp, maxTimestamp);
-                bool inBundle = _bundles2.TryGetValue(searchedBundle, out searchedBundle); //does it matter that searchedBundle is same?
+                bool inBundle = _bundles2.TryGetValue(searchedBundle, out MevBundle value); //does it matter that searchedBundle is same?
                 if (inBundle)
                 {
                     foreach (KeyValuePair<MevBundle, MevBundle> kvp in _bundles2.GetCacheMap()) //is the complement of i to prevent us from checking if i is not in this list?, but ~~of a number is the same number...
@@ -206,19 +206,23 @@ namespace Nethermind.Mev.Source
             }
 
             //ConcurrentBag<Keccak> blocksBag; we get the hashbag of the bundle and we add the hash to it
-            bool GetBundle;
+            /*
+            List<Keccak> GetBundle;
             lock (_bundles2)
             {
                 GetBundle = _bundles2.TryGetValue(bundle, out bundle); 
-            }
+            }*/
 
-            if (_bundles2._bundlesToBlockHashes.ContainsKey(bundle))
+            lock (_bundles2)
             {
-                _bundles2._bundlesToBlockHashes[bundle].Add(parentHash);
-            }
-            else
-            {
-                _bundles2._bundlesToBlockHashes.Add(bundle, new List<Keccak>(new Keccak[] {parentHash}));
+                if (_bundles2._bundlesToBlockHashes.ContainsKey(bundle))
+                {
+                    _bundles2._bundlesToBlockHashes[bundle].Add(parentHash);
+                }
+                else
+                {
+                    _bundles2._bundlesToBlockHashes.Add(bundle, new List<Keccak>(new Keccak[] {parentHash}));
+                }
             }
         }
         
@@ -259,46 +263,56 @@ namespace Nethermind.Mev.Source
         private void OnBlocksFinalized(object? sender, FinalizeEventArgs e)
         {
             long maxFinalizedBlockNumber = e.FinalizedBlocks.Select(b => b.Number).Max();
-            if (_bundles.Count > 0)
+            int count = _bundles2.Count;
+            int capacity = MevConfig.BundlePoolSize;
+            lock (_bundles2)
             {
-                lock (_bundles)
+                if (_bundles2.Count > capacity)
                 {
-                    if (_bundles.Count > 0)
+                    foreach (KeyValuePair<MevBundle, MevBundle> kvp in _bundles2.GetCacheMap())
                     {
-                        MevBundle bundle = _bundles.Keys[0];
-                        while (bundle.BlockNumber <= maxFinalizedBlockNumber)
+                        MevBundle? bundleCpy = kvp.Key;
+                        _bundles2.TryRemove(kvp.Key, out bundleCpy); //want to make this same as Key, does this need to be out?
+                        _bundles2._bundlesToBlockHashes.Remove(kvp.Key);
+                        if (_bundles2.Count > capacity)
                         {
-                            ConcurrentBag<Keccak> blocksBag = _bundles.Values[0];
-                            foreach (Keccak blockHash in blocksBag)
-                            {
-                                if (_simulatedBundles.TryGetValue(blockHash, out ConcurrentDictionary<MevBundle, SimulatedMevBundleContext>? bundleDictionary))
-                                {
-                                    if (bundleDictionary.TryRemove(bundle, out SimulatedMevBundleContext? context))
-                                    {
-                                        context.CancellationTokenSource.Cancel();
-                                        context.Dispose();
-                                    }
-
-                                    if (bundleDictionary.Count == 0)
-                                    {
-                                        _simulatedBundles.TryRemove(blockHash, out _);
-                                    }
-                                }
-                            }
-
-                            _bundles.RemoveAt(0);
-                            
-                            if (_bundles.Count > 0)
-                            {
-                                bundle = _bundles.Keys[0];
-                            }
-                            else
-                            {
-                                break;
-                            }
+                            break;
                         }
                     }
                 }
+                /*
+                MevBundle bundle = _bundles2._bundlesToBlockHashes.Keys[0]; //first key in bundle
+                while (bundle.BlockNumber <= maxFinalizedBlockNumber)
+                {
+                    ConcurrentBag<Keccak> blocksBag = _bundles.Values[0]; //first value in bundle
+                    foreach (Keccak blockHash in blocksBag)
+                    {
+                        if (_simulatedBundles.TryGetValue(blockHash, out ConcurrentDictionary<MevBundle, SimulatedMevBundleContext>? bundleDictionary))
+                        {
+                            if (bundleDictionary.TryRemove(bundle, out SimulatedMevBundleContext? context))
+                            {
+                                context.CancellationTokenSource.Cancel();
+                                context.Dispose();
+                            }
+
+                            if (bundleDictionary.Count == 0)
+                            {
+                                _simulatedBundles.TryRemove(blockHash, out _);
+                            }
+                        }
+                    }
+
+                    _bundles.RemoveAt(0);
+                    
+                    if (_bundles.Count > 0)
+                    {
+                        bundle = _bundles.Keys[0];
+                    }
+                    else
+                    {
+                        break;
+                    }
+                }*/
             }
         }
         
