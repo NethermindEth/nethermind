@@ -211,7 +211,15 @@ namespace Nethermind.Mev.Source
             {
                 GetBundle = _bundles2.TryGetValue(bundle, out bundle); 
             }
-            _bundles2.bundlesToHashesOfBlocksSimulatedOn[bundle].Add(parentHash);
+
+            if (_bundles2._bundlesToBlockHashes.ContainsKey(bundle))
+            {
+                _bundles2._bundlesToBlockHashes[bundle].Add(parentHash);
+            }
+            else
+            {
+                _bundles2._bundlesToBlockHashes.Add(bundle, new List<Keccak>(new Keccak[] {parentHash}));
+            }
         }
         
         private void OnNewSuggestedBlock(object? sender, BlockEventArgs e)

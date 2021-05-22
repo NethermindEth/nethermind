@@ -37,7 +37,7 @@ namespace Nethermind.TxPool.Collections
         private readonly IDictionary<TGroupKey, ICollection<TValue>> _buckets;
         private readonly DictionarySortedSet<TValue, TKey> _sortedValues;
         private readonly IDictionary<TKey, TValue> _cacheMap;
-        private readonly Dictionary<TKey, List<THash>> _bundlesToBlockHashes;
+        public Dictionary<TKey, List<THash>> _bundlesToBlockHashes;
 
         /// <summary>
         /// Constructor
