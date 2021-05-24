@@ -55,6 +55,7 @@ namespace Ethereum.Test.Base
                 "Byzantium" => Byzantium.Instance,
                 "Istanbul" => Istanbul.Instance,
                 "Berlin" => Berlin.Instance,
+                "London" => London.Instance,
                 _ => throw new NotSupportedException()
             };
         }
