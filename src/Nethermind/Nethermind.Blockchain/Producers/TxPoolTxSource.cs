@@ -114,7 +114,7 @@ namespace Nethermind.Blockchain.Producers
             long blockNumber = parent.Number + 1;
             IReleaseSpec releaseSpec = _specProvider.GetSpec(blockNumber);
             bool isEip1559Enabled = releaseSpec.IsEip1559Enabled;
-            UInt256 baseFee = BlockHeader.CalculateBaseFee(parent, releaseSpec);
+            UInt256 baseFee = BaseFeeCalculator.Calculate(parent, releaseSpec);
             IDictionary<Address, WrappedTransaction[]> pendingTransactions = _transactionPool.GetPendingTransactionsBySender();
             IComparer<WrappedTransaction> comparer = GetComparer(parent, new BlockPreparationContext(baseFee, blockNumber))
                 .ThenBy(DistinctCompareTx.Instance); // in order to sort properly and not loose transactions we need to differentiate on their identity which provided comparer might not be doing

@@ -40,7 +40,7 @@ namespace Nethermind.Blockchain.Comparers
             // We can get a base fee from the current head.
             Block block = _blockFinder.Head;
             bool isEip1559Enabled = _specProvider.GetSpec(block?.Number ?? 0).IsEip1559Enabled;
-            return GasPriceTxComparerHelper.Compare(x, y, block?.Header.BaseFee ?? 0, isEip1559Enabled);
+            return GasPriceTxComparerHelper.Compare(x, y, block?.Header.BaseFeePerGas ?? 0, isEip1559Enabled);
         }
     }
 }

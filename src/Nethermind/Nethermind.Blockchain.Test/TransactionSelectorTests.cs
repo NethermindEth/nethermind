@@ -271,12 +271,12 @@ namespace Nethermind.Blockchain.Test
                         new WrappedTransaction(Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithType(TxType.EIP1559).WithNonce(2)
                             .WithFeeCap(5).WithGasLimit(10).SignedAndResolved(TestItem.PrivateKeyA).TestObject),
                             new WrappedTransaction(Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithNonce(1)
-                            .WithFeeCap(50).WithGasPremium(25).WithGasLimit(10).WithType(TxType.EIP1559).WithValue(60).SignedAndResolved(TestItem.PrivateKeyA).TestObject)
+                            .WithFeeCap(50).WithMaxPriorityFeePerGas(25).WithGasLimit(10).WithType(TxType.EIP1559).WithValue(60).SignedAndResolved(TestItem.PrivateKeyA).TestObject)
                     },
                     GasLimit = 10000000
                 };
                 balanceCheckWithGasPremium.ExpectedSelectedTransactions.AddRange(
-                    new[] { 1 }.Select(i => balanceCheckWithGasPremium.WrappedTransactions[i]));
+                    new[] { 1 }.Select(i => balanceCheckWithGasPremium.Transactions[i]));
                 yield return new TestCaseData(balanceCheckWithGasPremium).SetName("EIP1559 transactions: one transaction selected because of account balance and miner tip");
             }
         }

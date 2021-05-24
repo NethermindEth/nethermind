@@ -279,7 +279,7 @@ namespace Nethermind.Blockchain.Test.TxPools
                 .WithGasLimit(Transaction.BaseTxGasCost)
                 .WithValue(Transaction.BaseTxGasCost)
                 .WithFeeCap(UInt256.MaxValue - 10)
-                .WithGasPremium((UInt256)15)
+                .WithMaxPriorityFeePerGas((UInt256)15)
                 .WithType(TxType.EIP1559)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
             EnsureSenderBalance(tx.SenderAddress, UInt256.MaxValue);
@@ -371,7 +371,7 @@ namespace Nethermind.Blockchain.Test.TxPools
             Transaction tx = Build.A.Transaction
                 .WithType(TxType.EIP1559)
                 .WithFeeCap(20)
-                .WithGasPremium((UInt256)gasPremium)
+                .WithMaxPriorityFeePerGas((UInt256)gasPremium)
                 .WithChainId(ChainId.Mainnet)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
             tx.Value = (UInt256)(value * tx.GasLimit);
@@ -411,7 +411,7 @@ namespace Nethermind.Blockchain.Test.TxPools
             _txPool.RemoveTransaction(transactions[0]);
             _stateProvider.SubtractFromBalance(TestItem.AddressA, (UInt256)oneTxPrice, new ReleaseSpec());
             
-            _txPool.RemoveOrUpdateBucket(TestItem.AddressA);
+            _txPool.RemoveOrUpdateBuckets();
             _txPool.GetPendingTransactionsCount().Should().Be(expectedPoolCount);
         }
         
@@ -475,7 +475,7 @@ namespace Nethermind.Blockchain.Test.TxPools
             _txPool.RemoveTransaction(transactions[0]);
             _stateProvider.SubtractFromBalance(TestItem.AddressA, (UInt256)oneTxPrice, new ReleaseSpec());
             
-            _txPool.RemoveOrUpdateBucket(TestItem.AddressA);
+            _txPool.RemoveOrUpdateBuckets();
             _txPool.GetPendingTransactionsCount().Should().Be(0);
 
             _txPool.IsInHashCache(transactions[1].Hash).Should().BeFalse();

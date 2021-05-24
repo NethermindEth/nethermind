@@ -16,7 +16,6 @@
 // 
 
 using System;
-using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Consensus;
 using Nethermind.Core;
@@ -59,11 +58,10 @@ namespace Nethermind.Blockchain
         private void ProcessBlock(Block block, Block? previousBlock)
         {
             _txPool.BlockGasLimit = block.GasLimit;
-            _txPool.CurrentBaseFee = block.Header.BaseFee;
+            _txPool.CurrentBaseFee = block.Header.BaseFeePerGas;
             long transactionsInBlock = block.Transactions.Length;
             long discoveredForPendingTxs = 0;
             long discoveredForHashCache = 0;
-            HashSet<Address> senders = new();
             
             for (int i = 0; i < transactionsInBlock; i++)
             {
@@ -79,25 +77,10 @@ namespace Nethermind.Blockchain
                 {
                     discoveredForPendingTxs++;
                 }
-                
-                senders.Add(tx.SenderAddress);
             }
 
-            WrappedTransaction[]? pendingTxs = _txPool.GetPendingTransactions();
+            _txPool.RemoveOrUpdateBuckets();
 
-            foreach (WrappedTransaction wTx in pendingTxs)
-            {
-                if (wTx?.Tx?.Type == TxType.EIP1559)
-                {
-                    senders.Add(wTx.Tx.SenderAddress);
-                }
-            }
-            
-            foreach (Address sender in senders)
-            {
-                _txPool.RemoveOrUpdateBucket(sender);
-            }
-            
             TxPool.Metrics.DarkPoolRatioLevel1 = transactionsInBlock == 0 ? 0 : (float)discoveredForHashCache / transactionsInBlock;
             TxPool.Metrics.DarkPoolRatioLevel2 = transactionsInBlock == 0 ? 0 : (float)discoveredForPendingTxs / transactionsInBlock;
             

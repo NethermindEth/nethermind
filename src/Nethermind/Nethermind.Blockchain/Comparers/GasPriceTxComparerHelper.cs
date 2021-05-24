@@ -15,7 +15,6 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using Nethermind.Core;
 using Nethermind.Int256;
 using Nethermind.TxPool;
 
@@ -30,7 +29,7 @@ namespace Nethermind.Blockchain.Comparers
             if (ReferenceEquals(null, x)) return -1;
             
             // if gas bottleneck was calculated, it's highest priority for sorting
-            if (x.GasBottleneck != UInt256.MaxValue || y.GasBottleneck != UInt256.MaxValue)
+            if (x.GasBottleneck != 0 || y.GasBottleneck != 0)
             {
                 return y.GasBottleneck.CompareTo(x.GasBottleneck);
             }
@@ -38,12 +37,12 @@ namespace Nethermind.Blockchain.Comparers
             // EIP1559 changed the way we're sorting transactions. The transaction with a higher miner tip should go first
             if (isEip1559Enabled)
             {
-                UInt256 xGasPrice = UInt256.Min(x.Tx.FeeCap, x.Tx.GasPremium + baseFee);
-                UInt256 yGasPrice = UInt256.Min(y.Tx.FeeCap, y.Tx.GasPremium + baseFee);
+                UInt256 xGasPrice = UInt256.Min(x.Tx.MaxFeePerGas, x.Tx.MaxPriorityFeePerGas + baseFee);
+                UInt256 yGasPrice = UInt256.Min(y.Tx.MaxFeePerGas, y.Tx.MaxPriorityFeePerGas + baseFee);
                 if (xGasPrice < yGasPrice) return 1;
                 if (xGasPrice > yGasPrice) return -1;
 
-                return y.Tx.FeeCap.CompareTo(x.Tx.FeeCap);
+                return y.Tx.MaxFeePerGas.CompareTo(x.Tx.MaxFeePerGas);
             }
             
             // the old way of sorting transactions

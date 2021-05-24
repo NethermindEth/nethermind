@@ -119,7 +119,7 @@ namespace Nethermind.Serialization.Rlp
             transaction.ChainId = rlpStream.DecodeULong();
             transaction.Nonce = rlpStream.DecodeUInt256();
             transaction.GasPrice = rlpStream.DecodeUInt256(); // gas premium
-            transaction.DecodedFeeCap = rlpStream.DecodeUInt256();
+            transaction.DecodedMaxFeePerGas = rlpStream.DecodeUInt256();
             transaction.GasLimit = rlpStream.DecodeLong();
             transaction.To = rlpStream.DecodeAddress();
             transaction.Value = rlpStream.DecodeUInt256();
@@ -154,7 +154,7 @@ namespace Nethermind.Serialization.Rlp
             transaction.ChainId = decoderContext.DecodeULong();
             transaction.Nonce = decoderContext.DecodeUInt256();
             transaction.GasPrice = decoderContext.DecodeUInt256(); // gas premium
-            transaction.DecodedFeeCap = decoderContext.DecodeUInt256();
+            transaction.DecodedMaxFeePerGas = decoderContext.DecodeUInt256();
             transaction.GasLimit = decoderContext.DecodeLong();
             transaction.To = decoderContext.DecodeAddress();
             transaction.Value = decoderContext.DecodeUInt256();
@@ -189,7 +189,7 @@ namespace Nethermind.Serialization.Rlp
             stream.Encode(item.ChainId ?? 0);
             stream.Encode(item.Nonce);
             stream.Encode(item.GasPrice); // gas premium
-            stream.Encode(item.DecodedFeeCap);
+            stream.Encode(item.DecodedMaxFeePerGas);
             stream.Encode(item.GasLimit);
             stream.Encode(item.To);
             stream.Encode(item.Value);
@@ -422,7 +422,7 @@ namespace Nethermind.Serialization.Rlp
         {
             return Rlp.LengthOf(item.Nonce)
                    + Rlp.LengthOf(item.GasPrice) // gas premium
-                   + Rlp.LengthOf(item.DecodedFeeCap)
+                   + Rlp.LengthOf(item.DecodedMaxFeePerGas)
                    + Rlp.LengthOf(item.GasLimit)
                    + Rlp.LengthOf(item.To)
                    + Rlp.LengthOf(item.Value)

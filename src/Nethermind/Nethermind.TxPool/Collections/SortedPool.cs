@@ -98,12 +98,8 @@ namespace Nethermind.TxPool.Collections
         /// Gets all items of requested group.
         /// </summary>
         [MethodImpl(MethodImplOptions.Synchronized)]
-        public TValue[] GetBucketSnapshot(TGroupKey? group)
+        public TValue[] GetBucketSnapshot(TGroupKey group)
         {
-            if (group is null)
-            {
-                return Array.Empty<TValue>();
-            }
             return _buckets.TryGetValue(@group, out var bucket) ? bucket.ToArray() : Array.Empty<TValue>();
         }
         
@@ -111,15 +107,20 @@ namespace Nethermind.TxPool.Collections
         /// Gets number of items in requested group.
         /// </summary>
         [MethodImpl(MethodImplOptions.Synchronized)]
-        public int GetBucketCount(TGroupKey? group)
+        public int GetBucketCount(TGroupKey group)
         {
-            if (group is null)
-            {
-                return 0;
-            }
             return _buckets.TryGetValue(@group, out var bucket) ? bucket.Count : 0;
         }
-        
+
+        /// <summary>
+        /// Gets all groupKeys.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.Synchronized)]
+        public TGroupKey[] GetBucketsKeys()
+        {
+            return _buckets.Keys.ToArray();
+        }
+
         /// <summary>
         /// Takes first element in supplied comparer order.
         /// </summary>

@@ -312,7 +312,7 @@ namespace Nethermind.Blockchain.Processing
                 AuRaStep = bh.AuRaStep,
                 AuRaSignature = bh.AuRaSignature,
                 ReceiptsRoot = bh.ReceiptsRoot,
-                BaseFee = bh.BaseFee
+                BaseFeePerGas = bh.BaseFeePerGas
             };
 
             return new Block(header, suggestedBlock.Transactions, suggestedBlock.Ommers);

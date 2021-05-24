@@ -45,7 +45,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
             (UInt256 minFeeCap, UInt256 minGasPremium) = CurrentMinGas();
             UInt256 txFeeCap = minFeeCap * _percentDelta / 100;
             UInt256 txGasPremium = minGasPremium * _percentDelta / 100;
-            tx.DecodedFeeCap = UInt256.Max(txFeeCap, _miningConfig.MinGasPrice);
+            tx.DecodedMaxFeePerGas = UInt256.Max(txFeeCap, _miningConfig.MinGasPrice);
             tx.GasPrice = txGasPremium;
             tx.Type = TxType.EIP1559;
             return _txSender.SendTransaction(tx, txHandlingOptions);
@@ -64,8 +64,8 @@ namespace Nethermind.Consensus.AuRa.Transactions
             for (int i = 0; i < transactions.Length; ++i)
             {
                 Transaction transaction = transactions[i].Tx;
-                UInt256 currentFeeCap = transaction.FeeCap;
-                UInt256 currentGasPremium = transaction.GasPremium;
+                UInt256 currentFeeCap = transaction.MaxFeePerGas;
+                UInt256 currentGasPremium = transaction.MaxPriorityFeePerGas;
                 if (currentFeeCap != UInt256.Zero)
                 {
                     if (minFeeCap == UInt256.Zero || (currentFeeCap != UInt256.Zero && minFeeCap > currentFeeCap))

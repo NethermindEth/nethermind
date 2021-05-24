@@ -93,8 +93,8 @@ namespace Nethermind.Evm
             
             UInt256 value = transaction.Value;
 
-            UInt256 feeCap = transaction.FeeCap;
-            UInt256 baseFee = block.BaseFee;
+            UInt256 feeCap = transaction.MaxFeePerGas;
+            UInt256 baseFee = block.BaseFeePerGas;
             if (baseFee > feeCap && !freeTransaction)
             {
                 TraceLogInvalidTx(transaction, "MINER_PREMIUM_IS_NEGATIVE");
@@ -102,8 +102,8 @@ namespace Nethermind.Evm
                 return;
             }
             
-            UInt256 premiumPerGas = (feeCap < baseFee && freeTransaction) ? UInt256.Zero  : UInt256.Min(transaction.GasPremium, feeCap - baseFee);
-            UInt256 gasPrice = transaction.CalculateEffectiveGasPrice(spec.IsEip1559Enabled, block.BaseFee);
+            UInt256 premiumPerGas = (feeCap < baseFee && freeTransaction) ? UInt256.Zero  : UInt256.Min(transaction.MaxPriorityFeePerGas, feeCap - baseFee);
+            UInt256 gasPrice = transaction.CalculateEffectiveGasPrice(spec.IsEip1559Enabled, block.BaseFeePerGas);
 
             long gasLimit = transaction.GasLimit;
             byte[] machineCode = transaction.IsContractCreation ? transaction.Data : null;
@@ -131,10 +131,10 @@ namespace Nethermind.Evm
                     return;
                 }
 
-                if (!isCall && gasLimit > block.GetActualGasLimit(spec) - block.GasUsed)
+                if (!isCall && gasLimit > block.GasLimit - block.GasUsed)
                 {
                     TraceLogInvalidTx(transaction,
-                        $"BLOCK_GAS_LIMIT_EXCEEDED {gasLimit} > {block.GetActualGasLimit(spec)} - {block.GasUsed}");
+                        $"BLOCK_GAS_LIMIT_EXCEEDED {gasLimit} > {block.GasLimit} - {block.GasUsed}");
                     QuickFail(transaction, block, txTracer, "block gas limit exceeded");
                     return;
                 }
@@ -283,6 +283,11 @@ namespace Nethermind.Evm
                         if (unspentGas < codeDepositGasCost && spec.ChargeForTopLevelCreate)
                         {
                             throw new OutOfGasException();
+                        }
+                        
+                        if (CodeDepositHandler.CodeIsInvalid(spec, substate.Output))
+                        {
+                            throw new InvalidCodeException();
                         }
 
                         if (unspentGas >= codeDepositGasCost)

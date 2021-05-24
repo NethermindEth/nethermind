@@ -17,9 +17,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
 using Nethermind.Core;
-using Nethermind.Int256;
 using Nethermind.State;
 
 namespace Nethermind.TxPool
@@ -80,49 +78,6 @@ namespace Nethermind.TxPool
             }
 
             return new TxPoolInfo(pendingTransactions, queuedTransactions);
-        }
-
-        public string GetSnapshot(BlockHeader head)
-        {
-            StringBuilder details = new();
-            WrappedTransaction[] txpoolContent = _txPool.GetPendingTransactions();
-
-            for (int i = 0; i < txpoolContent.Length; i++)
-            {
-                WrappedTransaction tx = txpoolContent[i];
-
-                Address senderAddress = tx.Tx.SenderAddress;
-                
-                if (senderAddress is null)
-                {
-                    continue;
-                }
-                
-                UInt256 currentNonce = _stateReader.GetNonce(head.StateRoot, senderAddress);
-                UInt256 txNonce = tx.Tx.Nonce;
-                UInt256 gasPrice = tx.Tx.GasPrice / 1000000000;
-                UInt256 gasBottleneck = tx.GasBottleneck / 1000000000;
-                long nonceDiff = (long)txNonce - (long)currentNonce;
-                
-                details.Append(tx.Tx.Hash);
-                details.Append(',');
-                details.Append(senderAddress);
-                details.Append(',');
-                details.Append(gasPrice);
-                details.Append(',');
-                details.Append(gasBottleneck);
-                details.Append(',');
-                details.Append(currentNonce);
-                details.Append(',');
-                details.Append(txNonce);
-                details.Append(',');
-                details.Append(nonceDiff);
-                details.Append(',');
-                details.Append(tx.Tx.Timestamp);
-                details.Append('\n');
-            }
-
-            return details.ToString();
         }
     }
 }

@@ -260,11 +260,13 @@ namespace Nethermind.TxPool
                     _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, nonce already used.");
                 return AddTxResult.OldNonce;
             }
-
+            
             int numberOfSenderTxsInPending = _transactions.GetBucketCount(tx.SenderAddress);
-            if (GetPendingTransactionsCount() == MemoryAllowance.MemPoolSize
-                && tx.Nonce > (long)currentNonce + numberOfSenderTxsInPending
-                || tx.Nonce > currentNonce + FutureNonceRetention)
+            bool isTxPoolFull = GetPendingTransactionsCount() == MemoryAllowance.MemPoolSize;
+            bool isTxNonceNextInOrder = tx.Nonce <= (long)currentNonce + numberOfSenderTxsInPending;
+            bool isTxNonceTooFarInFuture = tx.Nonce > currentNonce + FutureNonceRetention;
+            if (isTxPoolFull && !isTxNonceNextInOrder
+                || isTxNonceTooFarInFuture)
             {
                 if (_logger.IsTrace)
                     _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, nonce in future.");
@@ -274,7 +276,7 @@ namespace Nethermind.TxPool
             UInt256 balance = account?.Balance ?? UInt256.Zero;
             UInt256 effectiveGasPrice = tx.IsEip1559 ? CalculatePayableGasPrice(tx, balance) : tx.GasPrice;
 
-            bool overflow = spec.IsEip1559Enabled && UInt256.AddOverflow(tx.GasPremium, tx.FeeCap, out _);
+            bool overflow = spec.IsEip1559Enabled && UInt256.AddOverflow(tx.MaxPriorityFeePerGas, tx.MaxFeePerGas, out _);
             // we're checking that user can pay what he declared in FeeCap. For this check BaseFee = FeeCap
             overflow |= UInt256.MultiplyOverflow(effectiveGasPrice, (UInt256) tx.GasLimit, out UInt256 cost);
             overflow |= UInt256.AddOverflow(cost, tx.Value, out cost);
@@ -291,7 +293,7 @@ namespace Nethermind.TxPool
                 return AddTxResult.InsufficientFunds;
             }
                 
-            if (GetPendingTransactionsCount() == MemoryAllowance.MemPoolSize
+            if (isTxPoolFull
                 && _transactions.TryGetLast(out var lastTx)
                 && effectiveGasPrice <= lastTx?.GasBottleneck)
             {
@@ -336,6 +338,7 @@ namespace Nethermind.TxPool
             {
                 lock (_locker)
                 {
+                    tx.GasBottleneck = tx.CalculateEffectiveGasPrice(_specProvider.GetSpec().IsEip1559Enabled, CurrentBaseFee);
                     bool inserted = _transactions.TryInsert(tx.Hash, wTx, out WrappedTransaction? removed);
                     if (inserted)
                     {
@@ -415,24 +418,37 @@ namespace Nethermind.TxPool
 
         private UInt256 CalculatePayableGasPrice(Transaction tx, UInt256 balance)
         {
-            UInt256 payableGasPrice;
-            
             if (balance > tx.Value && tx.GasLimit > 0)
             {
                 UInt256 effectiveGasPrice = tx.CalculateEffectiveGasPrice(_specProvider.GetSpec().IsEip1559Enabled, CurrentBaseFee);
-                UInt256 balanceAvailableForFeePayment = balance - tx.Value;
-                balanceAvailableForFeePayment.Divide((UInt256)tx.GasLimit, out UInt256 maxPayablePricePerGasUnit);
-                payableGasPrice = UInt256.Min(effectiveGasPrice, maxPayablePricePerGasUnit);
-            }
-            else
-            {
-                payableGasPrice = 0;
-            }
+                effectiveGasPrice.Multiply((UInt256)tx.GasLimit, out UInt256 gasCost);
+                
+                if (balance >= tx.Value + gasCost)
+                {
+                    return effectiveGasPrice;
+                }
 
-            return payableGasPrice;
+                UInt256 balanceAvailableForFeePayment = balance - tx.Value;
+                balanceAvailableForFeePayment.Divide((UInt256)tx.GasLimit, out UInt256 payablePricePerGasUnit);
+                return payablePricePerGasUnit;
+
+            }
+            
+            return 0;
+        }
+        
+        
+        public void RemoveOrUpdateBuckets()
+        {
+            Address[] addresses = _transactions.GetBucketsKeys();
+
+            foreach (Address address in addresses)
+            {
+                RemoveOrUpdateBucket(address);
+            }
         }
 
-        public void RemoveOrUpdateBucket(Address senderAddress)
+        private void RemoveOrUpdateBucket(Address senderAddress)
         {
             var bucketSnapshot = _transactions.GetBucketSnapshot(senderAddress);
 
