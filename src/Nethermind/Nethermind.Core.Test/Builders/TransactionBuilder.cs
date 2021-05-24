@@ -91,13 +91,13 @@ namespace Nethermind.Core.Test.Builders
         
         public TransactionBuilder<T> WithFeeCap(UInt256 feeCap)
         {
-            TestObjectInternal.DecodedFeeCap = feeCap;
+            TestObjectInternal.DecodedMaxFeePerGas = feeCap;
             return this;
         }
         
-        public TransactionBuilder<T> WithGasPremium(UInt256 gasPremium)
+        public TransactionBuilder<T> WithMaxPriorityFeePerGas(UInt256 maxPriorityFeePerGas)
         {
-            TestObjectInternal.GasPrice = gasPremium;
+            TestObjectInternal.GasPrice = maxPriorityFeePerGas;
             return this;
         }
 

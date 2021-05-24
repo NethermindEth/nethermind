@@ -133,5 +133,11 @@ namespace Nethermind.Core.Test.Builders
             TestObjectInternal.StatusCode = statusCode;
             return this;
         }
+        
+        public ReceiptBuilder WithRemoved(bool removed)
+        {
+            TestObjectInternal.Removed = removed;
+            return this;
+        }
     }
 }

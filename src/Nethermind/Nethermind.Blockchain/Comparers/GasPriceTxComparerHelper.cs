@@ -33,12 +33,12 @@ namespace Nethermind.Blockchain.Comparers
             // EIP1559 changed the way we're sorting transactions. The transaction with a higher miner tip should go first
             if (isEip1559Enabled)
             {
-                UInt256 xGasPrice = UInt256.Min(x.FeeCap, x.GasPremium + baseFee);
-                UInt256 yGasPrice = UInt256.Min(y.FeeCap, y.GasPremium + baseFee);
+                UInt256 xGasPrice = UInt256.Min(x.MaxFeePerGas, x.MaxPriorityFeePerGas + baseFee);
+                UInt256 yGasPrice = UInt256.Min(y.MaxFeePerGas, y.MaxPriorityFeePerGas + baseFee);
                 if (xGasPrice < yGasPrice) return 1;
                 if (xGasPrice > yGasPrice) return -1;
 
-                return y.FeeCap.CompareTo(x.FeeCap);
+                return y.MaxFeePerGas.CompareTo(x.MaxFeePerGas);
             }
             
             // the old way of sorting transactions

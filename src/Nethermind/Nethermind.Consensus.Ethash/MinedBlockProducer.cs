@@ -81,17 +81,7 @@ namespace Nethermind.Consensus.Ethash
                 token = _cancellationTokenSource.Token;
             }
 
-            TryProduceNewBlock(token).ContinueWith(t =>
-            {
-                if (t.IsCompletedSuccessfully)
-                {
-                    Block? block = t.Result;
-                    if (block is not null)
-                    {
-                        ConsumeProducedBlock(block);
-                    }
-                }
-            }, token);
+            TryProduceNewBlock(token);
         }
 
         public override void Start()

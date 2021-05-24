@@ -80,7 +80,7 @@ namespace Nethermind.Core.Collections
             T[] ts = new T[Count];
             CopyTo(ts, 0);
             ISet<T> set = other.ToHashSet();
-            foreach (T t in this)
+            foreach (T t in this.ToArray())
             {
                 if (!set.Contains(t))
                 {

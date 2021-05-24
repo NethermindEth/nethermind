@@ -176,5 +176,27 @@ namespace Nethermind.Blockchain.Test.Validators
             IReleaseSpec releaseSpec = new ReleaseSpec() {IsEip2930Enabled = eip2930, IsEip1559Enabled = eip1559};
             return txValidator.IsWellFormed(tx, releaseSpec);
         }
+        
+        
+        [TestCase(TxType.Legacy, ExpectedResult = true)]
+        [TestCase(TxType.AccessList, ExpectedResult = false)]
+        [TestCase(TxType.EIP1559, ExpectedResult = false)]
+        public bool Chain_Id_required_for_non_legacy_transactions_after_Berlin(TxType txType)
+        {
+            byte[] sigData = new byte[65];
+            sigData[31] = 1; // correct r
+            sigData[63] = 1; // correct s
+            sigData[64] = 38;
+            Signature signature = new Signature(sigData);
+            Transaction tx = Build.A.Transaction
+                .WithType(txType > TxType.AccessList ? TxType.Legacy : txType)
+                .WithAccessList(txType == TxType.AccessList ? new AccessList(new Dictionary<Address, IReadOnlySet<UInt256>>()) : null)
+                .WithSignature(signature).TestObject;
+
+            tx.Type = txType;
+            
+            TxValidator txValidator = new TxValidator(ChainId.Mainnet);
+            return txValidator.IsWellFormed(tx, Berlin.Instance);
+        }
     }
 }

@@ -53,7 +53,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
             
             return new object[]
             {
-                tx.SenderAddress, tx.To ?? Address.Zero, tx.Value, tx.FeeCap, tx.GasPremium, tx.GasLimit, tx.Data ?? Array.Empty<byte>()
+                tx.SenderAddress, tx.To ?? Address.Zero, tx.Value, tx.MaxFeePerGas, tx.MaxPriorityFeePerGas, tx.GasLimit, tx.Data ?? Array.Empty<byte>()
             };
         }
 
