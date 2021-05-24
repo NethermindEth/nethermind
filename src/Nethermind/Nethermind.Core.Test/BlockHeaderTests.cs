@@ -122,7 +122,7 @@ namespace Nethermind.Core.Test
             BlockHeader blockHeader = Build.A.BlockHeader.TestObject;
             blockHeader.Number = 2001;
             blockHeader.GasLimit = gasTarget * Eip1559Constants.ElasticityMultiplier;
-            blockHeader.BaseFee = (UInt256)baseFee;
+            blockHeader.BaseFeePerGas = (UInt256)baseFee;
             blockHeader.GasUsed = gasUsed;
             UInt256 actualBaseFee = BaseFeeCalculator.Calculate(blockHeader, releaseSpec);
             Assert.AreEqual((UInt256)expectedBaseFee, actualBaseFee);
@@ -147,7 +147,7 @@ namespace Nethermind.Core.Test
             BlockHeader blockHeader = Build.A.BlockHeader.TestObject;
             blockHeader.Number = 2001;
             blockHeader.GasLimit = testCase.Info.ParentTargetGasUsed * Eip1559Constants.ElasticityMultiplier;
-            blockHeader.BaseFee = (UInt256)testCase.Info.ParentBaseFee;
+            blockHeader.BaseFeePerGas = (UInt256)testCase.Info.ParentBaseFee;
             blockHeader.GasUsed = testCase.Info.ParentGasUsed;
             UInt256 actualBaseFee = BaseFeeCalculator.Calculate(blockHeader, releaseSpec);
             Assert.AreEqual((UInt256)testCase.Info.ExpectedBaseFee, actualBaseFee, testCase.Description);

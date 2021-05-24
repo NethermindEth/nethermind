@@ -47,6 +47,6 @@ namespace Nethermind.Blockchain
         public IChainHeadSpecProvider SpecProvider { get; }
         public IReadOnlyStateProvider ReadOnlyStateProvider { get; }
 
-        public UInt256 BaseFee => _blockFinder.Head?.Header.BaseFee ?? UInt256.Zero;
+        public UInt256 BaseFee => _blockFinder.Head?.Header.BaseFeePerGas ?? UInt256.Zero;
     }
 }

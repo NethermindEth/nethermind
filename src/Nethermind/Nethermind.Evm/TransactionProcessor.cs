@@ -93,8 +93,8 @@ namespace Nethermind.Evm
             
             UInt256 value = transaction.Value;
 
-            UInt256 feeCap = transaction.FeeCap;
-            UInt256 baseFee = block.BaseFee;
+            UInt256 feeCap = transaction.MaxFeePerGas;
+            UInt256 baseFee = block.BaseFeePerGas;
             if (baseFee > feeCap && !freeTransaction)
             {
                 TraceLogInvalidTx(transaction, "MINER_PREMIUM_IS_NEGATIVE");
@@ -102,8 +102,8 @@ namespace Nethermind.Evm
                 return;
             }
             
-            UInt256 premiumPerGas = (feeCap < baseFee && freeTransaction) ? UInt256.Zero  : UInt256.Min(transaction.GasPremium, feeCap - baseFee);
-            UInt256 gasPrice = transaction.CalculateEffectiveGasPrice(spec.IsEip1559Enabled, block.BaseFee);
+            UInt256 premiumPerGas = (feeCap < baseFee && freeTransaction) ? UInt256.Zero  : UInt256.Min(transaction.MaxPriorityFeePerGas, feeCap - baseFee);
+            UInt256 gasPrice = transaction.CalculateEffectiveGasPrice(spec.IsEip1559Enabled, block.BaseFeePerGas);
 
             long gasLimit = transaction.GasLimit;
             byte[] machineCode = transaction.IsContractCreation ? transaction.Data : null;
