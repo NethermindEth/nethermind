@@ -276,7 +276,7 @@ namespace Nethermind.Blockchain.Test
                     GasLimit = 10000000
                 };
                 balanceCheckWithGasPremium.ExpectedSelectedTransactions.AddRange(
-                    new[] { 1 }.Select(i => balanceCheckWithGasPremium.Transactions[i]));
+                    new[] { 1 }.Select(i => balanceCheckWithGasPremium.WrappedTransactions[i]));
                 yield return new TestCaseData(balanceCheckWithGasPremium).SetName("EIP1559 transactions: one transaction selected because of account balance and miner tip");
             }
         }
