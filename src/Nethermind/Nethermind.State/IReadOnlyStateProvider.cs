@@ -26,7 +26,7 @@ namespace Nethermind.State
     {
         Keccak StateRoot { get; }
         
-        Account GetAccount(Address address);
+        Account? GetAccount(Address address);
         
         UInt256 GetNonce(Address address);
         

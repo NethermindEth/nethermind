@@ -36,7 +36,7 @@ namespace Nethermind.Blockchain
 
         public virtual Keccak StateRoot { get; }
 
-        public Account GetAccount(Address address) => _stateReader.GetAccount(StateRoot, address);
+        public Account? GetAccount(Address address) => _stateReader.GetAccount(StateRoot, address);
 
         public UInt256 GetNonce(Address address) => _stateReader.GetNonce(StateRoot, address);
 
