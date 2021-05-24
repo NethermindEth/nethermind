@@ -99,7 +99,7 @@ namespace Ethereum.Test.Base
             Block block = new(header, transactions, ommers);
             return block;
         }
-        
+
         public static Transaction Convert(PostStateJson postStateJson, TransactionJson transactionJson)
         {
             Transaction transaction = new();
@@ -170,21 +170,22 @@ namespace Ethereum.Test.Base
             List<GeneralStateTest> blockchainTests = new();
             foreach (KeyValuePair<string, PostStateJson[]> postStateBySpec in testJson.Post)
             {
+                int iterationNumber = 0;
                 int testIndex = testJson.Info?.Labels?.Select(x => System.Convert.ToInt32(x.Key)).FirstOrDefault() ?? 0;
                 foreach (PostStateJson stateJson in postStateBySpec.Value)
                 {
                     GeneralStateTest test = new();
-                    try
+                    test.Name = Path.GetFileName(name) +
+                                $"_d{stateJson.Indexes.Data}g{stateJson.Indexes.Gas}v{stateJson.Indexes.Value}_";
+                    if (testJson.Info?.Labels?.ContainsKey(iterationNumber.ToString()) ?? false)
                     {
-                        test.Name = Path.GetFileName(name) + $"_d{stateJson.Indexes.Data}g{stateJson.Indexes.Gas}v{stateJson.Indexes.Value}_" +
-                                    testJson.Info?.Labels?[testIndex.ToString()]?.Replace(":label ", string.Empty);
+                        test.Name += testJson.Info?.Labels?[iterationNumber.ToString()]?.Replace(":label ", string.Empty);
                     }
-                    catch (Exception e)
+                    else
                     {
-                        Console.WriteLine(e);
-                        throw;
+                        test.Name += string.Empty;
                     }
-                    
+
                     test.ForkName = postStateBySpec.Key;
                     test.Fork = ParseSpec(postStateBySpec.Key);
                     test.PreviousHash = testJson.Env.PreviousHash;
@@ -204,6 +205,7 @@ namespace Ethereum.Test.Base
                     }
 
                     blockchainTests.Add(test);
+                    ++iterationNumber;
                 }
             }
 
