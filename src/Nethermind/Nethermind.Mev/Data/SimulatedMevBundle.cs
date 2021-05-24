@@ -43,11 +43,10 @@ namespace Nethermind.Mev.Data
             TxFees = txFees;
             CoinbasePayments = coinbasePayments;
             EligibleGasFeePayment = eligibleGasFeePayment;
-            IEnumerable<Keccak?> unexpectedFailedTransactions = failedTransactions.Intersect(bundle.Transactions.Select(tx => tx.Hash));
+            IEnumerable<Keccak?> unexpectedFailedTransactions = failedTransactions.Where(tx => !bundle.RevertingTxHashes.Contains(tx));
             if (!unexpectedFailedTransactions.Any())
             {
-                throw new Exception("Bundle includes failed transaction " + unexpectedFailedTransactions.ToString() + 
-                                    " which is not in RevertingTxHashes");
+                Success = true;
             }
         }
 
