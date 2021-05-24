@@ -15,22 +15,22 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System;
-using Nethermind.Blockchain.Find;
-using Nethermind.Core.Crypto;
+using FluentAssertions;
+using Nethermind.Core.Test.Builders;
 using Nethermind.State;
+using NSubstitute;
+using NUnit.Framework;
 
-namespace Nethermind.Blockchain
+namespace Nethermind.Blockchain.Test
 {
-    public class ChainHeadReadOnlyStateProvider : SpecificBlockReadOnlyStateProvider
+    public class ChainHeadReadOnlyStateProviderTests
     {
-        private readonly IBlockFinder _blockFinder;
-        
-        public ChainHeadReadOnlyStateProvider(IBlockFinder blockFinder, IStateReader stateReader) : base(stateReader)
+        [Test]
+        public void uses_block_tree_head_state_root()
         {
-            _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
+            BlockTree blockTree = Build.A.BlockTree(Build.A.Block.WithStateRoot(TestItem.KeccakA).TestObject).OfChainLength(10).TestObject;
+            ChainHeadReadOnlyStateProvider chainHeadReadOnlyStateProvider = new(blockTree, Substitute.For<IStateReader>());
+            chainHeadReadOnlyStateProvider.StateRoot.Should().BeEquivalentTo(blockTree.Head!.StateRoot);
         }
-
-        public override Keccak StateRoot => _blockFinder.Head?.StateRoot ?? Keccak.EmptyTreeHash;
     }
 }
