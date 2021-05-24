@@ -15,15 +15,18 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System.Collections.Generic;
-using Nethermind.Core;
+using System.Threading;
+using System.Threading.Tasks;
 
-namespace Nethermind.Mev
+namespace Nethermind.Core.Extensions
 {
-    public interface IBundleSimulator
+    public static class CancellationTokenExtensions
     {
-        SimulatedMevBundle Simulate(BlockHeader parent, long gasLimit, MevBundle bundle);
-        
-        IEnumerable<SimulatedMevBundle> Simulate(BlockHeader parent, long gasLimit, IEnumerable<MevBundle> bundles);
+        public static Task AsTask(this System.Threading.CancellationToken token)
+        {
+            TaskCompletionSource taskCompletionSource = new();
+            token.Register(() => taskCompletionSource.TrySetCanceled(), false);
+            return taskCompletionSource.Task;
+        }
     }
 }

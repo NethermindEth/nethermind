@@ -62,12 +62,6 @@ namespace Nethermind.Blockchain.Test
                 yield return new TestCaseData(noneTransactionsSelectedDueToGasPrice).SetName(
                     "None transactions selected due to transaction gas price and limit");
 
-                ProperTransactionsSelectedTestCase noneTransactionsSelectedDueToGasLimit =
-                    ProperTransactionsSelectedTestCase.Default;
-                noneTransactionsSelectedDueToGasLimit.GasLimit = 9;
-                yield return new TestCaseData(noneTransactionsSelectedDueToGasLimit).SetName(
-                    "None transactions selected due to gas limit");
-
                 ProperTransactionsSelectedTestCase oneTransactionSelectedDueToValue =
                     ProperTransactionsSelectedTestCase.Default;
                 oneTransactionSelectedDueToValue.Transactions.ForEach(t => t.Value = 500);

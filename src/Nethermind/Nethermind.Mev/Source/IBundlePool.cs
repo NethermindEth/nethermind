@@ -15,10 +15,17 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-namespace Nethermind.Mev
+using System.Collections.Generic;
+using System.Threading;
+using Nethermind.Core;
+using Nethermind.Int256;
+using Nethermind.Mev.Data;
+
+namespace Nethermind.Mev.Source
 {
-    // ReSharper disable once ClassNeverInstantiated.Global
-    public class MevBundleForRpc
+    public interface IBundlePool : IBundleSource
     {
+        bool AddBundle(MevBundle bundle);
+        IEnumerable<MevBundle> GetBundles(long block, UInt256 timestamp, CancellationToken token = default);
     }
 }

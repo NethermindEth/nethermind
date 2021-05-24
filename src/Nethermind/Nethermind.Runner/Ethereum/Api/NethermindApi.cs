@@ -186,6 +186,10 @@ namespace Nethermind.Runner.Ethereum.Api
         public ITxPoolInfoProvider? TxPoolInfoProvider { get; set; }
         public IHealthHintService? HealthHintService { get; set; }
         public TxValidator? TxValidator { get; set; }
+        public IBlockFinalizationManager? FinalizationManager { get; set; }
+        public IGasLimitCalculator GasLimitCalculator { get; set; } = FollowOtherMiners.Instance;
+        
+        public IBlockProducerEnvFactory BlockProducerEnvFactory { get; set; }
         public IWallet? Wallet { get; set; }
         public ITransactionComparerProvider TransactionComparerProvider { get; set; }
         public IWebSocketsManager WebSocketsManager { get; set; } = new WebSocketsManager();
@@ -199,7 +203,7 @@ namespace Nethermind.Runner.Ethereum.Api
 
         public ChainSpec? ChainSpec { get; set; }
         public DisposableStack DisposeStack { get; } = new();
-        public IList<INethermindPlugin> Plugins { get; } = new List<INethermindPlugin>();
+        public IReadOnlyList<INethermindPlugin> Plugins { get; } = new List<INethermindPlugin>();
         public IList<IPublisher> Publishers { get; } = new List<IPublisher>(); // this should be called publishers
     }
 }

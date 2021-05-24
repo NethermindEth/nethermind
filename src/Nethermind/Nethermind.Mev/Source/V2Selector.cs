@@ -17,66 +17,60 @@
 
 using System.Collections.Generic;
 using System.Linq;
-using Nethermind.Consensus.Transactions;
+using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Evm;
 using Nethermind.Int256;
+using Nethermind.Mev.Data;
+using Nethermind.Mev.Execution;
 
-namespace Nethermind.Mev
+namespace Nethermind.Mev.Source
 {
     public class V2Selector : IBundleSource
     {
-        private readonly IBundleSource _bundleSource;
-        
-        private readonly IBundleSimulator _bundleSimulator;
-
+        private readonly ISimulatedBundleSource _simulatedBundleSource;
         private readonly ITailGasPriceCalculator _tailGasPriceCalculator;
         private readonly long _maxBundlesGasUsedRatio;
+        
 
         public V2Selector(
-            IBundleSource bundleSource,
-            IBundleSimulator bundleSimulator,
+            ISimulatedBundleSource simulatedBundleSource,
             ITailGasPriceCalculator tailGasPriceCalculator,
             long maxBundlesGasUsedRatio = 100)
         {
-            _bundleSource = bundleSource;
-            _bundleSimulator = bundleSimulator;
+            _simulatedBundleSource = simulatedBundleSource;
             _tailGasPriceCalculator = tailGasPriceCalculator;
             _maxBundlesGasUsedRatio = maxBundlesGasUsedRatio;
         }
         
-        public IEnumerable<MevBundle> GetBundles(BlockHeader parent, long gasLimit)
+        public async Task<IEnumerable<MevBundle>> GetBundles(BlockHeader parent, UInt256 timestamp, long gasLimit, CancellationToken token = default)
         {
-            MevBundle? bestBundle = null;
+            SimulatedMevBundle? bestBundle = null;
             UInt256 bestMevEquivalentPrice = 0;
             long totalGasUsed = 0;
             long maxGasUsed = gasLimit * _maxBundlesGasUsedRatio / 100;
-            foreach (var bundle in _bundleSource.GetBundles(parent, gasLimit))
+            
+            IEnumerable<SimulatedMevBundle> simulatedBundles = await _simulatedBundleSource.GetBundles(parent, timestamp, gasLimit, token);
+            foreach (SimulatedMevBundle simulatedBundle in simulatedBundles)
             {
-                if (maxGasUsed - totalGasUsed < 21000)
+                if (maxGasUsed - totalGasUsed >= GasCostOf.Transaction)
                 {
-                    break;
-                }
-                
-                SimulatedMevBundle simulatedMevBundle = _bundleSimulator.Simulate(parent, gasLimit, bundle);
-                UInt256 tailGas = _tailGasPriceCalculator.Calculate(parent, 0, simulatedMevBundle.GasUsed);
-                if (simulatedMevBundle.MevEquivalentGasPrice > bestMevEquivalentPrice 
-                    && simulatedMevBundle.MevEquivalentGasPrice > tailGas)
-                {
-                    if (simulatedMevBundle.GasUsed + totalGasUsed <= maxGasUsed)
+                    UInt256 tailGas = _tailGasPriceCalculator.Calculate(parent, 0, simulatedBundle.GasUsed);
+                    if (simulatedBundle.MevEquivalentGasPrice > bestMevEquivalentPrice
+                        && simulatedBundle.MevEquivalentGasPrice > tailGas)
                     {
-                        totalGasUsed += simulatedMevBundle.GasUsed;
-                        bestMevEquivalentPrice = simulatedMevBundle.MevEquivalentGasPrice;
-                        bestBundle = bundle;
+                        if (simulatedBundle.GasUsed + totalGasUsed <= maxGasUsed)
+                        {
+                            totalGasUsed += simulatedBundle.GasUsed;
+                            bestMevEquivalentPrice = simulatedBundle.MevEquivalentGasPrice;
+                            bestBundle = simulatedBundle;
+                        }
                     }
                 }
             }
 
-            if (bestBundle is null)
-            {
-                return Enumerable.Empty<MevBundle>();
-            }
-
-            return Enumerable.Repeat(bestBundle, 1);
+            return bestBundle is null ? Enumerable.Empty<MevBundle>() : Enumerable.Repeat(bestBundle.Bundle, 1);
         }
     }
 }

@@ -157,7 +157,6 @@ namespace Ethereum.Test.Base
                     _logManager),
                 stateProvider,
                 storageProvider,
-                transactionPool,
                 receiptStorage,
                 NullWitnessCollector.Instance,
                 _logManager);

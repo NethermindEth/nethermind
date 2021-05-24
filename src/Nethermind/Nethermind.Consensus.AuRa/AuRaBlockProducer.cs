@@ -88,12 +88,26 @@ namespace Nethermind.Consensus.AuRa
 
         protected override UInt256 CalculateDifficulty(BlockHeader parent, UInt256 timestamp) 
             => AuraDifficultyCalculator.CalculateDifficulty(parent.AuRaStep.Value, _auRaStepCalculator.CurrentStep);
-
-        protected override bool PreparedBlockCanBeMined(Block block)
+        
+        protected override Block? ProcessPreparedBlock(Block block)
         {
-            if (base.PreparedBlockCanBeMined(block))
+            Block? processedBlock = base.ProcessPreparedBlock(block);
+
+            if (processedBlock is not null)
             {
-                if (block.Transactions.Length == 0)
+                // We need to check if we are within gas limit. We cannot calculate this in advance because:
+                // a) GasLimit can come from contract
+                // b) Some transactions that call contracts can be added to block and we don't know how much gas they will use.
+                if (processedBlock.GasUsed > processedBlock.GasLimit)
+                {
+                    if (Logger.IsError)
+                        Logger.Error(
+                            $"Block produced used {processedBlock.GasUsed} gas and exceeded gas limit {processedBlock.GasLimit}.");
+                    return null;
+                }
+
+                // If force sealing is not on and we didn't pick up any transactions, then we should skip producing block
+                if (processedBlock.Transactions.Length == 0)
                 {
                     if (_config.ForceSealing)
                     {
@@ -102,32 +116,11 @@ namespace Nethermind.Consensus.AuRa
                     else
                     {
                         if (Logger.IsDebug) Logger.Debug($"Skip seal block {block.Number}, no transactions pending.");
-                        return false;
+                        return null;
                     }
                 }
-
-                return true;
-
             }
-            
-            return false;
-        }
 
-        protected override Block ProcessPreparedBlock(Block block)
-        {
-            var processedBlock = base.ProcessPreparedBlock(block);
-            
-            // We need to check if we are within gas limit. We cannot calculate this in advance because:
-            // a) GasLimit can come from contract
-            // b) Some transactions that call contracts can be added to block and we don't know how much gas they will use.
-            if (processedBlock != null && processedBlock.GasUsed > processedBlock.GasLimit)
-            {
-                if (Logger.IsError)
-                    Logger.Error(
-                        $"Block produced used {processedBlock.GasUsed} gas and exceeded gas limit {processedBlock.GasLimit}.");
-                return null;
-            }
-            
             return processedBlock;
         }
 

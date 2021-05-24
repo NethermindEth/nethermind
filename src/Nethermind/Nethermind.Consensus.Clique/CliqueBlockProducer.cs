@@ -327,6 +327,8 @@ namespace Nethermind.Consensus.Clique
                 return true;
         }
 
+        public ITimestamper Timestamper => _timestamper;
+
         private Keccak? _recentNotAllowedParent;
 
         private Block? PrepareBlock(Block parentBlock)

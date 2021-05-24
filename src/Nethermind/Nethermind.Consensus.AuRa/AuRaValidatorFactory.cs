@@ -40,7 +40,7 @@ namespace Nethermind.Consensus.AuRa
         private readonly IBlockTree _blockTree;
         private readonly IReceiptFinder _receiptFinder;
         private readonly IValidatorStore _validatorStore;
-        private readonly IBlockFinalizationManager _finalizationManager;
+        private readonly IAuRaBlockFinalizationManager _finalizationManager;
         private readonly ITxSender _txSender;
         private readonly ITxPool _txPool;
         private readonly IMiningConfig _miningConfig;
@@ -58,7 +58,7 @@ namespace Nethermind.Consensus.AuRa
             IBlockTree blockTree,
             IReceiptFinder receiptFinder,
             IValidatorStore validatorStore,
-            IBlockFinalizationManager finalizationManager,
+            IAuRaBlockFinalizationManager finalizationManager,
             ITxSender txSender,
             ITxPool txPool,
             IMiningConfig miningConfig,

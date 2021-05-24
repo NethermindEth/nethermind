@@ -35,7 +35,11 @@ namespace Nethermind.Runner.Ethereum.Api
         {
         }
 
-        public IBlockFinalizationManager? FinalizationManager { get; set; }
+        public new IAuRaBlockFinalizationManager? FinalizationManager
+        {
+            get => base.FinalizationManager as IAuRaBlockFinalizationManager; 
+            set => base.FinalizationManager = value;
+        }
 
         public PermissionBasedTxFilter.Cache? TxFilterCache { get; set; }
 
