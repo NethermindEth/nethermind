@@ -28,7 +28,7 @@ namespace Nethermind.Blockchain
     /// <summary>
     /// Safe to be reused for all classes reading the same wrapped block tree.
     /// </summary>
-    public class ReadOnlyBlockTree : IBlockTree
+    public class ReadOnlyBlockTree : IReadOnlyBlockTree
     {
         private readonly IBlockTree _wrapped;
 

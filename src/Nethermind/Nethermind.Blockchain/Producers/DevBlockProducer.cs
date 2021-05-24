@@ -69,7 +69,8 @@ namespace Nethermind.Blockchain.Producers
             {
                 try
                 {
-                    if (!await TryProduceNewBlock(CancellationToken.None))
+                    Block? block = await TryProduceNewBlock(CancellationToken.None);
+                    if (block is null)
                     {
                         _newBlockLock.Release();
                     }
@@ -87,7 +88,7 @@ namespace Nethermind.Blockchain.Producers
             _isRunning = true;
             _trigger.TriggerBlockProduction += TriggerOnTriggerBlockProduction;
             BlockTree.NewHeadBlock += OnNewHeadBlock;
-            _lastProducedBlock = DateTime.UtcNow;
+            _lastProducedBlockDateTime = DateTime.UtcNow;
         }
 
         public override async Task StopAsync()

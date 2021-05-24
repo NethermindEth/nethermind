@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -44,32 +45,51 @@ namespace Nethermind.Runner.Ethereum.Steps
             _api = api;
         }
 
-        public Task Execute(CancellationToken _)
+        public async Task Execute(CancellationToken _)
         {
             IMiningConfig miningConfig = _api.Config<IMiningConfig>();
             if (miningConfig.Enabled)
             {
-                BuildProducer();
+                await BuildProducer();
+                
                 if (_api.BlockProducer == null) throw new StepDependencyException(nameof(_api.BlockProducer));
 
                 ILogger logger = _api.LogManager.GetClassLogger();
                 if (logger.IsWarn) logger.Warn($"Starting {_api.SealEngineType} block producer & sealer");
                 _api.BlockProducer.Start();
             }
-
-            return Task.CompletedTask;
         }
 
-        protected virtual void BuildProducer()
+        protected virtual async Task BuildProducer()
         {
+            _api.BlockProducerEnvFactory = new BlockProducerEnvFactory(_api.DbProvider,
+                _api.BlockTree,
+                _api.ReadOnlyTrieStore,
+                _api.SpecProvider,
+                _api.BlockValidator,
+                _api.RewardCalculatorSource,
+                _api.ReceiptStorage,
+                _api.BlockPreprocessor,
+                _api.TxPool,
+                _api.Config<IMiningConfig>(),
+                _api.LogManager);
+            
             if (_api.ChainSpec == null) throw new StepDependencyException(nameof(_api.ChainSpec));
-            IConsensusPlugin? consensusPlugin = _api.Plugins
-                .OfType<IConsensusPlugin>()
-                .SingleOrDefault(cp => cp.SealEngineType == _api.SealEngineType);
-
+            IConsensusPlugin? consensusPlugin = _api.GetConsensusPlugin();
+            
             if (consensusPlugin != null)
             {
-                consensusPlugin.InitBlockProducer();
+                bool shouldInitPluginDirectly = true;
+                foreach (IConsensusWrapperPlugin wrapperPlugin in _api.GetConsensusWrapperPlugins())
+                {
+                    shouldInitPluginDirectly = false;
+                    await wrapperPlugin.InitBlockProducer(consensusPlugin);
+                }
+
+                if (shouldInitPluginDirectly)
+                {
+                    await consensusPlugin.InitBlockProducer();
+                }
             }
             else
             {

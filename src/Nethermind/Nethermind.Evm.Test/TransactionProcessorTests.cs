@@ -534,7 +534,7 @@ namespace Nethermind.Evm.Test
         private void Execute(BlockReceiptsTracer tracer, Transaction tx, Block block)
         {
             tracer.StartNewBlockTrace(block);
-            tracer.StartNewTxTrace(tx.Hash);
+            tracer.StartNewTxTrace(tx);
             _transactionProcessor.Execute(tx, block.Header, tracer);
             tracer.EndTxTrace();
         }
@@ -542,7 +542,7 @@ namespace Nethermind.Evm.Test
         private void CallAndRestore(BlockReceiptsTracer tracer, Transaction tx, Block block)
         {
             tracer.StartNewBlockTrace(block);
-            tracer.StartNewTxTrace(tx.Hash);
+            tracer.StartNewTxTrace(tx);
             _transactionProcessor.CallAndRestore(tx, block.Header, tracer);
             tracer.EndTxTrace();
         }

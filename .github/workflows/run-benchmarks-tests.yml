@@ -1,7 +1,7 @@
 name: '[RUN] Benchmark Performance Tests'
 
 on:
-  pull_request:
+  push:
     branches: [ master ]
   workflow_dispatch:
   
@@ -34,4 +34,4 @@ jobs:
       with:
         name: Benchmark-${{ github.sha }}
         template: https://cf-templates-1tzgi56hs2v4n-eu-central-1.s3.eu-central-1.amazonaws.com/performance-test.yaml
-        parameter-overrides: "BranchName=${{ github.head_ref }},CommitSha=${{ github.sha }}"
+        parameter-overrides: "CommitSha=${{ github.sha }}"

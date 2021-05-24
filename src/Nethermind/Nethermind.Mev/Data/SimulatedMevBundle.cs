@@ -15,15 +15,16 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using Nethermind.Core;
 using Nethermind.Int256;
 
-namespace Nethermind.Mev
+namespace Nethermind.Mev.Data
 {
     public class SimulatedMevBundle
     {
-        public SimulatedMevBundle(long gasUsed, UInt256 txFees, UInt256 coinbasePayments)
+        public SimulatedMevBundle(MevBundle bundle, bool success, long gasUsed, UInt256 txFees, UInt256 coinbasePayments)
         {
+            Bundle = bundle;
+            Success = success;
             GasUsed = gasUsed;
             TxFees = txFees;
             CoinbasePayments = coinbasePayments;
@@ -34,7 +35,10 @@ namespace Nethermind.Mev
         public UInt256 TxFees { get; set; }
 
         public UInt256 Profit => TxFees + CoinbasePayments;
-        
+
+        public MevBundle Bundle { get; }
+        public bool Success { get; }
+
         public long GasUsed { get; set; }
 
         public UInt256 AdjustedGasPrice => Profit / (UInt256)GasUsed;

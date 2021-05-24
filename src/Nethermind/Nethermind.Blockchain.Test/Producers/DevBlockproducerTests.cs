@@ -35,7 +35,6 @@ using Nethermind.Specs;
 using Nethermind.State;
 using Nethermind.State.Repositories;
 using Nethermind.Trie.Pruning;
-using Nethermind.TxPool;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Producers
@@ -90,7 +89,6 @@ namespace Nethermind.Blockchain.Test.Producers
                 txProcessor,
                 stateProvider,
                 storageProvider,
-                NullTxPool.Instance,
                 NullReceiptStorage.Instance,
                 NullWitnessCollector.Instance,
                 LimboLogs.Instance);

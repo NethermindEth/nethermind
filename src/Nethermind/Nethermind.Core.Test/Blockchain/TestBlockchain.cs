@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -41,6 +42,7 @@ using Nethermind.Specs;
 using Nethermind.State;
 using Nethermind.State.Repositories;
 using Nethermind.Db.Blooms;
+using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Storages;
@@ -64,7 +66,13 @@ namespace Nethermind.Core.Test.Blockchain
         
         public IBlockProcessingQueue BlockProcessingQueue { get; set; }
         public IBlockTree BlockTree { get; set; }
-        public IBlockFinder BlockFinder { get; set; }
+
+        public IBlockFinder BlockFinder
+        {
+            get => _blockFinder ?? BlockTree;
+            set => _blockFinder = value;
+        }
+
         public IJsonSerializer JsonSerializer { get; set; }
         public IStateProvider State { get; set; }
         public IDb StateDb => DbProvider.StateDb;
@@ -87,7 +95,8 @@ namespace Nethermind.Core.Test.Blockchain
         public SemaphoreSlim _resetEvent;
         private ManualResetEvent _suggestedBlockResetEvent;
         private AutoResetEvent _oneAtATime = new AutoResetEvent(true);
-        
+        private IBlockFinder _blockFinder;
+
         public static readonly UInt256 InitialValue = 1000.Ether();
 
         public IReadOnlyTrieStore ReadOnlyTrieStore { get; private set; }
@@ -135,15 +144,16 @@ namespace Nethermind.Core.Test.Blockchain
             ReceiptStorage = new InMemoryReceiptStorage();
             VirtualMachine virtualMachine = new VirtualMachine(State, Storage, new BlockhashProvider(BlockTree, LogManager), SpecProvider, LogManager);
             TxProcessor = new TransactionProcessor(SpecProvider, State, Storage, virtualMachine, LogManager);
-            BlockProcessor = CreateBlockProcessor();
             BlockPreprocessorStep = new RecoverSignatures(EthereumEcdsa, TxPool, SpecProvider, LogManager);
+            ReadOnlyTrieStore = TrieStore.AsReadOnly(StateDb.Innermost);
+            
+            BlockProcessor = CreateBlockProcessor();
+            
             BlockchainProcessor chainProcessor = new BlockchainProcessor(BlockTree, BlockProcessor, BlockPreprocessorStep, LogManager, Nethermind.Blockchain.Processing.BlockchainProcessor.Options.Default);
             BlockchainProcessor = chainProcessor;
             BlockProcessingQueue = chainProcessor;
             chainProcessor.Start();
 
-            ReadOnlyTrieStore = TrieStore.AsReadOnly();
-            
             StateReader = new StateReader(ReadOnlyTrieStore, CodeDb, LogManager);
             TxPoolTxSource txPoolTxSource = CreateTxPoolTxSource();
             ISealer sealer = new NethDevSealEngine(TestItem.AddressD);
@@ -232,7 +242,6 @@ namespace Nethermind.Core.Test.Blockchain
                 TxProcessor,
                 State,
                 Storage,
-                TxPool,
                 ReceiptStorage,
                 NullWitnessCollector.Instance, 
                 LogManager);
@@ -268,16 +277,13 @@ namespace Nethermind.Core.Test.Blockchain
             _oneAtATime.Set();
         }
 
-        private async Task AddBlockInternal(params Transaction[] transactions)
+        private async Task<AddTxResult[]> AddBlockInternal(params Transaction[] transactions)
         {
             await _oneAtATime.WaitOneAsync(CancellationToken.None);
-            foreach (Transaction transaction in transactions)
-            {
-                TxPool.AddTransaction(transaction, TxHandlingOptions.None);
-            }
-
+            AddTxResult[] txResults = transactions.Select(t => TxPool.AddTransaction(t, TxHandlingOptions.None)).ToArray();
             Timestamper.Add(TimeSpan.FromSeconds(1));
-            BlockProducer.BuildNewBlock();
+            await BlockProducer.BuildNewBlock();
+            return txResults;
         }
 
         public void AddTransactions(params Transaction[] txs)

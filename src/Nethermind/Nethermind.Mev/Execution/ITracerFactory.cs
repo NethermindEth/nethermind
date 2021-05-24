@@ -15,13 +15,12 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System.Collections.Generic;
-using Nethermind.Core;
+using Nethermind.Blockchain.Tracing;
 
-namespace Nethermind.Mev
+namespace Nethermind.Mev.Execution
 {
-    public interface IBundleSource
+    public interface ITracerFactory
     {
-        IEnumerable<MevBundle> GetBundles(BlockHeader parent, long gasLimit);
+        ITracer Create();
     }
 }

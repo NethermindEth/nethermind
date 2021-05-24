@@ -15,26 +15,17 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Int256;
+using Nethermind.Mev.Data;
 
-namespace Nethermind.Mev
+namespace Nethermind.Mev.Source
 {
-    public class MevBundle
+    public interface IBundleSource
     {
-        public MevBundle(Transaction[] txs, long? blockNumber = null, long? minTimestamp = null, long? maxTimestamp = null)
-        {
-            Txs = txs;
-            BlockNumber = blockNumber;
-            MinTimestamp = minTimestamp;
-            MaxTimestamp = maxTimestamp;
-        }
-
-        public Transaction[] Txs { get; }
-
-        public long? BlockNumber { get; set; }
-        
-        public long? MaxTimestamp { get; set; }
-        
-        public long? MinTimestamp { get; set; }
+        Task<IEnumerable<MevBundle>> GetBundles(BlockHeader parent, UInt256 timestamp, long gasLimit, CancellationToken token = default);
     }
 }
