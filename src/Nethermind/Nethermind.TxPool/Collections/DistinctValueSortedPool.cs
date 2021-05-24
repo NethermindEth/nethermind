@@ -55,15 +55,14 @@ namespace Nethermind.TxPool.Collections
 
         protected virtual IComparer<TValue> GetSameIdentityComparer(IComparer<TValue> comparer) => comparer;
 
-        protected override void InsertCore(TKey key, TValue value, ICollection<TValue> bucketCollection)
+        protected override void InsertCore(TKey key, TValue value, TGroupKey groupKey, ICollection<TValue> bucketCollection)
         {
-            base.InsertCore(key, value, bucketCollection);
+            base.InsertCore(key, value, groupKey, bucketCollection);
 
             if (_distinctDictionary.TryGetValue(value, out KeyValuePair<TKey, TValue> oldKvp))
             {
                 TryRemove(oldKvp.Key);
             }
-
 
             _distinctDictionary[value] = new KeyValuePair<TKey, TValue>(key, value);
         }

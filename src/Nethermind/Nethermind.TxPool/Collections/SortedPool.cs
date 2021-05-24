@@ -29,15 +29,13 @@ namespace Nethermind.TxPool.Collections
     /// <typeparam name="TKey">Type of keys of items, unique in pool.</typeparam>
     /// <typeparam name="TValue">Type of items that are kept.</typeparam>
     /// <typeparam name="TGroupKey">Type of groups in which the items are organized</typeparam>
-    /// <typeparam name="THash">Type of the value stored for each block in bundlesToBlockHashes</typeparam>
-    public abstract class SortedPool<TKey, TValue, TGroupKey, THash> where TGroupKey : notnull
+    public abstract partial class SortedPool<TKey, TValue, TGroupKey>
     {
         private readonly int _capacity;
         private readonly IComparer<TValue> _groupComparer;
         private readonly IDictionary<TGroupKey, ICollection<TValue>> _buckets;
         private readonly DictionarySortedSet<TValue, TKey> _sortedValues;
         private readonly IDictionary<TKey, TValue> _cacheMap;
-        public Dictionary<TKey, List<THash>> _bundlesToBlockHashes;
 
         /// <summary>
         /// Constructor
@@ -52,8 +50,7 @@ namespace Nethermind.TxPool.Collections
             _groupComparer = GetGroupComparer(comparer ?? throw new ArgumentNullException(nameof(comparer)));
             _cacheMap = new Dictionary<TKey, TValue>(); // do not initialize it at the full capacity
             _buckets = new Dictionary<TGroupKey, ICollection<TValue>>();
-            _sortedValues = new DictionarySortedSet<TValue, TKey>(sortedComparer);
-            _bundlesToBlockHashes = new Dictionary<TKey, List<THash>>();
+            _sortedValues = new DictionarySortedSet<TValue, TKey>(sortedComparer); //how can this take a param?
         }
 
         /// <summary>
@@ -124,10 +121,11 @@ namespace Nethermind.TxPool.Collections
                         {
                             bucket!.Remove(value);
                             return true;
-                        }   
+                        }
                     }
+                    
+                    Removed?.Invoke(this, new SortedPoolEventArgs(key, value, groupMapping));
                 }
-
             }
 
             value = default;
@@ -169,7 +167,7 @@ namespace Nethermind.TxPool.Collections
                     _buckets[group] = bucket = new SortedSet<TValue>(_groupComparer);
                 }
 
-                InsertCore(key, value, bucket);
+                InsertCore(key, value, group, bucket);
 
                 if (_cacheMap.Count > _capacity)
                 {
@@ -199,20 +197,17 @@ namespace Nethermind.TxPool.Collections
 
             return !_cacheMap.ContainsKey(key);
         }
-
-        public virtual Dictionary<TKey, TValue> GetCacheMap() 
-        {
-            return (Dictionary<TKey, TValue>) _cacheMap;
-        }
         
         /// <summary>
         /// Actual insert mechanism.
         /// </summary>
-        protected virtual void InsertCore(TKey key, TValue value, ICollection<TValue> bucketCollection)
+        protected virtual void InsertCore(TKey key, TValue value, TGroupKey groupKey, ICollection<TValue> bucketCollection)
         {
             bucketCollection.Add(value);
             _cacheMap.Add(key, value);
             _sortedValues.Add(value, key);
+            
+            Inserted?.Invoke(this, new SortedPoolEventArgs(key, value, groupKey));
         }
         
         /// <summary>
@@ -220,62 +215,8 @@ namespace Nethermind.TxPool.Collections
         /// </summary>
         protected virtual bool Remove(TKey key, TValue value)
         {
-            foreach (KeyValuePair<TGroupKey, ICollection<TValue>> bundles in _buckets) //should we remove from _buckets
-            {
-                if (bundles.Value.Contains(value))
-                {
-                    bundles.Value.Remove(value);
-                    break;
-                }
-            }
             _sortedValues.Remove(value);
             return _cacheMap.Remove(key);
-        }
-
-        [MethodImpl(MethodImplOptions.Synchronized)]
-        public void NotifyChange(IEnumerable<TGroupKey> keys, Action change)
-        {
-            List<IDictionary<TKey, TValue>> mevBundlesToChange = new();
-
-            foreach (TGroupKey groupKey in keys)
-            {
-                if (_buckets.TryGetValue(groupKey, out ICollection<TValue> bucket))
-                {
-                    IDictionary<TKey, TValue> dictionary = new Dictionary<TKey, TValue>(bucket.Count);
-                    foreach (TValue value in bucket)
-                    {
-                        if (_sortedValues.TryGetValue(value, out TKey key))
-                        {
-                            dictionary.Add(key!, value);
-                            _sortedValues.Remove(value);
-                        }
-                        mevBundlesToChange.Add(dictionary);
-                    }
-                }
-            }
-
-            change();
-
-            for (int i = 0; i < mevBundlesToChange.Count; i++)
-            {
-                foreach (KeyValuePair<TKey, TValue> keyValuePair in mevBundlesToChange[i])
-                {
-                    _sortedValues.Add(keyValuePair.Value, keyValuePair.Key);
-                }
-            }
-        }
-
-        [MethodImpl(MethodImplOptions.Synchronized)]
-        public bool TryGetBucket(TGroupKey groupKey, out TValue[] items)
-        {
-            if (_buckets.TryGetValue(groupKey, out ICollection<TValue> bucket))
-            {
-                items = bucket.ToArray();
-                return true;
-            }
-
-            items = Array.Empty<TValue>();
-            return false;
         }
     }
 }
