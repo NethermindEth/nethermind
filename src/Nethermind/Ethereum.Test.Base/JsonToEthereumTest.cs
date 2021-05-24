@@ -170,12 +170,20 @@ namespace Ethereum.Test.Base
             List<GeneralStateTest> blockchainTests = new();
             foreach (KeyValuePair<string, PostStateJson[]> postStateBySpec in testJson.Post)
             {
-                int testIndex = 0;
+                int testIndex = testJson.Info?.Labels?.Select(x => System.Convert.ToInt32(x.Key)).FirstOrDefault() ?? 0;
                 foreach (PostStateJson stateJson in postStateBySpec.Value)
                 {
                     GeneralStateTest test = new();
-                    test.Name = Path.GetFileName(name) + $"_d{stateJson.Indexes.Data}g{stateJson.Indexes.Gas}v{stateJson.Indexes.Value}_" +
-                                testJson.Info?.Labels?[testIndex.ToString()]?.Replace(":label ", string.Empty);
+                    try
+                    {
+                        test.Name = Path.GetFileName(name) + $"_d{stateJson.Indexes.Data}g{stateJson.Indexes.Gas}v{stateJson.Indexes.Value}_" +
+                                    testJson.Info?.Labels?[testIndex.ToString()]?.Replace(":label ", string.Empty);
+                    }
+                    catch (Exception e)
+                    {
+                        Console.WriteLine(e);
+                        throw;
+                    }
                     
                     test.ForkName = postStateBySpec.Key;
                     test.Fork = ParseSpec(postStateBySpec.Key);
