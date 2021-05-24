@@ -23,7 +23,7 @@ namespace Nethermind.TxPool
     public class WrappedTransaction : IWrappedTransaction
     {
         public Transaction Tx { get; set; }
-        public UInt256 GasBottleneck { get; set; } = UInt256.MaxValue;
+        public UInt256 GasBottleneck { get; set; }
 
         public WrappedTransaction(Transaction tx)
         {
