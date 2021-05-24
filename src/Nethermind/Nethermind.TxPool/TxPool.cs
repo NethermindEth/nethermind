@@ -260,11 +260,13 @@ namespace Nethermind.TxPool
                     _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, nonce already used.");
                 return AddTxResult.OldNonce;
             }
-
+            
             int numberOfSenderTxsInPending = _transactions.GetBucketCount(tx.SenderAddress);
-            if (GetPendingTransactionsCount() == MemoryAllowance.MemPoolSize
-                && tx.Nonce > (long)currentNonce + numberOfSenderTxsInPending
-                || tx.Nonce > currentNonce + FutureNonceRetention)
+            bool isTxPoolFull = GetPendingTransactionsCount() == MemoryAllowance.MemPoolSize;
+            bool isTxNonceNextInOrder = tx.Nonce <= (long)currentNonce + numberOfSenderTxsInPending;
+            bool isTxNonceTooFarInFuture = tx.Nonce > currentNonce + FutureNonceRetention;
+            if (isTxPoolFull && !isTxNonceNextInOrder
+                || isTxNonceTooFarInFuture)
             {
                 if (_logger.IsTrace)
                     _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, nonce in future.");
@@ -291,7 +293,7 @@ namespace Nethermind.TxPool
                 return AddTxResult.InsufficientFunds;
             }
                 
-            if (GetPendingTransactionsCount() == MemoryAllowance.MemPoolSize
+            if (isTxPoolFull
                 && _transactions.TryGetLast(out var lastTx)
                 && effectiveGasPrice <= lastTx?.GasBottleneck)
             {
