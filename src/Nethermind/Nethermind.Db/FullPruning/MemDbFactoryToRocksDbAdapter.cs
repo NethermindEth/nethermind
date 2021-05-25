@@ -17,11 +17,11 @@
 
 namespace Nethermind.Db.FullPruning
 {
-    public class MemDbFactoryAdapter : IRocksDbFactory
+    public class MemDbFactoryToRocksDbAdapter : IRocksDbFactory
     {
         private readonly IMemDbFactory _memDbFactory;
 
-        public MemDbFactoryAdapter(IMemDbFactory memDbFactory)
+        public MemDbFactoryToRocksDbAdapter(IMemDbFactory memDbFactory)
         {
             _memDbFactory = memDbFactory;
         }
