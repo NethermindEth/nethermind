@@ -281,20 +281,6 @@ namespace Nethermind.Mev.Source
             }
         }
 
-        private class BundleWithHashes
-        {
-            public BundleWithHashes(MevBundle bundle)
-            {
-                Bundle = bundle;
-                BlockHashes = new ConcurrentBag<Keccak>();
-            }
-
-            public MevBundle Bundle { get; }
-            public ConcurrentBag<Keccak> BlockHashes { get; }
-            
-            
-           public static implicit operator MevBundle(BundleWithHashes bundle) => bundle.Bundle;
-        }
         async Task<IEnumerable<SimulatedMevBundle>> ISimulatedBundleSource.GetBundles(BlockHeader parent, UInt256 timestamp, long gasLimit, CancellationToken token)
         {
             HashSet<MevBundle> bundles = (await GetBundles(parent, timestamp, gasLimit, token)).ToHashSet();

@@ -20,17 +20,19 @@ using Nethermind.Mev.Data;
 
 namespace Nethermind.Mev.Source
 {
-    public class CompareMevBundlesByPoolIndex : IComparer<MevBundle>
+    public class CompareMevBundlesByPoolIndex : IComparer<BundleWithHashes>
     {
         public static readonly CompareMevBundlesByPoolIndex Default = new();
         
-        public int Compare(MevBundle? x, MevBundle? y)
+        public int Compare(BundleWithHashes? x, BundleWithHashes? y)
         {
             if (ReferenceEquals(x, y)) return 0;
             if (ReferenceEquals(null, y)) return 1;
             if (ReferenceEquals(null, x)) return -1;
-            
-            return x.PoolIndex.CompareTo(y.PoolIndex);
+
+            MevBundle x1 = x.Bundle;
+            MevBundle y1 = y.Bundle;
+            return x1.PoolIndex.CompareTo(y1.PoolIndex);
         }
     }
 }
