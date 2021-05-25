@@ -278,18 +278,6 @@ namespace Nethermind.Mev.Source
                         }
                     }
                 }
-                /*
-                    _bundles.RemoveAt(0);
-                    
-                    if (_bundles.Count > 0)
-                    {
-                        bundle = _bundles.Keys[0];
-                    }
-                    else
-                    {
-                        break;
-                    }
-                }*/
             }
         }
 
