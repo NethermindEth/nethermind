@@ -23,14 +23,14 @@ using Nethermind.Core.Timers;
 
 namespace Nethermind.Blockchain.FullPruning
 {
-    public class RocksDbSizePruningTrigger : IPruningTrigger, IDisposable
+    public class PathSizePruningTrigger : IPruningTrigger, IDisposable
     {
         private readonly string _path;
         private readonly long _threshold;
         private readonly IFileSystem _fileSystem;
         private readonly ITimer _timer;
 
-        public RocksDbSizePruningTrigger(string path, long threshold, ITimerFactory timerFactory, IFileSystem fileSystem)
+        public PathSizePruningTrigger(string path, long threshold, ITimerFactory timerFactory, IFileSystem fileSystem)
         {
             _path = path;
             _threshold = threshold;
