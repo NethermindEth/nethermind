@@ -40,6 +40,7 @@ using ILogger = Nethermind.Logging.ILogger;
 
 namespace Nethermind.Mev.Source
 {
+
     public class BundlePool : IBundlePool, ISimulatedBundleSource, IDisposable
     {
         private readonly IBlockFinalizationManager? _finalizationManager;
@@ -48,7 +49,8 @@ namespace Nethermind.Mev.Source
         private readonly IBlockTree _blockTree;
         private readonly IBundleSimulator _simulator;
         private readonly SortedRealList<MevBundle, ConcurrentBag<Keccak>> _bundles = new(MevBundleComparer.Default);
-        private readonly SortedPool<MevBundle, MevBundle, long, Keccak> _bundles2;
+        private readonly SortedPool<MevBundle, BundleWithHashes, long> _bundles2;
+        private readonly IDictionary<MevBundle, BundleWithHashes>? _cachemap;
         private readonly ConcurrentDictionary<Keccak, ConcurrentDictionary<MevBundle, SimulatedMevBundleContext>> _simulatedBundles = new();
         private readonly ILogger _logger;
         private readonly CompareMevBundlesByBlock _compareByBlock;
@@ -73,6 +75,7 @@ namespace Nethermind.Mev.Source
                 _mevConfig.BundlePoolSize,
                 _compareByBlock.ThenBy(CompareMevBundlesByMinTimestamp.Default),
                 logManager );
+            _cachemap = _bundles2.GetCacheMap();
             
             if (_finalizationManager != null)
             {
@@ -96,10 +99,10 @@ namespace Nethermind.Mev.Source
             lock (_bundles2)
             {
                 MevBundle searchedBundle = MevBundle.Empty(blockNumber, minTimestamp, maxTimestamp);
-                bool inBundle = _bundles2.TryGetValue(searchedBundle, out MevBundle value); //does it matter that searchedBundle is same?
+                bool inBundle = _bundles2.TryGetValue(searchedBundle, out BundleWithHashes value); //does it matter that searchedBundle is same?
                 if (inBundle)
                 {
-                    foreach (KeyValuePair<MevBundle, MevBundle> kvp in _bundles2.GetCacheMap()) //is the complement of i to prevent us from checking if i is not in this list?, but ~~of a number is the same number...
+                    foreach (KeyValuePair<MevBundle, BundleWithHashes> kvp in _bundles2.GetCacheMap()) //is the complement of i to prevent us from checking if i is not in this list?, but ~~of a number is the same number...
                     {
                         if (token.IsCancellationRequested)
                         {
@@ -135,7 +138,7 @@ namespace Nethermind.Mev.Source
 
                 lock (_bundles2)
                 {
-                    result = _bundles2.TryInsert(bundle, bundle);
+                    result = _bundles2.TryInsert(bundle, new BundleWithHashes(bundle));
                 }
 
                 if (result)
@@ -215,13 +218,15 @@ namespace Nethermind.Mev.Source
 
             lock (_bundles2)
             {
-                if (_bundles2._bundlesToBlockHashes.ContainsKey(bundle))
+                if (_cachemap!.ContainsKey(bundle))
                 {
-                    _bundles2._bundlesToBlockHashes[bundle].Add(parentHash);
+                     _cachemap[bundle].BlockHashes.Add(parentHash);
                 }
                 else
                 {
-                    _bundles2._bundlesToBlockHashes.Add(bundle, new List<Keccak>(new Keccak[] {parentHash}));
+                    BundleWithHashes newBundleWithHashes = new BundleWithHashes(bundle);
+                    newBundleWithHashes.BlockHashes.Add(parentHash);
+                    _cachemap[bundle] = newBundleWithHashes;
                 }
             }
         }
@@ -267,7 +272,7 @@ namespace Nethermind.Mev.Source
             int capacity = MevConfig.BundlePoolSize;
             lock (_bundles2)
             {
-                if (_bundles2.Count > capacity)
+                if (_bundles2.Count > capacity) //remove if bundles more than capacity
                 {
                     foreach (KeyValuePair<MevBundle, MevBundle> kvp in _bundles2.GetCacheMap())
                     {
@@ -315,7 +320,21 @@ namespace Nethermind.Mev.Source
                 }*/
             }
         }
-        
+
+        private class BundleWithHashes
+        {
+            public BundleWithHashes(MevBundle bundle)
+            {
+                Bundle = bundle;
+                BlockHashes = new ConcurrentBag<Keccak>();
+            }
+
+            public MevBundle Bundle { get; }
+            public ConcurrentBag<Keccak> BlockHashes { get; }
+            
+            
+           public static implicit operator MevBundle(BundleWithHashes bundle) => bundle.Bundle;
+        }
         async Task<IEnumerable<SimulatedMevBundle>> ISimulatedBundleSource.GetBundles(BlockHeader parent, UInt256 timestamp, long gasLimit, CancellationToken token)
         {
             HashSet<MevBundle> bundles = (await GetBundles(parent, timestamp, gasLimit, token)).ToHashSet();

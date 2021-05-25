@@ -76,6 +76,11 @@ namespace Nethermind.TxPool.Collections
 
         public int Count => _cacheMap.Count;
 
+        public IDictionary<TKey, TValue> GetCacheMap()
+        {
+            return _cacheMap;
+        }
+
         /// <summary>
         /// Gets all items in random order.
         /// </summary>
