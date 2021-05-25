@@ -23,8 +23,6 @@ namespace Nethermind.Dsl.Pipeline
 
         public void SubscribeToData(TIn data)
         {
-            var block = data as Block;
-            if(_logger.IsInfo) _logger.Info($"Recieved data in pipeline element. Block author: {block.Author}"); 
             foreach(var condition in _conditions)
             {
                 if (condition(data))
@@ -32,7 +30,6 @@ namespace Nethermind.Dsl.Pipeline
                     var dataToEmit = _transformData(data);
                     Emit(dataToEmit);
                 }
-                if(_logger.IsInfo) _logger.Info("Data did not match condition.");
             }
         }
 
