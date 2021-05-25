@@ -21,6 +21,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Db.FullPruning;
+using Nethermind.Logging;
 using Nethermind.State;
 using Org.BouncyCastle.Crypto.Generators;
 
@@ -32,6 +33,7 @@ namespace Nethermind.Blockchain.FullPruning
         private readonly IPruningTrigger _pruningTrigger;
         private readonly IBlockTree _blockTree;
         private readonly IStateReader _stateReader;
+        private readonly ILogManager _logManager;
         private IPruningContext? _currentPruning;
         private readonly CancellationTokenSource _cancellationTokenSource = new();
 
@@ -39,20 +41,23 @@ namespace Nethermind.Blockchain.FullPruning
             IFullPruningDb fullPruningDb, 
             IPruningTrigger pruningTrigger,
             IBlockTree blockTree,
-            IStateReader stateReader)
+            IStateReader stateReader,
+            ILogManager logManager)
         {
             _fullPruningDb = fullPruningDb;
             _pruningTrigger = pruningTrigger;
             _blockTree = blockTree;
             _stateReader = stateReader;
+            _logManager = logManager;
             _pruningTrigger.Prune += OnPrune;
         }
 
         private void OnPrune(object? sender, EventArgs e)
         {
-            if (_blockTree.HighestPersistedState.HasValue)
+            long? persistedState = _blockTree.HighestPersistedState;
+            if (persistedState.HasValue)
             {
-                BlockHeader? header = _blockTree.FindHeader(_blockTree.HighestPersistedState.Value);
+                BlockHeader? header = _blockTree.FindHeader(persistedState.Value);
                 if (header is not null)
                 {
                     if (_fullPruningDb.TryStartPruning(out IPruningContext pruningContext))
@@ -70,12 +75,15 @@ namespace Nethermind.Blockchain.FullPruning
                 IPruningContext? oldPruning = Interlocked.Exchange(ref _currentPruning, pruningContext);
                 oldPruning?.Dispose();
 
-                CopyTreeVisitor copyTreeVisitor = new(_currentPruning, _cancellationTokenSource.Token);
-                _stateReader.RunTreeVisitor(copyTreeVisitor, header.StateRoot!);
-
-                if (!_cancellationTokenSource.IsCancellationRequested)
+                using (CopyTreeVisitor copyTreeVisitor = new(_currentPruning, _cancellationTokenSource.Token, _logManager))
                 {
-                    _currentPruning.Commit();
+                    _stateReader.RunTreeVisitor(copyTreeVisitor, header.StateRoot!);
+
+                    if (!_cancellationTokenSource.IsCancellationRequested)
+                    {
+                        copyTreeVisitor.Finish();
+                        _currentPruning.Commit();
+                    }
                 }
             }
         }
