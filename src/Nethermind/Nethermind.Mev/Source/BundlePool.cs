@@ -74,7 +74,7 @@ namespace Nethermind.Mev.Source
             _bundles2 = new BundleSortedPool(
                 _mevConfig.BundlePoolSize,
                 _compareByBlock.ThenBy(CompareMevBundlesByMinTimestamp.Default),
-                logManager );
+                logManager ); 
             _cachemap = _bundles2.GetCacheMap();
             
             if (_finalizationManager != null)
@@ -91,10 +91,11 @@ namespace Nethermind.Mev.Source
 
         private IEnumerable<MevBundle> GetBundles(long blockNumber, UInt256 minTimestamp, UInt256 maxTimestamp, CancellationToken token = default)
         {
+            /*
             int CompareBundles(MevBundle searchedBundle, KeyValuePair<MevBundle, ConcurrentBag<Keccak>> potentialBundle)
             {
                 return searchedBundle.BlockNumber <= potentialBundle.Key.BlockNumber ? -1 : 1;
-            }
+            }*/
 
             lock (_bundles2)
             {
@@ -262,7 +263,7 @@ namespace Nethermind.Mev.Source
         {
             long maxFinalizedBlockNumber = e.FinalizedBlocks.Select(b => b.Number).Max();
             int count = _bundles2.Count;
-            int capacity = MevConfig.BundlePoolSize;
+            int capacity = _mevConfig.BundlePoolSize;
             lock (_bundles2)
             {
                 if (_bundles2.Count > capacity) //remove if bundles more than capacity

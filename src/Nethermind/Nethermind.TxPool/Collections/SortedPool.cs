@@ -223,5 +223,6 @@ namespace Nethermind.TxPool.Collections
             _sortedValues.Remove(value);
             return _cacheMap.Remove(key);
         }
+        
     }
 }

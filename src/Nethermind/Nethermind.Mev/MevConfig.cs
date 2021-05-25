@@ -26,7 +26,7 @@ namespace Nethermind.Mev
         public static readonly MevConfig Default = new();
         public bool Enabled { get; set; }
         public UInt256 BundleHorizon { get; set; } = 60 * 60;
-        public static int BundlePoolSize { get; set; } = 200;
+        public int BundlePoolSize { get; set; } = 200;
 
         public int? StrictProfitSwitch { get; set; }
 
