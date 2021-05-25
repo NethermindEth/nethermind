@@ -46,6 +46,7 @@ namespace Nethermind.Mev.Test
             long gasUsed = 0;
             UInt256 txFees = 0;
             UInt256 coinbasePayments = 0;
+            UInt256 eligibleGasFeePayments = 0;
             foreach (Transaction transaction in bundle.Transactions)
             {
                 foreach (TxForTest? txForTest in _testJson.Txs!)
@@ -55,11 +56,13 @@ namespace Nethermind.Mev.Test
                         gasUsed += txForTest.GasUsed;
                         txFees += txForTest.GasPrice * (UInt256)txForTest.GasUsed;
                         coinbasePayments += txForTest.CoinbasePayment;
+                        // Good enough for now, will change when tests are rewritten
+                        eligibleGasFeePayments += txForTest.GasPrice * (UInt256)txForTest.GasUsed;
                     }
                 }
             }
 
-            SimulatedMevBundle simulatedMevBundle = new(bundle, true, gasUsed, txFees, coinbasePayments);
+            SimulatedMevBundle simulatedMevBundle = new(bundle, true, new List<Keccak>(), gasUsed, txFees, coinbasePayments, eligibleGasFeePayments);
             return Task.FromResult(simulatedMevBundle);
         }
 
