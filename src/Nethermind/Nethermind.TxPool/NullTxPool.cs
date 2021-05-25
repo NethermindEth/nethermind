@@ -46,7 +46,7 @@ namespace Nethermind.TxPool
         
         public void RemoveOrUpdateBuckets() { }
         
-        public bool IsInHashCache(Keccak hash) => false;
+        public bool IsKnown(Keccak hash) => false;
 
         public bool TryGetPendingTransaction(Keccak hash, out Transaction? transaction)
         {

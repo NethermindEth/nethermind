@@ -68,7 +68,7 @@ namespace Nethermind.Blockchain
                 Transaction tx = block.Transactions[i];
                 Keccak txHash = tx.Hash;
                 
-                if (!_txPool.IsInHashCache(txHash))
+                if (!_txPool.IsKnown(txHash))
                 {
                     discoveredForHashCache++;
                 }

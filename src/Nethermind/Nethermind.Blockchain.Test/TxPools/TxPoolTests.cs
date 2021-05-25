@@ -469,8 +469,8 @@ namespace Nethermind.Blockchain.Test.TxPools
             }
 
             _txPool.GetPendingTransactionsCount().Should().Be(3);
-            _txPool.IsInHashCache(transactions[1].Hash).Should().BeTrue();
-            _txPool.IsInHashCache(transactions[2].Hash).Should().BeTrue();
+            _txPool.IsKnown(transactions[1].Hash).Should().BeTrue();
+            _txPool.IsKnown(transactions[2].Hash).Should().BeTrue();
             
             _txPool.RemoveTransaction(transactions[0]);
             _stateProvider.SubtractFromBalance(TestItem.AddressA, (UInt256)oneTxPrice, new ReleaseSpec());
@@ -478,8 +478,8 @@ namespace Nethermind.Blockchain.Test.TxPools
             _txPool.RemoveOrUpdateBuckets();
             _txPool.GetPendingTransactionsCount().Should().Be(0);
 
-            _txPool.IsInHashCache(transactions[1].Hash).Should().BeFalse();
-            _txPool.IsInHashCache(transactions[2].Hash).Should().BeFalse();
+            _txPool.IsKnown(transactions[1].Hash).Should().BeFalse();
+            _txPool.IsKnown(transactions[2].Hash).Should().BeFalse();
         }
 
         [Test]
@@ -499,7 +499,7 @@ namespace Nethermind.Blockchain.Test.TxPools
                 _txPool.AddTransaction(transactions[i], TxHandlingOptions.PersistentBroadcast);
             }
 
-            _txPool.IsInHashCache(transactions[4].Hash).Should().BeTrue();
+            _txPool.IsKnown(transactions[4].Hash).Should().BeTrue();
 
             Transaction higherPriorityTx = Build.A.Transaction
                 .WithSenderAddress(TestItem.AddressB)
@@ -509,7 +509,7 @@ namespace Nethermind.Blockchain.Test.TxPools
             EnsureSenderBalance(higherPriorityTx);
             _txPool.AddTransaction(higherPriorityTx, TxHandlingOptions.PersistentBroadcast);
 
-            _txPool.IsInHashCache(transactions[4].Hash).Should().BeFalse();
+            _txPool.IsKnown(transactions[4].Hash).Should().BeFalse();
         }
 
         [Test]
@@ -647,7 +647,7 @@ namespace Nethermind.Blockchain.Test.TxPools
 
             foreach (Transaction transaction in transactions)
             {
-                _txPool.IsInHashCache(transaction.Hash).Should().BeTrue();
+                _txPool.IsKnown(transaction.Hash).Should().BeTrue();
             }
         }
 
@@ -825,7 +825,7 @@ namespace Nethermind.Blockchain.Test.TxPools
             Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
             EnsureSenderBalance(tx);
             _txPool.AddTransaction(tx, TxHandlingOptions.PersistentBroadcast);
-            _txPool.IsInHashCache(tx.Hash).Should().Be(true);
+            _txPool.IsKnown(tx.Hash).Should().Be(true);
             _txPool.RemoveTransaction(tx).Should().Be(true);
         }
         
@@ -833,7 +833,7 @@ namespace Nethermind.Blockchain.Test.TxPools
         public void should_return_false_when_asking_for_not_known_txHash()
         {
             _txPool = CreatePool(_noTxStorage);
-            _txPool.IsInHashCache(TestItem.KeccakA).Should().Be(false);
+            _txPool.IsKnown(TestItem.KeccakA).Should().Be(false);
             Transaction tx = Build.A.Transaction.TestObject;
             tx.Hash = TestItem.KeccakA;
             _txPool.RemoveTransaction(tx).Should().Be(false);

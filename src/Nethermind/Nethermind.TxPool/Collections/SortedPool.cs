@@ -290,5 +290,11 @@ namespace Nethermind.TxPool.Collections
                 _sortedValues.Add(value, key);
             }
         }
+
+        [MethodImpl(MethodImplOptions.Synchronized)]
+        public bool IsFull()
+        {
+            return _cacheMap.Count >= _capacity;
+        }
     }
 }

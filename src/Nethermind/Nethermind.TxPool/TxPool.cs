@@ -262,7 +262,7 @@ namespace Nethermind.TxPool
             }
             
             int numberOfSenderTxsInPending = _transactions.GetBucketCount(tx.SenderAddress);
-            bool isTxPoolFull = GetPendingTransactionsCount() == MemoryAllowance.MemPoolSize;
+            bool isTxPoolFull = _transactions.IsFull();
             bool isTxNonceNextInOrder = tx.Nonce <= (long)currentNonce + numberOfSenderTxsInPending;
             bool isTxNonceTooFarInFuture = tx.Nonce > currentNonce + FutureNonceRetention;
             if (isTxPoolFull && !isTxNonceNextInOrder
@@ -277,7 +277,6 @@ namespace Nethermind.TxPool
             UInt256 payableGasPrice = tx.CalculatePayableGasPrice(spec.IsEip1559Enabled, CurrentBaseFee, balance);
 
             bool overflow = spec.IsEip1559Enabled && UInt256.AddOverflow(tx.MaxPriorityFeePerGas, tx.MaxFeePerGas, out _);
-            // we're checking that user can pay what he declared in FeeCap. For this check BaseFee = FeeCap
             overflow |= UInt256.MultiplyOverflow(payableGasPrice, (UInt256) tx.GasLimit, out UInt256 cost);
             overflow |= UInt256.AddOverflow(cost, tx.Value, out cost);
             if (overflow)
@@ -341,13 +340,7 @@ namespace Nethermind.TxPool
                     if (inserted)
                     {
                         UpdateBucket(tx.SenderAddress!);
-                        if (removed?.Hash is not null)
-                        {
-                            // transaction which was on last position in sorted TxPool and was deleted to give
-                            // a place for a newly added tx (with higher priority) is now removed from hashCache
-                            // to give it opportunity to come back to TxPool in the future, when fees drops
-                            _hashCache.Delete(removed.Hash);
-                        }
+                        ForgetHashIfTransactionRemoved(removed?.Hash);
                     }
                     isKnown |= !inserted;
                 }
@@ -371,6 +364,17 @@ namespace Nethermind.TxPool
             StoreTx(tx);
             NewPending?.Invoke(this, new TxEventArgs(tx));
             return AddTxResult.Added;
+        }
+
+        private void ForgetHashIfTransactionRemoved(Keccak? hash)
+        {
+            if (hash is not null)
+            {
+                // transaction which was on last position in sorted TxPool and was deleted to give
+                // a place for a newly added tx (with higher priority) is now removed from hashCache
+                // to give it opportunity to come back to TxPool in the future, when fees drops
+                _hashCache.Delete(hash);
+            }
         }
 
         private void UpdateBucket(Address senderAddress)
@@ -586,7 +590,7 @@ namespace Nethermind.TxPool
             return isKnown;
         }
 
-        public bool IsInHashCache(Keccak hash)
+        public bool IsKnown(Keccak hash)
         {
             return _hashCache.Get(hash);
         }
