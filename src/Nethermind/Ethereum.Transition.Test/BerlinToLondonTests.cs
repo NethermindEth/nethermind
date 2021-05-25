@@ -23,8 +23,9 @@ using NUnit.Framework;
 
 namespace Ethereum.Transition.Test
 {
-    [TestFixture][Parallelizable(ParallelScope.All)]
-    public class BerlinToLondon : BlockchainTestBase
+    [TestFixture]
+    [Parallelizable(ParallelScope.All)]
+    public class BerlinToLondonTests : BlockchainTestBase
     {
         [TestCaseSource(nameof(LoadTests))]
         public async Task Test(BlockchainTest test)
