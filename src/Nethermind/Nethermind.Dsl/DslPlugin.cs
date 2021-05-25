@@ -60,7 +60,6 @@ namespace Nethermind.Dsl
 
             _api.RpcModuleProvider.Register(rpcPool);
 
-            if(_logger.IsInfo) _logger.Info("Initialized DSL RPC module correctly.");
             return Task.CompletedTask;
         }
 

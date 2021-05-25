@@ -53,24 +53,6 @@ namespace Nethermind.Dsl.ANTLR
 
         private void AddSource(string value)
         {
-            if(value.Equals("BlockProcessor", StringComparison.InvariantCultureIgnoreCase))
-            {
-                var sourceElement = new BlockProcessorSource<Block>(_api.MainBlockProcessor, _logger);
-                _blockPipelineBuilder = new PipelineBuilder<Block, Block>(sourceElement);
-
-                _blockSource = true;
-
-                return;
-            }
-            else if(value.Equals("TxPool", StringComparison.InvariantCultureIgnoreCase))
-            {
-                var sourceElement = new TxPoolSource<Transaction>(_api.TxPool);
-                _transactionPipelineBuilder = new PipelineBuilder<Transaction, Transaction>(sourceElement);
-
-                _blockSource = false;
-
-                return;
-            }
         }
 
         private void AddWatch(string value)
@@ -78,21 +60,24 @@ namespace Nethermind.Dsl.ANTLR
             switch (value.ToLowerInvariant())
             {
                 case "blocks":
-                    _blockPipelineBuilder = _blockPipelineBuilder.AddElement(
-                        new PipelineElement<Block, Block>(
-                            condition: (block => true),
-                            transformData: (b => b),
-                            _logger
-                            )
-                    );
+                    var blocksSource = new BlocksSource<Block>(_api.MainBlockProcessor, _logger);
+                    _blockPipelineBuilder = new PipelineBuilder<Block, Block>(blocksSource);
+                    _blockSource = true;
+
                     break;
                 case "transactions":
-                // with watch on transactions we need to change for transactions pipeline, hence new source
-                    var sourceElement = new TxPoolSource<Transaction>(_api.TxPool);
-                    _transactionPipelineBuilder = new PipelineBuilder<Transaction, Transaction>(sourceElement);
+                    var processedTransactionsSource = new ProcessedTransactionsSource<Transaction>(_api.MainBlockProcessor);
+                    _transactionPipelineBuilder = new PipelineBuilder<Transaction, Transaction>(processedTransactionsSource);
+                    _blockSource = false;
+
+                    break;
+                case "newpending":
+                    // with watch on transactions we need to change for transactions pipeline, hence new source
+                    var pendingTransactionsSource = new PendingTransactionsSource<Transaction>(_api.TxPool);
+                    _transactionPipelineBuilder = new PipelineBuilder<Transaction, Transaction>(pendingTransactionsSource);
 
                     _blockSource = false;
-                break;
+                    break;
             }
         }
 

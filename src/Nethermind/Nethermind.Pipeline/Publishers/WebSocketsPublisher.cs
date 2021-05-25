@@ -58,8 +58,6 @@ namespace Nethermind.Pipeline.Publishers
         
         public async void SubscribeToData(TIn data)
         {
-            var block = data as Block;
-            if(_logger.IsInfo) _logger.Info($"Received block to send with WS: {block.Hash}");
             try
             {
                 var message = new WebSocketsMessage(nameof(TIn), null, data);

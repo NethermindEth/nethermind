@@ -7,12 +7,12 @@ using Nethermind.Pipeline;
 #nullable enable
 namespace Nethermind.Dsl.Pipeline
 {
-    public class BlockProcessorSource<TOut> : IPipelineElement<TOut> where TOut : Block
+    public class BlocksSource<TOut> : IPipelineElement<TOut> where TOut : Block
     {
         private readonly IBlockProcessor _blockProcessor;
         private readonly ILogger _logger;
 
-        public BlockProcessorSource(IBlockProcessor blockProcessor, ILogger logger)
+        public BlocksSource(IBlockProcessor blockProcessor, ILogger logger)
         {
            _blockProcessor = blockProcessor; 
            _blockProcessor.BlockProcessed += OnBlockProcessed;
