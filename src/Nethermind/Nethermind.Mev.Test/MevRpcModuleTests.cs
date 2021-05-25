@@ -149,7 +149,7 @@ namespace Nethermind.Mev.Test
         [Test]
         public async Task Should_execute_eth_callBundle_and_serialize_successful_response_properly() 
         {
-            var chain = await CreateChain();
+            var chain = await CreateChain(SelectorType.V1);
 
             Address contractAddress = await Contracts.Deploy(chain, Contracts.CallableCode);
             
@@ -165,7 +165,7 @@ namespace Nethermind.Mev.Test
         [Test]
         public async Task Should_execute_eth_callBundle_and_serialize_failed_response_properly() 
         {
-            var chain = await CreateChain();
+            var chain = await CreateChain(SelectorType.V1);
             Address reverterContractAddress = await Contracts.Deploy(chain, Contracts.ReverterCode);
             Transaction failedTx = Build.A.Transaction.WithGasLimit(Contracts.LargeGasLimit).WithGasPrice(1ul).WithTo(reverterContractAddress).WithData(Bytes.FromHexString(Contracts.ReverterInvokeFail)).SignedAndResolved(TestItem.PrivateKeyC).TestObject;
             string transactions = $"[\"{Rlp.Encode(failedTx).Bytes.ToHexString()}\"]";
@@ -176,7 +176,7 @@ namespace Nethermind.Mev.Test
         [Test]
         public async Task Should_pick_one_and_only_one_highest_score_bundle_of_several_using_v1_score_with_no_vanilla_tx_to_include_in_block()
         {
-            var chain = await CreateChain();
+            var chain = await CreateChain(SelectorType.V1);
             chain.GasLimitCalculator.GasLimit = 10_000_000;
 
             Address contractAddress = await Contracts.Deploy(chain, Contracts.CoinbaseCode);
@@ -204,7 +204,7 @@ namespace Nethermind.Mev.Test
         [Test]
         public async Task Should_push_out_tail_gas_price_tx()
         {
-            var chain = await CreateChain();
+            var chain = await CreateChain(SelectorType.V1);
             chain.GasLimitCalculator.GasLimit = GasCostOf.Transaction;
 
             Transaction tx2 = Build.A.Transaction.WithGasLimit(GasCostOf.Transaction).WithGasPrice(150ul).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
@@ -220,7 +220,7 @@ namespace Nethermind.Mev.Test
         [Test]
         public async Task Should_choose_between_higher_coinbase_reward_of_vanilla_and_bundle_block()
         {
-            var chain = await CreateChain();
+            var chain = await CreateChain(SelectorType.V1);
             chain.GasLimitCalculator.GasLimit = GasCostOf.Transaction;
 
             Transaction tx1 = Build.A.Transaction.WithGasLimit(GasCostOf.Transaction).WithGasPrice(100ul).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
@@ -237,7 +237,7 @@ namespace Nethermind.Mev.Test
         public async Task Includes_0_transactions_from_bundle_with_1_or_more_transaction_failures()
         {
             // ignoring bundles with failed tx takes care of intersecting bundles
-            var chain = await CreateChain();
+            var chain = await CreateChain(SelectorType.V1);
             chain.GasLimitCalculator.GasLimit = 10_000_000;
             
             Transaction tx1 = Build.A.Transaction.WithGasLimit(GasCostOf.Transaction).WithGasPrice(100ul).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
@@ -256,7 +256,7 @@ namespace Nethermind.Mev.Test
         [Test]
         public async Task Should_include_bundle_transactions_uninterrupted_in_order_from_least_index_at_beginning_of_block()
         {
-            var chain = await CreateChain();
+            var chain = await CreateChain(SelectorType.V1);
             chain.GasLimitCalculator.GasLimit = 10_000_000;
 
             Address contractAddress = await Contracts.Deploy(chain, Contracts.SetableCode);
@@ -290,12 +290,53 @@ namespace Nethermind.Mev.Test
         }
 
         [Test]
-        [Ignore("v0.2")]
-        public async Task Should_merge_disjoint_bundles_with_v2_score() {}
+        public async Task Should_merge_disjoint_bundles_with_v2_score()
+        {
+            var chain = await CreateChain(SelectorType.V2, 3);
+            chain.GasLimitCalculator.GasLimit = 10_000_000;
+
+            Transaction tx1 = Build.A.Transaction.WithGasLimit(GasCostOf.Transaction).WithGasPrice(150ul).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+            Transaction tx2 = Build.A.Transaction.WithGasLimit(GasCostOf.Transaction).WithGasPrice(100ul).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+            Transaction tx3 = Build.A.Transaction.WithGasLimit(GasCostOf.Transaction).WithGasPrice(50ul).SignedAndResolved(TestItem.PrivateKeyC).TestObject;
+
+            SuccessfullySendBundle(chain, 1, tx1);
+            SuccessfullySendBundle(chain, 1, tx2);
+
+
+            await chain.AddBlock(true, tx3);
+
+            GetHashes(chain.BlockTree.Head!.Transactions).Should().Equal(GetHashes(new[] { tx1, tx2, tx3 }));
+        }
 
         [Test]
-        [Ignore("v0.2")]
-        public async Task Should_discard_mempool_tx_in_v2_score() {}
+        public async Task Should_discard_mempool_tx_in_v2_score()
+        {
+            var chain = await CreateChain(SelectorType.V2, 2);
+            chain.GasLimitCalculator.GasLimit = 10_000_000;
+
+            Transaction tx1 = Build.A.Transaction.WithGasLimit(GasCostOf.Transaction).WithGasPrice(150ul).SignedAndResolved(TestItem.PrivateKeyC).TestObject;
+            Transaction tx2 = Build.A.Transaction.WithGasLimit(GasCostOf.Transaction).WithGasPrice(130ul).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+            Transaction tx3 = Build.A.Transaction.WithGasLimit(GasCostOf.Transaction).WithGasPrice(120ul).SignedAndResolved(TestItem.PrivateKeyC).TestObject;
+            Transaction tx4 = Build.A.Transaction.WithGasLimit(GasCostOf.Transaction).WithGasPrice(95ul).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+  
+            await SendSignedTransaction(chain, tx1);
+
+            SuccessfullySendBundle(chain, 1, tx1, tx4);
+            SuccessfullySendBundle(chain, 1, tx2);
+            SuccessfullySendBundle(chain, 1, tx3);
+            
+            await chain.AddBlock(true);
+
+            GetHashes(chain.BlockTree.Head!.Transactions).Should().Equal(GetHashes(new[] { tx2, tx3, tx1 }));
+
+        }
+
+        [Test]
+        [Ignore("Not fixed yet")]
+        public async Task Should_discard_mempool_tx_in_v2_score_if_bundle_comes_first()
+        {
+            
+        }
         
         private static async Task<Keccak> SendSignedTransaction(TestMevRpcBlockchain chain, Transaction tx)
         {

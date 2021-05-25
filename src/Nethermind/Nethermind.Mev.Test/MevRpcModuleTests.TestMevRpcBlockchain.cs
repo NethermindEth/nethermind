@@ -52,9 +52,19 @@ namespace Nethermind.Mev.Test
 {
     public partial class MevRpcModuleTests
     {
-        private Task<TestMevRpcBlockchain> CreateChain(Func<ISimulatedBundleSource, IBundleSource>? getSelector = null)
+        private Task<TestMevRpcBlockchain> CreateChain(SelectorType selectorType, int? maxMergedBundles = 10, Func<ISimulatedBundleSource, IBundleSource>? getSelector = null)
         {
-            getSelector ??= source => new V1Selector(source);
+            switch (selectorType)
+            {
+                case SelectorType.V1:
+                    getSelector ??= source => new V1Selector(source);
+                    break;
+                case SelectorType.V2:
+                    getSelector ??= source => new V2Selector(source, (int) maxMergedBundles!);
+                    break;
+                default:
+                    throw new NotImplementedException("Only V1 and V2 are supported");
+            }
             TestMevRpcBlockchain testMevRpcBlockchain = new(getSelector);
             return TestRpcBlockchain.ForTest(testMevRpcBlockchain).Build();
         }
