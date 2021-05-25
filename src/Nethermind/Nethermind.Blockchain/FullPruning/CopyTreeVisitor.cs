@@ -15,28 +15,44 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System;
+using System.Diagnostics;
 using System.Threading;
 using Nethermind.Core.Crypto;
 using Nethermind.Db.FullPruning;
+using Nethermind.Logging;
 using Nethermind.Trie;
 
 namespace Nethermind.Blockchain.FullPruning
 {
-    public class CopyTreeVisitor : ITreeVisitor
+    public class CopyTreeVisitor : ITreeVisitor, IDisposable
     {
         private readonly IPruningContext _pruningContext;
         private readonly CancellationToken _cancellationToken;
+        private readonly ILogger _logger;
+        private readonly Stopwatch _stopwatch;
         private long _persistedNodes = 0;
+        private bool _finished = false;
 
-        public CopyTreeVisitor(IPruningContext pruningContext, CancellationToken cancellationToken)
+        public CopyTreeVisitor(
+            IPruningContext pruningContext, 
+            CancellationToken cancellationToken,
+            ILogManager logManager)
         {
             _pruningContext = pruningContext;
             _cancellationToken = cancellationToken;
+            _logger = logManager.GetClassLogger();
+            _stopwatch = new Stopwatch();
         }
 
         public bool ShouldVisit(Keccak nextNode) => !_cancellationToken.IsCancellationRequested;
 
-        public void VisitTree(Keccak rootHash, TrieVisitContext trieVisitContext) { }
+        public void VisitTree(Keccak rootHash, TrieVisitContext trieVisitContext)
+        {
+            _stopwatch.Start();
+            if (_logger.IsWarn) _logger.Warn($"Full Pruning Started: do not close the node until finished or progress will be lost.");
+        }
+
 
         public void VisitMissingNode(Keccak nodeHash, TrieVisitContext trieVisitContext)
         {
@@ -55,6 +71,28 @@ namespace Nethermind.Blockchain.FullPruning
         {
             _pruningContext[node.Keccak!.Bytes] = node.FullRlp;
             _persistedNodes++;
+            if (_logger.IsInfo && _persistedNodes % 1_000_000 == 0)
+            {
+                _logger.Info($"Full Pruning In Progress: {_stopwatch.Elapsed} {_persistedNodes} nodes persisted.");
+            }
+        }
+
+        public void Dispose()
+        {
+            if (_logger.IsWarn && !_finished)
+            {
+                _logger.Warn($"Full Pruning Cancelled: Full pruning didn't finish, progress is lost.");
+            }
+        }
+
+        public void Finish()
+        {
+            _finished = true;
+            
+            if (_logger.IsInfo)
+            {
+                _logger.Info($"Full Pruning Finished: {_stopwatch.Elapsed} {_persistedNodes} nodes persisted.");
+            }
         }
     }
 }
