@@ -16,17 +16,20 @@ using System.IO;
 using Nethermind.Logging;
 using System.Linq;
 
+
 namespace Nethermind.Dsl
 {
-    public class DslPlugin : INethermindPlugin
-    {
-        public string Name { get; }
+    // This class will define the DSL Plugin
 
-        public string Description { get; }
+    public class DslPlugin : INethermindPlugin // Inherits from INethermindPlugin class
+    {
+        public string Name { get; }  
+
+        public string Description { get; } 
 
         public string Author { get; }
 
-        private ParseTreeListener _listener;
+        private ParseTreeListener _listener; 
         private INethermindApi _api;
         private ITxPool _txPool;
         private IBlockProcessor _blockProcessor;
@@ -36,26 +39,28 @@ namespace Nethermind.Dsl
         private ILogger _logger; 
         private IDslConfig _config;
 
-        public async Task Init(INethermindApi nethermindApi)
+        public async Task Init(INethermindApi nethermindApi) 
         {
+
             _api = nethermindApi;
             _txPool = _api.TxPool;
             _blockProcessor = _api.MainBlockProcessor;
 
             _config = _api.Config<IDslConfig>();
-            if (_config.Enabled)
+
+            if (_config.Enabled) 
             {
                 _logger = _api.LogManager.GetClassLogger();
                 if (_logger.IsInfo) _logger.Info("Initializing DSL plugin ...");
 
-                var dslScript = await LoadDSLScript();
+                var dslScript = await LoadDSLScript(); // The code will only execute after LoadDSLScript finishes reading file
 
-                var inputStream = new AntlrInputStream(dslScript);
-                var lexer = new DslGrammarLexer(inputStream);
-                var tokens = new CommonTokenStream(lexer);
-                var parser = new DslGrammarParser(tokens);
-                parser.BuildParseTree = true;
-                IParseTree tree = parser.init();
+                var inputStream = new AntlrInputStream(dslScript); // Defines an input stream from loaded script
+                var lexer = new DslGrammarLexer(inputStream); // Defines a lexer object from the input script
+                var tokens = new CommonTokenStream(lexer); // Defines tokens created from ANTLR lexer
+                var parser = new DslGrammarParser(tokens); // Defines a parser object based on the lexer output
+                parser.BuildParseTree = true; //  Builds parse tree
+                IParseTree tree = parser.init(); // Defines a tree object 
 
                 _listener = new ParseTreeListener();
                 _listener.OnEnterInit = OnInitEntry;
@@ -70,21 +75,25 @@ namespace Nethermind.Dsl
 
         public Task InitNetworkProtocol()
         {
-            _txPool = _api.TxPool;
+            _txPool = _api.TxPool; // Defines TxPool and the Block Processor asynchronously
             _blockProcessor = _api.MainBlockProcessor;
             return Task.CompletedTask;
         }
 
         public Task InitRpcModules()
         {
-            return Task.CompletedTask;
+            return Task.CompletedTask;  // ?
         }
 
-        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask; // Lambda expression, ?
+
+
+
+        // From this point on only methods are defined and now more operation is undertaken
 
         private void OnInitEntry(AntlrTokenType tokenType, string tokenValue)
         {
-            if (tokenType == AntlrTokenType.SOURCE)
+            if (tokenType == AntlrTokenType.SOURCE) // Constructor definition?
             {
                 if (tokenValue.Equals("BlockProcessor", StringComparison.InvariantCultureIgnoreCase))
                 {
@@ -103,18 +112,20 @@ namespace Nethermind.Dsl
             switch (tokenType)
             {
                 case AntlrTokenType.SOURCE:
-                    break;
+                    break;                  // Edge case
                 case AntlrTokenType.WHERE: 
-                    break;
+                    break;                  // Edge case
                 case AntlrTokenType.WATCH:
-                    SetWatchOnPipeline(tokenValue);
+                    SetWatchOnPipeline(tokenValue); // Defines WATCH 
                     break;
                 case AntlrTokenType.PUBLISH:
-                    AddPublisher(tokenValue);
+                    AddPublisher(tokenValue); // Publishes
                     break;
-                default: throw new ArgumentException($"Given token is not supported {tokenType}");
+                default: throw new ArgumentException($"Given token is not supported {tokenType}"); 
             }
         }
+
+        // OnConditionEntry will define all conditional statements such as ==, !=, etc.
 
         private void OnConditionEntry(string key, string symbol, string value)
         {
@@ -122,7 +133,7 @@ namespace Nethermind.Dsl
             {
                 switch (key)
                 {
-                    case "==":
+                    case "==": 
                         _blockProcessorPipelineBuilder.AddElement(
                             new PipelineElement<Block, Block>(
                                 condition: (b => b.GetType().GetProperty(key).GetValue(b).ToString() == value),
@@ -174,6 +185,10 @@ namespace Nethermind.Dsl
             }
         }
 
+
+        // SetWatchOnPipeline will add either a block or a transaction to the pipeline
+
+
             private void SetWatchOnPipeline(string value)
             {
                 value = value.ToLowerInvariant();
@@ -192,6 +207,9 @@ namespace Nethermind.Dsl
                         break;
                 }
             }
+
+            /* AddPublisher will either add a WebSocketsPublisher block to the pipeline, which will initiate the EthereumJsonSerializer, 
+                or will add a LogPublisher block which will initialize the LogManager as well as the EthereumJsonSerializer */
 
             private void AddPublisher(string publisherType)
             {
@@ -212,12 +230,17 @@ namespace Nethermind.Dsl
                 }
             }
 
+            // Build pipeline instantiates the blockProcessorPipelineBuilder class and calls the Build() method to create a pipeline object
+
             private void BuildPipeline()
             {
                 _pipeline = _blockProcessorPipelineBuilder.Build();
             }
 
-            private async Task<string> LoadDSLScript()
+
+            // Loads script located at specified directory and awaits for  text to be read
+
+            private async Task<string> LoadDSLScript() 
             {
                 var dirPath = Path.Combine(PathUtils.ExecutingDirectory, "DSL");
                 if(_logger.IsInfo) _logger.Info($"Loading dsl script from {dirPath}");
@@ -226,10 +249,41 @@ namespace Nethermind.Dsl
                 {
                     var file = Directory.GetFiles("DSL", "*.txt").First(); 
 
-                    return await File.ReadAllTextAsync(file);
+                    return await File.ReadAllTextAsync(file); 
                 }
 
                 throw new FileLoadException($"Could not find DSL directory at {dirPath} or the directory is empty");
             }
         }
     }
+
+
+    /* Notes:
+
+    This plugin follows the Task Asynchronous Programming (TAP) model. The goal of this, according to Microsoft, is
+    to 'enable code that reads like a sentence, but executes in a much more complicated order based on external 
+    resource allocation and when tasks complete". Below are some important components of this model.
+
+    async: represents a single no-return operation. The modifier signifies to the compiler that this method contains
+           an await statement, and therefore an asynchronous operation.
+
+    await: suspends evaluation of async until the async operations represented by its operand completes. This
+           means that any task that is asynchronous is suspended until all operations are finished. You await each Task 
+           before using its result. 
+    
+    Task : the Task class represents a single operation that does not return a value and usually executes asynchronously. 
+           Wihout the async keyword, the compiler does not automatically generate the code need top create the async state
+           machine and return a Task. Without it, the Task returnn type must be manually defined.
+
+
+    Suggestions
+
+    Line 244: "async Task" is redundant as async keyword will automatically define return typ
+    
+    C# syntax and properties:
+
+    '_' indicates private field
+
+    { get; set: } define automatic properties that do not need a field, only get is read-only, only set is write-only
+
+    */
