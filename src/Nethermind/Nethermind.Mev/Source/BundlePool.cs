@@ -49,7 +49,6 @@ namespace Nethermind.Mev.Source
         private readonly IBlockTree _blockTree;
         private readonly IBundleSimulator _simulator;
         private readonly SortedPool<MevBundle, BundleWithHashes, long> _bundles2;
-        private readonly IDictionary<MevBundle, BundleWithHashes>? _cachemap;
         private readonly ConcurrentDictionary<Keccak, ConcurrentDictionary<MevBundle, SimulatedMevBundleContext>> _simulatedBundles = new();
         private readonly ILogger _logger;
         private readonly CompareMevBundlesByBlock _compareByBlock;
@@ -74,7 +73,6 @@ namespace Nethermind.Mev.Source
                 _mevConfig.BundlePoolSize,
                 _compareByBlock.ThenBy(CompareMevBundlesByMinTimestamp.Default),
                 logManager ); 
-            _cachemap = _bundles2.GetCacheMap();
             
             if (_finalizationManager != null)
             {
@@ -90,16 +88,10 @@ namespace Nethermind.Mev.Source
 
         private IEnumerable<MevBundle> GetBundles(long blockNumber, UInt256 minTimestamp, UInt256 maxTimestamp, CancellationToken token = default)
         {
-            /*
-            int CompareBundles(MevBundle searchedBundle, KeyValuePair<MevBundle, ConcurrentBag<Keccak>> potentialBundle)
-            {
-                return searchedBundle.BlockNumber <= potentialBundle.Key.BlockNumber ? -1 : 1;
-            }*/
-
             lock (_bundles2)
             {
                 MevBundle searchedBundle = MevBundle.Empty(blockNumber, minTimestamp, maxTimestamp);
-                bool inBundle = _bundles2.TryGetValue(searchedBundle, out BundleWithHashes value); //does it matter that searchedBundle is same?
+                bool inBundle = _bundles2.TryGetValue(searchedBundle, out BundleWithHashes value);
                 if (inBundle)
                 {
                     foreach (KeyValuePair<MevBundle, BundleWithHashes> kvp in _bundles2.GetCacheMap()) //is the complement of i to prevent us from checking if i is not in this list?, but ~~of a number is the same number...
@@ -112,10 +104,10 @@ namespace Nethermind.Mev.Source
                         MevBundle mevBundle = kvp.Key;
                         if (mevBundle.BlockNumber == searchedBundle.BlockNumber)
                         {
-                            bool bundleIsInFuture = mevBundle.MinTimestamp != UInt256.Zero &&
-                                                    searchedBundle.MinTimestamp < mevBundle.MinTimestamp;
-                            bool bundleIsTooOld = mevBundle.MaxTimestamp != UInt256.Zero &&
-                                                  searchedBundle.MaxTimestamp > mevBundle.MaxTimestamp;
+                            bool bundleIsInFuture = mevBundle.MaxTimestamp != UInt256.Zero &&
+                                                    searchedBundle.MaxTimestamp < mevBundle.MaxTimestamp;
+                            bool bundleIsTooOld = mevBundle.MinTimestamp != UInt256.Zero &&
+                                                  searchedBundle.MinTimestamp > mevBundle.MinTimestamp;
                             if (!bundleIsInFuture && !bundleIsTooOld) 
                             {
                                 yield return mevBundle;
@@ -211,15 +203,11 @@ namespace Nethermind.Mev.Source
             
             lock (_bundles2)
             {
-                if (_cachemap!.ContainsKey(bundle))
+                _bundles2.TryGetValue(bundle, out BundleWithHashes BundleValue);
+                
+                if (!BundleValue.BlockHashes.Contains(parentHash))
                 {
-                     _cachemap[bundle].BlockHashes.Add(parentHash);
-                }
-                else
-                {
-                    BundleWithHashes newBundleWithHashes = new BundleWithHashes(bundle);
-                    newBundleWithHashes.BlockHashes.Add(parentHash);
-                    _cachemap[bundle] = newBundleWithHashes;
+                    BundleValue.BlockHashes.Add(parentHash);
                 }
             }
         }
@@ -265,18 +253,9 @@ namespace Nethermind.Mev.Source
             int capacity = _mevConfig.BundlePoolSize;
             lock (_bundles2)
             {
-                if (_bundles2.Count > capacity) //remove if bundles more than capacity
+                while (_bundles2.Count > capacity) //remove if bundles more than capacity
                 {
-                    foreach (KeyValuePair<MevBundle, BundleWithHashes> kvp in _bundles2.GetCacheMap())
-                    {
-                        MevBundle? bundleCpy = kvp.Key;
-                        _bundles2.TryRemove(kvp.Key, out BundleWithHashes? bundleHash); //want to make this same as Key, does this need to be out?
-                        _cachemap!.Remove(kvp.Key);
-                        if (_bundles2.Count <= capacity)
-                        {
-                            break;
-                        }
-                    }
+                    _bundles2.TryTakeFirst(out BundleWithHashes bundleWithHashes); //want to make this same as Key, does this need to be out?
                 }
             }
         }
