@@ -198,6 +198,7 @@ namespace Nethermind.Mev.Source
               
         private void SimulateBundle(MevBundle bundle, BlockHeader parent)
         {
+            //do we still need blockdictionary?
             Keccak parentHash = parent.Hash!;
             ConcurrentDictionary<MevBundle, SimulatedMevBundleContext> blockDictionary = 
                 _simulatedBundles.GetOrAdd(parentHash, _ => new ConcurrentDictionary<MevBundle, SimulatedMevBundleContext>());
@@ -207,15 +208,7 @@ namespace Nethermind.Mev.Source
             {
                 context.Task = _simulator.Simulate(bundle, parent, context.CancellationTokenSource.Token);
             }
-
-            //ConcurrentBag<Keccak> blocksBag; we get the hashbag of the bundle and we add the hash to it
-            /*
-            List<Keccak> GetBundle;
-            lock (_bundles2)
-            {
-                GetBundle = _bundles2.TryGetValue(bundle, out bundle); 
-            }*/
-
+            
             lock (_bundles2)
             {
                 if (_cachemap!.ContainsKey(bundle))
@@ -274,39 +267,18 @@ namespace Nethermind.Mev.Source
             {
                 if (_bundles2.Count > capacity) //remove if bundles more than capacity
                 {
-                    foreach (KeyValuePair<MevBundle, MevBundle> kvp in _bundles2.GetCacheMap())
+                    foreach (KeyValuePair<MevBundle, BundleWithHashes> kvp in _bundles2.GetCacheMap())
                     {
                         MevBundle? bundleCpy = kvp.Key;
-                        _bundles2.TryRemove(kvp.Key, out bundleCpy); //want to make this same as Key, does this need to be out?
-                        _bundles2._bundlesToBlockHashes.Remove(kvp.Key);
-                        if (_bundles2.Count > capacity)
+                        _bundles2.TryRemove(kvp.Key, out BundleWithHashes? bundleHash); //want to make this same as Key, does this need to be out?
+                        _cachemap!.Remove(kvp.Key);
+                        if (_bundles2.Count <= capacity)
                         {
                             break;
                         }
                     }
                 }
                 /*
-                MevBundle bundle = _bundles2._bundlesToBlockHashes.Keys[0]; //first key in bundle
-                while (bundle.BlockNumber <= maxFinalizedBlockNumber)
-                {
-                    ConcurrentBag<Keccak> blocksBag = _bundles.Values[0]; //first value in bundle
-                    foreach (Keccak blockHash in blocksBag)
-                    {
-                        if (_simulatedBundles.TryGetValue(blockHash, out ConcurrentDictionary<MevBundle, SimulatedMevBundleContext>? bundleDictionary))
-                        {
-                            if (bundleDictionary.TryRemove(bundle, out SimulatedMevBundleContext? context))
-                            {
-                                context.CancellationTokenSource.Cancel();
-                                context.Dispose();
-                            }
-
-                            if (bundleDictionary.Count == 0)
-                            {
-                                _simulatedBundles.TryRemove(blockHash, out _);
-                            }
-                        }
-                    }
-
                     _bundles.RemoveAt(0);
                     
                     if (_bundles.Count > 0)
