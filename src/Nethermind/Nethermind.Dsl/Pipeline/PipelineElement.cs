@@ -23,6 +23,11 @@ namespace Nethermind.Dsl.Pipeline
 
         public void SubscribeToData(TIn data)
         {
+            if(Emit == null)
+            {
+                return;
+            }
+
             foreach(var condition in _conditions)
             {
                 if (condition(data))
