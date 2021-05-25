@@ -103,9 +103,15 @@ namespace Ethereum.Test.Base
         public static Transaction Convert(PostStateJson postStateJson, TransactionJson transactionJson)
         {
             Transaction transaction = new();
+            if (transaction.AccessList != null)
+                transaction.Type = TxType.AccessList;
+            if (transactionJson.GasPrice == null)
+                transaction.Type = TxType.EIP1559;
+            
             transaction.Value = transactionJson.Value[postStateJson.Indexes.Value];
             transaction.GasLimit = transactionJson.GasLimit[postStateJson.Indexes.Gas];
-            transaction.GasPrice = transactionJson.GasPrice;
+            transaction.GasPrice = transactionJson.GasPrice ?? transactionJson.MaxPriorityFeePerGas ?? 0;
+            transaction.DecodedMaxFeePerGas = transactionJson.MaxFeePerGas ?? 0;
             transaction.Nonce = transactionJson.Nonce;
             transaction.To = transactionJson.To;
             transaction.Data = transactionJson.Data[postStateJson.Indexes.Data];
