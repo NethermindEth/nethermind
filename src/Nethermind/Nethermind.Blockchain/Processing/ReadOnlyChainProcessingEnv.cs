@@ -22,7 +22,6 @@ using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State;
-using Nethermind.TxPool;
 
 namespace Nethermind.Blockchain.Processing
 {
@@ -58,7 +57,6 @@ namespace Nethermind.Blockchain.Processing
                 _txEnv.TransactionProcessor,
                 StateProvider,
                 _txEnv.StorageProvider,
-                NullTxPool.Instance,
                 receiptStorage,
                 NullWitnessCollector.Instance,
                 logManager);

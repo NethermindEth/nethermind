@@ -16,6 +16,7 @@
 // 
 
 using System;
+using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Consensus;
 
@@ -25,6 +26,6 @@ namespace Nethermind.Core.Test.Blockchain
     {
         Block LastProducedBlock { get; }
         event EventHandler<BlockEventArgs> LastProducedBlockChanged;
-        void BuildNewBlock();
+        Task<bool> BuildNewBlock();
     }
 }

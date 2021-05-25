@@ -36,7 +36,6 @@ namespace Nethermind.Blockchain.Comparers
         {
             _specProvider = specProvider;
             _blockFinder = blockFinder;
-
         }
 
         public IComparer<WrappedTransaction> GetDefaultComparer()

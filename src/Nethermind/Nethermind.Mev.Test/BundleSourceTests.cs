@@ -20,11 +20,15 @@ using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Linq;
+using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
+using Nethermind.Mev.Data;
+using Nethermind.Mev.Execution;
+using Nethermind.Mev.Source;
 using Nethermind.Serialization.Json;
 using NUnit.Framework;
 
@@ -37,9 +41,10 @@ namespace Nethermind.Mev.Test
         private readonly BlockHeader _blockHeader = Build.A.BlockHeader.WithNumber(1).TestObject;
 
         [TestCaseSource(nameof(LoadTests))]
-        public void Test(TestJson testJson)
+        public async Task Test(TestJson testJson)
         {
-            TestSimulator sim = new(testJson);
+            TestSimulator testSimulator = new(testJson);
+            IBundleSimulator simulator = testSimulator;
 
             ITailGasPriceCalculator tailGas = testJson.TailGasType switch
             {
@@ -50,16 +55,16 @@ namespace Nethermind.Mev.Test
 
             IBundleSource selector = testJson.SelectorType switch
             {
-                SelectorType.V1 => new V1Selector(sim, sim),
-                SelectorType.V2 => new V2Selector(sim, sim, tailGas, testJson.MaxGasLimitRatio),
+                SelectorType.V1 => new V1Selector(testSimulator),
+                SelectorType.V2 => new V2Selector(testSimulator, tailGas, testJson.MaxGasLimitRatio),
                 _ => throw new ArgumentOutOfRangeException()
             };
 
-            IEnumerable<MevBundle> selected = selector.GetBundles(_blockHeader, testJson.GasLimit!.Value);
-            SimulatedMevBundle[]? simulated = sim.Simulate(_blockHeader, testJson.GasLimit!.Value, selected).ToArray();
+            IEnumerable<MevBundle> selected = await selector.GetBundles(_blockHeader, _blockHeader.Timestamp, testJson.GasLimit!.Value);
+            SimulatedMevBundle[] simulated = (await simulator.Simulate(selected, _blockHeader)).ToArray();
             long totalGasUsedByBundles = simulated.Sum(s => s.GasUsed);
             long gasLeftForTransactions = testJson.GasLimit!.Value - totalGasUsedByBundles;
-            IEnumerable<Transaction>? txs = sim.GetTransactions(_blockHeader, gasLeftForTransactions);
+            IEnumerable<Transaction>? txs = testSimulator.GetTransactions(_blockHeader, gasLeftForTransactions);
             
             UInt256 totalProfit = simulated.Aggregate<SimulatedMevBundle, UInt256>(0, (profit, x) => profit + x.Profit);
             totalProfit += txs.Aggregate<Transaction, UInt256>(0, (profit, x) => profit + (x.GasPrice * (UInt256)x.GasLimit));

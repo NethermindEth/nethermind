@@ -15,10 +15,12 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-namespace Nethermind.Mev
+using Nethermind.Blockchain.Tracing;
+
+namespace Nethermind.Mev.Execution
 {
-    // ReSharper disable once ClassNeverInstantiated.Global
-    public class MevBundleForRpc
+    public interface ITracerFactory
     {
+        ITracer Create();
     }
 }

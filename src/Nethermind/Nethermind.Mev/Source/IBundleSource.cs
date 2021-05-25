@@ -15,10 +15,17 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-namespace Nethermind.Mev
+using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
+using Nethermind.Core;
+using Nethermind.Int256;
+using Nethermind.Mev.Data;
+
+namespace Nethermind.Mev.Source
 {
-    public interface ISimulatedBundleFilter
+    public interface IBundleSource
     {
-        bool Filter(SimulatedMevBundle bundle);
+        Task<IEnumerable<MevBundle>> GetBundles(BlockHeader parent, UInt256 timestamp, long gasLimit, CancellationToken token = default);
     }
 }

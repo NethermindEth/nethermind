@@ -45,7 +45,13 @@ namespace Nethermind.Blockchain.Producers
         private readonly ISpecProvider _specProvider;
         protected readonly ILogger _logger;
 
-        public TxPoolTxSource(ITxPool? transactionPool, IStateReader? stateReader, ISpecProvider? specProvider, ITransactionComparerProvider transactionComparerProvider, ILogManager? logManager, ITxFilterPipeline? txFilterPipeline)
+        public TxPoolTxSource(
+            ITxPool? transactionPool, 
+            IStateReader? stateReader, 
+            ISpecProvider? specProvider,
+            ITransactionComparerProvider transactionComparerProvider, 
+            ILogManager? logManager,
+            ITxFilterPipeline? txFilterPipeline)
         {
             _transactionPool = transactionPool ?? throw new ArgumentNullException(nameof(transactionPool));
             _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
@@ -122,25 +128,12 @@ namespace Nethermind.Blockchain.Producers
             IEnumerable<WrappedTransaction> transactions = GetOrderedTransactions(pendingTransactions, comparer);
             IDictionary<Address, UInt256> remainingBalance = new Dictionary<Address, UInt256>();
             Dictionary<Address, UInt256> nonces = new();
-            List<Transaction> selected = new();
-            long gasRemaining = gasLimit;
+            if (_logger.IsDebug) _logger.Debug($"Collecting pending transactions at block gas limit {gasLimit}.");
 
-            if (_logger.IsDebug) _logger.Debug($"Collecting pending transactions at block gas limit {gasRemaining}.");
-
-
+            int i = 0;
+            
             foreach (WrappedTransaction wTx in transactions)
             {
-                if (gasRemaining < Transaction.BaseTxGasCost)
-                {
-                    break;
-                }
-
-                if (wTx.Tx.GasLimit > gasRemaining)
-                {
-                    if (_logger.IsDebug) _logger.Debug($"Rejecting (tx gas limit {wTx.Tx.GasLimit} above remaining block gas {gasRemaining}) {wTx.Tx.ToShortString()}");
-                    continue;
-                }
-                
                 if (wTx.Tx.SenderAddress == null)
                 {
                     _transactionPool.RemoveTransaction(wTx.Tx);
@@ -179,16 +172,15 @@ namespace Nethermind.Blockchain.Producers
                     continue;
                 }
                 
-
-                selected.Add(wTx.Tx);
                 if (_logger.IsTrace) _logger.Trace($"Selected {wTx.Tx.ToShortString()} to be included in block.");
                 nonces[wTx.Tx.SenderAddress!] = wTx.Tx.Nonce + 1;
-                gasRemaining -= wTx.Tx.GasLimit;
+
+                i++;
+                yield return wTx.Tx;
             }
 
-            if (_logger.IsDebug) _logger.Debug($"Collected {selected.Count} out of {pendingTransactions.Sum(g => g.Value.Length)} pending transactions.");
-
-            return selected;
+            if (_logger.IsDebug) _logger.Debug($"Collected {i} out of {pendingTransactions.Sum(g => g.Value.Length)} pending transactions.");
+            
         }
         
         protected virtual IEnumerable<WrappedTransaction> GetOrderedTransactions(IDictionary<Address,WrappedTransaction[]> pendingTransactions, IComparer<WrappedTransaction> comparer) => 

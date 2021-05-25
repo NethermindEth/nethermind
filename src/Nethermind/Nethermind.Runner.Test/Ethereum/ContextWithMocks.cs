@@ -114,6 +114,7 @@ namespace Nethermind.Runner.Test.Ethereum
                 TrieStore = Substitute.For<ITrieStore>(),
                 ReadOnlyTrieStore = Substitute.For<IReadOnlyTrieStore>(),
                 ChainSpec = new ChainSpec(),
+                BlockProducerEnvFactory = Substitute.For<IBlockProducerEnvFactory>()
             };
     }
 }

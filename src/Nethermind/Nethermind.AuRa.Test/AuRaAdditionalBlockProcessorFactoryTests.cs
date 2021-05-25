@@ -54,7 +54,7 @@ namespace Nethermind.AuRa.Test
                 Substitute.For<IBlockTree>(),
                 Substitute.For<IReceiptStorage>(),
                 Substitute.For<IValidatorStore>(),
-                Substitute.For<IBlockFinalizationManager>(),
+                Substitute.For<IAuRaBlockFinalizationManager>(),
                 Substitute.For<ITxSender>(),
                 Substitute.For<ITxPool>(),
                 new MiningConfig(), 

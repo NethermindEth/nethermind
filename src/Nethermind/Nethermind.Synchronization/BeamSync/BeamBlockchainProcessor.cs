@@ -48,7 +48,7 @@ namespace Nethermind.Synchronization.BeamSync
 
         private readonly IBlockProcessingQueue _standardProcessorQueue;
         private readonly ISyncModeSelector _syncModeSelector;
-        private readonly ReadOnlyBlockTree _readOnlyBlockTree;
+        private readonly IReadOnlyBlockTree _readOnlyBlockTree;
         private readonly ISpecProvider _specProvider;
         private readonly ILogManager _logManager;
 

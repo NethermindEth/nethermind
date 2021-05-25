@@ -15,26 +15,34 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using Nethermind.Core;
+using Nethermind.Int256;
 
-namespace Nethermind.Mev
+namespace Nethermind.Mev.Data
 {
-    public class MevBundle
+    public class SimulatedMevBundle
     {
-        public MevBundle(Transaction[] txs, long? blockNumber = null, long? minTimestamp = null, long? maxTimestamp = null)
+        public SimulatedMevBundle(MevBundle bundle, bool success, long gasUsed, UInt256 txFees, UInt256 coinbasePayments)
         {
-            Txs = txs;
-            BlockNumber = blockNumber;
-            MinTimestamp = minTimestamp;
-            MaxTimestamp = maxTimestamp;
+            Bundle = bundle;
+            Success = success;
+            GasUsed = gasUsed;
+            TxFees = txFees;
+            CoinbasePayments = coinbasePayments;
         }
 
-        public Transaction[] Txs { get; }
+        public UInt256 CoinbasePayments { get; set; }
+        
+        public UInt256 TxFees { get; set; }
 
-        public long? BlockNumber { get; set; }
+        public UInt256 Profit => TxFees + CoinbasePayments;
+
+        public MevBundle Bundle { get; }
+        public bool Success { get; }
+
+        public long GasUsed { get; set; }
+
+        public UInt256 AdjustedGasPrice => Profit / (UInt256)GasUsed;
         
-        public long? MaxTimestamp { get; set; }
-        
-        public long? MinTimestamp { get; set; }
+        public UInt256 MevEquivalentGasPrice => CoinbasePayments / (UInt256)GasUsed;
     }
 }
