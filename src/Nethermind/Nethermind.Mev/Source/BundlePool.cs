@@ -48,7 +48,6 @@ namespace Nethermind.Mev.Source
         private readonly IMevConfig _mevConfig;
         private readonly IBlockTree _blockTree;
         private readonly IBundleSimulator _simulator;
-        private readonly SortedRealList<MevBundle, ConcurrentBag<Keccak>> _bundles = new(MevBundleComparer.Default);
         private readonly SortedPool<MevBundle, BundleWithHashes, long> _bundles2;
         private readonly IDictionary<MevBundle, BundleWithHashes>? _cachemap;
         private readonly ConcurrentDictionary<Keccak, ConcurrentDictionary<MevBundle, SimulatedMevBundleContext>> _simulatedBundles = new();
