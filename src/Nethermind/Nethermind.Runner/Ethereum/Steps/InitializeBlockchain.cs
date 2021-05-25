@@ -102,7 +102,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 .WitnessedBy(witnessCollector);
 
             TrieStore trieStore;
-            if (pruningConfig.Enabled)
+            if ((pruningConfig.Mode & PruningMode.Memory) != PruningMode.None)
             {
                 setApi.TrieStore = trieStore = new TrieStore(
                     setApi.MainStateDbWithCache.WitnessedBy(witnessCollector),

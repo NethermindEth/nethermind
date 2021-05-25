@@ -50,6 +50,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             IDbConfig dbConfig = _api.Config<IDbConfig>();
             ISyncConfig syncConfig = _api.Config<ISyncConfig>();
             IInitConfig initConfig = _api.Config<IInitConfig>();
+            IPruningConfig pruningConfig = _api.Config<IPruningConfig>();
 
             foreach (PropertyInfo propertyInfo in typeof(IDbConfig).GetProperties())
             {
@@ -58,9 +59,10 @@ namespace Nethermind.Runner.Ethereum.Steps
 
             try
             {
+                bool fullPruning = (pruningConfig.Mode & PruningMode.Full) != PruningMode.None;
                 bool useReceiptsDb = initConfig.StoreReceipts || syncConfig.DownloadReceiptsInFastSync;
                 InitDbApi(initConfig, dbConfig, initConfig.StoreReceipts || syncConfig.DownloadReceiptsInFastSync);
-                StandardDbInitializer dbInitializer = new(_api.DbProvider, _api.RocksDbFactory, _api.MemDbFactory);
+                StandardDbInitializer dbInitializer = new(_api.DbProvider, _api.RocksDbFactory, _api.MemDbFactory, _api.FileSystem, fullPruning);
                 await dbInitializer.InitStandardDbsAsync(useReceiptsDb);
                 if (syncConfig.BeamSync)
                 {

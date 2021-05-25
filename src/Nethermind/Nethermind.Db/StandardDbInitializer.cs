@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.IO.Abstractions;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Db.FullPruning;
@@ -23,12 +24,19 @@ namespace Nethermind.Db
 {
     public class StandardDbInitializer : RocksDbInitializer
     {
+        private readonly IFileSystem _fileSystem;
+        private readonly bool _fullPruning;
+
         public StandardDbInitializer(
             IDbProvider? dbProvider, 
             IRocksDbFactory? rocksDbFactory, 
-            IMemDbFactory? memDbFactory)
+            IMemDbFactory? memDbFactory,
+            IFileSystem? fileSystem = null,
+            bool fullPruning = false)
             : base(dbProvider, rocksDbFactory, memDbFactory)
         {
+            _fileSystem = fileSystem ?? new FileSystem();
+            _fullPruning = fullPruning;
         }
 
         public void InitStandardDbs(bool useReceiptsDb)
@@ -48,12 +56,20 @@ namespace Nethermind.Db
             RegisterDb(BuildRocksDbSettings(DbNames.Blocks, () => Metrics.BlocksDbReads++, () => Metrics.BlocksDbWrites++));
             RegisterDb(BuildRocksDbSettings(DbNames.Headers, () => Metrics.HeaderDbReads++, () => Metrics.HeaderDbWrites++));
             RegisterDb(BuildRocksDbSettings(DbNames.BlockInfos, () => Metrics.BlockInfosDbReads++, () => Metrics.BlockInfosDbWrites++));
-            
-            RegisterCustomDb(DbNames.State, () => new FullPruningDb(
-                BuildRocksDbSettings(DbNames.State, () => Metrics.StateDbReads++, () => Metrics.StateDbWrites++), 
-                PersistedDb ? new FullPruningInnerDbFactory(RocksDbFactory) : new MemDbFactoryAdapter(MemDbFactory), 
-                () => Interlocked.Increment(ref Metrics.StateDbDuplicateWrites)));
-            
+
+            RocksDbSettings stateDbSettings = BuildRocksDbSettings(DbNames.State, () => Metrics.StateDbReads++, () => Metrics.StateDbWrites++);
+            if (_fullPruning)
+            {
+                RegisterCustomDb(DbNames.State, () => new FullPruningDb(
+                    stateDbSettings,
+                    PersistedDb ? new FullPruningInnerDbFactory(RocksDbFactory, _fileSystem, stateDbSettings.DbPath) : new MemDbFactoryToRocksDbAdapter(MemDbFactory),
+                    () => Interlocked.Increment(ref Metrics.StateDbDuplicateWrites)));
+            }
+            else
+            {
+                RegisterDb(stateDbSettings);
+            }
+
             RegisterDb(BuildRocksDbSettings(DbNames.Code, () => Metrics.CodeDbReads++, () => Metrics.CodeDbWrites++));
             RegisterDb(BuildRocksDbSettings(DbNames.PendingTxs, () => Metrics.PendingTxsDbReads++, () => Metrics.PendingTxsDbWrites++));
             RegisterDb(BuildRocksDbSettings(DbNames.Bloom, () => Metrics.BloomDbReads++, () => Metrics.BloomDbWrites++));
