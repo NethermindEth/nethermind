@@ -23,17 +23,6 @@ using Nethermind.Core;
 
 namespace Nethermind.Db.FullPruning
 {
-    public interface IFullPruningDb
-    {
-        bool TryStartPruning(out IPruningContext context);
-    }
-
-    public interface IPruningContext : IDisposable
-    {
-        public byte[]? this[byte[] key] { set; }
-        void Commit();
-    }
-
     public class FullPruningDb : IDb, IFullPruningDb
     {
         private readonly RocksDbSettings _settings;
@@ -43,7 +32,7 @@ namespace Nethermind.Db.FullPruning
         private IDb _currentDb;
         private PruningContext? _pruningContext;
 
-        public FullPruningDb(RocksDbSettings settings, IRocksDbFactory dbFactory, Action? updateDuplicateWriteMetrics)
+        public FullPruningDb(RocksDbSettings settings, IRocksDbFactory dbFactory, Action? updateDuplicateWriteMetrics = null)
         {
             _settings = settings;
             _dbFactory = dbFactory;
@@ -127,8 +116,8 @@ namespace Nethermind.Db.FullPruning
         {
             _pruningContext = null;
         }
-        
-        public class PruningContext : IPruningContext
+
+        private class PruningContext : IPruningContext
         {
             private bool _commited = false;
             public IDb CloningDb { get; }
@@ -146,7 +135,7 @@ namespace Nethermind.Db.FullPruning
             {
                 set
                 {
-                    _db[key] = value;
+                    CloningDb[key] = value;
                     _updateDuplicateWriteMetrics?.Invoke();
                 }
             }
