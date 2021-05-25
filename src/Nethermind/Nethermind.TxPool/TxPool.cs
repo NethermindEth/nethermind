@@ -274,11 +274,11 @@ namespace Nethermind.TxPool
             }
 
             UInt256 balance = account?.Balance ?? UInt256.Zero;
-            UInt256 effectiveGasPrice = tx.IsEip1559 ? CalculatePayableGasPrice(tx, balance) : tx.GasPrice;
+            UInt256 payableGasPrice = tx.CalculatePayableGasPrice(spec.IsEip1559Enabled, CurrentBaseFee, balance);
 
             bool overflow = spec.IsEip1559Enabled && UInt256.AddOverflow(tx.MaxPriorityFeePerGas, tx.MaxFeePerGas, out _);
             // we're checking that user can pay what he declared in FeeCap. For this check BaseFee = FeeCap
-            overflow |= UInt256.MultiplyOverflow(effectiveGasPrice, (UInt256) tx.GasLimit, out UInt256 cost);
+            overflow |= UInt256.MultiplyOverflow(payableGasPrice, (UInt256) tx.GasLimit, out UInt256 cost);
             overflow |= UInt256.AddOverflow(cost, tx.Value, out cost);
             if (overflow)
             {
@@ -295,7 +295,7 @@ namespace Nethermind.TxPool
                 
             if (isTxPoolFull
                 && _transactions.TryGetLast(out var lastTx)
-                && effectiveGasPrice <= lastTx?.GasBottleneck)
+                && payableGasPrice <= lastTx?.GasBottleneck)
             {
                 if (_logger.IsTrace)
                     _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, too low gasPrice.");
@@ -392,7 +392,7 @@ namespace Nethermind.TxPool
         private void UpdateGasBottleneck(IReadOnlyList<Transaction> bucketSnapshot, long currentNonce, UInt256 balance)
         {
             Transaction tx = bucketSnapshot[0];
-            UInt256 previousTxBottleneck = tx.IsEip1559 ? CalculatePayableGasPrice(tx, balance) : tx.GasPrice;
+            UInt256 previousTxBottleneck = tx.CalculatePayableGasPrice(_specProvider.GetSpec().IsEip1559Enabled, CurrentBaseFee, balance);
 
             for (int i = 0; i < bucketSnapshot.Count; i++)
             {
@@ -414,28 +414,6 @@ namespace Nethermind.TxPool
             }
         }
 
-        private UInt256 CalculatePayableGasPrice(Transaction tx, UInt256 balance)
-        {
-            if (balance > tx.Value && tx.GasLimit > 0)
-            {
-                UInt256 effectiveGasPrice = tx.CalculateEffectiveGasPrice(_specProvider.GetSpec().IsEip1559Enabled, CurrentBaseFee);
-                effectiveGasPrice.Multiply((UInt256)tx.GasLimit, out UInt256 gasCost);
-                
-                if (balance >= tx.Value + gasCost)
-                {
-                    return effectiveGasPrice;
-                }
-
-                UInt256 balanceAvailableForFeePayment = balance - tx.Value;
-                balanceAvailableForFeePayment.Divide((UInt256)tx.GasLimit, out UInt256 payablePricePerGasUnit);
-                return payablePricePerGasUnit;
-
-            }
-            
-            return 0;
-        }
-        
-        
         public void RemoveOrUpdateBuckets()
         {
             Address[] addresses = _transactions.GetBucketsKeys();

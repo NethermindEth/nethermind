@@ -160,5 +160,30 @@ namespace Nethermind.Core
             premiumPerGas = UInt256.Min(tx.MaxPriorityFeePerGas, feeCap - baseFeePerGas);
             return true;
         }
+        
+        public static UInt256 CalculatePayableGasPrice(this Transaction tx, bool eip1559Enabled, UInt256 baseFee, UInt256 balance)
+        {
+            if (eip1559Enabled && tx.IsEip1559)
+            {
+                if (balance > tx.Value && tx.GasLimit > 0)
+                {
+                    UInt256 effectiveGasPrice = tx.CalculateEffectiveGasPrice(eip1559Enabled, baseFee);
+                    effectiveGasPrice.Multiply((UInt256)tx.GasLimit, out UInt256 gasCost);
+                            
+                    if (balance >= tx.Value + gasCost)
+                    {
+                        return effectiveGasPrice;
+                    }
+            
+                    UInt256 balanceAvailableForFeePayment = balance - tx.Value;
+                    balanceAvailableForFeePayment.Divide((UInt256)tx.GasLimit, out UInt256 payablePricePerGasUnit);
+                    return payablePricePerGasUnit;
+                }
+                        
+                return 0;
+            }
+            
+            return tx.GasPrice;
+        }
     }
 }
