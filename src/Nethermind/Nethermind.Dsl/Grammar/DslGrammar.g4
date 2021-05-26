@@ -4,14 +4,15 @@ init: (expression | condition)* ;
 expression : OPERATOR WORD ;
 condition : WHERE WORD ARITHMETIC_SYMBOL (DIGIT | WORD | ADDRESS); 
 
-OPERATOR : SOURCE | WATCH | WHERE | PUBLISH | IS ;
-ARITHMETIC_SYMBOL : '==' | '!=' | '<' | '>' | '<=' | '>=' ;
+OPERATOR : SOURCE | WATCH | WHERE | PUBLISH ;
+ARITHMETIC_SYMBOL :  '<' | '>' | '<=' | '>=' | IS | NOT ;
 
 SOURCE : 'SOURCE' ;
 WATCH : 'WATCH' ;
 WHERE : 'WHERE' ;
 PUBLISH : 'PUBLISH' ;
 IS: 'IS' ; 
+NOT: 'NOT' ;
 
 WORD : [a-zA-Z]+ ;
 DIGIT : [0-9]+;

@@ -85,7 +85,7 @@ namespace Nethermind.Dsl
             return Task.CompletedTask;  // ?
         }
 
-        public ValueTask DisposeAsync() => ValueTask.CompletedTask; // Lambda expression, ?
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask; // Lambda expression, does what ?
 
 
 
@@ -121,6 +121,11 @@ namespace Nethermind.Dsl
                 case AntlrTokenType.PUBLISH:
                     AddPublisher(tokenValue); // Publishes
                     break;
+                case AntlrTokenType.IS:
+                    OnConditionEntry("=",tokenValue);
+                    break;
+                case AntlrTokenType.NOT:
+                    OnConditionEntry("!=", tokenValue);
                 default: throw new ArgumentException($"Given token is not supported {tokenType}"); 
             }
         }

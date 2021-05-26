@@ -5,6 +5,8 @@ namespace Nethermind.Dsl.ANTLR
        SOURCE,
        WATCH,
        WHERE,
-       PUBLISH 
+       PUBLISH,
+       IS,
+       NOT
     }
 }

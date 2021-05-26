@@ -37,7 +37,7 @@ public partial class DslGrammarParser : Parser {
 	protected static PredictionContextCache sharedContextCache = new PredictionContextCache();
 	public const int
 		OPERATOR=1, ARITHMETIC_SYMBOL=2, SOURCE=3, WATCH=4, WHERE=5, PUBLISH=6, 
-		WORD=7, DIGIT=8, ADDRESS=9, WS=10;
+		IS=7, NOT=8, WORD=9, DIGIT=10, ADDRESS=11, WS=12;
 	public const int
 		RULE_init = 0, RULE_expression = 1, RULE_condition = 2;
 	public static readonly string[] ruleNames = {
@@ -45,11 +45,12 @@ public partial class DslGrammarParser : Parser {
 	};
 
 	private static readonly string[] _LiteralNames = {
-		null, null, null, "'SOURCE'", "'WATCH'", "'WHERE'", "'PUBLISH'"
+		null, null, null, "'SOURCE'", "'WATCH'", "'WHERE'", "'PUBLISH'", "'IS'", 
+		"'NOT'"
 	};
 	private static readonly string[] _SymbolicNames = {
 		null, "OPERATOR", "ARITHMETIC_SYMBOL", "SOURCE", "WATCH", "WHERE", "PUBLISH", 
-		"WORD", "DIGIT", "ADDRESS", "WS"
+		"IS", "NOT", "WORD", "DIGIT", "ADDRESS", "WS"
 	};
 	public static readonly IVocabulary DefaultVocabulary = new Vocabulary(_LiteralNames, _SymbolicNames);
 
@@ -270,12 +271,12 @@ public partial class DslGrammarParser : Parser {
 
 	private static char[] _serializedATN = {
 		'\x3', '\x608B', '\xA72A', '\x8133', '\xB9ED', '\x417C', '\x3BE7', '\x7786', 
-		'\x5964', '\x3', '\f', '\x18', '\x4', '\x2', '\t', '\x2', '\x4', '\x3', 
+		'\x5964', '\x3', '\xE', '\x18', '\x4', '\x2', '\t', '\x2', '\x4', '\x3', 
 		'\t', '\x3', '\x4', '\x4', '\t', '\x4', '\x3', '\x2', '\x3', '\x2', '\a', 
 		'\x2', '\v', '\n', '\x2', '\f', '\x2', '\xE', '\x2', '\xE', '\v', '\x2', 
 		'\x3', '\x3', '\x3', '\x3', '\x3', '\x3', '\x3', '\x4', '\x3', '\x4', 
 		'\x3', '\x4', '\x3', '\x4', '\x3', '\x4', '\x3', '\x4', '\x2', '\x2', 
-		'\x5', '\x2', '\x4', '\x6', '\x2', '\x3', '\x3', '\x2', '\t', '\v', '\x2', 
+		'\x5', '\x2', '\x4', '\x6', '\x2', '\x3', '\x3', '\x2', '\v', '\r', '\x2', 
 		'\x16', '\x2', '\f', '\x3', '\x2', '\x2', '\x2', '\x4', '\xF', '\x3', 
 		'\x2', '\x2', '\x2', '\x6', '\x12', '\x3', '\x2', '\x2', '\x2', '\b', 
 		'\v', '\x5', '\x4', '\x3', '\x2', '\t', '\v', '\x5', '\x6', '\x4', '\x2', 
@@ -283,9 +284,9 @@ public partial class DslGrammarParser : Parser {
 		'\x2', '\v', '\xE', '\x3', '\x2', '\x2', '\x2', '\f', '\n', '\x3', '\x2', 
 		'\x2', '\x2', '\f', '\r', '\x3', '\x2', '\x2', '\x2', '\r', '\x3', '\x3', 
 		'\x2', '\x2', '\x2', '\xE', '\f', '\x3', '\x2', '\x2', '\x2', '\xF', '\x10', 
-		'\a', '\x3', '\x2', '\x2', '\x10', '\x11', '\a', '\t', '\x2', '\x2', '\x11', 
+		'\a', '\x3', '\x2', '\x2', '\x10', '\x11', '\a', '\v', '\x2', '\x2', '\x11', 
 		'\x5', '\x3', '\x2', '\x2', '\x2', '\x12', '\x13', '\a', '\a', '\x2', 
-		'\x2', '\x13', '\x14', '\a', '\t', '\x2', '\x2', '\x14', '\x15', '\a', 
+		'\x2', '\x13', '\x14', '\a', '\v', '\x2', '\x2', '\x14', '\x15', '\a', 
 		'\x4', '\x2', '\x2', '\x15', '\x16', '\t', '\x2', '\x2', '\x2', '\x16', 
 		'\a', '\x3', '\x2', '\x2', '\x2', '\x4', '\n', '\f',
 	};

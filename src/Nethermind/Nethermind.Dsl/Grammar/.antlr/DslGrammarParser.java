@@ -17,7 +17,7 @@ public class DslGrammarParser extends Parser {
 		new PredictionContextCache();
 	public static final int
 		OPERATOR=1, ARITHMETIC_SYMBOL=2, SOURCE=3, WATCH=4, WHERE=5, PUBLISH=6, 
-		IS=7, WORD=8, DIGIT=9, ADDRESS=10, WS=11;
+		IS=7, NOT=8, WORD=9, DIGIT=10, ADDRESS=11, WS=12;
 	public static final int
 		RULE_init = 0, RULE_expression = 1, RULE_condition = 2;
 	private static String[] makeRuleNames() {
@@ -29,14 +29,15 @@ public class DslGrammarParser extends Parser {
 
 	private static String[] makeLiteralNames() {
 		return new String[] {
-			null, null, null, "'SOURCE'", "'WATCH'", "'WHERE'", "'PUBLISH'", "'IS'"
+			null, null, null, "'SOURCE'", "'WATCH'", "'WHERE'", "'PUBLISH'", "'IS'", 
+			"'NOT'"
 		};
 	}
 	private static final String[] _LITERAL_NAMES = makeLiteralNames();
 	private static String[] makeSymbolicNames() {
 		return new String[] {
 			null, "OPERATOR", "ARITHMETIC_SYMBOL", "SOURCE", "WATCH", "WHERE", "PUBLISH", 
-			"IS", "WORD", "DIGIT", "ADDRESS", "WS"
+			"IS", "NOT", "WORD", "DIGIT", "ADDRESS", "WS"
 		};
 	}
 	private static final String[] _SYMBOLIC_NAMES = makeSymbolicNames();
@@ -241,13 +242,13 @@ public class DslGrammarParser extends Parser {
 	}
 
 	public static final String _serializedATN =
-		"\3\u608b\ua72a\u8133\ub9ed\u417c\u3be7\u7786\u5964\3\r\30\4\2\t\2\4\3"+
+		"\3\u608b\ua72a\u8133\ub9ed\u417c\u3be7\u7786\u5964\3\16\30\4\2\t\2\4\3"+
 		"\t\3\4\4\t\4\3\2\3\2\7\2\13\n\2\f\2\16\2\16\13\2\3\3\3\3\3\3\3\4\3\4\3"+
-		"\4\3\4\3\4\3\4\2\2\5\2\4\6\2\3\3\2\n\f\2\26\2\f\3\2\2\2\4\17\3\2\2\2\6"+
-		"\22\3\2\2\2\b\13\5\4\3\2\t\13\5\6\4\2\n\b\3\2\2\2\n\t\3\2\2\2\13\16\3"+
-		"\2\2\2\f\n\3\2\2\2\f\r\3\2\2\2\r\3\3\2\2\2\16\f\3\2\2\2\17\20\7\3\2\2"+
-		"\20\21\7\n\2\2\21\5\3\2\2\2\22\23\7\7\2\2\23\24\7\n\2\2\24\25\7\4\2\2"+
-		"\25\26\t\2\2\2\26\7\3\2\2\2\4\n\f";
+		"\4\3\4\3\4\3\4\2\2\5\2\4\6\2\3\3\2\13\r\2\26\2\f\3\2\2\2\4\17\3\2\2\2"+
+		"\6\22\3\2\2\2\b\13\5\4\3\2\t\13\5\6\4\2\n\b\3\2\2\2\n\t\3\2\2\2\13\16"+
+		"\3\2\2\2\f\n\3\2\2\2\f\r\3\2\2\2\r\3\3\2\2\2\16\f\3\2\2\2\17\20\7\3\2"+
+		"\2\20\21\7\13\2\2\21\5\3\2\2\2\22\23\7\7\2\2\23\24\7\13\2\2\24\25\7\4"+
+		"\2\2\25\26\t\2\2\2\26\7\3\2\2\2\4\n\f";
 	public static final ATN _ATN =
 		new ATNDeserializer().deserialize(_serializedATN.toCharArray());
 	static {
