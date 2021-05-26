@@ -68,13 +68,13 @@ namespace Nethermind.Blockchain.FullPruning
             }
         }
 
-        private void RunPruning(IPruningContext pruningContext, BlockHeader header)
+        protected virtual void RunPruning(IPruningContext pruningContext, BlockHeader header)
         {
+            IPruningContext? oldPruning = Interlocked.Exchange(ref _currentPruning, pruningContext);
+            oldPruning?.Dispose();
+            
             using (_currentPruning)
             {
-                IPruningContext? oldPruning = Interlocked.Exchange(ref _currentPruning, pruningContext);
-                oldPruning?.Dispose();
-
                 using (CopyTreeVisitor copyTreeVisitor = new(_currentPruning, _cancellationTokenSource.Token, _logManager))
                 {
                     _stateReader.RunTreeVisitor(copyTreeVisitor, header.StateRoot!);
