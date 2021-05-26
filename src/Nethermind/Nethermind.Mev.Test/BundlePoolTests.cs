@@ -80,7 +80,7 @@ namespace Nethermind.Mev.Test
             blockFinalizationManager.BlocksFinalized += Raise.EventWith(finalizeEventArgs);
             if(test.action != null) test.action(bundlePool);
             List<MevBundle> result = bundlePool.GetBundles(test.block, test.testTimestamp).ToList();
-            result.Count.Should().Be(test.block <= 10 ? 0 : test.expectedCount);
+            result.Count.Should().Be(test.expectedCount);
         }
 
         private static BundlePool CreateBundlePool(IBlockFinalizationManager? blockFinalizationManager = null)
