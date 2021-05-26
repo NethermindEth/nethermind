@@ -62,7 +62,7 @@ namespace Nethermind.Mev.Test
                 }
             }
 
-            SimulatedMevBundle simulatedMevBundle = new(bundle, true, new List<Keccak>(), gasUsed, txFees, coinbasePayments, eligibleGasFeePayments);
+            SimulatedMevBundle simulatedMevBundle = new(bundle, true, new List<Keccak>(), gasUsed, txFees, coinbasePayments, new Dictionary<Keccak, UInt256>());
             return Task.FromResult(simulatedMevBundle);
         }
 
