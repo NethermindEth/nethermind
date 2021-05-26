@@ -30,9 +30,6 @@ namespace Nethermind.Runner.Ethereum.Steps
 {
     public static class TxAuRaFilterBuilders
     {
-        public static IMinGasPriceTxFilter CreateStandardMinGasPriceTxFilter(IMiningConfig miningConfig, ISpecProvider specProvider)
-            => new MinGasPriceTxFilter(miningConfig.MinGasPrice, specProvider);
-        
         private static ITxFilter CreateBaseAuRaTxFilter(
             IMiningConfig miningConfig,
             AuRaNethermindApi api,
@@ -40,7 +37,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             IDictionaryContractDataStore<TxPriorityContract.Destination>? minGasPricesContractDataStore,
             ISpecProvider specProvider)
         {
-            IMinGasPriceTxFilter minGasPriceTxFilter = CreateStandardMinGasPriceTxFilter(miningConfig, specProvider);
+            IMinGasPriceTxFilter minGasPriceTxFilter = Blockchain.TxFilterBuilders.CreateStandardMinGasPriceTxFilter(miningConfig, specProvider);
             ITxFilter gasPriceTxFilter = minGasPriceTxFilter;
             if (minGasPricesContractDataStore != null)
             {

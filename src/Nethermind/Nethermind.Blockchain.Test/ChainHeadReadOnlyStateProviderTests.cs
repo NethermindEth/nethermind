@@ -15,30 +15,22 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using Nethermind.Core;
-using Nethermind.Int256;
+using FluentAssertions;
+using Nethermind.Core.Test.Builders;
+using Nethermind.State;
+using NSubstitute;
+using NUnit.Framework;
 
-namespace Nethermind.Mev
+namespace Nethermind.Blockchain.Test
 {
-    public class SimulatedMevBundle
+    public class ChainHeadReadOnlyStateProviderTests
     {
-        public SimulatedMevBundle(long gasUsed, UInt256 txFees, UInt256 coinbasePayments)
+        [Test]
+        public void uses_block_tree_head_state_root()
         {
-            GasUsed = gasUsed;
-            TxFees = txFees;
-            CoinbasePayments = coinbasePayments;
+            BlockTree blockTree = Build.A.BlockTree(Build.A.Block.WithStateRoot(TestItem.KeccakA).TestObject).OfChainLength(10).TestObject;
+            ChainHeadReadOnlyStateProvider chainHeadReadOnlyStateProvider = new(blockTree, Substitute.For<IStateReader>());
+            chainHeadReadOnlyStateProvider.StateRoot.Should().BeEquivalentTo(blockTree.Head!.StateRoot);
         }
-
-        public UInt256 CoinbasePayments { get; set; }
-        
-        public UInt256 TxFees { get; set; }
-
-        public UInt256 Profit => TxFees + CoinbasePayments;
-        
-        public long GasUsed { get; set; }
-
-        public UInt256 AdjustedGasPrice => Profit / (UInt256)GasUsed;
-        
-        public UInt256 MevEquivalentGasPrice => CoinbasePayments / (UInt256)GasUsed;
     }
 }

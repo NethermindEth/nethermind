@@ -81,7 +81,7 @@ namespace Nethermind.AuRa.Test.Transactions
             ITxSender txSender = Substitute.For<ITxSender>();
             ITxPool txPool = Substitute.For<ITxPool>();
             txPool.GetPendingTransactions().Returns(
-                txPoolGasPrices.Select(g => Build.A.Transaction.WithGasPrice(0).WithGasPremium(g.GasPremium).WithType(TxType.EIP1559).WithFeeCap(g.FeeCap).TestObject).ToArray());
+                txPoolGasPrices.Select(g => Build.A.Transaction.WithGasPrice(0).WithMaxPriorityFeePerGas(g.GasPremium).WithType(TxType.EIP1559).WithFeeCap(g.FeeCap).TestObject).ToArray());
             MiningConfig miningConfig = new() {MinGasPrice = minMiningGasPrice};
             TxGasPrice1559Sender txGasPriceSender = new(txSender, txPool, miningConfig, percentDelta);
 
@@ -89,7 +89,7 @@ namespace Nethermind.AuRa.Test.Transactions
 
             txGasPriceSender.SendTransaction(transaction, TxHandlingOptions.None);
 
-            return (transaction.FeeCap, transaction.GasPremium);
+            return (transaction.MaxFeePerGas, transaction.MaxPriorityFeePerGas);
         }
     }
 }

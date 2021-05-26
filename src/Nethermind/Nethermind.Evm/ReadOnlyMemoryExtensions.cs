@@ -1,4 +1,4 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -15,10 +15,15 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-namespace Nethermind.Mev
+using System;
+
+namespace Nethermind.Evm
 {
-    // ReSharper disable once ClassNeverInstantiated.Global
-    public class MevBundleForRpc
+    public static class ReadOnlyMemoryExtensions
     {
+        public static bool StartsWith(this ReadOnlyMemory<byte> inputData, byte startingByte)
+        {
+            return inputData.Span[0] == startingByte;
+        }
     }
 }

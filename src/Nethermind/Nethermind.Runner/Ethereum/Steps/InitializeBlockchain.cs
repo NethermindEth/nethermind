@@ -291,7 +291,6 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.TransactionProcessor,
                 _api.StateProvider,
                 _api.StorageProvider,
-                _api.TxPool,
                 _api.ReceiptStorage,
                 _api.WitnessCollector,
                 _api.LogManager);

@@ -18,6 +18,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
+using Nethermind.Consensus;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
@@ -103,7 +104,7 @@ namespace Nethermind.Core.Test
             BlockHeader blockHeader = Build.A.BlockHeader.TestObject;
             blockHeader.Number = 2001;
             blockHeader.GasLimit = 100;
-            UInt256 baseFee = BlockHeader.CalculateBaseFee(blockHeader, releaseSpec);
+            UInt256 baseFee = BaseFeeCalculator.Calculate(blockHeader, releaseSpec);
             Assert.AreEqual(UInt256.Zero, baseFee);
         }
         
@@ -120,10 +121,10 @@ namespace Nethermind.Core.Test
             
             BlockHeader blockHeader = Build.A.BlockHeader.TestObject;
             blockHeader.Number = 2001;
-            blockHeader.GasLimit = gasTarget;
-            blockHeader.BaseFee = (UInt256)baseFee;
+            blockHeader.GasLimit = gasTarget * Eip1559Constants.ElasticityMultiplier;
+            blockHeader.BaseFeePerGas = (UInt256)baseFee;
             blockHeader.GasUsed = gasUsed;
-            UInt256 actualBaseFee = BlockHeader.CalculateBaseFee(blockHeader, releaseSpec);
+            UInt256 actualBaseFee = BaseFeeCalculator.Calculate(blockHeader, releaseSpec);
             Assert.AreEqual((UInt256)expectedBaseFee, actualBaseFee);
         }
         
@@ -145,10 +146,10 @@ namespace Nethermind.Core.Test
             
             BlockHeader blockHeader = Build.A.BlockHeader.TestObject;
             blockHeader.Number = 2001;
-            blockHeader.GasLimit = testCase.Info.ParentTargetGasUsed;
-            blockHeader.BaseFee = (UInt256)testCase.Info.ParentBaseFee;
+            blockHeader.GasLimit = testCase.Info.ParentTargetGasUsed * Eip1559Constants.ElasticityMultiplier;
+            blockHeader.BaseFeePerGas = (UInt256)testCase.Info.ParentBaseFee;
             blockHeader.GasUsed = testCase.Info.ParentGasUsed;
-            UInt256 actualBaseFee = BlockHeader.CalculateBaseFee(blockHeader, releaseSpec);
+            UInt256 actualBaseFee = BaseFeeCalculator.Calculate(blockHeader, releaseSpec);
             Assert.AreEqual((UInt256)testCase.Info.ExpectedBaseFee, actualBaseFee, testCase.Description);
         }
         

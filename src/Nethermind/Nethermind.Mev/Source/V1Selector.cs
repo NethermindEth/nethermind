@@ -17,40 +17,37 @@
 
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Int256;
+using Nethermind.Mev.Data;
+using Nethermind.Mev.Execution;
 
-namespace Nethermind.Mev
+namespace Nethermind.Mev.Source
 {
     public class V1Selector : IBundleSource
     {
-        private readonly IBundleSource _bundleSource;
-        private readonly IBundleSimulator _bundleSimulator;
+        private readonly ISimulatedBundleSource _simulatedBundleSource;
 
-        public V1Selector(IBundleSource bundleSource, IBundleSimulator bundleSimulator)
+        public V1Selector(ISimulatedBundleSource simulatedBundleSource)
         {
-            _bundleSource = bundleSource;
-            _bundleSimulator = bundleSimulator;
+            _simulatedBundleSource = simulatedBundleSource;
         }
         
-        public IEnumerable<MevBundle> GetBundles(BlockHeader parent, long gasLimit)
+        public async Task<IEnumerable<MevBundle>> GetBundles(BlockHeader parent, UInt256 timestamp, long gasLimit, CancellationToken token = default)
         {
-            MevBundle? bestBundle = null;
-            long bestAdjustedGasPrice = 0;
-            foreach (var bundle in _bundleSource.GetBundles(parent, gasLimit))
+            SimulatedMevBundle? bestBundle = null;
+            IEnumerable<SimulatedMevBundle> simulatedBundles = await _simulatedBundleSource.GetBundles(parent, timestamp, gasLimit, token);
+            foreach (var simulatedBundle in simulatedBundles)
             {
-                SimulatedMevBundle simulatedMevBundle = _bundleSimulator.Simulate(parent, gasLimit, bundle);
-                if (simulatedMevBundle.AdjustedGasPrice > bestAdjustedGasPrice)
+                if (bestBundle is null || simulatedBundle.AdjustedGasPrice > bestBundle.AdjustedGasPrice)
                 {
-                    bestBundle = bundle;
+                    bestBundle = simulatedBundle;
                 }
             }
 
-            if (bestBundle is null)
-            {
-                return Enumerable.Empty<MevBundle>();
-            }
-
-            return Enumerable.Repeat(bestBundle, 1);
+            return bestBundle is null ? Enumerable.Empty<MevBundle>() : Enumerable.Repeat(bestBundle.Bundle, 1);
         }
     }
 }

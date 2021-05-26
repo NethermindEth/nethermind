@@ -13,6 +13,18 @@ jobs:
     if: github.repository_owner == 'NethermindEth'
     runs-on: ubuntu-latest
     steps:
+      - name: Import Secrets
+        uses: hashicorp/vault-action@v2.1.2
+        with:
+          url: ${{ secrets.VAULT_URL }}
+          method: approle
+          roleId: ${{ secrets.ROLE_ID }}
+          secretId: ${{ secrets.SECRET_ID }}
+          namespace: admin/NethermindEth
+          secrets: |
+              github/nethermind/data/environments/release DOCKER_USERNAME ;
+              github/nethermind/data/environments/release DOCKER_PASSWORD ;
+              github/nethermind/data/secrets REPOSITORY_DISPATCH_TOKEN
       - name: Checking out repository
         uses: actions/checkout@v2
       - name: Unshallow fetching
@@ -22,7 +34,7 @@ jobs:
         run: |
           echo ::set-output name=TAG::${{ github.event.inputs.tag }}
           echo ::set-output name=TAG_FROM_REPO::$(git describe --tags --always | cut -d- -f1)
-          echo ::set-output name=docker_username::${{ secrets.DOCKER_USERNAME }}
+          echo ::set-output name=docker_username::${{ env.DOCKER_USERNAME }}
           echo ::set-output name=docker_image::nethermind/nethermind
       - name: Setting up QEMU
         uses: docker/setup-qemu-action@v1
@@ -32,14 +44,14 @@ jobs:
       - name: Logging to Docker Hub
         if: success()
         env:
-          DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
+          DOCKER_PASSWORD: ${{ env.DOCKER_PASSWORD }}
         run: |
           echo "${DOCKER_PASSWORD}" | docker login --username "${{ steps.settings.outputs.docker_username }}" --password-stdin
       - name: Building & Pushing image to docker registry (major) / trigger DAppNode Build
         if: steps.settings.outputs.TAG == steps.settings.outputs.TAG_FROM_REPO
         run: |
           docker buildx build --platform=linux/amd64,linux/arm64 -t "${{ steps.settings.outputs.docker_image }}:latest" -t "${{ steps.settings.outputs.docker_image }}:${{ steps.settings.outputs.TAG }}" -f Dockerfile --build-arg GIT_COMMIT=$(git log -1 --format=%h) . --push
-          curl -v -X POST -u "${{ secrets.PAT_GITHUB }}" -H "Accept: application/vnd.github.everest-preview+json" -H "Content-Type: application/json" --data '{"event_type":"dappnode", "client_payload": { "tag":"${{ steps.settings.outputs.TAG }}"}}' https://api.github.com/repos/nethermindeth/nethermind/dispatches
+          curl -v -X POST -u "${{ env.REPOSITORY_DISPATCH_TOKEN }}" -H "Accept: application/vnd.github.everest-preview+json" -H "Content-Type: application/json" --data '{"event_type":"dappnode", "client_payload": { "tag":"${{ steps.settings.outputs.TAG }}"}}' https://api.github.com/repos/nethermindeth/nethermind/dispatches
       - name: Building & Pushing image to docker registry  (patch)
         if: steps.settings.outputs.TAG != steps.settings.outputs.TAG_FROM_REPO
         run: |

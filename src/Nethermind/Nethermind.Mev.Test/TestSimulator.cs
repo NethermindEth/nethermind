@@ -18,15 +18,20 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
+using Nethermind.Mev.Data;
+using Nethermind.Mev.Execution;
+using Nethermind.Mev.Source;
 using NUnit.Framework;
 
 namespace Nethermind.Mev.Test
 {
-    public class TestSimulator : IBundleSimulator, IBundleSource, ITxSource
+    public class TestSimulator : IBundleSimulator, IBundleSource, ITxSource, ISimulatedBundleSource
     {
         private readonly TestJson _testJson;
 
@@ -36,12 +41,12 @@ namespace Nethermind.Mev.Test
             _testJson = testJson;
         }
 
-        public SimulatedMevBundle Simulate(BlockHeader parent, long gasLimit, MevBundle bundle)
+        public Task<SimulatedMevBundle> Simulate(MevBundle bundle, BlockHeader parent, CancellationToken cancellationToken = default)
         {
             long gasUsed = 0;
             UInt256 txFees = 0;
             UInt256 coinbasePayments = 0;
-            foreach (Transaction transaction in bundle.Txs)
+            foreach (Transaction transaction in bundle.Transactions)
             {
                 foreach (TxForTest? txForTest in _testJson.Txs!)
                 {
@@ -54,24 +59,12 @@ namespace Nethermind.Mev.Test
                 }
             }
 
-            SimulatedMevBundle simulatedMevBundle = new(gasUsed, txFees, coinbasePayments);
-            return simulatedMevBundle;
+            SimulatedMevBundle simulatedMevBundle = new(bundle, true, gasUsed, txFees, coinbasePayments);
+            return Task.FromResult(simulatedMevBundle);
         }
 
-        public IEnumerable<SimulatedMevBundle> Simulate(BlockHeader parent, long gasLimit,
-            IEnumerable<MevBundle> bundles)
-        {
-            foreach (MevBundle mevBundle in bundles)
-            {
-                // TODO: apply all the interactions
-                yield return Simulate(parent, gasLimit, mevBundle);
-            }
-        }
-
-        public IEnumerable<MevBundle> GetBundles(BlockHeader parent, long gasLimit)
-        {
-            return _testJson.Bundles!.Select(ToBundle);
-        }
+        public Task<IEnumerable<MevBundle>> GetBundles(BlockHeader parent, UInt256 timestamp, long gasLimit, CancellationToken cancellationToken = default) => 
+            Task.FromResult(_testJson.Bundles!.Select(ToBundle));
 
         public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit)
         {
@@ -131,13 +124,20 @@ namespace Nethermind.Mev.Test
         private MevBundle ToBundle(MevBundleForTest? bundleForTest)
         {
             if (bundleForTest == null) throw new ArgumentNullException(nameof(bundleForTest));
-            return new(bundleForTest.Txs.Select(ToTx).ToArray());
+            return new(bundleForTest.Txs.Select(ToTx).ToArray(), 1, UInt256.Zero, UInt256.Zero);
         }
 
         private Transaction ToTx(Keccak txs)
         {
             TxForTest txForTest = _testJson.Txs!.Single(t => t!.Hash == txs)!; 
             return new() {Hash = txForTest.Hash, GasLimit = txForTest.GasUsed, GasPrice = txForTest.GasPrice};
+        }
+
+        async Task<IEnumerable<SimulatedMevBundle>> ISimulatedBundleSource.GetBundles(BlockHeader parent, UInt256 timestamp, long gasLimit, CancellationToken token)
+        {
+            IEnumerable<MevBundle> bundles = await GetBundles(parent, timestamp, gasLimit, token);
+            IEnumerable<Task<SimulatedMevBundle>> simulatedBundles = bundles.Select(b => Simulate(b, parent, token));
+            return await Task.WhenAll(simulatedBundles);
         }
     }
 }

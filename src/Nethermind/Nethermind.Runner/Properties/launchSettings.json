@@ -83,5 +83,9 @@
       "commandName": "Project",
       "commandLineArgs": "--config configs\\aleut.cfg"
     },
+    "Baikal": {
+      "commandName": "Project",
+      "commandLineArgs": "--config configs\\baikal.cfg --Init.DiagnosticMode MemDb"
+    }
   }
 }

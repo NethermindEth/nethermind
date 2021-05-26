@@ -39,9 +39,9 @@ namespace Nethermind.Core
 
         public UInt256 Nonce { get; set; }
         public UInt256 GasPrice { get; set; }
-        public UInt256 GasPremium => GasPrice; 
-        public UInt256 DecodedFeeCap { get; set; }
-        public UInt256 FeeCap => IsEip1559 ? DecodedFeeCap : GasPrice;
+        public UInt256 MaxPriorityFeePerGas => GasPrice; 
+        public UInt256 DecodedMaxFeePerGas { get; set; }
+        public UInt256 MaxFeePerGas => IsEip1559 ? DecodedMaxFeePerGas : GasPrice;
         public bool IsEip1559 => Type == TxType.EIP1559;
         public long GasLimit { get; set; }
         public Address? To { get; set; }
@@ -73,7 +73,7 @@ namespace Nethermind.Core
         public string ToShortString()
         {
             string gasPriceString =
-                IsEip1559 ? $"gas premium: {GasPremium}, fee cap: {FeeCap}" : $"gas price {GasPrice}";
+                IsEip1559 ? $"maxPriorityFeePerGas: {MaxPriorityFeePerGas}, MaxFeePerGas: {MaxFeePerGas}" : $"gas price {GasPrice}";
             return $"[TX: hash {Hash} from {SenderAddress} to {To} with data {Data?.ToHexString()}, {gasPriceString} and limit {GasLimit}, nonce {Nonce}]";
         }
 
@@ -85,8 +85,8 @@ namespace Nethermind.Core
             builder.AppendLine($"{indent}To:        {To}");
             if (IsEip1559)
             {
-                builder.AppendLine($"{indent}Gas premium: {GasPremium}");
-                builder.AppendLine($"{indent}Fee cap: {FeeCap}");
+                builder.AppendLine($"{indent}MaxPriorityFeePerGas: {MaxPriorityFeePerGas}");
+                builder.AppendLine($"{indent}MaxFeePerGas: {MaxFeePerGas}");
             }
             else
             {
@@ -112,8 +112,8 @@ namespace Nethermind.Core
         {
             if (eip1559Enabled)
             {
-                UInt256 gasPrice = baseFee + GasPremium;
-                gasPrice = UInt256.Min(gasPrice, FeeCap);
+                UInt256 gasPrice = baseFee + MaxPriorityFeePerGas;
+                gasPrice = UInt256.Min(gasPrice, MaxFeePerGas);
                 if (IsServiceTransaction)
                     gasPrice = UInt256.Zero;;
                 
@@ -125,7 +125,7 @@ namespace Nethermind.Core
         
         public UInt256 CalculateEffectiveGasPrice(bool eip1559Enabled, UInt256 baseFee)
         {
-            return eip1559Enabled ? UInt256.Min(IsEip1559 ? FeeCap : GasPrice, GasPremium + baseFee) : GasPrice;
+            return eip1559Enabled ? UInt256.Min(IsEip1559 ? MaxFeePerGas : GasPrice, MaxPriorityFeePerGas + baseFee) : GasPrice;
         }
     }
 
@@ -141,9 +141,23 @@ namespace Nethermind.Core
 
     public static class TransactionExtensions
     {
-        public static bool IsSystem(this Transaction tx)
+        public static bool IsSystem(this Transaction tx) => 
+            tx is SystemTransaction || tx.SenderAddress == Address.SystemUser;
+
+        public static bool IsFree(this Transaction tx) => tx.IsSystem() || tx.IsServiceTransaction;
+
+        public static bool TryCalculatePremiumPerGas(this Transaction tx, UInt256 baseFeePerGas, out UInt256 premiumPerGas)
         {
-            return tx is SystemTransaction || tx.SenderAddress == Address.SystemUser;
+            bool freeTransaction = tx.IsFree();
+            UInt256 feeCap = tx.IsEip1559 ? tx.MaxFeePerGas : tx.GasPrice;
+            if (baseFeePerGas > feeCap)
+            {
+                premiumPerGas = UInt256.Zero; 
+                return !freeTransaction;
+            }
+            
+            premiumPerGas = UInt256.Min(tx.MaxPriorityFeePerGas, feeCap - baseFeePerGas);
+            return true;
         }
     }
 }

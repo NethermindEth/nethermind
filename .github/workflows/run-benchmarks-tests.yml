@@ -1,0 +1,37 @@
+name: '[RUN] Benchmark Performance Tests'
+
+on:
+  push:
+    branches: [ master ]
+  workflow_dispatch:
+  
+
+jobs:
+  run-benchmarks:
+    if: github.repository_owner == 'NethermindEth'
+    name: Triggering Nethermind Benchmark Performance Run
+    runs-on: ubuntu-latest
+    steps:
+    - name: Import Secrets
+      uses: hashicorp/vault-action@v2.1.2
+      with:
+        url: ${{ secrets.VAULT_URL }}
+        method: approle
+        roleId: ${{ secrets.ROLE_ID }}
+        secretId: ${{ secrets.SECRET_ID }}
+        namespace: admin/NethermindEth
+        secrets: |
+            github/nethermind/data/secrets AWS_ACCESS_KEY_ID ;
+            github/nethermind/data/secrets AWS_SECRET_ACCESS_KEY
+    - name: Configure AWS Credentials
+      uses: aws-actions/configure-aws-credentials@v1
+      with:
+        aws-access-key-id: ${{ env.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ env.AWS_SECRET_ACCESS_KEY }}
+        aws-region: eu-central-1
+    - name: Deploy Amazon EC2 instance for Benchmarking
+      uses: aws-actions/aws-cloudformation-github-deploy@v1
+      with:
+        name: Benchmark-${{ github.sha }}
+        template: https://cf-templates-1tzgi56hs2v4n-eu-central-1.s3.eu-central-1.amazonaws.com/performance-test.yaml
+        parameter-overrides: "CommitSha=${{ github.sha }}"

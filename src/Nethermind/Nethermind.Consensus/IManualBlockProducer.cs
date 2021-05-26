@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -17,14 +17,12 @@
 
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Consensus;
 using Nethermind.Core;
-using Nethermind.Int256;
 
-namespace Nethermind.Merge.Plugin.Handlers
+namespace Nethermind.Consensus
 {
-    public interface IEth2BlockProducer : IBlockProducer
+    public interface IManualBlockProducer : IBlockProducer
     {
-        Task<Block?> TryProduceBlock(BlockHeader parentHeader, UInt256 timestamp, CancellationToken cancellationToken = default);
+        Task<Block?> TryProduceBlock(BlockHeader parentHeader, CancellationToken cancellationToken = default);
     }
 }

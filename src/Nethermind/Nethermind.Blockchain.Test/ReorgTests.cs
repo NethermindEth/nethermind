@@ -98,7 +98,6 @@ namespace Nethermind.Blockchain.Test
                 transactionProcessor,
                 stateProvider,
                 storageProvider,
-                txPool,
                 NullReceiptStorage.Instance,
                 new WitnessCollector(memDbProvider.StateDb, LimboLogs.Instance),
                 LimboLogs.Instance);

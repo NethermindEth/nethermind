@@ -31,7 +31,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
 {
     public class EthModuleFactory : ModuleFactoryBase<IEthRpcModule>
     {
-        private readonly ReadOnlyBlockTree _blockTree;
+        private readonly IReadOnlyBlockTree _blockTree;
         private readonly ILogManager _logManager;
         private readonly IStateReader _stateReader;
         private readonly IBlockchainBridgeFactory _blockchainBridgeFactory;

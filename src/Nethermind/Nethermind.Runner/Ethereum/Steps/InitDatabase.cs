@@ -71,10 +71,10 @@ namespace Nethermind.Runner.Ethereum.Steps
                     _api.DbProvider = beamSyncProvider;
                 }
             }
-            catch(TypeInitializationException)
+            catch(TypeInitializationException e)
             {
                 if(logger.IsError)
-                    logger.Error("RocksDb was not found, please make sure it is installed on your machine. \n On macOs : 'brew install rocksdb'");
+                    logger.Error("RocksDb was not found, please make sure it is installed on your machine. \n On macOs : 'brew install rocksdb'", e);
             }
         }
 
