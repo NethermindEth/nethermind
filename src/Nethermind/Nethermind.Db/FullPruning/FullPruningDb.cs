@@ -20,6 +20,7 @@ using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using Nethermind.Core;
+using Nethermind.Logging;
 
 namespace Nethermind.Db.FullPruning
 {
@@ -105,7 +106,9 @@ namespace Nethermind.Db.FullPruning
             context = pruningContext ?? newContext;
             return pruningContext is null;
         }
-        
+
+        public string GetPath(string basePath) => _settings.DbPath.GetApplicationResourcePath(basePath);
+
         private void FinishPruning()
         {
             IDb oldDb = Interlocked.Exchange(ref _currentDb, _pruningContext?.CloningDb);
