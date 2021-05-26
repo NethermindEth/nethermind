@@ -297,7 +297,7 @@ namespace Nethermind.TxPool
                 && payableGasPrice <= lastTx?.GasBottleneck)
             {
                 if (_logger.IsTrace)
-                    _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, too low gasPrice.");
+                    _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, too low payable gas price.");
                 return AddTxResult.FeeTooLow;
             }
 
@@ -313,11 +313,6 @@ namespace Nethermind.TxPool
 
         private AddTxResult AddCore(Transaction tx, bool isPersistentBroadcast, bool isReorg)
         {
-            if (tx.Hash is null)
-            {
-                return AddTxResult.Invalid;
-            }
-
             bool isInHashCache = _hashCache.Get(tx.Hash);
             // !!! do not change it to |=
             bool isKnown = !isReorg && isInHashCache;
@@ -340,7 +335,7 @@ namespace Nethermind.TxPool
                     if (inserted)
                     {
                         UpdateBucket(tx.SenderAddress!);
-                        ForgetHashIfTransactionRemoved(removed?.Hash);
+                        ForgetHashOfRemovedTransaction(removed?.Hash);
                     }
                     isKnown |= !inserted;
                 }
@@ -366,7 +361,7 @@ namespace Nethermind.TxPool
             return AddTxResult.Added;
         }
 
-        private void ForgetHashIfTransactionRemoved(Keccak? hash)
+        private void ForgetHashOfRemovedTransaction(Keccak? hash)
         {
             if (hash is not null)
             {
