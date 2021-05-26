@@ -32,13 +32,13 @@ namespace Nethermind.Mev.Source
         }
 
         protected override IComparer<BundleWithHashes> GetUniqueComparer(IComparer<BundleWithHashes> comparer) //compares all the bundles to evict the worst one
-            => comparer.ThenBy(CompareBundlesWithHashesByIdentity.Default);
+            => comparer.ThenBy(CompareBundleWithHashesByIdentity.Default);
 
         protected override IComparer<BundleWithHashes> GetGroupComparer(IComparer<BundleWithHashes> comparer) //compares two bundles with same block #
             => comparer;
 
         protected override IComparer<BundleWithHashes> GetSameIdentityComparer(IComparer<BundleWithHashes> comparer1) => 
-            CompareMevBundlesByPoolIndex.Default;
+            CompareBundleWithHashesByPoolIndex.Default;
 
         protected override long MapToGroup(BundleWithHashes bundleWithHashes) => bundleWithHashes.Bundle.BlockNumber;
     }
