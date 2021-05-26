@@ -367,7 +367,7 @@ namespace Nethermind.Mev.Test
             await SendSignedTransaction(chain, tx1);
             
             await chain.AddBlock(true);
-
+            
             GetHashes(chain.BlockTree.Head!.Transactions).Should().Equal(GetHashes(new[] { tx2, tx3, tx1 }));
         }
         
@@ -380,11 +380,31 @@ namespace Nethermind.Mev.Test
             Address contractAddress = await Contracts.Deploy(chain, Contracts.ReverterCode);
             Transaction tx1 = Build.A.Transaction.WithGasLimit(Contracts.LargeGasLimit).WithGasPrice(500).WithTo(contractAddress).WithData(Bytes.FromHexString(Contracts.ReverterInvokeFail)).SignedAndResolved(TestItem.PrivateKeyC).TestObject;
 
-            SuccessfullySendBundle_V2(chain, 1, new[] {tx1.Hash!}, tx1);
-            
+            SuccessfullySendBundle_V2(chain, 2, new Keccak[] {tx1.Hash!}, tx1);
+
             await chain.AddBlock(true);
 
             GetHashes(chain.BlockTree.Head!.Transactions).Should().Equal(GetHashes(new[] { tx1 }));
+            // currently gives empty block :/
+        }
+        
+        [Test]
+        public async Task v2_Should_accept_reverting_larger_bundle_with_one_reverting_tx_in_RevertingTxHashes()
+        {
+            var chain = await CreateChain(SelectorType.V2, 5);
+            chain.GasLimitCalculator.GasLimit = 10_000_000;
+            
+            Address contractAddress = await Contracts.Deploy(chain, Contracts.ReverterCode);
+            Transaction tx1 = Build.A.Transaction.WithGasLimit(Contracts.LargeGasLimit).WithGasPrice(500).WithTo(contractAddress).WithData(Bytes.FromHexString(Contracts.ReverterInvokeFail)).SignedAndResolved(TestItem.PrivateKeyC).TestObject;
+            Transaction tx2 = Build.A.Transaction.WithGasLimit(GasCostOf.Transaction).WithGasPrice(130ul).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+
+            SuccessfullySendBundle_V2(chain, 2, new Keccak[] {tx1.Hash!}, tx1, tx2);
+            
+            await SendSignedTransaction(chain, tx1);
+
+            await chain.AddBlock(true);
+
+            GetHashes(chain.BlockTree.Head!.Transactions).Should().Equal(GetHashes(new[] { tx1, tx2 }));
             // currently gives empty block :/
         }
         
