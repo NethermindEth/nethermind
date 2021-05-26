@@ -17,12 +17,9 @@
 
 namespace Nethermind.Db
 {
-    public class PruningConfig : IPruningConfig
+    public enum FullPruningTrigger
     {
-        public PruningMode Mode { get; set; } = PruningMode.None;
-        public long CacheMb { get; set; } = 512;
-        public long PersistenceInterval { get; set; } = 8192;
-        public long FullPruningThresholdMb { get; set; } = 256000;
-        public FullPruningTrigger FullPruningTrigger { get; set; } = FullPruningTrigger.StateDbSize;
+        StateDbSize,
+        VolumeFreeSpace
     }
 }

@@ -42,6 +42,16 @@ namespace Nethermind.Db
             DefaultValue = "8192")]
         long PersistenceInterval { get; set; }
         
+        [ConfigItem(
+            Description = "Defines threshold in MB to trigger full pruning, depends on 'Mode' and 'FullPruningTrigger'.",
+            DefaultValue = "256000")]
+        long FullPruningThresholdMb { get; set; }
+        
+        [ConfigItem(
+            Description = "Defines trigger for full pruning, either size of StateDB or free space left on Volume where StateDB is located.",
+            DefaultValue = "StateDbSize")]
+        FullPruningTrigger FullPruningTrigger { get; set; }        
+        
         
     }
 }
