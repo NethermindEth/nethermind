@@ -52,7 +52,6 @@ namespace Nethermind.Mev.Source
         private readonly ConcurrentDictionary<Keccak, ConcurrentDictionary<MevBundle, SimulatedMevBundleContext>> _simulatedBundles = new();
         private readonly ILogger _logger;
         private readonly CompareMevBundlesByBlock _compareByBlock;
-        public SortedSet<MevBundle> _sortedSet;
         public BundlePool(
             IBlockTree blockTree, 
             IBundleSimulator simulator,
