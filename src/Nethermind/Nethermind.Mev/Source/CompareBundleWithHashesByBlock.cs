@@ -20,17 +20,31 @@ using Nethermind.Mev.Data;
 
 namespace Nethermind.Mev.Source
 {
-    public class CompareMevBundlesByIdentity : IComparer<MevBundle>
+    public class CompareBundleWithHashesByBlock : IComparer<BundleWithHashes>
     {
-        public static readonly CompareMevBundlesByIdentity Default = new();
+        public long BestBlockNumber { get; set; }
         
-        public int Compare(MevBundle? x, MevBundle? y)
+        public int Compare(BundleWithHashes? x, BundleWithHashes? y)
         {
-            if (ReferenceEquals(x, y)) return 0;
+            if (ReferenceEquals(x, y)) return 0; 
             if (ReferenceEquals(null, y)) return 1;
             if (ReferenceEquals(null, x)) return -1;
-            
-            return x.Hash.CompareTo(y.Hash);
+
+            MevBundle x1 = x.Bundle;
+            MevBundle y1 = y.Bundle;
+
+            if (x1.BlockNumber == y1.BlockNumber)
+            {
+                return 0;
+            }
+            else if (x1.BlockNumber > BestBlockNumber && y1.BlockNumber > BestBlockNumber)
+            {
+                return x1.BlockNumber.CompareTo(y1.BlockNumber);
+            }
+            else //if head is 5, and we have 8 and 4, we want to keep it that way; and if we have 4 and 3 we also want to keep it that way
+            {
+                return y1.BlockNumber.CompareTo(x1.BlockNumber);
+            }
         }
     }
 }
