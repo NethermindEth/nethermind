@@ -1582,7 +1582,10 @@ namespace Nethermind.Blockchain
             set
             {
                 _highestPersistedState = value;
-                _blockInfoDb.Set(StateHeadHashDbEntryAddress, Rlp.Encode(value).Bytes);
+                if (value is not null)
+                {
+                    _blockInfoDb.Set(StateHeadHashDbEntryAddress, Rlp.Encode(value.Value).Bytes);
+                }
             }
         }
     }
