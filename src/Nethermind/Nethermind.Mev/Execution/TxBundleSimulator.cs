@@ -20,6 +20,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -36,13 +37,15 @@ namespace Nethermind.Mev.Execution
         private readonly IGasLimitCalculator _gasLimitCalculator;
         private readonly ITimestamper _timestamper;
         private readonly ITxPool _txPool;
+        private readonly IBlockFinalizationManager _finalizationManager;
         private long _gasLimit;
 
-        public TxBundleSimulator(ITracerFactory tracerFactory, IGasLimitCalculator gasLimitCalculator, ITimestamper timestamper, ITxPool txPool) : base(tracerFactory)
+        public TxBundleSimulator(ITracerFactory tracerFactory, IGasLimitCalculator gasLimitCalculator, ITimestamper timestamper, ITxPool txPool, IBlockFinalizationManager finalizationManager) : base(tracerFactory)
         {
             _gasLimitCalculator = gasLimitCalculator;
             _timestamper = timestamper;
             _txPool = txPool;
+            _finalizationManager = finalizationManager;
         }
 
         public Task<SimulatedMevBundle> Simulate(MevBundle bundle, BlockHeader parent, CancellationToken cancellationToken = default)
@@ -59,20 +62,21 @@ namespace Nethermind.Mev.Execution
                     new List<Keccak>(), 
                     0, UInt256.Zero, 
                     UInt256.Zero, 
-                    UInt256.Zero));
+                    new Dictionary<Keccak, UInt256>()));
             }
         }
 
         protected override SimulatedMevBundle BuildResult(MevBundle bundle, Block block, BundleBlockTracer tracer, Keccak resultStateRoot) => 
-            new(bundle, tracer.Success, tracer.FailedTransactions, tracer.GasUsed, tracer.TxFees, tracer.CoinbasePayments, tracer.EligibleGasFeePayment);
+            new(bundle, tracer.Success, tracer.FailedTransactions, tracer.GasUsed, tracer.TxFees, tracer.CoinbasePayments, tracer.EligibleGasFeePaymentPerTransaction);
 
-        protected override BundleBlockTracer CreateBlockTracer() => new(_gasLimit, Beneficiary, _txPool);
+        protected override BundleBlockTracer CreateBlockTracer() => new(_gasLimit, Beneficiary, _txPool, _finalizationManager);
 
         public class BundleBlockTracer : IBlockTracer
         {
             private readonly long _gasLimit;
             private readonly Address _beneficiary;
             private readonly ITxPool _txPool;
+            private readonly IBlockFinalizationManager _finalizationManager;
 
             private BundleTxTracer? _tracer;
             private Block? _block;
@@ -82,17 +86,37 @@ namespace Nethermind.Mev.Execution
             
             public long GasUsed { get; private set; }
 
-            public BundleBlockTracer(long gasLimit, Address beneficiary, ITxPool txPool)
+            public BundleBlockTracer(long gasLimit, Address beneficiary, ITxPool txPool, IBlockFinalizationManager finalizationManager)
             {
                 _gasLimit = gasLimit;
                 _beneficiary = beneficiary;
                 _txPool = txPool;
+                _finalizationManager = finalizationManager;
+            }
+            
+            private void TransactionSeenInMempool(object? sender, TxEventArgs tx)
+            {
+                if (EligibleGasFeePaymentPerTransaction.ContainsKey(tx.Transaction.Hash!))
+                {
+                    EligibleGasFeePaymentPerTransaction[tx.Transaction.Hash!] = UInt256.Zero;
+                }
+            }
+
+            private void CancelMempoolSubscriptionIfBlockFinalized(object? sender, FinalizeEventArgs eventArgs)
+            {
+                if (eventArgs.FinalizingBlock.Number == _block!.Header.Number)
+                {
+                    _txPool.NewPending -= TransactionSeenInMempool;
+                    _finalizationManager.BlocksFinalized -= CancelMempoolSubscriptionIfBlockFinalized;
+                }
+                
             }
 
             public bool IsTracingRewards => true;
             public UInt256 TxFees { get; private set; }
 
-            public UInt256 EligibleGasFeePayment { get; private set; }
+            public Dictionary<Keccak, UInt256> EligibleGasFeePaymentPerTransaction { get; set; } =
+                new Dictionary<Keccak, UInt256>();
 
             public UInt256 CoinbasePayments
             {
@@ -136,6 +160,7 @@ namespace Nethermind.Mev.Execution
                 GasUsed += _tracer!.GasSpent;
                 _beneficiaryBalanceBefore ??= _tracer.BeneficiaryBalanceBefore;
                 _beneficiaryBalanceAfter = _tracer.BeneficiaryBalanceAfter;
+                EligibleGasFeePaymentPerTransaction.Add(_tracer.Transaction?.Hash!, UInt256.Zero);
                 Success &= _tracer.Success;
                 if (!_tracer.Success)
                 {
@@ -147,7 +172,10 @@ namespace Nethermind.Mev.Execution
                     TxFees += (UInt256)_tracer.GasSpent * premiumPerGas;
                     if (!_txPool.IsInHashCache(_tracer.Transaction.Hash))
                     {
-                        EligibleGasFeePayment += (UInt256)_tracer.GasSpent * premiumPerGas;
+                        _txPool.NewPending += TransactionSeenInMempool;
+                        _finalizationManager.BlocksFinalized += CancelMempoolSubscriptionIfBlockFinalized;
+                        EligibleGasFeePaymentPerTransaction[_tracer.Transaction?.Hash!] += 
+                            (UInt256)_tracer.GasSpent * premiumPerGas;
                     }
                 }
 

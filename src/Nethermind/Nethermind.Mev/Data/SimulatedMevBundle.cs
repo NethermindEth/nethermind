@@ -34,7 +34,7 @@ namespace Nethermind.Mev.Data
             long gasUsed, 
             UInt256 txFees, 
             UInt256 coinbasePayments, 
-            UInt256 eligibleGasFeePayment)
+            Dictionary<Keccak, UInt256> eligibleGasFeePaymentPerTransaction)
         {
             Bundle = bundle;
             Success = success;
@@ -42,9 +42,9 @@ namespace Nethermind.Mev.Data
             GasUsed = gasUsed;
             TxFees = txFees;
             CoinbasePayments = coinbasePayments;
-            EligibleGasFeePayment = eligibleGasFeePayment;
+            EligibleGasFeePaymentPerTransaction = eligibleGasFeePaymentPerTransaction;
             IEnumerable<Keccak?> unexpectedFailedTransactions = failedTransactions.Where(tx => !bundle.RevertingTxHashes.Contains(tx));
-            if (!unexpectedFailedTransactions.Any())
+            if (!unexpectedFailedTransactions.Any() && Success == false)
             {
                 Success = true;
             }
@@ -54,8 +54,21 @@ namespace Nethermind.Mev.Data
         
         public UInt256 TxFees { get; set; }
         
-        public UInt256 EligibleGasFeePayment { get; set; }
-
+        public Dictionary<Keccak, UInt256> EligibleGasFeePaymentPerTransaction { get; set; }
+        
+        public UInt256 EligibleGasFeePayment
+        {
+            get
+            {
+                // UInt256 doesn't implement Sum for some reason? need to clean this up
+                UInt256 sum = UInt256.Zero;
+                foreach (UInt256 value in EligibleGasFeePaymentPerTransaction.Values)
+                {
+                    sum += value;
+                }
+                return sum;
+            }
+        }
         public UInt256 Profit => TxFees + CoinbasePayments;
 
         public MevBundle Bundle { get; }
