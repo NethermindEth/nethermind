@@ -44,7 +44,7 @@ namespace Nethermind.Mev.Test
             get
             {
                 yield return new BundleTest(8, DefaultTimestamp, 0, 4, null);
-                yield return new BundleTest(9, DefaultTimestamp, 2, 4, null);
+                yield return new BundleTest(9, DefaultTimestamp, 1, 5, null);
                 yield return new BundleTest(10, 8, 0, 2, 
                     p => p.AddBundle(new MevBundle(Array.Empty<Transaction>(), 10, 5, 7)));
                 yield return new BundleTest(11, DefaultTimestamp, 0, 2, null);
@@ -138,7 +138,7 @@ namespace Nethermind.Mev.Test
         public static void sort_bundles_by_increasing_block_number_and_then_transaction_id()
         {
             Transaction[] txs = Array.Empty<Transaction>();
-            BundleSortedPool txPool = new BundleSortedPool(200, Comparer<MevBundle>.Default, LimboLogs.Instance);
+            BundleSortedPool txPool = new BundleSortedPool(200, Comparer<BundleWithHashes>.Default, LimboLogs.Instance);
             List<MevBundle> bundleList = new List<MevBundle>();
             for (int i = 10; i > 0; i--)
             {
@@ -149,13 +149,13 @@ namespace Nethermind.Mev.Test
             bundleList.Add(new MevBundle(txs, 4, 5, 10)); //should be ahead of 4,0 but before 5,0
             foreach (MevBundle bundle in bundleList)
             {
-                txPool.TryInsert(bundle, bundle);
+                txPool.TryInsert(bundle, new BundleWithHashes(bundle));
             } 
-            foreach (KeyValuePair<long, MevBundle[]> kvp in txPool.GetBucketSnapshot())
+            foreach (KeyValuePair<long, BundleWithHashes[]> kvp in txPool.GetBucketSnapshot())
             {
-                foreach (MevBundle bundleObj in kvp.Value)
+                foreach (BundleWithHashes bundleObj in kvp.Value)
                 {
-                    Console.WriteLine("Block: {0}, Start Time: {1}", kvp.Key, bundleObj.MinTimestamp);
+                    Console.WriteLine("Block: {0}, Start Time: {1}", kvp.Key, bundleObj.Bundle.MinTimestamp);
                 }
             }
         }
