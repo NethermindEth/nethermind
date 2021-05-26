@@ -383,8 +383,8 @@ namespace Nethermind.Blockchain.Test.TxPools
         }
 
         [TestCase(1, 0)]
-        [TestCase(2, 2)]
-        public void should_remove_bucket_after_removal_of_tx_from_it_if_first_tx_to_execute_have_insufficient_balance(int numberOfTxsPossibleToExecuteBeforeGasExhaustion, int expectedPoolCount)
+        [TestCase(2, 10)]
+        public void should_dump_GasBottleneck_of_all_txs_in_bucket_after_removal_of_tx_from_it_if_first_tx_to_execute_have_insufficient_balance(int numberOfTxsPossibleToExecuteBeforeGasExhaustion, int expectedMaxGasBottleneck)
         {
             const int gasPrice = 10;
             const int value = 1;
@@ -407,12 +407,14 @@ namespace Nethermind.Blockchain.Test.TxPools
             }
 
             _txPool.GetPendingTransactionsCount().Should().Be(3);
-            
+            _txPool.GetPendingTransactions().Select(t => t.GasBottleneck).Max().Should().Be(gasPrice);
+
             _txPool.RemoveTransaction(transactions[0]);
             _stateProvider.SubtractFromBalance(TestItem.AddressA, (UInt256)oneTxPrice, new ReleaseSpec());
+            _stateProvider.IncrementNonce(TestItem.AddressA);
             
-            _txPool.RemoveOrUpdateBuckets();
-            _txPool.GetPendingTransactionsCount().Should().Be(expectedPoolCount);
+            _txPool.UpdateBuckets();
+            _txPool.GetPendingTransactions().Select(t => t.GasBottleneck).Max().Should().Be((UInt256)expectedMaxGasBottleneck);
         }
         
         [Test]
@@ -426,6 +428,7 @@ namespace Nethermind.Blockchain.Test.TxPools
                 transactions[i] = Build.A.Transaction
                     .WithSenderAddress(TestItem.AddressA)
                     .WithNonce((UInt256)i)
+                    .WithTimestamp((UInt256)i)
                     .WithGasPrice((UInt256)(i + 2))
                     .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
                 EnsureSenderBalance(transactions[i]);
@@ -446,43 +449,6 @@ namespace Nethermind.Blockchain.Test.TxPools
         }
 
         [Test]
-        public void should_remove_txHash_from_hashCache_when_tx_removed_because_of_insufficient_balance()
-        {
-            const int gasPrice = 10;
-            const int value = 1;
-            int oneTxPrice = _txGasLimit * gasPrice + value;
-            _txPool = CreatePool(_noTxStorage);
-            Transaction[] transactions = new Transaction[3];
-
-            EnsureSenderBalance(TestItem.AddressA, (UInt256)(oneTxPrice));
-            
-            for (int i = 0; i < 3; i++)
-            {
-                transactions[i] = Build.A.Transaction
-                    .WithSenderAddress(TestItem.AddressA)
-                    .WithNonce((UInt256)i)
-                    .WithGasPrice((UInt256)gasPrice)
-                    .WithGasLimit(_txGasLimit)
-                    .WithValue(value)
-                    .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
-                _txPool.AddTransaction(transactions[i], TxHandlingOptions.PersistentBroadcast);
-            }
-
-            _txPool.GetPendingTransactionsCount().Should().Be(3);
-            _txPool.IsKnown(transactions[1].Hash).Should().BeTrue();
-            _txPool.IsKnown(transactions[2].Hash).Should().BeTrue();
-            
-            _txPool.RemoveTransaction(transactions[0]);
-            _stateProvider.SubtractFromBalance(TestItem.AddressA, (UInt256)oneTxPrice, new ReleaseSpec());
-            
-            _txPool.RemoveOrUpdateBuckets();
-            _txPool.GetPendingTransactionsCount().Should().Be(0);
-
-            _txPool.IsKnown(transactions[1].Hash).Should().BeFalse();
-            _txPool.IsKnown(transactions[2].Hash).Should().BeFalse();
-        }
-
-        [Test]
         public void should_remove_txHash_from_hashCache_when_tx_removed_because_of_txPool_size_exceeded()
         {
             _txPool = CreatePool(_noTxStorage, new TxPoolConfig(){Size = 5});
@@ -493,6 +459,7 @@ namespace Nethermind.Blockchain.Test.TxPools
                 transactions[i] = Build.A.Transaction
                     .WithSenderAddress(TestItem.AddressA)
                     .WithNonce((UInt256)i)
+                    .WithTimestamp((UInt256)i)
                     .WithGasPrice((UInt256)(i + 2))
                     .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
                 EnsureSenderBalance(transactions[i]);

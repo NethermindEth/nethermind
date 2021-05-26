@@ -290,6 +290,36 @@ namespace Nethermind.TxPool.Collections
                 _sortedValues.Add(value, key);
             }
         }
+        
+        [MethodImpl(MethodImplOptions.Synchronized)]
+        public void UpdateGroup(TGroupKey groupKey, Func<TGroupKey, ICollection<TValue>, IEnumerable<(TKey Key, TValue Value)>> changeAction)
+        {
+            if (_buckets.TryGetValue(groupKey, out var bucket))
+            {
+                foreach (var elementChanged in changeAction(groupKey, bucket))
+                {
+                    if (_sortedValues.Remove(elementChanged.Value))
+                    {
+                        _sortedValues.Add(elementChanged.Value, elementChanged.Key);
+                    }
+                }
+            }
+        }
+        
+        [MethodImpl(MethodImplOptions.Synchronized)]
+        public void UpdatePool(Func<TGroupKey, ICollection<TValue>, IEnumerable<(TKey Key, TValue Value)>> changeAction)
+        {
+            foreach ((TGroupKey groupKey, ICollection<TValue> value) in _buckets)
+            {
+                foreach (var elementChanged in changeAction(groupKey, value))
+                {
+                    if (_sortedValues.Remove(elementChanged.Value))
+                    {
+                        _sortedValues.Add(elementChanged.Value, elementChanged.Key);
+                    }
+                }
+            }
+        }
 
         [MethodImpl(MethodImplOptions.Synchronized)]
         public bool IsFull()

@@ -44,7 +44,7 @@ namespace Nethermind.TxPool
 
         public bool RemoveTransaction(Transaction tx, bool removeBelowThisTxNonce) => false;
         
-        public void RemoveOrUpdateBuckets() { }
+        public void UpdateBuckets() { }
         
         public bool IsKnown(Keccak hash) => false;
 

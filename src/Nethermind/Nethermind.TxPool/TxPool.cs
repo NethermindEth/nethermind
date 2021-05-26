@@ -334,7 +334,7 @@ namespace Nethermind.TxPool
                     bool inserted = _transactions.TryInsert(tx.Hash, tx, out Transaction? removed);
                     if (inserted)
                     {
-                        UpdateBucket(tx.SenderAddress!);
+                        _transactions.UpdateGroup(tx.SenderAddress, UpdateBucketWithAddedTransaction);
                         ForgetHashOfRemovedTransaction(removed?.Hash);
                     }
                     isKnown |= !inserted;
@@ -372,30 +372,28 @@ namespace Nethermind.TxPool
             }
         }
 
-        private void UpdateBucket(Address senderAddress)
+        private IEnumerable<(Keccak Hash, Transaction Tx)> UpdateBucketWithAddedTransaction(Address address, ICollection<Transaction> transactions)
         {
-            var bucketSnapshot = _transactions.GetBucketSnapshot(senderAddress);
-            
-            if (bucketSnapshot.Length == 0)
+            if (transactions.Count == 0)
             {
-                return;
+                return Array.Empty<(Keccak Hash, Transaction Tx)>();
             }
             
-            Account? account = _stateProvider.GetAccount(senderAddress);
+            Account? account = _stateProvider.GetAccount(address);
             UInt256 balance = account?.Balance ?? UInt256.Zero;
             long currentNonce = (long)(account?.Nonce ?? UInt256.Zero);
 
-            UpdateGasBottleneck(bucketSnapshot, currentNonce, balance);
+            return UpdateGasBottleneck(transactions, currentNonce, balance);
         }
 
-        private void UpdateGasBottleneck(IReadOnlyList<Transaction> bucketSnapshot, long currentNonce, UInt256 balance)
+        private IEnumerable<(Keccak Hash, Transaction Tx)> UpdateGasBottleneck(ICollection<Transaction> transactions, long currentNonce, UInt256 balance)
         {
-            Transaction tx = bucketSnapshot[0];
+            Transaction tx = transactions.ElementAt(0);
             UInt256 previousTxBottleneck = tx.CalculatePayableGasPrice(_specProvider.GetSpec().IsEip1559Enabled, CurrentBaseFee, balance);
 
-            for (int i = 0; i < bucketSnapshot.Count; i++)
+            for (int i = 0; i < transactions.Count; i++)
             {
-                tx = bucketSnapshot[i];
+                tx = transactions.ElementAt(i);
                 UInt256 gasBottleneck = 0;
 
                 if (tx.Nonce == currentNonce + i)
@@ -403,39 +401,33 @@ namespace Nethermind.TxPool
                     UInt256 effectiveGasPrice = tx.CalculateEffectiveGasPrice(_specProvider.GetSpec().IsEip1559Enabled, CurrentBaseFee);
                     gasBottleneck = UInt256.Min(effectiveGasPrice, previousTxBottleneck);
                 }
-                
-                _transactions.NotifyChange(tx.Hash, tx, t =>
+
+                if (tx.GasBottleneck != gasBottleneck)
                 {
                     tx.GasBottleneck = gasBottleneck;
-                });
+                    yield return (tx.Hash, tx);
+                }
                 
                 previousTxBottleneck = gasBottleneck;
             }
         }
 
-        public void RemoveOrUpdateBuckets()
+        public void UpdateBuckets()
         {
-            Address[] addresses = _transactions.GetBucketsKeys();
-
-            foreach (Address address in addresses)
-            {
-                RemoveOrUpdateBucket(address);
-            }
+            _transactions.UpdatePool(UpdateBucket);
         }
 
-        private void RemoveOrUpdateBucket(Address senderAddress)
+        private IEnumerable<(Keccak Hash, Transaction Tx)> UpdateBucket(Address address, ICollection<Transaction> transactions)
         {
-            var bucketSnapshot = _transactions.GetBucketSnapshot(senderAddress);
-
-            if (bucketSnapshot.Length == 0)
+            if (transactions.Count == 0)
             {
-                return;
+                return Array.Empty<(Keccak Hash, Transaction Tx)>();
             }
             
-            Account? account = _stateProvider.GetAccount(senderAddress);
+            Account? account = _stateProvider.GetAccount(address);
             UInt256 balance = account?.Balance ?? UInt256.Zero;
             long currentNonce = (long)(account?.Nonce ?? UInt256.Zero);
-            Transaction tx = bucketSnapshot[0];
+            Transaction tx = transactions.ElementAt(0);
 
             bool insufficientBalance = false;
 
@@ -452,20 +444,19 @@ namespace Nethermind.TxPool
             
             if (insufficientBalance)
             {
-                for (int i = 0; i < bucketSnapshot.Length; i++)
+                List<(Keccak Hash, Transaction Tx)> txsToDump = new();
+                
+                for (int i = 0; i < transactions.Count; i++)
                 {
-                    tx = bucketSnapshot[i];
-                    RemoveTransaction(tx);
-                    // after removing transactions from TxPool because of insufficient balance of the transaction with
-                    // first-to-execute nonce, we are removing them from hashCache as well to give them a chance
-                    // to come back in the future, if balance will be sufficient (so address will receive incoming tx)
-                    _hashCache.Delete(tx.Hash);
+                    tx = transactions.ElementAt(i);
+                    tx.GasBottleneck = 0;
+                    txsToDump.Add((tx.Hash, tx));
                 }
+
+                return txsToDump;
             }
-            else
-            {
-                UpdateGasBottleneck(bucketSnapshot, currentNonce, balance);
-            }
+            
+            return UpdateGasBottleneck(transactions, currentNonce, balance);
         }
 
         private void HandleOwnTransaction(Transaction tx, bool isOwn)
