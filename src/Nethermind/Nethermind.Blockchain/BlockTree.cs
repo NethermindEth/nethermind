@@ -1157,6 +1157,8 @@ namespace Nethermind.Blockchain
         private void LoadStartBlock()
         {
             Block? startBlock = null;
+            byte[] persistedNumberData = _blockInfoDb.Get(StateHeadHashDbEntryAddress);
+            HighestPersistedState = persistedNumberData is null ? null : new RlpStream(persistedNumberData).DecodeLong();
             long? persistedNumber = HighestPersistedState;
             if (persistedNumber is not null)
             {
@@ -1569,20 +1571,11 @@ namespace Nethermind.Blockchain
 
         public long? HighestPersistedState
         {
-            get
-            {
-                if (_highestPersistedState is null)
-                {
-                    byte[] persistedNumberData = _blockInfoDb.Get(StateHeadHashDbEntryAddress);
-                    _highestPersistedState = persistedNumberData is null ? null : new RlpStream(persistedNumberData).DecodeLong();
-                }
-
-                return _highestPersistedState;
-            }
+            get => _highestPersistedState;
             set
             {
                 _highestPersistedState = value;
-                if (value is not null)
+                if (value.HasValue)
                 {
                     _blockInfoDb.Set(StateHeadHashDbEntryAddress, Rlp.Encode(value.Value).Bytes);
                 }
