@@ -120,7 +120,8 @@ namespace Nethermind.Runner.Ethereum.Steps
             }
             
             getApi.DisposeStack.Push(trieStore);
-            trieStore.ReorgBoundaryReached += ReorgBoundaryReached;
+            TrieStoreBoundaryWatcher trieStoreBoundaryWatcher = new(trieStore, _api.BlockTree!, _api.LogManager);
+            getApi.DisposeStack.Push(trieStoreBoundaryWatcher);
             ITrieStore readOnlyTrieStore = setApi.ReadOnlyTrieStore = trieStore.AsReadOnly(cachedStateDb);
 
             IStateProvider stateProvider = setApi.StateProvider = new StateProvider(
@@ -253,13 +254,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             setApi.HealthHintService = CreateHealthHintService();
             return Task.CompletedTask;
         }
-        
-        private void ReorgBoundaryReached(object? sender, ReorgBoundaryReached e)
-        {
-            if (_logger.IsDebug) _logger.Debug($"Saving reorg boundary {e.BlockNumber}");
-            _api.BlockTree!.HighestPersistedState = e.BlockNumber;
-        }
-        
+
         protected virtual IHealthHintService CreateHealthHintService() =>
             new HealthHintService(_api.ChainSpec);
 
