@@ -22,6 +22,7 @@ using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Comparers;
 using Nethermind.Blockchain.Filters;
+using Nethermind.Blockchain.FullPruning;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Services;
 using Nethermind.Blockchain.Spec;
@@ -32,6 +33,8 @@ using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
+using Nethermind.Db.FullPruning;
+using Nethermind.Db.Rocks;
 using Nethermind.Evm;
 using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.JsonRpc.Modules.Trace;
@@ -252,12 +255,43 @@ namespace Nethermind.Runner.Ethereum.Steps
             var filterStore = setApi.FilterStore = new FilterStore();
             setApi.FilterManager = new FilterManager(filterStore, mainBlockProcessor, txPool, getApi.LogManager);
             setApi.HealthHintService = CreateHealthHintService();
+            
+            InitializeFullPruning(pruningConfig, initConfig, getApi, stateReader);
+            
             return Task.CompletedTask;
         }
 
-        protected virtual IHealthHintService CreateHealthHintService() =>
-            new HealthHintService(_api.ChainSpec);
+        private static void InitializeFullPruning(IPruningConfig pruningConfig, IInitConfig initConfig, IApiWithStores getApi, IStateReader stateReader)
+        {
+            IPruningTrigger CreateTrigger(string dbPath)
+            {
+                long threshold = pruningConfig.FullPruningThresholdMb.MB();
+                
+                switch (pruningConfig.FullPruningTrigger)
+                {
+                    case FullPruningTrigger.StateDbSize:
+                        return new PathSizePruningTrigger(dbPath, threshold, getApi.TimerFactory, getApi.FileSystem);
+                    case FullPruningTrigger.VolumeFreeSpace:
+                        return new DiskFreeSpacePruningTrigger(dbPath, threshold, getApi.TimerFactory, getApi.FileSystem);
+                    default:
+                        throw new ArgumentOutOfRangeException(nameof(pruningConfig.FullPruningTrigger));
+                }
+            }
 
+            if ((pruningConfig.Mode & PruningMode.Full) != PruningMode.None)
+            {
+                IDb stateDb = getApi.DbProvider!.StateDb;
+                if (stateDb is IFullPruningDb fullPruningDb)
+                {
+                    IPruningTrigger pruningTrigger = CreateTrigger(fullPruningDb.GetPath(initConfig.BaseDbPath));
+                    FullPruner pruner = new(fullPruningDb, pruningTrigger, getApi.BlockTree!, stateReader, getApi.LogManager);
+                    getApi.DisposeStack.Push(pruner);
+                }
+            }
+        }
+
+        protected virtual IHealthHintService CreateHealthHintService() =>
+            new HealthHintService(_api.ChainSpec!);
 
         protected virtual TxPool.TxPool CreateTxPool(PersistentTxStorage txStorage) =>
             new TxPool.TxPool(
