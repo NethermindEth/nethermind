@@ -54,15 +54,18 @@ namespace Nethermind.Blockchain.FullPruning
 
         private void OnPrune(object? sender, EventArgs e)
         {
-            long? persistedState = _blockTree.HighestPersistedState;
-            if (persistedState.HasValue)
+            if (!_fullPruningDb.PruningInProgress)
             {
-                BlockHeader? header = _blockTree.FindHeader(persistedState.Value);
-                if (header is not null)
+                long? persistedState = _blockTree.HighestPersistedState;
+                if (persistedState.HasValue)
                 {
-                    if (_fullPruningDb.TryStartPruning(out IPruningContext pruningContext))
+                    BlockHeader? header = _blockTree.FindHeader(persistedState.Value);
+                    if (header is not null)
                     {
-                        Task.Run(() => RunPruning(pruningContext, header));
+                        if (_fullPruningDb.TryStartPruning(out IPruningContext pruningContext))
+                        {
+                            Task.Run(() => RunPruning(pruningContext, header));
+                        }
                     }
                 }
             }
@@ -75,6 +78,7 @@ namespace Nethermind.Blockchain.FullPruning
             
             using (_currentPruning)
             {
+                _currentPruning.MarkStart();
                 using (CopyTreeVisitor copyTreeVisitor = new(_currentPruning, _cancellationTokenSource.Token, _logManager))
                 {
                     _stateReader.RunTreeVisitor(copyTreeVisitor, header.StateRoot!);

@@ -98,7 +98,9 @@ namespace Nethermind.Db.FullPruning
             IDb? cloningDb = _pruningContext?.CloningDb;
             cloningDb?.Clear();
         }
-        
+
+        public bool PruningInProgress => _pruningContext is not null;
+
         public bool TryStartPruning(out IPruningContext context)
         {
             PruningContext newContext = new(this, CreateDb(), _updateDuplicateWriteMetrics);
@@ -117,7 +119,7 @@ namespace Nethermind.Db.FullPruning
         
         private void CancelPruning()
         {
-            _pruningContext = null;
+            Interlocked.CompareExchange(ref _pruningContext, null, _pruningContext);
         }
 
         private class PruningContext : IPruningContext
@@ -149,6 +151,11 @@ namespace Nethermind.Db.FullPruning
                 _commited = true;
             }
 
+            public void MarkStart()
+            {
+                Metrics.StateDbPruning = 1;
+            }
+
             public void Dispose()
             {
                 _db.CancelPruning();
@@ -156,6 +163,7 @@ namespace Nethermind.Db.FullPruning
                 {
                     CloningDb.Clear();
                 }
+                Metrics.StateDbPruning = 0;
             }
         }
     }

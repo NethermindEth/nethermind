@@ -63,7 +63,7 @@ namespace Nethermind.Db
                 RegisterCustomDb(DbNames.State, () => new FullPruningDb(
                     stateDbSettings,
                     PersistedDb ? new FullPruningInnerDbFactory(RocksDbFactory, _fileSystem, stateDbSettings.DbPath) : new MemDbFactoryToRocksDbAdapter(MemDbFactory),
-                    () => Interlocked.Increment(ref Metrics.StateDbDuplicateWrites)));
+                    () => Interlocked.Increment(ref Metrics.StateDbInPruningWrites)));
             }
             else
             {

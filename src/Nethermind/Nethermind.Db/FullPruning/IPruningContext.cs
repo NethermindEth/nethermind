@@ -23,5 +23,6 @@ namespace Nethermind.Db.FullPruning
     {
         public byte[]? this[byte[] key] { set; }
         void Commit();
+        void MarkStart();
     }
 }

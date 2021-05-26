@@ -19,6 +19,7 @@ namespace Nethermind.Db.FullPruning
 {
     public interface IFullPruningDb
     {
+        bool PruningInProgress { get; }
         bool TryStartPruning(out IPruningContext context);
         string GetPath(string basePath);
     }
