@@ -52,6 +52,7 @@ namespace Nethermind.Mev.Source
         private readonly ConcurrentDictionary<Keccak, ConcurrentDictionary<MevBundle, SimulatedMevBundleContext>> _simulatedBundles = new();
         private readonly ILogger _logger;
         private readonly CompareMevBundlesByBlock _compareByBlock;
+        public SortedSet<MevBundle> _sortedSet;
         public BundlePool(
             IBlockTree blockTree, 
             IBundleSimulator simulator,
@@ -94,14 +95,15 @@ namespace Nethermind.Mev.Source
                 bool inBundle = _bundles2.TryGetValue(searchedBundle, out BundleWithHashes value);
                 if (inBundle)
                 {
-                    foreach (KeyValuePair<MevBundle, BundleWithHashes> kvp in _bundles2.GetCacheMap()) //is the complement of i to prevent us from checking if i is not in this list?, but ~~of a number is the same number...
+                    _bundles2.TryGetBucket(blockNumber, out BundleWithHashes[] array);
+                    foreach (BundleWithHashes bundleWithHashes in array) //is the complement of i to prevent us from checking if i is not in this list?, but ~~of a number is the same number...
                     {
                         if (token.IsCancellationRequested)
                         {
                             break;
                         }
 
-                        MevBundle mevBundle = kvp.Key;
+                        MevBundle mevBundle = bundleWithHashes.Bundle;
                         if (mevBundle.BlockNumber == searchedBundle.BlockNumber)
                         {
                             bool bundleIsInFuture = mevBundle.MaxTimestamp != UInt256.Zero &&
