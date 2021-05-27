@@ -150,28 +150,7 @@ namespace Nethermind.TxPool.Collections
             bucket = null;
             return false;
         }
-
-        [MethodImpl(MethodImplOptions.Synchronized)]
-        public bool TryRemove(TKey key, TGroupKey? groupKey, out ICollection<TValue>? bucket)
-        {
-            bucket = null;
-            
-            if (groupKey is not null)
-            {
-                _buckets.TryGetValue(groupKey, out bucket);
-                
-                if (_cacheMap.TryGetValue(key, out TValue value))
-                {
-                    if (Remove(key, value))
-                    {
-                        bucket.Remove(value);
-                        return true;
-                    }
-                }
-            }
-
-            return false;
-        }
+        
         [MethodImpl(MethodImplOptions.Synchronized)]
         public bool TryRemove(TKey key, [MaybeNullWhen(false)] out TValue value) => TryRemove(key, out value, out _);
         
@@ -271,7 +250,7 @@ namespace Nethermind.TxPool.Collections
         {
             if (_buckets.TryGetValue(groupKey, out var bucket))
             {
-                foreach (var elementChanged in changeAction(groupKey, bucket))
+                foreach (var elementChanged in changeAction(groupKey, bucket.ToArray()))
                 {
                     if (_sortedValues.Remove(elementChanged.Value))
                     {
@@ -284,9 +263,9 @@ namespace Nethermind.TxPool.Collections
         [MethodImpl(MethodImplOptions.Synchronized)]
         public void UpdatePool(Func<TGroupKey, ICollection<TValue>, IEnumerable<(TKey Key, TValue Value)>> changeAction)
         {
-            foreach ((TGroupKey groupKey, ICollection<TValue> value) in _buckets)
+            foreach ((TGroupKey groupKey, ICollection<TValue> bucket) in _buckets)
             {
-                foreach (var elementChanged in changeAction(groupKey, value))
+                foreach (var elementChanged in changeAction(groupKey, bucket.ToArray()))
                 {
                     if (_sortedValues.Remove(elementChanged.Value))
                     {

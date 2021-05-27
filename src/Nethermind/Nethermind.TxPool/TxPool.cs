@@ -410,14 +410,17 @@ namespace Nethermind.TxPool
         {
             if (transactions.Count == 0)
             {
-                return Array.Empty<(Keccak Hash, Transaction Tx)>();
+                yield break;
             }
             
             Account? account = _stateProvider.GetAccount(address);
             UInt256 balance = account?.Balance ?? UInt256.Zero;
             long currentNonce = (long)(account?.Nonce ?? UInt256.Zero);
 
-            return UpdateGasBottleneck(transactions, currentNonce, balance);
+            foreach (var changedTx in UpdateGasBottleneck(transactions, currentNonce, balance))
+            {
+                yield return changedTx;
+            }
         }
 
         private IEnumerable<(Keccak Hash, Transaction Tx)> UpdateGasBottleneck(ICollection<Transaction> transactions, long currentNonce, UInt256 balance)
@@ -451,7 +454,7 @@ namespace Nethermind.TxPool
             }
         }
 
-        public void UpdateBuckets()
+        private void UpdateBuckets()
         {
             lock (_locker)
             {
@@ -486,19 +489,17 @@ namespace Nethermind.TxPool
             
             if (insufficientBalance)
             {
-                
-                for (int i = 0; i < transactions.Count; i++)
+                foreach (Transaction transaction in transactions)
                 {
-                    tx = transactions.ElementAt(i);
-                    tx.GasBottleneck = 0;
-                    yield return  (tx.Hash, tx);
+                    transaction.GasBottleneck = 0;
+                    yield return  (transaction.Hash, transaction);
                 }
-
+                yield break;
             }
 
-            foreach (var txxx in UpdateGasBottleneck(transactions, currentNonce, balance))
+            foreach (var changedTx in UpdateGasBottleneck(transactions, currentNonce, balance))
             {
-                yield return txxx;
+                yield return changedTx;
             }
         }
 
@@ -559,12 +560,10 @@ namespace Nethermind.TxPool
 
             Keccak hash = transaction.Hash;
             Address senderAddress = transaction.SenderAddress;
-            ICollection<Transaction>? bucket;
-            ICollection<Transaction>? persistentBucket = null;
             bool isKnown;
             lock (_locker)
             {
-                isKnown = _transactions.TryRemove(hash, senderAddress, out bucket);
+                isKnown = _transactions.TryRemove(hash);
                 if (isKnown)
                 {
                     if (_nonces.TryGetValue(senderAddress, out AddressNonces addressNonces))
@@ -581,7 +580,7 @@ namespace Nethermind.TxPool
                 
                 if (_persistentBroadcastTransactions.Count != 0)
                 {
-                    bool ownIncluded = _persistentBroadcastTransactions.TryRemove(hash, out Transaction _, out persistentBucket);
+                    bool ownIncluded = _persistentBroadcastTransactions.TryRemove(hash, out Transaction _);
                     if (ownIncluded)
                     {
                         if (_logger.IsInfo)
@@ -592,29 +591,6 @@ namespace Nethermind.TxPool
 
             _txStorage.Delete(hash);
             if (_logger.IsTrace) _logger.Trace($"Deleted a transaction: {hash}");
-
-            if (bucket != null && removeBelowThisTxNonce)
-            {
-                lock (_locker)
-                {
-                    Transaction? txWithSmallestNonce = bucket.FirstOrDefault();
-                    while (txWithSmallestNonce != null && txWithSmallestNonce.Nonce <= transaction.Nonce)
-                    {
-                        RemoveTransaction(txWithSmallestNonce);
-                        txWithSmallestNonce = bucket.FirstOrDefault();
-                    }
-
-                    if (persistentBucket != null)
-                    {
-                        txWithSmallestNonce = persistentBucket.FirstOrDefault();
-                        while (txWithSmallestNonce != null && txWithSmallestNonce.Nonce <= transaction.Nonce)
-                        {
-                            persistentBucket.Remove(txWithSmallestNonce);
-                            txWithSmallestNonce = persistentBucket.FirstOrDefault();
-                        }
-                    }
-                }
-            }
             
             return isKnown;
         }
