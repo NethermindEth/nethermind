@@ -51,7 +51,6 @@ namespace Nethermind.Mev.Source
         private readonly SortedPool<MevBundle, MevBundle, long> _bundles;
         private readonly ConcurrentDictionary<Keccak, ConcurrentDictionary<MevBundle, SimulatedMevBundleContext>> _simulatedBundles = new();
         private readonly ILogger _logger;
-        private readonly CompareBundleWithHashesByBlock _compareBundleWithHashesByBlock;
         private readonly CompareMevBundleByBlock? _compareMevBundleByBlock;
         public BundlePool(
             IBlockTree blockTree, 
@@ -69,7 +68,6 @@ namespace Nethermind.Mev.Source
             _blockTree.NewSuggestedBlock += OnNewSuggestedBlock;
             _logger = logManager.GetClassLogger();
 
-            _compareBundleWithHashesByBlock = new CompareBundleWithHashesByBlock {BestBlockNumber = blockTree.BestSuggestedHeader?.Number ?? 0};
             _compareMevBundleByBlock = new CompareMevBundleByBlock {BestBlockNumber = blockTree.BestSuggestedHeader?.Number ?? 0};
             _bundles = new BundleSortedPool(
                 _mevConfig.BundlePoolSize,
@@ -180,7 +178,6 @@ namespace Nethermind.Mev.Source
               
         private void SimulateBundle(MevBundle bundle, BlockHeader parent)
         {
-            //do we still need blockdictionary?
             Keccak parentHash = parent.Hash!;
             ConcurrentDictionary<MevBundle, SimulatedMevBundleContext> blockDictionary = 
                 _simulatedBundles.GetOrAdd(parentHash, _ => new ConcurrentDictionary<MevBundle, SimulatedMevBundleContext>());
@@ -191,7 +188,7 @@ namespace Nethermind.Mev.Source
                 context.Task = _simulator.Simulate(bundle, parent, context.CancellationTokenSource.Token);
             }
             
-            /*lock (_bundles)
+            /*lock (_bundles) //CAN REMOVE?
             {
                 _bundles.TryGetValue(bundle, out MevBundle mevBundle);
                 
@@ -230,13 +227,13 @@ namespace Nethermind.Mev.Source
                 }
             }
             
-            long previousBestSuggested = _compareBundleWithHashesByBlock.BestBlockNumber;
+            long previousBestSuggested = _compareMevBundleByBlock!.BestBlockNumber;
             long fromBlockNumber = Math.Min(newBlockNumber, previousBestSuggested);
             long blockDelta = Math.Abs(newBlockNumber - previousBestSuggested);
-            _bundles.NotifyChange(Range(fromBlockNumber, blockDelta), () => _compareBundleWithHashesByBlock.BestBlockNumber = newBlockNumber);
+            _bundles.NotifyChange(Range(fromBlockNumber, blockDelta), () => _compareMevBundleByBlock.BestBlockNumber = newBlockNumber);
         }
 
-        private void OnBlocksFinalized(object? sender, FinalizeEventArgs e)
+        private void OnBlocksFinalized(object? sender, FinalizeEventArgs e) //NEED TO ADD ANYTHING ELSE?
         {
             long maxFinalizedBlockNumber = e.FinalizedBlocks.Select(b => b.Number).Max();
             int count = _bundles.Count;

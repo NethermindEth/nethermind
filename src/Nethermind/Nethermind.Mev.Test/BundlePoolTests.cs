@@ -28,6 +28,7 @@ using Nethermind.Logging;
 using Nethermind.Mev.Data;
 using Nethermind.Mev.Execution;
 using Nethermind.Mev.Source;
+using Nethermind.Runner.Ethereum.Api;
 using NSubstitute;
 using NSubstitute.Exceptions;
 using NUnit.Framework;
@@ -140,6 +141,7 @@ namespace Nethermind.Mev.Test
             Transaction[] txs = Array.Empty<Transaction>();
             BundleSortedPool txPool = new BundleSortedPool(200, Comparer<MevBundle>.Default, LimboLogs.Instance);
             List<MevBundle> bundleList = new List<MevBundle>();
+            
             for (int i = 3; i > 0; i--)
             {
                 bundleList.Add(new MevBundle(txs, i, 0, 0)); //should come back in reverse order
@@ -150,7 +152,7 @@ namespace Nethermind.Mev.Test
             foreach (MevBundle bundle in bundleList)
             {
                 Console.WriteLine(bundle.BlockNumber);
-                txPool.TryInsert(bundle, new BundleWithHashes(bundle));
+                txPool.TryInsert(bundle, bundle);
             } 
             foreach (KeyValuePair<long, MevBundle[]> kvp in txPool.GetBucketSnapshot())
             {
