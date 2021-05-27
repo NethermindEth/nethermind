@@ -122,10 +122,10 @@ namespace Nethermind.Dsl.ANTLR
             _logger.Info($"Adding new pipeline element with OPERATION: {operation}");
             return operation switch
             {
-                "==" => new PipelineElement<Transaction, Transaction>(
+                "IS" => new PipelineElement<Transaction, Transaction>(
                             condition: (t => t.GetType().GetProperty(key).GetValue(t).ToString() == value),
                             transformData: (t => t), _logger),
-                "!=" => new PipelineElement<Transaction, Transaction>(
+                "NOT" => new PipelineElement<Transaction, Transaction>(
                             condition: (t => t.GetType().GetProperty(key).GetValue(t).ToString() != value),
                             transformData: (t => t), _logger),
                 ">" => new PipelineElement<Transaction, Transaction>(
@@ -151,10 +151,10 @@ namespace Nethermind.Dsl.ANTLR
         {
             return operation switch
             {
-                "==" => new PipelineElement<Block, Block>(
+                "IS" => new PipelineElement<Block, Block>(
                             condition: (b => b.GetType().GetProperty(key).GetValue(b).ToString() == value),
                             transformData: (b => b), _logger),
-                "!=" => new PipelineElement<Block, Block>(
+                "NOT" => new PipelineElement<Block, Block>(
                             condition: (b => b.GetType().GetProperty(key).GetValue(b).ToString() != value),
                             transformData: (b => b), _logger),
                 ">" => new PipelineElement<Block, Block>(
