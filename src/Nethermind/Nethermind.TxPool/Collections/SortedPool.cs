@@ -93,16 +93,7 @@ namespace Nethermind.TxPool.Collections
         {
             return _buckets.ToDictionary(g => g.Key, g => g.Value.ToArray());
         }
-        
-        /// <summary>
-        /// Gets all items of requested group.
-        /// </summary>
-        [MethodImpl(MethodImplOptions.Synchronized)]
-        public TValue[] GetBucketSnapshot(TGroupKey group)
-        {
-            return _buckets.TryGetValue(@group, out var bucket) ? bucket.ToArray() : Array.Empty<TValue>();
-        }
-        
+
         /// <summary>
         /// Gets number of items in requested group.
         /// </summary>
@@ -110,15 +101,6 @@ namespace Nethermind.TxPool.Collections
         public int GetBucketCount(TGroupKey group)
         {
             return _buckets.TryGetValue(@group, out var bucket) ? bucket.Count : 0;
-        }
-
-        /// <summary>
-        /// Gets all groupKeys.
-        /// </summary>
-        [MethodImpl(MethodImplOptions.Synchronized)]
-        public TGroupKey[] GetBucketsKeys()
-        {
-            return _buckets.Keys.ToArray();
         }
 
         /// <summary>
@@ -279,18 +261,8 @@ namespace Nethermind.TxPool.Collections
         {
             _sortedValues.Remove(value);
             return _cacheMap.Remove(key);
-        } 
-        
-        [MethodImpl(MethodImplOptions.Synchronized)]
-        public void NotifyChange(TKey key, TValue value, Action<TValue> changeAction)
-        {
-            if (_sortedValues.Remove(value))
-            {
-                changeAction(value);
-                _sortedValues.Add(value, key);
-            }
         }
-        
+
         [MethodImpl(MethodImplOptions.Synchronized)]
         public void UpdateGroup(TGroupKey groupKey, Func<TGroupKey, ICollection<TValue>, IEnumerable<(TKey Key, TValue Value)>> changeAction)
         {
