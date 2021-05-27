@@ -264,5 +264,11 @@ namespace Nethermind.TxPool.Collections
             items = Array.Empty<TValue>();
             return false;
         }
+
+        [MethodImpl(MethodImplOptions.Synchronized)]
+        public IDictionary<TKey, TValue> GetCacheMap()
+        {
+            return _cacheMap;
+        }
     }
 }

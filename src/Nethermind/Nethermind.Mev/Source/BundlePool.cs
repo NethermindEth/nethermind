@@ -48,7 +48,7 @@ namespace Nethermind.Mev.Source
         private readonly IMevConfig _mevConfig;
         private readonly IBlockTree _blockTree;
         private readonly IBundleSimulator _simulator;
-        private readonly SortedPool<MevBundle, BundleWithHashes, long> _bundles2;
+        private readonly SortedPool<MevBundle, BundleWithHashes, long> _bundles;
         private readonly ConcurrentDictionary<Keccak, ConcurrentDictionary<MevBundle, SimulatedMevBundleContext>> _simulatedBundles = new();
         private readonly ILogger _logger;
         private readonly CompareBundleWithHashesByBlock _compareBundleWithHashesByBlock;
@@ -71,7 +71,7 @@ namespace Nethermind.Mev.Source
 
             _compareBundleWithHashesByBlock = new CompareBundleWithHashesByBlock {BestBlockNumber = blockTree.BestSuggestedHeader?.Number ?? 0};
             _compareMevBundleByBlock = new CompareMevBundleByBlock {BestBlockNumber = blockTree.BestSuggestedHeader?.Number ?? 0};
-            _bundles2 = new BundleSortedPool(
+            _bundles = new BundleSortedPool(
                 _mevConfig.BundlePoolSize,
                 _compareBundleWithHashesByBlock.ThenBy(CompareBundleWithHashesByMinTimestamp.Default),
                 logManager ); 
@@ -90,9 +90,11 @@ namespace Nethermind.Mev.Source
 
         private IEnumerable<MevBundle> GetBundles(long blockNumber, UInt256 minTimestamp, UInt256 maxTimestamp, CancellationToken token = default)
         {
-            if (_bundles2.TryGetBucket(blockNumber, out BundleWithHashes[] array))
+            IDictionary<MevBundle, BundleWithHashes> cacheMap = _bundles.GetCacheMap();
+            if (cacheMap.Keys.Select(k => k.BlockNumber).Contains(blockNumber))
             {
-                foreach (MevBundle mevBundle in array) //is the complement of i to prevent us from checking if i is not in this list?, but ~~of a number is the same number...
+                IEnumerable<BundleWithHashes> bundles = cacheMap.Where(pair => pair.Key.BlockNumber == blockNumber).Select(pair => pair.Value);
+                foreach (MevBundle mevBundle in bundles)
                 {
                     if (token.IsCancellationRequested)
                     {
@@ -116,9 +118,9 @@ namespace Nethermind.Mev.Source
             {
                 bool result;
 
-                lock (_bundles2)
+                lock (_bundles)
                 {
-                    result = _bundles2.TryInsert(bundle, new BundleWithHashes(bundle));
+                    result = _bundles.TryInsert(bundle, new BundleWithHashes(bundle));
                 }
 
                 if (result)
@@ -189,9 +191,9 @@ namespace Nethermind.Mev.Source
                 context.Task = _simulator.Simulate(bundle, parent, context.CancellationTokenSource.Token);
             }
             
-            lock (_bundles2)
+            lock (_bundles)
             {
-                _bundles2.TryGetValue(bundle, out BundleWithHashes BundleValue);
+                _bundles.TryGetValue(bundle, out BundleWithHashes BundleValue);
                 
                 if (!BundleValue.BlockHashes.Contains(parentHash))
                 {
@@ -231,19 +233,19 @@ namespace Nethermind.Mev.Source
             long previousBestSuggested = _compareBundleWithHashesByBlock.BestBlockNumber;
             long fromBlockNumber = Math.Min(newBlockNumber, previousBestSuggested);
             long blockDelta = Math.Abs(newBlockNumber - previousBestSuggested);
-            _bundles2.NotifyChange(Range(fromBlockNumber, blockDelta), () => _compareBundleWithHashesByBlock.BestBlockNumber = newBlockNumber);
+            _bundles.NotifyChange(Range(fromBlockNumber, blockDelta), () => _compareBundleWithHashesByBlock.BestBlockNumber = newBlockNumber);
         }
 
         private void OnBlocksFinalized(object? sender, FinalizeEventArgs e)
         {
             long maxFinalizedBlockNumber = e.FinalizedBlocks.Select(b => b.Number).Max();
-            int count = _bundles2.Count;
+            int count = _bundles.Count;
             int capacity = _mevConfig.BundlePoolSize;
-            lock (_bundles2)
+            lock (_bundles)
             {
-                while (_bundles2.Count > capacity) //remove if bundles more than capacity
+                while (_bundles.Count > capacity) //remove if bundles more than capacity
                 {
-                    _bundles2.TryTakeFirst(out BundleWithHashes bundleWithHashes); //want to make this same as Key, does this need to be out?
+                    _bundles.TryTakeFirst(out BundleWithHashes bundleWithHashes); //want to make this same as Key, does this need to be out?
                 }
             }
         }
