@@ -19,6 +19,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Threading.Tasks;
 using System.Collections.Generic;
+using System.ComponentModel.Design;
 using System.Linq;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
@@ -34,6 +35,7 @@ using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
+using Nethermind.Mev.Data;
 using Nethermind.Mev.Execution;
 using Nethermind.Mev.Source;
 using Nethermind.TxPool;
@@ -158,15 +160,50 @@ namespace Nethermind.Mev
 
             _nethermindApi.BlockProducerEnvFactory = producerEnvFactory;
 
-            IManualBlockProducer standardProducer = (IManualBlockProducer)await consensusPlugin.InitBlockProducer();
-            IBeneficiaryBalanceSource standardProducerBeneficiaryBalanceSource = producerEnvFactory.LastMevBlockProcessor;
-            V1Selector v1Selector = new(BundlePool);
-            IManualBlockProducer bundleProducer = (IManualBlockProducer)await consensusPlugin.InitBlockProducer(new BundleTxSource(v1Selector, standardProducer.Timestamper));
-            IBeneficiaryBalanceSource bundleProducerBeneficiaryBalanceSource = producerEnvFactory.LastMevBlockProcessor;
-            return _nethermindApi.BlockProducer = new MevBlockProducer(new Dictionary<IManualBlockProducer, IBeneficiaryBalanceSource>()
+            if (_mevConfig.FlashbotsVersion == SelectorType.V1)
             {
-                {bundleProducer, bundleProducerBeneficiaryBalanceSource}, {standardProducer, standardProducerBeneficiaryBalanceSource}
-            });
+                IManualBlockProducer standardProducer = (IManualBlockProducer)await consensusPlugin.InitBlockProducer();
+                IBeneficiaryBalanceSource standardProducerBeneficiaryBalanceSource = producerEnvFactory.LastMevBlockProcessor;
+                V1Selector v1Selector = new(BundlePool);
+                IManualBlockProducer bundleProducer = (IManualBlockProducer)await consensusPlugin.InitBlockProducer(new BundleTxSource(v1Selector, standardProducer.Timestamper));
+                IBeneficiaryBalanceSource bundleProducerBeneficiaryBalanceSource = producerEnvFactory.LastMevBlockProcessor;
+                return _nethermindApi.BlockProducer = new MevBlockProducer(new Dictionary<IManualBlockProducer, IBeneficiaryBalanceSource>()
+                {
+                    {bundleProducer, bundleProducerBeneficiaryBalanceSource}, 
+                    {standardProducer, standardProducerBeneficiaryBalanceSource}
+                });
+            }
+            else if (_mevConfig.FlashbotsVersion == SelectorType.V2)
+            {
+                if (_mevConfig.MaxMergedBundles == null || _mevConfig.MaxMergedBundles < 1)
+                {
+                    throw new ArgumentException("maxMergedBundles cannot be null or zero in V2");
+                }
+
+                Dictionary<IManualBlockProducer, IBeneficiaryBalanceSource> blockDictionary =
+                    new Dictionary<IManualBlockProducer, IBeneficiaryBalanceSource>();
+                
+                // Add non-mev block
+                IManualBlockProducer standardProducer = (IManualBlockProducer)await consensusPlugin.InitBlockProducer();
+                IBeneficiaryBalanceSource standardProducerBeneficiaryBalanceSource = producerEnvFactory.LastMevBlockProcessor;
+                blockDictionary.Add(standardProducer, standardProducerBeneficiaryBalanceSource);
+                
+                // Try blocks with all bundle numbers <= maxMergedBundles
+                for (int bundleLimit = 1; bundleLimit <= _mevConfig.MaxMergedBundles; bundleLimit++)
+                {
+                    V2Selector v2Selector = new(BundlePool, bundleLimit);
+                    IManualBlockProducer bundleProducer = (IManualBlockProducer)await consensusPlugin.InitBlockProducer(new BundleTxSource(v2Selector, standardProducer.Timestamper));
+                    IBeneficiaryBalanceSource bundleProducerBeneficiaryBalanceSource = producerEnvFactory.LastMevBlockProcessor;
+                    blockDictionary.Add(bundleProducer, bundleProducerBeneficiaryBalanceSource);
+                }
+                
+                return _nethermindApi.BlockProducer = new MevBlockProducer(blockDictionary);
+            }
+            else
+            {
+                throw new NotSupportedException("Only V1 and V2 are supported");
+            }
+            
         }
 
         public bool Enabled => _mevConfig.Enabled;

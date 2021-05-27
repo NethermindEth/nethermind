@@ -13,25 +13,13 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using Nethermind.Config;
-using Nethermind.Int256;
-using Nethermind.Mev.Data;
-
-namespace Nethermind.Mev
+namespace Nethermind.Mev.Data
 {
-    public interface IMevConfig : IConfig
+    public enum SelectorType
     {
-        [ConfigItem(
-            Description = "Defines whether the MEV bundles are allowed.",
-            DefaultValue = "false")]
-        bool Enabled { get; set; }
-
-        UInt256 BundleHorizon { get; set; }
-        int BundlePoolSize { get; set; }
-        SelectorType FlashbotsVersion { get; set; }
-        int? MaxMergedBundles { get; set; }
-        
-
+        V1,
+        V2
     }
 }

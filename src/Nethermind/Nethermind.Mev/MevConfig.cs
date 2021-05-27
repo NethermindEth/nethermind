@@ -18,6 +18,7 @@
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
+using Nethermind.Mev.Data;
 
 namespace Nethermind.Mev
 {
@@ -34,6 +35,8 @@ namespace Nethermind.Mev
 
         public int? MaxMergedBundles { get; set; }
         
+        public SelectorType FlashbotsVersion { get; set; }
+
         public string? relayWSURL { get; set; }
         
         public string? relayWSSigningKeystoreFile { get; set; }

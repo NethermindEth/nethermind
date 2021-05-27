@@ -31,15 +31,15 @@ namespace Nethermind.Mev.Source
     public class V2Selector : IBundleSource
     {
         private readonly ISimulatedBundleSource _simulatedBundleSource;
-        private readonly int _maxMergedBundles;
+        private readonly int _bundleLimit;
         
 
         public V2Selector(
             ISimulatedBundleSource simulatedBundleSource,
-            int maxMergedBundles)
+            int bundleLimit)
         {
             _simulatedBundleSource = simulatedBundleSource;
-            _maxMergedBundles = maxMergedBundles;
+            _bundleLimit = bundleLimit;
         }
         
         public async Task<IEnumerable<MevBundle>> GetBundles(BlockHeader parent, UInt256 timestamp, long gasLimit, CancellationToken token = default)
@@ -50,7 +50,7 @@ namespace Nethermind.Mev.Source
             IEnumerable<SimulatedMevBundle> simulatedBundles = await _simulatedBundleSource.GetBundles(parent, timestamp, gasLimit, token);
             foreach (SimulatedMevBundle simulatedBundle in simulatedBundles.OrderByDescending(bundle => bundle.BundleAdjustedGasPrice))
             {
-                if (includedBundles.Count < _maxMergedBundles)
+                if (includedBundles.Count < _bundleLimit)
                 {
                     if (simulatedBundle.GasUsed <= gasLimit - totalGasUsed)
                     {
