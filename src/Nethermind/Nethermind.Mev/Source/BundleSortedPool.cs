@@ -25,7 +25,7 @@ namespace Nethermind.Mev.Source
 {
     public class BundleSortedPool : DistinctValueSortedPool<MevBundle, BundleWithHashes, long> 
     {
-        public BundleSortedPool(int capacity, IComparer<BundleWithHashes> comparer, ILogManager logManager)
+        public BundleSortedPool(int capacity, IComparer<BundleWithHashes> comparer, IComparer<MevBundle> ValueComparer, ILogManager logManager)
             : base(capacity, comparer, EqualityComparer<BundleWithHashes>.Default, logManager) //why do we need these?
         {
             
@@ -37,8 +37,10 @@ namespace Nethermind.Mev.Source
         protected override IComparer<BundleWithHashes> GetGroupComparer(IComparer<BundleWithHashes> comparer) //compares two bundles with same block #
             => comparer;
 
-        protected override IComparer<BundleWithHashes> GetSameIdentityComparer(IComparer<BundleWithHashes> comparer1) => 
+        protected override IComparer<BundleWithHashes> GetSameIdentityComparer(IComparer<BundleWithHashes> comparer) => 
             CompareBundleWithHashesByPoolIndex.Default;
+
+        protected IComparer<MevBundle> GetValueComparer(IComparer<MevBundle> ValueComparer) => ValueComparer;
 
         protected override long MapToGroup(BundleWithHashes bundleWithHashes) => bundleWithHashes.Bundle.BlockNumber;
     }

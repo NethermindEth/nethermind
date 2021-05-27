@@ -51,7 +51,8 @@ namespace Nethermind.Mev.Source
         private readonly SortedPool<MevBundle, BundleWithHashes, long> _bundles2;
         private readonly ConcurrentDictionary<Keccak, ConcurrentDictionary<MevBundle, SimulatedMevBundleContext>> _simulatedBundles = new();
         private readonly ILogger _logger;
-        private readonly CompareBundleWithHashesByBlock _compareByBlock;
+        private readonly CompareBundleWithHashesByBlock _compareBundleWithHashesByBlock;
+        private readonly CompareMevBundleByBlock? _compareMevBundleByBlock;
         public BundlePool(
             IBlockTree blockTree, 
             IBundleSimulator simulator,
@@ -68,10 +69,12 @@ namespace Nethermind.Mev.Source
             _blockTree.NewSuggestedBlock += OnNewSuggestedBlock;
             _logger = logManager.GetClassLogger();
 
-            _compareByBlock = new CompareBundleWithHashesByBlock {BestBlockNumber = blockTree.BestSuggestedHeader?.Number ?? 0};
+            _compareBundleWithHashesByBlock = new CompareBundleWithHashesByBlock {BestBlockNumber = blockTree.BestSuggestedHeader?.Number ?? 0};
+            _compareMevBundleByBlock = new CompareMevBundleByBlock {BestBlockNumber = blockTree.BestSuggestedHeader?.Number ?? 0};
             _bundles2 = new BundleSortedPool(
                 _mevConfig.BundlePoolSize,
-                _compareByBlock.ThenBy(CompareBundleWithHashesByMinTimestamp.Default),
+                _compareBundleWithHashesByBlock.ThenBy(CompareBundleWithHashesByMinTimestamp.Default),
+                _compareMevBundleByBlock.ThenBy(CompareMevBundleByMinTimestamp.Default),
                 logManager ); 
             
             if (_finalizationManager != null)

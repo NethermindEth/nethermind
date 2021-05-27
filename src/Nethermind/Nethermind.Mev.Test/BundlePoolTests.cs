@@ -135,12 +135,12 @@ namespace Nethermind.Mev.Test
         }
 
         [Test]
-        public static void sort_bundles_by_increasing_block_number_and_then_transaction_id()
+        public static void sort_bundles_by_increasing_block_number_and_then_min_timestamp()
         {
             Transaction[] txs = Array.Empty<Transaction>();
             BundleSortedPool txPool = new BundleSortedPool(200, Comparer<BundleWithHashes>.Default, LimboLogs.Instance);
             List<MevBundle> bundleList = new List<MevBundle>();
-            for (int i = 10; i > 0; i--)
+            for (int i = 3; i > 0; i--)
             {
                 bundleList.Add(new MevBundle(txs, i, 0, 0)); //should come back in reverse order
             }
@@ -149,6 +149,7 @@ namespace Nethermind.Mev.Test
             bundleList.Add(new MevBundle(txs, 4, 5, 10)); //should be ahead of 4,0 but before 5,0
             foreach (MevBundle bundle in bundleList)
             {
+                Console.WriteLine(bundle.BlockNumber);
                 txPool.TryInsert(bundle, new BundleWithHashes(bundle));
             } 
             foreach (KeyValuePair<long, BundleWithHashes[]> kvp in txPool.GetBucketSnapshot())
