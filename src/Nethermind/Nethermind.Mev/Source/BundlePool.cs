@@ -247,10 +247,9 @@ namespace Nethermind.Mev.Source
             {
                 IEnumerable<KeyValuePair<Keccak, ConcurrentDictionary<MevBundle, SimulatedMevBundleContext>>> relatedHashes =
                     _simulatedBundles.Where(kvp => kvp.Value.ContainsKey(bundle));
-                foreach (KeyValuePair<Keccak, ConcurrentDictionary<MevBundle, SimulatedMevBundleContext> kvp in
-                    relatedHashes)
+                foreach (var (_, value) in relatedHashes)
                 {
-                    kvp.Value.Remove(bundle, out SimulatedMevBundleContext? context);
+                    value.Remove(bundle, out SimulatedMevBundleContext? context);
                 }
             }
         }
