@@ -422,13 +422,17 @@ namespace Nethermind.TxPool
 
         private IEnumerable<(Keccak Hash, Transaction Tx)> UpdateGasBottleneck(ICollection<Transaction> transactions, long currentNonce, UInt256 balance)
         {
-            Transaction tx = transactions.ElementAt(0);
-            UInt256 previousTxBottleneck = tx.CalculatePayableGasPrice(_specProvider.GetSpec().IsEip1559Enabled, CurrentBaseFee, balance);
-
-            for (int i = 0; i < transactions.Count; i++)
+            UInt256 previousTxBottleneck = UInt256.MaxValue;
+            int i = 0;
+            
+            foreach (Transaction tx in transactions)
             {
-                tx = transactions.ElementAt(i);
                 UInt256 gasBottleneck = 0;
+
+                if (previousTxBottleneck == UInt256.MaxValue)
+                {
+                    previousTxBottleneck = tx.CalculatePayableGasPrice(_specProvider.GetSpec().IsEip1559Enabled, CurrentBaseFee, balance);
+                }
 
                 if (tx.Nonce == currentNonce + i)
                 {
@@ -443,19 +447,23 @@ namespace Nethermind.TxPool
                 }
                 
                 previousTxBottleneck = gasBottleneck;
+                i++;
             }
         }
 
         public void UpdateBuckets()
         {
-            _transactions.UpdatePool(UpdateBucket);
+            lock (_locker)
+            {
+                _transactions.UpdatePool(UpdateBucket);
+            }
         }
 
         private IEnumerable<(Keccak Hash, Transaction Tx)> UpdateBucket(Address address, ICollection<Transaction> transactions)
         {
             if (transactions.Count == 0)
             {
-                return Array.Empty<(Keccak Hash, Transaction Tx)>();
+                yield break;
             }
             
             Account? account = _stateProvider.GetAccount(address);
@@ -478,19 +486,20 @@ namespace Nethermind.TxPool
             
             if (insufficientBalance)
             {
-                List<(Keccak Hash, Transaction Tx)> txsToDump = new();
                 
                 for (int i = 0; i < transactions.Count; i++)
                 {
                     tx = transactions.ElementAt(i);
                     tx.GasBottleneck = 0;
-                    txsToDump.Add((tx.Hash, tx));
+                    yield return  (tx.Hash, tx);
                 }
 
-                return txsToDump;
             }
-            
-            return UpdateGasBottleneck(transactions, currentNonce, balance);
+
+            foreach (var txxx in UpdateGasBottleneck(transactions, currentNonce, balance))
+            {
+                yield return txxx;
+            }
         }
 
         private void HandleOwnTransaction(Transaction tx, bool isOwn)

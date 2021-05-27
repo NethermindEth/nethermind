@@ -172,8 +172,10 @@ namespace Nethermind.TxPool.Collections
 
             return false;
         }
-
+        [MethodImpl(MethodImplOptions.Synchronized)]
         public bool TryRemove(TKey key, [MaybeNullWhen(false)] out TValue value) => TryRemove(key, out value, out _);
+        
+        [MethodImpl(MethodImplOptions.Synchronized)]
         public bool TryRemove(TKey key) => TryRemove(key, out _, out _);
 
         /// <summary>
@@ -224,6 +226,7 @@ namespace Nethermind.TxPool.Collections
             return false;
         }
 
+        [MethodImpl(MethodImplOptions.Synchronized)]
         public bool TryInsert(TKey key, TValue value) => TryInsert(key, value, out _);
 
         private void RemoveLast(out TValue? removed)
