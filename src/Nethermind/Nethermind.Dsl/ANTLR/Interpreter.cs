@@ -127,7 +127,7 @@ namespace Nethermind.Dsl.ANTLR
                             transformData: (t => t), _logger),
                 "==" => new PipelineElement<Transaction, Transaction>(
                             condition: (t => t.GetType().GetProperty(key).GetValue(t).ToString() == value),
-                            transformData: (t => t), _logger)
+                            transformData: (t => t), _logger),
                 "NOT" => new PipelineElement<Transaction, Transaction>(
                             condition: (t => t.GetType().GetProperty(key).GetValue(t).ToString() != value),
                             transformData: (t => t), _logger),
@@ -160,9 +160,15 @@ namespace Nethermind.Dsl.ANTLR
                 "IS" => new PipelineElement<Block, Block>(
                             condition: (b => b.GetType().GetProperty(key).GetValue(b).ToString() == value),
                             transformData: (b => b), _logger),
+                "==" => new PipelineElement<Transaction, Transaction>(
+                            condition: (t => t.GetType().GetProperty(key).GetValue(t).ToString() == value),
+                            transformData: (t => t), _logger),
                 "NOT" => new PipelineElement<Block, Block>(
                             condition: (b => b.GetType().GetProperty(key).GetValue(b).ToString() != value),
                             transformData: (b => b), _logger),
+                "!=" => new PipelineElement<Transaction, Transaction>(
+                            condition: (t => t.GetType().GetProperty(key).GetValue(t).ToString() != value),
+                            transformData: (t => t), _logger),
                 ">" => new PipelineElement<Block, Block>(
                             condition: (b => (UInt256)b.GetType().GetProperty(key).GetValue(b) > UInt256.Parse(value)),
                             transformData: (b => b), _logger),
