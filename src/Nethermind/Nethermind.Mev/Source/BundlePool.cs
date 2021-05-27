@@ -48,7 +48,7 @@ namespace Nethermind.Mev.Source
         private readonly IMevConfig _mevConfig;
         private readonly IBlockTree _blockTree;
         private readonly IBundleSimulator _simulator;
-        private readonly SortedPool<MevBundle, BundleWithHashes, long> _bundles;
+        private readonly SortedPool<MevBundle, MevBundle, long> _bundles;
         private readonly ConcurrentDictionary<Keccak, ConcurrentDictionary<MevBundle, SimulatedMevBundleContext>> _simulatedBundles = new();
         private readonly ILogger _logger;
         private readonly CompareBundleWithHashesByBlock _compareBundleWithHashesByBlock;
@@ -73,7 +73,7 @@ namespace Nethermind.Mev.Source
             _compareMevBundleByBlock = new CompareMevBundleByBlock {BestBlockNumber = blockTree.BestSuggestedHeader?.Number ?? 0};
             _bundles = new BundleSortedPool(
                 _mevConfig.BundlePoolSize,
-                _compareBundleWithHashesByBlock.ThenBy(CompareBundleWithHashesByMinTimestamp.Default),
+                _compareMevBundleByBlock.ThenBy(CompareMevBundleByMinTimestamp.Default),
                 logManager ); 
             
             if (_finalizationManager != null)
@@ -90,10 +90,10 @@ namespace Nethermind.Mev.Source
 
         private IEnumerable<MevBundle> GetBundles(long blockNumber, UInt256 minTimestamp, UInt256 maxTimestamp, CancellationToken token = default)
         {
-            IDictionary<MevBundle, BundleWithHashes> cacheMap = _bundles.GetCacheMap();
+            IDictionary<MevBundle, MevBundle> cacheMap = _bundles.GetCacheMap();
             if (cacheMap.Keys.Select(k => k.BlockNumber).Contains(blockNumber))
             {
-                IEnumerable<BundleWithHashes> bundles = cacheMap.Where(pair => pair.Key.BlockNumber == blockNumber).Select(pair => pair.Value);
+                IEnumerable<MevBundle> bundles = cacheMap.Where(pair => pair.Key.BlockNumber == blockNumber).Select(pair => pair.Value);
                 foreach (MevBundle mevBundle in bundles)
                 {
                     if (token.IsCancellationRequested)
@@ -191,15 +191,15 @@ namespace Nethermind.Mev.Source
                 context.Task = _simulator.Simulate(bundle, parent, context.CancellationTokenSource.Token);
             }
             
-            lock (_bundles)
+            /*lock (_bundles)
             {
-                _bundles.TryGetValue(bundle, out BundleWithHashes BundleValue);
+                _bundles.TryGetValue(bundle, out MevBundle mevBundle);
                 
                 if (!BundleValue.BlockHashes.Contains(parentHash))
                 {
                     BundleValue.BlockHashes.Add(parentHash);
                 }
-            }
+            }*/
         }
         
         private void OnNewSuggestedBlock(object? sender, BlockEventArgs e)
@@ -241,11 +241,16 @@ namespace Nethermind.Mev.Source
             long maxFinalizedBlockNumber = e.FinalizedBlocks.Select(b => b.Number).Max();
             int count = _bundles.Count;
             int capacity = _mevConfig.BundlePoolSize;
-            lock (_bundles)
+            MevBundle[] bundleArray = _bundles.GetSnapshot();
+            IEnumerable<MevBundle> finalizedBundles = bundleArray.Where(bundle => bundle.BlockNumber < maxFinalizedBlockNumber);
+            foreach (MevBundle bundle in finalizedBundles)
             {
-                while (_bundles.Count > capacity) //remove if bundles more than capacity
+                IEnumerable<KeyValuePair<Keccak, ConcurrentDictionary<MevBundle, SimulatedMevBundleContext>>> relatedHashes =
+                    _simulatedBundles.Where(kvp => kvp.Value.ContainsKey(bundle));
+                foreach (KeyValuePair<Keccak, ConcurrentDictionary<MevBundle, SimulatedMevBundleContext> kvp in
+                    relatedHashes)
                 {
-                    _bundles.TryTakeFirst(out BundleWithHashes bundleWithHashes); //want to make this same as Key, does this need to be out?
+                    kvp.Value.Remove(bundle, out SimulatedMevBundleContext? context);
                 }
             }
         }
