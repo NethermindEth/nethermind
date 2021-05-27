@@ -167,7 +167,7 @@ namespace Nethermind.Mev.Execution
                     FailedTransactions.Add(_tracer.Transaction?.Hash!);
                 }
                 UInt256 premiumPerGas = UInt256.Zero;
-                if (_tracer.Transaction?.TryCalculatePremiumPerGas(_block!.BaseFee, out premiumPerGas) == true)
+                if (_tracer.Transaction?.TryCalculatePremiumPerGas(_block!.BaseFeePerGas, out premiumPerGas) == true)
                 {
                     TxFees += (UInt256)_tracer.GasSpent * premiumPerGas;
                     if (!_txPool.IsInHashCache(_tracer.Transaction.Hash))

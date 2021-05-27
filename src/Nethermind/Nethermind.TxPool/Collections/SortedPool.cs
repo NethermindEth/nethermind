@@ -29,7 +29,7 @@ namespace Nethermind.TxPool.Collections
     /// <typeparam name="TKey">Type of keys of items, unique in pool.</typeparam>
     /// <typeparam name="TValue">Type of items that are kept.</typeparam>
     /// <typeparam name="TGroupKey">Type of groups in which the items are organized</typeparam>
-    public abstract class SortedPool<TKey, TValue, TGroupKey> where TGroupKey : notnull
+    public abstract partial class SortedPool<TKey, TValue, TGroupKey> where TGroupKey : notnull
     {
         private readonly int _capacity;
         private readonly IComparer<TValue> _groupComparer;
@@ -46,7 +46,7 @@ namespace Nethermind.TxPool.Collections
         {
             _capacity = capacity;
             // ReSharper disable VirtualMemberCallInConstructor
-            var sortedComparer = GetUniqueComparer(comparer ?? throw new ArgumentNullException(nameof(comparer)));
+            IComparer<TValue> sortedComparer = GetUniqueComparer(comparer ?? throw new ArgumentNullException(nameof(comparer)));
             _groupComparer = GetGroupComparer(comparer ?? throw new ArgumentNullException(nameof(comparer)));
             _cacheMap = new Dictionary<TKey, TValue>(); // do not initialize it at the full capacity
             _buckets = new Dictionary<TGroupKey, ICollection<TValue>>();
@@ -75,7 +75,7 @@ namespace Nethermind.TxPool.Collections
         protected abstract TGroupKey MapToGroup(TValue value);
 
         public int Count => _cacheMap.Count;
-
+		
         /// <summary>
         /// Gets all items in random order.
         /// </summary>
@@ -121,10 +121,11 @@ namespace Nethermind.TxPool.Collections
                         {
                             bucket!.Remove(value);
                             return true;
-                        }   
+                        }
                     }
+                    
+                    Removed?.Invoke(this, new SortedPoolEventArgs(key, value, groupMapping));
                 }
-
             }
 
             value = default;
@@ -166,7 +167,7 @@ namespace Nethermind.TxPool.Collections
                     _buckets[group] = bucket = new SortedSet<TValue>(_groupComparer);
                 }
 
-                InsertCore(key, value, bucket);
+                InsertCore(key, value, group, bucket);
 
                 if (_cacheMap.Count > _capacity)
                 {
@@ -200,11 +201,13 @@ namespace Nethermind.TxPool.Collections
         /// <summary>
         /// Actual insert mechanism.
         /// </summary>
-        protected virtual void InsertCore(TKey key, TValue value, ICollection<TValue> bucketCollection)
+        protected virtual void InsertCore(TKey key, TValue value, TGroupKey groupKey, ICollection<TValue> bucketCollection)
         {
             bucketCollection.Add(value);
             _cacheMap.Add(key, value);
             _sortedValues.Add(value, key);
+            
+            Inserted?.Invoke(this, new SortedPoolEventArgs(key, value, groupKey));
         }
         
         /// <summary>
@@ -215,7 +218,7 @@ namespace Nethermind.TxPool.Collections
             _sortedValues.Remove(value);
             return _cacheMap.Remove(key);
         }
-
+        
         [MethodImpl(MethodImplOptions.Synchronized)]
         public void NotifyChange(IEnumerable<TGroupKey> keys, Action change)
         {

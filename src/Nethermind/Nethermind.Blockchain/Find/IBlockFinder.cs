@@ -22,8 +22,6 @@ namespace Nethermind.Blockchain.Find
 {
     public interface IBlockFinder
     {
-        event EventHandler<BlockEventArgs> NewHeadBlock;
-        
         Keccak HeadHash { get; }
 
         Keccak GenesisHash { get; }

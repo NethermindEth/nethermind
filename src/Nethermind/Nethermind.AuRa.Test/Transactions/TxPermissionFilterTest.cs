@@ -188,7 +188,7 @@ namespace Nethermind.AuRa.Test.Transactions
             TransactionBuilder<Transaction> transactionBuilder = CreateV3Transaction(test, txPermissions);
             if (test.TxType == TxType.EIP1559)
             {
-                transactionBuilder.WithGasPremium(test.GasPremium);
+                transactionBuilder.WithMaxPriorityFeePerGas(test.GasPremium);
                 transactionBuilder.WithFeeCap(test.FeeCap);
             }
 

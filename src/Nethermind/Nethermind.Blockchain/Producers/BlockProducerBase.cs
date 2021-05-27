@@ -55,7 +55,7 @@ namespace Nethermind.Blockchain.Producers
         protected IStateProvider StateProvider { get; }
         private readonly IGasLimitCalculator _gasLimitCalculator;
         private readonly ITimestamper _timestamper;
-        private readonly ISpecProvider _spec;
+        private readonly ISpecProvider _specProvider;
         private readonly ITxSource _txSource;
 
         protected DateTime _lastProducedBlockDateTime;
@@ -81,7 +81,7 @@ namespace Nethermind.Blockchain.Producers
             StateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
             _gasLimitCalculator = gasLimitCalculator ?? throw new ArgumentNullException(nameof(gasLimitCalculator));
             Timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
-            _spec = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
+            _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             Logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
@@ -106,7 +106,18 @@ namespace Nethermind.Blockchain.Producers
         
         private readonly object _newBlockLock = new();
 
-        protected Task<Block?> TryProduceNewBlock(CancellationToken token, BlockHeader? parentHeader = null)
+        protected async Task<Block?> TryProduceNewBlock(CancellationToken token, bool suggest = true, BlockHeader? parentHeader = null)
+        {
+            Block? block = await TryProduceNewBlock(token, parentHeader);
+            if (suggest && block is not null)
+            {
+                BlockTree.SuggestBlock(block);
+            }
+
+            return block;
+        }
+
+        private Task<Block?> TryProduceNewBlock(CancellationToken token, BlockHeader? parentHeader = null)
         {
             lock (_newBlockLock)
             {
@@ -157,7 +168,6 @@ namespace Nethermind.Blockchain.Producers
                             {
                                 if (Logger.IsInfo)
                                     Logger.Info($"Sealed block {t.Result.ToString(Block.Format.HashNumberDiffAndTx)}");
-                                ConsumeProducedBlock(t.Result);
                                 Metrics.BlocksSealed++;
                                 _lastProducedBlockDateTime = DateTime.UtcNow;
                                 return t.Result;
@@ -188,8 +198,7 @@ namespace Nethermind.Blockchain.Producers
 
             return Task.FromResult((Block?)null);
         }
-
-        protected virtual void ConsumeProducedBlock(Block block) => BlockTree.SuggestBlock(block);
+        
 
         protected virtual Task<Block> SealBlock(Block block, BlockHeader parent, CancellationToken token) =>
             Sealer.SealBlock(block, token);
@@ -211,13 +220,12 @@ namespace Nethermind.Blockchain.Producers
         private IEnumerable<Transaction> GetTransactions(BlockHeader parent)
         {
             long gasLimit = _gasLimitCalculator.GetGasLimit(parent);
-            bool isEip1559Enabled = _spec.GetSpec(parent.Number + 1).IsEip1559Enabled;
-            long gasLimitEip1559Adjusted = Eip1559GasLimitAdjuster.AdjustGasLimit(isEip1559Enabled, gasLimit);
-            return _txSource.GetTransactions(parent, gasLimitEip1559Adjusted);
+            return _txSource.GetTransactions(parent, gasLimit);
         }
 
         protected virtual Block PrepareBlock(BlockHeader parent)
         {
+            IReleaseSpec spec = _specProvider.GetSpec(parent.Number + 1);
             UInt256 timestamp = UInt256.Max(parent.Timestamp + 1, Timestamper.UnixTime.Seconds);
             UInt256 difficulty = CalculateDifficulty(parent, timestamp);
             BlockHeader header = new(
@@ -226,19 +234,21 @@ namespace Nethermind.Blockchain.Producers
                 Sealer.Address,
                 difficulty,
                 parent.Number + 1,
-                _gasLimitCalculator.GetGasLimit(parent),
+                Eip1559GasLimitAdjuster.AdjustGasLimit(spec, _gasLimitCalculator.GetGasLimit(parent), parent.Number + 1),
                 timestamp,
-                Encoding.UTF8.GetBytes("Nethermind"))
+                GetExtraData(parent))
             {
                 TotalDifficulty = parent.TotalDifficulty + difficulty, Author = Sealer.Address
             };
 
             if (Logger.IsDebug) Logger.Debug($"Setting total difficulty to {parent.TotalDifficulty} + {difficulty}.");
-            header.BaseFee = BlockHeader.CalculateBaseFee(parent, _spec.GetSpec(header.Number));
+            header.BaseFeePerGas = BaseFeeCalculator.Calculate(parent, _specProvider.GetSpec(header.Number));
 
             IEnumerable<Transaction> transactions = GetTransactions(parent);
             return new BlockToProduce(header, transactions, Array.Empty<BlockHeader>());;
         }
+
+        protected virtual byte[] GetExtraData(BlockHeader parent) => Encoding.UTF8.GetBytes("Nethermind");
 
         protected abstract UInt256 CalculateDifficulty(BlockHeader parent, UInt256 timestamp);
     }

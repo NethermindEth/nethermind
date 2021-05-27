@@ -197,7 +197,7 @@ namespace Nethermind.Mev.Test
             {
                 TestBlockchain chain = await base.Build(specProvider, initialValues);
                 MevRpcModule = new MevRpcModule(
-                    _mevConfig,
+                    new MevConfig {Enabled = true},
                     new JsonRpcConfig(),
                     BundlePool,
                     BlockFinder,

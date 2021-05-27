@@ -1,4 +1,4 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -15,22 +15,10 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System.Collections.Generic;
-using Nethermind.Mev.Data;
-
-namespace Nethermind.Mev.Source
+namespace Nethermind.Evm
 {
-    public class CompareMevBundlesByPoolIndex : IComparer<MevBundle>
+    public class InvalidCodeException : EvmException
     {
-        public static readonly CompareMevBundlesByPoolIndex Default = new();
-        
-        public int Compare(MevBundle? x, MevBundle? y)
-        {
-            if (ReferenceEquals(x, y)) return 0;
-            if (ReferenceEquals(null, y)) return 1;
-            if (ReferenceEquals(null, x)) return -1;
-            
-            return x.PoolIndex.CompareTo(y.PoolIndex);
-        }
+        public override EvmExceptionType ExceptionType => EvmExceptionType.InvalidCode;
     }
 }

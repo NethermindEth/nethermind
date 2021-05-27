@@ -242,7 +242,7 @@ namespace Nethermind.Blockchain.Processing
                     if (!transactionsForBlock.Contains(currentTx))
                     {
                         // No more gas available in block
-                        if (currentTx.GasLimit > block.Header.GetActualGasLimit(spec) - block.GasUsed)
+                        if (currentTx.GasLimit > block.Header.GasLimit - block.GasUsed)
                         {
                             break;
                         }
@@ -344,7 +344,7 @@ namespace Nethermind.Blockchain.Processing
                 AuRaStep = bh.AuRaStep,
                 AuRaSignature = bh.AuRaSignature,
                 ReceiptsRoot = bh.ReceiptsRoot,
-                BaseFee = bh.BaseFee
+                BaseFeePerGas = bh.BaseFeePerGas
             };
 
             IEnumerable<Transaction> transactions = suggestedBlock.GetTransactions(out bool transactionsChangeable);

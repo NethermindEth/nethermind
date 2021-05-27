@@ -15,13 +15,27 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using Nethermind.Core;
+using System;
 
-namespace Nethermind.Consensus
+namespace Nethermind.TxPool.Collections
 {
-    public class ManualGasLimitCalculator : IGasLimitCalculator
+    public partial class SortedPool<TKey, TValue, TGroupKey>
     {
-        public long GasLimit { get; set; }
-        public long GetGasLimit(BlockHeader parentHeader) => GasLimit;
+        public event EventHandler<SortedPoolEventArgs>? Inserted;
+        public event EventHandler<SortedPoolEventArgs>? Removed;
+
+        public class SortedPoolEventArgs
+        {
+            public TKey Key { get; }
+            public TValue Value { get; }
+            public TGroupKey? Group { get; }
+
+            public SortedPoolEventArgs(TKey key, TValue value, TGroupKey? group)
+            {
+                Key = key;
+                Value = value;
+                Group = group;
+            }
+        }
     }
 }

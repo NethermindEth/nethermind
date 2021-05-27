@@ -20,17 +20,17 @@ using Nethermind.Mev.Data;
 
 namespace Nethermind.Mev.Source
 {
-    public class CompareMevBundlesByMinTimestamp : IComparer<MevBundle>
+    public class CompareMevBundleByIdentity : IComparer<MevBundle>
     {
-        public static readonly CompareMevBundlesByMinTimestamp Default = new();
+        public static readonly CompareMevBundleByIdentity Default = new();
         
         public int Compare(MevBundle? x, MevBundle? y)
         {
             if (ReferenceEquals(x, y)) return 0;
             if (ReferenceEquals(null, y)) return 1;
             if (ReferenceEquals(null, x)) return -1;
-
-            return x.MinTimestamp.CompareTo(y.MinTimestamp);
+            
+            return x.Hash.CompareTo(y.Hash);
         }
     }
 }

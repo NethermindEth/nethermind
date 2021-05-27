@@ -150,18 +150,5 @@ namespace Nethermind.Mev
 
             transactionCall.From ??= Address.SystemUser;
         }
-        
-        public ResultWrapper<FeeToFrequency> neth_feeDistribution()
-        {
-            // decentralize mev_relay first?
-            // integration with ndm
-            // eth_subscribe
-            throw new NotImplementedException();
-        }
-    }
-
-    public class FeeToFrequency
-    {
-
     }
 }

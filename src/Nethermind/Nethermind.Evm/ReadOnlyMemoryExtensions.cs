@@ -1,4 +1,4 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -15,22 +15,15 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System.Collections.Generic;
-using Nethermind.Mev.Data;
+using System;
 
-namespace Nethermind.Mev.Source
+namespace Nethermind.Evm
 {
-    public class CompareMevBundlesByIdentity : IComparer<MevBundle>
+    public static class ReadOnlyMemoryExtensions
     {
-        public static readonly CompareMevBundlesByIdentity Default = new();
-        
-        public int Compare(MevBundle? x, MevBundle? y)
+        public static bool StartsWith(this ReadOnlyMemory<byte> inputData, byte startingByte)
         {
-            if (ReferenceEquals(x, y)) return 0;
-            if (ReferenceEquals(null, y)) return 1;
-            if (ReferenceEquals(null, x)) return -1;
-            
-            return x.Hash.CompareTo(y.Hash);
+            return inputData.Span[0] == startingByte;
         }
     }
 }
