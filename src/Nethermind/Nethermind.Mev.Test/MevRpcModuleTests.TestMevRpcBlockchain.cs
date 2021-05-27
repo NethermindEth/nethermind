@@ -138,13 +138,13 @@ namespace Nethermind.Mev.Test
                         throw new ArgumentException("maxMergedBundles cannot be null or zero in V2");
                     }
 
-                    Dictionary<IManualBlockProducer, IBeneficiaryBalanceSource> blockDictionary =
+                    Dictionary<IManualBlockProducer, IBeneficiaryBalanceSource> blockProducerDictionary =
                         new Dictionary<IManualBlockProducer, IBeneficiaryBalanceSource>();
                     
                     // Add non-mev block
                     IManualBlockProducer standardProducer = CreateEth2BlockProducer();
                     IBeneficiaryBalanceSource standardProducerBeneficiaryBalanceSource = blockProducerEnvFactory.LastMevBlockProcessor;
-                    blockDictionary.Add(standardProducer, standardProducerBeneficiaryBalanceSource);
+                    blockProducerDictionary.Add(standardProducer, standardProducerBeneficiaryBalanceSource);
 
                     // Try blocks with all bundle numbers <= maxMergedBundles
                     for (int bundleLimit = 1; bundleLimit <= _maxMergedBundles; bundleLimit++)
@@ -153,10 +153,10 @@ namespace Nethermind.Mev.Test
                         BundleTxSource bundleTxSource = new(v2Selector, Timestamper);
                         IManualBlockProducer bundleProducer = CreateEth2BlockProducer(bundleTxSource);
                         IBeneficiaryBalanceSource bundleProducerBeneficiaryBalanceSource = blockProducerEnvFactory.LastMevBlockProcessor;
-                        blockDictionary.Add(bundleProducer, bundleProducerBeneficiaryBalanceSource);
+                        blockProducerDictionary.Add(bundleProducer, bundleProducerBeneficiaryBalanceSource);
                     }
 
-                    return new MevTestBlockProducer(BlockTree, blockDictionary);
+                    return new MevTestBlockProducer(BlockTree, blockProducerDictionary);
                 }
                 else
                 {
