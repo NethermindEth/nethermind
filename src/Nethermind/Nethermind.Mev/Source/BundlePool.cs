@@ -90,39 +90,24 @@ namespace Nethermind.Mev.Source
 
         private IEnumerable<MevBundle> GetBundles(long blockNumber, UInt256 minTimestamp, UInt256 maxTimestamp, CancellationToken token = default)
         {
-            lock (_bundles2)
+            if (_bundles2.TryGetBucket(blockNumber, out BundleWithHashes[] array))
             {
-                MevBundle searchedBundle = MevBundle.Empty(blockNumber, minTimestamp, maxTimestamp);
-                bool inBundle = _bundles2.TryGetValue(searchedBundle, out BundleWithHashes value);
-                if (inBundle)
+                foreach (MevBundle mevBundle in array) //is the complement of i to prevent us from checking if i is not in this list?, but ~~of a number is the same number...
                 {
-                    _bundles2.TryGetBucket(blockNumber, out BundleWithHashes[] array);
-                    foreach (BundleWithHashes bundleWithHashes in array) //is the complement of i to prevent us from checking if i is not in this list?, but ~~of a number is the same number...
+                    if (token.IsCancellationRequested)
                     {
-                        if (token.IsCancellationRequested)
-                        {
-                            break;
-                        }
+                        break;
+                    }
 
-                        MevBundle mevBundle = bundleWithHashes.Bundle;
-                        if (mevBundle.BlockNumber == searchedBundle.BlockNumber)
-                        {
-                            bool bundleIsInFuture = mevBundle.MaxTimestamp != UInt256.Zero &&
-                                                    searchedBundle.MaxTimestamp < mevBundle.MaxTimestamp;
-                            bool bundleIsTooOld = mevBundle.MinTimestamp != UInt256.Zero &&
-                                                  searchedBundle.MinTimestamp > mevBundle.MinTimestamp;
-                            if (!bundleIsInFuture && !bundleIsTooOld) 
-                            {
-                                yield return mevBundle;
-                            }
-                        }
-                        else
-                        {
-                            break;
-                        }
+                    bool bundleIsInFuture = mevBundle.MinTimestamp != UInt256.Zero && minTimestamp < mevBundle.MinTimestamp;
+                    bool bundleIsTooOld = mevBundle.MaxTimestamp != UInt256.Zero && maxTimestamp > mevBundle.MaxTimestamp;
+                    if (!bundleIsInFuture && !bundleIsTooOld) 
+                    {
+                        yield return mevBundle;
                     }
                 }
             }
+                    
         }
 
         public bool AddBundle(MevBundle bundle)
