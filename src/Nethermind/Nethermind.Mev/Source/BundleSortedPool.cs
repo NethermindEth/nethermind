@@ -17,6 +17,7 @@
 
 using System.Collections.Generic;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Logging;
 using Nethermind.Mev.Data;
 using Nethermind.TxPool.Collections;
@@ -25,8 +26,8 @@ namespace Nethermind.Mev.Source
 {
     public class BundleSortedPool : DistinctValueSortedPool<MevBundle, BundleWithHashes, long> 
     {
-        public BundleSortedPool(int capacity, IComparer<BundleWithHashes> comparer, IComparer<MevBundle> ValueComparer, ILogManager logManager)
-            : base(capacity, comparer, EqualityComparer<BundleWithHashes>.Default, logManager) //why do we need these?
+        public BundleSortedPool(int capacity, IComparer<BundleWithHashes> comparer, ILogManager logManager)
+            : base(capacity, comparer, EqualityComparer<BundleWithHashes>.Default, logManager)
         {
             
         }

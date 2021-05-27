@@ -22,6 +22,7 @@ namespace Nethermind.Mev.Source
 {
     public class CompareMevBundleByBlock : IComparer<MevBundle>
     {
+        public static readonly CompareMevBundleByBlock Default = new();
         public long BestBlockNumber { get; set; }
         
         public int Compare(MevBundle? x, MevBundle? y)

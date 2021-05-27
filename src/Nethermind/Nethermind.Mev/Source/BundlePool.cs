@@ -74,7 +74,6 @@ namespace Nethermind.Mev.Source
             _bundles2 = new BundleSortedPool(
                 _mevConfig.BundlePoolSize,
                 _compareBundleWithHashesByBlock.ThenBy(CompareBundleWithHashesByMinTimestamp.Default),
-                _compareMevBundleByBlock.ThenBy(CompareMevBundleByMinTimestamp.Default),
                 logManager ); 
             
             if (_finalizationManager != null)
@@ -244,10 +243,10 @@ namespace Nethermind.Mev.Source
                 }
             }
             
-            long previousBestSuggested = _compareByBlock.BestBlockNumber;
+            long previousBestSuggested = _compareBundleWithHashesByBlock.BestBlockNumber;
             long fromBlockNumber = Math.Min(newBlockNumber, previousBestSuggested);
             long blockDelta = Math.Abs(newBlockNumber - previousBestSuggested);
-            _bundles2.NotifyChange(Range(fromBlockNumber, blockDelta), () => _compareByBlock.BestBlockNumber = newBlockNumber);
+            _bundles2.NotifyChange(Range(fromBlockNumber, blockDelta), () => _compareBundleWithHashesByBlock.BestBlockNumber = newBlockNumber);
         }
 
         private void OnBlocksFinalized(object? sender, FinalizeEventArgs e)
