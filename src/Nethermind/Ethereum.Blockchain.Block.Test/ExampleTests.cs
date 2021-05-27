@@ -16,27 +16,22 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.Core;
-using Nethermind.Int256;
+using System.Collections.Generic;
+using Ethereum.Test.Base;
+using NUnit.Framework;
 
-namespace Ethereum.Test.Base
+namespace Ethereum.Blockchain.Block.Test
 {
-    public class TransactionJson
+    [TestFixture][Parallelizable(ParallelScope.All)]
+    public class ExampleTests : GeneralStateTestBase
     {
-        public byte[][]? Data { get; set; }
-        public long[]? GasLimit { get; set; }
-        public UInt256? GasPrice { get; set; }
+        [TestCaseSource(nameof(LoadTests))]
+        public void Test(GeneralStateTest test)
+        {
+            Assert.True(RunTest(test).Pass);
+        }
         
-        public UInt256? MaxFeePerGas { get; set; }
-        
-        public UInt256? MaxPriorityFeePerGas { get; set; }
-        public UInt256 Nonce { get; set; }
-        public Address? To { get; set; }
-        public UInt256[]? Value { get; set; }
-        public byte[]? SecretKey { get; set; }
-        
-        public AccessListItemJson[]?[]? AccessLists { get; set; }
-        
-        public AccessListItemJson[]? AccessList { get; set; }
+        public static IEnumerable<GeneralStateTest> LoadTests() { var loader = new TestsSourceLoader(new LoadGeneralStateTestsStrategy(), "bcExample");
+            return (IEnumerable<GeneralStateTest>)loader.LoadTests(); }
     }
 }

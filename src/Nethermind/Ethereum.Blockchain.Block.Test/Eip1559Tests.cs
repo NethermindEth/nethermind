@@ -1,4 +1,4 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -15,22 +15,27 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System;
-using Nethermind.Blockchain.Find;
-using Nethermind.Core.Crypto;
-using Nethermind.State;
+using System.Collections.Generic;
+using System.Threading.Tasks;
+using Ethereum.Test.Base;
+using NUnit.Framework;
 
-namespace Nethermind.Blockchain
+namespace Ethereum.Blockchain.Block.Test
 {
-    public class ChainHeadReadOnlyStateProvider : SpecificBlockReadOnlyStateProvider
+    [TestFixture]
+    [Parallelizable(ParallelScope.All)]
+    public class Eip1559Tests : BlockchainTestBase
     {
-        private readonly IBlockFinder _blockFinder;
-        
-        public ChainHeadReadOnlyStateProvider(IBlockFinder blockFinder, IStateReader stateReader) : base(stateReader)
+        [TestCaseSource(nameof(LoadTests))]
+        public async Task Test(BlockchainTest test)
         {
-            _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
+            await RunTest(test);
         }
 
-        public override Keccak StateRoot => _blockFinder.Head?.StateRoot ?? Keccak.EmptyTreeHash;
+        public static IEnumerable<BlockchainTest> LoadTests()
+        {
+            var loader = new TestsSourceLoader(new LoadBlockchainTestsStrategy(), "bcEIP1559");
+            return (IEnumerable<BlockchainTest>)loader.LoadTests();      
+        }
     }
 }
