@@ -1,4 +1,4 @@
-// Generated from /home/gheise/nethermind/src/Nethermind/Nethermind.Dsl/Grammar/DslGrammar.g4 by ANTLR 4.8
+// Generated from DslGrammar.g4 by ANTLR 4.9.2
 import org.antlr.v4.runtime.atn.*;
 import org.antlr.v4.runtime.dfa.DFA;
 import org.antlr.v4.runtime.*;
@@ -10,15 +10,15 @@ import java.util.ArrayList;
 
 @SuppressWarnings({"all", "warnings", "unchecked", "unused", "cast"})
 public class DslGrammarParser extends Parser {
-	static { RuntimeMetaData.checkVersion("4.8", RuntimeMetaData.VERSION); }
+	static { RuntimeMetaData.checkVersion("4.9.2", RuntimeMetaData.VERSION); }
 
 	protected static final DFA[] _decisionToDFA;
 	protected static final PredictionContextCache _sharedContextCache =
 		new PredictionContextCache();
 	public static final int
 		BOOLEAN_OPERATOR=1, ARITHMETIC_SYMBOL=2, SOURCE=3, WATCH=4, WHERE=5, PUBLISH=6, 
-		AND=7, OR=8, CONTAINS=9, IS=10, NOT=11, PUBLISH_VALUE=12, WEBSOCKETS=13, 
-		LOG_PUBLISHER=14, WORD=15, BYTECODE=16, DIGIT=17, ADDRESS=18, WS=19;
+		AND=7, OR=8, CONTAINS=9, PUBLISH_VALUE=10, WEBSOCKETS=11, LOG_PUBLISHER=12, 
+		WORD=13, BYTECODE=14, DIGIT=15, ADDRESS=16, WS=17;
 	public static final int
 		RULE_tree = 0, RULE_expression = 1, RULE_sourceExpression = 2, RULE_watchExpression = 3, 
 		RULE_whereExpression = 4, RULE_publishExpression = 5, RULE_condition = 6, 
@@ -34,15 +34,15 @@ public class DslGrammarParser extends Parser {
 	private static String[] makeLiteralNames() {
 		return new String[] {
 			null, null, null, "'SOURCE'", "'WATCH'", "'WHERE'", "'PUBLISH'", "'AND'", 
-			"'OR'", "'CONTAINS'", "'IS'", "'NOT'"
+			"'OR'", "'CONTAINS'"
 		};
 	}
 	private static final String[] _LITERAL_NAMES = makeLiteralNames();
 	private static String[] makeSymbolicNames() {
 		return new String[] {
 			null, "BOOLEAN_OPERATOR", "ARITHMETIC_SYMBOL", "SOURCE", "WATCH", "WHERE", 
-			"PUBLISH", "AND", "OR", "CONTAINS", "IS", "NOT", "PUBLISH_VALUE", "WEBSOCKETS", 
-			"LOG_PUBLISHER", "WORD", "BYTECODE", "DIGIT", "ADDRESS", "WS"
+			"PUBLISH", "AND", "OR", "CONTAINS", "PUBLISH_VALUE", "WEBSOCKETS", "LOG_PUBLISHER", 
+			"WORD", "BYTECODE", "DIGIT", "ADDRESS", "WS"
 		};
 	}
 	private static final String[] _SYMBOLIC_NAMES = makeSymbolicNames();
@@ -107,6 +107,14 @@ public class DslGrammarParser extends Parser {
 			super(parent, invokingState);
 		}
 		@Override public int getRuleIndex() { return RULE_tree; }
+		@Override
+		public void enterRule(ParseTreeListener listener) {
+			if ( listener instanceof DslGrammarListener ) ((DslGrammarListener)listener).enterTree(this);
+		}
+		@Override
+		public void exitRule(ParseTreeListener listener) {
+			if ( listener instanceof DslGrammarListener ) ((DslGrammarListener)listener).exitTree(this);
+		}
 	}
 
 	public final TreeContext tree() throws RecognitionException {
@@ -166,6 +174,14 @@ public class DslGrammarParser extends Parser {
 			super(parent, invokingState);
 		}
 		@Override public int getRuleIndex() { return RULE_expression; }
+		@Override
+		public void enterRule(ParseTreeListener listener) {
+			if ( listener instanceof DslGrammarListener ) ((DslGrammarListener)listener).enterExpression(this);
+		}
+		@Override
+		public void exitRule(ParseTreeListener listener) {
+			if ( listener instanceof DslGrammarListener ) ((DslGrammarListener)listener).exitExpression(this);
+		}
 	}
 
 	public final ExpressionContext expression() throws RecognitionException {
@@ -239,6 +255,14 @@ public class DslGrammarParser extends Parser {
 			super(parent, invokingState);
 		}
 		@Override public int getRuleIndex() { return RULE_sourceExpression; }
+		@Override
+		public void enterRule(ParseTreeListener listener) {
+			if ( listener instanceof DslGrammarListener ) ((DslGrammarListener)listener).enterSourceExpression(this);
+		}
+		@Override
+		public void exitRule(ParseTreeListener listener) {
+			if ( listener instanceof DslGrammarListener ) ((DslGrammarListener)listener).exitSourceExpression(this);
+		}
 	}
 
 	public final SourceExpressionContext sourceExpression() throws RecognitionException {
@@ -271,6 +295,14 @@ public class DslGrammarParser extends Parser {
 			super(parent, invokingState);
 		}
 		@Override public int getRuleIndex() { return RULE_watchExpression; }
+		@Override
+		public void enterRule(ParseTreeListener listener) {
+			if ( listener instanceof DslGrammarListener ) ((DslGrammarListener)listener).enterWatchExpression(this);
+		}
+		@Override
+		public void exitRule(ParseTreeListener listener) {
+			if ( listener instanceof DslGrammarListener ) ((DslGrammarListener)listener).exitWatchExpression(this);
+		}
 	}
 
 	public final WatchExpressionContext watchExpression() throws RecognitionException {
@@ -305,6 +337,14 @@ public class DslGrammarParser extends Parser {
 			super(parent, invokingState);
 		}
 		@Override public int getRuleIndex() { return RULE_whereExpression; }
+		@Override
+		public void enterRule(ParseTreeListener listener) {
+			if ( listener instanceof DslGrammarListener ) ((DslGrammarListener)listener).enterWhereExpression(this);
+		}
+		@Override
+		public void exitRule(ParseTreeListener listener) {
+			if ( listener instanceof DslGrammarListener ) ((DslGrammarListener)listener).exitWhereExpression(this);
+		}
 	}
 
 	public final WhereExpressionContext whereExpression() throws RecognitionException {
@@ -338,6 +378,14 @@ public class DslGrammarParser extends Parser {
 			super(parent, invokingState);
 		}
 		@Override public int getRuleIndex() { return RULE_publishExpression; }
+		@Override
+		public void enterRule(ParseTreeListener listener) {
+			if ( listener instanceof DslGrammarListener ) ((DslGrammarListener)listener).enterPublishExpression(this);
+		}
+		@Override
+		public void exitRule(ParseTreeListener listener) {
+			if ( listener instanceof DslGrammarListener ) ((DslGrammarListener)listener).exitPublishExpression(this);
+		}
 	}
 
 	public final PublishExpressionContext publishExpression() throws RecognitionException {
@@ -378,6 +426,14 @@ public class DslGrammarParser extends Parser {
 			super(parent, invokingState);
 		}
 		@Override public int getRuleIndex() { return RULE_condition; }
+		@Override
+		public void enterRule(ParseTreeListener listener) {
+			if ( listener instanceof DslGrammarListener ) ((DslGrammarListener)listener).enterCondition(this);
+		}
+		@Override
+		public void exitRule(ParseTreeListener listener) {
+			if ( listener instanceof DslGrammarListener ) ((DslGrammarListener)listener).exitCondition(this);
+		}
 	}
 
 	public final ConditionContext condition() throws RecognitionException {
@@ -423,6 +479,14 @@ public class DslGrammarParser extends Parser {
 			super(parent, invokingState);
 		}
 		@Override public int getRuleIndex() { return RULE_andCondition; }
+		@Override
+		public void enterRule(ParseTreeListener listener) {
+			if ( listener instanceof DslGrammarListener ) ((DslGrammarListener)listener).enterAndCondition(this);
+		}
+		@Override
+		public void exitRule(ParseTreeListener listener) {
+			if ( listener instanceof DslGrammarListener ) ((DslGrammarListener)listener).exitAndCondition(this);
+		}
 	}
 
 	public final AndConditionContext andCondition() throws RecognitionException {
@@ -457,6 +521,14 @@ public class DslGrammarParser extends Parser {
 			super(parent, invokingState);
 		}
 		@Override public int getRuleIndex() { return RULE_orCondition; }
+		@Override
+		public void enterRule(ParseTreeListener listener) {
+			if ( listener instanceof DslGrammarListener ) ((DslGrammarListener)listener).enterOrCondition(this);
+		}
+		@Override
+		public void exitRule(ParseTreeListener listener) {
+			if ( listener instanceof DslGrammarListener ) ((DslGrammarListener)listener).exitOrCondition(this);
+		}
 	}
 
 	public final OrConditionContext orCondition() throws RecognitionException {
@@ -483,19 +555,19 @@ public class DslGrammarParser extends Parser {
 	}
 
 	public static final String _serializedATN =
-		"\3\u608b\ua72a\u8133\ub9ed\u417c\u3be7\u7786\u5964\3\25:\4\2\t\2\4\3\t"+
+		"\3\u608b\ua72a\u8133\ub9ed\u417c\u3be7\u7786\u5964\3\23:\4\2\t\2\4\3\t"+
 		"\3\4\4\t\4\4\5\t\5\4\6\t\6\4\7\t\7\4\b\t\b\4\t\t\t\4\n\t\n\3\2\7\2\26"+
 		"\n\2\f\2\16\2\31\13\2\3\3\3\3\3\3\3\3\3\3\3\3\5\3!\n\3\3\4\3\4\3\4\3\5"+
 		"\3\5\3\5\3\6\3\6\3\6\3\7\3\7\3\7\3\7\3\b\3\b\3\b\3\b\3\t\3\t\3\t\3\n\3"+
-		"\n\3\n\3\n\2\2\13\2\4\6\b\n\f\16\20\22\2\3\3\2\21\24\2\66\2\27\3\2\2\2"+
+		"\n\3\n\3\n\2\2\13\2\4\6\b\n\f\16\20\22\2\3\3\2\17\22\2\66\2\27\3\2\2\2"+
 		"\4 \3\2\2\2\6\"\3\2\2\2\b%\3\2\2\2\n(\3\2\2\2\f+\3\2\2\2\16/\3\2\2\2\20"+
 		"\63\3\2\2\2\22\66\3\2\2\2\24\26\5\4\3\2\25\24\3\2\2\2\26\31\3\2\2\2\27"+
 		"\25\3\2\2\2\27\30\3\2\2\2\30\3\3\2\2\2\31\27\3\2\2\2\32!\5\6\4\2\33!\5"+
 		"\b\5\2\34!\5\n\6\2\35!\5\f\7\2\36!\5\20\t\2\37!\5\22\n\2 \32\3\2\2\2 "+
 		"\33\3\2\2\2 \34\3\2\2\2 \35\3\2\2\2 \36\3\2\2\2 \37\3\2\2\2!\5\3\2\2\2"+
-		"\"#\7\5\2\2#$\7\21\2\2$\7\3\2\2\2%&\7\6\2\2&\'\7\21\2\2\'\t\3\2\2\2()"+
-		"\7\7\2\2)*\5\16\b\2*\13\3\2\2\2+,\7\b\2\2,-\7\16\2\2-.\7\21\2\2.\r\3\2"+
-		"\2\2/\60\7\21\2\2\60\61\7\3\2\2\61\62\t\2\2\2\62\17\3\2\2\2\63\64\7\t"+
+		"\"#\7\5\2\2#$\7\17\2\2$\7\3\2\2\2%&\7\6\2\2&\'\7\17\2\2\'\t\3\2\2\2()"+
+		"\7\7\2\2)*\5\16\b\2*\13\3\2\2\2+,\7\b\2\2,-\7\f\2\2-.\7\17\2\2.\r\3\2"+
+		"\2\2/\60\7\17\2\2\60\61\7\3\2\2\61\62\t\2\2\2\62\17\3\2\2\2\63\64\7\t"+
 		"\2\2\64\65\5\16\b\2\65\21\3\2\2\2\66\67\7\n\2\2\678\5\16\b\28\23\3\2\2"+
 		"\2\4\27 ";
 	public static final ATN _ATN =

@@ -1,62 +1,161 @@
 using System;
 using System.Linq;
 using Antlr4.Runtime.Misc;
+using static DslGrammarParser;
 
 namespace Nethermind.Dsl.ANTLR
 {
     public class ParseTreeListener : DslGrammarBaseListener
     {
-        private AntlrTokenType _tokens;
-        public Action<AntlrTokenType, string> OnEnterInit { private get; set; }
-        public Action<AntlrTokenType, string> OnEnterExpression { private get; set; }
-        public Action<string, string, string> OnEnterCondition { private get; set; }
-        public Action OnExitInit { private get; set; }
+        public Action OnStart { private get; set; }
+        public Action<string> OnSourceExpression { private get; set; }
+        public Action<string> OnWatchExpression { private get; set; }
+        public Action<string, string> OnPublishExpression { private get; set; }
+        public Action<string, string, string> OnCondition { private get; set; }
+        public Action<string, string, string> OnOrCondition { private get; set; }
+        public Action<string, string, string> OnAndCondition { private get; set; }
+        public Action OnExit { private get; set; }
 
-        public override void EnterInit([NotNull] DslGrammarParser.InitContext context)
+        public override void EnterSourceExpression([NotNull] SourceExpressionContext context)
         {
-            if(OnEnterInit == null)
-            {
-                return; 
-            }
-
-            var sourceNode = context.expression().First();
-            var nodeText = sourceNode.OPERATOR().GetText();
-            var isTokenType = Enum.IsDefined(typeof(AntlrTokenType), nodeText);
-            var tokenValue = sourceNode.WORD().GetText();
-
-            if(isTokenType && nodeText.Equals("SOURCE"))
-            {
-                AntlrTokenType type; 
-                AntlrTokenType.TryParse(nodeText, out type);
-
-                OnEnterInit(type, tokenValue);
-            }
-        }
-
-        public override void EnterExpression([NotNull] DslGrammarParser.ExpressionContext context)
-        {
-            if(OnEnterExpression == null)
+            if (OnSourceExpression == null)
             {
                 return;
             }
 
-            AntlrTokenType tokenType = (AntlrTokenType)Enum.Parse(typeof(AntlrTokenType), context.OPERATOR().GetText());
-            OnEnterExpression(tokenType, context.WORD().GetText());
+            OnSourceExpression(context.WORD().GetText());
         }
 
-        public override void EnterCondition([NotNull] DslGrammarParser.ConditionContext context)
+        public override void EnterWatchExpression([NotNull] WatchExpressionContext context)
         {
-            if(OnEnterCondition == null)
+            if (OnWatchExpression == null)
             {
                 return;
             }
 
-            OnEnterCondition(context.WORD().First().GetText(), context.ARITHMETIC_SYMBOL().GetText(), context.ADDRESS().GetText());
+            OnWatchExpression(context.WORD().GetText());
         }
 
-        public override void ExitInit([NotNull] DslGrammarParser.InitContext context)
+        public override void EnterWhereExpression([NotNull] WhereExpressionContext context)
         {
-           OnExitInit(); 
+            if (OnCondition == null)
+            {
+                return;
+            }
+
+            ConditionContext condition = context.condition();
+            string key = condition.WORD().First().GetText();
+            string booleanOperator = condition.BOOLEAN_OPERATOR().GetText();
+
+            if(condition.DIGIT() != null)
+            {
+                OnCondition(key, booleanOperator, condition.DIGIT().GetText());
+                return;
+            }
+            try
+            {
+            if (condition.WORD()[1] != null)
+                {
+                    OnCondition(key, booleanOperator, condition.WORD()[1].GetText());
+                    return;
+                }
+            }
+            catch(IndexOutOfRangeException)
+            {
+            }
+            if(condition.ADDRESS() != null)
+            {
+                OnCondition(key, booleanOperator, condition.ADDRESS().GetText());
+                return;
+            }
+            if(condition.BYTECODE() != null)
+            {
+                OnCondition(key, booleanOperator, condition.BYTECODE().GetText());
+            }
+        }
+
+        public override void EnterOrCondition([NotNull] OrConditionContext context)
+        {
+            if (OnOrCondition == null)
+            {
+                return;
+            }
+
+            var condition = context.condition();
+            string key = condition.WORD().First().GetText();
+            string booleanOperator = condition.BOOLEAN_OPERATOR().GetText();
+
+            if(condition.DIGIT() != null)
+            {
+                OnOrCondition(key, booleanOperator, condition.DIGIT().GetText());
+                return;
+            }
+            try
+            {
+            if (condition.WORD()[1] != null)
+                {
+                    OnOrCondition(key, booleanOperator, condition.WORD()[1].GetText());
+                    return;
+                }
+            }
+            catch(IndexOutOfRangeException)
+            {
+            }
+            if(condition.ADDRESS() != null)
+            {
+                OnOrCondition(key, booleanOperator, condition.ADDRESS().GetText());
+                return;
+            }
+            if (condition.BYTECODE() != null)
+            {
+                OnOrCondition(key, booleanOperator, condition.BYTECODE().GetText());
+                return;
+            }
+        }
+
+        public override void EnterAndCondition([NotNull] AndConditionContext context)
+        {
+            if (OnAndCondition == null)
+            {
+                return;
+            }
+
+            var condition = context.condition();
+            string key = condition.WORD().First().GetText();
+            string booleanOperator = condition.BOOLEAN_OPERATOR().GetText();
+
+            if(condition.DIGIT() != null)
+            {
+                OnAndCondition(key, booleanOperator, condition.DIGIT().GetText());
+            }
+            try
+            {
+            if (condition.WORD()[1] != null)
+                {
+                    OnAndCondition(key, booleanOperator, condition.WORD()[1].GetText());
+                    return;
+                }
+            }
+            catch(IndexOutOfRangeException)
+            {
+            }
+            if(condition.ADDRESS() != null)
+            {
+                OnAndCondition(key, booleanOperator, condition.ADDRESS().GetText());
+            }
+            if (condition.BYTECODE() != null)
+            {
+                OnAndCondition(key, booleanOperator, condition.BYTECODE().GetText());
+            }
+        }
+        public override void EnterPublishExpression([NotNull] PublishExpressionContext context)
+        {
+            if (OnPublishExpression == null)
+            {
+                return;
+            }
+
+            OnPublishExpression(context.PUBLISH_VALUE().GetText(), context.WORD().GetText());
         }
     }
 }

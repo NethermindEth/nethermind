@@ -1,0 +1,5 @@
+SOURCE BlockProcessor
+WATCH Transactions
+WHERE Data
+CONTAINS a9059cbb OR Data CONTAINS 0d5f2659 
+PUBLISH WebSockets test

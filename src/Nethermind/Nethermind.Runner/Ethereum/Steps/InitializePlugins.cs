@@ -25,7 +25,7 @@ using Nethermind.Logging;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
-    [RunnerStepDependencies(typeof(InitializeBlockTree))]
+    [RunnerStepDependencies(typeof(InitializeBlockTree))] 
     public class InitializePlugins : IStep
     {
         private readonly INethermindApi _api;

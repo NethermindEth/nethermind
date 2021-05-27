@@ -1,88 +1,69 @@
 using System.Threading.Tasks;
-using Antlr4.Runtime;
-using Antlr4.Runtime.Tree;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
-using Nethermind.Blockchain.Processing;
 using Nethermind.Dsl.ANTLR;
-using Nethermind.TxPool;
-using Nethermind.Pipeline;
-using Nethermind.Dsl.Pipeline;
-using Nethermind.Core;
-using System;
-using Nethermind.Pipeline.Publishers;
-using Nethermind.Int256;
 using System.IO;
 using Nethermind.Logging;
+using System.IO.Abstractions;
+using System.Collections.Generic;
+using Nethermind.Dsl.Pipeline;
+using Nethermind.Dsl.JsonRpc;
 using System.Linq;
+using Nethermind.JsonRpc.Modules;
+using System;
 
-
+#nullable enable
 namespace Nethermind.Dsl
 {
     // This class will define the DSL Plugin
 
     public class DslPlugin : INethermindPlugin // Inherits from INethermindPlugin class
     {
-        public string Name { get; }  
-
-        public string Description { get; } 
-
-        public string Author { get; }
-
-        private ParseTreeListener _listener; 
-        private INethermindApi _api;
-        private ITxPool _txPool;
-        private IBlockProcessor _blockProcessor;
-        private IPipeline _pipeline;
-        private IPipelineBuilder<Block, Block> _blockProcessorPipelineBuilder;
-        private bool blockSource;
-        private ILogger _logger; 
-        private IDslConfig _config;
+        public string Name { get; } = "DslPlugin";
+        public string Description { get; } = "Plugin created in order to let users create their own DSL scripts used in data extraction from chain";
+        public string Author { get; } = "Nethermind team";
+        public IFileSystem? FileSystem;
+        private INethermindApi? _api;
+        private ParseTreeListener? _listener;
+        private Dictionary<int, Interpreter>? _interpreters;
+        private IDslRpcModule? _rpcModule;
+        private ILogger? _logger;
 
         public async Task Init(INethermindApi nethermindApi) 
         {
 
             _api = nethermindApi;
-            _txPool = _api.TxPool;
-            _blockProcessor = _api.MainBlockProcessor;
 
-            _config = _api.Config<IDslConfig>();
+            _logger = _api.LogManager.GetClassLogger();
+            if (_logger.IsInfo) _logger.Info("Initializing DSL plugin ...");
 
-            if (_config.Enabled) 
+            IEnumerable<string> dslScripts = LoadDSLScript();
+            _interpreters = new Dictionary<int, Interpreter>();
+
+            if (dslScripts != null && dslScripts.Count() != 0)
             {
-                _logger = _api.LogManager.GetClassLogger();
-                if (_logger.IsInfo) _logger.Info("Initializing DSL plugin ...");
-
-                var dslScript = await LoadDSLScript(); // The code will only execute after LoadDSLScript finishes reading file
-
-                var inputStream = new AntlrInputStream(dslScript); // Defines an input stream from loaded script
-                var lexer = new DslGrammarLexer(inputStream); // Defines a lexer object from the input script
-                var tokens = new CommonTokenStream(lexer); // Defines tokens created from ANTLR lexer
-                var parser = new DslGrammarParser(tokens); // Defines a parser object based on the lexer output
-                parser.BuildParseTree = true; //  Builds parse tree
-                IParseTree tree = parser.init(); // Defines a tree object 
-
-                _listener = new ParseTreeListener();
-                _listener.OnEnterInit = OnInitEntry;
-                _listener.OnEnterExpression = OnExpressionEntry;
-                _listener.OnEnterCondition = OnConditionEntry;
-                _listener.OnExitInit = BuildPipeline;
-                ParseTreeWalker.Default.Walk(_listener, tree);
-
-                if (_logger.IsInfo) _logger.Info("DSL plugin initialized.");
+                foreach (var script in dslScripts)
+                {
+                    AddInterpreter(new Interpreter(_api, script));
+                }
             }
+
+            if (_logger.IsInfo) _logger.Info($"DSL plugin initialized with {_interpreters.Count} scripts loaded at the start of the node.");
         }
 
         public Task InitNetworkProtocol()
         {
-            _txPool = _api.TxPool; // Defines TxPool and the Block Processor asynchronously
-            _blockProcessor = _api.MainBlockProcessor;
             return Task.CompletedTask;
         }
 
         public Task InitRpcModules()
         {
-            return Task.CompletedTask;  // ?
+            if(_logger.IsInfo) _logger.Info("Initializing DSL RPC module...");
+            var rpcPool = new SingletonModulePool<IDslRpcModule>(new DslRpcModuleFactory(_api, _logger, _interpreters));
+
+            _api.RpcModuleProvider.Register(rpcPool);
+
+            return Task.CompletedTask;
         }
 
         public ValueTask DisposeAsync() => ValueTask.CompletedTask; // Lambda expression, does what ?
@@ -91,204 +72,48 @@ namespace Nethermind.Dsl
 
         // From this point on only methods are defined and now more operation is undertaken
 
-        private void OnInitEntry(AntlrTokenType tokenType, string tokenValue)
+        private int AddInterpreter(Interpreter interpreter)
         {
-            if (tokenType == AntlrTokenType.SOURCE) // Constructor definition?
+            if(_interpreters?.Count == 0)
             {
-                if (tokenValue.Equals("BlockProcessor", StringComparison.InvariantCultureIgnoreCase))
-                {
-                    var sourceElement = new BlockProcessorSource<Block>(_blockProcessor);
-                    _blockProcessorPipelineBuilder = new PipelineBuilder<Block, Block>(sourceElement);
-
-                    return;
-                }
-
-                throw new ArgumentException($"Given token {tokenType} value {tokenValue} is not supported.");
+                _interpreters.Add(1, interpreter);
+                return 1;
             }
+
+            int index = _interpreters.Last().Key + 1;
+            _interpreters.Add(index, interpreter);
+            return index;
         }
 
-        private void OnExpressionEntry(AntlrTokenType tokenType, string tokenValue)
+        private IEnumerable<string> LoadDSLScript()
         {
-            switch (tokenType)
+            if (FileSystem == null)
             {
-                case AntlrTokenType.SOURCE:
-                    break;                  // Edge case
-                case AntlrTokenType.WHERE: 
-                    break;                  // Edge case
-                case AntlrTokenType.WATCH:
-                    SetWatchOnPipeline(tokenValue); // Defines WATCH 
-                    break;
-                case AntlrTokenType.PUBLISH:
-                    AddPublisher(tokenValue); // Publishes
-                    break;
-                case AntlrTokenType.IS:
-                    OnConditionEntry("=",tokenValue);
-                    break;
-                case AntlrTokenType.NOT:
-                    OnConditionEntry("!=", tokenValue);
-                default: throw new ArgumentException($"Given token is not supported {tokenType}"); 
-            }
-        }
-
-        // OnConditionEntry will define all conditional statements such as ==, !=, etc.
-
-        private void OnConditionEntry(string key, string symbol, string value)
-        {
-            if (blockSource)
-            {
-                switch (key)
-                {
-                    case "==": 
-                        _blockProcessorPipelineBuilder.AddElement(
-                            new PipelineElement<Block, Block>(
-                                condition: (b => b.GetType().GetProperty(key).GetValue(b).ToString() == value),
-                                transformData: (b => b)
-                            )
-                        );
-                        return;
-                    case "!=":
-                        _blockProcessorPipelineBuilder.AddElement(
-                            new PipelineElement<Block, Block>(
-                                condition: (b => b.GetType().GetProperty(key).GetValue(b).ToString() != value),
-                                transformData: (b => b)
-                            )
-                        );
-                        return;
-                    case ">":
-                        _blockProcessorPipelineBuilder.AddElement(
-                            new PipelineElement<Block, Block>(
-                                condition: (b => (UInt256)b.GetType().GetProperty(key).GetValue(b) > UInt256.Parse(value)),
-                                transformData: (b => b)
-                            )
-                        );
-                        return;
-                    case "<":
-                        _blockProcessorPipelineBuilder.AddElement(
-                            new PipelineElement<Block, Block>(
-                                condition: (b => (UInt256)b.GetType().GetProperty(key).GetValue(b) < UInt256.Parse(value)),
-                                transformData: (b => b)
-                            )
-                        );
-                        return;
-                    case ">=":
-                        _blockProcessorPipelineBuilder.AddElement(
-                            new PipelineElement<Block, Block>(
-                                condition: (b => (UInt256)b.GetType().GetProperty(key).GetValue(b) >= UInt256.Parse(value)),
-                                transformData: (b => b)
-                            )
-                        );
-                        return;
-                    case "<=":
-                        _blockProcessorPipelineBuilder.AddElement(
-                            new PipelineElement<Block, Block>(
-                                condition: (b => (UInt256)b.GetType().GetProperty(key).GetValue(b) <= UInt256.Parse(value)),
-                                transformData: (b => b)
-                            )
-                        );
-                        return;
-                }
-            }
-        }
-
-
-        // SetWatchOnPipeline will add either a block or a transaction to the pipeline
-
-
-            private void SetWatchOnPipeline(string value)
-            {
-                value = value.ToLowerInvariant();
-                switch (value)
-                {
-                    case "blocks":
-                        _blockProcessorPipelineBuilder.AddElement(new PipelineElement<Block, Block>((block => true), (b => b)));
-                        blockSource = true;
-                        break;
-                    case "transactions":
-                        _blockProcessorPipelineBuilder.AddElement(new PipelineElement<Block, Transaction[]>(
-                            (b => true),
-                            (block => block.Transactions)
-                        ));
-                        blockSource = false;
-                        break;
-                }
+                FileSystem = new FileSystem();
             }
 
-            /* AddPublisher will either add a WebSocketsPublisher block to the pipeline, which will initiate the EthereumJsonSerializer, 
-                or will add a LogPublisher block which will initialize the LogManager as well as the EthereumJsonSerializer */
+            var dirPath = FileSystem.Path.Combine(PathUtils.ExecutingDirectory, "DSL");
+            if (_logger.IsInfo) _logger.Info($"Loading dsl scripts from {dirPath}");
 
-            private void AddPublisher(string publisherType)
+            if (FileSystem.Directory.Exists(dirPath))
             {
-                if (publisherType.Equals("WebSockets", StringComparison.InvariantCultureIgnoreCase))
+                string[] files = FileSystem.Directory.GetFiles("DSL", "*.txt");
+
+                if(files.Length == 0)
                 {
-                    if (_blockProcessorPipelineBuilder != null)
-                    {
-                        _blockProcessorPipelineBuilder.AddElement(new WebSocketsPublisher<Block, Block>("dsl", _api.EthereumJsonSerializer));
-                    }
+                    if(_logger.IsInfo) _logger.Info($"No DSL scripts were found at the start of the plugin in the {dirPath}");
+                    yield break;
                 }
 
-                if (publisherType.Equals("LogPublisher", StringComparison.InvariantCultureIgnoreCase))
+                foreach(var file in files)
                 {
-                    if (_blockProcessorPipelineBuilder != null)
-                    {
-                        _blockProcessorPipelineBuilder.AddElement(new LogPublisher<Block, Block>(_api.EthereumJsonSerializer, _api.LogManager));
-                    }
+                    yield return FileSystem.File.ReadAllText(file);
                 }
             }
-
-            // Build pipeline instantiates the blockProcessorPipelineBuilder class and calls the Build() method to create a pipeline object
-
-            private void BuildPipeline()
+            else
             {
-                _pipeline = _blockProcessorPipelineBuilder.Build();
-            }
-
-
-            // Loads script located at specified directory and awaits for  text to be read
-
-            private async Task<string> LoadDSLScript() 
-            {
-                var dirPath = Path.Combine(PathUtils.ExecutingDirectory, "DSL");
-                if(_logger.IsInfo) _logger.Info($"Loading dsl script from {dirPath}");
-
-                if(Directory.Exists(dirPath))
-                {
-                    var file = Directory.GetFiles("DSL", "*.txt").First(); 
-
-                    return await File.ReadAllTextAsync(file); 
-                }
-
                 throw new FileLoadException($"Could not find DSL directory at {dirPath} or the directory is empty");
             }
         }
     }
-
-
-    /* Notes:
-
-    This plugin follows the Task Asynchronous Programming (TAP) model. The goal of this, according to Microsoft, is
-    to 'enable code that reads like a sentence, but executes in a much more complicated order based on external 
-    resource allocation and when tasks complete". Below are some important components of this model.
-
-    async: represents a single no-return operation. The modifier signifies to the compiler that this method contains
-           an await statement, and therefore an asynchronous operation.
-
-    await: suspends evaluation of async until the async operations represented by its operand completes. This
-           means that any task that is asynchronous is suspended until all operations are finished. You await each Task 
-           before using its result. 
-    
-    Task : the Task class represents a single operation that does not return a value and usually executes asynchronously. 
-           Wihout the async keyword, the compiler does not automatically generate the code need top create the async state
-           machine and return a Task. Without it, the Task returnn type must be manually defined.
-
-
-    Suggestions
-
-    Line 244: "async Task" is redundant as async keyword will automatically define return typ
-    
-    C# syntax and properties:
-
-    '_' indicates private field
-
-    { get; set: } define automatic properties that do not need a field, only get is read-only, only set is write-only
-
-    */
+}

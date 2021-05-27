@@ -1,28 +1,47 @@
 using System;
+using System.Collections.Generic;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
+using Nethermind.Logging;
 using Nethermind.Pipeline;
 
 namespace Nethermind.Dsl.Pipeline
 {
     public class PipelineElement<TIn, TOut> : IPipelineElement<TIn, TOut> 
     {
-        private Func<TIn, TOut> _transformData;
-        private Func<TIn, bool> _condition;
         public Action<TOut> Emit { private get; set; }
+        public List<Func<TIn, bool>> Conditions { get => _conditions; }
+        private List<Func<TIn, bool>> _conditions;
+        private Func<TIn, TOut> _transformData;
+        private readonly ILogger _logger;
 
-        public PipelineElement(Func<TIn, bool> condition, Func<TIn, TOut> transformData)
+        public PipelineElement(Func<TIn, bool> condition, Func<TIn, TOut> transformData, ILogger logger)
         {
-            _condition = condition; 
-            _transformData = transformData;
+            _conditions = new List<Func<TIn, bool>> { condition } ?? throw new ArgumentNullException(nameof(condition));
+            _transformData = transformData ?? throw new ArgumentNullException(nameof(transformData));
+            _logger = logger;
         }
 
         public void SubscribeToData(TIn data)
         {
-            if(_condition(data))
+            if(Emit == null)
             {
-                var dataToEmit = _transformData(data);
-                Emit(dataToEmit);
+                return;
             }
+
+            foreach(var condition in _conditions)
+            {
+                if (condition(data))
+                {
+                    var dataToEmit = _transformData(data);
+                    Emit(dataToEmit);
+                }
+            }
+        }
+
+        public void AddCondition(Func<TIn, bool> condition)
+        {
+            _conditions.Add(condition);
         }
     }
 }

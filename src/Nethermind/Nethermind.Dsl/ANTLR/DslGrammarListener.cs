@@ -31,15 +31,15 @@ using IToken = Antlr4.Runtime.IToken;
 [System.CLSCompliant(false)]
 public interface IDslGrammarListener : IParseTreeListener {
 	/// <summary>
-	/// Enter a parse tree produced by <see cref="DslGrammarParser.init"/>.
+	/// Enter a parse tree produced by <see cref="DslGrammarParser.tree"/>.
 	/// </summary>
 	/// <param name="context">The parse tree.</param>
-	void EnterInit([NotNull] DslGrammarParser.InitContext context);
+	void EnterTree([NotNull] DslGrammarParser.TreeContext context);
 	/// <summary>
-	/// Exit a parse tree produced by <see cref="DslGrammarParser.init"/>.
+	/// Exit a parse tree produced by <see cref="DslGrammarParser.tree"/>.
 	/// </summary>
 	/// <param name="context">The parse tree.</param>
-	void ExitInit([NotNull] DslGrammarParser.InitContext context);
+	void ExitTree([NotNull] DslGrammarParser.TreeContext context);
 	/// <summary>
 	/// Enter a parse tree produced by <see cref="DslGrammarParser.expression"/>.
 	/// </summary>
@@ -51,6 +51,46 @@ public interface IDslGrammarListener : IParseTreeListener {
 	/// <param name="context">The parse tree.</param>
 	void ExitExpression([NotNull] DslGrammarParser.ExpressionContext context);
 	/// <summary>
+	/// Enter a parse tree produced by <see cref="DslGrammarParser.sourceExpression"/>.
+	/// </summary>
+	/// <param name="context">The parse tree.</param>
+	void EnterSourceExpression([NotNull] DslGrammarParser.SourceExpressionContext context);
+	/// <summary>
+	/// Exit a parse tree produced by <see cref="DslGrammarParser.sourceExpression"/>.
+	/// </summary>
+	/// <param name="context">The parse tree.</param>
+	void ExitSourceExpression([NotNull] DslGrammarParser.SourceExpressionContext context);
+	/// <summary>
+	/// Enter a parse tree produced by <see cref="DslGrammarParser.watchExpression"/>.
+	/// </summary>
+	/// <param name="context">The parse tree.</param>
+	void EnterWatchExpression([NotNull] DslGrammarParser.WatchExpressionContext context);
+	/// <summary>
+	/// Exit a parse tree produced by <see cref="DslGrammarParser.watchExpression"/>.
+	/// </summary>
+	/// <param name="context">The parse tree.</param>
+	void ExitWatchExpression([NotNull] DslGrammarParser.WatchExpressionContext context);
+	/// <summary>
+	/// Enter a parse tree produced by <see cref="DslGrammarParser.whereExpression"/>.
+	/// </summary>
+	/// <param name="context">The parse tree.</param>
+	void EnterWhereExpression([NotNull] DslGrammarParser.WhereExpressionContext context);
+	/// <summary>
+	/// Exit a parse tree produced by <see cref="DslGrammarParser.whereExpression"/>.
+	/// </summary>
+	/// <param name="context">The parse tree.</param>
+	void ExitWhereExpression([NotNull] DslGrammarParser.WhereExpressionContext context);
+	/// <summary>
+	/// Enter a parse tree produced by <see cref="DslGrammarParser.publishExpression"/>.
+	/// </summary>
+	/// <param name="context">The parse tree.</param>
+	void EnterPublishExpression([NotNull] DslGrammarParser.PublishExpressionContext context);
+	/// <summary>
+	/// Exit a parse tree produced by <see cref="DslGrammarParser.publishExpression"/>.
+	/// </summary>
+	/// <param name="context">The parse tree.</param>
+	void ExitPublishExpression([NotNull] DslGrammarParser.PublishExpressionContext context);
+	/// <summary>
 	/// Enter a parse tree produced by <see cref="DslGrammarParser.condition"/>.
 	/// </summary>
 	/// <param name="context">The parse tree.</param>
@@ -60,4 +100,24 @@ public interface IDslGrammarListener : IParseTreeListener {
 	/// </summary>
 	/// <param name="context">The parse tree.</param>
 	void ExitCondition([NotNull] DslGrammarParser.ConditionContext context);
+	/// <summary>
+	/// Enter a parse tree produced by <see cref="DslGrammarParser.andCondition"/>.
+	/// </summary>
+	/// <param name="context">The parse tree.</param>
+	void EnterAndCondition([NotNull] DslGrammarParser.AndConditionContext context);
+	/// <summary>
+	/// Exit a parse tree produced by <see cref="DslGrammarParser.andCondition"/>.
+	/// </summary>
+	/// <param name="context">The parse tree.</param>
+	void ExitAndCondition([NotNull] DslGrammarParser.AndConditionContext context);
+	/// <summary>
+	/// Enter a parse tree produced by <see cref="DslGrammarParser.orCondition"/>.
+	/// </summary>
+	/// <param name="context">The parse tree.</param>
+	void EnterOrCondition([NotNull] DslGrammarParser.OrConditionContext context);
+	/// <summary>
+	/// Exit a parse tree produced by <see cref="DslGrammarParser.orCondition"/>.
+	/// </summary>
+	/// <param name="context">The parse tree.</param>
+	void ExitOrCondition([NotNull] DslGrammarParser.OrConditionContext context);
 }

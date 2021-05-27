@@ -6,11 +6,11 @@ using Nethermind.TxPool;
 #nullable enable
 namespace Nethermind.Dsl.Pipeline
 {
-    public class TxPoolSource<TOut> : IPipelineElement<TOut> where TOut : Transaction
+    public class PendingTransactionsSource<TOut> : IPipelineElement<TOut> where TOut : Transaction
     {
         private readonly ITxPool _txPool;
 
-        public TxPoolSource(ITxPool txPool)
+        public PendingTransactionsSource(ITxPool txPool)
         {
             _txPool = txPool;
             _txPool.NewPending += OnNewPending;

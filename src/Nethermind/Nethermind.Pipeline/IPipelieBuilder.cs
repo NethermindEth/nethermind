@@ -11,6 +11,11 @@ namespace Nethermind.Pipeline
         /// </summary>
         IPipelineBuilder<TSource ,TOut> AddElement<TOut>(IPipelineElement<TOutput, TOut> element);
 
+        /// <summary>
+        /// Lastly added element with <see cref="IPipelineBuilder{TSource, TOutput}.AddElement{TOut}(IPipelineElement{TOutput, TOut})" />
+        /// </summary>
+        IPipelineElement LastElement { get; }
+
         /// <summary> 
         /// Takes elements added by <see cref="IPipelineBuilder{TSource, TOutput}.AddElement{TOut}(IPipelineElement{TOutput, TOut})"/> and returns <see cref="IPipeline"/>
         /// with set collection of <see cref="IPipeline.Elements"/>. 
