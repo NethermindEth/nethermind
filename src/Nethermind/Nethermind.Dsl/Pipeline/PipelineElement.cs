@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Pipeline;
 
@@ -23,6 +24,12 @@ namespace Nethermind.Dsl.Pipeline
 
         public void SubscribeToData(TIn data)
         {
+            var txData = data as Transaction;
+            if(txData != null)
+            {
+                if (_logger.IsInfo) _logger.Info($"Received tx in pipeline {txData.Hash} data: {Bytes.ToHexString(txData.Data)}");
+            }
+
             if(Emit == null)
             {
                 return;
