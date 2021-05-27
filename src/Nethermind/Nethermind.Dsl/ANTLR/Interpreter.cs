@@ -141,24 +141,12 @@ namespace Nethermind.Dsl.ANTLR
                             condition: (t => (UInt256)t.GetType().GetProperty(key).GetValue(t) <= UInt256.Parse(value)),
                             transformData: (t => t), _logger),
                 "CONTAINS" => new PipelineElement<Transaction, Transaction>(
-                            condition: (t => ContainsData(t, value)),
+                            condition: (t => Bytes.ToHexString(t.GetType().GetProperty(key).GetValue(t) as byte[]).Contains(value)),
                             transformData: (t => t), _logger), 
                 _ => null
             };
         }
         
-        private bool ContainsData(Transaction tx, string value)
-        {
-            var byteData = Bytes.ToHexString(tx.Data);
-            _logger.Info($"Data in transaction: {byteData}");
-            _logger.Info($"Looking for {value}...");  
-
-            bool result = byteData.Contains(value);
-            _logger.Info($"Result: {result}");
-
-            return result;
-        }
-
         private PipelineElement<Block, Block> GetNextBlockElement(string key, string operation, string value)
         {
             return operation switch
