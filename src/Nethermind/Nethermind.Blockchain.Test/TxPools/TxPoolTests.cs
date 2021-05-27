@@ -413,7 +413,7 @@ namespace Nethermind.Blockchain.Test.TxPools
             _stateProvider.SubtractFromBalance(TestItem.AddressA, (UInt256)oneTxPrice, new ReleaseSpec());
             _stateProvider.IncrementNonce(TestItem.AddressA);
             
-            _txPool.UpdateBuckets();
+            _txPool.NotifyHeadChange(Build.A.Block.TestObject);
             _txPool.GetPendingTransactions().Select(t => t.GasBottleneck).Max().Should().Be((UInt256)expectedMaxGasBottleneck);
         }
         

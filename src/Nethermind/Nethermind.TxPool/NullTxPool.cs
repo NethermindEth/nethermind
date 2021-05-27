@@ -44,7 +44,7 @@ namespace Nethermind.TxPool
 
         public bool RemoveTransaction(Transaction tx, bool removeBelowThisTxNonce) => false;
         
-        public void UpdateBuckets() { }
+        public void NotifyHeadChange(Block block) { }
         
         public bool IsKnown(Keccak hash) => false;
 
@@ -74,7 +74,7 @@ namespace Nethermind.TxPool
             remove { }
         }
 
-        public uint FutureNonceRetention { get; } = 16;
+        public uint FutureNonceRetention { get; } = 256;
         public long? BlockGasLimit { get; set; }
         public UInt256 CurrentBaseFee { get; set; }
     }

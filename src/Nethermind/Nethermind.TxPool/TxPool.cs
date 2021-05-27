@@ -162,6 +162,40 @@ namespace Nethermind.TxPool
 
         public Transaction[] GetOwnPendingTransactions() => _persistentBroadcastTransactions.GetSnapshot();
 
+        public void NotifyHeadChange(Block block)
+        {
+            BlockGasLimit = block.GasLimit;
+            CurrentBaseFee = block.Header.BaseFeePerGas;
+            RemoveProcessedTransactions(block.Transactions);
+            UpdateBuckets();
+        }
+
+        private void RemoveProcessedTransactions(Transaction[] blockTransactions)
+        {
+            long transactionsInBlock = blockTransactions.Length;
+            long discoveredForPendingTxs = 0;
+            long discoveredForHashCache = 0;
+            
+            for (int i = 0; i < transactionsInBlock; i++)
+            {
+                Transaction tx = blockTransactions[i];
+                Keccak txHash = tx.Hash;
+                
+                if (!IsKnown(txHash))
+                {
+                    discoveredForHashCache++;
+                }
+
+                if (!RemoveTransaction(tx, true))
+                {
+                    discoveredForPendingTxs++;
+                }
+            }
+            
+            Metrics.DarkPoolRatioLevel1 = transactionsInBlock == 0 ? 0 : (float)discoveredForHashCache / transactionsInBlock;
+            Metrics.DarkPoolRatioLevel2 = transactionsInBlock == 0 ? 0 : (float)discoveredForPendingTxs / transactionsInBlock;
+        }
+
         public void AddPeer(ITxPoolPeer peer)
         {
             PeerInfo peerInfo = new(peer);

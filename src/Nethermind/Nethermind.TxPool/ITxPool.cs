@@ -37,7 +37,7 @@ namespace Nethermind.TxPool
         void RemovePeer(PublicKey nodeId);
         AddTxResult AddTransaction(Transaction tx, TxHandlingOptions handlingOptions);
         bool RemoveTransaction(Transaction tx, bool removeBelowThisTxNonce = false);
-        void UpdateBuckets();
+        void NotifyHeadChange(Block block);
         bool IsKnown(Keccak? hash);
         bool TryGetPendingTransaction(Keccak hash, out Transaction? transaction);
         UInt256 ReserveOwnTransactionNonce(Address address);
@@ -47,6 +47,5 @@ namespace Nethermind.TxPool
         
         public uint FutureNonceRetention { get; }
         long? BlockGasLimit { get; set; }
-        UInt256 CurrentBaseFee { get; set; }
     }
 }

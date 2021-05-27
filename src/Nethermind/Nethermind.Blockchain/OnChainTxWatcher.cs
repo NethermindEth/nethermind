@@ -57,33 +57,8 @@ namespace Nethermind.Blockchain
 
         private void ProcessBlock(Block block, Block? previousBlock)
         {
-            _txPool.BlockGasLimit = block.GasLimit;
-            _txPool.CurrentBaseFee = block.Header.BaseFeePerGas;
-            long transactionsInBlock = block.Transactions.Length;
-            long discoveredForPendingTxs = 0;
-            long discoveredForHashCache = 0;
-            
-            for (int i = 0; i < transactionsInBlock; i++)
-            {
-                Transaction tx = block.Transactions[i];
-                Keccak txHash = tx.Hash;
-                
-                if (!_txPool.IsKnown(txHash))
-                {
-                    discoveredForHashCache++;
-                }
+            _txPool.NotifyHeadChange(block);
 
-                if (!_txPool.RemoveTransaction(tx, true))
-                {
-                    discoveredForPendingTxs++;
-                }
-            }
-
-            _txPool.UpdateBuckets();
-
-            TxPool.Metrics.DarkPoolRatioLevel1 = transactionsInBlock == 0 ? 0 : (float)discoveredForHashCache / transactionsInBlock;
-            TxPool.Metrics.DarkPoolRatioLevel2 = transactionsInBlock == 0 ? 0 : (float)discoveredForPendingTxs / transactionsInBlock;
-            
             // the hash will only be the same during perf test runs / modified DB states
             if (previousBlock is not null)
             {
