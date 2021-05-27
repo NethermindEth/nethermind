@@ -119,6 +119,7 @@ namespace Nethermind.Dsl.ANTLR
 
         private PipelineElement<Transaction, Transaction> GetNextTransactionElement(string key, string operation, string value)
         {
+            _logger.Info($"Adding new pipeline element with OPERATION: {operation}");
             return operation switch
             {
                 "==" => new PipelineElement<Transaction, Transaction>(
