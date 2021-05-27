@@ -125,7 +125,13 @@ namespace Nethermind.Dsl.ANTLR
                 "IS" => new PipelineElement<Transaction, Transaction>(
                             condition: (t => t.GetType().GetProperty(key).GetValue(t).ToString() == value),
                             transformData: (t => t), _logger),
+                "==" => new PipelineElement<Transaction, Transaction>(
+                            condition: (t => t.GetType().GetProperty(key).GetValue(t).ToString() == value),
+                            transformData: (t => t), _logger)
                 "NOT" => new PipelineElement<Transaction, Transaction>(
+                            condition: (t => t.GetType().GetProperty(key).GetValue(t).ToString() != value),
+                            transformData: (t => t), _logger),
+                "!=" => new PipelineElement<Transaction, Transaction>(
                             condition: (t => t.GetType().GetProperty(key).GetValue(t).ToString() != value),
                             transformData: (t => t), _logger),
                 ">" => new PipelineElement<Transaction, Transaction>(
