@@ -1,4 +1,5 @@
 SOURCE BlockProcessor
-WATCH Blocks 
-WHERE Author == 0xb7705ae4c6f81b66cdb323c65f4e8133690fc099
-PUBLISH WebSockets authorTest
+WATCH Transactions
+WHERE Data
+CONTAINS a9059cbb OR Data CONTAINS 0d5f2659 
+PUBLISH WebSockets test

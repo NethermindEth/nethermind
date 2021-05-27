@@ -218,11 +218,13 @@ namespace Nethermind.Dsl.ANTLR
         {
             if (publisher.Equals("WebSockets", StringComparison.InvariantCultureIgnoreCase))
             {
-                if (_blockPipelineBuilder != null)
+                if (_transactionPipelineBuilder != null)
                 {
                     var webSocketsPublisher = new WebSocketsPublisher<Transaction, Transaction>(path, _api.EthereumJsonSerializer, _logger);
                     _api.WebSocketsManager.AddModule(webSocketsPublisher);
                     _transactionPipelineBuilder = _transactionPipelineBuilder.AddElement(webSocketsPublisher);
+
+                    return; 
                 }
             }
         }
