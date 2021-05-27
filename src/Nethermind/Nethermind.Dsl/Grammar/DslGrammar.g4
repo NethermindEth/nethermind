@@ -11,7 +11,7 @@ andCondition : AND condition ;
 orCondition : OR condition ;
 
 BOOLEAN_OPERATOR : ARITHMETIC_SYMBOL | CONTAINS ;
-ARITHMETIC_SYMBOL : IS | NOT | '<' | '>' | '<=' | '>=' ;
+ARITHMETIC_SYMBOL : '==' | '!=' | '<' | '>' | '<=' | '>=' | IS | NOT ;
 
 SOURCE : 'SOURCE' ;
 WATCH : 'WATCH' ;
