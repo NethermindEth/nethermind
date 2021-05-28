@@ -20,9 +20,6 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
-using MathNet.Numerics.LinearAlgebra.Solvers;
-using Nethermind.Blockchain.Find;
-using Nethermind.Blockchain.Spec;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Blockchain.Comparers;
 using Nethermind.Core;
@@ -410,14 +407,8 @@ namespace Nethermind.Blockchain.Test.TxPools
             _stateProvider.SubtractFromBalance(TestItem.AddressA, (UInt256)oneTxPrice, new ReleaseSpec());
             _stateProvider.IncrementNonce(TestItem.AddressA);
 
-            SemaphoreSlim semaphoreSlim = new SemaphoreSlim(0, 10);
-            _txPool.NewPending += (o, e) => semaphoreSlim.Release();
-            _blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(Build.A.Block.TestObject));
-            for (int i = 0; i < 10; i++)
-            {
-                await semaphoreSlim.WaitAsync(10);
-            }
-           
+            await RaiseBlockAddedToMainAndWaitForTransactions(10);
+
             _txPool.GetPendingTransactions().Select(t => t.GasBottleneck).Max().Should().Be((UInt256)expectedMaxGasBottleneck);
         }
         
@@ -445,20 +436,14 @@ namespace Nethermind.Blockchain.Test.TxPools
 
             transactions[0].Value = 100000;
 
-            SemaphoreSlim semaphoreSlim = new SemaphoreSlim(0, 5);
-            _txPool.NewPending += (o, e) => semaphoreSlim.Release();
-            _blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(Build.A.Block.TestObject));
-            for (int i = 0; i < 10; i++)
-            {
-                await semaphoreSlim.WaitAsync(5);
-            }
+            await RaiseBlockAddedToMainAndWaitForTransactions(5);
             
             _txPool.GetPendingTransactions().Count(t => t.GasBottleneck == 0).Should().Be(3);
             _txPool.GetPendingTransactions().Max(t => t.GasBottleneck).Should().Be(5);
         }
 
         [Test]
-        public void should_not_fail_if_there_is_no_current_nonce_in_bucket()
+        public async Task should_not_fail_if_there_is_no_current_nonce_in_bucket()
         {
             _txPool = CreatePool(_noTxStorage);
             Transaction[] transactions = new Transaction[5];
@@ -479,7 +464,7 @@ namespace Nethermind.Blockchain.Test.TxPools
                 _stateProvider.IncrementNonce(TestItem.AddressA);
             }
             
-            _blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(Build.A.Block.TestObject));
+            await RaiseBlockAddedToMainAndWaitForTransactions(3);
             _txPool.GetPendingTransactions().Count(t => t.GasBottleneck == 0).Should().Be(3);
         }
 
@@ -528,7 +513,7 @@ namespace Nethermind.Blockchain.Test.TxPools
         }
         
         [Test]
-        public void should_dump_GasBottleneck_of_old_nonces()
+        public async Task should_dump_GasBottleneck_of_old_nonces()
         {
             _txPool = CreatePool(_noTxStorage);
             Transaction[] transactions = new Transaction[5];
@@ -549,7 +534,7 @@ namespace Nethermind.Blockchain.Test.TxPools
                _stateProvider.IncrementNonce(TestItem.AddressA);
             }
 
-            _blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(Build.A.Block.TestObject));
+            await RaiseBlockAddedToMainAndWaitForTransactions(5);
             _txPool.GetPendingTransactions().Count(t => t.GasBottleneck == 0).Should().Be(3);
             _txPool.GetPendingTransactions().Max(t => t.GasBottleneck).Should().Be(5);
         }
@@ -657,8 +642,7 @@ namespace Nethermind.Blockchain.Test.TxPools
             BlockReplacementEventArgs blockReplacementEventArgs = new BlockReplacementEventArgs(block, null);
 
             ManualResetEvent manualResetEvent = new ManualResetEvent(false);
-            _txPool.RemoveTransaction(Arg.Do<Keccak>(t => 
-                manualResetEvent.Set()));
+            _txPool.RemoveTransaction(Arg.Do<Keccak>(t => manualResetEvent.Set()));
             _blockTree.BlockAddedToMain += Raise.EventWith(new object(), blockReplacementEventArgs);
             manualResetEvent.WaitOne(TimeSpan.FromMilliseconds(200));
 
@@ -681,8 +665,7 @@ namespace Nethermind.Blockchain.Test.TxPools
             BlockReplacementEventArgs blockReplacementEventArgs = new BlockReplacementEventArgs(block, null);
 
             ManualResetEvent manualResetEvent = new ManualResetEvent(false);
-            _txPool.RemoveTransaction(Arg.Do<Keccak>(t =>
-                manualResetEvent.Set()));
+            _txPool.RemoveTransaction(Arg.Do<Keccak>(t => manualResetEvent.Set()));
             _blockTree.BlockAddedToMain += Raise.EventWith(new object(), blockReplacementEventArgs);
             manualResetEvent.WaitOne(TimeSpan.FromMilliseconds(200));
 
@@ -985,6 +968,17 @@ namespace Nethermind.Blockchain.Test.TxPools
                 .DeliveredBy(privateKey.PublicKey)
                 .SignedAndResolved(_ethereumEcdsa, privateKey)
                 .TestObject;
+        
+        private async Task RaiseBlockAddedToMainAndWaitForTransactions(int txCount)
+        {
+            SemaphoreSlim semaphoreSlim = new SemaphoreSlim(0, txCount);
+            _txPool.NewPending += (o, e) => semaphoreSlim.Release();
+            _blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(Build.A.Block.TestObject));
+            for (int i = 0; i < txCount; i++)
+            {
+                await semaphoreSlim.WaitAsync(10);
+            }
+        }
 
         private class Transactions
         {
