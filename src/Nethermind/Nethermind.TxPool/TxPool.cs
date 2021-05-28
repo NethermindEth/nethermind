@@ -68,7 +68,7 @@ namespace Nethermind.TxPool
         private static readonly ThreadLocal<Random> Random =
             new(() => new Random(Interlocked.Increment(ref _seed)));
 
-        private readonly SortedPool<Keccak, Transaction, Address> _transactions;
+        private readonly TxDistinctSortedPool _transactions;
 
         private readonly IChainHeadSpecProvider _specProvider;
         private readonly ITxPoolConfig _txPoolConfig;
@@ -140,8 +140,8 @@ namespace Nethermind.TxPool
                 $"{(LruCache<Keccak, object>.CalculateMemorySize(32, MemoryAllowance.TxHashCacheSize) + LruCache<Keccak, Transaction>.CalculateMemorySize(4096, MemoryAllowance.MemPoolSize)) / 1000 / 1000}MB"
                     .PadLeft(8));
 
-            _transactions = new TxDistinctSortedPool(MemoryAllowance.MemPoolSize, logManager, comparer);
-            _persistentBroadcastTransactions = new TxDistinctSortedPool(MemoryAllowance.MemPoolSize, logManager, comparer);
+            _transactions = new TxDistinctSortedPool(MemoryAllowance.MemPoolSize, comparer, logManager);
+            _persistentBroadcastTransactions = new TxDistinctSortedPool(MemoryAllowance.MemPoolSize, comparer, logManager);
             _chainHeadInfoProvider.HeadChanged += OnHeadChange;
             _ownTimer = new Timer(500);
             _ownTimer.Elapsed += OwnTimerOnElapsed;
@@ -434,7 +434,7 @@ namespace Nethermind.TxPool
             }
         }
 
-        private IEnumerable<(Keccak Hash, Transaction Tx, Action<Transaction> Change)> UpdateBucketWithAddedTransaction(Address address, ICollection<Transaction> transactions)
+        private IEnumerable<(Transaction Tx, Action<Transaction> Change)> UpdateBucketWithAddedTransaction(Address address, ICollection<Transaction> transactions)
         {
             if (transactions.Count != 0)
             {
@@ -449,7 +449,7 @@ namespace Nethermind.TxPool
             }
         }
 
-        private IEnumerable<(Keccak Hash, Transaction Tx, Action<Transaction> Change)> UpdateGasBottleneck(ICollection<Transaction> transactions, long currentNonce, UInt256 balance)
+        private IEnumerable<(Transaction Tx, Action<Transaction> Change)> UpdateGasBottleneck(ICollection<Transaction> transactions, long currentNonce, UInt256 balance)
         {
             UInt256 previousTxBottleneck = UInt256.MaxValue;
             int i = 0;
@@ -462,7 +462,7 @@ namespace Nethermind.TxPool
                 {
                     if (tx.GasBottleneck != gasBottleneck)
                     {
-                        yield return (tx.Hash, tx, SetGasBottleneckChange(gasBottleneck));
+                        yield return (tx, SetGasBottleneckChange(gasBottleneck));
                     }
                 }
                 else
@@ -480,7 +480,7 @@ namespace Nethermind.TxPool
 
                     if (tx.GasBottleneck != gasBottleneck)
                     {
-                        yield return (tx.Hash, tx, SetGasBottleneckChange(gasBottleneck));
+                        yield return (tx, SetGasBottleneckChange(gasBottleneck));
                     }
                 
                     previousTxBottleneck = gasBottleneck;
@@ -502,7 +502,7 @@ namespace Nethermind.TxPool
             }
         }
 
-        private IEnumerable<(Keccak Hash, Transaction Tx, Action<Transaction> Change)> UpdateBucket(Address address, ICollection<Transaction> transactions)
+        private IEnumerable<(Transaction Tx, Action<Transaction> Change)> UpdateBucket(Address address, ICollection<Transaction> transactions)
         {
             if (transactions.Count != 0)
             {
@@ -531,7 +531,7 @@ namespace Nethermind.TxPool
                 {
                     foreach (Transaction transaction in transactions)
                     {
-                        yield return (transaction.Hash, transaction, SetGasBottleneckChange(0));
+                        yield return (transaction, SetGasBottleneckChange(0));
                     }
                 }
                 else
