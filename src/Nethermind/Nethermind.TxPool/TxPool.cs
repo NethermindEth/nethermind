@@ -183,8 +183,11 @@ namespace Nethermind.TxPool
             CurrentBaseFee = block.Header.BaseFeePerGas;
             RemoveProcessedTransactions(block.Transactions);
             UpdateBuckets();
-            
-            // the hash will only be the same during perf test runs / modified DB states
+            ReAddReorganisedTransactions(previousBlock);
+        }
+
+        private void ReAddReorganisedTransactions(Block? previousBlock)
+        {
             if (previousBlock is not null)
             {
                 bool isEip155Enabled = _specProvider.GetSpec(previousBlock.Number).IsEip155Enabled;
