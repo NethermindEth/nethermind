@@ -53,7 +53,7 @@ namespace Nethermind.Blockchain.Test.TxPools
         private ILogManager _logManager;
         private IEthereumEcdsa _ethereumEcdsa;
         private ISpecProvider _specProvider;
-        private ITxPool _txPool;
+        private TxPool.TxPool _txPool;
         private ITxStorage _noTxStorage;
         private ITxStorage _inMemoryTxStorage;
         private ITxStorage _persistentTxStorage;

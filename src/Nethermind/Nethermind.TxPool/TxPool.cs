@@ -151,7 +151,7 @@ namespace Nethermind.TxPool
         public uint FutureNonceRetention  => _txPoolConfig.FutureNonceRetention;
         public long? BlockGasLimit { get; set; } = null;
 
-        public UInt256 CurrentBaseFee { get; set; } = 0;
+        private UInt256 CurrentBaseFee { get; set; } = 0;
 
         public Transaction[] GetPendingTransactions() => _transactions.GetSnapshot();
         

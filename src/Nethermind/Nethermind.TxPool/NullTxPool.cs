@@ -75,7 +75,5 @@ namespace Nethermind.TxPool
         }
 
         public uint FutureNonceRetention { get; } = 256;
-        public long? BlockGasLimit { get; set; }
-        public UInt256 CurrentBaseFee { get; set; }
     }
 }
