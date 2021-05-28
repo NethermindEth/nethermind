@@ -39,6 +39,7 @@ namespace Nethermind.Core
 
         public UInt256 Nonce { get; set; }
         public UInt256 GasPrice { get; set; }
+        public UInt256 GasBottleneck { get; set; }
         public UInt256 MaxPriorityFeePerGas => GasPrice; 
         public UInt256 DecodedMaxFeePerGas { get; set; }
         public UInt256 MaxFeePerGas => IsEip1559 ? DecodedMaxFeePerGas : GasPrice;
@@ -107,26 +108,6 @@ namespace Nethermind.Core
         }
 
         public override string ToString() => ToString(string.Empty);
-
-        public UInt256 CalculateTransactionPotentialCost(bool eip1559Enabled, UInt256 baseFee)
-        {
-            if (eip1559Enabled)
-            {
-                UInt256 gasPrice = baseFee + MaxPriorityFeePerGas;
-                gasPrice = UInt256.Min(gasPrice, MaxFeePerGas);
-                if (IsServiceTransaction)
-                    gasPrice = UInt256.Zero;;
-                
-                return gasPrice * (ulong)GasLimit + Value;
-            }
-
-            return GasPrice * (ulong)GasLimit + Value;
-        }
-        
-        public UInt256 CalculateEffectiveGasPrice(bool eip1559Enabled, UInt256 baseFee)
-        {
-            return eip1559Enabled ? UInt256.Min(IsEip1559 ? MaxFeePerGas : GasPrice, MaxPriorityFeePerGas + baseFee) : GasPrice;
-        }
     }
 
     /// <summary>
@@ -138,26 +119,4 @@ namespace Nethermind.Core
     /// System transaction that is to be executed by the node without including in the block. 
     /// </summary>
     public class SystemTransaction : Transaction { }
-
-    public static class TransactionExtensions
-    {
-        public static bool IsSystem(this Transaction tx) => 
-            tx is SystemTransaction || tx.SenderAddress == Address.SystemUser;
-
-        public static bool IsFree(this Transaction tx) => tx.IsSystem() || tx.IsServiceTransaction;
-
-        public static bool TryCalculatePremiumPerGas(this Transaction tx, UInt256 baseFeePerGas, out UInt256 premiumPerGas)
-        {
-            bool freeTransaction = tx.IsFree();
-            UInt256 feeCap = tx.IsEip1559 ? tx.MaxFeePerGas : tx.GasPrice;
-            if (baseFeePerGas > feeCap)
-            {
-                premiumPerGas = UInt256.Zero; 
-                return !freeTransaction;
-            }
-            
-            premiumPerGas = UInt256.Min(tx.MaxPriorityFeePerGas, feeCap - baseFeePerGas);
-            return true;
-        }
-    }
 }

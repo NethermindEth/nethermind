@@ -13,15 +13,29 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-namespace Nethermind.TxPool
+using System.Collections.Generic;
+using System.Threading.Tasks;
+using Ethereum.Test.Base;
+using NUnit.Framework;
+
+namespace Ethereum.Blockchain.Block.Test
 {
-    public class TxPoolConfig : ITxPoolConfig
+    [TestFixture]
+    [Parallelizable(ParallelScope.All)]
+    public class Eip1559Tests : BlockchainTestBase
     {
-        public int PeerNotificationThreshold { get; set; } = 5;
-        public int Size { get; set; } = 2048;
-        public uint FutureNonceRetention { get; set; } = 256;
-        public int HashCacheSize { get; set; } = 512 * 1024;
-        public long? GasLimit { get; set; } = null;
+        [TestCaseSource(nameof(LoadTests))]
+        public async Task Test(BlockchainTest test)
+        {
+            await RunTest(test);
+        }
+
+        public static IEnumerable<BlockchainTest> LoadTests()
+        {
+            var loader = new TestsSourceLoader(new LoadBlockchainTestsStrategy(), "bcEIP1559");
+            return (IEnumerable<BlockchainTest>)loader.LoadTests();      
+        }
     }
 }

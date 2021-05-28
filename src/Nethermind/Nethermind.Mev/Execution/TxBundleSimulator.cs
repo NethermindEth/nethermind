@@ -170,7 +170,7 @@ namespace Nethermind.Mev.Execution
                 if (_tracer.Transaction?.TryCalculatePremiumPerGas(_block!.BaseFeePerGas, out premiumPerGas) == true)
                 {
                     TxFees += (UInt256)_tracer.GasSpent * premiumPerGas;
-                    if (!_txPool.IsInHashCache(_tracer.Transaction.Hash))
+                    if (!_txPool.IsKnown(_tracer.Transaction.Hash))
                     {
                         _txPool.NewPending += TransactionSeenInMempool;
                         _finalizationManager.BlocksFinalized += CancelMempoolSubscriptionIfBlockFinalized;
