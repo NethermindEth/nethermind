@@ -116,7 +116,7 @@ namespace Nethermind.Mev.Source
 
                 lock (_bundles)
                 {
-                    result = _bundles.TryInsert(bundle, new BundleWithHashes(bundle));
+                    result = _bundles.TryInsert(bundle, bundle);
                 }
 
                 if (result)
@@ -275,7 +275,7 @@ namespace Nethermind.Mev.Source
             }
         }
 
-        public void Dispose() //is this supposed to be public and shifted right?
+        public void Dispose()
         {
             _blockTree.NewSuggestedBlock -= OnNewSuggestedBlock;
             

@@ -23,6 +23,5 @@ namespace Nethermind.TxPool
         public uint FutureNonceRetention { get; set; } = 16;
         public int HashCacheSize { get; set; } = 512 * 1024;
         public long? GasLimit { get; set; } = null;
-        
     }
 }
