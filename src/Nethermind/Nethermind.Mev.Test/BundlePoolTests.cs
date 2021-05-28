@@ -28,6 +28,7 @@ using Nethermind.Logging;
 using Nethermind.Mev.Data;
 using Nethermind.Mev.Execution;
 using Nethermind.Mev.Source;
+using Nethermind.Runner.Ethereum.Api;
 using NSubstitute;
 using NSubstitute.Exceptions;
 using NUnit.Framework;
@@ -138,8 +139,9 @@ namespace Nethermind.Mev.Test
         public static void sort_bundles_by_increasing_block_number_and_then_min_timestamp()
         {
             Transaction[] txs = Array.Empty<Transaction>();
-            BundleSortedPool txPool = new BundleSortedPool(200, Comparer<BundleWithHashes>.Default, LimboLogs.Instance);
+            BundleSortedPool txPool = new BundleSortedPool(200, Comparer<MevBundle>.Default, LimboLogs.Instance);
             List<MevBundle> bundleList = new List<MevBundle>();
+            
             for (int i = 3; i > 0; i--)
             {
                 bundleList.Add(new MevBundle(txs, i, 0, 0)); //should come back in reverse order
@@ -150,13 +152,13 @@ namespace Nethermind.Mev.Test
             foreach (MevBundle bundle in bundleList)
             {
                 Console.WriteLine(bundle.BlockNumber);
-                txPool.TryInsert(bundle, new BundleWithHashes(bundle));
+                txPool.TryInsert(bundle, bundle);
             } 
-            foreach (KeyValuePair<long, BundleWithHashes[]> kvp in txPool.GetBucketSnapshot())
+            foreach (KeyValuePair<long, MevBundle[]> kvp in txPool.GetBucketSnapshot())
             {
-                foreach (BundleWithHashes bundleObj in kvp.Value)
+                foreach (MevBundle bundle in kvp.Value)
                 {
-                    Console.WriteLine("Block: {0}, Start Time: {1}", kvp.Key, bundleObj.Bundle.MinTimestamp);
+                    Console.WriteLine("Block: {0}, Start Time: {1}", kvp.Key, bundle.MinTimestamp);
                 }
             }
         }

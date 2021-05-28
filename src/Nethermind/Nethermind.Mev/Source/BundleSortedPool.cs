@@ -24,25 +24,24 @@ using Nethermind.TxPool.Collections;
 
 namespace Nethermind.Mev.Source
 {
-    public class BundleSortedPool : DistinctValueSortedPool<MevBundle, BundleWithHashes, long> 
+    public class BundleSortedPool : DistinctValueSortedPool<MevBundle, MevBundle, long> 
     {
-        public BundleSortedPool(int capacity, IComparer<BundleWithHashes> comparer, ILogManager logManager)
-            : base(capacity, comparer, EqualityComparer<BundleWithHashes>.Default, logManager)
+        public BundleSortedPool(int capacity, IComparer<MevBundle> comparer, ILogManager logManager)
+            : base(capacity, comparer, EqualityComparer<MevBundle>.Default, logManager)
         {
             
         }
 
-        protected override IComparer<BundleWithHashes> GetUniqueComparer(IComparer<BundleWithHashes> comparer) //compares all the bundles to evict the worst one
-            => comparer.ThenBy(CompareBundleWithHashesByIdentity.Default);
+        protected override IComparer<MevBundle> GetUniqueComparer(IComparer<MevBundle> comparer) //compares all the bundles to evict the worst one
+            => comparer.ThenBy(CompareMevBundleByIdentity.Default);
 
-        protected override IComparer<BundleWithHashes> GetGroupComparer(IComparer<BundleWithHashes> comparer) //compares two bundles with same block #
-            => comparer;
+        protected override IComparer<MevBundle> GetGroupComparer(IComparer<MevBundle> comparer) //compares two bundles with same block #
+            => comparer.ThenBy(CompareMevBundleByIdentity.Default);
 
-        protected override IComparer<BundleWithHashes> GetSameIdentityComparer(IComparer<BundleWithHashes> comparer) => 
-            CompareBundleWithHashesByPoolIndex.Default;
+        protected override long MapToGroup(MevBundle mevBundle) => mevBundle.BlockNumber;
 
-        protected IComparer<MevBundle> GetValueComparer(IComparer<MevBundle> ValueComparer) => ValueComparer;
-
-        protected override long MapToGroup(BundleWithHashes bundleWithHashes) => bundleWithHashes.Bundle.BlockNumber;
+        protected override IComparer<MevBundle> GetSameIdentityComparer(IComparer<MevBundle> comparer) => 
+            CompareMevBundleByPoolIndex.Default;
+        
     }
 }

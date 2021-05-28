@@ -180,13 +180,13 @@ namespace Nethermind.Mev
                     throw new ArgumentException("maxMergedBundles cannot be null or zero in V2");
                 }
 
-                Dictionary<IManualBlockProducer, IBeneficiaryBalanceSource> blockDictionary =
+                Dictionary<IManualBlockProducer, IBeneficiaryBalanceSource> blockProducerDictionary =
                     new Dictionary<IManualBlockProducer, IBeneficiaryBalanceSource>();
                 
                 // Add non-mev block
                 IManualBlockProducer standardProducer = (IManualBlockProducer)await consensusPlugin.InitBlockProducer();
                 IBeneficiaryBalanceSource standardProducerBeneficiaryBalanceSource = producerEnvFactory.LastMevBlockProcessor;
-                blockDictionary.Add(standardProducer, standardProducerBeneficiaryBalanceSource);
+                blockProducerDictionary.Add(standardProducer, standardProducerBeneficiaryBalanceSource);
                 
                 // Try blocks with all bundle numbers <= maxMergedBundles
                 for (int bundleLimit = 1; bundleLimit <= _mevConfig.MaxMergedBundles; bundleLimit++)
@@ -194,10 +194,10 @@ namespace Nethermind.Mev
                     V2Selector v2Selector = new(BundlePool, bundleLimit);
                     IManualBlockProducer bundleProducer = (IManualBlockProducer)await consensusPlugin.InitBlockProducer(new BundleTxSource(v2Selector, standardProducer.Timestamper));
                     IBeneficiaryBalanceSource bundleProducerBeneficiaryBalanceSource = producerEnvFactory.LastMevBlockProcessor;
-                    blockDictionary.Add(bundleProducer, bundleProducerBeneficiaryBalanceSource);
+                    blockProducerDictionary.Add(bundleProducer, bundleProducerBeneficiaryBalanceSource);
                 }
                 
-                return _nethermindApi.BlockProducer = new MevBlockProducer(blockDictionary);
+                return _nethermindApi.BlockProducer = new MevBlockProducer(blockProducerDictionary);
             }
             else
             {

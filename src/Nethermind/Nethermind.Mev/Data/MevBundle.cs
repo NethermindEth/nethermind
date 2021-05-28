@@ -22,14 +22,15 @@ using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
+using Nethermind.Mev.Source;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Mev.Data
 {
-    public class MevBundle : IEquatable<MevBundle>
+    public class MevBundle : IEquatable<MevBundle>, IComparable<MevBundle>
     {
         private static int _poolIndex = 0;
-        
+
         public MevBundle(IReadOnlyList<Transaction> transactions, long blockNumber, UInt256? minTimestamp, UInt256? maxTimestamp, Keccak[]? revertingTxHashes = null)
         {
             Transactions = transactions;
@@ -70,6 +71,27 @@ namespace Nethermind.Mev.Data
             if (ReferenceEquals(null, other)) return false;
             if (ReferenceEquals(this, other)) return true;
             return Equals(Hash, other.Hash);
+        }
+
+        public int CompareTo(MevBundle? other)
+        {
+            CompareMevBundleByBlock compareByBlock = new();
+            long BestBlockNumber = compareByBlock.BestBlockNumber;
+            
+            if (ReferenceEquals(this, other)) return 0;
+            if (ReferenceEquals(null, other)) return 1;
+            if (this.BlockNumber == other.BlockNumber)
+            {
+                return 0;
+            }
+            else if (this.BlockNumber > BestBlockNumber && other.BlockNumber > BestBlockNumber)
+            {
+                return this.BlockNumber.CompareTo(other.BlockNumber);
+            }
+            else //if head is 5, and we have 8 and 4, we want to keep it that way; and if we have 4 and 3 we also want to keep it that way
+            {
+                return other.BlockNumber.CompareTo(this.BlockNumber);
+            }
         }
 
         public override bool Equals(object? obj)
