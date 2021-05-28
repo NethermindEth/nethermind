@@ -27,6 +27,7 @@ using Nethermind.Blockchain.Validators;
 using Nethermind.Blockchain.Comparers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
@@ -513,6 +514,30 @@ namespace Nethermind.Blockchain.Test.TxPools
                 await Task.WhenAll(firstTask, secondTask, thirdTask);
                 _txPool.GetPendingTransactions().Should().HaveCount(transactionsPerPeer);
             }
+        }
+
+        [Test]
+        public void should_add_transactions_concurrently()
+        {
+            int size = 3;
+            TxPoolConfig config = new() {GasLimit = _txGasLimit, Size = size};
+            _txPool = CreatePool(_noTxStorage, config);
+
+            foreach (PrivateKey privateKey in TestItem.PrivateKeys)
+            {
+                EnsureSenderBalance(privateKey.Address, 10.Ether());
+            }
+            
+            Parallel.ForEach(TestItem.PrivateKeys, k =>
+            {
+                for (uint i = 0; i < 100; i++)
+                {
+                    Transaction tx = GetTransaction(i, GasCostOf.Transaction, 10.GWei(), TestItem.AddressA, Array.Empty<byte>(), k);
+                    _txPool.AddTransaction(tx, TxHandlingOptions.None);
+                }
+            });
+
+            _txPool.GetPendingTransactionsCount().Should().Be(size);
         }
 
         [TestCase(true, true,10)]

@@ -29,7 +29,7 @@ namespace Nethermind.TxPool.Collections
     /// <typeparam name="TKey">Type of keys of items, unique in pool.</typeparam>
     /// <typeparam name="TValue">Type of items that are kept.</typeparam>
     /// <typeparam name="TGroupKey">Type of groups in which the items are organized</typeparam>
-    public abstract class SortedPool<TKey, TValue, TGroupKey>
+    public abstract class SortedPool<TKey, TValue, TGroupKey> where TKey : notnull
     {
         private readonly int _capacity;
         private readonly IComparer<TValue> _groupComparer;
@@ -46,7 +46,7 @@ namespace Nethermind.TxPool.Collections
         {
             _capacity = capacity;
             // ReSharper disable VirtualMemberCallInConstructor
-            var sortedComparer = GetUniqueComparer(comparer ?? throw new ArgumentNullException(nameof(comparer)));
+            IComparer<TValue> sortedComparer = GetUniqueComparer(comparer ?? throw new ArgumentNullException(nameof(comparer)));
             _groupComparer = GetGroupComparer(comparer ?? throw new ArgumentNullException(nameof(comparer)));
             _cacheMap = new Dictionary<TKey, TValue>(); // do not initialize it at the full capacity
             _buckets = new Dictionary<TGroupKey, ICollection<TValue>>();
@@ -100,7 +100,8 @@ namespace Nethermind.TxPool.Collections
         [MethodImpl(MethodImplOptions.Synchronized)]
         public int GetBucketCount(TGroupKey group)
         {
-            return _buckets.TryGetValue(@group, out var bucket) ? bucket.Count : 0;
+            if (group == null) throw new ArgumentNullException(nameof(group));
+            return _buckets.TryGetValue(group, out ICollection<TValue> bucket) ? bucket.Count : 0;
         }
 
         /// <summary>
@@ -184,21 +185,24 @@ namespace Nethermind.TxPool.Collections
             {
                 TGroupKey group = MapToGroup(value);
 
-                if (!_buckets.TryGetValue(group, out ICollection<TValue> bucket))
+                if (group is not null)
                 {
-                    _buckets[group] = bucket = new SortedSet<TValue>(_groupComparer);
-                }
+                    if (!_buckets.TryGetValue(group, out ICollection<TValue> bucket))
+                    {
+                        _buckets[group] = bucket = new SortedSet<TValue>(_groupComparer);
+                    }
 
-                InsertCore(key, value, bucket);
+                    InsertCore(key, value, bucket);
 
-                if (_cacheMap.Count > _capacity)
-                {
-                    RemoveLast(out removed);
+                    if (_cacheMap.Count > _capacity)
+                    {
+                        RemoveLast(out removed);
+                        return true;
+                    }
+
+                    removed = default;
                     return true;
                 }
-
-                removed = default;
-                return true;
             }
 
             removed = default;
@@ -244,41 +248,45 @@ namespace Nethermind.TxPool.Collections
             _sortedValues.Remove(value);
             return _cacheMap.Remove(key);
         }
+        
 
         [MethodImpl(MethodImplOptions.Synchronized)]
-        public void UpdateGroup(TGroupKey groupKey, Func<TGroupKey, ICollection<TValue>, IEnumerable<(TKey Key, TValue Value)>> changeAction)
+        public void UpdatePool(Func<TGroupKey, ICollection<TValue>, IEnumerable<(TKey Key, TValue Value, Action<TValue> Change)>> changingElements)
         {
-            if (_buckets.TryGetValue(groupKey, out var bucket))
+            foreach ((TGroupKey groupKey, ICollection<TValue> bucket) in _buckets)
             {
-                foreach (var elementChanged in changeAction(groupKey, bucket.ToArray()))
-                {
-                    if (_sortedValues.Remove(elementChanged.Value))
-                    {
-                        _sortedValues.Add(elementChanged.Value, elementChanged.Key);
-                    }
-                }
+                UpdateGroup(groupKey, bucket, changingElements);
             }
         }
         
         [MethodImpl(MethodImplOptions.Synchronized)]
-        public void UpdatePool(Func<TGroupKey, ICollection<TValue>, IEnumerable<(TKey Key, TValue Value)>> changeAction)
+        public void UpdateGroup(TGroupKey groupKey, Func<TGroupKey, ICollection<TValue>, IEnumerable<(TKey Key, TValue Value, Action<TValue> Change)>> changingElements)
         {
-            foreach ((TGroupKey groupKey, ICollection<TValue> bucket) in _buckets)
+            if (groupKey == null) throw new ArgumentNullException(nameof(groupKey));
+            if (_buckets.TryGetValue(groupKey, out ICollection<TValue> bucket))
             {
-                foreach (var elementChanged in changeAction(groupKey, bucket.ToArray()))
-                {
-                    if (_sortedValues.Remove(elementChanged.Value))
-                    {
-                        _sortedValues.Add(elementChanged.Value, elementChanged.Key);
-                    }
-                }
+                UpdateGroup(groupKey, bucket, changingElements);
+            }
+        }
+        
+        private void UpdateGroup(TGroupKey groupKey, ICollection<TValue> bucket, Func<TGroupKey, ICollection<TValue>, IEnumerable<(TKey Key, TValue Value, Action<TValue> Change)>> changingElements)
+        {
+            foreach (var elementChanged in changingElements(groupKey, bucket))
+            {
+                UpdateElement(elementChanged.Key, elementChanged.Value, elementChanged.Change);
+            }
+        }
+
+        private void UpdateElement(TKey key, TValue value, Action<TValue> change)
+        {
+            if (_sortedValues.Remove(value))
+            {
+                change(value);
+                _sortedValues.Add(value, key);
             }
         }
 
         [MethodImpl(MethodImplOptions.Synchronized)]
-        public bool IsFull()
-        {
-            return _cacheMap.Count >= _capacity;
-        }
+        public bool IsFull() => _cacheMap.Count >= _capacity;
     }
 }

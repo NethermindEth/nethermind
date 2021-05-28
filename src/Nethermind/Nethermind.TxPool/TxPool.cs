@@ -406,24 +406,22 @@ namespace Nethermind.TxPool
             }
         }
 
-        private IEnumerable<(Keccak Hash, Transaction Tx)> UpdateBucketWithAddedTransaction(Address address, ICollection<Transaction> transactions)
+        private IEnumerable<(Keccak Hash, Transaction Tx, Action<Transaction> Change)> UpdateBucketWithAddedTransaction(Address address, ICollection<Transaction> transactions)
         {
-            if (transactions.Count == 0)
+            if (transactions.Count != 0)
             {
-                yield break;
-            }
-            
-            Account? account = _stateProvider.GetAccount(address);
-            UInt256 balance = account?.Balance ?? UInt256.Zero;
-            long currentNonce = (long)(account?.Nonce ?? UInt256.Zero);
+                Account? account = _stateProvider.GetAccount(address);
+                UInt256 balance = account?.Balance ?? UInt256.Zero;
+                long currentNonce = (long)(account?.Nonce ?? UInt256.Zero);
 
-            foreach (var changedTx in UpdateGasBottleneck(transactions, currentNonce, balance))
-            {
-                yield return changedTx;
+                foreach (var changedTx in UpdateGasBottleneck(transactions, currentNonce, balance))
+                {
+                    yield return changedTx;
+                }
             }
         }
 
-        private IEnumerable<(Keccak Hash, Transaction Tx)> UpdateGasBottleneck(ICollection<Transaction> transactions, long currentNonce, UInt256 balance)
+        private IEnumerable<(Keccak Hash, Transaction Tx, Action<Transaction> Change)> UpdateGasBottleneck(ICollection<Transaction> transactions, long currentNonce, UInt256 balance)
         {
             UInt256 previousTxBottleneck = UInt256.MaxValue;
             int i = 0;
@@ -445,13 +443,17 @@ namespace Nethermind.TxPool
 
                 if (tx.GasBottleneck != gasBottleneck)
                 {
-                    tx.GasBottleneck = gasBottleneck;
-                    yield return (tx.Hash, tx);
+                    yield return (tx.Hash, tx, SetGasBottleneckChange(gasBottleneck));
                 }
                 
                 previousTxBottleneck = gasBottleneck;
                 i++;
             }
+        }
+
+        private static Action<Transaction> SetGasBottleneckChange(UInt256 gasBottleneck)
+        {
+            return t => t.GasBottleneck = gasBottleneck;
         }
 
         private void UpdateBuckets()
@@ -462,44 +464,42 @@ namespace Nethermind.TxPool
             }
         }
 
-        private IEnumerable<(Keccak Hash, Transaction Tx)> UpdateBucket(Address address, ICollection<Transaction> transactions)
+        private IEnumerable<(Keccak Hash, Transaction Tx, Action<Transaction> Change)> UpdateBucket(Address address, ICollection<Transaction> transactions)
         {
-            if (transactions.Count == 0)
+            if (transactions.Count != 0)
             {
-                yield break;
-            }
-            
-            Account? account = _stateProvider.GetAccount(address);
-            UInt256 balance = account?.Balance ?? UInt256.Zero;
-            long currentNonce = (long)(account?.Nonce ?? UInt256.Zero);
-            Transaction tx = transactions.ElementAt(0);
+                Account? account = _stateProvider.GetAccount(address);
+                UInt256 balance = account?.Balance ?? UInt256.Zero;
+                long currentNonce = (long)(account?.Nonce ?? UInt256.Zero);
+                Transaction tx = transactions.First();
 
-            bool insufficientBalance = false;
+                bool insufficientBalance = false;
 
-            if (balance < tx.Value)
-            {
-                insufficientBalance = true;
-            }
-            else if (!tx.IsEip1559)
-            {
-                insufficientBalance = UInt256.MultiplyOverflow(tx.GasPrice, (UInt256) tx.GasLimit, out UInt256 cost);
-                insufficientBalance |= UInt256.AddOverflow(cost, tx.Value, out cost);
-                insufficientBalance |= balance < cost;
-            }
-            
-            if (insufficientBalance)
-            {
-                foreach (Transaction transaction in transactions)
+                if (balance < tx.Value)
                 {
-                    transaction.GasBottleneck = 0;
-                    yield return  (transaction.Hash, transaction);
+                    insufficientBalance = true;
                 }
-                yield break;
-            }
+                else if (!tx.IsEip1559)
+                {
+                    insufficientBalance = UInt256.MultiplyOverflow(tx.GasPrice, (UInt256)tx.GasLimit, out UInt256 cost);
+                    insufficientBalance |= UInt256.AddOverflow(cost, tx.Value, out cost);
+                    insufficientBalance |= balance < cost;
+                }
 
-            foreach (var changedTx in UpdateGasBottleneck(transactions, currentNonce, balance))
-            {
-                yield return changedTx;
+                if (insufficientBalance)
+                {
+                    foreach (Transaction transaction in transactions)
+                    {
+                        yield return (transaction.Hash, transaction, SetGasBottleneckChange(0));
+                    }
+                }
+                else
+                {
+                    foreach (var changedTx in UpdateGasBottleneck(transactions, currentNonce, balance))
+                    {
+                        yield return changedTx;
+                    }
+                }
             }
         }
 
