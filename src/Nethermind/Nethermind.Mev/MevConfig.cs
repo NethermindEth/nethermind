@@ -30,7 +30,9 @@ namespace Nethermind.Mev
         public int BundlePoolSize { get; set; } = 200;
         public SelectorType FlashbotsVersion { get; set; }
         public int? MaxMergedBundles { get; set; }
-        
+
+        public SimulationMode SimulationMode { get; set; } = SimulationMode.NewHead;
+
 
         public string? relayWSURL { get; set; }
         
