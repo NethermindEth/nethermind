@@ -461,6 +461,33 @@ namespace Nethermind.Blockchain.Test.TxPools
             _txPool.GetPendingTransactions().Min(t => t.GasBottleneck).Should().Be(2);
             _txPool.GetPendingTransactions().Max(t => t.GasBottleneck).Should().Be(2);
         }
+        
+        [Test]
+        public void should_dump_GasBottleneck_of_old_nonces()
+        {
+            _txPool = CreatePool(_noTxStorage);
+            Transaction[] transactions = new Transaction[5];
+            
+            for (int i = 0; i < 5; i++)
+            {
+                transactions[i] = Build.A.Transaction
+                    .WithSenderAddress(TestItem.AddressA)
+                    .WithNonce((UInt256)i)
+                    .WithGasPrice((UInt256)(i + 2))
+                    .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+                EnsureSenderBalance(transactions[i]);
+                _txPool.AddTransaction(transactions[i], TxHandlingOptions.PersistentBroadcast);
+            }
+
+            for (int i = 0; i < 3; i++)
+            {
+               _stateProvider.IncrementNonce(TestItem.AddressA);
+            }
+
+            _txPool.NotifyHeadChange(Build.A.Block.TestObject);
+            _txPool.GetPendingTransactions().Count(t => t.GasBottleneck == 0).Should().Be(3);
+            _txPool.GetPendingTransactions().Max(t => t.GasBottleneck).Should().Be(5);
+        }
 
         [Test]
         public void should_broadcast_own_transactions_that_were_reorganized_out()

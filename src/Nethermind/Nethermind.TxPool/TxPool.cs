@@ -430,24 +430,34 @@ namespace Nethermind.TxPool
             {
                 UInt256 gasBottleneck = 0;
 
-                if (previousTxBottleneck == UInt256.MaxValue)
+                if (tx.Nonce < currentNonce)
                 {
-                    previousTxBottleneck = tx.CalculatePayableGasPrice(_specProvider.GetSpec().IsEip1559Enabled, CurrentBaseFee, balance);
+                    if (tx.GasBottleneck != gasBottleneck)
+                    {
+                        yield return (tx.Hash, tx, SetGasBottleneckChange(gasBottleneck));
+                    }
                 }
+                else
+                {
+                    if (previousTxBottleneck == UInt256.MaxValue)
+                    {
+                        previousTxBottleneck = tx.CalculatePayableGasPrice(_specProvider.GetSpec().IsEip1559Enabled, CurrentBaseFee, balance);
+                    }
 
-                if (tx.Nonce == currentNonce + i)
-                {
-                    UInt256 effectiveGasPrice = tx.CalculateEffectiveGasPrice(_specProvider.GetSpec().IsEip1559Enabled, CurrentBaseFee);
-                    gasBottleneck = UInt256.Min(effectiveGasPrice, previousTxBottleneck);
-                }
+                    if (tx.Nonce == currentNonce + i)
+                    {
+                        UInt256 effectiveGasPrice = tx.CalculateEffectiveGasPrice(_specProvider.GetSpec().IsEip1559Enabled, CurrentBaseFee);
+                        gasBottleneck = UInt256.Min(effectiveGasPrice, previousTxBottleneck);
+                    }
 
-                if (tx.GasBottleneck != gasBottleneck)
-                {
-                    yield return (tx.Hash, tx, SetGasBottleneckChange(gasBottleneck));
-                }
+                    if (tx.GasBottleneck != gasBottleneck)
+                    {
+                        yield return (tx.Hash, tx, SetGasBottleneckChange(gasBottleneck));
+                    }
                 
-                previousTxBottleneck = gasBottleneck;
-                i++;
+                    previousTxBottleneck = gasBottleneck;
+                    i++;
+                }
             }
         }
 
