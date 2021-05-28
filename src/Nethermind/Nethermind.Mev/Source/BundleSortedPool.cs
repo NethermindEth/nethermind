@@ -36,7 +36,7 @@ namespace Nethermind.Mev.Source
             => comparer.ThenBy(CompareMevBundleByIdentity.Default);
 
         protected override IComparer<MevBundle> GetGroupComparer(IComparer<MevBundle> comparer) //compares two bundles with same block #
-            => comparer;
+            => comparer.ThenBy(CompareMevBundleByIdentity.Default);
 
         protected override long MapToGroup(MevBundle mevBundle) => mevBundle.BlockNumber;
 

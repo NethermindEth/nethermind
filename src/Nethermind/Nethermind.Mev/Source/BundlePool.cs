@@ -88,10 +88,8 @@ namespace Nethermind.Mev.Source
 
         private IEnumerable<MevBundle> GetBundles(long blockNumber, UInt256 minTimestamp, UInt256 maxTimestamp, CancellationToken token = default)
         {
-            IDictionary<MevBundle, MevBundle> cacheMap = _bundles.GetCacheMap();
-            if (cacheMap.Keys.Select(k => k.BlockNumber).Contains(blockNumber))
+            if (_bundles.TryGetBucket(blockNumber, out MevBundle[] bundles))
             {
-                IEnumerable<MevBundle> bundles = cacheMap.Where(pair => pair.Key.BlockNumber == blockNumber).Select(pair => pair.Value);
                 foreach (MevBundle mevBundle in bundles)
                 {
                     if (token.IsCancellationRequested)
