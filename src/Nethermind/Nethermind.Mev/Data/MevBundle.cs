@@ -27,7 +27,7 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Mev.Data
 {
-    public class MevBundle : IEquatable<MevBundle>, IComparable<MevBundle>
+    public class MevBundle : IEquatable<MevBundle>
     {
         private static int _poolIndex = 0;
 
@@ -73,27 +73,6 @@ namespace Nethermind.Mev.Data
             return Equals(Hash, other.Hash);
         }
 
-        public int CompareTo(MevBundle? other)
-        {
-            CompareMevBundleByBlock compareByBlock = new();
-            long BestBlockNumber = compareByBlock.BestBlockNumber;
-            
-            if (ReferenceEquals(this, other)) return 0;
-            if (ReferenceEquals(null, other)) return 1;
-            if (this.BlockNumber == other.BlockNumber)
-            {
-                return 0;
-            }
-            else if (this.BlockNumber > BestBlockNumber && other.BlockNumber > BestBlockNumber)
-            {
-                return this.BlockNumber.CompareTo(other.BlockNumber);
-            }
-            else //if head is 5, and we have 8 and 4, we want to keep it that way; and if we have 4 and 3 we also want to keep it that way
-            {
-                return other.BlockNumber.CompareTo(this.BlockNumber);
-            }
-        }
-
         public override bool Equals(object? obj)
         {
             if (ReferenceEquals(null, obj)) return false;
@@ -103,9 +82,6 @@ namespace Nethermind.Mev.Data
         }
 
         public override int GetHashCode() => Hash.GetHashCode();
-
-        public static MevBundle Empty(long blockNumber, UInt256 minTimestamp, UInt256 maxTimestamp) =>
-            new(Array.Empty<Transaction>(), blockNumber, minTimestamp, maxTimestamp);
 
         public override string ToString() => $"Block:{BlockNumber}; Min:{MinTimestamp}; Max:{MaxTimestamp}; TxCount:{Transactions.Count};";
     }

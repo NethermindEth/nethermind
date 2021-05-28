@@ -65,14 +65,14 @@ namespace Nethermind.Mev.Source
             _mevConfig = mevConfig;
             _blockTree = blockTree;
             _simulator = simulator;
-            RegisterNewBlockTracking();
-           
             _logger = logManager.GetClassLogger();
-
-            _compareMevBundleByBlock = new CompareMevBundleByBlock {BestBlockNumber = blockTree.BestSuggestedHeader?.Number ?? 0};
+            
+            long bestBlockNumber = RegisterNewBlockTracking();
+            _compareMevBundleByBlock = new CompareMevBundleByBlock() {BestBlockNumber = bestBlockNumber};
+            IComparer<MevBundle> comparer = _compareMevBundleByBlock.ThenBy(CompareMevBundleByMinTimestamp.Default);
             _bundles = new BundleSortedPool(
                 _mevConfig.BundlePoolSize,
-                _compareMevBundleByBlock.ThenBy(CompareMevBundleByMinTimestamp.Default),
+                comparer,
                 logManager ); 
             
             if (_finalizationManager != null)
@@ -81,16 +81,18 @@ namespace Nethermind.Mev.Source
             }
         }
 
-        private void RegisterNewBlockTracking()
+        private long RegisterNewBlockTracking()
         {
             switch (_mevConfig.SimulationMode)
             {
                 case SimulationMode.NewHead:
                     _blockTree.NewHeadBlock += OnNewBlock;
-                    break;
+                    return _blockTree.Head?.Number ?? 0;
+                
                 case SimulationMode.NewBestSuggested:
                     _blockTree.NewSuggestedBlock += OnNewBlock;
-                    break;
+                    return  _blockTree.BestSuggestedHeader?.Number ?? 0;
+                
                 default:
                     throw new ArgumentOutOfRangeException(nameof(_mevConfig.SimulationMode));
             }
