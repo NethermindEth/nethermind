@@ -228,7 +228,7 @@ namespace Nethermind.Mev.Source
             long previousBestSuggested = _compareMevBundleByBlock!.BestBlockNumber;
             long fromBlockNumber = Math.Min(newBlockNumber, previousBestSuggested);
             long blockDelta = Math.Abs(newBlockNumber - previousBestSuggested);
-            _bundles.UpdateSortedValues(Range(fromBlockNumber, blockDelta), () => _compareMevBundleByBlock.BestBlockNumber = newBlockNumber);
+            _bundles.UpdateSortedValue(Range(fromBlockNumber, blockDelta), () => _compareMevBundleByBlock.BestBlockNumber = newBlockNumber);
         }
 
         private void OnBlocksFinalized(object? sender, FinalizeEventArgs e) //NEED TO ADD ANYTHING ELSE?

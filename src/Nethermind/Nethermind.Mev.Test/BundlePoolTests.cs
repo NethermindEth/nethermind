@@ -23,6 +23,7 @@ using Avro.File;
 using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using Nethermind.Mev.Data;
