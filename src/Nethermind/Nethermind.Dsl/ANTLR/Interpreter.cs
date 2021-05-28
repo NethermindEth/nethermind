@@ -160,13 +160,13 @@ namespace Nethermind.Dsl.ANTLR
                 "IS" => new PipelineElement<Block, Block>(
                             condition: (b => b.GetType().GetProperty(key).GetValue(b).ToString() == value),
                             transformData: (b => b), _logger),
-                "==" => new PipelineElement<Transaction, Transaction>(
+                "==" => new PipelineElement<Block, Block>(
                             condition: (t => t.GetType().GetProperty(key).GetValue(t).ToString() == value),
                             transformData: (t => t), _logger),
                 "NOT" => new PipelineElement<Block, Block>(
                             condition: (b => b.GetType().GetProperty(key).GetValue(b).ToString() != value),
                             transformData: (b => b), _logger),
-                "!=" => new PipelineElement<Transaction, Transaction>(
+                "!=" => new PipelineElement<Block, Block>(
                             condition: (t => t.GetType().GetProperty(key).GetValue(t).ToString() != value),
                             transformData: (t => t), _logger),
                 ">" => new PipelineElement<Block, Block>(
