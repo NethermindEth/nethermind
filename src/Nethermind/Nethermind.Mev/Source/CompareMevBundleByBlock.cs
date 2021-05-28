@@ -35,11 +35,11 @@ namespace Nethermind.Mev.Source
             {
                 return 0;
             }
-            else if (x.BlockNumber > BestBlockNumber && y.BlockNumber > BestBlockNumber)
+            else if (x.BlockNumber > BestBlockNumber && y.BlockNumber > BestBlockNumber) //if both blocks greater than BestBlock, sorted in ascending order
             {
                 return x.BlockNumber.CompareTo(y.BlockNumber);
             }
-            else //if head is 5, and we have 8 and 4, we want to keep it that way; and if we have 4 and 3 we also want to keep it that way
+            else //if only one block greater than BestBlock or both blocks less than Best Block, sorted in descending order
             {
                 return y.BlockNumber.CompareTo(x.BlockNumber);
             }

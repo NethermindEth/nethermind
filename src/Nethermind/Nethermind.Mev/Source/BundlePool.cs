@@ -233,7 +233,7 @@ namespace Nethermind.Mev.Source
             long previousBestSuggested = _compareBundleWithHashesByBlock.BestBlockNumber;
             long fromBlockNumber = Math.Min(newBlockNumber, previousBestSuggested);
             long blockDelta = Math.Abs(newBlockNumber - previousBestSuggested);
-            _bundles.NotifyChange(Range(fromBlockNumber, blockDelta), () => _compareBundleWithHashesByBlock.BestBlockNumber = newBlockNumber);
+            _bundles.UpdateSortedValues(Range(fromBlockNumber, blockDelta), () => _compareBundleWithHashesByBlock.BestBlockNumber = newBlockNumber);
         }
 
         private void OnBlocksFinalized(object? sender, FinalizeEventArgs e)
@@ -243,9 +243,9 @@ namespace Nethermind.Mev.Source
             int capacity = _mevConfig.BundlePoolSize;
             lock (_bundles)
             {
-                while (_bundles.Count > capacity) //remove if bundles more than capacity
+                while (_bundles.Count > capacity) 
                 {
-                    _bundles.TryTakeFirst(out BundleWithHashes bundleWithHashes); //want to make this same as Key, does this need to be out?
+                    _bundles.TryTakeFirst(out BundleWithHashes bundleWithHashes); 
                 }
             }
         }
@@ -276,7 +276,7 @@ namespace Nethermind.Mev.Source
             }
         }
 
-        public void Dispose() //is this supposed to be public and shifted right?
+        public void Dispose() 
         {
             _blockTree.NewSuggestedBlock -= OnNewSuggestedBlock;
             

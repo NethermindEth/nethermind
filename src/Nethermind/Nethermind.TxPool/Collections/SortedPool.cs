@@ -220,7 +220,7 @@ namespace Nethermind.TxPool.Collections
         }
         
         [MethodImpl(MethodImplOptions.Synchronized)]
-        public void NotifyChange(IEnumerable<TGroupKey> keys, Action change)
+        public void UpdateSortedValues(IEnumerable<TGroupKey> keys, Action change)
         {
             List<IDictionary<TKey, TValue>> mevBundlesToChange = new();
 
