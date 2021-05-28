@@ -1344,7 +1344,7 @@ namespace Nethermind.Blockchain.Test
         }
 
         [Test]
-        public async Task When_block_is_moved_to_main_transactions_are_removed_from_tx_pool()
+        public async Task When_block_is_moved_to_main_TxPool_is_notified()
         {
             MemDb blocksDb = new MemDb();
             MemDb headersDb = new MemDb();
@@ -1368,8 +1368,7 @@ namespace Nethermind.Blockchain.Test
             
             await Task.Delay(100); // await for OnChainTxWatcher
 
-            txPoolMock.Received().RemoveTransaction(t1.Hash, true);
-            txPoolMock.BlockGasLimit.Should().Be(100);
+            txPoolMock.Received().NotifyHeadChange(block1A);
         }
 
         [TestCase(true)]

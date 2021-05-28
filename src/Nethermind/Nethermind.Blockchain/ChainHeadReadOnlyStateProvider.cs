@@ -25,14 +25,12 @@ namespace Nethermind.Blockchain
     public class ChainHeadReadOnlyStateProvider : SpecificBlockReadOnlyStateProvider
     {
         private readonly IBlockFinder _blockFinder;
-        private readonly IStateReader _stateReader;
-
+        
         public ChainHeadReadOnlyStateProvider(IBlockFinder blockFinder, IStateReader stateReader) : base(stateReader)
         {
             _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
-            _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
         }
 
-        public Keccak StateRoot => _blockFinder.Head?.StateRoot ?? Keccak.EmptyTreeHash;
+        public override Keccak StateRoot => _blockFinder.Head?.StateRoot ?? Keccak.EmptyTreeHash;
     }
 }

@@ -29,7 +29,9 @@ namespace Nethermind.TxPool.Collections
     /// <typeparam name="TKey">Type of keys of items, unique in pool.</typeparam>
     /// <typeparam name="TValue">Type of items that are kept.</typeparam>
     /// <typeparam name="TGroupKey">Type of groups in which the items are organized</typeparam>
-    public abstract partial class SortedPool<TKey, TValue, TGroupKey> where TGroupKey : notnull
+    public abstract partial class SortedPool<TKey, TValue, TGroupKey> 
+        where TKey : notnull
+        where TGroupKey : notnull
     {
         private readonly int _capacity;
         private readonly IComparer<TValue> _groupComparer;
@@ -93,12 +95,32 @@ namespace Nethermind.TxPool.Collections
         {
             return _buckets.ToDictionary(g => g.Key, g => g.Value.ToArray());
         }
-        
+
         /// <summary>
-        /// Gets first element in supplied comparer order.
+        /// Gets number of items in requested group.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.Synchronized)]
+        public int GetBucketCount(TGroupKey group)
+        {
+            if (group == null) throw new ArgumentNullException(nameof(group));
+            return _buckets.TryGetValue(group, out ICollection<TValue> bucket) ? bucket.Count : 0;
+        }
+
+        /// <summary>
+        /// Takes first element in supplied comparer order.
         /// </summary>
         [MethodImpl(MethodImplOptions.Synchronized)]
         public bool TryTakeFirst(out TValue first) => TryRemove(_sortedValues.Min.Value, out first);
+        
+        /// <summary>
+        /// Gets last element in supplied comparer order.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.Synchronized)]
+        public bool TryGetLast(out TValue last)
+        {
+            last = _sortedValues.Max.Key;
+            return last is not null;
+        }
 
         /// <summary>
         /// Tries to remove element.
@@ -132,8 +154,11 @@ namespace Nethermind.TxPool.Collections
             bucket = null;
             return false;
         }
-
+        
+        [MethodImpl(MethodImplOptions.Synchronized)]
         public bool TryRemove(TKey key, [MaybeNullWhen(false)] out TValue value) => TryRemove(key, out value, out _);
+        
+        [MethodImpl(MethodImplOptions.Synchronized)]
         public bool TryRemove(TKey key) => TryRemove(key, out _, out _);
 
         /// <summary>
@@ -154,35 +179,45 @@ namespace Nethermind.TxPool.Collections
         /// </summary>
         /// <param name="key">Key to be inserted.</param>
         /// <param name="value">Element to insert.</param>
+        /// <param name="removed">Element removed because of exceeding capacity</param>
         /// <returns>If element was inserted. False if element was already present in pool.</returns>
         [MethodImpl(MethodImplOptions.Synchronized)]
-        public bool TryInsert(TKey key, TValue value)
+        public bool TryInsert(TKey key, TValue value, out TValue? removed)
         {
             if (CanInsert(key, value))
             {
                 TGroupKey group = MapToGroup(value);
 
-                if (!_buckets.TryGetValue(group, out ICollection<TValue> bucket))
+                if (group is not null)
                 {
-                    _buckets[group] = bucket = new SortedSet<TValue>(_groupComparer);
+                    if (!_buckets.TryGetValue(group, out ICollection<TValue> bucket))
+                    {
+                        _buckets[group] = bucket = new SortedSet<TValue>(_groupComparer);
+                    }
+
+                    InsertCore(key, value, group, bucket);
+
+                    if (_cacheMap.Count > _capacity)
+                    {
+                        RemoveLast(out removed);
+                        return true;
+                    }
+
+                    removed = default;
+                    return true;
                 }
-
-                InsertCore(key, value, group, bucket);
-
-                if (_cacheMap.Count > _capacity)
-                {
-                    RemoveLast();
-                }
-
-                return true;
             }
 
+            removed = default;
             return false;
         }
 
-        private void RemoveLast()
+        [MethodImpl(MethodImplOptions.Synchronized)]
+        public bool TryInsert(TKey key, TValue value) => TryInsert(key, value, out _);
+
+        private void RemoveLast(out TValue? removed)
         {
-            TryRemove(_sortedValues.Max.Value);
+            TryRemove(_sortedValues.Max.Value, out removed);
         }
         
         /// <summary>
@@ -218,6 +253,46 @@ namespace Nethermind.TxPool.Collections
             _sortedValues.Remove(value);
             return _cacheMap.Remove(key);
         }
+        
+
+        [MethodImpl(MethodImplOptions.Synchronized)]
+        public void UpdatePool(Func<TGroupKey, ICollection<TValue>, IEnumerable<(TKey Key, TValue Value, Action<TValue> Change)>> changingElements)
+        {
+            foreach ((TGroupKey groupKey, ICollection<TValue> bucket) in _buckets)
+            {
+                UpdateGroup(groupKey, bucket, changingElements);
+            }
+        }
+        
+        [MethodImpl(MethodImplOptions.Synchronized)]
+        public void UpdateGroup(TGroupKey groupKey, Func<TGroupKey, ICollection<TValue>, IEnumerable<(TKey Key, TValue Value, Action<TValue> Change)>> changingElements)
+        {
+            if (groupKey == null) throw new ArgumentNullException(nameof(groupKey));
+            if (_buckets.TryGetValue(groupKey, out ICollection<TValue> bucket))
+            {
+                UpdateGroup(groupKey, bucket, changingElements);
+            }
+        }
+        
+        private void UpdateGroup(TGroupKey groupKey, ICollection<TValue> bucket, Func<TGroupKey, ICollection<TValue>, IEnumerable<(TKey Key, TValue Value, Action<TValue> Change)>> changingElements)
+        {
+            foreach (var elementChanged in changingElements(groupKey, bucket))
+            {
+                UpdateElement(elementChanged.Key, elementChanged.Value, elementChanged.Change);
+            }
+        }
+
+        private void UpdateElement(TKey key, TValue value, Action<TValue> change)
+        {
+            if (_sortedValues.Remove(value))
+            {
+                change(value);
+                _sortedValues.Add(value, key);
+            }
+        }
+
+        [MethodImpl(MethodImplOptions.Synchronized)]
+        public bool IsFull() => _cacheMap.Count >= _capacity;
         
         [MethodImpl(MethodImplOptions.Synchronized)]
         public void NotifyChange(IEnumerable<TGroupKey> keys, Action change)

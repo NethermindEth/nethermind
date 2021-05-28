@@ -29,7 +29,7 @@ namespace Nethermind.TxPool
         
         private DistinctCompareTx() { }
 
-        public int Compare(Transaction x, Transaction y)
+        public int Compare(Transaction? x, Transaction? y)
         {
             if (ReferenceEquals(x, y)) return 0;
             if (ReferenceEquals(null, y)) return 1;
