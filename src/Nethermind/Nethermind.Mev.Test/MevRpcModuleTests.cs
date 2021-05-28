@@ -18,6 +18,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -39,6 +40,7 @@ using Newtonsoft.Json;
 using FluentAssertions;
 using Google.Protobuf.WellKnownTypes;
 using Nethermind.Evm;
+using Nethermind.Mev.Data;
 
 namespace Nethermind.Mev.Test
 
@@ -342,11 +344,7 @@ namespace Nethermind.Mev.Test
             
             await chain.AddBlock(true);
             
-            // How to check if dropped from mempooL?
-
             GetHashes(chain.BlockTree.Head!.Transactions).Should().Equal(GetHashes(new[] { tx2, tx3, tx1 }));
-            // tx2, tx1
-
         }
 
         [Test]
@@ -386,7 +384,6 @@ namespace Nethermind.Mev.Test
             await chain.AddBlock(true);
 
             GetHashes(chain.BlockTree.Head!.Transactions).Should().Equal(GetHashes(new[] { tx1 }));
-            // currently gives empty block :/
         }
         
         [Test]
@@ -401,11 +398,27 @@ namespace Nethermind.Mev.Test
 
             SuccessfullySendBundle_V2(chain, 2, new Keccak[] {tx1.Hash!}, tx1, tx2);
             
-            await SendSignedTransaction(chain, tx1);
-
             await chain.AddBlock(true);
 
             GetHashes(chain.BlockTree.Head!.Transactions).Should().Equal(GetHashes(new[] { tx1, tx2 }));
+        }
+        
+        [Test]
+        public async Task v2_Should_not_include_bundle_if_wrong_transaction_is_in_RevertingTxHashes()
+        {
+            var chain = await CreateChain(SelectorType.V2, 5);
+            chain.GasLimitCalculator.GasLimit = 10_000_000;
+            
+            Address contractAddress = await Contracts.Deploy(chain, Contracts.ReverterCode);
+            Transaction tx1 = Build.A.Transaction.WithGasLimit(Contracts.LargeGasLimit).WithGasPrice(500).WithTo(contractAddress).WithData(Bytes.FromHexString(Contracts.ReverterInvokeFail)).SignedAndResolved(TestItem.PrivateKeyC).TestObject;
+            Transaction tx2 = Build.A.Transaction.WithGasLimit(GasCostOf.Transaction).WithGasPrice(130ul).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+
+            SuccessfullySendBundle_V2(chain, 2, new Keccak[] {tx2.Hash!}, tx1, tx2);
+            
+            await chain.AddBlock(true);
+
+            // should not include anything in the block
+            GetHashes(chain.BlockTree.Head!.Transactions).Should().Equal();
         }
         
         [Test]
