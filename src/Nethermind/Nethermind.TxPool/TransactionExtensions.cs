@@ -20,7 +20,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.TxPool
 {
-    public static class TransactionExtensions
+    internal static class TransactionExtensions
     {
         public static UInt256 CalculatePayableGasPrice(this Transaction tx, bool eip1559Enabled, UInt256 baseFee, UInt256 balance)
         {
