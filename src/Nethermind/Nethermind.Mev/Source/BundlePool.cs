@@ -48,7 +48,7 @@ namespace Nethermind.Mev.Source
         private readonly IMevConfig _mevConfig;
         private readonly IBlockTree _blockTree;
         private readonly IBundleSimulator _simulator;
-        private readonly SortedPool<MevBundle, MevBundle, long> _bundles;
+        private readonly BundleSortedPool _bundles;
         private readonly ConcurrentDictionary<Keccak, ConcurrentDictionary<MevBundle, SimulatedMevBundleContext>> _simulatedBundles = new();
         private readonly ILogger _logger;
         private readonly CompareMevBundleByBlock? _compareMevBundleByBlock;
@@ -65,7 +65,8 @@ namespace Nethermind.Mev.Source
             _mevConfig = mevConfig;
             _blockTree = blockTree;
             _simulator = simulator;
-            _blockTree.NewSuggestedBlock += OnNewSuggestedBlock;
+            RegisterNewBlockTracking();
+           
             _logger = logManager.GetClassLogger();
 
             _compareMevBundleByBlock = new CompareMevBundleByBlock {BestBlockNumber = blockTree.BestSuggestedHeader?.Number ?? 0};
@@ -77,6 +78,21 @@ namespace Nethermind.Mev.Source
             if (_finalizationManager != null)
             {
                 _finalizationManager.BlocksFinalized += OnBlocksFinalized;
+            }
+        }
+
+        private void RegisterNewBlockTracking()
+        {
+            switch (_mevConfig.SimulationMode)
+            {
+                case SimulationMode.NewHead:
+                    _blockTree.NewHeadBlock += OnNewBlock;
+                    break;
+                case SimulationMode.NewBestSuggested:
+                    _blockTree.NewSuggestedBlock += OnNewBlock;
+                    break;
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(_mevConfig.SimulationMode));
             }
         }
 
@@ -197,7 +213,7 @@ namespace Nethermind.Mev.Source
             }*/
         }
         
-        private void OnNewSuggestedBlock(object? sender, BlockEventArgs e)
+        private void OnNewBlock(object? sender, BlockEventArgs e)
         {
             long blockNumber = e.Block!.Number;
             ResortBundlesByBlock(blockNumber);
@@ -217,18 +233,18 @@ namespace Nethermind.Mev.Source
 
         private void ResortBundlesByBlock(long newBlockNumber)
         {
-            IEnumerable<long> Range(long start, long count)
+            IEnumerable<long> Range(long startBlockNumber, long count)
             {
-                for (long i = start; i < start + count; i++)
+                for (long blockNumber = startBlockNumber; blockNumber < startBlockNumber + count; blockNumber++)
                 {
-                    yield return i;
+                    yield return blockNumber;
                 }
             }
             
             long previousBestSuggested = _compareMevBundleByBlock!.BestBlockNumber;
             long fromBlockNumber = Math.Min(newBlockNumber, previousBestSuggested);
             long blockDelta = Math.Abs(newBlockNumber - previousBestSuggested);
-            _bundles.UpdateSortedValue(Range(fromBlockNumber, blockDelta), () => _compareMevBundleByBlock.BestBlockNumber = newBlockNumber);
+            _bundles.UpdateGroups(Range(fromBlockNumber, blockDelta), () => _compareMevBundleByBlock.BestBlockNumber = newBlockNumber);
         }
 
         private void OnBlocksFinalized(object? sender, FinalizeEventArgs e) //NEED TO ADD ANYTHING ELSE?
@@ -277,7 +293,8 @@ namespace Nethermind.Mev.Source
 
         public void Dispose()
         {
-            _blockTree.NewSuggestedBlock -= OnNewSuggestedBlock;
+            _blockTree.NewSuggestedBlock -= OnNewBlock;
+            _blockTree.NewHeadBlock -= OnNewBlock;
             
             if (_finalizationManager != null)
             {

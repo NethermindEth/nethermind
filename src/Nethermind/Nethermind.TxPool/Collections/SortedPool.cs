@@ -35,8 +35,8 @@ namespace Nethermind.TxPool.Collections
     {
         private readonly int _capacity;
         private readonly IComparer<TValue> _groupComparer;
-        private readonly IDictionary<TGroupKey, ICollection<TValue>> _buckets;
-        private readonly DictionarySortedSet<TValue, TKey> _sortedValues;
+        protected readonly IDictionary<TGroupKey, ICollection<TValue>> _buckets;
+        protected readonly DictionarySortedSet<TValue, TKey> _sortedValues;
         private readonly IDictionary<TKey, TValue> _cacheMap;
 
         /// <summary>
@@ -294,38 +294,6 @@ namespace Nethermind.TxPool.Collections
         [MethodImpl(MethodImplOptions.Synchronized)]
         public bool IsFull() => _cacheMap.Count >= _capacity;
         
-        [MethodImpl(MethodImplOptions.Synchronized)]
-        public void UpdateSortedValue(IEnumerable<TGroupKey> keys, Action change)
-        {
-            List<IDictionary<TKey, TValue>> mevBundlesToChange = new();
-
-            foreach (TGroupKey groupKey in keys)
-            {
-                if (_buckets.TryGetValue(groupKey, out ICollection<TValue> bucket))
-                {
-                    IDictionary<TKey, TValue> dictionary = new Dictionary<TKey, TValue>(bucket.Count);
-                    foreach (TValue value in bucket)
-                    {
-                        if (_sortedValues.TryGetValue(value, out TKey key))
-                        {
-                            dictionary.Add(key!, value);
-                            _sortedValues.Remove(value);
-                        }
-                        mevBundlesToChange.Add(dictionary);
-                    }
-                }
-            }
-
-            change();
-
-            for (int i = 0; i < mevBundlesToChange.Count; i++)
-            {
-                foreach (KeyValuePair<TKey, TValue> keyValuePair in mevBundlesToChange[i])
-                {
-                    _sortedValues.Add(keyValuePair.Value, keyValuePair.Key);
-                }
-            }
-        }
 
         [MethodImpl(MethodImplOptions.Synchronized)]
         public bool TryGetBucket(TGroupKey groupKey, out TValue[] items)
