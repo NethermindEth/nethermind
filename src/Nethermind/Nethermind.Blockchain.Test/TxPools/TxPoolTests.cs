@@ -410,7 +410,7 @@ namespace Nethermind.Blockchain.Test.TxPools
             _txPool.GetPendingTransactionsCount().Should().Be(3);
             _txPool.GetPendingTransactions().Select(t => t.GasBottleneck).Max().Should().Be(gasPrice);
 
-            _txPool.RemoveTransaction(transactions[0]);
+            _txPool.RemoveTransaction(transactions[0].Hash);
             _stateProvider.SubtractFromBalance(TestItem.AddressA, (UInt256)oneTxPrice, new ReleaseSpec());
             _stateProvider.IncrementNonce(TestItem.AddressA);
             
@@ -467,7 +467,7 @@ namespace Nethermind.Blockchain.Test.TxPools
         {
             _txPool = CreatePool(_noTxStorage);
             var transactions = AddOwnTransactionToPool();
-            _txPool.RemoveTransaction(transactions[0]);
+            _txPool.RemoveTransaction(transactions[0].Hash);
             _txPool.AddTransaction(transactions[0], TxHandlingOptions.Reorganisation);
             Assert.AreEqual(1, _txPool.GetOwnPendingTransactions().Length);
         }
@@ -486,10 +486,8 @@ namespace Nethermind.Blockchain.Test.TxPools
         {
             _txPool = CreatePool(_noTxStorage);
             var transactions = AddOwnTransactionToPool();
-            _txPool.RemoveTransaction(transactions[0]);
-            Transaction tx = Build.A.Transaction.TestObject;
-            tx.Hash = TestItem.KeccakA;
-            _txPool.RemoveTransaction(tx);
+            _txPool.RemoveTransaction(transactions[0].Hash);
+            _txPool.RemoveTransaction(TestItem.KeccakA);
             _txPool.AddTransaction(transactions[0], TxHandlingOptions.None);
             Assert.AreEqual(0, _txPool.GetOwnPendingTransactions().Length);
         }
@@ -508,11 +506,11 @@ namespace Nethermind.Blockchain.Test.TxPools
                 Transaction[] transactionsForThirdTask = transactions.Where(t => t.Nonce == 7).ToArray();
                 transactions.Should().HaveCount(transactionsPerPeer * 10);
                 transactionsForFirstTask.Should().HaveCount(transactionsPerPeer);
-                var firstTask = Task.Run(() => DeleteTransactionsFromPool(true, transactionsForFirstTask));
-                var secondTask = Task.Run(() => DeleteTransactionsFromPool(true, transactionsForSecondTask));
-                var thirdTask = Task.Run(() => DeleteTransactionsFromPool(true, transactionsForThirdTask));
+                var firstTask = Task.Run(() => DeleteTransactionsFromPool(transactionsForFirstTask));
+                var secondTask = Task.Run(() => DeleteTransactionsFromPool(transactionsForSecondTask));
+                var thirdTask = Task.Run(() => DeleteTransactionsFromPool(transactionsForThirdTask));
                 await Task.WhenAll(firstTask, secondTask, thirdTask);
-                _txPool.GetPendingTransactions().Should().HaveCount(transactionsPerPeer);
+                _txPool.GetPendingTransactions().Should().HaveCount(transactionsPerPeer * 7);
             }
         }
 
@@ -568,8 +566,8 @@ namespace Nethermind.Blockchain.Test.TxPools
             BlockReplacementEventArgs blockReplacementEventArgs = new BlockReplacementEventArgs(block, null);
 
             ManualResetEvent manualResetEvent = new ManualResetEvent(false);
-            _txPool.RemoveTransaction(Arg.Do<Transaction>(t =>
-                manualResetEvent.Set()), Arg.Any<bool>());
+            _txPool.RemoveTransaction(Arg.Do<Keccak>(t => 
+                manualResetEvent.Set()));
             _blockTree.BlockAddedToMain += Raise.EventWith(new object(), blockReplacementEventArgs);
             manualResetEvent.WaitOne(TimeSpan.FromMilliseconds(200));
 
@@ -593,8 +591,8 @@ namespace Nethermind.Blockchain.Test.TxPools
             BlockReplacementEventArgs blockReplacementEventArgs = new BlockReplacementEventArgs(block, null);
 
             ManualResetEvent manualResetEvent = new ManualResetEvent(false);
-            _txPool.RemoveTransaction(Arg.Do<Transaction>(t =>
-                manualResetEvent.Set()), Arg.Any<bool>());
+            _txPool.RemoveTransaction(Arg.Do<Keccak>(t =>
+                manualResetEvent.Set()));
             _blockTree.BlockAddedToMain += Raise.EventWith(new object(), blockReplacementEventArgs);
             manualResetEvent.WaitOne(TimeSpan.FromMilliseconds(200));
 
@@ -609,23 +607,9 @@ namespace Nethermind.Blockchain.Test.TxPools
         {
             _txPool = CreatePool(_noTxStorage);
             var transactions = AddTransactionsToPool();
-            DeleteTransactionsFromPool(false, transactions);
+            DeleteTransactionsFromPool(transactions);
             _txPool.GetPendingTransactions().Should().BeEmpty();
             _txPool.GetOwnPendingTransactions().Should().BeEmpty();
-        }
-        
-        [Test]
-        public void should_delete_pending_transactions_and_smaller_nonces()
-        {
-            _txPool = CreatePool(_noTxStorage);
-            int transactionsPerPeer = 5;
-            var transactions = AddTransactionsToPool(true, false, transactionsPerPeer);
-            Transaction[] transactionsToDelete = transactions.Where(t => t.Nonce == 8).ToArray();
-            transactions.Should().HaveCount(transactionsPerPeer * 10);
-            transactionsToDelete.Should().HaveCount(transactionsPerPeer);
-            DeleteTransactionsFromPool(true, transactionsToDelete);
-            _txPool.GetPendingTransactions().Should().HaveCount(transactionsPerPeer);
-            _txPool.GetOwnPendingTransactions().Should().HaveCount(transactionsPerPeer);
         }
 
         [Test]
@@ -779,7 +763,7 @@ namespace Nethermind.Blockchain.Test.TxPools
             EnsureSenderBalance(tx);
             _txPool.AddTransaction(tx, TxHandlingOptions.PersistentBroadcast);
             _txPool.IsKnown(tx.Hash).Should().Be(true);
-            _txPool.RemoveTransaction(tx).Should().Be(true);
+            _txPool.RemoveTransaction(tx.Hash).Should().Be(true);
         }
         
         [Test]
@@ -789,29 +773,11 @@ namespace Nethermind.Blockchain.Test.TxPools
             _txPool.IsKnown(TestItem.KeccakA).Should().Be(false);
             Transaction tx = Build.A.Transaction.TestObject;
             tx.Hash = TestItem.KeccakA;
-            _txPool.RemoveTransaction(tx).Should().Be(false);
+            _txPool.RemoveTransaction(tx.Hash).Should().Be(false);
         }
 
         [Test]
         public void should_return_false_when_trying_to_remove_tx_with_null_txHash()
-        {
-            _txPool = CreatePool(_noTxStorage);
-            Transaction tx = Build.A.Transaction.TestObject;
-            tx.Hash = null;
-            _txPool.RemoveTransaction(tx).Should().Be(false);
-        }
-        
-        [Test]
-        public void should_return_false_when_trying_to_remove_tx_with_null_senderAddress()
-        {
-            _txPool = CreatePool(_noTxStorage);
-            Transaction tx = Build.A.Transaction.TestObject;
-            tx.SenderAddress = null;
-            _txPool.RemoveTransaction(tx).Should().Be(false);
-        }
-        
-        [Test]
-        public void should_return_false_when_trying_to_remove_null_tx()
         {
             _txPool = CreatePool(_noTxStorage);
             _txPool.RemoveTransaction(null).Should().Be(false);
@@ -875,11 +841,11 @@ namespace Nethermind.Blockchain.Test.TxPools
             return new[] {transaction};
         }
 
-        private void DeleteTransactionsFromPool(bool removeSmallerNonces, params Transaction[] transactions)
+        private void DeleteTransactionsFromPool(params Transaction[] transactions)
         {
             foreach (var transaction in transactions)
             {
-                _txPool.RemoveTransaction(transaction, removeSmallerNonces);
+                _txPool.RemoveTransaction(transaction.Hash);
             }
         }
 

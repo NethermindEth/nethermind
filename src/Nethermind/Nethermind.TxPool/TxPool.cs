@@ -170,23 +170,22 @@ namespace Nethermind.TxPool
             UpdateBuckets();
         }
 
-        private void RemoveProcessedTransactions(Transaction[] blockTransactions)
+        private void RemoveProcessedTransactions(IReadOnlyList<Transaction> blockTransactions)
         {
-            long transactionsInBlock = blockTransactions.Length;
+            long transactionsInBlock = blockTransactions.Count;
             long discoveredForPendingTxs = 0;
             long discoveredForHashCache = 0;
             
             for (int i = 0; i < transactionsInBlock; i++)
             {
-                Transaction tx = blockTransactions[i];
-                Keccak txHash = tx.Hash;
+                Keccak txHash = blockTransactions[i].Hash;
                 
                 if (!IsKnown(txHash))
                 {
                     discoveredForHashCache++;
                 }
 
-                if (!RemoveTransaction(tx, true))
+                if (!RemoveTransaction(txHash))
                 {
                     discoveredForPendingTxs++;
                 }
@@ -550,28 +549,27 @@ namespace Nethermind.TxPool
 
             return false;
         }
-
-        public bool RemoveTransaction(Transaction transaction, bool removeBelowThisTxNonce = false)
+        
+        public bool RemoveTransaction(Keccak? hash)
         {
-            if (transaction?.Hash is null || transaction?.SenderAddress is null)
+            if (hash is null)
             {
                 return false;
             }
-
-            Keccak hash = transaction.Hash;
-            Address senderAddress = transaction.SenderAddress;
+            
             bool isKnown;
             lock (_locker)
             {
-                isKnown = _transactions.TryRemove(hash);
+                isKnown = _transactions.TryRemove(hash, out Transaction transaction);
                 if (isKnown)
                 {
-                    if (_nonces.TryGetValue(senderAddress, out AddressNonces addressNonces))
+                    Address address = transaction.SenderAddress;
+                    if (_nonces.TryGetValue(address, out AddressNonces addressNonces))
                     {
                         addressNonces.Nonces.TryRemove(transaction.Nonce, out _);
                         if (addressNonces.Nonces.IsEmpty)
                         {
-                            _nonces.Remove(senderAddress, out _);
+                            _nonces.Remove(address, out _);
                         }
                     }
                     

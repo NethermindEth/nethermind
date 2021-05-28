@@ -136,7 +136,7 @@ namespace Nethermind.Blockchain.Producers
             {
                 if (tx.SenderAddress == null)
                 {
-                    _transactionPool.RemoveTransaction(tx);
+                    _transactionPool.RemoveTransaction(tx.Hash!);
                     if (_logger.IsDebug) _logger.Debug($"Rejecting (null sender) {tx.ToShortString()}");
                     continue;
                 }
@@ -144,7 +144,7 @@ namespace Nethermind.Blockchain.Producers
                 bool success = _txFilterPipeline.Execute(tx, parent);
                 if (!success)
                 {
-                    _transactionPool.RemoveTransaction(tx);
+                    _transactionPool.RemoveTransaction(tx.Hash!);
                     continue;
                 }
 
@@ -153,12 +153,12 @@ namespace Nethermind.Blockchain.Producers
                 {
                     if (tx.Nonce < expectedNonce)
                     {
-                        _transactionPool.RemoveTransaction(tx, true);    
+                        _transactionPool.RemoveTransaction(tx.Hash!);    
                     }
                     
                     if (tx.Nonce > expectedNonce + _transactionPool.FutureNonceRetention)
                     {
-                        _transactionPool.RemoveTransaction(tx);
+                        _transactionPool.RemoveTransaction(tx.Hash!);
                     }
                     
                     if (_logger.IsDebug) _logger.Debug($"Rejecting (invalid nonce - expected {expectedNonce}) {tx.ToShortString()}");
@@ -167,7 +167,7 @@ namespace Nethermind.Blockchain.Producers
                 
                 if (!HasEnoughFounds(remainingBalance, tx, isEip1559Enabled, baseFee))
                 {
-                    _transactionPool.RemoveTransaction(tx);
+                    _transactionPool.RemoveTransaction(tx.Hash!);
                     if (_logger.IsDebug) _logger.Debug($"Rejecting (sender balance too low) {tx.ToShortString()}");
                     continue;
                 }
