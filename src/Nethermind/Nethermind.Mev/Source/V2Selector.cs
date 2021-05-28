@@ -44,18 +44,24 @@ namespace Nethermind.Mev.Source
         
         public async Task<IEnumerable<MevBundle>> GetBundles(BlockHeader parent, UInt256 timestamp, long gasLimit, CancellationToken token = default)
         {
-            ICollection<MevBundle> includedBundles = Enumerable.Empty<MevBundle>().ToList();
-            long totalGasUsed = 0;
-            
             IEnumerable<SimulatedMevBundle> simulatedBundles = await _simulatedBundleSource.GetBundles(parent, timestamp, gasLimit, token);
+            return FilterBundles(simulatedBundles, gasLimit);
+        }
+
+        private IEnumerable<MevBundle> FilterBundles(IEnumerable<SimulatedMevBundle> simulatedBundles, long gasLimit)
+        {
+            long totalGasUsed = 0;
+            int numBundles = 0;
+
             foreach (SimulatedMevBundle simulatedBundle in simulatedBundles.OrderByDescending(bundle => bundle.BundleAdjustedGasPrice))
             {
-                if (includedBundles.Count < _bundleLimit)
+                if (numBundles < _bundleLimit)
                 {
                     if (simulatedBundle.GasUsed <= gasLimit - totalGasUsed)
                     {
-                        includedBundles.Add(simulatedBundle.Bundle);
                         totalGasUsed += simulatedBundle.GasUsed;
+                        numBundles++;
+                        yield return simulatedBundle.Bundle;
                     }
                 }
                 else
@@ -63,8 +69,6 @@ namespace Nethermind.Mev.Source
                     break;
                 }
             }
-
-            return includedBundles.Any() ? includedBundles : Enumerable.Empty<MevBundle>();
         }
     }
 }
