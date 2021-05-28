@@ -481,22 +481,25 @@ namespace Nethermind.TxPool
                 Account? account = _stateProvider.GetAccount(address);
                 UInt256 balance = account?.Balance ?? UInt256.Zero;
                 long currentNonce = (long)(account?.Nonce ?? UInt256.Zero);
-                Transaction tx = transactions.First();
-
-                bool insufficientBalance = false;
-
-                if (balance < tx.Value)
+                Transaction tx = transactions.FirstOrDefault(t => t.Nonce == currentNonce);
+                bool shouldBeDumped = false;
+                
+                if (tx is null)
                 {
-                    insufficientBalance = true;
+                    shouldBeDumped = true;
+                }
+                else if (balance < tx.Value)
+                {
+                    shouldBeDumped = true;
                 }
                 else if (!tx.IsEip1559)
                 {
-                    insufficientBalance = UInt256.MultiplyOverflow(tx.GasPrice, (UInt256)tx.GasLimit, out UInt256 cost);
-                    insufficientBalance |= UInt256.AddOverflow(cost, tx.Value, out cost);
-                    insufficientBalance |= balance < cost;
+                    shouldBeDumped = UInt256.MultiplyOverflow(tx.GasPrice, (UInt256)tx.GasLimit, out UInt256 cost);
+                    shouldBeDumped |= UInt256.AddOverflow(cost, tx.Value, out cost);
+                    shouldBeDumped |= balance < cost;
                 }
-
-                if (insufficientBalance)
+                
+                if (shouldBeDumped)
                 {
                     foreach (Transaction transaction in transactions)
                     {

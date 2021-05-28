@@ -385,7 +385,7 @@ namespace Nethermind.Blockchain.Test.TxPools
 
         [TestCase(1, 0)]
         [TestCase(2, 10)]
-        public void should_dump_GasBottleneck_of_all_txs_in_bucket_after_removal_of_tx_from_it_if_first_tx_to_execute_have_insufficient_balance(int numberOfTxsPossibleToExecuteBeforeGasExhaustion, int expectedMaxGasBottleneck)
+        public void should_dump_GasBottleneck_of_all_txs_in_bucket_after_removal_of_tx_from_it_if_first_tx_to_execute_has_insufficient_balance(int numberOfTxsPossibleToExecuteBeforeGasExhaustion, int expectedMaxGasBottleneck)
         {
             const int gasPrice = 10;
             const int value = 1;
@@ -416,6 +416,61 @@ namespace Nethermind.Blockchain.Test.TxPools
             
             _txPool.NotifyHeadChange(Build.A.Block.TestObject);
             _txPool.GetPendingTransactions().Select(t => t.GasBottleneck).Max().Should().Be((UInt256)expectedMaxGasBottleneck);
+        }
+        
+        [Test]
+        public void should_not_dump_GasBottleneck_of_all_txs_in_bucket_if_first_tx_in_bucket_has_insufficient_balance_but_has_old_nonce()
+        {
+            _txPool = CreatePool(_noTxStorage);
+            Transaction[] transactions = new Transaction[5];
+            
+            for (int i = 0; i < 5; i++)
+            {
+                transactions[i] = Build.A.Transaction
+                    .WithSenderAddress(TestItem.AddressA)
+                    .WithNonce((UInt256)i)
+                    .WithGasPrice((UInt256)(i + 2))
+                    .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+                EnsureSenderBalance(transactions[i]);
+                _txPool.AddTransaction(transactions[i], TxHandlingOptions.PersistentBroadcast);
+            }
+
+            for (int i = 0; i < 3; i++)
+            {
+                _stateProvider.IncrementNonce(TestItem.AddressA);
+            }
+
+            transactions[0].Value = 100000;
+
+            _txPool.NotifyHeadChange(Build.A.Block.TestObject);
+            _txPool.GetPendingTransactions().Count(t => t.GasBottleneck == 0).Should().Be(3);
+            _txPool.GetPendingTransactions().Max(t => t.GasBottleneck).Should().Be(5);
+        }
+
+        [Test]
+        public void should_not_fail_if_there_is_no_current_nonce_in_bucket()
+        {
+            _txPool = CreatePool(_noTxStorage);
+            Transaction[] transactions = new Transaction[5];
+            
+            for (int i = 0; i < 3; i++)
+            {
+                transactions[i] = Build.A.Transaction
+                    .WithSenderAddress(TestItem.AddressA)
+                    .WithNonce((UInt256)i + 4)
+                    .WithGasPrice((UInt256)(i + 2))
+                    .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+                EnsureSenderBalance(transactions[i]);
+                _txPool.AddTransaction(transactions[i], TxHandlingOptions.PersistentBroadcast);
+            }
+
+            for (int i = 0; i < 3; i++)
+            {
+                _stateProvider.IncrementNonce(TestItem.AddressA);
+            }
+            
+            _txPool.NotifyHeadChange(Build.A.Block.TestObject);
+            _txPool.GetPendingTransactions().Count(t => t.GasBottleneck == 0).Should().Be(3);
         }
 
         [Test]
