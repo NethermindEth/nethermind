@@ -89,8 +89,6 @@ namespace Nethermind.JsonRpc.Test.Modules
             TxPool.TxPool txPool = new TxPool.TxPool(txStorage, ethereumEcdsa, new ChainHeadInfoProvider(new FixedBlockChainHeadSpecProvider(specProvider), blockTree, stateProvider), new TxPoolConfig(),
                 new TxValidator(specProvider.ChainId), LimboLogs.Instance, transactionComparerProvider.GetDefaultComparer());
             
-            new OnChainTxWatcher(blockTree, txPool, specProvider, LimboLogs.Instance);
-            
             IReceiptStorage receiptStorage = new InMemoryReceiptStorage();
 
             _signerStore = new Signer(specProvider.ChainId, TestItem.PrivateKeyB, logger);
@@ -302,7 +300,6 @@ namespace Nethermind.JsonRpc.Test.Modules
             TxPool.TxPool txPool = new TxPool.TxPool(txStorage, ethereumEcdsa, new ChainHeadInfoProvider(new FixedBlockChainHeadSpecProvider(specProvider), blockTree, new StateProvider(new TrieStore(new MemDb(), LimboLogs.Instance), new MemDb(), LimboLogs.Instance)), new TxPoolConfig(), 
                 new TxValidator(specProvider.ChainId), LimboLogs.Instance, transactionComparerProvider.GetDefaultComparer());
 
-            new OnChainTxWatcher(blockTree, txPool, specProvider, LimboLogs.Instance);
             IReceiptStorage receiptStorage = new InMemoryReceiptStorage();
 
             IPeerManager peerManager = Substitute.For<IPeerManager>();
@@ -334,7 +331,6 @@ namespace Nethermind.JsonRpc.Test.Modules
             TxPool.TxPool txPool = new TxPool.TxPool(txStorage, ethereumEcdsa, new ChainHeadInfoProvider(specProvider, blockTree, new StateReader(new TrieStore(new MemDb(), LimboLogs.Instance), new MemDb(), LimboLogs.Instance)), new TxPoolConfig(), 
                 new TxValidator(specProvider.ChainId), LimboLogs.Instance, transactionComparerProvider.GetDefaultComparer());
             
-            new OnChainTxWatcher(blockTree, txPool, specProvider, LimboLogs.Instance);
             IReceiptStorage receiptStorage = new InMemoryReceiptStorage();
 
             IPeerManager peerManager = Substitute.For<IPeerManager>();

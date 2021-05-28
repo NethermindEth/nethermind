@@ -142,6 +142,7 @@ namespace Nethermind.TxPool
 
             _transactions = new TxDistinctSortedPool(MemoryAllowance.MemPoolSize, logManager, comparer);
             _persistentBroadcastTransactions = new TxDistinctSortedPool(MemoryAllowance.MemPoolSize, logManager, comparer);
+            _chainHeadInfoProvider.HeadChanged += OnHeadChange;
             _ownTimer = new Timer(500);
             _ownTimer.Elapsed += OwnTimerOnElapsed;
             _ownTimer.AutoReset = false;
@@ -163,12 +164,36 @@ namespace Nethermind.TxPool
 
         public Transaction[] GetOwnPendingTransactions() => _persistentBroadcastTransactions.GetSnapshot();
 
-        public void NotifyHeadChange(Block block)
+        private void OnHeadChange(object? sender, BlockReplacementEventArgs e)
+        {
+            // we don't want this to be on main processing thread
+            Task.Run(() => OnHeadChange(e.Block!, e.PreviousBlock))
+                .ContinueWith(t =>
+                {
+                    if (t.IsFaulted)
+                    {
+                        if (_logger.IsError) _logger.Error($"Couldn't correctly add or remove transactions from txpool after processing block {e.Block.ToString(Block.Format.FullHashAndNumber)}.", t.Exception);
+                    }
+                });
+        }
+        
+        private void OnHeadChange(Block block, Block? previousBlock)
         {
             BlockGasLimit = block.GasLimit;
             CurrentBaseFee = block.Header.BaseFeePerGas;
             RemoveProcessedTransactions(block.Transactions);
             UpdateBuckets();
+            
+            // the hash will only be the same during perf test runs / modified DB states
+            if (previousBlock is not null)
+            {
+                bool isEip155Enabled = _specProvider.GetSpec(previousBlock.Number).IsEip155Enabled;
+                for (int i = 0; i < previousBlock.Transactions.Length; i++)
+                {
+                    Transaction tx = previousBlock.Transactions[i];
+                    AddTransaction(tx, (isEip155Enabled ? TxHandlingOptions.None : TxHandlingOptions.PreEip155Signing) | TxHandlingOptions.Reorganisation);
+                }
+            }
         }
 
         private void RemoveProcessedTransactions(IReadOnlyList<Transaction> blockTransactions)
@@ -653,6 +678,7 @@ namespace Nethermind.TxPool
         public void Dispose()
         {
             _ownTimer.Dispose();
+            _chainHeadInfoProvider.HeadChanged -= OnHeadChange;
         }
 
         public event EventHandler<TxEventArgs>? NewDiscovered;

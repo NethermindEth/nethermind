@@ -37,7 +37,6 @@ namespace Nethermind.TxPool
         void RemovePeer(PublicKey nodeId);
         AddTxResult AddTransaction(Transaction tx, TxHandlingOptions handlingOptions);
         bool RemoveTransaction(Keccak? hash);
-        void NotifyHeadChange(Block block);
         bool IsKnown(Keccak? hash);
         bool TryGetPendingTransaction(Keccak hash, out Transaction? transaction);
         UInt256 ReserveOwnTransactionNonce(Address address);
