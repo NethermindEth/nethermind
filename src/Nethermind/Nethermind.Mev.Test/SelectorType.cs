@@ -19,7 +19,6 @@ namespace Nethermind.Mev.Test
 {
     public enum SelectorType
     {
-        V1,
         V2,
     }
 }

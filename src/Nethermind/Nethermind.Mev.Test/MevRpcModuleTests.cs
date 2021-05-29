@@ -142,7 +142,7 @@ namespace Nethermind.Mev.Test
             resultOfBundle.GetData().Should().Be(true);
         }
         
-        private void SuccessfullySendBundle_V2(TestMevRpcBlockchain chain, int blockNumber, Keccak[] revertingTxHashes = null, params Transaction[] txs)
+        private void SuccessfullySendBundleWithRevertingTxHashes(TestMevRpcBlockchain chain, int blockNumber, Keccak[] revertingTxHashes = null, params Transaction[] txs)
         {
             byte[][] bundleBytes = txs.Select(t => Rlp.Encode(t).Bytes).ToArray();
             ResultWrapper<bool> resultOfBundle = chain.MevRpcModule.eth_sendBundle(bundleBytes, blockNumber, default, default, revertingTxHashes);
@@ -176,7 +176,7 @@ namespace Nethermind.Mev.Test
         [Test]
         public async Task Should_execute_eth_callBundle_and_serialize_successful_response_properly() 
         {
-            var chain = await CreateChain(SelectorType.V1);
+            var chain = await CreateChain(SelectorType.V2, 2);
 
             Address contractAddress = await Contracts.Deploy(chain, Contracts.CallableCode);
             
@@ -192,7 +192,7 @@ namespace Nethermind.Mev.Test
         [Test]
         public async Task Should_execute_eth_callBundle_and_serialize_failed_response_properly() 
         {
-            var chain = await CreateChain(SelectorType.V1);
+            var chain = await CreateChain(SelectorType.V2, 2);
             Address reverterContractAddress = await Contracts.Deploy(chain, Contracts.ReverterCode);
             Transaction failedTx = Build.A.Transaction.WithGasLimit(Contracts.LargeGasLimit).WithGasPrice(1ul).WithTo(reverterContractAddress).WithData(Bytes.FromHexString(Contracts.ReverterInvokeFail)).SignedAndResolved(TestItem.PrivateKeyC).TestObject;
             string transactions = $"[\"{Rlp.Encode(failedTx).Bytes.ToHexString()}\"]";
@@ -201,9 +201,9 @@ namespace Nethermind.Mev.Test
         }
 
         [Test]
-        public async Task Should_pick_one_and_only_one_highest_score_bundle_of_several_using_v1_score_with_no_vanilla_tx_to_include_in_block()
+        public async Task Should_pick_one_and_only_one_highest_score_bundle_of_several_with_no_vanilla_tx_to_include_in_block_with_1_maxMergedBundles()
         {
-            var chain = await CreateChain(SelectorType.V1);
+            var chain = await CreateChain(SelectorType.V2, 1);
             chain.GasLimitCalculator.GasLimit = 10_000_000;
 
             Address contractAddress = await Contracts.Deploy(chain, Contracts.CoinbaseCode);
@@ -231,7 +231,7 @@ namespace Nethermind.Mev.Test
         [Test]
         public async Task Should_push_out_tail_gas_price_tx()
         {
-            var chain = await CreateChain(SelectorType.V1);
+            var chain = await CreateChain(SelectorType.V2, 1);
             chain.GasLimitCalculator.GasLimit = GasCostOf.Transaction;
 
             Transaction tx2 = Build.A.Transaction.WithGasLimit(GasCostOf.Transaction).WithGasPrice(150ul).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
@@ -247,7 +247,7 @@ namespace Nethermind.Mev.Test
         [Test]
         public async Task Should_choose_between_higher_coinbase_reward_of_vanilla_and_bundle_block()
         {
-            var chain = await CreateChain(SelectorType.V1);
+            var chain = await CreateChain(SelectorType.V2, 3);
             chain.GasLimitCalculator.GasLimit = GasCostOf.Transaction;
 
             Transaction tx1 = Build.A.Transaction.WithGasLimit(GasCostOf.Transaction).WithGasPrice(100ul).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
@@ -264,7 +264,7 @@ namespace Nethermind.Mev.Test
         public async Task Includes_0_transactions_from_bundle_with_1_or_more_transaction_failures()
         {
             // ignoring bundles with failed tx takes care of intersecting bundles
-            var chain = await CreateChain(SelectorType.V1);
+            var chain = await CreateChain(SelectorType.V2, 2);
             chain.GasLimitCalculator.GasLimit = 10_000_000;
             
             Transaction tx1 = Build.A.Transaction.WithGasLimit(GasCostOf.Transaction).WithGasPrice(100ul).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
@@ -283,7 +283,7 @@ namespace Nethermind.Mev.Test
         [Test]
         public async Task Should_include_bundle_transactions_uninterrupted_in_order_from_least_index_at_beginning_of_block()
         {
-            var chain = await CreateChain(SelectorType.V1);
+            var chain = await CreateChain(SelectorType.V2, 2);
             chain.GasLimitCalculator.GasLimit = 10_000_000;
 
             Address contractAddress = await Contracts.Deploy(chain, Contracts.SetableCode);
@@ -309,7 +309,7 @@ namespace Nethermind.Mev.Test
         }
 
         [Test]
-        public async Task v2_Should_merge_disjoint_bundles()
+        public async Task Should_merge_disjoint_bundles()
         {
             var chain = await CreateChain(SelectorType.V2, 3);
             chain.GasLimitCalculator.GasLimit = 10_000_000;
@@ -328,7 +328,7 @@ namespace Nethermind.Mev.Test
         }
 
         [Test]
-        public async Task v2_Should_discard_mempool_tx()
+        public async Task Should_discard_mempool_tx()
         {
             var chain = await CreateChain(SelectorType.V2, 2);
             chain.GasLimitCalculator.GasLimit = 10_000_000;
@@ -350,7 +350,7 @@ namespace Nethermind.Mev.Test
         }
 
         [Test]
-        public async Task v2_Should_discard_mempool_tx_if_bundle_comes_first()
+        public async Task Should_discard_mempool_tx_if_bundle_comes_first()
         {
             var chain = await CreateChain(SelectorType.V2, 2);
             chain.GasLimitCalculator.GasLimit = 10_000_000;
@@ -373,7 +373,7 @@ namespace Nethermind.Mev.Test
         }
         
         [Test]
-        public async Task v2_Should_accept_reverting_bundle_with_RevertingTxHashes()
+        public async Task Should_accept_reverting_bundle_with_RevertingTxHashes()
         {
             var chain = await CreateChain(SelectorType.V2, 3);
             chain.GasLimitCalculator.GasLimit = 10_000_000;
@@ -381,7 +381,7 @@ namespace Nethermind.Mev.Test
             Address contractAddress = await Contracts.Deploy(chain, Contracts.ReverterCode);
             Transaction tx1 = Build.A.Transaction.WithGasLimit(Contracts.LargeGasLimit).WithGasPrice(500).WithTo(contractAddress).WithData(Bytes.FromHexString(Contracts.ReverterInvokeFail)).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
 
-            SuccessfullySendBundle_V2(chain, 2, new Keccak[] {tx1.Hash!}, tx1);
+            SuccessfullySendBundleWithRevertingTxHashes(chain, 2, new Keccak[] {tx1.Hash!}, tx1);
 
             await chain.AddBlock(true);
 
@@ -389,7 +389,7 @@ namespace Nethermind.Mev.Test
         }
         
         [Test]
-        public async Task v2_Should_accept_reverting_larger_bundle_with_one_reverting_tx_in_RevertingTxHashes()
+        public async Task Should_accept_reverting_larger_bundle_with_one_reverting_tx_in_RevertingTxHashes()
         {
             var chain = await CreateChain(SelectorType.V2, 5);
             chain.GasLimitCalculator.GasLimit = 10_000_000;
@@ -398,7 +398,7 @@ namespace Nethermind.Mev.Test
             Transaction tx1 = Build.A.Transaction.WithGasLimit(Contracts.LargeGasLimit).WithGasPrice(500).WithTo(contractAddress).WithData(Bytes.FromHexString(Contracts.ReverterInvokeFail)).SignedAndResolved(TestItem.PrivateKeyC).TestObject;
             Transaction tx2 = Build.A.Transaction.WithGasLimit(GasCostOf.Transaction).WithGasPrice(130ul).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
 
-            SuccessfullySendBundle_V2(chain, 2, new Keccak[] {tx1.Hash!}, tx1, tx2);
+            SuccessfullySendBundleWithRevertingTxHashes(chain, 2, new Keccak[] {tx1.Hash!}, tx1, tx2);
             
             await chain.AddBlock(true);
 
@@ -406,7 +406,7 @@ namespace Nethermind.Mev.Test
         }
         
         [Test]
-        public async Task v2_Should_not_include_bundle_if_wrong_transaction_is_in_RevertingTxHashes()
+        public async Task Should_not_include_bundle_if_wrong_transaction_is_in_RevertingTxHashes()
         {
             var chain = await CreateChain(SelectorType.V2, 5);
             chain.GasLimitCalculator.GasLimit = 10_000_000;
@@ -415,7 +415,7 @@ namespace Nethermind.Mev.Test
             Transaction tx1 = Build.A.Transaction.WithGasLimit(Contracts.LargeGasLimit).WithGasPrice(500).WithTo(contractAddress).WithData(Bytes.FromHexString(Contracts.ReverterInvokeFail)).SignedAndResolved(TestItem.PrivateKeyC).TestObject;
             Transaction tx2 = Build.A.Transaction.WithGasLimit(GasCostOf.Transaction).WithGasPrice(130ul).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
 
-            SuccessfullySendBundle_V2(chain, 2, new Keccak[] {tx2.Hash!}, tx1, tx2);
+            SuccessfullySendBundleWithRevertingTxHashes(chain, 2, new Keccak[] {tx2.Hash!}, tx1, tx2);
             
             await chain.AddBlock(true);
 
@@ -424,7 +424,7 @@ namespace Nethermind.Mev.Test
         }
         
         [Test]
-        public async Task v2_Should_choose_positive_bundle_count_less_than_maxMergedBundle_if_it_gives_more_profit()
+        public async Task Should_choose_positive_bundle_count_less_than_maxMergedBundle_if_it_gives_more_profit()
         {
             var chain = await CreateChain(SelectorType.V2, 3);
             // space for 4 simple transactions
@@ -450,7 +450,7 @@ namespace Nethermind.Mev.Test
         }
         
         [Test]
-        public async Task v2_Should_reject_second_bundle_where_they_succeed_individually_but_fail_if_in_the_same_block()
+        public async Task Should_reject_second_bundle_where_they_succeed_individually_but_fail_if_in_the_same_block()
         {
             var chain = await CreateChain(SelectorType.V2, 3);
             chain.GasLimitCalculator.GasLimit = 10_000_000;
@@ -469,7 +469,7 @@ namespace Nethermind.Mev.Test
         
         [Test]
         [Ignore("Whole bundle reverting bundle checking not yet implemented")]
-        public async Task v2_Should_accept_bundles_in_RevertingTxHashes_where_they_only_fail_if_included_in_block_together()
+        public async Task Should_accept_bundles_in_RevertingTxHashes_where_they_only_fail_if_included_in_block_together()
         {
             var chain = await CreateChain(SelectorType.V2, 3);
             chain.GasLimitCalculator.GasLimit = 10_000_000;
@@ -478,8 +478,8 @@ namespace Nethermind.Mev.Test
             Transaction tx1 = Build.A.Transaction.WithGasLimit(4_000_000).WithGasPrice(30ul).WithTo(contractAddress).WithData(Bytes.FromHexString(Contracts.SecondCallReverterInvokeFail)).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
             Transaction tx2 = Build.A.Transaction.WithGasLimit(4_000_000).WithGasPrice(20ul).WithTo(contractAddress).WithData(Bytes.FromHexString(Contracts.SecondCallReverterInvokeFail)).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
 
-            SuccessfullySendBundle_V2(chain, 2, new Keccak[] {tx2.Hash!}, tx2);
-            SuccessfullySendBundle_V2(chain, 2, new Keccak[] {tx1.Hash!}, tx1);
+            SuccessfullySendBundleWithRevertingTxHashes(chain, 2, new Keccak[] {tx2.Hash!}, tx2);
+            SuccessfullySendBundleWithRevertingTxHashes(chain, 2, new Keccak[] {tx1.Hash!}, tx1);
 
             await chain.AddBlock(true);
 

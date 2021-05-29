@@ -159,51 +159,30 @@ namespace Nethermind.Mev
                 _nethermindApi.LogManager);
 
             _nethermindApi.BlockProducerEnvFactory = producerEnvFactory;
-
-            if (_mevConfig.FlashbotsVersion == SelectorType.V1)
-            {
-                IManualBlockProducer standardProducer = (IManualBlockProducer)await consensusPlugin.InitBlockProducer();
-                IBeneficiaryBalanceSource standardProducerBeneficiaryBalanceSource = producerEnvFactory.LastMevBlockProcessor;
-                V1Selector v1Selector = new(BundlePool);
-                IManualBlockProducer bundleProducer = (IManualBlockProducer)await consensusPlugin.InitBlockProducer(new BundleTxSource(v1Selector, standardProducer.Timestamper));
-                IBeneficiaryBalanceSource bundleProducerBeneficiaryBalanceSource = producerEnvFactory.LastMevBlockProcessor;
-                return _nethermindApi.BlockProducer = new MevBlockProducer(new Dictionary<IManualBlockProducer, IBeneficiaryBalanceSource>()
-                {
-                    {bundleProducer, bundleProducerBeneficiaryBalanceSource}, 
-                    {standardProducer, standardProducerBeneficiaryBalanceSource}
-                });
-            }
-            else if (_mevConfig.FlashbotsVersion == SelectorType.V2)
-            {
-                if (_mevConfig.MaxMergedBundles == null || _mevConfig.MaxMergedBundles < 1)
-                {
-                    throw new ArgumentException("maxMergedBundles cannot be null or zero in V2");
-                }
-
-                Dictionary<IManualBlockProducer, IBeneficiaryBalanceSource> blockProducerDictionary =
-                    new Dictionary<IManualBlockProducer, IBeneficiaryBalanceSource>();
-                
-                // Add non-mev block
-                IManualBlockProducer standardProducer = (IManualBlockProducer)await consensusPlugin.InitBlockProducer();
-                IBeneficiaryBalanceSource standardProducerBeneficiaryBalanceSource = producerEnvFactory.LastMevBlockProcessor;
-                blockProducerDictionary.Add(standardProducer, standardProducerBeneficiaryBalanceSource);
-                
-                // Try blocks with all bundle numbers <= maxMergedBundles
-                for (int bundleLimit = 1; bundleLimit <= _mevConfig.MaxMergedBundles; bundleLimit++)
-                {
-                    V2Selector v2Selector = new(BundlePool, bundleLimit);
-                    IManualBlockProducer bundleProducer = (IManualBlockProducer)await consensusPlugin.InitBlockProducer(new BundleTxSource(v2Selector, standardProducer.Timestamper));
-                    IBeneficiaryBalanceSource bundleProducerBeneficiaryBalanceSource = producerEnvFactory.LastMevBlockProcessor;
-                    blockProducerDictionary.Add(bundleProducer, bundleProducerBeneficiaryBalanceSource);
-                }
-                
-                return _nethermindApi.BlockProducer = new MevBlockProducer(blockProducerDictionary);
-            }
-            else
-            {
-                throw new NotSupportedException("Only V1 and V2 are supported");
-            }
             
+            if (_mevConfig.MaxMergedBundles == null || _mevConfig.MaxMergedBundles < 1)
+            { 
+                throw new ArgumentException("MaxMergedBundles cannot be null or zero");
+            }
+
+            Dictionary<IManualBlockProducer, IBeneficiaryBalanceSource> blockProducerDictionary = 
+                new Dictionary<IManualBlockProducer, IBeneficiaryBalanceSource>();
+                
+            // Add non-mev block
+            IManualBlockProducer standardProducer = (IManualBlockProducer)await consensusPlugin.InitBlockProducer(); 
+            IBeneficiaryBalanceSource standardProducerBeneficiaryBalanceSource = producerEnvFactory.LastMevBlockProcessor;
+            blockProducerDictionary.Add(standardProducer, standardProducerBeneficiaryBalanceSource);
+            
+            // Try blocks with all bundle numbers <= MaxMergedBundles
+            for (int bundleLimit = 1; bundleLimit <= _mevConfig.MaxMergedBundles; bundleLimit++)
+            {
+                BundleSelector bundleSelector = new(BundlePool, bundleLimit);
+                IManualBlockProducer bundleProducer = (IManualBlockProducer)await consensusPlugin.InitBlockProducer(new BundleTxSource(bundleSelector, standardProducer.Timestamper));
+                IBeneficiaryBalanceSource bundleProducerBeneficiaryBalanceSource = producerEnvFactory.LastMevBlockProcessor;
+                blockProducerDictionary.Add(bundleProducer, bundleProducerBeneficiaryBalanceSource);
+            }
+                
+            return _nethermindApi.BlockProducer = new MevBlockProducer(blockProducerDictionary);
         }
 
         public bool Enabled => _mevConfig.Enabled;

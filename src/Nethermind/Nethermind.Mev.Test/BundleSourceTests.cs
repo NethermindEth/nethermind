@@ -49,8 +49,7 @@ namespace Nethermind.Mev.Test
 
             IBundleSource selector = testJson.SelectorType switch
             {
-                SelectorType.V1 => new V1Selector(testSimulator),
-                SelectorType.V2 => new V2Selector(testSimulator, testJson.MaxMergedBundles),
+                SelectorType.V2 => new BundleSelector(testSimulator, testJson.MaxMergedBundles),
                 _ => throw new ArgumentOutOfRangeException()
             };
 
@@ -62,29 +61,13 @@ namespace Nethermind.Mev.Test
             
             UInt256 totalProfit = simulated.Aggregate<SimulatedMevBundle, UInt256>(0, (profit, x) => profit + x.Profit);
             totalProfit += txs.Aggregate<Transaction, UInt256>(0, (profit, x) => profit + (x.GasPrice * (UInt256)x.GasLimit));
-
-            if (testJson.SelectorType == SelectorType.V1)
-            {
-                totalProfit.Should().Be(testJson.OptimalProfitV1!.Value, testJson.Description);
-            }
-            else if (testJson.SelectorType == SelectorType.V2 && testJson.MaxMergedBundles == 1)
-            {
-                totalProfit.Should().Be(testJson.OptimalProfitV2_max1bundles!.Value, testJson.Description);
-            }
-            else if (testJson.SelectorType == SelectorType.V2 && testJson.MaxMergedBundles == 3)
-            {
-                totalProfit.Should().Be(testJson.OptimalProfitV2_max3bundles!.Value, testJson.Description);
-            }
-            else
-            {
-                 //Only 1 and 3 MaxMergedBundles are being tested
-                 true.Should().Be(false);
-            }
+            
+            totalProfit.Should().Be(testJson.OptimalProfit!.Value, testJson.Description);
         }
 
         private static IEnumerable<TestJson> AllMaxMergedBundles(TestJson testJson)
         {
-            int[] bundles = {1, 3};
+            int[] bundles = {1, 2, 4};
 
             foreach (int bundle in bundles)
             {

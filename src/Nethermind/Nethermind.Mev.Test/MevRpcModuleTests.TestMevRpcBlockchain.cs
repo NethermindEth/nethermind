@@ -115,53 +115,31 @@ namespace Nethermind.Mev.Test
                         Timestamper,
                         miningConfig,
                         LogManager);
-
-                if (_selectorType == SelectorType.V1)
+                
+                if (_maxMergedBundles == null || _maxMergedBundles < 1)
                 {
-                    V1Selector v1Selector = new(BundlePool);
-                    BundleTxSource bundleTxSource = new(v1Selector, Timestamper);
-                    IManualBlockProducer standardProducer = CreateEth2BlockProducer();
-                    IBeneficiaryBalanceSource standardProducerBeneficiaryBalanceSource = blockProducerEnvFactory.LastMevBlockProcessor;
+                    throw new ArgumentException("maxMergedBundles cannot be null or zero");
+                }
+
+                Dictionary<IManualBlockProducer, IBeneficiaryBalanceSource> blockProducerDictionary =
+                    new Dictionary<IManualBlockProducer, IBeneficiaryBalanceSource>();
+                    
+                // Add non-mev block
+                IManualBlockProducer standardProducer = CreateEth2BlockProducer();
+                IBeneficiaryBalanceSource standardProducerBeneficiaryBalanceSource = blockProducerEnvFactory.LastMevBlockProcessor;
+                blockProducerDictionary.Add(standardProducer, standardProducerBeneficiaryBalanceSource);
+
+                // Try blocks with all bundle numbers <= maxMergedBundles
+                for (int bundleLimit = 1; bundleLimit <= _maxMergedBundles; bundleLimit++)
+                {
+                    BundleSelector bundleSelector = new(BundlePool, bundleLimit);
+                    BundleTxSource bundleTxSource = new(bundleSelector, Timestamper);
                     IManualBlockProducer bundleProducer = CreateEth2BlockProducer(bundleTxSource);
                     IBeneficiaryBalanceSource bundleProducerBeneficiaryBalanceSource = blockProducerEnvFactory.LastMevBlockProcessor;
-                
-                    return new MevTestBlockProducer(BlockTree, new Dictionary<IManualBlockProducer, IBeneficiaryBalanceSource>()
-                    {
-                        {bundleProducer, bundleProducerBeneficiaryBalanceSource}, 
-                        {standardProducer, standardProducerBeneficiaryBalanceSource}
-                    });
+                    blockProducerDictionary.Add(bundleProducer, bundleProducerBeneficiaryBalanceSource);
                 }
-                else if (_selectorType == SelectorType.V2)
-                {
-                    if (_maxMergedBundles == null || _maxMergedBundles < 1)
-                    {
-                        throw new ArgumentException("maxMergedBundles cannot be null or zero in V2");
-                    }
 
-                    Dictionary<IManualBlockProducer, IBeneficiaryBalanceSource> blockProducerDictionary =
-                        new Dictionary<IManualBlockProducer, IBeneficiaryBalanceSource>();
-                    
-                    // Add non-mev block
-                    IManualBlockProducer standardProducer = CreateEth2BlockProducer();
-                    IBeneficiaryBalanceSource standardProducerBeneficiaryBalanceSource = blockProducerEnvFactory.LastMevBlockProcessor;
-                    blockProducerDictionary.Add(standardProducer, standardProducerBeneficiaryBalanceSource);
-
-                    // Try blocks with all bundle numbers <= maxMergedBundles
-                    for (int bundleLimit = 1; bundleLimit <= _maxMergedBundles; bundleLimit++)
-                    {
-                        V2Selector v2Selector = new(BundlePool, bundleLimit);
-                        BundleTxSource bundleTxSource = new(v2Selector, Timestamper);
-                        IManualBlockProducer bundleProducer = CreateEth2BlockProducer(bundleTxSource);
-                        IBeneficiaryBalanceSource bundleProducerBeneficiaryBalanceSource = blockProducerEnvFactory.LastMevBlockProcessor;
-                        blockProducerDictionary.Add(bundleProducer, bundleProducerBeneficiaryBalanceSource);
-                    }
-
-                    return new MevTestBlockProducer(BlockTree, blockProducerDictionary);
-                }
-                else
-                {
-                    throw new NotSupportedException("Only V1 and V2 are supported");
-                }
+                return new MevTestBlockProducer(BlockTree, blockProducerDictionary);
             }
 
             protected override BlockProcessor CreateBlockProcessor()
