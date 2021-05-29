@@ -81,6 +81,11 @@ namespace Nethermind.Mev.Source
             }
         }
 
+        public IDictionary<long, MevBundle[]> GetMevBundles()
+        {
+            return _bundles.GetBucketSnapshot();
+        }
+
         private long RegisterNewBlockTracking()
         {
             switch (_mevConfig.SimulationMode)

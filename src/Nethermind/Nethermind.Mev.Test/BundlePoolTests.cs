@@ -137,11 +137,19 @@ namespace Nethermind.Mev.Test
         }
 
         [Test]
-        public static void sort_bundles_by_increasing_block_number_and_then_min_timestamp()
+        public static void sort_bundles_by_increasing_block_number_and_then_min_timestamp() //add better checking for this
         {
+            ITimestamper timestamper = new ManualTimestamper(new DateTime(2021, 1, 1)); //this needs to be 1970?
+            ulong timestamp = timestamper.UnixTime.Seconds;
+            
             Transaction[] txs = Array.Empty<Transaction>();
-            BundleSortedPool txPool = new BundleSortedPool(200, Comparer<MevBundle>.Default, LimboLogs.Instance);
-            List<MevBundle> bundleList = new List<MevBundle>();
+            BundlePool txPool = new BundlePool(Substitute.For<IBlockTree>(),
+                Substitute.For<IBundleSimulator>(),
+                null, 
+                timestamper,
+                new MevConfig(), 
+                LimboLogs.Instance);
+            List<MevBundle> bundleList = new();
             
             for (int i = 3; i > 0; i--)
             {
@@ -153,9 +161,9 @@ namespace Nethermind.Mev.Test
             foreach (MevBundle bundle in bundleList)
             {
                 Console.WriteLine(bundle.BlockNumber);
-                txPool.TryInsert(bundle, bundle);
+                txPool.AddBundle(bundle);
             } 
-            foreach (KeyValuePair<long, MevBundle[]> kvp in txPool.GetBucketSnapshot())
+            foreach (KeyValuePair<long, MevBundle[]> kvp in txPool.GetMevBundles())
             {
                 foreach (MevBundle bundle in kvp.Value)
                 {
