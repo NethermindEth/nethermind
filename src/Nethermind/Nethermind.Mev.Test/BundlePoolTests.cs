@@ -25,6 +25,7 @@ using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Mev.Data;
 using Nethermind.Mev.Execution;
@@ -143,6 +144,9 @@ namespace Nethermind.Mev.Test
             ulong timestamp = timestamper.UnixTime.Seconds;
             
             Transaction[] txs = Array.Empty<Transaction>();
+            IBlockTree sub = Substitute.For<IBlockTree>();
+            long? val1 = sub.Head?.Number;
+            long? val2 = sub.BestSuggestedHeader?.Number;
             BundlePool txPool = new BundlePool(Substitute.For<IBlockTree>(),
                 Substitute.For<IBundleSimulator>(),
                 null, 
@@ -160,16 +164,63 @@ namespace Nethermind.Mev.Test
             bundleList.Add(new MevBundle(txs, 4, 5, 10)); //should be ahead of 4,0 but before 5,0
             foreach (MevBundle bundle in bundleList)
             {
-                Console.WriteLine(bundle.BlockNumber);
                 txPool.AddBundle(bundle);
-            } 
+            }
+
+            List<(long Key, Int64 MinTimestamp)> outputList = new();
+            long? BestBlockNumber = sub.Head?.Number ?? sub.BestSuggestedHeader?.Number; 
             foreach (KeyValuePair<long, MevBundle[]> kvp in txPool.GetMevBundles())
             {
                 foreach (MevBundle bundle in kvp.Value)
                 {
-                    Console.WriteLine("Block: {0}, Start Time: {1}", kvp.Key, bundle.MinTimestamp);
+                    outputList.Add((kvp.Key, (Int64) bundle.MinTimestamp));
                 }
             }
+
+            for (int i = 0; i < outputList.Count - 1; i++)
+            {
+                if (outputList[i].Key == outputList[i + 1].Key)
+                {
+                    outputList[i].MinTimestamp.CompareTo(outputList[i + 1].MinTimestamp).Should().BeOneOf(-1, 0);
+                }
+                else if (outputList[i].Key > BestBlockNumber && outputList[i + 1].Key > BestBlockNumber)
+                {
+                    outputList[i].Key.CompareTo(outputList[i + 1].MinTimestamp).Should().BeOneOf(-1, 0);
+                }
+                else
+                {
+                    outputList[i].Key.CompareTo(outputList[i + 1].MinTimestamp).Should().BeOneOf(1, 0);
+                }
+            }
+        }
+
+        public static void should_simulate_bundles_and_add_hash_to_simulated_bundles()
+        {
+            
+            ITimestamper timestamper = new ManualTimestamper(new DateTime(2021, 1, 1));
+            ulong timestamp = timestamper.UnixTime.Seconds;
+            
+            Transaction[] emptyTx = Array.Empty<Transaction>();
+            BundlePool bundlePool = new(
+                Substitute.For<IBlockTree>(),
+                Substitute.For<IBundleSimulator>(),
+                null,
+                timestamper,
+                new MevConfig(),
+                LimboLogs.Instance);
+            ISimulatedBundleSource bundleSource = bundlePool;
+            MevBundle[] bundleArray = new MevBundle[]
+            {
+                new(emptyTx, 1, 0, 0),
+                new(emptyTx, 2, 0, 0),
+                new(emptyTx, 3, 0, 0),
+                new(emptyTx, 3, 10, 15),
+            };
+            foreach (MevBundle bundle in bundleArray)
+            {
+                bundlePool.AddBundle(bundle);
+            }
+            
         }
         
         public record BundleTest(long block, ulong testTimestamp, int expectedCount, int expectedRemaining, Action<BundlePool>? action);
