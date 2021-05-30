@@ -74,9 +74,8 @@ namespace Nethermind.Mev.Test
             IBlockFinalizationManager blockFinalizationManager = Substitute.For<IBlockFinalizationManager>();
             BundlePool bundlePool = CreateBundlePool(test.block, blockFinalizationManager);
             FinalizeEventArgs finalizeEventArgs = new(
-                Build.A.BlockHeader.WithNumber(20).TestObject, 
-                Build.A.BlockHeader.WithNumber(7).TestObject,
-                Build.A.BlockHeader.WithNumber(10).TestObject
+                Build.A.BlockHeader.WithNumber(test.block+1).TestObject, 
+                Build.A.BlockHeader.WithNumber(test.block).TestObject
             );
             
             blockFinalizationManager.BlocksFinalized += Raise.EventWith(finalizeEventArgs);
@@ -87,11 +86,8 @@ namespace Nethermind.Mev.Test
 
         private static BundlePool CreateBundlePool(long currentBlock, IBlockFinalizationManager? blockFinalizationManager = null)
         {
-            var blockSubstitute = Substitute.For<IBlockTree>();
-            blockSubstitute.Head.Returns(new Block(Build.A.BlockHeader.WithNumber(currentBlock).TestObject));
-            
             BundlePool bundlePool = new(
-                blockSubstitute,
+                Substitute.For<IBlockTree>(),
                 Substitute.For<IBundleSimulator>(),
                 blockFinalizationManager ?? Substitute.For<IBlockFinalizationManager>(),
                 new Timestamper(),
@@ -117,11 +113,8 @@ namespace Nethermind.Mev.Test
             ITimestamper timestamper = new ManualTimestamper(new DateTime(2021, 1, 1)); //this needs to be 1970?
             ulong timestamp = timestamper.UnixTime.Seconds;
             
-            var blockSubstitute = Substitute.For<IBlockTree>();
-            blockSubstitute.Head.Returns(new Block(Build.A.BlockHeader.WithNumber(0).TestObject));
-
             BundlePool bundlePool = new(
-                blockSubstitute,
+                Substitute.For<IBlockTree>(),
                 Substitute.For<IBundleSimulator>(),
                 null,
                 timestamper,
@@ -148,11 +141,9 @@ namespace Nethermind.Mev.Test
             ITimestamper timestamper = new ManualTimestamper(new DateTime(2021, 1, 1)); //this needs to be 1970?
             ulong timestamp = timestamper.UnixTime.Seconds;
             
-            var blockSubstitute = Substitute.For<IBlockTree>();
-            blockSubstitute.Head.Returns(new Block(Build.A.BlockHeader.WithNumber(0).TestObject));
-
             Transaction[] txs = Array.Empty<Transaction>();
-            BundlePool txPool = new BundlePool(blockSubstitute,
+            BundlePool txPool = new BundlePool(
+                Substitute.For<IBlockTree>(),
                 Substitute.For<IBundleSimulator>(),
                 null, 
                 timestamper,

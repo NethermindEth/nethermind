@@ -144,13 +144,9 @@ namespace Nethermind.Mev.Source
 
                 if (result)
                 {
-                    if (bundle.BlockNumber == _blockTree.Head!.Number + 1)
-                    {
+                    if (bundle.BlockNumber == (_blockTree.Head?.Number ?? 0) + 1)
+                    { 
                         SimulateBundle(bundle);
-                    }
-                    else
-                    {
-                        _bundles.TryInsert(bundle, bundle);
                     }
                 }
 
@@ -261,7 +257,7 @@ namespace Nethermind.Mev.Source
             _bundles.UpdateGroups(Range(fromBlockNumber, blockDelta), () => _compareMevBundleByBlock.BestBlockNumber = newBlockNumber);
         }
 
-        private void OnBlocksFinalized(object? sender, FinalizeEventArgs e) //NEED TO ADD ANYTHING ELSE?
+        private void OnBlocksFinalized(object? sender, FinalizeEventArgs e)
         {
             long maxFinalizedBlockNumber = e.FinalizedBlocks.Max(b => b.Number);
             UInt256 maxFinalizedTimeStamp = e.FinalizedBlocks.Select(b => b.Timestamp).Max();
@@ -270,7 +266,7 @@ namespace Nethermind.Mev.Source
                 // finalized bundles
                 bundle => bundle.BlockNumber < maxFinalizedBlockNumber || 
                 // expired bundles          
-                (bundle.MaxTimestamp < maxFinalizedTimeStamp && bundle.MaxTimestamp != UInt256.Zero));
+                bundle.MaxTimestamp < maxFinalizedTimeStamp && bundle.MaxTimestamp != UInt256.Zero);
             foreach (MevBundle bundle in bundlesToRemove)
             {
                 IEnumerable<KeyValuePair<Keccak, ConcurrentDictionary<MevBundle, SimulatedMevBundleContext>>> relatedHashes =
