@@ -85,7 +85,11 @@
     },
     "Baikal": {
       "commandName": "Project",
-      "commandLineArgs": "--config configs\\baikal.cfg --Init.DiagnosticMode MemDb"
+      "commandLineArgs": "--config configs\\baikal.cfg --EthStats.Enabled true --EthStats.Secret baikal --EthStats.Name Nethermind_test2 --Network.DiagTracerEnabled true"
+    },
+    "Baikal_Miner": {
+      "commandName": "Project",
+      "commandLineArgs": "--config configs\\baikal_miner.cfg --TxPool.FutureNonceRetention 10000000"
     }
   }
 }

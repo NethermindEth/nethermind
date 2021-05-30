@@ -1,6 +1,6 @@
 {
-  "name": "Bailkal",
-  "dataDir": "baikal",
+  "name": "Calaveras",
+  "dataDir": "calaveras",
 	"engine": {
 		"clique": {
 			"params": {
@@ -11,7 +11,7 @@
 	},
   "params": {
     "accountStartNonce": "0x0",
-	"chainID": "0x66A",
+	"chainID": "0x7B",
     "eip7Transition": "0x0",
     "eip140Transition": "0x0",
     "eip145Transition": "0x0",
@@ -47,7 +47,7 @@
     "maxCodeSizeTransition": "0x0",
     "maximumExtraDataSize": "0xffff",
     "minGasLimit": "0x1388",
-    "networkID": "0x66A"
+    "networkID": "0x7B"
   },
   "genesis": {
     "author": "0x0000000000000000000000000000000000000000",
