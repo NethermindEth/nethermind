@@ -144,7 +144,14 @@ namespace Nethermind.Mev.Source
 
                 if (result)
                 {
-                    SimulateBundle(bundle);
+                    if (bundle.BlockNumber == _blockTree.Head!.Number + 1)
+                    {
+                        SimulateBundle(bundle);
+                    }
+                    else
+                    {
+                        _bundles.TryInsert(bundle, bundle);
+                    }
                 }
 
                 return result;
@@ -256,12 +263,15 @@ namespace Nethermind.Mev.Source
 
         private void OnBlocksFinalized(object? sender, FinalizeEventArgs e) //NEED TO ADD ANYTHING ELSE?
         {
-            long maxFinalizedBlockNumber = e.FinalizedBlocks.Select(b => b.Number).Max();
-            int count = _bundles.Count;
-            int capacity = _mevConfig.BundlePoolSize;
+            long maxFinalizedBlockNumber = e.FinalizedBlocks.Max(b => b.Number);
+            UInt256 maxFinalizedTimeStamp = e.FinalizedBlocks.Select(b => b.Timestamp).Max();
             MevBundle[] bundleArray = _bundles.GetSnapshot();
-            IEnumerable<MevBundle> finalizedBundles = bundleArray.Where(bundle => bundle.BlockNumber < maxFinalizedBlockNumber);
-            foreach (MevBundle bundle in finalizedBundles)
+            IEnumerable<MevBundle> bundlesToRemove = bundleArray.Where(
+                // finalized bundles
+                bundle => bundle.BlockNumber < maxFinalizedBlockNumber || 
+                // expired bundles          
+                (bundle.MaxTimestamp < maxFinalizedTimeStamp && bundle.MaxTimestamp != UInt256.Zero));
+            foreach (MevBundle bundle in bundlesToRemove)
             {
                 IEnumerable<KeyValuePair<Keccak, ConcurrentDictionary<MevBundle, SimulatedMevBundleContext>>> relatedHashes =
                     _simulatedBundles.Where(kvp => kvp.Value.ContainsKey(bundle));
@@ -269,6 +279,7 @@ namespace Nethermind.Mev.Source
                 {
                     value.Remove(bundle, out SimulatedMevBundleContext? context);
                 }
+                _bundles.TryRemove(bundle);
             }
         }
 

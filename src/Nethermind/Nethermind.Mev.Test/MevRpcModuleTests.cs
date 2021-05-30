@@ -326,6 +326,46 @@ namespace Nethermind.Mev.Test
 
             GetHashes(chain.BlockTree.Head!.Transactions).Should().Equal(GetHashes(new[] { tx1, tx2, tx3 }));
         }
+        
+        [Test]
+        public async Task Should_accept_and_simulate_bundle_with_future_blockNumber_given()
+        {
+            var chain = await CreateChain(SelectorType.V2, 3);
+            chain.GasLimitCalculator.GasLimit = 10_000_000;
+
+            Transaction tx1 = Build.A.Transaction.WithGasLimit(GasCostOf.Transaction).WithGasPrice(150ul).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+            Transaction tx2 = Build.A.Transaction.WithGasLimit(GasCostOf.Transaction).WithGasPrice(100ul).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+            Transaction tx3 = Build.A.Transaction.WithGasLimit(GasCostOf.Transaction).WithGasPrice(50ul).SignedAndResolved(TestItem.PrivateKeyC).TestObject;
+
+            SuccessfullySendBundle(chain, 2, tx1);
+            await SendSignedTransaction(chain, tx2);
+            await chain.AddBlock(true);
+            GetHashes(chain.BlockTree.Head!.Transactions).Should().Equal(GetHashes(new[] { tx2 }));
+
+            await SendSignedTransaction(chain, tx3);
+            await chain.AddBlock(true);
+            GetHashes(chain.BlockTree.Head!.Transactions).Should().Equal(GetHashes(new[] { tx1, tx3 }));
+        }
+        
+        [Test]
+        public async Task Should_reject_bundle_with_past_blockNumber_given()
+        {
+            var chain = await CreateChain(SelectorType.V2, 3);
+            chain.GasLimitCalculator.GasLimit = 10_000_000;
+
+            Transaction tx1 = Build.A.Transaction.WithGasLimit(GasCostOf.Transaction).WithGasPrice(150ul).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+            Transaction tx2 = Build.A.Transaction.WithGasLimit(GasCostOf.Transaction).WithGasPrice(100ul).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+            Transaction tx3 = Build.A.Transaction.WithGasLimit(GasCostOf.Transaction).WithGasPrice(50ul).SignedAndResolved(TestItem.PrivateKeyC).TestObject;
+
+            SuccessfullySendBundle(chain, 2, tx1);
+            await SendSignedTransaction(chain, tx2);
+            await chain.AddBlock(true);
+            GetHashes(chain.BlockTree.Head!.Transactions).Should().Equal(GetHashes(new[] { tx2 }));
+
+            await SendSignedTransaction(chain, tx3);
+            await chain.AddBlock(true);
+            GetHashes(chain.BlockTree.Head!.Transactions).Should().Equal(GetHashes(new[] { tx1, tx3 }));
+        }
 
         [Test]
         public async Task Should_discard_mempool_tx()

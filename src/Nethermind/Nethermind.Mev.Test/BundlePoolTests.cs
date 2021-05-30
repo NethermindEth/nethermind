@@ -25,6 +25,7 @@ using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Mev.Data;
 using Nethermind.Mev.Execution;
@@ -61,7 +62,7 @@ namespace Nethermind.Mev.Test
         [TestCaseSource(nameof(BundleRetrievalTest))]
         public void should_retrieve_right_bundles_from_pool(BundleTest test)
         {
-            BundlePool bundlePool = CreateBundlePool();
+            BundlePool bundlePool = CreateBundlePool(test.block);
             if(test.action != null) test.action(bundlePool);
             List<MevBundle> result = bundlePool.GetBundles(test.block, test.testTimestamp).ToList();
             result.Count.Should().Be(test.expectedCount);
@@ -71,10 +72,9 @@ namespace Nethermind.Mev.Test
         public void should_retire_bundles_from_pool_after_finalization(BundleTest test)
         {
             IBlockFinalizationManager blockFinalizationManager = Substitute.For<IBlockFinalizationManager>();
-            BundlePool bundlePool = CreateBundlePool(blockFinalizationManager);
-            
+            BundlePool bundlePool = CreateBundlePool(test.block, blockFinalizationManager);
             FinalizeEventArgs finalizeEventArgs = new(
-                Build.A.BlockHeader.WithNumber(20).TestObject,
+                Build.A.BlockHeader.WithNumber(20).TestObject, 
                 Build.A.BlockHeader.WithNumber(7).TestObject,
                 Build.A.BlockHeader.WithNumber(10).TestObject
             );
@@ -85,10 +85,13 @@ namespace Nethermind.Mev.Test
             result.Count.Should().Be(test.expectedCount);
         }
 
-        private static BundlePool CreateBundlePool(IBlockFinalizationManager? blockFinalizationManager = null)
+        private static BundlePool CreateBundlePool(long currentBlock, IBlockFinalizationManager? blockFinalizationManager = null)
         {
+            var blockSubstitute = Substitute.For<IBlockTree>();
+            blockSubstitute.Head.Returns(new Block(Build.A.BlockHeader.WithNumber(currentBlock).TestObject));
+            
             BundlePool bundlePool = new(
-                Substitute.For<IBlockTree>(),
+                blockSubstitute,
                 Substitute.For<IBundleSimulator>(),
                 blockFinalizationManager ?? Substitute.For<IBlockFinalizationManager>(),
                 new Timestamper(),
@@ -114,8 +117,11 @@ namespace Nethermind.Mev.Test
             ITimestamper timestamper = new ManualTimestamper(new DateTime(2021, 1, 1)); //this needs to be 1970?
             ulong timestamp = timestamper.UnixTime.Seconds;
             
+            var blockSubstitute = Substitute.For<IBlockTree>();
+            blockSubstitute.Head.Returns(new Block(Build.A.BlockHeader.WithNumber(0).TestObject));
+
             BundlePool bundlePool = new(
-                Substitute.For<IBlockTree>(),
+                blockSubstitute,
                 Substitute.For<IBundleSimulator>(),
                 null,
                 timestamper,
@@ -142,8 +148,11 @@ namespace Nethermind.Mev.Test
             ITimestamper timestamper = new ManualTimestamper(new DateTime(2021, 1, 1)); //this needs to be 1970?
             ulong timestamp = timestamper.UnixTime.Seconds;
             
+            var blockSubstitute = Substitute.For<IBlockTree>();
+            blockSubstitute.Head.Returns(new Block(Build.A.BlockHeader.WithNumber(0).TestObject));
+
             Transaction[] txs = Array.Empty<Transaction>();
-            BundlePool txPool = new BundlePool(Substitute.For<IBlockTree>(),
+            BundlePool txPool = new BundlePool(blockSubstitute,
                 Substitute.For<IBundleSimulator>(),
                 null, 
                 timestamper,
