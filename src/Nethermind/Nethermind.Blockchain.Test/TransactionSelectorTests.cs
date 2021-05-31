@@ -247,7 +247,7 @@ namespace Nethermind.Blockchain.Test
                         Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithType(TxType.EIP1559).WithNonce(2)
                             .WithMaxFeePerGas(4).WithGasLimit(10).SignedAndResolved(TestItem.PrivateKeyA).TestObject,
                         Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithType(TxType.EIP1559).WithNonce(1)
-                            .WithMaxFeePerGas(50).WithGasLimit(10).WithValue(100).SignedAndResolved(TestItem.PrivateKeyA).TestObject
+                            .WithMaxFeePerGas(30).WithGasLimit(10).WithValue(100).SignedAndResolved(TestItem.PrivateKeyA).TestObject
                     },
                     GasLimit = 10000000
                 };
@@ -265,7 +265,7 @@ namespace Nethermind.Blockchain.Test
                         Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithType(TxType.EIP1559).WithNonce(2)
                             .WithMaxFeePerGas(5).WithGasLimit(10).SignedAndResolved(TestItem.PrivateKeyA).TestObject,
                         Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithNonce(1)
-                            .WithMaxFeePerGas(50).WithMaxPriorityFeePerGas(25).WithGasLimit(10).WithType(TxType.EIP1559).WithValue(60).SignedAndResolved(TestItem.PrivateKeyA).TestObject
+                            .WithMaxFeePerGas(30).WithMaxPriorityFeePerGas(25).WithGasLimit(10).WithType(TxType.EIP1559).WithValue(60).SignedAndResolved(TestItem.PrivateKeyA).TestObject
                     },
                     GasLimit = 10000000
                 };
