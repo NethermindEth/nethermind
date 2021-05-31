@@ -552,6 +552,21 @@ namespace Nethermind.Blockchain.Test.TxPools
         }
 
         [Test]
+        public void When_MaxFeePerGas_is_lower_than_MaxPriorityFeePerGas_tx_is_invalid()
+        {
+            _txPool = CreatePool(_noTxStorage);
+            Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA)
+                .WithMaxPriorityFeePerGas(10.GWei())
+                .WithMaxFeePerGas(5.GWei())
+                .WithType(TxType.EIP1559)
+                .TestObject;
+            EnsureSenderBalance(tx);
+            AddTxResult result = _txPool.AddTransaction(tx, TxHandlingOptions.PersistentBroadcast);
+            _txPool.GetPendingTransactions().Length.Should().Be(0);
+            result.Should().Be(AddTxResult.Invalid);
+        }
+        
+        [Test]
         public void should_return_true_when_asking_for_txHash_existing_in_pool()
         {
             _txPool = CreatePool(_noTxStorage);

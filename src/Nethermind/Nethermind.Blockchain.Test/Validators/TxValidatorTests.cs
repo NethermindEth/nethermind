@@ -199,10 +199,13 @@ namespace Nethermind.Blockchain.Test.Validators
             return txValidator.IsWellFormed(tx, Berlin.Instance);
         }
 
-        [TestCase(TxType.Legacy, ExpectedResult = true)]
-        [TestCase(TxType.AccessList, ExpectedResult = false)]
-        [TestCase(TxType.EIP1559, ExpectedResult = false)]
-        public bool MaxFeePerGas_is_required_to_be_greater_than_MaxPriorityFeePerGas(TxType txType)
+        [TestCase(TxType.Legacy, 10, 5, ExpectedResult = true)]
+        [TestCase(TxType.AccessList, 10, 5, ExpectedResult = true)]
+        [TestCase(TxType.EIP1559, 10, 5, ExpectedResult = true)]
+        [TestCase(TxType.Legacy, 5, 10, ExpectedResult = true)]
+        [TestCase(TxType.AccessList, 5, 10, ExpectedResult = true)]
+        [TestCase(TxType.EIP1559, 5, 10, ExpectedResult = false)]
+        public bool MaxFeePerGas_is_required_to_be_greater_than_MaxPriorityFeePerGas(TxType txType, int maxFeePerGas, int maxPriorityFeePerGas)
         {
             byte[] sigData = new byte[65];
             sigData[31] = 1; // correct r
@@ -211,13 +214,16 @@ namespace Nethermind.Blockchain.Test.Validators
             Signature signature = new Signature(sigData);
             Transaction tx = Build.A.Transaction
                 .WithType(txType > TxType.AccessList ? TxType.Legacy : txType)
+                .WithMaxPriorityFeePerGas((UInt256)maxPriorityFeePerGas)
+                .WithMaxFeePerGas((UInt256)maxFeePerGas)
                 .WithAccessList(txType == TxType.AccessList ? new AccessList(new Dictionary<Address, IReadOnlySet<UInt256>>()) : null)
+                .WithChainId(ChainId.Mainnet)
                 .WithSignature(signature).TestObject;
 
             tx.Type = txType;
             
             TxValidator txValidator = new TxValidator(ChainId.Mainnet);
-            return txValidator.IsWellFormed(tx, Berlin.Instance);
+            return txValidator.IsWellFormed(tx, London.Instance);
         }
     }
 }
