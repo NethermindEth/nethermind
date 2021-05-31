@@ -245,9 +245,9 @@ namespace Nethermind.Blockchain.Test
                     Transactions =
                     {
                         Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithType(TxType.EIP1559).WithNonce(2)
-                            .WithFeeCap(4).WithGasLimit(10).SignedAndResolved(TestItem.PrivateKeyA).TestObject,
+                            .WithMaxFeePerGas(4).WithGasLimit(10).SignedAndResolved(TestItem.PrivateKeyA).TestObject,
                         Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithType(TxType.EIP1559).WithNonce(1)
-                            .WithFeeCap(50).WithGasLimit(10).WithValue(100).SignedAndResolved(TestItem.PrivateKeyA).TestObject
+                            .WithMaxFeePerGas(50).WithGasLimit(10).WithValue(100).SignedAndResolved(TestItem.PrivateKeyA).TestObject
                     },
                     GasLimit = 10000000
                 };
@@ -263,9 +263,9 @@ namespace Nethermind.Blockchain.Test
                     Transactions =
                     {
                         Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithType(TxType.EIP1559).WithNonce(2)
-                            .WithFeeCap(5).WithGasLimit(10).SignedAndResolved(TestItem.PrivateKeyA).TestObject,
+                            .WithMaxFeePerGas(5).WithGasLimit(10).SignedAndResolved(TestItem.PrivateKeyA).TestObject,
                         Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithNonce(1)
-                            .WithFeeCap(50).WithMaxPriorityFeePerGas(25).WithGasLimit(10).WithType(TxType.EIP1559).WithValue(60).SignedAndResolved(TestItem.PrivateKeyA).TestObject
+                            .WithMaxFeePerGas(50).WithMaxPriorityFeePerGas(25).WithGasLimit(10).WithType(TxType.EIP1559).WithValue(60).SignedAndResolved(TestItem.PrivateKeyA).TestObject
                     },
                     GasLimit = 10000000
                 };
@@ -402,11 +402,11 @@ namespace Nethermind.Blockchain.Test
                 Transactions =
                 {
                     Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithType(TxType.EIP1559).WithNonce(3).WithValue(1)
-                        .WithFeeCap(10).WithGasLimit(10).SignedAndResolved(TestItem.PrivateKeyA).TestObject,
+                        .WithMaxFeePerGas(10).WithGasLimit(10).SignedAndResolved(TestItem.PrivateKeyA).TestObject,
                     Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithType(TxType.EIP1559).WithNonce(1).WithValue(10)
-                        .WithFeeCap(10).WithGasLimit(10).SignedAndResolved(TestItem.PrivateKeyA).TestObject,
+                        .WithMaxFeePerGas(10).WithGasLimit(10).SignedAndResolved(TestItem.PrivateKeyA).TestObject,
                     Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithType(TxType.EIP1559).WithNonce(2).WithValue(10)
-                        .WithFeeCap(10).WithGasLimit(10).SignedAndResolved(TestItem.PrivateKeyA).TestObject
+                        .WithMaxFeePerGas(10).WithGasLimit(10).SignedAndResolved(TestItem.PrivateKeyA).TestObject
                 },
                 GasLimit = 10000000
             };

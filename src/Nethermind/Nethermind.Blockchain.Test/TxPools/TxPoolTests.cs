@@ -26,6 +26,7 @@ using Nethermind.Blockchain.Validators;
 using Nethermind.Blockchain.Comparers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
@@ -194,6 +195,8 @@ namespace Nethermind.Blockchain.Test.TxPools
             Transaction tx = Build.A.Transaction
                 .WithType(TxType.EIP1559)
                 .WithChainId(ChainId.Mainnet)
+                .WithMaxFeePerGas(10.GWei())
+                .WithMaxPriorityFeePerGas(5.GWei())
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
             EnsureSenderBalance(tx);
             AddTxResult result = txPool.AddTransaction(tx, TxHandlingOptions.PersistentBroadcast);
@@ -208,7 +211,7 @@ namespace Nethermind.Blockchain.Test.TxPools
             specProvider.GetSpec(Arg.Any<long>()).Returns(London.Instance);
             var txPool = CreatePool(_noTxStorage, null, specProvider);
             Transaction tx = Build.A.Transaction
-                .WithType(TxType.EIP1559).WithFeeCap(20)
+                .WithType(TxType.EIP1559).WithMaxFeePerGas(20)
                 .WithChainId(ChainId.Mainnet)
                 .WithValue(5).SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
             EnsureSenderBalance(tx.SenderAddress, tx.MaxFeePerGas * (UInt256)tx.GasLimit); // without tx.Value so we should have InsufficientFunds
@@ -273,7 +276,7 @@ namespace Nethermind.Blockchain.Test.TxPools
             Transaction tx = Build.A.Transaction.WithGasPrice(UInt256.MaxValue / Transaction.BaseTxGasCost)
                 .WithGasLimit(Transaction.BaseTxGasCost)
                 .WithValue(Transaction.BaseTxGasCost)
-                .WithFeeCap(UInt256.MaxValue - 10)
+                .WithMaxFeePerGas(UInt256.MaxValue - 10)
                 .WithMaxPriorityFeePerGas((UInt256)15)
                 .WithType(TxType.EIP1559)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
@@ -660,7 +663,10 @@ namespace Nethermind.Blockchain.Test.TxPools
 
         private void EnsureSenderBalance(Transaction transaction)
         {
-            EnsureSenderBalance(transaction.SenderAddress, transaction.GasPrice * (UInt256)transaction.GasLimit + transaction.Value);
+            if (transaction.IsEip1559)
+                EnsureSenderBalance(transaction.SenderAddress, transaction.MaxFeePerGas * (UInt256)transaction.GasLimit + transaction.Value);
+            else
+                EnsureSenderBalance(transaction.SenderAddress, transaction.GasPrice * (UInt256)transaction.GasLimit + transaction.Value);
         }
         
         private void EnsureSenderBalance(Address address, UInt256 balance)
