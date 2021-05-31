@@ -98,6 +98,15 @@ namespace Nethermind.Evm
                 QuickFail(transaction, block, txTracer, "miner premium is negative");
                 return;
             }
+
+            if (transaction.IsEip1559 && transaction.MaxFeePerGas < transaction.MaxPriorityFeePerGas)
+            {
+                TraceLogInvalidTx(transaction, "MINER_PREMIUM_IS_NEGATIVE"); ToDo
+                QuickFail(transaction, block, txTracer, "miner premium is negative"); ToDo
+                return;
+            }
+            
+
             
             UInt256 gasPrice = transaction.CalculateEffectiveGasPrice(spec.IsEip1559Enabled, block.BaseFeePerGas);
 
@@ -134,6 +143,13 @@ namespace Nethermind.Evm
                     QuickFail(transaction, block, txTracer, "block gas limit exceeded");
                     return;
                 }
+            }
+            
+            if (transaction.IsEip1559 && assert signer.balance >= transaction.gas_limit * transaction.max_fee_per_gas))
+            {
+                TraceLogInvalidTx(transaction, "MINER_PREMIUM_IS_NEGATIVE");
+                QuickFail(transaction, block, txTracer, "miner premium is negative");
+                return;
             }
 
             if (!_stateProvider.AccountExists(caller))
