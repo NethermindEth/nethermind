@@ -113,6 +113,14 @@ namespace Nethermind.Blockchain.Producers
                     return false;
                 }
 
+                if (transaction.IsEip1559 && balance < (UInt256)transaction.GasLimit * transaction.MaxFeePerGas)
+                {
+                        if (_logger.IsDebug)
+                            _logger.Debug(
+                                $"Rejecting transaction - MaxFeePerGas({transaction.MaxFeePerGas}) times GasLimit {transaction.GasLimit} is higher than sender balance ({balance}).");
+                        return false;
+                }
+
                 balances[transaction.SenderAddress] = balance - transactionPotentialCost;
                 return true;
             }
