@@ -6,11 +6,9 @@ using System.IO;
 using Nethermind.Logging;
 using System.IO.Abstractions;
 using System.Collections.Generic;
-using Nethermind.Dsl.Pipeline;
 using Nethermind.Dsl.JsonRpc;
 using System.Linq;
 using Nethermind.JsonRpc.Modules;
-using System;
 
 #nullable enable
 namespace Nethermind.Dsl
