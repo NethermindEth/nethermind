@@ -20,6 +20,7 @@ using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
@@ -167,6 +168,8 @@ namespace Nethermind.Blockchain.Test.Validators
             Transaction tx = Build.A.Transaction
                 .WithType(txType)
                 .WithChainId(ChainId.Mainnet)
+                .WithMaxPriorityFeePerGas(txType == TxType.EIP1559 ? 10.GWei() : 5.GWei())
+                .WithMaxFeePerGas(txType == TxType.EIP1559 ? 10.GWei() : 5.GWei())
                 .WithAccessList(txType == TxType.AccessList || txType == TxType.EIP1559 ? new AccessList(new Dictionary<Address, IReadOnlySet<UInt256>>()) : null)
                 .WithSignature(signature).TestObject;
 
