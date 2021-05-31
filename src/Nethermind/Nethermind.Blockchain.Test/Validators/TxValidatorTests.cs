@@ -198,5 +198,26 @@ namespace Nethermind.Blockchain.Test.Validators
             TxValidator txValidator = new TxValidator(ChainId.Mainnet);
             return txValidator.IsWellFormed(tx, Berlin.Instance);
         }
+
+        [TestCase(TxType.Legacy, ExpectedResult = true)]
+        [TestCase(TxType.AccessList, ExpectedResult = false)]
+        [TestCase(TxType.EIP1559, ExpectedResult = false)]
+        public bool MaxFeePerGas_is_required_to_be_greater_than_MaxPriorityFeePerGas(TxType txType)
+        {
+            byte[] sigData = new byte[65];
+            sigData[31] = 1; // correct r
+            sigData[63] = 1; // correct s
+            sigData[64] = 38;
+            Signature signature = new Signature(sigData);
+            Transaction tx = Build.A.Transaction
+                .WithType(txType > TxType.AccessList ? TxType.Legacy : txType)
+                .WithAccessList(txType == TxType.AccessList ? new AccessList(new Dictionary<Address, IReadOnlySet<UInt256>>()) : null)
+                .WithSignature(signature).TestObject;
+
+            tx.Type = txType;
+            
+            TxValidator txValidator = new TxValidator(ChainId.Mainnet);
+            return txValidator.IsWellFormed(tx, Berlin.Instance);
+        }
     }
 }
