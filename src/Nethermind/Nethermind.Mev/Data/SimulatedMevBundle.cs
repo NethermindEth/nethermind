@@ -81,8 +81,6 @@ namespace Nethermind.Mev.Data
         public bool[] TransactionResults { get; }
 
         public long GasUsed { get; set; }
-
-        public UInt256 AdjustedGasPrice => Profit / (UInt256)GasUsed;
         
         public UInt256 BundleScoringProfit => EligibleGasFeePayment + CoinbasePayments;
 

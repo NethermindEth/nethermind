@@ -159,11 +159,6 @@ namespace Nethermind.Mev
                 _nethermindApi.LogManager);
 
             _nethermindApi.BlockProducerEnvFactory = producerEnvFactory;
-            
-            if (_mevConfig.MaxMergedBundles == null || _mevConfig.MaxMergedBundles < 1)
-            { 
-                throw new ArgumentException($"{nameof(_mevConfig.MaxMergedBundles)} cannot be null or zero");
-            }
 
             Dictionary<IManualBlockProducer, IBeneficiaryBalanceSource> blockProducerDictionary = 
                 new Dictionary<IManualBlockProducer, IBeneficiaryBalanceSource>();

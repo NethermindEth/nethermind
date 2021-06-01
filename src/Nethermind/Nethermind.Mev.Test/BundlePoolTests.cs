@@ -138,7 +138,7 @@ namespace Nethermind.Mev.Test
         [Test]
         public static void sort_bundles_by_increasing_block_number_and_then_min_timestamp()
         {
-            ITimestamper timestamper = new ManualTimestamper(new DateTime(2021, 1, 1)); //this needs to be 1970?
+            ITimestamper timestamper = new ManualTimestamper(new DateTime(2021, 1, 1));
             ulong timestamp = timestamper.UnixTime.Seconds;
             
             Transaction[] txs = Array.Empty<Transaction>();

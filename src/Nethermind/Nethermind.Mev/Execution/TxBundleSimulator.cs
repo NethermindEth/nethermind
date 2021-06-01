@@ -108,8 +108,6 @@ namespace Nethermind.Mev.Execution
 
             public UInt256 Reward { get; private set; }
             
-            public bool Success { get; private set; } = true;
-
             public bool[] TransactionResults { get; private set; } = Array.Empty<bool>();
 
             public void ReportReward(Address author, string rewardType, UInt256 rewardValue)
@@ -133,7 +131,6 @@ namespace Nethermind.Mev.Execution
 
             public void EndTxTrace()
             {
-                int txNumber = EligibleGasFeePaymentPerTransaction.Length;
                 GasUsed += _tracer!.GasSpent;
                 _beneficiaryBalanceBefore ??= _tracer.BeneficiaryBalanceBefore;
                 _beneficiaryBalanceAfter = _tracer.BeneficiaryBalanceAfter;
