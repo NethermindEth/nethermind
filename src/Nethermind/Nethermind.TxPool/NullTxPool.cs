@@ -71,7 +71,5 @@ namespace Nethermind.TxPool
             add { }
             remove { }
         }
-
-        public uint FutureNonceRetention { get; } = 256;
     }
 }
