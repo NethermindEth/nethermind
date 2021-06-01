@@ -138,7 +138,7 @@ namespace Nethermind.Mev.Test
         [Test]
         public static void sort_bundles_by_increasing_block_number_and_then_min_timestamp()
         {
-            ITimestamper timestamper = new ManualTimestamper(new DateTime(2021, 1, 1)); //this needs to be 1970?
+            ITimestamper timestamper = new ManualTimestamper(new DateTime(2021, 1, 1)); 
             ulong timestamp = timestamper.UnixTime.Seconds;
             
             Transaction[] txs = Array.Empty<Transaction>();
@@ -151,7 +151,7 @@ namespace Nethermind.Mev.Test
             blockTreeSub.Head.Returns(block); //setting Head.Number to blockHeader number
             
             MevConfig mevConfig = new MevConfig();
-            int capacity = 10;
+            int capacity = 5;
             mevConfig.BundlePoolSize = capacity; //creating capacity of 10
             
             BundlePool txPool = new BundlePool(
@@ -165,7 +165,7 @@ namespace Nethermind.Mev.Test
                 new SortedList<MevBundle, MevBundle>(CompareMevBundleByBlock.Default.ThenBy(CompareMevBundleByMinTimestamp.Default));
 
             List<MevBundle> bundleTest = new List<MevBundle>();
-            for (int i = 10; i > 0; i--)
+            for (int i = 1; i > 0; i--)
             {
                 MevBundle newBundle = new MevBundle(txs, i, 0, 0);
                 bundleTest.Add(newBundle);
@@ -191,7 +191,14 @@ namespace Nethermind.Mev.Test
                 }
                 else if (bundleHashInBundleList) //if two blocks have same hash, keep one with lower min timestamp
                 {
-                    bundleList.TryGetValue(bundle, out MevBundle? bundleOut);
+                    IEnumerable<MevBundle> bundleHashEquals = bundleList.Where(b => b.Key.Hash == bundle.Hash).Select(b => b.Key);
+                    //MevBundle bundleOut = bundleList.TryGetValue(bundle, out MevBundle? bundleOut);
+                    MevBundle? bundleOut = null; //just a placeholder
+                    foreach (MevBundle b in bundleHashEquals)
+                    {
+                        bundleOut = b;
+                        break;
+                    }
                     if (bundleOut?.MinTimestamp < bundle.MinTimestamp) 
                     {
                         bundleList.Remove(bundleOut);
