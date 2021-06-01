@@ -28,13 +28,13 @@ using Nethermind.Mev.Execution;
 
 namespace Nethermind.Mev.Source
 {
-    public class V2Selector : IBundleSource
+    public class BundleSelector : IBundleSource
     {
         private readonly ISimulatedBundleSource _simulatedBundleSource;
         private readonly int _bundleLimit;
         
 
-        public V2Selector(
+        public BundleSelector(
             ISimulatedBundleSource simulatedBundleSource,
             int bundleLimit)
         {

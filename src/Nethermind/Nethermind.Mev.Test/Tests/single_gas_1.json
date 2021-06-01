@@ -17,8 +17,6 @@
       ]
     }
   ],
-  "optimalProfitV1" : 21000,
-  "optimalProfitV2_max1bundles" : 21000,
-  "optimalProfitV2_max3bundles" : 21000,
+  "optimalProfit" : 21000,
   "gasLimit" : 12000000
 }

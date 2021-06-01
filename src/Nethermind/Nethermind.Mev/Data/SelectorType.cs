@@ -19,7 +19,6 @@ namespace Nethermind.Mev.Data
 {
     public enum SelectorType
     {
-        V1,
         V2
     }
 }

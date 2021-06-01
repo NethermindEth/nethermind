@@ -38,8 +38,8 @@ namespace Nethermind.Mev
         int BundlePoolSize { get; set; }
         
         [ConfigItem(
-            Description = "Defines the version of Flashbots that is used (V1 or V2", 
-            DefaultValue = "V1")]
+            Description = "Defines the version of Flashbots that is used", 
+            DefaultValue = "V2")]
         SelectorType FlashbotsVersion { get; set; }
         
         [ConfigItem(Description = "Defines the maximum number of MEV bundles to be included within a single block")]

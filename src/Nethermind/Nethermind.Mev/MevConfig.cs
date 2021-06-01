@@ -30,18 +30,6 @@ namespace Nethermind.Mev
         public int BundlePoolSize { get; set; } = 200;
         public SelectorType FlashbotsVersion { get; set; }
         public int? MaxMergedBundles { get; set; }
-
         public SimulationMode SimulationMode { get; set; } = SimulationMode.NewHead;
-
-
-        public string? relayWSURL { get; set; }
-        
-        public string? relayWSSigningKeystoreFile { get; set; }
-        
-        public string? relayWSKeystorePW { get; set; }
-        
-        public Keccak? relayWSSigningKey { get; set; }
-
-        //how to include "relayWSSigningKey"?
     }
 }

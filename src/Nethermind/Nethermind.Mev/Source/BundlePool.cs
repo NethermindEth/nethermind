@@ -144,7 +144,10 @@ namespace Nethermind.Mev.Source
 
                 if (result)
                 {
-                    SimulateBundle(bundle);
+                    if (bundle.BlockNumber == (_blockTree.Head?.Number ?? 0) + 1)
+                    { 
+                        SimulateBundle(bundle);
+                    }
                 }
 
                 return result;
@@ -254,14 +257,17 @@ namespace Nethermind.Mev.Source
             _bundles.UpdateGroups(Range(fromBlockNumber, blockDelta), () => _compareMevBundleByBlock.BestBlockNumber = newBlockNumber);
         }
 
-        private void OnBlocksFinalized(object? sender, FinalizeEventArgs e) //NEED TO ADD ANYTHING ELSE?
+        private void OnBlocksFinalized(object? sender, FinalizeEventArgs e)
         {
-            long maxFinalizedBlockNumber = e.FinalizedBlocks.Select(b => b.Number).Max();
-            int count = _bundles.Count;
-            int capacity = _mevConfig.BundlePoolSize;
+            long maxFinalizedBlockNumber = e.FinalizedBlocks.Max(b => b.Number);
+            UInt256 maxFinalizedTimeStamp = e.FinalizedBlocks.Select(b => b.Timestamp).Max();
             MevBundle[] bundleArray = _bundles.GetSnapshot();
-            IEnumerable<MevBundle> finalizedBundles = bundleArray.Where(bundle => bundle.BlockNumber < maxFinalizedBlockNumber);
-            foreach (MevBundle bundle in finalizedBundles)
+            IEnumerable<MevBundle> bundlesToRemove = bundleArray.Where(
+                // finalized bundles
+                bundle => bundle.BlockNumber < maxFinalizedBlockNumber || 
+                // expired bundles          
+                bundle.MaxTimestamp < maxFinalizedTimeStamp && bundle.MaxTimestamp != UInt256.Zero);
+            foreach (MevBundle bundle in bundlesToRemove)
             {
                 IEnumerable<KeyValuePair<Keccak, ConcurrentDictionary<MevBundle, SimulatedMevBundleContext>>> relatedHashes =
                     _simulatedBundles.Where(kvp => kvp.Value.ContainsKey(bundle));
@@ -269,6 +275,7 @@ namespace Nethermind.Mev.Source
                 {
                     value.Remove(bundle, out SimulatedMevBundleContext? context);
                 }
+                _bundles.TryRemove(bundle);
             }
         }
 

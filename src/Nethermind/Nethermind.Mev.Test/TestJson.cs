@@ -31,11 +31,7 @@ namespace Nethermind.Mev.Test
         
         public MevBundleForTest?[]? Bundles { get; set; }
         
-        public UInt256? OptimalProfitV1 { get; set; }
-        
-        public UInt256? OptimalProfitV2_max1bundles { get; set; }
-        
-        public UInt256? OptimalProfitV2_max3bundles { get; set; }
+        public UInt256? OptimalProfit { get; set; }
 
         public long? GasLimit { get; set; }
 
@@ -50,9 +46,7 @@ namespace Nethermind.Mev.Test
             testJson.Description = Description;
             testJson.Bundles = Bundles;
             testJson.Txs = Txs;
-            testJson.OptimalProfitV1 = OptimalProfitV1;
-            testJson.OptimalProfitV2_max1bundles = OptimalProfitV2_max1bundles;
-            testJson.OptimalProfitV2_max3bundles = OptimalProfitV2_max3bundles;
+            testJson.OptimalProfit = OptimalProfit;
             testJson.GasLimit = GasLimit;
             testJson.SelectorType = SelectorType;
             testJson.MaxMergedBundles = MaxMergedBundles;

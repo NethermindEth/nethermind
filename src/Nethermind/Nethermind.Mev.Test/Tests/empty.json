@@ -5,8 +5,6 @@
   ],
   "bundles" : [
   ],
-  "optimalProfitV1" : 0,
-  "optimalProfitV2_max1bundles" : 0,
-  "optimalProfitV2_max3bundles" : 0,  
+  "optimalProfit" : 0,
   "gasLimit" : 12000000
 }
