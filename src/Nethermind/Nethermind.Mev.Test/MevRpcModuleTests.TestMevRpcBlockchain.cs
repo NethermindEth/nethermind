@@ -115,11 +115,6 @@ namespace Nethermind.Mev.Test
                         Timestamper,
                         miningConfig,
                         LogManager);
-                
-                if (_maxMergedBundles == null || _maxMergedBundles < 1)
-                {
-                    throw new ArgumentException("maxMergedBundles cannot be null or zero");
-                }
 
                 Dictionary<IManualBlockProducer, IBeneficiaryBalanceSource> blockProducerDictionary =
                     new Dictionary<IManualBlockProducer, IBeneficiaryBalanceSource>();

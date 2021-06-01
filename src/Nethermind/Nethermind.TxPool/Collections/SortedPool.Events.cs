@@ -28,9 +28,9 @@ namespace Nethermind.TxPool.Collections
         {
             public TKey Key { get; }
             public TValue Value { get; }
-            public TGroupKey? Group { get; }
+            public TGroupKey Group { get; }
 
-            public SortedPoolEventArgs(TKey key, TValue value, TGroupKey? group)
+            public SortedPoolEventArgs(TKey key, TValue value, TGroupKey group)
             {
                 Key = key;
                 Value = value;

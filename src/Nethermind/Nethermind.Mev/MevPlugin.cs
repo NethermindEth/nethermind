@@ -162,7 +162,7 @@ namespace Nethermind.Mev
             
             if (_mevConfig.MaxMergedBundles == null || _mevConfig.MaxMergedBundles < 1)
             { 
-                throw new ArgumentException("MaxMergedBundles cannot be null or zero");
+                throw new ArgumentException($"{nameof(_mevConfig.MaxMergedBundles)} cannot be null or zero");
             }
 
             Dictionary<IManualBlockProducer, IBeneficiaryBalanceSource> blockProducerDictionary = 

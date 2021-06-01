@@ -444,8 +444,7 @@ namespace Nethermind.Mev.Test
             MevBundle bundle = SuccessfullySendBundleWithRevertingTxHashes(chain, 3, new Keccak[] { tx1.Hash! }, tx1);
             await SendSignedTransaction(chain, tx2);
             await chain.AddBlock(true);
-            Block head = chain.BlockTree.Head!;
-            GetHashes(head.Transactions).Should().Equal(GetHashes(new[] { tx2 }));
+            GetHashes(chain.BlockTree.Head!.Transactions).Should().Equal(GetHashes(new[] { tx2 }));
 
             await chain.BundlePool.WaitForSimulationToStart(bundle, CancellationToken.None);
             await SendSignedTransaction(chain, tx3);

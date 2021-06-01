@@ -52,7 +52,7 @@ namespace Nethermind.TxPool.Collections
             _groupComparer = GetGroupComparer(comparer ?? throw new ArgumentNullException(nameof(comparer)));
             _cacheMap = new Dictionary<TKey, TValue>(); // do not initialize it at the full capacity
             _buckets = new Dictionary<TGroupKey, ICollection<TValue>>();
-            _sortedValues = new DictionarySortedSet<TValue, TKey>(sortedComparer); //how can this take a param?
+            _sortedValues = new DictionarySortedSet<TValue, TKey>(sortedComparer);
         }
 
         /// <summary>

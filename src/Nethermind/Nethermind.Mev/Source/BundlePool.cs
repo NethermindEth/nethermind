@@ -135,12 +135,7 @@ namespace Nethermind.Mev.Source
         {
             if (ValidateBundle(bundle))
             {
-                bool result;
-
-                lock (_bundles)
-                {
-                    result = _bundles.TryInsert(bundle, bundle);
-                }
+                bool result = _bundles.TryInsert(bundle, bundle);
 
                 if (result)
                 {

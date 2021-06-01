@@ -66,7 +66,7 @@ namespace Nethermind.Mev.Source
                 }
                 else
                 {
-                    break;
+                    yield break;
                 }
             }
         }
