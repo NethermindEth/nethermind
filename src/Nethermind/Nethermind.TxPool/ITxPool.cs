@@ -43,7 +43,5 @@ namespace Nethermind.TxPool
         event EventHandler<TxEventArgs> NewDiscovered;
         event EventHandler<TxEventArgs> NewPending;
         event EventHandler<TxEventArgs> RemovedPending;
-        
-        public uint FutureNonceRetention { get; }
     }
 }

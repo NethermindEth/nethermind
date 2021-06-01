@@ -149,7 +149,7 @@ namespace Nethermind.TxPool
             _ownTimer.Start();
         }
 
-        public uint FutureNonceRetention  => _txPoolConfig.FutureNonceRetention;
+        private uint FutureNonceRetention  => _txPoolConfig.FutureNonceRetention;
         
         internal long? BlockGasLimit { get; set; } = null;
 
