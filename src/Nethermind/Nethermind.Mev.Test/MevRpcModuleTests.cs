@@ -391,28 +391,6 @@ namespace Nethermind.Mev.Test
         }
 
         [Test]
-        public async Task Should_discard_mempool_tx_if_bundle_comes_first()
-        {
-            var chain = await CreateChain(SelectorType.V2, 2);
-            chain.GasLimitCalculator.GasLimit = 10_000_000;
-
-            Transaction poolAndBundleTx = Build.A.Transaction.WithGasLimit(GasCostOf.Transaction).WithGasPrice(150ul).SignedAndResolved(TestItem.PrivateKeyC).TestObject;
-            Transaction expensiveBundleTx = Build.A.Transaction.WithGasLimit(GasCostOf.Transaction).WithGasPrice(130ul).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
-            Transaction middleBundleTx = Build.A.Transaction.WithGasLimit(GasCostOf.Transaction).WithGasPrice(120ul).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
-            Transaction cheapBundleTx = Build.A.Transaction.WithGasLimit(GasCostOf.Transaction).WithGasPrice(95ul).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
-
-            SuccessfullySendBundle(chain, 1, poolAndBundleTx, cheapBundleTx);
-            SuccessfullySendBundle(chain, 1, expensiveBundleTx);
-            SuccessfullySendBundle(chain, 1, middleBundleTx);
-            
-            await SendSignedTransaction(chain, poolAndBundleTx);
-            
-            await chain.AddBlock(true);
-            
-            GetHashes(chain.BlockTree.Head!.Transactions).Should().Equal(GetHashes(new[] { expensiveBundleTx, middleBundleTx, poolAndBundleTx }));
-        }
-        
-        [Test]
         public async Task Should_accept_reverting_bundle_with_RevertingTxHashes()
         {
             var chain = await CreateChain(SelectorType.V2, 3);
@@ -528,6 +506,23 @@ namespace Nethermind.Mev.Test
             await chain.AddBlock(true);
 
             GetHashes(chain.BlockTree.Head!.Transactions).Should().Equal(GetHashes(new[] { revertingOnSecondCallTx1 }));
+        }
+        
+        [Test]
+        public async Task Should_reject_second_dsbundle_where_they_succeed_individually_but_fail_if_in_the_same_block()
+        {
+            var chain = await CreateChain(SelectorType.V2, 3);
+            chain.GasLimitCalculator.GasLimit = 10_000_000;
+            
+            Address contractAddress = await Contracts.Deploy(chain, Contracts.SecondCallReverter);
+            Transaction revertingOnSecondCallTx1 = Build.A.Transaction.WithGasLimit(4_000_000).WithGasPrice(30ul).WithTo(contractAddress).WithData(Bytes.FromHexString(Contracts.SecondCallReverterInvokeFail)).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+            Transaction revertingOnSecondCallTx2 = Build.A.Transaction.WithGasLimit(4_000_000).WithGasPrice(20ul).WithTo(contractAddress).WithData(Bytes.FromHexString(Contracts.SecondCallReverterInvokeFail)).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+
+            SuccessfullySendBundle(chain, 2, revertingOnSecondCallTx1, revertingOnSecondCallTx2);
+
+            await chain.AddBlock(true);
+
+            GetHashes(chain.BlockTree.Head!.Transactions).Should().Equal();
         }
         
         [Test]
