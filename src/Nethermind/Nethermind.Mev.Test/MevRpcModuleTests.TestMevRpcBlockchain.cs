@@ -66,7 +66,7 @@ namespace Nethermind.Mev.Test
             private readonly int? _maxMergedBundles;
             
             private ITracerFactory _tracerFactory = null!;
-            public BundlePool BundlePool { get; private set; } = null!;
+            public TestBundlePool BundlePool { get; private set; } = null!;
 
             public TestMevRpcBlockchain(SelectorType selectorType, int? maxMergedBundles)
             {
@@ -166,7 +166,7 @@ namespace Nethermind.Mev.Test
                     ProcessingOptions.ProducingBlock);
                 
                 TxBundleSimulator txBundleSimulator = new(_tracerFactory, FollowOtherMiners.Instance, Timestamper, TxPool, FinalizationManager);
-                BundlePool = new BundlePool(BlockTree, txBundleSimulator, FinalizationManager, Timestamper, _mevConfig, LogManager);
+                BundlePool = new TestBundlePool(BlockTree, txBundleSimulator, FinalizationManager, Timestamper, _mevConfig, LogManager);
 
                 return blockProcessor;
             }

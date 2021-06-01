@@ -146,7 +146,7 @@ namespace Nethermind.Mev.Source
                 {
                     if (bundle.BlockNumber == (_blockTree.Head?.Number ?? 0) + 1)
                     { 
-                        SimulateBundle(bundle);
+                        TrySimulateBundle(bundle);
                     }
                 }
 
@@ -184,7 +184,7 @@ namespace Nethermind.Mev.Source
             return true;
         }
 
-        private void SimulateBundle(MevBundle bundle)
+        private bool TrySimulateBundle(MevBundle bundle)
         {
             ChainLevelInfo? level = _blockTree.FindLevel(bundle.BlockNumber - 1);
             if (level is not null)
@@ -195,34 +195,44 @@ namespace Nethermind.Mev.Source
                     if (header is not null)
                     {
                         SimulateBundle(bundle, header);
+                        return true;
                     }
                 }
             }
+
+            return false;
         }
               
-        private void SimulateBundle(MevBundle bundle, BlockHeader parent)
+        protected virtual SimulatedMevBundleContext? SimulateBundle(MevBundle bundle, BlockHeader parent)
         {
-            Keccak parentHash = parent.Hash!;
-            ConcurrentDictionary<MevBundle, SimulatedMevBundleContext> blockDictionary = 
-                _simulatedBundles.GetOrAdd(parentHash, _ => new ConcurrentDictionary<MevBundle, SimulatedMevBundleContext>());
-
-            SimulatedMevBundleContext context = new();
-            if (blockDictionary.TryAdd(bundle, context))
+            SimulatedMevBundleContext? context = null; 
+            
+            SimulatedMevBundleContext CreateContext()
             {
-                context.Task = _simulator.Simulate(bundle, parent, context.CancellationTokenSource.Token);
+                CancellationTokenSource cancellationTokenSource = new();
+                return context = new(_simulator.Simulate(bundle, parent, cancellationTokenSource.Token), cancellationTokenSource);
             }
             
-            /*lock (_bundles) //CAN REMOVE?
+            ConcurrentDictionary<MevBundle,SimulatedMevBundleContext> AddContext(ConcurrentDictionary<MevBundle,SimulatedMevBundleContext> d)
             {
-                _bundles.TryGetValue(bundle, out MevBundle mevBundle);
-                
-                if (!BundleValue.BlockHashes.Contains(parentHash))
-                {
-                    BundleValue.BlockHashes.Add(parentHash);
-                }
-            }*/
+                d.AddOrUpdate(bundle, 
+                    _ => CreateContext(), 
+                    (_, c) => c);
+                return d;
+            }
+            
+            Keccak parentHash = parent.Hash!;
+            _simulatedBundles.AddOrUpdate(parentHash, 
+                    _ =>
+                    {
+                        ConcurrentDictionary<MevBundle,SimulatedMevBundleContext> d = new();
+                        return AddContext(d);
+                    },
+                    (_, d) => AddContext(d));
+
+            return context;
         }
-        
+
         private void OnNewBlock(object? sender, BlockEventArgs e)
         {
             long blockNumber = e.Block!.Number;
@@ -354,10 +364,16 @@ namespace Nethermind.Mev.Source
             }
         }
         
-        private class SimulatedMevBundleContext : IDisposable
+        protected class SimulatedMevBundleContext : IDisposable
         {
-            public CancellationTokenSource CancellationTokenSource { get; } = new();
-            public Task<SimulatedMevBundle> Task { get; set; } = null!;
+            public SimulatedMevBundleContext(Task<SimulatedMevBundle> task, CancellationTokenSource cancellationTokenSource)
+            {
+                Task = task;
+                CancellationTokenSource = cancellationTokenSource;
+            }
+            
+            public CancellationTokenSource CancellationTokenSource { get; }
+            public Task<SimulatedMevBundle> Task { get; }
 
             public void Dispose()
             {

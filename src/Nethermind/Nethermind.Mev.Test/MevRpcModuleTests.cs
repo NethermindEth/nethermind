@@ -142,12 +142,13 @@ namespace Nethermind.Mev.Test
             resultOfBundle.GetData().Should().Be(true);
         }
         
-        private void SuccessfullySendBundleWithRevertingTxHashes(TestMevRpcBlockchain chain, int blockNumber, Keccak[] revertingTxHashes = null, params Transaction[] txs)
+        private MevBundle SuccessfullySendBundleWithRevertingTxHashes(TestMevRpcBlockchain chain, int blockNumber, Keccak[] revertingTxHashes = null, params Transaction[] txs)
         {
             byte[][] bundleBytes = txs.Select(t => Rlp.Encode(t).Bytes).ToArray();
             ResultWrapper<bool> resultOfBundle = chain.MevRpcModule.eth_sendBundle(bundleBytes, blockNumber, default, default, revertingTxHashes);
             resultOfBundle.GetResult().ResultType.Should().NotBe(ResultType.Failure);
             resultOfBundle.GetData().Should().Be(true);
+            return new MevBundle(txs, blockNumber, default, default, revertingTxHashes);
         }
 
         [Test]
@@ -440,12 +441,13 @@ namespace Nethermind.Mev.Test
             Transaction tx2 = Build.A.Transaction.WithGasLimit(GasCostOf.Transaction).WithGasPrice(100ul).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
             Transaction tx3 = Build.A.Transaction.WithGasLimit(GasCostOf.Transaction).WithGasPrice(50ul).SignedAndResolved(TestItem.PrivateKeyD).TestObject;
             
-            SuccessfullySendBundleWithRevertingTxHashes(chain, 3, new Keccak[] { tx1.Hash! }, tx1);
+            MevBundle bundle = SuccessfullySendBundleWithRevertingTxHashes(chain, 3, new Keccak[] { tx1.Hash! }, tx1);
             await SendSignedTransaction(chain, tx2);
-
             await chain.AddBlock(true);
-            GetHashes(chain.BlockTree.Head!.Transactions).Should().Equal(GetHashes(new[] { tx2 }));
+            Block head = chain.BlockTree.Head!;
+            GetHashes(head.Transactions).Should().Equal(GetHashes(new[] { tx2 }));
 
+            await chain.BundlePool.WaitForSimulationToStart(bundle, CancellationToken.None);
             await SendSignedTransaction(chain, tx3);
             await chain.AddBlock(true);
             GetHashes(chain.BlockTree.Head!.Transactions).Should().Equal(GetHashes(new[] { tx1, tx3 }));
