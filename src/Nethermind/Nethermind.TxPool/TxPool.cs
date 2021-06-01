@@ -181,9 +181,9 @@ namespace Nethermind.TxPool
         {
             BlockGasLimit = block.GasLimit;
             CurrentBaseFee = block.Header.BaseFeePerGas;
+            ReAddReorganisedTransactions(previousBlock);
             RemoveProcessedTransactions(block.Transactions);
             UpdateBuckets();
-            ReAddReorganisedTransactions(previousBlock);
         }
 
         private void ReAddReorganisedTransactions(Block? previousBlock)
