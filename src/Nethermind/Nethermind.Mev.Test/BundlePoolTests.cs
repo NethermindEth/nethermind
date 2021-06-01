@@ -151,7 +151,7 @@ namespace Nethermind.Mev.Test
             blockTreeSub.Head.Returns(block); //setting Head.Number to blockHeader number
             
             MevConfig mevConfig = new MevConfig();
-            long capacity = 10;
+            int capacity = 10;
             mevConfig.BundlePoolSize = capacity; //creating capacity of 10
             
             BundlePool txPool = new BundlePool(
@@ -182,12 +182,28 @@ namespace Nethermind.Mev.Test
             int count = 0;
             foreach (MevBundle bundle in bundleTest)
             {
-                if (count < capacity)
+                IEnumerable<KeyValuePair<Keccak, UInt256>> bundleHashes = bundleList.Select(bundle => new KeyValuePair<Keccak, UInt256>(bundle.Key.Hash, bundle.Key.MinTimestamp));
+                bool bundleHashInBundleList = bundleHashes.Select(kvp=> kvp.Key).Contains(bundle.Hash); //using fact that new bundle has same comparative value
+                if (count < capacity && !bundleHashInBundleList) //if we don't have any dups and we are not at capacity, add the bundle
                 {
                     bundleList.Add(bundle, bundle);
-                    txPool.AddBundle(bundle);
+                    txPool.AddBundle(bundle).Should().Be(true);
                 }
-                else
+                else if (bundleHashInBundleList) //if two blocks have same hash, keep one with lower min timestamp
+                {
+                    bundleList.TryGetValue(bundle, out MevBundle? bundleOut);
+                    if (bundleOut?.MinTimestamp < bundle.MinTimestamp) 
+                    {
+                        bundleList.Remove(bundleOut);
+                        bundleList.Add(bundle, bundle);
+                        txPool.AddBundle(bundle).Should().Be(true);
+                    }
+                    else
+                    {
+                        txPool.AddBundle(bundle).Should().Be(false); 
+                    }
+                }
+                else //if bundle is the lowest of the current elements, and we are at capacity, don't add it
                 {
                     bundleList.Add(bundle, bundle);
                     if (bundleList.IndexOfKey(bundle) == (bundleList.Count - 1))
@@ -200,6 +216,8 @@ namespace Nethermind.Mev.Test
                     }
                     bundleList.RemoveAt(bundleList.Count - 1);
                 }
+
+                count++;
             }
             
 

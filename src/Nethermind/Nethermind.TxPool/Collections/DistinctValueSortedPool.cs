@@ -82,7 +82,7 @@ namespace Nethermind.TxPool.Collections
                 bool isDuplicate = _distinctDictionary.TryGetValue(value, out var oldKvp);
                 if (isDuplicate)
                 {
-                    bool isHigher = _comparer.Compare(value, oldKvp.Value) <= 0;
+                    bool isHigher = _comparer.Compare(value, oldKvp.Value) < 0; //changed this to allow same bundle
                     
                     if (_logger.IsTrace && !isHigher)
                     {
