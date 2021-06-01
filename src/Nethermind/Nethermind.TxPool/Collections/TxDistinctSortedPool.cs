@@ -24,38 +24,38 @@ using Nethermind.Logging;
 
 namespace Nethermind.TxPool.Collections
 {
-    public class TxDistinctSortedPool : DistinctValueSortedPool<Keccak, Transaction, Address>
+    public class TxDistinctSortedPool : DistinctValueSortedPool<Keccak, WrappedTransaction, Address>
     {
-        public TxDistinctSortedPool(int capacity, IComparer<Transaction> comparer, ILogManager logManager) 
+        public TxDistinctSortedPool(int capacity, IComparer<WrappedTransaction> comparer, ILogManager logManager) 
             : base(capacity, comparer, CompetingTransactionEqualityComparer.Instance, logManager)
         {
         }
 
-        protected override IComparer<Transaction> GetUniqueComparer(IComparer<Transaction> comparer) => comparer.GetPoolUniqueTxComparer();
-        protected override IComparer<Transaction> GetGroupComparer(IComparer<Transaction> comparer) => comparer.GetPoolUniqueTxComparerByNonce();
+        protected override IComparer<WrappedTransaction> GetUniqueComparer(IComparer<WrappedTransaction> comparer) => comparer.GetPoolUniqueTxComparer();
+        protected override IComparer<WrappedTransaction> GetGroupComparer(IComparer<WrappedTransaction> comparer) => comparer.GetPoolUniqueTxComparerByNonce();
 
-        protected override Address? MapToGroup(Transaction value) => value.MapTxToGroup();
+        protected override Address? MapToGroup(WrappedTransaction value) => value.Tx.MapTxToGroup();
         
         [MethodImpl(MethodImplOptions.Synchronized)]
-        public void UpdatePool(Func<Address, ICollection<Transaction>, IEnumerable<(Transaction Tx, Action<Transaction> Change)>> changingElements)
+        public void UpdatePool(Func<Address, ICollection<WrappedTransaction>, IEnumerable<(WrappedTransaction Tx, Action<WrappedTransaction> Change)>> changingElements)
         {
-            foreach ((Address groupKey, ICollection<Transaction> bucket) in _buckets)
+            foreach ((Address groupKey, ICollection<WrappedTransaction> bucket) in _buckets)
             {
                 UpdateGroup(groupKey, bucket, changingElements);
             }
         }
         
         [MethodImpl(MethodImplOptions.Synchronized)]
-        public void UpdateGroup(Address groupKey, Func<Address, ICollection<Transaction>, IEnumerable<(Transaction Tx, Action<Transaction> Change)>> changingElements)
+        public void UpdateGroup(Address groupKey, Func<Address, ICollection<WrappedTransaction>, IEnumerable<(WrappedTransaction Tx, Action<WrappedTransaction> Change)>> changingElements)
         {
             if (groupKey == null) throw new ArgumentNullException(nameof(groupKey));
-            if (_buckets.TryGetValue(groupKey, out ICollection<Transaction> bucket))
+            if (_buckets.TryGetValue(groupKey, out ICollection<WrappedTransaction> bucket))
             {
                 UpdateGroup(groupKey, bucket, changingElements);
             }
         }
         
-        private void UpdateGroup(Address groupKey, ICollection<Transaction> bucket, Func<Address, ICollection<Transaction>, IEnumerable<(Transaction Tx, Action<Transaction> Change)>> changingElements)
+        private void UpdateGroup(Address groupKey, ICollection<WrappedTransaction> bucket, Func<Address, ICollection<WrappedTransaction>, IEnumerable<(WrappedTransaction Tx, Action<WrappedTransaction> Change)>> changingElements)
         {
             foreach (var elementChanged in changingElements(groupKey, bucket))
             {
@@ -63,12 +63,12 @@ namespace Nethermind.TxPool.Collections
             }
         }
 
-        private void UpdateElement(Transaction tx, Action<Transaction> change)
+        private void UpdateElement(WrappedTransaction wTx, Action<WrappedTransaction> change)
         {
-            if (_sortedValues.Remove(tx))
+            if (_sortedValues.Remove(wTx))
             {
-                change(tx);
-                _sortedValues.Add(tx, tx.Hash);
+                change(wTx);
+                _sortedValues.Add(wTx, wTx.Tx.Hash);
             }
         }
     }

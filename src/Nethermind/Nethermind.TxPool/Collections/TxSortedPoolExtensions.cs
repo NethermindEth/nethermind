@@ -22,11 +22,11 @@ namespace Nethermind.TxPool.Collections
 {
     public static class TxSortedPoolExtensions
     {
-        public static IComparer<Transaction> GetPoolUniqueTxComparer(this IComparer<Transaction> comparer)
+        public static IComparer<WrappedTransaction> GetPoolUniqueTxComparer(this IComparer<WrappedTransaction> comparer)
             => comparer
                 .ThenBy(DistinctCompareTx.Instance); // in order to sort properly and not loose transactions we need to differentiate on their identity which provided comparer might not be doing
 
-        public static IComparer<Transaction> GetPoolUniqueTxComparerByNonce(this IComparer<Transaction> comparer)
+        public static IComparer<WrappedTransaction> GetPoolUniqueTxComparerByNonce(this IComparer<WrappedTransaction> comparer)
             => CompareTxByNonce.Instance // we need to ensure transactions are ordered by nonce, which might not be done in supplied comparer
                 .ThenBy(GetPoolUniqueTxComparer(comparer));
 

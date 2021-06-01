@@ -154,9 +154,7 @@ namespace Nethermind.TxPool
         internal long? BlockGasLimit { get; set; } = null;
 
         private UInt256 CurrentBaseFee { get; set; } = 0;
-
-        public UInt256 CurrentBaseFee { get; set; } = 0;
-
+        
         public WrappedTransaction[] GetPendingTransactions() => _transactions.GetSnapshot();
         
         public int GetPendingTransactionsCount() => _transactions.Count;
@@ -397,11 +395,11 @@ namespace Nethermind.TxPool
                 lock (_locker)
                 {
                     wTx.GasBottleneck = tx.CalculateEffectiveGasPrice(_specProvider.GetSpec().IsEip1559Enabled, CurrentBaseFee);
-                    bool inserted = _transactions.TryInsert(tx.Hash, tx, out Transaction? removed);
+                    bool inserted = _transactions.TryInsert(tx.Hash, wTx, out WrappedTransaction? removed);
                     if (inserted)
                     {
                         _transactions.UpdateGroup(tx.SenderAddress, UpdateBucketWithAddedTransaction);
-                        ForgetHashOfRemovedTransaction(removed?.Hash);
+                        ForgetHashOfRemovedTransaction(removed?.Tx.Hash);
                     }
                     isKnown |= !inserted;
                 }
@@ -420,7 +418,7 @@ namespace Nethermind.TxPool
                 return AddTxResult.AlreadyKnown;
             }
             
-            HandleOwnTransaction(tx, isPersistentBroadcast);
+            HandleOwnTransaction(wTx, isPersistentBroadcast);
             NotifySelectedPeers(tx);
             StoreTx(tx);
             NewPending?.Invoke(this, new TxEventArgs(tx));
@@ -438,7 +436,7 @@ namespace Nethermind.TxPool
             }
         }
 
-        private IEnumerable<(Transaction Tx, Action<Transaction> Change)> UpdateBucketWithAddedTransaction(Address address, ICollection<Transaction> transactions)
+        private IEnumerable<(WrappedTransaction Tx, Action<WrappedTransaction> Change)> UpdateBucketWithAddedTransaction(Address address, ICollection<WrappedTransaction> transactions)
         {
             if (transactions.Count != 0)
             {
@@ -453,38 +451,38 @@ namespace Nethermind.TxPool
             }
         }
 
-        private IEnumerable<(Transaction Tx, Action<Transaction> Change)> UpdateGasBottleneck(ICollection<Transaction> transactions, long currentNonce, UInt256 balance)
+        private IEnumerable<(WrappedTransaction Tx, Action<WrappedTransaction> Change)> UpdateGasBottleneck(ICollection<WrappedTransaction> transactions, long currentNonce, UInt256 balance)
         {
             UInt256 previousTxBottleneck = UInt256.MaxValue;
             int i = 0;
             
-            foreach (Transaction tx in transactions)
+            foreach (WrappedTransaction wTx in transactions)
             {
                 UInt256 gasBottleneck = 0;
 
-                if (tx.Nonce < currentNonce)
+                if (wTx.Tx.Nonce < currentNonce)
                 {
-                    if (tx.GasBottleneck != gasBottleneck)
+                    if (wTx.GasBottleneck != gasBottleneck)
                     {
-                        yield return (tx, SetGasBottleneckChange(gasBottleneck));
+                        yield return (wTx, SetGasBottleneckChange(gasBottleneck));
                     }
                 }
                 else
                 {
                     if (previousTxBottleneck == UInt256.MaxValue)
                     {
-                        previousTxBottleneck = tx.CalculatePayableGasPrice(_specProvider.GetSpec().IsEip1559Enabled, CurrentBaseFee, balance);
+                        previousTxBottleneck = wTx.Tx.CalculatePayableGasPrice(_specProvider.GetSpec().IsEip1559Enabled, CurrentBaseFee, balance);
                     }
 
-                    if (tx.Nonce == currentNonce + i)
+                    if (wTx.Tx.Nonce == currentNonce + i)
                     {
-                        UInt256 effectiveGasPrice = tx.CalculateEffectiveGasPrice(_specProvider.GetSpec().IsEip1559Enabled, CurrentBaseFee);
+                        UInt256 effectiveGasPrice = wTx.Tx.CalculateEffectiveGasPrice(_specProvider.GetSpec().IsEip1559Enabled, CurrentBaseFee);
                         gasBottleneck = UInt256.Min(effectiveGasPrice, previousTxBottleneck);
                     }
 
-                    if (tx.GasBottleneck != gasBottleneck)
+                    if (wTx.GasBottleneck != gasBottleneck)
                     {
-                        yield return (tx, SetGasBottleneckChange(gasBottleneck));
+                        yield return (wTx, SetGasBottleneckChange(gasBottleneck));
                     }
                 
                     previousTxBottleneck = gasBottleneck;
@@ -493,7 +491,7 @@ namespace Nethermind.TxPool
             }
         }
 
-        private static Action<Transaction> SetGasBottleneckChange(UInt256 gasBottleneck)
+        private static Action<WrappedTransaction> SetGasBottleneckChange(UInt256 gasBottleneck)
         {
             return t => t.GasBottleneck = gasBottleneck;
         }
@@ -506,34 +504,34 @@ namespace Nethermind.TxPool
             }
         }
 
-        private IEnumerable<(Transaction Tx, Action<Transaction> Change)> UpdateBucket(Address address, ICollection<Transaction> transactions)
+        private IEnumerable<(WrappedTransaction Tx, Action<WrappedTransaction> Change)> UpdateBucket(Address address, ICollection<WrappedTransaction> transactions)
         {
             if (transactions.Count != 0)
             {
                 Account? account = _stateProvider.GetAccount(address);
                 UInt256 balance = account?.Balance ?? UInt256.Zero;
                 long currentNonce = (long)(account?.Nonce ?? UInt256.Zero);
-                Transaction tx = transactions.FirstOrDefault(t => t.Nonce == currentNonce);
+                WrappedTransaction wTx = transactions.FirstOrDefault(t => t.Tx.Nonce == currentNonce);
                 bool shouldBeDumped = false;
                 
-                if (tx is null)
+                if (wTx is null)
                 {
                     shouldBeDumped = true;
                 }
-                else if (balance < tx.Value)
+                else if (balance < wTx.Tx.Value)
                 {
                     shouldBeDumped = true;
                 }
-                else if (!tx.IsEip1559)
+                else if (!wTx.Tx.IsEip1559)
                 {
-                    shouldBeDumped = UInt256.MultiplyOverflow(tx.GasPrice, (UInt256)tx.GasLimit, out UInt256 cost);
-                    shouldBeDumped |= UInt256.AddOverflow(cost, tx.Value, out cost);
+                    shouldBeDumped = UInt256.MultiplyOverflow(wTx.Tx.GasPrice, (UInt256)wTx.Tx.GasLimit, out UInt256 cost);
+                    shouldBeDumped |= UInt256.AddOverflow(cost, wTx.Tx.Value, out cost);
                     shouldBeDumped |= balance < cost;
                 }
                 
                 if (shouldBeDumped)
                 {
-                    foreach (Transaction transaction in transactions)
+                    foreach (WrappedTransaction transaction in transactions)
                     {
                         yield return (transaction, SetGasBottleneckChange(0));
                     }
@@ -606,20 +604,20 @@ namespace Nethermind.TxPool
             bool isKnown;
             lock (_locker)
             {
-                isKnown = _transactions.TryRemove(hash, out Transaction transaction);
+                isKnown = _transactions.TryRemove(hash, out WrappedTransaction wTx);
                 if (isKnown)
                 {
-                    Address address = transaction.SenderAddress;
+                    Address address = wTx.Tx.SenderAddress;
                     if (_nonces.TryGetValue(address, out AddressNonces addressNonces))
                     {
-                        addressNonces.Nonces.TryRemove(transaction.Nonce, out _);
+                        addressNonces.Nonces.TryRemove(wTx.Tx.Nonce, out _);
                         if (addressNonces.Nonces.IsEmpty)
                         {
                             _nonces.Remove(address, out _);
                         }
                     }
                     
-                    RemovedPending?.Invoke(this, new TxEventArgs(transaction));
+                    RemovedPending?.Invoke(this, new TxEventArgs(wTx.Tx));
                 }
                 
                 if (_persistentBroadcastTransactions.Count != 0)
