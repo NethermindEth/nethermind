@@ -265,13 +265,27 @@ namespace Nethermind.Blockchain.Test
                         Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithType(TxType.EIP1559).WithNonce(2)
                             .WithMaxFeePerGas(5).WithGasLimit(10).SignedAndResolved(TestItem.PrivateKeyA).TestObject,
                         Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithNonce(1)
-                            .WithMaxFeePerGas(30).WithMaxPriorityFeePerGas(25).WithGasLimit(10).WithType(TxType.EIP1559).WithValue(60).SignedAndResolved(TestItem.PrivateKeyA).TestObject
+                            .WithMaxFeePerGas(30).WithMaxPriorityFeePerGas(25).WithGasLimit(10).WithType(TxType.EIP1559).WithValue(60).SignedAndResolved(TestItem.PrivateKeyA).TestObject,
                     },
                     GasLimit = 10000000
                 };
                 balanceCheckWithGasPremium.ExpectedSelectedTransactions.AddRange(
                     new[] { 1 }.Select(i => balanceCheckWithGasPremium.Transactions[i]));
                 yield return new TestCaseData(balanceCheckWithGasPremium).SetName("EIP1559 transactions: one transaction selected because of account balance and miner tip");
+                
+                ProperTransactionsSelectedTestCase balanceBelowMaxFeeTimesGasLimit = new ProperTransactionsSelectedTestCase()
+                {
+                    Eip1559Enabled = true,
+                    BaseFee = 5,
+                    AccountStates = {{TestItem.AddressA, (400, 1)}},
+                    Transactions =
+                    {
+                        Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithNonce(1)
+                            .WithMaxFeePerGas(45).WithMaxPriorityFeePerGas(25).WithGasLimit(10).WithType(TxType.EIP1559).WithValue(60).SignedAndResolved(TestItem.PrivateKeyA).TestObject
+                    },
+                    GasLimit = 10000000
+                };
+                yield return new TestCaseData(balanceBelowMaxFeeTimesGasLimit).SetName("EIP1559 transactions: none transactions selected because balance is lower than MaxFeePerGas times GasLimit");
             }
         }
 
