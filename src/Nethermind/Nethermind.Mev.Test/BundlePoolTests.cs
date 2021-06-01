@@ -142,38 +142,69 @@ namespace Nethermind.Mev.Test
             ulong timestamp = timestamper.UnixTime.Seconds;
             
             Transaction[] txs = Array.Empty<Transaction>();
-            IBlockTree sub = Substitute.For<IBlockTree>();
+            IBlockTree blockTreeSub = Substitute.For<IBlockTree>();
+            
             BlockHeader blockHeader = new BlockHeader(Keccak.EmptyTreeHash, Keccak.EmptyTreeHash, new Address(Keccak.EmptyTreeHash), 1, 3, 0,
                 timestamp, new byte[3]); //creating BlockHeader with number 3
-            sub.Insert(blockHeader);
+            blockTreeSub.BestSuggestedHeader.Returns(blockHeader); //setting BestSugggestedHeader.Number to blockHeader number
+            Block block = new Block(blockHeader);
+            blockTreeSub.Head.Returns(block); //setting Head.Number to blockHeader number
+            
+            MevConfig mevConfig = new MevConfig();
+            long capacity = 10;
+            mevConfig.BundlePoolSize = capacity; //creating capacity of 10
+            
             BundlePool txPool = new BundlePool(
-                sub,
+                blockTreeSub,
                 Substitute.For<IBundleSimulator>(),
                 null, 
                 timestamper,
-                new MevConfig(), 
+                mevConfig, 
                 LimboLogs.Instance);
-            List<MevBundle> bundleList = new();
-            
-            for (int i = 3; i > 0; i--)
+            SortedList<MevBundle, MevBundle> bundleList = 
+                new SortedList<MevBundle, MevBundle>(CompareMevBundleByBlock.Default.ThenBy(CompareMevBundleByMinTimestamp.Default));
+
+            List<MevBundle> bundleTest = new List<MevBundle>();
+            for (int i = 10; i > 0; i--)
             {
-                txPool.AddBundle(new MevBundle(txs, i, 0, 0)); //should come back in reverse order
+                MevBundle newBundle = new MevBundle(txs, i, 0, 0);
+                bundleTest.Add(newBundle);
             }
 
-            txPool.AddBundle(new MevBundle(txs, 1, 10, 20));  //should be ahead of 1,0 but before 2,0 
-            txPool.AddBundle(new MevBundle(txs, 4, 5, 10)); //should be ahead of 4,0 but before 5,0
+            MevBundle aheadOf1 = new MevBundle(txs, 1, 10, 20);
+            bundleTest.Add(aheadOf1);
 
-            List<(long Key, Int64 MinTimestamp)> outputList = new();
-            long? BestBlockNumber = sub.Head?.Number ?? sub.BestSuggestedHeader?.Number; 
-            foreach (KeyValuePair<long, MevBundle[]> kvp in txPool.GetMevBundles())
+            MevBundle aheadOf4 = new MevBundle(txs, 4, 5, 10); 
+            bundleTest.Add(aheadOf1);
+            
+            //if not greater than capacity, don't do anything
+            //if greater than capacity, add the bundle; if the bundle is at the end, expect false from add Bundle; else expect true 
+            int count = 0;
+            foreach (MevBundle bundle in bundleTest)
             {
-                foreach (MevBundle bundle in kvp.Value)
+                if (count < capacity)
                 {
-                    outputList.Add((kvp.Key, (Int64) bundle.MinTimestamp));
+                    bundleList.Add(bundle, bundle);
+                    txPool.AddBundle(bundle);
+                }
+                else
+                {
+                    bundleList.Add(bundle, bundle);
+                    if (bundleList.IndexOfKey(bundle) == (bundleList.Count - 1))
+                    {
+                        txPool.AddBundle(bundle).Should().Be(false);
+                    }
+                    else
+                    {
+                        txPool.AddBundle(bundle).Should().Be(true);
+                    }
+                    bundleList.RemoveAt(bundleList.Count - 1);
                 }
             }
+            
 
-            for (int i = 0; i < outputList.Count - 1; i++)
+
+            /*for (int i = 0; i < outputList.Count - 1; i++)
             {
                 if (outputList[i].Key == outputList[i + 1].Key)
                 {
@@ -187,7 +218,7 @@ namespace Nethermind.Mev.Test
                 {
                     outputList[i].Key.CompareTo(outputList[i + 1].MinTimestamp).Should().BeOneOf(1, 0);
                 }
-            }
+            }*/
         }
         
         public record BundleTest(long block, ulong testTimestamp, int expectedCount, int expectedRemaining, Action<BundlePool>? action);
