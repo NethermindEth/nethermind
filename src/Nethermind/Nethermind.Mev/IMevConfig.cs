@@ -36,12 +36,7 @@ namespace Nethermind.Mev
             Description = "Defines the maximum number of MEV bundles that can be kept in memory by clients", 
             DefaultValue = "200")]
         int BundlePoolSize { get; set; }
-        
-        [ConfigItem(
-            Description = "Defines the version of Flashbots that is used", 
-            DefaultValue = "V2")]
-        SelectorType FlashbotsVersion { get; set; }
-        
+
         [ConfigItem(Description = "Defines the maximum number of MEV bundles to be included within a single block")]
         int? MaxMergedBundles { get; set; }
 
