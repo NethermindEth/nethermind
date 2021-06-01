@@ -57,17 +57,12 @@ namespace Nethermind.Mev.Execution
             }
             catch (OperationCanceledException)
             {
-                return Task.FromResult(new SimulatedMevBundle(bundle, 
-                    false, 
-                    new List<Keccak>(), 
-                    0, UInt256.Zero, 
-                    UInt256.Zero, 
-                    new Dictionary<Keccak, UInt256>()));
+                return Task.FromResult(SimulatedMevBundle.Cancelled(bundle));
             }
         }
 
         protected override SimulatedMevBundle BuildResult(MevBundle bundle, Block block, BundleBlockTracer tracer, Keccak resultStateRoot) => 
-            new(bundle, tracer.Success, tracer.FailedTransactions, tracer.GasUsed, tracer.TxFees, tracer.CoinbasePayments, tracer.EligibleGasFeePaymentPerTransaction);
+            new(bundle, tracer.TransactionResults, tracer.GasUsed, tracer.TxFees, tracer.CoinbasePayments, tracer.EligibleGasFeePaymentPerTransaction);
 
         protected override BundleBlockTracer CreateBlockTracer() => new(_gasLimit, Beneficiary, _txPool, _finalizationManager);
 
@@ -93,30 +88,11 @@ namespace Nethermind.Mev.Execution
                 _txPool = txPool;
                 _finalizationManager = finalizationManager;
             }
-            
-            private void TransactionSeenInMempool(object? sender, TxEventArgs tx)
-            {
-                if (EligibleGasFeePaymentPerTransaction.ContainsKey(tx.Transaction.Hash!))
-                {
-                    EligibleGasFeePaymentPerTransaction[tx.Transaction.Hash!] = UInt256.Zero;
-                }
-            }
-
-            private void CancelMempoolSubscriptionIfBlockFinalized(object? sender, FinalizeEventArgs eventArgs)
-            {
-                if (eventArgs.FinalizingBlock.Number == _block!.Header.Number)
-                {
-                    _txPool.NewPending -= TransactionSeenInMempool;
-                    _finalizationManager.BlocksFinalized -= CancelMempoolSubscriptionIfBlockFinalized;
-                }
-                
-            }
 
             public bool IsTracingRewards => true;
             public UInt256 TxFees { get; private set; }
 
-            public Dictionary<Keccak, UInt256> EligibleGasFeePaymentPerTransaction { get; set; } =
-                new Dictionary<Keccak, UInt256>();
+            public UInt256[] EligibleGasFeePaymentPerTransaction { get; set; } = Array.Empty<UInt256>();
 
             public UInt256 CoinbasePayments
             {
@@ -134,7 +110,7 @@ namespace Nethermind.Mev.Execution
             
             public bool Success { get; private set; } = true;
 
-            public ICollection<Keccak> FailedTransactions { get; private set; } = new List<Keccak>();
+            public bool[] TransactionResults { get; private set; } = Array.Empty<bool>();
 
             public void ReportReward(Address author, string rewardType, UInt256 rewardValue)
             {
@@ -157,27 +133,25 @@ namespace Nethermind.Mev.Execution
 
             public void EndTxTrace()
             {
+                int txNumber = EligibleGasFeePaymentPerTransaction.Length;
                 GasUsed += _tracer!.GasSpent;
                 _beneficiaryBalanceBefore ??= _tracer.BeneficiaryBalanceBefore;
                 _beneficiaryBalanceAfter = _tracer.BeneficiaryBalanceAfter;
-                EligibleGasFeePaymentPerTransaction.Add(_tracer.Transaction?.Hash!, UInt256.Zero);
-                Success &= _tracer.Success;
-                if (!_tracer.Success)
-                {
-                    FailedTransactions.Add(_tracer.Transaction?.Hash!);
-                }
+                
+                UInt256 eligibleGasFeePayment = UInt256.Zero;
+                bool transactionResult = _tracer.Success;
                 UInt256 premiumPerGas = UInt256.Zero;
                 if (_tracer.Transaction?.TryCalculatePremiumPerGas(_block!.BaseFeePerGas, out premiumPerGas) == true)
                 {
                     TxFees += (UInt256)_tracer.GasSpent * premiumPerGas;
                     if (!_txPool.IsKnown(_tracer.Transaction.Hash))
                     {
-                        _txPool.NewPending += TransactionSeenInMempool;
-                        _finalizationManager.BlocksFinalized += CancelMempoolSubscriptionIfBlockFinalized;
-                        EligibleGasFeePaymentPerTransaction[_tracer.Transaction?.Hash!] += 
-                            (UInt256)_tracer.GasSpent * premiumPerGas;
+                        eligibleGasFeePayment += (UInt256)_tracer.GasSpent * premiumPerGas;
                     }
                 }
+
+                EligibleGasFeePaymentPerTransaction = EligibleGasFeePaymentPerTransaction.Concat(new[]{eligibleGasFeePayment}).ToArray();
+                TransactionResults = TransactionResults.Concat(new[]{transactionResult}).ToArray();
 
                 if (GasUsed > _gasLimit)
                 {

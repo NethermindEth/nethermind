@@ -56,13 +56,12 @@ namespace Nethermind.Mev.Test
                         gasUsed += txForTest.GasUsed;
                         txFees += txForTest.GasPrice * (UInt256)txForTest.GasUsed;
                         coinbasePayments += txForTest.CoinbasePayment;
-                        // Good enough for now, will change when tests are rewritten
                         eligibleGasFeePayments += txForTest.GasPrice * (UInt256)txForTest.GasUsed;
                     }
                 }
             }
 
-            SimulatedMevBundle simulatedMevBundle = new(bundle, true, new List<Keccak>(), gasUsed, txFees, coinbasePayments, new Dictionary<Keccak, UInt256>());
+            SimulatedMevBundle simulatedMevBundle = new(bundle, Array.Empty<bool>(), gasUsed, txFees, coinbasePayments, Array.Empty<UInt256>());
             return Task.FromResult(simulatedMevBundle);
         }
 
