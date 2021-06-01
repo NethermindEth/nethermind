@@ -216,13 +216,13 @@ namespace Nethermind.Mev.Test
             Transaction tx3 = Build.A.Transaction.WithGasLimit(Contracts.LargeGasLimit).WithData(Bytes.FromHexString(Contracts.CoinbaseInvokePay)).WithTo(contractAddress).WithNonce(1).WithGasPrice(0ul).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
 
             Address looperContractAddress = await Contracts.Deploy(chain, Contracts.LooperCode, 2);
-            Transaction tx4 = Build.A.Transaction.WithGasLimit(Contracts.LargeGasLimit).WithGasPrice(40ul).WithTo(looperContractAddress).WithData(Bytes.FromHexString(Contracts.LooperInvokeLoop2000)).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+            Transaction looperBundleTx = Build.A.Transaction.WithGasLimit(Contracts.LargeGasLimit).WithGasPrice(40ul).WithTo(looperContractAddress).WithData(Bytes.FromHexString(Contracts.LooperInvokeLoop2000)).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
 
             Transaction[] bundle1 = { tx1, tx3 };
 
             SuccessfullySendBundle(chain, 4, bundle1);
             SuccessfullySendBundle(chain, 4, tx1WithLowerGasPrice, tx3);
-            SuccessfullySendBundle(chain, 4, tx4);
+            SuccessfullySendBundle(chain, 4, looperBundleTx);
 
             await chain.AddBlock(true);
 
@@ -235,14 +235,14 @@ namespace Nethermind.Mev.Test
             var chain = await CreateChain(SelectorType.V2, 1);
             chain.GasLimitCalculator.GasLimit = GasCostOf.Transaction;
 
-            Transaction tx2 = Build.A.Transaction.WithGasLimit(GasCostOf.Transaction).WithGasPrice(150ul).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
-            Transaction tx3 = Build.A.Transaction.WithGasLimit(GasCostOf.Transaction).WithGasPrice(200ul).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+            Transaction poolTx = Build.A.Transaction.WithGasLimit(GasCostOf.Transaction).WithGasPrice(150ul).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+            Transaction bundleTx = Build.A.Transaction.WithGasLimit(GasCostOf.Transaction).WithGasPrice(200ul).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
 
-            SuccessfullySendBundle(chain, 1, tx3);
+            SuccessfullySendBundle(chain, 1, bundleTx);
 
-            await chain.AddBlock(true, tx2);
+            await chain.AddBlock(true, poolTx);
 
-            GetHashes(chain.BlockTree.Head!.Transactions).Should().Equal(GetHashes(new[] {tx3}));
+            GetHashes(chain.BlockTree.Head!.Transactions).Should().Equal(GetHashes(new[] {bundleTx}));
         }
 
         [Test]
@@ -251,14 +251,14 @@ namespace Nethermind.Mev.Test
             var chain = await CreateChain(SelectorType.V2, 3);
             chain.GasLimitCalculator.GasLimit = GasCostOf.Transaction;
 
-            Transaction tx1 = Build.A.Transaction.WithGasLimit(GasCostOf.Transaction).WithGasPrice(100ul).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
-            Transaction tx4 = Build.A.Transaction.WithGasLimit(GasCostOf.Transaction).WithGasPrice(50ul).SignedAndResolved(TestItem.PrivateKeyC).TestObject;
+            Transaction poolTx = Build.A.Transaction.WithGasLimit(GasCostOf.Transaction).WithGasPrice(100ul).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+            Transaction bundleTx = Build.A.Transaction.WithGasLimit(GasCostOf.Transaction).WithGasPrice(50ul).SignedAndResolved(TestItem.PrivateKeyC).TestObject;
 
-            SuccessfullySendBundle(chain, 1, tx4);
+            SuccessfullySendBundle(chain, 1, bundleTx);
 
-            await chain.AddBlock(true, tx1);
+            await chain.AddBlock(true, poolTx);
 
-            GetHashes(chain.BlockTree.Head!.Transactions).Should().Equal(GetHashes(new[] { tx1 }));
+            GetHashes(chain.BlockTree.Head!.Transactions).Should().Equal(GetHashes(new[] { poolTx }));
         }
 
         [Test]
@@ -268,17 +268,17 @@ namespace Nethermind.Mev.Test
             var chain = await CreateChain(SelectorType.V2, 2);
             chain.GasLimitCalculator.GasLimit = 10_000_000;
             
-            Transaction tx1 = Build.A.Transaction.WithGasLimit(GasCostOf.Transaction).WithGasPrice(100ul).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
-            Transaction tx2 = Build.A.Transaction.WithGasLimit(GasCostOf.Transaction).WithGasPrice(150ul).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+            Transaction poolTx = Build.A.Transaction.WithGasLimit(GasCostOf.Transaction).WithGasPrice(100ul).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+            Transaction normalBundleTx = Build.A.Transaction.WithGasLimit(GasCostOf.Transaction).WithGasPrice(150ul).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
             
             Address contractAddress = await Contracts.Deploy(chain, Contracts.ReverterCode);
-            Transaction tx3 = Build.A.Transaction.WithGasLimit(Contracts.LargeGasLimit).WithGasPrice(500).WithTo(contractAddress).WithData(Bytes.FromHexString(Contracts.ReverterInvokeFail)).SignedAndResolved(TestItem.PrivateKeyC).TestObject;
+            Transaction revertingBundleTx = Build.A.Transaction.WithGasLimit(Contracts.LargeGasLimit).WithGasPrice(500).WithTo(contractAddress).WithData(Bytes.FromHexString(Contracts.ReverterInvokeFail)).SignedAndResolved(TestItem.PrivateKeyC).TestObject;
 
-            SuccessfullySendBundle(chain, 2, tx2, tx3);
+            SuccessfullySendBundle(chain, 2, normalBundleTx, revertingBundleTx);
 
-            await chain.AddBlock(true, tx1);
+            await chain.AddBlock(true, poolTx);
 
-            GetHashes(chain.BlockTree.Head!.Transactions).Should().Equal(GetHashes(new[] { tx1 }));
+            GetHashes(chain.BlockTree.Head!.Transactions).Should().Equal(GetHashes(new[] { poolTx }));
         }
 
         [Test]
@@ -315,17 +315,17 @@ namespace Nethermind.Mev.Test
             var chain = await CreateChain(SelectorType.V2, 3);
             chain.GasLimitCalculator.GasLimit = 10_000_000;
 
-            Transaction tx1 = Build.A.Transaction.WithGasLimit(GasCostOf.Transaction).WithGasPrice(150ul).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
-            Transaction tx2 = Build.A.Transaction.WithGasLimit(GasCostOf.Transaction).WithGasPrice(100ul).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
-            Transaction tx3 = Build.A.Transaction.WithGasLimit(GasCostOf.Transaction).WithGasPrice(50ul).SignedAndResolved(TestItem.PrivateKeyC).TestObject;
+            Transaction bundleTx1 = Build.A.Transaction.WithGasLimit(GasCostOf.Transaction).WithGasPrice(150ul).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+            Transaction bundleTx2 = Build.A.Transaction.WithGasLimit(GasCostOf.Transaction).WithGasPrice(100ul).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+            Transaction poolTx = Build.A.Transaction.WithGasLimit(GasCostOf.Transaction).WithGasPrice(50ul).SignedAndResolved(TestItem.PrivateKeyC).TestObject;
 
-            SuccessfullySendBundle(chain, 1, tx1);
-            SuccessfullySendBundle(chain, 1, tx2);
+            SuccessfullySendBundle(chain, 1, bundleTx1);
+            SuccessfullySendBundle(chain, 1, bundleTx2);
 
 
-            await chain.AddBlock(true, tx3);
+            await chain.AddBlock(true, poolTx);
 
-            GetHashes(chain.BlockTree.Head!.Transactions).Should().Equal(GetHashes(new[] { tx1, tx2, tx3 }));
+            GetHashes(chain.BlockTree.Head!.Transactions).Should().Equal(GetHashes(new[] { bundleTx1, bundleTx2, poolTx }));
         }
         
         [Test]
@@ -334,18 +334,18 @@ namespace Nethermind.Mev.Test
             var chain = await CreateChain(SelectorType.V2, 3);
             chain.GasLimitCalculator.GasLimit = 10_000_000;
 
-            Transaction tx1 = Build.A.Transaction.WithGasLimit(GasCostOf.Transaction).WithGasPrice(150ul).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
-            Transaction tx2 = Build.A.Transaction.WithGasLimit(GasCostOf.Transaction).WithGasPrice(100ul).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
-            Transaction tx3 = Build.A.Transaction.WithGasLimit(GasCostOf.Transaction).WithGasPrice(50ul).SignedAndResolved(TestItem.PrivateKeyC).TestObject;
+            Transaction bundleTx = Build.A.Transaction.WithGasLimit(GasCostOf.Transaction).WithGasPrice(150ul).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+            Transaction poolTx1 = Build.A.Transaction.WithGasLimit(GasCostOf.Transaction).WithGasPrice(100ul).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+            Transaction poolTx2 = Build.A.Transaction.WithGasLimit(GasCostOf.Transaction).WithGasPrice(50ul).SignedAndResolved(TestItem.PrivateKeyC).TestObject;
 
-            SuccessfullySendBundle(chain, 2, tx1);
-            await SendSignedTransaction(chain, tx2);
+            SuccessfullySendBundle(chain, 2, bundleTx);
+            await SendSignedTransaction(chain, poolTx1);
             await chain.AddBlock(true);
-            GetHashes(chain.BlockTree.Head!.Transactions).Should().Equal(GetHashes(new[] { tx2 }));
+            GetHashes(chain.BlockTree.Head!.Transactions).Should().Equal(GetHashes(new[] { poolTx1 }));
 
-            await SendSignedTransaction(chain, tx3);
+            await SendSignedTransaction(chain, poolTx2);
             await chain.AddBlock(true);
-            GetHashes(chain.BlockTree.Head!.Transactions).Should().Equal(GetHashes(new[] { tx1, tx3 }));
+            GetHashes(chain.BlockTree.Head!.Transactions).Should().Equal(GetHashes(new[] { bundleTx, poolTx2 }));
         }
         
         [Test]
@@ -354,18 +354,18 @@ namespace Nethermind.Mev.Test
             var chain = await CreateChain(SelectorType.V2, 3);
             chain.GasLimitCalculator.GasLimit = 10_000_000;
 
-            Transaction tx1 = Build.A.Transaction.WithGasLimit(GasCostOf.Transaction).WithGasPrice(150ul).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
-            Transaction tx2 = Build.A.Transaction.WithGasLimit(GasCostOf.Transaction).WithGasPrice(100ul).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
-            Transaction tx3 = Build.A.Transaction.WithGasLimit(GasCostOf.Transaction).WithGasPrice(50ul).SignedAndResolved(TestItem.PrivateKeyC).TestObject;
+            Transaction bundleTx = Build.A.Transaction.WithGasLimit(GasCostOf.Transaction).WithGasPrice(150ul).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+            Transaction poolTx1 = Build.A.Transaction.WithGasLimit(GasCostOf.Transaction).WithGasPrice(100ul).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+            Transaction poolTx2 = Build.A.Transaction.WithGasLimit(GasCostOf.Transaction).WithGasPrice(50ul).SignedAndResolved(TestItem.PrivateKeyC).TestObject;
 
-            SuccessfullySendBundle(chain, 2, tx1);
-            await SendSignedTransaction(chain, tx2);
+            SuccessfullySendBundle(chain, 2, bundleTx);
+            await SendSignedTransaction(chain, poolTx1);
             await chain.AddBlock(true);
-            GetHashes(chain.BlockTree.Head!.Transactions).Should().Equal(GetHashes(new[] { tx2 }));
+            GetHashes(chain.BlockTree.Head!.Transactions).Should().Equal(GetHashes(new[] { poolTx1 }));
 
-            await SendSignedTransaction(chain, tx3);
+            await SendSignedTransaction(chain, poolTx2);
             await chain.AddBlock(true);
-            GetHashes(chain.BlockTree.Head!.Transactions).Should().Equal(GetHashes(new[] { tx1, tx3 }));
+            GetHashes(chain.BlockTree.Head!.Transactions).Should().Equal(GetHashes(new[] { bundleTx, poolTx2 }));
         }
 
         [Test]
@@ -374,20 +374,20 @@ namespace Nethermind.Mev.Test
             var chain = await CreateChain(SelectorType.V2, 2);
             chain.GasLimitCalculator.GasLimit = 10_000_000;
 
-            Transaction tx1 = Build.A.Transaction.WithGasLimit(GasCostOf.Transaction).WithGasPrice(150ul).SignedAndResolved(TestItem.PrivateKeyC).TestObject;
-            Transaction tx2 = Build.A.Transaction.WithGasLimit(GasCostOf.Transaction).WithGasPrice(130ul).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
-            Transaction tx3 = Build.A.Transaction.WithGasLimit(GasCostOf.Transaction).WithGasPrice(120ul).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
-            Transaction tx4 = Build.A.Transaction.WithGasLimit(GasCostOf.Transaction).WithGasPrice(95ul).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+            Transaction poolAndBundleTx = Build.A.Transaction.WithGasLimit(GasCostOf.Transaction).WithGasPrice(150ul).SignedAndResolved(TestItem.PrivateKeyC).TestObject;
+            Transaction expensiveBundleTx = Build.A.Transaction.WithGasLimit(GasCostOf.Transaction).WithGasPrice(130ul).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+            Transaction middleBundleTx = Build.A.Transaction.WithGasLimit(GasCostOf.Transaction).WithGasPrice(120ul).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+            Transaction cheapBundleTx = Build.A.Transaction.WithGasLimit(GasCostOf.Transaction).WithGasPrice(95ul).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
   
-            await SendSignedTransaction(chain, tx1);
+            await SendSignedTransaction(chain, poolAndBundleTx);
 
-            SuccessfullySendBundle(chain, 1, tx1, tx4);
-            SuccessfullySendBundle(chain, 1, tx2);
-            SuccessfullySendBundle(chain, 1, tx3);
+            SuccessfullySendBundle(chain, 1, poolAndBundleTx, cheapBundleTx);
+            SuccessfullySendBundle(chain, 1, expensiveBundleTx);
+            SuccessfullySendBundle(chain, 1, middleBundleTx);
             
             await chain.AddBlock(true);
             
-            GetHashes(chain.BlockTree.Head!.Transactions).Should().Equal(GetHashes(new[] { tx2, tx3, tx1 }));
+            GetHashes(chain.BlockTree.Head!.Transactions).Should().Equal(GetHashes(new[] { expensiveBundleTx, middleBundleTx, poolAndBundleTx }));
         }
 
         [Test]
@@ -396,21 +396,20 @@ namespace Nethermind.Mev.Test
             var chain = await CreateChain(SelectorType.V2, 2);
             chain.GasLimitCalculator.GasLimit = 10_000_000;
 
-            Transaction tx1 = Build.A.Transaction.WithGasLimit(GasCostOf.Transaction).WithGasPrice(150ul).SignedAndResolved(TestItem.PrivateKeyC).TestObject;
-            Transaction tx2 = Build.A.Transaction.WithGasLimit(GasCostOf.Transaction).WithGasPrice(130ul).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
-            Transaction tx3 = Build.A.Transaction.WithGasLimit(GasCostOf.Transaction).WithGasPrice(120ul).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
-            Transaction tx4 = Build.A.Transaction.WithGasLimit(GasCostOf.Transaction).WithGasPrice(95ul).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
-  
+            Transaction poolAndBundleTx = Build.A.Transaction.WithGasLimit(GasCostOf.Transaction).WithGasPrice(150ul).SignedAndResolved(TestItem.PrivateKeyC).TestObject;
+            Transaction expensiveBundleTx = Build.A.Transaction.WithGasLimit(GasCostOf.Transaction).WithGasPrice(130ul).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+            Transaction middleBundleTx = Build.A.Transaction.WithGasLimit(GasCostOf.Transaction).WithGasPrice(120ul).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+            Transaction cheapBundleTx = Build.A.Transaction.WithGasLimit(GasCostOf.Transaction).WithGasPrice(95ul).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
 
-            SuccessfullySendBundle(chain, 1, tx1, tx4);
-            SuccessfullySendBundle(chain, 1, tx2);
-            SuccessfullySendBundle(chain, 1, tx3);
+            SuccessfullySendBundle(chain, 1, poolAndBundleTx, cheapBundleTx);
+            SuccessfullySendBundle(chain, 1, expensiveBundleTx);
+            SuccessfullySendBundle(chain, 1, middleBundleTx);
             
-            await SendSignedTransaction(chain, tx1);
+            await SendSignedTransaction(chain, poolAndBundleTx);
             
             await chain.AddBlock(true);
             
-            GetHashes(chain.BlockTree.Head!.Transactions).Should().Equal(GetHashes(new[] { tx2, tx3, tx1 }));
+            GetHashes(chain.BlockTree.Head!.Transactions).Should().Equal(GetHashes(new[] { expensiveBundleTx, middleBundleTx, poolAndBundleTx }));
         }
         
         [Test]
@@ -420,13 +419,13 @@ namespace Nethermind.Mev.Test
             chain.GasLimitCalculator.GasLimit = 10_000_000;
             
             Address contractAddress = await Contracts.Deploy(chain, Contracts.ReverterCode);
-            Transaction tx1 = Build.A.Transaction.WithGasLimit(Contracts.LargeGasLimit).WithGasPrice(500).WithTo(contractAddress).WithData(Bytes.FromHexString(Contracts.ReverterInvokeFail)).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+            Transaction revertingBundleTx = Build.A.Transaction.WithGasLimit(Contracts.LargeGasLimit).WithGasPrice(500).WithTo(contractAddress).WithData(Bytes.FromHexString(Contracts.ReverterInvokeFail)).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
 
-            SuccessfullySendBundleWithRevertingTxHashes(chain, 2, new Keccak[] {tx1.Hash!}, tx1);
+            SuccessfullySendBundleWithRevertingTxHashes(chain, 2, new Keccak[] {revertingBundleTx.Hash!}, revertingBundleTx);
 
             await chain.AddBlock(true);
 
-            GetHashes(chain.BlockTree.Head!.Transactions).Should().Equal(GetHashes(new[] { tx1 }));
+            GetHashes(chain.BlockTree.Head!.Transactions).Should().Equal(GetHashes(new[] { revertingBundleTx }));
         }
         
         [Test]
@@ -436,20 +435,20 @@ namespace Nethermind.Mev.Test
             chain.GasLimitCalculator.GasLimit = 10_000_000;
 
             Address contractAddress = await Contracts.Deploy(chain, Contracts.ReverterCode);
-            Transaction tx1 = Build.A.Transaction.WithGasLimit(Contracts.LargeGasLimit).WithGasPrice(500ul).WithTo(contractAddress).WithData(Bytes.FromHexString(Contracts.ReverterInvokeFail)).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+            Transaction revertingBundleTx = Build.A.Transaction.WithGasLimit(Contracts.LargeGasLimit).WithGasPrice(500ul).WithTo(contractAddress).WithData(Bytes.FromHexString(Contracts.ReverterInvokeFail)).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
 
-            Transaction tx2 = Build.A.Transaction.WithGasLimit(GasCostOf.Transaction).WithGasPrice(100ul).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
-            Transaction tx3 = Build.A.Transaction.WithGasLimit(GasCostOf.Transaction).WithGasPrice(50ul).SignedAndResolved(TestItem.PrivateKeyD).TestObject;
+            Transaction poolTx1 = Build.A.Transaction.WithGasLimit(GasCostOf.Transaction).WithGasPrice(100ul).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+            Transaction poolTx2 = Build.A.Transaction.WithGasLimit(GasCostOf.Transaction).WithGasPrice(50ul).SignedAndResolved(TestItem.PrivateKeyD).TestObject;
             
-            MevBundle bundle = SuccessfullySendBundleWithRevertingTxHashes(chain, 3, new Keccak[] { tx1.Hash! }, tx1);
-            await SendSignedTransaction(chain, tx2);
+            MevBundle bundle = SuccessfullySendBundleWithRevertingTxHashes(chain, 3, new Keccak[] { revertingBundleTx.Hash! }, revertingBundleTx);
+            await SendSignedTransaction(chain, poolTx1);
             await chain.AddBlock(true);
-            GetHashes(chain.BlockTree.Head!.Transactions).Should().Equal(GetHashes(new[] { tx2 }));
+            GetHashes(chain.BlockTree.Head!.Transactions).Should().Equal(GetHashes(new[] { poolTx1 }));
 
             await chain.BundlePool.WaitForSimulationToStart(bundle, CancellationToken.None);
-            await SendSignedTransaction(chain, tx3);
+            await SendSignedTransaction(chain, poolTx2);
             await chain.AddBlock(true);
-            GetHashes(chain.BlockTree.Head!.Transactions).Should().Equal(GetHashes(new[] { tx1, tx3 }));
+            GetHashes(chain.BlockTree.Head!.Transactions).Should().Equal(GetHashes(new[] { revertingBundleTx, poolTx2 }));
         }
         
         [Test]
@@ -459,14 +458,14 @@ namespace Nethermind.Mev.Test
             chain.GasLimitCalculator.GasLimit = 10_000_000;
             
             Address contractAddress = await Contracts.Deploy(chain, Contracts.ReverterCode);
-            Transaction tx1 = Build.A.Transaction.WithGasLimit(Contracts.LargeGasLimit).WithGasPrice(500).WithTo(contractAddress).WithData(Bytes.FromHexString(Contracts.ReverterInvokeFail)).SignedAndResolved(TestItem.PrivateKeyC).TestObject;
-            Transaction tx2 = Build.A.Transaction.WithGasLimit(GasCostOf.Transaction).WithGasPrice(130ul).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+            Transaction revertingBundleTx = Build.A.Transaction.WithGasLimit(Contracts.LargeGasLimit).WithGasPrice(500).WithTo(contractAddress).WithData(Bytes.FromHexString(Contracts.ReverterInvokeFail)).SignedAndResolved(TestItem.PrivateKeyC).TestObject;
+            Transaction normalBundleTx = Build.A.Transaction.WithGasLimit(GasCostOf.Transaction).WithGasPrice(130ul).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
 
-            SuccessfullySendBundleWithRevertingTxHashes(chain, 2, new Keccak[] {tx1.Hash!}, tx1, tx2);
+            SuccessfullySendBundleWithRevertingTxHashes(chain, 2, new Keccak[] {revertingBundleTx.Hash!}, revertingBundleTx, normalBundleTx);
             
             await chain.AddBlock(true);
 
-            GetHashes(chain.BlockTree.Head!.Transactions).Should().Equal(GetHashes(new[] { tx1, tx2 }));
+            GetHashes(chain.BlockTree.Head!.Transactions).Should().Equal(GetHashes(new[] { revertingBundleTx, normalBundleTx }));
         }
         
         [Test]
@@ -476,10 +475,10 @@ namespace Nethermind.Mev.Test
             chain.GasLimitCalculator.GasLimit = 10_000_000;
             
             Address contractAddress = await Contracts.Deploy(chain, Contracts.ReverterCode);
-            Transaction tx1 = Build.A.Transaction.WithGasLimit(Contracts.LargeGasLimit).WithGasPrice(500).WithTo(contractAddress).WithData(Bytes.FromHexString(Contracts.ReverterInvokeFail)).SignedAndResolved(TestItem.PrivateKeyC).TestObject;
-            Transaction tx2 = Build.A.Transaction.WithGasLimit(GasCostOf.Transaction).WithGasPrice(130ul).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+            Transaction revertingBundleTx = Build.A.Transaction.WithGasLimit(Contracts.LargeGasLimit).WithGasPrice(500).WithTo(contractAddress).WithData(Bytes.FromHexString(Contracts.ReverterInvokeFail)).SignedAndResolved(TestItem.PrivateKeyC).TestObject;
+            Transaction normalBundleTx = Build.A.Transaction.WithGasLimit(GasCostOf.Transaction).WithGasPrice(130ul).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
 
-            SuccessfullySendBundleWithRevertingTxHashes(chain, 2, new Keccak[] {tx2.Hash!}, tx1, tx2);
+            SuccessfullySendBundleWithRevertingTxHashes(chain, 2, new Keccak[] {normalBundleTx.Hash!}, revertingBundleTx, normalBundleTx);
             
             await chain.AddBlock(true);
 
@@ -494,23 +493,23 @@ namespace Nethermind.Mev.Test
             // space for 4 simple transactions
             chain.GasLimitCalculator.GasLimit = 84000;
             
-            Transaction tx1 = Build.A.Transaction.WithGasLimit(GasCostOf.Transaction).WithGasPrice(150ul).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
-            Transaction tx2 = Build.A.Transaction.WithGasLimit(GasCostOf.Transaction).WithGasPrice(130ul).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
-            Transaction tx3 = Build.A.Transaction.WithGasLimit(GasCostOf.Transaction).WithGasPrice(120ul).SignedAndResolved(TestItem.PrivateKeyC).TestObject;
-            Transaction tx4 = Build.A.Transaction.WithGasLimit(GasCostOf.Transaction).WithGasPrice(110ul).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
-            Transaction tx5 = Build.A.Transaction.WithGasLimit(GasCostOf.Transaction).WithGasPrice(100ul).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+            // ordered by gas
+            Transaction bundleTx1 = Build.A.Transaction.WithGasLimit(GasCostOf.Transaction).WithGasPrice(150ul).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+            Transaction bundleTx2 = Build.A.Transaction.WithGasLimit(GasCostOf.Transaction).WithGasPrice(130ul).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+            Transaction poolTx1 = Build.A.Transaction.WithGasLimit(GasCostOf.Transaction).WithGasPrice(120ul).SignedAndResolved(TestItem.PrivateKeyC).TestObject;
+            Transaction poolTx2 = Build.A.Transaction.WithGasLimit(GasCostOf.Transaction).WithGasPrice(110ul).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+            Transaction bundleTx3 = Build.A.Transaction.WithGasLimit(GasCostOf.Transaction).WithGasPrice(100ul).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
             
-            SuccessfullySendBundle(chain, 1, tx1);
-            SuccessfullySendBundle(chain, 1, tx2);
-            SuccessfullySendBundle(chain, 1, tx5);
+            SuccessfullySendBundle(chain, 1, bundleTx1);
+            SuccessfullySendBundle(chain, 1, bundleTx2);
+            SuccessfullySendBundle(chain, 1, bundleTx3);
             
-            await SendSignedTransaction(chain, tx3);
-            await SendSignedTransaction(chain, tx4);
+            await SendSignedTransaction(chain, poolTx1);
+            await SendSignedTransaction(chain, poolTx2);
             
             await chain.AddBlock(true);
 
-            GetHashes(chain.BlockTree.Head!.Transactions).Should().Equal(GetHashes(new[] { tx1, tx2, tx3, tx4 }));
-            // currently gives tx1, tx2, tx5, tx3
+            GetHashes(chain.BlockTree.Head!.Transactions).Should().Equal(GetHashes(new[] { bundleTx1, bundleTx2, poolTx1, poolTx2 }));
         }
         
         [Test]
@@ -520,15 +519,15 @@ namespace Nethermind.Mev.Test
             chain.GasLimitCalculator.GasLimit = 10_000_000;
             
             Address contractAddress = await Contracts.Deploy(chain, Contracts.SecondCallReverter);
-            Transaction tx1 = Build.A.Transaction.WithGasLimit(4_000_000).WithGasPrice(30ul).WithTo(contractAddress).WithData(Bytes.FromHexString(Contracts.SecondCallReverterInvokeFail)).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
-            Transaction tx2 = Build.A.Transaction.WithGasLimit(4_000_000).WithGasPrice(20ul).WithTo(contractAddress).WithData(Bytes.FromHexString(Contracts.SecondCallReverterInvokeFail)).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+            Transaction revertingOnSecondCallTx1 = Build.A.Transaction.WithGasLimit(4_000_000).WithGasPrice(30ul).WithTo(contractAddress).WithData(Bytes.FromHexString(Contracts.SecondCallReverterInvokeFail)).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+            Transaction revertingOnSecondCallTx2 = Build.A.Transaction.WithGasLimit(4_000_000).WithGasPrice(20ul).WithTo(contractAddress).WithData(Bytes.FromHexString(Contracts.SecondCallReverterInvokeFail)).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
 
-            SuccessfullySendBundle(chain, 2, tx2);
-            SuccessfullySendBundle(chain, 2, tx1);
+            SuccessfullySendBundle(chain, 2, revertingOnSecondCallTx2);
+            SuccessfullySendBundle(chain, 2, revertingOnSecondCallTx1);
 
             await chain.AddBlock(true);
 
-            GetHashes(chain.BlockTree.Head!.Transactions).Should().Equal(GetHashes(new[] { tx1 }));
+            GetHashes(chain.BlockTree.Head!.Transactions).Should().Equal(GetHashes(new[] { revertingOnSecondCallTx1 }));
         }
         
         [Test]
@@ -539,15 +538,15 @@ namespace Nethermind.Mev.Test
             chain.GasLimitCalculator.GasLimit = 10_000_000;
             
             Address contractAddress = await Contracts.Deploy(chain, Contracts.SecondCallReverter);
-            Transaction tx1 = Build.A.Transaction.WithGasLimit(4_000_000).WithGasPrice(30ul).WithTo(contractAddress).WithData(Bytes.FromHexString(Contracts.SecondCallReverterInvokeFail)).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
-            Transaction tx2 = Build.A.Transaction.WithGasLimit(4_000_000).WithGasPrice(20ul).WithTo(contractAddress).WithData(Bytes.FromHexString(Contracts.SecondCallReverterInvokeFail)).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+            Transaction revertingOnSecondCallTx1 = Build.A.Transaction.WithGasLimit(4_000_000).WithGasPrice(30ul).WithTo(contractAddress).WithData(Bytes.FromHexString(Contracts.SecondCallReverterInvokeFail)).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+            Transaction revertingOnSecondCallTx2 = Build.A.Transaction.WithGasLimit(4_000_000).WithGasPrice(20ul).WithTo(contractAddress).WithData(Bytes.FromHexString(Contracts.SecondCallReverterInvokeFail)).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
 
-            SuccessfullySendBundleWithRevertingTxHashes(chain, 2, new Keccak[] {tx2.Hash!}, tx2);
-            SuccessfullySendBundleWithRevertingTxHashes(chain, 2, new Keccak[] {tx1.Hash!}, tx1);
+            SuccessfullySendBundleWithRevertingTxHashes(chain, 2, new Keccak[] {revertingOnSecondCallTx2.Hash!}, revertingOnSecondCallTx2);
+            SuccessfullySendBundleWithRevertingTxHashes(chain, 2, new Keccak[] {revertingOnSecondCallTx1.Hash!}, revertingOnSecondCallTx1);
 
             await chain.AddBlock(true);
 
-            GetHashes(chain.BlockTree.Head!.Transactions).Should().Equal(GetHashes(new[] { tx1, tx2 }));
+            GetHashes(chain.BlockTree.Head!.Transactions).Should().Equal(GetHashes(new[] { revertingOnSecondCallTx1, revertingOnSecondCallTx2 }));
         }
     }
 }
