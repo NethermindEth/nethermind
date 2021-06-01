@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -13,19 +13,18 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
 
-using Nethermind.Core;
+using System;
 
-namespace Nethermind.Blockchain
+namespace Nethermind.Core
 {
-    public class BlockReplacementEventArgs : BlockEventArgs
+    public class BlockEventArgs : EventArgs
     {
-        public Block? PreviousBlock { get; }
+        public Block? Block { get; }
 
-        public BlockReplacementEventArgs(Block block, Block? previousBlock) : base(block)
+        public BlockEventArgs(Block? block)
         {
-            PreviousBlock = previousBlock;
+            Block = block;
         }
     }
 }
