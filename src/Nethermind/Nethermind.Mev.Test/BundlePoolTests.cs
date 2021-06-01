@@ -136,14 +136,18 @@ namespace Nethermind.Mev.Test
         }
 
         [Test]
-        public static void sort_bundles_by_increasing_block_number_and_then_min_timestamp() //add better checking for this
+        public static void sort_bundles_by_increasing_block_number_and_then_min_timestamp()
         {
             ITimestamper timestamper = new ManualTimestamper(new DateTime(2021, 1, 1)); //this needs to be 1970?
             ulong timestamp = timestamper.UnixTime.Seconds;
             
             Transaction[] txs = Array.Empty<Transaction>();
+            IBlockTree sub = Substitute.For<IBlockTree>();
+            BlockHeader blockHeader = new BlockHeader(Keccak.EmptyTreeHash, Keccak.EmptyTreeHash, new Address(Keccak.EmptyTreeHash), 1, 3, 0,
+                timestamp, new byte[3]); //creating BlockHeader with number 3
+            sub.Insert(blockHeader);
             BundlePool txPool = new BundlePool(
-                Substitute.For<IBlockTree>(),
+                sub,
                 Substitute.For<IBundleSimulator>(),
                 null, 
                 timestamper,
@@ -153,21 +157,35 @@ namespace Nethermind.Mev.Test
             
             for (int i = 3; i > 0; i--)
             {
-                bundleList.Add(new MevBundle(txs, i, 0, 0)); //should come back in reverse order
+                txPool.AddBundle(new MevBundle(txs, i, 0, 0)); //should come back in reverse order
             }
 
-            bundleList.Add(new MevBundle(txs, 1, 10, 20));  //should be ahead of 1,0 but before 2,0 
-            bundleList.Add(new MevBundle(txs, 4, 5, 10)); //should be ahead of 4,0 but before 5,0
-            foreach (MevBundle bundle in bundleList)
-            {
-                Console.WriteLine(bundle.BlockNumber);
-                txPool.AddBundle(bundle);
-            } 
+            txPool.AddBundle(new MevBundle(txs, 1, 10, 20));  //should be ahead of 1,0 but before 2,0 
+            txPool.AddBundle(new MevBundle(txs, 4, 5, 10)); //should be ahead of 4,0 but before 5,0
+
+            List<(long Key, Int64 MinTimestamp)> outputList = new();
+            long? BestBlockNumber = sub.Head?.Number ?? sub.BestSuggestedHeader?.Number; 
             foreach (KeyValuePair<long, MevBundle[]> kvp in txPool.GetMevBundles())
             {
                 foreach (MevBundle bundle in kvp.Value)
                 {
-                    Console.WriteLine("Block: {0}, Start Time: {1}", kvp.Key, bundle.MinTimestamp);
+                    outputList.Add((kvp.Key, (Int64) bundle.MinTimestamp));
+                }
+            }
+
+            for (int i = 0; i < outputList.Count - 1; i++)
+            {
+                if (outputList[i].Key == outputList[i + 1].Key)
+                {
+                    outputList[i].MinTimestamp.CompareTo(outputList[i + 1].MinTimestamp).Should().BeOneOf(-1, 0);
+                }
+                else if (outputList[i].Key > BestBlockNumber && outputList[i + 1].Key > BestBlockNumber)
+                {
+                    outputList[i].Key.CompareTo(outputList[i + 1].MinTimestamp).Should().BeOneOf(-1, 0);
+                }
+                else
+                {
+                    outputList[i].Key.CompareTo(outputList[i + 1].MinTimestamp).Should().BeOneOf(1, 0);
                 }
             }
         }
