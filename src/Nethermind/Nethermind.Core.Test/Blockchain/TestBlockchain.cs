@@ -139,8 +139,6 @@ namespace Nethermind.Core.Test.Blockchain
             TransactionComparerProvider = new TransactionComparerProvider(specProvider, BlockTree);
             TxPool = CreateTxPool(txStorage);
 
-            new OnChainTxWatcher(BlockTree, TxPool, SpecProvider, LimboLogs.Instance);
-
             ReceiptStorage = new InMemoryReceiptStorage();
             VirtualMachine virtualMachine = new VirtualMachine(State, Storage, new BlockhashProvider(BlockTree, LogManager), SpecProvider, LogManager);
             TxProcessor = new TransactionProcessor(SpecProvider, State, Storage, virtualMachine, LogManager);

@@ -17,15 +17,14 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
-using MathNet.Numerics.LinearAlgebra.Solvers;
-using Nethermind.Blockchain.Find;
-using Nethermind.Blockchain.Spec;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Blockchain.Comparers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
@@ -51,15 +50,13 @@ namespace Nethermind.Blockchain.Test.TxPools
         private ILogManager _logManager;
         private IEthereumEcdsa _ethereumEcdsa;
         private ISpecProvider _specProvider;
-        private ITxPool _txPool;
+        private TxPool.TxPool _txPool;
         private ITxStorage _noTxStorage;
         private ITxStorage _inMemoryTxStorage;
         private ITxStorage _persistentTxStorage;
         private IStateProvider _stateProvider;
-        private IStateReader _stateReader;
         private IBlockTree _blockTree;
         
-        private IBlockFinder _blockFinder;
         private int _txGasLimit = 1_000_000;
 
         [SetUp]
@@ -74,12 +71,10 @@ namespace Nethermind.Blockchain.Test.TxPools
             var trieStore = new TrieStore(new MemDb(), _logManager);
             var codeDb = new MemDb();
             _stateProvider = new StateProvider(trieStore, codeDb, _logManager);
-            _stateReader =  new StateReader(trieStore, codeDb, _logManager);
             _blockTree = Substitute.For<IBlockTree>();
             Block block =  Build.A.Block.WithNumber(0).TestObject;
             _blockTree.Head.Returns(block);
-            _blockFinder = Substitute.For<IBlockFinder>();
-            _blockFinder.FindBestSuggestedHeader().Returns(Build.A.BlockHeader.WithNumber(10000000).TestObject);
+            _blockTree.FindBestSuggestedHeader().Returns(Build.A.BlockHeader.WithNumber(10000000).TestObject);
         }
 
         [Test]
@@ -211,10 +206,14 @@ namespace Nethermind.Blockchain.Test.TxPools
                 .WithType(TxType.EIP1559).WithFeeCap(20)
                 .WithChainId(ChainId.Mainnet)
                 .WithValue(5).SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
-            EnsureSenderBalance(tx.SenderAddress, tx.MaxFeePerGas * (UInt256)tx.GasLimit); // without tx.Value so we should have InsufficientFunds
+            EnsureSenderBalance(tx.SenderAddress, tx.Value - 1); // we should have InsufficientFunds only when balance < tx.Value
             AddTxResult result = txPool.AddTransaction(tx, TxHandlingOptions.PersistentBroadcast);
             txPool.GetPendingTransactions().Length.Should().Be(0);
             result.Should().Be(AddTxResult.InsufficientFunds);
+            EnsureSenderBalance(tx.SenderAddress, tx.Value);
+            result = txPool.AddTransaction(tx, TxHandlingOptions.PersistentBroadcast);
+            result.Should().Be(AddTxResult.Added);
+            txPool.GetPendingTransactions().Length.Should().Be(1);
         }
         
         [Test]
@@ -242,8 +241,9 @@ namespace Nethermind.Blockchain.Test.TxPools
         [Test]
         public void should_ignore_transactions_too_far_into_future()
         {
-            _txPool = CreatePool(_noTxStorage);
-            Transaction tx = Build.A.Transaction.WithNonce(_txPool.FutureNonceRetention + 1).SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            TxPoolConfig txPoolConfig = new TxPoolConfig{GasLimit = _txGasLimit, FutureNonceRetention = 256};
+            _txPool = CreatePool(_noTxStorage, txPoolConfig);
+            Transaction tx = Build.A.Transaction.WithNonce(txPoolConfig.FutureNonceRetention + 1).SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
             EnsureSenderBalance(tx);
             AddTxResult result = _txPool.AddTransaction(tx, TxHandlingOptions.PersistentBroadcast);
             _txPool.GetPendingTransactions().Length.Should().Be(0);
@@ -310,6 +310,236 @@ namespace Nethermind.Blockchain.Test.TxPools
             result.Should().Be(AddTxResult.GasLimitExceeded);
         }
 
+        [TestCase(10,0, AddTxResult.FeeTooLow)]
+        [TestCase(10,5, AddTxResult.FeeTooLow)]
+        [TestCase(10,6, AddTxResult.InsufficientFunds)]
+        [TestCase(11,0, AddTxResult.Added)]
+        [TestCase(11,4, AddTxResult.Added)]
+        [TestCase(11,5, AddTxResult.InsufficientFunds)]
+        [TestCase(15,0, AddTxResult.Added)]
+        [TestCase(16,0, AddTxResult.InsufficientFunds)]
+        public void should_handle_adding_tx_to_full_txPool_properly(int gasPrice, int value, AddTxResult expected)
+        {
+            _txPool = CreatePool(_noTxStorage, new TxPoolConfig() {Size = 30});
+            Transaction[] transactions = GetTransactions(GetPeers(3), true, false);
+            
+            foreach (Transaction transaction in transactions)
+            {
+                transaction.GasPrice = 10;
+                EnsureSenderBalance(transaction); 
+                _txPool.AddTransaction(transaction, TxHandlingOptions.PersistentBroadcast);
+            }
+            
+            Transaction tx = Build.A.Transaction
+                .WithGasPrice((UInt256)gasPrice)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            tx.Value = (UInt256)(value * tx.GasLimit);
+            EnsureSenderBalance(tx.SenderAddress, (UInt256)(15 * tx.GasLimit));
+            _txPool.GetPendingTransactions().Length.Should().Be(30);
+            AddTxResult result = _txPool.AddTransaction(tx, TxHandlingOptions.PersistentBroadcast);
+            result.Should().Be(expected);
+        }
+        
+        [TestCase(10,0, AddTxResult.FeeTooLow)]
+        [TestCase(11,0, AddTxResult.Added)]
+        [TestCase(11,4, AddTxResult.Added)]
+        [TestCase(11,5, AddTxResult.FeeTooLow)]
+        [TestCase(11,15, AddTxResult.FeeTooLow)]
+        [TestCase(11,16, AddTxResult.InsufficientFunds)]
+        [TestCase(50,0, AddTxResult.Added)]
+        [TestCase(50,15, AddTxResult.FeeTooLow)]
+        [TestCase(50,16, AddTxResult.InsufficientFunds)]
+        public void should_handle_adding_1559_tx_to_full_txPool_properly(int gasPremium, int value, AddTxResult expected)
+        {
+            var specProvider = Substitute.For<ISpecProvider>();
+            specProvider.GetSpec(Arg.Any<long>()).Returns(London.Instance);
+            _txPool = CreatePool(_noTxStorage,  new TxPoolConfig() {Size = 30}, specProvider);
+            Transaction[] transactions = GetTransactions(GetPeers(3), true, false);
+
+            foreach (Transaction transaction in transactions)
+            {
+                transaction.GasPrice = 10;
+                EnsureSenderBalance(transaction); 
+                _txPool.AddTransaction(transaction, TxHandlingOptions.PersistentBroadcast);
+            }
+            
+            Transaction tx = Build.A.Transaction
+                .WithType(TxType.EIP1559)
+                .WithFeeCap(20)
+                .WithMaxPriorityFeePerGas((UInt256)gasPremium)
+                .WithChainId(ChainId.Mainnet)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            tx.Value = (UInt256)(value * tx.GasLimit);
+            EnsureSenderBalance(tx.SenderAddress, (UInt256)(15 * tx.GasLimit));
+            _txPool.GetPendingTransactions().Length.Should().Be(30);
+            AddTxResult result = _txPool.AddTransaction(tx, TxHandlingOptions.PersistentBroadcast);
+            _txPool.GetPendingTransactions().Length.Should().Be(30);
+            result.Should().Be(expected);
+        }
+
+        [TestCase(1, 0)]
+        [TestCase(2, 10)]
+        public async Task should_dump_GasBottleneck_of_all_txs_in_bucket_after_removal_of_tx_from_it_if_first_tx_to_execute_has_insufficient_balance(int numberOfTxsPossibleToExecuteBeforeGasExhaustion, int expectedMaxGasBottleneck)
+        {
+            const int gasPrice = 10;
+            const int value = 1;
+            int oneTxPrice = _txGasLimit * gasPrice + value;
+            _txPool = CreatePool(_noTxStorage);
+            Transaction[] transactions = new Transaction[3];
+
+            EnsureSenderBalance(TestItem.AddressA, (UInt256)(oneTxPrice * numberOfTxsPossibleToExecuteBeforeGasExhaustion));
+            
+            for (int i = 0; i < 3; i++)
+            {
+                transactions[i] = Build.A.Transaction
+                    .WithSenderAddress(TestItem.AddressA)
+                    .WithNonce((UInt256)i)
+                    .WithGasPrice((UInt256)gasPrice)
+                    .WithGasLimit(_txGasLimit)
+                    .WithValue(value)
+                    .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+                _txPool.AddTransaction(transactions[i], TxHandlingOptions.PersistentBroadcast);
+            }
+
+            _txPool.GetPendingTransactionsCount().Should().Be(3);
+            _txPool.GetPendingTransactions().Select(t => t.GasBottleneck).Max().Should().Be(gasPrice);
+
+            _txPool.RemoveTransaction(transactions[0].Hash);
+            _stateProvider.SubtractFromBalance(TestItem.AddressA, (UInt256)oneTxPrice, new ReleaseSpec());
+            _stateProvider.IncrementNonce(TestItem.AddressA);
+
+            await RaiseBlockAddedToMainAndWaitForTransactions(10);
+
+            _txPool.GetPendingTransactions().Select(t => t.GasBottleneck).Max().Should().Be((UInt256)expectedMaxGasBottleneck);
+        }
+        
+        [Test]
+        public async Task should_not_dump_GasBottleneck_of_all_txs_in_bucket_if_first_tx_in_bucket_has_insufficient_balance_but_has_old_nonce()
+        {
+            _txPool = CreatePool(_noTxStorage);
+            Transaction[] transactions = new Transaction[5];
+            
+            for (int i = 0; i < 5; i++)
+            {
+                transactions[i] = Build.A.Transaction
+                    .WithSenderAddress(TestItem.AddressA)
+                    .WithNonce((UInt256)i)
+                    .WithGasPrice((UInt256)(i + 2))
+                    .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+                EnsureSenderBalance(transactions[i]);
+                _txPool.AddTransaction(transactions[i], TxHandlingOptions.PersistentBroadcast);
+            }
+
+            for (int i = 0; i < 3; i++)
+            {
+                _stateProvider.IncrementNonce(TestItem.AddressA);
+            }
+
+            transactions[0].Value = 100000;
+
+            await RaiseBlockAddedToMainAndWaitForTransactions(5);
+            
+            _txPool.GetPendingTransactions().Count(t => t.GasBottleneck == 0).Should().Be(3);
+            _txPool.GetPendingTransactions().Max(t => t.GasBottleneck).Should().Be(5);
+        }
+
+        [Test]
+        public async Task should_not_fail_if_there_is_no_current_nonce_in_bucket()
+        {
+            _txPool = CreatePool(_noTxStorage);
+            Transaction[] transactions = new Transaction[5];
+            
+            for (int i = 0; i < 3; i++)
+            {
+                transactions[i] = Build.A.Transaction
+                    .WithSenderAddress(TestItem.AddressA)
+                    .WithNonce((UInt256)i + 4)
+                    .WithGasPrice((UInt256)(i + 2))
+                    .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+                EnsureSenderBalance(transactions[i]);
+                _txPool.AddTransaction(transactions[i], TxHandlingOptions.PersistentBroadcast);
+            }
+
+            for (int i = 0; i < 3; i++)
+            {
+                _stateProvider.IncrementNonce(TestItem.AddressA);
+            }
+            
+            await RaiseBlockAddedToMainAndWaitForTransactions(3);
+            _txPool.GetPendingTransactions().Count(t => t.GasBottleneck == 0).Should().Be(3);
+        }
+
+        [Test]
+        public void should_remove_txHash_from_hashCache_when_tx_removed_because_of_txPool_size_exceeded()
+        {
+            _txPool = CreatePool(_noTxStorage, new TxPoolConfig(){Size = 1});
+            Transaction transaction = Build.A.Transaction
+                .WithSenderAddress(TestItem.AddressA)
+                .WithGasPrice(2)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            EnsureSenderBalance(transaction);
+            _txPool.AddTransaction(transaction, TxHandlingOptions.PersistentBroadcast);
+            
+            _txPool.IsKnown(transaction.Hash).Should().BeTrue();
+
+            Transaction higherPriorityTx = Build.A.Transaction
+                .WithSenderAddress(TestItem.AddressB)
+                .WithGasPrice(100)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyB).TestObject;
+            EnsureSenderBalance(higherPriorityTx);
+            _txPool.AddTransaction(higherPriorityTx, TxHandlingOptions.PersistentBroadcast);
+
+            _txPool.IsKnown(transaction.Hash).Should().BeFalse();
+        }
+
+        [Test]
+        public void should_calculate_gasBottleneck_properly()
+        {
+            _txPool = CreatePool(_noTxStorage);
+            Transaction[] transactions = new Transaction[5];
+            
+            for (int i = 0; i < 5; i++)
+            {
+                transactions[i] = Build.A.Transaction
+                    .WithSenderAddress(TestItem.AddressA)
+                    .WithNonce((UInt256)i)
+                    .WithGasPrice((UInt256)(i + 2))
+                    .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+                EnsureSenderBalance(transactions[i]);
+                _txPool.AddTransaction(transactions[i], TxHandlingOptions.PersistentBroadcast);
+            }
+
+            _txPool.GetPendingTransactions().Min(t => t.GasBottleneck).Should().Be(2);
+            _txPool.GetPendingTransactions().Max(t => t.GasBottleneck).Should().Be(2);
+        }
+        
+        [Test]
+        public async Task should_dump_GasBottleneck_of_old_nonces()
+        {
+            _txPool = CreatePool(_noTxStorage);
+            Transaction[] transactions = new Transaction[5];
+            
+            for (int i = 0; i < 5; i++)
+            {
+                transactions[i] = Build.A.Transaction
+                    .WithSenderAddress(TestItem.AddressA)
+                    .WithNonce((UInt256)i)
+                    .WithGasPrice((UInt256)(i + 2))
+                    .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+                EnsureSenderBalance(transactions[i]);
+                _txPool.AddTransaction(transactions[i], TxHandlingOptions.PersistentBroadcast);
+            }
+
+            for (int i = 0; i < 3; i++)
+            {
+               _stateProvider.IncrementNonce(TestItem.AddressA);
+            }
+
+            await RaiseBlockAddedToMainAndWaitForTransactions(5);
+            _txPool.GetPendingTransactions().Count(t => t.GasBottleneck == 0).Should().Be(3);
+            _txPool.GetPendingTransactions().Max(t => t.GasBottleneck).Should().Be(5);
+        }
+
         [Test]
         public void should_broadcast_own_transactions_that_were_reorganized_out()
         {
@@ -354,12 +584,36 @@ namespace Nethermind.Blockchain.Test.TxPools
                 Transaction[] transactionsForThirdTask = transactions.Where(t => t.Nonce == 7).ToArray();
                 transactions.Should().HaveCount(transactionsPerPeer * 10);
                 transactionsForFirstTask.Should().HaveCount(transactionsPerPeer);
-                var firstTask = Task.Run(() => DeleteTransactionsFromPool(true, transactionsForFirstTask));
-                var secondTask = Task.Run(() => DeleteTransactionsFromPool(true, transactionsForSecondTask));
-                var thirdTask = Task.Run(() => DeleteTransactionsFromPool(true, transactionsForThirdTask));
+                var firstTask = Task.Run(() => DeleteTransactionsFromPool(transactionsForFirstTask));
+                var secondTask = Task.Run(() => DeleteTransactionsFromPool(transactionsForSecondTask));
+                var thirdTask = Task.Run(() => DeleteTransactionsFromPool(transactionsForThirdTask));
                 await Task.WhenAll(firstTask, secondTask, thirdTask);
-                _txPool.GetPendingTransactions().Should().HaveCount(transactionsPerPeer);
+                _txPool.GetPendingTransactions().Should().HaveCount(transactionsPerPeer * 7);
             }
+        }
+
+        [Test]
+        public void should_add_transactions_concurrently()
+        {
+            int size = 3;
+            TxPoolConfig config = new() {GasLimit = _txGasLimit, Size = size};
+            _txPool = CreatePool(_noTxStorage, config);
+
+            foreach (PrivateKey privateKey in TestItem.PrivateKeys)
+            {
+                EnsureSenderBalance(privateKey.Address, 10.Ether());
+            }
+            
+            Parallel.ForEach(TestItem.PrivateKeys, k =>
+            {
+                for (uint i = 0; i < 100; i++)
+                {
+                    Transaction tx = GetTransaction(i, GasCostOf.Transaction, 10.GWei(), TestItem.AddressA, Array.Empty<byte>(), k);
+                    _txPool.AddTransaction(tx, TxHandlingOptions.None);
+                }
+            });
+
+            _txPool.GetPendingTransactionsCount().Should().Be(size);
         }
 
         [TestCase(true, true,10)]
@@ -373,28 +627,63 @@ namespace Nethermind.Blockchain.Test.TxPools
             _txPool.GetPendingTransactions().Length.Should().Be(expectedTransactions);
         }
 
+        [TestCase(true, true,10)]
+        [TestCase(false, true,100)]
+        [TestCase(true, false,100)]
+        [TestCase(false, false,100)]
+        public void should_remove_tx_from_txPool_when_included_in_block(bool sameTransactionSenderPerPeer, bool sameNoncePerPeer, int expectedTransactions)
+        {
+            _txPool = CreatePool(_noTxStorage);
+            
+            AddTransactionsToPool(sameTransactionSenderPerPeer, sameNoncePerPeer);
+            _txPool.GetPendingTransactions().Length.Should().Be(expectedTransactions);
+
+            Transaction[] transactions = _txPool.GetPendingTransactions();
+            Block block = Build.A.Block.WithTransactions(transactions).TestObject;
+            BlockReplacementEventArgs blockReplacementEventArgs = new BlockReplacementEventArgs(block, null);
+
+            ManualResetEvent manualResetEvent = new ManualResetEvent(false);
+            _txPool.RemoveTransaction(Arg.Do<Keccak>(t => manualResetEvent.Set()));
+            _blockTree.BlockAddedToMain += Raise.EventWith(new object(), blockReplacementEventArgs);
+            manualResetEvent.WaitOne(TimeSpan.FromMilliseconds(200));
+
+            _txPool.GetPendingTransactions().Length.Should().Be(0);
+        }
+        
+        [TestCase(true, true,10)]
+        [TestCase(false, true,100)]
+        [TestCase(true, false,100)]
+        [TestCase(false, false,100)]
+        public void should_not_remove_txHash_from_hashCache_when_tx_removed_because_of_including_in_block(bool sameTransactionSenderPerPeer, bool sameNoncePerPeer, int expectedTransactions)
+        {
+            _txPool = CreatePool(_noTxStorage);
+            
+            AddTransactionsToPool(sameTransactionSenderPerPeer, sameNoncePerPeer);
+            _txPool.GetPendingTransactions().Length.Should().Be(expectedTransactions);
+
+            Transaction[] transactions = _txPool.GetPendingTransactions();
+            Block block = Build.A.Block.WithTransactions(transactions).TestObject;
+            BlockReplacementEventArgs blockReplacementEventArgs = new BlockReplacementEventArgs(block, null);
+
+            ManualResetEvent manualResetEvent = new ManualResetEvent(false);
+            _txPool.RemoveTransaction(Arg.Do<Keccak>(t => manualResetEvent.Set()));
+            _blockTree.BlockAddedToMain += Raise.EventWith(new object(), blockReplacementEventArgs);
+            manualResetEvent.WaitOne(TimeSpan.FromMilliseconds(200));
+
+            foreach (Transaction transaction in transactions)
+            {
+                _txPool.IsKnown(transaction.Hash).Should().BeTrue();
+            }
+        }
+
         [Test]
         public void should_delete_pending_transactions()
         {
             _txPool = CreatePool(_noTxStorage);
             var transactions = AddTransactionsToPool();
-            DeleteTransactionsFromPool(false, transactions);
+            DeleteTransactionsFromPool(transactions);
             _txPool.GetPendingTransactions().Should().BeEmpty();
             _txPool.GetOwnPendingTransactions().Should().BeEmpty();
-        }
-        
-        [Test]
-        public void should_delete_pending_transactions_and_smaller_nonces()
-        {
-            _txPool = CreatePool(_noTxStorage);
-            int transactionsPerPeer = 5;
-            var transactions = AddTransactionsToPool(true, false, transactionsPerPeer);
-            Transaction[] transactionsToDelete = transactions.Where(t => t.Nonce == 8).ToArray();
-            transactions.Should().HaveCount(transactionsPerPeer * 10);
-            transactionsToDelete.Should().HaveCount(transactionsPerPeer);
-            DeleteTransactionsFromPool(true, transactionsToDelete);
-            _txPool.GetPendingTransactions().Should().HaveCount(transactionsPerPeer);
-            _txPool.GetOwnPendingTransactions().Should().HaveCount(transactionsPerPeer);
         }
 
         [Test]
@@ -520,21 +809,13 @@ namespace Nethermind.Blockchain.Test.TxPools
             await Task.Delay(1000);
             txPoolPeer.Received(1).SendNewTransaction(tx, true);
         }
-        
-        [Test]
-        public void should_drop_own_transaction_over_limit()
-        {
-            _txPool = CreatePool(_noTxStorage, new TxPoolConfig() {Size = 10});
-            AddTransactionsToPool(transactionsPerPeer: 5); //generates 50 tx with 1..9 gasprice per 5 peers, only 8 up will be kept 
-            _txPool.GetOwnPendingTransactions().Min(t => t.GasPrice).Should().Be(8);
-        }
-        
+
         [Test]
         public void should_accept_access_list_transactions_only_when_eip2930_enabled([Values(false, true)] bool eip2930Enabled)
         {
             if (!eip2930Enabled)
             {
-                _blockFinder.FindBestSuggestedHeader().Returns(Build.A.BlockHeader.WithNumber(RopstenSpecProvider.BerlinBlockNumber - 1).TestObject);
+                _blockTree.FindBestSuggestedHeader().Returns(Build.A.BlockHeader.WithNumber(RopstenSpecProvider.BerlinBlockNumber - 1).TestObject);
             }
             
             _txPool = CreatePool(_noTxStorage);
@@ -555,7 +836,7 @@ namespace Nethermind.Blockchain.Test.TxPools
             Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
             EnsureSenderBalance(tx);
             _txPool.AddTransaction(tx, TxHandlingOptions.PersistentBroadcast);
-            _txPool.IsInHashCache(tx.Hash).Should().Be(true);
+            _txPool.IsKnown(tx.Hash).Should().Be(true);
             _txPool.RemoveTransaction(tx.Hash).Should().Be(true);
         }
         
@@ -563,8 +844,17 @@ namespace Nethermind.Blockchain.Test.TxPools
         public void should_return_false_when_asking_for_not_known_txHash()
         {
             _txPool = CreatePool(_noTxStorage);
-            _txPool.IsInHashCache(TestItem.KeccakA).Should().Be(false);
-            _txPool.RemoveTransaction(TestItem.KeccakA).Should().Be(false);
+            _txPool.IsKnown(TestItem.KeccakA).Should().Be(false);
+            Transaction tx = Build.A.Transaction.TestObject;
+            tx.Hash = TestItem.KeccakA;
+            _txPool.RemoveTransaction(tx.Hash).Should().Be(false);
+        }
+
+        [Test]
+        public void should_return_false_when_trying_to_remove_tx_with_null_txHash()
+        {
+            _txPool = CreatePool(_noTxStorage);
+            _txPool.RemoveTransaction(null).Should().Be(false);
         }
 
         private Transactions AddTransactions(ITxStorage storage)
@@ -594,7 +884,7 @@ namespace Nethermind.Blockchain.Test.TxPools
             specProvider ??= RopstenSpecProvider.Instance;
             ITransactionComparerProvider transactionComparerProvider =
                 new TransactionComparerProvider(specProvider, _blockTree);
-            return new TxPool.TxPool(txStorage, _ethereumEcdsa, new ChainHeadInfoProvider(specProvider, _blockFinder, _stateProvider),
+            return new TxPool.TxPool(txStorage, _ethereumEcdsa, new ChainHeadInfoProvider(specProvider, _blockTree, _stateProvider),
                 config ?? new TxPoolConfig() { GasLimit = _txGasLimit },
                 new TxValidator(_specProvider.ChainId), _logManager, transactionComparerProvider.GetDefaultComparer());
         }
@@ -625,11 +915,11 @@ namespace Nethermind.Blockchain.Test.TxPools
             return new[] {transaction};
         }
 
-        private void DeleteTransactionsFromPool(bool removeSmallerNonces, params Transaction[] transactions)
+        private void DeleteTransactionsFromPool(params Transaction[] transactions)
         {
             foreach (var transaction in transactions)
             {
-                _txPool.RemoveTransaction(transaction.Hash, removeSmallerNonces);
+                _txPool.RemoveTransaction(transaction.Hash);
             }
         }
 
@@ -679,6 +969,17 @@ namespace Nethermind.Blockchain.Test.TxPools
                 .DeliveredBy(privateKey.PublicKey)
                 .SignedAndResolved(_ethereumEcdsa, privateKey)
                 .TestObject;
+        
+        private async Task RaiseBlockAddedToMainAndWaitForTransactions(int txCount)
+        {
+            SemaphoreSlim semaphoreSlim = new SemaphoreSlim(0, txCount);
+            _txPool.NewPending += (o, e) => semaphoreSlim.Release();
+            _blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(Build.A.Block.TestObject));
+            for (int i = 0; i < txCount; i++)
+            {
+                await semaphoreSlim.WaitAsync(10);
+            }
+        }
 
         private class Transactions
         {
