@@ -44,8 +44,6 @@ namespace Nethermind.TxPool
 
         public bool RemoveTransaction(Keccak? hash) => false;
         
-        public void NotifyHeadChange(Block block) { }
-        
         public bool IsKnown(Keccak hash) => false;
 
         public bool TryGetPendingTransaction(Keccak hash, out Transaction? transaction)
@@ -73,7 +71,5 @@ namespace Nethermind.TxPool
             add { }
             remove { }
         }
-
-        public uint FutureNonceRetention { get; } = 256;
     }
 }
