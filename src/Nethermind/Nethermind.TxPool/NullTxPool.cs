@@ -42,11 +42,9 @@ namespace Nethermind.TxPool
         
         public AddTxResult AddTransaction(Transaction tx, TxHandlingOptions txHandlingOptions) => AddTxResult.Added;
 
-        public bool RemoveTransaction(Transaction tx, bool removeBelowThisTxNonce) => false;
+        public bool RemoveTransaction(Keccak? hash) => false;
         
-        public void RemoveOrUpdateBuckets() { }
-        
-        public bool IsInHashCache(Keccak hash) => false;
+        public bool IsKnown(Keccak hash) => false;
 
         public bool TryGetPendingTransaction(Keccak hash, out WrappedTransaction? wTx)
         {
@@ -73,9 +71,5 @@ namespace Nethermind.TxPool
             add { }
             remove { }
         }
-
-        public uint FutureNonceRetention { get; } = 16;
-        public long? BlockGasLimit { get; set; }
-        public UInt256 CurrentBaseFee { get; set; }
     }
 }

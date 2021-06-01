@@ -29,6 +29,7 @@ namespace Nethermind.Blockchain.Comparers
             if (ReferenceEquals(null, x)) return -1;
             
             // if gas bottleneck was calculated, it's highest priority for sorting
+            // if not, different method of sorting by gas price is needed
             if (x.GasBottleneck != 0 || y.GasBottleneck != 0)
             {
                 return y.GasBottleneck.CompareTo(x.GasBottleneck);

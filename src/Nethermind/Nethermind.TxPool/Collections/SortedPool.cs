@@ -29,12 +29,12 @@ namespace Nethermind.TxPool.Collections
     /// <typeparam name="TKey">Type of keys of items, unique in pool.</typeparam>
     /// <typeparam name="TValue">Type of items that are kept.</typeparam>
     /// <typeparam name="TGroupKey">Type of groups in which the items are organized</typeparam>
-    public abstract class SortedPool<TKey, TValue, TGroupKey>
+    public abstract class SortedPool<TKey, TValue, TGroupKey> where TKey : notnull
     {
         private readonly int _capacity;
         private readonly IComparer<TValue> _groupComparer;
-        private readonly IDictionary<TGroupKey, ICollection<TValue>> _buckets;
-        private readonly DictionarySortedSet<TValue, TKey> _sortedValues;
+        protected readonly IDictionary<TGroupKey, ICollection<TValue>> _buckets;
+        protected readonly DictionarySortedSet<TValue, TKey> _sortedValues;
         private readonly IDictionary<TKey, TValue> _cacheMap;
 
         /// <summary>
@@ -46,7 +46,7 @@ namespace Nethermind.TxPool.Collections
         {
             _capacity = capacity;
             // ReSharper disable VirtualMemberCallInConstructor
-            var sortedComparer = GetUniqueComparer(comparer ?? throw new ArgumentNullException(nameof(comparer)));
+            IComparer<TValue> sortedComparer = GetUniqueComparer(comparer ?? throw new ArgumentNullException(nameof(comparer)));
             _groupComparer = GetGroupComparer(comparer ?? throw new ArgumentNullException(nameof(comparer)));
             _cacheMap = new Dictionary<TKey, TValue>(); // do not initialize it at the full capacity
             _buckets = new Dictionary<TGroupKey, ICollection<TValue>>();
@@ -93,32 +93,15 @@ namespace Nethermind.TxPool.Collections
         {
             return _buckets.ToDictionary(g => g.Key, g => g.Value.ToArray());
         }
-        
-        /// <summary>
-        /// Gets all items of requested group.
-        /// </summary>
-        [MethodImpl(MethodImplOptions.Synchronized)]
-        public TValue[] GetBucketSnapshot(TGroupKey group)
-        {
-            return _buckets.TryGetValue(@group, out var bucket) ? bucket.ToArray() : Array.Empty<TValue>();
-        }
-        
+
         /// <summary>
         /// Gets number of items in requested group.
         /// </summary>
         [MethodImpl(MethodImplOptions.Synchronized)]
         public int GetBucketCount(TGroupKey group)
         {
-            return _buckets.TryGetValue(@group, out var bucket) ? bucket.Count : 0;
-        }
-
-        /// <summary>
-        /// Gets all groupKeys.
-        /// </summary>
-        [MethodImpl(MethodImplOptions.Synchronized)]
-        public TGroupKey[] GetBucketsKeys()
-        {
-            return _buckets.Keys.ToArray();
+            if (group == null) throw new ArgumentNullException(nameof(group));
+            return _buckets.TryGetValue(group, out ICollection<TValue> bucket) ? bucket.Count : 0;
         }
 
         /// <summary>
@@ -168,30 +151,11 @@ namespace Nethermind.TxPool.Collections
             bucket = null;
             return false;
         }
-
+        
         [MethodImpl(MethodImplOptions.Synchronized)]
-        public bool TryRemove(TKey key, TGroupKey? groupKey, out ICollection<TValue>? bucket)
-        {
-            bucket = null;
-            
-            if (groupKey is not null)
-            {
-                _buckets.TryGetValue(groupKey, out bucket);
-                
-                if (_cacheMap.TryGetValue(key, out TValue value))
-                {
-                    if (Remove(key, value))
-                    {
-                        bucket.Remove(value);
-                        return true;
-                    }
-                }
-            }
-
-            return false;
-        }
-
         public bool TryRemove(TKey key, [MaybeNullWhen(false)] out TValue value) => TryRemove(key, out value, out _);
+        
+        [MethodImpl(MethodImplOptions.Synchronized)]
         public bool TryRemove(TKey key) => TryRemove(key, out _, out _);
 
         /// <summary>
@@ -221,27 +185,31 @@ namespace Nethermind.TxPool.Collections
             {
                 TGroupKey group = MapToGroup(value);
 
-                if (!_buckets.TryGetValue(group, out ICollection<TValue> bucket))
+                if (group is not null)
                 {
-                    _buckets[group] = bucket = new SortedSet<TValue>(_groupComparer);
-                }
+                    if (!_buckets.TryGetValue(group, out ICollection<TValue> bucket))
+                    {
+                        _buckets[group] = bucket = new SortedSet<TValue>(_groupComparer);
+                    }
 
-                InsertCore(key, value, bucket);
+                    InsertCore(key, value, bucket);
 
-                if (_cacheMap.Count > _capacity)
-                {
-                    RemoveLast(out removed);
+                    if (_cacheMap.Count > _capacity)
+                    {
+                        RemoveLast(out removed);
+                        return true;
+                    }
+
+                    removed = default;
                     return true;
                 }
-
-                removed = default;
-                return true;
             }
 
             removed = default;
             return false;
         }
 
+        [MethodImpl(MethodImplOptions.Synchronized)]
         public bool TryInsert(TKey key, TValue value) => TryInsert(key, value, out _);
 
         private void RemoveLast(out TValue? removed)
@@ -279,16 +247,9 @@ namespace Nethermind.TxPool.Collections
         {
             _sortedValues.Remove(value);
             return _cacheMap.Remove(key);
-        } 
-        
-        [MethodImpl(MethodImplOptions.Synchronized)]
-        public void NotifyChange(TKey key, TValue value, Action<TValue> changeAction)
-        {
-            if (_sortedValues.Remove(value))
-            {
-                changeAction(value);
-                _sortedValues.Add(value, key);
-            }
         }
+
+        [MethodImpl(MethodImplOptions.Synchronized)]
+        public bool IsFull() => _cacheMap.Count >= _capacity;
     }
 }

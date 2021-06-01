@@ -15,9 +15,8 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using Nethermind.Core;
 
-namespace Nethermind.Blockchain
+namespace Nethermind.Core
 {
     public class BlockEventArgs : EventArgs
     {

@@ -15,27 +15,15 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System.Collections.Generic;
-using Nethermind.Core;
-
-namespace Nethermind.TxPool
+namespace Nethermind.Core
 {
-    /// <summary>
-    /// Compares <see cref="Transaction"/>s based on <see cref="Transaction.Hash"/> identity. No two different signed transactions will be same.
-    /// </summary>
-    public class DistinctCompareTx : IComparer<WrappedTransaction>
+    public class BlockReplacementEventArgs : BlockEventArgs
     {
-        public static readonly DistinctCompareTx Instance = new();
-        
-        private DistinctCompareTx() { }
+        public Block? PreviousBlock { get; }
 
-        public int Compare(WrappedTransaction? x, WrappedTransaction? y)
+        public BlockReplacementEventArgs(Block block, Block? previousBlock = null) : base(block)
         {
-            if (ReferenceEquals(x, y)) return 0;
-            if (ReferenceEquals(null, y)) return 1;
-            if (ReferenceEquals(null, x)) return -1;
-            
-            return x.Tx.Hash.CompareTo(y.Tx.Hash);
+            PreviousBlock = previousBlock;
         }
     }
 }

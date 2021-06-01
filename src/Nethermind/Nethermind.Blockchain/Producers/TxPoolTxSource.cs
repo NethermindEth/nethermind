@@ -121,78 +121,73 @@ namespace Nethermind.Blockchain.Producers
             IReleaseSpec releaseSpec = _specProvider.GetSpec(blockNumber);
             bool isEip1559Enabled = releaseSpec.IsEip1559Enabled;
             UInt256 baseFee = BaseFeeCalculator.Calculate(parent, releaseSpec);
-            IDictionary<Address, WrappedTransaction[]> pendingTransactions = _transactionPool.GetPendingTransactionsBySender();
-            IComparer<WrappedTransaction> comparer = GetComparer(parent, new BlockPreparationContext(baseFee, blockNumber))
+            IDictionary<Address, Transaction[]> pendingTransactions = _transactionPool.GetPendingTransactionsBySender();
+            IComparer<Transaction> comparer = GetComparer(parent, new BlockPreparationContext(baseFee, blockNumber))
                 .ThenBy(DistinctCompareTx.Instance); // in order to sort properly and not loose transactions we need to differentiate on their identity which provided comparer might not be doing
             
-            IEnumerable<WrappedTransaction> transactions = GetOrderedTransactions(pendingTransactions, comparer);
+            IEnumerable<Transaction> transactions = GetOrderedTransactions(pendingTransactions, comparer);
             IDictionary<Address, UInt256> remainingBalance = new Dictionary<Address, UInt256>();
             Dictionary<Address, UInt256> nonces = new();
             if (_logger.IsDebug) _logger.Debug($"Collecting pending transactions at block gas limit {gasLimit}.");
 
             int i = 0;
             
-            foreach (WrappedTransaction wTx in transactions)
+            foreach (Transaction tx in transactions)
             {
-                if (wTx.Tx.SenderAddress == null)
+                if (tx.SenderAddress == null)
                 {
-                    _transactionPool.RemoveTransaction(wTx.Tx);
-                    if (_logger.IsDebug) _logger.Debug($"Rejecting (null sender) {wTx.Tx.ToShortString()}");
+                    _transactionPool.RemoveTransaction(tx.Hash!);
+                    if (_logger.IsDebug) _logger.Debug($"Rejecting (null sender) {tx.ToShortString()}");
                     continue;
                 }
 
-                bool success = _txFilterPipeline.Execute(wTx.Tx, parent);
+                bool success = _txFilterPipeline.Execute(tx, parent);
                 if (!success)
                 {
-                    _transactionPool.RemoveTransaction(wTx.Tx);
+                    _transactionPool.RemoveTransaction(tx.Hash!);
                     continue;
                 }
 
-                UInt256 expectedNonce = GetCurrentNonce(nonces, wTx.Tx.SenderAddress);
-                if (expectedNonce != wTx.Tx.Nonce)
+                UInt256 expectedNonce = GetCurrentNonce(nonces, tx.SenderAddress);
+                if (expectedNonce != tx.Nonce)
                 {
-                    if (wTx.Tx.Nonce < expectedNonce)
+                    if (tx.Nonce < expectedNonce)
                     {
-                        _transactionPool.RemoveTransaction(wTx.Tx, true);    
+                        _transactionPool.RemoveTransaction(tx.Hash!);    
                     }
-                    
-                    if (wTx.Tx.Nonce > expectedNonce + _transactionPool.FutureNonceRetention)
-                    {
-                        _transactionPool.RemoveTransaction(wTx.Tx);
-                    }
-                    
-                    if (_logger.IsDebug) _logger.Debug($"Rejecting (invalid nonce - expected {expectedNonce}) {wTx.Tx.ToShortString()}");
+
+                    if (_logger.IsDebug) _logger.Debug($"Rejecting (invalid nonce - expected {expectedNonce}) {tx.ToShortString()}");
                     continue;
                 }
                 
-                if (!HasEnoughFounds(remainingBalance, wTx.Tx, isEip1559Enabled, baseFee))
+                if (!HasEnoughFounds(remainingBalance, tx, isEip1559Enabled, baseFee))
                 {
-                    _transactionPool.RemoveTransaction(wTx.Tx);
-                    if (_logger.IsDebug) _logger.Debug($"Rejecting (sender balance too low) {wTx.Tx.ToShortString()}");
+                    _transactionPool.RemoveTransaction(tx.Hash!);
+                    if (_logger.IsDebug) _logger.Debug($"Rejecting (sender balance too low) {tx.ToShortString()}");
                     continue;
                 }
                 
-                if (_logger.IsTrace) _logger.Trace($"Selected {wTx.Tx.ToShortString()} to be included in block.");
-                nonces[wTx.Tx.SenderAddress!] = wTx.Tx.Nonce + 1;
+                if (_logger.IsTrace) _logger.Trace($"Selected {tx.ToShortString()} to be included in block.");
+                nonces[tx.SenderAddress!] = tx.Nonce + 1;
 
                 i++;
-                yield return wTx.Tx;
+                yield return tx;
             }
 
             if (_logger.IsDebug) _logger.Debug($"Collected {i} out of {pendingTransactions.Sum(g => g.Value.Length)} pending transactions.");
             
         }
         
-        protected virtual IEnumerable<WrappedTransaction> GetOrderedTransactions(IDictionary<Address,WrappedTransaction[]> pendingTransactions, IComparer<WrappedTransaction> comparer) => 
+        protected virtual IEnumerable<Transaction> GetOrderedTransactions(IDictionary<Address,Transaction[]> pendingTransactions, IComparer<Transaction> comparer) => 
             Order(pendingTransactions, comparer);
 
-        protected virtual IComparer<WrappedTransaction> GetComparer(BlockHeader parent, BlockPreparationContext blockPreparationContext) 
+        protected virtual IComparer<Transaction> GetComparer(BlockHeader parent, BlockPreparationContext blockPreparationContext) 
             => _transactionComparerProvider.GetDefaultProducerComparer(blockPreparationContext);
 
-        internal static IEnumerable<WrappedTransaction> Order(IDictionary<Address,WrappedTransaction[]> pendingTransactions, IComparer<WrappedTransaction> comparerWithIdentity)
+        internal static IEnumerable<Transaction> Order(IDictionary<Address,Transaction[]> pendingTransactions, IComparer<Transaction> comparerWithIdentity)
         {
-            IEnumerator<WrappedTransaction>[] bySenderEnumerators = pendingTransactions
-                .Select<KeyValuePair<Address, WrappedTransaction[]>, IEnumerable<WrappedTransaction>>(g => g.Value)
+            IEnumerator<Transaction>[] bySenderEnumerators = pendingTransactions
+                .Select<KeyValuePair<Address, Transaction[]>, IEnumerable<Transaction>>(g => g.Value)
                 .Select(g => g.GetEnumerator())
                 .ToArray();
             
@@ -202,11 +197,11 @@ namespace Nethermind.Blockchain.Producers
                 // A -> N0_P3, N1_P1, N1_P0, N3_P5...
                 // B -> N4_P4, N5_P3, N6_P3...
                 // We construct [N4_P4 (B), N0_P3 (A)] in sorted order by priority
-                DictionarySortedSet<WrappedTransaction, IEnumerator<WrappedTransaction>> transactions = new(comparerWithIdentity);
+                DictionarySortedSet<Transaction, IEnumerator<Transaction>> transactions = new(comparerWithIdentity);
             
                 for (int i = 0; i < bySenderEnumerators.Length; i++)
                 {
-                    IEnumerator<WrappedTransaction> enumerator = bySenderEnumerators[i];
+                    IEnumerator<Transaction> enumerator = bySenderEnumerators[i];
                     if (enumerator.MoveNext())
                     {
                         transactions.Add(enumerator.Current!, enumerator);
@@ -217,7 +212,7 @@ namespace Nethermind.Blockchain.Producers
                 while (transactions.Count > 0)
                 {
                     // we take first transaction from sorting order, on first call: N4_P4 from B
-                    (WrappedTransaction tx, IEnumerator<WrappedTransaction> enumerator) = transactions.Min;
+                    (Transaction tx, IEnumerator<Transaction> enumerator) = transactions.Min;
 
                     // we replace it by next transaction from same sender, on first call N5_P3 from B
                     transactions.Remove(tx);

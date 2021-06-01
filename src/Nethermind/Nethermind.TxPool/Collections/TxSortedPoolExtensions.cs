@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -16,34 +16,20 @@
 // 
 
 using System.Collections.Generic;
-using System.Runtime.CompilerServices;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
-
-[assembly: InternalsVisibleTo("Nethermind.AuRa.Test")]
 
 namespace Nethermind.TxPool.Collections
 {
-    public class TxSortedPool : SortedPool<Keccak, WrappedTransaction, Address>
+    public static class TxSortedPoolExtensions
     {
-        public TxSortedPool(int capacity, IComparer<WrappedTransaction> comparer)
-            : base(capacity, comparer)
-        {
-        }
-
-        protected override IComparer<WrappedTransaction> GetUniqueComparer(IComparer<WrappedTransaction> comparer) => GetPoolUniqueTxComparer(comparer);
-        protected override IComparer<WrappedTransaction> GetGroupComparer(IComparer<WrappedTransaction> comparer) => GetPoolUniqueTxComparerByNonce(comparer);
-
-        protected override Address? MapToGroup(WrappedTransaction value) => MapTxToGroup(value);
-
-        internal static IComparer<WrappedTransaction> GetPoolUniqueTxComparer(IComparer<WrappedTransaction> comparer)
+        public static IComparer<Transaction> GetPoolUniqueTxComparer(this IComparer<Transaction> comparer)
             => comparer
                 .ThenBy(DistinctCompareTx.Instance); // in order to sort properly and not loose transactions we need to differentiate on their identity which provided comparer might not be doing
 
-        internal static IComparer<WrappedTransaction> GetPoolUniqueTxComparerByNonce(IComparer<WrappedTransaction> comparer)
+        public static IComparer<Transaction> GetPoolUniqueTxComparerByNonce(this IComparer<Transaction> comparer)
             => CompareTxByNonce.Instance // we need to ensure transactions are ordered by nonce, which might not be done in supplied comparer
                 .ThenBy(GetPoolUniqueTxComparer(comparer));
 
-        internal static Address? MapTxToGroup(WrappedTransaction value) => value.Tx.SenderAddress;
+        public static Address? MapTxToGroup(this Transaction value) => value.SenderAddress;
     }
 }

@@ -87,7 +87,7 @@ namespace Nethermind.Blockchain.Test.TxPools.Collections
         public void Distinct_transactions_are_all_added(Transaction[] transactions, int expectedCount)
         {             
 
-            var pool = new TxDistinctSortedPool(Capacity, LimboLogs.Instance, _transactionComparerProvider.GetDefaultComparer());
+            var pool = new TxDistinctSortedPool(Capacity, _transactionComparerProvider.GetDefaultComparer(), LimboLogs.Instance);
 
             foreach (var transaction in transactions)
             {
@@ -101,7 +101,7 @@ namespace Nethermind.Blockchain.Test.TxPools.Collections
         [TestCase(false)]
         public void Same_transactions_are_all_replaced_with_highest_gas_price(bool gasPriceAscending)
         {
-            var pool = new TxDistinctSortedPool(Capacity, LimboLogs.Instance, _transactionComparerProvider.GetDefaultComparer());
+            var pool = new TxDistinctSortedPool(Capacity, _transactionComparerProvider.GetDefaultComparer(), LimboLogs.Instance);
 
             var transactions = gasPriceAscending
                 ? GenerateTransactions(address: TestItem.AddressB, nonce: 3).OrderBy(t => t.GasPrice)
