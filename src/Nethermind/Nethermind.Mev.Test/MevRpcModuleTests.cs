@@ -509,7 +509,7 @@ namespace Nethermind.Mev.Test
         }
         
         [Test]
-        public async Task Should_reject_second_dsbundle_where_they_succeed_individually_but_fail_if_in_the_same_block()
+        public async Task Should_reject_bundle_where_they_succeed_individually_but_fail_if_in_the_same_bundle()
         {
             var chain = await CreateChain(SelectorType.V2, 3);
             chain.GasLimitCalculator.GasLimit = 10_000_000;

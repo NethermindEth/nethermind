@@ -256,42 +256,6 @@ namespace Nethermind.TxPool.Collections
         
 
         [MethodImpl(MethodImplOptions.Synchronized)]
-        public void UpdatePool(Func<TGroupKey, ICollection<TValue>, IEnumerable<(TKey Key, TValue Value, Action<TValue> Change)>> changingElements)
-        {
-            foreach ((TGroupKey groupKey, ICollection<TValue> bucket) in _buckets)
-            {
-                UpdateGroup(groupKey, bucket, changingElements);
-            }
-        }
-        
-        [MethodImpl(MethodImplOptions.Synchronized)]
-        public void UpdateGroup(TGroupKey groupKey, Func<TGroupKey, ICollection<TValue>, IEnumerable<(TKey Key, TValue Value, Action<TValue> Change)>> changingElements)
-        {
-            if (groupKey == null) throw new ArgumentNullException(nameof(groupKey));
-            if (_buckets.TryGetValue(groupKey, out ICollection<TValue> bucket))
-            {
-                UpdateGroup(groupKey, bucket, changingElements);
-            }
-        }
-        
-        private void UpdateGroup(TGroupKey groupKey, ICollection<TValue> bucket, Func<TGroupKey, ICollection<TValue>, IEnumerable<(TKey Key, TValue Value, Action<TValue> Change)>> changingElements)
-        {
-            foreach (var elementChanged in changingElements(groupKey, bucket))
-            {
-                UpdateElement(elementChanged.Key, elementChanged.Value, elementChanged.Change);
-            }
-        }
-
-        private void UpdateElement(TKey key, TValue value, Action<TValue> change)
-        {
-            if (_sortedValues.Remove(value))
-            {
-                change(value);
-                _sortedValues.Add(value, key);
-            }
-        }
-
-        [MethodImpl(MethodImplOptions.Synchronized)]
         public bool IsFull() => _cacheMap.Count >= _capacity;
         
 
