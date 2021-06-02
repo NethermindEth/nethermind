@@ -44,7 +44,7 @@ namespace Nethermind.Mev.Source
         protected override long MapToGroup(MevBundle mevBundle) => mevBundle.BlockNumber;
 
         protected override IComparer<MevBundle> GetSameIdentityComparer(IComparer<MevBundle> comparer) => 
-            CompareMevBundleByPoolIndex.Default;
+            CompareMevBundleBySequenceNumber.Default;
         
         
         [MethodImpl(MethodImplOptions.Synchronized)]

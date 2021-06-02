@@ -28,7 +28,7 @@ namespace Nethermind.Mev.Test
         [Test]
         public void Can_create()
         {
-            _ = new MevBundle(new List<Transaction>(), 0, 0, 0);
+            _ = new MevBundle(0, new List<Transaction>(), 0, 0);
         }
     }
 }

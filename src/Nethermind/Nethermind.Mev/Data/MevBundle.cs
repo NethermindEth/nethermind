@@ -27,22 +27,21 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Mev.Data
 {
-    public class MevBundle : IEquatable<MevBundle>
+    public partial class MevBundle : IEquatable<MevBundle>
     {
         private static int _poolIndex = 0;
 
-        public MevBundle(IReadOnlyList<Transaction> transactions, long blockNumber, UInt256? minTimestamp, UInt256? maxTimestamp, Keccak[]? revertingTxHashes = null)
+        public MevBundle(long blockNumber, IReadOnlyList<Transaction> transactions, UInt256? minTimestamp = null, UInt256? maxTimestamp = null, Keccak[]? revertingTxHashes = null)
         {
             Transactions = transactions;
             BlockNumber = blockNumber;
 
-            Rlp rlp = Rlp.Encode(Rlp.Encode(BlockNumber), Rlp.Encode(transactions.Select(t => t.Hash).ToArray()));
-            Hash = Keccak.Compute(rlp.Bytes);
-            
+            Hash = GetHash(this);
+
             RevertingTxHashes = revertingTxHashes ?? Array.Empty<Keccak>();
             MinTimestamp = minTimestamp ?? UInt256.Zero;
             MaxTimestamp = maxTimestamp ?? UInt256.Zero;
-            PoolIndex = Interlocked.Increment(ref _poolIndex);
+            SequenceNumber = Interlocked.Increment(ref _poolIndex);
             
             Keccak[] missingRevertingTxHashes = RevertingTxHashes.Except(transactions.Select(t => t.Hash!)).ToArray();
             if (missingRevertingTxHashes.Length > 0)
@@ -52,7 +51,7 @@ namespace Nethermind.Mev.Data
                     nameof(revertingTxHashes));
             }
         }
-
+        
         public IReadOnlyList<Transaction> Transactions { get; }
 
         public long BlockNumber { get; }
@@ -64,7 +63,7 @@ namespace Nethermind.Mev.Data
         
         public Keccak Hash { get; }
 
-        public int PoolIndex { get; }
+        public int SequenceNumber { get; }
 
         public bool Equals(MevBundle? other)
         {

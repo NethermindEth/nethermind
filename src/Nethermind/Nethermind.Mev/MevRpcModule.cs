@@ -72,7 +72,7 @@ namespace Nethermind.Mev
         public ResultWrapper<bool> eth_sendBundle(byte[][] transactions, long blockNumber, UInt256? minTimestamp = null, UInt256? maxTimestamp = null, Keccak[]? revertingTxHashes = null)
         {
             Transaction[] txs = Decode(transactions);
-            MevBundle bundle = new(txs, blockNumber, minTimestamp, maxTimestamp, revertingTxHashes);
+            MevBundle bundle = new(blockNumber, txs, minTimestamp, maxTimestamp, revertingTxHashes);
             bool result = _bundlePool.AddBundle(bundle);
             return ResultWrapper<bool>.Success(result);
         }
@@ -104,7 +104,7 @@ namespace Nethermind.Mev
             using CancellationTokenSource cancellationTokenSource = new(_jsonRpcConfig.Timeout);
 
             TxsResults results = new CallTxBundleExecutor(_tracerFactory).ExecuteBundle(
-                new MevBundle(txs, header.Number, timestamp, timestamp),
+                new MevBundle(header.Number, txs, timestamp, timestamp),
                 header,
                 cancellationTokenSource.Token,
                 timestamp);

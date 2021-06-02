@@ -126,7 +126,7 @@ namespace Nethermind.Mev.Test
         private MevBundle ToBundle(MevBundleForTest? bundleForTest)
         {
             if (bundleForTest == null) throw new ArgumentNullException(nameof(bundleForTest));
-            return new(bundleForTest.Txs.Select(ToTx).ToArray(), 1, UInt256.Zero, UInt256.Zero);
+            return new(1, bundleForTest.Txs.Select(ToTx).ToArray(), UInt256.Zero, UInt256.Zero);
         }
 
         private Transaction ToTx(Keccak txs)

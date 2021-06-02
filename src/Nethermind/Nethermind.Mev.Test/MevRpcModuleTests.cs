@@ -148,7 +148,7 @@ namespace Nethermind.Mev.Test
             ResultWrapper<bool> resultOfBundle = chain.MevRpcModule.eth_sendBundle(bundleBytes, blockNumber, default, default, revertingTxHashes);
             resultOfBundle.GetResult().ResultType.Should().NotBe(ResultType.Failure);
             resultOfBundle.GetData().Should().Be(true);
-            return new MevBundle(txs, blockNumber, default, default, revertingTxHashes);
+            return new MevBundle(blockNumber, txs, default, default, revertingTxHashes);
         }
 
         [Test]

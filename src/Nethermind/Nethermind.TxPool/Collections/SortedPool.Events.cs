@@ -22,7 +22,7 @@ namespace Nethermind.TxPool.Collections
     public partial class SortedPool<TKey, TValue, TGroupKey>
     {
         public event EventHandler<SortedPoolEventArgs>? Inserted;
-        public event EventHandler<SortedPoolEventArgs>? Removed;
+        public event EventHandler<SortedPoolRemovedEventArgs>? Removed;
 
         public class SortedPoolEventArgs
         {
@@ -35,6 +35,16 @@ namespace Nethermind.TxPool.Collections
                 Key = key;
                 Value = value;
                 Group = group;
+            }
+        }
+        
+        public class SortedPoolRemovedEventArgs : SortedPoolEventArgs
+        {
+            public bool Evicted { get; }
+
+            public SortedPoolRemovedEventArgs(TKey key, TValue value, TGroupKey group, bool evicted) : base(key, value, group)
+            {
+                Evicted = evicted;
             }
         }
     }

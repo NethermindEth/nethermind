@@ -20,9 +20,9 @@ using Nethermind.Mev.Data;
 
 namespace Nethermind.Mev.Source
 {
-    public class CompareMevBundleByPoolIndex : IComparer<MevBundle>
+    public class CompareMevBundleBySequenceNumber : IComparer<MevBundle>
     {
-        public static readonly CompareMevBundleByPoolIndex Default = new();
+        public static readonly CompareMevBundleBySequenceNumber Default = new();
         
         public int Compare(MevBundle? x, MevBundle? y)
         {
@@ -30,7 +30,7 @@ namespace Nethermind.Mev.Source
             if (ReferenceEquals(null, y)) return 1;
             if (ReferenceEquals(null, x)) return -1;
 
-            return x.PoolIndex.CompareTo(y.PoolIndex);
+            return x.SequenceNumber.CompareTo(y.SequenceNumber);
         }
     }
 }
