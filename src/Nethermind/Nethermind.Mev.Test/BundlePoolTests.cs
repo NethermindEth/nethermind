@@ -171,10 +171,10 @@ namespace Nethermind.Mev.Test
                 bundleTest.Add(newBundle);
             }
 
-            MevBundle aheadOf1 = new MevBundle(txs, timestamp + 100, 10, 20);
+            MevBundle aheadOf1 = new MevBundle(txs, 1, timestamp + 200, timestamp + 300);
             bundleTest.Add(aheadOf1);
 
-            MevBundle aheadOf4 = new MevBundle(txs, 4, 5, 10); 
+            MevBundle aheadOf4 = new MevBundle(txs, 4, timestamp + 300, timestamp + 400); 
             bundleTest.Add(aheadOf4);
             
             //if not greater than capacity, don't do anything
@@ -182,8 +182,8 @@ namespace Nethermind.Mev.Test
             int count = 0;
             foreach (MevBundle bundle in bundleTest)
             {
-                IEnumerable<KeyValuePair<Keccak, UInt256>> bundleHashes = bundleList.Select(bundle => new KeyValuePair<Keccak, UInt256>(bundle.Key.Hash, bundle.Key.MinTimestamp));
-                bool bundleHashInBundleList = bundleHashes.Select(kvp=> kvp.Key).Contains(bundle.Hash); //using fact that new bundle has same comparative value
+                IEnumerable<Keccak> bundleHashes = bundleList.Select(bundle => bundle.Key.Hash);
+                bool bundleHashInBundleList = bundleHashes.Contains(bundle.Hash); //using fact that new bundle has same comparative value
                 if (count < capacity && !bundleHashInBundleList) //if we don't have any dups and we are not at capacity, add the bundle
                 {
                     bundleList.Add(bundle, bundle);
@@ -200,9 +200,9 @@ namespace Nethermind.Mev.Test
                         break;
                     }
                     if ((bundleOut?.MinTimestamp < bundle.MinTimestamp) &&
-                        (bundleOut?.MaxTimestamp > timestamp) && 
+                        (bundle.MaxTimestamp > timestamp) && 
                         (bundle.MinTimestamp <= bundle.MaxTimestamp) && 
-                        (bundle.MinTimestamp >= timestamp + mevConfig.BundleHorizon)) //don't need to check for 0 because we are only replacing if min timestamp higher and lowest number is already 0 
+                        (bundle.MinTimestamp <= timestamp + mevConfig.BundleHorizon)) //don't need to check for 0 because we are only replacing if min timestamp higher and lowest number is already 0 
                     {
                         bundleList.Remove(bundleOut);
                         bundleList.Add(bundle, bundle);
