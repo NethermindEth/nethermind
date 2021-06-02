@@ -30,7 +30,7 @@ namespace Nethermind.Mev.Source
             if (ReferenceEquals(null, y)) return 1;
             if (ReferenceEquals(null, x)) return -1;
 
-            return x.SequenceNumber.CompareTo(y.SequenceNumber);
+            return y.SequenceNumber.CompareTo(x.SequenceNumber);
         }
     }
 }

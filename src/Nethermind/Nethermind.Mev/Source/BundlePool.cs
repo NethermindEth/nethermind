@@ -131,6 +131,12 @@ namespace Nethermind.Mev.Source
                 return false;
             }
 
+            if (bundle.Transactions.Count == 0)
+            {
+                if (_logger.IsDebug) _logger.Debug($"Bundle rejected, because it doesn't contain transactions.");
+                return false;
+            }
+            
             currentTimestamp ??= _timestamper.UnixTime.Seconds;
 
             if (bundle.MaxTimestamp < bundle.MinTimestamp)
@@ -154,17 +160,13 @@ namespace Nethermind.Mev.Source
 
         private bool TrySimulateBundle(MevBundle bundle)
         {
-            ChainLevelInfo? level = _blockTree.FindLevel(bundle.BlockNumber - 1);
-            if (level is not null)
+            var head = _blockTree.Head;
+            if (head is not null)
             {
-                for (int i = 0; i < level.BlockInfos.Length; i++)
+                if (head.Number + 1 == bundle.BlockNumber)
                 {
-                    BlockHeader? header = _blockTree.FindHeader(level.BlockInfos[i].BlockHash, BlockTreeLookupOptions.None);
-                    if (header is not null)
-                    {
-                        SimulateBundle(bundle, header);
-                        return true;
-                    }
+                    SimulateBundle(bundle, head.Header);
+                    return true;
                 }
             }
 

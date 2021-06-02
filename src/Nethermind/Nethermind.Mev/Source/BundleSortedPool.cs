@@ -43,5 +43,7 @@ namespace Nethermind.Mev.Source
 
         protected override IComparer<MevBundle> GetSameIdentityComparer(IComparer<MevBundle> comparer) => 
             CompareMevBundleBySequenceNumber.Default;
+
+        protected override bool AllowSameKeyReplacement => true;
     }
 }
