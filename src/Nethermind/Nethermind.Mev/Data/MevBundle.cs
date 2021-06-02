@@ -29,7 +29,7 @@ namespace Nethermind.Mev.Data
 {
     public partial class MevBundle : IEquatable<MevBundle>
     {
-        private static int _poolIndex = 0;
+        private static int _sequenceNumber = 0;
 
         public MevBundle(long blockNumber, IReadOnlyList<Transaction> transactions, UInt256? minTimestamp = null, UInt256? maxTimestamp = null, Keccak[]? revertingTxHashes = null)
         {
@@ -41,7 +41,7 @@ namespace Nethermind.Mev.Data
             RevertingTxHashes = revertingTxHashes ?? Array.Empty<Keccak>();
             MinTimestamp = minTimestamp ?? UInt256.Zero;
             MaxTimestamp = maxTimestamp ?? UInt256.Zero;
-            SequenceNumber = Interlocked.Increment(ref _poolIndex);
+            SequenceNumber = Interlocked.Increment(ref _sequenceNumber);
             
             Keccak[] missingRevertingTxHashes = RevertingTxHashes.Except(transactions.Select(t => t.Hash!)).ToArray();
             if (missingRevertingTxHashes.Length > 0)

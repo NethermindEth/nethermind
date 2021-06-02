@@ -43,7 +43,6 @@ namespace Nethermind.Mev
 {
     public class MevRpcModule : IMevRpcModule
     {
-        private readonly IMevConfig _mevConfig;
         private readonly IJsonRpcConfig _jsonRpcConfig;
         private readonly IBundlePool _bundlePool;
         private readonly IBlockFinder _blockFinder;
@@ -52,7 +51,6 @@ namespace Nethermind.Mev
         private readonly ulong _chainId;
 
         public MevRpcModule(
-            IMevConfig mevConfig, 
             IJsonRpcConfig jsonRpcConfig, 
             IBundlePool bundlePool, 
             IBlockFinder blockFinder, 
@@ -60,7 +58,6 @@ namespace Nethermind.Mev
             ITracerFactory tracerFactory,
             ulong chainId)
         {
-            _mevConfig = mevConfig;
             _jsonRpcConfig = jsonRpcConfig;
             _bundlePool = bundlePool;
             _blockFinder = blockFinder;

@@ -29,6 +29,5 @@ namespace Nethermind.Mev
         public UInt256 BundleHorizon { get; set; } = 60 * 60;
         public int BundlePoolSize { get; set; } = 200;
         public int MaxMergedBundles { get; set; }
-        public SimulationMode SimulationMode { get; set; } = SimulationMode.NewHead;
     }
 }

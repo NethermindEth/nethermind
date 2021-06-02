@@ -15,10 +15,8 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Logging;
@@ -30,9 +28,9 @@ namespace Nethermind.Mev.Source
     public class BundleSortedPool : DistinctValueSortedPool<MevBundle, MevBundle, long> 
     {
         public BundleSortedPool(int capacity, IComparer<MevBundle> comparer, ILogManager logManager)
-            : base(capacity, comparer, EqualityComparer<MevBundle>.Default, logManager)
+            : base(capacity, comparer, EqualityComparer<MevBundle>.Default, logManager) 
         {
-            
+           
         }
 
         protected override IComparer<MevBundle> GetUniqueComparer(IComparer<MevBundle> comparer) //compares all the bundles to evict the worst one
@@ -45,36 +43,5 @@ namespace Nethermind.Mev.Source
 
         protected override IComparer<MevBundle> GetSameIdentityComparer(IComparer<MevBundle> comparer) => 
             CompareMevBundleBySequenceNumber.Default;
-        
-        
-        [MethodImpl(MethodImplOptions.Synchronized)]
-        public void UpdateGroups(IEnumerable<long> keys, Action change)
-        {
-            IEnumerable<MevBundle> GetItemsToChange()
-            {
-                foreach (long groupKey in keys)
-                {
-                    if (_buckets.TryGetValue(groupKey, out ICollection<MevBundle>? bucket))
-                    {
-                        foreach (MevBundle value in bucket)
-                        {
-                            yield return value;
-                        }
-                    }
-                }
-            }
-
-            foreach (MevBundle? bundle in GetItemsToChange())
-            {
-                _sortedValues.Remove(bundle);
-            }
-
-            change();
-
-            foreach (MevBundle? bundle in GetItemsToChange())
-            {
-                _sortedValues.Add(bundle, bundle);
-            }            
-        }
     }
 }

@@ -23,7 +23,6 @@ namespace Nethermind.Mev.Source
     public class CompareMevBundleByBlock : IComparer<MevBundle>
     {
         public static readonly CompareMevBundleByBlock Default = new();
-        public long BestBlockNumber { get; set; }
         
         public int Compare(MevBundle? x, MevBundle? y)
         {
@@ -31,18 +30,7 @@ namespace Nethermind.Mev.Source
             if (ReferenceEquals(null, y)) return 1;
             if (ReferenceEquals(null, x)) return -1;
             
-            if (x.BlockNumber == y.BlockNumber)
-            {
-                return 0;
-            }
-            else if (x.BlockNumber > BestBlockNumber && y.BlockNumber > BestBlockNumber) //if both blocks greater than BestBlock, sorted in ascending order
-            {
-                return x.BlockNumber.CompareTo(y.BlockNumber);
-            }
-            else //if only one block greater than BestBlock or both blocks less than Best Block, sorted in descending order
-            {
-                return y.BlockNumber.CompareTo(x.BlockNumber);
-            }
+            return x.BlockNumber.CompareTo(y.BlockNumber);
         }
     }
 }

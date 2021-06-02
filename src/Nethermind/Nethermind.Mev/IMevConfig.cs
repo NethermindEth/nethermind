@@ -39,8 +39,5 @@ namespace Nethermind.Mev
 
         [ConfigItem(Description = "Defines the maximum number of MEV bundles to be included within a single block", DefaultValue = "0")]
         int MaxMergedBundles { get; set; }
-
-        [ConfigItem(Description = "Defines when we start simulation on a new block", DefaultValue = "NewHead")]
-        SimulationMode SimulationMode { get; set; }
     }
 }

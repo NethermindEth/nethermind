@@ -16,6 +16,7 @@
 // 
 
 using System;
+using System.Collections;
 using System.Linq;
 using Nethermind.Int256;
 using Nethermind.TxPool;
@@ -27,70 +28,46 @@ namespace Nethermind.Mev.Data
 {
     public class SimulatedMevBundle
     {
-
-        public SimulatedMevBundle(MevBundle bundle, 
-            bool[] transactionResults, 
-            long gasUsed, 
-            UInt256 txFees, 
+        public SimulatedMevBundle(
+            MevBundle bundle,
+            long gasUsed,
+            bool success,
+            UInt256 bundleFee,
             UInt256 coinbasePayments, 
-            UInt256[] eligibleGasFeePaymentPerTransaction)
+            UInt256 eligibleGasFeePayment)
         {
             Bundle = bundle;
-            TransactionResults = transactionResults;
             GasUsed = gasUsed;
-            TxFees = txFees;
+            Success = success;
+            BundleFee = bundleFee;
             CoinbasePayments = coinbasePayments;
-            EligibleGasFeePaymentPerTransaction = eligibleGasFeePaymentPerTransaction;
-            for (int i = 0; i < transactionResults.Length; i++)
-            {
-                if (transactionResults[i] == false)
-                {
-                    if (!bundle.RevertingTxHashes.Contains(bundle.Transactions[i].Hash!))
-                    {
-                        Success = false;
-                    }
-                }
-            }
+            EligibleGasFeePayment = eligibleGasFeePayment;
         }
 
-        public UInt256 CoinbasePayments { get; set; }
+        public UInt256 CoinbasePayments { get; }
         
-        public UInt256 TxFees { get; set; }
+        public UInt256 BundleFee { get; }
         
-        public UInt256[] EligibleGasFeePaymentPerTransaction { get; set; }
+        public UInt256 EligibleGasFeePayment { get; }
         
-        public UInt256 EligibleGasFeePayment
-        {
-            get
-            {
-                // UInt256 doesn't implement Sum
-                UInt256 sum = UInt256.Zero;
-                for (int i = 0; i < EligibleGasFeePaymentPerTransaction.Length; i++)
-                {
-                    sum += EligibleGasFeePaymentPerTransaction[i];
-                }
-                return sum;
-            }
-        }
-        public UInt256 Profit => TxFees + CoinbasePayments;
+        public UInt256 Profit => BundleFee + CoinbasePayments;
 
         public MevBundle Bundle { get; }
 
-        public bool Success { get; } = true;
+        public bool Success { get; }
 
-        public bool[] TransactionResults { get; }
-
-        public long GasUsed { get; set; }
+        public long GasUsed { get; }
         
         public UInt256 BundleScoringProfit => EligibleGasFeePayment + CoinbasePayments;
 
         public UInt256 BundleAdjustedGasPrice => BundleScoringProfit / (UInt256)GasUsed;
 
-        public static SimulatedMevBundle Cancelled(MevBundle bundle) => 
-            new SimulatedMevBundle(bundle, 
-            Array.Empty<bool>(), 
-            0, UInt256.Zero, 
-            UInt256.Zero, 
-            Array.Empty<UInt256>());
+        public static SimulatedMevBundle Cancelled(MevBundle bundle) =>
+            new SimulatedMevBundle(bundle,
+                0,
+                false,
+                UInt256.Zero,
+                UInt256.Zero,
+                UInt256.Zero);
     }
 }

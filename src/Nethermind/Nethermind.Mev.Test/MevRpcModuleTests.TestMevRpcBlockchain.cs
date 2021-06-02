@@ -52,25 +52,21 @@ namespace Nethermind.Mev.Test
 {
     public partial class MevRpcModuleTests
     {
-        private Task<TestMevRpcBlockchain> CreateChain(SelectorType selectorType, int? maxMergedBundles = null)
+        private Task<TestMevRpcBlockchain> CreateChain(int? maxMergedBundles = null)
         {
-            TestMevRpcBlockchain testMevRpcBlockchain = new(selectorType, maxMergedBundles);
+            TestMevRpcBlockchain testMevRpcBlockchain = new(maxMergedBundles);
             return TestRpcBlockchain.ForTest(testMevRpcBlockchain).Build();
         }
         
         private class TestMevRpcBlockchain : TestRpcBlockchain
         {
-            //private readonly Func<ISimulatedBundleSource, IBundleSource> _getSelector;
-            private readonly SelectorType _selectorType;
-
             private readonly int? _maxMergedBundles;
             
             private ITracerFactory _tracerFactory = null!;
             public TestBundlePool BundlePool { get; private set; } = null!;
 
-            public TestMevRpcBlockchain(SelectorType selectorType, int? maxMergedBundles)
+            public TestMevRpcBlockchain(int? maxMergedBundles)
             {
-                _selectorType = selectorType;
                 _maxMergedBundles = maxMergedBundles;
                 Signer = new Eth2Signer(MinerAddress);
                 GenesisBlockBuilder = Core.Test.Builders.Build.A.Block.Genesis.Genesis
@@ -79,7 +75,6 @@ namespace Nethermind.Mev.Test
             }
             
             public IMevRpcModule MevRpcModule { get; set; } = Substitute.For<IMevRpcModule>();
-            public IManualBlockFinalizationManager FinalizationManager { get; } = new ManualBlockFinalizationManager();
             public ManualGasLimitCalculator GasLimitCalculator = new() {GasLimit = 10_000_000};
             private MevConfig _mevConfig = new MevConfig {Enabled = true};
             public Address MinerAddress => TestItem.PrivateKeyD.Address;
@@ -160,8 +155,8 @@ namespace Nethermind.Mev.Test
                     LogManager,
                     ProcessingOptions.ProducingBlock);
                 
-                TxBundleSimulator txBundleSimulator = new(_tracerFactory, FollowOtherMiners.Instance, Timestamper, TxPool, FinalizationManager);
-                BundlePool = new TestBundlePool(BlockTree, txBundleSimulator, FinalizationManager, Timestamper, _mevConfig, LogManager);
+                TxBundleSimulator txBundleSimulator = new(_tracerFactory, FollowOtherMiners.Instance, Timestamper, TxPool);
+                BundlePool = new TestBundlePool(BlockTree, txBundleSimulator, Timestamper, _mevConfig, LogManager);
 
                 return blockProcessor;
             }
@@ -169,9 +164,7 @@ namespace Nethermind.Mev.Test
             protected override async Task<TestBlockchain> Build(ISpecProvider specProvider = null, UInt256? initialValues = null)
             {
                 TestBlockchain chain = await base.Build(specProvider, initialValues);
-                MevRpcModule = new MevRpcModule(
-                    new MevConfig {Enabled = true},
-                    new JsonRpcConfig(),
+                MevRpcModule = new MevRpcModule(new JsonRpcConfig(),
                     BundlePool,
                     BlockFinder,
                     StateReader,
