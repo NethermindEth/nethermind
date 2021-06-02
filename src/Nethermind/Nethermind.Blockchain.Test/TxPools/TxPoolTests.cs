@@ -348,9 +348,9 @@ namespace Nethermind.Blockchain.Test.TxPools
         [TestCase(11,5, AddTxResult.FeeTooLow)]
         [TestCase(11,15, AddTxResult.FeeTooLow)]
         [TestCase(11,16, AddTxResult.InsufficientFunds)]
-        [TestCase(50,0, AddTxResult.Added)]
-        [TestCase(50,15, AddTxResult.FeeTooLow)]
-        [TestCase(50,16, AddTxResult.InsufficientFunds)]
+        [TestCase(50,0, AddTxResult.Invalid)]
+        [TestCase(50,15, AddTxResult.Invalid)]
+        [TestCase(50,16, AddTxResult.Invalid)]
         public void should_handle_adding_1559_tx_to_full_txPool_properly(int gasPremium, int value, AddTxResult expected)
         {
             var specProvider = Substitute.For<ISpecProvider>();
