@@ -21,6 +21,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
+using Nethermind.Abi;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Comparers;
 using Nethermind.Blockchain.Processing;
@@ -69,7 +70,7 @@ namespace Nethermind.Clique.Test
             private EthereumEcdsa _ethereumEcdsa = new EthereumEcdsa(ChainId.Goerli, LimboLogs.Instance);
             private Dictionary<PrivateKey, ILogManager> _logManagers = new Dictionary<PrivateKey, ILogManager>();
             private Dictionary<PrivateKey, ISnapshotManager> _snapshotManager = new Dictionary<PrivateKey, ISnapshotManager>();
-            private Dictionary<PrivateKey, BlockTree> _blockTrees = new Dictionary<PrivateKey, BlockTree>();
+            public Dictionary<PrivateKey, BlockTree> _blockTrees = new Dictionary<PrivateKey, BlockTree>();
             private Dictionary<PrivateKey, AutoResetEvent> _blockEvents = new Dictionary<PrivateKey, AutoResetEvent>();
             private Dictionary<PrivateKey, CliqueBlockProducer> _producers = new Dictionary<PrivateKey, CliqueBlockProducer>();
             private Dictionary<PrivateKey, TxPool.TxPool> _pools = new Dictionary<PrivateKey, TxPool.TxPool>();
@@ -339,6 +340,14 @@ namespace Nethermind.Clique.Test
                 }
             }
 
+            public On GetHead(PrivateKey nodeKey)
+            {
+                if (_logger.IsInfo) _logger.Info($"GETTING THE HEAD {nodeKey.Address}");
+                _blockTrees[nodeKey].SuggestBlock(GetGenesis());
+                _blockEvents[nodeKey].WaitOne(_timeout);
+                return this;
+            }
+
             public On AssertHeadBlockParentIs(PrivateKey nodeKey, Keccak hash)
             {
                 if (_logger.IsInfo) _logger.Info($"ASSERTING HEAD PARENT HASH ON {nodeKey.Address}");
@@ -350,6 +359,15 @@ namespace Nethermind.Clique.Test
             {
                 WaitForNumber(nodeKey, number);
                 if (_logger.IsInfo) _logger.Info($"ASSERTING HEAD BLOCK IS BLOCK {number} ON {nodeKey.Address}");
+                Assert.AreEqual(number, _blockTrees[nodeKey].Head.Number, nodeKey.Address + " head number");
+                return this;
+            }
+            
+            public On AssertTransactionCount(PrivateKey nodeKey, long number, int transactionCount)
+            {
+                WaitForNumber(nodeKey, number);
+                if (_logger.IsInfo) _logger.Info($"ASSERTING HEAD BLOCK IS BLOCK {number} ON {nodeKey.Address}");
+                Assert.AreEqual(number, _blockTrees[nodeKey].Head.Number, nodeKey.Address + " head number");
                 Assert.AreEqual(number, _blockTrees[nodeKey].Head.Number, nodeKey.Address + " head number");
                 return this;
             }
@@ -509,6 +527,26 @@ namespace Nethermind.Clique.Test
 
                 return this;
             }
+            
+            public On AddTransactionWithGasLimitToHigh(PrivateKey nodeKey)
+            {
+                Transaction transaction = new Transaction();
+            
+                // gas limit too high
+                transaction = new Transaction();
+                transaction.Value = 1;
+                transaction.To = TestItem.AddressC;
+                transaction.GasLimit = 100000000;
+                transaction.GasPrice = 20.GWei();
+                transaction.Nonce = _currentNonce;
+                transaction.Data = Bytes.FromHexString("0xEF");
+                transaction.SenderAddress = TestItem.PrivateKeyD.Address;
+                transaction.Hash = transaction.CalculateHash();
+                _ethereumEcdsa.Sign(TestItem.PrivateKeyD, transaction, true);
+                _pools[nodeKey].AddTransaction(transaction, TxHandlingOptions.None);
+            
+                return this;
+            }
 
             public On AddQueuedTransaction(PrivateKey nodeKey)
             {
@@ -573,6 +611,19 @@ namespace Nethermind.Clique.Test
                 .ProcessGenesis()
                 .AssertHeadBlockIs(TestItem.PrivateKeyA, 1)
                 .StopNode(TestItem.PrivateKeyA);
+        }
+        
+        [Test]
+        public async Task When_producing_blocks_skips_queued_and_bad_transactions2()
+        {
+            var goerli = await On.Goerli
+                .CreateNode(TestItem.PrivateKeyA)
+                .AddTransactionWithGasLimitToHigh(TestItem.PrivateKeyA)
+                .ProcessGenesis()
+                .AssertHeadBlockIs(TestItem.PrivateKeyA, 1)
+                .StopNode(TestItem.PrivateKeyA);
+            var block = goerli._blockTrees[TestItem.PrivateKeyA].Head;
+            Assert.AreEqual();
         }
 
         [Test]
