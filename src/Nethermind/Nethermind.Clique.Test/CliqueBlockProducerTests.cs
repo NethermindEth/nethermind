@@ -70,7 +70,7 @@ namespace Nethermind.Clique.Test
             private EthereumEcdsa _ethereumEcdsa = new EthereumEcdsa(ChainId.Goerli, LimboLogs.Instance);
             private Dictionary<PrivateKey, ILogManager> _logManagers = new Dictionary<PrivateKey, ILogManager>();
             private Dictionary<PrivateKey, ISnapshotManager> _snapshotManager = new Dictionary<PrivateKey, ISnapshotManager>();
-            public Dictionary<PrivateKey, BlockTree> _blockTrees = new Dictionary<PrivateKey, BlockTree>();
+            private Dictionary<PrivateKey, BlockTree> _blockTrees = new Dictionary<PrivateKey, BlockTree>();
             private Dictionary<PrivateKey, AutoResetEvent> _blockEvents = new Dictionary<PrivateKey, AutoResetEvent>();
             private Dictionary<PrivateKey, CliqueBlockProducer> _producers = new Dictionary<PrivateKey, CliqueBlockProducer>();
             private Dictionary<PrivateKey, TxPool.TxPool> _pools = new Dictionary<PrivateKey, TxPool.TxPool>();
@@ -614,16 +614,15 @@ namespace Nethermind.Clique.Test
         }
         
         [Test]
-        public async Task When_producing_blocks_skips_queued_and_bad_transactions2()
+        public async Task Transaction_with_gas_limit_higher_than_block_gas_limit_should_not_be_send()
         {
-            var goerli = await On.Goerli
+            await On.Goerli
                 .CreateNode(TestItem.PrivateKeyA)
                 .AddTransactionWithGasLimitToHigh(TestItem.PrivateKeyA)
                 .ProcessGenesis()
                 .AssertHeadBlockIs(TestItem.PrivateKeyA, 1)
+                .AssertTransactionCount(TestItem.PrivateKeyA, 1, 0)
                 .StopNode(TestItem.PrivateKeyA);
-            var block = goerli._blockTrees[TestItem.PrivateKeyA].Head;
-            Assert.AreEqual();
         }
 
         [Test]
