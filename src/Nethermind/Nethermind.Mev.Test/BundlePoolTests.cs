@@ -109,7 +109,7 @@ namespace Nethermind.Mev.Test
         [Test]
         public static void should_add_bundle_with_correct_timestamps()
         {
-            ITimestamper timestamper = new ManualTimestamper(new DateTime(2021, 1, 1)); //this needs to be 1970?
+            ITimestamper timestamper = new ManualTimestamper(new DateTime(2021, 1, 1));
             ulong timestamp = timestamper.UnixTime.Seconds;
             
             BundlePool bundlePool = new(
