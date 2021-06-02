@@ -43,59 +43,37 @@ namespace Nethermind.Mev.Source
 
     public class BundlePool : IBundlePool, ISimulatedBundleSource, IDisposable
     {
-        private readonly IBlockFinalizationManager? _finalizationManager;
         private readonly ITimestamper _timestamper;
         private readonly IMevConfig _mevConfig;
         private readonly IBlockTree _blockTree;
         private readonly IBundleSimulator _simulator;
         private readonly BundleSortedPool _bundles;
-        private readonly ConcurrentDictionary<Keccak, ConcurrentDictionary<MevBundle, SimulatedMevBundleContext>> _simulatedBundles = new();
+        private readonly ConcurrentDictionary<long, ConcurrentDictionary<(MevBundle Bundle, Keccak BlockHash), SimulatedMevBundleContext>> _simulatedBundles = new();
         private readonly ILogger _logger;
-        private readonly CompareMevBundleByBlock? _compareMevBundleByBlock;
+        
+        private long HeadNumber => _blockTree.Head?.Number ?? 0;
+        
         public BundlePool(
             IBlockTree blockTree, 
             IBundleSimulator simulator,
-            IBlockFinalizationManager? finalizationManager,
             ITimestamper timestamper,
             IMevConfig mevConfig,
             ILogManager logManager)
         {
-            _finalizationManager = finalizationManager;
             _timestamper = timestamper;
             _mevConfig = mevConfig;
             _blockTree = blockTree;
             _simulator = simulator;
             _logger = logManager.GetClassLogger();
             
-            long bestBlockNumber = RegisterNewBlockTracking();
-            _compareMevBundleByBlock = new CompareMevBundleByBlock() {BestBlockNumber = bestBlockNumber};
-            IComparer<MevBundle> comparer = _compareMevBundleByBlock.ThenBy(CompareMevBundleByMinTimestamp.Default);
+            _blockTree.NewHeadBlock += OnNewBlock;
+            IComparer<MevBundle> comparer = CompareMevBundleByBlock.Default.ThenBy(CompareMevBundleByMinTimestamp.Default);
             _bundles = new BundleSortedPool(
                 _mevConfig.BundlePoolSize,
                 comparer,
-                logManager ); 
-            
-            if (_finalizationManager != null)
-            {
-                _finalizationManager.BlocksFinalized += OnBlocksFinalized;
-            }
-        }
+                logManager );
 
-        private long RegisterNewBlockTracking()
-        {
-            switch (_mevConfig.SimulationMode)
-            {
-                case SimulationMode.NewHead:
-                    _blockTree.NewHeadBlock += OnNewBlock;
-                    return _blockTree.Head?.Number ?? 0;
-                
-                case SimulationMode.NewBestSuggested:
-                    _blockTree.NewSuggestedBlock += OnNewBlock;
-                    return  _blockTree.BestSuggestedHeader?.Number ?? 0;
-                
-                default:
-                    throw new ArgumentOutOfRangeException(nameof(_mevConfig.SimulationMode));
-            }
+            _bundles.Removed += OnBundleRemoved;
         }
 
         public Task<IEnumerable<MevBundle>> GetBundles(BlockHeader parent, UInt256 timestamp, long gasLimit, CancellationToken token = default) => 
@@ -134,7 +112,7 @@ namespace Nethermind.Mev.Source
 
                 if (result)
                 {
-                    if (bundle.BlockNumber == (_blockTree.Head?.Number ?? 0) + 1)
+                    if (bundle.BlockNumber == HeadNumber + 1)
                     { 
                         TrySimulateBundle(bundle);
                     }
@@ -148,7 +126,7 @@ namespace Nethermind.Mev.Source
 
         private bool ValidateBundle(MevBundle bundle, UInt256? currentTimestamp = null)
         {
-            if (_finalizationManager?.IsFinalized(bundle.BlockNumber) == true)
+            if (HeadNumber > bundle.BlockNumber)
             {
                 return false;
             }
@@ -195,27 +173,29 @@ namespace Nethermind.Mev.Source
               
         protected virtual SimulatedMevBundleContext? SimulateBundle(MevBundle bundle, BlockHeader parent)
         {
-            SimulatedMevBundleContext? context = null; 
+            SimulatedMevBundleContext? context = null;
+            (MevBundle, Keccak) key = (bundle, parent.Hash!);
             
             SimulatedMevBundleContext CreateContext()
             {
                 CancellationTokenSource cancellationTokenSource = new();
-                return context = new(_simulator.Simulate(bundle, parent, cancellationTokenSource.Token), cancellationTokenSource);
+                Task<SimulatedMevBundle> simulateTask = _simulator.Simulate(bundle, parent, cancellationTokenSource.Token);
+                simulateTask.ContinueWith(TryRemoveFailedSimulatedBundle, cancellationTokenSource.Token);
+                return context = new(simulateTask, cancellationTokenSource);
             }
             
-            ConcurrentDictionary<MevBundle,SimulatedMevBundleContext> AddContext(ConcurrentDictionary<MevBundle,SimulatedMevBundleContext> d)
+            ConcurrentDictionary<(MevBundle, Keccak), SimulatedMevBundleContext> AddContext(ConcurrentDictionary<(MevBundle, Keccak), SimulatedMevBundleContext> d)
             {
-                d.AddOrUpdate(bundle, 
+                d.AddOrUpdate(key, 
                     _ => CreateContext(), 
                     (_, c) => c);
                 return d;
             }
             
-            Keccak parentHash = parent.Hash!;
-            _simulatedBundles.AddOrUpdate(parentHash, 
+            _simulatedBundles.AddOrUpdate(parent.Number, 
                     _ =>
                     {
-                        ConcurrentDictionary<MevBundle,SimulatedMevBundleContext> d = new();
+                        ConcurrentDictionary<(MevBundle, Keccak), SimulatedMevBundleContext> d = new();
                         return AddContext(d);
                     },
                     (_, d) => AddContext(d));
@@ -223,59 +203,71 @@ namespace Nethermind.Mev.Source
             return context;
         }
 
+        private void TryRemoveFailedSimulatedBundle(Task<SimulatedMevBundle> simulateTask)
+        {
+            if (simulateTask.IsCompletedSuccessfully)
+            {
+                SimulatedMevBundle simulatedMevBundle = simulateTask.Result;
+                if (!simulatedMevBundle.Success)
+                {
+                    _bundles.TryRemove(simulatedMevBundle.Bundle);
+                    RemoveSimulation(simulatedMevBundle.Bundle);
+                }
+            }
+        }
+
         private void OnNewBlock(object? sender, BlockEventArgs e)
         {
             long blockNumber = e.Block!.Number;
-            ResortBundlesByBlock(blockNumber);
+            RemoveBundlesUpToBlock(blockNumber);
 
-            if (_finalizationManager?.IsFinalized(blockNumber) != true)
+            Task.Run(() =>
             {
-                Task.Run(() =>
+                IEnumerable<MevBundle> bundles = GetBundles(e.Block.Number + 1, UInt256.MaxValue, UInt256.Zero);
+                foreach (MevBundle bundle in bundles)
                 {
-                    IEnumerable<MevBundle> bundles = GetBundles(e.Block.Number + 1, UInt256.MaxValue, UInt256.Zero);
-                    foreach (MevBundle bundle in bundles)
-                    {
-                        SimulateBundle(bundle, e.Block.Header);
-                    }
-                });
+                    SimulateBundle(bundle, e.Block.Header);
+                }
+            });
+        }
+
+        private void RemoveBundlesUpToBlock(long blockNumber)
+        {
+            IDictionary<long, MevBundle[]> bundlesToRemove = _bundles.GetBucketSnapshot(b => b <= blockNumber);
+
+            foreach (KeyValuePair<long, MevBundle[]> bundleBucket in bundlesToRemove)
+            {
+                _simulatedBundles.TryRemove(bundleBucket.Key, out _);
+                foreach (MevBundle mevBundle in bundleBucket.Value)
+                {
+                    _bundles.TryRemove(mevBundle);
+                }
             }
         }
 
-        private void ResortBundlesByBlock(long newBlockNumber)
+        private void OnBundleRemoved(object? sender, SortedPool<MevBundle, MevBundle, long>.SortedPoolRemovedEventArgs e)
         {
-            IEnumerable<long> Range(long startBlockNumber, long count)
+            if (e.Evicted)
             {
-                for (long blockNumber = startBlockNumber; blockNumber < startBlockNumber + count; blockNumber++)
-                {
-                    yield return blockNumber;
-                }
+                RemoveSimulation(e.Key);
             }
-            
-            long previousBestSuggested = _compareMevBundleByBlock!.BestBlockNumber;
-            long fromBlockNumber = Math.Min(newBlockNumber, previousBestSuggested);
-            long blockDelta = Math.Abs(newBlockNumber - previousBestSuggested);
-            _bundles.UpdateGroups(Range(fromBlockNumber, blockDelta), () => _compareMevBundleByBlock.BestBlockNumber = newBlockNumber);
         }
 
-        private void OnBlocksFinalized(object? sender, FinalizeEventArgs e)
+        private void RemoveSimulation(MevBundle bundle)
         {
-            long maxFinalizedBlockNumber = e.FinalizedBlocks.Max(b => b.Number);
-            UInt256 maxFinalizedTimeStamp = e.FinalizedBlocks.Select(b => b.Timestamp).Max();
-            MevBundle[] bundleArray = _bundles.GetSnapshot();
-            IEnumerable<MevBundle> bundlesToRemove = bundleArray.Where(
-                // finalized bundles
-                bundle => bundle.BlockNumber < maxFinalizedBlockNumber || 
-                // expired bundles          
-                bundle.MaxTimestamp < maxFinalizedTimeStamp && bundle.MaxTimestamp != UInt256.Zero);
-            foreach (MevBundle bundle in bundlesToRemove)
+            if (_simulatedBundles.TryGetValue(bundle.BlockNumber, out ConcurrentDictionary<(MevBundle Bundle, Keccak BlockHash), SimulatedMevBundleContext>? simulations))
             {
-                IEnumerable<KeyValuePair<Keccak, ConcurrentDictionary<MevBundle, SimulatedMevBundleContext>>> relatedHashes =
-                    _simulatedBundles.Where(kvp => kvp.Value.ContainsKey(bundle));
-                foreach (var (_, value) in relatedHashes)
+                IEnumerable<(MevBundle Bundle, Keccak BlockHash)> keys = simulations.Keys.Where(k => Equals(k.Bundle, bundle));
+
+                foreach ((MevBundle Bundle, Keccak BlockHash) key in keys)
                 {
-                    value.Remove(bundle, out SimulatedMevBundleContext? context);
+                    simulations.TryRemove(key, out _);
                 }
-                _bundles.TryRemove(bundle);
+
+                if (simulations.Count == 0)
+                {
+                    _simulatedBundles.Remove(bundle.BlockNumber, out _);
+                }
             }
         }
 
@@ -283,11 +275,11 @@ namespace Nethermind.Mev.Source
         {
             HashSet<MevBundle> bundles = (await GetBundles(parent, timestamp, gasLimit, token)).ToHashSet();
             
-            Keccak parentHash = parent.Hash!;
-            if (_simulatedBundles.TryGetValue(parentHash, out ConcurrentDictionary<MevBundle, SimulatedMevBundleContext>? simulatedBundlesForBlock))
+            if (_simulatedBundles.TryGetValue(parent.Number, out ConcurrentDictionary<(MevBundle Bundle, Keccak BlockHash), SimulatedMevBundleContext>? simulatedBundlesForBlock))
             {
                 IEnumerable<Task<SimulatedMevBundle>> resultTasks = simulatedBundlesForBlock
-                    .Where(b => bundles.Contains(b.Key))
+                    .Where(b => b.Key.BlockHash == parent.Hash)
+                    .Where(b => bundles.Contains(b.Key.Bundle))
                     .Select(b => b.Value.Task)
                     .ToArray();
 
@@ -309,51 +301,9 @@ namespace Nethermind.Mev.Source
         {
             _blockTree.NewSuggestedBlock -= OnNewBlock;
             _blockTree.NewHeadBlock -= OnNewBlock;
-            
-            if (_finalizationManager != null)
-            {
-                _finalizationManager.BlocksFinalized -= OnBlocksFinalized;
-            }
+            _bundles.Removed -= OnBundleRemoved;
         }
-        
-        private class MevBundleComparer : IComparer<MevBundle>
-        {
-            public static readonly MevBundleComparer Default = new();
-            
-            public int Compare(MevBundle? x, MevBundle? y)
-            {
-                if (ReferenceEquals(x, y)) return 0;
-                if (ReferenceEquals(null, y)) return 1;
-                if (ReferenceEquals(null, x)) return -1;
-            
-                // block number increasing
-                int blockNumberComparison = x.BlockNumber.CompareTo(y.BlockNumber);
-                if (blockNumberComparison != 0) return blockNumberComparison;
-            
-                // min timestamp increasing
-                int minTimestampComparison = x.MinTimestamp.CompareTo(y.MinTimestamp);
-                if (minTimestampComparison != 0) return minTimestampComparison;
-            
-                // max timestamp decreasing
-                int maxTimestampComparison = y.MaxTimestamp.CompareTo(x.MaxTimestamp);
-                if (maxTimestampComparison != 0) return maxTimestampComparison;
 
-                for (int i = 0; i < Math.Max(x.Transactions.Count, y.Transactions.Count); i++)
-                {
-                    Keccak? xHash = x.Transactions.Count > i ? x.Transactions[i].Hash : null;
-                    if (xHash is null) return -1;
-                    
-                    Keccak? yHash = y.Transactions.Count > i ? y.Transactions[i].Hash : null;
-                    if (yHash is null) return 1;
-
-                    int hashComparision = xHash.CompareTo(yHash);
-                    if (hashComparision != 0) return hashComparision;
-                }
-
-                return 0;
-            }
-        }
-        
         protected class SimulatedMevBundleContext : IDisposable
         {
             public SimulatedMevBundleContext(Task<SimulatedMevBundle> task, CancellationTokenSource cancellationTokenSource)

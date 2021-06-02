@@ -31,8 +31,8 @@ namespace Nethermind.Mev.Test
     {
         private BlockingCollection<(MevBundle Bundle, SimulatedMevBundleContext? Context)> _queue = new(new ConcurrentQueue<(MevBundle, SimulatedMevBundleContext?)>());
         
-        public TestBundlePool(IBlockTree blockTree, IBundleSimulator simulator, IBlockFinalizationManager? finalizationManager, ITimestamper timestamper, IMevConfig mevConfig, ILogManager logManager)
-            : base(blockTree, simulator, finalizationManager, timestamper, mevConfig, logManager)
+        public TestBundlePool(IBlockTree blockTree, IBundleSimulator simulator, ITimestamper timestamper, IMevConfig mevConfig, ILogManager logManager)
+            : base(blockTree, simulator, timestamper, mevConfig, logManager)
         {
         }
 

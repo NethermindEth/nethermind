@@ -20,9 +20,9 @@ using Nethermind.Mev.Data;
 
 namespace Nethermind.Mev.Source
 {
-    public class CompareMevBundleByIdentity : IComparer<MevBundle>
+    public class CompareMevBundleByHash : IComparer<MevBundle>
     {
-        public static readonly CompareMevBundleByIdentity Default = new();
+        public static readonly CompareMevBundleByHash Default = new();
         
         public int Compare(MevBundle? x, MevBundle? y)
         {

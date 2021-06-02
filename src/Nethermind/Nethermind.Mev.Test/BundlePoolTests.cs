@@ -46,62 +46,61 @@ namespace Nethermind.Mev.Test
         {
             get
             {
-                yield return new BundleTest(8, DefaultTimestamp, 0, 4, null);
-                yield return new BundleTest(9, DefaultTimestamp, 1, 5, null);
+                yield return new BundleTest(8, DefaultTimestamp, 0, 4);
+                yield return new BundleTest(9, DefaultTimestamp, 1, 5);
                 yield return new BundleTest(10, 8, 0, 2, 
-                    p => p.AddBundle(new MevBundle(Array.Empty<Transaction>(), 10, 5, 7)));
-                yield return new BundleTest(11, DefaultTimestamp, 0, 2, null);
-                yield return new BundleTest(12, DefaultTimestamp, 1, 2, null);
-                yield return new BundleTest(13, DefaultTimestamp, 0, 1, null);
-                yield return new BundleTest(14, DefaultTimestamp, 0, 1, null);
-                yield return new BundleTest(15, DefaultTimestamp, 1, 1, null);
-                yield return new BundleTest(16, DefaultTimestamp, 0, 0, null);
+                    p => p.AddBundle(new MevBundle(10, Array.Empty<Transaction>(), 5, 7)));
+                yield return new BundleTest(11, DefaultTimestamp, 0, 2);
+                yield return new BundleTest(12, DefaultTimestamp, 1, 2);
+                yield return new BundleTest(13, DefaultTimestamp, 0, 1);
+                yield return new BundleTest(14, DefaultTimestamp, 0, 1);
+                yield return new BundleTest(15, DefaultTimestamp, 1, 1);
+                yield return new BundleTest(16, DefaultTimestamp, 0, 0);
             }
         }
         
         [TestCaseSource(nameof(BundleRetrievalTest))]
         public void should_retrieve_right_bundles_from_pool(BundleTest test)
         {
-            BundlePool bundlePool = CreateBundlePool(test.block);
-            if(test.action != null) test.action(bundlePool);
-            List<MevBundle> result = bundlePool.GetBundles(test.block, test.testTimestamp).ToList();
-            result.Count.Should().Be(test.expectedCount);
+            BundlePool bundlePool = CreateBundlePool();
+            if(test.Action != null) test.Action(bundlePool);
+            List<MevBundle> result = bundlePool.GetBundles(test.Block, test.TestTimestamp).ToList();
+            result.Count.Should().Be(test.ExpectedCount);
         }
         
         [TestCaseSource(nameof(BundleRetrievalTest))]
         public void should_retire_bundles_from_pool_after_finalization(BundleTest test)
         {
             IBlockFinalizationManager blockFinalizationManager = Substitute.For<IBlockFinalizationManager>();
-            BundlePool bundlePool = CreateBundlePool(test.block, blockFinalizationManager);
+            BundlePool bundlePool = CreateBundlePool();
             FinalizeEventArgs finalizeEventArgs = new(
-                Build.A.BlockHeader.WithNumber(test.block+1).TestObject, 
-                Build.A.BlockHeader.WithNumber(test.block).TestObject
+                Build.A.BlockHeader.WithNumber(test.Block).TestObject, 
+                Build.A.BlockHeader.WithNumber(test.Block-1).TestObject
             );
             
             blockFinalizationManager.BlocksFinalized += Raise.EventWith(finalizeEventArgs);
-            if(test.action != null) test.action(bundlePool);
-            List<MevBundle> result = bundlePool.GetBundles(test.block, test.testTimestamp).ToList();
-            result.Count.Should().Be(test.expectedCount);
+            if(test.Action != null) test.Action(bundlePool);
+            List<MevBundle> result = bundlePool.GetBundles(test.Block, test.TestTimestamp).ToList();
+            result.Count.Should().Be(test.ExpectedCount);
         }
 
-        private static BundlePool CreateBundlePool(long currentBlock, IBlockFinalizationManager? blockFinalizationManager = null)
+        private static BundlePool CreateBundlePool()
         {
             BundlePool bundlePool = new(
                 Substitute.For<IBlockTree>(),
                 Substitute.For<IBundleSimulator>(),
-                blockFinalizationManager ?? Substitute.For<IBlockFinalizationManager>(),
                 new Timestamper(),
                 new MevConfig(),
                 LimboLogs.Instance);
 
-            bundlePool.AddBundle(new MevBundle(Array.Empty<Transaction>(), 4, 0, 0));
-            bundlePool.AddBundle(new MevBundle(Array.Empty<Transaction>(), 5, 0, 0));
-            bundlePool.AddBundle(new MevBundle(Array.Empty<Transaction>(), 6, 0, 0));
-            bundlePool.AddBundle(new MevBundle(Array.Empty<Transaction>(), 9, 0, 0));
-            bundlePool.AddBundle(new MevBundle(Array.Empty<Transaction>(), 9, 0, long.MaxValue));
-            bundlePool.AddBundle(new MevBundle(Array.Empty<Transaction>(), 9, 0, DefaultTimestamp - 1));
-            bundlePool.AddBundle(new MevBundle(Array.Empty<Transaction>(), 12, 0, 0));
-            bundlePool.AddBundle(new MevBundle(Array.Empty<Transaction>(), 15, 0, 0));
+            bundlePool.AddBundle(new MevBundle(4, Array.Empty<Transaction>(), 0, 0));
+            bundlePool.AddBundle(new MevBundle(5, Array.Empty<Transaction>(), 0, 0));
+            bundlePool.AddBundle(new MevBundle(6, Array.Empty<Transaction>(), 0, 0));
+            bundlePool.AddBundle(new MevBundle(9, Array.Empty<Transaction>(), 0, 0));
+            bundlePool.AddBundle(new MevBundle(9, Array.Empty<Transaction>(), 0, long.MaxValue));
+            bundlePool.AddBundle(new MevBundle(9, Array.Empty<Transaction>(), 0, DefaultTimestamp - 1));
+            bundlePool.AddBundle(new MevBundle(12, Array.Empty<Transaction>(), 0, 0));
+            bundlePool.AddBundle(new MevBundle(15, Array.Empty<Transaction>(), 0, 0));
             
             return bundlePool;
         }
@@ -110,13 +109,12 @@ namespace Nethermind.Mev.Test
         [Test]
         public static void should_add_bundle_with_correct_timestamps()
         {
-            ITimestamper timestamper = new ManualTimestamper(new DateTime(2021, 1, 1)); //this needs to be 1970?
+            ITimestamper timestamper = new ManualTimestamper(new DateTime(2021, 1, 1));
             ulong timestamp = timestamper.UnixTime.Seconds;
             
             BundlePool bundlePool = new(
                 Substitute.For<IBlockTree>(),
                 Substitute.For<IBundleSimulator>(),
-                null,
                 timestamper,
                 new MevConfig(),
                 LimboLogs.Instance);
@@ -124,10 +122,10 @@ namespace Nethermind.Mev.Test
             Transaction[] txs = Array.Empty<Transaction>();
             MevBundle[] bundles = new []
             {
-                new MevBundle(txs, 1, 0, 0), //should get added
-                new MevBundle(txs, 2, 5, 0), //should not get added, min > max
-                new MevBundle(txs, 3,  timestamp + 50, timestamp + 100), //should get added
-                new MevBundle(txs, 4,  timestamp + 4000, timestamp + 5000), //should not get added, min time too large
+                new MevBundle(1, txs, 0, 0), //should get added
+                new MevBundle(2, txs, 5, 0), //should not get added, min > max
+                new MevBundle(3,  txs, timestamp + 50, timestamp + 100), //should get added
+                new MevBundle(4,  txs, timestamp + 4000, timestamp + 5000), //should not get added, min time too large
                 
             };
 
@@ -249,7 +247,7 @@ namespace Nethermind.Mev.Test
             }*/
         }
         
-        public record BundleTest(long block, ulong testTimestamp, int expectedCount, int expectedRemaining, Action<BundlePool>? action);
+        public record BundleTest(long Block, ulong TestTimestamp, int ExpectedCount, int ExpectedRemaining, Action<BundlePool>? Action = null);
         
     }
 }
