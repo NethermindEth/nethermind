@@ -339,15 +339,6 @@ namespace Nethermind.Clique.Test
                     throw;
                 }
             }
-
-            public On GetHead(PrivateKey nodeKey)
-            {
-                if (_logger.IsInfo) _logger.Info($"GETTING THE HEAD {nodeKey.Address}");
-                _blockTrees[nodeKey].SuggestBlock(GetGenesis());
-                _blockEvents[nodeKey].WaitOne(_timeout);
-                return this;
-            }
-
             public On AssertHeadBlockParentIs(PrivateKey nodeKey, Keccak hash)
             {
                 if (_logger.IsInfo) _logger.Info($"ASSERTING HEAD PARENT HASH ON {nodeKey.Address}");
@@ -367,8 +358,7 @@ namespace Nethermind.Clique.Test
             {
                 WaitForNumber(nodeKey, number);
                 if (_logger.IsInfo) _logger.Info($"ASSERTING HEAD BLOCK IS BLOCK {number} ON {nodeKey.Address}");
-                Assert.AreEqual(number, _blockTrees[nodeKey].Head.Number, nodeKey.Address + " head number");
-                Assert.AreEqual(number, _blockTrees[nodeKey].Head.Number, nodeKey.Address + " head number");
+                Assert.AreEqual(transactionCount, _blockTrees[nodeKey].Head.Transactions.Length, nodeKey.Address + $" transaction count should be equal {transactionCount} for block number {number}");
                 return this;
             }
 
@@ -620,7 +610,6 @@ namespace Nethermind.Clique.Test
                 .CreateNode(TestItem.PrivateKeyA)
                 .AddTransactionWithGasLimitToHigh(TestItem.PrivateKeyA)
                 .ProcessGenesis()
-                .AssertHeadBlockIs(TestItem.PrivateKeyA, 1)
                 .AssertTransactionCount(TestItem.PrivateKeyA, 1, 0)
                 .StopNode(TestItem.PrivateKeyA);
         }
