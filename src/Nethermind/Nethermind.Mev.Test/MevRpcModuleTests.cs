@@ -134,12 +134,13 @@ namespace Nethermind.Mev.Test
             return result.Data;
         }
         
-        private void SuccessfullySendBundle(TestMevRpcBlockchain chain, int blockNumber, params Transaction[] txs)
+        private MevBundle SuccessfullySendBundle(TestMevRpcBlockchain chain, int blockNumber, params Transaction[] txs)
         {
             byte[][] bundleBytes = txs.Select(t => Rlp.Encode(t).Bytes).ToArray();
             ResultWrapper<bool> resultOfBundle = chain.MevRpcModule.eth_sendBundle(bundleBytes, blockNumber);
             resultOfBundle.GetResult().ResultType.Should().NotBe(ResultType.Failure);
             resultOfBundle.GetData().Should().Be(true);
+            return new MevBundle(blockNumber, txs, default, default, null);
         }
         
         private MevBundle SuccessfullySendBundleWithRevertingTxHashes(TestMevRpcBlockchain chain, int blockNumber, Keccak[] revertingTxHashes = null, params Transaction[] txs)
@@ -314,11 +315,12 @@ namespace Nethermind.Mev.Test
             Transaction poolTx1 = Build.A.Transaction.WithGasLimit(GasCostOf.Transaction).WithGasPrice(100ul).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
             Transaction poolTx2 = Build.A.Transaction.WithGasLimit(GasCostOf.Transaction).WithGasPrice(50ul).SignedAndResolved(TestItem.PrivateKeyC).TestObject;
 
-            SuccessfullySendBundle(chain, 2, bundleTx);
+            MevBundle bundle = SuccessfullySendBundle(chain, 2, bundleTx);
             await SendSignedTransaction(chain, poolTx1);
             await chain.AddBlock(true);
             GetHashes(chain.BlockTree.Head!.Transactions).Should().Equal(GetHashes(new[] { poolTx1 }));
 
+            await chain.BundlePool.WaitForSimulationToStart(bundle, CancellationToken.None);
             await SendSignedTransaction(chain, poolTx2);
             await chain.AddBlock(true);
             GetHashes(chain.BlockTree.Head!.Transactions).Should().Equal(GetHashes(new[] { bundleTx, poolTx2 }));
