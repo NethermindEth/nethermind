@@ -367,7 +367,7 @@ namespace Nethermind.Blockchain.Test.TxPools
             
             Transaction tx = Build.A.Transaction
                 .WithType(TxType.EIP1559)
-                .WithFeeCap(20)
+                .WithMaxFeePerGas(20)
                 .WithMaxPriorityFeePerGas((UInt256)gasPremium)
                 .WithChainId(ChainId.Mainnet)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;

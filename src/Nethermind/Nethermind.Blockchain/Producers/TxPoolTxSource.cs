@@ -113,7 +113,7 @@ namespace Nethermind.Blockchain.Producers
                     return false;
                 }
 
-                if (transaction.IsEip1559 && !transaction.IsFree() && balance < (UInt256)transaction.GasLimit * transaction.MaxFeePerGas)
+                if (transaction.IsEip1559 && !transaction.IsServiceTransaction && balance < (UInt256)transaction.GasLimit * transaction.MaxFeePerGas)
                 {
                     if (_logger.IsDebug)
                         _logger.Debug(
