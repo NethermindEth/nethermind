@@ -347,7 +347,7 @@ namespace Nethermind.Mev.Test
         }
 
         [Test]
-        public async Task Should_not_include_bundles_by_eligible_gas_fee()
+        public async Task Should_include_bundles_by_eligible_gas_fee()
         {
             var chain = await CreateChain(2);
             chain.GasLimitCalculator.GasLimit = 10_000_000;
