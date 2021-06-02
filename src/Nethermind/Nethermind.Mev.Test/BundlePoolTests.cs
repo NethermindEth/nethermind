@@ -154,7 +154,7 @@ namespace Nethermind.Mev.Test
             int capacity = 5;
             mevConfig.BundlePoolSize = capacity; //creating capacity of 10
             
-            BundlePool txPool = new BundlePool(
+            BundlePool bundlePool = new BundlePool(
                 blockTreeSub,
                 Substitute.For<IBundleSimulator>(),
                 null, 
@@ -171,11 +171,11 @@ namespace Nethermind.Mev.Test
                 bundleTest.Add(newBundle);
             }
 
-            MevBundle aheadOf1 = new MevBundle(txs, 1, 10, 20);
+            MevBundle aheadOf1 = new MevBundle(txs, timestamp + 100, 10, 20);
             bundleTest.Add(aheadOf1);
 
             MevBundle aheadOf4 = new MevBundle(txs, 4, 5, 10); 
-            bundleTest.Add(aheadOf1);
+            bundleTest.Add(aheadOf4);
             
             //if not greater than capacity, don't do anything
             //if greater than capacity, add the bundle; if the bundle is at the end, expect false from add Bundle; else expect true 
@@ -187,7 +187,7 @@ namespace Nethermind.Mev.Test
                 if (count < capacity && !bundleHashInBundleList) //if we don't have any dups and we are not at capacity, add the bundle
                 {
                     bundleList.Add(bundle, bundle);
-                    txPool.AddBundle(bundle).Should().Be(true);
+                    bundlePool.AddBundle(bundle).Should().Be(true);
                 }
                 else if (bundleHashInBundleList) //if two blocks have same hash, keep one with lower min timestamp
                 {
@@ -199,15 +199,18 @@ namespace Nethermind.Mev.Test
                         bundleOut = b;
                         break;
                     }
-                    if (bundleOut?.MinTimestamp < bundle.MinTimestamp) 
+                    if ((bundleOut?.MinTimestamp < bundle.MinTimestamp) &&
+                        (bundleOut?.MaxTimestamp > timestamp) && 
+                        (bundle.MinTimestamp <= bundle.MaxTimestamp) && 
+                        (bundle.MinTimestamp >= timestamp + mevConfig.BundleHorizon)) //don't need to check for 0 because we are only replacing if min timestamp higher and lowest number is already 0 
                     {
                         bundleList.Remove(bundleOut);
                         bundleList.Add(bundle, bundle);
-                        txPool.AddBundle(bundle).Should().Be(true);
+                        bundlePool.AddBundle(bundle).Should().Be(true);
                     }
                     else
                     {
-                        txPool.AddBundle(bundle).Should().Be(false); 
+                        bundlePool.AddBundle(bundle).Should().Be(false); 
                     }
                 }
                 else //if bundle is the lowest of the current elements, and we are at capacity, don't add it
@@ -215,11 +218,11 @@ namespace Nethermind.Mev.Test
                     bundleList.Add(bundle, bundle);
                     if (bundleList.IndexOfKey(bundle) == (bundleList.Count - 1))
                     {
-                        txPool.AddBundle(bundle).Should().Be(false);
+                        bundlePool.AddBundle(bundle).Should().Be(false);
                     }
                     else
                     {
-                        txPool.AddBundle(bundle).Should().Be(true);
+                        bundlePool.AddBundle(bundle).Should().Be(true);
                     }
                     bundleList.RemoveAt(bundleList.Count - 1);
                 }

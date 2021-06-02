@@ -146,14 +146,14 @@ namespace Nethermind.Mev.Source
             return false;
         }
 
-        private bool ValidateBundle(MevBundle bundle)
+        private bool ValidateBundle(MevBundle bundle, UInt256? currentTimestamp = null)
         {
             if (_finalizationManager?.IsFinalized(bundle.BlockNumber) == true)
             {
                 return false;
             }
 
-            UInt256 currentTimestamp = _timestamper.UnixTime.Seconds;
+            currentTimestamp ??= _timestamper.UnixTime.Seconds;
 
             if (bundle.MaxTimestamp < bundle.MinTimestamp)
             {

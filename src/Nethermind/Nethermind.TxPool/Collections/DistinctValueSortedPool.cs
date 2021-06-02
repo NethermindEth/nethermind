@@ -88,7 +88,10 @@ namespace Nethermind.TxPool.Collections
                     {
                         _logger.Trace($"Cannot insert {nameof(TValue)} {value}, its not distinct and not higher than old {nameof(TValue)} {oldKvp.Value}.");
                     }
-
+                    else if (isHigher) //removing old MevBundle if new MevBundle is better
+                    {
+                        base.TryRemove(oldKvp.Key);
+                    }
                     return isHigher;
                 }
 
