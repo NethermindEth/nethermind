@@ -1,5 +1,7 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
+using System.IO.Pipelines;
 using System.Linq;
 using Antlr4.Runtime;
 using Antlr4.Runtime.Tree;
@@ -20,12 +22,16 @@ namespace Nethermind.Dsl.ANTLR
         private readonly INethermindApi _api;
         private readonly IParseTree _tree;
         private readonly ParseTreeListener _treeListener;
-        private IPipelineBuilder<Block, Block> _blockPipelineBuilder;
-        private IPipelineBuilder<Transaction, Transaction> _transactionPipelineBuilder;
         private readonly ParseTreeWalker _parseTreeWalker;
-        private bool _blockSource;
+        private PipelineSource _pipelineSource;
         private readonly ILogger _logger;
 
+        // pipelines builders for each flow
+        private IPipelineBuilder<Block, Block> _blocksPipelineBuilder;
+        private IPipelineBuilder<Transaction, Transaction> _transactionsPipelineBuilder;
+        private IPipelineBuilder<TxReceipt, TxReceipt> _eventsPipelineBuilder;
+        private IPipelineBuilder<Transaction, Transaction> _pendingTransactionsPipelineBuilder;
+        
         public Interpreter(INethermindApi api, string script)
         {
             _api = api ?? throw new ArgumentNullException(nameof(api));
@@ -34,13 +40,15 @@ namespace Nethermind.Dsl.ANTLR
             var inputStream = new AntlrInputStream(script);
             var lexer = new DslGrammarLexer(inputStream);
             var tokens = new CommonTokenStream(lexer);
-            var parser = new DslGrammarParser(tokens);
-            parser.BuildParseTree = true;
+            var parser = new DslGrammarParser(tokens)
+            {
+                BuildParseTree = true
+            };
+            
             _tree = parser.tree();
 
             _treeListener = new ParseTreeListener();
 
-            _treeListener.OnSourceExpression = AddSource;
             _treeListener.OnWatchExpression = AddWatch;
             _treeListener.OnCondition = AddCondition;
             _treeListener.OnAndCondition = AddAndCondition;
@@ -51,47 +59,56 @@ namespace Nethermind.Dsl.ANTLR
             _parseTreeWalker.Walk(_treeListener, _tree);
         }
 
-        private void AddSource(string value)
-        {
-        }
-
         private void AddWatch(string value)
         {
             switch (value.ToLowerInvariant())
             {
                 case "blocks":
                     var blocksSource = new BlocksSource<Block>(_api.MainBlockProcessor, _logger);
-                    _blockPipelineBuilder = new PipelineBuilder<Block, Block>(blocksSource);
-                    _blockSource = true;
-
+                    _blocksPipelineBuilder = new PipelineBuilder<Block, Block>(blocksSource);
+                    _pipelineSource = PipelineSource.Blocks;
+                    
+                    break;
+                case "events":
+                    var eventSource = new EventsSource<TxReceipt>(_api.MainBlockProcessor);
+                    _eventsPipelineBuilder = new PipelineBuilder<TxReceipt, TxReceipt>(eventSource);
+                    _pipelineSource = PipelineSource.Events;
+                    
                     break;
                 case "transactions":
                     var processedTransactionsSource = new ProcessedTransactionsSource<Transaction>(_api.MainBlockProcessor);
-                    _transactionPipelineBuilder = new PipelineBuilder<Transaction, Transaction>(processedTransactionsSource);
-                    _blockSource = false;
-
+                    _transactionsPipelineBuilder = new PipelineBuilder<Transaction, Transaction>(processedTransactionsSource);
+                    _pipelineSource = PipelineSource.Transactions;
+                    
                     break;
                 case "newpending":
-                    // with watch on transactions we need to change for transactions pipeline, hence new source
                     var pendingTransactionsSource = new PendingTransactionsSource<Transaction>(_api.TxPool);
-                    _transactionPipelineBuilder = new PipelineBuilder<Transaction, Transaction>(pendingTransactionsSource);
-
-                    _blockSource = false;
+                    _pendingTransactionsPipelineBuilder = new PipelineBuilder<Transaction, Transaction>(pendingTransactionsSource);
+                    _pipelineSource = PipelineSource.PendingTransactions;
+                    
                     break;
             }
         }
 
         private void AddCondition(string key, string symbol, string value)
         {
-            if(_blockSource)
+            switch (_pipelineSource)
             {
-                var blockElement = GetNextBlockElement(key, symbol, value);
-                _blockPipelineBuilder = _blockPipelineBuilder.AddElement(blockElement);
-                return;
+                case PipelineSource.Blocks:
+                    PipelineElement<Block, Block> blockElement = GetNextBlockElement(key, symbol, value);
+                    _blocksPipelineBuilder = _blocksPipelineBuilder.AddElement(blockElement); 
+                    break;
+                case PipelineSource.Transactions:
+                    PipelineElement<Transaction, Transaction> txElement = GetNextTransactionElement(key, symbol, value);
+                    _transactionsPipelineBuilder = _transactionsPipelineBuilder.AddElement(txElement);
+                    break;
+                case PipelineSource.PendingTransactions:
+                    PipelineElement<Transaction, Transaction> pendingTxElement = GetNextTransactionElement(key, symbol, value);
+                    _transactionsPipelineBuilder = _transactionsPipelineBuilder.AddElement(pendingTxElement);
+                    break;
+                case PipelineSource.Events:
+                    PipelineElement<TxReceipt, TxReceipt> eventElement = GetNextEventElement(key, symbol, value);
             }
-
-            var txElement = GetNextTransactionElement(key, symbol, value);
-            _transactionPipelineBuilder = _transactionPipelineBuilder.AddElement(txElement);
         }
 
         private void AddAndCondition(string key, string symbol, string value)
@@ -123,26 +140,26 @@ namespace Nethermind.Dsl.ANTLR
             return operation switch
             {
                 "==" => new PipelineElement<Transaction, Transaction>(
-                            condition: (t => t.GetType().GetProperty(key).GetValue(t).ToString() == value),
-                            transformData: (t => t), _logger),
+                            condition: (t => t.GetType().GetProperty(key)?.GetValue(t)?.ToString() == value),
+                            transformData: (t => t)),
                 "!=" => new PipelineElement<Transaction, Transaction>(
-                            condition: (t => t.GetType().GetProperty(key).GetValue(t).ToString() != value),
-                            transformData: (t => t), _logger),
+                            condition: (t => t.GetType().GetProperty(key)?.GetValue(t)?.ToString() != value),
+                            transformData: (t => t)),
                 ">" => new PipelineElement<Transaction, Transaction>(
-                            condition: (t => (UInt256)t.GetType().GetProperty(key).GetValue(t) > UInt256.Parse(value)),
-                            transformData: (t => t), _logger),
+                            condition: (t => (UInt256)t.GetType().GetProperty(key)?.GetValue(t) > UInt256.Parse(value)),
+                            transformData: (t => t)),
                 "<" => new PipelineElement<Transaction, Transaction>(
-                            condition: (t => (UInt256)t.GetType().GetProperty(key).GetValue(t) < UInt256.Parse(value)),
-                            transformData: (t => t), _logger),
+                            condition: (t => (UInt256)t.GetType().GetProperty(key)?.GetValue(t) < UInt256.Parse(value)),
+                            transformData: (t => t)),
                 ">=" => new PipelineElement<Transaction, Transaction>(
-                            condition: (t => (UInt256)t.GetType().GetProperty(key).GetValue(t) >= UInt256.Parse(value)),
-                            transformData: (t => t), _logger),
+                            condition: (t => (UInt256)t.GetType().GetProperty(key)?.GetValue(t) >= UInt256.Parse(value)),
+                            transformData: (t => t)),
                 "<=" => new PipelineElement<Transaction, Transaction>(
-                            condition: (t => (UInt256)t.GetType().GetProperty(key).GetValue(t) <= UInt256.Parse(value)),
-                            transformData: (t => t), _logger),
+                            condition: (t => (UInt256)t.GetType().GetProperty(key)?.GetValue(t) <= UInt256.Parse(value)),
+                            transformData: (t => t)),
                 "CONTAINS" => new PipelineElement<Transaction, Transaction>(
-                            condition: (t => Bytes.ToHexString(t.GetType().GetProperty(key).GetValue(t) as byte[]).Contains(value)),
-                            transformData: (t => t), _logger), 
+                            condition: (t => (t.GetType().GetProperty(key)?.GetValue(t) as byte[]).ToHexString().Contains(value)),
+                            transformData: (t => t)), 
                 _ => null
             };
         }
@@ -152,23 +169,43 @@ namespace Nethermind.Dsl.ANTLR
             return operation switch
             {
                 "==" => new PipelineElement<Block, Block>(
-                            condition: (b => b.GetType().GetProperty(key).GetValue(b).ToString() == value),
-                            transformData: (b => b), _logger),
+                            condition: (b => b.GetType().GetProperty(key)?.GetValue(b)?.ToString() == value),
+                            transformData: (b => b)),
                 "!=" => new PipelineElement<Block, Block>(
-                            condition: (b => b.GetType().GetProperty(key).GetValue(b).ToString() != value),
-                            transformData: (b => b), _logger),
+                            condition: (b => b.GetType().GetProperty(key)?.GetValue(b)?.ToString() != value),
+                            transformData: (b => b)),
                 ">" => new PipelineElement<Block, Block>(
-                            condition: (b => (UInt256)b.GetType().GetProperty(key).GetValue(b) > UInt256.Parse(value)),
-                            transformData: (b => b), _logger),
+                            condition: (b => (UInt256)b.GetType().GetProperty(key)?.GetValue(b) > UInt256.Parse(value)),
+                            transformData: (b => b)),
                 "<" => new PipelineElement<Block, Block>(
-                            condition: (b => (UInt256)b.GetType().GetProperty(key).GetValue(b) < UInt256.Parse(value)),
-                            transformData: (b => b), _logger),
+                            condition: (b => (UInt256)b.GetType().GetProperty(key)?.GetValue(b) < UInt256.Parse(value)),
+                            transformData: (b => b)),
                 ">=" => new PipelineElement<Block, Block>(
-                            condition: (b => (UInt256)b.GetType().GetProperty(key).GetValue(b) >= UInt256.Parse(value)),
-                            transformData: (b => b), _logger),
+                            condition: (b => (UInt256)b.GetType().GetProperty(key)?.GetValue(b) >= UInt256.Parse(value)),
+                            transformData: (b => b)),
                 "<=" => new PipelineElement<Block, Block>(
-                            condition: (b => (UInt256)b.GetType().GetProperty(key).GetValue(b) <= UInt256.Parse(value)),
-                            transformData: (b => b), _logger),
+                            condition: (b => (UInt256)b.GetType().GetProperty(key)?.GetValue(b) <= UInt256.Parse(value)),
+                            transformData: (b => b)),
+                _ => null
+            };
+        }
+
+        private PipelineElement<TxReceipt, TxReceipt> GetNextEventElement(string key, string operation, string value)
+        {
+            return operation switch
+            {
+                "IS" => new PipelineElement<TxReceipt, TxReceipt>(
+                    condition: (t => t.GetType().GetProperty(key)?.GetValue(t)?.ToString() == value),
+                    transformData: (t => t)),
+                "==" => new PipelineElement<TxReceipt, TxReceipt>(
+                    condition: (t => t.GetType().GetProperty(key)?.GetValue(t)?.ToString() == value),
+                    transformData: (t => t)),
+                "IS NOT" => new PipelineElement<TxReceipt, TxReceipt>(
+                    condition: (t => t.GetType().GetProperty(key)?.GetValue(t)?.ToString() != value),
+                    transformData: (t => t)),
+                "!=" => new PipelineElement<TxReceipt, TxReceipt>(
+                    condition: (t => t.GetType().GetProperty(key)?.GetValue(t)?.ToString() != value),
+                    transformData: (t => t)),
                 _ => null
             };
         }

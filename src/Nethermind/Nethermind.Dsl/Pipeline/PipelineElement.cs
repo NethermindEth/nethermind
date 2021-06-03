@@ -13,13 +13,11 @@ namespace Nethermind.Dsl.Pipeline
         public List<Func<TIn, bool>> Conditions { get => _conditions; }
         private List<Func<TIn, bool>> _conditions;
         private Func<TIn, TOut> _transformData;
-        private readonly ILogger _logger;
 
-        public PipelineElement(Func<TIn, bool> condition, Func<TIn, TOut> transformData, ILogger logger)
+        public PipelineElement(Func<TIn, bool> condition, Func<TIn, TOut> transformData)
         {
             _conditions = new List<Func<TIn, bool>> { condition } ?? throw new ArgumentNullException(nameof(condition));
             _transformData = transformData ?? throw new ArgumentNullException(nameof(transformData));
-            _logger = logger;
         }
 
         public void SubscribeToData(TIn data)

@@ -11,7 +11,7 @@ using Nethermind.Serialization.Json;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
-using NUnit.Framework.Internal;
+using ILogger = Nethermind.Logging.ILogger;
 
 namespace Nethermind.Pipeline.Tests
 {
@@ -72,7 +72,7 @@ namespace Nethermind.Pipeline.Tests
         {
             var sourceElement = new TxPoolPipelineSource<Transaction>(_txPool);
             var element = new TxPoolPipelineElement<Transaction, Transaction>();
-            var publisher = new WebSocketsPublisher<Transaction, Transaction>("testPublisher", Substitute.For<IJsonSerializer>());
+            var publisher = new WebSocketsPublisher<Transaction, Transaction>("testPublisher", Substitute.For<IJsonSerializer>(), Substitute.For<ILogger>());
 
             var mockWebSocket = Substitute.For<WebSocket>();
             mockWebSocket.State.Returns(WebSocketState.Open);

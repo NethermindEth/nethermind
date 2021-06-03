@@ -16,16 +16,11 @@ namespace Nethermind.Dsl.Pipeline
             _txPool.NewPending += OnNewPending;
         }
 
-        public Action<TOut> Emit { private get; set; }
+        public Action<TOut>? Emit { private get; set; }
 
         private void OnNewPending(object? sender, TxEventArgs args)
         {
-            if(Emit == null)
-            {
-                return; 
-            }
-
-            Emit((TOut)args.Transaction);
+            Emit?.Invoke((TOut)args.Transaction);
         }
     }
 }

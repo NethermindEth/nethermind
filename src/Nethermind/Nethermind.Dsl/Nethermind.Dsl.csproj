@@ -5,7 +5,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Content Include="DSL\**" CopyToPublishDirectory="PreserveNewest"/>
+    <Content Include="DSL\**" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>
@@ -16,7 +16,5 @@
     <ProjectReference Include="..\Nethermind.Api\Nethermind.Api.csproj" />
     <ProjectReference Include="..\Nethermind.Pipeline\Nethermind.Pipeline.csproj" />
   </ItemGroup>
-
-
 
 </Project>

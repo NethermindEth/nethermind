@@ -6,6 +6,7 @@ namespace Nethermind.Pipeline
     {
         private readonly Stack<IPipelineElement> _elements; 
         private readonly IPipelineElement<TOutput> _lastElement;
+
         public IPipelineElement LastElement => _lastElement;
         
         public PipelineBuilder(IPipelineElement<TOutput> sourceElement)
@@ -21,16 +22,17 @@ namespace Nethermind.Pipeline
             _elements = new Stack<IPipelineElement>(elements);
             _elements.Push(element);
         }
-
+        
         public IPipelineBuilder<TSource, TOut> AddElement<TOut>(IPipelineElement<TOutput, TOut> element)
         {
             _lastElement.Emit = element.SubscribeToData;
             return new PipelineBuilder<TSource, TOut>(element, _elements);
         }
-
+        
         public IPipeline Build()
         {
             return new Pipeline(_elements);
         }
+
     }
 }

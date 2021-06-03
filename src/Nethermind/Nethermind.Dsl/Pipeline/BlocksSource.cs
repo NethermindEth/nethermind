@@ -19,18 +19,11 @@ namespace Nethermind.Dsl.Pipeline
            _logger = logger;
         }
 
-        public Action<TOut> Emit { private get; set; }
+        public Action<TOut>? Emit { private get; set; }
 
-        public void OnBlockProcessed(object? sender, BlockProcessedEventArgs args)
+        private void OnBlockProcessed(object? sender, BlockProcessedEventArgs args)
         {
-            if(Emit == null)
-            {
-                return;
-            }
-
-            if(_logger.IsInfo) _logger.Info($"Sending new block to the pipeline. Hash: {args.Block.Hash}, Author: {args.Block.Author}"); 
-
-            Emit((TOut)args.Block);
+            Emit?.Invoke((TOut)args.Block);
         }
     }
 }
