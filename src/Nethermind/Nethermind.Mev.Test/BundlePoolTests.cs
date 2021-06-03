@@ -181,6 +181,14 @@ namespace Nethermind.Mev.Test
         public static void should_simulate_bundle_when_head_moves()
         {
             // See if simulate gets any returns upon addition of new block to head
+            TestContext testContext = new TestContext();
+            int head = 4;
+            testContext.BlockTree.NewHeadBlock += Raise.EventWith(new BlockEventArgs(Build.A.Block.WithNumber(head++).TestObject));
+            testContext.Simulator.ReceivedWithAnyArgs(1).Simulate((MevBundle) default, default, default);
+            testContext.BlockTree.NewHeadBlock += Raise.EventWith(new BlockEventArgs(Build.A.Block.WithNumber(head).TestObject));
+            testContext.Simulator.ReceivedWithAnyArgs(1).Simulate((MevBundle) default, default, default);
+            head = 8;
+            testContext.Simulator.ReceivedWithAnyArgs(3).Simulate((MevBundle) default, default, default);
         }
         
         [Test]
@@ -210,16 +218,19 @@ namespace Nethermind.Mev.Test
             ITimestamper timestamper = new ManualTimestamper(DateTime.UnixEpoch.AddSeconds(1));
             ISimulatedBundleSource simulatedBundleSource = tc.BundlePool;
             BlockHeader blockHeader = Build.A.BlockHeader.WithNumber(8).TestObject; 
-            IEnumerable<SimulatedMevBundle> taskBundles = await simulatedBundleSource!.GetBundles(blockHeader, 
-                timestamper.UnixTime.Seconds, 0, CancellationToken.None);
+            IEnumerable<SimulatedMevBundle>? taskBundles = await simulatedBundleSource.GetBundles(blockHeader, 
+                timestamper.UnixTime.Seconds, 0, CancellationToken.None);//not returning any bundles
             
-            SimulatedMevBundle searchFor = new (new MevBundle(8, 
+            SimulatedMevBundle searchFor = new (new MevBundle(9, 
                     new[] {Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyB).TestObject}), 0,
                 true, UInt256.Zero, UInt256.Zero, UInt256.Zero);
-            
+
+            int count = taskBundles.Count();
+            SimulatedMevBundle[] simulatedMevBundles = taskBundles.ToArray();
+             
             taskBundles.Should().Contain(searchFor);
             tc.BundlePool.AddBundle(new MevBundle(16, filledArr));
-            taskBundles = simulatedBundleSource!.GetBundles(
+            taskBundles = simulatedBundleSource.GetBundles(
                 blockHeader,
                 timestamper.UnixTime.Seconds,
                 0,
