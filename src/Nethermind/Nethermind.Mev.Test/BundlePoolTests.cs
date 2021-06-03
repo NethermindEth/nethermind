@@ -20,6 +20,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
+using System.Threading.Tasks;
 using Avro.File;
 using FluentAssertions;
 using Microsoft.AspNetCore.Mvc;
@@ -37,6 +38,7 @@ using Nethermind.Mev.Source;
 using Nethermind.Runner.Ethereum.Api;
 using NSubstitute;
 using NSubstitute.Exceptions;
+using NSubstitute.ReturnsExtensions;
 using NUnit.Framework;
 
 namespace Nethermind.Mev.Test
@@ -135,7 +137,7 @@ namespace Nethermind.Mev.Test
         }
         
         [Test]
-        public void should_reject_bundle_on_block_before_head()
+        public void should_reject_bundle_on_block_before_head() //Maybe do this with just seeing which ones make it into bundlePool?
         { 
             Transaction[] filledArr = new Transaction[]
             {
@@ -143,7 +145,6 @@ namespace Nethermind.Mev.Test
                Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).TestObject
             };
             
-            // just set BlockTree.Head to some blockNumber before adding bundle
             TestContext tc = new TestContext();
             Block block = Build.A.Block.WithNumber(16).TestObject;
             tc.BlockTree.Head.Returns(block);
@@ -194,15 +195,45 @@ namespace Nethermind.Mev.Test
         }
         
         [Test]
-        public static void should_remove_simulations_on_eviction()
+        public static void should_remove_simulations_on_eviction() //working on now
         {
             // cast BundlePool to ISimulatedBundleSource and get Bundles
+            //Find out which elements are in bundlePool and check to see that the simulations exist beforehand and are removed after
+            MevConfig mevConfig = new MevConfig();
+            mevConfig.BundlePoolSize = 5;
+            TestContext tc = new(null, mevConfig); //buckets has 6 even if capacity is 5...
+            ITimestamper timestamper = new ManualTimestamper(DateTime.UnixEpoch.AddSeconds(1));
+            ISimulatedBundleSource simulatedBundleSource = tc.BundlePool;
+            
+            IEnumerable<SimulatedMevBundle> taskBundles =
+                simulatedBundleSource!.GetBundles(Build.A.BlockHeader.WithNumber(5).TestObject,  timestamper.UnixTime.Seconds, 0,
+                    CancellationToken.None).Result; //should get block 6
+            //tc.Simulator.Received(3).Returns(4);
+
         }
         
         [Test]
         public static void should_remove_bundle_when_simulation_fails()
         {
+            ITimestamper timestamper = new ManualTimestamper(DateTime.UnixEpoch.AddSeconds(1));
+            Transaction[] filledArr = new Transaction[]
+            {
+               Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyD).TestObject,
+               Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).TestObject
+            };
             
+            TestContext tc = new();
+            tc.BlockTree.Head.ReturnsNull(); //simulation fails when head is null
+            MevBundle newBundle1 = new MevBundle(5, filledArr);
+            MevBundle newBundle2 = new MevBundle(6, filledArr);
+
+            long countBlock5Init = tc.BundlePool.GetBundles(5, timestamper.UnixTime.Seconds).Count();
+            long countBlock6Init = tc.BundlePool.GetBundles(6, timestamper.UnixTime.Seconds).Count();
+            tc.BundlePool.AddBundle(newBundle1);
+            tc.BundlePool.AddBundle(newBundle2);
+            tc.BundlePool.GetBundles(5, timestamper.UnixTime.Seconds).Count().Should().Equals(countBlock5Init);
+            tc.BundlePool.GetBundles(6, timestamper.UnixTime.Seconds).Count().Should().Equals(countBlock6Init);
+
         }
         
         [TestCase(1u, 1)]
@@ -245,7 +276,7 @@ namespace Nethermind.Mev.Test
             public TestContext(ITimestamper? timestamper = null, IMevConfig? config = null)
             {
                 Transaction CreateTransaction(PrivateKey privateKey) => Build.A.Transaction.SignedAndResolved(privateKey).TestObject;
-
+                
                 BundlePool = new(
                     BlockTree,
                     Simulator,
