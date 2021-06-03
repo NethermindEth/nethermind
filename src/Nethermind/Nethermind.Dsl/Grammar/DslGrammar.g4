@@ -11,7 +11,7 @@ andCondition : AND condition ;
 orCondition : OR condition ;
 
 BOOLEAN_OPERATOR : ARITHMETIC_SYMBOL | CONTAINS ;
-ARITHMETIC_SYMBOL : '==' | '!=' | '<' | '>' | '<=' | '>=' ;
+ARITHMETIC_SYMBOL : '==' | '!=' | '<' | '>' | '<=' | '>=' | IS | NOT ;
 
 SOURCE : 'SOURCE' ;
 WATCH : 'WATCH' ;
@@ -20,6 +20,8 @@ PUBLISH : 'PUBLISH' ;
 AND : 'AND' ;
 OR : 'OR' ;
 CONTAINS : 'CONTAINS' ;
+IS: 'IS' ;
+NOT: 'NOT' ;
 
 PUBLISH_VALUE : WEBSOCKETS | LOG_PUBLISHER ;
 WEBSOCKETS : 'WebSockets' | 'webSockets' | 'websockets' ;

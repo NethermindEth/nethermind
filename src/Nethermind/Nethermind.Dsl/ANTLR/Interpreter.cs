@@ -1,7 +1,5 @@
 using System;
-using System.Collections;
 using System.Collections.Generic;
-using System.IO.Pipelines;
 using System.Linq;
 using Antlr4.Runtime;
 using Antlr4.Runtime.Tree;
@@ -139,8 +137,11 @@ namespace Nethermind.Dsl.ANTLR
             _logger.Info($"Adding new pipeline element with OPERATION: {operation}");
             return operation switch
             {
+                "IS" => new PipelineElement<Transaction, Transaction>(
+                            condition: (t => t.GetType().GetProperty(key).GetValue(t).ToString() == value),
+                            transformData: (t => t)),
                 "==" => new PipelineElement<Transaction, Transaction>(
-                            condition: (t => t.GetType().GetProperty(key)?.GetValue(t)?.ToString() == value),
+                            condition: (t => t.GetType().GetProperty(key).GetValue(t).ToString() == value),
                             transformData: (t => t)),
                 "!=" => new PipelineElement<Transaction, Transaction>(
                             condition: (t => t.GetType().GetProperty(key)?.GetValue(t)?.ToString() != value),
