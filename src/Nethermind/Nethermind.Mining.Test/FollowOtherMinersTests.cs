@@ -20,6 +20,7 @@ using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Specs;
 using NUnit.Framework;
 
 namespace Nethermind.Mining.Test
@@ -35,7 +36,8 @@ namespace Nethermind.Mining.Test
         public void Test(long current, long expected)
         {
             BlockHeader header = Build.A.BlockHeader.WithGasLimit(current).TestObject;
-            FollowOtherMiners.Instance.GetGasLimit(header).Should().Be(expected);
+            var followOtherMiners = new FollowOtherMiners(MainnetSpecProvider.Instance);
+            followOtherMiners.GetGasLimit(header).Should().Be(expected);
         }
     }
 }
