@@ -46,13 +46,15 @@ namespace Nethermind.Dsl.ANTLR
 
             _tree = parser.tree();
 
-            _treeListener = new ParseTreeListener();
+            _treeListener = new ParseTreeListener
+            {
+                OnWatchExpression = AddWatch,
+                OnCondition = AddCondition,
+                OnAndCondition = AddAndCondition,
+                OnOrCondition = AddOrCondition,
+                OnPublishExpression = AddPublisher
+            };
 
-            _treeListener.OnWatchExpression = AddWatch;
-            _treeListener.OnCondition = AddCondition;
-            _treeListener.OnAndCondition = AddAndCondition;
-            _treeListener.OnOrCondition = AddOrCondition;
-            _treeListener.OnPublishExpression = AddPublisher;
 
             _parseTreeWalker = new ParseTreeWalker();
             _parseTreeWalker.Walk(_treeListener, _tree);
@@ -103,10 +105,12 @@ namespace Nethermind.Dsl.ANTLR
                     break;
                 case PipelineSource.PendingTransactions:
                     PipelineElement<Transaction, Transaction> pendingTxElement = GetNextTransactionElement(key, symbol, value);
-                    _transactionsPipelineBuilder = _transactionsPipelineBuilder.AddElement(pendingTxElement);
+                    _pendingTransactionsPipelineBuilder = _pendingTransactionsPipelineBuilder.AddElement(pendingTxElement);
                     break;
                 case PipelineSource.Events:
                     PipelineElement<TxReceipt, TxReceipt> eventElement = GetNextEventElement(key, symbol, value);
+                    _eventsPipelineBuilder = _eventsPipelineBuilder.AddElement(eventElement);
+                    break;
             }
         }
 
@@ -118,19 +122,33 @@ namespace Nethermind.Dsl.ANTLR
         private void AddOrCondition(string key, string symbol, string value)
         {
             // OR operation add conditions to the last element in the pipeline
-            if (_blockSource)
+            switch (_pipelineSource)
             {
-                var blockElement = (PipelineElement<Block, Block>) GetNextBlockElement(key, symbol, value);
-                var blockCondition = blockElement.Conditions.Last();
-                var lastBlockElement = (PipelineElement<Block, Block>) _blockPipelineBuilder.LastElement;
-                lastBlockElement.AddCondition(blockCondition);
-                return;
+                case PipelineSource.Blocks:
+                    var blockElement = GetNextBlockElement(key, symbol, value);
+                    var blockCondition = blockElement.Conditions.Last();
+                    var lastBlockElement = (PipelineElement<Block, Block>) _blocksPipelineBuilder.LastElement;
+                    lastBlockElement.AddCondition(blockCondition);
+                    break;
+                case PipelineSource.Transactions:
+                    var txElement = GetNextTransactionElement(key, symbol, value);
+                    var txCondition = txElement.Conditions.Last();
+                    var lastTxElement = (PipelineElement<Transaction, Transaction>) _transactionsPipelineBuilder.LastElement;
+                    lastTxElement.AddCondition(txCondition);
+                    break;
+                case PipelineSource.PendingTransactions:
+                    var pendingTxElement = GetNextTransactionElement(key, symbol, value);
+                    var pendingTxCondition = pendingTxElement.Conditions.Last();
+                    var lastPendingTxElement = (PipelineElement<Transaction, Transaction>) _pendingTransactionsPipelineBuilder.LastElement;
+                    lastPendingTxElement.AddCondition(pendingTxCondition);
+                    break;
+                case PipelineSource.Events:
+                    var eventElement = GetNextEventElement(key, symbol, value);
+                    var eventElementCondition = eventElement.Conditions.Last();
+                    var lastEventElement = (PipelineElement<TxReceipt, TxReceipt>) _eventsPipelineBuilder.LastElement;
+                    lastEventElement.AddCondition(eventElementCondition);
+                    break;
             }
-
-            var txElement = (PipelineElement<Transaction, Transaction>) GetNextTransactionElement(key, symbol, value);
-            var txCondition = txElement.Conditions.Last();
-            var lastTxElement = (PipelineElement<Transaction, Transaction>) _transactionPipelineBuilder.LastElement;
-            lastTxElement.AddCondition(txCondition);
         }
 
         private PipelineElement<Transaction, Transaction> GetNextTransactionElement(string key, string operation, string value)
@@ -214,48 +232,76 @@ namespace Nethermind.Dsl.ANTLR
 
         private void AddPublisher(string publisher, string path)
         {
-            if (_blockSource)
+            switch (_pipelineSource)
             {
-                AddBlockPublisher(publisher, path);
-                return;
+                case PipelineSource.Blocks:
+                    AddBlocksPublisher(publisher, path);
+                    break;
+                case PipelineSource.Transactions:
+                    AddTransactionsPublisher(publisher, path);
+                    break;
+                case PipelineSource.PendingTransactions:
+                    AddPendingTransactionsPublisher(publisher, path);
+                    break;
+                case PipelineSource.Events:
+                    AddEventsPublisher(publisher, path);
+                    break;
             }
-
-            AddTransactionPublisher(publisher, path);
 
             BuildPipeline();
         }
 
-        private void AddBlockPublisher(string publisher, string path)
+        private void AddBlocksPublisher(string publisher, string path)
         {
             if (publisher.Equals("WebSockets", StringComparison.InvariantCultureIgnoreCase))
             {
-                if (_blockPipelineBuilder != null)
+                if (_blocksPipelineBuilder != null)
                 {
                     if (_logger.IsInfo) _logger.Info($"Adding block publisher with path: {path}");
                     var webSocketsPublisher = new WebSocketsPublisher<Block, Block>(path, _api.EthereumJsonSerializer, _logger);
                     _api.WebSocketsManager.AddModule(webSocketsPublisher);
-                    _blockPipelineBuilder = _blockPipelineBuilder.AddElement(webSocketsPublisher);
+                    _blocksPipelineBuilder = _blocksPipelineBuilder.AddElement(webSocketsPublisher);
                 }
             }
 
             BuildPipeline();
         }
 
-        private void AddTransactionPublisher(string publisher, string path)
+        private void AddTransactionsPublisher(string publisher, string path)
         {
             if (publisher.Equals("WebSockets", StringComparison.InvariantCultureIgnoreCase))
             {
-                if (_transactionsPipelineBuilder != null)
-                {
-                    var webSocketsPublisher = new WebSocketsPublisher<Transaction, Transaction>(path, _api.EthereumJsonSerializer, _logger);
-                    _api.WebSocketsManager.AddModule(webSocketsPublisher);
-                    _transactionsPipelineBuilder = _transactionsPipelineBuilder.AddElement(webSocketsPublisher);
-
-                    return;
-                }
+                if (_transactionsPipelineBuilder == null) return;
+                var webSocketsPublisher = new WebSocketsPublisher<Transaction, Transaction>(path, _api.EthereumJsonSerializer, _logger);
+                _api.WebSocketsManager.AddModule(webSocketsPublisher);
+                _transactionsPipelineBuilder = _transactionsPipelineBuilder.AddElement(webSocketsPublisher);
             }
         }
+        
+        private void AddPendingTransactionsPublisher(string publisher, string path)
+        {
+            if (publisher.Equals("WebSockets", StringComparison.InvariantCultureIgnoreCase))
+            {
+                if (_pendingTransactionsPipelineBuilder == null) return;
+                var webSocketsPublisher = new WebSocketsPublisher<Transaction, Transaction>(path, _api.EthereumJsonSerializer, _logger);
+                _api.WebSocketsManager.AddModule(webSocketsPublisher);
+                _pendingTransactionsPipelineBuilder = _pendingTransactionsPipelineBuilder.AddElement(webSocketsPublisher);
+            }
+        }
+        
+        private void AddEventsPublisher(string publisher, string path)
+        {
+            if (publisher.Equals("WebSockets", StringComparison.InvariantCultureIgnoreCase))
+            {
+                if (_eventsPipelineBuilder == null) return;
+                var webSocketsPublisher = new WebSocketsPublisher<TxReceipt, TxReceipt>(path, _api.EthereumJsonSerializer, _logger);
+                _api.WebSocketsManager.AddModule(webSocketsPublisher);
+                _eventsPipelineBuilder = _eventsPipelineBuilder.AddElement(webSocketsPublisher);
 
+                return;
+            }
+        }
+        
         private void BuildPipeline()
         {
             Pipeline = _pipelineSource switch
