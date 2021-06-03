@@ -78,6 +78,8 @@ namespace Nethermind.Mev.Execution
                     eligibleGasFeePayment += tracer.TxFees[i];
                 }
             }
+
+            Metrics.TotalCoinbasePayments += tracer.CoinbasePayments;
             
             return new(bundle, tracer.GasUsed, success, tracer.BundleFee, tracer.CoinbasePayments, eligibleGasFeePayment);
         }

@@ -106,12 +106,14 @@ namespace Nethermind.Mev.Source
 
         public bool AddBundle(MevBundle bundle)
         {
+            Metrics.BundlesReceived++;
             if (ValidateBundle(bundle))
             {
                 bool result = _bundles.TryInsert(bundle, bundle);
 
                 if (result)
                 {
+                    Metrics.ValidBundlesReceived++;
                     if (bundle.BlockNumber == HeadNumber + 1)
                     { 
                         TrySimulateBundle(bundle);
@@ -175,6 +177,8 @@ namespace Nethermind.Mev.Source
         {
             SimulatedMevBundleContext? context = null;
             (MevBundle, Keccak) key = (bundle, parent.Hash!);
+
+            Metrics.BundlesSimulated++;
             
             SimulatedMevBundleContext CreateContext()
             {

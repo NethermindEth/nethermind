@@ -52,13 +52,13 @@ namespace Nethermind.Mev.Test
 {
     public partial class MevRpcModuleTests
     {
-        private Task<TestMevRpcBlockchain> CreateChain(int? maxMergedBundles = null)
+        public static Task<TestMevRpcBlockchain> CreateChain(int? maxMergedBundles = null)
         {
             TestMevRpcBlockchain testMevRpcBlockchain = new(maxMergedBundles);
             return TestRpcBlockchain.ForTest(testMevRpcBlockchain).Build();
         }
-        
-        private class TestMevRpcBlockchain : TestRpcBlockchain
+
+        public class TestMevRpcBlockchain : TestRpcBlockchain
         {
             private readonly int? _maxMergedBundles;
             
