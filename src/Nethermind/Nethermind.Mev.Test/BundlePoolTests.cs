@@ -136,8 +136,27 @@ namespace Nethermind.Mev.Test
         
         [Test]
         public void should_reject_bundle_on_block_before_head()
-        {
+        { 
+            Transaction[] filledArr = new Transaction[]
+            {
+               Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyD).TestObject,
+               Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).TestObject
+            };
+            
             // just set BlockTree.Head to some blockNumber before adding bundle
+            TestContext tc = new TestContext();
+            Block block = Build.A.Block.WithNumber(16).TestObject;
+            tc.BlockTree.Head.Returns(block);
+
+            MevBundle bundleFalse1 = new MevBundle(10, filledArr);
+            MevBundle bundleFalse2 = new MevBundle(15, filledArr);
+            MevBundle bundleTrue1 = new MevBundle(17, filledArr);
+            MevBundle bundleTrue2 = new MevBundle(16, filledArr);
+            
+            tc.BundlePool.AddBundle(bundleFalse1).Should().BeFalse();
+            tc.BundlePool.AddBundle(bundleFalse2).Should().BeFalse();
+            tc.BundlePool.AddBundle(bundleTrue1).Should().BeTrue();
+            tc.BundlePool.AddBundle(bundleTrue2).Should().BeTrue();
         }
 
         [Test]
