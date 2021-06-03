@@ -225,7 +225,8 @@ namespace Nethermind.Mev.Source
 
             Task.Run(() =>
             {
-                IEnumerable<MevBundle> bundles = GetBundles(e.Block.Number + 1, UInt256.MaxValue, UInt256.Zero);
+                UInt256 timestamp = _timestamper.UnixTime.Seconds;
+                IEnumerable<MevBundle> bundles = GetBundles(e.Block.Number + 1, UInt256.MaxValue, timestamp);
                 foreach (MevBundle bundle in bundles)
                 {
                     SimulateBundle(bundle, e.Block.Header);
