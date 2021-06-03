@@ -205,23 +205,26 @@ namespace Nethermind.Mev.Test
                Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyD).TestObject,
                Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).TestObject
             };
-            MevConfig mevConfig = new MevConfig{BundlePoolSize = 5};
-            TestContext tc = new(null, mevConfig); 
-            tc.BlockTree.Head.Returns(Build.A.Block.WithNumber(8).TestObject); //not causing bundles to be simulated
-            ITimestamper timestamper = new ManualTimestamper(DateTime.UnixEpoch.AddSeconds(1));
-            ISimulatedBundleSource simulatedBundleSource = tc.BundlePool; //should we be sorting in descending order by Bundle Number
             
-            IEnumerable<SimulatedMevBundle> taskBundles = await simulatedBundleSource!.GetBundles(Build.A.BlockHeader.WithNumber(5).TestObject, timestamper.UnixTime.Seconds, 0,
-                    CancellationToken.None); //should get block 5
-            SimulatedMevBundle searchFor = new SimulatedMevBundle(
-                new MevBundle(9, new[] {Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyB).TestObject}), 0,
-                true,
-                UInt256.Zero, UInt256.Zero, UInt256.Zero);
+            TestContext tc = new(null, new MevConfig{BundlePoolSize = 5}, 8); 
+            ITimestamper timestamper = new ManualTimestamper(DateTime.UnixEpoch.AddSeconds(1));
+            ISimulatedBundleSource simulatedBundleSource = tc.BundlePool;
+            BlockHeader blockHeader = Build.A.BlockHeader.WithNumber(8).TestObject; 
+            IEnumerable<SimulatedMevBundle> taskBundles = await simulatedBundleSource!.GetBundles(blockHeader, 
+                timestamper.UnixTime.Seconds, 0, CancellationToken.None);
+            
+            SimulatedMevBundle searchFor = new (new MevBundle(8, 
+                    new[] {Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyB).TestObject}), 0,
+                true, UInt256.Zero, UInt256.Zero, UInt256.Zero);
+            
             taskBundles.Should().Contain(searchFor);
             tc.BundlePool.AddBundle(new MevBundle(16, filledArr));
-            taskBundles = await simulatedBundleSource!.GetBundles(Build.A.BlockHeader.WithNumber(5).TestObject, timestamper.UnixTime.Seconds, 0,
-                                CancellationToken.None);
-            taskBundles.Should().NotContain(searchFor);
+            taskBundles = simulatedBundleSource!.GetBundles(
+                blockHeader,
+                timestamper.UnixTime.Seconds,
+                0,
+                CancellationToken.None).Result;
+            taskBundles?.Should().NotContain(searchFor);
             //tc.Simulator.Received(3).Returns(4);
         }
         
@@ -284,10 +287,13 @@ namespace Nethermind.Mev.Test
         
         private class TestContext
         {
-            public TestContext(ITimestamper? timestamper = null, IMevConfig? config = null, int? BlockTreeHead = null)
+            public TestContext(ITimestamper? timestamper = null, IMevConfig? config = null, long? BlockTreeHead = null)
             {
                 Transaction CreateTransaction(PrivateKey privateKey) => Build.A.Transaction.SignedAndResolved(privateKey).TestObject;
-                
+                if (BlockTreeHead != null)
+                {
+                    BlockTree.Head.Returns(Build.A.Block.WithNumber((long) BlockTreeHead).TestObject);
+                }
                 BundlePool = new(
                     BlockTree,
                     Simulator,
@@ -295,10 +301,6 @@ namespace Nethermind.Mev.Test
                     config ?? new MevConfig(),
                     LimboLogs.Instance);
 
-                if (BlockTreeHead == null)
-                {
-                    
-                }
                 Transaction tx1 = CreateTransaction(TestItem.PrivateKeyA);
                 Transaction tx2 = CreateTransaction(TestItem.PrivateKeyB);
                 Transaction tx3 = CreateTransaction(TestItem.PrivateKeyC);
