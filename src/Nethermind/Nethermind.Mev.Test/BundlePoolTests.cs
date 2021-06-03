@@ -22,7 +22,9 @@ using System.Linq;
 using System.Threading;
 using Avro.File;
 using FluentAssertions;
+using Microsoft.AspNetCore.Mvc;
 using Nethermind.Blockchain;
+using Nethermind.Consensus.AuRa.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -111,7 +113,25 @@ namespace Nethermind.Mev.Test
         [Test]
         public void should_reject_bundle_without_transactions()
         {
-            
+           TestContext tc = new();
+           Transaction[] emptyArr = Array.Empty<Transaction>();
+           Transaction[] filledArr = new Transaction[]
+           {
+               Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyD).TestObject,
+               Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).TestObject
+           };
+           
+           //Adding empty transaction array bundles
+           MevBundle bundleNoTx1 = new MevBundle(10, emptyArr);
+           MevBundle bundleNoTx2 = new MevBundle(11, emptyArr);
+           tc.BundlePool.AddBundle(bundleNoTx1).Should().BeFalse();
+           tc.BundlePool.AddBundle(bundleNoTx2).Should().BeFalse();
+           
+           //Same bundles with filled transaction array
+           MevBundle updatedBundle1 = new MevBundle(10, filledArr);
+           MevBundle updatedBundle2 = new MevBundle(11, filledArr);
+           tc.BundlePool.AddBundle(updatedBundle1).Should().BeTrue();
+           tc.BundlePool.AddBundle(updatedBundle2).Should().BeTrue();
         }
         
         [Test]
@@ -139,7 +159,7 @@ namespace Nethermind.Mev.Test
         [Test]
         public static void should_simulate_bundle_when_head_moves()
         {
-            // 
+            // See if simulate gets any returns upon addition of new block to head
         }
         
         [Test]
