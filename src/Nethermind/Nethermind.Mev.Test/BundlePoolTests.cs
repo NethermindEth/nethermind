@@ -47,7 +47,7 @@ namespace Nethermind.Mev.Test
     [TestFixture]
     public class BundlePoolTests
     {
-        private const ulong DefaultTimestamp = 1_000_000;
+        private const ulong DefaultTimestamp = 10;
         
         public static IEnumerable BundleRetrievalTest
         {
