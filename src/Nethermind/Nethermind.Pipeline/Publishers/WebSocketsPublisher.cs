@@ -60,9 +60,8 @@ namespace Nethermind.Pipeline.Publishers
         {
             try
             {
-                var message = new WebSocketsMessage(nameof(TIn), null, data);
-                await Task.WhenAll(_clients.Values.Select(v => v.SendAsync(message)));
-                if(_logger.IsInfo) _logger.Info("Sent data through websockets...");
+                var message = _jsonSerializer.Serialize(data);
+                await Task.WhenAll(_clients.Values.Select(v => v.SendRawAsync(message)));
             }
             catch (Exception ex)
             {
