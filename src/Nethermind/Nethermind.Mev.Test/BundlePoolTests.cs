@@ -181,7 +181,6 @@ namespace Nethermind.Mev.Test
         public static void should_simulate_bundle_when_head_moves()
         {
             // See if simulate gets any returns upon addition of new block to head
-            Timestamper timestamper = new Timestamper();
             TestContext testContext = new TestContext();
             int head = 4;
             testContext.BlockTree.NewHeadBlock += Raise.EventWith(new BlockEventArgs(Build.A.Block.WithNumber(head++).TestObject)); //4
@@ -220,10 +219,10 @@ namespace Nethermind.Mev.Test
             };
             
             TestContext tc = new(null, new MevConfig{BundlePoolSize = 5}, 8); 
-            ITimestamper timestamper = new ManualTimestamper(DateTime.UnixEpoch.AddSeconds(1));
+            ITimestamper timestamper = new ManualTimestamper(DateTime.UnixEpoch.AddSeconds(20));
             ISimulatedBundleSource simulatedBundleSource = tc.BundlePool;
             BlockHeader blockHeader = Build.A.BlockHeader.WithNumber(8).TestObject; 
-            IEnumerable<SimulatedMevBundle>? taskBundles = await simulatedBundleSource.GetBundles(blockHeader, 
+            IEnumerable<SimulatedMevBundle> taskBundles = await simulatedBundleSource.GetBundles(blockHeader, 
                 timestamper.UnixTime.Seconds, 0, CancellationToken.None);//not returning any bundles
             
             SimulatedMevBundle searchFor = new (new MevBundle(9, 
@@ -295,7 +294,7 @@ namespace Nethermind.Mev.Test
 
             foreach (var expectedCount in expectedCountPerBlock)
             {
-                test.BundlePool.GetBundles(expectedCount.Key, 10).Should().HaveCount(expectedCount.Value);
+                test.BundlePool.GetBundles(expectedCount.Key, 11).Should().HaveCount(expectedCount.Value);
             }
         }
         
@@ -321,7 +320,6 @@ namespace Nethermind.Mev.Test
                 Transaction tx2 = CreateTransaction(TestItem.PrivateKeyB);
                 Transaction tx3 = CreateTransaction(TestItem.PrivateKeyC);
 
-                BundlePool.AddBundle(CreateBundle(1, tx1));
                 BundlePool.AddBundle(CreateBundle(4, tx1));
                 BundlePool.AddBundle(CreateBundle(5, tx2));
                 BundlePool.AddBundle(CreateBundle(6, tx2));

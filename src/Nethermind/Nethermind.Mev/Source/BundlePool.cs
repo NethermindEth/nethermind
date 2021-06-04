@@ -224,7 +224,7 @@ namespace Nethermind.Mev.Source
             long blockNumber = e.Block!.Number;
             RemoveBundlesUpToBlock(blockNumber);
 
-            Task t = Task.Run(() =>
+            Task t = Task.Run(() => //does this need to be in a task?
             {
                 UInt256 timestamp = _timestamper.UnixTime.Seconds;
                 IEnumerable<MevBundle> bundles = GetBundles(e.Block.Number + 1, UInt256.MaxValue, timestamp);
@@ -283,18 +283,20 @@ namespace Nethermind.Mev.Source
             if (_simulatedBundles.TryGetValue(parent.Number, out ConcurrentDictionary<(MevBundle Bundle, Keccak BlockHash), SimulatedMevBundleContext>? simulatedBundlesForBlock))
             {
                 IEnumerable<Task<SimulatedMevBundle>> resultTasks = simulatedBundlesForBlock
-                    .Where(b => b.Key.BlockHash == parent.Hash)
-                    .Where(b => bundles.Contains(b.Key.Bundle))
+                    .Where(b => b.Key.BlockHash == parent.Hash) //same block number as Blockheader param
+                    .Where(b => bundles.Contains(b.Key.Bundle)) //if block is in bundles (meets parameters like timestamp/gasLimit)
                     .Select(b => b.Value.Task)
                     .ToArray();
 
                 await Task.WhenAny(Task.WhenAll(resultTasks), token.AsTask());
 
-                return resultTasks
+                var res = resultTasks
                     .Where(t => t.IsCompletedSuccessfully)
                     .Select(t => t.Result)
                     .Where(t => t.Success)
-                    .Where(s => s.GasUsed <= gasLimit);
+                    .Where(s => s.GasUsed <= gasLimit); //get all result tasks that are successful and use less gas than gaslimit
+                
+                return res;
             }
             else
             {
