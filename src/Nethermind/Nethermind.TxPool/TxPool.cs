@@ -204,7 +204,8 @@ namespace Nethermind.TxPool
             long transactionsInBlock = blockTransactions.Count;
             long discoveredForPendingTxs = 0;
             long discoveredForHashCache = 0;
-            
+            long eip1559Txs = 0;
+
             for (int i = 0; i < transactionsInBlock; i++)
             {
                 Keccak txHash = blockTransactions[i].Hash;
@@ -218,10 +219,16 @@ namespace Nethermind.TxPool
                 {
                     discoveredForPendingTxs++;
                 }
+
+                if (blockTransactions[i].IsEip1559)
+                {
+                    eip1559Txs++;
+                }
             }
             
             Metrics.DarkPoolRatioLevel1 = transactionsInBlock == 0 ? 0 : (float)discoveredForHashCache / transactionsInBlock;
             Metrics.DarkPoolRatioLevel2 = transactionsInBlock == 0 ? 0 : (float)discoveredForPendingTxs / transactionsInBlock;
+            Metrics.Eip1559TransactionsRatio = eip1559Txs == 0 ? 0 : (float)eip1559Txs / transactionsInBlock;
         }
 
         public void AddPeer(ITxPoolPeer peer)
@@ -268,18 +275,26 @@ namespace Nethermind.TxPool
                 _logger.Trace(
                     $"Adding transaction {tx.ToString("  ")} - managed nonce: {managedNonce} | persistent broadcast {isPersistentBroadcast}");
 
-            return FilterTransaction(tx, managedNonce) ?? AddCore(tx, isPersistentBroadcast, isReorg);
+            return FilterTransaction(tx, managedNonce, isReorg) ?? AddCore(tx, isPersistentBroadcast, isReorg);
         }
         
-        protected virtual AddTxResult? FilterTransaction(Transaction tx, in bool managedNonce)
+        protected virtual AddTxResult? FilterTransaction(Transaction tx, in bool managedNonce, in bool isReorg = false)
         {
+            Metrics.PendingTransactionsReceived++;
+
             if (tx.Hash is null)
             {
+                Metrics.PendingTransactionsDiscarded++;
                 return AddTxResult.Invalid;
+            }
+            
+            if (!isReorg && _hashCache.Get(tx.Hash))
+            {
+                Metrics.PendingTransactionsKnown++;
+                return AddTxResult.AlreadyKnown;
             }
 
             IReleaseSpec spec = _specProvider.GetSpec();
-            Metrics.PendingTransactionsReceived++;
             
             if (!_validator.IsWellFormed(tx, spec))
             {
@@ -292,6 +307,7 @@ namespace Nethermind.TxPool
             long gasLimit = Math.Min(BlockGasLimit ?? long.MaxValue, _txPoolConfig.GasLimit ?? long.MaxValue);
             if (tx.GasLimit > gasLimit)
             {
+                Metrics.PendingTransactionsDiscarded++;
                 if (_logger.IsTrace) _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, gas limit exceeded.");
                 return AddTxResult.GasLimitExceeded;
             }
@@ -305,6 +321,7 @@ namespace Nethermind.TxPool
                 tx.SenderAddress = _ecdsa.RecoverAddress(tx);
                 if (tx.SenderAddress is null)
                 {
+                    Metrics.PendingTransactionsDiscarded++;
                     if (_logger.IsTrace) _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, no sender.");
                     return AddTxResult.PotentiallyUseless;
                 }
@@ -318,6 +335,7 @@ namespace Nethermind.TxPool
             UInt256 currentNonce = account?.Nonce ?? UInt256.Zero;
             if (tx.Nonce < currentNonce)
             {
+                Metrics.PendingTransactionsDiscarded++;
                 if (_logger.IsTrace)
                     _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, nonce already used.");
                 return AddTxResult.OldNonce;
@@ -330,6 +348,7 @@ namespace Nethermind.TxPool
             if (isTxPoolFull && !isTxNonceNextInOrder
                 || isTxNonceTooFarInFuture)
             {
+                Metrics.PendingTransactionsDiscarded++;
                 if (_logger.IsTrace)
                     _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, nonce in future.");
                 return AddTxResult.FutureNonce;
@@ -343,12 +362,14 @@ namespace Nethermind.TxPool
             overflow |= UInt256.AddOverflow(cost, tx.Value, out cost);
             if (overflow)
             {
+                Metrics.PendingTransactionsDiscarded++;
                 if (_logger.IsTrace)
                     _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, cost overflow.");
                 return AddTxResult.BalanceOverflow;
             }
             else if (balance < cost)
             {
+                Metrics.PendingTransactionsDiscarded++;
                 if (_logger.IsTrace)
                     _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, insufficient funds.");
                 return AddTxResult.InsufficientFunds;
@@ -358,6 +379,7 @@ namespace Nethermind.TxPool
                 && _transactions.TryGetLast(out var lastTx)
                 && payableGasPrice <= lastTx?.GasBottleneck)
             {
+                Metrics.PendingTransactionsDiscarded++;
                 if (_logger.IsTrace)
                     _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, too low payable gas price.");
                 return AddTxResult.FeeTooLow;
@@ -365,6 +387,7 @@ namespace Nethermind.TxPool
 
             if (managedNonce && CheckOwnTransactionAlreadyUsed(tx, currentNonce))
             {
+                Metrics.PendingTransactionsDiscarded++;
                 if (_logger.IsTrace)
                     _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, nonce already used.");
                 return AddTxResult.OwnNonceAlreadyUsed;
@@ -398,6 +421,11 @@ namespace Nethermind.TxPool
                     {
                         _transactions.UpdateGroup(tx.SenderAddress, UpdateBucketWithAddedTransaction);
                         ForgetHashOfRemovedTransaction(removed?.Hash);
+                        Metrics.PendingTransactionsAdded++;
+                        if (tx.IsEip1559)
+                        {
+                            Metrics.Pending1559TransactionsAdded++;
+                        }
                     }
                     isKnown |= !inserted;
                 }
@@ -411,7 +439,7 @@ namespace Nethermind.TxPool
             if (isKnown)
             {
                 // If transaction is a bit older and already known then it may be stored in the persistent storage.
-                Metrics.PendingTransactionsKnown++;
+                Metrics.PendingTransactionsStored++;
                 if (_logger.IsTrace) _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, already known.");
                 return AddTxResult.AlreadyKnown;
             }
@@ -427,6 +455,7 @@ namespace Nethermind.TxPool
         {
             if (hash is not null)
             {
+                Metrics.PendingTransactionsEvicted++;
                 // transaction which was on last position in sorted TxPool and was deleted to give
                 // a place for a newly added tx (with higher priority) is now removed from hashCache
                 // to give it opportunity to come back to TxPool in the future, when fees drops
