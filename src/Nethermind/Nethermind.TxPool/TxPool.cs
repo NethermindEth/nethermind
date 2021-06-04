@@ -275,10 +275,10 @@ namespace Nethermind.TxPool
                 _logger.Trace(
                     $"Adding transaction {tx.ToString("  ")} - managed nonce: {managedNonce} | persistent broadcast {isPersistentBroadcast}");
 
-            return FilterTransaction(tx, managedNonce, isReorg) ?? AddCore(tx, isPersistentBroadcast, isReorg);
+            return FilterTransaction(tx, managedNonce) ?? AddCore(tx, isPersistentBroadcast, isReorg);
         }
         
-        protected virtual AddTxResult? FilterTransaction(Transaction tx, in bool managedNonce, in bool isReorg = false)
+        protected virtual AddTxResult? FilterTransaction(Transaction tx, in bool managedNonce)
         {
             Metrics.PendingTransactionsReceived++;
 
@@ -286,12 +286,6 @@ namespace Nethermind.TxPool
             {
                 Metrics.PendingTransactionsDiscarded++;
                 return AddTxResult.Invalid;
-            }
-            
-            if (!isReorg && _hashCache.Get(tx.Hash))
-            {
-                Metrics.PendingTransactionsKnown++;
-                return AddTxResult.AlreadyKnown;
             }
 
             IReleaseSpec spec = _specProvider.GetSpec();
@@ -402,6 +396,12 @@ namespace Nethermind.TxPool
             // !!! do not change it to |=
             bool isKnown = !isReorg && isInHashCache;
 
+            if (isKnown)
+            {
+                Metrics.PendingTransactionsKnown++;
+                return AddTxResult.AlreadyKnown;
+            }
+            
             if (!isInHashCache)
             {
                 _hashCache.Set(tx.Hash);
