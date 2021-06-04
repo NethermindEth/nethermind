@@ -326,7 +326,7 @@ namespace Nethermind.Mev.Test
                 BundlePool = new(
                     BlockTree,
                     Simulator,
-                    timestamper ?? new ManualTimestamper(DateTime.UnixEpoch.AddSeconds(1)),
+                    timestamper ?? new ManualTimestamper(DateTime.UnixEpoch.AddSeconds(DefaultTimestamp)),
                     config ?? new MevConfig(),
                     LimboLogs.Instance);
 
