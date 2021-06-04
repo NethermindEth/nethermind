@@ -29,8 +29,10 @@ using Nethermind.Blockchain;
 using Nethermind.Consensus.AuRa.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
+using Nethermind.Evm;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Mev.Data;
@@ -41,6 +43,8 @@ using NSubstitute;
 using NSubstitute.Exceptions;
 using NSubstitute.ReturnsExtensions;
 using NUnit.Framework;
+using Nethermind.Mev.Test;
+using Nethermind.TxPool.Collections;
 
 namespace Nethermind.Mev.Test
 {
@@ -148,7 +152,7 @@ namespace Nethermind.Mev.Test
         }
         
         [Test]
-        public void should_reject_bundle_on_block_before_head() //Maybe do this with just seeing which ones make it into bundlePool?
+        public void should_reject_bundle_on_block_before_head()
         { 
             Transaction[] filledArr = new Transaction[]
             {
@@ -162,13 +166,13 @@ namespace Nethermind.Mev.Test
 
             MevBundle bundleFalse1 = new MevBundle(10, filledArr);
             MevBundle bundleFalse2 = new MevBundle(15, filledArr);
+            MevBundle bundleFalse3 = new MevBundle(16, filledArr);
             MevBundle bundleTrue1 = new MevBundle(17, filledArr);
-            MevBundle bundleTrue2 = new MevBundle(16, filledArr);
             
             tc.BundlePool.AddBundle(bundleFalse1).Should().BeFalse();
             tc.BundlePool.AddBundle(bundleFalse2).Should().BeFalse();
+            tc.BundlePool.AddBundle(bundleFalse3).Should().BeFalse();
             tc.BundlePool.AddBundle(bundleTrue1).Should().BeTrue();
-            tc.BundlePool.AddBundle(bundleTrue2).Should().BeTrue();
         }
 
         [Test]
@@ -218,65 +222,56 @@ namespace Nethermind.Mev.Test
         }
         
         [Test]
-        public async Task should_remove_simulations_on_eviction() //working on now
+        public async Task should_remove_simulations_on_eviction()
         {
-            // cast BundlePool to ISimulatedBundleSource and get Bundles
-            //Find out which elements are in bundlePool and check to see that the simulations exist beforehand and are removed after
-            Transaction[] filledArr = new Transaction[]
-            {
-               Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyD).TestObject,
-               Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).TestObject
-            };
+            Transaction tx1 = Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+            Transaction tx2 = Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+            Transaction tx3 = Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyC).TestObject;
+            Transaction tx4 = Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyD).TestObject;
+
+            MevConfig config = new() {BundlePoolSize = 3};
+            TestContext tc = new(default, config, 1, false);
+
+            MevBundle bundle1 = new(3, new[]{tx1});
+            MevBundle bundle2 = new(2, new[]{tx2});
+            MevBundle bundle3 = new(2, new[]{tx3});
+            MevBundle bundle4 = new(2, new[]{tx4});
             
-            TestContext tc = new(null, new MevConfig{BundlePoolSize = 5}, 8); 
-            ITimestamper timestamper = new ManualTimestamper(DateTime.UnixEpoch.AddSeconds(20));
-            ISimulatedBundleSource simulatedBundleSource = tc.BundlePool;
-            BlockHeader blockHeader = Build.A.BlockHeader.WithNumber(8).TestObject; 
-            IEnumerable<SimulatedMevBundle> taskBundles = await simulatedBundleSource.GetBundles(blockHeader, 
-                timestamper.UnixTime.Seconds, 0, CancellationToken.None);//not returning any bundles
+            tc.BundlePool.AddBundle(bundle1);
+            tc.BundlePool.AddBundle(bundle2);
+            tc.BundlePool.AddBundle(bundle3);
+            tc.BundlePool.AddBundle(bundle4);
             
-            SimulatedMevBundle searchFor = new (new MevBundle(9, 
-                    new[] {Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyB).TestObject}), 0,
-                true, UInt256.Zero, UInt256.Zero, UInt256.Zero);
+            MevBundle[] bundles = (tc.BundlePool.GetBundles(2, UInt256.Zero)).ToArray();
             
-            int count = taskBundles.Count();
-            SimulatedMevBundle[] simulatedMevBundles = taskBundles.ToArray();
-             
-            taskBundles.Should().Contain(searchFor);
-            tc.BundlePool.AddBundle(new MevBundle(16, filledArr));
-            taskBundles = simulatedBundleSource.GetBundles(
-                blockHeader,
-                timestamper.UnixTime.Seconds,
-                0,
-                CancellationToken.None).Result;
-            taskBundles?.Should().NotContain(searchFor);
-            //tc.Simulator.Received(3).Returns(4);
+            bundles.Should().NotContain(bundle1);
+            bundles.Should().Contain(bundle2);
+            bundles.Should().Contain(bundle3);
+            bundles.Should().Contain(bundle4);
+            bundles.Length.Should().Be(3);
         }
         
         [Test]
-        public static void should_remove_bundle_when_simulation_fails() //not working
+        public async Task should_remove_bundle_when_simulation_fails() //not working
         {
-            ITimestamper timestamper = new ManualTimestamper(DateTime.UnixEpoch.AddSeconds(50));
-            Transaction[] filledArr = new Transaction[]
-            {
-               Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyD).TestObject,
-               Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).TestObject
-            };
             
-            TestContext tc = new();
-            MevBundle newBundle1 = new MevBundle(5, filledArr);
-            MevBundle newBundle2 = new MevBundle(6, filledArr);
-            long countBlock5Init = tc.BundlePool.GetBundles(5, timestamper.UnixTime.Seconds).Count();
-            long countBlock6Init = tc.BundlePool.GetBundles(6, timestamper.UnixTime.Seconds).Count();
-            tc.BundlePool.AddBundle(newBundle1);
-            tc.BundlePool.AddBundle(newBundle2);
-            //how to add failing simulation?
-            //SimulatedMevBundle fail5 =
-              //  new SimulatedMevBundle(newBundle1, 0, false, UInt256.Zero, UInt256.Zero, UInt256.Zero);
-            Task t1 = Task.FromResult(SimulatedMevBundle.Cancelled(newBundle1));
-            t1.Wait();
-            tc.BundlePool.GetBundles(5, timestamper.UnixTime.Seconds).Count().CompareTo((Int32) countBlock5Init).Should().Be(0);
-            tc.BundlePool.GetBundles(6, timestamper.UnixTime.Seconds).Count().CompareTo((Int32) countBlock6Init).Should().Be(1);
+            var chain = await MevRpcModuleTests.CreateChain(1);
+            chain.GasLimitCalculator.GasLimit = 10_000_000;
+            
+            Address contractAddress = await MevRpcModuleTests.Contracts.Deploy(chain, MevRpcModuleTests.Contracts.ReverterCode);
+            Transaction revertingBundleTx = Build.A.Transaction.WithGasLimit(MevRpcModuleTests.Contracts.LargeGasLimit).WithGasPrice(500).WithTo(contractAddress).WithData(Bytes.FromHexString(MevRpcModuleTests.Contracts.ReverterInvokeFail)).SignedAndResolved(TestItem.PrivateKeyC).TestObject;
+            Transaction normalBundleTx = Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+            
+            MevBundle failingBundle = new(2, new[]{revertingBundleTx});
+            MevBundle normalBundle = new(2, new[]{normalBundleTx});
+
+            chain.BundlePool.AddBundle(failingBundle);
+            chain.BundlePool.AddBundle(normalBundle);
+
+            MevBundle[] bundlePoolBundles = chain.BundlePool.GetBundles(2, UInt256.Zero).ToArray();
+            bundlePoolBundles.Should().NotContain(failingBundle);
+            bundlePoolBundles.Should().Contain(normalBundle);
+            bundlePoolBundles.Length.Should().Be(1);
         }
         
         [TestCase(1u, 1)]
@@ -316,7 +311,7 @@ namespace Nethermind.Mev.Test
         
         private class TestContext
         {
-            public TestContext(ITimestamper? timestamper = null, IMevConfig? config = null, long? BlockTreeHead = null)
+            public TestContext(ITimestamper? timestamper = null, IMevConfig? config = null, long? BlockTreeHead = null, bool addTestBundles = true)
             {
                 Transaction CreateTransaction(PrivateKey privateKey) => Build.A.Transaction.SignedAndResolved(privateKey).TestObject;
                 if (BlockTreeHead != null)
@@ -330,6 +325,7 @@ namespace Nethermind.Mev.Test
                     config ?? new MevConfig(),
                     LimboLogs.Instance);
 
+                if (!addTestBundles) return;
                 Transaction tx1 = CreateTransaction(TestItem.PrivateKeyA);
                 Transaction tx2 = CreateTransaction(TestItem.PrivateKeyB);
                 Transaction tx3 = CreateTransaction(TestItem.PrivateKeyC);

@@ -51,10 +51,10 @@ namespace Nethermind.Mev.Test
             int beforeValidBundlesReceived = Metrics.ValidBundlesReceived;
             int beforeBundlesSimulated = Metrics.BundlesSimulated;
 
-            bundlePool.AddBundle(new MevBundle(1, Array.Empty<Transaction>(), 0, 0, default));
-            bundlePool.AddBundle(new MevBundle(1, new Transaction[]{Build.A.Transaction.TestObject}, 0, 0, default));
-            bundlePool.AddBundle(new MevBundle(3, Array.Empty<Transaction>(), 0, 0, default));
-            bundlePool.AddBundle(new MevBundle(4, Array.Empty<Transaction>(), 0, 0, default));
+            bundlePool.AddBundle(new MevBundle(1, new []{Build.A.Transaction.TestObject, Build.A.Transaction.WithNonce(1).TestObject}, 0, 0, default));
+            bundlePool.AddBundle(new MevBundle(1, new []{Build.A.Transaction.TestObject}, 0, 0, default));
+            bundlePool.AddBundle(new MevBundle(3, new []{Build.A.Transaction.TestObject}, 0, 0, default));
+            bundlePool.AddBundle(new MevBundle(4, new []{Build.A.Transaction.TestObject}, 0, 0, default));
             
             int deltaBundlesReceived = Metrics.BundlesReceived - beforeBundlesReceived;
             int deltaValidBundlesReceived = Metrics.ValidBundlesReceived - beforeValidBundlesReceived;
@@ -74,10 +74,10 @@ namespace Nethermind.Mev.Test
             int beforeValidBundlesReceived = Metrics.ValidBundlesReceived;
             int beforeBundlesSimulated = Metrics.BundlesSimulated;
 
-            bundlePool.AddBundle(new MevBundle(1, Array.Empty<Transaction>(), 5, 0, default)); // invalid
-            bundlePool.AddBundle(new MevBundle(2, Array.Empty<Transaction>(), 0, 0, default)); 
-            bundlePool.AddBundle(new MevBundle(3, Array.Empty<Transaction>(), 0, long.MaxValue, default)); // invalid
-            bundlePool.AddBundle(new MevBundle(4, Array.Empty<Transaction>(), 0, 0, default));
+            bundlePool.AddBundle(new MevBundle(1, new []{Build.A.Transaction.TestObject}, 5, 0, default)); // invalid
+            bundlePool.AddBundle(new MevBundle(2, new []{Build.A.Transaction.TestObject}, 0, 0, default)); 
+            bundlePool.AddBundle(new MevBundle(3, new []{Build.A.Transaction.TestObject}, 0, long.MaxValue, default)); // invalid
+            bundlePool.AddBundle(new MevBundle(4, new []{Build.A.Transaction.TestObject}, 0, 0, default));
             
             int deltaBundlesReceived = Metrics.BundlesReceived - beforeBundlesReceived;
             int deltaValidBundlesReceived = Metrics.ValidBundlesReceived - beforeValidBundlesReceived;
@@ -124,10 +124,11 @@ namespace Nethermind.Mev.Test
                 1,
                 1,
                 null);
+            Block head = new Block(header);
             ChainLevelInfo info = new(true, new[] {new BlockInfo(Keccak.Zero, 1)});
 
-            blockTree.FindHeader(Arg.Any<Keccak>(), Arg.Any<BlockTreeLookupOptions>()).Returns(header);
-            blockTree.FindLevel(0).ReturnsForAnyArgs(info);
+            blockTree.Head.Returns(head);
+            //blockTree.FindLevel(0).ReturnsForAnyArgs(info);
 
             TestBundlePool bundlePool = new(
                 blockTree,
