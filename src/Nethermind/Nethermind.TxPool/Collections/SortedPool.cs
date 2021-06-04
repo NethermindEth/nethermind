@@ -244,7 +244,7 @@ namespace Nethermind.TxPool.Collections
         protected virtual void InsertCore(TKey key, TValue value, TGroupKey groupKey, ICollection<TValue> bucketCollection)
         {
             bucketCollection.Add(value);
-            _cacheMap.Add(key, value);
+            _cacheMap[key] = value;
             _sortedValues.Add(value, key);
             
             Inserted?.Invoke(this, new SortedPoolEventArgs(key, value, groupKey));

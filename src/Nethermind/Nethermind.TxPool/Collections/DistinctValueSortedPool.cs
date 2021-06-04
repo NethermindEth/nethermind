@@ -72,23 +72,25 @@ namespace Nethermind.TxPool.Collections
             _distinctDictionary.Remove(value);
             return base.Remove(key, value);
         }
+        
+        protected virtual bool AllowSameKeyReplacement => false; 
 
         protected override bool CanInsert(TKey key, TValue value)
         {
             // either there is no distinct value or it would go before (or at same place) as old value
             // if it would go after old value in order, we ignore it and wont add it
-            if (base.CanInsert(key, value))
+            if (AllowSameKeyReplacement || base.CanInsert(key, value))
             {
                 bool isDuplicate = _distinctDictionary.TryGetValue(value, out var oldKvp);
                 if (isDuplicate)
                 {
-                    bool isHigher = _comparer.Compare(value, oldKvp.Value) <= 0;
+                    bool isHigher = _comparer.Compare(value, oldKvp.Value) < 0; //changed this to allow same bundle
                     
                     if (_logger.IsTrace && !isHigher)
                     {
                         _logger.Trace($"Cannot insert {nameof(TValue)} {value}, its not distinct and not higher than old {nameof(TValue)} {oldKvp.Value}.");
                     }
-
+                    
                     return isHigher;
                 }
 

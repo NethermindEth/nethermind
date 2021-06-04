@@ -16,6 +16,7 @@
 // 
 
 using System;
+using System.Collections;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Drawing;
@@ -126,14 +127,20 @@ namespace Nethermind.Mev.Source
             return false;
         }
 
-        private bool ValidateBundle(MevBundle bundle)
+        private bool ValidateBundle(MevBundle bundle, UInt256? currentTimestamp = null)
         {
             if (HeadNumber >= bundle.BlockNumber)
             {
                 return false;
             }
 
-            UInt256 currentTimestamp = _timestamper.UnixTime.Seconds;
+            if (bundle.Transactions.Count == 0)
+            {
+                if (_logger.IsDebug) _logger.Debug($"Bundle rejected, because it doesn't contain transactions.");
+                return false;
+            }
+            
+            currentTimestamp ??= _timestamper.UnixTime.Seconds;
 
             if (bundle.MaxTimestamp < bundle.MinTimestamp)
             {
@@ -145,7 +152,7 @@ namespace Nethermind.Mev.Source
                 if (_logger.IsDebug) _logger.Debug($"Bundle rejected, because {nameof(bundle.MaxTimestamp)} {bundle.MaxTimestamp} is < current {currentTimestamp}.");
                 return false;
             }
-            else if (bundle.MinTimestamp != 0 && bundle.MinTimestamp > currentTimestamp + _mevConfig.BundleHorizon)
+            else if (bundle.MinTimestamp != 0 && bundle.MinTimestamp > currentTimestamp)
             {
                 if (_logger.IsDebug) _logger.Debug($"Bundle rejected, because {nameof(bundle.MinTimestamp)} {bundle.MaxTimestamp} is further into the future than accepted horizon {_mevConfig.BundleHorizon}.");
                 return false;
@@ -156,17 +163,13 @@ namespace Nethermind.Mev.Source
 
         private bool TrySimulateBundle(MevBundle bundle)
         {
-            ChainLevelInfo? level = _blockTree.FindLevel(bundle.BlockNumber - 1);
-            if (level is not null)
+            var head = _blockTree.Head;
+            if (head is not null)
             {
-                for (int i = 0; i < level.BlockInfos.Length; i++)
+                if (head.Number + 1 == bundle.BlockNumber)
                 {
-                    BlockHeader? header = _blockTree.FindHeader(level.BlockInfos[i].BlockHash, BlockTreeLookupOptions.None);
-                    if (header is not null)
-                    {
-                        SimulateBundle(bundle, header);
-                        return true;
-                    }
+                    SimulateBundle(bundle, head.Header);
+                    return true;
                 }
             }
 
@@ -225,14 +228,16 @@ namespace Nethermind.Mev.Source
             long blockNumber = e.Block!.Number;
             RemoveBundlesUpToBlock(blockNumber);
 
-            Task.Run(() =>
+            Task t = Task.Run(() => //does this need to be in a task?
             {
-                IEnumerable<MevBundle> bundles = GetBundles(e.Block.Number + 1, UInt256.MaxValue, UInt256.Zero);
+                UInt256 timestamp = _timestamper.UnixTime.Seconds;
+                IEnumerable<MevBundle> bundles = GetBundles(e.Block.Number + 1, UInt256.MaxValue, timestamp);
                 foreach (MevBundle bundle in bundles)
                 {
                     SimulateBundle(bundle, e.Block.Header);
                 }
             });
+            t.Wait();
         }
 
         private void RemoveBundlesUpToBlock(long blockNumber)
@@ -282,18 +287,20 @@ namespace Nethermind.Mev.Source
             if (_simulatedBundles.TryGetValue(parent.Number, out ConcurrentDictionary<(MevBundle Bundle, Keccak BlockHash), SimulatedMevBundleContext>? simulatedBundlesForBlock))
             {
                 IEnumerable<Task<SimulatedMevBundle>> resultTasks = simulatedBundlesForBlock
-                    .Where(b => b.Key.BlockHash == parent.Hash)
-                    .Where(b => bundles.Contains(b.Key.Bundle))
+                    .Where(b => b.Key.BlockHash == parent.Hash) //same block number as Blockheader param
+                    .Where(b => bundles.Contains(b.Key.Bundle)) //if block is in bundles (meets parameters like timestamp/gasLimit)
                     .Select(b => b.Value.Task)
                     .ToArray();
 
                 await Task.WhenAny(Task.WhenAll(resultTasks), token.AsTask());
 
-                return resultTasks
+                var res = resultTasks
                     .Where(t => t.IsCompletedSuccessfully)
                     .Select(t => t.Result)
                     .Where(t => t.Success)
-                    .Where(s => s.GasUsed <= gasLimit);
+                    .Where(s => s.GasUsed <= gasLimit); //get all result tasks that are successful and use less gas than gaslimit
+                
+                return res;
             }
             else
             {
