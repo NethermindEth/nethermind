@@ -181,6 +181,7 @@ namespace Nethermind.Mev.Test
         public static void should_simulate_bundle_when_head_moves()
         {
             // See if simulate gets any returns upon addition of new block to head
+            Timestamper timestamper = new Timestamper();
             TestContext testContext = new TestContext();
             int head = 4;
             testContext.BlockTree.NewHeadBlock += Raise.EventWith(new BlockEventArgs(Build.A.Block.WithNumber(head++).TestObject)); //4
