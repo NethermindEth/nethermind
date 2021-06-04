@@ -185,7 +185,7 @@ namespace Nethermind.Baseline.Test
                 {
                 }
 
-                protected override AddTxResult? FilterTransaction(Transaction tx, in bool managedNonce)
+                protected override AddTxResult? FilterTransaction(Transaction tx, in bool managedNonce, in bool isReorg = false)
                 {
                     AddTxResult? addTxResult = base.FilterTransaction(tx, in managedNonce);
                     return addTxResult == AddTxResult.OldNonce ? null : addTxResult;
