@@ -183,12 +183,16 @@ namespace Nethermind.Mev.Test
             // See if simulate gets any returns upon addition of new block to head
             TestContext testContext = new TestContext();
             int head = 4;
-            testContext.BlockTree.NewHeadBlock += Raise.EventWith(new BlockEventArgs(Build.A.Block.WithNumber(head++).TestObject));
-            testContext.Simulator.ReceivedWithAnyArgs(1).Simulate((MevBundle) default, default, default);
-            testContext.BlockTree.NewHeadBlock += Raise.EventWith(new BlockEventArgs(Build.A.Block.WithNumber(head).TestObject));
-            testContext.Simulator.ReceivedWithAnyArgs(1).Simulate((MevBundle) default, default, default);
-            head = 8;
-            testContext.Simulator.ReceivedWithAnyArgs(3).Simulate((MevBundle) default, default, default);
+            testContext.BlockTree.NewHeadBlock += Raise.EventWith(new BlockEventArgs(Build.A.Block.WithNumber(head++).TestObject)); //4
+            testContext.Simulator.Received(1).Simulate(Arg.Any<MevBundle>(), Arg.Any<BlockHeader>(), Arg.Any<CancellationToken>());
+            testContext.BlockTree.NewHeadBlock += Raise.EventWith(new BlockEventArgs(Build.A.Block.WithNumber(head++).TestObject)); //5
+            testContext.Simulator.Received(2).Simulate(Arg.Any<MevBundle>(), Arg.Any<BlockHeader>(), Arg.Any<CancellationToken>());
+            testContext.BlockTree.NewHeadBlock += Raise.EventWith(new BlockEventArgs(Build.A.Block.WithNumber(head++).TestObject)); //6
+            testContext.Simulator.Received(2).Simulate(Arg.Any<MevBundle>(), Arg.Any<BlockHeader>(), Arg.Any<CancellationToken>());
+            testContext.BlockTree.NewHeadBlock += Raise.EventWith(new BlockEventArgs(Build.A.Block.WithNumber(head++).TestObject)); //7
+            testContext.Simulator.Received(2).Simulate(Arg.Any<MevBundle>(), Arg.Any<BlockHeader>(), Arg.Any<CancellationToken>());
+            testContext.BlockTree.NewHeadBlock += Raise.EventWith(new BlockEventArgs(Build.A.Block.WithNumber(head).TestObject)); //8
+            testContext.Simulator.Received(5).Simulate(Arg.Any<MevBundle>(), Arg.Any<BlockHeader>(), Arg.Any<CancellationToken>());
         }
         
         [Test]
