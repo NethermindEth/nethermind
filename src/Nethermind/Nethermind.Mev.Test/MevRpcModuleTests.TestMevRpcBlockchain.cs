@@ -42,6 +42,8 @@ using Nethermind.Merge.Plugin.Test;
 using Nethermind.Mev.Execution;
 using Nethermind.Mev.Source;
 using Nethermind.Runner.Ethereum;
+using Nethermind.Specs;
+using Nethermind.Specs.Forks;
 using Nethermind.State;
 using Newtonsoft.Json;
 using NLog.Fluent;
@@ -52,20 +54,22 @@ namespace Nethermind.Mev.Test
 {
     public partial class MevRpcModuleTests
     {
-        public static Task<TestMevRpcBlockchain> CreateChain(int? maxMergedBundles = null)
+        public static Task<TestMevRpcBlockchain> CreateChain(int maxMergedBundles)
         {
             TestMevRpcBlockchain testMevRpcBlockchain = new(maxMergedBundles);
-            return TestRpcBlockchain.ForTest(testMevRpcBlockchain).Build();
+            TestSpecProvider testSpecProvider = new TestSpecProvider(Berlin.Instance);
+            testSpecProvider.ChainId = 1;
+            return TestRpcBlockchain.ForTest(testMevRpcBlockchain).Build(testSpecProvider);
         }
 
         public class TestMevRpcBlockchain : TestRpcBlockchain
         {
-            private readonly int? _maxMergedBundles;
+            private readonly int _maxMergedBundles;
             
             private ITracerFactory _tracerFactory = null!;
             public TestBundlePool BundlePool { get; private set; } = null!;
 
-            public TestMevRpcBlockchain(int? maxMergedBundles)
+            public TestMevRpcBlockchain(int maxMergedBundles)
             {
                 _maxMergedBundles = maxMergedBundles;
                 Signer = new Eth2Signer(MinerAddress);

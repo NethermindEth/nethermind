@@ -128,7 +128,7 @@ namespace Nethermind.Mev.Source
 
         private bool ValidateBundle(MevBundle bundle)
         {
-            if (HeadNumber > bundle.BlockNumber)
+            if (HeadNumber >= bundle.BlockNumber)
             {
                 return false;
             }

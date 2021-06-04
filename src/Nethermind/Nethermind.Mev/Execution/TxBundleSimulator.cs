@@ -152,7 +152,7 @@ namespace Nethermind.Mev.Execution
             {
                 GasUsed += _tracer!.GasSpent;
                 
-                _beneficiaryBalanceBefore ??= _tracer.BeneficiaryBalanceBefore;
+                _beneficiaryBalanceBefore ??= (_tracer.BeneficiaryBalanceBefore ?? 0);
                 _beneficiaryBalanceAfter = _tracer.BeneficiaryBalanceAfter;
                 
                 Transaction? tx = _tracer.Transaction;

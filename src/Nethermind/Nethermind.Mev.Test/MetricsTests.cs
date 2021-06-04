@@ -89,25 +89,27 @@ namespace Nethermind.Mev.Test
         }
         
         [Test]
-        [Ignore("Coinbase Payments not implemented correctly yet")]
         public async Task Should_count_total_coinbase_payments_correctly()
         {
             var chain = await MevRpcModuleTests.CreateChain(1);
             chain.GasLimitCalculator.GasLimit = 10_000_000;
             
             Address contractAddress = await MevRpcModuleTests.Contracts.Deploy(chain, MevRpcModuleTests.Contracts.CoinbaseCode);
-            await MevRpcModuleTests.Contracts.SeedCoinbase(chain, contractAddress);
-            Transaction coinbaseTx = Build.A.Transaction.WithGasLimit(MevRpcModuleTests.Contracts.LargeGasLimit).WithData(Bytes.FromHexString(MevRpcModuleTests.Contracts.CoinbaseInvokePay)).WithTo(contractAddress).WithGasPrice(0ul).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
-            
+            Transaction seedContractTx = Build.A.Transaction.WithTo(contractAddress).WithData(Bytes.FromHexString(MevRpcModuleTests.Contracts.CoinbaseDeposit)).WithValue(100000000000).WithNonce(1).WithGasLimit(1_000_000).SignedAndResolved(TestItem.PrivateKeyC).TestObject;
+            await chain.AddBlock(true, seedContractTx);
+
+            //Console.WriteLine((await chain.EthRpcModule.eth_getBalance(contractAddress)).Data!);
+
             UInt256 beforeCoinbasePayments = Metrics.TotalCoinbasePayments;
 
+            Transaction coinbaseTx = Build.A.Transaction.WithGasLimit(MevRpcModuleTests.Contracts.LargeGasLimit).WithData(Bytes.FromHexString(MevRpcModuleTests.Contracts.CoinbaseInvokePay)).WithTo(contractAddress).WithGasPrice(1ul).WithNonce(0).WithValue(0).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
             MevRpcModuleTests.SuccessfullySendBundle(chain, 3, coinbaseTx);
             await chain.AddBlock(true);
+            
             MevRpcModuleTests.GetHashes(chain.BlockTree.Head!.Transactions).Should().Equal(MevRpcModuleTests.GetHashes(new []{coinbaseTx}));
             
             UInt256 deltaCoinbasePayments = Metrics.TotalCoinbasePayments - beforeCoinbasePayments;
-            
-            deltaCoinbasePayments.Should().Be(10000000);
+            deltaCoinbasePayments.Should().Be(100000000000);
         }
 
         private static TestBundlePool CreateTestBundlePool()
