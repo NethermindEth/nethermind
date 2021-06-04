@@ -96,27 +96,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
         public ResultWrapper<SyncingResult> eth_syncing()
         {
-            SyncingResult result;
-            long bestSuggestedNumber = _blockFinder.FindBestSuggestedHeader().Number;
-
-            long headNumberOrZero = _blockFinder.Head?.Number ?? 0;
-            bool isSyncing = bestSuggestedNumber > headNumberOrZero + 8;
-
-            if (isSyncing)
-            {
-                result = new SyncingResult
-                {
-                    CurrentBlock = headNumberOrZero,
-                    HighestBlock = bestSuggestedNumber,
-                    StartingBlock = 0L,
-                    IsSyncing = true
-                };
-            }
-            else
-            {
-                result = SyncingResult.NotSyncing;
-            }
-
+            SyncingResult result = _blockFinder.CheckSyncing();
             return ResultWrapper<SyncingResult>.Success(result);
         }
 

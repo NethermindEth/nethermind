@@ -38,7 +38,7 @@ namespace Nethermind.Blockchain
         private void OnReorgBoundaryReached(object? sender, ReorgBoundaryReached e)
         {
             if (_logger.IsDebug) _logger.Debug($"Saving reorg boundary {e.BlockNumber}");
-            _blockTree.HighestPersistedState = e.BlockNumber;
+            _blockTree.BestState = e.BlockNumber;
         }
 
         public void Dispose()

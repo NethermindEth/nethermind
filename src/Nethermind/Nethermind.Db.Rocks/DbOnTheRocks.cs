@@ -64,12 +64,12 @@ namespace Nethermind.Db.Rocks
         }
 
         public DbOnTheRocks(string basePath, RocksDbSettings rocksDbSettings, IDbConfig dbConfig,
-            ILogManager logManager, ColumnFamilies? columnFamilies = null, bool deleteOnStart = false)
+            ILogManager logManager, ColumnFamilies? columnFamilies = null)
         {
             _logger = logManager.GetClassLogger();
             _settings = rocksDbSettings;
             Name = _settings.DbName;
-            _db = Init(basePath, rocksDbSettings.DbPath, dbConfig, logManager, columnFamilies, deleteOnStart);
+            _db = Init(basePath, rocksDbSettings.DbPath, dbConfig, logManager, columnFamilies, rocksDbSettings.DeleteOnStart);
         }
 
         private RocksDb Init(string basePath, string dbPath, IDbConfig dbConfig, ILogManager? logManager,
@@ -81,7 +81,7 @@ namespace Nethermind.Db.Rocks
                 return families == null ? RocksDb.Open(options, path) : RocksDb.Open(options, path, families);
             }
 
-            _fullPath = dbPath.GetApplicationResourcePath(basePath);
+            _fullPath = GetFullDbPath(dbPath, basePath);
             _logger = logManager?.GetClassLogger() ?? NullLogger.Instance;
             if (!Directory.Exists(_fullPath))
             {
@@ -89,7 +89,7 @@ namespace Nethermind.Db.Rocks
             }
             else if (deleteOnStart)
             {
-                Clear();
+                Delete();
             }
 
             try
@@ -454,16 +454,30 @@ namespace Nethermind.Db.Rocks
 
         public void Clear()
         {
+            Dispose(true);
+            Delete();
+        }
+
+        private void Delete()
+        {
             try
             {
-                Dispose(true);
-                Directory.Delete(_fullPath!, true);
+                // We want to keep the folder if it can have subfolders with copied databases from pruning
+                if (_settings.CanDeleteFolder)
+                {
+                    Directory.Delete(_fullPath!, true);
+                }
+                else
+                {
+                    foreach (string file in Directory.EnumerateFiles(_fullPath!))
+                    {
+                        File.Delete(file);
+                    }                    
+                }
             }
             catch (Exception e)
             {
-                if (_logger.IsWarn)
-                    _logger.Warn(
-                        $"This is not a problem but I could not delete the pending tx database on startup. {e.Message}");
+                if (_logger.IsWarn) _logger.Warn($"could not delete the {Name} database. {e.Message}");
             }
         }
 
@@ -531,5 +545,7 @@ namespace Nethermind.Db.Rocks
         {
             Dispose(false);
         }
+
+        public static string GetFullDbPath(string dbPath, string basePath) => dbPath.GetApplicationResourcePath(basePath);
     }
 }

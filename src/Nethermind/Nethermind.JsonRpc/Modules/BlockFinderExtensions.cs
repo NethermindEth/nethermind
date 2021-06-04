@@ -17,6 +17,7 @@
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
+using Nethermind.JsonRpc.Modules.Eth;
 
 namespace Nethermind.JsonRpc.Modules
 {
@@ -78,5 +79,22 @@ namespace Nethermind.JsonRpc.Modules
                 ? new SearchResult<Block>($"{blockParameter.BlockHash?.ToString() ?? blockParameter.BlockNumber?.ToString() ?? blockParameter.Type.ToString()} could not be found", ErrorCodes.ResourceNotFound)
                 : new SearchResult<Block>(block);
         }
+
+        public static SyncingResult CheckSyncing(this IBlockFinder blockFinder)
+        {
+            bool isSyncing = blockFinder.IsSyncing();
+            
+            return isSyncing 
+                ? new SyncingResult
+                {
+                    IsSyncing = true,
+                    CurrentBlock = blockFinder.Head?.Number ?? 0, 
+                    HighestBlock = blockFinder.FindBestSuggestedHeader().Number, 
+                    StartingBlock = blockFinder.BestState ?? 0
+                } 
+                : SyncingResult.NotSyncing;
+        }
+        
+        
     }
 }

@@ -97,9 +97,9 @@ namespace Nethermind.Blockchain.Test.FullPruning
                 {
                 }
 
-                protected override void RunPruning(IPruningContext pruningContext, BlockHeader header)
+                protected override void RunPruning(IPruningContext pruning, BlockHeader header, IPruningContext? oldPruning)
                 {
-                    base.RunPruning(pruningContext, header);
+                    base.RunPruning(pruning, header);
                     WaitHandle.Set();
                 }
             }

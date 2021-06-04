@@ -247,6 +247,10 @@ namespace Nethermind.Synchronization
                 AddBlockResult result = _blockTree.SuggestBlock(block);
                 if (_logger.IsTrace) _logger.Trace($"{block.Hash} ({block.Number}) adding result is {result}");
             }
+            else
+            {
+                if (_logger.IsDebug) _logger.Debug($"Peer {syncPeer} sent block with unknown parent {block}, best suggested {_blockTree.BestSuggestedHeader}.");
+            }
         }
 
         /// <summary>

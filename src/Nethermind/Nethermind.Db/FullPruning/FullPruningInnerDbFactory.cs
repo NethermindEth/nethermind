@@ -46,18 +46,27 @@ namespace Nethermind.Db.FullPruning
             return _rocksDbFactory.CreateColumnsDb<T>(settings);
         }
         
+        public string GetFullDbPath(RocksDbSettings rocksDbSettings)
+        {
+            RocksDbSettings settings = GetRocksDbSettings(rocksDbSettings);
+            return _rocksDbFactory.GetFullDbPath(settings);
+        }
+
         private RocksDbSettings GetRocksDbSettings(RocksDbSettings rocksDbSettings)
         {
             _index++;
             bool firstDb = _index == -1;
             string dbName = firstDb ? rocksDbSettings.DbName : rocksDbSettings.DbName + _index;
             string dbPath = firstDb ? rocksDbSettings.DbPath : _fileSystem.Path.Combine(rocksDbSettings.DbPath, _index.ToString());
-            return rocksDbSettings.Clone(dbName, dbPath);
+            RocksDbSettings dbSettings = rocksDbSettings.Clone(dbName, dbPath);
+            dbSettings.CanDeleteFolder = !firstDb;
+            return dbSettings;
         }
 
         private int GetStartingIndex(string path)
         {
-            IDirectoryInfo directory = _fileSystem.DirectoryInfo.FromDirectoryName(path);
+            string fullPath = _rocksDbFactory.GetFullDbPath(new RocksDbSettings(string.Empty, path));
+            IDirectoryInfo directory = _fileSystem.DirectoryInfo.FromDirectoryName(fullPath);
             if (directory.Exists)
             {
                 if (!directory.EnumerateFiles().Any())

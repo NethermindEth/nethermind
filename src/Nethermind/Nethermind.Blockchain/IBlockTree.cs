@@ -58,11 +58,6 @@ namespace Nethermind.Blockchain
         long? LowestInsertedBodyNumber { get; set; }
 
         /// <summary>
-        /// Highest state persisted
-        /// </summary>
-        long? HighestPersistedState { get; set; }
-
-        /// <summary>
         /// Best downloaded block number (highest number of chain level on the chain)
         /// </summary>
         long BestKnownNumber { get; }

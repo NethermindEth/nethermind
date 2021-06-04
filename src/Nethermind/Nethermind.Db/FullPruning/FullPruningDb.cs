@@ -19,6 +19,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Logging;
 
@@ -38,10 +39,10 @@ namespace Nethermind.Db.FullPruning
             _settings = settings;
             _dbFactory = dbFactory;
             _updateDuplicateWriteMetrics = updateDuplicateWriteMetrics;
-            _currentDb = CreateDb();
+            _currentDb = CreateDb(_settings);
         }
 
-        private IDb CreateDb() => _dbFactory.CreateDb(_settings);
+        private IDb CreateDb(RocksDbSettings settings) => _dbFactory.CreateDb(settings);
 
         public byte[]? this[byte[] key]
         {
@@ -83,7 +84,7 @@ namespace Nethermind.Db.FullPruning
 
         public bool KeyExists(byte[] key) => _currentDb.KeyExists(key);
 
-        public IDb Innermost => _currentDb.Innermost;
+        public IDb Innermost => this; // we cannot expose a DB that will potentially be later deleted
 
         public void Flush()
         {
@@ -101,20 +102,27 @@ namespace Nethermind.Db.FullPruning
 
         public bool PruningInProgress => _pruningContext is not null;
 
-        public bool TryStartPruning(out IPruningContext context)
+        public virtual bool TryStartPruning(out IPruningContext context)
         {
-            PruningContext newContext = new(this, CreateDb(), _updateDuplicateWriteMetrics);
+            RocksDbSettings ClonedDbSettings()
+            {
+                RocksDbSettings clonedDbSettings = _settings.Clone();
+                clonedDbSettings.DeleteOnStart = true;
+                return clonedDbSettings;
+            }
+            
+            PruningContext newContext = new(this, CreateDb(ClonedDbSettings()), _updateDuplicateWriteMetrics);
             PruningContext? pruningContext = Interlocked.CompareExchange(ref _pruningContext, newContext, null);
             context = pruningContext ?? newContext;
             return pruningContext is null;
         }
-
+        
         public string GetPath(string basePath) => _settings.DbPath.GetApplicationResourcePath(basePath);
 
         private void FinishPruning()
         {
             IDb oldDb = Interlocked.Exchange(ref _currentDb, _pruningContext?.CloningDb);
-            oldDb.Clear();
+            Task.Run(() => oldDb.Clear());
         }
         
         private void CancelPruning()

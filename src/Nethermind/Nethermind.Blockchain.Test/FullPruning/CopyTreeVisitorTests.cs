@@ -40,7 +40,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
             MemDb trieDb = new MemDb();
             MemDb clonedDb = new MemDb();
             
-            CopyDb(trieDb, clonedDb, CancellationToken.None);
+            CopyDb(trieDb, clonedDb, new CancellationTokenSource());
 
             clonedDb.Count.Should().Be(132);
             clonedDb.Keys.Should().BeEquivalentTo(trieDb.Keys);
@@ -54,7 +54,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
             MemDb clonedDb = new MemDb();
             
             CancellationTokenSource cancellationTokenSource = new();
-            Task task = Task.Run(() => CopyDb(trieDb, clonedDb, cancellationTokenSource.Token));
+            Task task = Task.Run(() => CopyDb(trieDb, clonedDb, cancellationTokenSource));
             cancellationTokenSource.Cancel();
 
             await task;
@@ -62,7 +62,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
             clonedDb.Count.Should().BeLessThan(trieDb.Count);
         }
 
-        private static void CopyDb(MemDb trieDb, MemDb clonedDb, CancellationToken cancellationToken)
+        private static void CopyDb(MemDb trieDb, MemDb clonedDb, CancellationTokenSource cancellationTokenSource)
         {
             IRocksDbFactory rocksDbFactory = Substitute.For<IRocksDbFactory>();
             rocksDbFactory.CreateDb(Arg.Any<RocksDbSettings>()).Returns(trieDb, clonedDb);
@@ -74,7 +74,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
             PatriciaTree trie = Build.A.Trie(trieDb).WithAccountsByIndex(0, 100).TestObject;
             IStateReader stateReader = new StateReader(new TrieStore(trieDb, logManager), new MemDb(), logManager);
 
-            using CopyTreeVisitor copyTreeVisitor = new CopyTreeVisitor(pruningContext, cancellationToken, logManager);
+            using CopyTreeVisitor copyTreeVisitor = new CopyTreeVisitor(pruningContext, cancellationTokenSource, logManager);
             stateReader.RunTreeVisitor(copyTreeVisitor, trie.RootHash);
         }
     }

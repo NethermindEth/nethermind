@@ -19,6 +19,7 @@ using System;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Db.FullPruning;
 using Nethermind.Logging;
@@ -54,9 +55,9 @@ namespace Nethermind.Blockchain.FullPruning
 
         private void OnPrune(object? sender, EventArgs e)
         {
-            if (!_fullPruningDb.PruningInProgress)
+            if (!_blockTree.IsSyncing() && !_fullPruningDb.PruningInProgress)
             {
-                long? persistedState = _blockTree.HighestPersistedState;
+                long? persistedState = _blockTree.BestState;
                 if (persistedState.HasValue)
                 {
                     BlockHeader? header = _blockTree.FindHeader(persistedState.Value);
@@ -64,29 +65,29 @@ namespace Nethermind.Blockchain.FullPruning
                     {
                         if (_fullPruningDb.TryStartPruning(out IPruningContext pruningContext))
                         {
-                            Task.Run(() => RunPruning(pruningContext, header));
+                            IPruningContext? oldPruning = Interlocked.Exchange(ref _currentPruning, pruningContext);
+                            Task.Run(() => RunPruning(pruningContext, header, oldPruning));
                         }
                     }
                 }
             }
         }
 
-        protected virtual void RunPruning(IPruningContext pruningContext, BlockHeader header)
+        protected virtual void RunPruning(IPruningContext pruning, BlockHeader header, IPruningContext? oldPruning)
         {
-            IPruningContext? oldPruning = Interlocked.Exchange(ref _currentPruning, pruningContext);
             oldPruning?.Dispose();
             
-            using (_currentPruning)
+            using (pruning)
             {
-                _currentPruning.MarkStart();
-                using (CopyTreeVisitor copyTreeVisitor = new(_currentPruning, _cancellationTokenSource.Token, _logManager))
+                pruning.MarkStart();
+                using (CopyTreeVisitor copyTreeVisitor = new(pruning, _cancellationTokenSource, _logManager))
                 {
                     _stateReader.RunTreeVisitor(copyTreeVisitor, header.StateRoot!);
 
                     if (!_cancellationTokenSource.IsCancellationRequested)
                     {
                         copyTreeVisitor.Finish();
-                        _currentPruning.Commit();
+                        pruning.Commit();
                     }
                 }
             }

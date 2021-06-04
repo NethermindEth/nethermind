@@ -18,6 +18,7 @@
 using System;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Find;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Logging;
 
@@ -28,7 +29,6 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         private readonly IBlockTree _blockTree;
         private readonly ILogger _logger;
         private bool IsSyncing { get; set; }
-        private long BestSuggestedNumber { get; set; }
         
         public SyncingSubscription(IJsonRpcDuplexClient jsonRpcDuplexClient, IBlockTree? blockTree, ILogManager? logManager) 
             : base(jsonRpcDuplexClient)
@@ -36,7 +36,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             
-            IsSyncing = CheckSyncing();
+            IsSyncing = _blockTree.IsSyncing();
             if(_logger.IsTrace) _logger.Trace($"Syncing subscription {Id}: Syncing status on start is {IsSyncing}");
             
             _blockTree.NewBestSuggestedBlock += OnConditionsChange;
@@ -46,17 +46,11 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             if(_logger.IsTrace) _logger.Trace($"Syncing subscription {Id} will track NewHeadBlocks");
         }
 
-        private bool CheckSyncing()
-        {
-            BestSuggestedNumber = _blockTree.FindBestSuggestedHeader().Number;
-            return BestSuggestedNumber > _blockTree.Head.Number + 8;
-        }
-
         private void OnConditionsChange(object? sender, BlockEventArgs e)
         {
             Task.Run(() =>
             {
-                bool isSyncing = CheckSyncing();
+                bool isSyncing = _blockTree.IsSyncing();
 
                 if (isSyncing == IsSyncing)
                 {
@@ -67,24 +61,11 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
                 if (_logger.IsTrace) _logger.Trace($"Syncing subscription {Id} changed syncing status from {IsSyncing} to {isSyncing}");
 
                 IsSyncing = isSyncing;
-                JsonRpcResult result;
 
-                if (isSyncing == false)
-                {
-                    result = CreateSubscriptionMessage(isSyncing);
-                }
-                else
-                {
-                    result = CreateSubscriptionMessage(new SyncingResult
-                    {
-                        IsSyncing = isSyncing,
-                        CurrentBlock = _blockTree.Head.Number,
-                        HighestBlock = BestSuggestedNumber,
-                        StartingBlock = 0L
-                    });
-                }
+                JsonRpcResult result = isSyncing 
+                    ? CreateSubscriptionMessage(_blockTree.CheckSyncing()) 
+                    : CreateSubscriptionMessage(false);
 
-                
                 JsonRpcDuplexClient.SendJsonRpcResult(result);
                 _logger.Trace($"Syncing subscription {Id} printed SyncingResult object.");
             }).ContinueWith(

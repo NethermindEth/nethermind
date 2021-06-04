@@ -1158,8 +1158,8 @@ namespace Nethermind.Blockchain
         {
             Block? startBlock = null;
             byte[] persistedNumberData = _blockInfoDb.Get(StateHeadHashDbEntryAddress);
-            HighestPersistedState = persistedNumberData is null ? null : new RlpStream(persistedNumberData).DecodeLong();
-            long? persistedNumber = HighestPersistedState;
+            BestState = persistedNumberData is null ? null : new RlpStream(persistedNumberData).DecodeLong();
+            long? persistedNumber = BestState;
             if (persistedNumber is not null)
             {
                 startBlock = FindBlock(persistedNumber.Value, BlockTreeLookupOptions.None);
@@ -1569,7 +1569,7 @@ namespace Nethermind.Blockchain
             Interlocked.Decrement(ref _canAcceptNewBlocksCounter);
         }
 
-        public long? HighestPersistedState
+        public long? BestState
         {
             get => _highestPersistedState;
             set

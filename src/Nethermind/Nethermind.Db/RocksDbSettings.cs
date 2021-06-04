@@ -37,6 +37,9 @@ namespace Nethermind.Db
         public uint? WriteBufferNumber { get; init; }
         public ulong? BlockCacheSize { get; init; }
         public bool? CacheIndexAndFilterBlocks { get; init; }
+        
+        public bool DeleteOnStart { get; set; }
+        public bool CanDeleteFolder { get; set; } = true;
 
         public RocksDbSettings Clone(string name, string path)
         {
@@ -45,5 +48,7 @@ namespace Nethermind.Db
             settings.DbPath = path;
             return settings;
         }
+        
+        public RocksDbSettings Clone() => (RocksDbSettings)MemberwiseClone();
     }
 }
