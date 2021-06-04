@@ -97,7 +97,7 @@ namespace Ethereum.Test.Base
 
             BlockHeader header = new(test.PreviousHash, Keccak.OfAnEmptySequenceRlp, test.CurrentCoinbase,
                 test.CurrentDifficulty, test.CurrentNumber, test.CurrentGasLimit, test.CurrentTimestamp, new byte[0]);
-            header.BaseFeePerGas = test.Fork.IsEip1559Enabled ? test.CurrentBaseFee : UInt256.Zero;
+            header.BaseFeePerGas = test.Fork.IsEip1559Enabled ? test.CurrentBaseFee: UInt256.Zero;
             header.StateRoot = test.PostHash;
             header.Hash = header.CalculateHash();
 
