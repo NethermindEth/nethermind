@@ -252,7 +252,7 @@ namespace Nethermind.Mev.Test
         }
         
         [Test]
-        public async Task should_remove_bundle_when_simulation_fails() //not working
+        public async Task should_remove_bundle_when_simulation_fails()
         {
             
             var chain = await MevRpcModuleTests.CreateChain(1);

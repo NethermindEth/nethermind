@@ -40,7 +40,7 @@ namespace Nethermind.Mev.Execution
         private readonly ITxPool _txPool;
         private long _gasLimit;
 
-        public TxBundleSimulator(ITracerFactory tracerFactory, IGasLimitCalculator gasLimitCalculator, ITimestamper timestamper, ITxPool txPool) : base(tracerFactory)
+        public TxBundleSimulator(ITracerFactory tracerFactory, IGasLimitCalculator gasLimitCalculator, ITimestamper timestamper, ITxPool txPool, Address? beneficiaryAddress) : base(tracerFactory, beneficiaryAddress)
         {
             _gasLimitCalculator = gasLimitCalculator;
             _timestamper = timestamper;
