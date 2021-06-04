@@ -94,23 +94,33 @@ namespace Nethermind.Mev.Test
         [Test]
         public void should_add_bundle_with_correct_timestamps()
         {
-            ITimestamper timestamper = new ManualTimestamper(new DateTime(2021, 1, 1));
+            ITimestamper timestamper = new ManualTimestamper(DateTime.UtcNow);
             ulong timestamp = timestamper.UnixTime.Seconds;
-
+        
             TestContext test = new TestContext(timestamper);
 
-            Transaction[] txs = Array.Empty<Transaction>();
+            Transaction[] tx1 = new Transaction[]
+            {
+                Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyD).TestObject
+            };
+            Transaction[] tx2 = new Transaction[]
+            {
+                Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).TestObject
+            };
+            
             MevBundle[] bundles = new []
             {
-                new MevBundle(1, txs, 0, 0), //should get added
-                new MevBundle(2, txs, 5, 0), //should not get added, min > max
-                new MevBundle(3,  txs, timestamp + 50, timestamp + 100), //should get added
-                new MevBundle(4,  txs, timestamp + 4000, timestamp + 5000), //should not get added, min time too large
+                new MevBundle(1, tx1, 0, 0), //should get added
+                new MevBundle(2, tx1, timestamp + 5, timestamp), //should not get added, min > max
+                new MevBundle(3, tx1, timestamp - 5,  timestamp + 5), //should get added
+                new MevBundle(4, tx1, timestamp + 4000, timestamp + 5000), //should not get added, min time too large
+                new MevBundle(4, tx2, timestamp, timestamp + 10), //should get added
+                new MevBundle(5, tx2, timestamp + 1, timestamp + 10) //should not get added, min timestamp too large
                 
             };
 
             bundles.Select(b => test.BundlePool.AddBundle(b))
-                .Should().BeEquivalentTo(new bool[] {true, false, true, false});
+                .Should().BeEquivalentTo(new bool[] {true, false, true, false, true, false});
         }
 
         [Test]
@@ -228,7 +238,7 @@ namespace Nethermind.Mev.Test
             SimulatedMevBundle searchFor = new (new MevBundle(9, 
                     new[] {Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyB).TestObject}), 0,
                 true, UInt256.Zero, UInt256.Zero, UInt256.Zero);
-
+            
             int count = taskBundles.Count();
             SimulatedMevBundle[] simulatedMevBundles = taskBundles.ToArray();
              
@@ -256,13 +266,17 @@ namespace Nethermind.Mev.Test
             TestContext tc = new();
             MevBundle newBundle1 = new MevBundle(5, filledArr);
             MevBundle newBundle2 = new MevBundle(6, filledArr);
-
             long countBlock5Init = tc.BundlePool.GetBundles(5, timestamper.UnixTime.Seconds).Count();
             long countBlock6Init = tc.BundlePool.GetBundles(6, timestamper.UnixTime.Seconds).Count();
             tc.BundlePool.AddBundle(newBundle1);
             tc.BundlePool.AddBundle(newBundle2);
+            //how to add failing simulation?
+            //SimulatedMevBundle fail5 =
+              //  new SimulatedMevBundle(newBundle1, 0, false, UInt256.Zero, UInt256.Zero, UInt256.Zero);
+            Task t1 = Task.FromResult(SimulatedMevBundle.Cancelled(newBundle1));
+            t1.Wait();
             tc.BundlePool.GetBundles(5, timestamper.UnixTime.Seconds).Count().CompareTo((Int32) countBlock5Init).Should().Be(0);
-            tc.BundlePool.GetBundles(6, timestamper.UnixTime.Seconds).Count().CompareTo((Int32) countBlock6Init).Should().Be(0);
+            tc.BundlePool.GetBundles(6, timestamper.UnixTime.Seconds).Count().CompareTo((Int32) countBlock6Init).Should().Be(1);
         }
         
         [TestCase(1u, 1)]
@@ -294,7 +308,7 @@ namespace Nethermind.Mev.Test
 
             foreach (var expectedCount in expectedCountPerBlock)
             {
-                test.BundlePool.GetBundles(expectedCount.Key, 11).Should().HaveCount(expectedCount.Value);
+                test.BundlePool.GetBundles(expectedCount.Key, 10).Should().HaveCount(expectedCount.Value);
             }
         }
         
